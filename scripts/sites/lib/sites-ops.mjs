@@ -893,8 +893,70 @@ export function writeSafeResult(path, value) {
   writeFileSync(path, `${stableJson(value)}\n`, { flag: "wx", mode: 0o600 });
 }
 
+/**
+ * Issue #3628 — the five failure codes that are PROOF the pilot's recovery
+ * readiness is actually violated, as opposed to proof that one run had a bad
+ * day. A backup that is missing, stale, unretained or served by a disabled
+ * WAL-G is a readiness violation; a transport error reading an object is not.
+ *
+ * This set already existed, privately, in `backup-sites-cms.mjs`, where
+ * `deactivatePilotForBackupFailure` has always refused to deactivate for
+ * anything outside it. It lives here now because the WORKFLOW needs to reach
+ * the same verdict the in-process path reaches, and on 2026-09-28 it could not:
+ * the Sites backup-and-restore workflow's `deactivate` job fired on bare
+ * `needs.backup_restore.result != 'success'`, which routed around this
+ * classification entirely and signed-deactivated the live gogi pilot on a
+ * transient `S3_OBJECT_READ_FAILED`. The site was dark for 15 hours. The
+ * classifier was right; a job-level condition overrode it.
+ *
+ * The workflow filename is deliberately not spelled out here: #2435's provider
+ * seal treats any file naming a workflow as a reference file for it, and a
+ * prose mention in a shared library is not a dependency worth declaring.
+ *
+ * Adding a code here makes a failure take the public site down. Removing one
+ * makes a real readiness violation wait for the resolver's own 26-hour budget
+ * to expire. Neither is a formatting change.
+ */
+export const DEACTIVATING_RECOVERY_CODES = Object.freeze(new Set([
+  "DATABASE_BACKUP_CURRENT_FAILED",
+  "DATABASE_BACKUP_MISSING",
+  "DATABASE_BACKUP_RETENTION_UNPROVEN",
+  "DATABASE_BACKUP_STALE",
+  "DATABASE_BACKUP_WALG_DISABLED",
+]));
+
+/** Pure verdict: does this failure code prove a readiness violation? */
+export function classifyRecoveryFailure(code) {
+  const value = typeof code === "string" && code.length > 0 ? code : "UNEXPECTED_FAILURE";
+  return { code: value, deactivating: DEACTIVATING_RECOVERY_CODES.has(value) };
+}
+
+/**
+ * Records the classification where the workflow can read it.
+ *
+ * Absence is never "safe to keep serving". The workflow treats a missing or
+ * unreadable file as "deactivate", so a runner that dies before this line still
+ * fails closed exactly as it did before #3628. Only a file that positively says
+ * `deactivating: false` holds the site up.
+ */
+export function recordRecoveryFailureClassification(code, env = process.env) {
+  const path = env.SITES_RECOVERY_CLASSIFICATION_PATH;
+  if (typeof path !== "string" || path.length === 0) return null;
+  const verdict = classifyRecoveryFailure(code);
+  try {
+    writeFileSync(path, `${stableJson(verdict)}\n`, { mode: 0o600 });
+  } catch {
+    // A classification we cannot persist must not mask the original failure,
+    // and must not read as "false" downstream. Staying silent here leaves the
+    // file absent, which the workflow already treats as deactivate.
+    return null;
+  }
+  return verdict;
+}
+
 export function safeCliFailure(error) {
   const code = error instanceof SitesOpsError ? error.code : "UNEXPECTED_FAILURE";
   process.stderr.write(`SITES_OPS_ERROR code=${code}\n`);
+  recordRecoveryFailureClassification(code);
   process.exitCode = 1;
 }

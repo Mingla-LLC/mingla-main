@@ -196,10 +196,16 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
     // added and the provider count does not move.
     issue: 2899,
     workflow: "sites-backup-restore.yml",
+    // [#3628] The deactivation-gate regression suite reads the workflow's own
+    // YAML to pin the `if:` condition that took the live gogi pilot down for 15
+    // hours, so it names the workflow and discovery derives it as a consumer on
+    // the same terms as the #3606 pair above. Sorts before the watchdog script,
+    // after the `__tests__` entries, by the same plain lexicographic rule.
     referenceFiles: Object.freeze([
       "scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs",
       "scripts/sites/__tests__/issue_3606_recovery_freshness.implementor.test.mjs",
       "scripts/sites/__tests__/issue_3606_recovery_freshness.tester.adversarial.test.mjs",
+      "scripts/sites/__tests__/issue_3628_deactivation_gate.test.mjs",
       "scripts/sites/check-recovery-freshness.mjs",
     ]),
   }),
