@@ -75,6 +75,13 @@ interface OptionDraft {
 
 const modifierGroupNameIds = menuTextFieldIds("modifier-group-name");
 
+/**
+ * Issue #3571 (PR #3615 rework, P3-1) — `Button` strips `onPress` entirely
+ * while disabled, so this never runs; it exists because `onPress` is required
+ * and a permanently-refused removal has nothing to ask.
+ */
+const NO_REMOVAL = (): void => undefined;
+
 const menuTextAccessibilityHint = (used: number, limit: number): string =>
   `${used} of ${limit} characters will be saved.`;
 
@@ -88,7 +95,20 @@ export interface MenuModifierGroupEditorProps {
   saving: boolean;
   saveError?: MenuTextSaveFailure | null;
   onClearSaveError?: () => void;
-  onDelete?: (groupId: string) => void;
+  /**
+   * Issue #3571 — ASKS the parent to start a removal. It must NEVER delete on
+   * its own: the parent owns the confirmation, and this control's job ends at
+   * raising the request.
+   */
+  onRequestDelete?: (groupId: string) => void;
+  /**
+   * Issue #3571 (PR #3615 rework, P3-1) — set to the reason when the server has
+   * PERMANENTLY refused this group's removal (order history RESTRICT, or a
+   * denial). The trigger stays visible, because the operator must still see
+   * what is unavailable, but it is inert: asking again could only fail again,
+   * and a second doomed mutation would erase the fact that says why.
+   */
+  removalBlockedReason?: string | null;
   deleting?: boolean;
   onCancel: () => void;
   testID?: string;
@@ -103,7 +123,8 @@ export function MenuModifierGroupEditor({
   saving,
   saveError = null,
   onClearSaveError,
-  onDelete,
+  onRequestDelete,
+  removalBlockedReason = null,
   deleting = false,
   onCancel,
   testID,
@@ -627,18 +648,39 @@ export function MenuModifierGroupEditor({
         disabled={saving}
         testID="modifier-group-cancel"
       />
-      {group !== null && onDelete !== undefined ? (
-        <Button
-          label="Remove this group"
-          onPress={() => onDelete(group.id)}
-          variant="destructive"
-          size="sm"
-          fullWidth
-          loading={deleting}
-          disabled={deleting || saving}
-          style={styles.delete}
-          testID="modifier-group-delete"
-        />
+      {group !== null && onRequestDelete !== undefined ? (
+        removalBlockedReason !== null ? (
+          /*
+           * Issue #3571 (PR #3615 rework, P3-1) — this group can never be
+           * removed, and the section's alert above already says why. The
+           * control stays on screen so the operator still sees WHAT is
+           * unavailable, but it is inert rather than a dead tap: it announces
+           * its own reason, and the flow behind it refuses to re-ask.
+           */
+          <Button
+            label="Remove this group"
+            onPress={NO_REMOVAL}
+            variant="destructive"
+            size="md"
+            fullWidth
+            disabled
+            accessibilityLabel={`Remove this group. Unavailable. ${removalBlockedReason}`}
+            style={styles.delete}
+            testID="modifier-group-delete"
+          />
+        ) : (
+          <Button
+            label="Remove this group"
+            onPress={() => onRequestDelete(group.id)}
+            variant="destructive"
+            size="md"
+            fullWidth
+            loading={deleting}
+            disabled={deleting || saving}
+            style={styles.delete}
+            testID="modifier-group-delete"
+          />
+        )
       ) : null}
     </View>
   );
@@ -876,6 +918,9 @@ const styles = StyleSheet.create({
   },
   delete: {
     marginTop: spacing.xs,
+    // #3571 — a destructive control sitting directly under an identically wide
+    // Cancel must not be below the 44pt target.
+    minHeight: 44,
   },
 });
 
