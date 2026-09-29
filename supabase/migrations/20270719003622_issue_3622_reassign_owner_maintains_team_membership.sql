@@ -38,18 +38,44 @@
 --      trigger uses `created_at` for both invited_at and accepted_at and this mirrors
 --      that convention with a single reassignment timestamp.
 --
--- SCOPE NOTE — only the OWNERSHIP grant is withdrawn. If the outgoing owner also holds
--- a separately-granted active row at a lower role, that row survives. It was granted
--- deliberately and a handover is not the place to revoke it. Production currently has
--- zero (brand_id, user_id) pairs with more than one active row, but there is no unique
--- constraint preventing it, so both branches below are written to be deterministic
--- rather than to rely on there being exactly one row.
+-- SCOPE NOTE — only the OWNERSHIP grant is withdrawn, and only the row belonging to the
+-- account that owned the brand immediately before the UPDATE. The baseline already carries
+-- a UNIQUE partial index — `idx_brand_team_members_brand_user_active` on
+-- (brand_id, user_id) WHERE removed_at IS NULL — so a given user holds AT MOST ONE active
+-- row per brand and there is nothing else of theirs to withdraw. (An earlier draft of this
+-- header claimed no such constraint existed. It does, since the baseline squash; the #3622
+-- tester suite pins it from the catalogue and by an executed write that raises
+-- unique_violation, group T9.) The deterministic `ORDER BY ... LIMIT 1` promotion below is
+-- therefore kept as defence if that index is ever dropped, not because a second candidate
+-- row exists today.
+--
+-- KNOWN LIMITATION — that index constrains (brand_id, user_id), NOT (brand_id, role), so two
+-- DIFFERENT users can each hold an active accepted brand_owner row on one brand. The
+-- revocation below is filtered on `user_id = v_old_owner`, so a co-owner's brand_owner row
+-- SURVIVES the handover and keeps them at rank 60 on a brand they do not own. Production has
+-- ZERO brands in that state — 47 active accepted brand_owner rows exist and none is orphaned
+-- from its brand's account_id — so the precondition does not exist today. Deliberately NOT
+-- fixed here: widening the predicate changes WHO a handover revokes, which is a product
+-- decision, not a defect fix.
+--
+-- CONCURRENCY — the `v_before` SELECT below takes `FOR UPDATE`. Without that row lock a
+-- second admin reassigning the SAME brand under READ COMMITTED reads `v_before` while the
+-- first handover is still uncommitted, blocks on the UPDATE, and then revokes a STALE
+-- v_old_owner — leaving the REAL outgoing owner active at rank 60 on a brand they no longer
+-- own, which is exactly the condition this migration exists to eliminate, and writing an
+-- audit `before` blob naming the wrong outgoing owner so support's only record of the
+-- handover is false. Measured with two genuinely independent sessions rather than reasoned
+-- about (#3622 tester suite, group T11). The sibling path
+-- `accept_invite_and_transfer_brand_ownership` already locks the brand row first
+-- (`SELECT * INTO v_brand_record FROM public.brands WHERE id = ... FOR UPDATE`); this
+-- follows the convention that already existed.
 --
 -- PRESERVED VERBATIM from 20261208000005: SECURITY DEFINER, SET search_path TO
 -- 'public', the is_admin_user() guard as the FIRST statement, the reason_required
 -- check, the invalid_new_owner check, the set_config bypass arming, and the
 -- admin_write_audit call and its metadata shape. This migration ADDS membership
--- maintenance; it does not rewrite the function.
+-- maintenance and the brand-row lock described under CONCURRENCY; it does not otherwise
+-- rewrite the function.
 --
 -- Enforces: I-PROPOSED-1276-IDENTITY-ADMIN-WRITE-AUDITED,
 --           I-PROPOSED-1271-ADMIN-GATE-FIRST-STATEMENT, -ADMIN-WRITE-AUDITED,
@@ -69,7 +95,10 @@ DECLARE
 BEGIN
   IF NOT public.is_admin_user() THEN RAISE EXCEPTION 'not_authorized'; END IF;  -- guard FIRST
   IF p_reason IS NULL OR btrim(p_reason) = '' THEN RAISE EXCEPTION 'reason_required'; END IF;
-  SELECT to_jsonb(b) INTO v_before FROM public.brands b WHERE b.id = p_brand_id;
+  -- FOR UPDATE (issue #3622 rework): serialize concurrent reassignments of the same
+  -- brand, so v_old_owner below cannot be an owner already replaced by another
+  -- admin's uncommitted handover. Same lock the sibling transfer path takes.
+  SELECT to_jsonb(b) INTO v_before FROM public.brands b WHERE b.id = p_brand_id FOR UPDATE;
   IF v_before IS NULL THEN RAISE EXCEPTION 'not_found'; END IF;
   IF NOT EXISTS (SELECT 1 FROM public.creator_accounts
                  WHERE id = p_new_account_id AND deleted_at IS NULL) THEN
