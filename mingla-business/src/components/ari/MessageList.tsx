@@ -197,8 +197,11 @@ export const MessageList: React.FC<MessageListProps> = ({
       }
       continue; // historical proposal — silent
     }
-    if (m.role === "tool" && (m.tool_results as any)?.outcome === "failed") {
-      continue; // hidden — toast + Ari follow-up cover this
+    if (
+      m.role === "tool" && (m.tool_results as any)?.outcome === "failed" &&
+      confirmationFailureSentence(m.tool_results) === null
+    ) {
+      continue; // hidden — toast + Ari follow-up cover an in-turn tool failure
     }
     // ORCH-1103 REWORK 3 — mutual-exclusion between the live proposal card and
     // the executed receipt. During the create-and-attach window the host KEEPS
@@ -540,6 +543,45 @@ export const MessageList: React.FC<MessageListProps> = ({
   );
 };
 
+/**
+ * #3614 — what a confirmation that did NOT happen leaves behind.
+ *
+ * A failed tool result stays hidden when it came from Ari's own turn: the model
+ * writes a follow-up reply that explains it, so an inline ribbon would be a
+ * third, redundant indicator.
+ *
+ * A CONFIRMATION has no such follow-up. agent-confirm-action writes an
+ * assistant message only on the EXECUTED path, so a refused confirm left the
+ * proposal card vanishing (its terminal tool row resolves the pending action)
+ * and nothing said — the entire visible outcome was a toast that dismisses
+ * itself in twelve seconds. On 2026-09-28 an operator confirmed a Website draft
+ * edit, the server refused it 403, and the thread kept no trace at all: the
+ * report was "no write, no error, no toast; the card simply disappeared."
+ *
+ * A confirmation must either apply or fail loudly, so the one row that proves
+ * it failed is rendered. `pending_action_id` is the discriminator: only
+ * agent-confirm-action's terminalization writes it onto a tool result, and an
+ * in-turn failure from agent-chat never carries one.
+ *
+ * The stored reason is `CODE: sentence`. Only the sentence is shown, and only
+ * when the reason really has that shape — anything else gets fixed copy, so no
+ * internal code, database text or raw throw message can reach the thread.
+ */
+export function confirmationFailureSentence(toolResults: unknown): string | null {
+  const tr = toolResults as
+    | { outcome?: unknown; pending_action_id?: unknown; reason?: unknown }
+    | null
+    | undefined;
+  if (tr?.outcome !== "failed" || typeof tr?.pending_action_id !== "string") {
+    return null;
+  }
+  const reason = typeof tr.reason === "string" ? tr.reason.trim() : "";
+  const detail = /^[A-Z][A-Z0-9_]*:\s+(\S.*)$/.exec(reason)?.[1]?.trim();
+  return detail && detail.length <= 200
+    ? `That didn't go through. ${detail}`
+    : "That didn't go through, so nothing changed. Ask Ari to try it again.";
+}
+
 function renderToolResult(
   m: AgentMessage,
   onSeedMessage?: (text: string) => void,
@@ -548,12 +590,23 @@ function renderToolResult(
   const tr = m.tool_results as any;
   const outcome = tr?.outcome ?? "executed";
 
-  // Failures are surfaced via the top toast AND Ari's natural follow-up
-  // reply that explains the recovery. The inline red ribbon was a third,
-  // redundant indicator that leaked raw error codes into the chat thread.
-  // Keep the tool_result row in the DB (Gemini reads it on the next turn
-  // for context) but don't render it in the UI.
-  if (outcome === "failed") return null;
+  // An IN-TURN tool failure is surfaced via the top toast AND Ari's natural
+  // follow-up reply that explains the recovery. The inline red ribbon was a
+  // third, redundant indicator that leaked raw error codes into the chat
+  // thread. Keep the tool_result row in the DB (Gemini reads it on the next
+  // turn for context) but don't render it in the UI.
+  //
+  // A refused CONFIRMATION is the exception — see
+  // `confirmationFailureSentence`. It has no follow-up to lean on.
+  if (outcome === "failed") {
+    const sentence = confirmationFailureSentence(tr);
+    if (sentence === null) return null;
+    return (
+      <View style={styles.failedRibbon} accessibilityRole="alert">
+        <Text style={styles.failedText}>{sentence}</Text>
+      </View>
+    );
+  }
 
   if (outcome === "cancelled") {
     return (
@@ -764,8 +817,25 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "rgba(255, 255, 255, 0.7)",
   },
-  // failedRibbon/failedText removed — failed tool outcomes are surfaced via
-  // the top Toast + Ari's follow-up reply instead of an inline ribbon.
+  // An in-turn tool failure is still surfaced via the top Toast + Ari's
+  // follow-up reply and renders no ribbon. #3614 — a refused CONFIRMATION has
+  // no follow-up, so it gets this one durable row instead of vanishing.
+  failedRibbon: {
+    alignSelf: "flex-start",
+    maxWidth: "84%",
+    backgroundColor: semantic.errorTint,
+    borderWidth: 1,
+    borderColor: semantic.error,
+    borderRadius: radius.md,
+    paddingHorizontal: ariThread.ribbonPadH,
+    paddingVertical: ariThread.ribbonPadV,
+  },
+  failedText: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "500",
+    // #3284 — error TEXT on a dark surface needs errorText, not error.
+    color: semantic.errorText,
+  },
 });
 
 export default MessageList;
