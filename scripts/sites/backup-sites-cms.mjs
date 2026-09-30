@@ -15,24 +15,26 @@ import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  DEACTIVATING_RECOVERY_CODES,
+  SITES_BUCKETS,
   callCore,
   coreConfigFromEnv,
   encryptBundle,
+  encryptionKeyFromEnv,
   fail,
   getObject,
   listBucket,
   postgresEnvFromUrl,
-  requiredEnv,
   requireUuid,
+  requiredEnv,
   safeCliFailure,
   sha256Bytes,
-  SITES_BUCKETS,
   stableJson,
   storageConfigFromEnv,
   timestampsRepresentSameInstant,
+  validateCmsDatabaseUrl,
   validateManagementBackupResponse,
   validateManagementProjectResponse,
-  validateCmsDatabaseUrl,
   validateManifest,
   validateObjectIdentity,
   validatePilotDeactivationResponse,
@@ -40,7 +42,6 @@ import {
   validateReadinessResponse,
   writePlainBundle,
   writeSafeResult,
-  encryptionKeyFromEnv,
 } from "./lib/sites-ops.mjs";
 
 const INVENTORY_SQL = String.raw`
@@ -312,13 +313,12 @@ async function readManagementBackup(env, fetchImpl, now, project) {
   });
 }
 
-const DEACTIVATING_BACKUP_CODES = new Set([
-  "DATABASE_BACKUP_CURRENT_FAILED",
-  "DATABASE_BACKUP_MISSING",
-  "DATABASE_BACKUP_RETENTION_UNPROVEN",
-  "DATABASE_BACKUP_STALE",
-  "DATABASE_BACKUP_WALG_DISABLED",
-]);
+// #3628 — one definition, reachable by BOTH the in-process path below and the
+// workflow's `deactivate` job. While this set was private to this file the job
+// could not consult it, so it fell back to "the run failed" and took a live
+// site down on a transient transport error. See
+// DEACTIVATING_RECOVERY_CODES in lib/sites-ops.mjs.
+const DEACTIVATING_BACKUP_CODES = DEACTIVATING_RECOVERY_CODES;
 
 export async function deactivatePilotForBackupFailure({
   env = process.env,
