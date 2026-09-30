@@ -89,14 +89,14 @@ const EXACT_CMS_DEPENDENCIES = {
   "@payloadcms/storage-s3": "3.88.0",
   "@payloadcms/ui": "3.88.0",
   graphql: "16.11.0",
-  next: "16.3.3",
+  next: "16.3.8",
   payload: "3.88.0",
   react: "19.2.6",
   "react-dom": "19.2.6",
   sharp: "0.35.4",
 };
 const EXACT_PUBLIC_DEPENDENCIES = {
-  next: "16.3.3",
+  next: "16.3.8",
   react: "19.2.6",
   "react-dom": "19.2.6",
 };
@@ -1012,7 +1012,7 @@ function selfTest() {
     ["publicStyles", "  .gallery {\n    grid-template-columns: repeat(2, minmax(0, 1fr));", "  .gallery {\n    grid-template-columns: 1fr 1fr;", "Restaurant Website v1 visual contract"],
     ["publicStyles", ".gallery > * {\n  min-width: 0;\n}", ".gallery > * {\n  min-width: auto;\n}", "Restaurant Website v1 visual contract"],
     ["checkout", '.is("site_attribution_token_digest",', '.neq("site_attribution_token_digest",', "checkout first-touch handoff"],
-    ["publicPackage", '"next": "16.3.3"', '"@payloadcms/next": "3.88.0",\n    "next": "16.3.3"', "production dependency isolation"],
+    ["publicPackage", '"next": "16.3.8"', '"@payloadcms/next": "3.88.0",\n    "next": "16.3.8"', "production dependency isolation"],
     ["businessView", "Managed securely by Mingla.", "Configure custom domain", "deferred domain UI"],
     ["secretWorkflow", "final 88-name bundled-authority state", "final state", "existing secret CI lane"],
     ["webWorkflow", "mingla-sites-build:", "mingla-sites-removed:", "existing build CI lane"],
