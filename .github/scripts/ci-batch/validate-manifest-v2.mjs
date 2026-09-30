@@ -2396,11 +2396,14 @@ function validateRegistryInTrackedFilesScope(
   // [TEST-MOD-APPROVED #1780] Business now also declares the governed,
   // locally runnable issue-1780 test harness. Re-bank only that package
   // authority; setup, lockfile, and tool exposure stay byte-for-byte unchanged.
+  // [TEST-MOD-APPROVED #3642] Re-banked after Host advisory floors (sharp /
+  // image-size / related overrides + lockfile) and the Metro image-size patch
+  // dependency lock churn. app-mobile pins unchanged.
   const packageAuthorities = {
     "app-mobile/package.json": "e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542",
     "app-mobile/package-lock.json": "f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27",
-    "mingla-business/package.json": "ce8bbd0617ada3c453f047aaf8e4202bf8e01e233a8893c6e5bb952c323a203b",
-    "mingla-business/package-lock.json": "71449617f9cd6133da0395f3dcf780a3170da5d49b1e2eff2876a7afeb92addc",
+    "mingla-business/package.json": "280f6e05695cea5a7d7240c82b11b96c9883b4515a69ebecee3d347c1af7aa70",
+    "mingla-business/package-lock.json": "3de9c231b575d82bf1f362b12a80ca66fa89a13f5258ab064cb3b1198f1cdc6f",
   };
   for (const [relative, expected] of Object.entries(packageAuthorities)) {
     const actual = crypto.createHash("sha256").update(fs.readFileSync(path.join(root, relative))).digest("hex");
