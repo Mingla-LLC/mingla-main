@@ -89,17 +89,22 @@ const EXACT_CMS_DEPENDENCIES = {
   "@payloadcms/storage-s3": "3.88.0",
   "@payloadcms/ui": "3.88.0",
   graphql: "16.11.0",
-  next: "16.3.8",
+  // `next` is floor-checked separately (NEXT_ADVISORY_FLOOR) — exact patch pins
+  // made every Sites advisory clear red #2830 (#3642 → #3713).
   payload: "3.88.0",
   react: "19.2.6",
   "react-dom": "19.2.6",
   sharp: "0.35.4",
 };
 const EXACT_PUBLIC_DEPENDENCIES = {
-  next: "16.3.8",
+  // `next` floor-checked separately — see NEXT_ADVISORY_FLOOR.
   react: "19.2.6",
   "react-dom": "19.2.6",
 };
+// Advisory floor for Sites/CMS `next` (patched 16.3.x line cleared on #3642).
+// Major must stay 16; patch/minor above the floor may move without editing this gate.
+const NEXT_ADVISORY_FLOOR = Object.freeze([16, 3, 8]);
+const NEXT_MAJOR = 16;
 const ARI_TOOLS = [
   "get_brand_site",
   "list_site_pages",
@@ -131,6 +136,55 @@ function json(source, label, failures) {
     return {};
   }
 }
+
+/** Parse an exact `"x.y.z"` (optional leading ^/~) into [maj,min,pat] or null. */
+function parseSemverTriple(raw) {
+  if (typeof raw !== "string") return null;
+  const cleaned = raw.trim().replace(/^[~^]/, "");
+  const parts = cleaned.split(".").map((part) => Number(part));
+  if (parts.length < 3 || parts.slice(0, 3).some((n) => !Number.isInteger(n) || n < 0)) return null;
+  return parts.slice(0, 3);
+}
+
+function versionGte(actual, floor) {
+  for (let i = 0; i < 3; i += 1) {
+    if (actual[i] > floor[i]) return true;
+    if (actual[i] < floor[i]) return false;
+  }
+  return true;
+}
+
+/** Exact dep map minus `next`, plus next major+floor (advisory soft pin — #3713). */
+function assertProductionDependencies(actualDeps, exactWithoutNext, label, driftPhrase, failures) {
+  const actual = actualDeps && typeof actualDeps === "object" ? actualDeps : {};
+  const actualKeys = Object.keys(actual).sort();
+  const expectedKeys = [...Object.keys(exactWithoutNext), "next"].sort();
+  if (JSON.stringify(actualKeys) !== JSON.stringify(expectedKeys)) {
+    failures.push(`${label}: ${driftPhrase}`);
+    return;
+  }
+  for (const [name, version] of Object.entries(exactWithoutNext)) {
+    if (actual[name] !== version) {
+      failures.push(`${label}: ${driftPhrase}`);
+      return;
+    }
+  }
+  const nextTriple = parseSemverTriple(actual.next);
+  if (!nextTriple) {
+    failures.push(`${label}: next version unparseable (${actual.next ?? "missing"})`);
+    return;
+  }
+  if (nextTriple[0] !== NEXT_MAJOR) {
+    failures.push(`${label}: next major must remain ${NEXT_MAJOR} (got ${actual.next})`);
+    return;
+  }
+  if (!versionGte(nextTriple, NEXT_ADVISORY_FLOOR)) {
+    failures.push(
+      `${label}: next advisory floor — must be >= ${NEXT_ADVISORY_FLOOR.join(".")} (got ${actual.next})`,
+    );
+  }
+}
+
 
 export function violations(files) {
   const failures = [];
@@ -535,14 +589,22 @@ export function violations(files) {
   }
 
   const cmsPackage = json(files.cmsPackage ?? "", "CMS package", failures);
-  if (JSON.stringify(cmsPackage.dependencies) !== JSON.stringify(EXACT_CMS_DEPENDENCIES)) {
-    failures.push("CMS package: production dependency set/version drifted");
-  }
+  assertProductionDependencies(
+    cmsPackage.dependencies,
+    EXACT_CMS_DEPENDENCIES,
+    "CMS package",
+    "production dependency set/version drifted",
+    failures,
+  );
   if (cmsPackage.overrides?.dompurify !== "3.4.14") failures.push("CMS package: DOMPurify override drifted");
   const publicPackage = json(files.publicPackage ?? "", "public package", failures);
-  if (JSON.stringify(publicPackage.dependencies) !== JSON.stringify(EXACT_PUBLIC_DEPENDENCIES)) {
-    failures.push("public runtime: production dependency isolation drifted");
-  }
+  assertProductionDependencies(
+    publicPackage.dependencies,
+    EXACT_PUBLIC_DEPENDENCIES,
+    "public runtime",
+    "production dependency isolation drifted",
+    failures,
+  );
   if (publicPackage.overrides?.dompurify !== "3.4.14") failures.push("public runtime: DOMPurify override drifted");
 
   const cmsConfig = files.cmsConfig ?? "";
@@ -1013,6 +1075,8 @@ function selfTest() {
     ["publicStyles", ".gallery > * {\n  min-width: 0;\n}", ".gallery > * {\n  min-width: auto;\n}", "Restaurant Website v1 visual contract"],
     ["checkout", '.is("site_attribution_token_digest",', '.neq("site_attribution_token_digest",', "checkout first-touch handoff"],
     ["publicPackage", '"next": "16.3.8"', '"@payloadcms/next": "3.88.0",\n    "next": "16.3.8"', "production dependency isolation"],
+    ["publicPackage", '"next": "16.3.8"', '"next": "16.3.7"', "next advisory floor"],
+    ["cmsPackage", '"next": "16.3.8"', '"next": "15.5.0"', "next major must remain"],
     ["businessView", "Managed securely by Mingla.", "Configure custom domain", "deferred domain UI"],
     ["secretWorkflow", "final 88-name bundled-authority state", "final state", "existing secret CI lane"],
     ["webWorkflow", "mingla-sites-build:", "mingla-sites-removed:", "existing build CI lane"],
