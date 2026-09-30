@@ -107,6 +107,40 @@ const NO_DELETE_REFUSALS: DeleteRefusalsByGroup = new Map();
 /** Stable empty anchor map — same reason, and the value cleared back to. */
 const NO_REFUSAL_ANCHORS: ReadonlyMap<string, number> = new Map();
 
+/**
+ * Issue #3572 — why a sibling group cannot be opened while the editor holds
+ * work that has not been written yet. Switching groups unmounts the open draft,
+ * which is the same silent discard the parent Save used to perform. Said out
+ * loud on the control it blocks, because a dead-looking row that never explains
+ * itself is the silent failure in a new costume (Constitution #3).
+ */
+const OPTIONS_DRAFT_HOLD_REASON =
+  "Save or cancel the options group you are editing first.";
+
+/**
+ * Issue #3572 (rework, P0-1) — said out loud when a refetch takes the group an
+ * operator was editing off this item.
+ *
+ * The draft dies with the editor and there is nothing left to save it into, so
+ * the loss is a FACT the operator must be told. Releasing the hold silently
+ * would swap a lockout for a disappearance, which is the same Constitution #3
+ * failure the whole issue is about.
+ */
+/**
+ * Issue #3572 (rework cycle 3, P3-5) — the discarded draft's group, by IDENTITY
+ * with the name carried alongside purely to render the sentence. Matching the
+ * retraction on the name let a same-named sibling speak for a group that had
+ * genuinely gone.
+ */
+interface DiscardedModifierGroupDraft {
+  id: string;
+  name: string;
+}
+
+export const menuOptionsDraftDiscardedMessage = (groupName: string): string =>
+  `“${groupName}” is no longer listed on this item, so your unsaved changes` +
+  " to it could not be kept.";
+
 export interface MenuItemOptionsSectionProps {
   brandId: string | null;
   /** Null while the item is unsaved — groups need a real item id. */
@@ -114,6 +148,15 @@ export interface MenuItemOptionsSectionProps {
   itemCurrency: string;
   canMutate: boolean;
   onSavingChange?: (saving: boolean) => void;
+  /**
+   * Issue #3572 — true while the open editor holds work that has not been
+   * written yet. The parent item sheet receives this whole section as an opaque
+   * React node, so without this signal its Save button and every one of its
+   * dismissal routes are blind to an unsaved options draft and destroy it on
+   * unmount. This section owns CLEARING the signal, because it is the only
+   * layer that can see a successful save, a deliberate cancel, and the unmount.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
   testID?: string;
 }
 
@@ -123,6 +166,7 @@ export function MenuItemOptionsSection({
   itemCurrency,
   canMutate,
   onSavingChange,
+  onDirtyChange,
   testID,
 }: MenuItemOptionsSectionProps): React.ReactElement {
   const groupsQuery = useMenuModifierGroups(brandId, menuItemId);
@@ -143,6 +187,29 @@ export function MenuItemOptionsSection({
     useState<MenuModifierGroup | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [focusGroupId, setFocusGroupId] = useState<string | null>(null);
+  /*
+   * #3572 — the aggregate nested-draft status. The editor panel reports its own
+   * dirtiness from its edit handlers; this LATCH is what the editor writes to.
+   *
+   * It is deliberately not what the parent sheet sees: `editorDirty` below is
+   * derived from it AND from whether an editor is actually on screen. See the
+   * reconciliation block.
+   */
+  const [editorDirtyLatch, setEditorDirtyLatch] = useState<boolean>(false);
+  /*
+   * #3572 (rework, P0-1) — the group whose unsaved draft a refetch took away,
+   * held only until the operator starts something else.
+   *
+   * Rework cycle 3 (P3-5): the ID travels with the name. The sentence QUOTES
+   * the name, but its SUBJECT is the group the operator was editing, and that
+   * is identity. `menu_modifier_groups.name` carries no unique constraint and
+   * `validateModifierGroup` never checks uniqueness, so two groups called
+   * "Extras" on one dish is ordinary — and matching the retraction on the name
+   * let a same-named SIBLING retract a notice about a group that really had
+   * gone, putting the silent disappearance back for that case.
+   */
+  const [discardedDraft, setDiscardedDraft] =
+    useState<DiscardedModifierGroupDraft | null>(null);
   const submissionInFlightRef = useRef<boolean>(false);
   const deletionInFlightRef = useRef<boolean>(false);
   const retryInFlightRef = useRef<boolean>(false);
@@ -321,16 +388,123 @@ export function MenuItemOptionsSection({
   }
   const dialogGroup = pendingDeleteTarget ?? dialogGroupRef.current;
 
+  /*
+   * #3572 (rework, P0-1) — THE NESTED-DRAFT HOLD, folded onto the SAME
+   * reconciliation (merge of PR #3621 into PR #3615).
+   *
+   * Both lanes were answering one question — "is the open editor still in the
+   * list?" — under two names, and two independently-computed answers to one
+   * question is how a stale one gets read. There is now exactly ONE reconciled
+   * identity, `editingGroupId` above, and everything below is DERIVED from it:
+   * the hold, the discard notice, `visibleGroupId`, and the `groups.map`
+   * predicate that decides whether the editor renders at all.
+   *
+   * `editorOnScreen` is that render predicate, verbatim: the editor is drawn
+   * from inside `groups.map` for the group whose id is `editingGroupId`, and
+   * `liveGroupIds` is built from exactly that list — so
+   * `liveGroupIds.has(editingGroupId)` is true precisely when the editor is on
+   * screen. That equivalence is the point. `editing` is a SNAPSHOT taken when
+   * a row was tapped; when a refetch drops that group — a reconnect
+   * (`refetchOnReconnect`) at a moment when another device, another tab or
+   * another staff member has removed it — the editor unmounts through none of
+   * the three places that clear the lock, and it cannot grow an unmount hook of
+   * its own (the merged #3563 no-`useEffect` gate). Latching the hold
+   * independently of the editor is therefore an outage waiting for a Wi-Fi
+   * blip: no editor, no Cancel, no "Add a choice", Save disabled, every
+   * dismissal route refused, and a note on screen promising that nothing typed
+   * was lost. Deriving it from the editor that is ACTUALLY RENDERED is what
+   * stops the hold outliving its editor.
+   *
+   * Note the one place the two halves deliberately differ, and why it is not a
+   * disagreement. While `hasServerList` is false the reconciliation above KEEPS
+   * `editingGroupId` — an unanswered read is not evidence a group is gone, and
+   * dropping it there would take a standing refusal off the screen with it. No
+   * editor is rendered in that window either way (`groups` is empty), so the
+   * hold releases and nothing claims otherwise; `editing` itself is preserved,
+   * so the editor comes back when the read lands, and no discard notice is
+   * raised for a group nobody has said is missing.
+   */
+  const editorOnScreen =
+    creating || (editingGroupId !== null && liveGroupIds.has(editingGroupId));
+  /*
+   * Rework cycle 2 (P2-4, P3-3) — the discard notice is reconciled by the same
+   * block, because a sentence that was true when it was written can be made
+   * false by the very next refetch, and this one is read out of an assertive
+   * live region.
+   *
+   * It names a group and says that group is no longer listed, so a corrective
+   * refetch that brings the group BACK renders the row and the sentence
+   * denying it side by side (P2-4). And a save that was already in flight when
+   * the group vanished can still SUCCEED, which means the changes were kept
+   * after all — leaving "could not be kept" on screen beside "saved with 1
+   * option" (P3-3). A failed save deliberately keeps the notice: there the
+   * changes really were lost, the editor is gone, and nothing else would say
+   * so. Both disjuncts are keyed by IDENTITY, never by name (P3-5).
+   *
+   * It runs BEFORE the set below on purpose. Both read this render's value, so
+   * clearing second would queue its `null` after a freshly set name and wipe a
+   * notice that had just become true.
+   */
+  if (
+    discardedDraft !== null &&
+    (successMessage !== null ||
+      groups.some((group) => group.id === discardedDraft.id))
+  ) {
+    setDiscardedDraft(null);
+  }
+  /*
+   * THE DRAFT DIED. `editingGroupId` is the reconciled identity above, so this
+   * is the one place that knows the editor the operator was typing into is no
+   * longer reachable — and the ONLY thing left to do about it is say so.
+   *
+   * The `editorDirtyLatch` condition governs the WHOLE block, not just the
+   * notice, and that is the merge of the two lanes rather than a weakening of
+   * either (PR #3621 into PR #3615).
+   *
+   * #3615 masks `editing` rather than clearing it, deliberately: a group can
+   * come back — a corrective read, a restore on another device — and a CLEAN
+   * editor that was only ever masked is put back exactly as it was, having lost
+   * nothing. Clearing unconditionally would turn every transient disappearance
+   * into a permanent close.
+   *
+   * #3572 must clear it when the draft was DIRTY, for two reasons that both
+   * bite. The typed work died with the unmounted editor and there is nothing
+   * left to put back, so silently restoring an EMPTY editor after retracting
+   * the "could not be kept" notice would be the silent disappearance this issue
+   * exists to remove. And the clear is what makes this block one-shot: without
+   * it, a `creating` editor opened while a dirty `editing` is masked keeps
+   * `editorOnScreen` true, the latch never clears, and a fresh object into
+   * `setDiscardedDraft` on every pass is an unbounded render loop.
+   *
+   * Adjusting state during render: guarded, so it runs once and settles.
+   */
+  if (editing !== null && editingGroupId === null && editorDirtyLatch) {
+    setEditing(null);
+    setDiscardedDraft({ id: editing.id, name: editing.name });
+  }
+  if (editorDirtyLatch && !editorOnScreen) setEditorDirtyLatch(false);
+  const editorDirty = editorDirtyLatch && editorOnScreen;
+
   useEffect(() => {
     onSavingChange?.(saveGroup.isPending);
   }, [onSavingChange, saveGroup.isPending]);
+
+  useEffect(() => {
+    onDirtyChange?.(editorDirty);
+  }, [onDirtyChange, editorDirty]);
 
   useEffect(
     () => (): void => {
       submissionInFlightRef.current = false;
       onSavingChange?.(false);
+      /*
+       * #3572 — the lock dies with the section. Leaving it engaged would leave
+       * the parent sheet permanently unsaveable and undismissable after the
+       * editor is gone: a guard that cannot be released is its own outage.
+       */
+      onDirtyChange?.(false);
     },
-    [onSavingChange],
+    [onSavingChange, onDirtyChange],
   );
 
   useEffect(() => {
@@ -391,9 +565,16 @@ export function MenuItemOptionsSection({
     if (saveGroup.isPending) return;
     setSaveError(null);
     setSuccessMessage(null);
+    setDiscardedDraft(null);
     forgetTransientDeleteFailure();
     setEditing(null);
     setCreating(false);
+    /*
+     * #3572 — Cancel is a DELIBERATE discard, so the lock releases here. This
+     * is the operator's way out of a blocked parent save; it is never reached
+     * by a dismissal, a parent save, or a failed nested save.
+     */
+    setEditorDirtyLatch(false);
   }, [saveGroup.isPending, forgetTransientDeleteFailure]);
 
   const handleSave = useCallback(
@@ -403,11 +584,19 @@ export function MenuItemOptionsSection({
       onSavingChange?.(true);
       setSaveError(null);
       setSuccessMessage(null);
+      setDiscardedDraft(null);
       saveGroup.mutate(input, {
         onSuccess: (savedGroup) => {
           setSaveError(null);
           setEditing(null);
           setCreating(false);
+          /*
+           * #3572 — the draft is now server truth, so the parent is released.
+           * Deliberately NOT done in `onError`: a failed nested save keeps the
+           * draft AND keeps the parent blocked, or the exact hole this guard
+           * exists to close reopens on the retry path.
+           */
+          setEditorDirtyLatch(false);
           setFocusGroupId(savedGroup.id);
           const count = savedGroup.modifiers.length;
           const announcement = `${savedGroup.name} saved with ${count} ${count === 1 ? "option" : "options"}.`;
@@ -606,6 +795,19 @@ export function MenuItemOptionsSection({
     <View style={styles.host} testID={testID ?? "menu-item-options"}>
       <Text style={styles.groupLabel}>Options</Text>
 
+      {discardedDraft !== null ? (
+        <View style={styles.alert} testID="menu-item-options-draft-discarded">
+          <Text
+            accessibilityRole="alert"
+            accessibilityLiveRegion="assertive"
+            aria-live="assertive"
+            style={styles.error}
+          >
+            {menuOptionsDraftDiscardedMessage(discardedDraft.name)}
+          </Text>
+        </View>
+      ) : null}
+
       {visibleDeleteFailure !== null ? (
         <View style={styles.alert} testID="menu-item-options-error">
           <Text
@@ -676,6 +878,7 @@ export function MenuItemOptionsSection({
             onRequestDelete={canMutate ? requestDeleteGroup : undefined}
             removalBlockedReason={removalBlockedReason}
             deleting={deleteGroup.isPending}
+            onDirtyChange={setEditorDirtyLatch}
             onCancel={closeEditor}
           />
         ) : (
@@ -687,16 +890,30 @@ export function MenuItemOptionsSection({
             }}
             onPress={() => {
               if (saveGroup.isPending) return;
+              /*
+               * #3572 (rework, P2-3) — the handler REFUSES on its own, the way
+               * `MenuItemSheet.handleSave` and `handleClose` do. `disabled` was
+               * the only barrier here, so the one route in this guard whose
+               * refusal was a visual state is now a real one: opening a sibling
+               * unmounts the open draft, which is the same silent discard the
+               * parent Save used to perform.
+               */
+              if (editorDirty) return;
               setSaveError(null);
               setSuccessMessage(null);
+              setDiscardedDraft(null);
               /* P2-1 — a transient refusal does not follow the operator. */
               forgetTransientDeleteFailure();
               setCreating(false);
               setEditing(group);
             }}
-            disabled={!canMutate || saveGroup.isPending}
+            disabled={!canMutate || saveGroup.isPending || editorDirty}
             accessibilityRole="button"
-            accessibilityLabel={`Edit the ${group.name} options`}
+            accessibilityLabel={
+              editorDirty
+                ? `Edit the ${group.name} options. Unavailable. ${OPTIONS_DRAFT_HOLD_REASON}`
+                : `Edit the ${group.name} options`
+            }
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
             testID={`menu-item-option-group-${group.id}`}
           >
@@ -725,6 +942,7 @@ export function MenuItemOptionsSection({
           saving={saveGroup.isPending}
           saveError={saveError}
           onClearSaveError={() => setSaveError(null)}
+          onDirtyChange={setEditorDirtyLatch}
           onCancel={closeEditor}
         />
       ) : canMutate && editingGroupId === null ? (
@@ -734,6 +952,7 @@ export function MenuItemOptionsSection({
             if (saveGroup.isPending) return;
             setSaveError(null);
             setSuccessMessage(null);
+            setDiscardedDraft(null);
             setCreating(true);
           }}
           variant="secondary"

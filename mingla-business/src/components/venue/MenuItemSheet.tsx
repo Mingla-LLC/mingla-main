@@ -101,8 +101,24 @@ export interface MenuItemSheetProps {
   saveFailure?: MenuTextSaveFailure | null;
   /** Clear a stale parent-owned failure on correction, retry, or dismissal. */
   onClearSaveFailure?: () => void;
-  /** #3563: locks parent edits and dismissal while an options transaction settles. */
+  /**
+   * The nested options editor HOLDS this sheet.
+   *
+   * #3563 set it while an options transaction was in flight. #3572 widened what
+   * the parent composes into it: it is ALSO true while the options editor holds
+   * a draft that has not been written yet. Both halves arrive as one signal on
+   * purpose — the shared Sheet has exactly one dismissal gate, and on native a
+   * committed drag-to-close calls `onClose` and leaves the panel at its drag
+   * offset, so a guard that merely swallows `onClose` strands the panel
+   * mid-screen. Disabling the pan gesture is the only mechanism that cannot.
+   */
   optionsSaving?: boolean;
+  /**
+   * #3572 — true for the UNSAVED-DRAFT half of the lock above, so this sheet can
+   * say WHY it is locked. A disabled control that never explains itself is the
+   * same silent failure in a new costume (Constitution #3).
+   */
+  optionsDirty?: boolean;
   onDelete?: (id: string) => void;
   deleting?: boolean;
   canDelete?: boolean;
@@ -114,6 +130,30 @@ export interface MenuItemSheetProps {
   optionsSection?: React.ReactNode;
   testID?: string;
 }
+
+/**
+ * Issue #3572 — said out loud, beside the control it blocks.
+ *
+ * Saving or dismissing the item used to unmount the options editor and destroy
+ * whatever was typed into it, with no warning and no trace: reopening the group
+ * showed "0 options". The item now waits, and this is the sentence that says so
+ * — what is held, how to release it, and that nothing has been lost. A disabled
+ * button with no explanation would be the same silent failure in a new costume
+ * (Constitution #3).
+ *
+ * REWORK (P2-2). The hold reaches this sheet as the single `optionsSaving`
+ * signal, and `optionsSaving` also carries `disabled=` on the item's own eight
+ * fields, so while an options draft is unsaved those fields are read-only too.
+ * Separating the two halves would mean writing the item's fields against a
+ * narrower prop, which deletes the `disabled={optionsSaving}` literal that the
+ * merged #3563 gate pins — so the freeze STAYS and the sentence names it. A
+ * control that goes inert without saying why is the same Constitution #3
+ * failure whichever direction it points.
+ */
+export const MENU_ITEM_OPTIONS_HOLD_NOTE =
+  "Save or cancel the options group first. Until then the item's own fields" +
+  " are read-only and it can't be saved, deleted or closed — nothing you" +
+  " typed is lost.";
 
 const itemNameIds = menuTextFieldIds("menu-item-name");
 const itemDescriptionIds = menuTextFieldIds("menu-item-description");
@@ -145,6 +185,7 @@ export function MenuItemSheet({
   saveFailure = null,
   onClearSaveFailure,
   optionsSaving = false,
+  optionsDirty = false,
   onDelete,
   deleting = false,
   canDelete = false,
@@ -262,7 +303,10 @@ export function MenuItemSheet({
     !saving &&
     !optionsSaving &&
     priceResult.kind !== "invalid" &&
-    costResult.kind !== "invalid";
+    costResult.kind !== "invalid" &&
+    // #3572 — appended, never folded into the line above: the exact text of the
+    // #3563 terms is a merged source-string contract.
+    !optionsDirty;
   const snap = useMemo<number>(() => 0.9, []);
 
   const handleNameChange = useCallback(
@@ -325,9 +369,17 @@ export function MenuItemSheet({
   }, [item, onDelete]);
 
   const handleClose = useCallback((): void => {
+    /*
+     * #3572 — an unsaved options draft holds this sheet shut, exactly the way an
+     * in-flight options save does. Every dismissal route funnels through here —
+     * scrim tap, hardware back, web Escape, and a programmatic close — and each
+     * one used to unmount the options subtree and take the draft with it. The
+     * reason is on screen beside Save, so nothing is refused in silence.
+     */
+    if (optionsDirty) return;
     if (!optionsSaving) onClearSaveFailure?.();
     if (!optionsSaving) onClose();
-  }, [onClearSaveFailure, onClose, optionsSaving]);
+  }, [onClearSaveFailure, onClose, optionsDirty, optionsSaving]);
 
   return (
     <Sheet
@@ -564,6 +616,18 @@ export function MenuItemSheet({
             </View>
           ) : null}
 
+          {optionsDirty ? (
+            <Text
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+              aria-live="assertive"
+              style={styles.optionsHoldNote}
+              testID="menu-item-options-hold-note"
+            >
+              {MENU_ITEM_OPTIONS_HOLD_NOTE}
+            </Text>
+          ) : null}
+
           <Button
             label={
               saveFailureMessage !== null
@@ -579,7 +643,11 @@ export function MenuItemSheet({
             loading={saving}
             disabled={!canSave}
             accessibilityLabel={
-              saveFailureMessage !== null ? "Try saving item again" : undefined
+              optionsDirty
+                ? `${isEdit ? "Save item" : "Add item"}. Unavailable. ${MENU_ITEM_OPTIONS_HOLD_NOTE}`
+                : saveFailureMessage !== null
+                  ? "Try saving item again"
+                  : undefined
             }
             style={styles.saveBtn}
             testID="menu-item-save"
@@ -848,6 +916,17 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: textTokens.primary,
     flex: 1,
+  },
+  /*
+   * #3572 — the held-item note. It is a HOLD, not a failure, so it takes the
+   * readable body token rather than the error palette: nothing has gone wrong
+   * and nothing has been lost. `marginTop` matches `saveBtn` so the note takes
+   * the Save button's own top gap and sits directly against it.
+   */
+  optionsHoldNote: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    marginTop: spacing.lg,
   },
   saveBtn: {
     marginTop: spacing.lg,
