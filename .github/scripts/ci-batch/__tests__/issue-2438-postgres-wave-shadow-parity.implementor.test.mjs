@@ -569,6 +569,7 @@ test("#1902 typed Business Jest exposure is lock-pinned and resolves exact offli
   // [TEST-MOD-APPROVED #1780] Business package.json re-banked to the digest
   // validate-manifest-v2.mjs already pins for the #1780 test:issue-1780 script.
   // [TEST-MOD-APPROVED #3642] Independent restatement of the Host advisory-floor
+  // [TEST-MOD-APPROVED #3642] Host package-authority digests re-banked with the validator; prior SHA pins were stale after #3642 lock churn.
   // re-bank in validate-manifest-v2.mjs (package.json + lockfile). Both copies
   // must move together or this gate stays red while the validator passes.
   const hashes={"app-mobile/package.json":"e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542","app-mobile/package-lock.json":"f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27","mingla-business/package.json":"280f6e05695cea5a7d7240c82b11b96c9883b4515a69ebecee3d347c1af7aa70","mingla-business/package-lock.json":"3de9c231b575d82bf1f362b12a80ca66fa89a13f5258ab064cb3b1198f1cdc6f"};
