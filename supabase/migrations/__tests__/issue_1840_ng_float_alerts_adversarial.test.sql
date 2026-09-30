@@ -101,7 +101,7 @@ SELECT
   '18401840-0000-0000-0000-0000000000b1'::uuid,
   'adv-a1-' || s.status_name,
   'order', 'paystack', 'ngn',
-  '2027-05-30 00:00:00+00', '2027-06-02 00:00:00+00',
+  '2027-06-01 00:00:00+00', '2027-06-02 00:00:00+00',
   s.amount, s.amount, s.status_name
 FROM (VALUES
   (1, 'pending',           1),
@@ -159,20 +159,20 @@ INSERT INTO public.brand_payout_releases (
 -- ON the boundary: must be INCLUDED (the predicate is <=, not <).
 ('18401840-0002-0000-0000-00000000000a','18401840-0000-0000-0000-0000000000b1',
  'adv-a2-on-boundary','order','paystack','ngn',
- '2027-06-05 00:00:00+00','2027-06-08 00:00:00+00',1000,1000,'pending'),
+ '2027-06-07 00:00:00+00','2027-06-08 00:00:00+00',1000,1000,'pending'),
 -- One microsecond PAST the boundary: must be EXCLUDED.
 ('18401840-0002-0000-0000-00000000000b','18401840-0000-0000-0000-0000000000b1',
  'adv-a2-past-boundary','order','paystack','ngn',
- '2027-06-05 00:00:00.000001+00','2027-06-08 00:00:00.000001+00',2000,2000,'pending'),
+ '2027-06-07 00:00:00.000001+00','2027-06-08 00:00:00.000001+00',2000,2000,'pending'),
 -- Already overdue: the most urgent money there is. Must be INCLUDED and must
 -- become the anchor, or the alert would name the wrong release.
 ('18401840-0002-0000-0000-00000000000c','18401840-0000-0000-0000-0000000000b1',
  'adv-a2-overdue','order','paystack','ngn',
- '2027-04-29 00:00:00+00','2027-05-02 00:00:00+00',4000,4000,'pending'),
+ '2027-05-01 00:00:00+00','2027-05-02 00:00:00+00',4000,4000,'pending'),
 -- One microsecond INSIDE the boundary: must be INCLUDED.
 ('18401840-0002-0000-0000-00000000000d','18401840-0000-0000-0000-0000000000b1',
  'adv-a2-inside-boundary','order','paystack','ngn',
- '2027-06-04 23:59:59.999999+00','2027-06-07 23:59:59.999999+00',8000,8000,'pending');
+ '2027-06-06 23:59:59.999999+00','2027-06-07 23:59:59.999999+00',8000,8000,'pending');
 
 DO $t$
 DECLARE v jsonb;
@@ -218,7 +218,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401840-0003-0000-0000-000000000001','18401840-0000-0000-0000-0000000000b1',
  'adv-a3-partner-only','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',600000,500000,'pending');
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',600000,500000,'pending');
 
 INSERT INTO public.payout_transfer_legs (
   id, release_id, kind, chunk_index, principal_cents, estimated_fee_cents,
@@ -268,7 +268,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401840-0004-0000-0000-000000000001','18401840-0000-0000-0000-0000000000b2',
  'adv-a4-partial','order','paystack','ngn',
- '2027-05-31 00:00:00+00','2027-06-03 00:00:00+00',1000000,900000,'blocked_balance');
+ '2027-06-02 00:00:00+00','2027-06-03 00:00:00+00',1000000,900000,'blocked_balance');
 
 INSERT INTO public.payout_transfer_legs (
   id, release_id, kind, chunk_index, principal_cents, estimated_fee_cents,
@@ -352,7 +352,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401840-0005-0000-0000-000000000001','18401840-0000-0000-0000-0000000000b3',
  'adv-a5-knife-edge','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',250000,250000,'pending');
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',250000,250000,'pending');
 
 DO $t$
 DECLARE v jsonb; n integer; msg text;
@@ -404,10 +404,10 @@ INSERT INTO public.brand_payout_releases (
 -- E is the earliest-maturing release and therefore the anchor.
 ('18401840-0006-0000-0000-00000000000e','18401840-0000-0000-0000-0000000000b4',
  'adv-a6-early','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',100000,100000,'pending'),
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',100000,100000,'pending'),
 ('18401840-0006-0000-0000-00000000000f','18401840-0000-0000-0000-0000000000b5',
  'adv-a6-late','order','paystack','ngn',
- '2027-06-03 00:00:00+00','2027-06-06 00:00:00+00',900000,900000,'pending');
+ '2027-06-05 00:00:00+00','2027-06-06 00:00:00+00',900000,900000,'pending');
 
 DO $t$
 DECLARE v jsonb; n integer; msg text;
@@ -434,7 +434,7 @@ BEGIN
   ) VALUES (
     '18401840-0006-0000-0000-000000000010','18401840-0000-0000-0000-0000000000b6',
     'adv-a6-huge','order','paystack','ngn',
-    '2027-06-04 00:00:00+00','2027-06-07 00:00:00+00',9000000,9000000,'pending'
+    '2027-06-06 00:00:00+00','2027-06-07 00:00:00+00',9000000,9000000,'pending'
   );
   v := public.raise_paystack_float_shortfall_alert(0, 7, '2027-06-01 01:00:00+00');
   IF (v->>'obligation_kobo')::bigint <> 10000000 THEN
@@ -526,13 +526,13 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401840-0007-0000-0000-000000000001','18401840-0000-0000-0000-0000000000b7',
  'adv-a7-one','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',10,10,'blocked_balance'),
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',10,10,'blocked_balance'),
 ('18401840-0007-0000-0000-000000000002','18401840-0000-0000-0000-0000000000b7',
  'adv-a7-two','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',10,10,'pending'),
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',10,10,'pending'),
 ('18401840-0007-0000-0000-000000000003','18401840-0000-0000-0000-0000000000b7',
  'adv-a7-three','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',10,10,'pending');
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',10,10,'pending');
 
 INSERT INTO public.payout_release_alert_outbox (
   release_id, alert_kind, idempotency_key, brand_id, error_message,
@@ -540,7 +540,7 @@ INSERT INTO public.payout_release_alert_outbox (
 ) VALUES
 ('18401840-0007-0000-0000-000000000001','paystack_balance_blocked',
  'adv-a7:balance','18401840-0000-0000-0000-0000000000b7','a7 balance',
- '2027-06-01 00:00:00+00','2027-06-01 00:00:00+00'),
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00'),
 ('18401840-0007-0000-0000-000000000002','paystack_float_shortfall',
  'adv-a7:float','18401840-0000-0000-0000-0000000000b7','a7 float',
  '2027-06-01 00:00:01+00','2027-06-01 00:00:01+00'),
@@ -644,7 +644,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401840-0008-0000-0000-000000000001','18401840-0000-0000-0000-0000000000b8',
  'adv-a8','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',400000,300000,'pending');
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',400000,300000,'pending');
 INSERT INTO public.payout_transfer_legs (
   id, release_id, kind, chunk_index, principal_cents, estimated_fee_cents,
   stamp_duty_cents, fee_schedule_version, status
@@ -738,7 +738,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401840-0009-0000-0000-000000000001','18401840-0000-0000-0000-0000000000b9',
  'adv-a9','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',10,10,'pending');
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',10,10,'pending');
 
 DO $t$
 BEGIN
@@ -773,17 +773,17 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401840-0010-0000-0000-000000000001','18401840-0000-0000-0000-0000000000c1',
  'adv-a10-1','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',2000000000,2000000000,'pending'),
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',2000000000,2000000000,'pending'),
 ('18401840-0010-0000-0000-000000000002','18401840-0000-0000-0000-0000000000c2',
  'adv-a10-2','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',2000000000,2000000000,'pending'),
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',2000000000,2000000000,'pending'),
 ('18401840-0010-0000-0000-000000000003','18401840-0000-0000-0000-0000000000c3',
  'adv-a10-3','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',2000000000,2000000000,'pending'),
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',2000000000,2000000000,'pending'),
 -- A release chunked at exactly the NGN 10,000,000 Paystack transfer cap.
 ('18401840-0010-0000-0000-000000000004','18401840-0000-0000-0000-0000000000c4',
  'adv-a10-cap','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',2010000000,2000000000,'pending');
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',2010000000,2000000000,'pending');
 
 INSERT INTO public.payout_transfer_legs (
   id, release_id, kind, chunk_index, principal_cents, estimated_fee_cents,
@@ -840,7 +840,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401840-0011-0000-0000-000000000001','18401840-0000-0000-0000-0000000000d1',
  'adv-a11','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',500000,500000,'pending',
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',500000,500000,'pending',
  'TESTER_1840_CODE');
 
 DO $t$
@@ -878,7 +878,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401840-0012-0000-0000-000000000001','18401840-0000-0000-0000-0000000000d2',
  'adv-a12','order','paystack','ngn',
- '2027-05-30 00:00:00+00','2027-06-02 00:00:00+00',900000,900000,'pending');
+ '2027-06-01 00:00:00+00','2027-06-02 00:00:00+00',900000,900000,'pending');
 INSERT INTO public.payout_transfer_legs (
   id, release_id, kind, chunk_index, principal_cents, estimated_fee_cents,
   stamp_duty_cents, fee_schedule_version, status, attempt_count

@@ -4,6 +4,7 @@ DO $$
 DECLARE
   v_def text;
   v_con text;
+  v_json jsonb;
 BEGIN
   SELECT pg_get_constraintdef(c.oid) INTO v_con
   FROM pg_constraint c
@@ -34,6 +35,11 @@ BEGIN
   LIMIT 1;
   IF position('event_dates' IN coalesce(v_def, '')) > 0 THEN
     RAISE EXCEPTION 'issue_3645 ADV FAIL: refresh still re-anchors via event_dates';
+  END IF;
+
+  v_json := public.paystack_payout_float_obligation(-5, now());
+  IF coalesce((v_json->>'horizon_days')::integer, -1) <> 1 THEN
+    RAISE EXCEPTION 'issue_3645 ADV FAIL: negative horizon must clamp to 1 day, got %', v_json->>'horizon_days';
   END IF;
 
   RAISE NOTICE 'issue_3645 adversarial PASS';

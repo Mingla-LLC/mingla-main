@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * #1180 [payout-ui-copy] — I-PROPOSED-1180-HONEST-PAYOUT-COPY (ACTIVE via #3645).
+ * #1180 [payout-ui-copy] — I-PROPOSED-1180-HONEST-PAYOUT-COPY (DRAFT until #3645 CLOSE).
  *
  * WHY: payouts mature about a day after each payment (#3645), then typically
  * take 1–2 business days to arrive. Surfaces must not claim instant / same-day /

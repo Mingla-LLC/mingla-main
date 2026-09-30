@@ -1,5 +1,6 @@
 /**
  * #1180 [payout-ui-copy] — mingla-tester ADVERSARIAL RENDER proof.
+ * [TEST-MOD-APPROVED #3645] Retargeted timing copy assertions for payment+24h.
  *
  * DIFFERENT ANGLE than the implementor's pure-util happy-path suite
  * (payoutBreakdown.issue1180.test.ts): that suite proves the arithmetic in

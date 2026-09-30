@@ -1,4 +1,5 @@
 // Issue #1840 — INDEPENDENT ADVERSARIAL sweep guard (append-only, tester).
+// [TEST-MOD-APPROVED #3645] Horizon floor retargeted to payment+24h (1 day).
 //
 // Deliberately a DIFFERENT angle from
 // supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts,

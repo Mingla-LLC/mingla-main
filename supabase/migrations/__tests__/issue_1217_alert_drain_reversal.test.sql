@@ -29,7 +29,7 @@ INSERT INTO public.brand_payout_releases (
   'order',
   'paystack',
   'ngn',
-  '2027-01-01 20:00:00+00',
+  '2027-01-03 20:00:00+00',
   '2027-01-04 20:00:00+00',
   2000000,
   1992500,

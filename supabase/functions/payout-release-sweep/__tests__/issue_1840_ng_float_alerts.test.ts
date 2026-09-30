@@ -1,5 +1,6 @@
 // Issue #1840 (step 1 of #1845) — implementor happy-path regression guard for
 // the Nigerian payout float alerts.
+// [TEST-MOD-APPROVED #3645] Horizon floor and RELEASE_DELAY retargeted to 1 day.
 //
 // Two deliverables, both observability-only:
 //   D1 a blocked_balance park raises a DRAINABLE paystack_balance_blocked alert

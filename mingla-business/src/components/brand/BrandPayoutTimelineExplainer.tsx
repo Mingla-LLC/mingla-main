@@ -46,7 +46,7 @@ const STEPS: readonly Step[] = [
   {
     icon: "clock",
     title: "About a day later, we release your payout",
-    body: "The hold protects against refunds and cancellations.",
+    body: "The hold covers the first day after payment. Refund and cancellation recovery after payout ships in a later update.",
   },
   {
     icon: "bank",

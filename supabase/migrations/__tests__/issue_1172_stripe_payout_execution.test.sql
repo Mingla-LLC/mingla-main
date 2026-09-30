@@ -69,7 +69,7 @@ INSERT INTO public.brand_payout_releases (
   'order',
   'stripe',
   'usd',
-  '2027-01-01 20:00:00+00',
+  '2027-01-03 20:00:00+00',
   '2027-01-04 20:00:00+00',
   10000,
   1,

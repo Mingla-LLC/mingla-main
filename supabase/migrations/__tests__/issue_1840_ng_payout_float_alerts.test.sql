@@ -51,35 +51,35 @@ INSERT INTO public.brand_payout_releases (
   '18400000-0000-0000-0000-0000000000d1',
   '18400000-0000-0000-0000-0000000000b1',
   'issue-1840-d1','order','paystack','ngn',
-  '2027-03-30 00:00:00+00','2027-04-02 00:00:00+00',
+  '2027-04-01 00:00:00+00','2027-04-02 00:00:00+00',
   2000000, 2000000, 0, 'pending'
 ),
 (
   '18400000-0000-0000-0000-000000000001',
   '18400000-0000-0000-0000-0000000000b1',
   'issue-1840-r1','order','paystack','ngn',
-  '2027-01-30 00:00:00+00','2027-02-02 00:00:00+00',
+  '2027-02-01 00:00:00+00','2027-02-02 00:00:00+00',
   1100000, 1000000, 0, 'pending'
 ),
 (
   '18400000-0000-0000-0000-000000000002',
   '18400000-0000-0000-0000-0000000000b2',
   'issue-1840-r2','order','paystack','ngn',
-  '2027-02-02 00:00:00+00','2027-02-05 00:00:00+00',
+  '2027-02-04 00:00:00+00','2027-02-05 00:00:00+00',
   900000, 802500, 0, 'blocked_balance'
 ),
 (
   '18400000-0000-0000-0000-000000000003',
   '18400000-0000-0000-0000-0000000000b3',
   'issue-1840-r3','order','paystack','ngn',
-  '2027-03-02 00:00:00+00','2027-03-05 00:00:00+00',
+  '2027-03-04 00:00:00+00','2027-03-05 00:00:00+00',
   800000, 777000, 0, 'pending'
 ),
 (
   '18400000-0000-0000-0000-000000000004',
   '18400000-0000-0000-0000-0000000000b4',
   'issue-1840-r4','order','paystack','ngn',
-  '2027-01-31 00:00:00+00','2027-02-03 00:00:00+00',
+  '2027-02-02 00:00:00+00','2027-02-03 00:00:00+00',
   600000, 600000, 600000, 'released'
 );
 
@@ -252,16 +252,14 @@ BEGIN
     RAISE EXCEPTION 'wrong 90-day release count: %', v->>'release_count';
   END IF;
   -- Out-of-range horizons clamp rather than silently forecasting nothing.
-  -- The floor is 3 days, not 1: a Nigerian release matures at event_end+3d, so
-  -- a shorter window warns later than the rail itself costs and no bank top-up
-  -- clears inside it.
+  -- #3645 — floor is 1 day (payment + ~24h maturity); sub-day horizons clamp up.
   v := public.paystack_payout_float_obligation(0, '2027-02-01 00:00:00+00');
-  IF (v->>'horizon_days')::integer <> 3 THEN
-    RAISE EXCEPTION 'horizon not clamped to the 3-day floor: %', v->>'horizon_days';
+  IF (v->>'horizon_days')::integer <> 1 THEN
+    RAISE EXCEPTION 'horizon not clamped to the 1-day floor: %', v->>'horizon_days';
   END IF;
   v := public.paystack_payout_float_obligation(1, '2027-02-01 00:00:00+00');
-  IF (v->>'horizon_days')::integer <> 3 THEN
-    RAISE EXCEPTION 'a 1-day horizon was not raised to the floor: %', v->>'horizon_days';
+  IF (v->>'horizon_days')::integer <> 1 THEN
+    RAISE EXCEPTION 'a 1-day horizon must pass through unchanged: %', v->>'horizon_days';
   END IF;
   v := public.paystack_payout_float_obligation(9999, '2027-02-01 00:00:00+00');
   IF (v->>'horizon_days')::integer <> 90 THEN
@@ -384,7 +382,7 @@ INSERT INTO public.brand_payout_releases (
   '18400000-0000-0000-0000-0000000000c2',
   '18400000-0000-0000-0000-0000000000b9',
   'issue-1840-c2','order','paystack','ngn',
-  '2027-06-01 00:00:00+00','2027-06-04 00:00:00+00',
+  '2027-06-03 00:00:00+00','2027-06-04 00:00:00+00',
   11000000, 10000000, 0, 'pending'
 );
 

@@ -2,6 +2,7 @@ import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
+// [TEST-MOD-APPROVED #3645] Maturity fixtures use payment+1d (was event_end+3d).
 import {
   buildPaystackTransferLeg,
   computePendingItems,

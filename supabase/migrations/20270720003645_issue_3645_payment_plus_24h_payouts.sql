@@ -8,7 +8,11 @@
 ALTER TABLE public.brand_payout_releases
   DROP CONSTRAINT IF EXISTS brand_payout_release_anchor_order;
 
--- Pending / blocked rows: re-anchor maturity to earliest item payment time.
+-- Pending / blocked / terminal rows: re-anchor maturity to earliest item payment
+-- time + 1 day so the CHECK validates for every existing row (including
+-- released / in_flight / cancelled_event / failed). Historical policy: maturity
+-- timestamps are rewritten to the new product rule; money already paid out is
+-- unchanged (released status and transfer ids stay).
 UPDATE public.brand_payout_releases r
 SET
   anchor_end_at = x.min_finalized,
@@ -21,11 +25,17 @@ FROM (
   FROM public.payout_release_items i
   GROUP BY i.release_id
 ) x
-WHERE r.id = x.release_id
-  AND r.status IN (
-    'pending','blocked_kyc','blocked_balance','blocked_otp','blocked_over_cap',
-    'fee_unreconciled','blocked_anchor','reanchored'
-  );
+WHERE r.id = x.release_id;
+
+-- Rows with no items: keep anchor_end_at, force releasable_at = anchor + 1 day.
+UPDATE public.brand_payout_releases r
+SET
+  releasable_at = r.anchor_end_at + interval '1 day',
+  updated_at = now()
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.payout_release_items i WHERE i.release_id = r.id
+)
+AND r.releasable_at IS DISTINCT FROM r.anchor_end_at + interval '1 day';
 
 ALTER TABLE public.brand_payout_releases
   ADD CONSTRAINT brand_payout_release_anchor_order
@@ -406,6 +416,127 @@ BEGIN
     END IF;
   END LOOP;
   RETURN v_count;
+END;
+$fn$;
+
+-- =============================================================================
+-- §7. NG float horizon floor matches payment+24h (was 3 under event+3d)
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.paystack_payout_float_obligation(
+  p_horizon_days integer DEFAULT 7,
+  p_now timestamptz DEFAULT now()
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  -- #3645 — floor is 1 day (payment + ~24h maturity). Was 3 under event_end+3d
+  -- (#1840). Clamped, never rejected: an out-of-range value must degrade to a
+  -- usable window, never disable the forecast. Mirrors
+  -- NG_PAYOUT_FLOAT_HORIZON_{MIN,MAX}_DAYS in runtimeConfig.
+  v_days integer := greatest(1,least(coalesce(p_horizon_days,7),90));
+  v_horizon_end timestamptz;
+  v_obligation bigint := 0;
+  v_count integer := 0;
+  v_anchor_release uuid;
+  v_anchor_brand uuid;
+  v_earliest timestamptz;
+BEGIN
+  v_horizon_end := p_now + make_interval(days => v_days);
+
+  WITH eligible AS (
+    SELECT
+      r.id,
+      r.brand_id,
+      r.releasable_at,
+      r.net_release_cents::bigint AS net_release_cents,
+      coalesce((
+        SELECT sum(a.amount_cents)::bigint
+        FROM public.payout_ledger_adjustments a
+        WHERE a.release_id=r.id AND a.kind='maturity_recredit'
+      ),0) AS recredit
+    FROM public.brand_payout_releases r
+    WHERE r.provider='paystack'
+      AND r.paystack_transfer_code IS NULL
+      AND r.releasable_at<=v_horizon_end
+      AND r.status IN (
+        'pending','in_flight','blocked_balance','blocked_otp',
+        'blocked_over_cap','fee_unreconciled'
+      )
+      AND (
+        r.event_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM public.events e
+          WHERE e.id=r.event_id AND e.status<>'cancelled'
+        )
+      )
+  ),
+  outstanding_legs AS (
+    SELECT
+      l.release_id,
+      l.kind,
+      sum(l.principal_cents+l.estimated_fee_cents+l.stamp_duty_cents)::bigint
+        AS kobo
+    FROM public.payout_transfer_legs l
+    JOIN eligible e ON e.id=l.release_id
+    WHERE l.status NOT IN ('succeeded','failed','reversed')
+    GROUP BY l.release_id,l.kind
+  ),
+  organiser_planned AS (
+    SELECT DISTINCT l.release_id
+    FROM public.payout_transfer_legs l
+    JOIN eligible e ON e.id=l.release_id
+    WHERE l.kind='organiser'
+  ),
+  per_release AS (
+    SELECT
+      e.id,
+      e.brand_id,
+      e.releasable_at,
+      (
+        CASE
+          WHEN EXISTS (
+            SELECT 1 FROM organiser_planned p WHERE p.release_id=e.id
+          ) THEN coalesce((
+            SELECT o.kobo FROM outstanding_legs o
+            WHERE o.release_id=e.id AND o.kind='organiser'
+          ),0)
+          ELSE e.net_release_cents+e.recredit
+        END
+      ) + coalesce((
+        SELECT o.kobo FROM outstanding_legs o
+        WHERE o.release_id=e.id AND o.kind='partner'
+      ),0) AS kobo
+    FROM eligible e
+  ),
+  owed AS (
+    SELECT * FROM per_release WHERE kobo>0
+  )
+  SELECT
+    coalesce(sum(o.kobo),0),
+    count(*)::integer,
+    min(o.releasable_at),
+    (
+      SELECT a.id FROM owed a
+      ORDER BY a.releasable_at,a.id
+      LIMIT 1
+    ),
+    (
+      SELECT a.brand_id FROM owed a
+      ORDER BY a.releasable_at,a.id
+      LIMIT 1
+    )
+  INTO v_obligation,v_count,v_earliest,v_anchor_release,v_anchor_brand
+  FROM owed o;
+
+  RETURN jsonb_build_object(
+    'horizon_days',v_days,
+    'horizon_end',v_horizon_end,
+    'release_count',coalesce(v_count,0),
+    'obligation_kobo',coalesce(v_obligation,0),
+    'earliest_maturity_at',v_earliest,
+    'anchor_release_id',v_anchor_release,
+    'anchor_brand_id',v_anchor_brand
+  );
 END;
 $fn$;
 

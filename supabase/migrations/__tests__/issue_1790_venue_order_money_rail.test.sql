@@ -659,9 +659,9 @@ END $t$;
 
 -- ---------------------------------------------------------------------------
 -- T-P1 — PAYOUT ATTACH. A paid Mingla-path order with a fee snapshot attaches
--- at exactly created_at + 3 days with surface='venue_menu_order',
+-- at payment (confirmed_at) + 1 day with surface='venue_menu_order',
 -- occurrence_key='venue_order:<id>', event_id NULL, partner_share_cents = 0.
--- T-P2 — a venue_collected order past +4d produces ZERO candidates.
+-- T-P2 — a venue_collected order past maturity produces ZERO candidates.
 -- ---------------------------------------------------------------------------
 DO $t$
 DECLARE
@@ -687,7 +687,7 @@ BEGIN
     'idem:p2-cash', v_created
   ) RETURNING id INTO v_cash;
 
-  -- ONE sweep, past +3d for both.
+  -- ONE sweep, past payment + 1d for the Mingla-path order.
   v_res := public.run_payout_release_dark_sweep(now());
 
   SELECT * INTO v_rel FROM public.brand_payout_releases
@@ -701,8 +701,8 @@ BEGIN
   IF v_rel.occurrence_key <> ('venue_order:' || v_paid::text) THEN
     RAISE EXCEPTION 'issue_1790 T-P1: occurrence_key is % — expected venue_order:%', v_rel.occurrence_key, v_paid;
   END IF;
-  IF v_rel.releasable_at <> v_created + interval '3 days' THEN
-    RAISE EXCEPTION 'issue_1790 T-P1: releasable_at is % — the anchor is not created_at + 3 days', v_rel.releasable_at;
+  IF v_rel.releasable_at <> v_created + interval '1 day' THEN
+    RAISE EXCEPTION 'issue_1790 T-P1: releasable_at is % — maturity is not payment + 1 day', v_rel.releasable_at;
   END IF;
   IF v_rel.partner_share_cents <> 0 THEN
     RAISE EXCEPTION 'issue_1790 T-P1 / P-50: partner_share_cents is % — NG partner share must be 0 at launch', v_rel.partner_share_cents;
@@ -740,7 +740,7 @@ DECLARE
   v_s uuid; v_young uuid; v_nosnap uuid; v_cnt int;
 BEGIN
   v_s := pg_temp.mint_session();
-  v_young  := pg_temp.mint_order(v_s, 1000, 0, 0, 1000, 300, 'idem:young',  now() - interval '1 day');
+  v_young  := pg_temp.mint_order(v_s, 1000, 0, 0, 1000, 300, 'idem:young',  now() - interval '12 hours');
   v_nosnap := pg_temp.mint_order(v_s, 1000, 0, 0, 1000, 300, 'idem:nosnap', now() - interval '10 days');
   INSERT INTO public.payout_source_fee_snapshots (source_type, source_id, provider_fee_cents)
   VALUES ('venue_menu_order', v_young, 10);
