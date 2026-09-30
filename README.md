@@ -6,14 +6,45 @@ README is a snapshot front door. The truth system is small and lives in two plac
 
 ## How We Work
 
-All work — bugs, features, ideas, discoveries — is a GitHub issue on the [Mingla Avengers board](https://github.com/orgs/Mingla-LLC/projects/4). The board README is the operating manual. In short:
+All work lives as GitHub issues on the [Mingla Avengers board](https://github.com/orgs/Mingla-LLC/projects/4). If it isn't on the board, it doesn't exist.
 
-- **Issue titles are plain English** a user would understand; the issue number is the work ID.
-- Branches are named `<issue#>-short-slug`; PRs say `Fixes #<issue#>`.
-- **Status** tracks the lifecycle: `Todo` → `In Progress` (being built) → `In Review` (PR open / testing) → `Done` (merged + verified; auto-closes the issue).
-- Investigation findings, specs, implementation notes, and test evidence go in **issue comments** — not repo .md files.
-- When something ships, its pull request adds one line to [`REPORTS.md`](REPORTS.md) before merging, never in a docs-only follow-up.
-- Claude and Codex chats coordinate by messaging each other directly, not through a shared file. The protocol and the standing holds live in [`AGENTS.md`](AGENTS.md).
+### Who owns what
+
+| Area | Owner | What that means |
+|---|---|---|
+| Product vision, roadmap, features, user community | **Seth** | Writes and prioritises initiatives, approves specs and design contracts, reviews mockups, and sets Horizon, Priority and Start/Target dates. |
+| The Avengers board | **Seth** | Keeps the views, initiatives and horizons accurate. |
+| Marketing website (`mingla-marketing/`) and the tutorial series | **Seth** | Seth's changes still go through a pull request, and **Taofeek reviews them**. |
+| The codebase and engineering | **Taofeek** | Apps, backend, infrastructure, CI, migrations and deploys. Taofeek decides how work is broken down and confirms when something is truly shipped. |
+| Sprints | **Taofeek** | Chooses what ships in each sprint and sets the **Sprint** field. Nobody else edits it. |
+| Store releases and production OTAs | **Seth approves** | Nothing goes to the App Store, Google Play or a production OTA without Seth's explicit approval (see the standing holds in [`AGENTS.md`](AGENTS.md)). |
+
+### How work is tracked
+
+- **New features are initiatives.** One initiative issue per feature, written as a user story.
+- **All work for a feature goes into its initiative:** stories, bugs found along the way, decisions, specs, design contracts and test evidence, as comments and acceptance checklists. Existing issues are linked under their initiative as its children.
+- **Extend before you open.** Before opening a new issue, search the open ones. Open a new issue only when nothing open fits or can be extended.
+- **Dropped ideas are closed,** with a reason.
+- **Issue titles are plain English**, and the issue number is the work ID.
+
+### The pipeline
+
+| Stage | Board | Who moves it | What must be true |
+|---|---|---|---|
+| 1. Idea | New initiative, or a comment on an existing one | Seth | Written as a user story, with Horizon (Now/Next/Later) and Priority set |
+| 2. Refinement | **Refinement** view (Refined = No) | Seth, with Taofeek | Investigation done, spec and design contract approved by Seth, acceptance checklist on the issue. Then **Refined = Yes** |
+| 3. Sprint planning | **Sprint Planning** view | **Taofeek** | Taofeek picks what ships this sprint and sets the **Sprint** field |
+| 4. In progress | **Sprint** view · Status = **In Progress** | **Taofeek** | Set when work starts. The branch is `<issue#>-short-slug` in its own worktree |
+| 5. In review | Status = **In Review** | **Taofeek** | Set when the pull request is open. The PR says `Fixes #<issue#>` (or `Refs` for partial work) |
+| 6. Done | Status = **Done** (auto-closes) | **Taofeek** | Merged with **every check green**, deployed and verified. The PR added its line to [`REPORTS.md`](REPORTS.md) |
+
+**Rules that always apply:**
+- Merge only when every check is green; never merge red.
+- Web changes only deploy when the squash subject contains `[deploy]`. Confirm the deployment reached READY afterwards.
+- Findings, specs and test evidence go on the issue, never in new repo `.md` files.
+- Security details never go in public issue text (this repo is public).
+
+Claude and Codex chats follow the same pipeline. They coordinate by messaging each other directly, and the protocol and standing holds live in [`AGENTS.md`](AGENTS.md).
 
 The pre-2026-07-19 operating system (`Mingla_Artifacts/`, `Mingla_Roadmap/`, per-ORCH docs) is retired; all of it is preserved at git tag `pre-avengers-archive`.
 
