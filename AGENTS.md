@@ -5,6 +5,7 @@
 All work — bugs, features, ideas, discoveries — lives as GitHub issues on the **Mingla Avengers board** (https://github.com/orgs/Mingla-LLC/projects/4). The board README is the operating manual. If it's not an issue, it doesn't exist.
 
 - **Issue titles are plain English**; the **issue # is the work ID**. Branches are `<issue#>-short-slug`; PRs say `Fixes #<issue#>`.
+- **Extend before you open.** Before opening any new issue, search the open issues (`gh issue list --state open --search "<keywords>"`, two or three keyword variants) for a like-minded one: the same defect, surface or user outcome. If one exists, add your finding to it as a comment and link it under the right initiative. Open a new issue only when nothing covers it, and name the issues you checked. Group related findings into one issue instead of one issue per finding.
 - **Status lifecycle:** `Todo` (queued) → `In Progress` (investigating / building) → `In Review` (PR open, testing) → `Done` (merged + verified; auto-closes the issue).
 - **Documentation goes to the issue**, not the repo: investigation findings, spec decisions, implementation notes, and test evidence are issue comments (attach screenshots). Do NOT create per-work-item .md files — CI (`scripts/docs/check_artifact_placement.py`) rejects them.
 - When something ships, its pull request adds one line to `REPORTS.md` (format documented in that file) — see § No docs-only follow-up pull requests.
