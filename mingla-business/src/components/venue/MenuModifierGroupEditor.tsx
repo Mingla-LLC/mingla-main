@@ -76,6 +76,131 @@ interface OptionDraft {
 const modifierGroupNameIds = menuTextFieldIds("modifier-group-name");
 
 /**
+ * Issue #3572 — everything an operator can author in this panel, in one
+ * comparable shape.
+ *
+ * Dirtiness is "differs from the values this panel hydrated", never "was
+ * touched". A latch that never releases would trap an operator behind a
+ * disabled Save with no way back, so typing a character and deleting it again
+ * genuinely returns the panel to clean.
+ *
+ * The render-only flags (`nameBlurred`, `nameHadNonBlankValue`) are excluded on
+ * purpose: they change what is DISPLAYED, never what would be written.
+ */
+interface ModifierGroupDraftShape {
+  name: string;
+  mode: ModifierSelectionMode;
+  required: boolean;
+  maxSelect: string;
+  options: readonly OptionDraft[];
+}
+
+/** One option row exactly as `handleSave` would write it. */
+interface WrittenModifierRow {
+  id: string;
+  name: string;
+  /** Cents, or null when the typed price cannot be written at all. */
+  priceDeltaCents: number | null;
+}
+
+/**
+ * Issue #3572 (rework, P2-1) — the option rows this draft WOULD WRITE, in write
+ * order: blank-named rows dropped, names canonicalised, prices parsed to cents.
+ *
+ * ONE derivation, shared by `handleSave` and by the dirty comparison, so the
+ * two can never disagree about what "unchanged" means. Comparing raw draft
+ * strings held the item over an added row the save filters out, over a trailing
+ * space canonicalisation removes, and over `"2.50"` typed across a hydrated
+ * `"2.5"` — three sequences where every visible control was back at its
+ * hydrated value and the payload was byte-identical.
+ */
+const writtenModifierRows = (
+  options: readonly OptionDraft[],
+  code: string,
+): WrittenModifierRow[] =>
+  options
+    .map((option) => ({
+      option,
+      validation: validateMenuText("modifierOptionName", option.name),
+      priceResult: parseSignedMenuMoneyDraft(option.price, code),
+    }))
+    .filter(({ validation }) => validation.canonicalValue !== "")
+    .map(({ option, validation, priceResult }) => ({
+      id: option.id,
+      name: validation.canonicalValue,
+      priceDeltaCents:
+        priceResult.kind === "blank"
+          ? 0
+          : priceResult.kind === "valid"
+            ? priceResult.cents
+            : null,
+    }));
+
+/**
+ * Issue #3572 (rework, P2-1) — the maximum this draft WOULD WRITE.
+ *
+ * `handleSave` writes `parsedMax`, which is hard-coded to 1 in single mode and
+ * never reads the maximum field at all, so a maximum typed in multi mode and
+ * then abandoned by returning to single changes nothing that would be saved —
+ * and the field is not even on screen to put back.
+ *
+ * A maximum the parser REFUSES is not a value: the save is blocked while it
+ * stands, so the unwritable text itself is what distinguishes the draft. Folding
+ * it to `null` would report "no unsaved change" over a field the operator is
+ * still in the middle of fixing.
+ */
+const writtenMaximum = (
+  mode: ModifierSelectionMode,
+  maxSelect: string,
+): number | string | null => {
+  if (mode === "single") return 1;
+  const parsed = parseModifierMaximumDraft(maxSelect);
+  if (parsed.kind === "valid") return parsed.value;
+  if (parsed.kind === "blank") return null;
+  return `unwritable:${maxSelect}`;
+};
+
+/**
+ * Issue #3572 (rework, P2-1) — the signature of what this draft would WRITE,
+ * never of what was TYPED. "Put it back and you're free again" can only be true
+ * if the comparison runs over the payload, normalised exactly the way
+ * `handleSave` normalises it: multi-select maximum typed and then abandoned by
+ * returning to single, a trailing space on the group name, `"2.50"` typed over
+ * a hydrated `"2.5"` — every one of those left the payload byte-identical while
+ * the raw-string comparison held the whole item.
+ *
+ * It is the written payload PLUS the draft's row roster (see below), because a
+ * row on screen is an unsaved change whether or not the save would carry it.
+ */
+const modifierGroupWriteSignature = (
+  draft: ModifierGroupDraftShape,
+  code: string,
+): string =>
+  JSON.stringify([
+    validateMenuText("modifierGroupName", draft.name).canonicalValue,
+    draft.mode,
+    draft.required ? 1 : 0,
+    writtenMaximum(draft.mode, draft.maxSelect),
+    writtenModifierRows(draft.options, code).map((option) => [
+      option.id,
+      option.name,
+      option.priceDeltaCents,
+    ]),
+    /*
+     * The rows that EXIST, beside the rows that would be written. A row an
+     * operator can SEE is an unsaved
+     * change even when the save filters it out of the payload for having no
+     * name yet: "Add an option" then "Save item" would take it off the screen
+     * without asking. Removing it again restores this roster, so the hold
+     * still releases — this stays a comparison, never a latch. (The tester's
+     * committed suite pins this: `issue_3572_nested_draft_guard.tester
+     * .adversarial.test.tsx:785`, "an option row added then removed releases
+     * the hold".)
+     */
+    draft.options.map((option) => option.id),
+  ]);
+
+/**
  * Issue #3571 (PR #3615 rework, P3-1) — `Button` strips `onPress` entirely
  * while disabled, so this never runs; it exists because `onPress` is required
  * and a permanently-refused removal has nothing to ask.
@@ -110,6 +235,19 @@ export interface MenuModifierGroupEditorProps {
    */
   removalBlockedReason?: string | null;
   deleting?: boolean;
+  /**
+   * Issue #3572 — reports whether this panel's draft still matches the values
+   * it hydrated. The parent item sheet cannot see inside this component (it
+   * receives the whole options area as an opaque node), so without this signal
+   * a parent save or a sheet dismissal silently destroys unsaved work.
+   *
+   * Fired from the existing edit handlers, never from an effect: this file is
+   * forbidden to declare a React effect at all (a merged #3563 gate, because an
+   * effect here is how a background refetch used to replace an open draft).
+   * Clearing on save/cancel/unmount is the CALLER's job — this panel cannot see
+   * a save result without the effect it is not allowed to have.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
   onCancel: () => void;
   testID?: string;
 }
@@ -126,6 +264,7 @@ export function MenuModifierGroupEditor({
   onRequestDelete,
   removalBlockedReason = null,
   deleting = false,
+  onDirtyChange,
   onCancel,
   testID,
 }: MenuModifierGroupEditorProps): React.ReactElement {
@@ -164,6 +303,26 @@ export function MenuModifierGroupEditor({
     () =>
       validateMenuText("modifierGroupName", group?.name ?? "")
         .canonicalValue !== "",
+  );
+  /*
+   * Issue #3572 — the hydrated baseline, read off the FIRST render's draft
+   * values (the lazy initializers above have already run by the time this one
+   * does). A lazy `useState` initializer runs exactly once, so the baseline
+   * inherits the same single-hydration contract #3563 put on the draft itself
+   * and can never be replaced by a background refetch. Reading the state
+   * instead of re-deriving it from `group` also makes drift impossible: there
+   * is only one hydration, and this is it.
+   *
+   * Rework (P2-1): the baseline is the signature of what the HYDRATED draft
+   * would write, so it is comparable with the signature of what the CURRENT
+   * draft would write. Comparing typed text against typed text is what held
+   * the item over changes the save would never have made.
+   */
+  const [baselineSignature] = useState<string>(() =>
+    modifierGroupWriteSignature(
+      { name, mode, required, maxSelect, options },
+      code,
+    ),
   );
 
   const maximumResult = parseModifierMaximumDraft(maxSelect);
@@ -231,6 +390,42 @@ export function MenuModifierGroupEditor({
     error === null &&
     !saving;
 
+  /*
+   * Issue #3572 — compare the draft this edit is about to produce against the
+   * hydrated baseline and tell the parent. Called from the edit handlers
+   * themselves because this file may declare no React effect, and always AFTER
+   * the matching state write: a merged #3563 gate pins `if (saving) return;`
+   * immediately followed by `setOptions`, so nothing may be inserted between
+   * the pending guard and the state write.
+   */
+  const reportDirty = useCallback(
+    (patch: Partial<ModifierGroupDraftShape> = {}): void => {
+      onDirtyChange?.(
+        modifierGroupWriteSignature(
+          {
+            name,
+            mode,
+            required,
+            maxSelect,
+            options,
+            ...patch,
+          },
+          code,
+        ) !== baselineSignature,
+      );
+    },
+    [
+      baselineSignature,
+      code,
+      maxSelect,
+      mode,
+      name,
+      onDirtyChange,
+      options,
+      required,
+    ],
+  );
+
   const addOption = useCallback((): void => {
     if (saving) return;
     setOptions((current) => [
@@ -238,15 +433,18 @@ export function MenuModifierGroupEditor({
       { id: createMenuModifierDraftId(), name: "", price: "" },
     ]);
     onClearSaveError?.();
-  }, [onClearSaveError, saving]);
+    // An appended row can never match the baseline, whose roster is fixed.
+    onDirtyChange?.(true);
+  }, [onClearSaveError, onDirtyChange, saving]);
 
   const removeOption = useCallback(
     (id: string): void => {
       if (saving) return;
       setOptions((current) => current.filter((o) => o.id !== id));
       onClearSaveError?.();
+      reportDirty({ options: options.filter((o) => o.id !== id) });
     },
-    [onClearSaveError, saving],
+    [onClearSaveError, options, reportDirty, saving],
   );
 
   const patchOption = useCallback(
@@ -256,8 +454,11 @@ export function MenuModifierGroupEditor({
         current.map((o) => (o.id === id ? { ...o, ...patch } : o)),
       );
       onClearSaveError?.();
+      reportDirty({
+        options: options.map((o) => (o.id === id ? { ...o, ...patch } : o)),
+      });
     },
-    [onClearSaveError, saving],
+    [onClearSaveError, options, reportDirty, saving],
   );
 
   const handleNameChange = useCallback(
@@ -267,8 +468,9 @@ export function MenuModifierGroupEditor({
       }
       onClearSaveError?.();
       setName(next);
+      reportDirty({ name: next });
     },
-    [onClearSaveError],
+    [onClearSaveError, reportDirty],
   );
 
   const handleSave = useCallback((): void => {
@@ -292,27 +494,21 @@ export function MenuModifierGroupEditor({
       minSelect,
       maxSelect: parsedMax ?? null,
       sortOrder: group?.sortOrder ?? nextSortOrder,
-      modifiers: options
-        .map((option) => ({
-          option,
-          validation: validateMenuText("modifierOptionName", option.name),
-          priceResult: parseSignedMenuMoneyDraft(option.price, code),
-        }))
-        .filter(({ validation }) => validation.canonicalValue !== "")
-        .map(({ option, validation, priceResult }, index) => {
-          if (priceResult.kind === "invalid") {
-            throw new Error(
-              "Modifier numeric validation barrier was bypassed.",
-            );
-          }
-          return {
-            id: option.id,
-            name: validation.canonicalValue,
-            priceDeltaCents:
-              priceResult.kind === "blank" ? 0 : priceResult.cents,
-            sortOrder: index,
-          };
-        }),
+      /*
+       * Rework (P2-1) — the SAME derivation the dirty comparison runs on, so
+       * "unchanged" can never mean one thing here and another there.
+       */
+      modifiers: writtenModifierRows(options, code).map((option, index) => {
+        if (option.priceDeltaCents === null) {
+          throw new Error("Modifier numeric validation barrier was bypassed.");
+        }
+        return {
+          id: option.id,
+          name: option.name,
+          priceDeltaCents: option.priceDeltaCents,
+          sortOrder: index,
+        };
+      }),
     });
   }, [
     groupNameValidation,
@@ -391,6 +587,7 @@ export function MenuModifierGroupEditor({
             onPress={() => {
               onClearSaveError?.();
               setMode("single");
+              reportDirty({ mode: "single" });
             }}
             variant={mode === "single" ? "primary" : "secondary"}
             size="sm"
@@ -405,6 +602,7 @@ export function MenuModifierGroupEditor({
             onPress={() => {
               onClearSaveError?.();
               setMode("multi");
+              reportDirty({ mode: "multi" });
             }}
             variant={mode === "multi" ? "primary" : "secondary"}
             size="sm"
@@ -420,6 +618,7 @@ export function MenuModifierGroupEditor({
           onPress={() => {
             onClearSaveError?.();
             setRequired((r) => !r);
+            reportDirty({ required: !required });
           }}
           variant={required ? "primary" : "secondary"}
           size="sm"
@@ -443,6 +642,7 @@ export function MenuModifierGroupEditor({
             onChangeText={(next) => {
               onClearSaveError?.();
               setMaxSelect(next);
+              reportDirty({ maxSelect: next });
             }}
             variant="number"
             inputMode="numeric"

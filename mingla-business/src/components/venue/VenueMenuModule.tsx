@@ -224,6 +224,24 @@ export function VenueMenuModule({
   const [itemSaveFailure, setItemSaveFailure] =
     useState<MenuTextSaveFailure | null>(null);
   const [optionsSaving, setOptionsSaving] = useState<boolean>(false);
+  /*
+   * #3572 — an UNSAVED options draft holds the item sheet exactly the way an
+   * in-flight options save does (#3563). The draft lives in the editor panel's
+   * own state, four components below this one, so this is where the two halves
+   * of the lock meet.
+   */
+  const [optionsDirty, setOptionsDirty] = useState<boolean>(false);
+  /*
+   * #3572 — ONE lock for the item sheet. The shared Sheet primitive has exactly
+   * one dismissal gate (`dismissDisabled`), and it has to be engaged for BOTH
+   * reasons, because on native a committed drag-to-close calls `onClose` and
+   * leaves the panel sitting at its drag offset: the only thing that ever
+   * restores it is an effect keyed on `visible`, so a guard that merely swallows
+   * `onClose` would strand the panel mid-screen on iOS and Android. Disabling
+   * the pan gesture cannot strand it, which is why the two halves are composed
+   * into the one signal the sheet already forwards to that gate.
+   */
+  const optionsHoldsItemSheet = optionsSaving || optionsDirty;
   const [saveError, setSaveError] = useState<boolean>(false);
   // #1789 — the row currently being 86'd, so one tap cannot fire twice.
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
@@ -410,12 +428,15 @@ export function VenueMenuModule({
   }, []);
 
   const closeItemSheet = useCallback((): void => {
-    if (optionsSaving) return;
+    // #3572 — closing here destroys the options subtree, and with it any
+    // unsaved draft inside it. The sheet refuses the dismissal first; this is
+    // the second lock, for anything that reaches the module directly.
+    if (optionsSaving || optionsDirty) return;
     setItemSheetOpen(false);
     setItemSheetMenuId(null);
     setEditingItem(null);
     setItemSaveFailure(null);
-  }, [optionsSaving]);
+  }, [optionsSaving, optionsDirty]);
 
   const handleSaveItem = useCallback(
     (input: MenuItemSheetSaveInput): void => {
@@ -1333,7 +1354,8 @@ export function VenueMenuModule({
         saving={upsertItem.isPending}
         saveFailure={itemSaveFailure}
         onClearSaveFailure={() => setItemSaveFailure(null)}
-        optionsSaving={optionsSaving}
+        optionsSaving={optionsHoldsItemSheet}
+        optionsDirty={optionsDirty}
         onDelete={canMutate ? handleDeleteItem : undefined}
         deleting={deleteItem.isPending}
         canDelete={canMutate}
@@ -1346,6 +1368,7 @@ export function VenueMenuModule({
                 itemCurrency={editingItem?.currency ?? currency}
                 canMutate={canMutate}
                 onSavingChange={setOptionsSaving}
+                onDirtyChange={setOptionsDirty}
               />
             </React.Suspense>
           ) : undefined
