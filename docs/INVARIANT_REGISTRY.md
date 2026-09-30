@@ -9,6 +9,15 @@
 - **Enforcement:** migration `20270720003645_issue_3645_payment_plus_24h_payouts.sql`; pg17 suites `issue_3645_payment_plus_24h.implementor.happy.pg17.test.sql` + `issue_3645_payment_plus_24h.tester.adversarial.pg17.test.sql` registered in `supabase-migrations-and-stripe-deno.yml`; Deno `issue_1171_dark_payout_ledger.test.ts` payment+24h case; `issue-1180-honest-payout-copy.mjs`.
 - **Status:** DRAFT until this PR merges, the migration is applied under the reviewed lane, and a paid test charge proves ledger `releasable_at = finalized_at + 1 day` with sweep execute still fail-closed when bank/`payouts_enabled` is missing.
 
+## DRAFT — issue #3645 PR2 (cancelled paid offerings hold refunds for admin review)
+
+### I-PROPOSED-3645-CANCEL-REFUND-HELD-FOR-REVIEW (DRAFT)
+
+- **Rule:** When a paid offering is cancelled, `cancel_event_refund_prepare` freezes ticket sales (`sale_end_at = now()`, `is_disabled = true` on online, non-hidden, non-deleted `ticket_types`, the same WHERE clause as `business_end_event_ticket_sales`) and closes bookings (`bookings_closed`, `bookings_closed_at` kept when already closed), and opens `event_cancel_refund_runs` in `awaiting_review` whenever there is refund work (paid orders in `event_cancel_refund_progress` or paid RSVP contributions with `buyer_total_cents > refunded_amount_cents`). Zero refund work completes immediately. While a run is `awaiting_review`, nothing may refund: `cancel_event_refund_claim` leases only when the run is `pending`/`in_progress`/`failed_partial`, `event-cancel-refund-fanout` returns `held: true` before `prepare_event_cancel_rsvp_source_refunds` or the claim loop, and the #1179 backstop cron never selects `awaiting_review`. Only `admin_release_event_cancel_refund_batch(p_event_id, p_reason)` (`is_admin_user()` first, reason required, `admin_write_audit` action `offering.cancel_refund_release`) moves `awaiting_review` to `pending`. A `completed`, `pending`, `in_progress` or `failed_partial` run is never demoted back into review.
+- **Scope:** The #1179 / #1221 cancellation refund plane only (orders + RSVP contributions); no new workflow product. Venue reservations, chargebacks and the admin UI button are later #3645 PRs.
+- **Enforcement:** migration `20270721003645_issue_3645_cancel_refund_review.sql`; pg17 suites `issue_3645_cancel_refund_review.implementor.happy.pg17.test.sql` + `issue_3645_cancel_refund_review.tester.adversarial.pg17.test.sql` registered in `supabase-migrations-and-stripe-deno.yml` and path-scoped in `issue-1179-cancel-refund-fanout-tests.yml`; the #1179 pg17 suites drive the real admin release before claiming.
+- **Status:** DRAFT until this PR merges, the migration is applied under the reviewed lane, and a cancelled paid test event is observed opening `awaiting_review`, refusing to refund through the edge function and cron, and draining only after an admin release.
+
 ## DRAFT — issue #3622 (a brand handover leaves no access behind)
 
 ### I-PROPOSED-3622-BRAND-HANDOVER-LEAVES-NO-MEMBERSHIP (DRAFT)

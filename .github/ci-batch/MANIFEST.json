@@ -12273,7 +12273,7 @@
       "providerWorkflow": ".github/workflows/issue-1179-cancel-refund-fanout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "bf4c199e4dce56be7eb6a433f7e634d677036d7b19c190fd9e81b7076ec50a06",
+        "sourceSha256": "78d58af5f5430850e8b2d2cdbf90dbb16983c3df8a93cfe84fef6d4052e7eb01",
         "triggers": [
           "pull_request"
         ],
@@ -12287,8 +12287,11 @@
           "supabase/functions/_shared/stripe.ts",
           "supabase/functions/event-cancel-refund-fanout/**",
           "supabase/migrations/20270110000009_issue_1179_cancel_refund_fanout.sql",
+          "supabase/migrations/20270721003645_issue_3645_cancel_refund_review.sql",
           "supabase/migrations/__tests__/issue_1179_cancel_refund_fanout_adversarial_pg17.test.sql",
-          "supabase/migrations/__tests__/issue_1179_cancel_refund_fanout_pg17.test.sql"
+          "supabase/migrations/__tests__/issue_1179_cancel_refund_fanout_pg17.test.sql",
+          "supabase/migrations/__tests__/issue_3645_cancel_refund_review.implementor.happy.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_3645_cancel_refund_review.tester.adversarial.pg17.test.sql"
         ],
         "jobKeys": [
           "issue-1179-deno-check",

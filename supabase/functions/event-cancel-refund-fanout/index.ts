@@ -634,6 +634,29 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "prepare_failed", detail: prepError.message }, 500);
   }
 
+  // #3645 PR2 — cancel-review hold. While the run is awaiting_review NOTHING may
+  // refund: no RSVP source-refund preparation, no claim loop. An admin releases the
+  // batch (admin_release_event_cancel_refund_batch → pending) and the next
+  // invocation (client kickoff or the #1179 backstop cron) drains it.
+  if ((prep as Record<string, unknown> | null)?.run_status === "awaiting_review") {
+    const held = prep as Record<string, unknown>;
+    return json({
+      event_id: eventId,
+      run_status: "awaiting_review",
+      held: true,
+      total_objects: typeof held.total_objects === "number"
+        ? held.total_objects
+        : 0,
+      rsvp_pending_count: typeof held.rsvp_pending_count === "number"
+        ? held.rsvp_pending_count
+        : 0,
+      refunded: 0,
+      rsvp_refunds_prepared: 0,
+      failed_retryable: 0,
+      failed: 0,
+    });
+  }
+
   // RSVP contributions have no order. Prepare their typed source refunds after
   // the same cancelled-event precondition, then let the shared sweep remain the
   // correctness backstop if this best-effort kickoff cannot reach a provider.
