@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-09-30 — Organiser payouts now mature about a day after each payment instead of three days after the event: the ledger CHECK, attach/authorize helpers, and `payout-release-sweep` all use payment+24h, the NG float floor matches, and honest-payout copy no longer claims event+3d timing (#3645, PR #3717)
 - 2026-09-30 — The README now spells out who owns what (Seth: product, board, marketing site; Taofeek: engineering and sprints) and the six-stage pipeline every issue follows (#3644, PR #3718)
 - 2026-09-30 — New features are tracked as initiatives, all their work folds into the initiative, and a new issue is opened only when nothing open fits, so the board stays small and complete (#3644, PR #3710)
 - 2026-09-30 — Host advisory clears no longer have to edit the same package digests twice, and a Sites Next patch bump no longer fails the foundation gate just for not matching an exact string: the Host package-authority digests live in one sealed map that both the manifest validator and the #2438 suite read (the suite still hashes the files itself), Sites/CMS `next` is checked as a 16.x advisory floor at or above 16.3.8 instead of an exact pin, and the durable lesson from clearing `@vercel/og` highs via a `sharp` floor — without taking broken 1.x — is written into the agent rules and the #1158 invariant. (#3713, PR #3716)

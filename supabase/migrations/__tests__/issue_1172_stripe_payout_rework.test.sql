@@ -74,7 +74,7 @@ INSERT INTO public.brand_payout_releases (
   'order',
   'stripe',
   'usd',
-  '2027-01-01 20:00:00+00',
+  '2027-01-03 20:00:00+00',
   '2027-01-04 20:00:00+00',
   10000,
   9000,
@@ -89,7 +89,7 @@ INSERT INTO public.brand_payout_releases (
   'order',
   'stripe',
   'usd',
-  '2027-01-01 20:00:00+00',
+  '2027-01-03 20:00:00+00',
   '2027-01-04 20:00:00+00',
   10000,
   9000,
@@ -155,11 +155,11 @@ BEGIN
   );
   SELECT * INTO STRICT v_release FROM public.brand_payout_releases
   WHERE id='11720000-0000-0000-0000-000000000110';
-  IF v_authorized OR v_release.status<>'pending'
-     OR v_release.releasable_at<>'2027-02-04 20:00:00+00'
+  IF NOT v_authorized OR v_release.status<>'in_flight'
+     OR v_release.releasable_at<>'2027-01-04 20:00:00+00'
      OR v_release.attempt_count<>9
-     OR v_release.stripe_execution_claim_id IS NOT NULL THEN
-    RAISE EXCEPTION 'postponement pre-execute authorization did not re-anchor safely';
+     OR v_release.stripe_execution_claim_id IS NULL THEN
+    RAISE EXCEPTION 'postponement must not re-anchor maturity at stripe authorize (#3645)';
   END IF;
 END;
 $test$;
@@ -168,7 +168,7 @@ UPDATE public.event_dates
 SET end_at='2027-01-01 20:00:00+00'
 WHERE id='11720000-0000-0000-0000-000000000107';
 UPDATE public.brand_payout_releases
-SET anchor_end_at='2027-01-01 20:00:00+00',
+SET anchor_end_at='2027-01-03 20:00:00+00',
     releasable_at='2027-01-04 20:00:00+00',
     status='pending',
     error_message=NULL
@@ -354,7 +354,7 @@ INSERT INTO public.brand_payout_releases (
   'rsvp_contribution',
   'stripe',
   'usd',
-  '2027-01-01 20:00:00+00',
+  '2027-01-03 20:00:00+00',
   '2027-01-04 20:00:00+00',
   10000,
   9000,

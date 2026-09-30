@@ -411,8 +411,8 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                 <Text style={styles.notFoundTitle}>Bank connected</Text>
                 <Text style={styles.notFoundBody}>
                   {ps?.account_number_masked != null
-                    ? `Payouts settle to ${ps.account_number_masked}, released 3 days after each event date ends and typically arrive within 1–2 business days.`
-                    : "Your payout account is connected. Sales are held securely and released 3 days after each event date ends, and typically arrive within 1–2 business days."}
+                    ? `Payouts settle to ${ps.account_number_masked}, released about a day after each payment and typically arrive within 1–2 business days.`
+                    : "Your payout account is connected. Sales are held securely and released about a day after each payment, and typically arrive within 1–2 business days."}
                   {ps?.is_verified === false
                     ? " Your bank is still being verified — your first payout may take a little longer."
                     : ""}

@@ -39,14 +39,14 @@ interface Step {
 
 const STEPS: readonly Step[] = [
   {
-    icon: "flag",
-    title: "Your event ends",
-    body: "Payouts are tied to the event date, not the sale date.",
+    icon: "ticket",
+    title: "A buyer pays",
+    body: "Each payout matures from when payment completes — not when the event ends.",
   },
   {
     icon: "clock",
-    title: "3 days later, we release your payout",
-    body: "The hold protects against refunds and cancellations.",
+    title: "About a day later, we release your payout",
+    body: "The hold covers the first day after payment. Refund and cancellation recovery after payout ships in a later update.",
   },
   {
     icon: "bank",

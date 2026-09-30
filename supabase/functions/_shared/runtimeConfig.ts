@@ -107,15 +107,12 @@ const RUNTIME_CONFIG_LEGACY_NAMES: Record<RuntimeConfigField, string> = {
 /**
  * #1840 — inclusive bounds for the Nigerian float forecast horizon, in days.
  *
- * The floor is 3, not 1. A Nigerian release matures at `event_end + 3 days`, so
- * a horizon shorter than the rail's own settlement lag warns the operator later
- * than the rail already costs them, and no bank top-up clears inside it. 1 day
- * was legal under the first version and produced under 24 hours of notice with
- * nothing anywhere flagging it. Out-of-range values are CLAMPED into this
- * window and logged, never rejected — rejecting is what let one bad value
- * invalidate the whole shared bundle.
+ * #3645 — releases mature at payment + ~24h. Floor stays 1 day so the horizon
+ * can match the rail's own maturity; values below 1 are clamped. Out-of-range
+ * values are CLAMPED into this window and logged, never rejected — rejecting is
+ * what let one bad value invalidate the whole shared bundle.
  */
-export const NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS = 3;
+export const NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS = 1;
 export const NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS = 90;
 export const NG_PAYOUT_FLOAT_HORIZON_DEFAULT_DAYS = 7;
 

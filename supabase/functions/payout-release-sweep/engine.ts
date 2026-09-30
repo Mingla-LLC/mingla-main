@@ -1,4 +1,5 @@
-export const RELEASE_DELAY_MS = 3 * 24 * 60 * 60 * 1000;
+/** #3645 — maturity is payment finalization + ~24h, not event end + 3 days. */
+export const RELEASE_DELAY_MS = 1 * 24 * 60 * 60 * 1000;
 export const PAYSTACK_TRANSFER_MIN_KOBO = 5_000;
 export const PAYSTACK_TRANSFER_CAP_KOBO = 1_000_000_000;
 export const PAYSTACK_FEE_SCHEDULE_VERSION = "verified-2026-07-24";
@@ -90,7 +91,9 @@ export function computePendingItems(
     if (ms(candidate.finalizedAt) <= ms(candidate.cutoverAt)) continue;
     const occurrence = resolveLiveOccurrence(candidate);
     if (!occurrence) continue;
-    const anchorEndAt = occurrence.endAt;
+    // #3645 — ledger anchor + maturity follow payment time, not occurrence end.
+    // Occurrence identity still keys grouping (releaseKey / eventDateId).
+    const anchorEndAt = candidate.finalizedAt;
     const releasableAt = new Date(ms(anchorEndAt) + RELEASE_DELAY_MS)
       .toISOString();
     if (ms(releasableAt) > now) continue;

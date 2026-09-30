@@ -83,7 +83,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401841-0001-0000-0000-000000000001','18401841-0000-0000-0000-0000000000b1',
  'retest-c1','order','paystack','ngn',
- '2027-06-29 00:00:00+00','2027-07-02 00:00:00+00',1000000000,1000000000,'pending');
+ '2027-07-01 00:00:00+00','2027-07-02 00:00:00+00',1000000000,1000000000,'pending');
 
 DO $t$
 DECLARE
@@ -189,7 +189,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401841-0002-0000-0000-000000000001','18401841-0000-0000-0000-0000000000b2',
  'retest-c2','order','paystack','ngn',
- '2027-06-29 00:00:00+00','2027-07-02 00:00:00+00',900000,900000,'blocked_balance');
+ '2027-07-01 00:00:00+00','2027-07-02 00:00:00+00',900000,900000,'blocked_balance');
 INSERT INTO public.payout_transfer_legs (
   id, release_id, kind, chunk_index, principal_cents, estimated_fee_cents,
   stamp_duty_cents, fee_schedule_version, status
@@ -242,7 +242,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401841-0003-0000-0000-000000000001','18401841-0000-0000-0000-0000000000b3',
  'retest-c3','order','paystack','ngn',
- '2027-06-29 00:00:00+00','2027-07-02 00:00:00+00',1000000000,1000000000,'pending');
+ '2027-07-01 00:00:00+00','2027-07-02 00:00:00+00',1000000000,1000000000,'pending');
 
 -- Reset the anchor row to a chosen last-alerted magnitude and a chosen age,
 -- as a delivered row, so each probe below isolates exactly one bar.
@@ -355,7 +355,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401841-0004-0000-0000-000000000001','18401841-0000-0000-0000-0000000000b4',
  'retest-c4','order','paystack','ngn',
- '2027-06-29 00:00:00+00','2027-07-02 00:00:00+00',1000000000,1000000000,'pending');
+ '2027-07-01 00:00:00+00','2027-07-02 00:00:00+00',1000000000,1000000000,'pending');
 
 DO $t$
 DECLARE
@@ -436,7 +436,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401841-0005-0000-0000-000000000001','18401841-0000-0000-0000-0000000000b5',
  'retest-c5','order','paystack','ngn',
- '2027-06-29 00:00:00+00','2027-07-02 00:00:00+00',1000000000,1000000000,'pending');
+ '2027-07-01 00:00:00+00','2027-07-02 00:00:00+00',1000000000,1000000000,'pending');
 
 DO $t$
 DECLARE
@@ -509,7 +509,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401841-0006-0000-0000-000000000001','18401841-0000-0000-0000-0000000000b6',
  'retest-c6','order','paystack','ngn',
- '2027-06-29 00:00:00+00','2027-07-02 00:00:00+00',1000000000,1000000000,'pending');
+ '2027-07-01 00:00:00+00','2027-07-02 00:00:00+00',1000000000,1000000000,'pending');
 
 DO $t$
 DECLARE
@@ -575,7 +575,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401841-0007-0000-0000-000000000001','18401841-0000-0000-0000-0000000000b7',
  'retest-c7','order','paystack','ngn',
- '2027-06-29 00:00:00+00','2027-07-02 00:00:00+00',1000000000,1000000000,'pending');
+ '2027-07-01 00:00:00+00','2027-07-02 00:00:00+00',1000000000,1000000000,'pending');
 
 DO $t$
 DECLARE
@@ -638,7 +638,7 @@ INSERT INTO public.brand_payout_releases (
 ) VALUES
 ('18401841-0008-0000-0000-000000000001','18401841-0000-0000-0000-0000000000b8',
  'retest-c8','order','paystack','ngn',
- '2027-06-29 00:00:00+00','2027-07-02 00:00:00+00',900000,900000,'pending');
+ '2027-07-01 00:00:00+00','2027-07-02 00:00:00+00',900000,900000,'pending');
 INSERT INTO public.payout_transfer_legs (
   id, release_id, kind, chunk_index, principal_cents, estimated_fee_cents,
   stamp_duty_cents, fee_schedule_version, status

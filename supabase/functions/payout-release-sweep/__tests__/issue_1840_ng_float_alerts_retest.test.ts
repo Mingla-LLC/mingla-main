@@ -51,6 +51,8 @@ import {
 
 const MIGRATION =
   "supabase/migrations/20270320001840_issue_1840_ng_payout_float_alerts.sql";
+const MATURITY_MIGRATION =
+  "supabase/migrations/20270720003645_issue_3645_payment_plus_24h_payouts.sql";
 const SWEEP = "supabase/functions/payout-release-sweep/index.ts";
 
 /** The kind whose payload is a number that moves — the one honoured downstream. */
@@ -597,12 +599,12 @@ Deno.test("#1840 RETEST no configured value can push the horizon outside a usabl
       days,
     );
   }
-  // The floor is the rail's own settlement lag, not an arbitrary 1.
-  assertEquals(NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS, 3);
+  // #3645 — payment + ~24h maturity ⇒ actionable float floor is 1 day (was 3).
+  assertEquals(NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS, 1);
 });
 
 Deno.test("#1840 RETEST the SQL clamp mirrors the TypeScript clamp, so neither can drift open", async () => {
-  const migration = await Deno.readTextFile(MIGRATION);
+  const migration = await Deno.readTextFile(MATURITY_MIGRATION);
   // Both ends must be enforced in the ledger too: the sweep is not the only
   // possible caller of the obligation reader.
   assertStringIncludes(

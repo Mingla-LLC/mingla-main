@@ -2790,14 +2790,14 @@
       },
       "allowed_identifier_references": {
         "defaultGetEnv": [
-          "supabase/functions/_shared/runtimeConfig.ts@11503:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
-          "supabase/functions/_shared/runtimeConfig.ts@12653:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
-          "supabase/functions/_shared/runtimeConfig.ts@14768:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
-          "supabase/functions/_shared/runtimeConfig.ts@15140:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
-          "supabase/functions/_shared/runtimeConfig.ts@15240:getEnv:call_argument:resolveRuntimeConfigValue:getEnv",
-          "supabase/functions/_shared/runtimeConfig.ts@15425:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
-          "supabase/functions/_shared/runtimeConfig.ts@15525:getEnv:call_argument:resolveRuntimeConfigValue:getEnv",
-          "supabase/functions/_shared/runtimeConfig.ts@16160:defaultGetEnv:parameter_default:getEnv=defaultGetEnv"
+          "supabase/functions/_shared/runtimeConfig.ts@11293:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@12443:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@14558:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@14930:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@15030:getEnv:call_argument:resolveRuntimeConfigValue:getEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@15215:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@15315:getEnv:call_argument:resolveRuntimeConfigValue:getEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@15950:defaultGetEnv:parameter_default:getEnv=defaultGetEnv"
         ]
       },
       "allowed_top_level": [

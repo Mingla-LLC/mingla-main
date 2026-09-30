@@ -1,5 +1,6 @@
 // Issue #1840 (step 1 of #1845) — implementor happy-path regression guard for
 // the Nigerian payout float alerts.
+// [TEST-MOD-APPROVED #3645] Horizon floor and RELEASE_DELAY retargeted to 1 day.
 //
 // Two deliverables, both observability-only:
 //   D1 a blocked_balance park raises a DRAINABLE paystack_balance_blocked alert
@@ -354,12 +355,11 @@ Deno.test("#1840 an out-of-range horizon clamps into a usable window instead of 
       ? "https://legacy.test/legacy-logo.png"
       : undefined;
 
-  // The floor is 3 days, not 1: a Nigerian release matures at event_end + 3
-  // days, so a shorter window warns later than the rail itself costs and no
-  // bank top-up clears inside it.
-  assertEquals(NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS, 3);
+  // #3645 — maturity is payment + ~24h, so the actionable float floor is 1 day
+  // (was 3 under event_end + 3d). Values below the floor still clamp UP.
+  assertEquals(NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS, 1);
   assertEquals(NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS, 90);
-  for (const low of [0, 1, 2, -5]) {
+  for (const low of [0, -5]) {
     assertEquals(
       resolveNgPayoutFloatHorizonDays(
         bundleEnv(runtimeBundle({ ng_payout_float_horizon_days: low })),

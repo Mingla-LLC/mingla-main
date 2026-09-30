@@ -1035,6 +1035,13 @@ jobs:
           # assertion still leaves nothing behind.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3622_reassign_owner_maintains_team_membership.tester.adversarial.pg17.test.sql
+          # Issue #3645 — payout maturity is payment + 24h (not event end + 3d);
+          # cancel refund runs open in awaiting_review; charge readiness admits
+          # stamped Paystack hold brands without a subaccount.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_payment_plus_24h.implementor.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_payment_plus_24h.tester.adversarial.pg17.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on

@@ -191,7 +191,7 @@ BEGIN
     '11710000-0000-0000-0000-000000000010',
     '11710000-0000-0000-0000-000000000102',NULL,'missing-occurrence',
     'rsvp_contribution','stripe','usd','2026-07-04T20:00:00Z',
-    '2026-07-07T20:00:00Z',100,100,'fee_unreconciled'
+    '2026-07-05T20:00:00Z',100,100,'fee_unreconciled'
   ) RETURNING id INTO v_missing;
   UPDATE public.event_dates SET end_at='2026-07-10T20:00:00Z'
   WHERE id=v_occurrence_a;
@@ -199,12 +199,16 @@ BEGIN
   WHERE id=v_occurrence_b;
   PERFORM public.refresh_pending_payout_release_truth('2026-07-05T00:00:00Z');
   IF (SELECT anchor_end_at FROM public.brand_payout_releases WHERE id=v_release_a)
-       <>'2026-07-10T20:00:00Z' OR
+       <>'2026-07-02T00:00:00Z' OR
+     (SELECT releasable_at FROM public.brand_payout_releases WHERE id=v_release_a)
+       <>'2026-07-03T00:00:00Z' OR
      (SELECT anchor_end_at FROM public.brand_payout_releases WHERE id=v_release_b)
-       <>'2026-07-06T20:00:00Z' OR
+       <>'2026-07-02T00:00:00Z' OR
+     (SELECT releasable_at FROM public.brand_payout_releases WHERE id=v_release_b)
+       <>'2026-07-03T00:00:00Z' OR
      (SELECT status FROM public.brand_payout_releases WHERE id=v_missing)
-       <>'blocked_anchor' THEN
-    RAISE EXCEPTION 'retryable releases did not refresh or fail closed';
+       <>'fee_unreconciled' THEN
+    RAISE EXCEPTION '#3645 refresh must not re-anchor maturity on event_dates edits';
   END IF;
   UPDATE public.events SET status='cancelled'
   WHERE id='11710000-0000-0000-0000-000000000101';
@@ -240,7 +244,7 @@ BEGIN
       WHERE origin_release_id=v_release_b
         AND kind='post_release_postponement')<>1 OR
      (SELECT maturity_at FROM public.organiser_payout_debts WHERE id=v_debt)
-       <>'2026-07-17T00:00:00Z' THEN
+       <>'2026-07-15T00:00:00Z' THEN
     RAISE EXCEPTION 'second forward edit duplicated debt or kept stale anchor';
   END IF;
   UPDATE public.event_dates SET end_at='2026-07-06T20:00:00Z'
@@ -282,7 +286,7 @@ BEGIN
   ) VALUES(
     '11710000-0000-0000-0000-000000000010','maturity-origin',
     'venue_reservation','stripe','usd','2026-06-20T00:00:00Z',
-    '2026-06-23T00:00:00Z',1000,1000,'released',1000,'2026-06-23T00:00:00Z'
+    '2026-06-21T00:00:00Z',1000,1000,'released',1000,'2026-06-21T00:00:00Z'
   ) RETURNING id INTO v_origin;
   INSERT INTO public.brand_payout_releases(
     brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
@@ -290,7 +294,7 @@ BEGIN
   ) VALUES(
     '11710000-0000-0000-0000-000000000010','debt-target',
     'venue_reservation','stripe','usd','2026-06-28T00:00:00Z',
-    '2026-07-01T00:00:00Z',600,600,'pending'
+    '2026-06-29T00:00:00Z',600,600,'pending'
   ) RETURNING id INTO v_target;
   v_debt:=public.open_post_release_postponement_debt(
     v_origin,'2026-07-02T00:00:00Z'
@@ -320,7 +324,7 @@ BEGIN
   ) VALUES(
     '11710000-0000-0000-0000-000000000010','conversion-origin',
     'venue_reservation','stripe','usd','2026-06-20T00:00:00Z',
-    '2026-06-23T00:00:00Z',1000,1000,'released',1000,'2026-06-23T00:00:00Z'
+    '2026-06-21T00:00:00Z',1000,1000,'released',1000,'2026-06-21T00:00:00Z'
   ) RETURNING id INTO v_conversion_origin;
   v_debt:=public.open_post_release_postponement_debt(
     v_conversion_origin,'2026-07-10T00:00:00Z'
@@ -376,7 +380,7 @@ BEGIN
   ) VALUES(
     '11710000-0000-0000-0000-000000000010','reopen-origin',
     'venue_reservation','stripe','usd','2026-07-20T00:00:00Z',
-    '2026-07-23T00:00:00Z',600,600,'released',600,'2026-07-23T00:00:00Z'
+    '2026-07-21T00:00:00Z',600,600,'released',600,'2026-07-21T00:00:00Z'
   ) RETURNING id INTO v_reopen_origin;
   INSERT INTO public.brand_payout_releases(
     brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
@@ -384,7 +388,7 @@ BEGIN
   ) VALUES(
     '11710000-0000-0000-0000-000000000010','reopen-reserve-a',
     'venue_reservation','stripe','usd','2026-07-28T00:00:00Z',
-    '2026-07-31T00:00:00Z',600,600,'pending'
+    '2026-07-29T00:00:00Z',600,600,'pending'
   ) RETURNING id INTO v_reopen_a;
   INSERT INTO public.brand_payout_releases(
     brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
@@ -392,7 +396,7 @@ BEGIN
   ) VALUES(
     '11710000-0000-0000-0000-000000000010','reopen-reserve-b',
     'venue_reservation','stripe','usd','2026-08-07T00:00:00Z',
-    '2026-08-10T00:00:00Z',600,600,'pending'
+    '2026-08-08T00:00:00Z',600,600,'pending'
   ) RETURNING id INTO v_reopen_b;
 
   v_reopen_debt:=public.open_post_release_postponement_debt(
