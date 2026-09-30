@@ -75,6 +75,9 @@ Rules every chat must follow until the linked issue lifts them. Remove a hold in
 - Fixes ship with regression tests; the tests suite is append-only (CI-gated).
 - Both apps ship the SAME version — bump together (CI parity gate).
 - Public trip/offering changes must hit ALL surfaces (consumer iOS/Android, business iOS/Android, buyer web, admin where applicable).
+- Prefer raising existing `overrides` / lockfile floors over new CI gates or tooling packages. Subtract stale pins that hold vulnerable versions before adding new machinery.
+- Never add a PR merge-blocker whose verdict depends on an external advisory database; Dependabot security alerts are the reporter for projects without an audit step (decision on #3642 for `mingla-business`).
+- Security-group Dependabot PRs that smuggle unrelated majors get closed; land patches intentionally. Keep dependency-fix diffs on the lock/override surface unless API breakage forces a minimal code edit.
 
 ## Response style
 
