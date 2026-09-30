@@ -492,6 +492,17 @@ export const PHASE3C_WRAPPER_NAMES = Object.freeze([
   "orch-1371-1372-tester-adversarial.yml",
 ]);
 const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
+
+// [#1902 / #2438 Host package authorities] Single sealed sha256 map. The
+// #2438 implementor suite imports this and still independently hashes disk —
+// one re-bank moves both checks. Dual-restated hex pins were the tax on every
+// Host lockfile advisory floor (#3642); collapsed on #3713.
+export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
+  "app-mobile/package.json": "e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542",
+  "app-mobile/package-lock.json": "f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27",
+  "mingla-business/package.json": "280f6e05695cea5a7d7240c82b11b96c9883b4515a69ebecee3d347c1af7aa70",
+  "mingla-business/package-lock.json": "3de9c231b575d82bf1f362b12a80ca66fa89a13f5258ab064cb3b1198f1cdc6f",
+});
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other
 // ten hold none and must not gain one.
@@ -2399,13 +2410,9 @@ function validateRegistryInTrackedFilesScope(
   // [TEST-MOD-APPROVED #3642] Re-banked after Host advisory floors (sharp /
   // image-size / related overrides + lockfile) and the Metro image-size patch
   // dependency lock churn. app-mobile pins unchanged.
-  const packageAuthorities = {
-    "app-mobile/package.json": "e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542",
-    "app-mobile/package-lock.json": "f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27",
-    "mingla-business/package.json": "280f6e05695cea5a7d7240c82b11b96c9883b4515a69ebecee3d347c1af7aa70",
-    "mingla-business/package-lock.json": "3de9c231b575d82bf1f362b12a80ca66fa89a13f5258ab064cb3b1198f1cdc6f",
-  };
-  for (const [relative, expected] of Object.entries(packageAuthorities)) {
+  // [TEST-MOD-APPROVED #3713] Digests live in PACKAGE_AUTHORITY_DIGESTS only;
+  // #2438 imports the same sealed map (no second hex restatement).
+  for (const [relative, expected] of Object.entries(PACKAGE_AUTHORITY_DIGESTS)) {
     const actual = crypto.createHash("sha256").update(fs.readFileSync(path.join(root, relative))).digest("hex");
     if (actual !== expected) fail(errors, `#1902 package authority drifted: ${relative}`);
   }

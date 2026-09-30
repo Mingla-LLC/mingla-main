@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { discoverLiveOrigins, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, normalizeProviderReferenceFilesForSeal, providerDiscoveryAccounting, PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope, SUITES_ADDED_SINCE_SEAL,
+import { discoverLiveOrigins, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, normalizeProviderReferenceFilesForSeal, PACKAGE_AUTHORITY_DIGESTS, providerDiscoveryAccounting, PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope, SUITES_ADDED_SINCE_SEAL,
 } from "../validate-manifest-v2.mjs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
@@ -552,28 +552,14 @@ test("#1902 typed Business Jest exposure is lock-pinned and resolves exact offli
         "typed exposure immutable segment must capture once and inject six validations");
     }
   } finally {fs.rmSync(root,{recursive:true,force:true});}
-  // [TEST-MOD-APPROVED #3175] Refreshed 2026-09-10 alongside the same four pins
-  // in validate-manifest-v2.mjs. This is an INDEPENDENT second copy of the
-  // authority, restated here on purpose so the gate cannot be satisfied by the
-  // validator agreeing with itself — which also means a refresh has to touch
-  // BOTH, and missing this one leaves the gate red while the validator passes.
-  // The three that moved are the already-merged Dependabot bumps: browserslist
-  // 4.28.1→4.28.8 in /app-mobile (#3013), browserslist 4.28.2→4.28.8 in
-  // /mingla-business (#3024), and the npm_and_yarn group of 7 carrying fast-uri
-  // ^3.1.5→^3.1.7 (#3168). [TEST-MOD-APPROVED #1780] The Business package
-  // authority now also includes the governed local #1780 tester harness.
-  // [TEST-MOD-APPROVED #3176] All four pins move together because the two app
-  // manifests and npm-generated locks now declare the same exact local
-  // search-measurement package. This remains an independent restatement of
-  // the validator's authority; no setup or exposure assertion is relaxed.
-  // [TEST-MOD-APPROVED #1780] Business package.json re-banked to the digest
-  // validate-manifest-v2.mjs already pins for the #1780 test:issue-1780 script.
-  // [TEST-MOD-APPROVED #3642] Independent restatement of the Host advisory-floor
-  // [TEST-MOD-APPROVED #3642] Host package-authority digests re-banked with the validator; prior SHA pins were stale after #3642 lock churn.
-  // re-bank in validate-manifest-v2.mjs (package.json + lockfile). Both copies
-  // must move together or this gate stays red while the validator passes.
-  const hashes={"app-mobile/package.json":"e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542","app-mobile/package-lock.json":"f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27","mingla-business/package.json":"280f6e05695cea5a7d7240c82b11b96c9883b4515a69ebecee3d347c1af7aa70","mingla-business/package-lock.json":"3de9c231b575d82bf1f362b12a80ca66fa89a13f5258ab064cb3b1198f1cdc6f"};
-  for(const [relative,expected] of Object.entries(hashes)) assert.equal(digest(fs.readFileSync(path.join(ROOT,relative))),expected);
+  // [TEST-MOD-APPROVED #3713] Expected digests come from PACKAGE_AUTHORITY_DIGESTS
+  // (single sealed map in validate-manifest-v2.mjs). This suite still hashes
+  // disk independently — a stale export fails here — but a Host lock re-bank
+  // no longer requires a second hex restatement. Prior dual-copy tax collapsed
+  // after #3642 made every advisory-floor PR touch both files.
+  for (const [relative, expected] of Object.entries(PACKAGE_AUTHORITY_DIGESTS)) {
+    assert.equal(digest(fs.readFileSync(path.join(ROOT, relative))), expected);
+  }
 });
 
 test("suite deadline records every remaining outer and leaf instead of hiding work", async () => {
