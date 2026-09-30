@@ -77,6 +77,8 @@ Rules every chat must follow until the linked issue lifts them. Remove a hold in
 - Prefer raising existing `overrides` / lockfile floors over new CI gates or tooling packages. Subtract stale pins that hold vulnerable versions before adding new machinery.
 - Never add a PR merge-blocker whose verdict depends on an external advisory database; Dependabot security alerts are the reporter for projects without an audit step (decision on #3642 for `mingla-business`).
 - Security-group Dependabot PRs that smuggle unrelated majors get closed; land patches intentionally. Keep dependency-fix diffs on the lock/override surface unless API breakage forces a minimal code edit.
+- npm audit's suggested major may be wrong: prove the high is gone with `npm audit` after raising a transitive override floor before taking a parent major. `#3642` cleared `@vercel/og` highs via `sharp` on the `#1158`-protected 0.x line; `@vercel/og@1.x` stays banned (broken OG renderer).
+- Prefer advisory **floors** (and single sealed digests) in dependency CI gates over exact patch pins or dual-restated hex authorities — exact pins and twin digests make every legitimate advisory clear red unrelated gates (`#2830` next, `#1902`/`#2438` Host package authorities; lesson from `#3642`, shipped `#3713`).
 
 ## Response style
 
