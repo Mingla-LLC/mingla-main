@@ -260,7 +260,7 @@ BEGIN
     organiser_cash_delivered_cents, status, released_at
   ) VALUES (
     v_rel5, v_brand, v_ev5, 'adv5-released-occ', 'order', 'stripe', 'usd',
-    now() - interval '4 days', now() - interval '1 day', 8000, 8000, 8000,
+    now() - interval '2 days', now() - interval '1 day', 8000, 8000, 8000,
     'released', now() - interval '1 day'
   );
   -- Future maturity so mature() (ADV-6) never touches it; then simulate 3000 recovered.
@@ -299,7 +299,7 @@ BEGIN
     organiser_cash_delivered_cents, status, released_at
   ) VALUES (
     v_rel6, v_brand, v_ev6, 'adv6-released-occ', 'order', 'stripe', 'usd',
-    now() - interval '4 days', now() - interval '1 day', 6000, 6000, 6000,
+    now() - interval '2 days', now() - interval '1 day', 6000, 6000, 6000,
     'released', now() - interval '1 day'
   );
   -- Past maturity → mature() closes it BEFORE cancellation prepare runs.
@@ -330,7 +330,7 @@ BEGIN
     organiser_cash_delivered_cents, status, released_at
   ) VALUES (
     v_rel7, v_pbrand, v_ev7, 'adv7-released-occ', 'order', 'paystack', 'ngn',
-    now() - interval '4 days', now() - interval '1 day', 500000, 500000, 500000,
+    now() - interval '2 days', now() - interval '1 day', 500000, 500000, 500000,
     'released', now() - interval '1 day'
   );
   PERFORM public.open_post_release_postponement_debt(v_rel7, now() + interval '10 days');

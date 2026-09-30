@@ -103,7 +103,7 @@ BEGIN
     (v_line_b, v_order_b, v_ttype_b, 1, 4000, 4000);
 
   ------------------------------------------------------------------------------
-  -- Seed releases (CHECK: releasable_at = anchor_end_at + 3 days):
+  -- Seed releases (CHECK: releasable_at = anchor_end_at + 1 day — #3645):
   --   * a PENDING release for the cancelled event  → must become cancelled_event
   --   * a RELEASED STRIPE release + open temp debt  → must convert (J owns it)
   --   * a RELEASED PAYSTACK release + open temp debt → must NOT convert (F owns it)
@@ -115,16 +115,16 @@ BEGIN
     organiser_cash_delivered_cents, status, released_at
   ) VALUES
     (v_rel_pending, v_brand, v_event, 'pending-occ', 'order', 'stripe', 'usd',
-     now() + interval '2 days', now() + interval '5 days', 10000, 10000, 0,
+     now() + interval '2 days', now() + interval '3 days', 10000, 10000, 0,
      'pending', NULL),
     (v_rel_stripe, v_brand, v_event, 'stripe-released-occ', 'order', 'stripe', 'usd',
-     now() - interval '4 days', now() - interval '1 day', 8000, 8000, 8000,
+     now() - interval '2 days', now() - interval '1 day', 8000, 8000, 8000,
      'released', now() - interval '1 day'),
     (v_rel_paystack, v_brand, v_event, 'paystack-released-occ', 'order', 'paystack', 'usd',
-     now() - interval '4 days', now() - interval '1 day', 7000, 7000, 7000,
+     now() - interval '2 days', now() - interval '1 day', 7000, 7000, 7000,
      'released', now() - interval '1 day'),
     (v_rel_live, v_brand, v_live_event, 'live-occ', 'order', 'stripe', 'usd',
-     now() + interval '2 days', now() + interval '5 days', 5000, 5000, 0,
+     now() + interval '2 days', now() + interval '3 days', 5000, 5000, 0,
      'pending', NULL);
 
   -- Open a temporary post_release_postponement debt on each released occurrence.

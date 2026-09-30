@@ -70,8 +70,8 @@ BEGIN
     (v_ev_prog, v_brand, 'Adv InProg',    'issue-3645a-prog', 'cancelled', 'USD'),
     (v_ev_part, v_brand, 'Adv Partial',   'issue-3645a-part', 'cancelled', 'USD'),
     (v_ev_none, v_brand, 'Adv NoRun',     'issue-3645a-none', 'cancelled', 'USD');
-  INSERT INTO public.ticket_types(id, event_id, name, price_cents)
-  VALUES (v_tt_zero, v_ev_zero, 'GA', 1000);
+  INSERT INTO public.ticket_types(id, event_id, name, price_cents, currency)
+  VALUES (v_tt_zero, v_ev_zero, 'GA', 1000, 'USD');
   INSERT INTO public.orders(
     id, event_id, total_cents, currency, payment_status,
     stripe_payment_intent_id, stripe_charge_id, source

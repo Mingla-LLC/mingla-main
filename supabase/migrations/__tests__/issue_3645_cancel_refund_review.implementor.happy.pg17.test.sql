@@ -62,13 +62,13 @@ BEGIN
     v_event_closed, v_brand, 'Already Closed Event', 'issue-3645r-closed',
     'cancelled', 'USD', true, v_old_close
   );
-  INSERT INTO public.ticket_types(id, event_id, name, price_cents, is_hidden, available_online)
+  INSERT INTO public.ticket_types(id, event_id, name, price_cents, currency, is_hidden, available_online)
   VALUES
-    (v_tt_open,    v_event, 'GA',      5000, false, true),
-    (v_tt_hidden,  v_event, 'Hidden',  5000, true,  true),
-    (v_tt_offline, v_event, 'Door',    5000, false, false);
-  INSERT INTO public.ticket_types(id, event_id, name, price_cents, deleted_at)
-  VALUES (v_tt_deleted, v_event, 'Deleted', 5000, now());
+    (v_tt_open,    v_event, 'GA',      5000, 'USD', false, true),
+    (v_tt_hidden,  v_event, 'Hidden',  5000, 'USD', true,  true),
+    (v_tt_offline, v_event, 'Door',    5000, 'USD', false, false);
+  INSERT INTO public.ticket_types(id, event_id, name, price_cents, currency, deleted_at)
+  VALUES (v_tt_deleted, v_event, 'Deleted', 5000, 'USD', now());
   INSERT INTO public.orders(
     id, event_id, total_cents, currency, payment_status,
     stripe_payment_intent_id, stripe_charge_id, source
