@@ -442,16 +442,13 @@ Deno.test("#1840 ADV an invalid configured horizon degrades to a USABLE window, 
 });
 
 Deno.test("#1840 ADV the shortest EFFECTIVE horizon is one the operator can act on", () => {
-  // INVERTED [TEST-MOD-APPROVED #1840]: this used to pin 1 day as legal — a
-  // value the validator considered perfectly valid that yielded under 24h of
-  // notice on a rail whose releases mature at event_end + 3 days, with no alarm
-  // anywhere. The floor is now 3 days, and anything below it is clamped up
-  // rather than honoured. Nothing in this field is rejected any more, so it can
-  // no longer take the whole bundle down with it.
+  // #3645 [TEST-MOD-APPROVED]: floor returns to 1 day because maturity is now
+  // payment + ~24h (not event_end + 3d). Values below the floor still clamp UP;
+  // nothing in this field rejects the whole runtime bundle.
   const env = (raw: string) => (name: string) =>
     name === "MINGLA_RUNTIME_CONFIG_JSON" ? raw : undefined;
-  assertEquals(NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS, 3);
-  for (const days of [-1, 0, 1, 2]) {
+  assertEquals(NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS, 1);
+  for (const days of [-1, 0]) {
     const raw = bundle({ ng_payout_float_horizon_days: days });
     assertEquals(parseRuntimeConfig(raw).ok, true, `${days} must not fail the bundle`);
     assertEquals(
@@ -460,7 +457,7 @@ Deno.test("#1840 ADV the shortest EFFECTIVE horizon is one the operator can act 
       `${days} days must clamp up to a horizon an operator can act on`,
     );
   }
-  for (const days of [3, 7, 30, 89, 90]) {
+  for (const days of [1, 3, 7, 30, 89, 90]) {
     const raw = bundle({ ng_payout_float_horizon_days: days });
     assertEquals(parseRuntimeConfig(raw).ok, true);
     assertEquals(resolveNgPayoutFloatHorizonDays(env(raw)), days);

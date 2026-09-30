@@ -167,15 +167,33 @@ export const PAYOUT_STATUS_PRESENTATION: Record<
  * The ONLY organiser-facing one-liner per status (DESIGN §4.2 / SPEC §4.3).
  * Never derived from error_message / attempt_count / OTP / KYC internals.
  */
+/** en-GB short date for organiser payout maturity lines. */
+export const formatPayoutReleaseDate = (iso: string): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+};
+
 export const payoutStatusOneLiner = (
   status: PayoutReleaseStatus,
-  opts: { relativeTime?: string } = {},
+  opts: { relativeTime?: string; releasableAt?: string } = {},
 ): string => {
   switch (status) {
     case "released":
       return `Sent to your bank ${opts.relativeTime ?? "recently"}.`;
-    case "pending":
-      return "Held until 3 days after your event, then released.";
+    case "pending": {
+      const when = opts.releasableAt
+        ? formatPayoutReleaseDate(opts.releasableAt)
+        : "";
+      if (when.length > 0) {
+        return `Next payout on ${when} (about a day after payment).`;
+      }
+      return "Held about a day after each payment, then released.";
+    }
     case "in_flight":
       return "On its way to your bank.";
     case "blocked_balance":

@@ -82,11 +82,11 @@ Deno.test("seeded dark sweep emits exact single/multi/recurring/fallback rows an
   assertEquals(rows.length, 5);
   assertEquals(rows[0].netCents, 17_560);
   assertEquals(rows.map((r) => r.anchorEndAt), [
-    iso(3),
+    iso(1),
+    iso(1),
+    iso(1),
     iso(4),
-    iso(5),
-    iso(5),
-    iso(6),
+    iso(30),
   ]);
   assertEquals(rows.map((r) => r.eventDateId), [
     "date-1",
@@ -97,8 +97,22 @@ Deno.test("seeded dark sweep emits exact single/multi/recurring/fallback rows an
   ]);
   assert(
     rows.every((r) =>
-      Date.parse(r.releasableAt) === Date.parse(r.anchorEndAt) + 3 * DAY
+      Date.parse(r.releasableAt) === Date.parse(r.anchorEndAt) + 1 * DAY
     ),
+  );
+});
+
+Deno.test("#3645 payment+24h maturity is not releasable before finalizedAt + 1 day", () => {
+  const candidate = base({
+    sourceId: "fresh",
+    finalizedAt: iso(39),
+    occurrences: [{ id: "date-1", endAt: iso(3) }],
+  });
+  assertEquals(computePendingItems([candidate], iso(39, 3600)).length, 0);
+  assertEquals(computePendingItems([candidate], iso(40)).length, 1);
+  assertEquals(
+    computePendingItems([candidate], iso(40))[0].releasableAt,
+    new Date(Date.parse(iso(39)) + DAY).toISOString(),
   );
 });
 
@@ -211,8 +225,8 @@ Deno.test("post-release postponement debt withholds same brand/currency and recr
   debt = partial.debt;
   assertEquals(partial.remainingCents, 0);
   assertEquals(partial.application?.amountCents, 6_000);
-  assertEquals(matureTemporaryDebt(debt, iso(12)).recreditCents, 0);
-  const matured = matureTemporaryDebt(debt, iso(13));
+  assertEquals(matureTemporaryDebt(debt, iso(10)).recreditCents, 0);
+  const matured = matureTemporaryDebt(debt, iso(11));
   assertEquals(matured.recreditCents, 6_000);
   assertEquals(matured.unrecoveredClosedCents, 4_000);
   assertEquals(matured.debt.status, "closed");

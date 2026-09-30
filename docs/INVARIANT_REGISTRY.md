@@ -1,5 +1,14 @@
 # Invariant Registry
 
+## DRAFT — issue #3645 PR1 (payment+24h payout maturity)
+
+### I-PROPOSED-3645-PAYMENT-PLUS-24H-MATURITY (DRAFT)
+
+- **Rule:** Organiser payout maturity is `finalized_at + interval '1 day'` (payment time + ~24h), never `event_end + interval '3 days'`. `attach_payout_release`, the `brand_payout_releases` anchor CHECK, Stripe/Paystack authorize helpers, postponement debt helpers, and `payout-release-sweep` `RELEASE_DELAY_MS` must agree. `refresh_pending_payout_release_truth` must not re-anchor maturity from `event_dates`. Connected Stripe accounts stay on **manual** payout schedule; the sweep remains the only release authority.
+- **Scope:** Ledger + sweep + float-horizon floor (`NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS = 1`). Honest-payout copy (#1180) must not claim event+3d timing or “instant” payouts. Sell-before-bank / cancel-review / charge-vs-payout readiness are **out of scope for this DRAFT** (later #3645 PRs).
+- **Enforcement:** migration `20270720003645_issue_3645_payment_plus_24h_payouts.sql`; pg17 suites `issue_3645_payment_plus_24h.implementor.happy.pg17.test.sql` + `issue_3645_payment_plus_24h.tester.adversarial.pg17.test.sql` registered in `supabase-migrations-and-stripe-deno.yml`; Deno `issue_1171_dark_payout_ledger.test.ts` payment+24h case; `issue-1180-honest-payout-copy.mjs`.
+- **Status:** DRAFT until this PR merges, the migration is applied under the reviewed lane, and a paid test charge proves ledger `releasable_at = finalized_at + 1 day` with sweep execute still fail-closed when bank/`payouts_enabled` is missing.
+
 ## DRAFT — issue #3622 (a brand handover leaves no access behind)
 
 ### I-PROPOSED-3622-BRAND-HANDOVER-LEAVES-NO-MEMBERSHIP (DRAFT)

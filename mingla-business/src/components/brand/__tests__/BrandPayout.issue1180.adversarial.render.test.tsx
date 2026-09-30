@@ -291,7 +291,7 @@ describe("#1180 RLS access branch — limited vs honest empty", () => {
       <BrandPayoutBreakdown brandId="brand_1" isNgBrand={false} onOpenExplainer={jest.fn()} />,
     );
     expect(screen.getByText("No payouts yet")).toBeTruthy();
-    expect(screen.getByText(/Payouts appear here 3 days after your first event/i)).toBeTruthy();
+    expect(screen.getByText(/Payouts appear here about a day after each payment/i)).toBeTruthy();
     expect(screen.queryByText("Payout details are limited")).toBeNull();
   });
 });
@@ -402,8 +402,8 @@ describe("#1180 payout explainer sheet", () => {
       <BrandPayoutTimelineExplainer visible onClose={jest.fn()} isNgBrand />,
     );
     expect(screen.getByText("How payouts work")).toBeTruthy();
-    expect(screen.getByText("Your event ends")).toBeTruthy();
-    expect(screen.getByText(/3 days later, we release your payout/)).toBeTruthy();
+    expect(screen.getByText("A buyer pays")).toBeTruthy();
+    expect(screen.getByText(/About a day later, we release your payout/)).toBeTruthy();
     expect(screen.getByText(/Within 1–2 business days, it reaches your bank/)).toBeTruthy();
     expect(screen.getByText(/₦50 stamp duty per transfer/)).toBeTruthy();
     expect(screen.queryByText(/next business day/i)).toBeNull();

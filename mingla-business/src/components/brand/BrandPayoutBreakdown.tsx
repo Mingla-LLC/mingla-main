@@ -233,6 +233,7 @@ const BrandPayoutReleaseRow: React.FC<{
     release.releasedAt !== null ? formatRelativeTime(release.releasedAt) : undefined;
   const oneLiner = payoutStatusOneLiner(release.status, {
     relativeTime: relativeReleased,
+    releasableAt: release.releasableAt,
   });
   const title = "Event payout";
 
@@ -408,7 +409,7 @@ export const BrandPayoutBreakdown: React.FC<BrandPayoutBreakdownProps> = ({
       <GlassCard variant="base" padding={spacing.lg}>
         <Text style={styles.emptyTitle}>No payouts yet</Text>
         <Text style={styles.emptyBody}>
-          Payouts appear here 3 days after your first event date ends.
+          Payouts appear here about a day after each payment.
         </Text>
       </GlassCard>
     );

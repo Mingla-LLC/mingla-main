@@ -1,24 +1,13 @@
 #!/usr/bin/env node
 /**
- * #1180 [payout-ui-copy] — I-PROPOSED-1180-HONEST-PAYOUT-COPY (DRAFT until CLOSE).
+ * #1180 [payout-ui-copy] — I-PROPOSED-1180-HONEST-PAYOUT-COPY (ACTIVE via #3645).
  *
- * WHY: payouts are event-anchored and HELD until 3 days after the event date,
- * then take 1–2 business days to arrive. The organiser + marketing surfaces
- * used to claim "usually the next business day" (a lie), and the NG fee model
- * is "the brand absorbs the transfer fee" (v1.2 model B) — never "Mingla
- * absorbs" it. This gate fails the build if any payout-facing surface re-asserts
- * an instant / same-day / next-business-day / weekly-clockwork payout, or claims
- * Mingla absorbs the NG transfer fee / stamp duty.
+ * WHY: payouts mature about a day after each payment (#3645), then typically
+ * take 1–2 business days to arrive. Surfaces must not claim instant / same-day /
+ * next-business-day / weekly-clockwork payouts, must not revive the retired
+ * "3 days after the event" hold, and must not claim Mingla absorbs NG transfer fees.
  *
- * SCOPING (OQ-3): patterns match ONLY payout-TIMING and TRANSFER-FEE lies. The
- * pre-existing ToS clause 3 ("Refunds and chargebacks … are absorbed by Mingla"
- * — a Stripe-loss posture, NOT a transfer-fee claim) MUST NOT trip; the
- * "Mingla absorbs" pattern requires a transfer-fee/duty term nearby. Full-line
- * and block comments are stripped so documentation of the removed strings can't
- * self-trip.
- *
- * `--self-test` proves PASS-on-honest-copy + FAIL-on-each-lie + no-false-trip on
- * clause 3 and on the honest "1–2 business days / deducted from your payout".
+ * `--self-test` proves PASS-on-honest-copy + FAIL-on-each-lie.
  *
  * Exit codes: 0 clean, 1 violation, 2 script error / inconclusive.
  */
@@ -32,15 +21,12 @@ const root = path.join(__dirname, "..", "..", "..");
 
 const FILES = [
   "mingla-business/src/components/brand/BrandPaymentsView.tsx",
-  // #3258 — the Payments status-banner copy MOVED out of BrandPaymentsView.tsx
-  // into this pure presentation util (BRAND_STRIPE_BANNER_CONFIG). Listed here
-  // so the honest-payout-copy invariant keeps covering those exact strings
-  // instead of silently losing them when the table changed files.
   "mingla-business/src/utils/brandStripeUiState.ts",
   "mingla-business/src/components/brand/BrandPaystackOnboardView.tsx",
   "mingla-business/src/components/onboarding/MinglaToSAcceptanceGate.tsx",
   "mingla-business/src/components/brand/BrandPayoutBreakdown.tsx",
   "mingla-business/src/components/brand/BrandPayoutTimelineExplainer.tsx",
+  "mingla-business/src/utils/payoutBreakdown.ts",
   "mingla-marketing/components/sections/organiser-home/dining-dashboard-card.tsx",
   "mingla-marketing/components/sections/organiser-home/venue-activity-feed.tsx",
 ];
@@ -49,12 +35,12 @@ const BANNED = [
   {
     name: "next-business-day",
     re: /next business day/i,
-    hint: 'Payouts are event-anchored + held 3 days; never "next business day".',
+    hint: 'Payouts mature ~24h after payment; never "next business day".',
   },
   {
     name: "instant-payout",
     re: /\binstant(?:ly)?\b/i,
-    hint: "No instant-payout claim — funds are held until 3 days after the event.",
+    hint: "No instant-payout claim — funds mature about a day after each payment.",
   },
   {
     name: "same-day",
@@ -64,7 +50,12 @@ const BANNED = [
   {
     name: "weekly-clockwork",
     re: /(?:weekly payout|paid out (?:this|every|each) week|payouts? every week)/i,
-    hint: "No weekly-clockwork payout claim — payouts release per event, not on a weekly clock.",
+    hint: "No weekly-clockwork payout claim — payouts release per payment, not on a weekly clock.",
+  },
+  {
+    name: "event-plus-3-days",
+    re: /3 days after (?:each |your |the |the corresponding )?(?:event|first event)/i,
+    hint: "#3645: payouts mature ~24h after payment, not 3 days after the event.",
   },
   {
     name: "mingla-absorbs-transfer-fee",
@@ -114,38 +105,35 @@ if (process.argv.includes("--self-test")) {
     }
   };
 
-  // Honest copy — the shipped strings — must pass clean.
   expectClean(
     "honest.tsx",
-    `const a = "Payouts settle to X, released 3 days after each event date ends and typically arrive within 1–2 business days.";\n` +
-      `const b = "Ticket sales are released to this account 3 days after each event date ends.";\n` +
+    `const a = "Payouts settle to X, released about a day after each payment and typically arrive within 1–2 business days.";\n` +
+      `const b = "Ticket sales are released to this account about a day after each payment.";\n` +
       `const c = "Within 1–2 business days, it reaches your bank.";`,
   );
-  // OQ-3: the pre-existing ToS clause 3 must NOT trip (no transfer-fee term).
   expectClean(
     "tos-clause3.tsx",
     `"3. Refunds and chargebacks for tickets sold via Mingla are absorbed by Mingla. We may pause your payouts if dispute volume exceeds risk thresholds.",`,
   );
-  // Honest NG note ("deducted", not "absorbed by Mingla") must NOT trip.
   expectClean(
     "ng-note.tsx",
     `"In Nigeria, bank transfer fees and stamp duty are deducted from your payout.",`,
   );
 
-  // Each lie must fire.
   expectHit("lie1.tsx", `"Payouts settle to your bank, usually the next business day.";`, "next-business-day");
   expectHit("lie2.tsx", `"Get paid instantly with instant payouts.";`, "instant-payout");
   expectHit("lie3.tsx", `"Same-day payout to your account.";`, "same-day");
   expectHit("lie4.tsx", `"Paid out this week, straight to you.";`, "weekly-clockwork");
   expectHit("lie5.tsx", `"The transfer fee is absorbed by Mingla.";`, "transfer-fee-absorbed-by-mingla");
   expectHit("lie6.tsx", `"Mingla absorbs the ₦50 stamp duty for you.";`, "mingla-absorbs-transfer-fee");
+  expectHit("lie7.tsx", `"released 3 days after each event date ends";`, "event-plus-3-days");
 
   if (self.length) {
     console.error("#1180 honest-payout-copy self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("#1180 honest-payout-copy self-test PASS (9/9 cases).");
+  console.log("#1180 honest-payout-copy self-test PASS (10/10 cases).");
   process.exit(0);
 }
 
@@ -166,7 +154,7 @@ if (failures.length > 0) {
   console.error(
     "#1180 I-PROPOSED-1180-HONEST-PAYOUT-COPY FAIL — dishonest payout copy found:\n  " +
       failures.join("\n  ") +
-      "\n\nSee Mingla_Artifacts/INVARIANT_REGISTRY.md I-PROPOSED-1180-HONEST-PAYOUT-COPY.",
+      "\n\nSee docs/INVARIANT_REGISTRY.md I-PROPOSED-1180-HONEST-PAYOUT-COPY.",
   );
   process.exit(1);
 }
