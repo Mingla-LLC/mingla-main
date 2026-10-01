@@ -58,14 +58,22 @@ Only when the diff touches the area:
 
 - **Money / payouts / refunds / Stripe / Paystack** — maturity, idempotency,
   status machines, and “no double withhold / no silent skip” invariants.
+  When a cap is raised from “one row” to an aggregate pool, require
+  **remaining-capacity** math (subtract liabilities already booked on other
+  origins in that scope) under a shared lock — not an independent per-caller
+  read of the same total. Add a multi-origin regression.
 - **Auth / RLS / SECURITY DEFINER** — who can execute; anon/authenticated
   grants; admin gate-first patterns.
 - **Multi-surface truth** — consumer, business, buyer web, admin, Sites must
   not diverge on the same product fact without an explicit owner.
 - **Migrations** — apply-clean from baseline; CHECK/constraint honesty;
   fixture timelines match new rules. New SQL fixtures must use valid
-  hex UUIDs and otherwise parse — a test that dies at DO-block init is a
-  silent coverage hole, not a green path.
+  hex UUIDs, legal enum/CHECK values (e.g. `events.status`), and otherwise
+  parse — a test that dies at DO-block init or first INSERT is a silent
+  coverage hole, not a green path.
+- **Money aggregates → integer columns** — `sum(integer)` is `bigint`; casting
+  straight to `integer` overflows past ~2.1e9 cents. Clamp before cast when
+  the result feeds integer debt/cap columns.
 - **Substring / prefix error mapping** — when mapping RPC messages with
   `.includes()`, specific codes that contain a generic token (e.g.
   `run_not_found` vs `not_found`) must be checked before the generic
@@ -74,6 +82,9 @@ Only when the diff touches the area:
   path that unblocks refunds, payouts, or holds, require regression that
   pins the gate, audited call, confirm phrase, and success reload — not
   only the read RPC that feeds the banner.
+- **CI workflow/MANIFEST seals** — editing a workflow or its `pathScope`
+  requires rebanking `workflowMetadata.sourceSha256` (and matching inventory)
+  in the same commit; stale seals fail class-A strict-grep closed.
 - **Subtract before add** — replacement must remove the stale path, not leave
   two live ones.
 
