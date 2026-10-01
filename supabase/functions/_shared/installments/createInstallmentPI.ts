@@ -291,14 +291,16 @@ export async function createInstallmentPI(
 
   try {
     // orch-strict-grep-allow stripe-no-idempotency-key — idempotencyKey IS passed via the request-options second arg; SPEC §3.2.1 retry-aware format diverges from generateIdempotencyKey's epoch-ms shape because cron + webhook need deterministic per-(installment,attempt) keys to prevent double-charge.
+    // Create unconfirmed, re-claim, then confirm — never confirm:true before reclaim
+    // or a succeeded PI cannot be cancelled when cancel wins the race (#3645).
     // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
-    const pi = await stripe.paymentIntents.create(
+    let pi = await stripe.paymentIntents.create(
       {
         amount: installment.amount_cents,
         currency: installment.currency.toLowerCase(),
         customer: order.stripe_customer_id_on_connected_account,
         payment_method: order.saved_payment_method_id,
-        confirm: true,
+        confirm: false,
         off_session: true,
         payment_method_types: ["card"],
         ...(applicationFeeAmountCents > 0
@@ -317,8 +319,8 @@ export async function createInstallmentPI(
       },
     );
 
-    // Re-claim after Stripe accepts the PI. If cancel won the race, best-effort
-    // cancel the PI and skip — never mark collected.
+    // Re-claim after unconfirmed create. If cancel won, cancel the PI (works
+    // while unconfirmed) and skip — never confirm.
     {
       const { data: reclaim, error: reclaimError } = await supabase.rpc(
         "claim_order_installment_for_charge",
@@ -338,6 +340,73 @@ export async function createInstallmentPI(
         } catch (cancelErr) {
           console.error(
             "[createInstallmentPI] best-effort PI cancel after cancelled_during_charge failed",
+            cancelErr instanceof Error ? cancelErr.message : cancelErr,
+          );
+        }
+        return {
+          ok: false,
+          error: "cancelled_during_charge",
+          outcome: "skipped",
+          reason: "cancelled_during_charge",
+          chargeId: pi.id,
+        };
+      }
+    }
+
+    // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+    pi = await stripe.paymentIntents.confirm(
+      pi.id,
+      { off_session: true, payment_method: order.saved_payment_method_id },
+      { stripeAccount: stripeAccount.stripe_account_id },
+    );
+
+    // Post-confirm safety reclaim. If cancel won between reclaim and confirm
+    // and the PI already succeeded, refund fail-closed — cancel cannot undo a
+    // succeeded charge.
+    {
+      const { data: postConfirm, error: postConfirmError } = await supabase.rpc(
+        "claim_order_installment_for_charge",
+        { p_installment_id: installment.id },
+      );
+      const postConfirmRow = (postConfirm ?? null) as {
+        ok?: boolean;
+        reason?: string;
+      } | null;
+      if (
+        postConfirmError !== null ||
+        postConfirmRow === null ||
+        postConfirmRow.ok !== true
+      ) {
+        if (pi.status === "succeeded") {
+          try {
+            // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+            await stripe.refunds.create(
+              { payment_intent: pi.id },
+              { stripeAccount: stripeAccount.stripe_account_id },
+            );
+          } catch (refundErr) {
+            throw new Error(
+              `cancelled_during_charge_refund_failed:${
+                refundErr instanceof Error ? refundErr.message : String(refundErr)
+              }`,
+            );
+          }
+          return {
+            ok: false,
+            error: "cancelled_during_charge_refunded",
+            outcome: "skipped",
+            reason: "cancelled_during_charge_refunded",
+            chargeId: pi.id,
+          };
+        }
+        try {
+          // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+          await stripe.paymentIntents.cancel(pi.id, {
+            stripeAccount: stripeAccount.stripe_account_id,
+          });
+        } catch (cancelErr) {
+          console.error(
+            "[createInstallmentPI] best-effort PI cancel after post-confirm race failed",
             cancelErr instanceof Error ? cancelErr.message : cancelErr,
           );
         }

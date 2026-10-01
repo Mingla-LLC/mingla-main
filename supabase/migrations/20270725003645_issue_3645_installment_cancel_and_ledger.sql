@@ -211,9 +211,44 @@ DECLARE
   v_inst public.order_installments;
   v_order public.orders;
   v_event_status text;
+  v_order_id uuid;
+  v_event_id uuid;
 BEGIN
   IF p_installment_id IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'installment_id_required');
+  END IF;
+
+  -- Lightweight reads discover the lock graph without holding row locks yet.
+  -- Lock order MUST match cancel_event_refund_prepare: event → order → installment
+  -- (otherwise concurrent claim/cancel deadlocks).
+  SELECT order_id INTO v_order_id
+  FROM public.order_installments
+  WHERE id = p_installment_id;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'installment_not_found');
+  END IF;
+
+  SELECT event_id INTO v_event_id
+  FROM public.orders
+  WHERE id = v_order_id;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'order_not_found');
+  END IF;
+
+  SELECT e.status INTO v_event_status
+  FROM public.events e
+  WHERE e.id = v_event_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'event_missing');
+  END IF;
+
+  SELECT * INTO v_order
+  FROM public.orders
+  WHERE id = v_order_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'order_not_found');
   END IF;
 
   SELECT * INTO v_inst
@@ -224,6 +259,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'reason', 'installment_not_found');
   END IF;
 
+  -- Re-validate chargeability on the locked rows.
   IF v_inst.status NOT IN ('scheduled', 'failed') THEN
     RETURN jsonb_build_object(
       'ok', false,
@@ -234,24 +270,8 @@ BEGIN
   IF v_inst.cancelled_at IS NOT NULL THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'installment_cancelled');
   END IF;
-
-  SELECT * INTO v_order
-  FROM public.orders
-  WHERE id = v_inst.order_id
-  FOR UPDATE;
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('ok', false, 'reason', 'order_not_found');
-  END IF;
   IF v_order.cancelled_at IS NOT NULL THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'order_cancelled');
-  END IF;
-
-  SELECT e.status INTO v_event_status
-  FROM public.events e
-  WHERE e.id = v_order.event_id
-  FOR UPDATE;
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('ok', false, 'reason', 'event_missing');
   END IF;
   IF v_event_status = 'cancelled' THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'event_cancelled');
@@ -275,7 +295,7 @@ REVOKE ALL ON FUNCTION public.claim_order_installment_for_charge(uuid)
 GRANT EXECUTE ON FUNCTION public.claim_order_installment_for_charge(uuid)
   TO service_role;
 COMMENT ON FUNCTION public.claim_order_installment_for_charge(uuid) IS
-  'Issue #3645 / #2030: service_role-only fail-closed charge claim. LOCK installment+order+event FOR UPDATE; refuse unless installment is scheduled/failed, not cancelled, and order/event are not cancelled. Call before Stripe I/O and again before marking collected.';
+  'Issue #3645 / #2030: service_role-only fail-closed charge claim. LOCK event→order→installment FOR UPDATE (mirrors cancel_event_refund_prepare); refuse unless installment is scheduled/failed, not cancelled, and order/event are not cancelled. Call before Stripe I/O, after unconfirmed create, and after confirm.';
 
 -- =============================================================================
 -- §5. cancel_event_refund_prepare — stop scheduled/failed installments
@@ -698,7 +718,9 @@ BEGIN
         oi.amount_cents::integer,0,0,
         coalesce(oi.application_fee_amount_cents,0),0,
         coalesce(oi.provider_fee_cents,0),
-        occ.event_date_id::text
+        -- Unique per installment payment so a later installment never mutates
+        -- an already-released release keyed by shared occurrence (#3645).
+        'order_installment:' || oi.id::text
       FROM public.order_installments oi
       JOIN public.orders o ON o.id = oi.order_id
       JOIN public.events e ON e.id = o.event_id

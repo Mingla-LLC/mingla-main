@@ -97,7 +97,9 @@ Deno.test("ORCH-0869 cron: every PI create uses Stripe-Account header (direct ch
 
 Deno.test("ORCH-0869 cron: PI create uses off_session + saved PM contract", () => {
   assertStringIncludes(HELPER_SOURCE, "off_session: true");
-  assertStringIncludes(HELPER_SOURCE, "confirm: true");
+  // #3645: create unconfirmed, reclaim, then confirm — never confirm:true at create.
+  assertStringIncludes(HELPER_SOURCE, "confirm: false");
+  assertStringIncludes(HELPER_SOURCE, "paymentIntents.confirm");
   assertMatch(
     HELPER_SOURCE,
     /customer:\s*order\.stripe_customer_id_on_connected_account/,
@@ -193,14 +195,25 @@ Deno.test("#3645 createInstallmentPI: fail-closed claim RPC before Stripe I/O", 
   assertStringIncludes(HELPER_SOURCE, "claim_order_installment_for_charge");
   assertStringIncludes(HELPER_SOURCE, 'reason: "claim_rpc_error"');
   assertStringIncludes(HELPER_SOURCE, "cancelled_during_charge");
+  assertStringIncludes(HELPER_SOURCE, "cancelled_during_charge_refunded");
   assertStringIncludes(HELPER_SOURCE, "paymentIntents.cancel");
+  assertStringIncludes(HELPER_SOURCE, "refunds.create");
   // Fail-closed order: first claim call appears before the live PI create call
   // (ignore the file-header mention of paymentIntents.create).
   const claimIdx = HELPER_SOURCE.indexOf('"claim_order_installment_for_charge"');
   const stripeIdx = HELPER_SOURCE.indexOf("await stripe.paymentIntents.create");
+  const confirmIdx = HELPER_SOURCE.indexOf("await stripe.paymentIntents.confirm");
   assert(
     claimIdx >= 0 && stripeIdx > claimIdx,
     "claim_order_installment_for_charge must run before stripe.paymentIntents.create",
+  );
+  assert(
+    confirmIdx > stripeIdx,
+    "paymentIntents.confirm must follow unconfirmed paymentIntents.create",
+  );
+  assert(
+    !HELPER_SOURCE.includes("confirm: true"),
+    "create must not use confirm:true (reclaim cannot cancel a succeeded PI)",
   );
 });
 
