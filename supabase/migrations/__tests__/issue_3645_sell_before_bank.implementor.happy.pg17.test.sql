@@ -1,6 +1,8 @@
 -- Issue #3645 PR6 — sell-before-bank charge readiness (PG17).
 -- Proves stamped Paystack hold-rail can collect without a subaccount, while
 -- unstamped Paystack without subaccount cannot; payout helper requires bank.
+-- Also: writing instalments onto a scheduled trip for a bankless brand raises
+-- bank_required_for_installments (tier_metadata belt).
 
 BEGIN;
 
@@ -11,6 +13,9 @@ DECLARE
   v_legacy  constant uuid := '36450000-0000-4000-8000-0000000000f3';
   v_unstamp constant uuid := '36450000-0000-4000-8000-0000000000f4';
   v_stripe  constant uuid := '36450000-0000-4000-8000-0000000000f5';
+  v_trip    constant uuid := '36450000-0000-4000-8000-0000000000f6';
+  v_ticket  constant uuid := '36450000-0000-4000-8000-0000000000f7';
+  v_raised  boolean := false;
 BEGIN
   INSERT INTO auth.users(id) VALUES (v_owner);
   INSERT INTO public.creator_accounts(id, email)
@@ -64,6 +69,44 @@ BEGIN
   END IF;
   IF public.pg_brand_can_payout(v_stripe) IS NOT FALSE THEN
     RAISE EXCEPTION 'Stripe charges without payouts_enabled must NOT payout';
+  END IF;
+
+  -- #3645 — writing instalments onto a scheduled trip for a bankless brand
+  -- must raise bank_required_for_installments (tier_metadata belt).
+  INSERT INTO public.events (
+    id, brand_id, title, slug, event_type, status, currency
+  ) VALUES (
+    v_trip, v_hold, 'Hold Rail Trip', '3645-sbb-trip', 'trip', 'scheduled', 'NGN'
+  );
+  INSERT INTO public.ticket_types (
+    id, event_id, name, price_cents, currency, quantity_total, is_unlimited, is_free
+  ) VALUES (
+    v_ticket, v_trip, 'Standard', 10000, 'NGN', 20, false, false
+  );
+  BEGIN
+    INSERT INTO public.trip_pricing_tiers (
+      event_id, ticket_type_id, tier_name, tier_metadata
+    ) VALUES (
+      v_trip, v_ticket, 'Standard',
+      jsonb_build_object(
+        'installments', jsonb_build_object(
+          'deposit_pct', 30,
+          'installments', jsonb_build_array(
+            jsonb_build_object('ordinal', 1, 'pct', 70, 'days_after_booking', 30)
+          )
+        )
+      )
+    );
+  EXCEPTION
+    WHEN SQLSTATE 'P0001' THEN
+      IF SQLERRM = 'bank_required_for_installments' THEN
+        v_raised := true;
+      ELSE
+        RAISE;
+      END IF;
+  END;
+  IF NOT v_raised THEN
+    RAISE EXCEPTION 'scheduled trip + bankless brand writing installments must raise bank_required_for_installments';
   END IF;
 
   -- Recipient-only Paystack brand (no subaccount) must payout.

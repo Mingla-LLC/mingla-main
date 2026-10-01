@@ -234,6 +234,11 @@ export interface MapBrandRowToUiOptions {
   stats?: BrandStats;
   /** Defaults to `null` if omitted. */
   currentLiveEvent?: BrandLiveEvent | null;
+  /**
+   * #3645 — optional active Paystack recipient signal (detail fetch or hook).
+   * Mapped onto `Brand.hasPaystackRecipient` when provided.
+   */
+  hasPaystackRecipient?: boolean | null;
 }
 
 export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions): Brand {
@@ -305,6 +310,7 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     paymentCountry: row.payment_country ?? undefined,
     paystackSubaccountCode: row.paystack_subaccount_code ?? undefined,
     payoutHoldCutoverAt: row.payout_hold_cutover_at ?? null,
+    hasPaystackRecipient: options.hasPaystackRecipient ?? null,
     chargesEnabled: row.stripe_charges_enabled,
     payoutsEnabled: row.stripe_payouts_enabled,
     // ORCH-0769: expose brands.default_currency only once Stripe/brand setup

@@ -216,7 +216,8 @@ describe("ORCH-1121 — SECTIONS B/C/D preserved (no regression, COMMS-0021)", (
   test("the provider-neutral 'Payments & Bank' row + payout-ready logic are untouched", () => {
     const src = viewSource();
     expect(src).toContain('label: "Payments & Bank"');
-    expect(src).toContain("isBrandPayoutReady(brand)");
+    expect(src).toContain("isBrandPayoutReady(");
+    expect(src).toContain("hasPaystackRecipient");
     expect(src).toContain("getBrandProfileStripeOperationsSub(stripeStatus)");
   });
 

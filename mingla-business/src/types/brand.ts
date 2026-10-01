@@ -260,6 +260,13 @@ export type Brand = {
    */
   payoutHoldCutoverAt?: string | null;
   /**
+   * #3645 — true when an active `brand_paystack_recipients` row exists for this
+   * brand. Optional: populated on brand detail (`getBrand`) and/or freshened
+   * from `useBrandPaystackStatus` (`recipient_connected`). Used by
+   * `isBrandPayoutReady` for recipient-only Paystack brands (no subaccount).
+   */
+  hasPaystackRecipient?: boolean | null;
+  /**
    * #3645 — denormalised Stripe cache flags from `brands.stripe_*`. Prefer the
    * live `useBrandStripeStatus` refresh when present; these back charge vs
    * payout readiness when the hook is not mounted.

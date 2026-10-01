@@ -814,7 +814,22 @@ export async function getBrand(brandId: string): Promise<Brand | null> {
 
   if (error) throw error;
   if (data === null) return null;
-  const brand = mapBrandRowToUi(data as BrandRow, { role: "owner" });
+
+  // #3645 — recipient-only Paystack brands are payout-ready without a subaccount.
+  // Detail path only (list stays lean); callers with useBrandPaystackStatus may
+  // also freshen via Brand.hasPaystackRecipient.
+  const { data: recipientRow } = await supabase
+    .from("brand_paystack_recipients")
+    .select("id")
+    .eq("brand_id", brandId)
+    .eq("is_active", true)
+    .maybeSingle();
+  const hasPaystackRecipient = recipientRow != null;
+
+  const brand = mapBrandRowToUi(data as BrandRow, {
+    role: "owner",
+    hasPaystackRecipient,
+  });
   // META-ORCH-1235 — second sequential network leg, individually bounded so it
   // cannot wedge after the brand read succeeded.
   const [eventCounts, statsAgg] = await withTimeout(

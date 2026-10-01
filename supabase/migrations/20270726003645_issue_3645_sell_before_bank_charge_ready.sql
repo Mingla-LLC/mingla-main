@@ -159,4 +159,57 @@ REVOKE ALL ON FUNCTION public.trg_trip_publish_installments_require_payout()
 GRANT EXECUTE ON FUNCTION public.trg_trip_publish_installments_require_payout()
   TO authenticated, service_role;
 
+-- #3645 — belt at metadata write: instalments on a live/scheduled trip must
+-- also require payout readiness (biz_update_live_trip path bypasses draft→
+-- scheduled). Keep the publish-transition trigger above.
+CREATE OR REPLACE FUNCTION public.trg_trip_tier_installments_require_payout()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $fn$
+DECLARE
+  v_brand_id uuid;
+  v_status text;
+BEGIN
+  IF NOT (
+    NEW.tier_metadata ? 'installments'
+    AND NEW.tier_metadata->'installments' IS NOT NULL
+    AND jsonb_typeof(NEW.tier_metadata->'installments') <> 'null'
+  ) THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT e.brand_id, e.status::text
+    INTO v_brand_id, v_status
+  FROM public.events e
+  WHERE e.id = NEW.event_id
+    AND e.deleted_at IS NULL;
+
+  IF v_brand_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  IF v_status IN ('scheduled', 'live')
+     AND NOT public.pg_brand_can_payout(v_brand_id) THEN
+    RAISE EXCEPTION 'bank_required_for_installments'
+      USING ERRCODE = 'P0001',
+            HINT = 'Trip packages with an instalment plan require payout/bank readiness (pg_brand_can_payout).';
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+
+DROP TRIGGER IF EXISTS trg_trip_tier_installments_require_payout
+  ON public.trip_pricing_tiers;
+CREATE TRIGGER trg_trip_tier_installments_require_payout
+  BEFORE INSERT OR UPDATE OF tier_metadata ON public.trip_pricing_tiers
+  FOR EACH ROW
+  EXECUTE FUNCTION public.trg_trip_tier_installments_require_payout();
+
+REVOKE ALL ON FUNCTION public.trg_trip_tier_installments_require_payout()
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.trg_trip_tier_installments_require_payout()
+  TO authenticated, service_role;
+
 COMMIT;

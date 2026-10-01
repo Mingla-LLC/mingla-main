@@ -22,8 +22,8 @@ describe("RsvpStep5Setup — chip-in bank callout is payout-aware (ORCH-1335)", 
     expect(source).toContain('testID="rsvp-contribution-connect-callout"');
   });
 
-  it("adds the positive 'Payouts are on' confirmation copy + testID", () => {
-    expect(source).toContain("Payouts are on");
+  it("adds the positive 'Ready to collect' confirmation copy + testID", () => {
+    expect(source).toContain("Ready to collect");
     expect(source).toContain(
       "Guests can chip in the moment you publish — no extra setup needed.",
     );

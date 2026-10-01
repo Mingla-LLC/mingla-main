@@ -60,6 +60,7 @@ import { formatCurrencyRound, formatCount } from "../../utils/currency";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../utils/permissionGates";
 import { isBrandPayoutReady } from "../../utils/brandPayout";
+import { useBrandPaystackStatus } from "../../hooks/useBrandPaystack";
 import {
   type BrandStripePresentation,
   getBrandProfileStripeBannerCopy,
@@ -451,7 +452,21 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // Charge-ready can sell before a bank (publish gates / payoutGateStatus).
   // Payments & Bank row + banner use payout readiness so a stamped hold-rail
   // brand without a bank keeps "Connect your bank to get paid", not "Active".
-  const stripeStatus = isBrandPayoutReady(brand)
+  // Prefer fresh Paystack recipient_connected when the status hook is mounted.
+  const paystackStatusQuery = useBrandPaystackStatus(
+    brand?.paymentProvider === "paystack" ? brand.id : null,
+  );
+  const stripeStatus = isBrandPayoutReady(
+    brand
+      ? {
+          ...brand,
+          hasPaystackRecipient:
+            paystackStatusQuery.data?.recipient_connected === true
+              ? true
+              : brand.hasPaystackRecipient,
+        }
+      : brand,
+  )
     ? "active"
     : (effectiveStripeStatus ?? brand?.stripeStatus ?? "not_connected");
 

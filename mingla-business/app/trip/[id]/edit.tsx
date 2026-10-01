@@ -280,6 +280,7 @@ export default function TripEditRoute(): React.ReactElement {
         stripeStatus: currentBrand.stripeStatus ?? null,
         paymentProvider: currentBrand.paymentProvider,
         paystackSubaccountCode: currentBrand.paystackSubaccountCode ?? null,
+        hasPaystackRecipient: currentBrand.hasPaystackRecipient ?? null,
       }}
       isCreateMode={isCreateMode}
       onDiscardTrip={async () => {

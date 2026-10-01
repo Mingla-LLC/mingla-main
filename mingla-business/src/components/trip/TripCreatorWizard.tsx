@@ -132,6 +132,7 @@ import {
   tripDraftIsPaid,
 } from "../offering/publishStripeReadiness";
 import { payoutGateStatus, isBrandPayoutReady } from "../../utils/brandPayout";
+import { useBrandPaystackStatus } from "../../hooks/useBrandPaystack";
 // ORCH-0880 [Tr5 Traveler Intake Forms] — NEW Step 6 component (intake
 // schema builder + live preview, per-tier scope).
 import { TripCreatorStep6Intake } from "./TripCreatorStep6Intake";
@@ -554,10 +555,27 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
 
   // #3645 — trip instalment plans stay bank/payout-gated (later charges weeks
   // after sale). Charge-ready alone is not enough when any package has a plan.
+  // Freshen recipient_connected from Paystack status when available.
+  const paystackStatusQuery = useBrandPaystackStatus(
+    brand.paymentProvider === "paystack" ? brand.id : null,
+  );
   const tripNeedsBankForInstallments = useMemo(() => {
     const hasPlan = step4Draft.packages.some((p) => p.paymentPlan != null);
-    return hasPlan && !isBrandPayoutReady(brand);
-  }, [step4Draft.packages, brand]);
+    return (
+      hasPlan &&
+      !isBrandPayoutReady({
+        ...brand,
+        hasPaystackRecipient:
+          paystackStatusQuery.data?.recipient_connected === true
+            ? true
+            : brand.hasPaystackRecipient,
+      })
+    );
+  }, [
+    step4Draft.packages,
+    brand,
+    paystackStatusQuery.data?.recipient_connected,
+  ]);
 
   // META-ORCH-1174 Leg B2 — publish gate: every authored package must be valid
   // (≥1 package, name + price ≥0 + capacity ≥1 + valid plan terms). Blocks
