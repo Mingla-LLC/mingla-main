@@ -146,7 +146,7 @@ export async function handleInstallmentPaymentSucceeded(
     amountCents: number,
   ): Promise<void> => {
     const applicationFeeAmountCents = applicationFeeFromPi(pi, amountCents);
-    const { error: feeRpcError } = await supabase.rpc(
+    const { data: feeRpcData, error: feeRpcError } = await supabase.rpc(
       "record_order_installment_provider_sale",
       {
         p_installment_id: installmentId,
@@ -159,26 +159,48 @@ export async function handleInstallmentPaymentSucceeded(
         `record_order_installment_provider_sale failed: ${feeRpcError.message}`,
       );
     }
+    const feeResult = (feeRpcData ?? null) as {
+      ok?: boolean;
+      reason?: string;
+      status?: string;
+    } | null;
+    if (feeResult === null || feeResult.ok !== true) {
+      const reason = String(feeResult?.reason ?? "unknown");
+      // Cancel race: charge succeeded but row is not collected. Never ack —
+      // inbox must retry / ops recover (refund) the succeeded PI.
+      throw new Error(
+        `record_order_installment_provider_sale rejected:${reason}:status=${
+          feeResult?.status ?? "?"
+        }:installment=${installmentId}`,
+      );
+    }
   };
 
   if (updated === null) {
-    // Already collected (replay) or row missing. On replay, ensure fee accounting
-    // reached ready — a prior soft-fail must not permanently strand pending money.
+    // Already collected (replay) or row missing/cancelled. Missing or
+    // cancelled must fail closed — never mark the money event processed.
     const { data: existing, error: existingError } = await supabase
       .from("order_installments")
-      .select("id, amount_cents, payout_accounting_state, application_fee_amount_cents")
+      .select(
+        "id, amount_cents, status, payout_accounting_state, application_fee_amount_cents",
+      )
       .eq("id", installmentId)
       .maybeSingle();
     if (existingError !== null) {
       throw new Error(`installment replay load failed: ${existingError.message}`);
     }
     if (existing === null) {
-      console.log(
-        `[installment-webhook] payment_intent.succeeded for ${installmentId} — no-op (row missing)`,
+      throw new Error(
+        `installment_pi_succeeded missing installment row ${installmentId}`,
       );
-      return brandId;
     }
     const existingRow = existing as Record<string, unknown>;
+    const existingStatus = String(existingRow.status ?? "");
+    if (existingStatus === "cancelled") {
+      throw new Error(
+        `installment_pi_succeeded on cancelled installment ${installmentId}: durable refund/recovery required`,
+      );
+    }
     const accountingState = String(existingRow.payout_accounting_state ?? "");
     const feesMissing = existingRow.application_fee_amount_cents == null;
     if (accountingState !== "ready" || feesMissing) {

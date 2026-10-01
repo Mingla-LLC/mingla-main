@@ -1,4 +1,4 @@
-import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import { assertEquals, assertRejects } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   paymentIntentChargeId,
   routeStripeEvent,
@@ -471,11 +471,15 @@ class InstallmentFakeBuilder {
   maybeSingle() {
     if (this.table === "order_installments" && this.pendingUpdate) {
       this.db.installmentUpdates.push(this.pendingUpdate);
+      if (this.db.updateAffectsRow === false) {
+        return Promise.resolve({ data: null, error: null });
+      }
       const row = {
         id: "installment_123",
         order_id: "order_123",
         ordinal: 2,
         amount_cents: 2500,
+        status: "collected",
         payout_accounting_state: "pending",
         application_fee_amount_cents: null,
       };
@@ -506,6 +510,11 @@ class InstallmentFakeDb {
   installmentUpdates: Array<Record<string, unknown>> = [];
   rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
   installmentRow: Record<string, unknown> | null = null;
+  /** When false, predicate-bound update returns null (cancelled/missing). */
+  updateAffectsRow = true;
+  /** Override RPC result for fail-closed {ok:false} / error paths. */
+  rpcSaleResult: { data: unknown; error: { message: string } | null } | null =
+    null;
 
   from(table: string) {
     return new InstallmentFakeBuilder(this, table);
@@ -514,6 +523,9 @@ class InstallmentFakeDb {
   rpc(name: string, args: Record<string, unknown>) {
     this.rpcCalls.push({ name, args });
     if (name === "record_order_installment_provider_sale") {
+      if (this.rpcSaleResult !== null) {
+        return Promise.resolve(this.rpcSaleResult);
+      }
       if (this.installmentRow !== null) {
         this.installmentRow.payout_accounting_state = "ready";
         this.installmentRow.application_fee_amount_cents =
@@ -594,4 +606,60 @@ Deno.test("installment payment_intent.succeeded with no charge still collects, w
   );
   assertEquals(db.installmentUpdates[0]?.status, "collected");
   assertEquals(db.installmentUpdates[0]?.stripe_charge_id, null);
+});
+
+Deno.test("#3645 installment succeeded: missing row fails closed (no ack)", async () => {
+  const db = new InstallmentFakeDb();
+  db.updateAffectsRow = false;
+  db.installmentRow = null;
+  await assertRejects(
+    () =>
+      routeStripeEvent(
+        db as never,
+        {} as never,
+        installmentSucceededEvent({ latest_charge: "ch_missing_row" }),
+      ),
+    Error,
+    "missing installment row",
+  );
+});
+
+Deno.test("#3645 installment succeeded: cancelled row fails closed for refund recovery", async () => {
+  const db = new InstallmentFakeDb();
+  db.updateAffectsRow = false;
+  db.installmentRow = {
+    id: "installment_123",
+    amount_cents: 2500,
+    status: "cancelled",
+    payout_accounting_state: "pending",
+    application_fee_amount_cents: null,
+  };
+  await assertRejects(
+    () =>
+      routeStripeEvent(
+        db as never,
+        {} as never,
+        installmentSucceededEvent({ latest_charge: "ch_cancelled_race" }),
+      ),
+    Error,
+    "cancelled installment",
+  );
+});
+
+Deno.test("#3645 installment succeeded: RPC {ok:false} fails closed (no false ack)", async () => {
+  const db = new InstallmentFakeDb();
+  db.rpcSaleResult = {
+    data: { ok: false, reason: "not_collected", status: "cancelled" },
+    error: null,
+  };
+  await assertRejects(
+    () =>
+      routeStripeEvent(
+        db as never,
+        {} as never,
+        installmentSucceededEvent({ latest_charge: "ch_rpc_false" }),
+      ),
+    Error,
+    "rejected:not_collected",
+  );
 });

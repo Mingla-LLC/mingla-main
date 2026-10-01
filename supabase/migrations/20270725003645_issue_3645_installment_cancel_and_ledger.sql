@@ -738,16 +738,19 @@ BEGIN
         AND oi.collected_at > b.payout_hold_cutover_at
         AND e.status <> 'cancelled'
     )
-    -- Maturity predicate must stay character-compatible with #1790's dark sweep
-    -- (anchor_end_at + 3 days). payment+24h (#3645) rewrote attach_payout_release
-    -- releasable_at to finalized+1d but deliberately left this candidates filter
-    -- alone; switching it to finalized_at+1d makes #1792 T-1792-P1's CONTROL
-    -- settlement (confirmed_at=now() via pg_venue_order_finalize_payment) look
-    -- immature and attach 0 items. Installment arm sets both timestamps to
-    -- collected_at; PR5's happy test uses collected_at = now-3d so +3d still
-    -- admits it. A later payment+24h sweep-filter cutover needs [TEST-MOD] on #1792.
+    -- Global maturity predicate stays #1790-compatible (anchor_end_at + 3 days)
+    -- so #1792 T-1792-P1 CONTROL (confirmed_at=now()) still attaches. Installment
+    -- arm alone is type-aware: finalized_at + 1 day (= payment+24h) without
+    -- changing the global filter for other source types.
     SELECT * FROM candidates c
-    WHERE c.anchor_end_at IS NOT NULL AND c.anchor_end_at+interval '3 days'<=p_now
+    WHERE c.anchor_end_at IS NOT NULL
+      AND (
+        CASE
+          WHEN c.source_type = 'order_installment'
+            THEN c.finalized_at + interval '1 day'
+          ELSE c.anchor_end_at + interval '3 days'
+        END
+      ) <= p_now
       AND c.gross_cents-c.refunded_cents-c.disputed_cents>0
       AND NOT EXISTS (SELECT 1 FROM public.payout_release_items i
         WHERE i.source_type=c.source_type AND i.source_id=c.source_id)
@@ -780,7 +783,7 @@ REVOKE ALL ON FUNCTION public.run_payout_release_dark_sweep(timestamptz)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.run_payout_release_dark_sweep(timestamptz) TO service_role;
 COMMENT ON FUNCTION public.run_payout_release_dark_sweep(timestamptz) IS
-  'Issue #1171/#1221/#1790/#3645: dark payout sweep. Candidates mature on anchor_end_at + 3 days (same predicate as #1790; attach still sets releasable_at = finalized + 1 day per payment+24h). Includes order_installment when issue_2036_installment_payout_ready(). service_role only.';
+  'Issue #1171/#1221/#1790/#3645: dark payout sweep. Non-installment candidates mature on anchor_end_at + 3 days (#1790-compatible); order_installment matures on finalized_at + 1 day (payment+24h). Includes order_installment when issue_2036_installment_payout_ready(). service_role only.';
 
 -- Privilege self-assert
 DO $$

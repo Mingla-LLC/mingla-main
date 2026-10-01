@@ -23,7 +23,8 @@ DECLARE
   v_date    constant uuid := '36450000-0000-4000-8000-0000000000e6';
   v_date_b  constant uuid := '36450000-0000-4000-8000-0000000000ee';
   v_now     timestamptz := timestamptz '2026-10-01 12:00:00+00';
-  v_collected timestamptz := timestamptz '2026-09-28 12:00:00+00';
+  -- payment+24h: collected 25h ago so finalized_at+1d admits under installment arm.
+  v_collected timestamptz := timestamptz '2026-09-30 11:00:00+00';
   v_prep    jsonb;
   v_status  text;
   v_state   text;
@@ -155,7 +156,8 @@ DECLARE
   v_inst_2  constant uuid := '36450000-0000-4000-8000-0000000000f6';
   v_date    constant uuid := '36450000-0000-4000-8000-0000000000f7';
   v_now     timestamptz := timestamptz '2026-10-01 12:00:00+00';
-  v_collected timestamptz := timestamptz '2026-09-28 12:00:00+00';
+  -- payment+24h: collected 25h ago so finalized_at+1d admits under installment arm.
+  v_collected timestamptz := timestamptz '2026-09-30 11:00:00+00';
   v_key_1   text;
   v_key_2   text;
   v_count   integer;

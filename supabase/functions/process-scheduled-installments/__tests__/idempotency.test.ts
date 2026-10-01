@@ -198,6 +198,14 @@ Deno.test("#3645 createInstallmentPI: fail-closed claim RPC before Stripe I/O", 
   assertStringIncludes(HELPER_SOURCE, "cancelled_during_charge_refunded");
   assertStringIncludes(HELPER_SOURCE, "paymentIntents.cancel");
   assertStringIncludes(HELPER_SOURCE, "refunds.create");
+  assertStringIncludes(
+    HELPER_SOURCE,
+    "installment-cancel-refund:${installment.id}:${pi.id}",
+  );
+  assertStringIncludes(
+    HELPER_SOURCE,
+    "installment-confirm:${installment.id}:${pi.id}",
+  );
   // Fail-closed order: first claim call appears before the live PI create call
   // (ignore the file-header mention of paymentIntents.create).
   const claimIdx = HELPER_SOURCE.indexOf('"claim_order_installment_for_charge"');
@@ -231,12 +239,29 @@ Deno.test("#3645 webhook: records provider sale after collect (fail-closed / rep
     WEBHOOK_HANDLER_SOURCE,
     "record_order_installment_provider_sale failed:",
   );
+  assertStringIncludes(
+    WEBHOOK_HANDLER_SOURCE,
+    "record_order_installment_provider_sale rejected:",
+  );
   assert(
     !WEBHOOK_HANDLER_SOURCE.includes(
       "record_order_installment_provider_sale failed (non-fatal)",
     ),
     "fee RPC failure must throw for inbox retry, not fail-soft",
   );
+  assertStringIncludes(WEBHOOK_HANDLER_SOURCE, "feeResult.ok !== true");
   assertStringIncludes(WEBHOOK_HANDLER_SOURCE, "payout_accounting_state");
   assertStringIncludes(WEBHOOK_HANDLER_SOURCE, "replay accounting ok");
+  assertStringIncludes(
+    WEBHOOK_HANDLER_SOURCE,
+    "installment_pi_succeeded missing installment row",
+  );
+  assertStringIncludes(
+    WEBHOOK_HANDLER_SOURCE,
+    "installment_pi_succeeded on cancelled installment",
+  );
+  assert(
+    !WEBHOOK_HANDLER_SOURCE.includes("no-op (row missing)"),
+    "missing installment for signature-valid money event must throw, not ack",
+  );
 });

@@ -334,7 +334,9 @@ export async function createInstallmentPI(
       ) {
         try {
           // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
-          await stripe.paymentIntents.cancel(pi.id, {
+          await stripe.paymentIntents.cancel(pi.id, {}, {
+            idempotencyKey:
+              `installment-race-cancel:${installment.id}:${pi.id}:preconfirm`,
             stripeAccount: stripeAccount.stripe_account_id,
           });
         } catch (cancelErr) {
@@ -357,7 +359,10 @@ export async function createInstallmentPI(
     pi = await stripe.paymentIntents.confirm(
       pi.id,
       { off_session: true, payment_method: order.saved_payment_method_id },
-      { stripeAccount: stripeAccount.stripe_account_id },
+      {
+        idempotencyKey: `installment-confirm:${installment.id}:${pi.id}`,
+        stripeAccount: stripeAccount.stripe_account_id,
+      },
     );
 
     // Post-confirm safety reclaim. If cancel won between reclaim and confirm
@@ -382,7 +387,11 @@ export async function createInstallmentPI(
             // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
             await stripe.refunds.create(
               { payment_intent: pi.id },
-              { stripeAccount: stripeAccount.stripe_account_id },
+              {
+                idempotencyKey:
+                  `installment-cancel-refund:${installment.id}:${pi.id}`,
+                stripeAccount: stripeAccount.stripe_account_id,
+              },
             );
           } catch (refundErr) {
             throw new Error(
@@ -401,7 +410,9 @@ export async function createInstallmentPI(
         }
         try {
           // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
-          await stripe.paymentIntents.cancel(pi.id, {
+          await stripe.paymentIntents.cancel(pi.id, {}, {
+            idempotencyKey:
+              `installment-race-cancel:${installment.id}:${pi.id}:postconfirm`,
             stripeAccount: stripeAccount.stripe_account_id,
           });
         } catch (cancelErr) {
