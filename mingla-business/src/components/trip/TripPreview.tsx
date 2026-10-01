@@ -113,9 +113,17 @@ export interface TripPreviewBrand {
    * keeps TripPreviewBrand anon-tolerant.
    */
   stripeStatus?: BrandStripeStatus | null;
-  /** #1919 provider-neutral payout fields used only by authenticated authoring. */
+  /** #1919 / #3645 provider-neutral payout fields used only by authenticated authoring. */
   paymentProvider?: "stripe" | "paystack";
   paystackSubaccountCode?: string | null;
+  /** #3645 — active Paystack recipient (detail/hook); payout-ready without subaccount. */
+  hasPaystackRecipient?: boolean | null;
+  /** #3645 — NG hold-rail stamp; charge-ready without a bank when set. */
+  payoutHoldCutoverAt?: string | null;
+  /** #3645 — Stripe charges_enabled cache (charge-ready when true). */
+  chargesEnabled?: boolean | null;
+  /** #3645 — Stripe payouts_enabled cache (payout-ready when true). */
+  payoutsEnabled?: boolean | null;
 }
 
 export interface TripPreviewProps {

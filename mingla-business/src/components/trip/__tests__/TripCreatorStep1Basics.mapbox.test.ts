@@ -112,8 +112,10 @@ describe("ORCH-1118 — create wizard requires confirmed Mapbox picks", () => {
     // [TEST-MOD-APPROVED #1780] Publish also waits for a confirmed, refreshed
     // invite plan (!invitePublishReady || checkingInvitePublish); every prior
     // disabling term is still asserted.
+    // [TEST-MOD-APPROVED #3645] Dock also disables for instalment plans that
+    // need a bank (tripNeedsBankForInstallments); every prior term retained.
     expect(w).toMatch(
-      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
+      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*tripNeedsBankForInstallments\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
     );
   });
 });

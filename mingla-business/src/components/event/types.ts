@@ -130,10 +130,11 @@ export interface StepBodyProps {
    */
   lockSingleDate?: boolean;
   /**
-   * ORCH-1335 — provider-aware RSVP chip-in payout readiness. ONLY the RSVP
-   * chip-in authoring step (RsvpStep5Setup) reads this; it swaps the "Connect
-   * your bank" nudge for a positive "Payouts are on" confirmation when the brand
-   * is already payout-ready. Computed once at the wizard/edit-screen level via
+   * ORCH-1335 / #3645 — provider-aware RSVP chip-in *charge* readiness. ONLY the
+   * RSVP chip-in authoring step (RsvpStep5Setup) reads this; it swaps the
+   * "Connect your bank" nudge for a positive "Ready to collect" confirmation
+   * when the brand can already take contributions (bank may still be missing).
+   * Computed once at the wizard/edit-screen level via
    * isChipInPayoutReady(brand, freshStripeStatus) and threaded through the shared
    * base/step props spread. Optional + undefined-safe: every other step ignores
    * it transparently, and undefined (loading) falls to the neutral nudge (no

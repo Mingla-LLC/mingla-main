@@ -74,8 +74,10 @@ describe("ORCH-1076 — trip wizard gate + disabled Publish + toast (T-19)", () 
     // [TEST-MOD-APPROVED #1780] Publish also waits for a confirmed, refreshed
     // invite plan (!invitePublishReady || checkingInvitePublish); every prior
     // disabling term is still asserted.
+    // [TEST-MOD-APPROVED #3645] Dock also disables for instalment plans that
+    // need a bank (tripNeedsBankForInstallments); every prior term retained.
     expect(src).toMatch(
-      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
+      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*tripNeedsBankForInstallments\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
     );
   });
 
@@ -88,7 +90,10 @@ describe("ORCH-1076 — trip wizard gate + disabled Publish + toast (T-19)", () 
     // 600-char window. The invariant (stripe toast + return BEFORE the confirm
     // dialog) is unchanged; the window just needs to reach it (the confirm call
     // now sits ~1390 chars in — after the location + packages pre-checks).
-    const block = src.slice(tapIdx, tapIdx + 1600);
+    // [TEST-MOD-APPROVED #3645] window widened 1600→2200: instalment bank
+    // pre-check sits between tripNeedsStripe and packagesValidation, pushing
+    // the first setPublishConfirmVisible past the old slice.
+    const block = src.slice(tapIdx, tapIdx + 2200);
     expect(block).toContain("if (tripNeedsStripe)");
     expect(block).toContain("Connect a bank to publish this paid trip.");
     const toastIdx = block.indexOf("Connect a bank to publish this paid trip.");

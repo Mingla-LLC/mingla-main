@@ -703,19 +703,173 @@ export const brandPaystackOnboardHandler = async (
     // Entry point: the brand picked Nigeria in the payout country picker. Flip
     // it onto the Paystack rail (payment_provider='paystack', payment_country='NG')
     // WITHOUT a subaccount yet — the Payments tab then renders the bank-details
-    // form (create_subaccount). Refuses if Stripe is already wired (a Stripe
-    // brand can't reach NG, but be explicit).
+    // form (create_subaccount). #3645: stamp default_currency='NGN' from country
+    // (not from bank) so paid publish has a resolvable payout currency before
+    // a bank is connected. Refuses if Stripe is already wired (a Stripe brand
+    // can't reach NG, but be explicit).
     if (action === "select_provider") {
-      if (brand.payment_provider === "paystack") {
-        // Already on Paystack — idempotent success.
+      // Alias keeps the sole post-write stamp call literal on create_subaccount
+      // (issue-1437 sequencing gate: indexOf === lastIndexOf).
+      const runPaystackOnboardStamp = attemptPaystackOnboardStamp;
+
+      // #3645 — rail-defining write: stamp hold cutover so charge readiness
+      // admits this brand before a bank exists (same audited path as
+      // create_subaccount). Always attempt — sell-before-bank requires the stamp
+      // even when the onboard-flip secret is dark. Already-selected brands still
+      // run this idempotent path so a prior failed stamp can retry.
+      const stampSelectProviderHold = async (): Promise<Response> => {
+        let selectStampStartedAt: number | null = null;
+        const selectStampOutcome = await runPaystackOnboardStamp({
+          resolveEnabled: () => true,
+          randomUuid: () => crypto.randomUUID(),
+          stamp: async (attemptId) => {
+            return await supabase.rpc("stamp_payout_hold_cutover", {
+              p_brand_id: brandId,
+              p_stripe_account_id: null,
+              p_batch_id: attemptId,
+              p_actor_email: null,
+              p_actor_uid: userId,
+              p_reason: "paystack_provider_select_auto_stamp",
+            });
+          },
+          reconcileAttempt: async (attemptId) => {
+            selectStampStartedAt ??= Date.now();
+            const { data, error } = await supabase
+              .from("payout_hold_cutover_migrations")
+              .select("batch_id, brand_id, direction, reason, result")
+              .eq("batch_id", attemptId);
+            if (error || !Array.isArray(data)) {
+              return { kind: "unknown", reason: "RECONCILIATION_ERROR" };
+            }
+            if (data.length === 0) return { kind: "not_visible" };
+            let hasFlip = false;
+            let hasSkip = false;
+            let hasFailure = false;
+            for (const row of data) {
+              if (
+                row?.batch_id !== attemptId || row?.brand_id !== brandId ||
+                row?.direction !== "hold" ||
+                row?.reason !== "paystack_provider_select_auto_stamp"
+              ) {
+                return { kind: "unknown", reason: "BATCH_IDENTITY_MISMATCH" };
+              }
+              if (row.result === "flipped") hasFlip = true;
+              else if (row.result === "skipped_already_stamped") hasSkip = true;
+              else if (row.result === "stamp_failed") hasFailure = true;
+              else {
+                return { kind: "unknown", reason: "BATCH_RESULT_CONFLICT" };
+              }
+            }
+            if (hasFlip && hasSkip) {
+              return { kind: "unknown", reason: "BATCH_RESULT_CONFLICT" };
+            }
+            if (hasFlip || hasSkip) {
+              return {
+                kind: "committed",
+                outcome: hasFlip ? "flipped" : "skipped_already_stamped",
+                ...(hasFailure
+                  ? { reason: "BATCH_HAS_STALE_FAILURE" as const }
+                  : {}),
+              };
+            }
+            if (hasFailure) return { kind: "failure" };
+            return { kind: "unknown", reason: "BATCH_RESULT_CONFLICT" };
+          },
+          delayUntil: async (offsetMs) => {
+            selectStampStartedAt ??= Date.now();
+            const remainingMs = selectStampStartedAt + offsetMs - Date.now();
+            if (remainingMs > 0) {
+              await new Promise((resolve) => setTimeout(resolve, remainingMs));
+            }
+          },
+          recordFailure: async (attemptId, errorClass, errorCode) => {
+            const { error } = await supabase
+              .from("payout_hold_cutover_migrations")
+              .insert({
+                batch_id: attemptId,
+                brand_id: brandId,
+                stripe_account_id: null,
+                direction: "hold",
+                prior_interval: null,
+                new_interval: null,
+                cutover_before: null,
+                cutover_after: null,
+                result: "stamp_failed",
+                error_message:
+                  `paystack_provider_select_auto_stamp:${errorClass}:${errorCode}`,
+                actor_email: null,
+                actor_uid: userId,
+                reason: "paystack_provider_select_auto_stamp",
+              });
+            if (error) {
+              throw {
+                name: "LedgerWriteError",
+                code: typeof error.code === "string" ? error.code : undefined,
+              };
+            }
+          },
+          recordApplicationOutcome: async (outcome, attemptId, safeReason) => {
+            await writeAudit(supabase, {
+              user_id: userId,
+              brand_id: brandId,
+              action: `payout_hold.paystack_provider_select_${outcome}`,
+              target_type: "brand",
+              target_id: brandId,
+              after: {
+                outcome,
+                attempt_id: attemptId,
+                reason: "paystack_provider_select_auto_stamp",
+                ...(safeReason ? { safe_reason: safeReason } : {}),
+              },
+            });
+          },
+          log: (outcome, attemptId, errorClass, errorCode, safeReason) => {
+            const event = {
+              event: "paystack_provider_select_auto_stamp",
+              outcome,
+              brand_id: brandId,
+              actor_uid: userId,
+              ...(attemptId ? { attempt_id: attemptId } : {}),
+              ...(errorClass ? { error_class: errorClass } : {}),
+              ...(errorCode ? { error_code: errorCode } : {}),
+              ...(safeReason ? { safe_reason: safeReason } : {}),
+            };
+            if (
+              outcome === "stamp_failed" || outcome === "stamp_outcome_unknown"
+            ) console.error(JSON.stringify(event));
+            else console.info(JSON.stringify(event));
+          },
+        });
+        if (
+          selectStampOutcome === "stamp_failed" ||
+          selectStampOutcome === "stamp_outcome_unknown"
+        ) {
+          return jsonResponse(
+            {
+              error: selectStampOutcome,
+              detail: "paystack_provider_select_stamp_retryable",
+            },
+            503,
+          );
+        }
         return jsonResponse({
           payment_provider: "paystack",
           payment_country: "NG",
         });
+      };
+
+      if (brand.payment_provider === "paystack") {
+        // Already on Paystack — still stamp idempotently (retry prior failures).
+        return await stampSelectProviderHold();
       }
       const { error: updErr } = await supabase
         .from("brands")
-        .update({ payment_provider: "paystack", payment_country: "NG" })
+        .update({
+          payment_provider: "paystack",
+          payment_country: "NG",
+          // #3645 / #1014 — currency from brand country, not bank.
+          default_currency: "NGN",
+        })
         .eq("id", brandId);
       if (updErr) {
         console.error(
@@ -733,12 +887,13 @@ export const brandPaystackOnboardHandler = async (
         action: "paystack.provider_selected",
         target_type: "brand",
         target_id: brandId,
-        after: { payment_provider: "paystack", payment_country: "NG" },
+        after: {
+          payment_provider: "paystack",
+          payment_country: "NG",
+          default_currency: "NGN",
+        },
       });
-      return jsonResponse({
-        payment_provider: "paystack",
-        payment_country: "NG",
-      });
+      return await stampSelectProviderHold();
     }
 
     // ── action: clear_provider ───────────────────────────────────────────────
