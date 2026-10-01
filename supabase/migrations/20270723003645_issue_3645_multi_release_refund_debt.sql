@@ -3,7 +3,8 @@
 -- Refund→debt creation used to clamp organiser liability at the single origin
 -- release's organiser_cash_delivered_cents, silently dropping the remainder.
 -- Cap at aggregate delivered cash for the same brand+currency (and event when
--- present) so apply_open_payout_debts can recover across later releases.
+-- present), minus permanent debt already recorded on other origins in that
+-- scope, under a shared FOR UPDATE lock so two origins cannot reuse the pool.
 -- Fee-return unification for legacy record_paystack_refund_outcome is deferred.
 
 BEGIN;
@@ -18,7 +19,10 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-  SELECT coalesce(sum(r.organiser_cash_delivered_cents), 0)::integer
+  SELECT least(
+    coalesce(sum(r.organiser_cash_delivered_cents), 0),
+    2147483647::bigint
+  )::integer
   FROM public.brand_payout_releases r
   WHERE r.brand_id = p_brand_id
     AND r.currency = p_currency
@@ -38,6 +42,57 @@ COMMENT ON FUNCTION public.organiser_released_cash_cap_cents(uuid, text, uuid) I
   'Issue #3645: aggregate organiser cash already delivered for a brand+currency '
   '(optionally scoped to one event). Upper bound for post-release refund debt.';
 
+-- Remaining delivered-cash room after permanent debts on other origin releases
+-- in the same brand+currency (+ event) scope. Caller must lock the scope first.
+CREATE OR REPLACE FUNCTION public.organiser_refund_debt_room_cents(
+  p_brand_id uuid,
+  p_currency text,
+  p_event_id uuid,
+  p_exclude_origin_release_id uuid DEFAULT NULL
+) RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT greatest(
+    public.organiser_released_cash_cap_cents(p_brand_id, p_currency, p_event_id)
+      - least(
+          coalesce((
+            SELECT sum(d.principal_cents)::bigint
+            FROM public.organiser_payout_debts d
+            JOIN public.brand_payout_releases r ON r.id = d.origin_release_id
+            WHERE d.brand_id = p_brand_id
+              AND d.currency = p_currency
+              AND d.kind IN (
+                'post_release_refund',
+                'post_release_dispute',
+                'post_release_cancellation'
+              )
+              AND (
+                p_exclude_origin_release_id IS NULL
+                OR d.origin_release_id IS DISTINCT FROM p_exclude_origin_release_id
+              )
+              AND (
+                p_event_id IS NULL
+                OR r.event_id IS NOT DISTINCT FROM p_event_id
+              )
+          ), 0),
+          2147483647::bigint
+        )::integer,
+    0
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.organiser_refund_debt_room_cents(uuid, text, uuid, uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.organiser_refund_debt_room_cents(uuid, text, uuid, uuid)
+  TO service_role, postgres;
+
+COMMENT ON FUNCTION public.organiser_refund_debt_room_cents(uuid, text, uuid, uuid) IS
+  'Issue #3645: delivered-cash room left for a new/grown permanent refund debt '
+  'after other origins in the same scope have already claimed principal.';
+
 CREATE OR REPLACE FUNCTION public.issue_1221_post_organizer_refund_liability(
   p_refund_id uuid,p_now timestamptz DEFAULT now()
 ) RETURNS uuid
@@ -45,7 +100,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE v public.source_refunds%ROWTYPE; v_release public.brand_payout_releases%ROWTYPE;
 DECLARE v_allocation public.source_refund_ledger_allocations%ROWTYPE;
 DECLARE v_adjustment_id uuid; v_debt public.organiser_payout_debts%ROWTYPE;
-DECLARE v_debt_id uuid; v_liability integer; v_target integer; v_cap integer;
+DECLARE v_debt_id uuid; v_liability integer; v_target integer; v_room integer;
 BEGIN
   SELECT * INTO v FROM public.source_refunds WHERE id=p_refund_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'refund_not_found'; END IF;
@@ -66,10 +121,22 @@ BEGIN
     WHERE id=v_allocation.id;
     RETURN NULL;
   END IF;
-  v_cap:=public.organiser_released_cash_cap_cents(
-    v_release.brand_id, v_release.currency, v_release.event_id
+  -- Serialize against every released row that shares the delivered-cash pool.
+  PERFORM 1
+  FROM public.brand_payout_releases r
+  WHERE r.brand_id = v_release.brand_id
+    AND r.currency = v_release.currency
+    AND r.status = 'released'
+    AND (
+      v_release.event_id IS NULL
+      OR r.event_id IS NOT DISTINCT FROM v_release.event_id
+    )
+  ORDER BY r.id
+  FOR UPDATE;
+  v_room:=public.organiser_refund_debt_room_cents(
+    v_release.brand_id, v_release.currency, v_release.event_id, v_release.id
   );
-  v_liability:=least(v.organizer_refund_liability_cents, v_cap);
+  v_liability:=least(v.organizer_refund_liability_cents, v_room);
   IF v_liability<=0 THEN
     UPDATE public.source_refund_ledger_allocations SET
       state='posted',posted_at=COALESCE(posted_at,p_now),payout_release_id=v_release.id
@@ -88,7 +155,8 @@ BEGIN
     WHERE idempotency_key='source-refund-liability:'||v.id;
   END IF;
   SELECT least(
-    coalesce(sum(amount_cents),0)::integer, v_cap
+    least(coalesce(sum(amount_cents),0), 2147483647::bigint)::integer,
+    v_room
   ) INTO v_target
   FROM public.payout_ledger_adjustments
   WHERE release_id=v_release.id AND kind='post_release_refund';
@@ -154,7 +222,7 @@ DECLARE
   v_left integer;
   v_take integer;
   v_app record;
-  v_cap integer;
+  v_room integer;
 BEGIN
   IF p_source_type NOT IN ('order','venue_reservation')
      OR p_source_id IS NULL
@@ -209,10 +277,21 @@ BEGIN
 
   SELECT * INTO v_release FROM public.brand_payout_releases
   WHERE id=v_release_id FOR UPDATE;
-  v_cap:=public.organiser_released_cash_cap_cents(
-    v_release.brand_id, v_release.currency, v_release.event_id
+  PERFORM 1
+  FROM public.brand_payout_releases r
+  WHERE r.brand_id = v_release.brand_id
+    AND r.currency = v_release.currency
+    AND r.status = 'released'
+    AND (
+      v_release.event_id IS NULL
+      OR r.event_id IS NOT DISTINCT FROM v_release.event_id
+    )
+  ORDER BY r.id
+  FOR UPDATE;
+  v_room:=public.organiser_refund_debt_room_cents(
+    v_release.brand_id, v_release.currency, v_release.event_id, v_release.id
   );
-  v_liability:=least(p_amount_cents, v_cap);
+  v_liability:=least(p_amount_cents, v_room);
   IF v_liability<=0 THEN
     RETURN jsonb_build_object('attempt_id',v_attempt_id,'debt_created',false);
   END IF;
@@ -233,8 +312,8 @@ BEGIN
   END IF;
 
   SELECT least(
-    coalesce(sum(amount_cents),0)::integer,
-    v_cap
+    least(coalesce(sum(amount_cents),0), 2147483647::bigint)::integer,
+    v_room
   ) INTO v_target_liability
   FROM public.payout_ledger_adjustments
   WHERE release_id=v_release.id AND kind='post_release_refund';

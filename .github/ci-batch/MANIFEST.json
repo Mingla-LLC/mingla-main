@@ -12273,7 +12273,7 @@
       "providerWorkflow": ".github/workflows/issue-1179-cancel-refund-fanout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "674e44e89bba3d67aebf760d8f578b612e138060c6ae1cc697f06b99d020ccc1",
+        "sourceSha256": "ad1144c71ebaee07a3ec3c8304b8c7da965cd68d4b8700220ea95fca109ca2f7",
         "triggers": [
           "pull_request"
         ],
