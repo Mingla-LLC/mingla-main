@@ -71,7 +71,25 @@ describe("META-ORCH-0972 pickHomeNextAction — universal authoring ladder", () 
     expect(result?.rung).toBe(1);
     expect(result?.kind).toBe("stripe_inactive");
     expect(result?.ctaRoute).toBe("/brand/brand-1/payments");
-    expect(result?.title).toBe("Connect bank to take payments");
+    expect(result?.title).toBe("Finish payment setup to sell");
+  });
+
+  test("paid draft + charge-ready without bank → add-bank rung (#3645)", () => {
+    const brand = baseBrand({
+      stripeStatus: "active",
+      chargesEnabled: true,
+      payoutsEnabled: false,
+    });
+    const counts: UpcomingCounts = {
+      total: 1,
+      active: 1,
+      live: 0,
+      upcoming: 0,
+      draft: 1,
+    };
+    const result = pickHomeNextAction(brand, counts, [paidDraft()]);
+    expect(result?.rung).toBe(1);
+    expect(result?.title).toBe("Add a bank to get paid");
   });
 
   test("Stripe inactive with only free draft → rung 3", () => {

@@ -255,6 +255,18 @@ export type Brand = {
   /** Paystack subaccount code (`ACCT_…`); non-null once a bank is connected. */
   paystackSubaccountCode?: string;
   /**
+   * #3645 — ISO timestamp when the brand was stamped onto the Paystack hold
+   * rail (`brands.payout_hold_cutover_at`). Charge-ready without a bank when set.
+   */
+  payoutHoldCutoverAt?: string | null;
+  /**
+   * #3645 — denormalised Stripe cache flags from `brands.stripe_*`. Prefer the
+   * live `useBrandStripeStatus` refresh when present; these back charge vs
+   * payout readiness when the hook is not mounted.
+   */
+  chargesEnabled?: boolean | null;
+  payoutsEnabled?: boolean | null;
+  /**
    * ISO 4217 default currency for this brand's payouts + ticket pricing.
    * NEW in B2a Path C V3 (Sub-C Session B). Drives multi-currency formatting
    * across the dashboard per Constitution #10 + I-PROPOSED-T. Mapped from

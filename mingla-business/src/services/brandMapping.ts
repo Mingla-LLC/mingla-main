@@ -56,6 +56,8 @@ export interface BrandRow {
   payment_provider?: "stripe" | "paystack" | null;
   payment_country?: string | null;
   paystack_subaccount_code?: string | null;
+  /** #3645 — hold-rail stamp; optional until row is loaded with the column. */
+  payout_hold_cutover_at?: string | null;
   // Cycle 17e-A — migration 20260506000000 added address/cover/profile columns.
   address: string | null;
   cover_hue: number;
@@ -302,6 +304,9 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     paymentProvider: row.payment_provider ?? "stripe",
     paymentCountry: row.payment_country ?? undefined,
     paystackSubaccountCode: row.paystack_subaccount_code ?? undefined,
+    payoutHoldCutoverAt: row.payout_hold_cutover_at ?? null,
+    chargesEnabled: row.stripe_charges_enabled,
+    payoutsEnabled: row.stripe_payouts_enabled,
     // ORCH-0769: expose brands.default_currency only once Stripe/brand setup
     // has actually set it. Undefined means "currency not set" — do not imply GBP.
     defaultCurrency: row.default_currency || undefined,

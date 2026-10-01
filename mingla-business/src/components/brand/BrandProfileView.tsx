@@ -59,7 +59,7 @@ import type { LiveEvent } from "../../store/liveEventStore";
 import { formatCurrencyRound, formatCount } from "../../utils/currency";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../utils/permissionGates";
-import { isBrandPayoutReady } from "../../utils/brandPayout";
+import { isBrandChargeReady } from "../../utils/brandPayout";
 import {
   type BrandStripePresentation,
   getBrandProfileStripeBannerCopy,
@@ -447,10 +447,11 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       active = false;
     };
   }, [brand, canCheckWebsiteAvailability, onWebsite]);
-  // META-ORCH-1076 — provider-neutral: a connected Paystack brand is payout-ready,
-  // so the "Connect bank to sell tickets" banner + Operations sub treat it as
-  // active even though its Stripe status is "not_connected".
-  const stripeStatus = isBrandPayoutReady(brand)
+  // #3645 / META-ORCH-1076 — provider-neutral charge readiness: Paystack hold
+  // rail or subaccount (and Stripe charges_enabled) can sell even before a bank.
+  // The "Connect bank to sell tickets" banner + Operations sub treat charge-ready
+  // as active even when Stripe status is "not_connected".
+  const stripeStatus = isBrandChargeReady(brand)
     ? "active"
     : (effectiveStripeStatus ?? brand?.stripeStatus ?? "not_connected");
 

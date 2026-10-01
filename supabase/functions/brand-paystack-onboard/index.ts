@@ -703,8 +703,10 @@ export const brandPaystackOnboardHandler = async (
     // Entry point: the brand picked Nigeria in the payout country picker. Flip
     // it onto the Paystack rail (payment_provider='paystack', payment_country='NG')
     // WITHOUT a subaccount yet — the Payments tab then renders the bank-details
-    // form (create_subaccount). Refuses if Stripe is already wired (a Stripe
-    // brand can't reach NG, but be explicit).
+    // form (create_subaccount). #3645: stamp default_currency='NGN' from country
+    // (not from bank) so paid publish has a resolvable payout currency before
+    // a bank is connected. Refuses if Stripe is already wired (a Stripe brand
+    // can't reach NG, but be explicit).
     if (action === "select_provider") {
       if (brand.payment_provider === "paystack") {
         // Already on Paystack — idempotent success.
@@ -715,7 +717,12 @@ export const brandPaystackOnboardHandler = async (
       }
       const { error: updErr } = await supabase
         .from("brands")
-        .update({ payment_provider: "paystack", payment_country: "NG" })
+        .update({
+          payment_provider: "paystack",
+          payment_country: "NG",
+          // #3645 / #1014 — currency from brand country, not bank.
+          default_currency: "NGN",
+        })
         .eq("id", brandId);
       if (updErr) {
         console.error(
@@ -733,7 +740,11 @@ export const brandPaystackOnboardHandler = async (
         action: "paystack.provider_selected",
         target_type: "brand",
         target_id: brandId,
-        after: { payment_provider: "paystack", payment_country: "NG" },
+        after: {
+          payment_provider: "paystack",
+          payment_country: "NG",
+          default_currency: "NGN",
+        },
       });
       return jsonResponse({
         payment_provider: "paystack",

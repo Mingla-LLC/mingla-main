@@ -1,5 +1,14 @@
 # Invariant Registry
 
+## DRAFT — issue #3645 PR6 (sell before bank / charge vs payout readiness)
+
+### I-PROPOSED-3645-CHARGE-VS-PAYOUT-READINESS (DRAFT)
+
+- **Rule:** Publish, checkout, discover and buyer `bookable` gates admit a brand that is **charge-ready**, not only payout/bank-ready. Charge-ready means Stripe `charges_enabled` (via `pg_brand_can_charge`) **or** a Paystack subaccount **or** a stamped Paystack hold-rail brand (`payment_provider = 'paystack'` AND `payout_hold_cutover_at IS NOT NULL`), and no pending currency reconciliation — expressed by `pg_brand_can_collect`. Organiser **payout** readiness (`pg_brand_can_payout` / app `isBrandPayoutReady`) still requires Stripe `payouts_enabled` or a Paystack subaccount (or recipient). Trip instalment plans stay bank/payout-gated. Buyer "finishing payment setup" only when charge-not-ready. Money may wait in the ledger until a bank exists; release execute remains fail-closed without bank/`payouts_enabled`.
+- **Scope:** SQL helpers + app `brandPayout.ts` / publish + chip-in gates + Paystack `select_provider` currency-from-country stamp. Full Payments visibility copy, organiser nudges beyond home next-action, and `issue_2036_installment_payout_ready()` flip are later #3645 slices.
+- **Enforcement:** migration `20270726003645_issue_3645_sell_before_bank_charge_ready.sql`; pg17 suite `issue_3645_sell_before_bank.implementor.happy.pg17.test.sql`; Jest `brandPayout.issue3645.test.ts` + chip-in / homeNextAction updates. Existing orch-1075/1076/1919 suites keep calling `pg_brand_can_collect` (meaning widened, not bypassed).
+- **Status:** DRAFT until this PR merges, the migration is applied under the reviewed lane, and a stamped Paystack hold brand (no bank) can publish/sell while payout execute still waits for a bank.
+
 ## DRAFT — issue #3645 PR1 (payment+24h payout maturity)
 
 ### I-PROPOSED-3645-PAYMENT-PLUS-24H-MATURITY (DRAFT)
