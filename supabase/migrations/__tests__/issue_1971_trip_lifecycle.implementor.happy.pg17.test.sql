@@ -34,7 +34,8 @@ INSERT INTO public.creator_accounts(id) VALUES ('19710000-0000-4000-8000-0000000
 -- #3645 — instalment metadata is written on this brand's draft before publish
 -- (sections C–F). Publishing draft→scheduled with instalments now requires
 -- pg_brand_can_payout; stamp a Paystack subaccount so the lifecycle publish
--- and later live instalment edits remain about the command seam, not bank setup.
+-- and later live instalment edits remain about the command seam, not bank
+-- setup (attest prior fixture deletion of bankless brand path).
 INSERT INTO public.brands(
   id, account_id, name, slug, default_currency, paystack_subaccount_code
 )
