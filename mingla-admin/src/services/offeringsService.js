@@ -220,6 +220,12 @@ export function mapOfferingWriteError(error) {
   if (msg.includes("reason_required")) return "A reason is required.";
   if (msg.includes("not_found")) return "That record no longer exists.";
   if (msg.includes("already_cancelled")) return "This offering is already cancelled.";
+  if (msg.includes("not_awaiting_review")) {
+    return "There is no cancel-refund batch waiting for review on this offering.";
+  }
+  if (msg.includes("run_not_found")) {
+    return "No cancel-refund run exists for this offering.";
+  }
   if (msg.includes("invalid_visibility")) return "Invalid visibility value.";
   // #1931 — Admin keeps synchronous Public <-> Hidden, but every transition ENTERING or
   // LEAVING Private is rejected non-mutatingly: those transitions need the two-phase
@@ -277,6 +283,17 @@ export async function cancelOffering(eventId, reason) {
     /* fan-out client unavailable — backstop cron re-drives */
   }
   return result;
+}
+
+/**
+ * #3645 — release a held cancel-refund batch (HIGH). Moves
+ * event_cancel_refund_runs awaiting_review → pending so fan-out/cron can refund.
+ */
+export function releaseCancelRefundBatch(eventId, reason) {
+  return callAdminWriteRpc("admin_release_event_cancel_refund_batch", {
+    p_event_id: eventId,
+    p_reason: reason,
+  });
 }
 
 /** #3 — close / reopen bookings (HIGH). */

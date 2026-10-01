@@ -12273,13 +12273,14 @@
       "providerWorkflow": ".github/workflows/issue-1179-cancel-refund-fanout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "78d58af5f5430850e8b2d2cdbf90dbb16983c3df8a93cfe84fef6d4052e7eb01",
+        "sourceSha256": "674e44e89bba3d67aebf760d8f578b612e138060c6ae1cc697f06b99d020ccc1",
         "triggers": [
           "pull_request"
         ],
         "pathScope": [
           ".github/actions/migrated-postgres/**",
           ".github/workflows/issue-1179-cancel-refund-fanout-tests.yml",
+          "mingla-admin/src/pages/OfferingDetailView.jsx",
           "mingla-admin/src/services/offeringsService.js",
           "mingla-business/src/services/businessEvents.ts",
           "supabase/config.toml",
@@ -12288,10 +12289,12 @@
           "supabase/functions/event-cancel-refund-fanout/**",
           "supabase/migrations/20270110000009_issue_1179_cancel_refund_fanout.sql",
           "supabase/migrations/20270721003645_issue_3645_cancel_refund_review.sql",
+          "supabase/migrations/20270722003645_issue_3645_cancel_review_admin_release_read.sql",
           "supabase/migrations/__tests__/issue_1179_cancel_refund_fanout_adversarial_pg17.test.sql",
           "supabase/migrations/__tests__/issue_1179_cancel_refund_fanout_pg17.test.sql",
           "supabase/migrations/__tests__/issue_3645_cancel_refund_review.implementor.happy.pg17.test.sql",
-          "supabase/migrations/__tests__/issue_3645_cancel_refund_review.tester.adversarial.pg17.test.sql"
+          "supabase/migrations/__tests__/issue_3645_cancel_refund_review.tester.adversarial.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_3645_cancel_review_admin_release.implementor.happy.pg17.test.sql"
         ],
         "jobKeys": [
           "issue-1179-deno-check",
