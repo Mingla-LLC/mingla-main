@@ -392,22 +392,19 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
               onChange={(c) => updateDraft({ rsvpContributionMinCents: c })}
               testID="rsvp-contribution-min"
             />
-            {/* ORCH-1335 — payout-aware callout. The HARD bank-gate still lives
-                at publish (business_publish_rsvp_draft → pg_brand_can_collect →
-                the paidPublishGuards "Finish bank setup" route); this is only the
-                authoring hint. `chipInPayoutReady` is provider-aware (Stripe fresh
-                "active" OR Paystack subaccount) and undefined-safe: undefined/false
-                (or still-loading) falls to the neutral nudge so a false positive
-                can never flash. */}
+            {/* ORCH-1335 / #3645 — callout mirrors charge readiness
+                (`isChipInPayoutReady` → pg_brand_can_collect). READY copy must
+                not claim payouts are active: money may still wait for a bank.
+                The HARD publish gate remains pg_brand_can_collect. */}
             {chipInPayoutReady ? (
-              /* READY — positive confirmation (ORCH-1335). */
+              /* READY — charge-ready confirmation (ORCH-1335 / #3645). */
               <View
                 style={styles.readyCallout}
                 testID="rsvp-contribution-ready-callout"
               >
                 <View style={styles.readyHeadingRow}>
                   <Icon name="check" size={16} color={semantic.success} />
-                  <Text style={styles.readyHeading}>Payouts are on</Text>
+                  <Text style={styles.readyHeading}>Ready to collect</Text>
                 </View>
                 <Text style={styles.readySub}>
                   Guests can chip in the moment you publish — no extra setup needed.

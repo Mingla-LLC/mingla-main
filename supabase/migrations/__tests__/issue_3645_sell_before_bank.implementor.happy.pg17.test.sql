@@ -31,9 +31,11 @@ BEGIN
      'stripe', NULL, 'GB', 'GBP', NULL, NULL);
 
   INSERT INTO public.stripe_connect_accounts (
-    brand_id, stripe_account_id, charges_enabled, payouts_enabled
+    brand_id, stripe_account_id, charges_enabled, payouts_enabled,
+    country, default_currency
   ) VALUES (
-    v_stripe, 'acct_3645_sbb', true, false
+    v_stripe, 'acct_3645_sbb', true, false,
+    'GB', 'gbp'
   );
 
   IF public.pg_brand_can_collect(v_hold) IS NOT TRUE THEN
@@ -62,6 +64,23 @@ BEGIN
   END IF;
   IF public.pg_brand_can_payout(v_stripe) IS NOT FALSE THEN
     RAISE EXCEPTION 'Stripe charges without payouts_enabled must NOT payout';
+  END IF;
+
+  -- Recipient-only Paystack brand (no subaccount) must payout.
+  INSERT INTO public.brand_paystack_recipients (
+    brand_id, recipient_code, bank_code, account_fingerprint,
+    account_number_masked, account_name, is_active
+  ) VALUES (
+    v_hold,
+    'RCP_3645sbbhold',
+    '058',
+    'hmac-sha256:' || repeat('a', 64),
+    '••••1234',
+    'Hold Rail Recipient',
+    true
+  );
+  IF public.pg_brand_can_payout(v_hold) IS NOT TRUE THEN
+    RAISE EXCEPTION 'active Paystack recipient must payout without subaccount';
   END IF;
 
   RAISE NOTICE 'issue_3645_sell_before_bank charge readiness PASS';
