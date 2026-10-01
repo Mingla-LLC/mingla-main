@@ -37,9 +37,10 @@ function mockClient(opts: {
 
 Deno.test("charge.dispute.create posts create event + transaction reference", async () => {
   const calls: RpcCall[] = [];
-  const prior = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS");
+  const priorLegacy = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS");
+  const priorBundle = Deno.env.get("MINGLA_ALERT_RECIPIENTS_JSON");
   Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
-  Deno.env.delete("PAYSTACK_DISPUTE_ALERT_EMAILS");
+  Deno.env.delete("MINGLA_ALERT_RECIPIENTS_JSON");
   try {
     await handlePaystackDisputeEvent(
       mockClient({ calls }),
@@ -60,15 +61,19 @@ Deno.test("charge.dispute.create posts create event + transaction reference", as
     assertEquals(calls[0].args.p_event_name, "charge.dispute.create");
     assertEquals(calls[0].args.p_amount_cents, 5000);
   } finally {
-    if (prior === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
-    else Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", prior);
+    if (priorLegacy === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
+    else Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", priorLegacy);
+    if (priorBundle === undefined) Deno.env.delete("MINGLA_ALERT_RECIPIENTS_JSON");
+    else Deno.env.set("MINGLA_ALERT_RECIPIENTS_JSON", priorBundle);
   }
 });
 
 Deno.test("charge.dispute.resolve forwards merchant-accepted resolution", async () => {
   const calls: RpcCall[] = [];
-  const prior = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS");
+  const priorLegacy = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS");
+  const priorBundle = Deno.env.get("MINGLA_ALERT_RECIPIENTS_JSON");
   Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
+  Deno.env.delete("MINGLA_ALERT_RECIPIENTS_JSON");
   try {
     await handlePaystackDisputeEvent(
       mockClient({
@@ -96,8 +101,10 @@ Deno.test("charge.dispute.resolve forwards merchant-accepted resolution", async 
     assertEquals(calls[0].args.p_resolution, "merchant-accepted");
     assertEquals(calls[0].args.p_event_name, "charge.dispute.resolve");
   } finally {
-    if (prior === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
-    else Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", prior);
+    if (priorLegacy === undefined) Deno.env.delete("STRIPE_DISPUTE_ALERT_EMAILS");
+    else Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", priorLegacy);
+    if (priorBundle === undefined) Deno.env.delete("MINGLA_ALERT_RECIPIENTS_JSON");
+    else Deno.env.set("MINGLA_ALERT_RECIPIENTS_JSON", priorBundle);
   }
 });
 

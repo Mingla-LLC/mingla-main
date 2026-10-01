@@ -14,6 +14,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendOpsAlertEmail } from "./stripeOpsAlertEmail.ts";
 import { notifyBrandRoles } from "./businessNotifyTriggers.ts";
+import { resolveAlertRecipientValue } from "./secretBundle.ts";
 
 function text(value: unknown): string {
   return typeof value === "string"
@@ -59,10 +60,16 @@ function dueAtIso(data: Record<string, unknown>): string | null {
 }
 
 function alertEmails(): string[] {
-  const raw = Deno.env.get("PAYSTACK_DISPUTE_ALERT_EMAILS") ??
-    Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS") ??
-    "";
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+  // Reuse the Stripe dispute ops inbox (same on-call). Bundle field
+  // stripe_disputes → MINGLA_ALERT_RECIPIENTS_JSON, with legacy
+  // STRIPE_DISPUTE_ALERT_EMAILS fallback — never a new secret name.
+  const value = resolveAlertRecipientValue(
+    "stripe_disputes",
+    "STRIPE_DISPUTE_ALERT_EMAILS",
+  );
+  if (Array.isArray(value)) return value.map((s) => String(s).trim()).filter(Boolean);
+  const raw = value ?? "";
+  return String(raw).split(",").map((s) => s.trim()).filter(Boolean);
 }
 
 function formatMoney(amountCents: number, currency: string): string {
