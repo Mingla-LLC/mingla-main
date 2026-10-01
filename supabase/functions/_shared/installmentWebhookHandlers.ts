@@ -134,10 +134,80 @@ export async function handleInstallmentPaymentSucceeded(
   if (error) {
     throw new Error(`installment collected update failed: ${error.message}`);
   }
+
+  const applicationFeeFromPi = (piObj: Record<string, unknown>, amountCents: number): number => {
+    const appFeeRaw = piObj["application_fee_amount"];
+    return typeof appFeeRaw === "number"
+      ? Math.max(0, Math.trunc(appFeeRaw))
+      : Math.round(amountCents * 0.015);
+  };
+
+  const recordProviderSaleOrThrow = async (
+    amountCents: number,
+  ): Promise<void> => {
+    const applicationFeeAmountCents = applicationFeeFromPi(pi, amountCents);
+    const { data: feeRpcData, error: feeRpcError } = await supabase.rpc(
+      "record_order_installment_provider_sale",
+      {
+        p_installment_id: installmentId,
+        p_application_fee_amount_cents: applicationFeeAmountCents,
+        p_provider_fee_cents: 0,
+      },
+    );
+    if (feeRpcError !== null) {
+      throw new Error(
+        `record_order_installment_provider_sale failed: ${feeRpcError.message}`,
+      );
+    }
+    const feeResult = (feeRpcData ?? null) as {
+      ok?: boolean;
+      reason?: string;
+      status?: string;
+    } | null;
+    if (feeResult === null || feeResult.ok !== true) {
+      const reason = String(feeResult?.reason ?? "unknown");
+      // Cancel race: charge succeeded but row is not collected. Never ack —
+      // inbox must retry / ops recover (refund) the succeeded PI.
+      throw new Error(
+        `record_order_installment_provider_sale rejected:${reason}:status=${
+          feeResult?.status ?? "?"
+        }:installment=${installmentId}`,
+      );
+    }
+  };
+
   if (updated === null) {
-    // Row already collected (replay) or row missing — both ok.
+    // Already collected (replay) or row missing/cancelled. Missing or
+    // cancelled must fail closed — never mark the money event processed.
+    const { data: existing, error: existingError } = await supabase
+      .from("order_installments")
+      .select(
+        "id, amount_cents, status, payout_accounting_state, application_fee_amount_cents",
+      )
+      .eq("id", installmentId)
+      .maybeSingle();
+    if (existingError !== null) {
+      throw new Error(`installment replay load failed: ${existingError.message}`);
+    }
+    if (existing === null) {
+      throw new Error(
+        `installment_pi_succeeded missing installment row ${installmentId}`,
+      );
+    }
+    const existingRow = existing as Record<string, unknown>;
+    const existingStatus = String(existingRow.status ?? "");
+    if (existingStatus === "cancelled") {
+      throw new Error(
+        `installment_pi_succeeded on cancelled installment ${installmentId}: durable refund/recovery required`,
+      );
+    }
+    const accountingState = String(existingRow.payout_accounting_state ?? "");
+    const feesMissing = existingRow.application_fee_amount_cents == null;
+    if (accountingState !== "ready" || feesMissing) {
+      await recordProviderSaleOrThrow(Number(existingRow.amount_cents ?? 0));
+    }
     console.log(
-      `[installment-webhook] payment_intent.succeeded for ${installmentId} — no-op (already collected or row missing)`,
+      `[installment-webhook] payment_intent.succeeded for ${installmentId} — replay accounting ok`,
     );
     return brandId;
   }
@@ -156,6 +226,14 @@ export async function handleInstallmentPaymentSucceeded(
       stripe_charge_id: chargeId,
     },
   });
+
+  // #3645 / #2036 — record fees so a collected installment can enter the payout
+  // ledger once issue_2036_installment_payout_ready() is flipped. Throw on RPC
+  // failure so the webhook inbox retries (collect already stuck; accounting must
+  // catch up on replay).
+  await recordProviderSaleOrThrow(
+    Number((updated as Record<string, unknown>).amount_cents ?? 0),
+  );
 
   // Check if this was the LAST installment for the order → fire "fully paid" confirmation.
   // Simple check: count remaining scheduled/failed installments for the order.

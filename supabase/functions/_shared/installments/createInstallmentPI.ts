@@ -44,6 +44,7 @@ export type OrderRow = {
   buyer_user_id: string | null;
   buyer_email: string;
   at_risk: boolean;
+  cancelled_at?: string | null;
 };
 
 export type BrandRow = {
@@ -151,7 +152,7 @@ async function loadInstallmentContext(
   const inst = installment as InstallmentRow;
   const { data: order } = await supabase
     .from("orders")
-    .select("id, event_id, stripe_customer_id_on_connected_account, saved_payment_method_id, buyer_user_id, buyer_email, at_risk")
+    .select("id, event_id, stripe_customer_id_on_connected_account, saved_payment_method_id, buyer_user_id, buyer_email, at_risk, cancelled_at")
     .eq("id", inst.order_id)
     .maybeSingle();
   if (order === null) return { error: "order_not_found" };
@@ -213,6 +214,33 @@ export async function createInstallmentPI(
     stripeAccount = loaded.stripeAccount;
   }
 
+  // #3645 / #2030 — fail-closed atomic claim before Stripe I/O. Never treat a
+  // missing/error event read as "not cancelled"; never race cancel→charge.
+  {
+    const { data: claim, error: claimError } = await supabase.rpc(
+      "claim_order_installment_for_charge",
+      { p_installment_id: installment.id },
+    );
+    if (claimError !== null) {
+      return {
+        ok: false,
+        error: claimError.message,
+        outcome: "skipped",
+        reason: "claim_rpc_error",
+      };
+    }
+    const claimRow = (claim ?? null) as { ok?: boolean; reason?: string } | null;
+    if (claimRow === null || claimRow.ok !== true) {
+      const reason = String(claimRow?.reason ?? "not_chargeable");
+      return {
+        ok: false,
+        error: reason,
+        outcome: "skipped",
+        reason,
+      };
+    }
+  }
+
   if (
     order.stripe_customer_id_on_connected_account === null ||
     order.saved_payment_method_id === null
@@ -263,14 +291,16 @@ export async function createInstallmentPI(
 
   try {
     // orch-strict-grep-allow stripe-no-idempotency-key — idempotencyKey IS passed via the request-options second arg; SPEC §3.2.1 retry-aware format diverges from generateIdempotencyKey's epoch-ms shape because cron + webhook need deterministic per-(installment,attempt) keys to prevent double-charge.
+    // Create unconfirmed, re-claim, then confirm — never confirm:true before reclaim
+    // or a succeeded PI cannot be cancelled when cancel wins the race (#3645).
     // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
-    const pi = await stripe.paymentIntents.create(
+    let pi = await stripe.paymentIntents.create(
       {
         amount: installment.amount_cents,
         currency: installment.currency.toLowerCase(),
         customer: order.stripe_customer_id_on_connected_account,
         payment_method: order.saved_payment_method_id,
-        confirm: true,
+        confirm: false,
         off_session: true,
         payment_method_types: ["card"],
         ...(applicationFeeAmountCents > 0
@@ -288,6 +318,118 @@ export async function createInstallmentPI(
         stripeAccount: stripeAccount.stripe_account_id,
       },
     );
+
+    // Re-claim after unconfirmed create. If cancel won, cancel the PI (works
+    // while unconfirmed) and skip — never confirm.
+    {
+      const { data: reclaim, error: reclaimError } = await supabase.rpc(
+        "claim_order_installment_for_charge",
+        { p_installment_id: installment.id },
+      );
+      const reclaimRow = (reclaim ?? null) as { ok?: boolean; reason?: string } | null;
+      if (
+        reclaimError !== null ||
+        reclaimRow === null ||
+        reclaimRow.ok !== true
+      ) {
+        try {
+          // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+          await stripe.paymentIntents.cancel(pi.id, {}, {
+            idempotencyKey:
+              `installment-race-cancel:${installment.id}:${pi.id}:preconfirm`,
+            stripeAccount: stripeAccount.stripe_account_id,
+          });
+        } catch (cancelErr) {
+          console.error(
+            "[createInstallmentPI] best-effort PI cancel after cancelled_during_charge failed",
+            cancelErr instanceof Error ? cancelErr.message : cancelErr,
+          );
+        }
+        return {
+          ok: false,
+          error: "cancelled_during_charge",
+          outcome: "skipped",
+          reason: "cancelled_during_charge",
+          chargeId: pi.id,
+        };
+      }
+    }
+
+    // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+    pi = await stripe.paymentIntents.confirm(
+      pi.id,
+      { off_session: true, payment_method: order.saved_payment_method_id },
+      {
+        idempotencyKey: `installment-confirm:${installment.id}:${pi.id}`,
+        stripeAccount: stripeAccount.stripe_account_id,
+      },
+    );
+
+    // Post-confirm safety reclaim. If cancel won between reclaim and confirm
+    // and the PI already succeeded, refund fail-closed — cancel cannot undo a
+    // succeeded charge.
+    {
+      const { data: postConfirm, error: postConfirmError } = await supabase.rpc(
+        "claim_order_installment_for_charge",
+        { p_installment_id: installment.id },
+      );
+      const postConfirmRow = (postConfirm ?? null) as {
+        ok?: boolean;
+        reason?: string;
+      } | null;
+      if (
+        postConfirmError !== null ||
+        postConfirmRow === null ||
+        postConfirmRow.ok !== true
+      ) {
+        if (pi.status === "succeeded") {
+          try {
+            // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+            await stripe.refunds.create(
+              { payment_intent: pi.id },
+              {
+                idempotencyKey:
+                  `installment-cancel-refund:${installment.id}:${pi.id}`,
+                stripeAccount: stripeAccount.stripe_account_id,
+              },
+            );
+          } catch (refundErr) {
+            throw new Error(
+              `cancelled_during_charge_refund_failed:${
+                refundErr instanceof Error ? refundErr.message : String(refundErr)
+              }`,
+            );
+          }
+          return {
+            ok: false,
+            error: "cancelled_during_charge_refunded",
+            outcome: "skipped",
+            reason: "cancelled_during_charge_refunded",
+            chargeId: pi.id,
+          };
+        }
+        try {
+          // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
+          await stripe.paymentIntents.cancel(pi.id, {}, {
+            idempotencyKey:
+              `installment-race-cancel:${installment.id}:${pi.id}:postconfirm`,
+            stripeAccount: stripeAccount.stripe_account_id,
+          });
+        } catch (cancelErr) {
+          console.error(
+            "[createInstallmentPI] best-effort PI cancel after post-confirm race failed",
+            cancelErr instanceof Error ? cancelErr.message : cancelErr,
+          );
+        }
+        return {
+          ok: false,
+          error: "cancelled_during_charge",
+          outcome: "skipped",
+          reason: "cancelled_during_charge",
+          chargeId: pi.id,
+        };
+      }
+    }
 
     await supabase
       .from("order_installments")
