@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-01 — Support agents can select and copy text on the Help pages (`/help` and every walkthrough) to paste exact steps to a customer; every other marketing page keeps its copy protection, and Help images/video still cannot be saved or dragged out (toward #3431, PR #TBD)
 - 2026-10-01 — Paystack chargebacks are received and recorded: create/remind/resolve webhooks land in `paystack_disputes` with a 16-hour response deadline, ops and brand are alerted, and a merchant-accepted (including auto-accept) dispute opens recoverable organiser debt on the existing ledger (toward #3645, PR #3726)
 - 2026-10-01 — After a buyer is refunded, organiser debt can exceed the single payout that held that payment and recover from later payouts for the same event — payment+24h no longer silently drops the overage (toward #3645, PR #3725)
 - 2026-10-01 — Admin can see and release a held cancel-refund batch from the offering detail (alert + reason-gated release) so buyers are not stuck waiting on a database command after cancel-review (toward #3645, PR #3724)

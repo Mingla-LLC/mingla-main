@@ -10,6 +10,13 @@ import '@/components/cutout/cutout.css'
 // scripts/verify-search-foundation.mjs measures a search-ready page's body
 // text by what is inside it — no <main>, no measurable content, and the route
 // fails the search contract even though the page is full of copy.
+//
+// `data-allow-copy` (#3431) opts Help out of the site-wide copy protection so
+// support agents can select and copy the steps; every other page stays locked.
 export default function HelpLayout({ children }: { readonly children: React.ReactNode }) {
-  return <main id="main">{children}</main>
+  return (
+    <main id="main" data-allow-copy="">
+      {children}
+    </main>
+  )
 }
