@@ -1048,6 +1048,9 @@ jobs:
             -f supabase/migrations/__tests__/issue_3645_cancel_refund_review.implementor.happy.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_cancel_refund_review.tester.adversarial.pg17.test.sql
+          # Issue #3645 — admin offering detail can see awaiting_review + release.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_cancel_review_admin_release.implementor.happy.pg17.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on

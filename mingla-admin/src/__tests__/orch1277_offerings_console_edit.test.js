@@ -258,3 +258,36 @@ describe("ORCH-1277 — EntityEditModal (ORCH-1276) is REUSED, not re-created", 
     assert.match(VENUE_PAGE, /from "\.\.\/components\/entity\/EntityEditModal"/);
   });
 });
+
+// #3645 — cancel-review release is the only admin path that unblocks buyer refunds
+// after prepare holds a batch in awaiting_review. Pin the gate + audited call +
+// RELEASE confirm + reload wiring so the control cannot ship as a dead button.
+describe("Issue #3645 — cancel-refund release control on OfferingDetailView", () => {
+  it("offeringsService routes release through the audited admin RPC", () => {
+    assert.match(
+      OFFERINGS_SVC,
+      /function releaseCancelRefundBatch[\s\S]*callAdminWriteRpc\(\s*"admin_release_event_cancel_refund_batch"/,
+    );
+  });
+
+  it("mapOfferingWriteError checks release-specific codes before generic not_found", () => {
+    const mapper = OFFERINGS_SVC.slice(
+      OFFERINGS_SVC.indexOf("export function mapOfferingWriteError"),
+      OFFERINGS_SVC.indexOf("export function", OFFERINGS_SVC.indexOf("export function mapOfferingWriteError") + 1),
+    );
+    const awaitingIdx = mapper.indexOf('includes("not_awaiting_review")');
+    const runIdx = mapper.indexOf('includes("run_not_found")');
+    const genericIdx = mapper.indexOf('includes("not_found")');
+    assert.ok(awaitingIdx >= 0 && runIdx >= 0 && genericIdx >= 0, "release + generic not_found mappings present");
+    assert.ok(awaitingIdx < genericIdx, "not_awaiting_review must precede generic not_found");
+    assert.ok(runIdx < genericIdx, "run_not_found must precede generic not_found");
+  });
+
+  it("OfferingDetailView gates on awaiting_review, confirms RELEASE, calls the service, reloads", () => {
+    assert.match(OFFERING_PAGE, /releaseCancelRefundBatch/);
+    assert.match(OFFERING_PAGE, /cancel_refund_run_status\s*===\s*"awaiting_review"/);
+    assert.match(OFFERING_PAGE, /confirmPhrase[:=]\s*"RELEASE"/);
+    assert.match(OFFERING_PAGE, /kind:\s*"release_cancel_refunds"/);
+    assert.match(OFFERING_PAGE, /await load\(\)/);
+  });
+});

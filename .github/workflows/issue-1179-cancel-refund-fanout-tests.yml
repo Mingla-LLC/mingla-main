@@ -13,10 +13,13 @@ on:
       - "supabase/migrations/__tests__/issue_1179_cancel_refund_fanout_pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1179_cancel_refund_fanout_adversarial_pg17.test.sql"
       - "supabase/migrations/20270721003645_issue_3645_cancel_refund_review.sql"
+      - "supabase/migrations/20270722003645_issue_3645_cancel_review_admin_release_read.sql"
       - "supabase/migrations/__tests__/issue_3645_cancel_refund_review.implementor.happy.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_3645_cancel_refund_review.tester.adversarial.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_3645_cancel_review_admin_release.implementor.happy.pg17.test.sql"
       - "mingla-business/src/services/businessEvents.ts"
       - "mingla-admin/src/services/offeringsService.js"
+      - "mingla-admin/src/pages/OfferingDetailView.jsx"
       - ".github/workflows/issue-1179-cancel-refund-fanout-tests.yml"
       # #2148 — this suite now gets its database from a shared composite action;
       # without this path a change to that action would not re-run it.

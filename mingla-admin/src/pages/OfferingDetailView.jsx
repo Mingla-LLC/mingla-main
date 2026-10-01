@@ -22,6 +22,7 @@ import { EntityEditModal } from "../components/entity/EntityEditModal";
 import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
+import { AlertCard } from "../components/ui/Card";
 import { useToast } from "../context/ToastContext";
 import {
   getOffering,
@@ -32,6 +33,7 @@ import {
   getExperienceDetail,
   setOfferingVisibility,
   cancelOffering,
+  releaseCancelRefundBatch,
   setBookingsClosed,
   setOfferingDeleted,
   setTicketPrice,
@@ -601,12 +603,28 @@ export function OfferingDetailView({ eventId, onBack }) {
       footerActions.push({
         label: "Cancel offering",
         title: "Cancel offering",
-        description: "Set this offering to cancelled. Refunds are handled in the Money console — cancelling issues none. Recorded in the audit log.",
+        description:
+          "Set this offering to cancelled. Paid refunds are held for admin review (then release below); cancelling does not refund buyers by itself. Recorded in the audit log.",
         confirmLabel: "Cancel offering",
         destructive: true,
         requireReason: true,
         confirmPhrase: "CANCEL",
         onConfirm: ({ reason }) => afterWrite(() => cancelOffering(eventId, reason)),
+      });
+    }
+    if (bundle.cancel_refund_run_status === "awaiting_review") {
+      const heldCount = Number(bundle.cancel_refund_object_count) || 0;
+      footerActions.push({
+        label: "Release held refunds",
+        title: "Release held cancel refunds",
+        description: heldCount
+          ? `This cancellation is holding ${heldCount} refund object(s) in awaiting_review. Releasing moves the batch to pending so the existing refund fan-out can pay buyers. Recorded in the audit log.`
+          : "This cancellation is holding a refund batch in awaiting_review. Releasing moves it to pending so the existing refund fan-out can pay buyers. Recorded in the audit log.",
+        confirmLabel: "Release refunds",
+        destructive: true,
+        requireReason: true,
+        confirmPhrase: "RELEASE",
+        onConfirm: ({ reason }) => afterWrite(() => releaseCancelRefundBatch(eventId, reason)),
       });
     }
     footerActions.push({
@@ -646,6 +664,30 @@ export function OfferingDetailView({ eventId, onBack }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {bundle && !loading && !error && bundle.cancel_refund_run_status === "awaiting_review" && (
+        <AlertCard
+          variant="warning"
+          title="Cancel refunds are held for review"
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                dispatch({
+                  kind: "release_cancel_refunds",
+                  initial: {},
+                })
+              }
+            >
+              Release held refunds
+            </Button>
+          }
+        >
+          {Number(bundle.cancel_refund_object_count) > 0
+            ? `${bundle.cancel_refund_object_count} refund object(s) will not pay out until an admin releases this batch.`
+            : "Buyers will not be refunded until an admin releases this batch."}
+        </AlertCard>
+      )}
       {bundle && !loading && !error && (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
@@ -688,6 +730,29 @@ export function OfferingDetailView({ eventId, onBack }) {
           successMessage="Visibility updated."
           onSave={async (values, { reason }) => {
             const { error: e } = await setOfferingVisibility(eventId, values.visibility, reason);
+            if (e) throw new Error(mapOfferingWriteError(e));
+            closeAction();
+            await load();
+          }}
+        />
+      )}
+
+      {a?.kind === "release_cancel_refunds" && (
+        <HighRiskActionModal
+          open
+          onClose={closeAction}
+          title="Release held cancel refunds"
+          description={
+            Number(bundle?.cancel_refund_object_count) > 0
+              ? `This cancellation is holding ${bundle.cancel_refund_object_count} refund object(s) in awaiting_review. Releasing moves the batch to pending so the existing refund fan-out can pay buyers.`
+              : "This cancellation is holding a refund batch in awaiting_review. Releasing moves it to pending so the existing refund fan-out can pay buyers."
+          }
+          confirmLabel="Release refunds"
+          destructive
+          requireReason
+          confirmPhrase="RELEASE"
+          onConfirm={async ({ reason }) => {
+            const { error: e } = await releaseCancelRefundBatch(eventId, reason);
             if (e) throw new Error(mapOfferingWriteError(e));
             closeAction();
             await load();
