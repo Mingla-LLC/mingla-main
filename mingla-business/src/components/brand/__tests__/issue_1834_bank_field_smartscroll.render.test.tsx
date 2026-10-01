@@ -247,6 +247,7 @@ jest.mock("../../../hooks/useBrandPaystack", () => ({
   useUpdatePaystackRecipient: () => mockIdleMutation,
   useDisconnectPaystack: () => mockIdleMutation,
   useClearPaystackProvider: () => mockIdleMutation,
+  useSelectPaystackProvider: () => mockIdleMutation,
 }));
 
 // Sheet-based siblings. None of them renders on the Nigeria branch, but they

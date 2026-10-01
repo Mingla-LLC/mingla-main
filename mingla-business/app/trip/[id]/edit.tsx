@@ -281,6 +281,9 @@ export default function TripEditRoute(): React.ReactElement {
         paymentProvider: currentBrand.paymentProvider,
         paystackSubaccountCode: currentBrand.paystackSubaccountCode ?? null,
         hasPaystackRecipient: currentBrand.hasPaystackRecipient ?? null,
+        payoutHoldCutoverAt: currentBrand.payoutHoldCutoverAt ?? null,
+        chargesEnabled: currentBrand.chargesEnabled ?? null,
+        payoutsEnabled: currentBrand.payoutsEnabled ?? null,
       }}
       isCreateMode={isCreateMode}
       onDiscardTrip={async () => {

@@ -95,9 +95,12 @@ INSERT INTO auth.users(id,instance_id,aud,role,email,encrypted_password,created_
 SELECT v,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',k||'@i2117t.test','x',now(),now()
 FROM i2117t.ids WHERE k IN ('organiser','stranger') ON CONFLICT DO NOTHING;
 INSERT INTO public.creator_accounts(id) SELECT v FROM i2117t.ids WHERE k IN ('organiser','stranger') ON CONFLICT DO NOTHING;
-INSERT INTO public.brands(id,account_id,name,slug,claim_status,pricing_currency,default_currency)
+-- #3645 — instalment tier_metadata INSERT fires trg_trip_tier_installments_require_payout
+-- (pg_brand_can_payout). Fixture brand must be payout-ready so trip fixtures can seed
+-- instalment plans without bank_required_for_installments.
+INSERT INTO public.brands(id,account_id,name,slug,claim_status,pricing_currency,default_currency,paystack_subaccount_code)
 SELECT (SELECT v FROM i2117t.ids WHERE k='brand'),(SELECT v FROM i2117t.ids WHERE k='organiser'),
-       'I2117T Brand','i2117t-brand','verified','usd','USD';
+       'I2117T Brand','i2117t-brand','verified','usd','USD','ACCT_i2117';
 
 CREATE TABLE i2117t.offering(
   key text primary key, event_id uuid, tier_id uuid, order_id uuid,

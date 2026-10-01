@@ -124,6 +124,9 @@ import { resolveBankConnectRail } from "../../utils/bankConnectRail";
 import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
 import { useSwitchAccount } from "../../hooks/useSwitchAccount";
+// #3645 — NG country pick must stamp hold cutover via select_provider without
+// waiting for bank details (sell-before-bank).
+import { useSelectPaystackProvider } from "../../hooks/useBrandPaystack";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
@@ -278,9 +281,12 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // form instantly (no network call — the form's "Connect bank" step commits the
   // provider). The Stripe onboarding path below is never entered for NG, and the
   // form offers "Choose a different country" to return here.
+  // #3645 — ALSO invoke select_provider on NG pick so payout_hold_cutover_at is
+  // stamped without requiring bank details (charge-ready sell-before-bank).
   const [paystackSelected, setPaystackSelected] = useState(
     brandRail.provider === "paystack",
   );
+  const selectPaystackProvider = useSelectPaystackProvider();
   // When the user returns from the Nigeria bank form, re-open the country sheet
   // so they can immediately re-pick (rather than landing on the closed picker).
   const [reopenPickerOnReturn, setReopenPickerOnReturn] = useState(false);
@@ -291,11 +297,25 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     // Paystack rail, never Stripe; it is intentionally not in the Stripe allowlist.
     if (countryCode === "NG") {
       setPaystackSelected(true);
+      if (brand?.id) {
+        selectPaystackProvider.mutate(brand.id, {
+          onError: (err: Error) => {
+            setErrorMessage(
+              err.message.trim().length > 0
+                ? err.message
+                : "Could not switch to Paystack. Try again.",
+            );
+          },
+          onSuccess: () => {
+            setErrorMessage(null);
+          },
+        });
+      }
       return;
     }
     setPaystackSelected(false);
     setSelectedCountry(countryCode);
-  }, []);
+  }, [brand?.id, selectPaystackProvider]);
 
   const savedStripeCountry = statusQuery.data?.country ?? null;
   const countryPickerLocked = isStripeCountryPickerLocked({

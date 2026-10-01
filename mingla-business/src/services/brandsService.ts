@@ -816,15 +816,13 @@ export async function getBrand(brandId: string): Promise<Brand | null> {
   if (data === null) return null;
 
   // #3645 — recipient-only Paystack brands are payout-ready without a subaccount.
-  // Detail path only (list stays lean); callers with useBrandPaystackStatus may
-  // also freshen via Brand.hasPaystackRecipient.
-  const { data: recipientRow } = await supabase
-    .from("brand_paystack_recipients")
-    .select("id")
-    .eq("brand_id", brandId)
-    .eq("is_active", true)
-    .maybeSingle();
-  const hasPaystackRecipient = recipientRow != null;
+  // Detail path only (list stays lean). Direct table read is RLS-blocked for
+  // event_manager; use the authorized SECURITY DEFINER helper instead.
+  const { data: hasRecipientRpc } = await supabase.rpc(
+    "biz_brand_has_active_paystack_recipient",
+    { p_brand_id: brandId },
+  );
+  const hasPaystackRecipient = hasRecipientRpc === true;
 
   const brand = mapBrandRowToUi(data as BrandRow, {
     role: "owner",

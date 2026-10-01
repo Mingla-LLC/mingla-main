@@ -180,11 +180,14 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- Serialize with publish's event lock (FOR UPDATE) so instalment metadata
+  -- writes cannot race a draft→scheduled transition checking the same brand.
   SELECT e.brand_id, e.status::text
     INTO v_brand_id, v_status
   FROM public.events e
   WHERE e.id = NEW.event_id
-    AND e.deleted_at IS NULL;
+    AND e.deleted_at IS NULL
+  FOR UPDATE;
 
   IF v_brand_id IS NULL THEN
     RETURN NEW;
@@ -210,6 +213,33 @@ CREATE TRIGGER trg_trip_tier_installments_require_payout
 REVOKE ALL ON FUNCTION public.trg_trip_tier_installments_require_payout()
   FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.trg_trip_tier_installments_require_payout()
+  TO authenticated, service_role;
+
+-- #3645 — authorized read of active Paystack recipient for event_manager+.
+-- Direct SELECT on brand_paystack_recipients is RLS-blocked for that role;
+-- getBrand uses this RPC instead.
+CREATE OR REPLACE FUNCTION public.biz_brand_has_active_paystack_recipient(p_brand_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $fn$
+BEGIN
+  IF public.biz_brand_effective_rank_for_caller(p_brand_id)
+       < public.biz_role_rank('event_manager') THEN
+    RETURN false;
+  END IF;
+  RETURN EXISTS (
+    SELECT 1 FROM public.brand_paystack_recipients r
+    WHERE r.brand_id = p_brand_id AND r.is_active IS TRUE
+  );
+END
+$fn$;
+
+REVOKE ALL ON FUNCTION public.biz_brand_has_active_paystack_recipient(uuid)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.biz_brand_has_active_paystack_recipient(uuid)
   TO authenticated, service_role;
 
 COMMIT;
