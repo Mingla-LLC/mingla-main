@@ -55,6 +55,13 @@ CREATE INDEX idx_paystack_disputes_tx_ref ON public.paystack_disputes(transactio
 
 ALTER TABLE public.paystack_disputes ENABLE ROW LEVEL SECURITY;
 
+-- #1856 D-01: strip default PUBLIC/anon/authenticated grants; re-grant only
+-- the SELECT the brand_payment_managers policy needs. Writes go through
+-- record_paystack_dispute_outcome (SECURITY DEFINER / service_role).
+REVOKE ALL ON public.paystack_disputes FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.paystack_disputes TO authenticated;
+GRANT ALL ON public.paystack_disputes TO service_role;
+
 CREATE POLICY "service_role_all_paystack_disputes"
   ON public.paystack_disputes FOR ALL TO service_role
   USING (true) WITH CHECK (true);

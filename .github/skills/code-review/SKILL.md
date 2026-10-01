@@ -99,6 +99,10 @@ Only when the diff touches the area:
   hex UUIDs, legal enum/CHECK values (e.g. `events.status`), and otherwise
   parse — a test that dies at DO-block init or first INSERT is a silent
   coverage hole, not a green path.
+- **New table grants (#1856 D-01)** — `CREATE TABLE` inherits over-broad
+  default grants. After RLS/policies, `REVOKE ALL … FROM PUBLIC, anon,
+  authenticated` and re-GRANT only the verbs the policies need (often
+  `SELECT` to `authenticated`). Do not baseline-allowlist the defaults.
 - **Money aggregates → integer columns** — `sum(integer)` is `bigint`; casting
   straight to `integer` overflows past ~2.1e9 cents. Clamp before cast when
   the result feeds integer debt/cap columns.
