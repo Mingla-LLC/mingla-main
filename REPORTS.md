@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-01 — Copilot code review on this repo now follows a principal-engineer bar: design flaws, breaking changes, and convolution — not style nits — via `.github/skills/code-review/SKILL.md` (#3722, PR #3723)
 - 2026-10-01 — The #1171 payout-debt contract on `main` is green again after payment+24h: the temporary-to-permanent conversion fixture opens the postponement debt one day later so it still reserves future value before convert (maturity must stay after apply under `live_anchor+1d`) (toward #3645, PR #3721)
 - 2026-09-30 — Cancelling a paid offering now freezes ticket sales and closes bookings immediately, and holds every refund in an admin-review queue instead of refunding on the spot: the refund run opens as `awaiting_review`, the fan-out, claim and cron refuse to move money while held, and an audited admin release (`admin_release_event_cancel_refund_batch`) lets the existing #1179/#1221 refund plane drain the batch; cancellations with nothing to refund still complete at once (toward #3645, PR #3719)
 - 2026-09-30 — Organiser payouts now mature about a day after each payment instead of three days after the event: the ledger CHECK, attach/authorize helpers, and `payout-release-sweep` all use payment+24h, the NG float floor matches, and honest-payout copy no longer claims event+3d timing (#3645, PR #3717)
