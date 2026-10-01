@@ -347,7 +347,11 @@ const BOUNDARY: Record<string, () => unknown> = {
   }),
   draftRsvpValidation: () => ({ validateRsvpPublish: () => [], validateRsvpStep: () => [] }),
   draftEventPristine: () => ({ isDraftEventPristine: () => false }),
-  brandPayout: () => ({ payoutGateStatus: () => "active" }),
+  brandPayout: () => ({
+    payoutGateStatus: () => "active",
+    isBrandPayoutReady: () => true,
+    isBrandChargeReady: () => true,
+  }),
   paidPublishGuards: () => ({
     describeUnmappedPublishGuard: () => null,
     resolveProviderNeutralPaidPublishGuardCopy: () => null,
@@ -357,6 +361,13 @@ const BOUNDARY: Record<string, () => unknown> = {
   refundPolicyTerms: () => ({ OfferingRefundTermsError: class extends Error {} }),
   recurrenceRule: () => ({ expandRecurrenceToDates: () => [] }),
   useBrandStripeStatus: () => ({ useBrandStripeStatus: () => stripeStatusQuery }),
+  // #3645 — TripCreatorWizard freshest recipient via useBrandPaystackStatus.
+  useBrandPaystack: () => ({
+    useBrandPaystackStatus: () => ({ data: undefined, isPending: false }),
+    useSelectPaystackProvider: () => mutation,
+    useClearPaystackProvider: () => mutation,
+    useDisconnectPaystack: () => mutation,
+  }),
   rsvpRpcFailure: () => ({ readRpcFailureMessage: () => "", rsvpRpcFailureCopy: () => "" }),
   chipInPayoutReadiness: () => ({ isChipInPayoutReady: () => true }),
   Button: () => jest.requireMock("../ui/Button"),

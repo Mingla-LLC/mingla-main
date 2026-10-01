@@ -100,20 +100,23 @@ serve(async (req: Request) => {
   // Query 1: due scheduled installments (initial attempts).
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — belt-and-braces filter
   // `is("cancelled_at", null)` per I-PROPOSED-TR4-CANCELLED-INSTALLMENT-NEVER-CHARGED.
-  // The DB-level CHECK constraint order_installments_cancelled_at_status_consistent
-  // already enforces (status='cancelled') ⟺ (cancelled_at IS NOT NULL), so the
-  // existing status='scheduled' filter would already exclude cancelled rows.
-  // The explicit cancelled_at filter is defense-in-depth against transaction-
-  // visibility lag during a rare race between cancel-trip-booking commit and
-  // this cron query.
+  // #3645 / #2030 — join orders→events and exclude cancelled events/orders so
+  // we never attempt a PI for a cancelled offering (createInstallmentPI also
+  // fail-closes as a second gate).
   const { data: dueRows, error: dueError } = await supabase
     .from("order_installments")
     .select(`
       id, order_id, ordinal, amount_cents, currency, due_at, status,
-      retry_count, stripe_payment_intent_id
+      retry_count, stripe_payment_intent_id,
+      orders!inner(
+        cancelled_at,
+        events!inner(status)
+      )
     `)
     .eq("status", "scheduled")
     .is("cancelled_at", null)
+    .is("orders.cancelled_at", null)
+    .neq("orders.events.status", "cancelled")
     .lte("due_at", new Date().toISOString())
     .order("due_at", { ascending: true })
     .limit(limit);
@@ -124,16 +127,21 @@ serve(async (req: Request) => {
   }
 
   // Query 2: failed-then-retry-eligible installments.
-  // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — same belt-and-braces
-  // cancelled_at filter as Query 1 (I-PROPOSED-TR4-CANCELLED-INSTALLMENT-NEVER-CHARGED).
+  // ORCH-0875 + #3645 — same cancelled_at / event-cancelled filters as Query 1.
   const { data: retryRows, error: retryError } = await supabase
     .from("order_installments")
     .select(`
       id, order_id, ordinal, amount_cents, currency, due_at, status,
-      retry_count, stripe_payment_intent_id
+      retry_count, stripe_payment_intent_id,
+      orders!inner(
+        cancelled_at,
+        events!inner(status)
+      )
     `)
     .eq("status", "failed")
     .is("cancelled_at", null)
+    .is("orders.cancelled_at", null)
+    .neq("orders.events.status", "cancelled")
     .lte("next_retry_at", new Date().toISOString())
     .lt("retry_count", MAX_RETRY_ATTEMPTS)
     .order("next_retry_at", { ascending: true })
@@ -154,7 +162,25 @@ serve(async (req: Request) => {
       .eq("status", "failed");
   }
 
-  const allRows: InstallmentRow[] = [...(dueRows ?? []), ...(retryRows ?? [])] as InstallmentRow[];
+  const allRows: InstallmentRow[] = [...(dueRows ?? []), ...(retryRows ?? [])].map(
+    (row) => {
+      const r = row as Record<string, unknown>;
+      return {
+        id: String(r.id),
+        order_id: String(r.order_id),
+        ordinal: Number(r.ordinal),
+        amount_cents: Number(r.amount_cents),
+        currency: String(r.currency),
+        due_at: String(r.due_at),
+        status: String(r.status),
+        retry_count: Number(r.retry_count),
+        stripe_payment_intent_id:
+          r.stripe_payment_intent_id == null
+            ? null
+            : String(r.stripe_payment_intent_id),
+      } satisfies InstallmentRow;
+    },
+  );
 
   const result: ProcessResult = {
     processed: 0,
@@ -170,7 +196,7 @@ serve(async (req: Request) => {
       // Per-row joins (small N per run; could batch-join in future if N grows)
       const { data: order } = await supabase
         .from("orders")
-        .select("id, event_id, stripe_customer_id_on_connected_account, saved_payment_method_id, buyer_user_id, buyer_email, at_risk")
+        .select("id, event_id, stripe_customer_id_on_connected_account, saved_payment_method_id, buyer_user_id, buyer_email, at_risk, cancelled_at")
         .eq("id", installment.order_id)
         .maybeSingle();
       if (order === null) {
@@ -180,11 +206,18 @@ serve(async (req: Request) => {
       // orders has no brand_id column — resolve via events FK.
       const { data: eventRow } = await supabase
         .from("events")
-        .select("id, brand_id")
+        .select("id, brand_id, status")
         .eq("id", (order as OrderRow).event_id)
         .maybeSingle();
       if (eventRow === null) {
         result.errors.push({ installment_id: installment.id, reason: "event_not_found" });
+        continue;
+      }
+      if (String((eventRow as Record<string, unknown>).status) === "cancelled") {
+        // Query filter should already exclude these; skip without charging.
+        continue;
+      }
+      if ((order as OrderRow).cancelled_at != null) {
         continue;
       }
       const brandId = String((eventRow as Record<string, unknown>).brand_id);

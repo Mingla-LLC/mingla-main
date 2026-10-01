@@ -18,7 +18,7 @@
  */
 
 import type { Brand } from "../store/currentBrandStore";
-import { isBrandPayoutReady } from "./brandPayout";
+import { isBrandChargeReady, isBrandPayoutReady } from "./brandPayout";
 import type { DraftEvent } from "../store/draftEventStore";
 import { routeForEventRowDefensive } from "./routeForEventRow";
 import type { EventTypeForRouting } from "./routeForEventRow";
@@ -83,15 +83,30 @@ export function pickHomeNextAction(
   counts: UpcomingCounts,
   drafts: DraftEvent[],
 ): HomeNextActionRung | null {
-  // Rung 1 — payout upsell only after a paid draft exists. Provider-neutral:
-  // hidden once Stripe is active OR a Paystack bank is connected.
-  if (!isBrandPayoutReady(brand) && hasAnyDraftPaidOffering(drafts)) {
+  // Rung 1a — cannot sell yet: finish payment setup (Stripe connect / Paystack stamp).
+  if (!isBrandChargeReady(brand) && hasAnyDraftPaidOffering(drafts)) {
     return {
       rung: 1,
       kind: "stripe_inactive",
-      title: "Connect bank to take payments",
-      body: "You have a paid offering ready to publish. Connect a bank to start selling.",
-      ctaLabel: "Connect bank",
+      title: "Finish payment setup to sell",
+      body: "You have a paid offering ready to publish. Connect payments to start selling.",
+      ctaLabel: "Set up payments",
+      ctaRoute: `/brand/${brand.id}/payments`,
+    };
+  }
+
+  // Rung 1b — can sell, money waits for a bank (#3645).
+  if (
+    isBrandChargeReady(brand) &&
+    !isBrandPayoutReady(brand) &&
+    hasAnyDraftPaidOffering(drafts)
+  ) {
+    return {
+      rung: 1,
+      kind: "stripe_inactive",
+      title: "Add a bank to get paid",
+      body: "You can keep selling. Your money waits until you add a bank.",
+      ctaLabel: "Add bank",
       ctaRoute: `/brand/${brand.id}/payments`,
     };
   }

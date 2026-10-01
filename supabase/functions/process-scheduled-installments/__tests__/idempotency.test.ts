@@ -97,7 +97,9 @@ Deno.test("ORCH-0869 cron: every PI create uses Stripe-Account header (direct ch
 
 Deno.test("ORCH-0869 cron: PI create uses off_session + saved PM contract", () => {
   assertStringIncludes(HELPER_SOURCE, "off_session: true");
-  assertStringIncludes(HELPER_SOURCE, "confirm: true");
+  // #3645: create unconfirmed, reclaim, then confirm — never confirm:true at create.
+  assertStringIncludes(HELPER_SOURCE, "confirm: false");
+  assertStringIncludes(HELPER_SOURCE, "paymentIntents.confirm");
   assertMatch(
     HELPER_SOURCE,
     /customer:\s*order\.stripe_customer_id_on_connected_account/,
@@ -186,5 +188,80 @@ Deno.test("ORCH-0869 webhook handlers: at_risk flag flips at MAX_RETRY_ATTEMPTS"
   assertMatch(
     WEBHOOK_HANDLER_SOURCE,
     /willBeAtRisk\s*=\s*nextRetryCount\s*>=\s*MAX_RETRY_ATTEMPTS/,
+  );
+});
+
+Deno.test("#3645 createInstallmentPI: fail-closed claim RPC before Stripe I/O", () => {
+  assertStringIncludes(HELPER_SOURCE, "claim_order_installment_for_charge");
+  assertStringIncludes(HELPER_SOURCE, 'reason: "claim_rpc_error"');
+  assertStringIncludes(HELPER_SOURCE, "cancelled_during_charge");
+  assertStringIncludes(HELPER_SOURCE, "cancelled_during_charge_refunded");
+  assertStringIncludes(HELPER_SOURCE, "paymentIntents.cancel");
+  assertStringIncludes(HELPER_SOURCE, "refunds.create");
+  assertStringIncludes(
+    HELPER_SOURCE,
+    "installment-cancel-refund:${installment.id}:${pi.id}",
+  );
+  assertStringIncludes(
+    HELPER_SOURCE,
+    "installment-confirm:${installment.id}:${pi.id}",
+  );
+  // Fail-closed order: first claim call appears before the live PI create call
+  // (ignore the file-header mention of paymentIntents.create).
+  const claimIdx = HELPER_SOURCE.indexOf('"claim_order_installment_for_charge"');
+  const stripeIdx = HELPER_SOURCE.indexOf("await stripe.paymentIntents.create");
+  const confirmIdx = HELPER_SOURCE.indexOf("await stripe.paymentIntents.confirm");
+  assert(
+    claimIdx >= 0 && stripeIdx > claimIdx,
+    "claim_order_installment_for_charge must run before stripe.paymentIntents.create",
+  );
+  assert(
+    confirmIdx > stripeIdx,
+    "paymentIntents.confirm must follow unconfirmed paymentIntents.create",
+  );
+  assert(
+    !HELPER_SOURCE.includes("confirm: true"),
+    "create must not use confirm:true (reclaim cannot cancel a succeeded PI)",
+  );
+});
+
+Deno.test("#3645 cron: due/retry queries exclude cancelled events via orders→events", () => {
+  assertStringIncludes(CRON_SOURCE, 'neq("orders.events.status", "cancelled")');
+  assertStringIncludes(CRON_SOURCE, 'is("orders.cancelled_at", null)');
+});
+
+Deno.test("#3645 webhook: records provider sale after collect (fail-closed / replay)", () => {
+  assertStringIncludes(
+    WEBHOOK_HANDLER_SOURCE,
+    "record_order_installment_provider_sale",
+  );
+  assertStringIncludes(
+    WEBHOOK_HANDLER_SOURCE,
+    "record_order_installment_provider_sale failed:",
+  );
+  assertStringIncludes(
+    WEBHOOK_HANDLER_SOURCE,
+    "record_order_installment_provider_sale rejected:",
+  );
+  assert(
+    !WEBHOOK_HANDLER_SOURCE.includes(
+      "record_order_installment_provider_sale failed (non-fatal)",
+    ),
+    "fee RPC failure must throw for inbox retry, not fail-soft",
+  );
+  assertStringIncludes(WEBHOOK_HANDLER_SOURCE, "feeResult.ok !== true");
+  assertStringIncludes(WEBHOOK_HANDLER_SOURCE, "payout_accounting_state");
+  assertStringIncludes(WEBHOOK_HANDLER_SOURCE, "replay accounting ok");
+  assertStringIncludes(
+    WEBHOOK_HANDLER_SOURCE,
+    "installment_pi_succeeded missing installment row",
+  );
+  assertStringIncludes(
+    WEBHOOK_HANDLER_SOURCE,
+    "installment_pi_succeeded on cancelled installment",
+  );
+  assert(
+    !WEBHOOK_HANDLER_SOURCE.includes("no-op (row missing)"),
+    "missing installment for signature-valid money event must throw, not ack",
   );
 });

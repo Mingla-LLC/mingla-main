@@ -5,11 +5,17 @@
  * CI-enforced fails-on-revert: weakening the predicate to always-true, dropping the
  * Paystack branch, or trusting the cache instead of the passed fresh status flips
  * these assertions.
+ *
+ * [TEST-MOD-APPROVED #3645] Blank-subaccount cases now also require an unstamped
+ * hold rail; stamped hold-rail without a subaccount is charge-ready (sell-before-bank).
  */
 import { isChipInPayoutReady } from "../chipInPayoutReadiness";
 import type { Brand, BrandStripeStatus } from "../../types/brand";
 
-type BrandLike = Pick<Brand, "paymentProvider" | "paystackSubaccountCode">;
+type BrandLike = Pick<
+  Brand,
+  "paymentProvider" | "paystackSubaccountCode" | "payoutHoldCutoverAt"
+>;
 
 describe("isChipInPayoutReady — Stripe rail (default provider)", () => {
   it("returns true when fresh Stripe status is active", () => {
@@ -46,22 +52,38 @@ describe("isChipInPayoutReady — Paystack rail (NGN)", () => {
     ).toBe(true);
   });
 
+  it("returns true when stamped on the Paystack hold rail without a subaccount", () => {
+    expect(
+      isChipInPayoutReady(
+        {
+          paymentProvider: "paystack",
+          paystackSubaccountCode: undefined,
+          payoutHoldCutoverAt: "2026-09-01T00:00:00Z",
+        },
+        "not_connected",
+      ),
+    ).toBe(true);
+  });
+
   it.each<string | undefined>([undefined, "", "  "])(
-    "returns false when the Paystack subaccount is blank (%p) even if Stripe status is active",
+    "returns false when the Paystack subaccount is blank (%p) and hold-rail is unstamped",
     (code) => {
       expect(
         isChipInPayoutReady(
-          { paymentProvider: "paystack", paystackSubaccountCode: code },
+          {
+            paymentProvider: "paystack",
+            paystackSubaccountCode: code,
+            payoutHoldCutoverAt: null,
+          },
           "active",
         ),
       ).toBe(false);
     },
   );
 
-  it("Paystack rail never borrows Stripe readiness (blank subaccount → false)", () => {
+  it("Paystack rail never borrows Stripe readiness (blank subaccount, unstamped → false)", () => {
     // Adversarial: Stripe is fully active, but this brand settles via Paystack
-    // with no subaccount → the server gate (paystack_subaccount_code) would NOT
-    // collect, so the banner must not claim ready.
+    // with no subaccount and no hold stamp → the server gate would NOT collect.
     const brand: BrandLike = {
       paymentProvider: "paystack",
       paystackSubaccountCode: undefined,

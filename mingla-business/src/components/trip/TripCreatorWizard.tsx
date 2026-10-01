@@ -131,7 +131,8 @@ import {
   offeringNeedsStripeToPublish,
   tripDraftIsPaid,
 } from "../offering/publishStripeReadiness";
-import { payoutGateStatus } from "../../utils/brandPayout";
+import { payoutGateStatus, isBrandPayoutReady } from "../../utils/brandPayout";
+import { useBrandPaystackStatus } from "../../hooks/useBrandPaystack";
 // ORCH-0880 [Tr5 Traveler Intake Forms] — NEW Step 6 component (intake
 // schema builder + live preview, per-tier scope).
 import { TripCreatorStep6Intake } from "./TripCreatorStep6Intake";
@@ -551,6 +552,30 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       }),
     [step4Draft, brand],
   );
+
+  // #3645 — trip instalment plans stay bank/payout-gated (later charges weeks
+  // after sale). Charge-ready alone is not enough when any package has a plan.
+  // Freshen recipient_connected from Paystack status when available.
+  const paystackStatusQuery = useBrandPaystackStatus(
+    brand.paymentProvider === "paystack" ? brand.id : null,
+  );
+  const tripNeedsBankForInstallments = useMemo(() => {
+    const hasPlan = step4Draft.packages.some((p) => p.paymentPlan != null);
+    return (
+      hasPlan &&
+      !isBrandPayoutReady({
+        ...brand,
+        hasPaystackRecipient:
+          paystackStatusQuery.data?.recipient_connected === true
+            ? true
+            : brand.hasPaystackRecipient,
+      })
+    );
+  }, [
+    step4Draft.packages,
+    brand,
+    paystackStatusQuery.data?.recipient_connected,
+  ]);
 
   // META-ORCH-1174 Leg B2 — publish gate: every authored package must be valid
   // (≥1 package, name + price ≥0 + capacity ≥1 + valid plan terms). Blocks
@@ -1257,6 +1282,13 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       showToast("Connect a bank to publish this paid trip.");
       return;
     }
+    // #3645 — instalment plans require a bank even when charge-ready.
+    if (tripNeedsBankForInstallments) {
+      showToast(
+        "Connect a bank before publishing a trip with a payment plan.",
+      );
+      return;
+    }
     // META-ORCH-1174 Leg B2 — every package must be valid before publish.
     // Surface the first failing reason + jump back to the pricing step.
     if (!packagesValidation.ok) {
@@ -1298,7 +1330,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     } finally {
       setCheckingInvitePublish(false);
     }
-  }, [tripLocationValid, tripNeedsStripe, packagesValidation, showToast, inviteSummary,
+  }, [tripLocationValid, tripNeedsStripe, tripNeedsBankForInstallments,
+      packagesValidation, showToast, inviteSummary,
     inviteEnabled, inviteRollbackReady, inviteFlag.data]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
@@ -1815,6 +1848,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                   disabled={
                     submitting ||
                     tripNeedsStripe ||
+                    tripNeedsBankForInstallments ||
                     !tripLocationValid ||
                     !packagesValidation.ok ||
                     !invitePublishReady ||
