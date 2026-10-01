@@ -20,7 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
-- 2026-10-01 — After a buyer is refunded, organiser debt can exceed the single payout that held that payment and recover from later payouts for the same event — payment+24h no longer silently drops the overage (toward #3645, PR #TBD)
+- 2026-10-01 — After a buyer is refunded, organiser debt can exceed the single payout that held that payment and recover from later payouts for the same event — payment+24h no longer silently drops the overage (toward #3645, PR #3725)
 - 2026-10-01 — Admin can see and release a held cancel-refund batch from the offering detail (alert + reason-gated release) so buyers are not stuck waiting on a database command after cancel-review (toward #3645, PR #3724)
 - 2026-10-01 — Copilot code review on this repo now follows a principal-engineer bar: design flaws, breaking changes, and convolution — not style nits — via `.github/skills/code-review/SKILL.md` (#3722, PR #3723)
 - 2026-10-01 — The #1171 payout-debt contract on `main` is green again after payment+24h: the temporary-to-permanent conversion fixture opens the postponement debt one day later so it still reserves future value before convert (maturity must stay after apply under `live_anchor+1d`) (toward #3645, PR #3721)
