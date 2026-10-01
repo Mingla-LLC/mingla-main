@@ -328,8 +328,11 @@ BEGIN
     'venue_reservation','stripe','usd','2026-06-20T00:00:00Z',
     '2026-06-21T00:00:00Z',1000,1000,'released',1000,'2026-06-21T00:00:00Z'
   ) RETURNING id INTO v_conversion_origin;
+  -- #3645: postponement maturity is live_anchor+1d (was +3d). Apply requires
+  -- maturity_at > p_now, so open later than apply or the reserve is skipped and
+  -- convert cannot close the permanent overlap (main red after #3719).
   v_debt:=public.open_post_release_postponement_debt(
-    v_conversion_origin,'2026-07-10T00:00:00Z'
+    v_conversion_origin,'2026-07-11T00:00:00Z'
   );
   UPDATE public.brand_payout_releases SET status='pending',net_release_cents=400
   WHERE id=v_target;
@@ -402,7 +405,7 @@ BEGIN
   ) RETURNING id INTO v_reopen_b;
 
   v_reopen_debt:=public.open_post_release_postponement_debt(
-    v_reopen_origin,'2026-08-02T00:00:00Z'
+    v_reopen_origin,'2026-08-03T00:00:00Z'
   );
   IF public.apply_open_payout_debts(
        v_reopen_a,'2026-08-03T00:00:00Z'
@@ -424,7 +427,7 @@ BEGIN
   END IF;
 
   IF public.open_post_release_postponement_debt(
-       v_reopen_origin,'2026-08-10T00:00:00Z'
+       v_reopen_origin,'2026-08-11T00:00:00Z'
      )<>v_reopen_debt OR
      public.apply_open_payout_debts(
        v_reopen_b,'2026-08-11T00:00:00Z'
