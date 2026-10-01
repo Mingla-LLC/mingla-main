@@ -9,9 +9,9 @@ DECLARE
   v_admin  constant uuid := '36450000-0000-4000-8000-0000000000a2';
   v_brand  constant uuid := '36450000-0000-4000-8000-0000000000b1';
   v_event  constant uuid := '36450000-0000-4000-8000-0000000000e1';
-  v_tt     constant uuid := '36450000-0000-4000-8000-0000000000t1';
-  v_order  constant uuid := '36450000-0000-4000-8000-0000000000o1';
-  v_line   constant uuid := '36450000-0000-4000-8000-0000000000l1';
+  v_tt     constant uuid := '36450000-0000-4000-8000-0000000000c1';
+  v_order  constant uuid := '36450000-0000-4000-8000-0000000000c2';
+  v_line   constant uuid := '36450000-0000-4000-8000-0000000000c3';
   v_bundle jsonb;
 BEGIN
   INSERT INTO auth.users(id) VALUES (v_owner);

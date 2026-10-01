@@ -218,14 +218,16 @@ export function mapOfferingWriteError(error) {
   const msg = error?.message || "";
   if (msg.includes("not_authorized")) return "You are not authorized to do this.";
   if (msg.includes("reason_required")) return "A reason is required.";
-  if (msg.includes("not_found")) return "That record no longer exists.";
-  if (msg.includes("already_cancelled")) return "This offering is already cancelled.";
+  // Specific release codes before generic `not_found` — `run_not_found` and
+  // `not_awaiting_review` both contain the substring `not_found`.
   if (msg.includes("not_awaiting_review")) {
     return "There is no cancel-refund batch waiting for review on this offering.";
   }
   if (msg.includes("run_not_found")) {
     return "No cancel-refund run exists for this offering.";
   }
+  if (msg.includes("not_found")) return "That record no longer exists.";
+  if (msg.includes("already_cancelled")) return "This offering is already cancelled.";
   if (msg.includes("invalid_visibility")) return "Invalid visibility value.";
   // #1931 — Admin keeps synchronous Public <-> Hidden, but every transition ENTERING or
   // LEAVING Private is rejected non-mutatingly: those transitions need the two-phase

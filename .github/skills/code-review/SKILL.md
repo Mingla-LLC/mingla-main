@@ -63,7 +63,17 @@ Only when the diff touches the area:
 - **Multi-surface truth** — consumer, business, buyer web, admin, Sites must
   not diverge on the same product fact without an explicit owner.
 - **Migrations** — apply-clean from baseline; CHECK/constraint honesty;
-  fixture timelines match new rules.
+  fixture timelines match new rules. New SQL fixtures must use valid
+  hex UUIDs and otherwise parse — a test that dies at DO-block init is a
+  silent coverage hole, not a green path.
+- **Substring / prefix error mapping** — when mapping RPC messages with
+  `.includes()`, specific codes that contain a generic token (e.g.
+  `run_not_found` vs `not_found`) must be checked before the generic
+  branch, or the diagnostic is unreachable.
+- **Operator-only money controls** — if the diff adds the only admin/UI
+  path that unblocks refunds, payouts, or holds, require regression that
+  pins the gate, audited call, confirm phrase, and success reload — not
+  only the read RPC that feeds the banner.
 - **Subtract before add** — replacement must remove the stale path, not leave
   two live ones.
 
