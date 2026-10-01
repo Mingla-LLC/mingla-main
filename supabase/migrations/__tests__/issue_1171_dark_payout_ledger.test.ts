@@ -296,8 +296,10 @@ BEGIN
     'venue_reservation','stripe','usd','2026-06-28T00:00:00Z',
     '2026-06-29T00:00:00Z',600,600,'pending'
   ) RETURNING id INTO v_target;
+  -- #3645: postponement maturity is live_anchor+1d (was +3d). Keep maturity
+  -- AFTER apply_open_payout_debts so the debt still reserves future value.
   v_debt:=public.open_post_release_postponement_debt(
-    v_origin,'2026-07-02T00:00:00Z'
+    v_origin,'2026-07-04T00:00:00Z'
   );
   IF public.apply_open_payout_debts(v_target,'2026-07-03T00:00:00Z')<>600 THEN
     RAISE EXCEPTION 'temporary debt did not reserve future value';

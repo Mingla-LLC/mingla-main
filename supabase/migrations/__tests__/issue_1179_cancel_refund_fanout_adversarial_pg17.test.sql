@@ -41,7 +41,23 @@
 --     ⇒ ADV-1 / ADV-2 / ADV-4 fail (double-refund exposure);
 --   * drop the UNIQUE(source_type,source_id) guard ⇒ ADV-4 re-prepare grows the set.
 -- Every write rolls back; any missing invariant raises and ON_ERROR_STOP fails.
+--
+-- #3645 PR2: cancel runs open in awaiting_review and claim leases nothing until an
+-- admin releases the batch, so every scenario that claims first calls the REAL admin
+-- release RPC (helper below). The hold itself is proven in the issue_3645 cancel-
+-- review adversarial suite.
 BEGIN;
+
+CREATE FUNCTION pg_temp.issue_1179_admin_release(p_event uuid) RETURNS void
+LANGUAGE plpgsql AS $h$
+BEGIN
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub', '11790000-0000-4000-8000-0000000000ad', true);
+  PERFORM public.admin_release_event_cancel_refund_batch(p_event, '#1179 adversarial release');
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+END;
+$h$;
 
 DO $test$
 DECLARE
@@ -93,6 +109,11 @@ BEGIN
   -- ===========================================================================
   INSERT INTO auth.users(id) VALUES (v_owner);
   INSERT INTO public.creator_accounts(id, email) VALUES (v_owner, 'adv-1179@example.test');
+  INSERT INTO auth.users(id, email)
+  VALUES ('11790000-0000-4000-8000-0000000000ad', 'admin-adv-1179@example.test');
+  INSERT INTO public.admin_users(email, role, status)
+  VALUES ('admin-adv-1179@example.test', 'admin', 'active')
+  ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status;
   INSERT INTO public.brands(id, account_id, name, slug, payment_provider, pricing_region, pricing_currency, default_currency)
   VALUES
     (v_brand,  v_owner, 'Adv Stripe Brand',   'adv-1179-stripe',   'stripe',   'US', 'USD', 'USD'),
@@ -110,6 +131,7 @@ BEGIN
     (v_o1c, v_ev1, 5000, 'USD', 'paid', 'pi_adv_1c', 'ch_adv_1c', 'legacy');
 
   PERFORM public.cancel_event_refund_prepare(v_ev1);
+  PERFORM pg_temp.issue_1179_admin_release(v_ev1);
   SELECT count(*) INTO v_count FROM public.event_cancel_refund_progress WHERE event_id = v_ev1;
   IF v_count <> 3 THEN RAISE EXCEPTION 'ADV1 setup: expected 3 progress rows got %', v_count; END IF;
 
@@ -177,6 +199,7 @@ BEGIN
     (v_o2b, v_ev2, 3000, 'USD', 'paid', 'pi_adv_2b', 'ch_adv_2b', 'legacy'),
     (v_o2c, v_ev2, 3000, 'USD', 'paid', 'pi_adv_2c', 'ch_adv_2c', 'legacy');
   PERFORM public.cancel_event_refund_prepare(v_ev2);
+  PERFORM pg_temp.issue_1179_admin_release(v_ev2);
   PERFORM public.cancel_event_refund_claim(v_ev2, 25, now());
   -- Two refund, one hard-declines (terminal 'failed').
   SELECT id INTO v_pid2 FROM public.event_cancel_refund_progress
@@ -206,6 +229,7 @@ BEGIN
     (v_o3a, v_ev3, 2000, 'USD', 'paid', 'pi_adv_3a', 'ch_adv_3a', 'legacy'),
     (v_o3b, v_ev3, 2000, 'USD', 'paid', 'pi_adv_3b', 'ch_adv_3b', 'legacy');
   PERFORM public.cancel_event_refund_prepare(v_ev3);
+  PERFORM pg_temp.issue_1179_admin_release(v_ev3);
   PERFORM public.cancel_event_refund_claim(v_ev3, 25, now());
   SELECT id INTO v_pid3a FROM public.event_cancel_refund_progress
     WHERE event_id = v_ev3 AND source_id = v_o3a;
@@ -236,7 +260,7 @@ BEGIN
     organiser_cash_delivered_cents, status, released_at
   ) VALUES (
     v_rel5, v_brand, v_ev5, 'adv5-released-occ', 'order', 'stripe', 'usd',
-    now() - interval '4 days', now() - interval '1 day', 8000, 8000, 8000,
+    now() - interval '2 days', now() - interval '1 day', 8000, 8000, 8000,
     'released', now() - interval '1 day'
   );
   -- Future maturity so mature() (ADV-6) never touches it; then simulate 3000 recovered.
@@ -275,7 +299,7 @@ BEGIN
     organiser_cash_delivered_cents, status, released_at
   ) VALUES (
     v_rel6, v_brand, v_ev6, 'adv6-released-occ', 'order', 'stripe', 'usd',
-    now() - interval '4 days', now() - interval '1 day', 6000, 6000, 6000,
+    now() - interval '2 days', now() - interval '1 day', 6000, 6000, 6000,
     'released', now() - interval '1 day'
   );
   -- Past maturity → mature() closes it BEFORE cancellation prepare runs.
@@ -306,7 +330,7 @@ BEGIN
     organiser_cash_delivered_cents, status, released_at
   ) VALUES (
     v_rel7, v_pbrand, v_ev7, 'adv7-released-occ', 'order', 'paystack', 'ngn',
-    now() - interval '4 days', now() - interval '1 day', 500000, 500000, 500000,
+    now() - interval '2 days', now() - interval '1 day', 500000, 500000, 500000,
     'released', now() - interval '1 day'
   );
   PERFORM public.open_post_release_postponement_debt(v_rel7, now() + interval '10 days');

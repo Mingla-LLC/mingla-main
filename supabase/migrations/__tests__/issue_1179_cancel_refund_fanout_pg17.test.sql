@@ -14,8 +14,9 @@
 --   * the PAYSTACK released occurrence's temp debt is NOT converted by J (F owns it —
 --     no double withhold) (SC-4 / I-PROPOSED-1179-NO-DOUBLE-WITHHOLD)
 --   * every paid, not-fully-refunded order → one 'pending' progress row; run opens
---     'in_progress'; UNIQUE(source_type,source_id) makes re-prepare a no-op (SC-5)
---   * claim leases the batch ('refunding', attempt_count 1); mark 'refunded' drives
+--     'awaiting_review' (#3645 PR2 hold: claim leases nothing until an admin
+--     releases the batch); UNIQUE(source_type,source_id) makes re-prepare a no-op (SC-5)
+--   * after the admin release (awaiting_review → pending), claim leases the batch ('refunding', attempt_count 1); mark 'refunded' drives
 --     the run to 'completed'
 --   * prepare on a NON-cancelled event raises event_not_cancelled and writes NOTHING
 --     (SC-8, I-PROPOSED-1179-CANCEL-REFUNDS-ONLY-ON-CANCELLED)
@@ -23,6 +24,20 @@
 -- Reverting §4.2 step 2 (release-stop) OR step 3 (Stripe debt conversion) of
 -- 20270110000009 FAILS this test; restoring PASSES.
 BEGIN;
+
+-- #3645 PR2: cancel runs open in awaiting_review, so the drain below first needs the
+-- admin release. Drive the REAL admin RPC as an active admin (authenticated role +
+-- JWT sub); the RPC's own coverage lives in the issue_3645 cancel-review suites.
+CREATE FUNCTION pg_temp.issue_1179_admin_release(p_event uuid) RETURNS void
+LANGUAGE plpgsql AS $h$
+BEGIN
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub', '11790000-0000-4000-8000-0000000000ad', true);
+  PERFORM public.admin_release_event_cancel_refund_batch(p_event, '#1179 test release');
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+END;
+$h$;
 
 DO $test$
 DECLARE
@@ -55,6 +70,11 @@ BEGIN
   INSERT INTO auth.users(id) VALUES (v_owner);
   INSERT INTO public.creator_accounts(id, email)
   VALUES (v_owner, 'owner-1179@example.test');
+  INSERT INTO auth.users(id, email)
+  VALUES ('11790000-0000-4000-8000-0000000000ad', 'admin-1179@example.test');
+  INSERT INTO public.admin_users(email, role, status)
+  VALUES ('admin-1179@example.test', 'admin', 'active')
+  ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, status = EXCLUDED.status;
   INSERT INTO public.brands(
     id, account_id, name, slug, payment_provider, pricing_region,
     pricing_currency, default_currency
@@ -83,7 +103,7 @@ BEGIN
     (v_line_b, v_order_b, v_ttype_b, 1, 4000, 4000);
 
   ------------------------------------------------------------------------------
-  -- Seed releases (CHECK: releasable_at = anchor_end_at + 3 days):
+  -- Seed releases (CHECK: releasable_at = anchor_end_at + 1 day — #3645):
   --   * a PENDING release for the cancelled event  → must become cancelled_event
   --   * a RELEASED STRIPE release + open temp debt  → must convert (J owns it)
   --   * a RELEASED PAYSTACK release + open temp debt → must NOT convert (F owns it)
@@ -95,16 +115,16 @@ BEGIN
     organiser_cash_delivered_cents, status, released_at
   ) VALUES
     (v_rel_pending, v_brand, v_event, 'pending-occ', 'order', 'stripe', 'usd',
-     now() + interval '2 days', now() + interval '5 days', 10000, 10000, 0,
+     now() + interval '2 days', now() + interval '3 days', 10000, 10000, 0,
      'pending', NULL),
     (v_rel_stripe, v_brand, v_event, 'stripe-released-occ', 'order', 'stripe', 'usd',
-     now() - interval '4 days', now() - interval '1 day', 8000, 8000, 8000,
+     now() - interval '2 days', now() - interval '1 day', 8000, 8000, 8000,
      'released', now() - interval '1 day'),
     (v_rel_paystack, v_brand, v_event, 'paystack-released-occ', 'order', 'paystack', 'usd',
-     now() - interval '4 days', now() - interval '1 day', 7000, 7000, 7000,
+     now() - interval '2 days', now() - interval '1 day', 7000, 7000, 7000,
      'released', now() - interval '1 day'),
     (v_rel_live, v_brand, v_live_event, 'live-occ', 'order', 'stripe', 'usd',
-     now() + interval '2 days', now() + interval '5 days', 5000, 5000, 0,
+     now() + interval '2 days', now() + interval '3 days', 5000, 5000, 0,
      'pending', NULL);
 
   -- Open a temporary post_release_postponement debt on each released occurrence.
@@ -119,8 +139,8 @@ BEGIN
   IF (v_prep->>'total_objects')::int <> 2 THEN
     RAISE EXCEPTION 'prepare_total_objects_expected_2_got_%', v_prep->>'total_objects';
   END IF;
-  IF v_prep->>'run_status' <> 'in_progress' THEN
-    RAISE EXCEPTION 'prepare_run_status_expected_in_progress_got_%', v_prep->>'run_status';
+  IF v_prep->>'run_status' <> 'awaiting_review' THEN
+    RAISE EXCEPTION 'prepare_run_status_expected_awaiting_review_got_%', v_prep->>'run_status';
   END IF;
 
   -- SC-1: the pending release for the cancelled event is stopped.
@@ -191,6 +211,19 @@ BEGIN
    WHERE origin_release_id = v_rel_stripe AND kind = 'post_release_cancellation';
   IF v_count <> 1 THEN
     RAISE EXCEPTION 'SC5_reprepare_created_second_cancellation_debt_count_%', v_count;
+  END IF;
+
+  ------------------------------------------------------------------------------
+  -- #3645 PR2: held run leases nothing; admin release → pending; then claim.
+  ------------------------------------------------------------------------------
+  SELECT count(*) INTO v_claimed FROM public.cancel_event_refund_claim(v_event, 25);
+  IF v_claimed <> 0 THEN
+    RAISE EXCEPTION 'claim_while_awaiting_review_leased_%', v_claimed;
+  END IF;
+  PERFORM pg_temp.issue_1179_admin_release(v_event);
+  SELECT status INTO v_status FROM public.event_cancel_refund_runs WHERE event_id = v_event;
+  IF v_status <> 'pending' THEN
+    RAISE EXCEPTION 'run_not_pending_after_admin_release_got_%', v_status;
   END IF;
 
   ------------------------------------------------------------------------------

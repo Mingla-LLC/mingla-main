@@ -346,7 +346,7 @@ BEGIN
   ) VALUES(
     '1171ad00-0000-0000-0000-000000000011','no-future-origin',
     'venue_reservation','stripe','usd','2026-07-01T00:00:00Z',
-    '2026-07-04T00:00:00Z',1000,1000,'released',1000,'2026-07-04T00:00:00Z'
+    '2026-07-02T00:00:00Z',1000,1000,'released',1000,'2026-07-02T00:00:00Z'
   ) RETURNING id INTO v_no_future_origin;
   v_no_future_debt:=public.open_post_release_postponement_debt(
     v_no_future_origin,'2026-07-10T00:00:00Z'
@@ -367,7 +367,7 @@ BEGIN
   ) VALUES(
     '1171ad00-0000-0000-0000-000000000011','partial-origin',
     'venue_reservation','stripe','usd','2026-07-01T00:00:00Z',
-    '2026-07-04T00:00:00Z',1000,1000,'released',1000,'2026-07-04T00:00:00Z'
+    '2026-07-02T00:00:00Z',1000,1000,'released',1000,'2026-07-02T00:00:00Z'
   ) RETURNING id INTO v_partial_origin;
   v_partial_debt:=public.open_post_release_postponement_debt(
     v_partial_origin,'2026-07-20T00:00:00Z'
@@ -378,13 +378,13 @@ BEGIN
   ) VALUES
     ('1171ad00-0000-0000-0000-000000000012','wrong-brand',
      'venue_reservation','stripe','usd','2026-07-10T00:00:00Z',
-     '2026-07-13T00:00:00Z',600,600,'pending'),
+     '2026-07-11T00:00:00Z',600,600,'pending'),
     ('1171ad00-0000-0000-0000-000000000011','wrong-currency',
      'venue_reservation','paystack','ngn','2026-07-10T00:00:00Z',
-     '2026-07-13T00:00:00Z',600,600,'pending'),
+     '2026-07-11T00:00:00Z',600,600,'pending'),
     ('1171ad00-0000-0000-0000-000000000011','partial-target',
      'venue_reservation','stripe','usd','2026-07-10T00:00:00Z',
-     '2026-07-13T00:00:00Z',600,600,'pending');
+     '2026-07-11T00:00:00Z',600,600,'pending');
   SELECT id INTO v_wrong_brand FROM public.brand_payout_releases
     WHERE occurrence_key='wrong-brand';
   SELECT id INTO v_wrong_currency FROM public.brand_payout_releases
@@ -411,7 +411,7 @@ BEGIN
   ) VALUES(
     '1171ad00-0000-0000-0000-000000000011','convert-origin',
     'venue_reservation','stripe','usd','2026-07-01T00:00:00Z',
-    '2026-07-04T00:00:00Z',1000,1000,'released',1000,'2026-07-04T00:00:00Z'
+    '2026-07-02T00:00:00Z',1000,1000,'released',1000,'2026-07-02T00:00:00Z'
   ) RETURNING id INTO v_convert_origin;
   INSERT INTO public.brand_payout_releases(
     brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
@@ -419,7 +419,7 @@ BEGIN
   ) VALUES(
     '1171ad00-0000-0000-0000-000000000011','convert-target',
     'venue_reservation','stripe','usd','2026-07-12T00:00:00Z',
-    '2026-07-15T00:00:00Z',700,700,'pending'
+    '2026-07-13T00:00:00Z',700,700,'pending'
   ) RETURNING id INTO v_convert_target;
   v_convert_debt:=public.open_post_release_postponement_debt(
     v_convert_origin,'2026-07-30T00:00:00Z'
@@ -453,7 +453,7 @@ BEGIN
     '1171ad00-0000-0000-0000-000000000202',
     '1171ad00-0000-0000-0000-000000000202',
     'order','stripe','usd','2026-07-04T20:00:00Z',
-    '2026-07-07T20:00:00Z',500,500,'released',500,'2026-07-08T00:00:00Z'
+    '2026-07-05T20:00:00Z',500,500,'released',500,'2026-07-08T00:00:00Z'
   ) RETURNING id INTO v_repeat_origin;
   IF public.sync_post_release_postponement_debts('2026-07-08T00:00:00Z')<>0 THEN
     RAISE EXCEPTION 'never-ending recurrence top-up created a debt';
@@ -576,13 +576,13 @@ INSERT INTO public.brand_payout_releases(
   '1171ac00-0000-0000-0000-000000000101',
   '1171ac00-0000-0000-0000-000000000201',
   '1171ac00-0000-0000-0000-000000000201',
-  'order','stripe','usd','2026-07-04T20:00:00Z','2026-07-07T20:00:00Z',
+  'order','stripe','usd','2026-07-04T20:00:00Z','2026-07-05T20:00:00Z',
   500,500,'released',500,'2026-07-08T00:00:00Z'
 ),(
   '1171ac00-0000-0000-0000-000000000302',
   '1171ac00-0000-0000-0000-000000000011',
   NULL,NULL,'race-target','venue_reservation','stripe','usd',
-  '2026-07-10T00:00:00Z','2026-07-13T00:00:00Z',
+  '2026-07-10T00:00:00Z','2026-07-11T00:00:00Z',
   500,500,'pending',0,NULL
 );
 SET session_replication_role=origin;
