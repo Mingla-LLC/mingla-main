@@ -145,7 +145,10 @@ function verifyBuilt(pages) {
   assert(!/ 10\. | 12\. /.test(text), 'rendered page must omit sections 10 and 12')
   assert(text.includes('We record the version you accepted and when.'))
   assert.match(pages['support'], /href="\/organiser-terms"/, '/support must link /organiser-terms')
-  assert.match(pages['terms-of-service'], /href="\/organiser-terms"/, '/terms-of-service footer must link /organiser-terms')
+  // /terms-of-service is a standalone page with no footer; the footers ship on
+  // the Host and tools pages.
+  assert.match(pages['host'], /href="\/organiser-terms"/, '/host footer must link /organiser-terms')
+  assert.match(pages['tools'], /href="\/organiser-terms"/, '/tools footer must link /organiser-terms')
   assert(stripTags(pages['terms-of-service']).includes(CARVE_OUT), '/terms-of-service must render the carve-out')
 }
 
@@ -180,7 +183,7 @@ if (mode === 'source') {
   process.stdout.write('PASS #3645 source: /organiser-terms draft/noindex, held clauses omitted, both companies named, four link surfaces, ToS carve-out, help copy corrected\n')
 } else {
   const appDir = path.join(ROOT, '.next/server/app')
-  const pages = Object.fromEntries(['organiser-terms', 'support', 'terms-of-service'].map((name) => {
+  const pages = Object.fromEntries(['organiser-terms', 'support', 'terms-of-service', 'host', 'tools'].map((name) => {
     const file = path.join(appDir, `${name}.html`)
     assert(existsSync(file), `missing prerendered ${name}.html — run next build first`)
     return [name, readFileSync(file, 'utf8')]
@@ -188,5 +191,5 @@ if (mode === 'source') {
   verifyBuilt(pages)
   const reverted = { ...pages, 'organiser-terms': pages['organiser-terms'].replace('</main>', '<p>Ads through Mingla</p></main>') }
   assert.throws(() => verifyBuilt(reverted), assert.AssertionError, 'RED proof failed to reject a held clause in the built page')
-  process.stdout.write('PASS #3645 built: /organiser-terms prerendered with noindex, held clauses absent, companies named; /support and /terms-of-service link it\n')
+  process.stdout.write('PASS #3645 built: /organiser-terms prerendered with noindex, held clauses absent, companies named; /support, /host and /tools link it; /terms-of-service renders the carve-out\n')
 }
