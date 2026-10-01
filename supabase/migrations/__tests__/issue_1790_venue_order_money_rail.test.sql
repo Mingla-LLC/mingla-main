@@ -903,7 +903,10 @@ BEGIN
   SELECT pg_get_functiondef((
     SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname='public' AND p.proname='attach_payout_release')) INTO v_gate;
-  IF v_gate NOT LIKE '%p_source_type NOT IN (''order'',''rsvp_contribution'',''venue_reservation'',''venue_menu_order'')%' THEN
+  -- Membership check (not exact trailing list): #3645 may append order_installment
+  -- after venue_menu_order. The vacuity probe below still proves the gate rejects
+  -- unknown types.
+  IF v_gate NOT LIKE '%venue_menu_order%' THEN
     RAISE EXCEPTION 'issue_1790 T-P3(5): attach_payout_release''s plpgsql source-type gate was never widened — a venue order raises invalid_payout_source and aborts the sweep for every surface';
   END IF;
 

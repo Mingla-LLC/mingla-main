@@ -1358,6 +1358,8 @@ jobs:
             # ISSUE-1981 e2e — refunds/cancels/discovery (implementor + independent tester).
             supabase/functions/_shared/__tests__/issue_1981_ari_refunds_cancels.implementor.test.ts
             supabase/functions/_shared/__tests__/issue_1981_ari_refunds_cancels.tester_adversarial.test.ts
+            # #3645 — installment cancel fail-closed claim + webhook accounting replay pins.
+            supabase/functions/process-scheduled-installments/__tests__/idempotency.test.ts
             # ISSUE-1981 — paid-cancel ToolError must map to HTTP 409 (not 500).
             supabase/functions/agent-confirm-action/__tests__/issue_1981_paid_order_must_refund_status.test.ts
             # ISSUE-1982 — team list, scanner revoke, Brand People manage.

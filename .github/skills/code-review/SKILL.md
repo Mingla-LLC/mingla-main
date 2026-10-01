@@ -101,11 +101,23 @@ even when the hunk itself looks local:
 - **Webhook soft-success traps** — a signature-valid money event that lacks
   parseable identity (or otherwise cannot persist) must fail the handler so
   the inbox stays retryable. Returning success after a warn logs the event
-  as `processed` with no row, no alert, and no replay.
+  as `processed` with no row, no alert, and no replay. Same for post-collect
+  accounting RPCs: after `collected`, a fee/sale RPC failure must throw (and
+  the already-collected replay path must retry accounting before ack).
+- **Charge vs cancel races** — before Stripe I/O, claim chargeability under
+  row locks against installment/order/event cancel state (fail closed on
+  RPC error / unknown). Re-check after PI create; if no longer chargeable,
+  cancel the PI best-effort and skip — never mark collected.
+- **Immutable installment payout provider** — installment PIs are Stripe-only;
+  dark-sweep / attach must hardcode `stripe`, not mutable `brands.payment_provider`.
 - **Auth / RLS / SECURITY DEFINER** — who can execute; anon/authenticated
   grants; admin gate-first patterns. Brand role literals must use the live
   vocabulary (`brand_owner`, never the retired `account_owner`); ORCH-1047
   greps new migrations for the dead label.
+- **Allowlist source-text pins** — when a plpgsql gate's allowlist is extended
+  (e.g. `attach_payout_release` source types), sibling tests that pin the
+  exact prior list must widen to membership checks or they turn “migrations
+  apply cleanly” red on a correct additive change.
 - **Fixture timelines match live CHECKs** — payout fixtures must satisfy
   `releasable_at = anchor_end_at + interval '1 day'` (payment+24h). Equal
   anchor/releasable timestamps (legacy same-day maturity) fail

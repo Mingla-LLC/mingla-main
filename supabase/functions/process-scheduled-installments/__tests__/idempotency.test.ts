@@ -189,15 +189,18 @@ Deno.test("ORCH-0869 webhook handlers: at_risk flag flips at MAX_RETRY_ATTEMPTS"
   );
 });
 
-Deno.test("#3645 createInstallmentPI: skips cancelled event/order before Stripe I/O", () => {
-  assertStringIncludes(HELPER_SOURCE, 'reason: "event_cancelled"');
-  assertStringIncludes(HELPER_SOURCE, 'reason: "order_cancelled"');
-  // Fail-closed order: cancel checks appear before paymentIntents.create.
-  const cancelIdx = HELPER_SOURCE.indexOf('reason: "event_cancelled"');
-  const stripeIdx = HELPER_SOURCE.indexOf("paymentIntents.create");
+Deno.test("#3645 createInstallmentPI: fail-closed claim RPC before Stripe I/O", () => {
+  assertStringIncludes(HELPER_SOURCE, "claim_order_installment_for_charge");
+  assertStringIncludes(HELPER_SOURCE, 'reason: "claim_rpc_error"');
+  assertStringIncludes(HELPER_SOURCE, "cancelled_during_charge");
+  assertStringIncludes(HELPER_SOURCE, "paymentIntents.cancel");
+  // Fail-closed order: first claim call appears before the live PI create call
+  // (ignore the file-header mention of paymentIntents.create).
+  const claimIdx = HELPER_SOURCE.indexOf('"claim_order_installment_for_charge"');
+  const stripeIdx = HELPER_SOURCE.indexOf("await stripe.paymentIntents.create");
   assert(
-    cancelIdx >= 0 && stripeIdx > cancelIdx,
-    "event_cancelled skip must run before stripe.paymentIntents.create",
+    claimIdx >= 0 && stripeIdx > claimIdx,
+    "claim_order_installment_for_charge must run before stripe.paymentIntents.create",
   );
 });
 
@@ -206,13 +209,21 @@ Deno.test("#3645 cron: due/retry queries exclude cancelled events via orders→e
   assertStringIncludes(CRON_SOURCE, 'is("orders.cancelled_at", null)');
 });
 
-Deno.test("#3645 webhook: records provider sale after collect (fail-soft)", () => {
+Deno.test("#3645 webhook: records provider sale after collect (fail-closed / replay)", () => {
   assertStringIncludes(
     WEBHOOK_HANDLER_SOURCE,
     "record_order_installment_provider_sale",
   );
   assertStringIncludes(
     WEBHOOK_HANDLER_SOURCE,
-    "record_order_installment_provider_sale failed (non-fatal)",
+    "record_order_installment_provider_sale failed:",
   );
+  assert(
+    !WEBHOOK_HANDLER_SOURCE.includes(
+      "record_order_installment_provider_sale failed (non-fatal)",
+    ),
+    "fee RPC failure must throw for inbox retry, not fail-soft",
+  );
+  assertStringIncludes(WEBHOOK_HANDLER_SOURCE, "payout_accounting_state");
+  assertStringIncludes(WEBHOOK_HANDLER_SOURCE, "replay accounting ok");
 });

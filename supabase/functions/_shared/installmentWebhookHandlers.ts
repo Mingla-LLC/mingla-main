@@ -134,10 +134,58 @@ export async function handleInstallmentPaymentSucceeded(
   if (error) {
     throw new Error(`installment collected update failed: ${error.message}`);
   }
+
+  const applicationFeeFromPi = (piObj: Record<string, unknown>, amountCents: number): number => {
+    const appFeeRaw = piObj["application_fee_amount"];
+    return typeof appFeeRaw === "number"
+      ? Math.max(0, Math.trunc(appFeeRaw))
+      : Math.round(amountCents * 0.015);
+  };
+
+  const recordProviderSaleOrThrow = async (
+    amountCents: number,
+  ): Promise<void> => {
+    const applicationFeeAmountCents = applicationFeeFromPi(pi, amountCents);
+    const { error: feeRpcError } = await supabase.rpc(
+      "record_order_installment_provider_sale",
+      {
+        p_installment_id: installmentId,
+        p_application_fee_amount_cents: applicationFeeAmountCents,
+        p_provider_fee_cents: 0,
+      },
+    );
+    if (feeRpcError !== null) {
+      throw new Error(
+        `record_order_installment_provider_sale failed: ${feeRpcError.message}`,
+      );
+    }
+  };
+
   if (updated === null) {
-    // Row already collected (replay) or row missing — both ok.
+    // Already collected (replay) or row missing. On replay, ensure fee accounting
+    // reached ready — a prior soft-fail must not permanently strand pending money.
+    const { data: existing, error: existingError } = await supabase
+      .from("order_installments")
+      .select("id, amount_cents, payout_accounting_state, application_fee_amount_cents")
+      .eq("id", installmentId)
+      .maybeSingle();
+    if (existingError !== null) {
+      throw new Error(`installment replay load failed: ${existingError.message}`);
+    }
+    if (existing === null) {
+      console.log(
+        `[installment-webhook] payment_intent.succeeded for ${installmentId} — no-op (row missing)`,
+      );
+      return brandId;
+    }
+    const existingRow = existing as Record<string, unknown>;
+    const accountingState = String(existingRow.payout_accounting_state ?? "");
+    const feesMissing = existingRow.application_fee_amount_cents == null;
+    if (accountingState !== "ready" || feesMissing) {
+      await recordProviderSaleOrThrow(Number(existingRow.amount_cents ?? 0));
+    }
     console.log(
-      `[installment-webhook] payment_intent.succeeded for ${installmentId} — no-op (already collected or row missing)`,
+      `[installment-webhook] payment_intent.succeeded for ${installmentId} — replay accounting ok`,
     );
     return brandId;
   }
@@ -158,29 +206,12 @@ export async function handleInstallmentPaymentSucceeded(
   });
 
   // #3645 / #2036 — record fees so a collected installment can enter the payout
-  // ledger once issue_2036_installment_payout_ready() is flipped. Fail soft:
-  // collect must stick for webhook idempotency even if the RPC is unavailable.
-  {
-    const amountCents = Number((updated as Record<string, unknown>).amount_cents ?? 0);
-    const appFeeRaw = pi["application_fee_amount"];
-    const applicationFeeAmountCents = typeof appFeeRaw === "number"
-      ? Math.max(0, Math.trunc(appFeeRaw))
-      : Math.round(amountCents * 0.015);
-    const { error: feeRpcError } = await supabase.rpc(
-      "record_order_installment_provider_sale",
-      {
-        p_installment_id: installmentId,
-        p_application_fee_amount_cents: applicationFeeAmountCents,
-        p_provider_fee_cents: 0,
-      },
-    );
-    if (feeRpcError !== null) {
-      console.error(
-        "[installment-webhook] record_order_installment_provider_sale failed (non-fatal)",
-        feeRpcError.message,
-      );
-    }
-  }
+  // ledger once issue_2036_installment_payout_ready() is flipped. Throw on RPC
+  // failure so the webhook inbox retries (collect already stuck; accounting must
+  // catch up on replay).
+  await recordProviderSaleOrThrow(
+    Number((updated as Record<string, unknown>).amount_cents ?? 0),
+  );
 
   // Check if this was the LAST installment for the order → fire "fully paid" confirmation.
   // Simple check: count remaining scheduled/failed installments for the order.

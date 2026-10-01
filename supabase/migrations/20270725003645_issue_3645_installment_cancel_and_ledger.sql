@@ -198,6 +198,86 @@ COMMENT ON FUNCTION public.record_order_installment_provider_sale(uuid, integer,
   'Issue #3645 / #2036: records Mingla + provider fees on a collected order_installment and moves payout_accounting_state to ready (unless already attached/manual_review). service_role only.';
 
 -- =============================================================================
+-- §4b. claim_order_installment_for_charge — fail-closed chargeability claim
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.claim_order_installment_for_charge(
+  p_installment_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_inst public.order_installments;
+  v_order public.orders;
+  v_event_status text;
+BEGIN
+  IF p_installment_id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'installment_id_required');
+  END IF;
+
+  SELECT * INTO v_inst
+  FROM public.order_installments
+  WHERE id = p_installment_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'installment_not_found');
+  END IF;
+
+  IF v_inst.status NOT IN ('scheduled', 'failed') THEN
+    RETURN jsonb_build_object(
+      'ok', false,
+      'reason', 'installment_not_chargeable',
+      'status', v_inst.status
+    );
+  END IF;
+  IF v_inst.cancelled_at IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'installment_cancelled');
+  END IF;
+
+  SELECT * INTO v_order
+  FROM public.orders
+  WHERE id = v_inst.order_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'order_not_found');
+  END IF;
+  IF v_order.cancelled_at IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'order_cancelled');
+  END IF;
+
+  SELECT e.status INTO v_event_status
+  FROM public.events e
+  WHERE e.id = v_order.event_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'event_missing');
+  END IF;
+  IF v_event_status = 'cancelled' THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'event_cancelled');
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'installment_id', v_inst.id,
+    'order_id', v_order.id,
+    'event_id', v_order.event_id,
+    'status', v_inst.status,
+    'retry_count', v_inst.retry_count,
+    'amount_cents', v_inst.amount_cents,
+    'currency', v_inst.currency
+  );
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.claim_order_installment_for_charge(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_order_installment_for_charge(uuid)
+  TO service_role;
+COMMENT ON FUNCTION public.claim_order_installment_for_charge(uuid) IS
+  'Issue #3645 / #2030: service_role-only fail-closed charge claim. LOCK installment+order+event FOR UPDATE; refuse unless installment is scheduled/failed, not cancelled, and order/event are not cancelled. Call before Stripe I/O and again before marking collected.';
+
+-- =============================================================================
 -- §5. cancel_event_refund_prepare — stop scheduled/failed installments
 --     Latest body: 20270721003645_issue_3645_cancel_refund_review.sql
 -- =============================================================================
@@ -612,7 +692,8 @@ BEGIN
       -- issue_2036_installment_payout_ready() (default false). Skip cancelled
       -- events. Maturity = collected_at + 1 day via attach (payment+24h).
       SELECT 'order_installment',oi.id,e.brand_id,o.event_id,occ.event_date_id,
-        CASE WHEN b.payment_provider = 'paystack' THEN 'paystack' ELSE 'stripe' END,
+        -- Installment PIs are Stripe-only; never derive from mutable brands.payment_provider.
+        'stripe'::text,
         lower(oi.currency::text),oi.collected_at,oi.collected_at,
         oi.amount_cents::integer,0,0,
         coalesce(oi.application_fee_amount_cents,0),0,
@@ -684,6 +765,16 @@ BEGIN
   IF NOT has_function_privilege('service_role',
        'public.record_order_installment_provider_sale(uuid,integer,integer,timestamptz)', 'EXECUTE') THEN
     RAISE EXCEPTION 'issue-3645: service_role lost EXECUTE on record_order_installment_provider_sale';
+  END IF;
+  IF has_function_privilege('anon',
+       'public.claim_order_installment_for_charge(uuid)', 'EXECUTE')
+     OR has_function_privilege('authenticated',
+       'public.claim_order_installment_for_charge(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'issue-3645: claim_order_installment_for_charge EXECUTE-able by anon/authenticated';
+  END IF;
+  IF NOT has_function_privilege('service_role',
+       'public.claim_order_installment_for_charge(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'issue-3645: service_role lost EXECUTE on claim_order_installment_for_charge';
   END IF;
   IF has_function_privilege('anon',
        'public.cancel_event_refund_prepare(uuid,timestamptz)', 'EXECUTE')

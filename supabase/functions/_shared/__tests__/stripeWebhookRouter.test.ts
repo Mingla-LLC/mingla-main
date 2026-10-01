@@ -471,13 +471,23 @@ class InstallmentFakeBuilder {
   maybeSingle() {
     if (this.table === "order_installments" && this.pendingUpdate) {
       this.db.installmentUpdates.push(this.pendingUpdate);
+      const row = {
+        id: "installment_123",
+        order_id: "order_123",
+        ordinal: 2,
+        amount_cents: 2500,
+        payout_accounting_state: "pending",
+        application_fee_amount_cents: null,
+      };
+      this.db.installmentRow = row;
       return Promise.resolve({
-        data: {
-          id: "installment_123",
-          order_id: "order_123",
-          ordinal: 2,
-          amount_cents: 2500,
-        },
+        data: row,
+        error: null,
+      });
+    }
+    if (this.table === "order_installments") {
+      return Promise.resolve({
+        data: this.db.installmentRow,
         error: null,
       });
     }
@@ -494,13 +504,24 @@ class InstallmentFakeBuilder {
 class InstallmentFakeDb {
   inserts: Array<{ table: string; payload: Record<string, unknown> }> = [];
   installmentUpdates: Array<Record<string, unknown>> = [];
+  rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  installmentRow: Record<string, unknown> | null = null;
 
   from(table: string) {
     return new InstallmentFakeBuilder(this, table);
   }
 
-  rpc() {
-    throw new Error("installment collection must not call an RPC");
+  rpc(name: string, args: Record<string, unknown>) {
+    this.rpcCalls.push({ name, args });
+    if (name === "record_order_installment_provider_sale") {
+      if (this.installmentRow !== null) {
+        this.installmentRow.payout_accounting_state = "ready";
+        this.installmentRow.application_fee_amount_cents =
+          args.p_application_fee_amount_cents;
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    }
+    throw new Error(`unexpected installment RPC: ${name}`);
   }
 }
 
@@ -540,6 +561,8 @@ Deno.test("installment payment_intent.succeeded with only latest_charge (live AP
     db.installmentUpdates[0].stripe_charge_id,
     "ch_3InstallmentLive",
   );
+  assertEquals(db.rpcCalls.length, 1);
+  assertEquals(db.rpcCalls[0].name, "record_order_installment_provider_sale");
   const audit = db.inserts.find((row) => row.table === "audit_log");
   assertEquals(
     (audit?.payload.after as Record<string, unknown>).stripe_charge_id,
