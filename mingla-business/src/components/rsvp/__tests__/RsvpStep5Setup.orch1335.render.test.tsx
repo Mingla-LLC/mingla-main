@@ -4,7 +4,7 @@
  * A REAL @testing-library/react-native mount of the production RsvpStep5Setup.
  * Source-grep tests are capped at "suspected"; this is the runtime evidence that
  * the payout-aware callout actually SWAPS at runtime:
- *   - chipInPayoutReady={true}  → positive "Payouts are on", nudge absent;
+ *   - chipInPayoutReady={true}  → positive "Ready to collect", nudge absent;
  *   - chipInPayoutReady={false} → neutral nudge, positive absent;
  *   - chipInPayoutReady omitted (undefined / loading) → nudge, positive ABSENT
  *     (the anti-false-positive guarantee — no green flash before confirmation).
@@ -44,11 +44,12 @@ const makeDraft = () =>
   }) as any;
 
 const NUDGE = "Connect your bank to collect contributions";
+const READY = "Ready to collect";
 const CONNECT_TESTID = "rsvp-contribution-connect-callout";
 const READY_TESTID = "rsvp-contribution-ready-callout";
 
 describe("ORCH-1335 RENDER — chip-in bank callout swaps on chipInPayoutReady", () => {
-  test("READY (true) → positive 'Payouts are on', neutral nudge absent", async () => {
+  test("READY (true) → positive 'Ready to collect', neutral nudge absent", async () => {
     // RTL 14 `render` is async — await it (per EditPublishedTripScreen.render.README).
     const { getByText, getByTestId, queryByText, queryByTestId } = await render(
       <RsvpStep5Setup
@@ -58,7 +59,7 @@ describe("ORCH-1335 RENDER — chip-in bank callout swaps on chipInPayoutReady",
         chipInPayoutReady={true}
       />,
     );
-    expect(getByText("Payouts are on")).toBeTruthy();
+    expect(getByText(READY)).toBeTruthy();
     expect(getByTestId(READY_TESTID)).toBeTruthy();
     expect(queryByText(NUDGE)).toBeNull();
     expect(queryByTestId(CONNECT_TESTID)).toBeNull();
@@ -75,7 +76,7 @@ describe("ORCH-1335 RENDER — chip-in bank callout swaps on chipInPayoutReady",
     );
     expect(getByText(NUDGE)).toBeTruthy();
     expect(getByTestId(CONNECT_TESTID)).toBeTruthy();
-    expect(queryByText("Payouts are on")).toBeNull();
+    expect(queryByText(READY)).toBeNull();
     expect(queryByTestId(READY_TESTID)).toBeNull();
   });
 
@@ -90,7 +91,7 @@ describe("ORCH-1335 RENDER — chip-in bank callout swaps on chipInPayoutReady",
     // The positive callout must NEVER render before readiness is confirmed.
     expect(getByText(NUDGE)).toBeTruthy();
     expect(getByTestId(CONNECT_TESTID)).toBeTruthy();
-    expect(queryByText("Payouts are on")).toBeNull();
+    expect(queryByText(READY)).toBeNull();
     expect(queryByTestId(READY_TESTID)).toBeNull();
   });
 });

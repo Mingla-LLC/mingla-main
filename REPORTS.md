@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-01 — Organisers can publish and sell paid supply once payments can charge, without waiting for a bank: stamped Paystack hold-rail brands sell without a subaccount, Stripe still only needs charges enabled, trip payment plans stay bank-gated, and buyers only see “finishing payment setup” when charge setup is incomplete (toward #3645, PR #TBD)
 - 2026-10-01 — Cancelling an offering now stops its scheduled instalment charges, and collected instalments can enter the payout ledger once ops flip the #2036 readiness gate (toward #3645, PR #3727)
 - 2026-10-01 — Paystack chargebacks are received and recorded: create/remind/resolve webhooks land in `paystack_disputes` with a 16-hour response deadline, ops and brand are alerted, and a merchant-accepted (including auto-accept) dispute opens recoverable organiser debt on the existing ledger (toward #3645, PR #3726)
 - 2026-10-01 — After a buyer is refunded, organiser debt can exceed the single payout that held that payment and recover from later payouts for the same event — payment+24h no longer silently drops the overage (toward #3645, PR #3725)

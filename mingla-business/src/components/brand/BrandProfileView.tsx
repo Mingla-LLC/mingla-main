@@ -60,6 +60,7 @@ import { formatCurrencyRound, formatCount } from "../../utils/currency";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { canPerformAction } from "../../utils/permissionGates";
 import { isBrandPayoutReady } from "../../utils/brandPayout";
+import { useBrandPaystackStatus } from "../../hooks/useBrandPaystack";
 import {
   type BrandStripePresentation,
   getBrandProfileStripeBannerCopy,
@@ -447,10 +448,25 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       active = false;
     };
   }, [brand, canCheckWebsiteAvailability, onWebsite]);
-  // META-ORCH-1076 — provider-neutral: a connected Paystack brand is payout-ready,
-  // so the "Connect bank to sell tickets" banner + Operations sub treat it as
-  // active even though its Stripe status is "not_connected".
-  const stripeStatus = isBrandPayoutReady(brand)
+  // #3645 / META-ORCH-1076 — split charge vs payout presentation.
+  // Charge-ready can sell before a bank (publish gates / payoutGateStatus).
+  // Payments & Bank row + banner use payout readiness so a stamped hold-rail
+  // brand without a bank keeps "Connect your bank to get paid", not "Active".
+  // Prefer fresh Paystack recipient_connected when the status hook is mounted.
+  const paystackStatusQuery = useBrandPaystackStatus(
+    brand?.paymentProvider === "paystack" ? brand.id : null,
+  );
+  const stripeStatus = isBrandPayoutReady(
+    brand
+      ? {
+          ...brand,
+          hasPaystackRecipient:
+            paystackStatusQuery.data?.recipient_connected === true
+              ? true
+              : brand.hasPaystackRecipient,
+        }
+      : brand,
+  )
     ? "active"
     : (effectiveStripeStatus ?? brand?.stripeStatus ?? "not_connected");
 

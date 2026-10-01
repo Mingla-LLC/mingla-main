@@ -293,6 +293,7 @@ jest.mock("../../../hooks/useBrandPaystack", () => {
     useUpdatePaystackRecipient: () => idle,
     useDisconnectPaystack: () => idle,
     useClearPaystackProvider: () => idle,
+    useSelectPaystackProvider: () => idle,
   };
 });
 
