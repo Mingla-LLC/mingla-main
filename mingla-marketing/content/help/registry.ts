@@ -225,7 +225,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       {
         title: 'Your bank details never touch Mingla',
         body:
-          'Accept the Mingla Host terms and Stripe’s own secure pages take your business and bank details. Mingla gets back one answer — connected, or not connected. Never your numbers. Mingla is the merchant of record for ticket sales, which is why payouts reach you from us rather than from each buyer.',
+          'Accept the Mingla Host terms and Stripe’s own secure pages take your business and bank details. Mingla gets back one answer — connected, or not connected. Never your numbers. You are the seller of your event: on Stripe, each sale is made on your own Stripe account. In Nigeria, UseMingla Limited collects the payment through Paystack and transfers it to you.',
       },
       {
         title: 'Your address chooses your payment network',

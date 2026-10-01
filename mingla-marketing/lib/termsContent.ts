@@ -62,7 +62,7 @@ export const TERMS_SECTIONS = [
       'Reverse engineer, decompile, disassemble, or otherwise attempt to derive the source code, underlying algorithms, or architecture of any portion of the Service',
       'Modify, adapt, translate, or create derivative works based on the Service',
       'Use the Service to develop a competing product or service',
-      'Use the Service for any commercial purpose without our prior written consent',
+      'Use the Service for any commercial purpose without our prior written consent. If you use Mingla Host to list, sell, message or advertise as an organiser, that use is commercial and is governed by the Mingla Organiser Terms at usemingla.com/organiser-terms, which apply alongside these Terms.',
       'Interfere with, disrupt, or impose an unreasonable load on the Service or its infrastructure',
       'Encourage or assist any third party to do any of the foregoing',
     ],
@@ -80,7 +80,7 @@ export const TERMS_SECTIONS = [
     title: '8. Intellectual Property',
     paragraphs: [
       'The Service, including all software, code, designs, graphics, text, illustrations, animations, sound, music, video, user interface designs, trademarks, service marks, logos, and other content (other than User Content), is owned by or licensed to Mingla and is protected by United States and international copyright, trademark, patent, trade-secret, and other intellectual property and proprietary-rights laws.',
-      'Subject to your continued compliance with these Terms, Mingla grants you a limited, personal, non-exclusive, non-transferable, non-sublicensable, revocable license to access and use the Service for your own personal, non-commercial use. No other right or license is granted by implication, estoppel, or otherwise.',
+      'Subject to your continued compliance with these Terms, Mingla grants you a limited, personal, non-exclusive, non-transferable, non-sublicensable, revocable license to access and use the Service for your own personal, non-commercial use. If you use Mingla Host to list, sell, message or advertise as an organiser, that use is commercial and is governed by the Mingla Organiser Terms at usemingla.com/organiser-terms, which apply alongside these Terms. No other right or license is granted by implication, estoppel, or otherwise.',
       'You may not copy, reproduce, distribute, modify, translate, adapt, create derivative works from, publicly perform, publicly display, republish, download, store, or transmit any part of the Service, except as expressly permitted by Mingla in writing.',
       'The Mingla name, the Mingla logo, the usemingla.com domain, and all related names, marks, and slogans are trademarks of MINGLA LLC. You may not use those marks without our prior written permission.',
     ],

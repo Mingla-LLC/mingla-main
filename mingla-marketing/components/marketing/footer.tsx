@@ -40,6 +40,7 @@ const publicColumns: FooterColumn[] = [
     links: [
       { href: '/privacy-policy', label: 'Privacy' },
       { href: '/terms-of-service', label: 'Terms' },
+      { href: '/organiser-terms', label: 'Organiser Terms' },
     ],
   },
 ]
