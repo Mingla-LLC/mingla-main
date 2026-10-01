@@ -1,16 +1,34 @@
 ---
 name: code-review
 description: >-
-  Principal-engineer code review for Mingla pull requests. Focuses on design
-  flaws, breaking changes, and whether the change convolutes the codebase.
-  Skips style and nitpicks. Use for Copilot code review and when reviewing PRs
-  or diffs for merge readiness.
+  Principal-engineer code review for Mingla pull requests. Always runs at high
+  effort — exhaustive investigation of the full diff and its blast radius.
+  Reports only design flaws, breaking changes, and convolution; skips style
+  and nitpicks. Use for Copilot code review and when reviewing PRs or diffs
+  for merge readiness.
 ---
 
 # Code review (principal engineer)
 
 Review like a principal engineer: protect architecture, contracts, and
-operability. Do **not** nitpick. Prefer fewer, higher-signal findings.
+operability. Do **not** nitpick. Findings stay high-signal; **investigation
+is always exhaustive**.
+
+## Effort (mandatory)
+
+**Always high. Never balanced, medium, quick, or skim-first.**
+
+- Treat every review as if a money / auth / payout miss would ship tomorrow.
+- Budget time for the full changed surface plus every caller, callee, sibling
+  surface, migration/test, and CI gate the diff can disturb — not just the
+  hunks that look risky at first glance.
+- Do not stop at the first plausible finding set. Finish the pass, then emit.
+- Prefer over-reading a safe file over under-reading a dangerous one.
+- If context or tools are capped, say what you could not finish; do not
+  silently downgrade to a balanced pass.
+
+Thorough investigation ≠ dumping every observation. Still report only what
+meets the bar below.
 
 ## Bar (what to report)
 
@@ -27,8 +45,8 @@ Report a finding only when it is one of:
    fix, new indirection without a clear owner, or parallel paths that should
    have been subtracted first).
 
-If none of the above apply, say so plainly (**Findings: None**) and stop.
-Praise is optional and one sentence max.
+If none of the above apply after a complete high-effort pass, say so plainly
+(**Findings: None**) and stop. Praise is optional and one sentence max.
 
 ## Explicitly out of scope (do not comment)
 
@@ -54,7 +72,8 @@ Praise is optional and one sentence max.
 
 ## Mingla-specific load-bearing checks
 
-Only when the diff touches the area:
+Apply whenever the diff touches the area — and **search for adjacent hits**
+even when the hunk itself looks local:
 
 - **Money / payouts / refunds / Stripe / Paystack** — maturity, idempotency,
   status machines, and “no double withhold / no silent skip” invariants.
@@ -123,15 +142,23 @@ Only when the diff touches the area:
 Point at existing docs (`README.md` Architecture Constitution,
 `docs/INVARIANT_REGISTRY.md`, domain ADRs) instead of inventing new policy.
 
-## Review workflow
+## Review workflow (high effort)
 
-1. Read the PR intent (title, summary, linked issue). Judge the diff against
-   that intent — not against an ideal rewrite.
-2. Skim the full file set; deep-read only risk surfaces (money, auth, schema,
-   shared contracts, fan-out/cron).
-3. Ask: *What breaks if this ships?* *Who owns this truth after merge?* *Did
-   this make the graph simpler or denser?*
-4. Emit findings. Silence is a valid outcome.
+1. Read the PR intent (title, summary, linked issue, acceptance checks).
+   Judge the diff against that intent — not against an ideal rewrite.
+2. Inventory **every** changed file. Deep-read all of them. For each risk
+   surface (money, auth, schema, shared contracts, fan-out/cron, webhooks),
+   also read the unchanged owners/callers the diff depends on.
+3. Trace blast radius: sibling providers (Stripe ↔ Paystack), pending vs
+   released paths, RLS/grants, fixtures/CI seals, multi-surface copies, and
+   any parallel path that should have been subtracted.
+4. Cross-check load-bearing Mingla items above against the full inventory,
+   not only the files you already opened for the happy path.
+5. Ask: *What breaks if this ships?* *Who owns this truth after merge?* *Did
+   this make the graph simpler or denser?* *What money/auth event is silently
+   skipped, double-applied, or unretryable?*
+6. Emit findings only after the pass is complete. Silence is a valid outcome
+   of a thorough review, not of a skim.
 
 ## Finding format
 
@@ -147,7 +174,12 @@ concrete remediation. No lecture. No alternate full rewrites.
 
 ## Anti-patterns for the reviewer
 
+- Running a balanced / medium / “quick look” review.
+- Skimming and deep-reading only the “obvious” files.
+- Stopping after the first cluster of findings before the full pass.
 - Long checklists of “best practices” unrelated to the diff.
 - Blocking on taste.
 - Asking for more abstraction when the bug is a missing guard or wrong owner.
 - Expanding scope (“while you’re here…”) beyond the PR’s stated intent.
+- Reporting nits to look thorough — thoroughness is in the investigation,
+  not in the comment count.

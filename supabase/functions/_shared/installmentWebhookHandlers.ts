@@ -157,6 +157,31 @@ export async function handleInstallmentPaymentSucceeded(
     },
   });
 
+  // #3645 / #2036 — record fees so a collected installment can enter the payout
+  // ledger once issue_2036_installment_payout_ready() is flipped. Fail soft:
+  // collect must stick for webhook idempotency even if the RPC is unavailable.
+  {
+    const amountCents = Number((updated as Record<string, unknown>).amount_cents ?? 0);
+    const appFeeRaw = pi["application_fee_amount"];
+    const applicationFeeAmountCents = typeof appFeeRaw === "number"
+      ? Math.max(0, Math.trunc(appFeeRaw))
+      : Math.round(amountCents * 0.015);
+    const { error: feeRpcError } = await supabase.rpc(
+      "record_order_installment_provider_sale",
+      {
+        p_installment_id: installmentId,
+        p_application_fee_amount_cents: applicationFeeAmountCents,
+        p_provider_fee_cents: 0,
+      },
+    );
+    if (feeRpcError !== null) {
+      console.error(
+        "[installment-webhook] record_order_installment_provider_sale failed (non-fatal)",
+        feeRpcError.message,
+      );
+    }
+  }
+
   // Check if this was the LAST installment for the order → fire "fully paid" confirmation.
   // Simple check: count remaining scheduled/failed installments for the order.
   const orderId = String((updated as Record<string, unknown>).order_id);

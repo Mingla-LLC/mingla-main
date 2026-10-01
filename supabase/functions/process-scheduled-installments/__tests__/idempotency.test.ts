@@ -188,3 +188,31 @@ Deno.test("ORCH-0869 webhook handlers: at_risk flag flips at MAX_RETRY_ATTEMPTS"
     /willBeAtRisk\s*=\s*nextRetryCount\s*>=\s*MAX_RETRY_ATTEMPTS/,
   );
 });
+
+Deno.test("#3645 createInstallmentPI: skips cancelled event/order before Stripe I/O", () => {
+  assertStringIncludes(HELPER_SOURCE, 'reason: "event_cancelled"');
+  assertStringIncludes(HELPER_SOURCE, 'reason: "order_cancelled"');
+  // Fail-closed order: cancel checks appear before paymentIntents.create.
+  const cancelIdx = HELPER_SOURCE.indexOf('reason: "event_cancelled"');
+  const stripeIdx = HELPER_SOURCE.indexOf("paymentIntents.create");
+  assert(
+    cancelIdx >= 0 && stripeIdx > cancelIdx,
+    "event_cancelled skip must run before stripe.paymentIntents.create",
+  );
+});
+
+Deno.test("#3645 cron: due/retry queries exclude cancelled events via orders→events", () => {
+  assertStringIncludes(CRON_SOURCE, 'neq("orders.events.status", "cancelled")');
+  assertStringIncludes(CRON_SOURCE, 'is("orders.cancelled_at", null)');
+});
+
+Deno.test("#3645 webhook: records provider sale after collect (fail-soft)", () => {
+  assertStringIncludes(
+    WEBHOOK_HANDLER_SOURCE,
+    "record_order_installment_provider_sale",
+  );
+  assertStringIncludes(
+    WEBHOOK_HANDLER_SOURCE,
+    "record_order_installment_provider_sale failed (non-fatal)",
+  );
+});

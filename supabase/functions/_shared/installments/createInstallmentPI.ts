@@ -44,6 +44,7 @@ export type OrderRow = {
   buyer_user_id: string | null;
   buyer_email: string;
   at_risk: boolean;
+  cancelled_at?: string | null;
 };
 
 export type BrandRow = {
@@ -151,7 +152,7 @@ async function loadInstallmentContext(
   const inst = installment as InstallmentRow;
   const { data: order } = await supabase
     .from("orders")
-    .select("id, event_id, stripe_customer_id_on_connected_account, saved_payment_method_id, buyer_user_id, buyer_email, at_risk")
+    .select("id, event_id, stripe_customer_id_on_connected_account, saved_payment_method_id, buyer_user_id, buyer_email, at_risk, cancelled_at")
     .eq("id", inst.order_id)
     .maybeSingle();
   if (order === null) return { error: "order_not_found" };
@@ -211,6 +212,33 @@ export async function createInstallmentPI(
     order = loaded.order;
     brand = loaded.brand;
     stripeAccount = loaded.stripeAccount;
+  }
+
+  // #3645 / #2030 — fail closed before Stripe I/O when the hosting event or
+  // order is already cancelled. Cron also filters these; this is belt-and-braces
+  // for manual-charge and any other caller.
+  if (order.cancelled_at != null && order.cancelled_at !== "") {
+    return {
+      ok: false,
+      error: "order_cancelled",
+      outcome: "skipped",
+      reason: "order_cancelled",
+    };
+  }
+  {
+    const { data: eventRow } = await supabase
+      .from("events")
+      .select("status")
+      .eq("id", order.event_id)
+      .maybeSingle();
+    if (eventRow !== null && String((eventRow as { status?: string }).status) === "cancelled") {
+      return {
+        ok: false,
+        error: "event_cancelled",
+        outcome: "skipped",
+        reason: "event_cancelled",
+      };
+    }
   }
 
   if (
