@@ -7,6 +7,8 @@ on:
     paths:
       - "supabase/functions/_shared/paystackRefunds.ts"
       - "supabase/functions/_shared/paystackRefundRouter.ts"
+      - "supabase/functions/_shared/paystackDisputeRouter.ts"
+      - "supabase/functions/_shared/__tests__/paystackDisputeRouter.test.ts"
       - "supabase/functions/refund-order/**"
       - "supabase/functions/admin-refund-order/**"
       - "supabase/functions/cancel-trip-booking/**"
@@ -44,6 +46,10 @@ jobs:
           supabase/functions/cancel-trip-booking/index.ts
           supabase/functions/venue-reservation-cancel/index.ts
           supabase/functions/paystack-webhook/index.ts
+      - name: Run Paystack dispute router unit tests (#3645)
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/_shared/__tests__/paystackDisputeRouter.test.ts
       - name: Run issue 1175 regression contract
         run: >-
           deno test --allow-read --allow-env

@@ -34,6 +34,7 @@ import {
 } from "../_shared/paystack.ts";
 import { handlePaystackChargeSuccess } from "../_shared/paystackWebhookRouter.ts";
 import { handlePaystackRefundEvent } from "../_shared/paystackRefundRouter.ts";
+import { handlePaystackDisputeEvent } from "../_shared/paystackDisputeRouter.ts";
 // ORCH-1331 — partner Paystack payout rail: fail-soft split fan-out on
 // charge.success + transfer.*/refund.processed lifecycle routing.
 import {
@@ -252,6 +253,20 @@ serve(async (req) => {
           | "refund.pending"
           | "refund.processing"
           | "refund.needs-attention",
+        data,
+      );
+    } else if (
+      eventName === "charge.dispute.create" ||
+      eventName === "charge.dispute.remind" ||
+      eventName === "charge.dispute.resolve"
+    ) {
+      // #3645 — Paystack chargebacks (16h NG auto-accept awareness + debt on accept).
+      await handlePaystackDisputeEvent(
+        supabase,
+        eventName as
+          | "charge.dispute.create"
+          | "charge.dispute.remind"
+          | "charge.dispute.resolve",
         data,
       );
     } else {

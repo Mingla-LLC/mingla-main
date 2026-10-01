@@ -299,20 +299,21 @@ BEGIN
     organiser_cash_delivered_cents,status,released_at
   ) VALUES
     (
+      -- payment+24h CHECK: releasable_at = anchor_end_at + 1 day (#3645/#3717)
       v_buyer_release,v_brand,v_buyer_event,'buyer','order','paystack','ngn',
-      now()-interval '4 days',now()-interval '1 day',10000,10000,10000,
+      now()-interval '2 days',now()-interval '1 day',10000,10000,10000,
       'released',now()-interval '1 day'
     ),
     (
       v_admin_release,v_brand,v_admin_event,'admin','order','paystack','ngn',
-      now()-interval '4 days',now()-interval '1 day',10000,10000,10000,
+      now()-interval '2 days',now()-interval '1 day',10000,10000,10000,
       'released',now()-interval '1 day'
     );
   INSERT INTO public.payout_release_items(
     release_id,source_type,source_id,gross_cents,net_cents,source_finalized_at
   ) VALUES
-    (v_buyer_release,'order',v_buyer_order,10000,10000,now()-interval '4 days'),
-    (v_admin_release,'order',v_admin_order,10000,10000,now()-interval '4 days');
+    (v_buyer_release,'order',v_buyer_order,10000,10000,now()-interval '2 days'),
+    (v_admin_release,'order',v_admin_order,10000,10000,now()-interval '2 days');
 
   FOR i IN 1..3 LOOP
     v_refund_id := (v_buyer->>'refund_id')::uuid;
