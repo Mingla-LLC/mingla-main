@@ -148,12 +148,11 @@ export async function handlePaystackDisputeEvent(
   const id = disputeId(data);
   const reference = transactionReference(data);
   if (!id || !reference) {
-    console.warn("[paystack-dispute] dispute event lacks identity", {
-      eventName,
-      id,
-      reference,
-    });
-    return;
+    // Fail the handler so the webhook inbox stays unprocessed and retries —
+    // a soft return marks the money event done with no dispute row or alert.
+    throw new Error(
+      `paystack_dispute_identity_missing:event=${eventName}:id=${id || "none"}:ref=${reference || "none"}`,
+    );
   }
 
   const amountCents = numberCents(

@@ -126,13 +126,14 @@ BEGIN
   END IF;
 
   -- Later pending release recovers part of the spill.
+  -- payment+24h: releasable_at must be exactly anchor_end_at + 1 day.
   INSERT INTO public.brand_payout_releases(
     id, brand_id, event_id, occurrence_key, surface, provider, currency,
     anchor_end_at, releasable_at, gross_cents, mingla_fee_cents,
     net_release_cents, status
   ) VALUES (
     v_rel_c, v_brand, v_event, 'pr3-rel-c', 'order', 'paystack', 'ngn',
-    v_now + interval '1 day', v_now + interval '1 day', 3000, 0,
+    v_now + interval '1 day', v_now + interval '2 days', 3000, 0,
     3000, 'pending'
   );
 
@@ -141,14 +142,20 @@ BEGIN
     RAISE EXCEPTION 'pr3_apply_expected_3000_got_%', v_applied;
   END IF;
 
-  SELECT principal_cents, recovered_cents, status
-    INTO v_principal, v_recovered, v_status
-  FROM public.organiser_payout_debts WHERE id = v_debt_id;
+  -- apply_open_payout_debts FIFO-orders open debts by opened_at,id — not by
+  -- origin — so the 3000 may land on either debt. Pin aggregate recovery.
+  SELECT coalesce(sum(recovered_cents), 0)::integer INTO v_recovered
+  FROM public.organiser_payout_debts
+  WHERE brand_id = v_brand
+    AND currency = 'ngn'
+    AND kind = 'post_release_refund';
   IF v_recovered <> 3000 THEN
-    RAISE EXCEPTION 'pr3_recovered_expected_3000_got_%', v_recovered;
+    RAISE EXCEPTION 'pr3_aggregate_recovered_expected_3000_got_%', v_recovered;
   END IF;
+
+  SELECT status INTO v_status FROM public.organiser_payout_debts WHERE id = v_debt_id;
   IF v_status <> 'open' THEN
-    RAISE EXCEPTION 'pr3_debt_should_remain_open_after_partial_got_%', v_status;
+    RAISE EXCEPTION 'pr3_origin_debt_should_remain_open_after_partial_got_%', v_status;
   END IF;
 
   RAISE NOTICE 'issue_3645_multi_release_refund_debt_pass';

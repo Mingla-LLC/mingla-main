@@ -1,7 +1,7 @@
 /**
  * Issue #3645 — Paystack dispute router unit coverage (Deno).
  * Proves create/remind/resolve call record_paystack_dispute_outcome with the
- * Paystack identity fields, and that missing identity is a soft no-op.
+ * Paystack identity fields, and that missing identity fails so inbox can retry.
  */
 import {
   assertEquals,
@@ -108,11 +108,16 @@ Deno.test("charge.dispute.resolve forwards merchant-accepted resolution", async 
   }
 });
 
-Deno.test("missing dispute identity is a soft no-op", async () => {
+Deno.test("missing dispute identity fails so inbox can retry", async () => {
   const calls: RpcCall[] = [];
-  await handlePaystackDisputeEvent(mockClient({ calls }), "charge.dispute.remind", {
-    status: "pending",
-  });
+  await assertRejects(
+    () =>
+      handlePaystackDisputeEvent(mockClient({ calls }), "charge.dispute.remind", {
+        status: "pending",
+      }),
+    Error,
+    "paystack_dispute_identity_missing",
+  );
   assertEquals(calls.length, 0);
 });
 

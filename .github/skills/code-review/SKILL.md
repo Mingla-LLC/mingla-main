@@ -62,8 +62,36 @@ Only when the diff touches the area:
   **remaining-capacity** math (subtract liabilities already booked on other
   origins in that scope) under a shared lock — not an independent per-caller
   read of the same total. Add a multi-origin regression.
+- **Provider subject parity** — a new refund/dispute/chargeback path must
+  resolve every subject the live charge webhook already finalizes (today:
+  ticket `order`, `rsvp_contribution`, `venue_reservation`,
+  `venue_menu_order`). Matching only a subset leaves money events unmatched
+  and never reaches debt/hold.
+- **Pending vs released payout liability** — looking up only `status =
+  'released'` silently skips disputes/refunds that land inside the maturity
+  window; the pending release then pays full value and a processed webhook
+  will not replay. Pending rows need the existing hold plane
+  (`disputed_cents` / recomputed net) with a merchant-win reversal; released
+  rows need debt. Mirror the stay-dispute pattern rather than inventing a
+  third path.
+- **Debt growth ↔ postponement transfer** — growing an existing permanent
+  debt by raising `principal_cents` alone double-withholds if an overlapping
+  `post_release_postponement` debt remains. Initial create uses
+  `convert_postponement_debt_to_permanent`; growth paths must perform the
+  same overlap transfer (see multi-release refund growth).
+- **Webhook soft-success traps** — a signature-valid money event that lacks
+  parseable identity (or otherwise cannot persist) must fail the handler so
+  the inbox stays retryable. Returning success after a warn logs the event
+  as `processed` with no row, no alert, and no replay.
 - **Auth / RLS / SECURITY DEFINER** — who can execute; anon/authenticated
-  grants; admin gate-first patterns.
+  grants; admin gate-first patterns. Brand role literals must use the live
+  vocabulary (`brand_owner`, never the retired `account_owner`); ORCH-1047
+  greps new migrations for the dead label.
+- **Fixture timelines match live CHECKs** — payout fixtures must satisfy
+  `releasable_at = anchor_end_at + interval '1 day'` (payment+24h). Equal
+  anchor/releasable timestamps (legacy same-day maturity) fail
+  `brand_payout_release_anchor_order` and turn “migrations apply cleanly”
+  red even when the migration SQL itself is fine.
 - **Multi-surface truth** — consumer, business, buyer web, admin, Sites must
   not diverge on the same product fact without an explicit owner.
 - **Migrations** — apply-clean from baseline; CHECK/constraint honesty;
