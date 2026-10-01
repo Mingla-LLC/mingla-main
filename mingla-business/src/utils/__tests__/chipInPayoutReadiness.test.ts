@@ -5,6 +5,9 @@
  * CI-enforced fails-on-revert: weakening the predicate to always-true, dropping the
  * Paystack branch, or trusting the cache instead of the passed fresh status flips
  * these assertions.
+ *
+ * [TEST-MOD-APPROVED #3645] Blank-subaccount cases now also require an unstamped
+ * hold rail; stamped hold-rail without a subaccount is charge-ready (sell-before-bank).
  */
 import { isChipInPayoutReady } from "../chipInPayoutReadiness";
 import type { Brand, BrandStripeStatus } from "../../types/brand";

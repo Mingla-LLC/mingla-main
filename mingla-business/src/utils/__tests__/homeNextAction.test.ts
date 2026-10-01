@@ -71,6 +71,8 @@ describe("META-ORCH-0972 pickHomeNextAction — universal authoring ladder", () 
     expect(result?.rung).toBe(1);
     expect(result?.kind).toBe("stripe_inactive");
     expect(result?.ctaRoute).toBe("/brand/brand-1/payments");
+    // [TEST-MOD-APPROVED #3645] Title is charge-setup copy, not "Connect bank to
+    // take payments" — sell-before-bank splits charge readiness from bank/payout.
     expect(result?.title).toBe("Finish payment setup to sell");
   });
 
