@@ -132,11 +132,15 @@ BEGIN
           WHERE e.id=r.event_id AND e.status<>'cancelled'
         )
       )
-      AND r.net_release_cents + least(coalesce((
+      -- Due test in bigint: net_release_cents (integer) + the already-clamped
+      -- bigint recredit must not be summed as two integers, or a combined due
+      -- over int4 max would raise integer overflow and abort the whole claim
+      -- RPC (stalling unrelated payouts in the sweep). bigint the predicate.
+      AND r.net_release_cents::bigint + least(coalesce((
         SELECT sum(a.amount_cents)
         FROM public.payout_ledger_adjustments a
         WHERE a.release_id=r.id AND a.kind='maturity_recredit'
-      ),0), 2147483647::bigint)::integer > 0
+      ),0), 2147483647::bigint) > 0
     ORDER BY r.releasable_at,r.created_at,r.id
     FOR UPDATE OF r SKIP LOCKED
     LIMIT greatest(1,least(p_limit,100))
@@ -231,11 +235,13 @@ BEGIN
           WHERE e.id=r.event_id AND e.status<>'cancelled'
         )
       )
-      AND r.net_release_cents + least(coalesce((
+      -- Due test in bigint (see claim_stripe_payout_releases): avoid an int4
+      -- overflow on net_release_cents + the clamped recredit aborting the RPC.
+      AND r.net_release_cents::bigint + least(coalesce((
         SELECT sum(a.amount_cents)
         FROM public.payout_ledger_adjustments a
         WHERE a.release_id=r.id AND a.kind='maturity_recredit'
-      ),0), 2147483647::bigint)::integer > 0
+      ),0), 2147483647::bigint) > 0
     ORDER BY r.releasable_at,r.created_at,r.id
     FOR UPDATE OF r SKIP LOCKED
     LIMIT greatest(1,least(p_limit,100))
@@ -473,7 +479,10 @@ BEGIN
           COALESCE(sum(r.due_cents) FILTER (WHERE r.status='pending'),0)::bigint AS pending_net_cents,
           COALESCE(sum(r.due_cents) FILTER (WHERE r.status='in_flight'),0)::bigint AS in_flight_cents,
           COALESCE(sum(r.delivered_cents) FILTER (WHERE r.status='released'),0)::bigint AS released_cents,
-          COALESCE(sum(r.net_release_cents) FILTER (WHERE r.status IN (
+          -- Blocked releases remain payout obligations; both claim paths send
+          -- net_release_cents + maturity_recredit, so count due_cents (a blocked
+          -- row with zero net but a positive recredit is still money owed).
+          COALESCE(sum(r.due_cents) FILTER (WHERE r.status IN (
             'blocked_kyc','blocked_balance','blocked_otp','blocked_over_cap',
             'fee_unreconciled','blocked_anchor','reanchored'
           )),0)::bigint AS blocked_cents,

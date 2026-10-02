@@ -18,6 +18,10 @@ DECLARE
   v_brand    constant uuid := '36450000-0000-4000-8000-000000000c03';
   v_rel_pend constant uuid := '36450000-0000-4000-8000-000000000c04';
   v_rel_orig constant uuid := '36450000-0000-4000-8000-000000000c05';
+  -- A second (Stripe) brand + release: the migration independently REPLACES the
+  -- Stripe claim RPC with the same hold predicate, so prove it too locks/skips.
+  v_brand_st constant uuid := '36450000-0000-4000-8000-000000000c06';
+  v_rel_st   constant uuid := '36450000-0000-4000-8000-000000000c07';
   v_now      constant timestamptz := '2027-09-01 12:00:00+00';
   v_claim    integer;
   v_status   text;
@@ -83,6 +87,34 @@ BEGIN
   ) VALUES (
     v_brand, 'ngn', v_rel_orig, 'post_release_refund',
     5000, 2000, 'open', 'pr9-test-debt:' || v_rel_orig::text
+  );
+
+  -- Stripe brand with a payouts-enabled Connect account and one mature pending
+  -- release (claimable once not paused) — exercises the Stripe claim leg.
+  INSERT INTO public.brands (
+    id, account_id, name, slug, default_currency,
+    payment_provider, payment_country, pricing_region, pricing_currency,
+    payout_hold_cutover_at
+  ) VALUES (
+    v_brand_st, v_owner, 'PR9 Stripe Brand', '3645-pr9-stripe', 'USD',
+    'stripe', 'US', 'US', 'USD', v_now - interval '60 days'
+  );
+
+  INSERT INTO public.stripe_connect_accounts (
+    brand_id, stripe_account_id, charges_enabled, payouts_enabled,
+    country, default_currency
+  ) VALUES (
+    v_brand_st, 'acct_3645_pr9', true, true, 'US', 'usd'
+  );
+
+  INSERT INTO public.brand_payout_releases (
+    id, brand_id, occurrence_key, surface, provider, currency,
+    anchor_end_at, releasable_at, gross_cents, mingla_fee_cents,
+    net_release_cents, status
+  ) VALUES (
+    v_rel_st, v_brand_st, '3645-pr9-stripe-pend', 'order', 'stripe', 'usd',
+    v_now - interval '2 days', v_now - interval '1 day',
+    12000, 2000, 10000, 'pending'
   );
 
   -- ── Pause (admin JWT) ──────────────────────────────────────────────────────
@@ -197,6 +229,42 @@ BEGIN
   WHERE action = 'brand.payouts_resume' AND target_id = v_brand::text;
   IF v_audit < 1 THEN
     RAISE EXCEPTION 'pr9: no brand.payouts_resume audit row';
+  END IF;
+
+  -- ── Stripe leg: pause → zero claims → resume → one claim ────────────────────
+  -- The migration independently REPLACES claim_stripe_payout_releases with the
+  -- same hold predicate; this proves that function applies, locks, and skips/
+  -- claims correctly (not just that the text is present).
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
+  PERFORM public.admin_set_brand_payouts_paused(v_brand_st, true, 'ops: stripe review');
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
+  -- Claim must SKIP the paused Stripe brand (money accrues, stays pending).
+  SELECT count(*)::integer INTO v_claim
+  FROM public.claim_stripe_payout_releases(20, v_now);
+  IF v_claim <> 0 THEN
+    RAISE EXCEPTION 'pr9: paused Stripe brand claimed % releases (expected 0)', v_claim;
+  END IF;
+  IF (SELECT status FROM public.brand_payout_releases WHERE id = v_rel_st) <> 'pending' THEN
+    RAISE EXCEPTION 'pr9: paused Stripe release was consumed by claim';
+  END IF;
+
+  -- Resume, then the Stripe claim picks exactly the matured release.
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
+  PERFORM public.admin_set_brand_payouts_paused(v_brand_st, false, 'ops: stripe cleared');
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
+  SELECT count(*)::integer INTO v_claim
+  FROM public.claim_stripe_payout_releases(20, v_now);
+  IF v_claim <> 1 THEN
+    RAISE EXCEPTION 'pr9: resumed Stripe brand claimed % releases (expected 1)', v_claim;
+  END IF;
+  IF (SELECT status FROM public.brand_payout_releases WHERE id = v_rel_st) <> 'in_flight' THEN
+    RAISE EXCEPTION 'pr9: resumed Stripe release not claimed to in_flight';
   END IF;
 
   RAISE NOTICE 'issue_3645_admin_payout_pause_and_debt_implementor_happy_pass';

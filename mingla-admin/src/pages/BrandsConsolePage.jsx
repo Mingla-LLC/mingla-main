@@ -482,6 +482,7 @@ function buildPayoutSection(console) {
               {": "}on its way {formatMoney(b.pending_net_cents, b.currency)}
               {" · in flight "}{formatMoney(b.in_flight_cents, b.currency)}
               {" · paid "}{formatMoney(b.released_cents, b.currency)}
+              {Number(b.blocked_cents) > 0 && <span className="text-[var(--color-warning-700)]"> · blocked {formatMoney(b.blocked_cents, b.currency)}</span>}
               {Number(b.admin_paused_cents) > 0 && <span className="text-[var(--color-error-700)]"> · held (paused) {formatMoney(b.admin_paused_cents, b.currency)}</span>}
               {Number(b.waiting_for_bank_cents) > 0 && <span className="text-[var(--color-text-tertiary)]"> · waiting for bank {formatMoney(b.waiting_for_bank_cents, b.currency)}</span>}
             </span>
@@ -547,6 +548,23 @@ function buildPayoutSection(console) {
   return { label: "Payouts (admin)", fields };
 }
 
+// #3645 PR9 — the payout console failed to load. Surfaced (with retry) instead of
+// silently hiding the console + pause/resume controls behind a healthy-looking
+// brand, so an operator can tell "not loaded yet" from "feature unavailable".
+function buildPayoutErrorSection(message, onRetry) {
+  return {
+    label: "Payouts (admin)",
+    fields: [
+      field("Payout console", null, () => (
+        <span className="flex flex-col items-start gap-2">
+          <span className="text-[var(--color-error-700)]">Couldn't load the payout console. {message}</span>
+          <Button variant="secondary" size="sm" onClick={onRetry}>Retry</Button>
+        </span>
+      )),
+    ],
+  };
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function BrandsConsolePage() {
@@ -556,6 +574,11 @@ export function BrandsConsolePage() {
   const [error, setError] = useState(null);
   // #3645 PR9 — per-brand payout console (balance, next payout, pause, debts).
   const [payoutConsole, setPayoutConsole] = useState(null);
+  // #3645 PR9 — the payout console is the ONLY admin pause/resume read path. An
+  // RPC/auth/network failure must be surfaced (with retry) rather than silently
+  // rendering a healthy-looking brand with no console and no pause controls, so
+  // an operator can tell "not loaded" from "feature unavailable".
+  const [payoutConsoleError, setPayoutConsoleError] = useState(null);
 
   // ORCH-1276 mutation state (page owns all modals + refetch-on-success).
   const [editProfileOpen, setEditProfileOpen] = useState(false);
@@ -589,11 +612,18 @@ export function BrandsConsolePage() {
   }, [selectedBrandId, accountOptions.length]);
 
   const loadPayoutConsole = useCallback(async (brandId) => {
+    setPayoutConsoleError(null);
     try {
       const { data, error: e } = await getBrandPayoutConsole(brandId);
-      setPayoutConsole(e ? null : data);
-    } catch {
+      if (e) {
+        setPayoutConsole(null);
+        setPayoutConsoleError(mapWriteError(e) || "Couldn't load the payout console.");
+      } else {
+        setPayoutConsole(data);
+      }
+    } catch (err) {
       setPayoutConsole(null);
+      setPayoutConsoleError(err?.message || "Couldn't load the payout console.");
     }
   }, []);
 
@@ -602,6 +632,7 @@ export function BrandsConsolePage() {
     setError(null);
     setDetail(null);
     setPayoutConsole(null);
+    setPayoutConsoleError(null);
     try {
       const d = await getBrandDetail(brandId);
       setDetail(d);
@@ -635,6 +666,7 @@ export function BrandsConsolePage() {
     setSelectedBrandId(null);
     setDetail(null);
     setPayoutConsole(null);
+    setPayoutConsoleError(null);
     setError(null);
   }, []);
 
@@ -681,7 +713,7 @@ export function BrandsConsolePage() {
         footerActions.push({
           label: "Pause payouts",
           title: "Pause payouts",
-          description: "Pause this brand's payouts. Its money keeps accruing but nothing is sent until you resume. Charging and publishing are unaffected. Recorded in the audit log.",
+          description: "Pause this brand's payouts. New payouts stop and its money keeps accruing until you resume — but a payout already in flight will still complete; pause does not claw back money already handed to the provider. Charging and publishing are unaffected. Recorded in the audit log.",
           confirmLabel: "Pause payouts",
           destructive: true,
           requireReason: true,
@@ -814,7 +846,11 @@ export function BrandsConsolePage() {
                     onRemoveMember: (mem) => setTeamAction({ type: "remove", row: mem }),
                     onRevokeInvite: (inv) => setTeamAction({ type: "revoke", row: inv }),
                   }),
-                  ...(payoutConsole ? [buildPayoutSection(payoutConsole)] : []),
+                  ...(payoutConsole
+                    ? [buildPayoutSection(payoutConsole)]
+                    : payoutConsoleError
+                      ? [buildPayoutErrorSection(payoutConsoleError, () => loadPayoutConsole(selectedBrandId))]
+                      : []),
                 ]
               : []
           }

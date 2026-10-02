@@ -48,18 +48,17 @@ const root = process.cwd().endsWith("mingla-business")
  *         payload. A `paused_at: string | null` interface field is a shape
  *         declaration, not a write, and must not trip.
  *
- * WORD-BOUNDARY on the column token. The pause writer this gate guards is the
- * venue's `venue_ordering_settings.paused_at` / `paused_by_user_id`. A leading
- * `\b` keeps the match on those EXACT columns and stops it firing on an
- * unrelated column whose name merely ends in `…paused_at` — e.g. issue #3645's
- * brand-wide payout hold `brands.payouts_admin_paused_at`, which is a different
- * table, a different rail (admin money pause, not venue ordering), and has its
- * own ORCH-1271 audited writer. Without the boundary `payouts_admin_paused_at =`
- * tripped this gate as a false positive. The boundary does NOT weaken the gate:
- * a real `venue_ordering_settings.paused_at` write — the literal column — still
- * matches from any file, this one included.
+ * NO column-token exception. The gate matches `paused_at` / `paused_by_user_id`
+ * writes wherever they appear. Issue #3645's admin payout pause deliberately
+ * does NOT live on a `…paused_at` column at all — its state is the presence of a
+ * row in the admin-only `brand_payout_admin_holds` table (see
+ * `20270728003645_issue_3645_admin_payout_pause_and_debt.sql`), precisely so a
+ * brand admin cannot clear it the way a broadly-writable `brands` column would
+ * allow. There is therefore no sibling `…paused_at` write to carve out, and a
+ * word-boundary exception that once sanctioned `brands.payouts_admin_paused_at`
+ * would only re-document a rejected, insecure design — so it is gone.
  */
-const PAUSE_SQL_WRITE_RE = /\b(?:paused_at|paused_by_user_id)\s*(?::=|=(?!=))/;
+const PAUSE_SQL_WRITE_RE = /(?:paused_at|paused_by_user_id)\s*(?::=|=(?!=))/;
 const PAUSE_TS_CALL_RE = /\.(?:update|insert|upsert)\s*\(/g;
 /** How far past a write call to look for the column in its payload. */
 const TS_PAYLOAD_WINDOW = 400;
@@ -70,9 +69,7 @@ function hasPauseWrite(code, isSql) {
   let match;
   while ((match = PAUSE_TS_CALL_RE.exec(code)) !== null) {
     const window = code.slice(match.index, match.index + TS_PAYLOAD_WINDOW);
-    // Same word-boundary rule as SQL: `…payouts_admin_paused_at` (issue #3645's
-    // brand payout hold) is a different column and must not trip this gate.
-    if (/\b(?:paused_at|paused_by_user_id)\b/.test(window)) return true;
+    if (/(?:paused_at|paused_by_user_id)/.test(window)) return true;
   }
   return false;
 }
@@ -214,21 +211,6 @@ export async function autoPause(client, venueId) {
 }
 `;
 
-// Issue #3645's brand-wide payout hold lives on a DIFFERENT column in a
-// DIFFERENT table (brands.payouts_admin_paused_at) with its own audited writer.
-// Writing it must NOT trip the venue-ordering single-writer gate (word boundary).
-const GOOD_BRAND_PAYOUT_PAUSE_SQL = `
-UPDATE public.brands
-   SET payouts_admin_paused_at = COALESCE(payouts_admin_paused_at, now()),
-       payouts_admin_pause_reason = btrim(p_reason)
- WHERE id = p_brand_id;
-UPDATE public.brands SET payouts_admin_paused_at = NULL WHERE id = p_brand_id;
-`;
-
-const GOOD_BRAND_PAYOUT_PAUSE_TS = `
-await client.from("brands").update({ payouts_admin_paused_at: null });
-`;
-
 // READS and SHAPE DECLARATIONS of the pause column are legitimate and must NOT
 // trip the gate. Line 1 is a TypeScript interface field, line 2 is what
 // venue-order-create's third gate does, line 3 is the settings hook's mapping,
@@ -290,24 +272,6 @@ if (process.argv.includes("--self-test")) {
   f = [];
   scanPauseWriters("good-read", GOOD_PAUSE_READ, f, { isSanctionedFile: false, isSql: false });
   cases.push(["READING the pause column is allowed", f.length === 0]);
-
-  f = [];
-  scanPauseWriters("good-brand-sql", GOOD_BRAND_PAYOUT_PAUSE_SQL, f, {
-    isSanctionedFile: false, isSql: true,
-  });
-  cases.push([
-    "writing brands.payouts_admin_paused_at (#3645) does not trip the venue gate",
-    f.length === 0,
-  ]);
-
-  f = [];
-  scanPauseWriters("good-brand-ts", GOOD_BRAND_PAYOUT_PAUSE_TS, f, {
-    isSanctionedFile: false, isSql: false,
-  });
-  cases.push([
-    "updating brands.payouts_admin_paused_at from TS (#3645) does not trip the gate",
-    f.length === 0,
-  ]);
 
   f = [];
   scanSweep("good", GOOD_SWEEP, f);
