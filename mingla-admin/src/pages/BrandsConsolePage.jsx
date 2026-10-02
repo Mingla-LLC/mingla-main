@@ -25,12 +25,26 @@ import {
   reassignBrandOwner,
   setBrandClaimStatus,
   setBrandDeleted,
+  setBrandPayoutsPaused,
   setTeamMemberRole,
   removeTeamMember,
   revokeInvitation,
   mapWriteError,
 } from "../services/identityWriteService";
+import { getBrandPayoutConsole } from "../services/adminMoneyService";
 import { timeAgo, formatDate, formatDateTime } from "../lib/formatters";
+
+// Money formatter (cents + currency → string; never throws).
+function formatMoney(cents, currency) {
+  if (cents == null) return "—";
+  const code = (currency || "").toUpperCase();
+  const amount = Number(cents) / 100;
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: code || "USD" }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)}${code ? ` ${code}` : ""}`;
+  }
+}
 
 const TEAM_ROLE_OPTIONS = [
   { value: "brand_owner", label: "Brand owner" },
@@ -427,6 +441,130 @@ function buildBrandSections(detail, callbacks) {
   return sections;
 }
 
+// #3645 PR9 — the admin payout console section (balance, next payout, pause,
+// outstanding debt, recent payout + debt history). Read-only; the pause/resume
+// action lives in the footer.
+const RELEASE_STATUS_VARIANT = {
+  released: "success",
+  in_flight: "info",
+  pending: "warning",
+};
+
+function buildPayoutSection(console) {
+  const pause = console.pause || {};
+  const balances = console.balances || [];
+  const debts = console.debts || [];
+  const releaseHistory = console.release_history || [];
+  const debtHistory = console.debt_history || [];
+  const fields = [
+    field("Payouts paused", null, () =>
+      pause.paused ? (
+        <span className="flex flex-col gap-0.5">
+          <Badge variant="error" dot>Paused</Badge>
+          {pause.reason && <span className="text-xs text-[var(--color-text-tertiary)]">{pause.reason}</span>}
+          {pause.paused_at && <span className="text-xs text-[var(--color-text-tertiary)]">since {formatDateTime(pause.paused_at)}</span>}
+        </span>
+      ) : (
+        <Badge variant="success" dot>Active</Badge>
+      ),
+    ),
+    field("Next payout", console.next_payout_at, (v) =>
+      v ? formatDateTime(v) : <span className="text-[var(--color-text-muted)]">—</span>,
+    ),
+    field("Balance by currency", null, () =>
+      balances.length === 0 ? (
+        <span className="text-[var(--color-text-muted)]">No payout activity yet</span>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {balances.map((b) => (
+            <span key={b.currency} className="text-xs break-all">
+              <span className="font-medium">{(b.currency || "").toUpperCase()}</span>
+              {": "}on its way {formatMoney(b.pending_net_cents, b.currency)}
+              {" · in flight "}{formatMoney(b.in_flight_cents, b.currency)}
+              {" · paid "}{formatMoney(b.released_cents, b.currency)}
+              {Number(b.blocked_cents) > 0 && <span className="text-[var(--color-warning-700)]"> · blocked {formatMoney(b.blocked_cents, b.currency)}</span>}
+              {Number(b.admin_paused_cents) > 0 && <span className="text-[var(--color-error-700)]"> · held (paused) {formatMoney(b.admin_paused_cents, b.currency)}</span>}
+              {Number(b.waiting_for_bank_cents) > 0 && <span className="text-[var(--color-text-tertiary)]"> · waiting for bank {formatMoney(b.waiting_for_bank_cents, b.currency)}</span>}
+            </span>
+          ))}
+        </div>
+      ),
+    ),
+    field("Outstanding debt", null, () =>
+      debts.length === 0 ? (
+        <span className="text-[var(--color-text-muted)]">None</span>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {debts.map((d) => (
+            <span key={d.currency} className="text-xs break-all">
+              <span className="font-medium">{(d.currency || "").toUpperCase()}</span>
+              {": outstanding "}{formatMoney(d.open_outstanding_cents, d.currency)}
+              {` (${d.open_count} open)`}
+              {" · recovered "}{formatMoney(d.recovered_cents, d.currency)}
+            </span>
+          ))}
+        </div>
+      ),
+    ),
+    // Bounded (newest 25) payout history so support can see what actually went
+    // out / is held, without leaving the brand record.
+    field("Recent payouts", null, () =>
+      releaseHistory.length === 0 ? (
+        <span className="text-[var(--color-text-muted)]">No payout activity yet</span>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {releaseHistory.map((h) => (
+            <span key={h.id} className="flex flex-wrap items-center gap-1.5 text-xs">
+              <Badge variant={RELEASE_STATUS_VARIANT[h.status] || "default"}>{h.status}</Badge>
+              <span className="font-medium">{formatMoney(h.net_release_cents, h.currency)}</span>
+              {h.provider && <span className="text-[var(--color-text-tertiary)]">{h.provider}</span>}
+              <span className="text-[var(--color-text-tertiary)]">
+                {h.released_at ? `paid ${formatDate(h.released_at)}` : `due ${formatDate(h.releasable_at)}`}
+              </span>
+              {h.error_message && <span className="text-[var(--color-error-700)]">{h.error_message}</span>}
+            </span>
+          ))}
+        </div>
+      ),
+    ),
+    // Bounded (newest 25) debt history.
+    field("Recent debts", null, () =>
+      debtHistory.length === 0 ? (
+        <span className="text-[var(--color-text-muted)]">None</span>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {debtHistory.map((d) => (
+            <span key={d.id} className="flex flex-wrap items-center gap-1.5 text-xs">
+              <Badge variant={d.status === "open" ? "warning" : "default"}>{d.status}</Badge>
+              <span className="font-medium">outstanding {formatMoney(d.outstanding_cents, d.currency)}</span>
+              <span className="text-[var(--color-text-tertiary)]">of {formatMoney(d.principal_cents, d.currency)}</span>
+              <span className="text-[var(--color-text-tertiary)]">opened {formatDate(d.opened_at)}</span>
+            </span>
+          ))}
+        </div>
+      ),
+    ),
+  ];
+  return { label: "Payouts (admin)", fields };
+}
+
+// #3645 PR9 — the payout console failed to load. Surfaced (with retry) instead of
+// silently hiding the console + pause/resume controls behind a healthy-looking
+// brand, so an operator can tell "not loaded yet" from "feature unavailable".
+function buildPayoutErrorSection(message, onRetry) {
+  return {
+    label: "Payouts (admin)",
+    fields: [
+      field("Payout console", null, () => (
+        <span className="flex flex-col items-start gap-2">
+          <span className="text-[var(--color-error-700)]">Couldn't load the payout console. {message}</span>
+          <Button variant="secondary" size="sm" onClick={onRetry}>Retry</Button>
+        </span>
+      )),
+    ],
+  };
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function BrandsConsolePage() {
@@ -434,6 +572,13 @@ export function BrandsConsolePage() {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // #3645 PR9 — per-brand payout console (balance, next payout, pause, debts).
+  const [payoutConsole, setPayoutConsole] = useState(null);
+  // #3645 PR9 — the payout console is the ONLY admin pause/resume read path. An
+  // RPC/auth/network failure must be surfaced (with retry) rather than silently
+  // rendering a healthy-looking brand with no console and no pause controls, so
+  // an operator can tell "not loaded" from "feature unavailable".
+  const [payoutConsoleError, setPayoutConsoleError] = useState(null);
 
   // ORCH-1276 mutation state (page owns all modals + refetch-on-success).
   const [editProfileOpen, setEditProfileOpen] = useState(false);
@@ -466,20 +611,42 @@ export function BrandsConsolePage() {
     };
   }, [selectedBrandId, accountOptions.length]);
 
+  const loadPayoutConsole = useCallback(async (brandId) => {
+    setPayoutConsoleError(null);
+    try {
+      const { data, error: e } = await getBrandPayoutConsole(brandId);
+      if (e) {
+        setPayoutConsole(null);
+        setPayoutConsoleError(mapWriteError(e) || "Couldn't load the payout console.");
+      } else {
+        setPayoutConsole(data);
+      }
+    } catch (err) {
+      setPayoutConsole(null);
+      setPayoutConsoleError(err?.message || "Couldn't load the payout console.");
+    }
+  }, []);
+
   const loadBrand = useCallback(async (brandId) => {
     setLoading(true);
     setError(null);
     setDetail(null);
+    setPayoutConsole(null);
+    setPayoutConsoleError(null);
     try {
       const d = await getBrandDetail(brandId);
       setDetail(d);
+      // Await the payout console so a success-reload (afterWrite) only resolves
+      // once the pause truth has actually refreshed — the footer must never keep
+      // offering the just-completed pause/resume action.
+      await loadPayoutConsole(brandId);
     } catch (err) {
       const msg = err?.message || "";
       setError(msg.includes("not_found") ? "No brand found for this ID." : msg || "Failed to load this brand.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadPayoutConsole]);
 
   useEffect(() => {
     if (selectedBrandId) loadBrand(selectedBrandId);
@@ -498,6 +665,8 @@ export function BrandsConsolePage() {
     window.location.hash = "#/business-brands";
     setSelectedBrandId(null);
     setDetail(null);
+    setPayoutConsole(null);
+    setPayoutConsoleError(null);
     setError(null);
   }, []);
 
@@ -516,6 +685,43 @@ export function BrandsConsolePage() {
         if (e) throw new Error(mapWriteError(e));
         await loadBrand(selectedBrandId);
       };
+      // A6 — pause / resume payouts (HIGH, audited). Paused money keeps accruing
+      // and releases on resume; this never changes publish/charge readiness.
+      //
+      // Tri-valued on purpose: the pause state must be read as TRUE, FALSE, or
+      // "not known yet". A missing, failed, or stale (previous-brand) console is
+      // NOT "active" — showing Pause before the truth loads could overwrite a live
+      // pause reason and hide the only Resume control. We therefore render NEITHER
+      // action unless the console belongs to THIS brand and explicitly reports a
+      // boolean pause state.
+      const consoleForBrand =
+        payoutConsole && payoutConsole.brand?.id === selectedBrandId ? payoutConsole : null;
+      const pausedState =
+        consoleForBrand && typeof consoleForBrand.pause?.paused === "boolean"
+          ? consoleForBrand.pause.paused
+          : null;
+      if (pausedState === true) {
+        footerActions.push({
+          label: "Resume payouts",
+          title: "Resume payouts",
+          description: "Resume this brand's payouts. Money that accrued while paused will release on the next sweep. Recorded in the audit log.",
+          confirmLabel: "Resume payouts",
+          requireReason: true,
+          onConfirm: ({ reason }) => afterWrite(() => setBrandPayoutsPaused(selectedBrandId, false, reason)),
+        });
+      } else if (pausedState === false) {
+        footerActions.push({
+          label: "Pause payouts",
+          title: "Pause payouts",
+          description: "Pause this brand's payouts. New payouts stop and its money keeps accruing until you resume — but a payout already in flight will still complete; pause does not claw back money already handed to the provider. Charging and publishing are unaffected. Recorded in the audit log.",
+          confirmLabel: "Pause payouts",
+          destructive: true,
+          requireReason: true,
+          confirmPhrase: b.slug || undefined,
+          onConfirm: ({ reason }) => afterWrite(() => setBrandPayoutsPaused(selectedBrandId, true, reason)),
+        });
+      }
+      // pausedState === null → truth not loaded for this brand; render neither.
       if (b.claim_status === "suspended") {
         footerActions.push({
           label: "Unsuspend brand",
@@ -633,12 +839,19 @@ export function BrandsConsolePage() {
           actions={footerActions}
           sections={
             detail
-              ? buildBrandSections(detail, {
-                  onOpenOwner: openOwner,
-                  onEditRole: (mem) => setTeamAction({ type: "role", row: mem }),
-                  onRemoveMember: (mem) => setTeamAction({ type: "remove", row: mem }),
-                  onRevokeInvite: (inv) => setTeamAction({ type: "revoke", row: inv }),
-                })
+              ? [
+                  ...buildBrandSections(detail, {
+                    onOpenOwner: openOwner,
+                    onEditRole: (mem) => setTeamAction({ type: "role", row: mem }),
+                    onRemoveMember: (mem) => setTeamAction({ type: "remove", row: mem }),
+                    onRevokeInvite: (inv) => setTeamAction({ type: "revoke", row: inv }),
+                  }),
+                  ...(payoutConsole
+                    ? [buildPayoutSection(payoutConsole)]
+                    : payoutConsoleError
+                      ? [buildPayoutErrorSection(payoutConsoleError, () => loadPayoutConsole(selectedBrandId))]
+                      : []),
+                ]
               : []
           }
         />

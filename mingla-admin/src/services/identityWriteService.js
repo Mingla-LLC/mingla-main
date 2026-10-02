@@ -70,6 +70,15 @@ export function setBrandDeleted(brandId, deleted, reason) {
   });
 }
 
+/** A6 — pause / resume a brand's payouts (HIGH, audited; #3645 PR9). */
+export function setBrandPayoutsPaused(brandId, paused, reason) {
+  return callAdminWriteRpc("admin_set_brand_payouts_paused", {
+    p_brand_id: brandId,
+    p_paused: paused,
+    p_reason: reason,
+  });
+}
+
 // ── Account writes (B1–B2) ────────────────────────────────────────────────────
 
 /** B1 — edit account core (LOW, audit-only). `patch` = whitelisted jsonb; `reason` optional. */

@@ -109,6 +109,13 @@ const GUARDED_DEFINER_FNS = [
   // ISSUE-3386: approve/reject a host's venue details change request. Writes the
   // live venue row, so the is_admin_user() guard MUST be the first statement.
   "admin_review_venue_details_change",
+  // ISSUE-3645 PR9 [Admin payout pause/resume + debt view]: the audited pause/
+  // resume write RPC + the two guard-first money reads (debt list, per-brand
+  // payout console). Each is_admin_user() guard MUST be the first statement.
+  // Reverting 20270728003645 removes these fns → this gate FAILS.
+  "admin_set_brand_payouts_paused",
+  "admin_list_organiser_payout_debts",
+  "admin_get_brand_payout_console",
 ];
 
 function fnBody(src, name) {
@@ -281,8 +288,21 @@ if (process.argv.includes("--self-test")) {
     "create or replace function public.admin_review_venue_details_change(p_venue_id uuid) returns jsonb " +
     "language plpgsql security definer as $$ declare v jsonb; begin if not public.is_admin_user() then " +
     "raise exception 'forbidden'; end if; return '{}'::jsonb; end; $$;\n";
+  // ISSUE-3645 PR9: the pause/resume write + the two money reads — registered
+  // above (guard MUST be first). Guard-first GOOD fixtures so the appended
+  // registry names stay covered by the missing/guard-order checks.
+  const payoutPause3645 = [
+    "admin_set_brand_payouts_paused", "admin_list_organiser_payout_debts",
+    "admin_get_brand_payout_console",
+  ]
+    .map(
+      (n) =>
+        `create or replace function public.${n}(p_id uuid) returns jsonb language plpgsql security definer as $$ ` +
+        "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
+    )
+    .join("");
   const reads = getPerson + offerings1273 + moneyFns + identity1276 + money1278 + offerings1277 +
-    toolLeads1354 + competitorIntel2725 + venueDetailsChange3386;
+    toolLeads1354 + competitorIntel2725 + venueDetailsChange3386 + payoutPause3645;
 
   // GOOD: all guard-first.
   let f = [];
