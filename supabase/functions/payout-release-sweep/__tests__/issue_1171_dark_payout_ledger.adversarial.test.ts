@@ -151,10 +151,15 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
           if (name === "claim_payout_release_alerts") {
             return Promise.resolve({ data: [], error: null });
           }
+          // Issue #3645 PR8 (append-only): surface returns rows[], not dark payload.
+          if (
+            name === "list_missing_payout_source_fees" ||
+            name === "surface_payout_releases_waiting_for_bank"
+          ) {
+            return Promise.resolve({ data: [], error: null });
+          }
           return Promise.resolve({
-            data: name === "list_missing_payout_source_fees"
-              ? []
-              : { dark: true, executed: 0 },
+            data: { dark: true, executed: 0 },
             error: null,
           });
         },
@@ -213,6 +218,7 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
     ok: true,
     dark: true,
     capturedFees: 0,
+    waitingForBank: { surfaced: 0 },
     alertDelivery: {
       claimed: 0,
       providerAccepted: 0,
@@ -225,6 +231,7 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
   assertEquals(rpcNames, [
     "list_missing_payout_source_fees",
     "run_payout_release_dark_sweep",
+    "surface_payout_releases_waiting_for_bank",
     "claim_payout_release_alerts",
   ]);
 

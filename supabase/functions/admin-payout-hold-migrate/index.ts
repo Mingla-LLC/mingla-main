@@ -9,6 +9,11 @@
  *   - direction:"hold"     → setManualPayoutSchedule + stamp_payout_hold_cutover.
  *   - direction:"rollback" → restoreDailyPayoutSchedule + rollback_payout_hold_cutover.
  *   - dry_run:true         → resolve state + return would-be result; NO Stripe, NO mutation.
+ *   - list_residual:true   → #3645 PR8 read-only census of unstamped Paystack
+ *                            brands still on legacy charge-time split. Returns
+ *                            residual rows + the audit-record shape apply would
+ *                            write; NO mutation. Live apply of real brands still
+ *                            awaits Seth approval + E2E proof on both rails.
  *
  * verify_jwt = true (config.toml): no-JWT callers rejected at the gateway (401);
  * this fn re-verifies the JWT is a real user AND an active admin (else 403).
@@ -111,7 +116,44 @@ interface MigrateBody {
   reason?: unknown;
   direction?: unknown;
   dry_run?: unknown;
+  /** #3645 PR8 — read-only residual legacy-split census (no mutation). */
+  list_residual?: unknown;
 }
+
+/** Shape of one payout_hold_cutover_migrations audit row (apply path). */
+export type CutoverMigrationAuditShape = {
+  batch_id: string;
+  brand_id: string;
+  stripe_account_id: string | null;
+  direction: Direction;
+  prior_interval: string | null;
+  new_interval: string | null;
+  cutover_before: string | null;
+  cutover_after: string | null;
+  result: MigrateResult;
+  error_message: string | null;
+  actor_email: string;
+  actor_uid: string;
+  reason: string;
+};
+
+export const CUTOVER_MIGRATION_AUDIT_KEYS: ReadonlyArray<
+  keyof CutoverMigrationAuditShape
+> = [
+  "batch_id",
+  "brand_id",
+  "stripe_account_id",
+  "direction",
+  "prior_interval",
+  "new_interval",
+  "cutover_before",
+  "cutover_after",
+  "result",
+  "error_message",
+  "actor_email",
+  "actor_uid",
+  "reason",
+] as const;
 
 interface PerBrandResult {
   brand_id: string;
@@ -169,6 +211,7 @@ export async function handleAdminPayoutHoldMigrate(
   }
 
   // ── Validate request. ───────────────────────────────────────────────────────
+  const listResidual = body.list_residual === true;
   const rawDirection = typeof body.direction === "string"
     ? body.direction
     : "hold";
@@ -178,33 +221,40 @@ export async function handleAdminPayoutHoldMigrate(
   const direction: Direction = rawDirection;
   const dryRun = body.dry_run === true;
 
-  if (!Array.isArray(body.brand_ids) || body.brand_ids.length === 0) {
-    return json(
-      { error: "validation_error", detail: "brand_ids_required" },
-      400,
-    );
-  }
-  if (body.brand_ids.length > MAX_BATCH) {
-    return json(
-      { error: "batch_too_large", detail: `max ${MAX_BATCH} brands per batch` },
-      400,
-    );
-  }
-  const brandIds: string[] = [];
-  for (const raw of body.brand_ids) {
-    if (typeof raw !== "string" || !UUID_REGEX.test(raw)) {
+  // list_residual is a read-only census — brand_ids / reason are not required.
+  if (!listResidual) {
+    if (!Array.isArray(body.brand_ids) || body.brand_ids.length === 0) {
       return json(
-        { error: "validation_error", detail: "brand_id_invalid_uuid" },
+        { error: "validation_error", detail: "brand_ids_required" },
         400,
       );
     }
-    brandIds.push(raw);
+    if (body.brand_ids.length > MAX_BATCH) {
+      return json(
+        { error: "batch_too_large", detail: `max ${MAX_BATCH} brands per batch` },
+        400,
+      );
+    }
+  }
+  const brandIds: string[] = [];
+  if (!listResidual) {
+    for (const raw of body.brand_ids as unknown[]) {
+      if (typeof raw !== "string" || !UUID_REGEX.test(raw)) {
+        return json(
+          { error: "validation_error", detail: "brand_id_invalid_uuid" },
+          400,
+        );
+      }
+      brandIds.push(raw);
+    }
   }
   const rawReason = typeof body.reason === "string" ? body.reason : "";
-  if (rawReason.replace(INVISIBLE_WS, "") === "") {
+  if (!listResidual && rawReason.replace(INVISIBLE_WS, "") === "") {
     return json({ error: "reason_required", field: "reason" }, 400);
   }
-  const reason = rawReason.trim();
+  const reason = listResidual
+    ? "list_residual_census"
+    : rawReason.trim();
 
   // ── ADMIN GATE (mirrors admin-stripe-connect-action). ────────────────────────
   const authHeader = req.headers.get("authorization");
@@ -226,6 +276,80 @@ export async function handleAdminPayoutHoldMigrate(
     .eq("status", "active")
     .maybeSingle();
   if (!adminRow) return json({ error: "forbidden" }, 403);
+
+  // #3645 PR8 — read-only residual census. Live apply of named brands still
+  // goes through the existing dry_run / stamp path and awaits Seth + E2E proof.
+  if (listResidual) {
+    // Complete census: page through every matching brand. Brands without a
+    // Paystack subaccount do not split at charge time and are not residuals.
+    const RESIDUAL_PAGE = 200;
+    type ResidualBrandRow = {
+      id: string;
+      name: string | null;
+      slug: string | null;
+      payment_provider: string | null;
+      paystack_subaccount_code: string | null;
+      payout_hold_cutover_at: string | null;
+    };
+    const residualRows: ResidualBrandRow[] = [];
+    for (let from = 0; ; from += RESIDUAL_PAGE) {
+      const { data: page, error: residualError } = await supabase
+        .from("brands")
+        .select(
+          "id, name, slug, payment_provider, paystack_subaccount_code, payout_hold_cutover_at",
+        )
+        .is("payout_hold_cutover_at", null)
+        .is("deleted_at", null)
+        .eq("payment_provider", "paystack")
+        .not("paystack_subaccount_code", "is", null)
+        .order("created_at", { ascending: true })
+        .range(from, from + RESIDUAL_PAGE - 1);
+      if (residualError) {
+        return json({
+          error: "list_residual_failed",
+          detail: residualError.message,
+        }, 500);
+      }
+      const rows = (page ?? []) as ResidualBrandRow[];
+      residualRows.push(...rows);
+      if (rows.length < RESIDUAL_PAGE) break;
+    }
+    const residuals = residualRows.map((row) => ({
+      brand_id: row.id,
+      name: row.name,
+      slug: row.slug,
+      payment_provider: row.payment_provider,
+      paystack_subaccount_code: row.paystack_subaccount_code,
+      payout_hold_cutover_at: row.payout_hold_cutover_at,
+      legacy_split: true,
+    }));
+    const auditPreview: CutoverMigrationAuditShape = {
+      batch_id: "00000000-0000-0000-0000-000000000000",
+      brand_id: "00000000-0000-0000-0000-000000000000",
+      stripe_account_id: null,
+      direction: "hold",
+      prior_interval: null,
+      new_interval: null,
+      cutover_before: null,
+      cutover_after: null,
+      result: "flipped",
+      error_message: null,
+      actor_email: user.email ?? "",
+      actor_uid: user.id,
+      reason: "preview_only_not_applied",
+    };
+    return json({
+      list_residual: true,
+      dry_run: true,
+      mutated: false,
+      count: residuals.length,
+      residuals,
+      audit_record_keys: [...CUTOVER_MIGRATION_AUDIT_KEYS],
+      audit_record_preview: auditPreview,
+      live_apply_gated:
+        "Live brand migrate apply awaits Seth approval and production E2E proof on Stripe + Paystack rails. Use dry_run:true on brand_ids until then.",
+    });
+  }
 
   const batchId = crypto.randomUUID();
   const results: PerBrandResult[] = [];

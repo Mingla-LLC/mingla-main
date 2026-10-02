@@ -475,6 +475,10 @@ function sweepHarness(scenario: SweepCase) {
           error: null,
         });
       }
+      // Issue #3645 PR8 (append-only): dark+execute ticks surface waiting-for-bank.
+      if (name === "surface_payout_releases_waiting_for_bank") {
+        return Promise.resolve({ data: [], error: null });
+      }
       throw new Error(`unexpected RPC ${name}`);
     },
     from: (table: string) => {

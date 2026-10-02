@@ -51,6 +51,15 @@ type SweepDeps = {
     admin: AdminClient,
     release: StripeReleaseCandidate,
   ) => Promise<void>;
+  notifyWaitingForBank?: (
+    admin: AdminClient,
+    row: {
+      release_id: string;
+      brand_id: string;
+      provider: string;
+      net_due_cents: number;
+    },
+  ) => Promise<void>;
   notifyAttemptCap?: (
     release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
     message: string,
@@ -224,6 +233,15 @@ function payoutReleaseAlertCopy(alertKind: string): {
         bodyLead:
           "anchors Nigerian payouts maturing sooner than the Paystack balance can cover",
       };
+    // Issue #3645 PR8 — money is due but the brand has no bank / recipient.
+    // Release stays pending; ops + organiser are told (never silently skipped).
+    case "waiting_for_bank":
+      return {
+        type: "ops.payout_release_waiting_for_bank",
+        title: "Organiser payout is waiting for a bank account",
+        bodyLead:
+          "is mature and owed but cannot release until the organiser connects a payout bank",
+      };
     case "stripe_attempt_cap":
     default:
       return {
@@ -354,6 +372,82 @@ async function notifyKycBlocked(
       deepLink: `mingla-business://brand/${release.brand_id}/payments/onboard`,
     });
   }
+}
+
+type WaitingForBankRow = {
+  release_id: string;
+  brand_id: string;
+  provider: string;
+  net_due_cents: number;
+};
+
+/** #3645 PR8 — tell payment managers money is waiting on a bank connection. */
+async function notifyWaitingForBank(
+  admin: AdminClient,
+  row: WaitingForBankRow,
+): Promise<void> {
+  const userIds = await getBrandPaymentManagerUserIds(
+    admin as never,
+    row.brand_id,
+  );
+  for (const userId of userIds) {
+    await dispatchNotification({
+      userId,
+      brandId: row.brand_id,
+      type: "payout_release.waiting_for_bank",
+      title: "Connect a bank to receive your payout",
+      body:
+        "A payout is ready to send, but Mingla is waiting until you add a bank account.",
+      data: {
+        releaseId: row.release_id,
+        provider: row.provider,
+        netDueCents: row.net_due_cents,
+      },
+      relatedId: row.release_id,
+      relatedType: "payout_release",
+      idempotencyKey:
+        `payout_release.waiting_for_bank:${row.release_id}:${userId}`,
+      deepLink: `mingla-business://brand/${row.brand_id}/payments/onboard`,
+    });
+  }
+}
+
+async function surfaceWaitingForBank(
+  admin: AdminClient,
+  deps: SweepDeps,
+): Promise<{ surfaced: number }> {
+  const { data, error } = await admin.rpc(
+    "surface_payout_releases_waiting_for_bank" as never,
+    {
+      p_limit: 50,
+      p_now: new Date().toISOString(),
+    } as never,
+  );
+  if (error) {
+    throw new Error(`waiting_for_bank_surface_failed:${error.message}`);
+  }
+  const rows = (data ?? []) as WaitingForBankRow[];
+  for (const row of rows) {
+    console.error(JSON.stringify({
+      event: "payout_release_waiting_for_bank",
+      function_name: "payout-release-sweep",
+      release_id: row.release_id,
+      brand_id: row.brand_id,
+      provider: row.provider,
+      net_due_cents: row.net_due_cents,
+    }));
+    try {
+      await (deps.notifyWaitingForBank ?? notifyWaitingForBank)(admin, row);
+    } catch (notifyError) {
+      console.error("[payout-release-sweep] waiting-for-bank notify failed", {
+        releaseId: row.release_id,
+        message: notifyError instanceof Error
+          ? notifyError.message
+          : String(notifyError),
+      });
+    }
+  }
+  return { surfaced: rows.length };
 }
 
 async function notifyAttemptCap(
@@ -1058,6 +1152,22 @@ export async function handlePayoutReleaseSweep(
     });
     return json({ error: "ledger_sweep_failed" }, 500);
   }
+
+  // #3645 PR8 — mature money with no bank/recipient must never be silent.
+  // Runs on every tick (dark and execute) so sell-before-bank releases stay
+  // pending with a durable ledger reason + ops/organiser signal.
+  let waitingForBank: { surfaced: number };
+  try {
+    waitingForBank = await surfaceWaitingForBank(admin as never, deps);
+  } catch (waitingError) {
+    console.error("[payout-release-sweep] waiting-for-bank surface failed", {
+      message: waitingError instanceof Error
+        ? waitingError.message
+        : String(waitingError),
+    });
+    return json({ error: "waiting_for_bank_surface_failed" }, 500);
+  }
+
   let alertDelivery;
   try {
     alertDelivery = await deliverPendingAttemptCapAlerts(admin as never, deps);
@@ -1085,6 +1195,7 @@ export async function handlePayoutReleaseSweep(
       ok: true,
       dark: true,
       capturedFees,
+      waitingForBank,
       alertDelivery,
       result: data ?? {},
     });
@@ -1235,6 +1346,7 @@ export async function handlePayoutReleaseSweep(
     ok: true,
     dark: false,
     capturedFees,
+    waitingForBank,
     alertDelivery: {
       claimed: alertDelivery.claimed + newAlertDelivery.claimed,
       providerAccepted: alertDelivery.providerAccepted +

@@ -255,10 +255,15 @@ Deno.test("internal handler fails closed before client creation and exact bearer
           if (name === "claim_payout_release_alerts") {
             return Promise.resolve({ data: [], error: null });
           }
+          // Issue #3645 PR8 (append-only): surface returns rows[], not dark payload.
+          if (
+            name === "list_missing_payout_source_fees" ||
+            name === "surface_payout_releases_waiting_for_bank"
+          ) {
+            return Promise.resolve({ data: [], error: null });
+          }
           return Promise.resolve({
-            data: name === "list_missing_payout_source_fees"
-              ? []
-              : { dark: true, executed: 0 },
+            data: { dark: true, executed: 0 },
             error: null,
           });
         },
@@ -298,10 +303,11 @@ Deno.test("internal handler fails closed before client creation and exact bearer
   );
   assertEquals(ok.status, 200);
   assertEquals(clientCreations, 1);
-  assertEquals(rpcCalls, 3);
+  assertEquals(rpcCalls, 4);
   assertEquals(rpcNames, [
     "list_missing_payout_source_fees",
     "run_payout_release_dark_sweep",
+    "surface_payout_releases_waiting_for_bank",
     "claim_payout_release_alerts",
   ]);
   assertEquals((await ok.json()).dark, true);
