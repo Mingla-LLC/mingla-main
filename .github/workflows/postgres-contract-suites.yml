@@ -1332,7 +1332,8 @@ jobs:
             deno test --allow-read --allow-env --allow-net --no-check \
             supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts \
             supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts \
-            supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_retest.test.ts
+            supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_retest.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_3645_no_silent_skip_waiting_for_bank.test.ts
 
       # Duplicates M-1177-03 and M-1217A-03 exactly. It moves across as its own
       # step and is NOT merged with them (D-3).
