@@ -20,6 +20,11 @@ function stripComments(value: string): string {
 }
 
 const activeSource = stripComments(source);
+const helperSource = stripComments(
+  await Deno.readTextFile(
+    new URL("../buyerWebSurfacePath.ts", import.meta.url),
+  ),
+);
 
 function hostedCheckoutUrlParts(
   eventType: "event" | "trip" | null | undefined,
@@ -38,12 +43,12 @@ function hostedCheckoutUrlParts(
 Deno.test("ORCH-0911 T-01 — web trip rows branch success_url to /checkout-trip/{id}/confirm", () => {
   assertStringIncludes(
     activeSource,
-    'const isTrip = tripGateRow?.event_type === "trip";',
-    "web success_url branching must read the already-loaded tripGateRow.event_type directly.",
+    'const surfacePath = buyerWebSurfacePath(tripGateRow?.event_type);',
+    "web success_url branching must read the already-loaded tripGateRow.event_type via the #3645 shared helper (trip + experience + event).",
   );
   assertStringIncludes(
-    activeSource,
-    'const surfacePath = isTrip ? "checkout-trip" : "checkout";',
+    helperSource,
+    'return "checkout-trip";',
     "trip rows must choose the checkout-trip route segment.",
   );
 
