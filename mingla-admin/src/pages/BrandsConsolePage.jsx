@@ -535,7 +535,6 @@ function buildPayoutSection(console) {
           {debtHistory.map((d) => (
             <span key={d.id} className="flex flex-wrap items-center gap-1.5 text-xs">
               <Badge variant={d.status === "open" ? "warning" : "default"}>{d.status}</Badge>
-              {d.kind && <span className="text-[var(--color-text-tertiary)]">{d.kind}</span>}
               <span className="font-medium">outstanding {formatMoney(d.outstanding_cents, d.currency)}</span>
               <span className="text-[var(--color-text-tertiary)]">of {formatMoney(d.principal_cents, d.currency)}</span>
               <span className="text-[var(--color-text-tertiary)]">opened {formatDate(d.opened_at)}</span>
