@@ -133,11 +133,11 @@ BEGIN
   WITH eligible AS (
     SELECT
       r.id,
-      coalesce((
-        SELECT sum(a.amount_cents)::integer
+      least(coalesce((
+        SELECT sum(a.amount_cents)
         FROM public.payout_ledger_adjustments a
         WHERE a.release_id=r.id AND a.kind='maturity_recredit'
-      ),0) AS recredit
+      ),0), 2147483647::bigint)::integer AS recredit
     FROM public.brand_payout_releases r
     JOIN public.stripe_connect_accounts sca
       ON sca.brand_id=r.brand_id
@@ -161,11 +161,11 @@ BEGIN
           WHERE e.id=r.event_id AND e.status<>'cancelled'
         )
       )
-      AND r.net_release_cents + coalesce((
-        SELECT sum(a.amount_cents)::integer
+      AND r.net_release_cents + least(coalesce((
+        SELECT sum(a.amount_cents)
         FROM public.payout_ledger_adjustments a
         WHERE a.release_id=r.id AND a.kind='maturity_recredit'
-      ),0) > 0
+      ),0), 2147483647::bigint)::integer > 0
     ORDER BY r.releasable_at,r.created_at,r.id
     FOR UPDATE OF r SKIP LOCKED
     LIMIT greatest(1,least(p_limit,100))
@@ -226,11 +226,11 @@ BEGIN
   WITH eligible AS (
     SELECT
       r.id,
-      coalesce((
-        SELECT sum(a.amount_cents)::integer
+      least(coalesce((
+        SELECT sum(a.amount_cents)
         FROM public.payout_ledger_adjustments a
         WHERE a.release_id=r.id AND a.kind='maturity_recredit'
-      ),0) AS recredit
+      ),0), 2147483647::bigint)::integer AS recredit
     FROM public.brand_payout_releases r
     JOIN public.brand_paystack_recipients rec
       ON rec.brand_id=r.brand_id AND rec.is_active
@@ -255,11 +255,11 @@ BEGIN
           WHERE e.id=r.event_id AND e.status<>'cancelled'
         )
       )
-      AND r.net_release_cents + coalesce((
-        SELECT sum(a.amount_cents)::integer
+      AND r.net_release_cents + least(coalesce((
+        SELECT sum(a.amount_cents)
         FROM public.payout_ledger_adjustments a
         WHERE a.release_id=r.id AND a.kind='maturity_recredit'
-      ),0) > 0
+      ),0), 2147483647::bigint)::integer > 0
     ORDER BY r.releasable_at,r.created_at,r.id
     FOR UPDATE OF r SKIP LOCKED
     LIMIT greatest(1,least(p_limit,100))
@@ -316,20 +316,20 @@ BEGIN
       r.id,
       r.brand_id,
       r.provider,
-      r.net_release_cents + coalesce((
-        SELECT sum(a.amount_cents)::integer
+      r.net_release_cents + least(coalesce((
+        SELECT sum(a.amount_cents)
         FROM public.payout_ledger_adjustments a
         WHERE a.release_id=r.id AND a.kind='maturity_recredit'
-      ),0) AS due_cents
+      ),0), 2147483647::bigint)::integer AS due_cents
     FROM public.brand_payout_releases r
     WHERE r.status='pending'
       AND r.attempt_count<10
       AND r.releasable_at<=p_now
-      AND r.net_release_cents + coalesce((
-        SELECT sum(a.amount_cents)::integer
+      AND r.net_release_cents + least(coalesce((
+        SELECT sum(a.amount_cents)
         FROM public.payout_ledger_adjustments a
         WHERE a.release_id=r.id AND a.kind='maturity_recredit'
-      ),0) > 0
+      ),0), 2147483647::bigint)::integer > 0
       AND (
         r.event_id IS NULL
         OR EXISTS (
@@ -358,7 +358,11 @@ BEGIN
           )
         )
       )
-    ORDER BY r.releasable_at,r.created_at,r.id
+    -- Unmarked rows first so already-surfaced waiting_for_bank batches cannot
+    -- starve later no-bank releases (Copilot #2 / #3645 PR8).
+    ORDER BY
+      (r.error_message IS NOT DISTINCT FROM 'waiting_for_bank'),
+      r.releasable_at,r.created_at,r.id
     FOR UPDATE OF r SKIP LOCKED
     LIMIT greatest(1,least(p_limit,100))
   ),
@@ -390,14 +394,17 @@ BEGIN
       p_now,
       p_now
     FROM marked m
-    ON CONFLICT (release_id, alert_kind) DO NOTHING
-    RETURNING release_id
+    -- Constraint form avoids PL/pgSQL RETURNS TABLE(release_id) shadowing the
+    -- ON CONFLICT column list (ambiguous release_id → apply/runtime abort).
+    ON CONFLICT ON CONSTRAINT payout_release_alert_outbox_release_id_alert_kind_key
+      DO NOTHING
+    RETURNING payout_release_alert_outbox.release_id AS alert_release_id
   )
   -- Reference alerts so the INSERT CTE is never optimized away; LEFT JOIN
   -- keeps every marked row even when the outbox row already existed.
   SELECT m.rel_id, m.rel_brand, m.rel_provider, m.rel_due
   FROM marked m
-  LEFT JOIN alerts a ON a.release_id = m.rel_id
+  LEFT JOIN alerts a ON a.alert_release_id = m.rel_id
   ORDER BY m.rel_id;
 END;
 $fn$;

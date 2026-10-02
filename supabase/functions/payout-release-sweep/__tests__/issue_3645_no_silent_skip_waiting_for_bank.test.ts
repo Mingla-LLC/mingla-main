@@ -69,8 +69,16 @@ Deno.test("#3645 PR8: list_residual is read-only and returns audit shape", async
         select: () => builder,
         eq: () => builder,
         is: () => builder,
+        not: () => builder,
         order: () => builder,
         limit: () => {
+          if (table === "brands") {
+            brandsQueried = true;
+            return Promise.resolve({ data: [residualBrand], error: null });
+          }
+          return Promise.resolve({ data: [], error: null });
+        },
+        range: () => {
           if (table === "brands") {
             brandsQueried = true;
             return Promise.resolve({ data: [residualBrand], error: null });

@@ -280,29 +280,47 @@ export async function handleAdminPayoutHoldMigrate(
   // #3645 PR8 — read-only residual census. Live apply of named brands still
   // goes through the existing dry_run / stamp path and awaits Seth + E2E proof.
   if (listResidual) {
-    const { data: residualRows, error: residualError } = await supabase
-      .from("brands")
-      .select(
-        "id, name, slug, payment_provider, paystack_subaccount_code, payout_hold_cutover_at",
-      )
-      .is("payout_hold_cutover_at", null)
-      .is("deleted_at", null)
-      .eq("payment_provider", "paystack")
-      .order("created_at", { ascending: true })
-      .limit(500);
-    if (residualError) {
-      return json({
-        error: "list_residual_failed",
-        detail: residualError.message,
-      }, 500);
+    // Complete census: page through every matching brand. Brands without a
+    // Paystack subaccount do not split at charge time and are not residuals.
+    const RESIDUAL_PAGE = 200;
+    type ResidualBrandRow = {
+      id: string;
+      name: string | null;
+      slug: string | null;
+      payment_provider: string | null;
+      paystack_subaccount_code: string | null;
+      payout_hold_cutover_at: string | null;
+    };
+    const residualRows: ResidualBrandRow[] = [];
+    for (let from = 0; ; from += RESIDUAL_PAGE) {
+      const { data: page, error: residualError } = await supabase
+        .from("brands")
+        .select(
+          "id, name, slug, payment_provider, paystack_subaccount_code, payout_hold_cutover_at",
+        )
+        .is("payout_hold_cutover_at", null)
+        .is("deleted_at", null)
+        .eq("payment_provider", "paystack")
+        .not("paystack_subaccount_code", "is", null)
+        .order("created_at", { ascending: true })
+        .range(from, from + RESIDUAL_PAGE - 1);
+      if (residualError) {
+        return json({
+          error: "list_residual_failed",
+          detail: residualError.message,
+        }, 500);
+      }
+      const rows = (page ?? []) as ResidualBrandRow[];
+      residualRows.push(...rows);
+      if (rows.length < RESIDUAL_PAGE) break;
     }
-    const residuals = (residualRows ?? []).map((row) => ({
-      brand_id: row.id as string,
-      name: row.name as string | null,
-      slug: row.slug as string | null,
-      payment_provider: row.payment_provider as string | null,
-      paystack_subaccount_code: row.paystack_subaccount_code as string | null,
-      payout_hold_cutover_at: row.payout_hold_cutover_at as string | null,
+    const residuals = residualRows.map((row) => ({
+      brand_id: row.id,
+      name: row.name,
+      slug: row.slug,
+      payment_provider: row.payment_provider,
+      paystack_subaccount_code: row.paystack_subaccount_code,
+      payout_hold_cutover_at: row.payout_hold_cutover_at,
       legacy_split: true,
     }));
     const auditPreview: CutoverMigrationAuditShape = {
