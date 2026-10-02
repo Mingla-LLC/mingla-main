@@ -50,20 +50,26 @@ function fnBody(src, name) {
 }
 
 describe("#3645 PR9 — migration pause state + claim exclusion", () => {
-  it("adds the two brands pause columns + a paused⇔reason CHECK", () => {
-    assert.match(MIG, /ADD COLUMN IF NOT EXISTS payouts_admin_paused_at timestamptz/);
-    assert.match(MIG, /ADD COLUMN IF NOT EXISTS payouts_admin_pause_reason text/);
-    assert.match(MIG, /brands_payouts_admin_pause_reason_check/);
-    const check = stripSqlComments(MIG);
-    assert.match(check, /payouts_admin_paused_at IS NULL AND payouts_admin_pause_reason IS NULL/);
-    assert.match(check, /payouts_admin_paused_at IS NOT NULL[\s\S]*?btrim\(payouts_admin_pause_reason\) <> ''/);
+  it("stores pause state in an ADMIN-ONLY hold table (RLS-on, service_role-only), NOT on brands", () => {
+    assert.match(MIG, /CREATE TABLE IF NOT EXISTS public\.brand_payout_admin_holds/);
+    assert.match(MIG, /brand_id\s+uuid PRIMARY KEY REFERENCES public\.brands\(id\)/);
+    assert.match(MIG, /ALTER TABLE public\.brand_payout_admin_holds ENABLE ROW LEVEL SECURITY/);
+    // Least-privilege: the broadly-granted roles get NOTHING; only service_role.
+    assert.match(MIG, /REVOKE ALL ON TABLE public\.brand_payout_admin_holds FROM PUBLIC, anon, authenticated/);
+    assert.match(MIG, /GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public\.brand_payout_admin_holds TO service_role/);
+    assert.match(MIG, /brand_payout_admin_holds_reason_nonempty CHECK \(btrim\(reason\) <> ''\)/);
+    // The pause state must NOT be a brands column — that is the exact escalation
+    // vector (authenticated UPDATE grant + "Brand admin plus can update brands"
+    // RLS) a brand admin would use to clear their own hold / read the reason.
+    assert.ok(!/ADD COLUMN IF NOT EXISTS payouts_admin_pause/.test(MIG),
+      "pause state must not live on the broadly-writable brands row");
   });
 
   for (const name of ["claim_stripe_payout_releases", "claim_paystack_payout_releases"]) {
     it(`${name} excludes admin-paused brands (money accrues, never claimed)`, () => {
       const body = stripSqlComments(fnBody(MIG, name) || "");
       assert.ok(body, `${name} is replaced in this migration`);
-      assert.match(body, /NOT EXISTS\s*\(\s*SELECT 1 FROM public\.brands bp[\s\S]*?payouts_admin_paused_at IS NOT NULL/i);
+      assert.match(body, /NOT EXISTS\s*\(\s*SELECT 1 FROM public\.brand_payout_admin_holds h\s+WHERE h\.brand_id=r\.brand_id/i);
       // keeps the PR8 bigint maturity-recredit clamp
       assert.match(body, /2147483647::bigint/);
     });
@@ -78,6 +84,8 @@ describe("#3645 PR9 — admin_set_brand_payouts_paused (audited write)", () => {
     const body = stripSqlComments(fnBody(MIG, "admin_set_brand_payouts_paused") || "");
     assert.ok(body);
     assert.match(body, /BEGIN\s+IF NOT public\.is_admin_user\(\) THEN\s+RAISE EXCEPTION 'not_authorized'/i);
+    // NULL p_paused fails closed before the reason gate (never read as resume).
+    assert.match(body, /paused_required/);
     assert.match(body, /reason_required/);
   });
   it("audits as brand.payouts_pause / brand.payouts_resume via admin_write_audit", () => {
@@ -151,5 +159,16 @@ describe("#3645 PR9 — UI wiring (read-only ledger tab + brands pause/resume)",
     assert.match(BRANDS, /Pause payouts/);
     assert.match(BRANDS, /Resume payouts/);
     assert.ok(!DIRECT_WRITE_RE.test(stripJs(BRANDS)), "BrandsConsole must route writes through the audited service");
+    // The console renders the payout + debt history the RPC returns (not dropped).
+    assert.match(BRANDS, /release_history/);
+    assert.match(BRANDS, /debt_history/);
+    assert.match(BRANDS, /Recent payouts/);
+    assert.match(BRANDS, /Recent debts/);
+    // The pause/resume footer is tri-valued: it only renders once the console
+    // belongs to the selected brand and reports a boolean pause state.
+    assert.match(BRANDS, /pause\?\.paused === "boolean"/);
+    assert.match(BRANDS, /payoutConsole\.brand\?\.id === selectedBrandId/);
+    // The console reload is awaited (success-reload reflects fresh pause truth).
+    assert.match(BRANDS, /await loadPayoutConsole/);
   });
 });

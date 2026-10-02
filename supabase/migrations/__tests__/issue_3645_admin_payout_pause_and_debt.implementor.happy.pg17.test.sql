@@ -92,10 +92,11 @@ BEGIN
   RESET ROLE;
   PERFORM set_config('request.jwt.claim.sub', '', true);
 
-  SELECT payouts_admin_paused_at IS NOT NULL, payouts_admin_pause_reason
-    INTO v_paused, v_err FROM public.brands WHERE id = v_brand;
-  IF NOT v_paused THEN
-    RAISE EXCEPTION 'pr9: pause did not set payouts_admin_paused_at';
+  -- Pause state lives in the admin-only hold table (presence of a row == paused).
+  SELECT paused_at IS NOT NULL, reason
+    INTO v_paused, v_err FROM public.brand_payout_admin_holds WHERE brand_id = v_brand;
+  IF v_paused IS NOT TRUE THEN
+    RAISE EXCEPTION 'pr9: pause did not create a brand_payout_admin_holds row';
   END IF;
   IF v_err IS DISTINCT FROM 'ops: suspected fraud review' THEN
     RAISE EXCEPTION 'pr9: pause reason not stored (got %)', v_err;
@@ -171,13 +172,11 @@ BEGIN
   RESET ROLE;
   PERFORM set_config('request.jwt.claim.sub', '', true);
 
-  SELECT payouts_admin_paused_at IS NULL, payouts_admin_pause_reason
-    INTO v_paused, v_err FROM public.brands WHERE id = v_brand;
+  -- Resume removes the hold row entirely (state + reason gone in one delete).
+  SELECT NOT EXISTS (SELECT 1 FROM public.brand_payout_admin_holds WHERE brand_id = v_brand)
+    INTO v_paused;
   IF NOT v_paused THEN
-    RAISE EXCEPTION 'pr9: resume did not clear payouts_admin_paused_at';
-  END IF;
-  IF v_err IS NOT NULL THEN
-    RAISE EXCEPTION 'pr9: resume did not clear reason (got %)', v_err;
+    RAISE EXCEPTION 'pr9: resume did not remove the brand_payout_admin_holds row';
   END IF;
   IF (SELECT error_message FROM public.brand_payout_releases WHERE id = v_rel_pend) IS NOT NULL THEN
     RAISE EXCEPTION 'pr9: resume did not clear admin_paused marker';

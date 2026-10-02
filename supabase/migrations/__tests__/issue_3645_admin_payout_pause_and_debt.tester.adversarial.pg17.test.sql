@@ -1,9 +1,11 @@
 -- Issue #3645 PR9 — admin pause/resume + debt view (PG17 adversarial).
 -- Proves the hard edges:
 --   * non-admin JWT is rejected (not_authorized) on pause, console, and list.
---   * empty reason is rejected (reason_required).
---   * the brands CHECK forbids a paused state without a reason (and a reason
---     without a paused state).
+--   * empty reason is rejected (reason_required); a NULL p_paused is rejected
+--     (paused_required) so a malformed call can never be read as "resume".
+--   * the pause state is ADMIN-ONLY: a signed-in non-admin can neither READ the
+--     admin reason nor DELETE the hold to resume their own payouts, and the hold
+--     reason CHECK forbids an empty reason.
 --   * pause never clobbers a waiting_for_bank marker, and resume leaves it.
 --   * anon has no EXECUTE on any PR9 RPC; claim stays service_role-only.
 
@@ -108,6 +110,19 @@ BEGIN
     END IF;
   END;
 
+  -- 3b. a NULL p_paused is rejected (fail closed; never read as resume).
+  BEGIN
+    PERFORM public.admin_set_brand_payouts_paused(v_brand, NULL, 'ambiguous');
+    RESET ROLE; PERFORM set_config('request.jwt.claim.sub', '', true);
+    RAISE EXCEPTION 'pr9adv: NULL p_paused was accepted';
+  EXCEPTION WHEN others THEN
+    GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+    IF v_err NOT LIKE '%paused_required%' THEN
+      RESET ROLE; PERFORM set_config('request.jwt.claim.sub', '', true);
+      RAISE EXCEPTION 'pr9adv: NULL p_paused wrong error: %', v_err;
+    END IF;
+  END;
+
   -- 4. valid pause does NOT clobber the waiting_for_bank marker.
   PERFORM public.admin_set_brand_payouts_paused(v_brand, true, 'ops: hold while investigating');
   RESET ROLE;
@@ -128,22 +143,40 @@ BEGIN
     RAISE EXCEPTION 'pr9adv: resume wrongly cleared waiting_for_bank marker';
   END IF;
 
-  -- 5. CHECK: a paused state with no reason is rejected.
+  -- 5. The hold state lives in an ADMIN-ONLY table, NOT on the broadly-writable
+  --    brands row: a signed-in non-admin (e.g. the brand's own admin) can neither
+  --    READ the admin reason nor DELETE the hold to resume their own payouts.
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub', v_nonadm::text, true);
   BEGIN
-    UPDATE public.brands
-    SET payouts_admin_paused_at = v_now, payouts_admin_pause_reason = NULL
-    WHERE id = v_brand;
-    RAISE EXCEPTION 'pr9adv: CHECK allowed paused state with no reason';
-  EXCEPTION WHEN check_violation THEN
-    NULL; -- expected
+    PERFORM 1 FROM public.brand_payout_admin_holds WHERE brand_id = v_brand;
+    RESET ROLE; PERFORM set_config('request.jwt.claim.sub', '', true);
+    RAISE EXCEPTION 'pr9adv: non-admin could READ brand_payout_admin_holds';
+  EXCEPTION
+    WHEN insufficient_privilege THEN NULL; -- expected: no table grant
+    WHEN others THEN
+      GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+      RESET ROLE; PERFORM set_config('request.jwt.claim.sub', '', true);
+      RAISE EXCEPTION 'pr9adv: non-admin hold read raised unexpected: %', v_err;
   END;
-
-  -- and a reason with no paused state is rejected.
   BEGIN
-    UPDATE public.brands
-    SET payouts_admin_paused_at = NULL, payouts_admin_pause_reason = 'orphan'
-    WHERE id = v_brand;
-    RAISE EXCEPTION 'pr9adv: CHECK allowed a reason with no paused state';
+    DELETE FROM public.brand_payout_admin_holds WHERE brand_id = v_brand;
+    RESET ROLE; PERFORM set_config('request.jwt.claim.sub', '', true);
+    RAISE EXCEPTION 'pr9adv: non-admin could DELETE a brand_payout_admin_hold';
+  EXCEPTION
+    WHEN insufficient_privilege THEN NULL; -- expected
+    WHEN others THEN
+      GET STACKED DIAGNOSTICS v_err = MESSAGE_TEXT;
+      RESET ROLE; PERFORM set_config('request.jwt.claim.sub', '', true);
+      RAISE EXCEPTION 'pr9adv: non-admin hold delete raised unexpected: %', v_err;
+  END;
+  RESET ROLE;
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+
+  -- the hold reason CHECK rejects an empty reason (defence in depth).
+  BEGIN
+    INSERT INTO public.brand_payout_admin_holds (brand_id, reason) VALUES (v_brand, '   ');
+    RAISE EXCEPTION 'pr9adv: hold table allowed an empty reason';
   EXCEPTION WHEN check_violation THEN
     NULL; -- expected
   END;

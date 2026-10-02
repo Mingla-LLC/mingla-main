@@ -10,54 +10,72 @@
 --     history.
 --
 -- Design (subtractive; no parallel rail; no new workflow product):
---   1. Two additive brands columns carry the pause state, with a CHECK that a
---      paused brand ALWAYS has a non-empty reason and a resumed brand has none.
+--   1. The pause state lives in a dedicated ADMIN-ONLY table,
+--      brand_payout_admin_holds (brand_id PK → presence of a row == paused), NOT
+--      on the broadly-writable brands row. RLS is ON with no authenticated/anon
+--      policy and the table grants are service_role-only, so the only reader or
+--      writer is a SECURITY DEFINER admin RPC. This is the containment the
+--      pause needs: were the state a brands column, the existing authenticated
+--      UPDATE grant + "Brand admin plus can update brands" RLS policy would let a
+--      brand admin clear their own admin hold (money-unblocking) and read the
+--      admin reason directly — the whole point of an admin hold is that only an
+--      admin controls and sees it.
 --   2. claim_stripe_payout_releases / claim_paystack_payout_releases are REPLACED
 --      byte-for-byte from 20270727003645 (PR8) — same releasable_at maturity, same
 --      payouts_enabled / recipient fail-closed, same bigint maturity-recredit
 --      clamps — with ONE added eligibility clause: the brand must not be
---      admin-paused. A paused brand's mature release therefore stays `pending`
---      (money accrues); it is never claimed, never transferred. Resume removes the
---      clause's effect and the next sweep claims it. pg_brand_can_payout and the
---      publish/charge gates are untouched: pause is a claim/execute gate ONLY.
+--      admin-paused (no brand_payout_admin_holds row). A paused brand's mature
+--      release therefore stays `pending` (money accrues); it is never claimed,
+--      never transferred. Resume removes the row and the next sweep claims it.
+--      pg_brand_can_payout and the publish/charge gates are untouched: pause is a
+--      claim/execute gate ONLY.
 --   3. admin_set_brand_payouts_paused(uuid,bool,text) — the ORCH-1271 golden
 --      template (is_admin_user() first, reason required, row-locked, audited via
---      admin_write_audit) sets/clears the pause state and flips a visible
+--      admin_write_audit) upserts/removes the hold row and flips a visible
 --      error_message='admin_paused' marker on the brand's pending releases
 --      (never clobbering waiting_for_bank; cleared on resume). No new outbox alert
 --      kind is added (#1217 trap). Audited action: brand.payouts_pause /
---      brand.payouts_resume.
+--      brand.payouts_resume. A NULL p_paused is rejected (fail closed) so a
+--      malformed admin call can never be read as "resume".
 --   4. admin_list_organiser_payout_debts(...) — guard-first READ (ORCH-1274
 --      containment: SECURITY DEFINER RPC, no admin RLS on the ledger; integer
 --      cents, never a formatted string). { rows, total }.
 --   5. admin_get_brand_payout_console(uuid) — guard-first READ bundle: pause
 --      state, per-currency balance (pending/in-flight/released/waiting/paused),
---      next payout time, outstanding + recovered debt, and recent release/debt
---      history.
+--      next payout maturity, outstanding + recovered debt, and recent
+--      release/debt history. Balances count the adjustment-backed maturity
+--      recredit for pending/in-flight money and the delivered cash for released
+--      money; the admin-paused figure is derived from the brand's hold state.
 --
 -- Moves no money. Live brand cutover apply stays admin-gated and awaits Seth +
 -- E2E proof on both rails before production use.
 
 BEGIN;
 
--- ── §1. Pause state on brands (paused ⇔ non-empty reason) ────────────────────
-ALTER TABLE public.brands
-  ADD COLUMN IF NOT EXISTS payouts_admin_paused_at timestamptz,
-  ADD COLUMN IF NOT EXISTS payouts_admin_pause_reason text;
+-- ── §1. Pause state: an ADMIN-ONLY table (presence of a row == paused) ────────
+-- Kept off the brands row on purpose (see Design note 1). RLS ON with no
+-- authenticated/anon policy + service_role-only grants ⇒ the sole reader/writer
+-- is a SECURITY DEFINER admin RPC. A non-admin can neither resume a hold nor read
+-- its reason.
+CREATE TABLE IF NOT EXISTS public.brand_payout_admin_holds (
+  brand_id   uuid PRIMARY KEY REFERENCES public.brands(id) ON DELETE CASCADE,
+  paused_at  timestamptz NOT NULL DEFAULT now(),
+  reason     text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT brand_payout_admin_holds_reason_nonempty CHECK (btrim(reason) <> '')
+);
 
-ALTER TABLE public.brands
-  DROP CONSTRAINT IF EXISTS brands_payouts_admin_pause_reason_check;
-ALTER TABLE public.brands
-  ADD CONSTRAINT brands_payouts_admin_pause_reason_check
-  CHECK (
-    (payouts_admin_paused_at IS NULL AND payouts_admin_pause_reason IS NULL)
-    OR (payouts_admin_paused_at IS NOT NULL
-        AND payouts_admin_pause_reason IS NOT NULL
-        AND btrim(payouts_admin_pause_reason) <> '')
-  );
+ALTER TABLE public.brand_payout_admin_holds ENABLE ROW LEVEL SECURITY;
 
-CREATE INDEX IF NOT EXISTS brands_payouts_admin_paused_idx
-  ON public.brands (id) WHERE payouts_admin_paused_at IS NOT NULL;
+-- RLS is ENABLED (not FORCEd) so the table owner — i.e. the SECURITY DEFINER
+-- admin RPCs — keeps access, while every other role is blocked. No policy is
+-- added for anon/authenticated: with RLS on and no permissive policy, the
+-- broadly-granted roles can read and write NOTHING. Grants revoked to match.
+REVOKE ALL ON TABLE public.brand_payout_admin_holds FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.brand_payout_admin_holds TO service_role;
+
+COMMENT ON TABLE public.brand_payout_admin_holds IS
+  'Issue #3645 PR9: admin-only brand payout hold. Presence of a row == that brand''s payouts are admin-paused. Written/read ONLY by the SECURITY DEFINER admin RPCs (admin_set_brand_payouts_paused / admin_get_brand_payout_console / claim_*); RLS-on, service_role-only so a brand admin can neither resume their own hold nor read its reason.';
 
 -- ── §2. Claim Stripe — PR8 body + admin-pause exclusion (keeps bigint clamps) ──
 CREATE OR REPLACE FUNCTION public.claim_stripe_payout_releases(
@@ -97,8 +115,8 @@ BEGIN
       -- #3645 PR9: an admin-paused brand's mature money stays pending (never
       -- claimed); it keeps accruing and the next sweep claims it after resume.
       AND NOT EXISTS (
-        SELECT 1 FROM public.brands bp
-        WHERE bp.id=r.brand_id AND bp.payouts_admin_paused_at IS NOT NULL
+        SELECT 1 FROM public.brand_payout_admin_holds h
+        WHERE h.brand_id=r.brand_id
       )
       AND (
         r.status IN ('pending','blocked_kyc','blocked_balance')
@@ -193,8 +211,8 @@ BEGIN
       AND r.releasable_at<=p_now
       -- #3645 PR9: skip admin-paused brands (money accrues, released on resume).
       AND NOT EXISTS (
-        SELECT 1 FROM public.brands bp
-        WHERE bp.id=r.brand_id AND bp.payouts_admin_paused_at IS NOT NULL
+        SELECT 1 FROM public.brand_payout_admin_holds h
+        WHERE h.brand_id=r.brand_id
       )
       AND (
         r.status IN (
@@ -267,9 +285,15 @@ DECLARE
   v_before jsonb;
   v_after jsonb;
   v_brand public.brands;
+  v_hold public.brand_payout_admin_holds;
 BEGIN
   IF NOT public.is_admin_user() THEN                       -- guard FIRST
     RAISE EXCEPTION 'not_authorized';
+  END IF;
+  -- #3645 PR9: a NULL p_paused must NEVER be read as "resume" (the money-
+  -- unblocking branch). Fail closed before touching the brand.
+  IF p_paused IS NULL THEN
+    RAISE EXCEPTION 'paused_required';
   END IF;
   IF p_reason IS NULL OR btrim(p_reason) = '' THEN
     RAISE EXCEPTION 'reason_required';
@@ -283,17 +307,19 @@ BEGIN
     RAISE EXCEPTION 'brand_not_found';
   END IF;
 
+  SELECT * INTO v_hold FROM public.brand_payout_admin_holds WHERE brand_id = p_brand_id;
   v_before := jsonb_build_object(
-    'payouts_admin_paused_at', v_brand.payouts_admin_paused_at,
-    'payouts_admin_pause_reason', v_brand.payouts_admin_pause_reason
+    'payouts_admin_paused_at', v_hold.paused_at,
+    'payouts_admin_pause_reason', v_hold.reason
   );
 
   IF p_paused THEN
-    UPDATE public.brands
-    SET payouts_admin_paused_at = COALESCE(payouts_admin_paused_at, now()),
-        payouts_admin_pause_reason = btrim(p_reason),
-        updated_at = now()
-    WHERE id = p_brand_id;
+    -- Upsert the hold. A re-pause keeps the original paused_at (first-held time)
+    -- and only refreshes the reason.
+    INSERT INTO public.brand_payout_admin_holds (brand_id, paused_at, reason, updated_at)
+    VALUES (p_brand_id, now(), btrim(p_reason), now())
+    ON CONFLICT (brand_id) DO UPDATE
+      SET reason = EXCLUDED.reason, updated_at = now();
 
     -- Visible (non-alerting) marker on the money that is now held. Never clobber
     -- a waiting_for_bank reason; no new outbox alert kind (#1217 trap).
@@ -303,11 +329,7 @@ BEGIN
       AND status = 'pending'
       AND error_message IS NULL;
   ELSE
-    UPDATE public.brands
-    SET payouts_admin_paused_at = NULL,
-        payouts_admin_pause_reason = NULL,
-        updated_at = now()
-    WHERE id = p_brand_id;
+    DELETE FROM public.brand_payout_admin_holds WHERE brand_id = p_brand_id;
 
     -- Clear only the marker this RPC set; leave waiting_for_bank etc. intact.
     UPDATE public.brand_payout_releases
@@ -317,13 +339,13 @@ BEGIN
       AND error_message = 'admin_paused';
   END IF;
 
-  SELECT jsonb_build_object(
+  SELECT * INTO v_hold FROM public.brand_payout_admin_holds WHERE brand_id = p_brand_id;
+  v_after := jsonb_build_object(
     'brand_id', p_brand_id,
-    'payouts_admin_paused_at', b.payouts_admin_paused_at,
-    'payouts_admin_pause_reason', b.payouts_admin_pause_reason,
-    'paused', b.payouts_admin_paused_at IS NOT NULL
-  ) INTO v_after
-  FROM public.brands b WHERE b.id = p_brand_id;
+    'payouts_admin_paused_at', v_hold.paused_at,
+    'payouts_admin_pause_reason', v_hold.reason,
+    'paused', v_hold.brand_id IS NOT NULL
+  );
 
   PERFORM public.admin_write_audit(
     CASE WHEN p_paused THEN 'brand.payouts_pause' ELSE 'brand.payouts_resume' END,
@@ -341,7 +363,7 @@ GRANT EXECUTE ON FUNCTION public.admin_set_brand_payouts_paused(uuid, boolean, t
   TO authenticated;
 
 COMMENT ON FUNCTION public.admin_set_brand_payouts_paused(uuid, boolean, text) IS
-  'Issue #3645 PR9: admin-only (is_admin_user first, reason required, audited via admin_write_audit) pause/resume of a brand''s payouts. Pause stops claim (money accrues, stays pending with a visible admin_paused marker); resume clears it so the next sweep claims. Does not touch charge/publish/payout-readiness. Raises not_authorized, reason_required, brand_not_found.';
+  'Issue #3645 PR9: admin-only (is_admin_user first, NULL paused rejected, reason required, audited via admin_write_audit) pause/resume of a brand''s payouts via the admin-only brand_payout_admin_holds table. Pause stops claim (money accrues, stays pending with a visible admin_paused marker); resume removes the hold so the next sweep claims. Does not touch charge/publish/payout-readiness. Raises not_authorized, paused_required, reason_required, brand_not_found.';
 
 -- ── §5. admin_list_organiser_payout_debts — guard-first READ { rows, total } ──
 CREATE OR REPLACE FUNCTION public.admin_list_organiser_payout_debts(
@@ -401,11 +423,18 @@ GRANT EXECUTE ON FUNCTION public.admin_list_organiser_payout_debts(text,text,uui
 CREATE OR REPLACE FUNCTION public.admin_get_brand_payout_console(p_brand_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
-DECLARE v_out jsonb; v_brand public.brands;
+DECLARE
+  v_out jsonb;
+  v_brand public.brands;
+  v_hold public.brand_payout_admin_holds;
+  v_is_paused boolean;
 BEGIN
   IF NOT public.is_admin_user() THEN RAISE EXCEPTION 'not_authorized'; END IF;
   SELECT * INTO v_brand FROM public.brands WHERE id = p_brand_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'not_found'; END IF;
+
+  SELECT * INTO v_hold FROM public.brand_payout_admin_holds WHERE brand_id = p_brand_id;
+  v_is_paused := v_hold.brand_id IS NOT NULL;
 
   v_out := jsonb_build_object(
     'brand', jsonb_build_object(
@@ -418,11 +447,16 @@ BEGIN
       'default_currency', v_brand.default_currency
     ),
     'pause', jsonb_build_object(
-      'paused', v_brand.payouts_admin_paused_at IS NOT NULL,
-      'paused_at', v_brand.payouts_admin_paused_at,
-      'reason', v_brand.payouts_admin_pause_reason
+      'paused', v_is_paused,
+      'paused_at', v_hold.paused_at,
+      'reason', v_hold.reason
     ),
-    -- Per-currency balance roll-up over the ledger (integer cents only).
+    -- Per-currency balance roll-up over the ledger (integer cents only). Pending
+    -- and in-flight money counts the adjustment-backed maturity recredit (the
+    -- same amount claim sends); released money counts the delivered cash.
+    -- admin_paused money is derived from the brand's hold state (brand-wide),
+    -- not the incidental error_message marker, so releases created after the
+    -- pause, blocked rows, and waiting_for_bank rows are all counted as held.
     'balances', COALESCE((
       SELECT jsonb_agg(jsonb_build_object(
                'currency', q.currency,
@@ -436,27 +470,53 @@ BEGIN
       FROM (
         SELECT
           r.currency,
-          COALESCE(sum(r.net_release_cents) FILTER (WHERE r.status='pending'),0)::bigint AS pending_net_cents,
-          COALESCE(sum(r.net_release_cents) FILTER (WHERE r.status='in_flight'),0)::bigint AS in_flight_cents,
-          COALESCE(sum(r.net_release_cents) FILTER (WHERE r.status='released'),0)::bigint AS released_cents,
+          COALESCE(sum(r.due_cents) FILTER (WHERE r.status='pending'),0)::bigint AS pending_net_cents,
+          COALESCE(sum(r.due_cents) FILTER (WHERE r.status='in_flight'),0)::bigint AS in_flight_cents,
+          COALESCE(sum(r.delivered_cents) FILTER (WHERE r.status='released'),0)::bigint AS released_cents,
           COALESCE(sum(r.net_release_cents) FILTER (WHERE r.status IN (
             'blocked_kyc','blocked_balance','blocked_otp','blocked_over_cap',
             'fee_unreconciled','blocked_anchor','reanchored'
           )),0)::bigint AS blocked_cents,
-          COALESCE(sum(r.net_release_cents) FILTER (
+          COALESCE(sum(r.due_cents) FILTER (
             WHERE r.status='pending' AND r.error_message='waiting_for_bank'),0)::bigint AS waiting_for_bank_cents,
-          COALESCE(sum(r.net_release_cents) FILTER (
-            WHERE r.status='pending' AND r.error_message='admin_paused'),0)::bigint AS admin_paused_cents
-        FROM public.brand_payout_releases r
-        WHERE r.brand_id = p_brand_id
+          -- Held by the admin pause: when a hold exists, ALL money not yet sent
+          -- (pending + blocked statuses) is held by it, regardless of marker.
+          COALESCE(sum(r.due_cents) FILTER (
+            WHERE v_is_paused AND r.status IN (
+              'pending','blocked_kyc','blocked_balance','blocked_otp',
+              'blocked_over_cap','fee_unreconciled','blocked_anchor','reanchored'
+            )),0)::bigint AS admin_paused_cents
+        FROM (
+          SELECT
+            br.currency,
+            br.status,
+            br.net_release_cents,
+            br.error_message,
+            br.net_release_cents + COALESCE((
+              SELECT sum(a.amount_cents)
+              FROM public.payout_ledger_adjustments a
+              WHERE a.release_id = br.id AND a.kind='maturity_recredit'
+            ),0) AS due_cents,
+            COALESCE(br.organiser_cash_delivered_cents, br.net_release_cents) AS delivered_cents
+          FROM public.brand_payout_releases br
+          WHERE br.brand_id = p_brand_id
+        ) r
         GROUP BY r.currency
       ) q
     ), '[]'::jsonb),
-    -- Earliest claimable pending release (approx "next payout").
+    -- Earliest maturity among not-yet-released money (net + maturity recredit).
+    -- This is a MATURITY timestamp, not a claim guarantee: an admin pause or a
+    -- waiting-for-bank hold can still keep the money pending past this time.
     'next_payout_at', (
       SELECT min(r.releasable_at)
       FROM public.brand_payout_releases r
-      WHERE r.brand_id = p_brand_id AND r.status = 'pending' AND r.net_release_cents > 0
+      WHERE r.brand_id = p_brand_id
+        AND r.status = 'pending'
+        AND r.net_release_cents + COALESCE((
+              SELECT sum(a.amount_cents)
+              FROM public.payout_ledger_adjustments a
+              WHERE a.release_id = r.id AND a.kind='maturity_recredit'
+            ),0) > 0
     ),
     -- Outstanding + recovered debt per currency.
     'debts', COALESCE((
@@ -539,11 +599,20 @@ BEGIN
   v_paystack := pg_get_functiondef(
     'public.claim_paystack_payout_releases(integer,timestamptz)'::regprocedure
   );
-  IF position('payouts_admin_paused_at' IN v_stripe) = 0 THEN
+  IF position('brand_payout_admin_holds' IN v_stripe) = 0 THEN
     RAISE EXCEPTION 'issue-3645 PR9: claim_stripe missing admin-pause exclusion';
   END IF;
-  IF position('payouts_admin_paused_at' IN v_paystack) = 0 THEN
+  IF position('brand_payout_admin_holds' IN v_paystack) = 0 THEN
     RAISE EXCEPTION 'issue-3645 PR9: claim_paystack missing admin-pause exclusion';
+  END IF;
+  -- The hold table is admin-only: broadly-granted roles can neither read nor
+  -- write it (the containment the pause depends on).
+  IF has_table_privilege('authenticated', 'public.brand_payout_admin_holds', 'SELECT')
+     OR has_table_privilege('authenticated', 'public.brand_payout_admin_holds', 'UPDATE')
+     OR has_table_privilege('authenticated', 'public.brand_payout_admin_holds', 'INSERT')
+     OR has_table_privilege('authenticated', 'public.brand_payout_admin_holds', 'DELETE')
+     OR has_table_privilege('anon', 'public.brand_payout_admin_holds', 'SELECT') THEN
+    RAISE EXCEPTION 'issue-3645 PR9: brand_payout_admin_holds is reachable by anon/authenticated';
   END IF;
   -- claim RPCs stay service_role-only; admin RPCs stay off anon.
   IF has_function_privilege('anon',
