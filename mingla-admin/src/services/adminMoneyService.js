@@ -115,6 +115,29 @@ export async function listRevenueLog({ search, page = 0, pageSize = 25 }) {
   return { rows: data?.rows ?? [], total: data?.total ?? 0 };
 }
 
+// ── Organiser payout debts + per-brand payout console (#3645 PR9) ─────────────
+
+/**
+ * Organiser payout debt list (read-only). Filters: status (open|closed|converted),
+ * brandId. Returns { rows, total } with integer cents + currency per row.
+ */
+export async function listOrganiserPayoutDebts({ search, filters = {}, page = 0, pageSize = 25 }) {
+  const { data, error } = await supabase.rpc("admin_list_organiser_payout_debts", {
+    p_search: search || null,
+    p_status_filter: filters.status || null,
+    p_brand_id: filters.brandId || null,
+    p_limit: pageSize,
+    p_offset: page * pageSize,
+  });
+  if (error) throw new Error(error.message || "Failed to load organiser debts.");
+  return { rows: data?.rows ?? [], total: data?.total ?? 0 };
+}
+
+/** Per-brand payout console bundle: pause state, balances, next payout, debts, history. */
+export async function getBrandPayoutConsole(brandId) {
+  return supabase.rpc("admin_get_brand_payout_console", { p_brand_id: brandId });
+}
+
 // ── Subscription support context ──────────────────────────────────────────────
 
 /** One user's tier / effective tier / active override / override history bundle. */

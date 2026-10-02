@@ -15,7 +15,7 @@ import { Tabs } from "../components/ui/Tabs";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { StayOperationsPanel } from "../components/stay/StayOperationsPanel";
-import { listRefunds, listDisputes, getDispute, listPayouts, listRevenueLog } from "../services/adminMoneyService";
+import { listRefunds, listDisputes, getDispute, listPayouts, listRevenueLog, listOrganiserPayoutDebts } from "../services/adminMoneyService";
 import { annotateDispute } from "../services/adminMoneyActService";
 import { reconcileTicketRefund } from "../services/adminRefundReconciliationService";
 import { timeAgo, formatDateTime, formatDate } from "../lib/formatters";
@@ -143,10 +143,31 @@ const REVENUE_CSV = {
   filename: "platform-revenue",
 };
 
+// #3645 PR9 — organiser payout debt (READ-ONLY). What each brand owes after a
+// post-payout refund/chargeback/cancellation and how much has recovered.
+const DEBT_COLUMNS = [
+  { key: "opened_at", label: "Opened", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+  { key: "brand_name", label: "Brand", render: brandCell },
+  { key: "kind", label: "Kind", render: (v) => <Badge variant="default">{(v || "").replace(/^post_release_/, "") || "—"}</Badge> },
+  { key: "principal_cents", label: "Principal", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
+  { key: "recovered_cents", label: "Recovered", render: (v, row) => formatMoney(v, row.currency) },
+  { key: "outstanding_cents", label: "Outstanding", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
+  { key: "status", label: "Status", render: (v) => <Badge variant={v === "closed" ? "success" : v === "converted" ? "default" : "warning"} dot>{v || "—"}</Badge> },
+];
+const DEBT_CSV = {
+  columns: [
+    { key: "opened_at", label: "Opened" }, { key: "brand_name", label: "Brand" }, { key: "kind", label: "Kind" },
+    { key: "principal_cents", label: "Principal cents" }, { key: "recovered_cents", label: "Recovered cents" },
+    { key: "outstanding_cents", label: "Outstanding cents" }, { key: "currency", label: "Currency" }, { key: "status", label: "Status" },
+  ],
+  filename: "organiser-debts",
+};
+
 const TABS = [
   { id: "refunds", label: "Refunds" },
   { id: "disputes", label: "Disputes" },
   { id: "payouts", label: "Payouts" },
+  { id: "debts", label: "Organiser debts" },
   { id: "revenue", label: "Platform revenue" },
   { id: "stay", label: "Stay reconciliation" },
 ];
@@ -439,6 +460,20 @@ export function BusinessMoneyLedgerPage() {
         filters={[{ key: "status", label: "Status", options: [{ value: "paid", label: "Paid" }, { value: "pending", label: "Pending" }, { value: "in_transit", label: "In transit" }, { value: "failed", label: "Failed" }] }]}
         csv={PAYOUT_CSV}
         emptyMessage="No payouts yet."
+        emptyIcon={Landmark}
+      />
+    );
+  } else if (activeTab === "debts") {
+    listView = (
+      <EntityListView
+        key="debts"
+        title="Organiser debts"
+        columns={DEBT_COLUMNS}
+        fetchPage={listOrganiserPayoutDebts}
+        searchPlaceholder="Search brand name, slug, debt id or origin release id"
+        filters={[{ key: "status", label: "Status", options: [{ value: "open", label: "Open" }, { value: "closed", label: "Closed" }, { value: "converted", label: "Converted" }] }]}
+        csv={DEBT_CSV}
+        emptyMessage="No organiser debts."
         emptyIcon={Landmark}
       />
     );
