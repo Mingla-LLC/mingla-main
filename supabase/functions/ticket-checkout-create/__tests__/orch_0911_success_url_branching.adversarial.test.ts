@@ -132,7 +132,7 @@ Deno.test("ORCH-0911 TA-03 — tripGateRow MUST be loaded BEFORE the URL builder
     /\.select\(\s*["']event_type, bookings_closed, booking_deadline["']\s*\)/,
   );
   const branchIdx = activeSource.indexOf(
-    'const isTrip = tripGateRow?.event_type === "trip";',
+    'const surfacePath = buyerWebSurfacePath(tripGateRow?.event_type);',
   );
   assert(
     tripGateLoadIdx >= 0,

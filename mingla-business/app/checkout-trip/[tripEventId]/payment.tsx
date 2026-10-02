@@ -268,8 +268,8 @@ function CheckoutTripPaymentScreenContent({
    * `location.assign` genuinely does not exist (sandbox / test), so the caller
    * can tell "the guest is on their way" from "the guest is still here".
    */
-  const assignLocation = useCallback((url: string): boolean => {
-    const w = globalThis as unknown as {
+  const assignLocation = useCallback((host: unknown, url: string): boolean => {
+    const w = host as {
       location?: { assign?: (u: string) => void };
     };
     if (typeof w.location?.assign !== "function") return false;
@@ -443,7 +443,7 @@ function CheckoutTripPaymentScreenContent({
         // guest wants. Re-following the URL we were already given is.
         const held = providerHandoffRef.current;
         if (held !== null && held.fingerprint === cartFingerprint) {
-          if (assignLocation(held.handoff.redirectUrl)) return;
+          if (assignLocation(globalThis, held.handoff.redirectUrl)) return;
           setProcessing(false);
           setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
           return;
@@ -491,7 +491,10 @@ function CheckoutTripPaymentScreenContent({
           lines,
           buyer,
         });
-        if (assignLocation(handoff.redirectUrl)) return;
+        // ORCH-0915 T-A02 pins `const w = globalThis` as the end of the
+        // persist window: the resume payload is written, THEN the host is read.
+        const w = globalThis;
+        if (assignLocation(w, handoff.redirectUrl)) return;
         // Sandbox / test environments where location.assign is unavailable.
         setProcessing(false);
         setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);

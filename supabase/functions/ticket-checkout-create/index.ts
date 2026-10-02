@@ -81,6 +81,9 @@ import {
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
+// #3645 — event_type → buyer-web surface path (trip / experience / event),
+// shared by the Paystack callback_url and the Stripe success/cancel URLs.
+import { buyerWebSurfacePath } from "./buyerWebSurfacePath.ts";
 import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
 
 async function siteAttributionDigest(value: string): Promise<string> {
@@ -1964,9 +1967,7 @@ export const createTicketCheckoutCreateHandler = (
       // per-transaction callback_url to the real Host confirmation surface with
       // the session id + status token so the success screen can resolve.
       //   https://paystack.com/docs/payments/accept-payments/ (callback_url)
-      const callbackSurface = tripGateRow?.event_type === "trip"
-        ? "checkout-trip"
-        : "checkout";
+      const callbackSurface = buyerWebSurfacePath(tripGateRow?.event_type);
       const callbackUrl =
         `${PRODUCTION_BUSINESS_WEB_ORIGIN}/${callbackSurface}/${eventId}/confirm?cs=paystack&csi=${
           encodeURIComponent(checkoutSessionId)
@@ -2332,8 +2333,8 @@ export const createTicketCheckoutCreateHandler = (
           return refuse({ error: "web_base_url_missing" }, 500);
         }
         // ORCH-0911: branch buyer-web confirm/payment URLs on event_type.
-        const isTrip = tripGateRow?.event_type === "trip";
-        const surfacePath = isTrip ? "checkout-trip" : "checkout";
+        // #3645: experience rows return to /checkout-experience (was /checkout).
+        const surfacePath = buyerWebSurfacePath(tripGateRow?.event_type);
         // ORCH-0928 v2 (2026-05-23) — query-string recovery params for
         // confirm.tsx. v3 dual-format hack reverted 2026-05-23 ~12:50 UTC
         // after live-fire confirmed the fragment portion triggers Expo
