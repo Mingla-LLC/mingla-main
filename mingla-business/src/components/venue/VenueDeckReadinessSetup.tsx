@@ -496,10 +496,13 @@ export function VenueDeckReadinessSetup({
   // auto-save on change via syncHeroMedia/syncGallery. Mingla writes the pitch +
   // match scores when an admin approves the venue; the owner edits the pitch
   // afterward on the listing page.
-  const handleSaveChanges = useCallback(async (opts?: {
-    navigate?: boolean;
-  }): Promise<void> => {
-    const navigate = opts?.navigate !== false;
+  /** Leave Save resumes the captured route; suppress onDone for that path. */
+  const navigateAfterSaveRef = useRef(true);
+
+  const handleSaveChanges = useCallback(async (): Promise<void> => {
+    const navigate = navigateAfterSaveRef.current;
+    navigateAfterSaveRef.current = true;
+    if (!formDirty) return;
     setBusy("save");
     setMessage(null);
     const previousCover = savedCover;
@@ -513,8 +516,29 @@ export function VenueDeckReadinessSetup({
           coverMediaPosterUrl: cover.coverMediaPosterUrl,
           coverMediaType: cover.coverMediaType,
         });
+      }
+      if (galleryDirty) {
+        await syncGallery({
+          brandId,
+          venueId,
+          placePoolId,
+          galleryUrls: gallery,
+        });
+      }
+      await saveTier2({ brandId, venueId, placePoolId, tier2: buildTier2() });
+      await commitExistingVenueDiscoveryRange({
+        brandId,
+        venueId,
+        placePoolId,
+        priceMinInput,
+        priceMaxInput,
+        expectedVersion: rangeQuery.data?.version ?? 0,
+      });
+      // Mark baselines clean only after every write succeeds so a later-step
+      // failure cannot leave galleryDirty=false while initialGallery is stale
+      // (hydration would otherwise wipe the just-committed URLs).
+      if (coverDirty) {
         setSavedCover(cover);
-        // Pointer committed — now safe to drop the previous storage object.
         void removeCoverStorageUrls([
           previousCover.coverMediaUrl !== cover.coverMediaUrl
             ? previousCover.coverMediaUrl
@@ -526,24 +550,9 @@ export function VenueDeckReadinessSetup({
         ]);
       }
       if (galleryDirty) {
-        await syncGallery({
-          brandId,
-          venueId,
-          placePoolId,
-          galleryUrls: gallery,
-        });
         setSavedGallery(gallery);
         stagedGalleryUploadsRef.current.clear();
       }
-      await saveTier2({ brandId, venueId, placePoolId, tier2: buildTier2() });
-      await commitExistingVenueDiscoveryRange({
-        brandId,
-        venueId,
-        placePoolId,
-        priceMinInput,
-        priceMaxInput,
-        expectedVersion: rangeQuery.data?.version ?? 0,
-      });
       setSavedWebsite(website.trim());
       setSavedVibes(selectedVibes);
       setSavedFacets(facets);
@@ -564,6 +573,7 @@ export function VenueDeckReadinessSetup({
     cover,
     coverDirty,
     facets,
+    formDirty,
     gallery,
     galleryDirty,
     onDone,
@@ -590,7 +600,10 @@ export function VenueDeckReadinessSetup({
         return labels;
       },
       // Leave Save resumes the original route; do not also navigate via onDone.
-      save: () => handleSaveChanges({ navigate: false }),
+      save: () => {
+        navigateAfterSaveRef.current = false;
+        return handleSaveChanges();
+      },
       discard: () => {
         const abandonCover: Array<string | null> = [];
         if (
@@ -968,7 +981,7 @@ export function VenueDeckReadinessSetup({
             variant="primary"
             size="md"
             loading={busy === "save"}
-            disabled={busy !== null}
+            disabled={busy !== null || !formDirty}
             onPress={() => {
               void handleSaveChanges().catch(() => undefined);
             }}

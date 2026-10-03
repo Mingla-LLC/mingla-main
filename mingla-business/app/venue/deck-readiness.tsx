@@ -24,7 +24,6 @@ import {
   VenueDeckReadinessSetup,
   type VenueDeckLeaveHandle,
 } from "../../src/components/venue/VenueDeckReadinessSetup";
-import { ConfirmDialog } from "../../src/components/ui/ConfirmDialog";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import type { CoverPatch } from "../../src/components/ui/CoverPicker";
 import {
@@ -33,6 +32,12 @@ import {
 } from "../../src/utils/deckReadinessRoutes";
 import { formatLeaveChangedBody } from "../../src/components/venue/venueLeaveContract";
 import { useVenueSuiteStore } from "../../src/store/venueSuiteStore";
+
+/** Lazy ConfirmDialog — pulls reanimated; keep node/web suites green. */
+const LazyConfirmDialog = React.lazy(async () => {
+  const mod = await import("../../src/components/ui/ConfirmDialog");
+  return { default: mod.ConfirmDialog };
+});
 
 const FOCUS_VALUES = new Set<DeckReadinessFocus>([
   "basics",
@@ -276,65 +281,69 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
         onDone={handleSaved}
         leaveHandleRef={leaveHandleRef}
       />
-      <ConfirmDialog
-        visible={leaveOpen}
-        variant="leave"
-        title="Save your deck changes?"
-        description={formatLeaveChangedBody(leaveLabels)}
-        onClose={() => {
-          if (leaveSaving) return;
-          pendingLeaveRef.current = null;
-          setLeaveOpen(false);
-          setLeaveError(null);
-        }}
-        onConfirm={() => {
-          if (leaveSaving) return;
-          leaveHandleRef.current?.discard();
-          const proceed = pendingLeaveRef.current;
-          pendingLeaveRef.current = null;
-          setLeaveOpen(false);
-          setLeaveError(null);
-          sanctionedExitRef.current = true;
-          proceed?.();
-        }}
-        onDiscard={() => {
-          if (leaveSaving) return;
-          leaveHandleRef.current?.discard();
-          const proceed = pendingLeaveRef.current;
-          pendingLeaveRef.current = null;
-          setLeaveOpen(false);
-          setLeaveError(null);
-          sanctionedExitRef.current = true;
-          proceed?.();
-        }}
-        onSave={async () => {
-          // Keep pendingLeaveRef until success so Discard/retry can still
-          // resume the original beforeRemove action after a failed Save.
-          const proceed = pendingLeaveRef.current;
-          setLeaveSaving(true);
-          setLeaveError(null);
-          try {
-            await leaveHandleRef.current?.save();
-            pendingLeaveRef.current = null;
-            setLeaveOpen(false);
-            sanctionedExitRef.current = true;
-            proceed?.();
-          } catch {
-            setLeaveError(
-              "Couldn't save your changes. They're still here, so try again.",
-            );
-            throw new Error("save");
-          } finally {
-            setLeaveSaving(false);
-          }
-        }}
-        confirmLoading={leaveSaving}
-        errorMessage={leaveError}
-        saveTestID="venue-deck-leave-save"
-        discardTestID="venue-deck-leave-discard"
-        keepTestID="venue-deck-leave-keep"
-        testID="venue-deck-leave-dialog"
-      />
+      {leaveOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            variant="leave"
+            title="Save your deck changes?"
+            description={formatLeaveChangedBody(leaveLabels)}
+            onClose={() => {
+              if (leaveSaving) return;
+              pendingLeaveRef.current = null;
+              setLeaveOpen(false);
+              setLeaveError(null);
+            }}
+            onConfirm={() => {
+              if (leaveSaving) return;
+              leaveHandleRef.current?.discard();
+              const proceed = pendingLeaveRef.current;
+              pendingLeaveRef.current = null;
+              setLeaveOpen(false);
+              setLeaveError(null);
+              sanctionedExitRef.current = true;
+              proceed?.();
+            }}
+            onDiscard={() => {
+              if (leaveSaving) return;
+              leaveHandleRef.current?.discard();
+              const proceed = pendingLeaveRef.current;
+              pendingLeaveRef.current = null;
+              setLeaveOpen(false);
+              setLeaveError(null);
+              sanctionedExitRef.current = true;
+              proceed?.();
+            }}
+            onSave={async () => {
+              // Keep pendingLeaveRef until success so Discard/retry can still
+              // resume the original beforeRemove action after a failed Save.
+              const proceed = pendingLeaveRef.current;
+              setLeaveSaving(true);
+              setLeaveError(null);
+              try {
+                await leaveHandleRef.current?.save();
+                pendingLeaveRef.current = null;
+                setLeaveOpen(false);
+                sanctionedExitRef.current = true;
+                proceed?.();
+              } catch {
+                setLeaveError(
+                  "Couldn't save your changes. They're still here, so try again.",
+                );
+                throw new Error("save");
+              } finally {
+                setLeaveSaving(false);
+              }
+            }}
+            confirmLoading={leaveSaving}
+            errorMessage={leaveError}
+            saveTestID="venue-deck-leave-save"
+            discardTestID="venue-deck-leave-discard"
+            keepTestID="venue-deck-leave-keep"
+            testID="venue-deck-leave-dialog"
+          />
+        </React.Suspense>
+      ) : null}
     </View>
   );
 }

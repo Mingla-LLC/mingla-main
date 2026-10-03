@@ -31,6 +31,11 @@ const mockPush = jest.fn((_href: string) => undefined);
 
 jest.mock("expo-router", () => ({
   __esModule: true,
+  // [TEST-MOD-APPROVED #3655] deck leave beforeRemove uses useNavigation.
+  useNavigation: () => ({
+    addListener: () => () => undefined,
+    dispatch: jest.fn(),
+  }),
   useLocalSearchParams: () => nav.params,
   useRouter: () => ({
     back: () => mockBack(),
