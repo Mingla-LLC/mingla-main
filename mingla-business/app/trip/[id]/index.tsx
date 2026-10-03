@@ -54,6 +54,7 @@ import {
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { currencyCodeOrNull } from "../../../src/utils/currency";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
+import { useOfferingPayoutMoney } from "../../../src/hooks/useOfferingPayoutMoney";
 import { TripManageMenu } from "../../../src/components/trip/TripManageMenu";
 import {
   TripDetailHeroStatusPill,
@@ -326,6 +327,14 @@ export default function TripDashboardRoute(): React.ReactElement {
       }),
     [recordOrdersQuery.data, tripIdForMoney, tripQuery.data],
   );
+  // #3645 PR10 — ledger paid-out / on-its-way for THIS trip.
+  const offeringPayoutMoney = useOfferingPayoutMoney(
+    brandId,
+    tripIdForMoney,
+    tripQuery.data?.pricingTiers[0]?.currency ??
+      tripQuery.data?.revenueCurrency ??
+      null,
+  );
   const dashboardTiles = useMemo(
     () => withListingInsights(buildOfferingDashboardTiles("trip")),
     [],
@@ -583,6 +592,8 @@ export default function TripDashboardRoute(): React.ReactElement {
         <EventDetailKpiCard
           revenueGbp={moneySummary.onlineRevenue}
           payoutGbp={moneySummary.onlineNetMajor}
+          paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
+          onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
           currency={displayCurrency}
           readStatus={recordOrdersQuery.status}
           onRetry={() => void recordOrdersQuery.refetch()}

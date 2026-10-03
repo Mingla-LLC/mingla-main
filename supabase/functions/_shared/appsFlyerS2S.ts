@@ -238,7 +238,13 @@ export async function postAppsFlyerS2SEvent(
 export async function claimBrandMilestone(
   supabase: SupabaseClient,
   brandId: string,
-  column: "first_ticket_sold_at" | "first_payout_at" | "first_activated_at",
+  column:
+    | "first_ticket_sold_at"
+    | "first_payout_at"
+    // `first_activated_at` = Stripe charges_enabled (CHARGE-ready).
+    | "first_activated_at"
+    // #3645 PR10 — Paystack payout bank attached (PAYOUT-ready).
+    | "first_bank_added_at",
 ): Promise<boolean> {
   // Ensure the milestone row exists. No-op if already present.
   const { error: upsertError } = await supabase

@@ -159,7 +159,10 @@ Deno.test("handler remains dark while the execution flag is unset", async () => 
             data: name === "list_missing_payout_source_fees" ||
                 name === "claim_payout_release_alerts" ||
                 // Issue #3645 PR8 (append-only)
-                name === "surface_payout_releases_waiting_for_bank"
+                name === "surface_payout_releases_waiting_for_bank" ||
+                // Issue #3645 PR10: pause/outcome drains; RPC-order pin updated.
+                name === "claim_brand_payout_pause_notices" ||
+                name === "claim_brand_payout_outcome_notices"
               ? []
               : { dark: true, executed: 0 },
             error: null,
@@ -184,6 +187,8 @@ Deno.test("handler remains dark while the execution flag is unset", async () => 
     "list_missing_payout_source_fees",
     "run_payout_release_dark_sweep",
     "surface_payout_releases_waiting_for_bank",
+    "claim_brand_payout_pause_notices",
+    "claim_brand_payout_outcome_notices",
     "claim_payout_release_alerts",
   ]);
   assertEquals(stripeClients, 0);
@@ -246,6 +251,13 @@ Deno.test("enabled test path records one accepted payout with exact amount and k
           }
           // Issue #3645 PR8 (append-only): dark+execute ticks surface waiting-for-bank.
           if (name === "surface_payout_releases_waiting_for_bank") {
+            return Promise.resolve({ data: [], error: null });
+          }
+          // Issue #3645 PR10: pause/outcome notice drains (empty in this scenario).
+          if (
+            name === "claim_brand_payout_pause_notices" ||
+            name === "claim_brand_payout_outcome_notices"
+          ) {
             return Promise.resolve({ data: [], error: null });
           }
           throw new Error(`unexpected RPC ${name}`);

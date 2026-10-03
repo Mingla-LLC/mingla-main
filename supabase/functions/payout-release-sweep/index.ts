@@ -30,6 +30,14 @@ import {
   type StripeReleaseResult,
 } from "./engine.ts";
 import { releasePartnerSplitsForOrganiserRelease } from "./partnerRelease.ts";
+// #3645 PR10 — organiser-facing payout notifications (Paystack sent/failed,
+// waiting-for-bank copy, admin pause/resume notices). Organiser-safe by
+// construction: no error_message / attempt_count / OTP / KYC internals.
+import {
+  drainOutcomeNotices,
+  drainPausedNotices,
+  payoutWaitingForBankCopy,
+} from "../_shared/organiserPayoutNotify.ts";
 import { resolvePaymentOperationFlagValue } from "../_shared/secretBundle.ts";
 import {
   NG_PAYOUT_FLOAT_HORIZON_DEFAULT_DAYS,
@@ -69,6 +77,14 @@ type SweepDeps = {
   // Issue #1177 — injectable Paystack transfer client (mirror of
   // createStripeReleaseClient) so the organiser rail is unit-testable.
   createPaystackReleaseClient?: () => PaystackReleaseClient;
+  // #3645 PR10 — injectable organiser notice drains (pause/resume + terminal
+  // Paystack outcome) so the sweep stays unit-testable.
+  drainPausedNotices?: (
+    admin: AdminClient,
+  ) => Promise<{ listed: number; delivered: number }>;
+  drainOutcomeNotices?: (
+    admin: AdminClient,
+  ) => Promise<{ listed: number; delivered: number }>;
 };
 
 type PaystackClaimRow = {
@@ -391,13 +407,15 @@ async function notifyWaitingForBank(
     row.brand_id,
   );
   for (const userId of userIds) {
+    // #3645 PR10 — a `business.*` type so the push routes to the business app
+    // (the old `payout_release.*` type fell through to the consumer app).
+    const copy = payoutWaitingForBankCopy();
     await dispatchNotification({
       userId,
       brandId: row.brand_id,
-      type: "payout_release.waiting_for_bank",
-      title: "Connect a bank to receive your payout",
-      body:
-        "A payout is ready to send, but Mingla is waiting until you add a bank account.",
+      type: copy.type,
+      title: copy.title,
+      body: copy.body,
       data: {
         releaseId: row.release_id,
         provider: row.provider,
@@ -406,7 +424,7 @@ async function notifyWaitingForBank(
       relatedId: row.release_id,
       relatedType: "payout_release",
       idempotencyKey:
-        `payout_release.waiting_for_bank:${row.release_id}:${userId}`,
+        `business.payout_waiting_for_bank:${row.release_id}:${userId}`,
       deepLink: `mingla-business://brand/${row.brand_id}/payments/onboard`,
     });
   }
@@ -937,6 +955,9 @@ async function executeClaimedPaystackReleases(
         },
       });
 
+      // #3645 PR10 — terminal organiser notify is durable via
+      // brand_payout_outcome_notices (enqueued on released/failed) and drained
+      // once per tick below. Do not fire-and-forget here.
       totals.reconciled += counts.reconciled;
       totals.initiated += counts.initiated;
       totals.succeededLegs += counts.succeeded;
@@ -1166,6 +1187,46 @@ export async function handlePayoutReleaseSweep(
         : String(waitingError),
     });
     return json({ error: "waiting_for_bank_surface_failed" }, 500);
+  }
+
+  // #3645 PR10 — admin pause/resume + terminal Paystack outcome notices.
+  // Non-fatal by design: a notification hiccup must never block money movement
+  // or turn a healthy tick into a 500; undelivered notices stay open and retry.
+  try {
+    const paused = await (deps.drainPausedNotices ??
+      ((a: AdminClient) => drainPausedNotices(a as never)))(admin as never);
+    if (paused.listed > 0) {
+      console.info(JSON.stringify({
+        event: "payout_pause_notices_drained",
+        function_name: "payout-release-sweep",
+        listed: paused.listed,
+        delivered: paused.delivered,
+      }));
+    }
+  } catch (pausedError) {
+    console.error("[payout-release-sweep] pause notice drain failed", {
+      message: pausedError instanceof Error
+        ? pausedError.message
+        : String(pausedError),
+    });
+  }
+  try {
+    const outcomes = await (deps.drainOutcomeNotices ??
+      ((a: AdminClient) => drainOutcomeNotices(a as never)))(admin as never);
+    if (outcomes.listed > 0) {
+      console.info(JSON.stringify({
+        event: "payout_outcome_notices_drained",
+        function_name: "payout-release-sweep",
+        listed: outcomes.listed,
+        delivered: outcomes.delivered,
+      }));
+    }
+  } catch (outcomeError) {
+    console.error("[payout-release-sweep] outcome notice drain failed", {
+      message: outcomeError instanceof Error
+        ? outcomeError.message
+        : String(outcomeError),
+    });
   }
 
   let alertDelivery;

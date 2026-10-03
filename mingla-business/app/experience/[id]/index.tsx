@@ -66,6 +66,7 @@ import { ExperienceStopsGalleryTile } from "../../../src/components/offering/Exp
 import { useExperienceDetail } from "../../../src/hooks/useExperienceDetail";
 import { useCancelBusinessEvent } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
+import { useOfferingPayoutMoney } from "../../../src/hooks/useOfferingPayoutMoney";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
@@ -194,6 +195,12 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
         doorSales: [],
       }),
     [allOrders, experience],
+  );
+  // #3645 PR10 — ledger paid-out / on-its-way for THIS experience.
+  const offeringPayoutMoney = useOfferingPayoutMoney(
+    experience?.brandId ?? null,
+    experience?.id ?? null,
+    experience?.currency ?? null,
   );
   const recentActivity = useMemo(
     () =>
@@ -443,6 +450,8 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
         <EventDetailKpiCard
           revenueGbp={moneySummary.onlineRevenue}
           payoutGbp={moneySummary.onlineNetMajor}
+          paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
+          onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
           currency={experience.currency}
           readStatus={ordersQuery.status}
           onRetry={() => void ordersQuery.refetch()}

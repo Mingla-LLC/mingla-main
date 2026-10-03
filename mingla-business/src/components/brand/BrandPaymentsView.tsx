@@ -73,16 +73,26 @@ import {
   useDisconnectPaystack,
 } from "../../hooks/useBrandPaystack";
 import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
+import { useBrandPayoutVisibility } from "../../hooks/useBrandPayoutVisibility";
 import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
 import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAccountSession";
 import { useBrandStripeAccountSession } from "../../hooks/useBrandStripeAccountSession";
 import { getEffectiveBrandStripeStatus } from "../../utils/stripeOnboardingOutcome";
+// #3645 PR10 — organiser payout states ("Selling, add a bank", "Next payout on
+// <date>", "Payouts paused") land on the SAME status card, on both rails.
+import { isBrandChargeReady, isBrandPayoutReady } from "../../utils/brandPayout";
+import {
+  overlayPayoutStatusOnStripeBanner,
+  payoutStatusToBannerConfig,
+  resolveBrandPayoutStatus,
+} from "../../utils/brandPayoutVisibility";
 // #3258 — the status banner is resolved from status + requirements, not from a
 // bare enum lookup. Table + selector live in the pure util so they are
 // executable in a plain jest test (this file is not: expo-web-browser,
 // reanimated and expo-haptics all land here at module scope).
 import {
   resolveBrandStripeBannerConfig,
+  type BrandStripeBannerConfig,
   type BrandStripeRequirementsShape,
 } from "../../utils/brandStripeUiState";
 // #3258 — NO import of `constants/publicUrls` here, deliberately. It reaches
@@ -136,6 +146,55 @@ export interface BrandPaymentsViewProps {
    */
   onOpenReports: () => void;
 }
+
+/**
+ * The ONE Payments status card. Stripe's connected/not-connected banner and the
+ * #3645 payout states (selling-add-bank / next payout / paused) both render
+ * through this component, on both rails — there is no second card.
+ */
+const PaymentsStatusCard: React.FC<{
+  config: BrandStripeBannerConfig;
+  onCta: () => void;
+}> = ({ config, onCta }) => (
+  <GlassCard
+    variant="base"
+    padding={spacing.md}
+    style={[
+      config.destructive ? styles.bannerDestructive : null,
+      config.success ? styles.bannerSuccess : null,
+    ]}
+  >
+    <View style={styles.bannerRow}>
+      <View
+        style={[
+          styles.bannerIconWrap,
+          config.destructive && styles.bannerIconWrapDestructive,
+          config.success && styles.bannerIconWrapSuccess,
+        ]}
+      >
+        <Icon name={config.icon} size={20} color={config.iconColor} />
+      </View>
+      <View style={styles.bannerTextCol}>
+        <Text style={styles.bannerTitle}>{config.title}</Text>
+        <Text style={styles.bannerSub}>{config.sub}</Text>
+      </View>
+    </View>
+    {config.ctaLabel !== null && config.ctaVariant !== null
+      ? (
+        <View style={styles.bannerCtaRow}>
+          <Button
+            label={config.ctaLabel}
+            onPress={onCta}
+            variant={config.ctaVariant}
+            size="md"
+            fullWidth
+            accessibilityLabel={config.ctaLabel}
+          />
+        </View>
+      )
+      : null}
+  </GlassCard>
+);
 
 export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   brand,
@@ -251,12 +310,44 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   // flipped to the warm verifying card once the edge function (which itself
   // round-trips to Stripe) answered. `isSuccess` is the only honest signal
   // that `stripeRequirements` means anything yet.
-  const bannerConfig = resolveBrandStripeBannerConfig({
+  const stripeBannerBase = resolveBrandStripeBannerConfig({
     status: stripeStatus,
     requirements: stripeRequirements,
     statusQuerySucceeded: stripeStatusQuery.isSuccess,
     accountBusinessUrl,
   });
+
+  // #3645 PR10 — payout visibility (finance_manager+ RPC; the route gate already
+  // keeps lower roles off this screen). A failed read degrades to "no extra
+  // state" — the card falls back to its existing copy, never to a guess.
+  const payoutVisibilityQuery = useBrandPayoutVisibility(brand?.id ?? null);
+  const payoutVisibility = payoutVisibilityQuery.data ?? null;
+  // Fresh provider flags beat the cached brand row when the live queries answered.
+  const payoutReadinessBrand = brand === null ? null : {
+    ...brand,
+    chargesEnabled: stripeStatusQuery.data?.charges_enabled ??
+      brand.chargesEnabled,
+    payoutsEnabled: stripeStatusQuery.data?.payouts_enabled ??
+      brand.payoutsEnabled,
+    hasPaystackRecipient: paystackStatusQuery.data?.recipient_connected ??
+      brand.hasPaystackRecipient,
+  };
+  const payoutStatus = resolveBrandPayoutStatus({
+    chargeReady: isBrandChargeReady(payoutReadinessBrand),
+    payoutReady: isBrandPayoutReady(payoutReadinessBrand),
+    visibility: payoutVisibility,
+  });
+  // Stripe: overlay on the existing banner (only when it is the "connected"
+  // card — an action-required card is never papered over).
+  const bannerConfig = overlayPayoutStatusOnStripeBanner(
+    stripeBannerBase,
+    payoutStatus,
+  );
+  // Paystack: there is no Stripe banner; the same card carries the payout state
+  // with no CTA (the bank form is already on screen below it).
+  const paystackStatusBanner = payoutStatus === null
+    ? null
+    : payoutStatusToBannerConfig(payoutStatus, { withCta: false });
 
   // #1863 §4.10 — the server has refused this caller. Derived once, from the
   // real classified errors, for BOTH twins. When true the whole body is
@@ -404,6 +495,53 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {/* #3645 PR10 — the one status card (selling-add-bank / next payout /
+              paused), then balance tiles. Both only once a payout state exists. */}
+          {paystackStatusBanner !== null
+            ? (
+              <PaymentsStatusCard
+                config={paystackStatusBanner}
+                onCta={onOpenOnboard}
+              />
+            )
+            : null}
+          {connected && !paystackEditing && payoutVisibility !== null &&
+              payoutVisibility.currency !== null
+            ? (
+              <View style={styles.kpisRow}>
+                <KpiTile
+                  label="Earned"
+                  value={formatCurrency(
+                    payoutVisibility.earnedCents,
+                    payoutVisibility.currency,
+                    true,
+                  )}
+                  sub="Total from sales"
+                  style={styles.kpiCell}
+                />
+                <KpiTile
+                  label="On its way"
+                  value={formatCurrency(
+                    payoutVisibility.onItsWayCents,
+                    payoutVisibility.currency,
+                    true,
+                  )}
+                  sub="Held, then sent"
+                  style={styles.kpiCell}
+                />
+                <KpiTile
+                  label="Paid"
+                  value={formatCurrency(
+                    payoutVisibility.paidCents,
+                    payoutVisibility.currency,
+                    true,
+                  )}
+                  sub="Sent to your bank"
+                  style={styles.kpiCell}
+                />
+              </View>
+            )
+            : null}
           {connected && !paystackEditing
             ? (
               <>
@@ -572,54 +710,10 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           )
           : null}
 
-        {/* SECTION A — Status Banner */}
+        {/* SECTION A — Status Banner (the ONE status card; #3645 PR10 payout
+            states are overlaid on it, never a second card) */}
         {bannerConfig !== null
-          ? (
-            <GlassCard
-              variant="base"
-              padding={spacing.md}
-              style={[
-                bannerConfig.destructive ? styles.bannerDestructive : null,
-                bannerConfig.success ? styles.bannerSuccess : null,
-              ]}
-            >
-              <View style={styles.bannerRow}>
-                <View
-                  style={[
-                    styles.bannerIconWrap,
-                    bannerConfig.destructive &&
-                    styles.bannerIconWrapDestructive,
-                    bannerConfig.success && styles.bannerIconWrapSuccess,
-                  ]}
-                >
-                  <Icon
-                    name={bannerConfig.icon}
-                    size={20}
-                    color={bannerConfig.iconColor}
-                  />
-                </View>
-                <View style={styles.bannerTextCol}>
-                  <Text style={styles.bannerTitle}>{bannerConfig.title}</Text>
-                  <Text style={styles.bannerSub}>{bannerConfig.sub}</Text>
-                </View>
-              </View>
-              {bannerConfig.ctaLabel !== null &&
-                  bannerConfig.ctaVariant !== null
-                ? (
-                  <View style={styles.bannerCtaRow}>
-                    <Button
-                      label={bannerConfig.ctaLabel}
-                      onPress={onOpenOnboard}
-                      variant={bannerConfig.ctaVariant}
-                      size="md"
-                      fullWidth
-                      accessibilityLabel={bannerConfig.ctaLabel}
-                    />
-                  </View>
-                )
-                : null}
-            </GlassCard>
-          )
+          ? <PaymentsStatusCard config={bannerConfig} onCta={onOpenOnboard} />
           : null}
 
         {stripeStatusQuery.isError

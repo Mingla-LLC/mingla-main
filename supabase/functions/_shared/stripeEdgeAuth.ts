@@ -109,6 +109,32 @@ export async function getBrandTeamUserIdsByRoles(
   return Array.from(new Set((data ?? []).map((row) => String(row.user_id))));
 }
 
+/**
+ * Strict twin of getBrandTeamUserIdsByRoles for durable outbox drains.
+ * Empty roles still return [] (nothing to notify). A query ERROR throws so the
+ * caller cannot mark a notice complete after a failed recipient lookup.
+ */
+export async function getBrandTeamUserIdsByRolesOrThrow(
+  supabase: SupabaseClient,
+  brandId: string,
+  roles: readonly string[],
+): Promise<string[]> {
+  if (!Array.isArray(roles) || roles.length === 0) return [];
+  const { data, error } = await supabase
+    .from("brand_team_members")
+    .select("user_id, role")
+    .eq("brand_id", brandId)
+    .is("removed_at", null)
+    .not("accepted_at", "is", null)
+    .in("role", roles as string[]);
+  if (error) {
+    throw new Error(
+      `brand team-by-roles lookup failed: ${error.message ?? String(error)}`,
+    );
+  }
+  return Array.from(new Set((data ?? []).map((row) => String(row.user_id))));
+}
+
 // Thin wrapper kept byte-stable for existing callers: the 3 payments-manager
 // roles. Delegates to the role-parameterized resolver above.
 export async function getBrandPaymentManagerUserIds(

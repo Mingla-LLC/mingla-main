@@ -193,10 +193,31 @@ jest.mock("../../../services/supabase", () => ({
 
 jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: jest.fn(), setQueryData: jest.fn() }),
+  // #3645 PR10 — BrandPaymentsView mounts useBrandPayoutVisibility → useQuery;
+  // idle mock required so the payments mount still reaches the bank field.
+  useQuery: () => ({
+    data: null,
+    isLoading: false,
+    isSuccess: false,
+    error: null,
+    refetch: jest.fn(),
+  }),
+  useInfiniteQuery: () => ({
+    data: null,
+    isLoading: false,
+    isSuccess: false,
+    error: null,
+    refetch: jest.fn(),
+    fetchNextPage: jest.fn(),
+    hasNextPage: false,
+  }),
 }));
 
 jest.mock("../../../context/AuthContext", () => ({
-  useAuth: () => ({ user: { id: "user-1", email: "ng@example.com" } }),
+  useAuth: () => ({
+    user: { id: "user-1", email: "ng@example.com" },
+    isAuthReady: true,
+  }),
 }));
 
 const mockIdleQuery = { data: undefined, isLoading: false, isError: false, refetch: jest.fn() };
