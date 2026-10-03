@@ -255,10 +255,21 @@ Deno.test("internal handler fails closed before client creation and exact bearer
           if (name === "claim_payout_release_alerts") {
             return Promise.resolve({ data: [], error: null });
           }
+          // Issue #3645 PR8 (append-only): surface returns rows[], not dark payload.
+          // Issue #3645 PR10: pause/outcome notice drains return rows[].
+          // Issue #1345: reservation slot-unavailable alert drain (was 6, now 7).
+          if (
+            name === "list_missing_payout_source_fees" ||
+            name === "surface_payout_releases_waiting_for_bank" ||
+            name === "claim_brand_payout_pause_notices" ||
+            name === "claim_brand_payout_outcome_notices" ||
+            // #1345: include reservation slot-unavailable alert claim in empty-RPC stubs.
+            name === "claim_reservation_slot_unavailable_alerts"
+          ) {
+            return Promise.resolve({ data: [], error: null });
+          }
           return Promise.resolve({
-            data: name === "list_missing_payout_source_fees"
-              ? []
-              : { dark: true, executed: 0 },
+            data: { dark: true, executed: 0 },
             error: null,
           });
         },
@@ -298,11 +309,16 @@ Deno.test("internal handler fails closed before client creation and exact bearer
   );
   assertEquals(ok.status, 200);
   assertEquals(clientCreations, 1);
-  assertEquals(rpcCalls, 3);
+  assertEquals(rpcCalls, 7);
   assertEquals(rpcNames, [
     "list_missing_payout_source_fees",
     "run_payout_release_dark_sweep",
+    "surface_payout_releases_waiting_for_bank",
+    "claim_brand_payout_pause_notices",
+    "claim_brand_payout_outcome_notices",
     "claim_payout_release_alerts",
+    // #1345: reservation slot-unavailable alert drain runs after attempt-cap alerts.
+    "claim_reservation_slot_unavailable_alerts",
   ]);
   assertEquals((await ok.json()).dark, true);
 });

@@ -84,6 +84,7 @@ import {
   useEndBusinessEventTicketSales,
 } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
+import { useOfferingPayoutMoney } from "../../../src/hooks/useOfferingPayoutMoney";
 import { canPerformAction } from "../../../src/utils/permissionGates";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 import {
@@ -486,6 +487,12 @@ export default function EventDetailScreen(): React.ReactElement {
   // columns. Null when no online activity exists; KPI card renders that as 0 via its
   // existing hasData guard.
   const payoutGbp = moneySummary.onlineNetMajor;
+  // #3645 PR10 — ledger paid-out / on-its-way for THIS event (finance_manager+).
+  const offeringPayoutMoney = useOfferingPayoutMoney(
+    brand?.id ?? null,
+    event?.id ?? null,
+    event?.currency ?? brand?.defaultCurrency ?? null,
+  );
   // ORCH-1006 Surface 5 — total the brand covered (absorbed VAT + fees) on
   // completed online orders, from orders.pricing_breakdown.absorbed. Legacy
   // orders (NULL breakdown) contribute nothing; the line omits when 0.
@@ -912,6 +919,8 @@ export default function EventDetailScreen(): React.ReactElement {
         <EventDetailKpiCard
           revenueGbp={revenueGbp}
           payoutGbp={payoutGbp}
+          paidOutGbp={offeringPayoutMoney?.paidOutMajor ?? null}
+          onItsWayGbp={offeringPayoutMoney?.onItsWayMajor ?? null}
           coveredGbp={coveredGbp}
           currency={displayCurrency}
           readStatus={eventOrdersQuery.status}

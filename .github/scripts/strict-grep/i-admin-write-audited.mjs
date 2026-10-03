@@ -71,6 +71,10 @@ const ADMIN_WRITE_RPCS = [
   // ISSUE-3386: approve applies a host's venue details change to the live row;
   // reject records the reason. Both call admin_write_audit.
   "admin_review_venue_details_change",
+  // ISSUE-3645 PR9: audited pause/resume of a brand's payouts. Calls
+  // admin_write_audit with a before/after metadata object (brand.payouts_pause /
+  // brand.payouts_resume). Reverting 20270728003645 removes it → FAILS.
+  "admin_set_brand_payouts_paused",
 ];
 
 // Slice a plpgsql function body (between the first `$$` pair after its def).
@@ -191,7 +195,15 @@ if (process.argv.includes("--self-test")) {
     "raise exception 'forbidden'; end if; " +
     "perform public.admin_write_audit('venue_details_change.approve','venue_listing',p_venue_id::text,'r','{}'::jsonb,false); " +
     "return '{}'::jsonb; end; $$;\n";
-  const registered = identity1276 + money1278 + offerings1277 + venueDetailsChange3386;
+  // ISSUE-3645 PR9: the audited pause/resume write RPC — registered above, so
+  // include it in the good/other-subject fixtures.
+  const payoutPause3645 =
+    "create or replace function public.admin_set_brand_payouts_paused(p_brand_id uuid) returns jsonb " +
+    "language plpgsql security definer as $$ begin if not public.is_admin_user() then " +
+    "raise exception 'not_authorized'; end if; " +
+    "perform public.admin_write_audit('brand.payouts_pause','brand',p_brand_id::text,'r',jsonb_build_object('k','v')); " +
+    "return '{}'::jsonb; end; $$;\n";
+  const registered = identity1276 + money1278 + offerings1277 + venueDetailsChange3386 + payoutPause3645;
 
   // GOOD.
   let f = [];

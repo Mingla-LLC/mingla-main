@@ -26,6 +26,11 @@ import { Linking } from "react-native";
 const mockPush = jest.fn((_href: string) => undefined);
 jest.mock("expo-router", () => ({
   __esModule: true,
+  // [TEST-MOD-APPROVED #3655] VenueSuiteShell leave beforeRemove uses useNavigation.
+  useNavigation: () => ({
+    addListener: () => () => undefined,
+    dispatch: jest.fn(),
+  }),
   useRouter: () => ({
     push: (href: string) => mockPush(href),
     replace: () => undefined,

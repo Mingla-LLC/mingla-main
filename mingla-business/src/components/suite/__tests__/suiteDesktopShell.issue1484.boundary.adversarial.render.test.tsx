@@ -179,7 +179,14 @@ jest.mock("react-native-gesture-handler", () => {
     Directions: {},
   };
 });
-jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
+// [TEST-MOD-APPROVED #3655] VenueSuiteShell leave beforeRemove needs useNavigation.
+jest.mock("expo-router", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+  useNavigation: () => ({
+    addListener: () => () => undefined,
+    dispatch: jest.fn(),
+  }),
+}));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
@@ -923,9 +930,11 @@ describe("#1484 D — the venue (restaurant) suite renders byte-identically", ()
   });
 
   it("D-2 — the scroll-ownership contract still holds per module", async () => {
-    // Overview and Reservations own their vertical scrolling, so the shell
-    // must not add a second same-axis ScrollView. Unaffected modules retain
-    // the shell-owned ScrollView and `insets.bottom + 120` clearance.
+    // Overview, Reservations, and Settings (#3655 sticky Save) own their
+    // vertical scrolling, so the shell must not add a second same-axis
+    // ScrollView. Unaffected modules retain the shell-owned ScrollView and
+    // `insets.bottom + 120` clearance.
+    // [TEST-MOD-APPROVED #3655] Settings self-scrolls for sticky Save bar.
     mockViewportWidth = 1440;
     for (const moduleId of VENUE_MODULE_IDS) {
       const r = await mount(
@@ -948,7 +957,11 @@ describe("#1484 D — the venue (restaurant) suite renders byte-identically", ()
       const wrapsInScroll =
         wrapper?.props?.contentContainerStyle !== undefined;
 
-      if (moduleId === "overview" || moduleId === "reservations") {
+      if (
+        moduleId === "overview" ||
+        moduleId === "reservations" ||
+        moduleId === "settings"
+      ) {
         expect(wrapsInScroll).toBe(false);
       } else {
         expect(wrapsInScroll).toBe(true);

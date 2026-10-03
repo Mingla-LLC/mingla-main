@@ -43,7 +43,9 @@ Deno.test("in-app suppression and push veto are independent channel decisions", 
   );
 });
 
-Deno.test("only the locked eleven exact Business types enter the new lookup", () => {
+// [TEST-MOD-APPROVED #3645] — #3645 PR10 added four organiser payout
+// visibility preference types; the allowlist is now fifteen exact keys.
+Deno.test("only the locked fifteen exact Business types enter the new lookup", () => {
   assertStringIncludes(SRC, "if (userId && isBusinessPreferenceType(type))");
   assertStringIncludes(
     SRC,
@@ -51,6 +53,10 @@ Deno.test("only the locked eleven exact Business types enter the new lookup", ()
   );
   assertEquals(
     (SRC.match(/^  "business\.[a-z_]+": \{ push:/gm) ?? []).length,
-    11,
+    15,
   );
+  assertStringIncludes(SRC, '"business.payout_waiting_for_bank"');
+  assertStringIncludes(SRC, '"business.payouts_paused"');
+  assertStringIncludes(SRC, '"business.payout_failed"');
+  assertStringIncludes(SRC, '"business.payouts_resumed"');
 });

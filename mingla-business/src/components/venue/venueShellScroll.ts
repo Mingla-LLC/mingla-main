@@ -31,7 +31,12 @@ export const VENUE_SCROLL_NAV_CLEARANCE = 120;
  */
 export function moduleSelfScrolls(module: VenueModule): boolean {
   return (
-    module === "overview" || module === "insights" || module === "reservations"
+    module === "overview" ||
+    module === "insights" ||
+    module === "reservations" ||
+    // #3655 — Settings owns its ScrollView so the Save settings bar can sit
+    // sticky outside the scroll content (shell-wrapped absolute bars scroll away).
+    module === "settings"
   );
 }
 

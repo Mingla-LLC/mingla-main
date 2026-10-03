@@ -30,6 +30,18 @@ import {
   type StripeReleaseResult,
 } from "./engine.ts";
 import { releasePartnerSplitsForOrganiserRelease } from "./partnerRelease.ts";
+// #3645 PR10 — organiser-facing payout notifications (Paystack sent/failed,
+// waiting-for-bank copy, admin pause/resume notices). Organiser-safe by
+// construction: no error_message / attempt_count / OTP / KYC internals.
+import {
+  drainOutcomeNotices,
+  drainPausedNotices,
+  payoutWaitingForBankCopy,
+} from "../_shared/organiserPayoutNotify.ts";
+// #1345 — paid NG reservation slot-unavailable MANUAL refund ops alerts.
+// Drained here (not inline on webhook/confirm) so Resend cannot block money
+// ack / guest confirm. Fail-open; undelivered rows stay open and retry.
+import { drainReservationSlotUnavailableAlertsFailOpen } from "../_shared/reservationSlotUnavailableOpsAlert.ts";
 import { resolvePaymentOperationFlagValue } from "../_shared/secretBundle.ts";
 import {
   NG_PAYOUT_FLOAT_HORIZON_DEFAULT_DAYS,
@@ -51,6 +63,15 @@ type SweepDeps = {
     admin: AdminClient,
     release: StripeReleaseCandidate,
   ) => Promise<void>;
+  notifyWaitingForBank?: (
+    admin: AdminClient,
+    row: {
+      release_id: string;
+      brand_id: string;
+      provider: string;
+      net_due_cents: number;
+    },
+  ) => Promise<void>;
   notifyAttemptCap?: (
     release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
     message: string,
@@ -60,6 +81,17 @@ type SweepDeps = {
   // Issue #1177 — injectable Paystack transfer client (mirror of
   // createStripeReleaseClient) so the organiser rail is unit-testable.
   createPaystackReleaseClient?: () => PaystackReleaseClient;
+  // #3645 PR10 — injectable organiser notice drains (pause/resume + terminal
+  // Paystack outcome) so the sweep stays unit-testable.
+  drainPausedNotices?: (
+    admin: AdminClient,
+  ) => Promise<{ listed: number; delivered: number }>;
+  drainOutcomeNotices?: (
+    admin: AdminClient,
+  ) => Promise<{ listed: number; delivered: number }>;
+  drainReservationSlotUnavailableAlerts?: (
+    admin: AdminClient,
+  ) => Promise<void>;
 };
 
 type PaystackClaimRow = {
@@ -109,7 +141,13 @@ export type PaystackFloatForecast =
   // in the sweep response as well as a structured log event.
   | { status: "failed"; reason: string };
 
-type AdminClient = ReturnType<typeof createClient>;
+// Loose admin handle on purpose. After #1345 extracted
+// runPayoutReleaseSweepAuthenticated(admin: AdminClient), esm.sh bare @2
+// dual-resolves SupabaseClient generic shapes in the #1437 deno check graph
+// and reds every typed admin boundary. Runtime createClient is unchanged;
+// call sites that already used `as never` keep that pattern.
+// deno-lint-ignore no-explicit-any
+type AdminClient = any;
 
 type StripeReleaseClient = {
   balance: {
@@ -223,6 +261,15 @@ function payoutReleaseAlertCopy(alertKind: string): {
         title: "Nigerian payout float needs a top-up before maturity",
         bodyLead:
           "anchors Nigerian payouts maturing sooner than the Paystack balance can cover",
+      };
+    // Issue #3645 PR8 — money is due but the brand has no bank / recipient.
+    // Release stays pending; ops + organiser are told (never silently skipped).
+    case "waiting_for_bank":
+      return {
+        type: "ops.payout_release_waiting_for_bank",
+        title: "Organiser payout is waiting for a bank account",
+        bodyLead:
+          "is mature and owed but cannot release until the organiser connects a payout bank",
       };
     case "stripe_attempt_cap":
     default:
@@ -354,6 +401,84 @@ async function notifyKycBlocked(
       deepLink: `mingla-business://brand/${release.brand_id}/payments/onboard`,
     });
   }
+}
+
+type WaitingForBankRow = {
+  release_id: string;
+  brand_id: string;
+  provider: string;
+  net_due_cents: number;
+};
+
+/** #3645 PR8 — tell payment managers money is waiting on a bank connection. */
+async function notifyWaitingForBank(
+  admin: AdminClient,
+  row: WaitingForBankRow,
+): Promise<void> {
+  const userIds = await getBrandPaymentManagerUserIds(
+    admin as never,
+    row.brand_id,
+  );
+  for (const userId of userIds) {
+    // #3645 PR10 — a `business.*` type so the push routes to the business app
+    // (the old `payout_release.*` type fell through to the consumer app).
+    const copy = payoutWaitingForBankCopy();
+    await dispatchNotification({
+      userId,
+      brandId: row.brand_id,
+      type: copy.type,
+      title: copy.title,
+      body: copy.body,
+      data: {
+        releaseId: row.release_id,
+        provider: row.provider,
+        netDueCents: row.net_due_cents,
+      },
+      relatedId: row.release_id,
+      relatedType: "payout_release",
+      idempotencyKey:
+        `business.payout_waiting_for_bank:${row.release_id}:${userId}`,
+      deepLink: `mingla-business://brand/${row.brand_id}/payments/onboard`,
+    });
+  }
+}
+
+async function surfaceWaitingForBank(
+  admin: AdminClient,
+  deps: SweepDeps,
+): Promise<{ surfaced: number }> {
+  const { data, error } = await admin.rpc(
+    "surface_payout_releases_waiting_for_bank" as never,
+    {
+      p_limit: 50,
+      p_now: new Date().toISOString(),
+    } as never,
+  );
+  if (error) {
+    throw new Error(`waiting_for_bank_surface_failed:${error.message}`);
+  }
+  const rows = (data ?? []) as WaitingForBankRow[];
+  for (const row of rows) {
+    console.error(JSON.stringify({
+      event: "payout_release_waiting_for_bank",
+      function_name: "payout-release-sweep",
+      release_id: row.release_id,
+      brand_id: row.brand_id,
+      provider: row.provider,
+      net_due_cents: row.net_due_cents,
+    }));
+    try {
+      await (deps.notifyWaitingForBank ?? notifyWaitingForBank)(admin, row);
+    } catch (notifyError) {
+      console.error("[payout-release-sweep] waiting-for-bank notify failed", {
+        releaseId: row.release_id,
+        message: notifyError instanceof Error
+          ? notifyError.message
+          : String(notifyError),
+      });
+    }
+  }
+  return { surfaced: rows.length };
 }
 
 async function notifyAttemptCap(
@@ -843,6 +968,9 @@ async function executeClaimedPaystackReleases(
         },
       });
 
+      // #3645 PR10 — terminal organiser notify is durable via
+      // brand_payout_outcome_notices (enqueued on released/failed) and drained
+      // once per tick below. Do not fire-and-forget here.
       totals.reconciled += counts.reconciled;
       totals.initiated += counts.initiated;
       totals.succeededLegs += counts.succeeded;
@@ -997,6 +1125,37 @@ export async function handlePayoutReleaseSweep(
     },
   });
 
+  // #1345 — after auth, every authenticated sweep invocation drains the
+  // reservation slot-unavailable ops-alert outbox fail-open in `finally`,
+  // including partner_attribution_pending / Stripe-phase / ledger early
+  // returns. Budget-bounded so Resend cannot starve money work.
+  try {
+    return await runPayoutReleaseSweepAuthenticated(admin, deps);
+  } finally {
+    try {
+      await (deps.drainReservationSlotUnavailableAlerts ??
+        ((a: AdminClient) =>
+          drainReservationSlotUnavailableAlertsFailOpen(
+            a as never,
+            "[payout-release-sweep]",
+          )))(admin as never);
+    } catch (slotAlertError) {
+      console.error(
+        "[payout-release-sweep] reservation slot-unavailable alert drain failed",
+        {
+          message: slotAlertError instanceof Error
+            ? slotAlertError.message
+            : String(slotAlertError),
+        },
+      );
+    }
+  }
+}
+
+async function runPayoutReleaseSweepAuthenticated(
+  admin: AdminClient,
+  deps: SweepDeps,
+): Promise<Response> {
   // Per-charge provider fees are immutable ledger inputs. Missing fee truth
   // blocks attachment; it never silently becomes zero and never comes from an
   // aggregate provider balance.
@@ -1058,6 +1217,62 @@ export async function handlePayoutReleaseSweep(
     });
     return json({ error: "ledger_sweep_failed" }, 500);
   }
+
+  // #3645 PR8 — mature money with no bank/recipient must never be silent.
+  // Runs on every tick (dark and execute) so sell-before-bank releases stay
+  // pending with a durable ledger reason + ops/organiser signal.
+  let waitingForBank: { surfaced: number };
+  try {
+    waitingForBank = await surfaceWaitingForBank(admin as never, deps);
+  } catch (waitingError) {
+    console.error("[payout-release-sweep] waiting-for-bank surface failed", {
+      message: waitingError instanceof Error
+        ? waitingError.message
+        : String(waitingError),
+    });
+    return json({ error: "waiting_for_bank_surface_failed" }, 500);
+  }
+
+  // #3645 PR10 — admin pause/resume + terminal Paystack outcome notices.
+  // Non-fatal by design: a notification hiccup must never block money movement
+  // or turn a healthy tick into a 500; undelivered notices stay open and retry.
+  try {
+    const paused = await (deps.drainPausedNotices ??
+      ((a: AdminClient) => drainPausedNotices(a as never)))(admin as never);
+    if (paused.listed > 0) {
+      console.info(JSON.stringify({
+        event: "payout_pause_notices_drained",
+        function_name: "payout-release-sweep",
+        listed: paused.listed,
+        delivered: paused.delivered,
+      }));
+    }
+  } catch (pausedError) {
+    console.error("[payout-release-sweep] pause notice drain failed", {
+      message: pausedError instanceof Error
+        ? pausedError.message
+        : String(pausedError),
+    });
+  }
+  try {
+    const outcomes = await (deps.drainOutcomeNotices ??
+      ((a: AdminClient) => drainOutcomeNotices(a as never)))(admin as never);
+    if (outcomes.listed > 0) {
+      console.info(JSON.stringify({
+        event: "payout_outcome_notices_drained",
+        function_name: "payout-release-sweep",
+        listed: outcomes.listed,
+        delivered: outcomes.delivered,
+      }));
+    }
+  } catch (outcomeError) {
+    console.error("[payout-release-sweep] outcome notice drain failed", {
+      message: outcomeError instanceof Error
+        ? outcomeError.message
+        : String(outcomeError),
+    });
+  }
+
   let alertDelivery;
   try {
     alertDelivery = await deliverPendingAttemptCapAlerts(admin as never, deps);
@@ -1081,10 +1296,12 @@ export async function handlePayoutReleaseSweep(
   // shape; the active authority is the strict resolver above.
   // deps.env("PAYOUT_RELEASE_EXECUTE") !== "true"
   if (!payoutReleaseExecute) {
+    // #1345 drain runs in the authenticated finally (after this return).
     return json({
       ok: true,
       dark: true,
       capturedFees,
+      waitingForBank,
       alertDelivery,
       result: data ?? {},
     });
@@ -1231,10 +1448,14 @@ export async function handlePayoutReleaseSweep(
     }
   }
 
+  // #1345 drain runs in the authenticated finally (after this return), so
+  // partner_attribution_pending / Stripe-phase / released-row early returns
+  // still deliver pending refund alerts without delaying money execution.
   return json({
     ok: true,
     dark: false,
     capturedFees,
+    waitingForBank,
     alertDelivery: {
       claimed: alertDelivery.claimed + newAlertDelivery.claimed,
       providerAccepted: alertDelivery.providerAccepted +

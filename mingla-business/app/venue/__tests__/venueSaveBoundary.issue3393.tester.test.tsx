@@ -5,7 +5,15 @@ import { afterEach, beforeEach, expect, jest, test } from "@jest/globals";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const mockNav = { params: {} as Record<string, string>, canGoBack: false };
 const mockBack = jest.fn(); const mockReplace = jest.fn();
-jest.mock("expo-router", () => ({ useLocalSearchParams: () => mockNav.params, useRouter: () => ({ back: mockBack, replace: mockReplace, canGoBack: () => mockNav.canGoBack }) }));
+// [TEST-MOD-APPROVED #3655] deck leave beforeRemove + Save deck details rename.
+jest.mock("expo-router", () => ({
+  useLocalSearchParams: () => mockNav.params,
+  useNavigation: () => ({ addListener: () => () => undefined, dispatch: jest.fn() }),
+  useRouter: () => ({ back: mockBack, replace: mockReplace, canGoBack: () => mockNav.canGoBack }),
+}));
+jest.mock("../../../src/components/ui/ConfirmDialog", () => ({
+  ConfirmDialog: () => null,
+}));
 jest.mock("../../../src/context/AuthContext", () => ({ useAuth: () => ({ user: { id: "owner-3393" }, isAuthReady: true }) }));
 const mockVenue = { id: "venue-3393", placePoolId: "place-3393", brandId: "brand-3393", name: "Test venue", venueCategory: "restaurant" };
 jest.mock("../../../src/hooks/useVenueListings", () => ({ useVenueListing: () => ({ data: mockVenue, isLoading: false }) }));
@@ -35,15 +43,33 @@ beforeEach(() => {
 });
 afterEach(async () => { await Renderer.act(async () => { mounted.splice(0).forEach(tree => tree.unmount()); }); });
 async function mount() { let tree: any; await Renderer.act(async () => { tree = Renderer.create(<VenueDeckReadinessRoute />); }); mounted.push(tree); return tree; }
-async function save(tree: any) { await Renderer.act(async () => { tree.root.findAll((node: any) => node.type === "Button" && node.props.label === "Save changes")[0].props.onPress(); }); }
+// [TEST-MOD-APPROVED #3655] Save is disabled while clean — dirties website first.
+async function dirtiedSave(tree: any) {
+  await Renderer.act(async () => {
+    const website = tree.root.findAll(
+      (node: any) => node.type === "TextInput" || node.props?.testID === "venue-deck-website",
+    )[0];
+    if (website?.props?.onChangeText) {
+      website.props.onChangeText("https://example.test/edited");
+    } else {
+      // Fallback: any editable TextInput on the deck form.
+      const inputs = tree.root.findAll((node: any) => typeof node.props?.onChangeText === "function");
+      expect(inputs.length).toBeGreaterThan(0);
+      inputs[0].props.onChangeText("https://example.test/edited");
+    }
+  });
+  await Renderer.act(async () => {
+    tree.root.findAll((node: any) => node.type === "Button" && node.props.label === "Save deck details")[0].props.onPress();
+  });
+}
 test.each(["tier", "price"])("%s failure cannot navigate or claim success; retry returns to venue with one-shot feedback", async failure => {
   if (failure === "tier") mockSave.mockRejectedValueOnce(new Error("Could not save your changes."));
   else mockPrice.mockRejectedValueOnce(new Error("Could not save your changes."));
-  const tree = await mount(); await save(tree);
+  const tree = await mount(); await dirtiedSave(tree);
   expect(mockBack).not.toHaveBeenCalled(); expect(mockReplace).not.toHaveBeenCalled();
   expect(useVenueSuiteStore.getState().savedFlash).toBeNull();
   expect(tree.root.findAll((node: any) => node.type === "Text" && node.props.children === "Could not save your changes.").length).toBeGreaterThan(0);
-  await save(tree);
+  await dirtiedSave(tree);
   expect(mockReplace).toHaveBeenCalledWith("/venue/venue-3393?module=settings");
   expect(mockReplace).toHaveBeenCalledTimes(1);
   expect(mockSave).toHaveBeenLastCalledWith(expect.objectContaining({ brandId: "brand-3393", venueId: "venue-3393", placePoolId: "place-3393" }));
@@ -55,7 +81,7 @@ test.each(["tier", "price"])("%s failure cannot navigate or claim success; retry
 });
 test("actual save from Settings uses back navigation without Events fallback", async () => {
   mockNav.params.from = "venue"; mockNav.canGoBack = true;
-  const tree = await mount(); await save(tree);
+  const tree = await mount(); await dirtiedSave(tree);
   expect(mockBack).toHaveBeenCalledTimes(1); expect(mockReplace).not.toHaveBeenCalled();
   expect(useVenueSuiteStore.getState().savedFlash?.message).toBe("Changes saved");
 });

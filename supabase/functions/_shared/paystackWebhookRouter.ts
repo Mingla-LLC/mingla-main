@@ -257,7 +257,7 @@ export async function handlePaystackChargeSuccess(
     const { data: rSession, error: rSessionError } = await supabase
       .from("reservation_checkout_sessions")
       .select(
-        "id, status, reservation_id, amount_cents, currency, attribution_click_id",
+        "id, status, reservation_id, amount_cents, currency, attribution_click_id, failure_reason",
       )
       .eq("paystack_reference", reference)
       .maybeSingle();

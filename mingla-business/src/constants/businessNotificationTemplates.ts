@@ -27,7 +27,11 @@
 
 import type { IconName } from "../components/ui/Icon";
 
-/** The 11 v1 business notification types (LOCKED — SUB-D §0). */
+/**
+ * Business notification types. The original 11 v1 types (SUB-D §0) plus the
+ * #3645 PR10 organiser payout visibility set (failed / waiting-for-bank /
+ * paused / resumed). `business.payout_paid` was already in v1.
+ */
 export type BusinessNotificationType =
   | "business.order_paid"
   | "business.event_sold_out"
@@ -36,6 +40,10 @@ export type BusinessNotificationType =
   | "business.dispute_opened"
   | "business.dispute_action_needed"
   | "business.payout_paid"
+  | "business.payout_failed"
+  | "business.payout_waiting_for_bank"
+  | "business.payouts_paused"
+  | "business.payouts_resumed"
   | "business.account_status_changed"
   | "business.new_review"
   | "business.claim_decision"
@@ -74,7 +82,8 @@ export interface BusinessNotificationTemplate {
 }
 
 /**
- * BUSINESS_NOTIFICATION_TEMPLATES — the 11 v1 types.
+ * BUSINESS_NOTIFICATION_TEMPLATES — the 11 v1 types plus #3645 PR10 payout
+ * visibility types.
  *
  * Copy mirrors SUB-D §3 / §8. Branch types (`account_status_changed`,
  * `claim_decision`) carry the DEFAULT branch copy here; the branch-specific
@@ -173,6 +182,63 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
     pushBody: "{amount} is on its way to your bank.",
     inAppTitle: "You got paid",
     inAppBody: "{amount} is on its way to your bank — expected {arrivalDate}.",
+    severity: "info",
+    family: "money",
+    icon: "bank",
+    masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  // #3645 PR10 — organiser payout visibility (both rails). Copy mirrors
+  // organiserPayoutNotify so push / inbox / status card say the same thing.
+  "business.payout_failed": {
+    type: "business.payout_failed",
+    pushTitle: "Payout couldn't be sent",
+    pushBody: "We couldn't send a payout. Check your bank details.",
+    inAppTitle: "Payout couldn't be sent",
+    inAppBody:
+      "We couldn't send a payout to your bank. Check your bank details or contact support.",
+    severity: "warning",
+    family: "risk",
+    icon: "bank",
+    masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.payout_waiting_for_bank": {
+    type: "business.payout_waiting_for_bank",
+    pushTitle: "Add a bank to get paid",
+    pushBody: "A payout is ready — add a bank so we can send it.",
+    inAppTitle: "Add a bank to get paid",
+    inAppBody:
+      "A payout is ready to send, but Mingla is waiting until you add a bank account.",
+    severity: "warning",
+    family: "money",
+    icon: "bank",
+    masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.payouts_paused": {
+    type: "business.payouts_paused",
+    pushTitle: "Payouts paused",
+    pushBody: "Your sales keep adding up. They'll send once payouts resume.",
+    inAppTitle: "Payouts paused",
+    inAppBody:
+      "Payouts are paused. Your sales keep adding up and will be sent once payouts resume.",
+    severity: "warning",
+    family: "money",
+    icon: "clock",
+    masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.payouts_resumed": {
+    type: "business.payouts_resumed",
+    pushTitle: "Payouts resumed",
+    pushBody: "Payouts are back on. Money waiting for you will be sent.",
+    inAppTitle: "Payouts resumed",
+    inAppBody: "Payouts are back on. Money waiting for you will be sent.",
     severity: "info",
     family: "money",
     icon: "bank",

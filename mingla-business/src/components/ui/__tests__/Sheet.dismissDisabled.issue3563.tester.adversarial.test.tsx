@@ -2,6 +2,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// [TEST-MOD-APPROVED #3655] dismissGuard routes closes through requestDismiss /
+// De Morgan endDrag guard; pin the live shapes, not the pre-#1548 literals.
+
 const repoRoot = path.resolve(__dirname, "../../../..");
 const read = (relativePath: string): string =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -14,14 +17,14 @@ describe("#3563 tester adversarial — every Sheet dismissal route", () => {
     expect(mobile).toContain("dismissDisabled?: boolean");
     expect(mobile.match(/dismissDisabled = false/g)).toHaveLength(2);
     expect(desktop.match(/dismissDisabled = false/g)).toHaveLength(1);
-    expect(mobile.match(/if \(!dismissDisabled\) onClose\(\)/g)).toHaveLength(
-      2,
-    );
+    expect(
+      mobile.match(/if \(!dismissDisabled\) requestDismiss\(\)/g),
+    ).toHaveLength(2);
     expect(desktop.match(/if \(!dismissDisabled\) onClose\(\)/g)).toHaveLength(
       1,
     );
     expect(
-      mobile.match(/if \(!dismissDisabled && dismissOnScrimTap\) onClose\(\)/g),
+      mobile.match(/if \(dismissOnScrimTap\) requestDismiss\(\)/g),
     ).toHaveLength(2);
     expect(
       desktop.match(
@@ -37,7 +40,7 @@ describe("#3563 tester adversarial — every Sheet dismissal route", () => {
     expect(mobile).toContain(
       'pointerEvents={dismissDisabled ? "none" : "auto"}',
     );
-    expect(mobile).toContain("if (commitClose && !dismissDisabled)");
+    expect(mobile).toContain("if (!commitClose || dismissDisabled) return;");
     expect(mobile).toContain("if (dismissDisabled) {\n      endDrag(false);");
     expect(
       mobile.match(/if \(dismissDisabled\) \{\n      endDrag\(false\);/g),

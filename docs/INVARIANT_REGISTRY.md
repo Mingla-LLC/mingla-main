@@ -1,5 +1,14 @@
 # Invariant Registry
 
+## DRAFT — issue #3655 (venue save/leave is predictable)
+
+### I-PROPOSED-3655-VENUE-LEAVE-THREE-WAY (DRAFT)
+
+- **Rule:** Leaving a dirty venue suite section (pill, header back, tab bar, beforeRemove, hardware back, beforeunload) always offers Save changes / Discard changes / Keep editing. Clean sections never prompt. Dirty pills show a 6×6 unsaved dot. Orange primary is the only Mingla-write look; `step` moves without writing; `destructiveOutline` removes after confirm; Done never saves.
+- **Scope:** Mingla Host venue suite + shared `Button` / `ConfirmDialog` / `SheetMobile` primitives used by venue screens. Menu options hold (#3572) stays verbatim. Story 4 SheetMobile `dismissGuard` ships in this epic; empty Venues tab UI stays out (Decision 9: `venueCount === 0` ⇒ no Venues pill; add from `+` only).
+- **Enforcement:** Jest suites `issue_3655_leave_contract.*`, `issue_3655_button_variants.*`, `issue_3655_save_grammar.*`, `issue_3655_sheet_dismiss_guard.*`, `issue_3655_hub_venue_zero.*`, `issue_3655_signout_scope.*` under the required `mingla-business jest` gate.
+- **Status:** DRAFT until this PR merges, Business Web reaches `READY`, and Phase 0/1 leave + dirty-pill behaviour is observed on a real iPhone and Android device. Flip to ACTIVE only after that device proof is on #3655.
+
 ## DRAFT — issue #3645 PR6 (sell before bank / charge vs payout readiness)
 
 ### I-PROPOSED-3645-CHARGE-VS-PAYOUT-READINESS (DRAFT)

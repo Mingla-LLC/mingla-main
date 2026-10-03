@@ -77,9 +77,10 @@ describe("T-B1 — UniversalCreatorSheet 4th root option (venue)", () => {
     const venue = ROOT_OPTIONS[ROOT_OPTIONS.length - 1];
     expect(venue.key).toBe("venue");
     expect(venue.iconName).toBe("location");
-    expect(venue.title).toBe("Create venue listing");
+    // [TEST-MOD-APPROVED #3655] Story 5 — Venue row helper for zero-venue brands.
+    expect(venue.title).toBe("Venue");
     expect(venue.subtitle).toBe(
-      "Your place on Mingla — discovered, recommended, bookable.",
+      "A restaurant, bar or space guests can book",
     );
     // close+push path — a real route, never an in-place step (no dead tap).
     expect(venue.route).toBe("/venue/create");

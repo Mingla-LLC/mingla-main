@@ -198,12 +198,13 @@ describe("META-ORCH-1290 Leg B — deck-readiness edit surface (§4.3.E)", () =>
 
   // ORCH-1304 — the deck-readiness screen no longer drafts a pitch: the
   // "Generate pitch with AI" button + pitch textarea are removed and replaced
-  // with a single "Save changes" button that persists inputs via `save_tier2`
+  // with a single save button that persists inputs via `save_tier2`
   // (no pitch generation). Modified under [TEST-MOD-APPROVED ORCH-1304].
-  test("ORCH-1304 — no owner-side pitch generation; Save changes persists inputs", () => {
+  // [TEST-MOD-APPROVED #3655] caption is "Save deck details" (not "Save changes").
+  test("ORCH-1304 — no owner-side pitch generation; Save deck details persists inputs", () => {
     expect(src).not.toContain("Generate pitch with AI");
     expect(src).not.toContain("runTier2Pipeline");
-    expect(src).toContain("Save changes");
+    expect(src).toContain("Save deck details");
     expect(src).toContain("saveTier2");
   });
 });

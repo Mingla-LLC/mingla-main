@@ -164,6 +164,14 @@ export interface BusinessTodoInput {
   counts: { total: number; live: number; draft: number };
   /** Brand Stripe status is "active". */
   stripeActive: boolean;
+  /**
+   * #3645 PR10 — the brand can RECEIVE payouts (bank / recipient connected).
+   * `stripeActive` stays the charge-ready flag (publish + sell). When this is
+   * explicitly `false` while `stripeActive` is true the brand is selling but
+   * its money is waiting, so Home shows "Add a bank to get paid". Absent →
+   * no bank row (legacy fixtures).
+   */
+  payoutReady?: boolean;
   /** At least one draft has a paid (non-free, >0) ticket — gates the Stripe row. */
   hasDraftPaidOffering: boolean;
   /** Route to the brand's Stripe payments screen. */
@@ -443,6 +451,16 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
       sublabel: input.hasDraftPaidOffering
         ? "You have a paid offering ready"
         : "Set up payouts so you can sell",
+      action: { kind: "route", route: input.stripeRoute },
+    });
+  } else if (input.payoutReady === false) {
+    // #3645 PR10 — charge-ready but not payout-ready: the brand can keep
+    // selling, its money waits until a bank is added. Same rung as
+    // `homeNextAction` (rung 1b).
+    todos.push({
+      id: "add_bank_to_get_paid",
+      label: "Add a bank to get paid",
+      sublabel: "You can keep selling. Your money waits until you add a bank.",
       action: { kind: "route", route: input.stripeRoute },
     });
   }

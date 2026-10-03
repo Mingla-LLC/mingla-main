@@ -225,7 +225,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       {
         title: 'Your bank details never touch Mingla',
         body:
-          'Accept the Mingla Host terms and Stripe’s own secure pages take your business and bank details. Mingla gets back one answer — connected, or not connected. Never your numbers. Mingla is the merchant of record for ticket sales, which is why payouts reach you from us rather than from each buyer.',
+          'Accept the Mingla Host terms and Stripe’s own secure pages take your business and bank details. Mingla gets back one answer — connected, or not connected. Never your numbers. When a sale clears, Stripe or Paystack send the payout to the bank you connected — about a day after each payment.',
       },
       {
         title: 'Your address chooses your payment network',

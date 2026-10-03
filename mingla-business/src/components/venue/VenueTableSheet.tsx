@@ -73,6 +73,8 @@ export interface VenueTableSheetProps {
   deleting?: boolean;
   /** Only managers+ may delete; the row action is hidden otherwise. */
   canDelete?: boolean;
+  /** Mutation failure while this sheet (or its delete confirm) is open. */
+  errorMessage?: string | null;
   testID?: string;
 }
 
@@ -85,6 +87,7 @@ export function VenueTableSheet({
   onDelete,
   deleting = false,
   canDelete = false,
+  errorMessage = null,
   testID,
 }: VenueTableSheetProps): React.ReactElement {
   const isEdit = table !== null;
@@ -300,6 +303,16 @@ export function VenueTableSheet({
             />
           </Field>
 
+          {errorMessage !== null && errorMessage.length > 0 && !confirmDeleteOpen ? (
+            <Text
+              style={styles.fieldError}
+              accessibilityLiveRegion="polite"
+              testID="venue-table-sheet-error"
+            >
+              {errorMessage}
+            </Text>
+          ) : null}
+
           <Button
             label={isEdit ? "Save table" : "Add table"}
             onPress={handleSave}
@@ -344,6 +357,7 @@ export function VenueTableSheet({
           confirmLabel="Delete"
           cancelLabel="Keep table"
           confirmLoading={deleting}
+          errorMessage={errorMessage}
           confirmTestID="venue-table-delete-confirm"
           cancelTestID="venue-table-delete-cancel"
           testID="venue-table-delete-dialog"

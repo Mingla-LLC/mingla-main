@@ -10,6 +10,13 @@ import { VenueSuiteShell } from "../VenueSuiteShell";
 
 let mockWideDesktop = false;
 
+// [TEST-MOD-APPROVED #3655] Suite leave beforeRemove uses expo-router
+// useNavigation; this render config does not transform @react-navigation ESM.
+jest.mock("expo-router", () => ({
+  useNavigation: () => ({
+    addListener: () => () => undefined,
+  }),
+}));
 jest.mock("../../../hooks/useResponsiveLayout", () => ({
   useResponsiveLayout: () => ({ isWideDesktop: mockWideDesktop }),
 }));

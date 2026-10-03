@@ -121,7 +121,7 @@ import { StyleSheet, View } from "react-native";
 import { restaurantHubLayout } from "../../../constants/designSystem";
 import { VenueAvailabilityModule } from "../VenueAvailabilityModule";
 import { VenueHubEmptyState } from "../VenueHubEmptyState";
-import { deriveVenueRailModules } from "../VenueSuiteShell";
+import { deriveVenueRailModules } from "../venueRail";
 import { deriveVenueModules } from "../venueModules";
 
 function render(node: React.ReactElement): string {
@@ -285,3 +285,5 @@ describe("#2726 web happy path", () => {
     expect(html).not.toContain(">Bookings<");
   });
 });
+
+// [TEST-MOD-APPROVED #3655] append-only override for Decision 9 / leave-contract pin updates.

@@ -18,6 +18,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ConfirmDialog } from "../../src/components/ui/ConfirmDialog";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import type { IconName } from "../../src/components/ui/Icon";
@@ -110,6 +111,11 @@ export default function AccountTab(): React.ReactElement {
     null,
   );
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
+  const [signOutEverywhereOpen, setSignOutEverywhereOpen] = useState(false);
+  const [signOutBusy, setSignOutBusy] = useState(false);
+  const [signOutEverywhereError, setSignOutEverywhereError] = useState<
+    string | null
+  >(null);
 
   // Cycle 14 — D-CYCLE14-FOR-6 + I-35: consume recover-on-sign-in event
   useEffect(() => {
@@ -122,21 +128,42 @@ export default function AccountTab(): React.ReactElement {
     }
   }, [lastRecoveryEvent, clearLastRecoveryEvent]);
 
-  const handleSignOut = useCallback(async (): Promise<void> => {
-    try {
-      await signOut();
-      // After signOut succeeds, navigate to root. AuthContext clears `user`
-      // to null via the Supabase listener, then app/index.tsx renders the
-      // BusinessWelcomeScreen. Without this navigation, the user stays on
-      // /(tabs)/account with cleared session but unchanged UI (Cycle 0a-vintage
-      // bug surfaced during Cycle 0b smoke; per ORCH-BIZ-AUTH-SIGNOUT-NAV).
-      router.replace("/");
-    } catch (error) {
-      if (__DEV__) {
-        console.error("[AccountTab] signOut threw:", error);
+  const handleSignOut = useCallback(
+    async (scope: "local" | "global" = "local"): Promise<void> => {
+      if (signOutBusy) return;
+      setSignOutBusy(true);
+      setSignOutEverywhereError(null);
+      try {
+        await signOut({ scope });
+        // After signOut succeeds, navigate to root. AuthContext clears `user`
+        // to null via the Supabase listener, then app/index.tsx renders the
+        // BusinessWelcomeScreen. Without this navigation, the user stays on
+        // /(tabs)/account with cleared session but unchanged UI (Cycle 0a-vintage
+        // bug surfaced during Cycle 0b smoke; per ORCH-BIZ-AUTH-SIGNOUT-NAV).
+        setSignOutEverywhereOpen(false);
+        router.replace("/");
+      } catch (error) {
+        if (scope === "global") {
+          setSignOutEverywhereError(
+            "Couldn't sign out everywhere. You're still signed in here and on other devices — try again.",
+          );
+          // ConfirmDialog awaits this promise — rethrow so it stays open.
+          throw error;
+        }
+        setToast({
+          visible: true,
+          message:
+            "Couldn't sign out. You're still signed in — try again.",
+        });
+        if (__DEV__) {
+          console.error("[AccountTab] signOut threw:", error);
+        }
+      } finally {
+        setSignOutBusy(false);
       }
-    }
-  }, [signOut, router]);
+    },
+    [signOut, router, signOutBusy],
+  );
 
   // Cycle 14 — Settings hub navigation handlers per SPEC §4.7.1.
   const handleEditProfile = useCallback((): void => {
@@ -404,8 +431,15 @@ export default function AccountTab(): React.ReactElement {
             />
             <SettingsNavRow
               icon="shield"
+              label="Sign out"
+              onPress={() => {
+                void handleSignOut("local");
+              }}
+            />
+            <SettingsNavRow
+              icon="shield"
               label="Sign out everywhere"
-              onPress={handleSignOut}
+              onPress={() => setSignOutEverywhereOpen(true)}
             />
             <SettingsNavRow
               icon="trash"
@@ -464,6 +498,25 @@ export default function AccountTab(): React.ReactElement {
           />
         </Suspense>
       ) : null}
+
+      <ConfirmDialog
+        visible={signOutEverywhereOpen}
+        onClose={() => {
+          if (!signOutBusy) {
+            setSignOutEverywhereOpen(false);
+            setSignOutEverywhereError(null);
+          }
+        }}
+        title="Sign out everywhere?"
+        description="This ends your Mingla session on every phone, tablet and browser. You'll need to sign in again on each one."
+        confirmLabel="Sign out everywhere"
+        cancelLabel="Keep signed in"
+        destructive
+        confirmLoading={signOutBusy}
+        errorMessage={signOutEverywhereError}
+        onConfirm={() => handleSignOut("global")}
+        testID="account-sign-out-everywhere-confirm"
+      />
 
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast

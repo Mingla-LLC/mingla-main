@@ -32,6 +32,7 @@ import {
   type GalleryDeviceMediaResult,
 } from "./venueGalleryDeviceMedia";
 import { generateBrandAvatarPathToken } from "../utils/brandAvatarRules";
+import { extractBrandCoverStoragePath } from "../utils/brandCoverRules";
 
 export const VENUE_GALLERY_BUCKET = "brand_covers";
 // Must match brand_covers.file_size_limit. Keeping this client-side guard at
@@ -172,4 +173,26 @@ export async function uploadGalleryPhoto(
     .from(VENUE_GALLERY_BUCKET)
     .getPublicUrl(path);
   return data.publicUrl;
+}
+
+/**
+ * #3655 — best-effort remove of staged gallery objects that were uploaded but
+ * never committed (Discard / replace cycles). Never throws.
+ */
+export async function removeGalleryStorageObjects(
+  urls: readonly string[],
+): Promise<void> {
+  const paths = [
+    ...new Set(
+      urls
+        .map((url) => extractBrandCoverStoragePath(url))
+        .filter((path): path is string => path !== null),
+    ),
+  ];
+  if (paths.length === 0) return;
+  try {
+    await supabase.storage.from(VENUE_GALLERY_BUCKET).remove(paths);
+  } catch {
+    // orphan cleanup is non-blocking
+  }
 }

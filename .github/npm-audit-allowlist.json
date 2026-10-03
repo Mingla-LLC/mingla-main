@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "notes": [
+    "Allowlisted GitHub Security Advisories are ignored by the high/critical",
+    "ceiling in .github/scripts/npm-audit-ceiling.mjs for mingla-site-cms and",
+    "mingla-sites. Dependabot security alerts remain the reporter for these",
+    "entries — CI must not merge-block on an advisory with no patched release.",
+    "Remove an entry as soon as npm publishes a fix and the lockfile can clear it."
+  ],
+  "advisories": [
+    {
+      "ghsa": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "reason": "Advisory range is <=3.0.3 with firstPatchedVersion null; npm latest is still 3.0.3 (Dependabot security_update_not_found). Tracked on #2830.",
+      "addedForIssue": 2830
+    }
+  ]
+}

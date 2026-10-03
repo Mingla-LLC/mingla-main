@@ -199,7 +199,13 @@ export default function DeleteAccountRoute(): React.ReactElement {
           : "Account deleted. Signing you out…",
       );
       setTimeout(async (): Promise<void> => {
-        await signOut();
+        // #3655 — signOut now rejects on API error; account is already gone, so
+        // still leave the signed-in shell even if session teardown fails.
+        try {
+          await signOut();
+        } catch {
+          // ignore — navigate home either way
+        }
         router.replace("/" as never);
       }, SIGN_OUT_DELAY_MS);
     } catch (_err) {
