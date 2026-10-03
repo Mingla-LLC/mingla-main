@@ -162,7 +162,9 @@ Deno.test("handler remains dark while the execution flag is unset", async () => 
                 name === "surface_payout_releases_waiting_for_bank" ||
                 // Issue #3645 PR10: pause/outcome drains; RPC-order pin updated.
                 name === "claim_brand_payout_pause_notices" ||
-                name === "claim_brand_payout_outcome_notices"
+                name === "claim_brand_payout_outcome_notices" ||
+                // Issue #1345: reservation slot-unavailable alert drain.
+                name === "claim_reservation_slot_unavailable_alerts"
               ? []
               : { dark: true, executed: 0 },
             error: null,
@@ -189,6 +191,7 @@ Deno.test("handler remains dark while the execution flag is unset", async () => 
     "surface_payout_releases_waiting_for_bank",
     "claim_brand_payout_pause_notices",
     "claim_brand_payout_outcome_notices",
+    "claim_reservation_slot_unavailable_alerts",
     "claim_payout_release_alerts",
   ]);
   assertEquals(stripeClients, 0);
@@ -254,9 +257,11 @@ Deno.test("enabled test path records one accepted payout with exact amount and k
             return Promise.resolve({ data: [], error: null });
           }
           // Issue #3645 PR10: pause/outcome notice drains (empty in this scenario).
+          // Issue #1345: reservation slot-unavailable alert drain (empty).
           if (
             name === "claim_brand_payout_pause_notices" ||
-            name === "claim_brand_payout_outcome_notices"
+            name === "claim_brand_payout_outcome_notices" ||
+            name === "claim_reservation_slot_unavailable_alerts"
           ) {
             return Promise.resolve({ data: [], error: null });
           }

@@ -46,7 +46,6 @@ import {
 // partner (psplit_) handler; each no-ops on the other's references.
 import { handlePaystackOrganiserTransferEvent } from "../_shared/paystackOrganiserRelease.ts";
 import { writeAudit } from "../_shared/audit.ts";
-import { drainReservationSlotUnavailableAlertsFailOpen } from "../_shared/reservationSlotUnavailableOpsAlert.ts";
 import { dispatchTicketConfirmation } from "../_shared/ticketCheckout.ts";
 // META-ORCH-1161 §7.1 — buyer purchase-confirmation push (the Paystack-equivalent
 // of the Stripe finalize path). Email stays owned by dispatchTicketConfirmation.
@@ -127,11 +126,6 @@ serve(async (req) => {
   });
 
   const supabase = serviceClient();
-  // #1345 — drain any backlog before routing (fail-open; never blocks ack).
-  await drainReservationSlotUnavailableAlertsFailOpen(
-    supabase as never,
-    "[paystack-webhook]",
-  );
 
   // ---- Idempotent inbox (reuse payment_webhook_events) ----
   // #1221: Paystack documents no event/delivery id. The only durable envelope
@@ -369,13 +363,6 @@ serve(async (req) => {
       );
     }
   }
-
-  // #1345 — drain after finalize paths so a fresh enqueue is sent promptly
-  // (fail-open; never sets processingError / never changes ack).
-  await drainReservationSlotUnavailableAlertsFailOpen(
-    supabase as never,
-    "[paystack-webhook]",
-  );
 
   // ---- Mark processed / retry_count++ / error (mirror stripe-webhook) ----
   const nextRetryCount = priorRetryCount + 1;

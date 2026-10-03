@@ -38,6 +38,10 @@ import {
   drainPausedNotices,
   payoutWaitingForBankCopy,
 } from "../_shared/organiserPayoutNotify.ts";
+// #1345 — paid NG reservation slot-unavailable MANUAL refund ops alerts.
+// Drained here (not inline on webhook/confirm) so Resend cannot block money
+// ack / guest confirm. Fail-open; undelivered rows stay open and retry.
+import { drainReservationSlotUnavailableAlertsFailOpen } from "../_shared/reservationSlotUnavailableOpsAlert.ts";
 import { resolvePaymentOperationFlagValue } from "../_shared/secretBundle.ts";
 import {
   NG_PAYOUT_FLOAT_HORIZON_DEFAULT_DAYS,
@@ -85,6 +89,9 @@ type SweepDeps = {
   drainOutcomeNotices?: (
     admin: AdminClient,
   ) => Promise<{ listed: number; delivered: number }>;
+  drainReservationSlotUnavailableAlerts?: (
+    admin: AdminClient,
+  ) => Promise<void>;
 };
 
 type PaystackClaimRow = {
@@ -1227,6 +1234,26 @@ export async function handlePayoutReleaseSweep(
         ? outcomeError.message
         : String(outcomeError),
     });
+  }
+  // #1345 — reservation slot-unavailable MANUAL refund ops-alert drain.
+  // Non-fatal: a Resend hiccup must never block payout movement or turn a
+  // healthy tick into a 500; undelivered alerts stay open and retry.
+  try {
+    await (deps.drainReservationSlotUnavailableAlerts ??
+      ((a: AdminClient) =>
+        drainReservationSlotUnavailableAlertsFailOpen(
+          a as never,
+          "[payout-release-sweep]",
+        )))(admin as never);
+  } catch (slotAlertError) {
+    console.error(
+      "[payout-release-sweep] reservation slot-unavailable alert drain failed",
+      {
+        message: slotAlertError instanceof Error
+          ? slotAlertError.message
+          : String(slotAlertError),
+      },
+    );
   }
 
   let alertDelivery;

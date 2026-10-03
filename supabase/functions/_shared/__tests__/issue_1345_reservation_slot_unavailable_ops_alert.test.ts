@@ -1,15 +1,17 @@
 // ISSUE-1345 — durable ops alert when a paid NG reservation is charged but the
 // slot was taken between charge and finalize (manual refund due; #1175 dark).
 //
-// Finalize ENQUEUES an outbox row (no Resend await). Drain claims →
-// sendOpsAlertEmail → completes only on succeeded > 0.
+// Finalize atomically marks failed + enqueues (no Resend await). Drain lives
+// on payout-release-sweep: claim → sendOpsAlertEmail (bounded timeout) →
+// record delivery with claim_id only on succeeded > 0.
 //
 // Coverage:
-//   S1–S5  source-contract guards (FAILS-ON-REVERT)
-//   R1     runtime: slot-taken finalize enqueues (no Resend POST)
-//   R2     runtime: enqueue throw is swallowed (outcome still refund_due)
-//   R3     runtime: drain sends + completes on succeeded > 0
-//   R4     runtime: drain leaves row open when succeeded === 0
+//   S1–S6  source-contract guards (FAILS-ON-REVERT)
+//   R1     runtime: slot-taken finalize uses atomic record RPC (no Resend)
+//   R2     runtime: record throw is swallowed (outcome still refund_due)
+//   R3     runtime: drain sends + records provider_accepted on succeeded > 0
+//   R4     runtime: drain records retryable when succeeded === 0
+//   R5     runtime: failed-status replay re-ensures outbox enqueue
 //
 // Run: deno test --allow-read --allow-env --allow-net=0
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
@@ -20,14 +22,20 @@ const FINALIZE_SRC =
   "supabase/functions/_shared/reservationPaystackFinalize.ts";
 const DRAIN_SRC =
   "supabase/functions/_shared/reservationSlotUnavailableOpsAlert.ts";
+const WEBHOOK_SRC = "supabase/functions/paystack-webhook/index.ts";
+const CONFIRM_SRC = "supabase/functions/venue-reservation-confirm/index.ts";
+const SWEEP_SRC = "supabase/functions/payout-release-sweep/index.ts";
 const finalizeSrc = await Deno.readTextFile(FINALIZE_SRC);
 const drainSrc = await Deno.readTextFile(DRAIN_SRC);
+const webhookSrc = await Deno.readTextFile(WEBHOOK_SRC);
+const confirmSrc = await Deno.readTextFile(CONFIRM_SRC);
+const sweepSrc = await Deno.readTextFile(SWEEP_SRC);
 const hasIn = (src: string, n: string, why: string) =>
   assert(src.includes(n), `must contain \`${n}\` (${why})`);
 
 // ─── Source contracts ────────────────────────────────────────────────────────
 
-Deno.test("#1345 S1 — finalize does NOT await Resend (enqueue only)", () => {
+Deno.test("#1345 S1 — finalize does NOT await Resend (atomic record+enqueue only)", () => {
   // [FAILS-ON-REVERT KEY]
   assert(
     !finalizeSrc.includes('import { sendOpsAlertEmail }'),
@@ -35,8 +43,8 @@ Deno.test("#1345 S1 — finalize does NOT await Resend (enqueue only)", () => {
   );
   hasIn(
     finalizeSrc,
-    'enqueue_reservation_slot_unavailable_alert',
-    "finalize enqueues via the durable outbox RPC",
+    "record_reservation_slot_unavailable_refund_due",
+    "finalize marks failed + enqueues via the atomic RPC",
   );
 });
 
@@ -47,38 +55,40 @@ Deno.test("#1345 S2 — drain reuses SHARED sendOpsAlertEmail + stripe_disputes 
     'import { sendOpsAlertEmail } from "./stripeOpsAlertEmail.ts"',
     "reuses ORCH-0956 ops-alert helper",
   );
-  hasIn(drainSrc, 'resolveAlertRecipientValue(', "bundle/legacy recipient resolver");
+  hasIn(drainSrc, "resolveAlertRecipientValue(", "bundle/legacy recipient resolver");
   hasIn(drainSrc, '"stripe_disputes"', "same on-call inbox as dispute alerts");
   hasIn(drainSrc, '"STRIPE_DISPUTE_ALERT_EMAILS"', "legacy fallback — no new secret");
 });
 
-Deno.test("#1345 S3 — slot_unavailable branch enqueues after the audit marker", () => {
+Deno.test("#1345 S3 — slot_unavailable branch uses atomic RPC before audit", () => {
+  const recordIdx = finalizeSrc.indexOf(
+    "await recordReservationSlotUnavailableRefundDue(",
+  );
   const auditIdx = finalizeSrc.indexOf(
     'action: "paystack.reservation_slot_unavailable_refund_due"',
   );
-  assert(auditIdx !== -1, "manual-refund audit marker must exist");
-  const tail = finalizeSrc.slice(auditIdx);
-  const enqueueIdx = tail.indexOf(
-    "await enqueueReservationSlotUnavailableAlert(",
-  );
-  const returnIdx = tail.indexOf(
+  const returnIdx = finalizeSrc.indexOf(
     'return { kind: "slot_unavailable_refund_due" }',
   );
   // [FAILS-ON-REVERT KEY]
   assert(
-    enqueueIdx !== -1 && returnIdx !== -1 && enqueueIdx < returnIdx,
-    "outbox enqueue must run after the audit marker and before the refund_due return",
+    recordIdx !== -1 && auditIdx !== -1 && returnIdx !== -1 &&
+      recordIdx < auditIdx && auditIdx < returnIdx,
+    "atomic record+enqueue must run before audit and before the refund_due return",
   );
 });
 
-Deno.test("#1345 S4 — drain completes only when sendOpsAlertEmail succeeded > 0", () => {
+Deno.test("#1345 S4 — drain records delivery with claim_id only when succeeded > 0", () => {
   // [FAILS-ON-REVERT KEY]
   assert(
     drainSrc.includes("(result?.succeeded ?? 0) > 0") &&
-      drainSrc.includes("complete_reservation_slot_unavailable_alerts") &&
-      drainSrc.includes("claim_reservation_slot_unavailable_alerts"),
-    "drain must claim, require succeeded > 0, then complete",
+      drainSrc.includes("record_reservation_slot_unavailable_alert_delivery") &&
+      drainSrc.includes("claim_reservation_slot_unavailable_alerts") &&
+      drainSrc.includes("p_claim_id"),
+    "drain must claim, require succeeded > 0, then record with claim_id",
   );
+  hasIn(drainSrc, "RESEND_SEND_TIMEOUT_MS", "bounded Resend send timeout");
+  hasIn(drainSrc, "Promise.race", "timeout via Promise.race");
 });
 
 Deno.test("#1345 S5 — alert copy names MANUAL REFUND + the audit slug", () => {
@@ -90,6 +100,33 @@ Deno.test("#1345 S5 — alert copy names MANUAL REFUND + the audit slug", () => 
     "body must cite the audit slug ops already knows",
   );
   hasIn(drainSrc, "#1175", "body must point at the dark auto-refund rail");
+});
+
+Deno.test("#1345 S6 — drain is on payout-release-sweep, NOT webhook/confirm", () => {
+  // [FAILS-ON-REVERT KEY]
+  assert(
+    !webhookSrc.includes("drainReservationSlotUnavailable"),
+    "paystack-webhook must not drain slot-unavailable alerts inline",
+  );
+  assert(
+    !confirmSrc.includes("drainReservationSlotUnavailable"),
+    "venue-reservation-confirm must not drain slot-unavailable alerts inline",
+  );
+  hasIn(
+    sweepSrc,
+    "drainReservationSlotUnavailableAlertsFailOpen",
+    "payout-release-sweep drains the outbox fail-open",
+  );
+  hasIn(
+    finalizeSrc,
+    "slot_unavailable_after_charge_refund_due",
+    "failed-status replay must recognize the refund-due failure_reason",
+  );
+  hasIn(
+    finalizeSrc,
+    "ensureReservationSlotUnavailableAlert",
+    "failed-status replay re-ensures the outbox row",
+  );
 });
 
 // ─── Runtime (hermetic: fake supabase + stubbed Resend fetch) ────────────────
@@ -141,6 +178,13 @@ function makeFakeSupabase(opts: {
           error: { message: "slot_unavailable" },
         });
       }
+      if (fn === "record_reservation_slot_unavailable_refund_due") {
+        Object.assign(opts.session, {
+          status: "failed",
+          failure_reason: "slot_unavailable_after_charge_refund_due",
+        });
+        return Promise.resolve({ data: "alert-1", error: null });
+      }
       if (fn === "enqueue_reservation_slot_unavailable_alert") {
         return Promise.resolve({ data: "alert-1", error: null });
       }
@@ -154,7 +198,7 @@ const RESV_REF = "mingla_resv_1345-aaaa-bbbb-cccc-dddddddddddd_slot";
 
 Deno.test({
   name:
-    "#1345 R1 · slot-taken finalize enqueues outbox and does NOT POST Resend",
+    "#1345 R1 · slot-taken finalize atomically records+enqueues and does NOT POST Resend",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -189,13 +233,13 @@ Deno.test({
         "slot_unavailable_after_charge_refund_due",
       );
       assertEquals(fetchHits, 0, "finalize must not call Resend");
-      const enqueue = calls.find((c) =>
-        c.name === "enqueue_reservation_slot_unavailable_alert"
+      const record = calls.find((c) =>
+        c.name === "record_reservation_slot_unavailable_refund_due"
       );
-      assert(enqueue, "must enqueue outbox row");
-      assertEquals(enqueue.args.p_session_id, "sess-1345-1");
-      assertEquals(enqueue.args.p_reference, RESV_REF);
-      assertEquals(enqueue.args.p_amount_cents, 537500);
+      assert(record, "must call atomic record+enqueue RPC");
+      assertEquals(record.args.p_session_id, "sess-1345-1");
+      assertEquals(record.args.p_reference, RESV_REF);
+      assertEquals(record.args.p_amount_cents, 537500);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -204,7 +248,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "#1345 R2 · enqueue throw is swallowed — outcome stays slot_unavailable_refund_due",
+    "#1345 R2 · record throw is swallowed — outcome stays slot_unavailable_refund_due",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -241,8 +285,8 @@ Deno.test({
             error: { message: "slot_unavailable" },
           });
         }
-        if (fn === "enqueue_reservation_slot_unavailable_alert") {
-          throw new Error("enqueue_boom");
+        if (fn === "record_reservation_slot_unavailable_refund_due") {
+          throw new Error("record_boom");
         }
         throw new Error(`unexpected rpc ${fn}`);
       },
@@ -264,7 +308,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "#1345 R3 · drain POSTs Resend and completes only on succeeded > 0",
+  name:
+    "#1345 R3 · drain POSTs Resend and records provider_accepted only on succeeded > 0",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -275,7 +320,7 @@ Deno.test({
     const priorTesting = Deno.env.get("DENO_TESTING");
     const originalFetch = globalThis.fetch;
     const posts: Record<string, unknown>[] = [];
-    const completed: string[][] = [];
+    const recorded: Record<string, unknown>[] = [];
 
     Deno.env.set("RESEND_API_KEY", "re_test_key_1345");
     Deno.env.set("STRIPE_DISPUTE_ALERT_EMAILS", "ops-refund@example.com");
@@ -298,13 +343,14 @@ Deno.test({
               reference: RESV_REF,
               amount_cents: 537500,
               currency: "NGN",
+              claim_id: "claim-1345",
             }],
             error: null,
           });
         }
-        if (name === "complete_reservation_slot_unavailable_alerts") {
-          completed.push(args.p_alert_ids as string[]);
-          return Promise.resolve({ data: 1, error: null });
+        if (name === "record_reservation_slot_unavailable_alert_delivery") {
+          recorded.push(args);
+          return Promise.resolve({ data: "provider_accepted", error: null });
         }
         throw new Error(`unexpected rpc ${name}`);
       },
@@ -321,7 +367,10 @@ Deno.test({
         subject.includes("MANUAL REFUND DUE"),
         `subject must name MANUAL REFUND DUE, got: ${subject}`,
       );
-      assertEquals(completed, [["alert-1345"]]);
+      assertEquals(recorded.length, 1);
+      assertEquals(recorded[0].p_alert_id, "alert-1345");
+      assertEquals(recorded[0].p_claim_id, "claim-1345");
+      assertEquals(recorded[0].p_outcome, "provider_accepted");
     } finally {
       globalThis.fetch = originalFetch;
       if (priorApiKey === undefined) Deno.env.delete("RESEND_API_KEY");
@@ -341,7 +390,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "#1345 R4 · drain leaves row open when Resend succeeds 0",
+  name: "#1345 R4 · drain records retryable when Resend succeeds 0",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -349,7 +398,7 @@ Deno.test({
     const priorEmails = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS");
     const priorBundle = Deno.env.get("MINGLA_ALERT_RECIPIENTS_JSON");
     const priorTesting = Deno.env.get("DENO_TESTING");
-    let completeCalls = 0;
+    const recorded: Record<string, unknown>[] = [];
 
     // Missing API key → sendOpsAlertEmail returns succeeded: 0
     Deno.env.delete("RESEND_API_KEY");
@@ -358,7 +407,7 @@ Deno.test({
     Deno.env.set("DENO_TESTING", "1");
 
     const supabase = {
-      rpc(name: string) {
+      rpc(name: string, args: Record<string, unknown> = {}) {
         if (name === "claim_reservation_slot_unavailable_alerts") {
           return Promise.resolve({
             data: [{
@@ -367,13 +416,14 @@ Deno.test({
               reference: RESV_REF,
               amount_cents: 1000,
               currency: "NGN",
+              claim_id: "claim-open",
             }],
             error: null,
           });
         }
-        if (name === "complete_reservation_slot_unavailable_alerts") {
-          completeCalls += 1;
-          return Promise.resolve({ data: 1, error: null });
+        if (name === "record_reservation_slot_unavailable_alert_delivery") {
+          recorded.push(args);
+          return Promise.resolve({ data: "pending", error: null });
         }
         throw new Error(`unexpected rpc ${name}`);
       },
@@ -383,7 +433,9 @@ Deno.test({
     try {
       const result = await drainReservationSlotUnavailableAlerts(supabase);
       assertEquals(result, { listed: 1, delivered: 0 });
-      assertEquals(completeCalls, 0, "must not complete on zero-success send");
+      assertEquals(recorded.length, 1);
+      assertEquals(recorded[0].p_outcome, "retryable");
+      assertEquals(recorded[0].p_claim_id, "claim-open");
     } finally {
       if (priorApiKey === undefined) Deno.env.delete("RESEND_API_KEY");
       else Deno.env.set("RESEND_API_KEY", priorApiKey);
@@ -396,5 +448,41 @@ Deno.test({
       if (priorTesting === undefined) Deno.env.delete("DENO_TESTING");
       else Deno.env.set("DENO_TESTING", priorTesting);
     }
+  },
+});
+
+Deno.test({
+  name:
+    "#1345 R5 · failed-status replay with slot_unavailable reason re-ensures outbox",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const calls: RpcCall[] = [];
+    const session: ReservationSessionRow = {
+      id: "sess-1345-replay",
+      status: "failed",
+      reservation_id: null,
+      amount_cents: 537500,
+      currency: "NGN",
+      attribution_click_id: null,
+      failure_reason: "slot_unavailable_after_charge_refund_due",
+    };
+    const outcome = await finalizeVerifiedPaystackReservation(
+      makeFakeSupabase({ session, calls }),
+      session,
+      RESV_REF,
+      537500,
+      "NGN",
+    );
+    assertEquals(outcome.kind, "replayed");
+    const enqueue = calls.find((c) =>
+      c.name === "enqueue_reservation_slot_unavailable_alert"
+    );
+    assert(enqueue, "replay must idempotently re-ensure the outbox row");
+    assertEquals(enqueue.args.p_session_id, "sess-1345-replay");
+    assert(
+      !calls.some((c) => c.name === "pg_finalize_guest_reservation"),
+      "replay must not re-call finalize RPC",
+    );
   },
 });

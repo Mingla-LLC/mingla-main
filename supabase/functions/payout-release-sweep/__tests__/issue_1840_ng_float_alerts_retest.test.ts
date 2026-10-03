@@ -282,8 +282,10 @@ function harness(scenario: Scenario) {
         case "surface_payout_releases_waiting_for_bank":
           return Promise.resolve({ data: [], error: null });
         // Issue #3645 PR10: pause/outcome notice drains (empty in this scenario).
+        // Issue #1345: reservation slot-unavailable alert drain (empty).
         case "claim_brand_payout_pause_notices":
         case "claim_brand_payout_outcome_notices":
+        case "claim_reservation_slot_unavailable_alerts":
           return Promise.resolve({ data: [], error: null });
         default:
           throw new Error(`unexpected RPC ${name}`);

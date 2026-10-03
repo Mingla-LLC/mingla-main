@@ -40,7 +40,6 @@ import { fireAdConversion } from "../_shared/adConversionFire.ts";
 // is the fast poll resolution). ONE finalize code path, not two.
 import { paystackVerifyTransaction } from "../_shared/paystack.ts";
 import { finalizeVerifiedPaystackReservation } from "../_shared/reservationPaystackFinalize.ts";
-import { drainReservationSlotUnavailableAlertsFailOpen } from "../_shared/reservationSlotUnavailableOpsAlert.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import {
   jsonResponse,
@@ -101,11 +100,6 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
   }
 
   const supabase = serviceClient();
-  // #1345 — drain backlog first (fail-open; never blocks confirm).
-  await drainReservationSlotUnavailableAlertsFailOpen(
-    supabase as never,
-    "[venue-reservation-confirm]",
-  );
   const { data: sessionRow, error: sessionErr } = await supabase
     .from("reservation_checkout_sessions")
     .select("*")
@@ -189,12 +183,6 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
       // NEVER block on the ad-conversion fan-out (up to ~8s per live channel).
       // Mirrors this fn's Stripe path (`void fireAdConversion(...)`).
       false,
-    );
-    // #1345 — drain after finalize so a fresh enqueue is sent promptly
-    // (fail-open; never changes the confirm HTTP outcome).
-    await drainReservationSlotUnavailableAlertsFailOpen(
-      supabase as never,
-      "[venue-reservation-confirm]",
     );
     switch (outcome.kind) {
       case "finalized":

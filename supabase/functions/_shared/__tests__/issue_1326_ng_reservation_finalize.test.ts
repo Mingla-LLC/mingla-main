@@ -135,7 +135,21 @@ function makeFakeSupabase(state: FakeState) {
         state.finalizeCalls += 1;
         return state.finalizeImpl(args);
       }
-      // #1345 — slot-unavailable path enqueues a durable ops-alert outbox row.
+      // #1345 — slot-unavailable path atomically marks failed + enqueues outbox.
+      if (fn === "record_reservation_slot_unavailable_refund_due") {
+        if (state.reservationSession) {
+          state.reservationSession = {
+            ...state.reservationSession,
+            status: "failed",
+            failure_reason: "slot_unavailable_after_charge_refund_due",
+          };
+        }
+        state.sessionUpdates.push({
+          status: "failed",
+          failure_reason: "slot_unavailable_after_charge_refund_due",
+        });
+        return Promise.resolve({ data: "alert-test", error: null });
+      }
       if (fn === "enqueue_reservation_slot_unavailable_alert") {
         return Promise.resolve({ data: "alert-test", error: null });
       }
