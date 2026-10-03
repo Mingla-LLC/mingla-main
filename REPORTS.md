@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-03 — Support agents can select and copy text on the Help pages (`/help` and every walkthrough) to paste exact steps to a customer; every other marketing page keeps its copy protection, and Help images/video still cannot be saved or dragged out (toward #3431, PR #3728)
 - 2026-10-03 — Venue save/leave is predictable: three-way leave prompt with dirty pills, Save captions, step/destructiveOutline button looks, Settings one save bar, deck photos wait for Save deck details, blackout/tables confirm on remove, Sign out vs Sign out everywhere, no empty Venues tab (add from + only), and SheetMobile spring-back dismissGuard (toward #3655, PR #3741)
 - 2026-10-03 — Future eng chats get clearer operating rules in AGENTS.md: open and amend PRs with zero user clicks, keep dependencies current with npm update (or equivalent) after proving UI/UX still works, refresh epic AC progress when a phase ends, and keep AI-vendor names out of shipped git/PR text (#3739, PR #3740)
 - 2026-10-03 — Sites and site-cms CI no longer fail every pull request on the unpatchable `braces` high advisory (no npm release clears it yet): the high/critical audit ceiling still runs, that one GHSA is allowlisted, and Dependabot remains the reporter until a real floor ships (#2830, PR #3738)

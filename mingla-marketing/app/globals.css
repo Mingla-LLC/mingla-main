@@ -426,6 +426,28 @@ video {
   -webkit-touch-callout: none;
   user-select: none;
 }
+/* #3431 — opt-in copy region (the Help pages' <main data-allow-copy>): text
+   can be selected, copied and long-pressed so support agents can paste the
+   steps to a customer. Every other page keeps the html-level lock above. */
+[data-allow-copy],
+[data-allow-copy] * {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+/* Images/video inside the opt-in region stay locked. Specificity (0,1,1) beats
+   `[data-allow-copy] *` (0,1,0), so these win regardless of order. */
+[data-allow-copy] img,
+[data-allow-copy] video {
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
 /* Blank ordinary marketing pages for print / print-to-PDF. #2990's private
    guide fixtures carry an explicit printable owner and provide their own
    route-scoped print treatment; every unrelated route keeps the prior lock. */
