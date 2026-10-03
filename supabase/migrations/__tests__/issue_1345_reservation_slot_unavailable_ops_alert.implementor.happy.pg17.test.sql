@@ -9,9 +9,9 @@ DECLARE
   v_session_a constant uuid := '13450000-0000-4000-8000-000000000001';
   v_session_b constant uuid := '13450000-0000-4000-8000-000000000002';
   v_session_c constant uuid := '13450000-0000-4000-8000-000000000003';
-  v_user constant uuid := '13450000-0000-4000-8000-0000000000u1';
-  v_brand constant uuid := '13450000-0000-4000-8000-0000000000b1';
-  v_venue constant uuid := '13450000-0000-4000-8000-0000000000v1';
+  v_user constant uuid := '13450000-0000-4000-8000-000000000004';
+  v_brand constant uuid := '13450000-0000-4000-8000-000000000005';
+  v_venue constant uuid := '13450000-0000-4000-8000-000000000006';
   v_id_1 uuid;
   v_id_2 uuid;
   v_id_3 uuid;
