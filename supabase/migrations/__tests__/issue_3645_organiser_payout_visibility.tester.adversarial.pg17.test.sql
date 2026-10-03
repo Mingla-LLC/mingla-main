@@ -1,7 +1,8 @@
 -- Issue #3645 PR10 — organiser payout visibility (PG17 adversarial).
 -- Proves the hard edges of brand_get_payout_visibility + the pause-notice outbox:
---   * a non-member, a member BELOW finance_manager (scanner, event_manager), and
---     a finance_manager of ANOTHER brand are all refused with 42501.
+--   * a non-member, a non-payments role (scanner; event_manager — which ranks
+--     ABOVE finance_manager but is still not a payments manager), and a
+--     finance_manager of ANOTHER brand are all refused with 42501.
 --   * an unauthenticated (no sub) call is refused with 42501; NULL brand refused.
 --   * anon has no EXECUTE; authenticated cannot read the hold table or the
 --     notice outbox, and cannot call the sweep-side drain RPCs.

@@ -222,10 +222,11 @@ export async function fetchBrandPayoutLedger(
 
 /**
  * #3645 PR10 — organiser-safe payout status for the Payments status card and
- * the Paystack balance tiles. One SECURITY DEFINER RPC (finance_manager+; a
- * lower role gets a 42501 the caller classifies as permission-denied). The hold
- * table behind `payouts_paused` is RLS-locked — the client only ever sees the
- * boolean, never the admin reason, and never a ledger error_message (#1180).
+ * the Paystack balance tiles. One SECURITY DEFINER RPC (payments managers —
+ * owner/admin/finance via biz_can_manage_payments_for_brand; others get 42501).
+ * The hold table behind `payouts_paused` is RLS-locked — the client only ever
+ * sees the boolean, never the admin reason, and never a ledger error_message
+ * (#1180).
  */
 export async function fetchBrandPayoutVisibility(
   brandId: string,

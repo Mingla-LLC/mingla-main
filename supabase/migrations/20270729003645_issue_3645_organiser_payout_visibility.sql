@@ -9,7 +9,8 @@
 --
 -- Design (subtractive; no parallel payout system):
 --   1. brand_get_payout_visibility(brand) — ONE small SECURITY DEFINER read,
---      readable by brand finance_manager+ only, that returns exactly the
+--      readable by payments managers only (owner/admin/finance via
+--      biz_can_manage_payments_for_brand), that returns exactly the
 --      organiser-safe facts the status card + balance tiles need:
 --        { payouts_paused, next_payout_at, earned_cents, on_its_way_cents,
 --          paid_cents, currency }.
@@ -58,11 +59,12 @@ DECLARE
   v_way      bigint;
   v_next     timestamptz;
 BEGIN
-  -- Guard FIRST: signed-in + finance_manager+ on THIS brand. 42501 so clients
-  -- classify it as permission-denied (not a network failure).
+  -- Guard FIRST: signed-in + payments manager on THIS brand
+  -- (owner / brand_admin / finance_manager). Rank≥finance_manager is wrong:
+  -- event_manager ranks above finance_manager and must stay refused. 42501 so
+  -- clients classify it as permission-denied (not a network failure).
   IF auth.uid() IS NULL OR p_brand_id IS NULL
-     OR public.biz_brand_effective_rank(p_brand_id, auth.uid())
-        < public.biz_role_rank('finance_manager') THEN
+     OR NOT public.biz_can_manage_payments_for_brand(p_brand_id, auth.uid()) THEN
     RAISE EXCEPTION 'insufficient_finance_permission' USING ERRCODE = '42501';
   END IF;
 
@@ -127,7 +129,7 @@ REVOKE ALL ON FUNCTION public.brand_get_payout_visibility(uuid) FROM PUBLIC, ano
 GRANT EXECUTE ON FUNCTION public.brand_get_payout_visibility(uuid) TO authenticated;
 
 COMMENT ON FUNCTION public.brand_get_payout_visibility(uuid) IS
-  'Issue #3645 PR10: organiser-safe payout status for the Payments status card + Paystack balance tiles. finance_manager+ only (42501 otherwise). Returns { payouts_paused, next_payout_at, earned_cents, on_its_way_cents, paid_cents, currency } derived from the admin-only brand_payout_admin_holds table (boolean only — never the reason) and ledger aggregates. Never returns error_message / attempt_count / OTP / KYC internals (#1180).';
+  'Issue #3645 PR10: organiser-safe payout status for the Payments status card + Paystack balance tiles. Payments managers only — owner/admin/finance via biz_can_manage_payments_for_brand (42501 otherwise; event_manager is refused). Returns { payouts_paused, next_payout_at, earned_cents, on_its_way_cents, paid_cents, currency } derived from the admin-only brand_payout_admin_holds table (boolean only — never the reason) and ledger aggregates. Never returns error_message / attempt_count / OTP / KYC internals (#1180).';
 
 -- ── §3. Pause / resume notice outbox (admin-only, drained by the sweep) ──────
 CREATE TABLE IF NOT EXISTS public.brand_payout_pause_notices (

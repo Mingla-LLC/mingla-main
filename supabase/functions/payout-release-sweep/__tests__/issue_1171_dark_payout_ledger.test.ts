@@ -256,7 +256,8 @@ Deno.test("internal handler fails closed before client creation and exact bearer
             return Promise.resolve({ data: [], error: null });
           }
           // Issue #3645 PR8 (append-only): surface returns rows[], not dark payload.
-          // Issue #3645 PR10: pause/outcome notice drains return rows[].
+          // Issue #3645 PR10: pause/outcome notice drains return rows[]; RPC-order
+          // pin below must list both claim_* RPCs (was 4 calls, now 6).
           if (
             name === "list_missing_payout_source_fees" ||
             name === "surface_payout_releases_waiting_for_bank" ||

@@ -15,6 +15,7 @@ import {
   drainOutcomeNotices,
   drainPausedNotices,
   fireBankAddedMilestone,
+  notifyBrandManagers,
   notifyPaystackReleaseOutcome,
   type OrganiserNotifyDeps,
   type OrganiserNotifyInput,
@@ -37,27 +38,56 @@ function makeSupabase(opts: {
   outcomeRows?: Array<Record<string, unknown>>;
   completePauseError?: { message: string } | null;
   completeOutcomeError?: { message: string } | null;
+  /** When set, brand_team_members role lookup returns this error (strict path). */
+  teamLookupError?: { message: string } | null;
+  teamMembers?: Array<{ user_id: string; role: string }>;
 }) {
   const rpcs: Array<{ name: string; args: Record<string, unknown> }> = [];
-  const supabase = {
-    from: (_table: string) => ({
-      select: (_cols: string) => ({
-        eq: (_col: string, _val: unknown) => ({
-          eq: (_col2: string, _val2: unknown) => ({
-            maybeSingle: () =>
-              Promise.resolve({
-                data: opts.release ?? null,
-                error: opts.releaseError ?? null,
-              }),
+
+  const teamLookupTerminal = () =>
+    Promise.resolve({
+      data: opts.teamLookupError ? null : (opts.teamMembers ?? []),
+      error: opts.teamLookupError ?? null,
+    });
+
+  // Chain matches getBrandTeamUserIdsByRolesOrThrow:
+  // from().select().eq().is().not().in()
+  const teamMembersQuery = {
+    select: (_cols: string) => ({
+      eq: (_col: string, _val: unknown) => ({
+        is: (_col2: string, _val2: unknown) => ({
+          not: (_col3: string, _op: string, _val3: unknown) => ({
+            in: (_col4: string, _roles: unknown) => teamLookupTerminal(),
           }),
+        }),
+      }),
+    }),
+  };
+
+  const releaseQuery = {
+    select: (_cols: string) => ({
+      eq: (_col: string, _val: unknown) => ({
+        eq: (_col2: string, _val2: unknown) => ({
           maybeSingle: () =>
             Promise.resolve({
               data: opts.release ?? null,
               error: opts.releaseError ?? null,
             }),
         }),
+        maybeSingle: () =>
+          Promise.resolve({
+            data: opts.release ?? null,
+            error: opts.releaseError ?? null,
+          }),
       }),
     }),
+  };
+
+  const supabase = {
+    from: (table: string) => {
+      if (table === "brand_team_members") return teamMembersQuery;
+      return releaseQuery;
+    },
     rpc: (name: string, args: Record<string, unknown> = {}) => {
       rpcs.push({ name, args });
       if (name === "claim_brand_payout_pause_notices") {
@@ -276,6 +306,84 @@ Deno.test("#3645 organiser notify: pause dispatch failure leaves notice open", a
     false,
   );
 });
+
+Deno.test(
+  "#3645 organiser notify: recipient lookup error leaves pause notice open",
+  async () => {
+    const { supabase, rpcs } = makeSupabase({
+      pauseRows: [{
+        notice_id: "n-lookup-err",
+        brand_id: "brand-1",
+        kind: "paused",
+        brand_name: "Acme",
+      }],
+      teamLookupError: { message: "connection reset" },
+    });
+    // Real notifyBrandManagers (strict OrThrow) — not the tracking stub.
+    const result = await drainPausedNotices(supabase, {
+      ...trackingDeps().deps,
+      notifyBrandManagers,
+    });
+    assertEquals(result, { listed: 1, delivered: 0 });
+    assertEquals(
+      rpcs.some((r) => r.name === "complete_brand_payout_pause_notices"),
+      false,
+    );
+  },
+);
+
+Deno.test(
+  "#3645 organiser notify: recipient lookup error leaves outcome notice open",
+  async () => {
+    const { supabase, rpcs } = makeSupabase({
+      release: {
+        id: "rel-lookup",
+        brand_id: "brand-1",
+        status: "released",
+        currency: "ngn",
+        organiser_cash_delivered_cents: 900,
+        net_release_cents: 900,
+      },
+      outcomeRows: [{
+        notice_id: "n-out-lookup",
+        release_id: "rel-lookup",
+        brand_id: "brand-1",
+        kind: "paid",
+      }],
+      teamLookupError: { message: "connection reset" },
+    });
+    const result = await drainOutcomeNotices(supabase, {
+      ...trackingDeps().deps,
+      notifyBrandManagers,
+    });
+    assertEquals(result, { listed: 1, delivered: 0 });
+    assertEquals(
+      rpcs.some((r) => r.name === "complete_brand_payout_outcome_notices"),
+      false,
+    );
+  },
+);
+
+Deno.test(
+  "#3645 organiser notify: notifyBrandManagers throws on team lookup error",
+  async () => {
+    const { supabase } = makeSupabase({
+      teamLookupError: { message: "db down" },
+    });
+    await assertRejects(
+      () =>
+        notifyBrandManagers(supabase, {
+          brandId: "brand-1",
+          type: "business.payouts_paused",
+          title: "Payouts paused",
+          body: "paused",
+          idempotencyKey: "k",
+        }),
+      Error,
+      "brand team-by-roles lookup failed",
+    );
+  },
+);
 
 Deno.test("#3645 organiser notify: outcome drain dispatches then completes", async () => {
   const release: ReleaseRow = {

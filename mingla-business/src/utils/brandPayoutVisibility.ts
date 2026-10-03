@@ -8,8 +8,8 @@
  *   - "Payouts paused"                    an admin hold (boolean only — the
  *                                         admin reason never reaches the client)
  *
- * The facts come from `brand_get_payout_visibility` (finance_manager+), which
- * derives them from the RLS-locked hold table and ledger aggregates. #1180 law:
+ * The facts come from `brand_get_payout_visibility` (payments managers only),
+ * which derives them from the RLS-locked hold table and ledger aggregates. #1180 law:
  * nothing here knows `error_message` / attempt_count / OTP / KYC internals — the
  * DTO has no field to carry them.
  *

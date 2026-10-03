@@ -29,7 +29,7 @@ import {
   BRAND_PAYMENTS_ROLES,
   dispatchNotification,
   formatMoneyCents,
-  getBrandTeamUserIdsByRoles,
+  getBrandTeamUserIdsByRolesOrThrow,
 } from "./stripeEdgeAuth.ts";
 import {
   claimBrandMilestone,
@@ -64,7 +64,10 @@ export async function notifyBrandManagers(
   supabase: SupabaseClient,
   input: OrganiserNotifyInput,
 ): Promise<void> {
-  const userIds = await getBrandTeamUserIdsByRoles(
+  // Strict lookup: query ERROR must throw so drainPausedNotices /
+  // drainOutcomeNotices leave the notice open for retry. Empty roles or a
+  // genuine zero-manager brand may still return [] and complete (no fans-out).
+  const userIds = await getBrandTeamUserIdsByRolesOrThrow(
     supabase as never,
     input.brandId,
     input.roles ?? BRAND_PAYMENTS_ROLES,

@@ -160,7 +160,7 @@ Deno.test("handler remains dark while the execution flag is unset", async () => 
                 name === "claim_payout_release_alerts" ||
                 // Issue #3645 PR8 (append-only)
                 name === "surface_payout_releases_waiting_for_bank" ||
-                // Issue #3645 PR10
+                // Issue #3645 PR10: pause/outcome drains; RPC-order pin updated.
                 name === "claim_brand_payout_pause_notices" ||
                 name === "claim_brand_payout_outcome_notices"
               ? []
