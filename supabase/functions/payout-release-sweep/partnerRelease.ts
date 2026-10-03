@@ -12,7 +12,7 @@
 // with a permanently 'planned' leg.
 
 // @ts-ignore — Deno ESM
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { getPartnerStripeAccount } from "../_shared/partnerSplits.ts";
 import type { StripeClient } from "../_shared/stripe.ts";
 

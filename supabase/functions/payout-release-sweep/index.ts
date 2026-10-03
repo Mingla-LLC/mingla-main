@@ -1129,7 +1129,9 @@ export async function handlePayoutReleaseSweep(
   // including partner_attribution_pending / Stripe-phase / ledger early
   // returns. Budget-bounded so Resend cannot starve money work.
   try {
-    return await runPayoutReleaseSweepAuthenticated(admin, deps);
+    // Cast: AdminClient is ReturnType of the pinned createClient; keep the
+    // boundary explicit so a future unpinned import cannot reopen #1437.
+    return await runPayoutReleaseSweepAuthenticated(admin as AdminClient, deps);
   } finally {
     try {
       await (deps.drainReservationSlotUnavailableAlerts ??
