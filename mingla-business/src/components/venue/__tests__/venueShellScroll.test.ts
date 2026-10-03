@@ -87,3 +87,4 @@ describe("META-ORCH-1148 — venue shell scroll + bottom-nav clearance", () => {
     expect(venueScrollBottomPad(20)).toBeLessThan(venueScrollBottomPad(40));
   });
 });
+

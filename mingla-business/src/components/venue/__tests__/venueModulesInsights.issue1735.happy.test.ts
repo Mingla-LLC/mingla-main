@@ -146,3 +146,4 @@ describe("issue #1735 — Insights module registration (T-G1/T-G2)", () => {
     expect(insightInstrumentRegistered("pricing")).toBe(false);
   });
 });
+
