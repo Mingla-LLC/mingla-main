@@ -14,6 +14,8 @@ describe("#3655 sign-out scope", () => {
     expect(src).toContain('scope?: "local" | "global"');
     expect(src).toContain("await supabase.auth.signOut({ scope })");
     expect(src).toContain('options?.scope ?? "local"');
+    expect(src).toContain("if (error)");
+    expect(src).toContain("throw error");
   });
 
   test("Account tab exposes Sign out and confirms Sign out everywhere", () => {

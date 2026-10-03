@@ -30,6 +30,8 @@ import type { VenueModule } from "../../../types/venueReservation";
 const ALL_MODULES = Object.keys(VENUE_MODULES) as VenueModule[];
 
 describe("META-ORCH-1148 — venue shell scroll + bottom-nav clearance", () => {
+  // [TEST-MOD-APPROVED #3655] Settings self-scrolls so Save settings can stick
+  // outside the scroll content (shell-wrapped absolute bars scrolled away).
   test("T-A: ONLY Overview + Insights + Reservations self-scroll (so the shell never double-wraps a module's own vertical owner)", () => {
     // Issue #1735 [TEST-MOD-APPROVED #1735]: `insights` joins `overview` as a
     // self-scrolling module (VenueInsightsModule owns its ScrollView +
@@ -39,9 +41,14 @@ describe("META-ORCH-1148 — venue shell scroll + bottom-nav clearance", () => {
     expect(moduleSelfScrolls("overview")).toBe(true);
     expect(moduleSelfScrolls("insights")).toBe(true);
     expect(moduleSelfScrolls("reservations")).toBe(true);
+    expect(moduleSelfScrolls("settings")).toBe(true);
     for (
       const m of ALL_MODULES.filter(
-        (x) => x !== "overview" && x !== "insights" && x !== "reservations",
+        (x) =>
+          x !== "overview" &&
+          x !== "insights" &&
+          x !== "reservations" &&
+          x !== "settings",
       )
     ) {
       expect(moduleSelfScrolls(m)).toBe(false);
@@ -49,10 +56,11 @@ describe("META-ORCH-1148 — venue shell scroll + bottom-nav clearance", () => {
   });
 
   test("T-B: Settings + non-Reservation booking modules remain shell-scrolled", () => {
-    // Reservations owns its mode scroll. Every other plain-view booking module
-    // stays shell-owned so it cannot become vertically unreachable.
+    // Reservations owns its mode scroll. Booking modules stay shell-owned so
+    // they cannot become vertically unreachable. Settings moved to self-scroll
+    // in #3655 for the sticky Save bar.
     const shellOwned = ALL_MODULES.filter((m) => !moduleSelfScrolls(m));
-    expect(shellOwned).toContain("settings");
+    expect(shellOwned).not.toContain("settings");
     expect(shellOwned).toContain("tables");
     expect(shellOwned).toContain("availability");
     expect(shellOwned).toContain("waitlist");

@@ -288,7 +288,7 @@ export function CompetitorAddSheet({
   return (
     <Sheet
       visible={visible}
-      onClose={onClose}
+      onClose={requestClose}
       dismissGuard={() => dirty}
       onRequestClose={requestClose}
       dismissDisabled={mutation.isPending}

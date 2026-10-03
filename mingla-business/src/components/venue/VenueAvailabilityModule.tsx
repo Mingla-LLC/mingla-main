@@ -56,8 +56,14 @@ import { setAvailabilityNumericToolbarState } from "../../wrappers/KeyboardToolb
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { ChevronRight } from "lucide-react-native";
 import { Button } from "../ui/Button";
-import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
+
+/** Lazy ConfirmDialog — static import pulls reanimated into Availability and
+ * breaks node suites that only need VenueBlackoutSheet / draft math. */
+const LazyConfirmDialog = React.lazy(async () => {
+  const mod = await import("../ui/ConfirmDialog");
+  return { default: mod.ConfirmDialog };
+});
 import { Input } from "../ui/Input";
 import { Skeleton } from "../ui/Skeleton";
 import { Toast, type ToastKind } from "../ui/Toast";
@@ -365,6 +371,9 @@ export const VenueAvailabilityModule = forwardRef<
   const [blackoutDeleteError, setBlackoutDeleteError] = useState<string | null>(
     null,
   );
+  const [blackoutDeleteConfirmOpen, setBlackoutDeleteConfirmOpen] =
+    useState(false);
+  const [leaveSaveError, setLeaveSaveError] = useState<string | null>(null);
   const [editBlackout, setEditBlackout] = useState<VenueBlackout | null>(null);
   const [draft, setDraft] = useState<AvailabilityNumericDraft>(() => ({
     ...DEFAULT_NUMERIC_DRAFT,
@@ -647,16 +656,24 @@ export const VenueAvailabilityModule = forwardRef<
     },
     [upsertBlackout],
   );
+  const requestDeleteBlackout = useCallback((): void => {
+    if (editBlackout === null || deleteBlackout.isPending) return;
+    setBlackoutDeleteError(null);
+    setBlackoutDeleteConfirmOpen(true);
+  }, [editBlackout, deleteBlackout.isPending]);
+
   const handleDeleteBlackout = useCallback((): void => {
     if (editBlackout === null || deleteBlackout.isPending) return;
     setBlackoutDeleteError(null);
     deleteBlackout.mutate(editBlackout.id, {
       onSuccess: () => {
         setBlackoutDeleteError(null);
+        setBlackoutDeleteConfirmOpen(false);
         setBlackoutSheetOpen(false);
       },
       onError: () => {
         // #3624 — keep the row and sheet open; surface the failure.
+        setBlackoutDeleteConfirmOpen(false);
         setBlackoutDeleteError(
           "Couldn't remove this blackout. It's still here — try again.",
         );
@@ -1106,54 +1123,100 @@ export const VenueAvailabilityModule = forwardRef<
         blackout={editBlackout}
         tables={tables}
         onSave={handleSaveBlackout}
-        onDelete={editBlackout !== null ? handleDeleteBlackout : undefined}
+        onDelete={editBlackout !== null ? requestDeleteBlackout : undefined}
         saving={upsertBlackout.isPending}
         deleting={deleteBlackout.isPending}
         deleteError={blackoutDeleteError}
       />
-      <ConfirmDialog
-        visible={discardDialogVisible}
-        onClose={handleKeepEditing}
-        onConfirm={handleDiscard}
-        onDiscard={handleDiscard}
-        onSave={async () => {
-          if (!isValid || !isDirty || upsertConfig.isPending) {
-            throw new Error("invalid");
-          }
-          const submittedDraft = { ...draftRef.current };
-          await new Promise<void>((resolve, reject) => {
-            upsertConfig.mutate(buildAvailabilityPatch(submittedDraft), {
-              onSuccess: (authoritativeConfig) => {
-                const authoritativeDraft =
-                  availabilityDraftFromConfig(authoritativeConfig);
-                setBaseline(authoritativeDraft);
-                setDraft(authoritativeDraft);
-                setTouched(new Set());
-                resolve();
-                const proceed = pendingLeaveRef.current;
-                pendingLeaveRef.current = null;
-                setDiscardDialogVisible(false);
-                proceed?.();
-              },
-              onError: () => reject(new Error("save")),
-            });
-          });
-        }}
-        title="Save your Availability changes?"
-        description="You changed availability numbers. If you leave without saving, those changes are gone."
-        variant="leave"
-        saveDisabled={!isValid}
-        confirmLoading={upsertConfig.isPending}
-        restoreFocus={() => {
-          const restore = pendingLeaveFocusRef.current;
-          pendingLeaveFocusRef.current = null;
-          restore?.();
-        }}
-        keepTestID="venue-avail-keep-editing"
-        discardTestID="venue-avail-discard"
-        saveTestID="venue-avail-leave-save"
-        testID="venue-avail-discard-dialog"
-      />
+      {blackoutDeleteConfirmOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            onClose={() => {
+              if (!deleteBlackout.isPending) setBlackoutDeleteConfirmOpen(false);
+            }}
+            title="Remove this blackout?"
+            description={
+              editBlackout !== null
+                ? `Guests will be able to book again from ${editBlackout.dateStart}${
+                    editBlackout.dateEnd &&
+                    editBlackout.dateEnd !== editBlackout.dateStart
+                      ? ` to ${editBlackout.dateEnd}`
+                      : ""
+                  }.`
+                : "Guests will be able to book these dates again."
+            }
+            confirmLabel="Remove blackout"
+            cancelLabel="Keep it"
+            destructive
+            confirmLoading={deleteBlackout.isPending}
+            onConfirm={handleDeleteBlackout}
+            testID="venue-blackout-delete-confirm"
+          />
+        </React.Suspense>
+      ) : null}
+      {discardDialogVisible ? (
+        <React.Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            onClose={() => {
+              setLeaveSaveError(null);
+              handleKeepEditing();
+            }}
+            onConfirm={handleDiscard}
+            onDiscard={handleDiscard}
+            onSave={async () => {
+              if (!isValid || !isDirty || upsertConfig.isPending) {
+                setLeaveSaveError(
+                  "These changes can't be saved yet. Keep editing to fix them.",
+                );
+                throw new Error("invalid");
+              }
+              setLeaveSaveError(null);
+              const submittedDraft = { ...draftRef.current };
+              try {
+                await new Promise<void>((resolve, reject) => {
+                  upsertConfig.mutate(buildAvailabilityPatch(submittedDraft), {
+                    onSuccess: (authoritativeConfig) => {
+                      const authoritativeDraft =
+                        availabilityDraftFromConfig(authoritativeConfig);
+                      setBaseline(authoritativeDraft);
+                      setDraft(authoritativeDraft);
+                      setTouched(new Set());
+                      resolve();
+                      const proceed = pendingLeaveRef.current;
+                      pendingLeaveRef.current = null;
+                      setDiscardDialogVisible(false);
+                      proceed?.();
+                    },
+                    onError: () => reject(new Error("save")),
+                  });
+                });
+              } catch {
+                setLeaveSaveError(
+                  "Couldn't save your changes. They're still here, so try again.",
+                );
+                throw new Error("save");
+              }
+            }}
+            title="Save your Availability changes?"
+            description="You changed availability numbers. If you leave without saving, those changes are gone."
+            variant="leave"
+            saveDisabled={!isValid}
+            confirmLoading={upsertConfig.isPending}
+            errorMessage={leaveSaveError}
+            restoreFocus={() => {
+              const restore = pendingLeaveFocusRef.current;
+              pendingLeaveFocusRef.current = null;
+              restore?.();
+            }}
+            keepTestID="venue-avail-keep-editing"
+            discardTestID="venue-avail-discard"
+            saveTestID="venue-avail-leave-save"
+            testID="venue-avail-discard-dialog"
+          />
+        </React.Suspense>
+      ) : null}
       <Toast
         visible={toast !== null}
         kind={toast?.kind ?? "success"}

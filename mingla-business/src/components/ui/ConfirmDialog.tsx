@@ -384,7 +384,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 <Button
                   ref={confirmFocusRef}
                   label={confirmLabel}
-                  onPress={triggerConfirm}
+                  onPress={handleConfirm}
                   variant={destructive ? "destructive" : "primary"}
                   size="md"
                   disabled={confirmDisabled || !typeMatches}

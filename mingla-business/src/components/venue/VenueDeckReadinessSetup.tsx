@@ -296,8 +296,12 @@ export function VenueDeckReadinessSetup({
   }, [exponent, rangeQuery.data]);
 
   useEffect(() => {
+    // Adopt server gallery only while the draft is clean — a refetch must not
+    // wipe staged adds/removes or leave savedGallery stale (#3655 review).
+    if (galleryDirty) return;
     setGallery(initialGallery);
-  }, [initialGallery]);
+    setSavedGallery(initialGallery);
+  }, [galleryDirty, initialGallery]);
 
   useEffect(() => {
     if (focus === "cover") setCoverVisible(true);

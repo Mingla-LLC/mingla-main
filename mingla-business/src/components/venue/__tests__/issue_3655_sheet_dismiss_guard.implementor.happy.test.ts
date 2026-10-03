@@ -18,13 +18,17 @@ describe("#3655 SheetMobile dismissGuard", () => {
   });
 
   test("blackout remove asks first with destructiveOutline", () => {
-    const src = fs.readFileSync(
+    const sheetSrc = fs.readFileSync(
       path.join(__dirname, "..", "VenueBlackoutSheet.tsx"),
       "utf8",
     );
-    expect(src).toContain('variant="destructiveOutline"');
-    expect(src).toContain("Remove this blackout?");
-    expect(src).toContain("venue-blackout-delete-confirm");
+    const availSrc = fs.readFileSync(
+      path.join(__dirname, "..", "VenueAvailabilityModule.tsx"),
+      "utf8",
+    );
+    expect(sheetSrc).toContain('variant="destructiveOutline"');
+    expect(availSrc).toContain("Remove this blackout?");
+    expect(availSrc).toContain("venue-blackout-delete-confirm");
   });
 
   test("tables Active/Inactive confirm announces and surfaces onError", () => {

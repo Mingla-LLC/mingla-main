@@ -39,6 +39,11 @@ interface VenueSuiteState {
    * drive module selection without navigation. Null when the suite is inactive.
    */
   selectModule: ((module: VenueModule, restoreFocus?: () => void) => void) | null;
+  /**
+   * #3655 — shell-owned leave gate for page exits (header back, beforeRemove).
+   * Calls `proceed` immediately when clean; otherwise opens the leave dialog.
+   */
+  requestLeave: ((proceed: () => void, restoreFocus?: () => void) => void) | null;
   pendingLeaveFocus: (() => void) | null;
   setPendingLeaveFocus: (restoreFocus: (() => void) | null) => void;
   takePendingLeaveFocus: () => (() => void) | null;
@@ -63,6 +68,7 @@ interface VenueSuiteState {
     activeModule: VenueModule;
     visibleModules: readonly VenueModule[];
     selectModule: (module: VenueModule, restoreFocus?: () => void) => void;
+    requestLeave: (proceed: () => void, restoreFocus?: () => void) => void;
   }) => void;
 }
 
@@ -81,6 +87,7 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
     set({ dirtyModules: next });
   },
   selectModule: null,
+  requestLeave: null,
   pendingLeaveFocus: null,
   setPendingLeaveFocus: (pendingLeaveFocus) => set({ pendingLeaveFocus }),
   savedFlash: null,
@@ -111,11 +118,12 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
       activeModule: "overview",
       visibleModules: ["overview", "settings"],
       selectModule: null,
+      requestLeave: null,
       pendingLeaveFocus: null,
       dirtyModules: new Set(),
     }),
-  sync: ({ activeModule, visibleModules, selectModule }) =>
-    set({ activeModule, visibleModules, selectModule }),
+  sync: ({ activeModule, visibleModules, selectModule, requestLeave }) =>
+    set({ activeModule, visibleModules, selectModule, requestLeave }),
 }));
 
 /** Convenience selector: is the venue suite currently mounted/active? */

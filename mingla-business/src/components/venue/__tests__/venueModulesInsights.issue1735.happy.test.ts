@@ -67,7 +67,7 @@ import {
   isBookingModule,
 } from "../venueModules";
 import { moduleSelfScrolls } from "../venueShellScroll";
-import { deriveVenueRailModules } from "../VenueSuiteShell";
+import { deriveVenueRailModules } from "../venueRail";
 import {
   INSIGHT_INSTRUMENTS,
   insightInstrumentRegistered,
@@ -122,7 +122,8 @@ describe("issue #1735 — Insights module registration (T-G1/T-G2)", () => {
     // Existing contracts unchanged: Overview self-scrolls, Menu does not.
     expect(moduleSelfScrolls("overview")).toBe(true);
     expect(moduleSelfScrolls("menu")).toBe(false);
-    expect(moduleSelfScrolls("settings")).toBe(false);
+    // [TEST-MOD-APPROVED #3655] Settings self-scrolls for sticky Save bar.
+    expect(moduleSelfScrolls("settings")).toBe(true);
   });
 
   it("desktop rail lands Insights between Menu and Settings", () => {

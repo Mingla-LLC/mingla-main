@@ -33,7 +33,9 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import {
   accent,
@@ -78,6 +80,7 @@ import {
   paidFeeIsActive,
 } from "./venueFeeGate";
 import type { VenueModuleLeaveHandle } from "./venueLeaveContract";
+import { venueScrollBottomPad } from "./venueShellScroll";
 import { VenueDetailsEditor } from "./VenueDetailsEditor";
 
 export type VenueSettingsLeaveHandle = VenueModuleLeaveHandle;
@@ -156,16 +159,11 @@ export const VenueSettingsModule = forwardRef<
   const feeAmountCents = settings?.feeAmountCents ?? 0;
 
   // Draft amount in MAJOR units (what the operator types). Hydrated from the
-  // persisted cents; mirrors the table-sheet's string-input pattern. Kept in
-  // sync when the server value changes (e.g. after a successful save / refetch).
+  // persisted cents while clean; dirty drafts are not overwritten by refetch.
   const [amountDraft, setAmountDraft] = useState<string>("");
-  useEffect(() => {
-    if (feeAmountCents > 0) {
-      setAmountDraft(String(majorFromMinor(feeAmountCents, currency)));
-    } else {
-      setAmountDraft("");
-    }
-  }, [feeAmountCents, currency]);
+  const [feeDraftBaselineCents, setFeeDraftBaselineCents] = useState<
+    number | null
+  >(null);
 
   // Parse the draft → integer cents (currency-aware; zero-decimal safe). A blank
   // / non-numeric / non-positive draft → 0 (= "no amount set").
@@ -174,6 +172,28 @@ export const VenueSettingsModule = forwardRef<
     if (!Number.isFinite(major) || major <= 0) return 0;
     return minorFromMajor(major, currency);
   }, [amountDraft, currency]);
+
+  const feeAmountDirty = useMemo(() => {
+    if (!feeEnabled) return false;
+    const serverCents = feeAmountCents > 0 ? feeAmountCents : 0;
+    return draftCents !== serverCents;
+  }, [draftCents, feeAmountCents, feeEnabled]);
+
+  useEffect(() => {
+    const serverCents = feeAmountCents > 0 ? feeAmountCents : 0;
+    if (feeDraftBaselineCents !== null && feeAmountDirty) return;
+    if (feeAmountCents > 0) {
+      setAmountDraft(String(majorFromMinor(feeAmountCents, currency)));
+    } else {
+      setAmountDraft("");
+    }
+    setFeeDraftBaselineCents(serverCents);
+  }, [
+    currency,
+    feeAmountCents,
+    feeAmountDirty,
+    feeDraftBaselineCents,
+  ]);
 
   // The fee is a broken "paid but charges nothing" config while ON with no
   // positive amount — surface it and DO NOT treat the fee as active.
@@ -224,12 +244,6 @@ export const VenueSettingsModule = forwardRef<
     },
     [canMutate, payoutReady, updateFee, currency],
   );
-
-  const feeAmountDirty = useMemo(() => {
-    if (!feeEnabled) return false;
-    const serverCents = feeAmountCents > 0 ? feeAmountCents : 0;
-    return draftCents !== serverCents;
-  }, [draftCents, feeAmountCents, feeEnabled]);
 
   const handleNoShowPolicy = useCallback(
     (policy: "forfeit" | "none"): void => {
@@ -320,18 +334,20 @@ export const VenueSettingsModule = forwardRef<
   const settingsDirty = settingsChangedLabels.length > 0;
   const settingsValid = !hoursInvalid && !(feeEnabled && feeNeedsAmount);
 
+  const [settingsSaveFailed, setSettingsSaveFailed] = useState(false);
+
   const handleSaveSettings = useCallback((): Promise<void> => {
     if (!canMutate || !settingsDirty || !settingsValid) {
       return Promise.reject(new Error("invalid"));
     }
     setHoursError(false);
+    setSettingsSaveFailed(false);
     const tasks: Promise<void>[] = [];
     if (hoursDirty && hoursDraft !== null) {
       tasks.push(
         new Promise((resolve, reject) => {
           upsertHours.mutate(hoursDraft, {
             onSuccess: () => {
-              setHoursSaved(true);
               setHoursDraft(null);
               resolve();
             },
@@ -352,14 +368,26 @@ export const VenueSettingsModule = forwardRef<
               feeCurrency: currency,
             },
             {
-              onSuccess: () => resolve(),
+              onSuccess: () => {
+                setFeeDraftBaselineCents(draftCents > 0 ? draftCents : 0);
+                resolve();
+              },
               onError: () => reject(new Error("fee")),
             },
           );
         }),
       );
     }
-    return Promise.all(tasks).then(() => undefined);
+    return Promise.all(tasks)
+      .then(() => {
+        setHoursSaved(true);
+        setSettingsSaveFailed(false);
+      })
+      .catch((error: unknown) => {
+        setSettingsSaveFailed(true);
+        setHoursSaved(false);
+        throw error;
+      });
   }, [
     canMutate,
     currency,
@@ -440,6 +468,8 @@ export const VenueSettingsModule = forwardRef<
     );
   }, [brandId, placePoolId, venueId, router]);
 
+  const insets = useSafeAreaInsets();
+
   // ORCH-1190 #1 — full-width parity. The Settings module previously capped its
   // content column at `venueSettingsMaxWidth` on wide desktop, so it did NOT fill
   // the workspace like Overview/Tables/Reservations/Waitlist/Menu (all of which
@@ -447,8 +477,17 @@ export const VenueSettingsModule = forwardRef<
   // every venue-suite module shares the SAME full-width container. The readable
   // line measure is preserved by the cards' own content widths + the inner
   // controls, not a hard column cap.
+  // #3655 — own the ScrollView so the Save bar stays sticky outside scroll content.
   return (
-    <View style={styles.host} testID={testID ?? "venue-settings-module"}>
+    <View style={styles.shell} testID={testID ?? "venue-settings-module"}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.host,
+          { paddingBottom: venueScrollBottomPad(insets.bottom) + 96 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        testID="venue-settings-scroll"
+      >
       {/* 1 — Reservations (canonical toggle home). */}
       <Section title="Reservations">
         <View style={styles.rowBetween}>
@@ -748,6 +787,7 @@ export const VenueSettingsModule = forwardRef<
           You can view these settings. Ask a manager or owner to make changes.
         </Text>
       ) : null}
+      </ScrollView>
 
       {canMutate ? (
         <View style={styles.saveBar} testID="venue-settings-save-bar">
@@ -755,7 +795,7 @@ export const VenueSettingsModule = forwardRef<
             label="Save settings"
             changedLabels={settingsChangedLabels}
             captionState={
-              hoursError
+              hoursError || settingsSaveFailed
                 ? "failed"
                 : upsertHours.isPending || updateFee.isPending
                   ? "saving"
@@ -772,7 +812,9 @@ export const VenueSettingsModule = forwardRef<
                 ? "Set a fee amount above zero to save"
                 : hoursInvalid
                   ? "Fix opening hours to save"
-                  : null
+                  : settingsSaveFailed
+                    ? "Couldn't save. Your changes are still here."
+                    : null
             }
             onPress={() => {
               void handleSaveSettings();
@@ -787,18 +829,15 @@ export const VenueSettingsModule = forwardRef<
 });
 
 const styles = StyleSheet.create({
+  shell: {
+    flex: 1,
+  },
   host: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
-    // Room for sticky save bar.
-    paddingBottom: 120,
     gap: spacing.md,
   },
   saveBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     paddingBottom: spacing.lg,

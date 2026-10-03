@@ -45,12 +45,12 @@ describe("ORCH-1145 — Venue Hub tab visibility gate (useHubTabs)", () => {
   // src/hooks/__tests__/useHubTabs.venueGate.adversarial.test.ts +
   // __tests__/metaOrch1255LegB.happy.test.ts (T-B2). Approved by the
   // orchestrator RETEST directive, 2026-07-02.
+  // [TEST-MOD-APPROVED #3655] Decision 9 — zero venues: no Venues tab; add from
+  // `+` only. Legacy hasPhysicalLocation / hasPlacePool arms are no longer live.
   test("T-1/T-2/T-3 — venue appended IFF venueCount>0 (or dormant legacy flags)", () => {
-    // The append condition: venueCount-first, legacy flags as fallback arms.
     expect(USE_HUB_TABS).toMatch(
-      /if\s*\(\s*\(venue\.venueCount\s*\?\?\s*0\)\s*>\s*0\s*\|\|\s*venue\.hasPhysicalLocation\s*===\s*true\s*\|\|\s*venue\.hasPlacePool\s*===\s*true\s*\)\s*\{\s*visible\.push\(\s*["']venue["']\s*\);?\s*\}/,
+      /if\s*\(\s*\(venue\.venueCount\s*\?\?\s*0\)\s*>\s*0\s*\)\s*\{\s*visible\.push\(\s*["']venue["']\s*\);?\s*\}/,
     );
-    // The venue visibility input type: venueCount + optional legacy flags.
     expect(USE_HUB_TABS).toContain("venueCount?: number");
     expect(USE_HUB_TABS).toContain("hasPhysicalLocation?: boolean");
     expect(USE_HUB_TABS).toContain("hasPlacePool?: boolean");

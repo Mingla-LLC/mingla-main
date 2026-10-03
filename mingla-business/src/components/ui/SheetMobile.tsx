@@ -393,7 +393,10 @@ const SheetNative: React.FC<SheetProps> = ({
     });
 
   const handleScrimPress = (): void => {
-    if (!dismissDisabled && dismissOnScrimTap) requestDismiss();
+    // INV-5 (#1022) — keep the `if (dismissOnScrimTap)` shape so the
+    // handle-only pan gate still proves scrim dismissal is alive.
+    if (dismissDisabled) return;
+    if (dismissOnScrimTap) requestDismiss();
   };
 
   if (!mounted) return null;
@@ -864,7 +867,10 @@ const SheetWeb: React.FC<SheetProps> = ({
   };
 
   const handleScrimPress = (): void => {
-    if (!dismissDisabled && dismissOnScrimTap) requestDismiss();
+    // INV-5 (#1022) — keep the `if (dismissOnScrimTap)` shape so the
+    // handle-only pan gate still proves scrim dismissal is alive.
+    if (dismissDisabled) return;
+    if (dismissOnScrimTap) requestDismiss();
   };
 
   // ORCH-1207 Bug 2 — WEB drag-to-dismiss. SheetWeb previously closed ONLY via a

@@ -152,11 +152,19 @@ export default function VenueManagementPage(): React.ReactElement {
     (s) => s.setPendingLeaveFocus,
   );
 
+  const requestLeave = useVenueSuiteStore((s) => s.requestLeave);
   const handleBack = useCallback((restoreFocus?: () => void): void => {
     setPendingLeaveFocus(restoreFocus ?? null);
-    if (router.canGoBack()) router.back();
-    else router.replace("/(tabs)/hub/listing" as never);
-  }, [router, setPendingLeaveFocus]);
+    const proceed = (): void => {
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)/hub/listing" as never);
+    };
+    if (requestLeave !== null) {
+      requestLeave(proceed, restoreFocus);
+      return;
+    }
+    proceed();
+  }, [requestLeave, router, setPendingLeaveFocus]);
 
   // ----- public-page actions (#1483) -----
   // `venue_public_view` is defined `WHERE claim_status = 'verified'`, so any

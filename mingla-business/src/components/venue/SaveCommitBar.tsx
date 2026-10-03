@@ -101,7 +101,8 @@ export function SaveCommitBar({
     loading ||
     captionState === "clean" ||
     captionState === "invalid" ||
-    captionState === "saving";
+    captionState === "saving" ||
+    captionState === "saved";
 
   return (
     <View

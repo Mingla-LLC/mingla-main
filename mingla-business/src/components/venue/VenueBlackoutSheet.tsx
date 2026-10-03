@@ -22,7 +22,6 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
-import { ConfirmDialog } from "../ui/ConfirmDialog";
 // Issue #1503 [stay-date-pickers] — From/To are PICKED from a real calendar on
 // every surface (HTML5 date input on web, native dialog on iOS/Android). The
 // `From (YYYY-MM-DD)` label crutch is gone: the control now carries the format.
@@ -59,6 +58,8 @@ export interface VenueBlackoutSheetProps {
   blackout: VenueBlackout | null;
   tables: VenueTable[];
   onSave: (input: VenueBlackoutUpsert) => void;
+  /** Asks the parent to confirm remove (ConfirmDialog lives on the parent so
+   * node/jest suites that mount this sheet do not pull reanimated). */
   onDelete?: () => void;
   saving: boolean;
   /** #3624 / #3655 — true while a remove mutation is in flight. */
@@ -87,7 +88,6 @@ export function VenueBlackoutSheet({
   const [appliesTo, setAppliesTo] = useState<BlackoutAppliesTo>("all");
   const [zone, setZone] = useState<VenueTableZone | null>(null);
   const [tableId, setTableId] = useState<string | null>(null);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -97,18 +97,7 @@ export function VenueBlackoutSheet({
     setAppliesTo(blackout?.appliesTo ?? "all");
     setZone(blackout?.zone ?? null);
     setTableId(blackout?.tableId ?? null);
-    setDeleteConfirmOpen(false);
   }, [visible, blackout]);
-
-  // Close the confirm once a remove attempt finishes so error copy on the
-  // sheet is visible (success path closes the whole sheet via `visible`).
-  const wasDeletingRef = React.useRef(false);
-  useEffect(() => {
-    if (wasDeletingRef.current && !deleting) {
-      setDeleteConfirmOpen(false);
-    }
-    wasDeletingRef.current = deleting;
-  }, [deleting]);
 
   const startValid = ISO_DATE.test(dateStart);
   const endValid = ISO_DATE.test(dateEnd || dateStart);
@@ -293,7 +282,7 @@ export function VenueBlackoutSheet({
           {isEdit && onDelete != null ? (
             <Button
               label="Remove this blackout"
-              onPress={() => setDeleteConfirmOpen(true)}
+              onPress={onDelete}
               variant="destructiveOutline"
               size="md"
               fullWidth
@@ -309,30 +298,6 @@ export function VenueBlackoutSheet({
           ) : null}
         </ScrollView>
       </View>
-      <ConfirmDialog
-        visible={deleteConfirmOpen}
-        onClose={() => {
-          if (!deleting) setDeleteConfirmOpen(false);
-        }}
-        title="Remove this blackout?"
-        description={
-          blackout !== null
-            ? `Guests will be able to book again from ${blackout.dateStart}${
-                blackout.dateEnd && blackout.dateEnd !== blackout.dateStart
-                  ? ` to ${blackout.dateEnd}`
-                  : ""
-              }.`
-            : "Guests will be able to book these dates again."
-        }
-        confirmLabel="Remove blackout"
-        cancelLabel="Keep it"
-        destructive
-        confirmLoading={deleting}
-        onConfirm={() => {
-          onDelete?.();
-        }}
-        testID="venue-blackout-delete-confirm"
-      />
     </Sheet>
   );
 }

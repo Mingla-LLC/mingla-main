@@ -1526,7 +1526,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(
     async (options?: { scope?: "local" | "global" }) => {
       const scope = options?.scope ?? "local";
-      await supabase.auth.signOut({ scope });
+      const { error } = await supabase.auth.signOut({ scope });
+      if (error) {
+        throw error;
+      }
       // GoogleSignin native SDK is iOS/Android-only — gate per Cycle 0b.
       if (Platform.OS !== "web") {
         try {

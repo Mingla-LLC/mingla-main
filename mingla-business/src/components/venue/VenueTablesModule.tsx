@@ -34,7 +34,6 @@ import {
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import { ChevronRight, LayoutGrid } from "lucide-react-native";
 import { Button } from "../ui/Button";
-import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueCapacityRulesPanel } from "./VenueCapacityRulesPanel";
 import { VenueTableSheet } from "./VenueTableSheet";
@@ -54,6 +53,13 @@ import type {
 const LazyVenueSpotsSheet = React.lazy(async () => {
   const mod = await import("./VenueSpotsSheet");
   return { default: mod.VenueSpotsSheet };
+});
+
+/** Lazy ConfirmDialog — static import pulls reanimated and breaks node/web
+ * render-proof suites that mount VenueTablesModule without transforming it. */
+const LazyConfirmDialog = React.lazy(async () => {
+  const mod = await import("../ui/ConfirmDialog");
+  return { default: mod.ConfirmDialog };
 });
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
@@ -355,27 +361,31 @@ export function VenueTablesModule({
         canDelete={canMutate}
       />
 
-      <ConfirmDialog
-        visible={toggleTarget !== null}
-        onClose={() => {
-          if (!setActive.isPending) setToggleTarget(null);
-        }}
-        title={
-          toggleTarget?.isActive
-            ? `Set ${toggleTarget.name} Inactive?`
-            : `Set ${toggleTarget?.name ?? "table"} Active?`
-        }
-        description={
-          toggleTarget?.isActive
-            ? "Guests will not be offered this table until you turn it back on."
-            : "Guests can be seated at this table again."
-        }
-        confirmLabel={toggleTarget?.isActive ? "Set Inactive" : "Set Active"}
-        cancelLabel="Keep as is"
-        confirmLoading={setActive.isPending}
-        onConfirm={confirmToggleActive}
-        testID="venue-tables-active-confirm"
-      />
+      {toggleTarget !== null ? (
+        <React.Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            onClose={() => {
+              if (!setActive.isPending) setToggleTarget(null);
+            }}
+            title={
+              toggleTarget.isActive
+                ? `Set ${toggleTarget.name} Inactive?`
+                : `Set ${toggleTarget.name} Active?`
+            }
+            description={
+              toggleTarget.isActive
+                ? "Guests will not be offered this table until you turn it back on."
+                : "Guests can be seated at this table again."
+            }
+            confirmLabel={toggleTarget.isActive ? "Set Inactive" : "Set Active"}
+            cancelLabel="Keep as is"
+            confirmLoading={setActive.isPending}
+            onConfirm={confirmToggleActive}
+            testID="venue-tables-active-confirm"
+          />
+        </React.Suspense>
+      ) : null}
 
       {spotsSheetOpen ? (
         <React.Suspense fallback={null}>

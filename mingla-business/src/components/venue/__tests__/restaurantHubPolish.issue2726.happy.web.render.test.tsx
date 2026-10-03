@@ -121,7 +121,7 @@ import { StyleSheet, View } from "react-native";
 import { restaurantHubLayout } from "../../../constants/designSystem";
 import { VenueAvailabilityModule } from "../VenueAvailabilityModule";
 import { VenueHubEmptyState } from "../VenueHubEmptyState";
-import { deriveVenueRailModules } from "../VenueSuiteShell";
+import { deriveVenueRailModules } from "../venueRail";
 import { deriveVenueModules } from "../venueModules";
 
 function render(node: React.ReactElement): string {

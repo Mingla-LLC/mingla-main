@@ -113,6 +113,9 @@ export default function AccountTab(): React.ReactElement {
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
   const [signOutEverywhereOpen, setSignOutEverywhereOpen] = useState(false);
   const [signOutBusy, setSignOutBusy] = useState(false);
+  const [signOutEverywhereError, setSignOutEverywhereError] = useState<
+    string | null
+  >(null);
 
   // Cycle 14 — D-CYCLE14-FOR-6 + I-35: consume recover-on-sign-in event
   useEffect(() => {
@@ -129,6 +132,7 @@ export default function AccountTab(): React.ReactElement {
     async (scope: "local" | "global" = "local"): Promise<void> => {
       if (signOutBusy) return;
       setSignOutBusy(true);
+      setSignOutEverywhereError(null);
       try {
         await signOut({ scope });
         // After signOut succeeds, navigate to root. AuthContext clears `user`
@@ -136,14 +140,19 @@ export default function AccountTab(): React.ReactElement {
         // BusinessWelcomeScreen. Without this navigation, the user stays on
         // /(tabs)/account with cleared session but unchanged UI (Cycle 0a-vintage
         // bug surfaced during Cycle 0b smoke; per ORCH-BIZ-AUTH-SIGNOUT-NAV).
+        setSignOutEverywhereOpen(false);
         router.replace("/");
       } catch (error) {
-        if (__DEV__) {
+        if (scope === "global") {
+          setSignOutEverywhereError(
+            "Couldn't sign out everywhere. You're still signed in here and on other devices — try again.",
+          );
+        } else if (__DEV__) {
           console.error("[AccountTab] signOut threw:", error);
         }
+        throw error;
       } finally {
         setSignOutBusy(false);
-        setSignOutEverywhereOpen(false);
       }
     },
     [signOut, router, signOutBusy],
@@ -486,7 +495,10 @@ export default function AccountTab(): React.ReactElement {
       <ConfirmDialog
         visible={signOutEverywhereOpen}
         onClose={() => {
-          if (!signOutBusy) setSignOutEverywhereOpen(false);
+          if (!signOutBusy) {
+            setSignOutEverywhereOpen(false);
+            setSignOutEverywhereError(null);
+          }
         }}
         title="Sign out everywhere?"
         description="This ends your Mingla session on every phone, tablet and browser. You'll need to sign in again on each one."
@@ -494,9 +506,8 @@ export default function AccountTab(): React.ReactElement {
         cancelLabel="Keep signed in"
         destructive
         confirmLoading={signOutBusy}
-        onConfirm={() => {
-          void handleSignOut("global");
-        }}
+        errorMessage={signOutEverywhereError}
+        onConfirm={() => handleSignOut("global")}
         testID="account-sign-out-everywhere-confirm"
       />
 
