@@ -68,7 +68,8 @@ interface VenueSuiteState {
     activeModule: VenueModule;
     visibleModules: readonly VenueModule[];
     selectModule: (module: VenueModule, restoreFocus?: () => void) => void;
-    requestLeave: (proceed: () => void, restoreFocus?: () => void) => void;
+    /** Optional so older callers/tests keep typing; shell always installs it. */
+    requestLeave?: (proceed: () => void, restoreFocus?: () => void) => void;
   }) => void;
 }
 
@@ -123,7 +124,12 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
       dirtyModules: new Set(),
     }),
   sync: ({ activeModule, visibleModules, selectModule, requestLeave }) =>
-    set({ activeModule, visibleModules, selectModule, requestLeave }),
+    set({
+      activeModule,
+      visibleModules,
+      selectModule,
+      ...(requestLeave !== undefined ? { requestLeave } : {}),
+    }),
 }));
 
 /** Convenience selector: is the venue suite currently mounted/active? */

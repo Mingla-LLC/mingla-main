@@ -183,6 +183,9 @@ export function VenueSuiteShell({
     restoreFocus: (() => void) | null;
     fromModule: VenueModule;
   } | null>(null);
+  /** Set before resumed navigation after leave save/discard so beforeRemove
+   * does not open a second prompt while dirty clears on the next paint. */
+  const sanctionedExitRef = useRef(false);
 
   const getLeaveHandle = useCallback(
     (module: VenueModule): VenueModuleLeaveHandle | null => {
@@ -251,6 +254,9 @@ export function VenueSuiteShell({
     pendingLeaveRef.current = null;
     setLeaveOpen(false);
     setLeaveError(null);
+    // Discard clears dirty on the next paint; sanction the resumed route so
+    // beforeRemove cannot open a second leave prompt (#3655 review).
+    sanctionedExitRef.current = true;
     pending?.proceed();
   }, [getLeaveHandle, leaveSaving]);
 
@@ -266,6 +272,7 @@ export function VenueSuiteShell({
       const section = sectionLabelForModule(pending.fromModule);
       pendingLeaveRef.current = null;
       setLeaveOpen(false);
+      sanctionedExitRef.current = true;
       pending.proceed();
       setLeaveToast(`${section} saved`);
     } catch {
@@ -300,7 +307,6 @@ export function VenueSuiteShell({
   );
 
   const navigation = useNavigation();
-  const sanctionedExitRef = useRef(false);
   useEffect(() => {
     // Availability installs its own beforeRemove; skip double-prompt there.
     if (activeModule === "availability") return;

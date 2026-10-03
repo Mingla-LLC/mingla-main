@@ -65,6 +65,14 @@ import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 
+/** #3655 — leave handle for staged cover/gallery (and other draft fields). */
+export interface VenueDeckLeaveHandle {
+  isDirty: () => boolean;
+  changedLabels: () => string[];
+  save: () => Promise<void>;
+  discard: () => void;
+}
+
 export interface VenueDeckReadinessSetupProps {
   accountId: string;
   // META-ORCH-1255 — venue-scoped prop re-shape: the setup works on ONE
@@ -90,6 +98,8 @@ export interface VenueDeckReadinessSetupProps {
   initialCoaching?: PipelineCoachingCard[];
   initialCover?: CoverPatch | null;
   initialGallery?: string[];
+  /** #3655 — route Back / beforeRemove consults this for staged drafts. */
+  leaveHandleRef?: React.MutableRefObject<VenueDeckLeaveHandle | null>;
 }
 
 // META-ORCH-1009 Sub-E: required venue gallery bounds (mirror the edge GALLERY_MIN
@@ -223,6 +233,7 @@ export function VenueDeckReadinessSetup({
   initialCoaching = EMPTY_COACHING,
   initialCover = null,
   initialGallery = EMPTY_GALLERY,
+  leaveHandleRef,
 }: VenueDeckReadinessSetupProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   // #1558 — a NULL category is `uncategorised`, a named key with its own row in
@@ -421,6 +432,7 @@ export function VenueDeckReadinessSetup({
       onDone();
     } catch (error) {
       setMessage(sanitizeAuthoringError(error, "Could not save your changes."));
+      throw error;
     } finally {
       setBusy(null);
     }
@@ -437,6 +449,36 @@ export function VenueDeckReadinessSetup({
     priceMaxInput,
     priceMinInput,
     rangeQuery.data?.version,
+  ]);
+
+  const mediaDirty = coverDirty || galleryDirty;
+  useEffect(() => {
+    if (leaveHandleRef === undefined) return;
+    leaveHandleRef.current = {
+      isDirty: () => mediaDirty,
+      changedLabels: () => {
+        const labels: string[] = [];
+        if (coverDirty) labels.push("Cover");
+        if (galleryDirty) labels.push("Photos");
+        return labels;
+      },
+      save: handleSaveChanges,
+      discard: () => {
+        setCover(savedCover);
+        setGallery(savedGallery);
+      },
+    };
+    return (): void => {
+      leaveHandleRef.current = null;
+    };
+  }, [
+    coverDirty,
+    galleryDirty,
+    handleSaveChanges,
+    leaveHandleRef,
+    mediaDirty,
+    savedCover,
+    savedGallery,
   ]);
 
   const handleRefresh = useCallback(async (): Promise<void> => {
@@ -759,7 +801,9 @@ export function VenueDeckReadinessSetup({
             size="md"
             loading={busy === "save"}
             disabled={busy !== null}
-            onPress={() => void handleSaveChanges()}
+            onPress={() => {
+              void handleSaveChanges().catch(() => undefined);
+            }}
             testID="venue-deck-save"
           />
         </View>

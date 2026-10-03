@@ -70,22 +70,26 @@ const counts = (
 });
 
 describe("ORCH-1145 adversarial — deriveHubVisibleTabs is a TRUE OR, executed at runtime", () => {
-  test("A1 — placePool-ONLY brand (physical=false) STILL gets the venue pill (OR, not AND)", () => {
+  // [TEST-MOD-APPROVED #3655] Decision 9 — Venues pill only when venueCount > 0.
+  // Legacy hasPhysicalLocation / hasPlacePool arms no longer open the tab.
+  test("A1 — placePool-ONLY brand with zero venues does NOT get the venue pill", () => {
     const out = deriveHubVisibleTabs(counts(0, 0, 0), {
       hasPhysicalLocation: false,
       hasPlacePool: true,
+      venueCount: 0,
     });
-    expect(out).toEqual(["venue"]);
-    // If the gate were `&&`, this would be [] — guard the AND-typo explicitly.
-    expect(out).toContain("venue");
+    expect(out).toEqual([]);
+    expect(out).not.toContain("venue");
   });
 
-  test("A2 — physical-location-ONLY brand (pool=false) STILL gets the venue pill", () => {
+  test("A2 — physical-location-ONLY brand with zero venues does NOT get the venue pill", () => {
     const out = deriveHubVisibleTabs(counts(0, 0, 0), {
       hasPhysicalLocation: true,
       hasPlacePool: false,
+      venueCount: 0,
     });
-    expect(out).toEqual(["venue"]);
+    expect(out).toEqual([]);
+    expect(out).not.toContain("venue");
   });
 
   test("A3 — purely-online brand (neither flag) NEVER gets the venue pill (false case)", () => {
@@ -103,10 +107,11 @@ describe("ORCH-1145 adversarial — deriveHubVisibleTabs is a TRUE OR, executed 
     expect(out).toEqual(["events"]);
   });
 
-  test("A5 — venue is appended LAST, after every offering pill (rightmost peer order)", () => {
+  test("A5 — venue is appended LAST when venueCount > 0 (rightmost peer order)", () => {
     const out = deriveHubVisibleTabs(counts(1, 1, 1), {
       hasPhysicalLocation: true,
       hasPlacePool: false,
+      venueCount: 1,
     });
     expect(out).toEqual(["events", "trips", "experiences", "venue"]);
     expect(out.indexOf("venue")).toBe(out.length - 1);

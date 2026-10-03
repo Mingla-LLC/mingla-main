@@ -631,6 +631,9 @@ export const VenueAvailabilityModule = forwardRef<
     setTouched(new Set());
     setSubmitted(false);
     setSaveState("idle");
+    // Dirty clears on the next paint; sanction resumed navigation so
+    // beforeRemove cannot open a second leave prompt (#3655 review).
+    sanctionedExitRef.current = true;
     leave?.();
   }, [baseline]);
 
@@ -1187,6 +1190,7 @@ export const VenueAvailabilityModule = forwardRef<
                       const proceed = pendingLeaveRef.current;
                       pendingLeaveRef.current = null;
                       setDiscardDialogVisible(false);
+                      sanctionedExitRef.current = true;
                       proceed?.();
                     },
                     onError: () => reject(new Error("save")),

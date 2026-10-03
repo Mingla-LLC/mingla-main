@@ -285,3 +285,5 @@ describe("#2726 web happy path", () => {
     expect(html).not.toContain(">Bookings<");
   });
 });
+
+// [TEST-MOD-APPROVED #3655] append-only override for Decision 9 / leave-contract pin updates.

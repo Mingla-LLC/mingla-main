@@ -156,8 +156,9 @@ describe("ORCH-1304 — VenueDeckReadinessSetup has no pitch generation", () => 
     expect(src).not.toContain("handleRunAi");
   });
 
-  test("a single Save changes button persists inputs via save_tier2", () => {
-    expect(src).toContain("Save changes");
+  // [TEST-MOD-APPROVED #3655] caption is "Save deck details" (not "Save changes").
+  test("a single Save deck details button persists inputs via save_tier2", () => {
+    expect(src).toContain("Save deck details");
     expect(src).toContain("saveTier2");
   });
 

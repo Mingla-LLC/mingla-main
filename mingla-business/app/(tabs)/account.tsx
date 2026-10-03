@@ -147,10 +147,17 @@ export default function AccountTab(): React.ReactElement {
           setSignOutEverywhereError(
             "Couldn't sign out everywhere. You're still signed in here and on other devices — try again.",
           );
-        } else if (__DEV__) {
+          // ConfirmDialog awaits this promise — rethrow so it stays open.
+          throw error;
+        }
+        setToast({
+          visible: true,
+          message:
+            "Couldn't sign out. You're still signed in — try again.",
+        });
+        if (__DEV__) {
           console.error("[AccountTab] signOut threw:", error);
         }
-        throw error;
       } finally {
         setSignOutBusy(false);
       }
