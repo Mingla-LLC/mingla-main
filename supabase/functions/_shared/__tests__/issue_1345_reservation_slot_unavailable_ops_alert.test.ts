@@ -123,6 +123,11 @@ Deno.test("#1345 S6 — drain is on payout-release-sweep, NOT webhook/confirm", 
     "payout-release-sweep drains the outbox fail-open",
   );
   hasIn(
+    sweepSrc,
+    "} finally {",
+    "authenticated sweep drains in finally so early money returns still deliver",
+  );
+  hasIn(
     finalizeSrc,
     "slot_unavailable_after_charge_refund_due",
     "failed-status replay must recognize the refund-due failure_reason",

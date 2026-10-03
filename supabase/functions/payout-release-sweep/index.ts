@@ -1119,6 +1119,37 @@ export async function handlePayoutReleaseSweep(
     },
   });
 
+  // #1345 — after auth, every authenticated sweep invocation drains the
+  // reservation slot-unavailable ops-alert outbox fail-open in `finally`,
+  // including partner_attribution_pending / Stripe-phase / ledger early
+  // returns. Budget-bounded so Resend cannot starve money work.
+  try {
+    return await runPayoutReleaseSweepAuthenticated(admin, deps);
+  } finally {
+    try {
+      await (deps.drainReservationSlotUnavailableAlerts ??
+        ((a: AdminClient) =>
+          drainReservationSlotUnavailableAlertsFailOpen(
+            a as never,
+            "[payout-release-sweep]",
+          )))(admin as never);
+    } catch (slotAlertError) {
+      console.error(
+        "[payout-release-sweep] reservation slot-unavailable alert drain failed",
+        {
+          message: slotAlertError instanceof Error
+            ? slotAlertError.message
+            : String(slotAlertError),
+        },
+      );
+    }
+  }
+}
+
+async function runPayoutReleaseSweepAuthenticated(
+  admin: AdminClient,
+  deps: SweepDeps,
+): Promise<Response> {
   // Per-charge provider fees are immutable ledger inputs. Missing fee truth
   // blocks attachment; it never silently becomes zero and never comes from an
   // aggregate provider balance.
@@ -1259,25 +1290,7 @@ export async function handlePayoutReleaseSweep(
   // shape; the active authority is the strict resolver above.
   // deps.env("PAYOUT_RELEASE_EXECUTE") !== "true"
   if (!payoutReleaseExecute) {
-    // #1345 — after ledger/notice work, before dark return. Budget-bounded so
-    // Resend cannot consume the 30s sweep deadline; never blocks money ticks.
-    try {
-      await (deps.drainReservationSlotUnavailableAlerts ??
-        ((a: AdminClient) =>
-          drainReservationSlotUnavailableAlertsFailOpen(
-            a as never,
-            "[payout-release-sweep]",
-          )))(admin as never);
-    } catch (slotAlertError) {
-      console.error(
-        "[payout-release-sweep] reservation slot-unavailable alert drain failed",
-        {
-          message: slotAlertError instanceof Error
-            ? slotAlertError.message
-            : String(slotAlertError),
-        },
-      );
-    }
+    // #1345 drain runs in the authenticated finally (after this return).
     return json({
       ok: true,
       dark: true,
@@ -1429,26 +1442,9 @@ export async function handlePayoutReleaseSweep(
     }
   }
 
-  // #1345 — AFTER Stripe/Paystack/partner execution so alert delivery cannot
-  // starve organiser money movement. Same fail-open + wall-clock budget as dark.
-  try {
-    await (deps.drainReservationSlotUnavailableAlerts ??
-      ((a: AdminClient) =>
-        drainReservationSlotUnavailableAlertsFailOpen(
-          a as never,
-          "[payout-release-sweep]",
-        )))(admin as never);
-  } catch (slotAlertError) {
-    console.error(
-      "[payout-release-sweep] reservation slot-unavailable alert drain failed",
-      {
-        message: slotAlertError instanceof Error
-          ? slotAlertError.message
-          : String(slotAlertError),
-      },
-    );
-  }
-
+  // #1345 drain runs in the authenticated finally (after this return), so
+  // partner_attribution_pending / Stripe-phase / released-row early returns
+  // still deliver pending refund alerts without delaying money execution.
   return json({
     ok: true,
     dark: false,
