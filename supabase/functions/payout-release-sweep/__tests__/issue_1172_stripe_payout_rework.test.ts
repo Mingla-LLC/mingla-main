@@ -334,6 +334,13 @@ Deno.test("attempt-cap alert survives transport failure and delivers once withou
       if (name === "surface_payout_releases_waiting_for_bank") {
         return Promise.resolve({ data: [], error: null });
       }
+      // Issue #3645 PR10: pause/outcome notice drains (empty in this scenario).
+      if (
+        name === "claim_brand_payout_pause_notices" ||
+        name === "claim_brand_payout_outcome_notices"
+      ) {
+        return Promise.resolve({ data: [], error: null });
+      }
       throw new Error(`unexpected RPC ${name}`);
     },
     from: (table: string) => {

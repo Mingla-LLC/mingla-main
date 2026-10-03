@@ -34,8 +34,8 @@ import { releasePartnerSplitsForOrganiserRelease } from "./partnerRelease.ts";
 // waiting-for-bank copy, admin pause/resume notices). Organiser-safe by
 // construction: no error_message / attempt_count / OTP / KYC internals.
 import {
+  drainOutcomeNotices,
   drainPausedNotices,
-  notifyPaystackReleaseOutcome,
   payoutWaitingForBankCopy,
 } from "../_shared/organiserPayoutNotify.ts";
 import { resolvePaymentOperationFlagValue } from "../_shared/secretBundle.ts";
@@ -77,13 +77,12 @@ type SweepDeps = {
   // Issue #1177 — injectable Paystack transfer client (mirror of
   // createStripeReleaseClient) so the organiser rail is unit-testable.
   createPaystackReleaseClient?: () => PaystackReleaseClient;
-  // #3645 PR10 — injectable organiser notifiers (Paystack payout outcome and
-  // the admin pause/resume notice drain) so the sweep stays unit-testable.
-  notifyPaystackOutcome?: (
-    admin: AdminClient,
-    releaseId: string,
-  ) => Promise<unknown>;
+  // #3645 PR10 — injectable organiser notice drains (pause/resume + terminal
+  // Paystack outcome) so the sweep stays unit-testable.
   drainPausedNotices?: (
+    admin: AdminClient,
+  ) => Promise<{ listed: number; delivered: number }>;
+  drainOutcomeNotices?: (
     admin: AdminClient,
   ) => Promise<{ listed: number; delivered: number }>;
 };
@@ -956,26 +955,9 @@ async function executeClaimedPaystackReleases(
         },
       });
 
-      // #3645 PR10 — organiser "payout sent" / terminal "payout failed". The
-      // helper reads the release's final status, so an in-progress release is a
-      // no-op; sent/failed are idempotent per release. Never fails the release.
-      if (counts.succeeded > 0 || counts.reconciled > 0 || counts.definitive > 0) {
-        try {
-          await (deps.notifyPaystackOutcome ??
-            ((a: AdminClient, id: string) =>
-              notifyPaystackReleaseOutcome(a as never, id)))(
-              admin,
-              release.release_id,
-            );
-        } catch (notifyError) {
-          console.warn("[payout-release-sweep] Paystack organiser notify failed", {
-            releaseId: release.release_id,
-            message: notifyError instanceof Error
-              ? notifyError.message
-              : String(notifyError),
-          });
-        }
-      }
+      // #3645 PR10 — terminal organiser notify is durable via
+      // brand_payout_outcome_notices (enqueued on released/failed) and drained
+      // once per tick below. Do not fire-and-forget here.
       totals.reconciled += counts.reconciled;
       totals.initiated += counts.initiated;
       totals.succeededLegs += counts.succeeded;
@@ -1207,7 +1189,7 @@ export async function handlePayoutReleaseSweep(
     return json({ error: "waiting_for_bank_surface_failed" }, 500);
   }
 
-  // #3645 PR10 — admin pause/resume notices recorded by the hold-table trigger.
+  // #3645 PR10 — admin pause/resume + terminal Paystack outcome notices.
   // Non-fatal by design: a notification hiccup must never block money movement
   // or turn a healthy tick into a 500; undelivered notices stay open and retry.
   try {
@@ -1226,6 +1208,24 @@ export async function handlePayoutReleaseSweep(
       message: pausedError instanceof Error
         ? pausedError.message
         : String(pausedError),
+    });
+  }
+  try {
+    const outcomes = await (deps.drainOutcomeNotices ??
+      ((a: AdminClient) => drainOutcomeNotices(a as never)))(admin as never);
+    if (outcomes.listed > 0) {
+      console.info(JSON.stringify({
+        event: "payout_outcome_notices_drained",
+        function_name: "payout-release-sweep",
+        listed: outcomes.listed,
+        delivered: outcomes.delivered,
+      }));
+    }
+  } catch (outcomeError) {
+    console.error("[payout-release-sweep] outcome notice drain failed", {
+      message: outcomeError instanceof Error
+        ? outcomeError.message
+        : String(outcomeError),
     });
   }
 

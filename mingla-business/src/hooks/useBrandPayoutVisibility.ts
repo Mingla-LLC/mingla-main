@@ -12,7 +12,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import { fetchBrandPayoutVisibility } from "../services/brandPayoutLedgerService";
-import type { BrandPayoutVisibilityDTO } from "../utils/brandPayoutVisibility";
+import type { BrandPayoutVisibilityDTO } from "../utils/brandPayoutVisibilityData";
 
 const STALE_TIME_MS = 30 * 1000;
 

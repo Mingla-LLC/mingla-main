@@ -18,7 +18,7 @@ import { useMemo } from "react";
 
 import { useBrandPayoutLedger } from "./useBrandPayoutLedger";
 import { majorFromMinor } from "../utils/currency";
-import { summariseOfferingPayoutMoney } from "../utils/brandPayoutVisibility";
+import { summariseOfferingPayoutMoney } from "../utils/brandPayoutVisibilityData";
 
 export interface OfferingPayoutMoneyMajor {
   paidOutMajor: number;

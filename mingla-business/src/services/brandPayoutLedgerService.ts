@@ -20,7 +20,7 @@ import { supabase } from "./supabase";
 import {
   parseBrandPayoutVisibility,
   type BrandPayoutVisibilityDTO,
-} from "../utils/brandPayoutVisibility";
+} from "../utils/brandPayoutVisibilityData";
 import type {
   BrandPayoutLedger,
   BrandPayoutReleaseDTO,

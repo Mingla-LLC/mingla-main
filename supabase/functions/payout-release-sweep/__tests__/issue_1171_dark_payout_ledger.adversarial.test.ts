@@ -152,9 +152,12 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
             return Promise.resolve({ data: [], error: null });
           }
           // Issue #3645 PR8 (append-only): surface returns rows[], not dark payload.
+          // Issue #3645 PR10: pause/outcome notice drains return rows[].
           if (
             name === "list_missing_payout_source_fees" ||
-            name === "surface_payout_releases_waiting_for_bank"
+            name === "surface_payout_releases_waiting_for_bank" ||
+            name === "claim_brand_payout_pause_notices" ||
+            name === "claim_brand_payout_outcome_notices"
           ) {
             return Promise.resolve({ data: [], error: null });
           }
@@ -232,6 +235,8 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
     "list_missing_payout_source_fees",
     "run_payout_release_dark_sweep",
     "surface_payout_releases_waiting_for_bank",
+    "claim_brand_payout_pause_notices",
+    "claim_brand_payout_outcome_notices",
     "claim_payout_release_alerts",
   ]);
 

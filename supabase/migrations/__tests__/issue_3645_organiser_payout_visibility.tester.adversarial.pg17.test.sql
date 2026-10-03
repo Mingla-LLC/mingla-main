@@ -114,7 +114,7 @@ BEGIN
       v_vis->>'currency';
   END IF;
 
-  -- authenticated can read neither the hold table nor the notice outbox.
+  -- authenticated can read neither the hold table nor the notice outboxes.
   SET LOCAL ROLE authenticated;
   PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
   v_sqlstate := NULL;
@@ -129,6 +129,16 @@ BEGIN
   END IF;
   v_sqlstate := NULL;
   BEGIN
+    PERFORM 1 FROM public.brand_payout_outcome_notices;
+  EXCEPTION WHEN others THEN
+    GET STACKED DIAGNOSTICS v_sqlstate = RETURNED_SQLSTATE;
+  END;
+  IF v_sqlstate IS DISTINCT FROM '42501' THEN
+    RESET ROLE; PERFORM set_config('request.jwt.claim.sub', '', true);
+    RAISE EXCEPTION 'pr10adv: authenticated could read brand_payout_outcome_notices (got %)', v_sqlstate;
+  END IF;
+  v_sqlstate := NULL;
+  BEGIN
     PERFORM 1 FROM public.brand_payout_admin_holds;
   EXCEPTION WHEN others THEN
     GET STACKED DIAGNOSTICS v_sqlstate = RETURNED_SQLSTATE;
@@ -137,7 +147,7 @@ BEGIN
     RESET ROLE; PERFORM set_config('request.jwt.claim.sub', '', true);
     RAISE EXCEPTION 'pr10adv: authenticated could read brand_payout_admin_holds (got %)', v_sqlstate;
   END IF;
-  -- ...and cannot call the sweep-side drain RPCs.
+  -- ...and cannot call the sweep-side drain RPCs (pause + outcome).
   v_sqlstate := NULL;
   BEGIN
     PERFORM public.claim_brand_payout_pause_notices(10);
@@ -154,10 +164,30 @@ BEGIN
   EXCEPTION WHEN others THEN
     GET STACKED DIAGNOSTICS v_sqlstate = RETURNED_SQLSTATE;
   END;
+  IF v_sqlstate IS DISTINCT FROM '42501' THEN
+    RESET ROLE; PERFORM set_config('request.jwt.claim.sub', '', true);
+    RAISE EXCEPTION 'pr10adv: authenticated could call complete_brand_payout_pause_notices (got %)', v_sqlstate;
+  END IF;
+  v_sqlstate := NULL;
+  BEGIN
+    PERFORM public.claim_brand_payout_outcome_notices(10);
+  EXCEPTION WHEN others THEN
+    GET STACKED DIAGNOSTICS v_sqlstate = RETURNED_SQLSTATE;
+  END;
+  IF v_sqlstate IS DISTINCT FROM '42501' THEN
+    RESET ROLE; PERFORM set_config('request.jwt.claim.sub', '', true);
+    RAISE EXCEPTION 'pr10adv: authenticated could call claim_brand_payout_outcome_notices (got %)', v_sqlstate;
+  END IF;
+  v_sqlstate := NULL;
+  BEGIN
+    PERFORM public.complete_brand_payout_outcome_notices(ARRAY[gen_random_uuid()]);
+  EXCEPTION WHEN others THEN
+    GET STACKED DIAGNOSTICS v_sqlstate = RETURNED_SQLSTATE;
+  END;
   RESET ROLE;
   PERFORM set_config('request.jwt.claim.sub', '', true);
   IF v_sqlstate IS DISTINCT FROM '42501' THEN
-    RAISE EXCEPTION 'pr10adv: authenticated could call complete_brand_payout_pause_notices (got %)', v_sqlstate;
+    RAISE EXCEPTION 'pr10adv: authenticated could call complete_brand_payout_outcome_notices (got %)', v_sqlstate;
   END IF;
 
   -- anon has no EXECUTE on the organiser read.

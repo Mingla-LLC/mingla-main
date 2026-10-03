@@ -47,27 +47,29 @@ BEGIN
   INSERT INTO public.brand_team_members (brand_id, user_id, role, invited_at, accepted_at)
   VALUES (v_brand, v_fin, 'finance_manager', now(), now());
 
-  -- pending 9000 (matures v_now - 1 day), in_flight 2000, released 4500,
-  -- cancelled 777 (excluded), failed 555 (excluded; carries a secret message).
+  -- pending 9000 (matures v_now - 1 day), in_flight 2000 (matures later),
+  -- released 4500, cancelled 777 (excluded), failed 555 (excluded; secret msg).
+  -- releasable_at MUST equal anchor_end_at + 1 day (brand_payout_release_anchor_order).
+  -- organiser_cash_delivered_cents is NOT NULL (column NOT NULL; 0 until released).
   INSERT INTO public.brand_payout_releases (
     brand_id, occurrence_key, surface, provider, currency,
     anchor_end_at, releasable_at, gross_cents, mingla_fee_cents,
     net_release_cents, organiser_cash_delivered_cents, status, released_at, error_message
   ) VALUES
     (v_brand, '3645-pr10-pend', 'order', 'paystack', 'ngn',
-     v_now - interval '2 days', v_now - interval '1 day', 10000, 1000, 9000, NULL,
+     v_now - interval '2 days', v_now - interval '1 day', 10000, 1000, 9000, 0,
      'pending', NULL, NULL),
     (v_brand, '3645-pr10-fly', 'order', 'paystack', 'ngn',
-     v_now - interval '2 days', v_now + interval '3 days', 2200, 200, 2000, NULL,
+     v_now + interval '2 days', v_now + interval '3 days', 2200, 200, 2000, 0,
      'in_flight', NULL, NULL),
     (v_brand, '3645-pr10-paid', 'order', 'paystack', 'ngn',
      v_now - interval '10 days', v_now - interval '9 days', 5000, 500, 4500, 4500,
      'released', v_now - interval '9 days', NULL),
     (v_brand, '3645-pr10-canc', 'order', 'paystack', 'ngn',
-     v_now - interval '10 days', v_now - interval '9 days', 800, 23, 777, NULL,
+     v_now - interval '10 days', v_now - interval '9 days', 800, 23, 777, 0,
      'cancelled_event', NULL, NULL),
     (v_brand, '3645-pr10-fail', 'order', 'paystack', 'ngn',
-     v_now - interval '10 days', v_now - interval '9 days', 600, 45, 555, NULL,
+     v_now - interval '10 days', v_now - interval '9 days', 600, 45, 555, 0,
      'failed', NULL, 'SECRET_INTERNAL_otp_kyc_detail');
 
   -- ── Owner reads ───────────────────────────────────────────────────────────
@@ -209,6 +211,32 @@ BEGIN
   -- The milestone column for Paystack bank-added exists and is claimable.
   INSERT INTO public.brand_appsflyer_milestones (brand_id, first_bank_added_at)
   VALUES (v_brand, now());
+
+  -- Terminal Paystack outcome notice: UPDATE pending → released enqueues once;
+  -- the drain RPCs list then close it (durable twin of pause notices).
+  UPDATE public.brand_payout_releases
+  SET status = 'released',
+      organiser_cash_delivered_cents = 9000,
+      released_at = v_now
+  WHERE brand_id = v_brand AND occurrence_key = '3645-pr10-pend';
+  SELECT count(*)::integer INTO v_count
+  FROM public.brand_payout_outcome_notices
+  WHERE brand_id = v_brand AND kind = 'paid' AND notified_at IS NULL;
+  IF v_count <> 1 THEN
+    RAISE EXCEPTION 'pr10: expected 1 pending paid outcome notice, got %', v_count;
+  END IF;
+  SELECT notice_id INTO v_notice
+  FROM public.claim_brand_payout_outcome_notices(50)
+  WHERE brand_id = v_brand AND kind = 'paid';
+  IF v_notice IS NULL THEN
+    RAISE EXCEPTION 'pr10: claim_brand_payout_outcome_notices did not list the paid notice';
+  END IF;
+  PERFORM public.complete_brand_payout_outcome_notices(ARRAY[v_notice]);
+  IF EXISTS (
+    SELECT 1 FROM public.claim_brand_payout_outcome_notices(50) WHERE notice_id = v_notice
+  ) THEN
+    RAISE EXCEPTION 'pr10: completed outcome notice still listed';
+  END IF;
 
   RAISE NOTICE 'issue_3645_organiser_payout_visibility_implementor_happy_pass';
 END;

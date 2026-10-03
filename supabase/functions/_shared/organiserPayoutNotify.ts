@@ -381,3 +381,71 @@ export async function drainPausedNotices(
   }
   return { listed: rows.length, delivered: delivered.length };
 }
+
+// ---------------------------------------------------------------------------
+// Terminal Paystack outcome notices (drained by payout-release-sweep).
+// ---------------------------------------------------------------------------
+
+export type OutcomeNoticeRow = {
+  notice_id: string;
+  release_id: string;
+  brand_id: string;
+  kind: "paid" | "failed";
+};
+
+/**
+ * Drain durable terminal Paystack payout notices recorded when a release flips
+ * to released/failed. Dispatch failures leave the row open for the next sweep
+ * — the webhook must never treat notify as fire-and-forget.
+ */
+export async function drainOutcomeNotices(
+  supabase: SupabaseClient,
+  deps: OrganiserNotifyDeps = defaultOrganiserNotifyDeps,
+): Promise<{ listed: number; delivered: number }> {
+  const { data, error } = await supabase.rpc(
+    "claim_brand_payout_outcome_notices" as never,
+    { p_limit: 50 } as never,
+  );
+  if (error) {
+    throw new Error(`outcome_notice_claim_failed:${error.message}`);
+  }
+  const rows = (data ?? []) as OutcomeNoticeRow[];
+  const delivered: string[] = [];
+  for (const row of rows) {
+    try {
+      const outcome = await notifyPaystackReleaseOutcome(
+        supabase,
+        row.release_id,
+        deps,
+      );
+      // Only complete when the release is still in a terminal notifying state.
+      // A race that moved the release elsewhere leaves the notice open.
+      if (outcome === "none") {
+        console.warn(
+          "[organiser-payout-notify] outcome notice skipped (release not terminal)",
+          { noticeId: row.notice_id, releaseId: row.release_id },
+        );
+        continue;
+      }
+      delivered.push(row.notice_id);
+    } catch (notifyError) {
+      console.error("[organiser-payout-notify] outcome notice dispatch failed", {
+        noticeId: row.notice_id,
+        releaseId: row.release_id,
+        message: notifyError instanceof Error
+          ? notifyError.message
+          : String(notifyError),
+      });
+    }
+  }
+  if (delivered.length > 0) {
+    const { error: doneError } = await supabase.rpc(
+      "complete_brand_payout_outcome_notices" as never,
+      { p_notice_ids: delivered } as never,
+    );
+    if (doneError) {
+      throw new Error(`outcome_notice_complete_failed:${doneError.message}`);
+    }
+  }
+  return { listed: rows.length, delivered: delivered.length };
+}

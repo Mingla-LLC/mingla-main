@@ -28,6 +28,10 @@
 --      idempotency-key pattern the waiting-for-bank notification already uses.
 --      The notice carries NO reason text: the organiser is told payouts are
 --      paused/resumed, never why.
+--   2b. Terminal Paystack outcome notices. When a Paystack release flips to
+--      released/failed, an AFTER UPDATE trigger records one row into
+--      brand_payout_outcome_notices. The sweep drains it the same way. The
+--      webhook must NOT swallow dispatch failures — the outbox is the retry.
 --   3. brand_appsflyer_milestones.first_bank_added_at — additive nullable column
 --      so the Paystack "bank added" analytics event can be claimed exactly once.
 --      NOTE for analytics readers: mingla_stripe_connect_activated fires on
@@ -218,6 +222,110 @@ REVOKE ALL ON FUNCTION public.complete_brand_payout_pause_notices(uuid[])
 GRANT EXECUTE ON FUNCTION public.claim_brand_payout_pause_notices(integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.complete_brand_payout_pause_notices(uuid[]) TO service_role;
 
+-- ── §3b. Terminal Paystack outcome notice outbox (drained by the sweep) ──────
+-- Enqueued in the same transaction that finalizes the release (UPDATE →
+-- released/failed). Stripe already notifies from its payout webhook; this
+-- outbox is Paystack-only so the rails do not double-notify.
+CREATE TABLE IF NOT EXISTS public.brand_payout_outcome_notices (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  release_id  uuid NOT NULL UNIQUE,
+  brand_id    uuid NOT NULL,
+  kind        text NOT NULL CHECK (kind IN ('paid', 'failed')),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  notified_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS brand_payout_outcome_notices_pending_idx
+  ON public.brand_payout_outcome_notices (created_at)
+  WHERE notified_at IS NULL;
+
+ALTER TABLE public.brand_payout_outcome_notices ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.brand_payout_outcome_notices FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.brand_payout_outcome_notices TO service_role;
+
+COMMENT ON TABLE public.brand_payout_outcome_notices IS
+  'Issue #3645 PR10: one row per Paystack release that reached released/failed, written by the release-status trigger and drained by payout-release-sweep. Carries no error_message. Service-role only.';
+
+CREATE OR REPLACE FUNCTION public.tg_brand_payout_outcome_notice()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  IF NEW.provider IS DISTINCT FROM 'paystack' THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.status NOT IN ('released', 'failed') THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND OLD.status IS NOT DISTINCT FROM NEW.status THEN
+    RETURN NEW;
+  END IF;
+  INSERT INTO public.brand_payout_outcome_notices (release_id, brand_id, kind)
+  VALUES (
+    NEW.id,
+    NEW.brand_id,
+    CASE WHEN NEW.status = 'released' THEN 'paid' ELSE 'failed' END
+  )
+  ON CONFLICT (release_id) DO NOTHING;
+  RETURN NEW;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.tg_brand_payout_outcome_notice() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS brand_payout_releases_outcome_notice ON public.brand_payout_releases;
+CREATE TRIGGER brand_payout_releases_outcome_notice
+  AFTER UPDATE OF status ON public.brand_payout_releases
+  FOR EACH ROW EXECUTE FUNCTION public.tg_brand_payout_outcome_notice();
+
+CREATE OR REPLACE FUNCTION public.claim_brand_payout_outcome_notices(
+  p_limit integer DEFAULT 50
+) RETURNS TABLE(
+  notice_id uuid,
+  release_id uuid,
+  brand_id uuid,
+  kind text
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+  SELECT n.id, n.release_id, n.brand_id, n.kind
+  FROM public.brand_payout_outcome_notices n
+  WHERE n.notified_at IS NULL
+  ORDER BY n.created_at, n.id
+  LIMIT greatest(1, least(coalesce(p_limit, 50), 200));
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.complete_brand_payout_outcome_notices(
+  p_notice_ids uuid[]
+) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_n integer;
+BEGIN
+  UPDATE public.brand_payout_outcome_notices
+  SET notified_at = now()
+  WHERE id = ANY (coalesce(p_notice_ids, ARRAY[]::uuid[]))
+    AND notified_at IS NULL;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  -- Orphan notices for vanished releases can never be delivered: close them.
+  UPDATE public.brand_payout_outcome_notices n
+  SET notified_at = now()
+  WHERE n.notified_at IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM public.brand_payout_releases r WHERE r.id = n.release_id
+    );
+  RETURN v_n;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.claim_brand_payout_outcome_notices(integer)
+  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.complete_brand_payout_outcome_notices(uuid[])
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_brand_payout_outcome_notices(integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.complete_brand_payout_outcome_notices(uuid[]) TO service_role;
+
 -- ── §4. Preference CHECK: organiser payout visibility notify types ───────────
 -- notify-dispatch preference lookup is keyed on this CHECK. The four new
 -- organiser payout types (failed / waiting-for-bank / paused / resumed) must be
@@ -267,11 +375,21 @@ BEGIN
      OR has_table_privilege('anon', 'public.brand_payout_pause_notices', 'SELECT') THEN
     RAISE EXCEPTION 'issue-3645 PR10: brand_payout_pause_notices is reachable by anon/authenticated';
   END IF;
+  IF has_table_privilege('authenticated', 'public.brand_payout_outcome_notices', 'SELECT')
+     OR has_table_privilege('anon', 'public.brand_payout_outcome_notices', 'SELECT') THEN
+    RAISE EXCEPTION 'issue-3645 PR10: brand_payout_outcome_notices is reachable by anon/authenticated';
+  END IF;
   IF has_function_privilege('authenticated',
        'public.claim_brand_payout_pause_notices(integer)', 'EXECUTE')
      OR has_function_privilege('authenticated',
        'public.complete_brand_payout_pause_notices(uuid[])', 'EXECUTE') THEN
     RAISE EXCEPTION 'issue-3645 PR10: pause-notice drain RPCs are callable by authenticated';
+  END IF;
+  IF has_function_privilege('authenticated',
+       'public.claim_brand_payout_outcome_notices(integer)', 'EXECUTE')
+     OR has_function_privilege('authenticated',
+       'public.complete_brand_payout_outcome_notices(uuid[])', 'EXECUTE') THEN
+    RAISE EXCEPTION 'issue-3645 PR10: outcome-notice drain RPCs are callable by authenticated';
   END IF;
   -- #1180 law: the organiser-facing read never touches ledger internals.
   v_def := pg_get_functiondef('public.brand_get_payout_visibility(uuid)'::regprocedure);
