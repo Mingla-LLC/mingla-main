@@ -144,6 +144,12 @@ function effectiveSeverity(name, vulnerabilities, excused, allowlistedGhsa, seen
     } else {
       const ref = String(item ?? "");
       if (excused.has(ref)) continue;
+      // Dangling package refs must not collapse to "none" (fail-open). Use the
+      // child's effective severity when present; otherwise keep this vuln's own.
+      if (!Object.prototype.hasOwnProperty.call(vulnerabilities, ref)) {
+        rank = Math.max(rank, severityRank(vuln.severity));
+        continue;
+      }
       rank = Math.max(
         rank,
         severityRank(
@@ -306,6 +312,17 @@ function selfTest() {
     threw = String(err?.message ?? err) === "audit_missing_vulnerabilities";
   }
   assert(threw, "T6 missing vulnerabilities map must fail closed");
+
+  const dangling = {
+    vulnerabilities: {
+      parent: { severity: "high", via: ["missing-child"] },
+    },
+  };
+  const r7 = evaluateAudit(dangling, allow);
+  assert(
+    r7.blocking.length === 1 && r7.blocking[0].name === "parent",
+    `T7 dangling via ref must keep parent high, got ${JSON.stringify(r7.blocking)}`,
+  );
 
   console.log("npm-audit-ceiling self-test: PASS");
 }
