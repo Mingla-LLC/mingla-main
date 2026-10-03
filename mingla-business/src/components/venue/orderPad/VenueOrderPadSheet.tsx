@@ -475,7 +475,7 @@ export function VenueOrderPadSheet({
                 <Button
                   label="Done"
                   onPress={handleClose}
-                  variant="primary"
+                  variant="secondary"
                   size="md"
                   fullWidth
                   testID="venue-order-pad-tab-pay-done"
@@ -552,6 +552,7 @@ export function VenueOrderPadSheet({
                   variant="primary"
                   size="lg"
                   fullWidth
+                  leadingIcon="send"
                   disabled={!billContact.ready}
                   loading={closeTab.isPending}
                   testID="venue-order-pad-tab-bill-send"
@@ -898,6 +899,7 @@ export function VenueOrderPadSheet({
                 variant="primary"
                 size="lg"
                 fullWidth
+                leadingIcon="send"
                 disabled={!readiness.ready}
                 loading={createOrder.isPending}
                 testID="venue-order-pad-send"
@@ -931,7 +933,7 @@ export function VenueOrderPadSheet({
                 <Button
                   label="Done"
                   onPress={handleClose}
-                  variant="primary"
+                  variant="secondary"
                   size="md"
                   fullWidth
                   testID="venue-order-pad-pay-done"
@@ -987,6 +989,7 @@ export function VenueOrderPadSheet({
                   variant="primary"
                   size="lg"
                   fullWidth
+                  leadingIcon="send"
                   disabled={!billContact.ready}
                   loading={settle.isPending}
                   testID="venue-order-pad-bill-send"

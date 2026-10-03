@@ -143,7 +143,14 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
     default: RN.ScrollView,
   };
 });
-jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
+// [TEST-MOD-APPROVED #3655] VenueSuiteShell leave beforeRemove needs useNavigation.
+jest.mock("expo-router", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+  useNavigation: () => ({
+    addListener: () => () => undefined,
+    dispatch: jest.fn(),
+  }),
+}));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));

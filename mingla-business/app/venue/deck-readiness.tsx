@@ -2,9 +2,9 @@
  * META-ORCH-1009 Sub-E — durable deck-readiness resume route.
  */
 
-import React, { useCallback, useMemo } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -22,6 +22,7 @@ import { useVenueListing } from "../../src/hooks/useVenueListings";
 // web bundle budget).
 import {
   VenueDeckReadinessSetup,
+  type VenueDeckLeaveHandle,
 } from "../../src/components/venue/VenueDeckReadinessSetup";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import type { CoverPatch } from "../../src/components/ui/CoverPicker";
@@ -29,7 +30,14 @@ import {
   deckReadinessSaveDestination,
   type DeckReadinessFocus,
 } from "../../src/utils/deckReadinessRoutes";
+import { formatLeaveChangedBody } from "../../src/components/venue/venueLeaveContract";
 import { useVenueSuiteStore } from "../../src/store/venueSuiteStore";
+
+/** Lazy ConfirmDialog — pulls reanimated; keep node/web suites green. */
+const LazyConfirmDialog = React.lazy(async () => {
+  const mod = await import("../../src/components/ui/ConfirmDialog");
+  return { default: mod.ConfirmDialog };
+});
 
 const FOCUS_VALUES = new Set<DeckReadinessFocus>([
   "basics",
@@ -55,6 +63,7 @@ function normalizeFocus(value: string | null): DeckReadinessFocus {
 export default function VenueDeckReadinessRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const navigation = useNavigation();
   const { user, isAuthReady } = useAuth();
   const params = useLocalSearchParams<{
     brand_id?: string | string[];
@@ -80,6 +89,73 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
     placePoolId,
     venueId,
   );
+
+  const leaveHandleRef = useRef<VenueDeckLeaveHandle | null>(null);
+  const pendingLeaveRef = useRef<(() => void) | null>(null);
+  const sanctionedExitRef = useRef(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaveSaving, setLeaveSaving] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
+  const [leaveLabels, setLeaveLabels] = useState<string[]>([]);
+
+  const navigateBack = useCallback((): void => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/(tabs)/hub/listing" as never);
+  }, [router]);
+
+  const requestLeave = useCallback(
+    (proceed: () => void): void => {
+      const handle = leaveHandleRef.current;
+      if (handle === null || !handle.isDirty()) {
+        proceed();
+        return;
+      }
+      pendingLeaveRef.current = proceed;
+      setLeaveLabels(handle.changedLabels());
+      setLeaveError(null);
+      setLeaveOpen(true);
+    },
+    [],
+  );
+
+  const handleBack = useCallback((): void => {
+    requestLeave(navigateBack);
+  }, [navigateBack, requestLeave]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener(
+      "beforeRemove" as never,
+      (raw: unknown) => {
+        if (sanctionedExitRef.current) {
+          sanctionedExitRef.current = false;
+          return;
+        }
+        const handle = leaveHandleRef.current;
+        if (handle === null || !handle.isDirty()) return;
+        const event = raw as {
+          preventDefault: () => void;
+          data: { action: unknown };
+        };
+        event.preventDefault();
+        requestLeave(() => {
+          sanctionedExitRef.current = true;
+          navigation.dispatch(event.data.action as never);
+        });
+      },
+    );
+    return unsubscribe;
+  }, [navigation, requestLeave]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const guard = (event: BeforeUnloadEvent): void => {
+      if (leaveHandleRef.current?.isDirty() !== true) return;
+      event.preventDefault();
+      event.returnValue = "You have unsaved changes.";
+    };
+    globalThis.addEventListener?.("beforeunload", guard);
+    return (): void => globalThis.removeEventListener?.("beforeunload", guard);
+  }, []);
 
   // META-ORCH-1255 — operator inputs resume from the stored tier2 (the wizard
   // path seeds them from the draft; here they come back from the server).
@@ -107,6 +183,7 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
       from,
       canGoBack: router.canGoBack(),
     });
+    sanctionedExitRef.current = true;
     if (destination.kind === "back") router.back();
     else router.replace(destination.href as never);
   }, [from, router, setSavedFlash, venueId]);
@@ -178,7 +255,7 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
         <IconChrome
           icon="chevL"
           accessibilityLabel="Back"
-          onPress={() => router.back()}
+          onPress={handleBack}
         />
         <Text style={styles.chromeTitle}>Deck readiness</Text>
         <View style={{ width: 36 }} />
@@ -202,7 +279,71 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
         initialCover={cover}
         initialGallery={contextQuery.data.gallery_urls}
         onDone={handleSaved}
+        leaveHandleRef={leaveHandleRef}
       />
+      {leaveOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            variant="leave"
+            title="Save your deck changes?"
+            description={formatLeaveChangedBody(leaveLabels)}
+            onClose={() => {
+              if (leaveSaving) return;
+              pendingLeaveRef.current = null;
+              setLeaveOpen(false);
+              setLeaveError(null);
+            }}
+            onConfirm={() => {
+              if (leaveSaving) return;
+              leaveHandleRef.current?.discard();
+              const proceed = pendingLeaveRef.current;
+              pendingLeaveRef.current = null;
+              setLeaveOpen(false);
+              setLeaveError(null);
+              sanctionedExitRef.current = true;
+              proceed?.();
+            }}
+            onDiscard={() => {
+              if (leaveSaving) return;
+              leaveHandleRef.current?.discard();
+              const proceed = pendingLeaveRef.current;
+              pendingLeaveRef.current = null;
+              setLeaveOpen(false);
+              setLeaveError(null);
+              sanctionedExitRef.current = true;
+              proceed?.();
+            }}
+            onSave={async () => {
+              // Keep pendingLeaveRef until success so Discard/retry can still
+              // resume the original beforeRemove action after a failed Save.
+              const proceed = pendingLeaveRef.current;
+              setLeaveSaving(true);
+              setLeaveError(null);
+              try {
+                await leaveHandleRef.current?.save();
+                pendingLeaveRef.current = null;
+                setLeaveOpen(false);
+                sanctionedExitRef.current = true;
+                proceed?.();
+              } catch {
+                setLeaveError(
+                  "Couldn't save your changes. They're still here, so try again.",
+                );
+                throw new Error("save");
+              } finally {
+                setLeaveSaving(false);
+              }
+            }}
+            confirmLoading={leaveSaving}
+            errorMessage={leaveError}
+            saveTestID="venue-deck-leave-save"
+            discardTestID="venue-deck-leave-discard"
+            keepTestID="venue-deck-leave-keep"
+            testID="venue-deck-leave-dialog"
+          />
+        </React.Suspense>
+      ) : null}
     </View>
   );
 }

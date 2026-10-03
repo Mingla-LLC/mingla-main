@@ -29,10 +29,21 @@ interface VenueSuiteState {
   /** The modules the rail/pill row should render (derived from the toggle). */
   visibleModules: readonly VenueModule[];
   /**
+   * #3655 — modules currently holding unsaved work (dirty pill dots).
+   * Mirrored from the shell; not persisted.
+   */
+  dirtyModules: ReadonlySet<VenueModule>;
+  setDirtyModule: (module: VenueModule, dirty: boolean) => void;
+  /**
    * The shell installs its `setActiveModule` here so the layout's pill row can
    * drive module selection without navigation. Null when the suite is inactive.
    */
   selectModule: ((module: VenueModule, restoreFocus?: () => void) => void) | null;
+  /**
+   * #3655 — shell-owned leave gate for page exits (header back, beforeRemove).
+   * Calls `proceed` immediately when clean; otherwise opens the leave dialog.
+   */
+  requestLeave: ((proceed: () => void, restoreFocus?: () => void) => void) | null;
   pendingLeaveFocus: (() => void) | null;
   setPendingLeaveFocus: (restoreFocus: (() => void) | null) => void;
   takePendingLeaveFocus: () => (() => void) | null;
@@ -57,6 +68,8 @@ interface VenueSuiteState {
     activeModule: VenueModule;
     visibleModules: readonly VenueModule[];
     selectModule: (module: VenueModule, restoreFocus?: () => void) => void;
+    /** Optional so older callers/tests keep typing; shell always installs it. */
+    requestLeave?: (proceed: () => void, restoreFocus?: () => void) => void;
   }) => void;
 }
 
@@ -67,7 +80,15 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
   active: false,
   activeModule: "overview",
   visibleModules: ["overview", "settings"],
+  dirtyModules: new Set(),
+  setDirtyModule: (module, dirty) => {
+    const next = new Set(get().dirtyModules);
+    if (dirty) next.add(module);
+    else next.delete(module);
+    set({ dirtyModules: next });
+  },
   selectModule: null,
+  requestLeave: null,
   pendingLeaveFocus: null,
   setPendingLeaveFocus: (pendingLeaveFocus) => set({ pendingLeaveFocus }),
   savedFlash: null,
@@ -98,10 +119,17 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
       activeModule: "overview",
       visibleModules: ["overview", "settings"],
       selectModule: null,
+      requestLeave: null,
       pendingLeaveFocus: null,
+      dirtyModules: new Set(),
     }),
-  sync: ({ activeModule, visibleModules, selectModule }) =>
-    set({ activeModule, visibleModules, selectModule }),
+  sync: ({ activeModule, visibleModules, selectModule, requestLeave }) =>
+    set({
+      activeModule,
+      visibleModules,
+      selectModule,
+      ...(requestLeave !== undefined ? { requestLeave } : {}),
+    }),
 }));
 
 /** Convenience selector: is the venue suite currently mounted/active? */

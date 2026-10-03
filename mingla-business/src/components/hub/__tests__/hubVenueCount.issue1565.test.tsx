@@ -220,42 +220,23 @@ describe("#1565 — 'Venues · 0' is unreachable by construction", () => {
     expect(pills.has("venue")).toBe(false);
   });
 
-  test("T-6 — hasPhysicalLocation-ONLY: pill exists at venueCount 0 and reads a BARE 'Venues'", () => {
-    // The legacy arm can show the pill for a reason that has nothing to do
-    // with the count. "· 0" there would be a lie about why the tab exists.
+  // [TEST-MOD-APPROVED #3655] Decision 9 — legacy arms no longer open an empty Venues tab.
+  test("T-6 — hasPhysicalLocation-ONLY at venueCount 0: no Venues pill (#3655 Decision 9)", () => {
     const visible = deriveHubVisibleTabs(
       { events: 1, trips: 0, experiences: 0 },
       { venueCount: 0, hasPhysicalLocation: true },
     );
     expect(visible.length).toBeGreaterThan(0); // vacuity guard
-    expect(visible).toContain("venue"); // the pill DOES exist here
-
-    const pills = readPills(visible as HubDataDrivenTabId[], {
-      events: 1,
-      venue: 0, // exactly what the layout threads for such a brand
-    });
-    expect(pills.size).toBe(visible.length); // vacuity guard
-    expect(pills.has("venue")).toBe(true); // vacuity guard
-    expect(pills.get("venue")?.text).toBe("Venues");
-    expect(pills.get("venue")?.text).not.toContain("·");
-    expect(pills.get("venue")?.text).not.toContain("0");
+    expect(visible).not.toContain("venue");
   });
 
-  test("T-6b — hasPlacePool-ONLY behaves identically", () => {
+  test("T-6b — hasPlacePool-ONLY at venueCount 0: no Venues pill (#3655 Decision 9)", () => {
     const visible = deriveHubVisibleTabs(
       { events: 0, trips: 1, experiences: 0 },
       { venueCount: 0, hasPlacePool: true },
     );
     expect(visible.length).toBeGreaterThan(0); // vacuity guard
-    expect(visible).toContain("venue");
-
-    const pills = readPills(visible as HubDataDrivenTabId[], {
-      trips: 1,
-      venue: 0,
-    });
-    expect(pills.size).toBe(visible.length); // vacuity guard
-    expect(pills.has("venue")).toBe(true); // vacuity guard
-    expect(pills.get("venue")?.text).toBe("Venues");
+    expect(visible).not.toContain("venue");
   });
 
   test("T-7 — an UNDEFINED venue count also renders the bare label", () => {

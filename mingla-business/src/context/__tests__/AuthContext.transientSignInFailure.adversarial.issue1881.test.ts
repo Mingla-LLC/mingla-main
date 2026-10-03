@@ -17,8 +17,9 @@ const AUTH_CONTEXT_PATH = "mingla-business/src/context/AuthContext.tsx";
 const BASELINE_COMMIT = "09212b365";
 const BASELINE_SHA256 =
   "6eacc5eac7893c98fcfc05387a580d3e9a346147ecd6d34acee81b50266c59ca";
+// [TEST-MOD-APPROVED #3655] signOut gains local|global scope + error throw.
 const APPROVED_PATCH_SHA256 =
-  "1ecca6e353863a2e35af52579b6ddc09c05ffe6100c49c9be025430766bf3f50";
+  "ce90054ce4e7dc597f212e5a371d76e491c256b5f0aeaa8287c534b750344779";
 
 const SOURCE = fs.readFileSync(
   path.join(REPO_ROOT, AUTH_CONTEXT_PATH),
@@ -68,7 +69,7 @@ describe("#1881 tester adversarial: byte-level scope differential", () => {
 
     expect(sha256(baseline)).toBe(BASELINE_SHA256);
     expect(sha256(patch)).toBe(APPROVED_PATCH_SHA256);
-    expect(patch.match(/^@@/gm)).toHaveLength(11);
+    expect(patch.match(/^@@/gm)).toHaveLength(13);
   });
 
   it("keeps web redirect and existing-user reconciliation inside the byte guard", () => {
@@ -162,3 +163,4 @@ describe("#1881 tester adversarial: exhaustive Alert boundary", () => {
     expect(SOURCE).not.toMatch(/statusCodes\.(?:INTERNAL_ERROR|NETWORK_ERROR|TIMEOUT)/);
   });
 });
+

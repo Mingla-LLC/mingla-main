@@ -162,10 +162,10 @@ export const ROOT_OPTIONS: readonly RootOption[] = [
     key: "venue",
     iconName: "location",
     // META-ORCH-1255 — venue listings are first-class: the 4th peer, rendered
-    // UNCONDITIONALLY for every brand (I-BRAND-UNIVERSAL-AUTHORING). Copy per
-    // DESIGN_META-ORCH-1255_VENUE_SURFACES §2.1.
-    title: "Create venue listing",
-    subtitle: "Your place on Mingla — discovered, recommended, bookable.",
+    // UNCONDITIONALLY for every brand (I-BRAND-UNIVERSAL-AUTHORING).
+    // #3655 Story 5 — helper copy for brands with zero venues (add from `+` only).
+    title: "Venue",
+    subtitle: "A restaurant, bar or space guests can book",
     route: "/venue/create",
     testID: "universal-creator-venue",
   },

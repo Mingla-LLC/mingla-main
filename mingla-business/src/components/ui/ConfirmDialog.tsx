@@ -7,6 +7,7 @@
  *   holdToConfirm  — Confirm is replaced by a hold-to-confirm bar.
  *                    1500ms full press fills 0 → 1; release before 1
  *                    resets to 0; at 1.0 fires `onConfirm()`.
+ *   leave          — #3655 three stacked actions: Save / Discard / Keep editing.
  *
  * Hold-to-confirm intentionally does NOT honour reduce-motion — the
  * animated progress fill IS the load-bearing UX (users need to see
@@ -45,7 +46,11 @@ import { Button } from "./Button";
 import { Input } from "./Input";
 import { Modal } from "./Modal";
 
-export type ConfirmDialogVariant = "simple" | "typeToConfirm" | "holdToConfirm";
+export type ConfirmDialogVariant =
+  | "simple"
+  | "typeToConfirm"
+  | "holdToConfirm"
+  | "leave";
 
 export interface ConfirmDialogProps {
   visible: boolean;
@@ -74,9 +79,20 @@ export interface ConfirmDialogProps {
   testID?: string;
   style?: StyleProp<ViewStyle>;
   /** Optional initial screen-reader/keyboard focus target. Existing callers omit it. */
-  initialFocus?: "cancel" | "confirm";
+  initialFocus?: "cancel" | "confirm" | "keep";
   /** Optional native restoration seam; web also restores the element active before open. */
   restoreFocus?: () => void;
+  /** #3655 leave variant — Save changes. */
+  onSave?: () => void | Promise<void>;
+  /** #3655 leave variant — Discard changes (defaults to onConfirm when omitted). */
+  onDiscard?: () => void | Promise<void>;
+  saveLabel?: string;
+  discardLabel?: string;
+  keepLabel?: string;
+  saveTestID?: string;
+  discardTestID?: string;
+  keepTestID?: string;
+  saveDisabled?: boolean;
 }
 
 interface FocusableTarget {
@@ -108,6 +124,15 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   style,
   initialFocus,
   restoreFocus,
+  onSave,
+  onDiscard,
+  saveLabel = "Save changes",
+  discardLabel = "Discard changes",
+  keepLabel = "Keep editing",
+  saveTestID,
+  discardTestID,
+  keepTestID,
+  saveDisabled = false,
 }) => {
   const [typedValue, setTypedValue] = useState("");
   const [isHolding, setIsHolding] = useState(false);
@@ -118,8 +143,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const confirmFocusRef = useRef<React.ElementRef<typeof Pressable> | null>(
     null,
   );
+  const keepFocusRef = useRef<React.ElementRef<typeof Pressable> | null>(null);
   const webOriginRef = useRef<FocusableTarget | null>(null);
   const wasVisibleRef = useRef<boolean>(false);
+  const resolvedInitialFocus =
+    initialFocus ?? (variant === "leave" ? "keep" : undefined);
 
   useEffect(() => {
     if (visible && !wasVisibleRef.current) {
@@ -129,9 +157,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         };
         webOriginRef.current = doc.document?.activeElement ?? null;
       }
-      if (initialFocus !== undefined) {
+      if (resolvedInitialFocus !== undefined) {
         const target =
-          initialFocus === "cancel" ? cancelFocusRef : confirmFocusRef;
+          resolvedInitialFocus === "cancel"
+            ? cancelFocusRef
+            : resolvedInitialFocus === "keep"
+              ? keepFocusRef
+              : confirmFocusRef;
         const frame = requestAnimationFrame(() => {
           if (Platform.OS === "web") {
             (target.current as FocusableTarget | null)?.focus?.();
@@ -150,7 +182,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       webOriginRef.current = null;
     }
     wasVisibleRef.current = visible;
-  }, [initialFocus, restoreFocus, visible]);
+  }, [resolvedInitialFocus, restoreFocus, visible]);
 
   const handleConfirm = useCallback(async (): Promise<void> => {
     if (confirmDisabled || confirmLoading) return;
@@ -167,6 +199,29 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     if (closeDisabled || confirmLoading) return;
     onClose();
   }, [closeDisabled, confirmLoading, onClose]);
+
+  const handleSaveLeave = useCallback(async (): Promise<void> => {
+    if (saveDisabled || confirmLoading || onSave === undefined) return;
+    try {
+      await onSave();
+    } catch (error) {
+      if (__DEV__) {
+        console.error("[ConfirmDialog] onSave threw:", error);
+      }
+    }
+  }, [confirmLoading, onSave, saveDisabled]);
+
+  const handleDiscardLeave = useCallback(async (): Promise<void> => {
+    if (confirmLoading) return;
+    const action = onDiscard ?? onConfirm;
+    try {
+      await action();
+    } catch (error) {
+      if (__DEV__) {
+        console.error("[ConfirmDialog] onDiscard threw:", error);
+      }
+    }
+  }, [confirmLoading, onConfirm, onDiscard]);
 
   const triggerConfirm = useCallback((): void => {
     void handleConfirm();
@@ -250,57 +305,97 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </View>
         ) : null}
 
-        <View style={styles.actions}>
-          <View style={styles.actionFlex}>
+        {variant === "leave" ? (
+          <View style={styles.leaveActions} accessibilityRole="alert">
+            <Button
+              ref={confirmFocusRef}
+              label={confirmLoading ? "Saving…" : saveLabel}
+              onPress={() => {
+                void handleSaveLeave();
+              }}
+              variant="primary"
+              size="lg"
+              disabled={saveDisabled || confirmLoading}
+              loading={confirmLoading}
+              fullWidth
+              testID={saveTestID ?? confirmTestID}
+            />
             <Button
               ref={cancelFocusRef}
-              label={cancelLabel}
-              onPress={handleClose}
-              variant="secondary"
-              size="md"
-              disabled={closeDisabled || confirmLoading}
+              label={discardLabel}
+              onPress={() => {
+                void handleDiscardLeave();
+              }}
+              variant="destructiveOutline"
+              size="lg"
+              disabled={confirmLoading}
               fullWidth
-              testID={cancelTestID}
+              testID={discardTestID ?? cancelTestID}
+            />
+            <Button
+              ref={keepFocusRef}
+              label={keepLabel}
+              onPress={handleClose}
+              variant="ghost"
+              size="lg"
+              disabled={confirmLoading}
+              fullWidth
+              testID={keepTestID}
             />
           </View>
-          {variant === "holdToConfirm" ? (
-            <View style={styles.actionFlex}>
-              <Pressable
-                ref={confirmFocusRef}
-                onPressIn={confirmBlocked ? undefined : handleHoldStart}
-                onPressOut={confirmBlocked ? undefined : handleHoldEnd}
-                disabled={confirmBlocked}
-                accessibilityRole="button"
-                accessibilityState={{
-                  disabled: confirmBlocked,
-                  busy: confirmLoading,
-                }}
-                accessibilityLabel={`Hold to ${confirmLabel.toLowerCase()}`}
-                testID={confirmTestID}
-                style={styles.holdButton}
-              >
-                <Animated.View style={[styles.holdFill, progressBarStyle]} />
-                <Text style={styles.holdLabel}>
-                  {isHolding ? "Hold to confirm…" : confirmLabel}
-                </Text>
-              </Pressable>
-            </View>
-          ) : (
+        ) : (
+          <View style={styles.actions}>
             <View style={styles.actionFlex}>
               <Button
-                ref={confirmFocusRef}
-                label={confirmLabel}
-                onPress={triggerConfirm}
-                variant={destructive ? "destructive" : "primary"}
+                ref={cancelFocusRef}
+                label={cancelLabel}
+                onPress={handleClose}
+                variant="secondary"
                 size="md"
-                disabled={confirmDisabled || !typeMatches}
-                loading={confirmLoading}
+                disabled={closeDisabled || confirmLoading}
                 fullWidth
-                testID={confirmTestID}
+                testID={cancelTestID}
               />
             </View>
-          )}
-        </View>
+            {variant === "holdToConfirm" ? (
+              <View style={styles.actionFlex}>
+                <Pressable
+                  ref={confirmFocusRef}
+                  onPressIn={confirmBlocked ? undefined : handleHoldStart}
+                  onPressOut={confirmBlocked ? undefined : handleHoldEnd}
+                  disabled={confirmBlocked}
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    disabled: confirmBlocked,
+                    busy: confirmLoading,
+                  }}
+                  accessibilityLabel={`Hold to ${confirmLabel.toLowerCase()}`}
+                  testID={confirmTestID}
+                  style={styles.holdButton}
+                >
+                  <Animated.View style={[styles.holdFill, progressBarStyle]} />
+                  <Text style={styles.holdLabel}>
+                    {isHolding ? "Hold to confirm…" : confirmLabel}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.actionFlex}>
+                <Button
+                  ref={confirmFocusRef}
+                  label={confirmLabel}
+                  onPress={handleConfirm}
+                  variant={destructive ? "destructive" : "primary"}
+                  size="md"
+                  disabled={confirmDisabled || !typeMatches}
+                  loading={confirmLoading}
+                  fullWidth
+                  testID={confirmTestID}
+                />
+              </View>
+            )}
+          </View>
+        )}
       </View>
     </Modal>
   );
@@ -343,6 +438,11 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  leaveActions: {
+    flexDirection: "column",
     gap: spacing.sm,
     marginTop: spacing.sm,
   },

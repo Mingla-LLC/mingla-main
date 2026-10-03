@@ -717,6 +717,13 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         >
           {coverGateCaption !== null ? (
             <Text style={styles.dockCaption}>{coverGateCaption}</Text>
+          ) : clampedStep > 0 ? (
+            <Text
+              style={styles.dockCaption}
+              testID="venue-wizard-draft-caption"
+            >
+              Draft saved on this phone
+            </Text>
           ) : null}
           <View style={styles.dockRow}>
             {clampedStep > 0 ? (
@@ -731,10 +738,12 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
             )}
             <Button
               label={dockLabel}
-              variant="primary"
+              variant="step"
               size="lg"
+              trailingIcon="chevR"
               onPress={goNext}
               disabled={!stepValid}
+              testID="venue-wizard-continue"
             />
           </View>
         </View>

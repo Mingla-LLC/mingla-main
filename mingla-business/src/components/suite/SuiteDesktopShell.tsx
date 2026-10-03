@@ -53,6 +53,7 @@ import type { PressableStateCallbackType, ViewStyle } from "react-native";
 
 import {
   accent,
+  canvas,
   glass,
   radius,
   spacing,
@@ -69,6 +70,8 @@ export interface SuiteDesktopModule {
   label: string;
   /** Optional visual group. Venue supplies this; ungrouped suites stay unchanged. */
   group?: string;
+  /** #3655 — unsaved work on this module (dirty pill on the rail). */
+  dirty?: boolean;
 }
 
 export interface SuiteDesktopShellProps {
@@ -225,7 +228,11 @@ function UngroupedSuiteDesktopRail({
             key={module.key}
             accessibilityRole="tab"
             accessibilityState={{ selected: isActive }}
-            accessibilityLabel={`${module.label} module`}
+            accessibilityLabel={
+              module.dirty === true
+                ? `${module.label} module, unsaved changes`
+                : `${module.label} module`
+            }
             onPress={() =>
               onSelect(module.key, () =>
                 focusControl(controlRefs.current[module.key] ?? null),
@@ -235,14 +242,26 @@ function UngroupedSuiteDesktopRail({
             testID={`${testIdPrefix}${module.key}`}
           >
             {isActive ? <View style={styles.railActiveBar} /> : null}
-            <Text
-              style={[
-                styles.railLabel,
-                isActive ? styles.railLabelActive : null,
-              ]}
-            >
-              {module.label}
-            </Text>
+            <View style={styles.railLabelRow}>
+              <Text
+                style={[
+                  styles.railLabel,
+                  isActive ? styles.railLabelActive : null,
+                ]}
+              >
+                {module.label}
+              </Text>
+              {module.dirty === true ? (
+                <View
+                  style={[
+                    styles.railDirtyDot,
+                    isActive ? styles.railDirtyDotOnActive : null,
+                  ]}
+                  testID={`${testIdPrefix}${module.key}-dirty`}
+                  accessibilityElementsHidden
+                />
+              ) : null}
+            </View>
           </Pressable>
         );
       })}
@@ -374,11 +393,15 @@ function GroupedSuiteDesktopRail({
                   key={module.key}
                   accessibilityRole="tab"
                   accessibilityState={{ selected: isActive }}
-                  accessibilityLabel={
-                    module.group !== undefined
-                      ? `${module.group}, ${module.label} module`
-                      : `${module.label} module`
-                  }
+                  accessibilityLabel={(() => {
+                    const base =
+                      module.group !== undefined
+                        ? `${module.group}, ${module.label} module`
+                        : `${module.label} module`;
+                    return module.dirty === true
+                      ? `${base}, unsaved changes`
+                      : base;
+                  })()}
                   onPress={() =>
                     onSelect(module.key, () =>
                       focusControl(controlRefs.current[module.key] ?? null),
@@ -412,14 +435,26 @@ function GroupedSuiteDesktopRail({
                   >
                     <View style={styles.railActiveBar} />
                   </View>
-                  <Text
-                    style={[
-                      styles.railLabel,
-                      isActive ? styles.railLabelActive : null,
-                    ]}
-                  >
-                    {module.label}
-                  </Text>
+                  <View style={styles.railLabelRow}>
+                    <Text
+                      style={[
+                        styles.railLabel,
+                        isActive ? styles.railLabelActive : null,
+                      ]}
+                    >
+                      {module.label}
+                    </Text>
+                    {module.dirty === true ? (
+                      <View
+                        style={[
+                          styles.railDirtyDot,
+                          isActive ? styles.railDirtyDotOnActive : null,
+                        ]}
+                        testID={`${testIdPrefix}${module.key}-dirty`}
+                        accessibilityElementsHidden
+                      />
+                    ) : null}
+                  </View>
                 </Pressable>
               );
             })}
@@ -529,6 +564,21 @@ const styles = StyleSheet.create({
     width: 3,
     borderRadius: radius.full,
     backgroundColor: accent.warm,
+  },
+  railLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
+  },
+  railDirtyDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: accent.warm,
+  },
+  railDirtyDotOnActive: {
+    backgroundColor: canvas.discover,
   },
   railLabel: {
     ...typography.body,

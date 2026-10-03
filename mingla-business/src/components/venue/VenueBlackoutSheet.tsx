@@ -58,8 +58,14 @@ export interface VenueBlackoutSheetProps {
   blackout: VenueBlackout | null;
   tables: VenueTable[];
   onSave: (input: VenueBlackoutUpsert) => void;
+  /** Asks the parent to confirm remove (ConfirmDialog lives on the parent so
+   * node/jest suites that mount this sheet do not pull reanimated). */
   onDelete?: () => void;
   saving: boolean;
+  /** #3624 / #3655 — true while a remove mutation is in flight. */
+  deleting?: boolean;
+  /** #3624 — shown when remove fails; sheet and row stay open. */
+  deleteError?: string | null;
   testID?: string;
 }
 
@@ -71,6 +77,8 @@ export function VenueBlackoutSheet({
   onSave,
   onDelete,
   saving,
+  deleting = false,
+  deleteError = null,
   testID,
 }: VenueBlackoutSheetProps): React.ReactElement {
   const isEdit = blackout !== null;
@@ -275,12 +283,18 @@ export function VenueBlackoutSheet({
             <Button
               label="Remove this blackout"
               onPress={onDelete}
-              variant="ghost"
+              variant="destructiveOutline"
               size="md"
               fullWidth
+              disabled={saving || deleting}
               style={styles.deleteBtn}
               testID="venue-blackout-delete"
             />
+          ) : null}
+          {deleteError !== null && deleteError.length > 0 ? (
+            <Text style={styles.deleteError} testID="venue-blackout-delete-error">
+              {deleteError}
+            </Text>
           ) : null}
         </ScrollView>
       </View>
@@ -350,6 +364,12 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     marginTop: spacing.lg,
+  },
+  deleteError: {
+    ...typography.caption,
+    color: semantic.errorText,
+    marginTop: spacing.sm,
+    textAlign: "center",
   },
   deleteBtn: {
     marginTop: spacing.xs,
