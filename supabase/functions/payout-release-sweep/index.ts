@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Pin the patch (not bare @2). After #1345 extracted
+// runPayoutReleaseSweepAuthenticated(admin: AdminClient), bare @2 can
+// resolve a newer empty-schema SupabaseClient in the #1437 deno check graph
+// while createAdmin() still returns the older shape — every admin.rpc then
+// fails typecheck. Same pin as stripeEdgeAuth / other stable edge entrypoints.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { paystackVerifyTransaction } from "../_shared/paystack.ts";
 // Issue #1177 — the organiser Paystack transfer client lives in _shared so the
 // raw provider call never appears in the sweep source (DARK-sweep source guard).

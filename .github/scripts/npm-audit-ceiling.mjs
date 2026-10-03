@@ -156,10 +156,29 @@ function effectiveSeverity(name, vulnerabilities, excused, allowlistedGhsa, seen
 }
 
 function evaluateAudit(audit, allowlistedGhsa) {
-  const vulnerabilities = audit?.vulnerabilities ?? {};
-  if (typeof vulnerabilities !== "object" || vulnerabilities === null) {
+  if (!audit || typeof audit !== "object" || Array.isArray(audit)) {
+    throw new Error("audit_unreadable");
+  }
+  // npm audit error payloads (registry/ENOAUDIT/etc.) must not pass as zero
+  // findings — defaulting missing vulnerabilities to {} would fail open.
+  if (audit.error != null) {
+    const err = audit.error;
+    const code = typeof err === "object" && err ? (err.code ?? "unknown") : "unknown";
+    const summary =
+      typeof err === "object" && err
+        ? (err.summary ?? err.detail ?? JSON.stringify(err))
+        : String(err);
+    throw new Error(`audit_error:${code}:${String(summary).slice(0, 200)}`);
+  }
+  if (
+    !Object.prototype.hasOwnProperty.call(audit, "vulnerabilities") ||
+    typeof audit.vulnerabilities !== "object" ||
+    audit.vulnerabilities === null ||
+    Array.isArray(audit.vulnerabilities)
+  ) {
     throw new Error("audit_missing_vulnerabilities");
   }
+  const vulnerabilities = audit.vulnerabilities;
   const excused = fullyAllowlistedPackages(vulnerabilities, allowlistedGhsa);
   const blocking = [];
   for (const name of Object.keys(vulnerabilities).sort()) {
@@ -271,6 +290,22 @@ function selfTest() {
   // Allowlist file shape
   const { ids } = loadAllowlist(DEFAULT_ALLOWLIST);
   assert(ids.has("GHSA-VFJ7-8CJW-P6XM"), "T4 default allowlist contains GHSA-vfj7");
+
+  let threw = false;
+  try {
+    evaluateAudit({ error: { code: "ENOAUDIT", summary: "audit unavailable" } }, allow);
+  } catch (err) {
+    threw = String(err?.message ?? err).startsWith("audit_error:ENOAUDIT:");
+  }
+  assert(threw, "T5 npm audit error payload must fail closed");
+
+  threw = false;
+  try {
+    evaluateAudit({ metadata: {} }, allow);
+  } catch (err) {
+    threw = String(err?.message ?? err) === "audit_missing_vulnerabilities";
+  }
+  assert(threw, "T6 missing vulnerabilities map must fail closed");
 
   console.log("npm-audit-ceiling self-test: PASS");
 }
