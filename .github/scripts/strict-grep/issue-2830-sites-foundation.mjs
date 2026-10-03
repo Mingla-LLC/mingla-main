@@ -980,7 +980,10 @@ export function violations(files) {
     "mingla-site-cms-build:",
     "mingla-sites-build:",
     "node-version: \"22\"",
-    "npm audit --audit-level=high",
+    // #2830 — high/critical ceiling keeps running; unpatchable GHSAs are
+    // allowlisted in .github/npm-audit-allowlist.json (Dependabot reports them).
+    "npm-audit-ceiling.mjs",
+    "npm-audit-allowlist.json",
     "Public runtime dependency isolation",
   ]) need(files.webWorkflow ?? "", token, "existing build CI lane", failures);
   for (const token of [

@@ -242,8 +242,12 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run build
+      # [WORKFLOW-MOD-APPROVED #2830] Unpatchable GHSA allowlist ceiling — see
+      # .github/npm-audit-allowlist.json (Dependabot remains the reporter).
       - name: Dependency security ceiling
-        run: npm audit --audit-level=high
+        run: |
+          node ../.github/scripts/npm-audit-ceiling.mjs --self-test
+          node ../.github/scripts/npm-audit-ceiling.mjs --allowlist ../.github/npm-audit-allowlist.json
 
   mingla-sites-build:
     if: ${{ github.event.pull_request.draft != true }}
@@ -279,7 +283,10 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run build
+      # [WORKFLOW-MOD-APPROVED #2830] Unpatchable GHSA allowlist ceiling — see
+      # .github/npm-audit-allowlist.json (Dependabot remains the reporter).
       - name: Public runtime dependency isolation and security ceiling
         run: |
-          npm audit --audit-level=high
+          node ../.github/scripts/npm-audit-ceiling.mjs --self-test
+          node ../.github/scripts/npm-audit-ceiling.mjs --allowlist ../.github/npm-audit-allowlist.json
           node -e 'const p=require("./package.json"); const names=Object.keys({...p.dependencies,...p.devDependencies}); const forbidden=names.filter((name)=>/(payload|postgres|s3|sharp|lexical|graphql)/i.test(name)); if(forbidden.length) { console.error(forbidden.join("\n")); process.exit(1) }'
