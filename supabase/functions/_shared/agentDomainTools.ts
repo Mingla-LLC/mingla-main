@@ -6454,6 +6454,11 @@ const BUSINESS_NOTIFICATION_TYPES = [
   "business.dispute_opened",
   "business.dispute_action_needed",
   "business.payout_paid",
+  // #3645 PR10 — organiser payout visibility.
+  "business.payout_failed",
+  "business.payout_waiting_for_bank",
+  "business.payouts_paused",
+  "business.payouts_resumed",
   "business.account_status_changed",
   "business.new_review",
   "business.claim_decision",

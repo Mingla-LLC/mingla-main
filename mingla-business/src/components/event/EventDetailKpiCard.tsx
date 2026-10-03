@@ -32,6 +32,16 @@ export interface EventDetailKpiCardProps {
    */
   payoutGbp: number | null;
   /**
+   * #3645 PR10 — money already sent to the organiser's bank for THIS offering
+   * (major units, from the payout ledger). When both this and `onItsWayGbp`
+   * are numbers the card shows PAID OUT + ON ITS WAY instead of the single
+   * PAYOUT figure; otherwise it falls back to `payoutGbp`. Shown whether or not
+   * the event has ended — money is on its way as soon as it is held.
+   */
+  paidOutGbp?: number | null;
+  /** #3645 PR10 — held / sending money for this offering (major units). */
+  onItsWayGbp?: number | null;
+  /**
    * ORCH-1006 — total the BRAND covered (absorbed VAT + fees) across this
    * offering's orders, major units. Null/0/undefined → the line is omitted
    * (don't show "You covered £0.00"). Surface 5.
@@ -50,6 +60,8 @@ export interface EventDetailKpiCardProps {
 export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
   revenueGbp,
   payoutGbp,
+  paidOutGbp,
+  onItsWayGbp,
   coveredGbp,
   currency,
   readStatus = "ready",
@@ -60,6 +72,11 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
   const code = currencyCodeOrNull(currency);
   const hasData = readStatus === "ready" || readStatus === "stale-error";
   const revenueLabel = code === null ? "—" : !hasData ? "—" : formatCurrency(revenueGbp, code);
+  // #3645 PR10 — ledger-backed split replaces the single PAYOUT figure only
+  // when the ledger actually answered for this offering.
+  const showPayoutSplit =
+    typeof paidOutGbp === "number" && Number.isFinite(paidOutGbp) &&
+    typeof onItsWayGbp === "number" && Number.isFinite(onItsWayGbp);
   const showCovered =
     hasData &&
     typeof coveredGbp === "number" &&
@@ -79,12 +96,35 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
           <Text style={styles.bigValue}>{revenueLabel}</Text>
         </View>
         <View style={styles.colRight}>
-          <Text style={styles.label}>PAYOUT</Text>
-          <Text style={styles.midValue}>
-            {code !== null && hasData && payoutGbp !== null
-              ? formatCurrency(payoutGbp, code)
-              : "—"}
-          </Text>
+          {showPayoutSplit
+            ? (
+              <>
+                <Text style={styles.label}>PAID OUT</Text>
+                <Text style={styles.midValue}>
+                  {code !== null && hasData
+                    ? formatCurrency(paidOutGbp as number, code)
+                    : "—"}
+                </Text>
+                <Text style={[styles.label, styles.labelSecond]}>
+                  ON ITS WAY
+                </Text>
+                <Text style={styles.midValue}>
+                  {code !== null && hasData
+                    ? formatCurrency(onItsWayGbp as number, code)
+                    : "—"}
+                </Text>
+              </>
+            )
+            : (
+              <>
+                <Text style={styles.label}>PAYOUT</Text>
+                <Text style={styles.midValue}>
+                  {code !== null && hasData && payoutGbp !== null
+                    ? formatCurrency(payoutGbp, code)
+                    : "—"}
+                </Text>
+              </>
+            )}
         </View>
       </View>
       {showCovered && code !== null ? (
@@ -155,6 +195,9 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     color: textTokens.tertiary,
     marginBottom: 4,
+  },
+  labelSecond: {
+    marginTop: spacing.sm,
   },
   bigValue: {
     fontSize: 26,

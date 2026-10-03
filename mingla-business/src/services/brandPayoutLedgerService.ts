@@ -17,6 +17,10 @@
  */
 
 import { supabase } from "./supabase";
+import {
+  parseBrandPayoutVisibility,
+  type BrandPayoutVisibilityDTO,
+} from "../utils/brandPayoutVisibility";
 import type {
   BrandPayoutLedger,
   BrandPayoutReleaseDTO,
@@ -214,4 +218,21 @@ export async function fetchBrandPayoutLedger(
   const openDebts = (debtsRes.data ?? []).map(mapDebt);
 
   return { releases, legsByRelease, adjustments, openDebts };
+}
+
+/**
+ * #3645 PR10 — organiser-safe payout status for the Payments status card and
+ * the Paystack balance tiles. One SECURITY DEFINER RPC (finance_manager+; a
+ * lower role gets a 42501 the caller classifies as permission-denied). The hold
+ * table behind `payouts_paused` is RLS-locked — the client only ever sees the
+ * boolean, never the admin reason, and never a ledger error_message (#1180).
+ */
+export async function fetchBrandPayoutVisibility(
+  brandId: string,
+): Promise<BrandPayoutVisibilityDTO | null> {
+  const { data, error } = await supabase.rpc("brand_get_payout_visibility", {
+    p_brand_id: brandId,
+  });
+  if (error) throw error;
+  return parseBrandPayoutVisibility(data);
 }

@@ -174,6 +174,10 @@ export function resolveBusinessNavTarget(data: BusinessPushData): BusinessNavTar
     case "business.dispute_opened":
     case "business.dispute_action_needed":
     case "business.payout_paid":
+    case "business.payout_failed":
+    case "business.payout_waiting_for_bank":
+    case "business.payouts_paused":
+    case "business.payouts_resumed":
     case "business.account_status_changed":
       return paymentsTarget;
 

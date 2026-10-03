@@ -1097,6 +1097,14 @@ jobs:
             -f supabase/migrations/__tests__/issue_3645_admin_payout_pause_and_debt.implementor.happy.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_admin_payout_pause_and_debt.tester.adversarial.pg17.test.sql
+          # Issue #3645 PR10 — organiser payout visibility: finance_manager+ read of
+          # { payouts_paused, next_payout_at, earned/on-its-way/paid, currency } with
+          # no ledger internals; admin pause/resume writes a durable notice the sweep
+          # drains.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_organiser_payout_visibility.implementor.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_organiser_payout_visibility.tester.adversarial.pg17.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on

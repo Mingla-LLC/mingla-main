@@ -4,6 +4,8 @@ const SRC = await Deno.readTextFile(
   "supabase/functions/notify-dispatch/index.ts",
 );
 
+// [TEST-MOD-APPROVED #3645] — #3645 PR10 added four organiser payout
+// visibility preference types on top of the original eleven.
 const TYPES = [
   "order_paid",
   "event_sold_out",
@@ -12,13 +14,17 @@ const TYPES = [
   "dispute_opened",
   "dispute_action_needed",
   "payout_paid",
+  "payout_failed",
+  "payout_waiting_for_bank",
+  "payouts_paused",
+  "payouts_resumed",
   "account_status_changed",
   "new_review",
   "claim_decision",
   "team_member_joined",
 ];
 
-Deno.test("all eleven Business types have independent locked channel defaults", () => {
+Deno.test("all fifteen Business types have independent locked channel defaults", () => {
   for (const leaf of TYPES) {
     const expectedPush = leaf === "team_member_joined" ? "false" : "true";
     assertStringIncludes(
@@ -26,7 +32,7 @@ Deno.test("all eleven Business types have independent locked channel defaults", 
       `"business.${leaf}": { push: ${expectedPush}, in_app: true }`,
     );
   }
-  assertEquals((SRC.match(/"business\.[a-z_]+": \{ push:/g) ?? []).length, 11);
+  assertEquals((SRC.match(/"business\.[a-z_]+": \{ push:/g) ?? []).length, 15);
 });
 
 Deno.test("lookup fails closed before durable insert and redacts the structured event", () => {

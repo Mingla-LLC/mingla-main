@@ -36,6 +36,8 @@ import {
   paystackInitiateTransfer,
   paystackVerifyTransferByReference,
 } from "./paystack.ts";
+// #3645 PR10 — tell the organiser once the release reaches a final state.
+import { notifyPaystackReleaseOutcome } from "./organiserPayoutNotify.ts";
 
 /**
  * The organiser payout rail's Paystack transfer client. Kept in _shared (like
@@ -94,6 +96,11 @@ export async function handlePaystackOrganiserTransferEvent(
   supabase: SupabaseClient,
   eventName: string,
   data: Record<string, unknown>,
+  // #3645 PR10 — injectable so the notify hook is unit-testable.
+  notifyOutcome: (
+    supabase: SupabaseClient,
+    releaseId: string,
+  ) => Promise<unknown> = notifyPaystackReleaseOutcome,
 ): Promise<void> {
   const reference = typeof data?.reference === "string" ? data.reference : "";
   const match = reference.match(ORGANISER_REF_RE);
@@ -152,6 +159,9 @@ export async function handlePaystackOrganiserTransferEvent(
     if (feeErr) {
       throw new Error(`organiser transfer.success reconcile failed: ${feeErr.message}`);
     }
+    // #3645 PR10 — if that was the last leg the release is now `released`:
+    // tell the organiser (+ first-payout analytics). Never fails the webhook.
+    await safeNotifyOutcome(notifyOutcome, supabase, releaseId);
     return;
   }
 
@@ -185,6 +195,9 @@ export async function handlePaystackOrganiserTransferEvent(
     if (failErr) {
       throw new Error(`organiser transfer.failed record failed: ${failErr.message}`);
     }
+    // #3645 PR10 — a retryable failure is silent; only a TERMINAL `failed`
+    // release (attempt cap) tells the organiser. The helper checks the status.
+    await safeNotifyOutcome(notifyOutcome, supabase, releaseId);
     return;
   }
 
@@ -202,6 +215,25 @@ export async function handlePaystackOrganiserTransferEvent(
       throw new Error(`organiser transfer.reversed record failed: ${revErr.message}`);
     }
     return;
+  }
+}
+
+/** Organiser notification must never change a webhook's HTTP result. */
+async function safeNotifyOutcome(
+  notifyOutcome: (
+    supabase: SupabaseClient,
+    releaseId: string,
+  ) => Promise<unknown>,
+  supabase: SupabaseClient,
+  releaseId: string,
+): Promise<void> {
+  try {
+    await notifyOutcome(supabase, releaseId);
+  } catch (error) {
+    console.warn(
+      "[paystack-organiser-release] organiser notify failed (non-fatal):",
+      error instanceof Error ? error.message : String(error),
+    );
   }
 }
 
