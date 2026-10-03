@@ -14,6 +14,13 @@ export interface OpsAlertEmailInput {
   paragraphs: string[];
   recipients: string[];
   cta?: { label: string; url: string } | null;
+  /** Optional AbortSignal — cancels in-flight Resend fetch(es). */
+  signal?: AbortSignal;
+  /**
+   * Optional Resend Idempotency-Key. When set, each recipient send uses
+   * `${idempotencyKey}:${recipient}` so ambiguous timeouts are safe to retry.
+   */
+  idempotencyKey?: string;
 }
 
 export interface OpsAlertEmailResult {
@@ -68,12 +75,16 @@ export async function sendOpsAlertEmail(
     assertNotResendSandbox(rendered.from);
 
     try {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      };
+      if (input.idempotencyKey) {
+        headers["Idempotency-Key"] = `${input.idempotencyKey}:${to}`;
+      }
       const res = await fetch(RESEND_API_URL, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify({
           from: formatSenderHeader(rendered.from),
           to: [to],
@@ -81,6 +92,7 @@ export async function sendOpsAlertEmail(
           html: rendered.html,
           text: rendered.text,
         }),
+        signal: input.signal,
       });
       if (res.ok) {
         succeeded += 1;

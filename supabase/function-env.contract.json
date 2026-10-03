@@ -1468,6 +1468,7 @@
         "APPSFLYER_BUSINESS_ANDROID_APP_ID",
         "APPSFLYER_BUSINESS_IOS_APP_ID",
         "APPSFLYER_S2S_TOKEN",
+        "RESEND_API_KEY",
         "SENTRY_DSN",
         "SENTRY_ENVIRONMENT"
       ]
@@ -3232,6 +3233,7 @@
     "supabase/functions/payout-release-sweep/index.ts": {
       "allowed_bundle_fields": {},
       "allowed_top_level": [
+        "RESEND_API_KEY",
         "SUPABASE_SERVICE_ROLE_KEY",
         "SUPABASE_URL"
       ],

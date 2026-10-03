@@ -482,7 +482,9 @@ function sweepHarness(scenario: SweepCase) {
       // Issue #3645 PR10: pause/outcome notice drains (empty in this scenario).
       if (
         name === "claim_brand_payout_pause_notices" ||
-        name === "claim_brand_payout_outcome_notices"
+        name === "claim_brand_payout_outcome_notices" ||
+        // #1345: include reservation slot-unavailable alert claim in empty-RPC stubs.
+        name === "claim_reservation_slot_unavailable_alerts"
       ) {
         return Promise.resolve({ data: [], error: null });
       }
