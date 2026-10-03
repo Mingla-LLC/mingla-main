@@ -146,7 +146,13 @@ export type PaystackFloatForecast =
   // in the sweep response as well as a structured log event.
   | { status: "failed"; reason: string };
 
-type AdminClient = ReturnType<typeof createClient>;
+// Loose admin handle on purpose. Pinning every transitive esm.sh Supabase
+// import still left two 2.45.4 type shapes in the #1437 deno check graph
+// (3-param vs 5-param SupabaseClient generics), which redded the #1345
+// try/finally extract. Runtime createClient stays pinned above; call sites
+// that already used `as never` keep that pattern.
+// deno-lint-ignore no-explicit-any
+type AdminClient = any;
 
 type StripeReleaseClient = {
   balance: {
@@ -1129,9 +1135,7 @@ export async function handlePayoutReleaseSweep(
   // including partner_attribution_pending / Stripe-phase / ledger early
   // returns. Budget-bounded so Resend cannot starve money work.
   try {
-    // Cast: AdminClient is ReturnType of the pinned createClient; keep the
-    // boundary explicit so a future unpinned import cannot reopen #1437.
-    return await runPayoutReleaseSweepAuthenticated(admin as AdminClient, deps);
+    return await runPayoutReleaseSweepAuthenticated(admin, deps);
   } finally {
     try {
       await (deps.drainReservationSlotUnavailableAlerts ??
