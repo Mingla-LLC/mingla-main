@@ -2230,6 +2230,7 @@
       ],
       "required_bundle_fields": {},
       "required_top_level": [
+        "RESEND_API_KEY",
         "SENTRY_DSN",
         "SENTRY_ENVIRONMENT",
         "app.qr_token_pepper"

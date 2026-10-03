@@ -28,10 +28,10 @@
  * owed, but the #1175 Paystack venue-refund rail is currently DARK — so this
  * helper does NOT attempt an auto-refund through the dark rail. It marks the
  * session failed with a clear failure_reason AND writes an audit marker that
- * flags "paid reservation needs MANUAL refund", then emits a best-effort ops
- * alert email (shared `sendOpsAlertEmail` spine) so ops refunds promptly, then
- * lets the caller ack. Auto-refund remains out of scope until #1175 un-darkens
- * (#1345 monitoring; #1326 documented the gap).
+ * flags "paid reservation needs MANUAL refund", then ENQUEUES a durable ops
+ * alert outbox row (#1345) so callers can drain Resend without blocking the
+ * money path / webhook ack. Auto-refund remains out of scope until #1175
+ * un-darkens (#1345 monitoring; #1326 documented the gap).
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
@@ -39,8 +39,6 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "./audit.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
 import { fireAdConversion } from "./adConversionFire.ts";
-import { resolveAlertRecipientValue } from "./secretBundle.ts";
-import { sendOpsAlertEmail } from "./stripeOpsAlertEmail.ts";
 
 /** The subset of a reservation_checkout_sessions row this helper needs. */
 export interface ReservationFinalizeSession {
@@ -195,9 +193,10 @@ export async function finalizeVerifiedPaystackReservation(
           refund_due: true,
         },
       });
-      // #1345 — durable ops alert so manual refund is not silent. Fail-open:
-      // alert failure must NEVER change the refund-due outcome or webhook ack.
-      await alertOpsReservationSlotUnavailableRefundDue({
+      // #1345 — durable outbox enqueue AFTER audit. Do NOT await Resend here:
+      // callers drain via drainReservationSlotUnavailableAlerts (fail-open).
+      // Enqueue failure must NEVER change the refund-due outcome or webhook ack.
+      await enqueueReservationSlotUnavailableAlert(supabase, {
         sessionId: session.id,
         reference,
         amountCents: session.amount_cents,
@@ -267,83 +266,42 @@ async function markReservationSessionFailed(
 }
 
 /**
- * #1345 — ops alert when a paid NG reservation needs a MANUAL refund because
- * the slot was taken after Paystack charge. Reuses the shared Resend ops-alert
- * helper and the existing stripe_disputes recipient inbox (no new secret).
+ * #1345 — enqueue a durable ops-alert outbox row after the audit marker.
+ * Fail-open: enqueue errors are logged and never change the money outcome.
+ * Resend delivery happens in drainReservationSlotUnavailableAlerts (callers).
  */
-function reservationSlotUnavailableAlertRecipients(): string[] {
-  // Same on-call inbox as Paystack/Stripe dispute alerts — never invent a new
-  // alert-recipient secret name (#3726 lesson).
-  const value = resolveAlertRecipientValue(
-    "stripe_disputes",
-    "STRIPE_DISPUTE_ALERT_EMAILS",
-  );
-  if (Array.isArray(value)) {
-    const emails = value.map((s) => String(s).trim()).filter(Boolean);
-    if (emails.length > 0) return emails;
-  }
-  const raw = value ?? "seth@usemingla.com";
-  return String(raw).split(",").map((s) => s.trim()).filter(Boolean);
-}
-
-function formatReservationAlertAmount(
-  amountCents: number | null,
-  currency: string | null,
-): string {
-  if (typeof amountCents !== "number" || !Number.isFinite(amountCents)) {
-    return "(amount unknown)";
-  }
-  const code = String(currency ?? "NGN").toUpperCase() || "NGN";
+async function enqueueReservationSlotUnavailableAlert(
+  supabase: SupabaseClient,
+  input: {
+    sessionId: string;
+    reference: string;
+    amountCents: number | null;
+    currency: string | null;
+  },
+): Promise<void> {
   try {
-    return new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: code,
-      maximumFractionDigits: 2,
-    }).format(amountCents / 100);
-  } catch {
-    return `${(amountCents / 100).toFixed(2)} ${code}`;
-  }
-}
-
-async function alertOpsReservationSlotUnavailableRefundDue(input: {
-  sessionId: string;
-  reference: string;
-  amountCents: number | null;
-  currency: string | null;
-}): Promise<void> {
-  const recipients = reservationSlotUnavailableAlertRecipients();
-  if (recipients.length === 0) {
-    console.warn(
-      "[reservation-paystack-finalize] slot-unavailable refund-due alert emails missing",
-      { sessionId: input.sessionId, reference: input.reference },
+    const { error } = await supabase.rpc(
+      "enqueue_reservation_slot_unavailable_alert" as never,
+      {
+        p_session_id: input.sessionId,
+        p_reference: input.reference,
+        p_amount_cents: input.amountCents,
+        p_currency: input.currency,
+      } as never,
     );
-    return;
-  }
-  const amountLabel = formatReservationAlertAmount(
-    input.amountCents,
-    input.currency,
-  );
-  try {
-    await sendOpsAlertEmail({
-      subject:
-        `Paystack reservation MANUAL REFUND DUE — slot taken after charge (${amountLabel})`,
-      paragraphs: [
-        "A paid Paystack venue reservation was charged, but the slot was taken between charge and finalize.",
-        "Funds are captured and no reservation was minted. MANUAL REFUND REQUIRED (#1175 venue-refund rail is dark).",
-        `Session ID: ${input.sessionId}`,
-        `Paystack reference: ${input.reference}`,
-        `Amount: ${amountLabel}`,
-        "Audit action: paystack.reservation_slot_unavailable_refund_due",
-      ],
-      recipients,
-      cta: {
-        label: "Open Paystack transactions",
-        url: "https://dashboard.paystack.com/#/transactions",
-      },
-    });
+    if (error) {
+      console.error(
+        "[reservation-paystack-finalize] slot-unavailable alert enqueue failed (non-fatal)",
+        {
+          sessionId: input.sessionId,
+          reference: input.reference,
+          error: error.message,
+        },
+      );
+    }
   } catch (err) {
     console.error(
-      "[reservation-paystack-finalize] ops alert for slot-unavailable refund-due failed (non-fatal)",
+      "[reservation-paystack-finalize] slot-unavailable alert enqueue threw (non-fatal)",
       {
         sessionId: input.sessionId,
         reference: input.reference,

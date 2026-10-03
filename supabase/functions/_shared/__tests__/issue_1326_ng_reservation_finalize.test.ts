@@ -135,6 +135,10 @@ function makeFakeSupabase(state: FakeState) {
         state.finalizeCalls += 1;
         return state.finalizeImpl(args);
       }
+      // #1345 — slot-unavailable path enqueues a durable ops-alert outbox row.
+      if (fn === "enqueue_reservation_slot_unavailable_alert") {
+        return Promise.resolve({ data: "alert-test", error: null });
+      }
       throw new Error(`unexpected rpc ${fn}`);
     },
     // deno-lint-ignore no-explicit-any
