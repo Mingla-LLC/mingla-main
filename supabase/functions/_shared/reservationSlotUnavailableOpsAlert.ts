@@ -15,10 +15,21 @@
  * their secret-contract closures.
  */
 
-// @ts-ignore — Deno ESM import; types resolved at runtime.
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Structural admin surface only — do NOT import SupabaseClient from
+// esm.sh/@supabase/supabase-js@2 here. That specifier can resolve a newer
+// generic shape than payout-release-sweep's createClient in the same deno
+// check graph (#1437 secret-bundle suite), which then fails every admin.rpc
+// call site in the sweep. Callers already pass AdminClient / cast as never.
 import { resolveAlertRecipientValue } from "./secretBundle.ts";
 import { sendOpsAlertEmail } from "./stripeOpsAlertEmail.ts";
+
+type OpsAlertAdmin = {
+  // deno-lint-ignore no-explicit-any
+  rpc: (...args: any[]) => Promise<{
+    data: unknown;
+    error: { message?: string } | null;
+  }>;
+};
 
 /** Bound each Resend attempt so a stalled fetch cannot hang the sweep forever. */
 const RESEND_SEND_TIMEOUT_MS = 8_000;
@@ -130,7 +141,7 @@ export type DrainReservationSlotUnavailableAlertsOptions = {
  * Claim/record RPC errors propagate so the sweep fail-open wrapper can log them.
  */
 export async function drainReservationSlotUnavailableAlerts(
-  supabase: SupabaseClient,
+  supabase: OpsAlertAdmin,
   pLimitOrOpts: number | DrainReservationSlotUnavailableAlertsOptions =
     DEFAULT_CLAIM_LIMIT,
 ): Promise<{ listed: number; delivered: number }> {
@@ -231,7 +242,7 @@ export async function drainReservationSlotUnavailableAlerts(
 
 /** Fail-open wrapper for payout-release-sweep (never blocks money movement). */
 export async function drainReservationSlotUnavailableAlertsFailOpen(
-  supabase: SupabaseClient,
+  supabase: OpsAlertAdmin,
   logPrefix: string,
   opts?: DrainReservationSlotUnavailableAlertsOptions,
 ): Promise<void> {

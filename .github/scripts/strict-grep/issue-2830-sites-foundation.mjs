@@ -120,6 +120,19 @@ const ARI_TOOLS = [
   "rollback_site",
 ];
 
+/** Slice one top-level GitHub Actions job block from a workflow YAML string. */
+function workflowJobSection(yaml, jobKey) {
+  const re = new RegExp(`^  ${jobKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:\\s*$`, "m");
+  const m = re.exec(yaml);
+  if (!m) return "";
+  const start = m.index;
+  const afterHeader = yaml.slice(start + m[0].length);
+  const next = afterHeader.search(/\n  [A-Za-z0-9_-]+:\s*$/m);
+  return next === -1
+    ? yaml.slice(start)
+    : yaml.slice(start, start + m[0].length + next);
+}
+
 function need(source, token, label, failures) {
   if (!source.includes(token)) failures.push(`${label}: missing ${token}`);
 }
@@ -980,9 +993,31 @@ export function violations(files) {
     "mingla-site-cms-build:",
     "mingla-sites-build:",
     "node-version: \"22\"",
-    "npm audit --audit-level=high",
     "Public runtime dependency isolation",
   ]) need(files.webWorkflow ?? "", token, "existing build CI lane", failures);
+  // #2830 — each Sites/CMS job must run the real allowlist ceiling (not only
+  // --self-test). Scoped per job so deleting one lane's command cannot hide
+  // behind the other job or a workflow comment.
+  const auditCeilingCmd =
+    "node ../.github/scripts/npm-audit-ceiling.mjs --allowlist ../.github/npm-audit-allowlist.json";
+  need(
+    workflowJobSection(files.webWorkflow ?? "", "mingla-site-cms-build"),
+    auditCeilingCmd,
+    "cms audit ceiling lane",
+    failures,
+  );
+  need(
+    workflowJobSection(files.webWorkflow ?? "", "mingla-sites-build"),
+    auditCeilingCmd,
+    "sites audit ceiling lane",
+    failures,
+  );
+  need(
+    files.webWorkflow ?? "",
+    "npm-audit-allowlist.json",
+    "existing build CI lane",
+    failures,
+  );
   for (const token of [
     "CMS application/database fault",
     "26 hours",
@@ -1080,6 +1115,20 @@ function selfTest() {
     ["businessView", "Managed securely by Mingla.", "Configure custom domain", "deferred domain UI"],
     ["secretWorkflow", "final 88-name bundled-authority state", "final state", "existing secret CI lane"],
     ["webWorkflow", "mingla-sites-build:", "mingla-sites-removed:", "existing build CI lane"],
+    // CMS job step name is unique; strip only that lane's --allowlist command.
+    [
+      "webWorkflow",
+      "- name: Dependency security ceiling\n        run: |\n          node ../.github/scripts/npm-audit-ceiling.mjs --self-test\n          node ../.github/scripts/npm-audit-ceiling.mjs --allowlist ../.github/npm-audit-allowlist.json\n",
+      "- name: Dependency security ceiling\n        run: |\n          node ../.github/scripts/npm-audit-ceiling.mjs --self-test\n",
+      "cms audit ceiling lane",
+    ],
+    // Sites job: the --allowlist line immediately precedes the isolation probe.
+    [
+      "webWorkflow",
+      "node ../.github/scripts/npm-audit-ceiling.mjs --allowlist ../.github/npm-audit-allowlist.json\n          node -e",
+      "node ../.github/scripts/npm-audit-ceiling.mjs --self-test\n          node -e",
+      "sites audit ceiling lane",
+    ],
     ["runbook", "restore drill older than 100 days", "restore drill older than one hundred days", "Sites operations runbook"],
     ["reachabilityMigration", "ADD COLUMN public_reachable boolean", "ADD COLUMN public_observed boolean", "Sites public reachability record"],
     ["reachabilityMigration", "'live_pointer_changed', false", "'live_pointer_changed', true", "Sites public reachability record"],

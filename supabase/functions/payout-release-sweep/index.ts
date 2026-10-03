@@ -141,7 +141,13 @@ export type PaystackFloatForecast =
   // in the sweep response as well as a structured log event.
   | { status: "failed"; reason: string };
 
-type AdminClient = ReturnType<typeof createClient>;
+// Loose admin handle on purpose. After #1345 extracted
+// runPayoutReleaseSweepAuthenticated(admin: AdminClient), esm.sh bare @2
+// dual-resolves SupabaseClient generic shapes in the #1437 deno check graph
+// and reds every typed admin boundary. Runtime createClient is unchanged;
+// call sites that already used `as never` keep that pattern.
+// deno-lint-ignore no-explicit-any
+type AdminClient = any;
 
 type StripeReleaseClient = {
   balance: {
