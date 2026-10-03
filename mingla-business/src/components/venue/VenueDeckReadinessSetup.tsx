@@ -26,6 +26,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  accent,
   canvas,
   spacing,
   text as textTokens,
@@ -230,6 +231,7 @@ export function VenueDeckReadinessSetup({
     FACET_QUESTIONS_BY_CATEGORY[venueCategoryKey(venueCategoryProp)];
   const [coverVisible, setCoverVisible] = useState(false);
   const [gallery, setGallery] = useState<string[]>(initialGallery);
+  const [savedGallery, setSavedGallery] = useState<string[]>(initialGallery);
   const [galleryBusy, setGalleryBusy] = useState(false);
   const [cover, setCover] = useState<CoverPatch>({
     ...EMPTY_COVER,
@@ -237,6 +239,20 @@ export function VenueDeckReadinessSetup({
     coverMediaPosterUrl: initialCover?.coverMediaPosterUrl ?? null,
     coverMediaType: initialCover?.coverMediaType ?? null,
   });
+  const [savedCover, setSavedCover] = useState<CoverPatch>({
+    ...EMPTY_COVER,
+    coverMediaUrl: initialCover?.coverMediaUrl ?? null,
+    coverMediaPosterUrl: initialCover?.coverMediaPosterUrl ?? null,
+    coverMediaType: initialCover?.coverMediaType ?? null,
+  });
+  // #3655 Story 3 — cover/gallery attach to the draft until Save deck details.
+  const coverDirty =
+    cover.coverMediaUrl !== savedCover.coverMediaUrl ||
+    cover.coverMediaPosterUrl !== savedCover.coverMediaPosterUrl ||
+    cover.coverMediaType !== savedCover.coverMediaType;
+  const galleryDirty =
+    gallery.length !== savedGallery.length ||
+    gallery.some((url, i) => url !== savedGallery[i]);
   const [website, setWebsite] = useState(
     stringValue(initialTier2.website, ""),
   );
@@ -306,29 +322,14 @@ export function VenueDeckReadinessSetup({
 
   const handleCoverChange = useCallback(
     async (patch: CoverPatch): Promise<void> => {
+      // Stage locally — Mingla write waits for Save deck details (#3655).
       setCover(patch);
-      await syncHeroMedia({
-        brandId,
-        venueId,
-        placePoolId,
-        coverMediaUrl: patch.coverMediaUrl,
-        coverMediaPosterUrl: patch.coverMediaPosterUrl,
-        coverMediaType: patch.coverMediaType,
-      }).catch((error) => {
-        setMessage(
-          sanitizeAuthoringError(
-            error,
-            "Cover saved, but deck readiness did not sync yet.",
-          ),
-        );
-        throw error;
-      });
     },
-    [brandId, venueId, placePoolId],
+    [],
   );
 
   // META-ORCH-1009 Sub-E: multi-select gallery upload. Pick many at once (capped
-  // at remaining slots), upload each to storage, then persist the URL set.
+  // at remaining slots), upload each to storage, then stage the URL set until Save.
   const handleAddPhotos = useCallback(async (): Promise<void> => {
     const remaining = GALLERY_MAX - gallery.length;
     if (remaining <= 0) {
@@ -353,26 +354,16 @@ export function VenueDeckReadinessSetup({
       if (uploaded.length === 0) return;
       const next = Array.from(new Set([...gallery, ...uploaded])).slice(0, GALLERY_MAX);
       setGallery(next);
-      await syncGallery({ brandId, venueId, placePoolId, galleryUrls: next });
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Couldn't add photos. Try again.");
     } finally {
       setGalleryBusy(false);
     }
-  }, [brandId, venueId, gallery, placePoolId]);
+  }, [brandId, gallery]);
 
-  const handleRemovePhoto = useCallback(
-    async (url: string): Promise<void> => {
-      const next = gallery.filter((u) => u !== url);
-      setGallery(next);
-      try {
-        await syncGallery({ brandId, venueId, placePoolId, galleryUrls: next });
-      } catch (e) {
-        setMessage(e instanceof Error ? e.message : "Couldn't update photos.");
-      }
-    },
-    [brandId, venueId, gallery, placePoolId],
-  );
+  const handleRemovePhoto = useCallback(async (url: string): Promise<void> => {
+    setGallery((prev) => prev.filter((u) => u !== url));
+  }, []);
 
   const toggleVibe = useCallback((vibe: string): void => {
     setSelectedVibes((prev) =>
@@ -394,6 +385,26 @@ export function VenueDeckReadinessSetup({
     setBusy("save");
     setMessage(null);
     try {
+      if (coverDirty) {
+        await syncHeroMedia({
+          brandId,
+          venueId,
+          placePoolId,
+          coverMediaUrl: cover.coverMediaUrl,
+          coverMediaPosterUrl: cover.coverMediaPosterUrl,
+          coverMediaType: cover.coverMediaType,
+        });
+        setSavedCover(cover);
+      }
+      if (galleryDirty) {
+        await syncGallery({
+          brandId,
+          venueId,
+          placePoolId,
+          galleryUrls: gallery,
+        });
+        setSavedGallery(gallery);
+      }
       await saveTier2({ brandId, venueId, placePoolId, tier2: buildTier2() });
       await commitExistingVenueDiscoveryRange({
         brandId,
@@ -414,8 +425,10 @@ export function VenueDeckReadinessSetup({
     venueId,
     placePoolId,
     buildTier2,
-    currencyMetadata,
-    currencyState,
+    cover,
+    coverDirty,
+    gallery,
+    galleryDirty,
     onDone,
     priceMaxInput,
     priceMinInput,
@@ -475,7 +488,13 @@ export function VenueDeckReadinessSetup({
           {/* META-ORCH-1009 Sub-E: show the uploaded hero so the operator has
               visual confirmation it saved after closing the cover sheet. */}
           {cover.coverMediaUrl !== null ? (
-            <View style={styles.heroPreview}>
+            <View
+              style={[
+                styles.heroPreview,
+                coverDirty ? styles.stagedRing : null,
+              ]}
+              testID="venue-deck-cover-preview"
+            >
               <EventCoverMedia
                 hue={25}
                 mediaUrl={cover.coverMediaUrl}
@@ -485,6 +504,13 @@ export function VenueDeckReadinessSetup({
                 height={170}
                 muted
               />
+              {coverDirty ? (
+                <Text style={styles.stagedCaption} testID="venue-deck-cover-staged">
+                  {savedCover.coverMediaUrl
+                    ? `New cover · was previous · Not saved yet`
+                    : "Not saved yet"}
+                </Text>
+              ) : null}
             </View>
           ) : null}
           <Button
@@ -512,30 +538,44 @@ export function VenueDeckReadinessSetup({
             {gallery.length} / {GALLERY_MIN} minimum · up to {GALLERY_MAX}
             {gallery.length >= GALLERY_MIN ? "  ✓" : ""}
           </Text>
+          {galleryDirty ? (
+            <Text style={styles.stagedCaption} testID="venue-deck-gallery-staged">
+              Not saved yet
+            </Text>
+          ) : null}
           {gallery.length > 0 ? (
             <View style={styles.galleryGrid}>
-              {gallery.map((url) => (
-                <View key={url} style={styles.galleryTile}>
-                  <EventCoverMedia
-                    hue={25}
-                    mediaUrl={url}
-                    mediaType="image"
-                    radius={10}
-                    label="Venue photo"
-                    height={92}
-                    width={92}
-                  />
-                  <Pressable
-                    onPress={() => void handleRemovePhoto(url)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Remove photo"
-                    hitSlop={8}
-                    style={styles.galleryRemove}
+              {gallery.map((url) => {
+                const isNew = !savedGallery.includes(url);
+                return (
+                  <View
+                    key={url}
+                    style={[
+                      styles.galleryTile,
+                      isNew ? styles.stagedRing : null,
+                    ]}
                   >
-                    <Text style={styles.galleryRemoveText}>×</Text>
-                  </Pressable>
-                </View>
-              ))}
+                    <EventCoverMedia
+                      hue={25}
+                      mediaUrl={url}
+                      mediaType="image"
+                      radius={10}
+                      label="Venue photo"
+                      height={92}
+                      width={92}
+                    />
+                    <Pressable
+                      onPress={() => void handleRemovePhoto(url)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove photo"
+                      hitSlop={8}
+                      style={styles.galleryRemove}
+                    >
+                      <Text style={styles.galleryRemoveText}>×</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
             </View>
           ) : null}
           <Button
@@ -710,12 +750,13 @@ export function VenueDeckReadinessSetup({
             Mingla writes your pitch and match scores when it approves your venue.
           </Text>
           <Button
-            label={busy === "save" ? "Saving…" : "Save changes"}
+            label={busy === "save" ? "Saving…" : "Save deck details"}
             variant="primary"
             size="md"
             loading={busy === "save"}
             disabled={busy !== null}
             onPress={() => void handleSaveChanges()}
+            testID="venue-deck-save"
           />
         </View>
 
@@ -811,6 +852,18 @@ const styles = StyleSheet.create({
   heroPreview: {
     borderRadius: 12,
     overflow: "hidden",
+  },
+  stagedRing: {
+    borderWidth: 2,
+    borderColor: accent.warm,
+    borderRadius: 12,
+  },
+  stagedCaption: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: accent.warm,
+    marginTop: spacing.xxs,
+    fontWeight: "600",
   },
   galleryGrid: {
     flexDirection: "row",

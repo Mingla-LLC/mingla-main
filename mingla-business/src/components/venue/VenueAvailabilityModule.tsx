@@ -362,6 +362,9 @@ export const VenueAvailabilityModule = forwardRef<
   const tables = tablesQuery.data ?? [];
 
   const [blackoutSheetOpen, setBlackoutSheetOpen] = useState<boolean>(false);
+  const [blackoutDeleteError, setBlackoutDeleteError] = useState<string | null>(
+    null,
+  );
   const [editBlackout, setEditBlackout] = useState<VenueBlackout | null>(null);
   const [draft, setDraft] = useState<AvailabilityNumericDraft>(() => ({
     ...DEFAULT_NUMERIC_DRAFT,
@@ -403,10 +406,17 @@ export const VenueAvailabilityModule = forwardRef<
   );
   const dirtyRef = useRef(isDirty);
 
+  const setDirtyModule = useVenueSuiteStore((s) => s.setDirtyModule);
+
   useEffect(() => {
     draftRef.current = draft;
     dirtyRef.current = isDirty;
   }, [draft, isDirty]);
+
+  useEffect(() => {
+    setDirtyModule("availability", isDirty);
+    return (): void => setDirtyModule("availability", false);
+  }, [isDirty, setDirtyModule]);
 
   // Server refetches may refresh a clean, unfocused form. They never replace a
   // dirty/focused draft, which is the integrity boundary this issue repairs.
@@ -638,9 +648,19 @@ export const VenueAvailabilityModule = forwardRef<
     [upsertBlackout],
   );
   const handleDeleteBlackout = useCallback((): void => {
-    if (editBlackout === null) return;
+    if (editBlackout === null || deleteBlackout.isPending) return;
+    setBlackoutDeleteError(null);
     deleteBlackout.mutate(editBlackout.id, {
-      onSuccess: () => setBlackoutSheetOpen(false),
+      onSuccess: () => {
+        setBlackoutDeleteError(null);
+        setBlackoutSheetOpen(false);
+      },
+      onError: () => {
+        // #3624 — keep the row and sheet open; surface the failure.
+        setBlackoutDeleteError(
+          "Couldn't remove this blackout. It's still here — try again.",
+        );
+      },
     });
   }, [editBlackout, deleteBlackout]);
 
@@ -1078,31 +1098,60 @@ export const VenueAvailabilityModule = forwardRef<
 
       <VenueBlackoutSheet
         visible={blackoutSheetOpen}
-        onClose={() => setBlackoutSheetOpen(false)}
+        onClose={() => {
+          if (deleteBlackout.isPending) return;
+          setBlackoutDeleteError(null);
+          setBlackoutSheetOpen(false);
+        }}
         blackout={editBlackout}
         tables={tables}
         onSave={handleSaveBlackout}
         onDelete={editBlackout !== null ? handleDeleteBlackout : undefined}
         saving={upsertBlackout.isPending}
+        deleting={deleteBlackout.isPending}
+        deleteError={blackoutDeleteError}
       />
       <ConfirmDialog
         visible={discardDialogVisible}
         onClose={handleKeepEditing}
         onConfirm={handleDiscard}
-        title="Discard availability changes?"
-        description="Your edits won’t be saved if you leave now."
-        variant="simple"
-        cancelLabel="Keep editing"
-        confirmLabel="Discard changes"
-        destructive
-        initialFocus="cancel"
+        onDiscard={handleDiscard}
+        onSave={async () => {
+          if (!isValid || !isDirty || upsertConfig.isPending) {
+            throw new Error("invalid");
+          }
+          const submittedDraft = { ...draftRef.current };
+          await new Promise<void>((resolve, reject) => {
+            upsertConfig.mutate(buildAvailabilityPatch(submittedDraft), {
+              onSuccess: (authoritativeConfig) => {
+                const authoritativeDraft =
+                  availabilityDraftFromConfig(authoritativeConfig);
+                setBaseline(authoritativeDraft);
+                setDraft(authoritativeDraft);
+                setTouched(new Set());
+                resolve();
+                const proceed = pendingLeaveRef.current;
+                pendingLeaveRef.current = null;
+                setDiscardDialogVisible(false);
+                proceed?.();
+              },
+              onError: () => reject(new Error("save")),
+            });
+          });
+        }}
+        title="Save your Availability changes?"
+        description="You changed availability numbers. If you leave without saving, those changes are gone."
+        variant="leave"
+        saveDisabled={!isValid}
+        confirmLoading={upsertConfig.isPending}
         restoreFocus={() => {
           const restore = pendingLeaveFocusRef.current;
           pendingLeaveFocusRef.current = null;
           restore?.();
         }}
-        cancelTestID="venue-avail-keep-editing"
-        confirmTestID="venue-avail-discard"
+        keepTestID="venue-avail-keep-editing"
+        discardTestID="venue-avail-discard"
+        saveTestID="venue-avail-leave-save"
         testID="venue-avail-discard-dialog"
       />
       <Toast

@@ -716,9 +716,10 @@ export function MenuCategorySheet({
                 {pickerMode === "start" ? "Start time" : "End time"}
               </Text>
               <Button
-                label="Done"
-                variant="primary"
+                label="Set times"
+                variant="step"
                 size="md"
+                trailingIcon="chevR"
                 onPress={closeTimePicker}
                 testID="menu-category-time-picker-done"
               />

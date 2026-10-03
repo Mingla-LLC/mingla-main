@@ -136,6 +136,15 @@ export interface SheetProps {
   /** Opt-in lock for a transaction that must not be interrupted. Default false. */
   dismissDisabled?: boolean;
   /**
+   * #3655 / #1548 — when true, the sheet holds unsaved work. Drag is resisted
+   * and past the close point the panel springs back then calls
+   * `onRequestClose` (or `onClose` when omitted). Never leaves translateY
+   * parked mid-screen after a declined close.
+   */
+  dismissGuard?: () => boolean;
+  /** Close request when a dismissGuard declines an immediate close. */
+  onRequestClose?: () => void;
+  /**
    * Wide-desktop web only: vertical placement of the centred card.
    * `"center"` (default) vertically centres it; `"top"` anchors it near the
    * top so the card can grow/shrink with content without the whole sheet
@@ -256,6 +265,8 @@ const SheetNative: React.FC<SheetProps> = ({
   snapPoint = "half",
   dismissOnScrimTap = true,
   dismissDisabled = false,
+  dismissGuard,
+  onRequestClose,
   testID,
   style,
   panelBackground,
@@ -325,29 +336,64 @@ const SheetNative: React.FC<SheetProps> = ({
     opacity: scrimOpacity.value,
   }));
 
+  const requestDismiss = (): void => {
+    if (dismissDisabled) return;
+    if (dismissGuard?.() === true) {
+      (onRequestClose ?? onClose)();
+      return;
+    }
+    onClose();
+  };
+
+  // #1548 — keep guard state on the UI thread; calling a JS closure from the
+  // pan worklet is unsafe. Parent re-renders when dirty flips.
+  const dismissGuardedSV = useSharedValue(false);
+  useEffect(() => {
+    dismissGuardedSV.value = dismissGuard?.() === true;
+  });
+
+  const settleOpen = (): void => {
+    translateY.value = reduceMotion
+      ? withTiming(openY, REDUCE_MOTION_OPEN)
+      : withSpring(openY, SPRING_CONFIG);
+  };
+
+  const handlePanEndJs = (translationY: number, velocityY: number): void => {
+    const shouldClose =
+      translationY > CLOSE_THRESHOLD_PX || velocityY > CLOSE_VELOCITY;
+    const guarded = dismissGuard?.() === true;
+    if (!shouldClose) {
+      settleOpen();
+      return;
+    }
+    if (guarded) {
+      // Spring home, then ask the host — never park mid-drag after a decline.
+      settleOpen();
+      requestDismiss();
+      return;
+    }
+    translateY.value = withTiming(closedY, TIMING_CLOSE);
+    onClose();
+  };
+
   const panGesture = Gesture.Pan()
     .enabled(!dismissDisabled)
     .onUpdate((event) => {
       // Allow drag down only.
-      if (event.translationY > 0) {
-        translateY.value = event.translationY;
+      if (event.translationY <= 0) return;
+      if (dismissGuardedSV.value) {
+        // Resist: follow at 0.35×, cap 96pt so the host feels the hold.
+        translateY.value = Math.min(96, event.translationY * 0.35);
+        return;
       }
+      translateY.value = event.translationY;
     })
     .onEnd((event) => {
-      const shouldClose =
-        event.translationY > CLOSE_THRESHOLD_PX ||
-        event.velocityY > CLOSE_VELOCITY;
-      if (shouldClose) {
-        runOnJS(onClose)();
-      } else {
-        translateY.value = reduceMotion
-          ? withTiming(openY, REDUCE_MOTION_OPEN)
-          : withSpring(openY, SPRING_CONFIG);
-      }
+      runOnJS(handlePanEndJs)(event.translationY, event.velocityY);
     });
 
   const handleScrimPress = (): void => {
-    if (!dismissDisabled && dismissOnScrimTap) onClose();
+    if (!dismissDisabled && dismissOnScrimTap) requestDismiss();
   };
 
   if (!mounted) return null;
@@ -368,7 +414,7 @@ const SheetNative: React.FC<SheetProps> = ({
       transparent
       animationType="none"
       onRequestClose={() => {
-        if (!dismissDisabled) onClose();
+        if (!dismissDisabled) requestDismiss();
       }}
       statusBarTranslucent
     >
@@ -738,6 +784,8 @@ const SheetWeb: React.FC<SheetProps> = ({
   snapPoint = "half",
   dismissOnScrimTap = true,
   dismissDisabled = false,
+  dismissGuard,
+  onRequestClose,
   testID,
   style,
   panelBackground,
@@ -806,8 +854,17 @@ const SheetWeb: React.FC<SheetProps> = ({
     return cancelRaf;
   }, [visible, mounted]);
 
+  const requestDismiss = (): void => {
+    if (dismissDisabled) return;
+    if (dismissGuard?.() === true) {
+      (onRequestClose ?? onClose)();
+      return;
+    }
+    onClose();
+  };
+
   const handleScrimPress = (): void => {
-    if (!dismissDisabled && dismissOnScrimTap) onClose();
+    if (!dismissDisabled && dismissOnScrimTap) requestDismiss();
   };
 
   // ORCH-1207 Bug 2 — WEB drag-to-dismiss. SheetWeb previously closed ONLY via a
@@ -817,6 +874,8 @@ const SheetWeb: React.FC<SheetProps> = ({
   // threshold (dragged > 25% of panel height OR a downward flick velocity) we
   // onClose(), else we spring back to the open position. Only the handle/header
   // initiates the drag, so the scrollable body is never hijacked.
+  // #3655 / #1548 — when dismissGuard holds, resist the drag and ALWAYS spring
+  // home before asking the host; never leave dragY parked mid-screen.
   const DRAG_CLOSE_RATIO = 0.25; // fraction of panel height to commit a close
   const DRAG_CLOSE_VELOCITY = 0.5; // px/ms downward flick that commits a close
   const [dragY, setDragY] = useState<number>(0); // live finger offset (px, >= 0)
@@ -841,16 +900,14 @@ const SheetWeb: React.FC<SheetProps> = ({
     lastMoveRef.current = null;
     dragYRef.current = 0;
     setDragging(false);
-    if (commitClose && !dismissDisabled) {
-      // Let the CSS close transition (re-enabled once dragging=false) carry the
-      // panel the rest of the way as onClose flips `visible`.
-      setDragY(0);
-      onClose();
-    } else {
-      // Spring back to open — dragging=false restores the transition, dragY=0
-      // animates the panel home.
-      setDragY(0);
+    // #1548 — always settle to open rest first when guarded or declined.
+    setDragY(0);
+    if (!commitClose || dismissDisabled) return;
+    if (dismissGuard?.() === true) {
+      requestDismiss();
+      return;
     }
+    onClose();
   };
 
   const handleDragStart = (clientY: number): void => {
@@ -870,7 +927,9 @@ const SheetWeb: React.FC<SheetProps> = ({
     }
     const delta = clientY - dragStartYRef.current;
     // Clamp to downward-only (no rubber-band upward past the open rest position).
-    const next = delta > 0 ? delta : 0;
+    const raw = delta > 0 ? delta : 0;
+    const next =
+      dismissGuard?.() === true ? Math.min(96, raw * 0.35) : raw;
     const prev = lastMoveRef.current;
     if (prev !== null) {
       const dt = Date.now() - prev.t;
@@ -891,9 +950,13 @@ const SheetWeb: React.FC<SheetProps> = ({
     // have re-rendered (and so re-closured handleDragEnd) before pointerup fires.
     const dragged = dragYRef.current;
     const velocity = velocityRef.current;
-    const shouldClose =
-      dragged > sheetHeight * DRAG_CLOSE_RATIO ||
-      velocity > DRAG_CLOSE_VELOCITY;
+    // When guarded, resistance caps drag at 96 — compare against that feel,
+    // not the full panel ratio, so a committed pull still asks to discard.
+    const guarded = dismissGuard?.() === true;
+    const shouldClose = guarded
+      ? dragged >= 48 || velocity > DRAG_CLOSE_VELOCITY
+      : dragged > sheetHeight * DRAG_CLOSE_RATIO ||
+        velocity > DRAG_CLOSE_VELOCITY;
     endDrag(shouldClose);
   };
 
@@ -992,7 +1055,7 @@ const SheetWeb: React.FC<SheetProps> = ({
       transparent
       animationType="none"
       onRequestClose={() => {
-        if (!dismissDisabled) onClose();
+        if (!dismissDisabled) requestDismiss();
       }}
       statusBarTranslucent
     >

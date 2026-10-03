@@ -29,6 +29,12 @@ interface VenueSuiteState {
   /** The modules the rail/pill row should render (derived from the toggle). */
   visibleModules: readonly VenueModule[];
   /**
+   * #3655 — modules currently holding unsaved work (dirty pill dots).
+   * Mirrored from the shell; not persisted.
+   */
+  dirtyModules: ReadonlySet<VenueModule>;
+  setDirtyModule: (module: VenueModule, dirty: boolean) => void;
+  /**
    * The shell installs its `setActiveModule` here so the layout's pill row can
    * drive module selection without navigation. Null when the suite is inactive.
    */
@@ -67,6 +73,13 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
   active: false,
   activeModule: "overview",
   visibleModules: ["overview", "settings"],
+  dirtyModules: new Set(),
+  setDirtyModule: (module, dirty) => {
+    const next = new Set(get().dirtyModules);
+    if (dirty) next.add(module);
+    else next.delete(module);
+    set({ dirtyModules: next });
+  },
   selectModule: null,
   pendingLeaveFocus: null,
   setPendingLeaveFocus: (pendingLeaveFocus) => set({ pendingLeaveFocus }),
@@ -99,6 +112,7 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
       visibleModules: ["overview", "settings"],
       selectModule: null,
       pendingLeaveFocus: null,
+      dirtyModules: new Set(),
     }),
   sync: ({ activeModule, visibleModules, selectModule }) =>
     set({ activeModule, visibleModules, selectModule }),

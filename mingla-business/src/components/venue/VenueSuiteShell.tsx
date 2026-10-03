@@ -60,7 +60,9 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import type { SuiteDesktopModule } from "../suite/SuiteDesktopShell";
 import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
+import { Toast } from "../ui/Toast";
 import {
   VenueAvailabilityModule,
   type VenueAvailabilityLeaveHandle,
@@ -68,9 +70,17 @@ import {
 import { VenueIntelligenceModule } from "./VenueIntelligenceModule";
 import { VenueMenuModule } from "./VenueMenuModule";
 import { VenueReservationsModule } from "./VenueReservationsModule";
-import { VenueSettingsModule } from "./VenueSettingsModule";
+import {
+  VenueSettingsModule,
+  type VenueSettingsLeaveHandle,
+} from "./VenueSettingsModule";
 import { VenueTablesModule } from "./VenueTablesModule";
 import { VenueWaitlistModule } from "./VenueWaitlistModule";
+import {
+  formatLeaveChangedBody,
+  sectionLabelForModule,
+  type VenueModuleLeaveHandle,
+} from "./venueLeaveContract";
 import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   VENUE_MODULES,
@@ -150,20 +160,145 @@ export function VenueSuiteShell({
 
   const [activeModule, setActiveModule] = useState<VenueModule>(initialModule);
   const availabilityRef = useRef<VenueAvailabilityLeaveHandle | null>(null);
+  const settingsRef = useRef<VenueSettingsLeaveHandle | null>(null);
+  const leaveHandlesRef = useRef<
+    Partial<Record<VenueModule, VenueModuleLeaveHandle>>
+  >({});
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaveSaving, setLeaveSaving] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
+  const [leaveToast, setLeaveToast] = useState<string | null>(null);
+  const pendingLeaveRef = useRef<{
+    proceed: () => void;
+    restoreFocus: (() => void) | null;
+    fromModule: VenueModule;
+  } | null>(null);
+
+  const getLeaveHandle = useCallback(
+    (module: VenueModule): VenueModuleLeaveHandle | null => {
+      if (leaveHandlesRef.current[module] !== undefined) {
+        return leaveHandlesRef.current[module] ?? null;
+      }
+      if (module === "settings") return settingsRef.current;
+      return null;
+    },
+    [],
+  );
 
   const selectModule = useCallback(
     (nextModule: VenueModule, restoreFocus?: () => void): void => {
       if (nextModule === activeModule) return;
+
       if (activeModule === "availability" && availabilityRef.current !== null) {
+        // Availability owns its leave dialog (upgraded to variant=leave).
         availabilityRef.current.requestLeave(
           () => setActiveModule(nextModule),
           restoreFocus,
         );
         return;
       }
+
+      const handle = getLeaveHandle(activeModule);
+      if (handle !== null && handle.isDirty()) {
+        pendingLeaveRef.current = {
+          proceed: () => setActiveModule(nextModule),
+          restoreFocus: restoreFocus ?? null,
+          fromModule: activeModule,
+        };
+        setLeaveError(null);
+        setLeaveOpen(true);
+        return;
+      }
       setActiveModule(nextModule);
     },
-    [activeModule],
+    [activeModule, getLeaveHandle],
+  );
+
+  const leaveSection =
+    pendingLeaveRef.current !== null
+      ? sectionLabelForModule(pendingLeaveRef.current.fromModule)
+      : "venue";
+  const leaveHandle =
+    pendingLeaveRef.current !== null
+      ? getLeaveHandle(pendingLeaveRef.current.fromModule)
+      : null;
+  const leaveLabels = leaveHandle?.changedLabels() ?? [];
+  const leaveValid = leaveHandle?.isValid() ?? true;
+
+  const handleLeaveKeep = useCallback((): void => {
+    if (leaveSaving) return;
+    const restore = pendingLeaveRef.current?.restoreFocus ?? null;
+    pendingLeaveRef.current = null;
+    setLeaveOpen(false);
+    setLeaveError(null);
+    restore?.();
+  }, [leaveSaving]);
+
+  const handleLeaveDiscard = useCallback((): void => {
+    if (leaveSaving) return;
+    const pending = pendingLeaveRef.current;
+    if (pending !== null) getLeaveHandle(pending.fromModule)?.discard();
+    pendingLeaveRef.current = null;
+    setLeaveOpen(false);
+    setLeaveError(null);
+    pending?.proceed();
+  }, [getLeaveHandle, leaveSaving]);
+
+  const handleLeaveSave = useCallback(async (): Promise<void> => {
+    const pending = pendingLeaveRef.current;
+    if (pending === null) return;
+    const handle = getLeaveHandle(pending.fromModule);
+    if (handle === null || !handle.isValid()) return;
+    setLeaveSaving(true);
+    setLeaveError(null);
+    try {
+      await handle.save();
+      const section = sectionLabelForModule(pending.fromModule);
+      pendingLeaveRef.current = null;
+      setLeaveOpen(false);
+      pending.proceed();
+      setLeaveToast(`${section} saved`);
+    } catch {
+      setLeaveError(
+        "Couldn't save your changes. They're still here, so try again.",
+      );
+    } finally {
+      setLeaveSaving(false);
+    }
+  }, [getLeaveHandle]);
+
+  const leaveDialog = (
+    <>
+      <ConfirmDialog
+        visible={leaveOpen}
+        variant="leave"
+        title={`Save your ${leaveSection} changes?`}
+        description={formatLeaveChangedBody(leaveLabels)}
+        onClose={handleLeaveKeep}
+        onConfirm={handleLeaveDiscard}
+        onSave={handleLeaveSave}
+        onDiscard={handleLeaveDiscard}
+        saveDisabled={!leaveValid}
+        confirmLoading={leaveSaving}
+        errorMessage={
+          leaveError ??
+          (!leaveValid
+            ? "These changes can't be saved yet. Keep editing to fix them."
+            : null)
+        }
+        saveTestID="venue-suite-leave-save"
+        discardTestID="venue-suite-leave-discard"
+        keepTestID="venue-suite-leave-keep"
+        testID="venue-suite-leave-dialog"
+      />
+      <Toast
+        visible={leaveToast !== null}
+        kind="success"
+        message={leaveToast ?? ""}
+        onDismiss={() => setLeaveToast(null)}
+        testID="venue-suite-leave-toast"
+      />
+    </>
   );
 
   // Guard: if the toggle flips OFF while on a booking module, snap to overview.
@@ -262,7 +397,13 @@ export function VenueSuiteShell({
       );
     }
     if (activeModule === "settings") {
-      return <VenueSettingsModule brandId={brandId} venueId={venueId} />;
+      return (
+        <VenueSettingsModule
+          ref={settingsRef}
+          brandId={brandId}
+          venueId={venueId}
+        />
+      );
     }
     // ORCH-1186-C — the always-visible command-band DISPLAY-ONLY menu builder
     // (independent of the reservations toggle). Renders inside the shell's
@@ -344,17 +485,20 @@ export function VenueSuiteShell({
   // tablist/tab a11y roles, same width math (NO maxWidth cap — ORCH-1184).
   if (isWideDesktop) {
     return (
-      <SuiteDesktopShell
-        modules={railModules}
-        activeModule={activeModule}
-        onSelect={handleRailSelect}
-        workspaceSelfScrolls={workspaceSelfScrolls}
-        scrollBottomPad={scrollBottomPad}
-        railTestIdPrefix="venue-rail-"
-        testID="venue-suite-shell-desktop"
-      >
-        {renderWorkspace()}
-      </SuiteDesktopShell>
+      <>
+        <SuiteDesktopShell
+          modules={railModules}
+          activeModule={activeModule}
+          onSelect={handleRailSelect}
+          workspaceSelfScrolls={workspaceSelfScrolls}
+          scrollBottomPad={scrollBottomPad}
+          railTestIdPrefix="venue-rail-"
+          testID="venue-suite-shell-desktop"
+        >
+          {renderWorkspace()}
+        </SuiteDesktopShell>
+        {leaveDialog}
+      </>
     );
   }
 
@@ -381,6 +525,7 @@ export function VenueSuiteShell({
           {renderWorkspace()}
         </ScrollView>
       )}
+      {leaveDialog}
     </View>
   );
 }

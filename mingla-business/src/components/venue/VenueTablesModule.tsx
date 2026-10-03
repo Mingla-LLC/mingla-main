@@ -9,7 +9,13 @@
  */
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import {
   radius,
@@ -28,6 +34,7 @@ import {
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import { ChevronRight, LayoutGrid } from "lucide-react-native";
 import { Button } from "../ui/Button";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueCapacityRulesPanel } from "./VenueCapacityRulesPanel";
 import { VenueTableSheet } from "./VenueTableSheet";
@@ -117,33 +124,75 @@ export function VenueTablesModule({
 
   const handleSave = useCallback(
     (input: VenueTableUpsert): void => {
+      setMutationError(null);
       upsert.mutate(input, {
         onSuccess: () => {
           setSheetOpen(false);
           setEditing(null);
+        },
+        onError: () => {
+          setMutationError(
+            "Couldn't save that table. Your edits are still here — try again.",
+          );
         },
       });
     },
     [upsert],
   );
 
+  const [toggleTarget, setToggleTarget] = useState<VenueTable | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+
   const handleToggleActive = useCallback(
     (t: VenueTable): void => {
-      if (!canMutate) return;
-      setActive.mutate({ id: t.id, isActive: !t.isActive });
+      if (!canMutate || setActive.isPending) return;
+      setToggleTarget(t);
     },
-    [canMutate, setActive],
+    [canMutate, setActive.isPending],
   );
+
+  const confirmToggleActive = useCallback((): void => {
+    const t = toggleTarget;
+    if (t === null || setActive.isPending) return;
+    const nextActive = !t.isActive;
+    setMutationError(null);
+    setActive.mutate(
+      { id: t.id, isActive: nextActive },
+      {
+        onSuccess: () => {
+          setToggleTarget(null);
+          AccessibilityInfo.announceForAccessibility(
+            nextActive
+              ? `${t.name} is now Active`
+              : `${t.name} is now Inactive`,
+          );
+        },
+        onError: () => {
+          setMutationError(
+            `Couldn't update ${t.name}. It's still ${
+              t.isActive ? "Active" : "Inactive"
+            } — try again.`,
+          );
+        },
+      },
+    );
+  }, [setActive, toggleTarget]);
 
   const handleDelete = useCallback(
     (id: string): void => {
       if (!canMutate) return;
+      setMutationError(null);
       remove.mutate(
         { id },
         {
           onSuccess: () => {
             setSheetOpen(false);
             setEditing(null);
+          },
+          onError: () => {
+            setMutationError(
+              "Couldn't remove that table. It's still here — try again.",
+            );
           },
         },
       );
@@ -282,6 +331,15 @@ export function VenueTablesModule({
           Couldn&apos;t load your tables. Pull to refresh.
         </Text>
       ) : null}
+      {mutationError !== null ? (
+        <Text
+          style={styles.errorNote}
+          accessibilityLiveRegion="polite"
+          testID="venue-tables-mutation-error"
+        >
+          {mutationError}
+        </Text>
+      ) : null}
 
       {/* Smart Capacity Rules MVP (the 3 rules). */}
       <VenueCapacityRulesPanel brandId={brandId} venueId={venueId} canMutate={canMutate} />
@@ -295,6 +353,28 @@ export function VenueTablesModule({
         onDelete={handleDelete}
         deleting={remove.isPending}
         canDelete={canMutate}
+      />
+
+      <ConfirmDialog
+        visible={toggleTarget !== null}
+        onClose={() => {
+          if (!setActive.isPending) setToggleTarget(null);
+        }}
+        title={
+          toggleTarget?.isActive
+            ? `Set ${toggleTarget.name} Inactive?`
+            : `Set ${toggleTarget?.name ?? "table"} Active?`
+        }
+        description={
+          toggleTarget?.isActive
+            ? "Guests will not be offered this table until you turn it back on."
+            : "Guests can be seated at this table again."
+        }
+        confirmLabel={toggleTarget?.isActive ? "Set Inactive" : "Set Active"}
+        cancelLabel="Keep as is"
+        confirmLoading={setActive.isPending}
+        onConfirm={confirmToggleActive}
+        testID="venue-tables-active-confirm"
       />
 
       {spotsSheetOpen ? (

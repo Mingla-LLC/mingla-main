@@ -75,15 +75,10 @@ export const deriveHubVisibleTabs = (
   if (counts.trips > 0 || (counts.trips_draft ?? 0) > 0) visible.push("trips");
   if (counts.experiences > 0 || (counts.experiences_draft ?? 0) > 0)
     visible.push("experiences");
-  // META-ORCH-1255 — Venue pill appears when the brand has ≥1 venue_listings
-  // row (ANY state, D-5); the legacy flag arms stay executable but are
-  // production-dormant (no writers — see HubVenueVisibility docs). Appended
-  // LAST so it sits as a rightmost peer alongside the offering pills.
-  if (
-    (venue.venueCount ?? 0) > 0 ||
-    venue.hasPhysicalLocation === true ||
-    venue.hasPlacePool === true
-  ) {
+  // #3655 Decision 9 — Venues pill only when the brand has ≥1 venue_listings
+  // row. Zero venues: add from the Hub `+` menu only (no empty Venues tab).
+  // Legacy hasPhysicalLocation / hasPlacePool arms are intentionally ignored.
+  if ((venue.venueCount ?? 0) > 0) {
     visible.push("venue");
   }
   return visible;

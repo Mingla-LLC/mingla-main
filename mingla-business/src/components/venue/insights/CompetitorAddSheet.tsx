@@ -288,7 +288,10 @@ export function CompetitorAddSheet({
   return (
     <Sheet
       visible={visible}
-      onClose={requestClose}
+      onClose={onClose}
+      dismissGuard={() => dirty}
+      onRequestClose={requestClose}
+      dismissDisabled={mutation.isPending}
       snapPoint="full"
       verticalAlign="top"
       presentation="competition"
@@ -536,9 +539,14 @@ export function CompetitorAddSheet({
         <ConfirmDialog
           visible
           onClose={() => setDiscardOpen(false)}
-          title="Discard changes?"
-          description="Your unsaved competitor links and details will be lost."
-          confirmLabel="Discard changes"
+          title={editing ? "Discard your changes?" : "Discard this competitor?"}
+          description={
+            editing
+              ? "Your unsaved competitor links and details will be lost."
+              : "This competitor has not been saved yet."
+          }
+          confirmLabel="Discard"
+          cancelLabel="Keep editing"
           destructive
           onConfirm={() => {
             setDiscardOpen(false);

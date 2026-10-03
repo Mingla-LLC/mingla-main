@@ -110,6 +110,7 @@ export default function HubTabLayout(): React.ReactElement {
   const venueActiveModule = useVenueSuiteStore((s) => s.activeModule);
   const venueVisibleModules = useVenueSuiteStore((s) => s.visibleModules);
   const venueSelectModule = useVenueSuiteStore((s) => s.selectModule);
+  const venueDirtyModules = useVenueSuiteStore((s) => s.dirtyModules);
   const showVenueModulePills =
     venueSuiteActive && !isWideDesktop && venueSelectModule !== null;
 
@@ -291,6 +292,7 @@ export default function HubTabLayout(): React.ReactElement {
           activeModule={venueActiveModule}
           onSelect={venueSelectModule}
           onBackToHub={handleBackToHub}
+          dirtyModules={venueDirtyModules}
         />
       ) : (
         <HubSubNav

@@ -1,7 +1,7 @@
 /**
  * Button — primary CTA primitive.
  *
- * Variants: `primary | secondary | ghost | destructive`
+ * Variants: `primary | secondary | ghost | destructive | step | destructiveOutline`
  * Sizes:    `sm (36) | md (44) | lg (52)`
  * Shapes:   `pill` (radius full, default) | `square` (radius md)
  *
@@ -60,7 +60,13 @@ import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 import { Spinner } from "./Spinner";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive";
+export type ButtonVariant =
+  | "primary"
+  | "secondary"
+  | "ghost"
+  | "destructive"
+  | "step"
+  | "destructiveOutline";
 export type ButtonSize = "sm" | "md" | "lg";
 export type ButtonShape = "pill" | "square";
 
@@ -165,6 +171,20 @@ const VARIANT_TOKENS: Record<ButtonVariant, VariantTokens> = {
     background: semantic.error,
     hoverBackground: "#f25656",
     text: textTokens.inverse,
+  },
+  // #3655 — white "moves you on" look (wizard Continue, Add your venue).
+  step: {
+    background: "#F5F5F6",
+    hoverBackground: "#FFFFFF",
+    text: "#0c0e12",
+  },
+  // #3655 — quiet remove look; solid destructive stays inside ConfirmDialog.
+  destructiveOutline: {
+    background: "rgba(239,68,68,.10)",
+    hoverBackground: "rgba(239,68,68,.16)",
+    border: "rgba(239,68,68,.45)",
+    borderWidth: 1,
+    text: semantic.errorText,
   },
 };
 

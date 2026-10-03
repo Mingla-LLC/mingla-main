@@ -22,6 +22,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 // Issue #1503 [stay-date-pickers] — From/To are PICKED from a real calendar on
 // every surface (HTML5 date input on web, native dialog on iOS/Android). The
 // `From (YYYY-MM-DD)` label crutch is gone: the control now carries the format.
@@ -60,6 +61,10 @@ export interface VenueBlackoutSheetProps {
   onSave: (input: VenueBlackoutUpsert) => void;
   onDelete?: () => void;
   saving: boolean;
+  /** #3624 / #3655 — true while a remove mutation is in flight. */
+  deleting?: boolean;
+  /** #3624 — shown when remove fails; sheet and row stay open. */
+  deleteError?: string | null;
   testID?: string;
 }
 
@@ -71,6 +76,8 @@ export function VenueBlackoutSheet({
   onSave,
   onDelete,
   saving,
+  deleting = false,
+  deleteError = null,
   testID,
 }: VenueBlackoutSheetProps): React.ReactElement {
   const isEdit = blackout !== null;
@@ -80,6 +87,7 @@ export function VenueBlackoutSheet({
   const [appliesTo, setAppliesTo] = useState<BlackoutAppliesTo>("all");
   const [zone, setZone] = useState<VenueTableZone | null>(null);
   const [tableId, setTableId] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -89,7 +97,18 @@ export function VenueBlackoutSheet({
     setAppliesTo(blackout?.appliesTo ?? "all");
     setZone(blackout?.zone ?? null);
     setTableId(blackout?.tableId ?? null);
+    setDeleteConfirmOpen(false);
   }, [visible, blackout]);
+
+  // Close the confirm once a remove attempt finishes so error copy on the
+  // sheet is visible (success path closes the whole sheet via `visible`).
+  const wasDeletingRef = React.useRef(false);
+  useEffect(() => {
+    if (wasDeletingRef.current && !deleting) {
+      setDeleteConfirmOpen(false);
+    }
+    wasDeletingRef.current = deleting;
+  }, [deleting]);
 
   const startValid = ISO_DATE.test(dateStart);
   const endValid = ISO_DATE.test(dateEnd || dateStart);
@@ -274,16 +293,46 @@ export function VenueBlackoutSheet({
           {isEdit && onDelete != null ? (
             <Button
               label="Remove this blackout"
-              onPress={onDelete}
-              variant="ghost"
+              onPress={() => setDeleteConfirmOpen(true)}
+              variant="destructiveOutline"
               size="md"
               fullWidth
+              disabled={saving || deleting}
               style={styles.deleteBtn}
               testID="venue-blackout-delete"
             />
           ) : null}
+          {deleteError !== null && deleteError.length > 0 ? (
+            <Text style={styles.deleteError} testID="venue-blackout-delete-error">
+              {deleteError}
+            </Text>
+          ) : null}
         </ScrollView>
       </View>
+      <ConfirmDialog
+        visible={deleteConfirmOpen}
+        onClose={() => {
+          if (!deleting) setDeleteConfirmOpen(false);
+        }}
+        title="Remove this blackout?"
+        description={
+          blackout !== null
+            ? `Guests will be able to book again from ${blackout.dateStart}${
+                blackout.dateEnd && blackout.dateEnd !== blackout.dateStart
+                  ? ` to ${blackout.dateEnd}`
+                  : ""
+              }.`
+            : "Guests will be able to book these dates again."
+        }
+        confirmLabel="Remove blackout"
+        cancelLabel="Keep it"
+        destructive
+        confirmLoading={deleting}
+        onConfirm={() => {
+          onDelete?.();
+        }}
+        testID="venue-blackout-delete-confirm"
+      />
     </Sheet>
   );
 }
@@ -350,6 +399,12 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     marginTop: spacing.lg,
+  },
+  deleteError: {
+    ...typography.caption,
+    color: semantic.errorText,
+    marginTop: spacing.sm,
+    textAlign: "center",
   },
   deleteBtn: {
     marginTop: spacing.xs,

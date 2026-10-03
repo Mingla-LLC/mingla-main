@@ -147,6 +147,7 @@ export default function VenueManagementPage(): React.ReactElement {
   const venueActiveModule = useVenueSuiteStore((s) => s.activeModule);
   const venueVisibleModules = useVenueSuiteStore((s) => s.visibleModules);
   const venueSelectModule = useVenueSuiteStore((s) => s.selectModule);
+  const venueDirtyModules = useVenueSuiteStore((s) => s.dirtyModules);
   const setPendingLeaveFocus = useVenueSuiteStore(
     (s) => s.setPendingLeaveFocus,
   );
@@ -405,6 +406,7 @@ export default function VenueManagementPage(): React.ReactElement {
           activeModule={venueActiveModule}
           onSelect={venueSelectModule}
           onBackToHub={handleBack}
+          dirtyModules={venueDirtyModules}
           testID="venue-page-module-pills"
         />
       ) : null}
