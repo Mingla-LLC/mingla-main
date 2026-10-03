@@ -4,7 +4,7 @@
 
 All work — bugs, features, ideas, discoveries — lives as GitHub issues on the **Mingla Avengers board** (https://github.com/orgs/Mingla-LLC/projects/4). The board README is the operating manual. If it's not an issue, it doesn't exist.
 
-- **Issue titles are plain English**; the **issue # is the work ID**. Branches are `<issue#>-short-slug`; PRs say `Fixes #<issue#>`.
+- **Issue titles are plain English**; the **issue # is the work ID**. Branches are `<issue#>-short-slug`. Prefer `toward #<epic>` until that issue's acceptance checklists are complete; use `Fixes #<issue#>` only when that issue's Done criteria are actually met (GitHub will close on merge).
 - **Features are initiatives; extend before you open.** New features are tracked as initiative issues. All work for a feature, including stories, bugs found while speccing, specs, decisions, design contracts and evidence, goes **into its initiative** as comments and acceptance checklists, not as separate sub-issues. New scope is added to an existing open initiative until it closes. Before opening any new issue, search the open issues (`gh issue list --state open --search "<keywords>"`, two or three keyword variants). Open one only when nothing open fits or can be extended, and name the issues you checked.
 - **Status lifecycle:** `Todo` (queued) → `In Progress` (investigating / building) → `In Review` (PR open, testing) → `Done` (merged + verified; auto-closes the issue).
 - **Documentation goes to the issue**, not the repo: investigation findings, spec decisions, implementation notes, and test evidence are issue comments (attach screenshots). Do NOT create per-work-item .md files — CI (`scripts/docs/check_artifact_placement.py`) rejects them.
@@ -76,10 +76,38 @@ Rules every chat must follow until the linked issue lifts them. Remove a hold in
 - Both apps ship the SAME version — bump together (CI parity gate).
 - Public trip/offering changes must hit ALL surfaces (consumer iOS/Android, business iOS/Android, buyer web, admin where applicable).
 - Prefer raising existing `overrides` / lockfile floors over new CI gates or tooling packages. Subtract stale pins that hold vulnerable versions before adding new machinery.
-- Never add a PR merge-blocker whose verdict depends on an external advisory database; Dependabot security alerts are the reporter for projects without an audit step (decision on #3642 for `mingla-business`).
+- **Keep dependency versions current on purpose.** When touching a package tree (or clearing advisories), run `npm update` (or the package-manager equivalent for that tree) within the intended range, then prove nothing broke for users — automated tests plus a quick UI/UX sanity check on the surfaces that load that tree. Intentional updates land in eng PRs so Dependabot has less patch firefighting to do; still close Dependabot PRs that smuggle unrelated majors.
+- Never add a PR merge-blocker whose verdict depends on an external advisory database; Dependabot security alerts are the reporter for projects without an audit step (decision on #3642 for `mingla-business`). `mingla-site-cms` / `mingla-sites` still run a high/critical ceiling, but unpatchable advisories (no npm release that clears them) are listed in `.github/npm-audit-allowlist.json` and ignored by `.github/scripts/npm-audit-ceiling.mjs` so they cannot red every PR — Dependabot remains the reporter until a real floor exists (#2830 / GHSA-vfj7). Audit-ceiling helpers must **fail closed** on registry/audit error payloads, a missing or non-object `vulnerabilities` map, and dangling `via` package refs that would otherwise collapse to "none".
 - Security-group Dependabot PRs that smuggle unrelated majors get closed; land patches intentionally. Keep dependency-fix diffs on the lock/override surface unless API breakage forces a minimal code edit.
 - npm audit's suggested major may be wrong: prove the high is gone with `npm audit` after raising a transitive override floor before taking a parent major. `#3642` cleared `@vercel/og` highs via `sharp` on the `#1158`-protected 0.x line; `@vercel/og@1.x` stays banned (broken OG renderer).
 - Prefer advisory **floors** (and single sealed digests) in dependency CI gates over exact patch pins or dual-restated hex authorities — exact pins and twin digests make every legitimate advisory clear red unrelated gates (`#2830` next, `#1902`/`#2438` Host package authorities; lesson from `#3642`, shipped `#3713`).
+
+## Pull requests without user interaction
+
+Opening or amending a pull request must be **fully agent-driven**. The user must not be asked to fill a form, click Submit, or open a browser/compare link themselves to create or edit the PR.
+
+- Prefer the `gh` CLI (`gh pr create`, `gh pr edit`, push with `-u` as needed). Any other fully automatic path is fine if it needs **zero** user clicks.
+- **Never** use tools that open a Cursor/IDE "submit pull request" form (or equivalent) and wait for a human.
+- After create: replace `PR #TBD` in `REPORTS.md` with the real number and push on the same branch.
+- Strip any auto-appended AI-vendor footer from the PR body before leaving it (`gh pr edit` or equivalent). See also § No AI vendor naming below.
+
+## No AI vendor naming in git / PR / shipped repo text
+
+Never mention Cursor (or `cursoragent`, `Co-authored-by: Cursor`, etc.) anywhere that lands in commit subjects or bodies, PR titles or bodies, `REPORTS.md`, docs, code comments, tests, CI config, or PR review replies GitHub stores. Use neutral wording ("this chat", "this agent", "engineering") or omit attribution. Do not add `Co-authored-by:` trailers for the assistant.
+
+## Epic / initiative delivery
+
+- Ship as sequenced small PRs against the umbrella issue; one `REPORTS.md` line per merged PR.
+- When a phase ends or the eng queue empties, **refresh the issue Progress table and AC ticks** in the issue body (or a dated comment if the body edit races). Tick ACs for shipped code; leave unchecked anything that still needs live proof, legal, or Seth ops (migrations apply, cutover, prod E2E, signed-in browser confirm).
+- When eng has nothing buildable left, say so and list **Seth-owned remainders** (legal text, cutover, E2E, browser proof). Do not invent approved legal prose.
+
+## CI, reviews, and evidence
+
+- Triage failures from **logs and commands**, not guesswork. Known leaves (scheduled Sprint Rollover, intermittent esm.sh TLS, and similar) stay leaves — do not "fix" them with unrelated product code.
+- Re-run clearly environmental flakes on `main` when that unblocks the pre-merge gate. If `main` is red from a real regression your PR fixes, call out the chicken-and-egg and ask for admin merge once **this PR's own** required checks are green — do not disable the pre-merge gate.
+- Copilot (and similar): fix valid non-nits with tests or guards; reply on the thread; resolve when done. Skip pure style nits.
+- Prefer reshape over parallel rails (existing sweep / readiness / notify paths). Reuse existing secret and ops-alert recipient names; do not invent new inbox secret names.
+- Deno / esm.sh: avoid dual `@supabase/supabase-js@2` type graphs across extract boundaries (structural or local loose admin types beat pinning a shared module in a way that breaks sibling functions in the same CI suite).
 
 ## Response style
 

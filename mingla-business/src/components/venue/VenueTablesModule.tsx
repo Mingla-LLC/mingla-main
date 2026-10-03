@@ -9,7 +9,13 @@
  */
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import {
   radius,
@@ -47,6 +53,13 @@ import type {
 const LazyVenueSpotsSheet = React.lazy(async () => {
   const mod = await import("./VenueSpotsSheet");
   return { default: mod.VenueSpotsSheet };
+});
+
+/** Lazy ConfirmDialog — static import pulls reanimated and breaks node/web
+ * render-proof suites that mount VenueTablesModule without transforming it. */
+const LazyConfirmDialog = React.lazy(async () => {
+  const mod = await import("../ui/ConfirmDialog");
+  return { default: mod.ConfirmDialog };
 });
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
@@ -106,44 +119,89 @@ export function VenueTablesModule({
   const isEmpty = !tablesQuery.isLoading && tables.length === 0;
 
   const openAdd = useCallback((): void => {
+    setMutationError(null);
     setEditing(null);
     setSheetOpen(true);
   }, []);
 
   const openEdit = useCallback((t: VenueTable): void => {
+    setMutationError(null);
     setEditing(t);
     setSheetOpen(true);
   }, []);
 
   const handleSave = useCallback(
     (input: VenueTableUpsert): void => {
+      setMutationError(null);
       upsert.mutate(input, {
         onSuccess: () => {
           setSheetOpen(false);
           setEditing(null);
+        },
+        onError: () => {
+          setMutationError(
+            "Couldn't save that table. Your edits are still here — try again.",
+          );
         },
       });
     },
     [upsert],
   );
 
+  const [toggleTarget, setToggleTarget] = useState<VenueTable | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+
   const handleToggleActive = useCallback(
     (t: VenueTable): void => {
-      if (!canMutate) return;
-      setActive.mutate({ id: t.id, isActive: !t.isActive });
+      if (!canMutate || setActive.isPending) return;
+      setMutationError(null);
+      setToggleTarget(t);
     },
-    [canMutate, setActive],
+    [canMutate, setActive.isPending],
   );
+
+  const confirmToggleActive = useCallback((): void => {
+    const t = toggleTarget;
+    if (t === null || setActive.isPending) return;
+    const nextActive = !t.isActive;
+    setMutationError(null);
+    setActive.mutate(
+      { id: t.id, isActive: nextActive },
+      {
+        onSuccess: () => {
+          setToggleTarget(null);
+          AccessibilityInfo.announceForAccessibility(
+            nextActive
+              ? `${t.name} is now Active`
+              : `${t.name} is now Inactive`,
+          );
+        },
+        onError: () => {
+          setMutationError(
+            `Couldn't update ${t.name}. It's still ${
+              t.isActive ? "Active" : "Inactive"
+            } — try again.`,
+          );
+        },
+      },
+    );
+  }, [setActive, toggleTarget]);
 
   const handleDelete = useCallback(
     (id: string): void => {
       if (!canMutate) return;
+      setMutationError(null);
       remove.mutate(
         { id },
         {
           onSuccess: () => {
             setSheetOpen(false);
             setEditing(null);
+          },
+          onError: () => {
+            setMutationError(
+              "Couldn't remove that table. It's still here — try again.",
+            );
           },
         },
       );
@@ -282,20 +340,63 @@ export function VenueTablesModule({
           Couldn&apos;t load your tables. Pull to refresh.
         </Text>
       ) : null}
+      {mutationError !== null && !sheetOpen && toggleTarget === null ? (
+        <Text
+          style={styles.errorNote}
+          accessibilityLiveRegion="polite"
+          testID="venue-tables-mutation-error"
+        >
+          {mutationError}
+        </Text>
+      ) : null}
 
       {/* Smart Capacity Rules MVP (the 3 rules). */}
       <VenueCapacityRulesPanel brandId={brandId} venueId={venueId} canMutate={canMutate} />
 
       <VenueTableSheet
         visible={sheetOpen}
-        onClose={() => setSheetOpen(false)}
+        onClose={() => {
+          setSheetOpen(false);
+          setMutationError(null);
+        }}
         table={editing}
         onSave={handleSave}
         saving={upsert.isPending}
         onDelete={handleDelete}
         deleting={remove.isPending}
         canDelete={canMutate}
+        errorMessage={sheetOpen ? mutationError : null}
       />
+
+      {toggleTarget !== null ? (
+        <React.Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            onClose={() => {
+              if (!setActive.isPending) {
+                setToggleTarget(null);
+                setMutationError(null);
+              }
+            }}
+            title={
+              toggleTarget.isActive
+                ? `Set ${toggleTarget.name} Inactive?`
+                : `Set ${toggleTarget.name} Active?`
+            }
+            description={
+              toggleTarget.isActive
+                ? "Guests will not be offered this table until you turn it back on."
+                : "Guests can be seated at this table again."
+            }
+            confirmLabel={toggleTarget.isActive ? "Set Inactive" : "Set Active"}
+            cancelLabel="Keep as is"
+            confirmLoading={setActive.isPending}
+            errorMessage={mutationError}
+            onConfirm={confirmToggleActive}
+            testID="venue-tables-active-confirm"
+          />
+        </React.Suspense>
+      ) : null}
 
       {spotsSheetOpen ? (
         <React.Suspense fallback={null}>

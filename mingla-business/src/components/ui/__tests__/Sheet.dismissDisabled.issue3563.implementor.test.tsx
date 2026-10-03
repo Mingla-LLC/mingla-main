@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// [TEST-MOD-APPROVED #3655] dismissGuard routes closes through requestDismiss /
+// De Morgan endDrag guard; pin the live shapes, not the pre-#1548 literals.
+
 const repoRoot = path.resolve(__dirname, "../../../..");
 const read = (relativePath: string): string =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -14,14 +17,12 @@ describe("#3563 Sheet dismissal lock", () => {
       mobile.match(/dismissDisabled = false/g)?.length ?? 0,
     ).toBeGreaterThanOrEqual(2);
     expect(mobile).toContain(".enabled(!dismissDisabled)");
-    expect(mobile).toContain("if (commitClose && !dismissDisabled)");
+    expect(mobile).toContain("if (!commitClose || dismissDisabled) return;");
     expect(mobile).toContain("dragStartYRef.current = null");
     expect(mobile).toContain("setDragging(false)");
     expect(mobile).toContain("setDragY(0)");
     expect(mobile.match(/if \(dismissDisabled\)/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
-    expect(mobile).toContain(
-      "if (!dismissDisabled && dismissOnScrimTap) onClose()",
-    );
+    expect(mobile).toContain("if (dismissOnScrimTap) requestDismiss()");
     expect(web).toContain("dismissDisabled = false");
     expect(web).toContain(
       "if (!dismissDisabled && dismissOnScrimTap) onClose()",

@@ -12,7 +12,7 @@
  * steps stay inside the create route chunk. Behavior is unchanged.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -26,6 +26,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  accent,
   canvas,
   spacing,
   text as textTokens,
@@ -39,13 +40,17 @@ import {
   syncHeroMedia,
   type PipelineCoachingCard,
 } from "../../services/businessPlaceAuthoringService";
+import { BRAND_COVERS_BUCKET } from "../../services/brandCoverService";
+import { supabase } from "../../services/supabase";
 import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
 import { usePlaceDiscoveryPriceRange } from "../../hooks/usePlaceDiscoveryPriceRange";
 import {
   minorToMajorInput,
 } from "../../utils/currencyFormatter";
+import { extractBrandCoverStoragePath } from "../../utils/brandCoverRules";
 import {
   pickGalleryPhotos,
+  removeGalleryStorageObjects,
   uploadGalleryPhoto,
   VenueGalleryError,
 } from "../../services/venueGalleryService";
@@ -63,6 +68,48 @@ import { Button } from "../ui/Button";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
+
+/** #3655 — best-effort remove of staged/replaced cover storage objects. */
+async function removeCoverStorageUrls(
+  urls: ReadonlyArray<string | null | undefined>,
+): Promise<void> {
+  const paths = [
+    ...new Set(
+      urls
+        .map((url) => extractBrandCoverStoragePath(url))
+        .filter((path): path is string => path !== null),
+    ),
+  ];
+  if (paths.length === 0) return;
+  try {
+    await supabase.storage.from(BRAND_COVERS_BUCKET).remove(paths);
+  } catch {
+    // orphan cleanup is non-blocking
+  }
+}
+
+function facetsEqual(
+  a: Record<string, boolean | null>,
+  b: Record<string, boolean | null>,
+): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if ((a[key] ?? null) !== (b[key] ?? null)) return false;
+  }
+  return true;
+}
+
+function stringListsEqual(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
+}
+
+/** #3655 — leave handle for staged cover/gallery (and other draft fields). */
+export interface VenueDeckLeaveHandle {
+  isDirty: () => boolean;
+  changedLabels: () => string[];
+  save: () => Promise<void>;
+  discard: () => void;
+}
 
 export interface VenueDeckReadinessSetupProps {
   accountId: string;
@@ -89,6 +136,8 @@ export interface VenueDeckReadinessSetupProps {
   initialCoaching?: PipelineCoachingCard[];
   initialCover?: CoverPatch | null;
   initialGallery?: string[];
+  /** #3655 — route Back / beforeRemove consults this for staged drafts. */
+  leaveHandleRef?: React.MutableRefObject<VenueDeckLeaveHandle | null>;
 }
 
 // META-ORCH-1009 Sub-E: required venue gallery bounds (mirror the edge GALLERY_MIN
@@ -222,6 +271,7 @@ export function VenueDeckReadinessSetup({
   initialCoaching = EMPTY_COACHING,
   initialCover = null,
   initialGallery = EMPTY_GALLERY,
+  leaveHandleRef,
 }: VenueDeckReadinessSetupProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   // #1558 — a NULL category is `uncategorised`, a named key with its own row in
@@ -230,6 +280,7 @@ export function VenueDeckReadinessSetup({
     FACET_QUESTIONS_BY_CATEGORY[venueCategoryKey(venueCategoryProp)];
   const [coverVisible, setCoverVisible] = useState(false);
   const [gallery, setGallery] = useState<string[]>(initialGallery);
+  const [savedGallery, setSavedGallery] = useState<string[]>(initialGallery);
   const [galleryBusy, setGalleryBusy] = useState(false);
   const [cover, setCover] = useState<CoverPatch>({
     ...EMPTY_COVER,
@@ -237,7 +288,26 @@ export function VenueDeckReadinessSetup({
     coverMediaPosterUrl: initialCover?.coverMediaPosterUrl ?? null,
     coverMediaType: initialCover?.coverMediaType ?? null,
   });
+  const [savedCover, setSavedCover] = useState<CoverPatch>({
+    ...EMPTY_COVER,
+    coverMediaUrl: initialCover?.coverMediaUrl ?? null,
+    coverMediaPosterUrl: initialCover?.coverMediaPosterUrl ?? null,
+    coverMediaType: initialCover?.coverMediaType ?? null,
+  });
+  // #3655 Story 3 — cover/gallery attach to the draft until Save deck details.
+  const coverDirty =
+    cover.coverMediaUrl !== savedCover.coverMediaUrl ||
+    cover.coverMediaPosterUrl !== savedCover.coverMediaPosterUrl ||
+    cover.coverMediaType !== savedCover.coverMediaType;
+  const galleryDirty =
+    gallery.length !== savedGallery.length ||
+    gallery.some((url, i) => url !== savedGallery[i]);
+  /** Uploaded gallery URLs not yet committed — removed on Discard. */
+  const stagedGalleryUploadsRef = useRef<Set<string>>(new Set());
   const [website, setWebsite] = useState(
+    stringValue(initialTier2.website, ""),
+  );
+  const [savedWebsite, setSavedWebsite] = useState(
     stringValue(initialTier2.website, ""),
   );
   const currencyQuery = useBrandDiscoveryCurrency(brandId);
@@ -249,10 +319,18 @@ export function VenueDeckReadinessSetup({
   const exponent = currencyMetadata?.minorUnitExponent ?? 2;
   const [priceMinInput, setPriceMinInput] = useState("");
   const [priceMaxInput, setPriceMaxInput] = useState("");
+  const [savedPriceMin, setSavedPriceMin] = useState("");
+  const [savedPriceMax, setSavedPriceMax] = useState("");
   const [selectedVibes, setSelectedVibes] = useState<string[]>(
     stringArray(initialTier2.vibe_chips),
   );
+  const [savedVibes, setSavedVibes] = useState<string[]>(
+    stringArray(initialTier2.vibe_chips),
+  );
   const [facets, setFacets] = useState<Record<string, boolean | null>>(
+    initialFacets,
+  );
+  const [savedFacets, setSavedFacets] = useState<Record<string, boolean | null>>(
     initialFacets,
   );
   const [coaching, setCoaching] = useState<PipelineCoachingCard[]>(initialCoaching);
@@ -261,27 +339,49 @@ export function VenueDeckReadinessSetup({
   const [busy, setBusy] = useState<"save" | "refresh" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  const websiteDirty = website.trim() !== savedWebsite.trim();
+  const vibesDirty = !stringListsEqual(selectedVibes, savedVibes);
+  const facetsDirty = !facetsEqual(facets, savedFacets);
+  const priceDirty =
+    priceMinInput !== savedPriceMin || priceMaxInput !== savedPriceMax;
+  const draftsDirty =
+    websiteDirty || vibesDirty || facetsDirty || priceDirty;
+  const formDirty = coverDirty || galleryDirty || draftsDirty;
+
   useEffect(() => {
+    if (formDirty) return;
     setWebsite(stringValue(initialTier2.website, ""));
+    setSavedWebsite(stringValue(initialTier2.website, ""));
     setSelectedVibes(stringArray(initialTier2.vibe_chips));
+    setSavedVibes(stringArray(initialTier2.vibe_chips));
     setFacets(initialFacets);
+    setSavedFacets(initialFacets);
     setCoaching(initialCoaching);
-  }, [initialCoaching, initialFacets, initialTier2]);
+  }, [formDirty, initialCoaching, initialFacets, initialTier2]);
 
   useEffect(() => {
     const range = rangeQuery.data;
     if (range?.status !== "active" || range.source_min_minor === null) return;
-    setPriceMinInput(minorToMajorInput(range.source_min_minor, exponent));
-    setPriceMaxInput(
+    if (priceDirty) return;
+    const nextMin = minorToMajorInput(range.source_min_minor, exponent);
+    const nextMax =
       range.source_max_minor === null
         ? ""
-        : minorToMajorInput(range.source_max_minor, exponent),
-    );
-  }, [exponent, rangeQuery.data]);
+        : minorToMajorInput(range.source_max_minor, exponent);
+    setPriceMinInput(nextMin);
+    setPriceMaxInput(nextMax);
+    setSavedPriceMin(nextMin);
+    setSavedPriceMax(nextMax);
+  }, [exponent, priceDirty, rangeQuery.data]);
 
   useEffect(() => {
+    // Adopt server gallery only while the draft is clean — a refetch must not
+    // wipe staged adds/removes or leave savedGallery stale (#3655 review).
+    if (galleryDirty) return;
     setGallery(initialGallery);
-  }, [initialGallery]);
+    setSavedGallery(initialGallery);
+    stagedGalleryUploadsRef.current.clear();
+  }, [galleryDirty, initialGallery]);
 
   useEffect(() => {
     if (focus === "cover") setCoverVisible(true);
@@ -306,29 +406,39 @@ export function VenueDeckReadinessSetup({
 
   const handleCoverChange = useCallback(
     async (patch: CoverPatch): Promise<void> => {
+      // Stage locally — Mingla write waits for Save deck details (#3655).
+      // Drop abandoned staged uploads (not the saved pointer) when replaced.
+      const abandonUrls: Array<string | null> = [];
+      if (
+        cover.coverMediaUrl !== null &&
+        cover.coverMediaUrl !== savedCover.coverMediaUrl &&
+        cover.coverMediaUrl !== patch.coverMediaUrl
+      ) {
+        abandonUrls.push(cover.coverMediaUrl);
+      }
+      if (
+        cover.coverMediaPosterUrl !== null &&
+        cover.coverMediaPosterUrl !== savedCover.coverMediaPosterUrl &&
+        cover.coverMediaPosterUrl !== patch.coverMediaPosterUrl &&
+        cover.coverMediaPosterUrl !== cover.coverMediaUrl
+      ) {
+        abandonUrls.push(cover.coverMediaPosterUrl);
+      }
+      if (abandonUrls.length > 0) {
+        void removeCoverStorageUrls(abandonUrls);
+      }
       setCover(patch);
-      await syncHeroMedia({
-        brandId,
-        venueId,
-        placePoolId,
-        coverMediaUrl: patch.coverMediaUrl,
-        coverMediaPosterUrl: patch.coverMediaPosterUrl,
-        coverMediaType: patch.coverMediaType,
-      }).catch((error) => {
-        setMessage(
-          sanitizeAuthoringError(
-            error,
-            "Cover saved, but deck readiness did not sync yet.",
-          ),
-        );
-        throw error;
-      });
     },
-    [brandId, venueId, placePoolId],
+    [
+      cover.coverMediaPosterUrl,
+      cover.coverMediaUrl,
+      savedCover.coverMediaPosterUrl,
+      savedCover.coverMediaUrl,
+    ],
   );
 
   // META-ORCH-1009 Sub-E: multi-select gallery upload. Pick many at once (capped
-  // at remaining slots), upload each to storage, then persist the URL set.
+  // at remaining slots), upload each to storage, then stage the URL set until Save.
   const handleAddPhotos = useCallback(async (): Promise<void> => {
     const remaining = GALLERY_MAX - gallery.length;
     if (remaining <= 0) {
@@ -351,28 +461,24 @@ export function VenueDeckReadinessSetup({
         }
       }
       if (uploaded.length === 0) return;
+      for (const url of uploaded) stagedGalleryUploadsRef.current.add(url);
       const next = Array.from(new Set([...gallery, ...uploaded])).slice(0, GALLERY_MAX);
       setGallery(next);
-      await syncGallery({ brandId, venueId, placePoolId, galleryUrls: next });
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Couldn't add photos. Try again.");
     } finally {
       setGalleryBusy(false);
     }
-  }, [brandId, venueId, gallery, placePoolId]);
+  }, [brandId, gallery]);
 
-  const handleRemovePhoto = useCallback(
-    async (url: string): Promise<void> => {
-      const next = gallery.filter((u) => u !== url);
-      setGallery(next);
-      try {
-        await syncGallery({ brandId, venueId, placePoolId, galleryUrls: next });
-      } catch (e) {
-        setMessage(e instanceof Error ? e.message : "Couldn't update photos.");
-      }
-    },
-    [brandId, venueId, gallery, placePoolId],
-  );
+  const handleRemovePhoto = useCallback(async (url: string): Promise<void> => {
+    setGallery((prev) => prev.filter((u) => u !== url));
+    // Staged (never committed) uploads can be removed from storage immediately.
+    if (stagedGalleryUploadsRef.current.has(url) && !savedGallery.includes(url)) {
+      stagedGalleryUploadsRef.current.delete(url);
+      void removeGalleryStorageObjects([url]);
+    }
+  }, [savedGallery]);
 
   const toggleVibe = useCallback((vibe: string): void => {
     setSelectedVibes((prev) =>
@@ -390,10 +496,35 @@ export function VenueDeckReadinessSetup({
   // auto-save on change via syncHeroMedia/syncGallery. Mingla writes the pitch +
   // match scores when an admin approves the venue; the owner edits the pitch
   // afterward on the listing page.
+  /** Leave Save resumes the captured route; suppress onDone for that path. */
+  const navigateAfterSaveRef = useRef(true);
+
   const handleSaveChanges = useCallback(async (): Promise<void> => {
+    const navigate = navigateAfterSaveRef.current;
+    navigateAfterSaveRef.current = true;
+    if (!formDirty) return;
     setBusy("save");
     setMessage(null);
+    const previousCover = savedCover;
     try {
+      if (coverDirty) {
+        await syncHeroMedia({
+          brandId,
+          venueId,
+          placePoolId,
+          coverMediaUrl: cover.coverMediaUrl,
+          coverMediaPosterUrl: cover.coverMediaPosterUrl,
+          coverMediaType: cover.coverMediaType,
+        });
+      }
+      if (galleryDirty) {
+        await syncGallery({
+          brandId,
+          venueId,
+          placePoolId,
+          galleryUrls: gallery,
+        });
+      }
       await saveTier2({ brandId, venueId, placePoolId, tier2: buildTier2() });
       await commitExistingVenueDiscoveryRange({
         brandId,
@@ -403,9 +534,34 @@ export function VenueDeckReadinessSetup({
         priceMaxInput,
         expectedVersion: rangeQuery.data?.version ?? 0,
       });
-      onDone();
+      // Mark baselines clean only after every write succeeds so a later-step
+      // failure cannot leave galleryDirty=false while initialGallery is stale
+      // (hydration would otherwise wipe the just-committed URLs).
+      if (coverDirty) {
+        setSavedCover(cover);
+        void removeCoverStorageUrls([
+          previousCover.coverMediaUrl !== cover.coverMediaUrl
+            ? previousCover.coverMediaUrl
+            : null,
+          previousCover.coverMediaPosterUrl !== cover.coverMediaPosterUrl &&
+          previousCover.coverMediaPosterUrl !== previousCover.coverMediaUrl
+            ? previousCover.coverMediaPosterUrl
+            : null,
+        ]);
+      }
+      if (galleryDirty) {
+        setSavedGallery(gallery);
+        stagedGalleryUploadsRef.current.clear();
+      }
+      setSavedWebsite(website.trim());
+      setSavedVibes(selectedVibes);
+      setSavedFacets(facets);
+      setSavedPriceMin(priceMinInput);
+      setSavedPriceMax(priceMaxInput);
+      if (navigate) onDone();
     } catch (error) {
       setMessage(sanitizeAuthoringError(error, "Could not save your changes."));
+      throw error;
     } finally {
       setBusy(null);
     }
@@ -414,12 +570,96 @@ export function VenueDeckReadinessSetup({
     venueId,
     placePoolId,
     buildTier2,
-    currencyMetadata,
-    currencyState,
+    cover,
+    coverDirty,
+    facets,
+    formDirty,
+    gallery,
+    galleryDirty,
     onDone,
     priceMaxInput,
     priceMinInput,
     rangeQuery.data?.version,
+    savedCover,
+    selectedVibes,
+    website,
+  ]);
+
+  useEffect(() => {
+    if (leaveHandleRef === undefined) return;
+    leaveHandleRef.current = {
+      isDirty: () => formDirty,
+      changedLabels: () => {
+        const labels: string[] = [];
+        if (coverDirty) labels.push("Cover");
+        if (galleryDirty) labels.push("Photos");
+        if (websiteDirty) labels.push("Website");
+        if (priceDirty) labels.push("Price range");
+        if (vibesDirty) labels.push("Vibes");
+        if (facetsDirty) labels.push("Details");
+        return labels;
+      },
+      // Leave Save resumes the original route; do not also navigate via onDone.
+      save: () => {
+        navigateAfterSaveRef.current = false;
+        return handleSaveChanges();
+      },
+      discard: () => {
+        const abandonCover: Array<string | null> = [];
+        if (
+          cover.coverMediaUrl !== null &&
+          cover.coverMediaUrl !== savedCover.coverMediaUrl
+        ) {
+          abandonCover.push(cover.coverMediaUrl);
+        }
+        if (
+          cover.coverMediaPosterUrl !== null &&
+          cover.coverMediaPosterUrl !== savedCover.coverMediaPosterUrl &&
+          cover.coverMediaPosterUrl !== cover.coverMediaUrl
+        ) {
+          abandonCover.push(cover.coverMediaPosterUrl);
+        }
+        if (abandonCover.length > 0) {
+          void removeCoverStorageUrls(abandonCover);
+        }
+        const orphanGallery = [...stagedGalleryUploadsRef.current].filter(
+          (url) => !savedGallery.includes(url),
+        );
+        stagedGalleryUploadsRef.current.clear();
+        if (orphanGallery.length > 0) {
+          void removeGalleryStorageObjects(orphanGallery);
+        }
+        setCover(savedCover);
+        setGallery(savedGallery);
+        setWebsite(savedWebsite);
+        setSelectedVibes(savedVibes);
+        setFacets(savedFacets);
+        setPriceMinInput(savedPriceMin);
+        setPriceMaxInput(savedPriceMax);
+      },
+    };
+    return (): void => {
+      leaveHandleRef.current = null;
+    };
+  }, [
+    cover,
+    coverDirty,
+    facets,
+    facetsDirty,
+    formDirty,
+    galleryDirty,
+    handleSaveChanges,
+    leaveHandleRef,
+    priceDirty,
+    savedCover,
+    savedFacets,
+    savedGallery,
+    savedPriceMax,
+    savedPriceMin,
+    savedVibes,
+    savedWebsite,
+    vibesDirty,
+    websiteDirty,
   ]);
 
   const handleRefresh = useCallback(async (): Promise<void> => {
@@ -475,7 +715,13 @@ export function VenueDeckReadinessSetup({
           {/* META-ORCH-1009 Sub-E: show the uploaded hero so the operator has
               visual confirmation it saved after closing the cover sheet. */}
           {cover.coverMediaUrl !== null ? (
-            <View style={styles.heroPreview}>
+            <View
+              style={[
+                styles.heroPreview,
+                coverDirty ? styles.stagedRing : null,
+              ]}
+              testID="venue-deck-cover-preview"
+            >
               <EventCoverMedia
                 hue={25}
                 mediaUrl={cover.coverMediaUrl}
@@ -485,6 +731,13 @@ export function VenueDeckReadinessSetup({
                 height={170}
                 muted
               />
+              {coverDirty ? (
+                <Text style={styles.stagedCaption} testID="venue-deck-cover-staged">
+                  {savedCover.coverMediaUrl
+                    ? `New cover · was previous · Not saved yet`
+                    : "Not saved yet"}
+                </Text>
+              ) : null}
             </View>
           ) : null}
           <Button
@@ -512,30 +765,44 @@ export function VenueDeckReadinessSetup({
             {gallery.length} / {GALLERY_MIN} minimum · up to {GALLERY_MAX}
             {gallery.length >= GALLERY_MIN ? "  ✓" : ""}
           </Text>
+          {galleryDirty ? (
+            <Text style={styles.stagedCaption} testID="venue-deck-gallery-staged">
+              Not saved yet
+            </Text>
+          ) : null}
           {gallery.length > 0 ? (
             <View style={styles.galleryGrid}>
-              {gallery.map((url) => (
-                <View key={url} style={styles.galleryTile}>
-                  <EventCoverMedia
-                    hue={25}
-                    mediaUrl={url}
-                    mediaType="image"
-                    radius={10}
-                    label="Venue photo"
-                    height={92}
-                    width={92}
-                  />
-                  <Pressable
-                    onPress={() => void handleRemovePhoto(url)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Remove photo"
-                    hitSlop={8}
-                    style={styles.galleryRemove}
+              {gallery.map((url) => {
+                const isNew = !savedGallery.includes(url);
+                return (
+                  <View
+                    key={url}
+                    style={[
+                      styles.galleryTile,
+                      isNew ? styles.stagedRing : null,
+                    ]}
                   >
-                    <Text style={styles.galleryRemoveText}>×</Text>
-                  </Pressable>
-                </View>
-              ))}
+                    <EventCoverMedia
+                      hue={25}
+                      mediaUrl={url}
+                      mediaType="image"
+                      radius={10}
+                      label="Venue photo"
+                      height={92}
+                      width={92}
+                    />
+                    <Pressable
+                      onPress={() => void handleRemovePhoto(url)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove photo"
+                      hitSlop={8}
+                      style={styles.galleryRemove}
+                    >
+                      <Text style={styles.galleryRemoveText}>×</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
             </View>
           ) : null}
           <Button
@@ -710,12 +977,15 @@ export function VenueDeckReadinessSetup({
             Mingla writes your pitch and match scores when it approves your venue.
           </Text>
           <Button
-            label={busy === "save" ? "Saving…" : "Save changes"}
+            label={busy === "save" ? "Saving…" : "Save deck details"}
             variant="primary"
             size="md"
             loading={busy === "save"}
-            disabled={busy !== null}
-            onPress={() => void handleSaveChanges()}
+            disabled={busy !== null || !formDirty}
+            onPress={() => {
+              void handleSaveChanges().catch(() => undefined);
+            }}
+            testID="venue-deck-save"
           />
         </View>
 
@@ -753,6 +1023,7 @@ export function VenueDeckReadinessSetup({
         initial={cover}
         onCoverChange={handleCoverChange}
         onShowToast={setMessage}
+        deferPreviousCleanup
       />
     </View>
   );
@@ -811,6 +1082,18 @@ const styles = StyleSheet.create({
   heroPreview: {
     borderRadius: 12,
     overflow: "hidden",
+  },
+  stagedRing: {
+    borderWidth: 2,
+    borderColor: accent.warm,
+    borderRadius: 12,
+  },
+  stagedCaption: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: accent.warm,
+    marginTop: spacing.xxs,
+    fontWeight: "600",
   },
   galleryGrid: {
     flexDirection: "row",

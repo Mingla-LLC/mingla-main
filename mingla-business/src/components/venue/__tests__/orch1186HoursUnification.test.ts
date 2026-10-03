@@ -1,6 +1,8 @@
 /**
  * ORCH-1186-A — venue hours unification: implementor happy-path regression test.
  *
+ * [TEST-MOD-APPROVED #3655] T10 pin updated for sticky SaveCommitBar (hours+fee).
+ *
  * Runs under the default node/ts-jest config (no RTL) — same approach as the
  * ORCH-1184 implementor test: source-text wiring assertions + a pure-logic
  * weekday-remap unit. The DB behavior (seed/derive/remap/non-clobber) is proven
@@ -102,11 +104,13 @@ describe("ORCH-1186-A T9 — Settings has no read-only dead-end; real hours edit
   });
 
   it("T10 — every mutation control is manager-plus gated (canMutate)", () => {
-    // The Save block + each edit affordance is wrapped in a canMutate guard.
+    // [TEST-MOD-APPROVED #3655] Settings now uses one sticky SaveCommitBar for
+    // hours+fee; the old hours-only ternary/disabled pin no longer exists.
     expect(mod).toContain("canMutate = rank >= MANAGER_PLUS_RANK");
-    expect(mod).toContain("canMutate && hoursDraft !== null ?");
-    // The Save button itself is also disabled while not dirty / saving.
-    expect(mod).toMatch(/disabled=\{!hoursDirty \|\| hoursInvalid/);
+    expect(mod).toContain("SaveCommitBar");
+    expect(mod).toContain('{canMutate ? (');
+    expect(mod).toContain('testID="venue-settings-save"');
+    expect(mod).toContain("settingsDirty");
   });
 
   it("SC-6/I-1148-NO-BUYER-TAX-FORM — no billing-address / Calculate-tax field", () => {

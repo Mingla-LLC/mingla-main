@@ -307,7 +307,11 @@ type AuthContextValue = {
     email: string,
     code: string,
   ) => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
+  /**
+   * #3655 — `local` ends this device only; `global` revokes every session
+   * ("Sign out everywhere"). Defaults to local.
+   */
+  signOut: (options?: { scope?: "local" | "global" }) => Promise<void>;
   /**
    * Cycle 14 — set to a value when account recovery just fired on sign-in
    * (creator_accounts.deleted_at was non-null and got auto-cleared per
@@ -1519,43 +1523,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
-    // GoogleSignin native SDK is iOS/Android-only — gate per Cycle 0b.
-    if (Platform.OS !== "web") {
-      try {
-        if (await GoogleSignin.hasPreviousSignIn()) {
-          await GoogleSignin.signOut();
-        }
-      } catch {
-        /* ignore */
+  const signOut = useCallback(
+    async (options?: { scope?: "local" | "global" }) => {
+      const scope = options?.scope ?? "local";
+      const { error } = await supabase.auth.signOut({ scope });
+      if (error) {
+        throw error;
       }
-    }
-    // Constitution #6 — clear all client-side persisted stores.
-    // NEW Cycle 3 wire-up; before this, currentBrandStore + draftEventStore
-    // survived signout (a pre-existing gap closed by Cycle 3 spec §3.11).
-    clearAllStores();
-    // ORCH-0740 Cycle 1: companion to clearAllStores() — also clear React
-    // Query cache so cached query data doesn't survive signout (closes HF-1
-    // from ORCH-0738).
-    queryClient.clear();
-    // ORCH-0808 — companion to clearAllStores() — clear AppsFlyer identity
-    // + dedup cache so the next signed-in user is attributed correctly. The
-    // SIGNED_OUT handler in onAuthStateChange also calls this defensively for
-    // server-fired signouts (token revoked, etc.); explicit-signOut runs it
-    // here for symmetry.
-    clearAppsFlyerUserId();
-    resetAppsFlyerDeviceCache();
-    afEventFiredRef.current = false;
-    // ORCH-0808-FOLLOWUP — Mixpanel: fire Logout event + reset distinct_id.
-    mixpanelService.trackLogout();
-    // META-ORCH-1187 — PostHog reset on explicit signout (SC-7 / Constitution #6).
-    postHogService.reset();
-    // ORCH-0808-FOLLOWUP — RevenueCat: reset to anonymous appUserID.
-    revenueCatService.logOut();
-    // ORCH-0808-FOLLOWUP — OneSignal: unlink device from user alias.
-    logoutOneSignal();
-  }, []);
+      // GoogleSignin native SDK is iOS/Android-only — gate per Cycle 0b.
+      if (Platform.OS !== "web") {
+        try {
+          if (await GoogleSignin.hasPreviousSignIn()) {
+            await GoogleSignin.signOut();
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      // Constitution #6 — clear all client-side persisted stores.
+      // NEW Cycle 3 wire-up; before this, currentBrandStore + draftEventStore
+      // survived signout (a pre-existing gap closed by Cycle 3 spec §3.11).
+      clearAllStores();
+      // ORCH-0740 Cycle 1: companion to clearAllStores() — also clear React
+      // Query cache so cached query data doesn't survive signout (closes HF-1
+      // from ORCH-0738).
+      queryClient.clear();
+      // ORCH-0808 — companion to clearAllStores() — clear AppsFlyer identity
+      // + dedup cache so the next signed-in user is attributed correctly. The
+      // SIGNED_OUT handler in onAuthStateChange also calls this defensively for
+      // server-fired signouts (token revoked, etc.); explicit-signOut runs it
+      // here for symmetry.
+      clearAppsFlyerUserId();
+      resetAppsFlyerDeviceCache();
+      afEventFiredRef.current = false;
+      // ORCH-0808-FOLLOWUP — Mixpanel: fire Logout event + reset distinct_id.
+      mixpanelService.trackLogout();
+      // META-ORCH-1187 — PostHog reset on explicit signout (SC-7 / Constitution #6).
+      postHogService.reset();
+      // ORCH-0808-FOLLOWUP — RevenueCat: reset to anonymous appUserID.
+      revenueCatService.logOut();
+      // ORCH-0808-FOLLOWUP — OneSignal: unlink device from user alias.
+      logoutOneSignal();
+    },
+    [],
+  );
 
   const authStatus = useMemo(
     () =>

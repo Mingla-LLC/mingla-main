@@ -6,6 +6,12 @@ import type { VenueModule } from "../../../types/venueReservation";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let mockSettings: { data: { reservationsEnabled: boolean } | null | undefined; isError: boolean };
 const mockHost = (name: string) => function Host(props: Record<string, unknown>) { return React.createElement(name, props, props.children as React.ReactNode); };
+// [TEST-MOD-APPROVED #3655] VenueSuiteShell leave beforeRemove uses useNavigation;
+// mock before the shell import so expo-router's Stack JSX is never loaded.
+jest.mock("expo-router", () => ({
+  useNavigation: () => ({ addListener: () => () => undefined, dispatch: jest.fn() }),
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn() }),
+}));
 jest.mock("../../../hooks/useVenueReservationSettings", () => ({ useVenueReservationSettings: () => mockSettings, useSetReservationsEnabled: () => ({ mutate: jest.fn(), isPending: false }) }));
 jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: false }) }));
 jest.mock("../../../wrappers/SmartScrollView", () => ({ ScrollView: mockHost("ScrollView") }));

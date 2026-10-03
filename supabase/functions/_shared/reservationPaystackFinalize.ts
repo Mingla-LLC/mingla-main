@@ -26,10 +26,12 @@
  * SLOT-TAKEN-AFTER-CHARGE (known manual-refund gap): if the slot was taken
  * between charge and finalize the RPC raises `slot_unavailable`. A refund is
  * owed, but the #1175 Paystack venue-refund rail is currently DARK — so this
- * helper does NOT attempt an auto-refund through the dark rail. It marks the
- * session failed with a clear failure_reason AND writes an audit marker that
- * flags "paid reservation needs MANUAL refund", then lets the caller ack. This
- * is the documented open gap for #1326 until the #1175 rail un-darkens.
+ * helper does NOT attempt an auto-refund through the dark rail. It atomically
+ * marks the session failed with a clear failure_reason AND enqueues a durable
+ * ops-alert outbox row (#1345) in one RPC, then writes an audit marker. Resend
+ * delivery is drained by payout-release-sweep (fail-open; never blocks the
+ * money path / webhook ack). Auto-refund remains out of scope until #1175
+ * un-darkens (#1345 monitoring; #1326 documented the gap).
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
@@ -46,6 +48,8 @@ export interface ReservationFinalizeSession {
   amount_cents: number | null;
   currency: string | null;
   attribution_click_id: string | null;
+  /** Present on replays so slot-unavailable can re-ensure the outbox row. */
+  failure_reason?: string | null;
 }
 
 /** Normalized outcome — each caller maps it to its own response shape. */
@@ -106,7 +110,20 @@ export async function finalizeVerifiedPaystackReservation(
   }
   if (session.status === "failed" || session.status === "expired") {
     // Already terminally handled (a prior mismatch / slot-taken / create fail).
-    // Do NOT re-audit or re-mint — just no-op.
+    // Do NOT re-audit or re-mint. For slot-unavailable, still idempotently
+    // re-ensure the outbox row so a crash after mark-but-before-enqueue (or a
+    // swallowed enqueue error) cannot permanently silence the refund alert.
+    if (
+      session.status === "failed" &&
+      session.failure_reason === "slot_unavailable_after_charge_refund_due"
+    ) {
+      await ensureReservationSlotUnavailableAlert(supabase, {
+        sessionId: session.id,
+        reference,
+        amountCents: session.amount_cents,
+        currency: session.currency,
+      });
+    }
     return { kind: "replayed", reservationId: session.reservation_id ?? null };
   }
 
@@ -170,14 +187,24 @@ export async function finalizeVerifiedPaystackReservation(
     const msg = (finalizeErr as { message?: string } | null)?.message ?? "";
     if (msg.includes("slot_unavailable")) {
       // SLOT TAKEN AFTER CHARGE → refund owed. The #1175 Paystack venue-refund
-      // rail is DARK — do NOT auto-refund through it. Mark the session failed +
-      // write a MANUAL-refund marker so ops can reconcile, then let the caller
-      // ack (money is captured; nothing to mint).
-      await markReservationSessionFailed(
+      // rail is DARK — do NOT auto-refund through it. Atomically mark failed +
+      // enqueue the durable ops-alert outbox row, then write a MANUAL-refund
+      // audit marker so ops can reconcile. Do NOT await Resend here —
+      // payout-release-sweep drains fail-open. Money is captured; nothing to mint.
+      // Persistence failure → finalize_error so the webhook inbox retries
+      // (never ack as processed with neither mark nor outbox row).
+      const recorded = await recordReservationSlotUnavailableRefundDue(
         supabase,
-        session.id,
-        "slot_unavailable_after_charge_refund_due",
+        {
+          sessionId: session.id,
+          reference,
+          amountCents: session.amount_cents,
+          currency: session.currency,
+        },
       );
+      if (!recorded.ok) {
+        return { kind: "finalize_error", message: recorded.message };
+      }
       await writeAudit(supabase, {
         user_id: null,
         brand_id: null,
@@ -252,4 +279,96 @@ async function markReservationSessionFailed(
       updated_at: new Date().toISOString(),
     })
     .eq("id", sessionId);
+}
+
+type SlotUnavailableAlertInput = {
+  sessionId: string;
+  reference: string;
+  amountCents: number | null;
+  currency: string | null;
+};
+
+/**
+ * #1345 — atomically mark session failed + enqueue ops-alert outbox.
+ * The SQL RPC is authoritative for state guards (already_finalized /
+ * other_failure). Persistence failures surface so the webhook stays
+ * retryable; we never overwrite a different terminal session via a
+ * direct UPDATE fallback.
+ */
+async function recordReservationSlotUnavailableRefundDue(
+  supabase: SupabaseClient,
+  input: SlotUnavailableAlertInput,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const { error } = await supabase.rpc(
+      "record_reservation_slot_unavailable_refund_due" as never,
+      {
+        p_session_id: input.sessionId,
+        p_reference: input.reference,
+        p_amount_cents: input.amountCents,
+        p_currency: input.currency,
+      } as never,
+    );
+    if (error) {
+      const message = error.message ?? "record_reservation_slot_unavailable_refund_due_failed";
+      console.error(
+        "[reservation-paystack-finalize] slot-unavailable record+enqueue failed",
+        {
+          sessionId: input.sessionId,
+          reference: input.reference,
+          error: message,
+        },
+      );
+      return { ok: false, message };
+    }
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      "[reservation-paystack-finalize] slot-unavailable record+enqueue threw",
+      {
+        sessionId: input.sessionId,
+        reference: input.reference,
+        error: message,
+      },
+    );
+    return { ok: false, message };
+  }
+}
+
+/** Idempotent outbox ensure for failed-status replays (fail-open). */
+async function ensureReservationSlotUnavailableAlert(
+  supabase: SupabaseClient,
+  input: SlotUnavailableAlertInput,
+): Promise<void> {
+  try {
+    const { error } = await supabase.rpc(
+      "enqueue_reservation_slot_unavailable_alert" as never,
+      {
+        p_session_id: input.sessionId,
+        p_reference: input.reference,
+        p_amount_cents: input.amountCents,
+        p_currency: input.currency,
+      } as never,
+    );
+    if (error) {
+      console.error(
+        "[reservation-paystack-finalize] slot-unavailable alert re-enqueue failed (non-fatal)",
+        {
+          sessionId: input.sessionId,
+          reference: input.reference,
+          error: error.message,
+        },
+      );
+    }
+  } catch (err) {
+    console.error(
+      "[reservation-paystack-finalize] slot-unavailable alert re-enqueue threw (non-fatal)",
+      {
+        sessionId: input.sessionId,
+        reference: input.reference,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
+  }
 }

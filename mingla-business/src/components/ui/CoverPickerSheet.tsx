@@ -138,6 +138,10 @@ export interface CoverPickerSheetProps {
    * `onCoverChange` saves `patch.coverGallery`; see `CoverPickerProps`.
    */
   galleryEnabled?: boolean;
+  /**
+   * #3655 — stage the cover pointer until host Save; see CoverPickerProps.
+   */
+  deferPreviousCleanup?: boolean;
 }
 
 export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
@@ -153,6 +157,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
   disabled = false,
   onCoverVideoProcessingChange,
   galleryEnabled = false,
+  deferPreviousCleanup = false,
 }) => {
   const { isWideDesktop } = useResponsiveLayout();
 
@@ -319,6 +324,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
               disabled={disabled}
               isWideDesktop={isWideDesktop}
               galleryEnabled={galleryEnabled}
+              deferPreviousCleanup={deferPreviousCleanup}
               onCoverVideoProcessingChange={(processing): void => {
                 setVideoProcessing(processing);
                 onCoverVideoProcessingChange?.(processing);

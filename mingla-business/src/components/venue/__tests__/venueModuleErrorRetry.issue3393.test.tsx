@@ -25,6 +25,20 @@ let mockSettingsQuery: {
   data: { reservationsEnabled: boolean } | null | undefined;
   isError: boolean;
 };
+// [TEST-MOD-APPROVED #3655] VenueSuiteShell leave beforeRemove uses useNavigation;
+// mock before the shell import so expo-router's Stack JSX is never loaded.
+jest.mock("expo-router", () => ({
+  __esModule: true,
+  useNavigation: () => ({
+    addListener: () => () => undefined,
+    dispatch: jest.fn(),
+  }),
+  useRouter: () => ({
+    push: () => undefined,
+    replace: () => undefined,
+    back: () => undefined,
+  }),
+}));
 jest.mock("../../../hooks/useVenueReservationSettings", () => ({
   __esModule: true,
   useVenueReservationSettings: () => mockSettingsQuery,

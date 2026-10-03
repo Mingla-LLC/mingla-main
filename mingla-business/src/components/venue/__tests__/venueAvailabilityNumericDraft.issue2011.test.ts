@@ -49,9 +49,19 @@ jest.mock("../../../hooks/useVenueAvailability", () => ({
 jest.mock("../../../hooks/useVenueTables", () => ({
   useVenueTables: jest.fn(),
 }));
-jest.mock("../../../store/venueSuiteStore", () => ({
-  useVenueSuiteStore: { getState: jest.fn() },
-}));
+jest.mock("../../../store/venueSuiteStore", () => {
+  // [TEST-MOD-APPROVED #3655] Availability now selects setDirtyModule via the
+  // zustand hook AND reads takePendingLeaveFocus from getState — mock both.
+  const state = {
+    setDirtyModule: jest.fn(),
+    takePendingLeaveFocus: jest.fn(() => null),
+  };
+  const useVenueSuiteStore = Object.assign(
+    (selector: (s: typeof state) => unknown) => selector(state),
+    { getState: () => state },
+  );
+  return { useVenueSuiteStore };
+});
 jest.mock("../../../wrappers/KeyboardToolbarRoot", () => ({
   setAvailabilityNumericToolbarState: jest.fn(),
 }));
@@ -59,7 +69,16 @@ jest.mock("../../../wrappers/SmartScrollView", () => ({
   ScrollView: "ScrollView",
 }));
 jest.mock("../../ui/Button", () => ({ Button: "Button" }));
-jest.mock("../../ui/ConfirmDialog", () => ({ ConfirmDialog: "ConfirmDialog" }));
+// [TEST-MOD-APPROVED #3655] Availability lazy-loads ConfirmDialog; a string host
+// type fails React.lazy ("must resolve to a class or function").
+jest.mock("../../ui/ConfirmDialog", () => {
+  const ReactActual = require("react") as typeof import("react");
+  return {
+    ConfirmDialog: function ConfirmDialog(props: Record<string, unknown>) {
+      return ReactActual.createElement("ConfirmDialog", props);
+    },
+  };
+});
 jest.mock("../../ui/GlassCard", () => ({ GlassCard: "GlassCard" }));
 jest.mock("../../ui/Input", () => ({ Input: "Input" }));
 jest.mock("../../ui/Skeleton", () => ({ Skeleton: "Skeleton" }));
@@ -343,11 +362,11 @@ describe("issue #2011 availability numeric draft", () => {
     ).toBeDefined();
   });
 
-  it("owns and passes the exact initiating-control restorer to the dirty-exit dialog", () => {
+  it("owns and passes the exact initiating-control restorer to the dirty-exit dialog", async () => {
     const leaveRef = React.createRef<VenueAvailabilityLeaveHandle>();
     const restoreInitiator = jest.fn();
     let renderer!: RenderTree;
-    act(() => {
+    await act(async () => {
       renderer = TestRenderer.create(
         React.createElement(VenueAvailabilityModule, {
           ref: leaveRef,
@@ -356,18 +375,22 @@ describe("issue #2011 availability numeric draft", () => {
         }),
       );
     });
-    act(() => {
+    await act(async () => {
       renderer.root
         .findByProps({ testID: "venue-avail-minnotice" })
         .props.onChangeText?.("9");
       leaveRef.current?.requestLeave(jest.fn(), restoreInitiator);
+      // Flush React.lazy ConfirmDialog import.
+      await Promise.resolve();
     });
     const dialog = renderer.root.findByProps({
       testID: "venue-avail-discard-dialog",
     });
     expect(dialog.props.visible).toBe(true);
     expect(dialog.props.restoreFocus).toEqual(expect.any(Function));
-    act(() => (dialog.props.restoreFocus as () => void)());
+    await act(async () => {
+      (dialog.props.restoreFocus as () => void)();
+    });
     expect(restoreInitiator).toHaveBeenCalledTimes(1);
   });
 

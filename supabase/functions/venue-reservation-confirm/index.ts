@@ -139,6 +139,32 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
     });
   }
   if (session.status === "failed" || session.status === "expired") {
+    // #1345 — refund-due failed sessions still reach the finalize ensure path
+    // so a missing outbox row from a prior crash can be re-enqueued. Confirm
+    // otherwise short-circuits before finalize and would permanently silence
+    // the ops alert.
+    if (
+      session.status === "failed" &&
+      session.failure_reason === "slot_unavailable_after_charge_refund_due" &&
+      typeof session.paystack_reference === "string" &&
+      session.paystack_reference
+    ) {
+      try {
+        await finalizeVerifiedPaystackReservation(
+          supabase as never,
+          session,
+          session.paystack_reference,
+          Number(session.amount_cents ?? NaN),
+          String(session.currency ?? "NGN"),
+          false,
+        );
+      } catch (ensureErr) {
+        console.warn(
+          "[venue-reservation-confirm] slot-unavailable outbox re-ensure failed (non-fatal)",
+          ensureErr instanceof Error ? ensureErr.message : String(ensureErr),
+        );
+      }
+    }
     return jsonResponse({ status: "failed", reservationId: null });
   }
 

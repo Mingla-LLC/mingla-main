@@ -147,15 +147,24 @@ export default function VenueManagementPage(): React.ReactElement {
   const venueActiveModule = useVenueSuiteStore((s) => s.activeModule);
   const venueVisibleModules = useVenueSuiteStore((s) => s.visibleModules);
   const venueSelectModule = useVenueSuiteStore((s) => s.selectModule);
+  const venueDirtyModules = useVenueSuiteStore((s) => s.dirtyModules);
   const setPendingLeaveFocus = useVenueSuiteStore(
     (s) => s.setPendingLeaveFocus,
   );
 
+  const requestLeave = useVenueSuiteStore((s) => s.requestLeave);
   const handleBack = useCallback((restoreFocus?: () => void): void => {
     setPendingLeaveFocus(restoreFocus ?? null);
-    if (router.canGoBack()) router.back();
-    else router.replace("/(tabs)/hub/listing" as never);
-  }, [router, setPendingLeaveFocus]);
+    const proceed = (): void => {
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)/hub/listing" as never);
+    };
+    if (requestLeave !== null) {
+      requestLeave(proceed, restoreFocus);
+      return;
+    }
+    proceed();
+  }, [requestLeave, router, setPendingLeaveFocus]);
 
   // ----- public-page actions (#1483) -----
   // `venue_public_view` is defined `WHERE claim_status = 'verified'`, so any
@@ -405,6 +414,7 @@ export default function VenueManagementPage(): React.ReactElement {
           activeModule={venueActiveModule}
           onSelect={venueSelectModule}
           onBackToHub={handleBack}
+          dirtyModules={venueDirtyModules}
           testID="venue-page-module-pills"
         />
       ) : null}

@@ -372,6 +372,11 @@ type BusinessPreferenceType =
   | "business.dispute_opened"
   | "business.dispute_action_needed"
   | "business.payout_paid"
+  // #3645 PR10 — organiser payout visibility (both rails).
+  | "business.payout_failed"
+  | "business.payout_waiting_for_bank"
+  | "business.payouts_paused"
+  | "business.payouts_resumed"
   | "business.account_status_changed"
   | "business.new_review"
   | "business.claim_decision"
@@ -393,6 +398,10 @@ const BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS: Record<
   "business.dispute_opened": { push: true, in_app: true },
   "business.dispute_action_needed": { push: true, in_app: true },
   "business.payout_paid": { push: true, in_app: true },
+  "business.payout_failed": { push: true, in_app: true },
+  "business.payout_waiting_for_bank": { push: true, in_app: true },
+  "business.payouts_paused": { push: true, in_app: true },
+  "business.payouts_resumed": { push: true, in_app: true },
   "business.account_status_changed": { push: true, in_app: true },
   "business.new_review": { push: true, in_app: true },
   "business.claim_decision": { push: true, in_app: true },

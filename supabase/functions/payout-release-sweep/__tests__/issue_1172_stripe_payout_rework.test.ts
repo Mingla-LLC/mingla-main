@@ -330,6 +330,19 @@ Deno.test("attempt-cap alert survives transport failure and delivers once withou
       if (name === "claim_paystack_payout_releases") {
         return Promise.resolve({ data: [], error: null });
       }
+      // Issue #3645 PR8 (append-only): dark+execute ticks surface waiting-for-bank.
+      if (name === "surface_payout_releases_waiting_for_bank") {
+        return Promise.resolve({ data: [], error: null });
+      }
+      // Issue #3645 PR10: pause/outcome notice drains (empty in this scenario).
+      if (
+        name === "claim_brand_payout_pause_notices" ||
+        name === "claim_brand_payout_outcome_notices" ||
+        // #1345: include reservation slot-unavailable alert claim in empty-RPC stubs.
+        name === "claim_reservation_slot_unavailable_alerts"
+      ) {
+        return Promise.resolve({ data: [], error: null });
+      }
       throw new Error(`unexpected RPC ${name}`);
     },
     from: (table: string) => {

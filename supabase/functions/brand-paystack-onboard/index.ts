@@ -46,6 +46,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "../_shared/audit.ts";
 import { isPaystackRecipientShared } from "../_shared/paystackRecipientSharing.ts";
+// #3645 PR10 — once-per-brand `mingla_bank_added` analytics (payout-ready signal).
+import { fireBankAddedMilestone } from "../_shared/organiserPayoutNotify.ts";
 import {
   paystackCreateSubaccount,
   paystackCreateTransferRecipient,
@@ -630,6 +632,14 @@ export const brandPaystackOnboardHandler = async (
             is_active: recipient.is_active,
           },
         });
+        // #3645 PR10 — first Paystack bank attached (fail-open, idempotent).
+        if (recipientAction === "created") {
+          await fireBankAddedMilestone(
+            supabase,
+            brandId,
+            "paystack_recipient",
+          );
+        }
       },
       warn: (message, error) =>
         console.error(
@@ -1339,6 +1349,11 @@ export const brandPaystackOnboardHandler = async (
         default_currency: "NGN",
       },
     });
+
+    // #3645 PR10 — a bank was just attached via the subaccount form. Fail-open
+    // and idempotent (first_bank_added_at), so a later recipient create never
+    // double-fires.
+    await fireBankAddedMilestone(supabase, brandId, "paystack_subaccount");
 
     return jsonResponse({
       subaccount_code: subaccountCode,

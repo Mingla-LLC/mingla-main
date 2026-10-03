@@ -47,6 +47,16 @@ const root = process.cwd().endsWith("mingla-business")
  *   TS  — the column named inside a `.update(…)` / `.insert(…)` / `.upsert(…)`
  *         payload. A `paused_at: string | null` interface field is a shape
  *         declaration, not a write, and must not trip.
+ *
+ * NO column-token exception. The gate matches `paused_at` / `paused_by_user_id`
+ * writes wherever they appear. Issue #3645's admin payout pause deliberately
+ * does NOT live on a `…paused_at` column at all — its state is the presence of a
+ * row in the admin-only `brand_payout_admin_holds` table (see
+ * `20270728003645_issue_3645_admin_payout_pause_and_debt.sql`), precisely so a
+ * brand admin cannot clear it the way a broadly-writable `brands` column would
+ * allow. There is therefore no sibling `…paused_at` write to carve out, and a
+ * word-boundary exception that once sanctioned `brands.payouts_admin_paused_at`
+ * would only re-document a rejected, insecure design — so it is gone.
  */
 const PAUSE_SQL_WRITE_RE = /(?:paused_at|paused_by_user_id)\s*(?::=|=(?!=))/;
 const PAUSE_TS_CALL_RE = /\.(?:update|insert|upsert)\s*\(/g;
@@ -59,7 +69,7 @@ function hasPauseWrite(code, isSql) {
   let match;
   while ((match = PAUSE_TS_CALL_RE.exec(code)) !== null) {
     const window = code.slice(match.index, match.index + TS_PAYLOAD_WINDOW);
-    if (/paused_at|paused_by_user_id/.test(window)) return true;
+    if (/(?:paused_at|paused_by_user_id)/.test(window)) return true;
   }
   return false;
 }

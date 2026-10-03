@@ -43,6 +43,8 @@ export interface VenueModulePillRowProps {
   onSelect: (module: VenueModule, restoreFocus?: () => void) => void;
   /** Return to the Hub offering pills (Events / Experiences / Trips). */
   onBackToHub?: (restoreFocus?: () => void) => void;
+  /** #3655 — modules with unsaved work show a 6×6 dirty dot. */
+  dirtyModules?: ReadonlySet<VenueModule>;
   testID?: string;
 }
 
@@ -74,6 +76,7 @@ export function VenueModulePillRow({
   activeModule,
   onSelect,
   onBackToHub,
+  dirtyModules,
   testID,
 }: VenueModulePillRowProps): React.ReactElement {
   // #1735 P3-5 — a deep link (`?module=insights`) can land with the active
@@ -134,6 +137,7 @@ export function VenueModulePillRow({
         ) : null}
         {modules.map((id) => {
           const isActive = id === activeModule;
+          const isDirty = dirtyModules?.has(id) === true;
           return (
             <Pressable
               ref={(instance) => {
@@ -141,7 +145,11 @@ export function VenueModulePillRow({
               }}
               key={id}
               accessibilityRole="tab"
-              accessibilityLabel={`${VENUE_MODULES[id].label} module`}
+              accessibilityLabel={
+                isDirty
+                  ? `${VENUE_MODULES[id].label}, ${isActive ? "selected, " : ""}unsaved changes`
+                  : `${VENUE_MODULES[id].label} module`
+              }
               accessibilityState={{ selected: isActive }}
               onPress={() =>
                 onSelect(id, () => focusControl(pillRefs.current[id] ?? null))
@@ -150,6 +158,7 @@ export function VenueModulePillRow({
               style={[
                 styles.pill,
                 isActive ? styles.pillActive : styles.pillInactive,
+                isDirty ? styles.pillDirtyPad : null,
               ]}
               testID={`venue-module-pill-${id}`}
             >
@@ -161,6 +170,12 @@ export function VenueModulePillRow({
               >
                 {VENUE_MODULES[id].label}
               </Text>
+              {isDirty ? (
+                <View
+                  style={[styles.dirtyDot, isActive ? styles.dirtyDotOnActive : null]}
+                  testID={`venue-module-pill-dirty-${id}`}
+                />
+              ) : null}
             </Pressable>
           );
         })}
@@ -179,10 +194,17 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  pillDirtyPad: {
+    // 6pt dot + 7pt gap ≈ 13pt growth on the right only.
+    paddingRight: spacing.lg + 13,
   },
   pillActive: {
     backgroundColor: accent.warm,
@@ -202,6 +224,15 @@ const styles = StyleSheet.create({
   },
   pillLabelInactive: {
     color: textTokens.secondary,
+  },
+  dirtyDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: accent.warm,
+  },
+  dirtyDotOnActive: {
+    backgroundColor: "#0c0e12",
   },
 });
 

@@ -456,6 +456,11 @@ async function syncAccount(
     }
   }
 
+  // #3645 PR10 — NOTE: `mingla_stripe_connect_activated` means CHARGES-enabled
+  // (charge-ready: the brand can sell), NOT payouts-enabled (payout-ready: a bank
+  // is attached and money can be sent). Do not read it as "bank added"; the
+  // payout-ready signal is `mingla_bank_added` (Paystack) / payouts_enabled.
+  //
   // ORCH-0808 — AppsFlyer S2S: fire mingla_stripe_connect_activated exactly
   // once per brand on the first charges_enabled true. Idempotent via
   // brand_appsflyer_milestones.first_activated_at — restriction→un-restriction

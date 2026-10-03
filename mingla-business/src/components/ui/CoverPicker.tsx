@@ -249,6 +249,13 @@ export interface CoverPickerProps {
    */
   galleryEnabled?: boolean;
   /**
+   * #3655 — when the host stages the cover pointer until an explicit Save,
+   * skip deleting the previously-persisted storage object on upload. The host
+   * removes that object only after the pointer commit succeeds (or cleans up
+   * abandoned staged uploads on discard/replace).
+   */
+  deferPreviousCleanup?: boolean;
+  /**
    * issue #3280 — the sheet can close and come back as a fresh sheet. When set
    * (iOS), a picker that has shown the native trim editor hands its outcome
    * here instead of carrying on inside the native window the editor was stacked
@@ -347,6 +354,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   isWideDesktop = false,
   onCoverVideoProcessingChange,
   galleryEnabled = false,
+  deferPreviousCleanup = false,
   onNativeEditorClosed,
   resumeAfterNativeEditor = null,
   onResumeAfterNativeEditorConsumed,
@@ -1074,7 +1082,12 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             fileName: asset.fileName,
             fileSize: asset.fileSize,
           },
-          { previousPublicUrl: localCover.coverMediaUrl },
+          {
+            // #3655 staged deck cover — keep the persisted object until Save.
+            previousPublicUrl: deferPreviousCleanup
+              ? null
+              : localCover.coverMediaUrl,
+          },
         );
         let posterUrl = uploaded.publicUrl;
         if (uploaded.mediaType === "gif") {
@@ -1202,6 +1215,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   }, [
     activeVideoUpload,
     brandCover,
+    deferPreviousCleanup,
     disabled,
     emitChange,
     ensureMediaPermission,
