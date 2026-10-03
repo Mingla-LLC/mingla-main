@@ -20,7 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
-- 2026-10-03 — Future eng chats get clearer operating rules in AGENTS.md: open and amend PRs with zero user clicks, keep dependencies current with npm update (or equivalent) after proving UI/UX still works, refresh epic AC progress when a phase ends, and keep AI-vendor names out of shipped git/PR text (#3739, PR #TBD)
+- 2026-10-03 — Future eng chats get clearer operating rules in AGENTS.md: open and amend PRs with zero user clicks, keep dependencies current with npm update (or equivalent) after proving UI/UX still works, refresh epic AC progress when a phase ends, and keep AI-vendor names out of shipped git/PR text (#3739, PR #3740)
 - 2026-10-03 — Sites and site-cms CI no longer fail every pull request on the unpatchable `braces` high advisory (no npm release clears it yet): the high/critical audit ceiling still runs, that one GHSA is allowlisted, and Dependabot remains the reporter until a real floor ships (#2830, PR #3738)
 - 2026-10-02 — Ops get an email alert when a paid Nigerian venue reservation is charged but the slot was taken before finalize, so the captured funds that need a manual refund are not silent (Fixes #1345, toward #3645, PR #3737)
 - 2026-10-02 — Organisers see clear payout status on the existing Payments card (selling-add-bank / next payout date / paused) on Stripe and Paystack, Paystack balance tiles, paid-out vs on-its-way on event/trip/experience money cards, a Home to-do to add a bank when selling without one, and both-rail notifications for payout sent/failed/waiting-for-bank/paused — plus help-centre bank copy no longer claims Mingla is merchant of record (toward #3645, PR #3735)
