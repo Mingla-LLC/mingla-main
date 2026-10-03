@@ -631,9 +631,9 @@ export const VenueAvailabilityModule = forwardRef<
     setTouched(new Set());
     setSubmitted(false);
     setSaveState("idle");
-    // Dirty clears on the next paint; sanction resumed navigation so
-    // beforeRemove cannot open a second leave prompt (#3655 review).
-    sanctionedExitRef.current = true;
+    // Do NOT arm sanctionedExitRef here — module switches never emit
+    // beforeRemove, and a stale flag would bypass the next real route exit.
+    // Route resumes arm the flag inside their beforeRemove proceed callback.
     leave?.();
   }, [baseline]);
 
@@ -1190,7 +1190,8 @@ export const VenueAvailabilityModule = forwardRef<
                       const proceed = pendingLeaveRef.current;
                       pendingLeaveRef.current = null;
                       setDiscardDialogVisible(false);
-                      sanctionedExitRef.current = true;
+                      // Route resumes arm the sanction inside their proceed
+                      // callback; module switches must not leave it sticky.
                       proceed?.();
                     },
                     onError: () => reject(new Error("save")),

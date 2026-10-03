@@ -12,7 +12,7 @@
  * steps stay inside the create route chunk. Behavior is unchanged.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -40,13 +40,17 @@ import {
   syncHeroMedia,
   type PipelineCoachingCard,
 } from "../../services/businessPlaceAuthoringService";
+import { BRAND_COVERS_BUCKET } from "../../services/brandCoverService";
+import { supabase } from "../../services/supabase";
 import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
 import { usePlaceDiscoveryPriceRange } from "../../hooks/usePlaceDiscoveryPriceRange";
 import {
   minorToMajorInput,
 } from "../../utils/currencyFormatter";
+import { extractBrandCoverStoragePath } from "../../utils/brandCoverRules";
 import {
   pickGalleryPhotos,
+  removeGalleryStorageObjects,
   uploadGalleryPhoto,
   VenueGalleryError,
 } from "../../services/venueGalleryService";
@@ -64,6 +68,40 @@ import { Button } from "../ui/Button";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
+
+/** #3655 — best-effort remove of staged/replaced cover storage objects. */
+async function removeCoverStorageUrls(
+  urls: ReadonlyArray<string | null | undefined>,
+): Promise<void> {
+  const paths = [
+    ...new Set(
+      urls
+        .map((url) => extractBrandCoverStoragePath(url))
+        .filter((path): path is string => path !== null),
+    ),
+  ];
+  if (paths.length === 0) return;
+  try {
+    await supabase.storage.from(BRAND_COVERS_BUCKET).remove(paths);
+  } catch {
+    // orphan cleanup is non-blocking
+  }
+}
+
+function facetsEqual(
+  a: Record<string, boolean | null>,
+  b: Record<string, boolean | null>,
+): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if ((a[key] ?? null) !== (b[key] ?? null)) return false;
+  }
+  return true;
+}
+
+function stringListsEqual(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
+}
 
 /** #3655 — leave handle for staged cover/gallery (and other draft fields). */
 export interface VenueDeckLeaveHandle {
@@ -264,7 +302,12 @@ export function VenueDeckReadinessSetup({
   const galleryDirty =
     gallery.length !== savedGallery.length ||
     gallery.some((url, i) => url !== savedGallery[i]);
+  /** Uploaded gallery URLs not yet committed — removed on Discard. */
+  const stagedGalleryUploadsRef = useRef<Set<string>>(new Set());
   const [website, setWebsite] = useState(
+    stringValue(initialTier2.website, ""),
+  );
+  const [savedWebsite, setSavedWebsite] = useState(
     stringValue(initialTier2.website, ""),
   );
   const currencyQuery = useBrandDiscoveryCurrency(brandId);
@@ -276,10 +319,18 @@ export function VenueDeckReadinessSetup({
   const exponent = currencyMetadata?.minorUnitExponent ?? 2;
   const [priceMinInput, setPriceMinInput] = useState("");
   const [priceMaxInput, setPriceMaxInput] = useState("");
+  const [savedPriceMin, setSavedPriceMin] = useState("");
+  const [savedPriceMax, setSavedPriceMax] = useState("");
   const [selectedVibes, setSelectedVibes] = useState<string[]>(
     stringArray(initialTier2.vibe_chips),
   );
+  const [savedVibes, setSavedVibes] = useState<string[]>(
+    stringArray(initialTier2.vibe_chips),
+  );
   const [facets, setFacets] = useState<Record<string, boolean | null>>(
+    initialFacets,
+  );
+  const [savedFacets, setSavedFacets] = useState<Record<string, boolean | null>>(
     initialFacets,
   );
   const [coaching, setCoaching] = useState<PipelineCoachingCard[]>(initialCoaching);
@@ -288,23 +339,40 @@ export function VenueDeckReadinessSetup({
   const [busy, setBusy] = useState<"save" | "refresh" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  const websiteDirty = website.trim() !== savedWebsite.trim();
+  const vibesDirty = !stringListsEqual(selectedVibes, savedVibes);
+  const facetsDirty = !facetsEqual(facets, savedFacets);
+  const priceDirty =
+    priceMinInput !== savedPriceMin || priceMaxInput !== savedPriceMax;
+  const draftsDirty =
+    websiteDirty || vibesDirty || facetsDirty || priceDirty;
+  const formDirty = coverDirty || galleryDirty || draftsDirty;
+
   useEffect(() => {
+    if (formDirty) return;
     setWebsite(stringValue(initialTier2.website, ""));
+    setSavedWebsite(stringValue(initialTier2.website, ""));
     setSelectedVibes(stringArray(initialTier2.vibe_chips));
+    setSavedVibes(stringArray(initialTier2.vibe_chips));
     setFacets(initialFacets);
+    setSavedFacets(initialFacets);
     setCoaching(initialCoaching);
-  }, [initialCoaching, initialFacets, initialTier2]);
+  }, [formDirty, initialCoaching, initialFacets, initialTier2]);
 
   useEffect(() => {
     const range = rangeQuery.data;
     if (range?.status !== "active" || range.source_min_minor === null) return;
-    setPriceMinInput(minorToMajorInput(range.source_min_minor, exponent));
-    setPriceMaxInput(
+    if (priceDirty) return;
+    const nextMin = minorToMajorInput(range.source_min_minor, exponent);
+    const nextMax =
       range.source_max_minor === null
         ? ""
-        : minorToMajorInput(range.source_max_minor, exponent),
-    );
-  }, [exponent, rangeQuery.data]);
+        : minorToMajorInput(range.source_max_minor, exponent);
+    setPriceMinInput(nextMin);
+    setPriceMaxInput(nextMax);
+    setSavedPriceMin(nextMin);
+    setSavedPriceMax(nextMax);
+  }, [exponent, priceDirty, rangeQuery.data]);
 
   useEffect(() => {
     // Adopt server gallery only while the draft is clean — a refetch must not
@@ -312,6 +380,7 @@ export function VenueDeckReadinessSetup({
     if (galleryDirty) return;
     setGallery(initialGallery);
     setSavedGallery(initialGallery);
+    stagedGalleryUploadsRef.current.clear();
   }, [galleryDirty, initialGallery]);
 
   useEffect(() => {
@@ -338,9 +407,34 @@ export function VenueDeckReadinessSetup({
   const handleCoverChange = useCallback(
     async (patch: CoverPatch): Promise<void> => {
       // Stage locally — Mingla write waits for Save deck details (#3655).
+      // Drop abandoned staged uploads (not the saved pointer) when replaced.
+      const abandonUrls: Array<string | null> = [];
+      if (
+        cover.coverMediaUrl !== null &&
+        cover.coverMediaUrl !== savedCover.coverMediaUrl &&
+        cover.coverMediaUrl !== patch.coverMediaUrl
+      ) {
+        abandonUrls.push(cover.coverMediaUrl);
+      }
+      if (
+        cover.coverMediaPosterUrl !== null &&
+        cover.coverMediaPosterUrl !== savedCover.coverMediaPosterUrl &&
+        cover.coverMediaPosterUrl !== patch.coverMediaPosterUrl &&
+        cover.coverMediaPosterUrl !== cover.coverMediaUrl
+      ) {
+        abandonUrls.push(cover.coverMediaPosterUrl);
+      }
+      if (abandonUrls.length > 0) {
+        void removeCoverStorageUrls(abandonUrls);
+      }
       setCover(patch);
     },
-    [],
+    [
+      cover.coverMediaPosterUrl,
+      cover.coverMediaUrl,
+      savedCover.coverMediaPosterUrl,
+      savedCover.coverMediaUrl,
+    ],
   );
 
   // META-ORCH-1009 Sub-E: multi-select gallery upload. Pick many at once (capped
@@ -367,6 +461,7 @@ export function VenueDeckReadinessSetup({
         }
       }
       if (uploaded.length === 0) return;
+      for (const url of uploaded) stagedGalleryUploadsRef.current.add(url);
       const next = Array.from(new Set([...gallery, ...uploaded])).slice(0, GALLERY_MAX);
       setGallery(next);
     } catch (e) {
@@ -378,7 +473,12 @@ export function VenueDeckReadinessSetup({
 
   const handleRemovePhoto = useCallback(async (url: string): Promise<void> => {
     setGallery((prev) => prev.filter((u) => u !== url));
-  }, []);
+    // Staged (never committed) uploads can be removed from storage immediately.
+    if (stagedGalleryUploadsRef.current.has(url) && !savedGallery.includes(url)) {
+      stagedGalleryUploadsRef.current.delete(url);
+      void removeGalleryStorageObjects([url]);
+    }
+  }, [savedGallery]);
 
   const toggleVibe = useCallback((vibe: string): void => {
     setSelectedVibes((prev) =>
@@ -396,9 +496,13 @@ export function VenueDeckReadinessSetup({
   // auto-save on change via syncHeroMedia/syncGallery. Mingla writes the pitch +
   // match scores when an admin approves the venue; the owner edits the pitch
   // afterward on the listing page.
-  const handleSaveChanges = useCallback(async (): Promise<void> => {
+  const handleSaveChanges = useCallback(async (opts?: {
+    navigate?: boolean;
+  }): Promise<void> => {
+    const navigate = opts?.navigate !== false;
     setBusy("save");
     setMessage(null);
+    const previousCover = savedCover;
     try {
       if (coverDirty) {
         await syncHeroMedia({
@@ -410,6 +514,16 @@ export function VenueDeckReadinessSetup({
           coverMediaType: cover.coverMediaType,
         });
         setSavedCover(cover);
+        // Pointer committed — now safe to drop the previous storage object.
+        void removeCoverStorageUrls([
+          previousCover.coverMediaUrl !== cover.coverMediaUrl
+            ? previousCover.coverMediaUrl
+            : null,
+          previousCover.coverMediaPosterUrl !== cover.coverMediaPosterUrl &&
+          previousCover.coverMediaPosterUrl !== previousCover.coverMediaUrl
+            ? previousCover.coverMediaPosterUrl
+            : null,
+        ]);
       }
       if (galleryDirty) {
         await syncGallery({
@@ -419,6 +533,7 @@ export function VenueDeckReadinessSetup({
           galleryUrls: gallery,
         });
         setSavedGallery(gallery);
+        stagedGalleryUploadsRef.current.clear();
       }
       await saveTier2({ brandId, venueId, placePoolId, tier2: buildTier2() });
       await commitExistingVenueDiscoveryRange({
@@ -429,7 +544,12 @@ export function VenueDeckReadinessSetup({
         priceMaxInput,
         expectedVersion: rangeQuery.data?.version ?? 0,
       });
-      onDone();
+      setSavedWebsite(website.trim());
+      setSavedVibes(selectedVibes);
+      setSavedFacets(facets);
+      setSavedPriceMin(priceMinInput);
+      setSavedPriceMax(priceMaxInput);
+      if (navigate) onDone();
     } catch (error) {
       setMessage(sanitizeAuthoringError(error, "Could not save your changes."));
       throw error;
@@ -443,42 +563,90 @@ export function VenueDeckReadinessSetup({
     buildTier2,
     cover,
     coverDirty,
+    facets,
     gallery,
     galleryDirty,
     onDone,
     priceMaxInput,
     priceMinInput,
     rangeQuery.data?.version,
+    savedCover,
+    selectedVibes,
+    website,
   ]);
 
-  const mediaDirty = coverDirty || galleryDirty;
   useEffect(() => {
     if (leaveHandleRef === undefined) return;
     leaveHandleRef.current = {
-      isDirty: () => mediaDirty,
+      isDirty: () => formDirty,
       changedLabels: () => {
         const labels: string[] = [];
         if (coverDirty) labels.push("Cover");
         if (galleryDirty) labels.push("Photos");
+        if (websiteDirty) labels.push("Website");
+        if (priceDirty) labels.push("Price range");
+        if (vibesDirty) labels.push("Vibes");
+        if (facetsDirty) labels.push("Details");
         return labels;
       },
-      save: handleSaveChanges,
+      // Leave Save resumes the original route; do not also navigate via onDone.
+      save: () => handleSaveChanges({ navigate: false }),
       discard: () => {
+        const abandonCover: Array<string | null> = [];
+        if (
+          cover.coverMediaUrl !== null &&
+          cover.coverMediaUrl !== savedCover.coverMediaUrl
+        ) {
+          abandonCover.push(cover.coverMediaUrl);
+        }
+        if (
+          cover.coverMediaPosterUrl !== null &&
+          cover.coverMediaPosterUrl !== savedCover.coverMediaPosterUrl &&
+          cover.coverMediaPosterUrl !== cover.coverMediaUrl
+        ) {
+          abandonCover.push(cover.coverMediaPosterUrl);
+        }
+        if (abandonCover.length > 0) {
+          void removeCoverStorageUrls(abandonCover);
+        }
+        const orphanGallery = [...stagedGalleryUploadsRef.current].filter(
+          (url) => !savedGallery.includes(url),
+        );
+        stagedGalleryUploadsRef.current.clear();
+        if (orphanGallery.length > 0) {
+          void removeGalleryStorageObjects(orphanGallery);
+        }
         setCover(savedCover);
         setGallery(savedGallery);
+        setWebsite(savedWebsite);
+        setSelectedVibes(savedVibes);
+        setFacets(savedFacets);
+        setPriceMinInput(savedPriceMin);
+        setPriceMaxInput(savedPriceMax);
       },
     };
     return (): void => {
       leaveHandleRef.current = null;
     };
   }, [
+    cover,
     coverDirty,
+    facets,
+    facetsDirty,
+    formDirty,
     galleryDirty,
     handleSaveChanges,
     leaveHandleRef,
-    mediaDirty,
+    priceDirty,
     savedCover,
+    savedFacets,
     savedGallery,
+    savedPriceMax,
+    savedPriceMin,
+    savedVibes,
+    savedWebsite,
+    vibesDirty,
+    websiteDirty,
   ]);
 
   const handleRefresh = useCallback(async (): Promise<void> => {
@@ -842,6 +1010,7 @@ export function VenueDeckReadinessSetup({
         initial={cover}
         onCoverChange={handleCoverChange}
         onShowToast={setMessage}
+        deferPreviousCleanup
       />
     </View>
   );

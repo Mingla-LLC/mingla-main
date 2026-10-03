@@ -308,14 +308,18 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
           proceed?.();
         }}
         onSave={async () => {
+          // Keep pendingLeaveRef until success so Discard/retry can still
+          // resume the original beforeRemove action after a failed Save.
+          const proceed = pendingLeaveRef.current;
           setLeaveSaving(true);
           setLeaveError(null);
           try {
+            await leaveHandleRef.current?.save();
             pendingLeaveRef.current = null;
             setLeaveOpen(false);
-            await leaveHandleRef.current?.save();
+            sanctionedExitRef.current = true;
+            proceed?.();
           } catch {
-            setLeaveOpen(true);
             setLeaveError(
               "Couldn't save your changes. They're still here, so try again.",
             );

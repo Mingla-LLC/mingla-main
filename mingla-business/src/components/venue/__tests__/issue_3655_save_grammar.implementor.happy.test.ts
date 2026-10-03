@@ -47,6 +47,8 @@ describe("#3655 save grammar", () => {
     expect(src).toContain("Not saved yet");
     expect(src).toContain("coverDirty");
     expect(src).toContain("galleryDirty");
+    expect(src).toContain("websiteDirty");
+    expect(src).toContain("deferPreviousCleanup");
     // Immediate sync on pick is gone; sync runs inside Save.
     expect(src).not.toMatch(
       /handleCoverChange[\s\S]{0,200}await syncHeroMedia/,

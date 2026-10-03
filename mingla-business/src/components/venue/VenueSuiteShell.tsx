@@ -254,9 +254,9 @@ export function VenueSuiteShell({
     pendingLeaveRef.current = null;
     setLeaveOpen(false);
     setLeaveError(null);
-    // Discard clears dirty on the next paint; sanction the resumed route so
-    // beforeRemove cannot open a second leave prompt (#3655 review).
-    sanctionedExitRef.current = true;
+    // Do NOT arm sanctionedExitRef here — module switches never emit
+    // beforeRemove, and a stale flag would bypass the next real route exit.
+    // Route resumes arm the flag inside their own proceed callback below.
     pending?.proceed();
   }, [getLeaveHandle, leaveSaving]);
 
@@ -272,7 +272,7 @@ export function VenueSuiteShell({
       const section = sectionLabelForModule(pending.fromModule);
       pendingLeaveRef.current = null;
       setLeaveOpen(false);
-      sanctionedExitRef.current = true;
+      // Same as discard: only route-exit proceed callbacks arm the sanction.
       pending.proceed();
       setLeaveToast(`${section} saved`);
     } catch {

@@ -119,11 +119,13 @@ export function VenueTablesModule({
   const isEmpty = !tablesQuery.isLoading && tables.length === 0;
 
   const openAdd = useCallback((): void => {
+    setMutationError(null);
     setEditing(null);
     setSheetOpen(true);
   }, []);
 
   const openEdit = useCallback((t: VenueTable): void => {
+    setMutationError(null);
     setEditing(t);
     setSheetOpen(true);
   }, []);
@@ -152,6 +154,7 @@ export function VenueTablesModule({
   const handleToggleActive = useCallback(
     (t: VenueTable): void => {
       if (!canMutate || setActive.isPending) return;
+      setMutationError(null);
       setToggleTarget(t);
     },
     [canMutate, setActive.isPending],
@@ -337,7 +340,7 @@ export function VenueTablesModule({
           Couldn&apos;t load your tables. Pull to refresh.
         </Text>
       ) : null}
-      {mutationError !== null ? (
+      {mutationError !== null && !sheetOpen && toggleTarget === null ? (
         <Text
           style={styles.errorNote}
           accessibilityLiveRegion="polite"
@@ -352,13 +355,17 @@ export function VenueTablesModule({
 
       <VenueTableSheet
         visible={sheetOpen}
-        onClose={() => setSheetOpen(false)}
+        onClose={() => {
+          setSheetOpen(false);
+          setMutationError(null);
+        }}
         table={editing}
         onSave={handleSave}
         saving={upsert.isPending}
         onDelete={handleDelete}
         deleting={remove.isPending}
         canDelete={canMutate}
+        errorMessage={sheetOpen ? mutationError : null}
       />
 
       {toggleTarget !== null ? (
@@ -366,7 +373,10 @@ export function VenueTablesModule({
           <LazyConfirmDialog
             visible
             onClose={() => {
-              if (!setActive.isPending) setToggleTarget(null);
+              if (!setActive.isPending) {
+                setToggleTarget(null);
+                setMutationError(null);
+              }
             }}
             title={
               toggleTarget.isActive
@@ -381,6 +391,7 @@ export function VenueTablesModule({
             confirmLabel={toggleTarget.isActive ? "Set Inactive" : "Set Active"}
             cancelLabel="Keep as is"
             confirmLoading={setActive.isPending}
+            errorMessage={mutationError}
             onConfirm={confirmToggleActive}
             testID="venue-tables-active-confirm"
           />

@@ -817,7 +817,7 @@ export const VenueSettingsModule = forwardRef<
                     : null
             }
             onPress={() => {
-              void handleSaveSettings();
+              void handleSaveSettings().catch(() => undefined);
             }}
             loading={upsertHours.isPending || updateFee.isPending}
             testID="venue-settings-save"
