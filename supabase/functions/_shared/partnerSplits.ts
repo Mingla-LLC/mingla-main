@@ -30,7 +30,7 @@
  */
 
 // @ts-ignore — Deno ESM
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { StripeClient } from "./stripe.ts";
 // ORCH-1081 — partner first-split push: fires once when a partner's first
 // transferred split lands for a brand. The trigger on partner_splits ALREADY

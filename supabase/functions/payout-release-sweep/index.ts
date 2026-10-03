@@ -1,10 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-// Pin the patch (not bare @2). After #1345 extracted
-// runPayoutReleaseSweepAuthenticated(admin: AdminClient), bare @2 can
-// resolve a newer empty-schema SupabaseClient in the #1437 deno check graph
-// while createAdmin() still returns the older shape — every admin.rpc then
-// fails typecheck. Same pin as stripeEdgeAuth / other stable edge entrypoints.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { paystackVerifyTransaction } from "../_shared/paystack.ts";
 // Issue #1177 — the organiser Paystack transfer client lives in _shared so the
 // raw provider call never appears in the sweep source (DARK-sweep source guard).
@@ -146,11 +141,11 @@ export type PaystackFloatForecast =
   // in the sweep response as well as a structured log event.
   | { status: "failed"; reason: string };
 
-// Loose admin handle on purpose. Pinning every transitive esm.sh Supabase
-// import still left two 2.45.4 type shapes in the #1437 deno check graph
-// (3-param vs 5-param SupabaseClient generics), which redded the #1345
-// try/finally extract. Runtime createClient stays pinned above; call sites
-// that already used `as never` keep that pattern.
+// Loose admin handle on purpose. After #1345 extracted
+// runPayoutReleaseSweepAuthenticated(admin: AdminClient), esm.sh bare @2
+// dual-resolves SupabaseClient generic shapes in the #1437 deno check graph
+// and reds every typed admin boundary. Runtime createClient is unchanged;
+// call sites that already used `as never` keep that pattern.
 // deno-lint-ignore no-explicit-any
 type AdminClient = any;
 
