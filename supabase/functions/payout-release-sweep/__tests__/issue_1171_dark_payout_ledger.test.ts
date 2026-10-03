@@ -316,8 +316,9 @@ Deno.test("internal handler fails closed before client creation and exact bearer
     "surface_payout_releases_waiting_for_bank",
     "claim_brand_payout_pause_notices",
     "claim_brand_payout_outcome_notices",
-    "claim_reservation_slot_unavailable_alerts",
     "claim_payout_release_alerts",
+    // #1345: reservation slot-unavailable alert drain runs after attempt-cap alerts.
+    "claim_reservation_slot_unavailable_alerts",
   ]);
   assertEquals((await ok.json()).dark, true);
 });

@@ -8,7 +8,7 @@
 // Coverage:
 //   S1–S6  source-contract guards (FAILS-ON-REVERT)
 //   R1     runtime: slot-taken finalize uses atomic record RPC (no Resend)
-//   R2     runtime: record throw is swallowed (outcome still refund_due)
+//   R2     runtime: record failure → finalize_error (no direct mark fallback)
 //   R3     runtime: drain sends + records provider_accepted on succeeded > 0
 //   R4     runtime: drain records retryable when succeeded === 0
 //   R5     runtime: failed-status replay re-ensures outbox enqueue
@@ -23,11 +23,14 @@ const FINALIZE_SRC =
 const DRAIN_SRC =
   "supabase/functions/_shared/reservationSlotUnavailableOpsAlert.ts";
 const WEBHOOK_SRC = "supabase/functions/paystack-webhook/index.ts";
+const WEBHOOK_ROUTER_SRC =
+  "supabase/functions/_shared/paystackWebhookRouter.ts";
 const CONFIRM_SRC = "supabase/functions/venue-reservation-confirm/index.ts";
 const SWEEP_SRC = "supabase/functions/payout-release-sweep/index.ts";
 const finalizeSrc = await Deno.readTextFile(FINALIZE_SRC);
 const drainSrc = await Deno.readTextFile(DRAIN_SRC);
 const webhookSrc = await Deno.readTextFile(WEBHOOK_SRC);
+const webhookRouterSrc = await Deno.readTextFile(WEBHOOK_ROUTER_SRC);
 const confirmSrc = await Deno.readTextFile(CONFIRM_SRC);
 const sweepSrc = await Deno.readTextFile(SWEEP_SRC);
 const hasIn = (src: string, n: string, why: string) =>
@@ -88,7 +91,9 @@ Deno.test("#1345 S4 — drain records delivery with claim_id only when succeeded
     "drain must claim, require succeeded > 0, then record with claim_id",
   );
   hasIn(drainSrc, "RESEND_SEND_TIMEOUT_MS", "bounded Resend send timeout");
-  hasIn(drainSrc, "Promise.race", "timeout via Promise.race");
+  hasIn(drainSrc, "AbortController", "timeout cancels the underlying Resend fetch");
+  hasIn(drainSrc, "idempotencyKey", "Resend Idempotency-Key for safe retries");
+  hasIn(drainSrc, "DEFAULT_DRAIN_BUDGET_MS", "whole-drain wall-clock budget");
 });
 
 Deno.test("#1345 S5 — alert copy names MANUAL REFUND + the audit slug", () => {
@@ -126,6 +131,16 @@ Deno.test("#1345 S6 — drain is on payout-release-sweep, NOT webhook/confirm", 
     finalizeSrc,
     "ensureReservationSlotUnavailableAlert",
     "failed-status replay re-ensures the outbox row",
+  );
+  hasIn(
+    webhookRouterSrc,
+    "attribution_click_id, failure_reason",
+    "webhook session select must include failure_reason for outbox re-ensure",
+  );
+  hasIn(
+    confirmSrc,
+    "slot_unavailable_after_charge_refund_due",
+    "confirm failed fast-path must re-enter finalize for refund-due sessions",
   );
 });
 
@@ -248,7 +263,7 @@ Deno.test({
 
 Deno.test({
   name:
-    "#1345 R2 · record throw is swallowed — outcome stays slot_unavailable_refund_due",
+    "#1345 R2 · record failure surfaces finalize_error (webhook stays retryable; no direct mark fallback)",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -260,6 +275,7 @@ Deno.test({
       currency: "NGN",
       attribution_click_id: null,
     };
+    let directSessionUpdates = 0;
     const supabase = {
       from(table: string) {
         return {
@@ -267,6 +283,7 @@ Deno.test({
             return {
               eq() {
                 if (table === "reservation_checkout_sessions") {
+                  directSessionUpdates += 1;
                   Object.assign(session, patch);
                 }
                 return Promise.resolve({ error: null });
@@ -299,11 +316,12 @@ Deno.test({
       10000,
       "NGN",
     );
-    assertEquals(outcome.kind, "slot_unavailable_refund_due");
-    assertEquals(
-      session.failure_reason,
-      "slot_unavailable_after_charge_refund_due",
-    );
+    assertEquals(outcome.kind, "finalize_error");
+    if (outcome.kind === "finalize_error") {
+      assertEquals(outcome.message, "record_boom");
+    }
+    assertEquals(session.status, "pending");
+    assertEquals(directSessionUpdates, 0);
   },
 });
 

@@ -3,9 +3,11 @@
  *
  * Finalize atomically marks the session failed + enqueues into
  * `reservation_slot_unavailable_alert_outbox` (no Resend await).
- * `payout-release-sweep` drains pending/stale-dispatching rows fail-open:
- * claim (lease + claim_id) → sendOpsAlertEmail (bounded timeout) →
- * record delivery with matching claim_id only when succeeded > 0.
+ * `payout-release-sweep` drains pending/stale-dispatching rows fail-open AFTER
+ * organiser money work (or just before the dark early-return), with a whole-
+ * drain wall-clock budget: claim (lease + claim_id) → sendOpsAlertEmail
+ * (AbortSignal timeout + Resend Idempotency-Key) → record delivery with
+ * matching claim_id only when succeeded > 0.
  * Send failures / timeouts leave the row retryable (or reclaim after 10m).
  *
  * Kept OUT of reservationPaystackFinalize.ts so ticket-checkout confirm/status
@@ -20,6 +22,10 @@ import { sendOpsAlertEmail } from "./stripeOpsAlertEmail.ts";
 
 /** Bound each Resend attempt so a stalled fetch cannot hang the sweep forever. */
 const RESEND_SEND_TIMEOUT_MS = 8_000;
+/** Default claim batch — small so one tick cannot monopolise the 30s sweep. */
+const DEFAULT_CLAIM_LIMIT = 3;
+/** Whole-drain wall clock (claim + sends + record) for the sweep caller. */
+const DEFAULT_DRAIN_BUDGET_MS = 12_000;
 
 export type ReservationSlotUnavailableAlertRow = {
   alert_id: string;
@@ -64,26 +70,6 @@ export function formatReservationAlertAmount(
   }
 }
 
-async function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  label: string,
-): Promise<T> {
-  let timer: number | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_resolve, reject) => {
-        timer = setTimeout(() => {
-          reject(new Error(`${label}_timeout_${ms}ms`));
-        }, ms) as unknown as number;
-      }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-}
-
 async function deliverOne(
   row: ReservationSlotUnavailableAlertRow,
 ): Promise<boolean> {
@@ -99,8 +85,10 @@ async function deliverOne(
     row.amount_cents,
     row.currency,
   );
-  const result = await withTimeout(
-    sendOpsAlertEmail({
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), RESEND_SEND_TIMEOUT_MS);
+  try {
+    const result = await sendOpsAlertEmail({
       subject:
         `Paystack reservation MANUAL REFUND DUE — slot taken after charge (${amountLabel})`,
       paragraphs: [
@@ -116,24 +104,48 @@ async function deliverOne(
         label: "Open Paystack transactions",
         url: "https://dashboard.paystack.com/#/transactions",
       },
-    }),
-    RESEND_SEND_TIMEOUT_MS,
-    "reservation_slot_unavailable_alert_resend",
-  );
-  return (result?.succeeded ?? 0) > 0;
+      signal: controller.signal,
+      // Deterministic per outbox row so a timed-out fetch that later accepts
+      // does not create a second Resend email on the next sweep.
+      idempotencyKey:
+        `reservation_slot_unavailable_alert:${row.alert_id}`,
+    });
+    return (result?.succeeded ?? 0) > 0;
+  } finally {
+    clearTimeout(timer);
+  }
 }
+
+export type DrainReservationSlotUnavailableAlertsOptions = {
+  pLimit?: number;
+  /** Absolute Date.now() deadline; when hit, stop claiming/sending more rows. */
+  deadlineMs?: number;
+};
 
 /**
  * Claim pending/stale-dispatching outbox rows, send via the shared Resend
- * ops-alert spine (bounded timeout), and record delivery with the claim_id.
- * Complete (provider_accepted) only when succeeded > 0. Never throws for
- * per-row send failures — those requeue as retryable. Claim/record RPC errors
- * propagate so the sweep fail-open wrapper can log them.
+ * ops-alert spine (AbortSignal timeout + Idempotency-Key), and record delivery
+ * with the claim_id. Complete (provider_accepted) only when succeeded > 0.
+ * Never throws for per-row send failures — those requeue as retryable.
+ * Claim/record RPC errors propagate so the sweep fail-open wrapper can log them.
  */
 export async function drainReservationSlotUnavailableAlerts(
   supabase: SupabaseClient,
-  pLimit = 20,
+  pLimitOrOpts: number | DrainReservationSlotUnavailableAlertsOptions =
+    DEFAULT_CLAIM_LIMIT,
 ): Promise<{ listed: number; delivered: number }> {
+  const opts: DrainReservationSlotUnavailableAlertsOptions =
+    typeof pLimitOrOpts === "number"
+      ? { pLimit: pLimitOrOpts }
+      : pLimitOrOpts ?? {};
+  const pLimit = opts.pLimit ?? DEFAULT_CLAIM_LIMIT;
+  const deadlineMs = opts.deadlineMs ??
+    (Date.now() + DEFAULT_DRAIN_BUDGET_MS);
+
+  if (Date.now() >= deadlineMs) {
+    return { listed: 0, delivered: 0 };
+  }
+
   const { data, error } = await supabase.rpc(
     "claim_reservation_slot_unavailable_alerts" as never,
     {
@@ -149,6 +161,13 @@ export async function drainReservationSlotUnavailableAlerts(
   const rows = (Array.isArray(data) ? data : []) as ReservationSlotUnavailableAlertRow[];
   let delivered = 0;
   for (const row of rows) {
+    if (Date.now() >= deadlineMs) {
+      console.warn(
+        "[reservation-slot-unavailable-alert] drain budget exhausted; leaving remaining claimed rows for reclaim",
+        { alertId: row.alert_id, listed: rows.length, delivered },
+      );
+      break;
+    }
     let outcome: "provider_accepted" | "retryable" = "retryable";
     let deliveryError: string | null = null;
     try {
@@ -214,9 +233,13 @@ export async function drainReservationSlotUnavailableAlerts(
 export async function drainReservationSlotUnavailableAlertsFailOpen(
   supabase: SupabaseClient,
   logPrefix: string,
+  opts?: DrainReservationSlotUnavailableAlertsOptions,
 ): Promise<void> {
   try {
-    const result = await drainReservationSlotUnavailableAlerts(supabase);
+    const result = await drainReservationSlotUnavailableAlerts(
+      supabase,
+      opts ?? {},
+    );
     if (result.listed > 0) {
       console.log(`${logPrefix} slot-unavailable ops-alert drain`, result);
     }

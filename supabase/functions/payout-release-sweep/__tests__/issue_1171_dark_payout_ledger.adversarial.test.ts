@@ -240,8 +240,9 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
     "surface_payout_releases_waiting_for_bank",
     "claim_brand_payout_pause_notices",
     "claim_brand_payout_outcome_notices",
-    "claim_reservation_slot_unavailable_alerts",
     "claim_payout_release_alerts",
+    // #1345: reservation slot-unavailable alert drain runs after attempt-cap alerts.
+    "claim_reservation_slot_unavailable_alerts",
   ]);
 
   const darkScope = `${migration}\n${handler}\n${engine}`;

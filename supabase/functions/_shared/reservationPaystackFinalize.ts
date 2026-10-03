@@ -191,12 +191,20 @@ export async function finalizeVerifiedPaystackReservation(
       // enqueue the durable ops-alert outbox row, then write a MANUAL-refund
       // audit marker so ops can reconcile. Do NOT await Resend here —
       // payout-release-sweep drains fail-open. Money is captured; nothing to mint.
-      await recordReservationSlotUnavailableRefundDue(supabase, {
-        sessionId: session.id,
-        reference,
-        amountCents: session.amount_cents,
-        currency: session.currency,
-      });
+      // Persistence failure → finalize_error so the webhook inbox retries
+      // (never ack as processed with neither mark nor outbox row).
+      const recorded = await recordReservationSlotUnavailableRefundDue(
+        supabase,
+        {
+          sessionId: session.id,
+          reference,
+          amountCents: session.amount_cents,
+          currency: session.currency,
+        },
+      );
+      if (!recorded.ok) {
+        return { kind: "finalize_error", message: recorded.message };
+      }
       await writeAudit(supabase, {
         user_id: null,
         brand_id: null,
@@ -282,13 +290,15 @@ type SlotUnavailableAlertInput = {
 
 /**
  * #1345 — atomically mark session failed + enqueue ops-alert outbox.
- * Fail-open on RPC errors: the money outcome stays refund_due; a later
- * failed-status replay re-ensures the outbox via ensure*.
+ * The SQL RPC is authoritative for state guards (already_finalized /
+ * other_failure). Persistence failures surface so the webhook stays
+ * retryable; we never overwrite a different terminal session via a
+ * direct UPDATE fallback.
  */
 async function recordReservationSlotUnavailableRefundDue(
   supabase: SupabaseClient,
   input: SlotUnavailableAlertInput,
-): Promise<void> {
+): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
     const { error } = await supabase.rpc(
       "record_reservation_slot_unavailable_refund_due" as never,
@@ -300,36 +310,29 @@ async function recordReservationSlotUnavailableRefundDue(
       } as never,
     );
     if (error) {
+      const message = error.message ?? "record_reservation_slot_unavailable_refund_due_failed";
       console.error(
-        "[reservation-paystack-finalize] slot-unavailable record+enqueue failed (non-fatal)",
+        "[reservation-paystack-finalize] slot-unavailable record+enqueue failed",
         {
           sessionId: input.sessionId,
           reference: input.reference,
-          error: error.message,
+          error: message,
         },
       );
-      // Best-effort local mark so subsequent short-circuit can still re-ensure
-      // the outbox on replay even if the atomic RPC never landed.
-      await markReservationSessionFailed(
-        supabase,
-        input.sessionId,
-        "slot_unavailable_after_charge_refund_due",
-      );
+      return { ok: false, message };
     }
+    return { ok: true };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error(
-      "[reservation-paystack-finalize] slot-unavailable record+enqueue threw (non-fatal)",
+      "[reservation-paystack-finalize] slot-unavailable record+enqueue threw",
       {
         sessionId: input.sessionId,
         reference: input.reference,
-        error: err instanceof Error ? err.message : String(err),
+        error: message,
       },
     );
-    await markReservationSessionFailed(
-      supabase,
-      input.sessionId,
-      "slot_unavailable_after_charge_refund_due",
-    );
+    return { ok: false, message };
   }
 }
 

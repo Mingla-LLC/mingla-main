@@ -1235,26 +1235,6 @@ export async function handlePayoutReleaseSweep(
         : String(outcomeError),
     });
   }
-  // #1345 — reservation slot-unavailable MANUAL refund ops-alert drain.
-  // Non-fatal: a Resend hiccup must never block payout movement or turn a
-  // healthy tick into a 500; undelivered alerts stay open and retry.
-  try {
-    await (deps.drainReservationSlotUnavailableAlerts ??
-      ((a: AdminClient) =>
-        drainReservationSlotUnavailableAlertsFailOpen(
-          a as never,
-          "[payout-release-sweep]",
-        )))(admin as never);
-  } catch (slotAlertError) {
-    console.error(
-      "[payout-release-sweep] reservation slot-unavailable alert drain failed",
-      {
-        message: slotAlertError instanceof Error
-          ? slotAlertError.message
-          : String(slotAlertError),
-      },
-    );
-  }
 
   let alertDelivery;
   try {
@@ -1279,6 +1259,25 @@ export async function handlePayoutReleaseSweep(
   // shape; the active authority is the strict resolver above.
   // deps.env("PAYOUT_RELEASE_EXECUTE") !== "true"
   if (!payoutReleaseExecute) {
+    // #1345 — after ledger/notice work, before dark return. Budget-bounded so
+    // Resend cannot consume the 30s sweep deadline; never blocks money ticks.
+    try {
+      await (deps.drainReservationSlotUnavailableAlerts ??
+        ((a: AdminClient) =>
+          drainReservationSlotUnavailableAlertsFailOpen(
+            a as never,
+            "[payout-release-sweep]",
+          )))(admin as never);
+    } catch (slotAlertError) {
+      console.error(
+        "[payout-release-sweep] reservation slot-unavailable alert drain failed",
+        {
+          message: slotAlertError instanceof Error
+            ? slotAlertError.message
+            : String(slotAlertError),
+        },
+      );
+    }
     return json({
       ok: true,
       dark: true,
@@ -1428,6 +1427,26 @@ export async function handlePayoutReleaseSweep(
       totals.retryableStripe += released.retryableStripe;
       totals.blockedStripe += released.blockedStripe;
     }
+  }
+
+  // #1345 — AFTER Stripe/Paystack/partner execution so alert delivery cannot
+  // starve organiser money movement. Same fail-open + wall-clock budget as dark.
+  try {
+    await (deps.drainReservationSlotUnavailableAlerts ??
+      ((a: AdminClient) =>
+        drainReservationSlotUnavailableAlertsFailOpen(
+          a as never,
+          "[payout-release-sweep]",
+        )))(admin as never);
+  } catch (slotAlertError) {
+    console.error(
+      "[payout-release-sweep] reservation slot-unavailable alert drain failed",
+      {
+        message: slotAlertError instanceof Error
+          ? slotAlertError.message
+          : String(slotAlertError),
+      },
+    );
   }
 
   return json({
