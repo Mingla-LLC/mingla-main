@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-04 — Host venue device gaps from the save/leave pass: blackout remove confirm presents on iOS (nested in the sheet), dirty dish sheets ask before discarding, and Availability Save shows a what-changed caption (toward #3655, PR #3744)
 - 2026-10-04 — The Organiser Terms page passed legal review and is now indexed by search engines (part of #3645, PR #3743)
 - 2026-10-01 — The Mingla Organiser Terms are published at usemingla.com/organiser-terms (hidden from search until legal review, only the clauses that are true today), linked from every site footer and the support page; the Terms of Service now point organisers to them, and the Help Centre no longer claims Mingla is the merchant of record (part of #3645, PR #3730)
 - 2026-10-03 — Support agents can select and copy text on the Help pages (`/help` and every walkthrough) to paste exact steps to a customer; every other marketing page keeps its copy protection, and Help images/video still cannot be saved or dragged out (toward #3431, PR #3728)

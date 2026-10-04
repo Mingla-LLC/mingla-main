@@ -36,6 +36,15 @@ import type {
   VenueTableZone,
 } from "../../types/venueReservation";
 
+/** Lazy ConfirmDialog — static import pulls reanimated into suites that only
+ * mount the blackout form (dateField #1503, availability draft math). Nesting
+ * the dialog INSIDE `<Sheet>` is required on iOS New-Arch (#1369 / #3655 P1):
+ * a sibling Modal on the screen-root VC is dropped as "already presenting". */
+const LazyConfirmDialog = React.lazy(async () => {
+  const mod = await import("../ui/ConfirmDialog");
+  return { default: mod.ConfirmDialog };
+});
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const SCOPES: readonly { value: BlackoutAppliesTo; label: string }[] = [
@@ -58,8 +67,7 @@ export interface VenueBlackoutSheetProps {
   blackout: VenueBlackout | null;
   tables: VenueTable[];
   onSave: (input: VenueBlackoutUpsert) => void;
-  /** Asks the parent to confirm remove (ConfirmDialog lives on the parent so
-   * node/jest suites that mount this sheet do not pull reanimated). */
+  /** Runs the remove mutation after the in-sheet confirm (#3655 P1 / #1369). */
   onDelete?: () => void;
   saving: boolean;
   /** #3624 / #3655 — true while a remove mutation is in flight. */
@@ -88,9 +96,13 @@ export function VenueBlackoutSheet({
   const [appliesTo, setAppliesTo] = useState<BlackoutAppliesTo>("all");
   const [zone, setZone] = useState<VenueTableZone | null>(null);
   const [tableId, setTableId] = useState<string | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      setConfirmDeleteOpen(false);
+      return;
+    }
     setDateStart(blackout?.dateStart ?? "");
     setDateEnd(blackout?.dateEnd ?? "");
     setReason(blackout?.reason ?? "");
@@ -98,6 +110,14 @@ export function VenueBlackoutSheet({
     setZone(blackout?.zone ?? null);
     setTableId(blackout?.tableId ?? null);
   }, [visible, blackout]);
+
+  // #3624 — on remove failure the parent surfaces deleteError on this sheet;
+  // close the confirm so the inline error is visible again.
+  useEffect(() => {
+    if (deleteError !== null && deleteError.length > 0) {
+      setConfirmDeleteOpen(false);
+    }
+  }, [deleteError]);
 
   const startValid = ISO_DATE.test(dateStart);
   const endValid = ISO_DATE.test(dateEnd || dateStart);
@@ -282,7 +302,7 @@ export function VenueBlackoutSheet({
           {isEdit && onDelete != null ? (
             <Button
               label="Remove this blackout"
-              onPress={onDelete}
+              onPress={() => setConfirmDeleteOpen(true)}
               variant="destructiveOutline"
               size="md"
               fullWidth
@@ -298,6 +318,35 @@ export function VenueBlackoutSheet({
           ) : null}
         </ScrollView>
       </View>
+      {confirmDeleteOpen && onDelete != null ? (
+        <React.Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            onClose={() => {
+              if (!deleting) setConfirmDeleteOpen(false);
+            }}
+            title="Remove this blackout?"
+            description={
+              blackout !== null
+                ? `Guests will be able to book again from ${blackout.dateStart}${
+                    blackout.dateEnd && blackout.dateEnd !== blackout.dateStart
+                      ? ` to ${blackout.dateEnd}`
+                      : ""
+                  }.`
+                : "Guests will be able to book these dates again."
+            }
+            confirmLabel="Remove blackout"
+            cancelLabel="Keep it"
+            destructive
+            confirmLoading={deleting}
+            closeDisabled={deleting}
+            onConfirm={() => {
+              onDelete();
+            }}
+            testID="venue-blackout-delete-confirm"
+          />
+        </React.Suspense>
+      ) : null}
     </Sheet>
   );
 }

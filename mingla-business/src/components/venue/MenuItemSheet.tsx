@@ -204,6 +204,7 @@ export function MenuItemSheet({
   >(null);
   const [costDraft, setCostDraft] = useState<string>("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
+  const [leaveOpen, setLeaveOpen] = useState<boolean>(false);
   const [nameBlurred, setNameBlurred] = useState<boolean>(false);
   const [nameHadNonBlankValue, setNameHadNonBlankValue] =
     useState<boolean>(false);
@@ -216,6 +217,7 @@ export function MenuItemSheet({
   useEffect(() => {
     if (!visible) {
       setConfirmDeleteOpen(false);
+      setLeaveOpen(false);
       setNameBlurred(false);
       setNameHadNonBlankValue(false);
       clearSaveFailureRef.current?.();
@@ -307,6 +309,46 @@ export function MenuItemSheet({
     // #3572 — appended, never folded into the line above: the exact text of the
     // #3563 terms is a merged source-string contract.
     !optionsDirty;
+
+  // #3655 P2 — dish-field dirty (price/name/etc.) must prompt on dismiss.
+  // Options-group dirty stays on the #3572 hold path (dismissDisabled).
+  const itemDirty = useMemo((): boolean => {
+    if (!visible) return false;
+    const baseName = item?.name ?? "";
+    const baseDescription = item?.description ?? "";
+    const basePrice =
+      item?.priceCents != null && item.priceCents >= 0
+        ? String(majorFromMinor(item.priceCents, code))
+        : "";
+    const baseCost =
+      item?.costCents != null && item.costCents >= 0
+        ? String(majorFromMinor(item.costCents, code))
+        : "";
+    const baseAvailable = item?.isAvailable ?? true;
+    const baseAllowsNotes = item?.allowsNotes ?? true;
+    const basePrep = item?.prepStation ?? null;
+    return (
+      name !== baseName ||
+      description !== baseDescription ||
+      priceDraft !== basePrice ||
+      costDraft !== baseCost ||
+      isAvailable !== baseAvailable ||
+      allowsNotes !== baseAllowsNotes ||
+      prepStation !== basePrep
+    );
+  }, [
+    visible,
+    item,
+    code,
+    name,
+    description,
+    priceDraft,
+    costDraft,
+    isAvailable,
+    allowsNotes,
+    prepStation,
+  ]);
+
   const snap = useMemo<number>(() => 0.9, []);
 
   const handleNameChange = useCallback(
@@ -377,9 +419,35 @@ export function MenuItemSheet({
      * reason is on screen beside Save, so nothing is refused in silence.
      */
     if (optionsDirty) return;
-    if (!optionsSaving) onClearSaveFailure?.();
-    if (!optionsSaving) onClose();
-  }, [onClearSaveFailure, onClose, optionsDirty, optionsSaving]);
+    if (optionsSaving) return;
+    // #3655 P2 — dirty dish fields get a leave prompt (not a silent discard).
+    if (itemDirty) {
+      setLeaveOpen(true);
+      return;
+    }
+    onClearSaveFailure?.();
+    onClose();
+  }, [
+    itemDirty,
+    onClearSaveFailure,
+    onClose,
+    optionsDirty,
+    optionsSaving,
+  ]);
+
+  const handleLeaveDiscard = useCallback((): void => {
+    setLeaveOpen(false);
+    onClearSaveFailure?.();
+    onClose();
+  }, [onClearSaveFailure, onClose]);
+
+  const handleLeaveSave = useCallback(async (): Promise<void> => {
+    if (!canSave) {
+      throw new Error("invalid");
+    }
+    setLeaveOpen(false);
+    handleSave();
+  }, [canSave, handleSave]);
 
   return (
     <Sheet
@@ -387,6 +455,8 @@ export function MenuItemSheet({
       onClose={handleClose}
       snapPoint={snap}
       dismissDisabled={optionsSaving}
+      dismissGuard={() => itemDirty && !optionsSaving}
+      onRequestClose={handleClose}
       testID={testID ?? "menu-item-sheet"}
     >
       <View style={styles.body}>
@@ -687,6 +757,31 @@ export function MenuItemSheet({
           confirmTestID="menu-item-delete-confirm"
           cancelTestID="menu-item-delete-cancel"
           testID="menu-item-delete-dialog"
+        />
+      ) : null}
+
+      {leaveOpen ? (
+        <ConfirmDialog
+          visible
+          onClose={() => setLeaveOpen(false)}
+          onConfirm={handleLeaveDiscard}
+          title={
+            isEdit ? "Save your item changes?" : "Save this new item?"
+          }
+          description={
+            isEdit
+              ? "You changed this dish. If you leave without saving, those changes are gone."
+              : "This dish has not been saved yet. If you leave, it will be discarded."
+          }
+          variant="leave"
+          onSave={handleLeaveSave}
+          onDiscard={handleLeaveDiscard}
+          saveDisabled={!canSave}
+          confirmLoading={saving}
+          saveTestID="menu-item-leave-save"
+          discardTestID="menu-item-leave-discard"
+          keepTestID="menu-item-leave-keep"
+          testID="menu-item-leave-dialog"
         />
       ) : null}
     </Sheet>

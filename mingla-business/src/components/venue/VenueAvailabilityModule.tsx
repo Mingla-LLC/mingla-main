@@ -32,7 +32,6 @@ import type { LayoutChangeEvent } from "react-native";
 import { useNavigation } from "expo-router";
 
 import {
-  accent,
   restaurantHubLayout,
   semantic,
   spacing,
@@ -59,7 +58,8 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 
 /** Lazy ConfirmDialog — static import pulls reanimated into Availability and
- * breaks node suites that only need VenueBlackoutSheet / draft math. */
+ * breaks node suites that only need draft math. Blackout remove confirm lives
+ * inside VenueBlackoutSheet (#3655 P1 / #1369 nest). */
 const LazyConfirmDialog = React.lazy(async () => {
   const mod = await import("../ui/ConfirmDialog");
   return { default: mod.ConfirmDialog };
@@ -68,7 +68,9 @@ import { Input } from "../ui/Input";
 import { Skeleton } from "../ui/Skeleton";
 import { Toast, type ToastKind } from "../ui/Toast";
 import { useShareNetworkState } from "../ui/useShareNetworkState";
+import { SaveCommitBar } from "./SaveCommitBar";
 import { VenueBlackoutSheet } from "./VenueBlackoutSheet";
+import { formatLeaveChangedBody } from "./venueLeaveContract";
 import type {
   ServicePeriod,
   VenueAvailabilityConfig,
@@ -327,6 +329,32 @@ const BOOKING_FIELDS: readonly NumericFieldDefinition[] = [
   },
 ];
 
+/** Short what-changed labels for SaveCommitBar / leave body (#3655 Rule 2). */
+const AVAILABILITY_CHANGED_LABELS: Record<AvailabilityFieldKey, string> = {
+  "turnTimes.1-2": "1–2 turn time",
+  "turnTimes.3-4": "3–4 turn time",
+  "turnTimes.5-6": "5–6 turn time",
+  "turnTimes.7+": "7+ turn time",
+  bufferMinutes: "Buffer",
+  maxReservationsPerSlot: "Max per slot",
+  slotGranularityMinutes: "Slot step",
+  advanceWindowDays: "Advance window",
+  minNoticeMinutes: "Min notice",
+};
+
+export function availabilityChangedLabels(
+  draft: AvailabilityNumericDraft,
+  baseline: AvailabilityNumericDraft,
+): string[] {
+  const labels: string[] = [];
+  for (const key of AVAILABILITY_FIELD_KEYS) {
+    if (draft[key] !== baseline[key]) {
+      labels.push(AVAILABILITY_CHANGED_LABELS[key]);
+    }
+  }
+  return labels;
+}
+
 export interface VenueAvailabilityLeaveHandle {
   requestLeave: (onDiscard: () => void, restoreFocus?: () => void) => void;
 }
@@ -371,8 +399,6 @@ export const VenueAvailabilityModule = forwardRef<
   const [blackoutDeleteError, setBlackoutDeleteError] = useState<string | null>(
     null,
   );
-  const [blackoutDeleteConfirmOpen, setBlackoutDeleteConfirmOpen] =
-    useState(false);
   const [leaveSaveError, setLeaveSaveError] = useState<string | null>(null);
   const [editBlackout, setEditBlackout] = useState<VenueBlackout | null>(null);
   const [draft, setDraft] = useState<AvailabilityNumericDraft>(() => ({
@@ -413,7 +439,17 @@ export const VenueAvailabilityModule = forwardRef<
     () => !availabilityDraftsEqual(draft, baseline),
     [baseline, draft],
   );
+  const changedLabels = useMemo(
+    () => availabilityChangedLabels(draft, baseline),
+    [baseline, draft],
+  );
   const dirtyRef = useRef(isDirty);
+
+  useEffect(() => {
+    if (saveState !== "success") return;
+    const timer = setTimeout(() => setSaveState("idle"), 1500);
+    return (): void => clearTimeout(timer);
+  }, [saveState]);
 
   const setDirtyModule = useVenueSuiteStore((s) => s.setDirtyModule);
 
@@ -659,24 +695,16 @@ export const VenueAvailabilityModule = forwardRef<
     },
     [upsertBlackout],
   );
-  const requestDeleteBlackout = useCallback((): void => {
-    if (editBlackout === null || deleteBlackout.isPending) return;
-    setBlackoutDeleteError(null);
-    setBlackoutDeleteConfirmOpen(true);
-  }, [editBlackout, deleteBlackout.isPending]);
-
   const handleDeleteBlackout = useCallback((): void => {
     if (editBlackout === null || deleteBlackout.isPending) return;
     setBlackoutDeleteError(null);
     deleteBlackout.mutate(editBlackout.id, {
       onSuccess: () => {
         setBlackoutDeleteError(null);
-        setBlackoutDeleteConfirmOpen(false);
         setBlackoutSheetOpen(false);
       },
       onError: () => {
         // #3624 — keep the row and sheet open; surface the failure.
-        setBlackoutDeleteConfirmOpen(false);
         setBlackoutDeleteError(
           "Couldn't remove this blackout. It's still here — try again.",
         );
@@ -1032,22 +1060,24 @@ export const VenueAvailabilityModule = forwardRef<
                     try again.
                   </Text>
                 ) : null}
-                <Button
-                  label={
-                    upsertConfig.isPending
-                      ? "Saving…"
-                      : saveState === "serverError" || saveState === "offline"
-                        ? "Try again"
-                        : "Save changes"
+                <SaveCommitBar
+                  label="Save changes"
+                  changedLabels={changedLabels}
+                  captionState={
+                    saveState === "serverError" || saveState === "offline"
+                      ? "failed"
+                      : upsertConfig.isPending
+                        ? "saving"
+                        : saveState === "success"
+                          ? "saved"
+                          : !isValid && isDirty
+                            ? "invalid"
+                            : isDirty
+                              ? "dirty"
+                              : "clean"
                   }
                   onPress={handleSave}
-                  variant="primary"
-                  size="lg"
-                  shape="pill"
-                  accentColor={accent.warm}
                   loading={upsertConfig.isPending}
-                  disabled={!isDirty || !isValid || upsertConfig.isPending}
-                  fullWidth
                   testID="venue-avail-save"
                 />
               </View>
@@ -1126,38 +1156,11 @@ export const VenueAvailabilityModule = forwardRef<
         blackout={editBlackout}
         tables={tables}
         onSave={handleSaveBlackout}
-        onDelete={editBlackout !== null ? requestDeleteBlackout : undefined}
+        onDelete={editBlackout !== null ? handleDeleteBlackout : undefined}
         saving={upsertBlackout.isPending}
         deleting={deleteBlackout.isPending}
         deleteError={blackoutDeleteError}
       />
-      {blackoutDeleteConfirmOpen ? (
-        <React.Suspense fallback={null}>
-          <LazyConfirmDialog
-            visible
-            onClose={() => {
-              if (!deleteBlackout.isPending) setBlackoutDeleteConfirmOpen(false);
-            }}
-            title="Remove this blackout?"
-            description={
-              editBlackout !== null
-                ? `Guests will be able to book again from ${editBlackout.dateStart}${
-                    editBlackout.dateEnd &&
-                    editBlackout.dateEnd !== editBlackout.dateStart
-                      ? ` to ${editBlackout.dateEnd}`
-                      : ""
-                  }.`
-                : "Guests will be able to book these dates again."
-            }
-            confirmLabel="Remove blackout"
-            cancelLabel="Keep it"
-            destructive
-            confirmLoading={deleteBlackout.isPending}
-            onConfirm={handleDeleteBlackout}
-            testID="venue-blackout-delete-confirm"
-          />
-        </React.Suspense>
-      ) : null}
       {discardDialogVisible ? (
         <React.Suspense fallback={null}>
           <LazyConfirmDialog
@@ -1205,7 +1208,7 @@ export const VenueAvailabilityModule = forwardRef<
               }
             }}
             title="Save your Availability changes?"
-            description="You changed availability numbers. If you leave without saving, those changes are gone."
+            description={formatLeaveChangedBody(changedLabels)}
             variant="leave"
             saveDisabled={!isValid}
             confirmLoading={upsertConfig.isPending}
