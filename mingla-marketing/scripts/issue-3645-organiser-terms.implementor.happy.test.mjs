@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // #3645 — Organiser Terms website half.
 //
-// Source mode (default, or --source-only) proves the page, its draft/noindex
-// registration, the held-clause omissions, the two-company identity, the four
-// link surfaces, the Terms of Service carve-out and the corrected help copy.
+// Source mode (default, or --source-only) proves the page, its search_ready
+// registration (promoted from draft after legal review), the held-clause
+// omissions, the two-company identity, the four link surfaces, the Terms of
+// Service carve-out and the corrected help copy.
 // Built mode (--built-only) reads the prerendered HTML from `next build` and
-// proves the same omissions and the noindex robots meta on what actually ships.
+// proves the same omissions and the self-canonical, indexable page that ships.
 // Each verifier is also run against a reverted source to prove it goes RED.
 
 import assert from 'node:assert/strict'
@@ -65,17 +66,15 @@ function verifySource(files) {
   assert(content, 'lib/organiserTermsContent.ts must exist')
   assert(page, 'app/organiser-terms/page.tsx must exist')
 
-  // Route + lifecycle: draft, therefore noindex and outside the sitemap.
-  const draftBlock = registry.match(/const DRAFT_ROUTES = \[([\s\S]*?)\] as const/)
-  assert(draftBlock, 'route registry must declare DRAFT_ROUTES')
-  assert.match(draftBlock[1], /\['\/organiser-terms', 'organiser-terms'\]/, '/organiser-terms must be registered draft')
-  assert.match(registry, /\.\.\.DRAFT_ROUTES\.map\(\(\[pathname, id\]\) => \(\{[\s\S]*?lifecycle: 'draft' as const/, 'DRAFT_ROUTES must project into ROUTE_REGISTRY as draft')
+  // Route + lifecycle: search_ready since legal review cleared it, therefore
+  // self-canonical, indexable and in the sitemap.
+  assert.doesNotMatch(registry, /const DRAFT_ROUTES = \[[\s\S]*?organiser-terms/, '/organiser-terms must no longer be registered draft')
   assert.match(registry, /NOINDEX_LIFECYCLES[\s\S]*'draft'/, 'draft must stay a noindex lifecycle')
   const searchReady = registry.slice(registry.indexOf('const SEARCH_READY_ROUTES = ['), registry.indexOf('] as const satisfies readonly SearchReadyRouteContract[]'))
-  assert.doesNotMatch(searchReady, /organiser-terms/, '/organiser-terms must not be search_ready yet')
-  assert.doesNotMatch(files['scripts/verify-search-foundation.mjs'], /organiser-terms/, '/organiser-terms must not be in the sitemap/search-ready verifier')
-  assert.match(page, /publicNoindexMetadata\('\/organiser-terms'/, 'page must use the noindex metadata helper')
-  assert.doesNotMatch(page, /searchRouteMetadata/, 'page must not claim search_ready metadata')
+  assert.match(searchReady, /match: \{ type: 'exact', pathname: '\/organiser-terms' \},\s*lifecycle: 'search_ready',/, '/organiser-terms must be search_ready')
+  assert.match(files['scripts/verify-search-foundation.mjs'], /'\/terms-of-service',[\s\S]*?'\/organiser-terms',/, '/organiser-terms must be in the sitemap/search-ready verifier')
+  assert.match(page, /searchRouteMetadata\('\/organiser-terms'\)/, 'page must use the search-ready metadata helper')
+  assert.doesNotMatch(page, /publicNoindexMetadata/, 'page must not use the noindex metadata helper')
   assert.match(page, /<main\b[^>]*id="main"/, 'page needs the <main id="main"> landmark')
 
   // Held clauses and editor notes never render.
@@ -128,8 +127,8 @@ function stripTags(html) {
 function verifyBuilt(pages) {
   const html = pages['organiser-terms']
   assert(html, 'the build must prerender /organiser-terms')
-  assert.match(html, /<meta name="robots" content="noindex/, '/organiser-terms must ship a noindex robots meta')
-  assert.doesNotMatch(html, /<link rel="canonical"/, '/organiser-terms must not ship a search canonical')
+  assert.doesNotMatch(html, /<meta name="robots" content="[^"]*noindex/, '/organiser-terms must not ship a noindex robots meta')
+  assert.match(html, /<link rel="canonical" href="https:\/\/usemingla\.com\/organiser-terms"/, '/organiser-terms must ship its self-canonical')
   const main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)
   assert(main, '/organiser-terms must render a <main> landmark')
   const text = stripTags(main[1])
@@ -168,7 +167,7 @@ if (mode === 'source') {
   // RED proofs: each reverted piece must be rejected.
   const reverts = [
     ['page removed', { 'app/organiser-terms/page.tsx': '' }],
-    ['registered search_ready instead of draft', { 'lib/search/route-registry.ts': files['lib/search/route-registry.ts'].replace("['/organiser-terms', 'organiser-terms'],", '') }],
+    ['still draft instead of search_ready', { 'lib/search/route-registry.ts': files['lib/search/route-registry.ts'].replace("pathname: '/organiser-terms' },\n    lifecycle: 'search_ready',", "pathname: '/organiser-terms' },\n    lifecycle: 'draft',") }],
     ['held ads section published', { 'lib/organiserTermsContent.ts': `${files['lib/organiserTermsContent.ts']}\n// title: 'Ads through Mingla'` }],
     ['editor note published', { 'lib/organiserTermsContent.ts': `${files['lib/organiserTermsContent.ts']}\n// [Legal review: media licence.]` }],
     ['company registration dropped', { 'lib/organiserTermsContent.ts': files['lib/organiserTermsContent.ts'].replaceAll('RC 9591121', 'RC') }],
@@ -180,7 +179,7 @@ if (mode === 'source') {
     assert.throws(() => verifySource({ ...files, ...override }), assert.AssertionError, `RED proof failed to reject: ${label}`)
   }
   process.stdout.write(`RED proof: ${reverts.length} reverted states rejected\n`)
-  process.stdout.write('PASS #3645 source: /organiser-terms draft/noindex, held clauses omitted, both companies named, four link surfaces, ToS carve-out, help copy corrected\n')
+  process.stdout.write('PASS #3645 source: /organiser-terms search_ready/canonical, held clauses omitted, both companies named, four link surfaces, ToS carve-out, help copy corrected\n')
 } else {
   const appDir = path.join(ROOT, '.next/server/app')
   const pages = Object.fromEntries(['organiser-terms', 'support', 'terms-of-service', 'host', 'tools'].map((name) => {
@@ -191,5 +190,5 @@ if (mode === 'source') {
   verifyBuilt(pages)
   const reverted = { ...pages, 'organiser-terms': pages['organiser-terms'].replace('</main>', '<p>Ads through Mingla</p></main>') }
   assert.throws(() => verifyBuilt(reverted), assert.AssertionError, 'RED proof failed to reject a held clause in the built page')
-  process.stdout.write('PASS #3645 built: /organiser-terms prerendered with noindex, held clauses absent, companies named; /support, /host and /tools link it; /terms-of-service renders the carve-out\n')
+  process.stdout.write('PASS #3645 built: /organiser-terms prerendered indexable with its self-canonical, held clauses absent, companies named; /support, /host and /tools link it; /terms-of-service renders the carve-out\n')
 }

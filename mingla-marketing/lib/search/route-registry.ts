@@ -154,6 +154,17 @@ const SEARCH_READY_ROUTES = [
       'Read the terms governing access to and use of Mingla, including acceptable use, liability limits, and dispute terms.',
     lastModified: '2026-09-01',
   },
+  // #3645 — promoted from draft once legal review cleared the published terms
+  // (4 Oct 2026). lastModified is the terms' own effective date.
+  {
+    id: 'organiser-terms',
+    match: { type: 'exact', pathname: '/organiser-terms' },
+    lifecycle: 'search_ready',
+    title: 'Mingla Organiser Terms',
+    description:
+      'The terms for anyone who lists, sells, messages or advertises with Mingla Host: who you contract with, fees, payouts, refunds, Buyer data and disputes.',
+    lastModified: '2026-10-01',
+  },
 ] as const satisfies readonly SearchReadyRouteContract[]
 
 const CORE_PUBLIC_NOINDEX_ROUTES = Object.values(CORE_PAGES).filter((record) => record.lifecycle === 'public_noindex')
@@ -186,14 +197,6 @@ const PUBLIC_NOINDEX_ROUTES = [
   ['/internal/page-system/city-lagos', 'page-system-city-lagos'],
   ['/internal/page-system/explorer-event-guide', 'page-system-explorer-event-guide'],
   ['/internal/page-system/host-event-promoter-guide', 'page-system-host-event-promoter-guide'],
-] as const
-
-// Draft routes are public by link but never indexed and never in the sitemap.
-// #3645 — the Organiser Terms stay draft until legal review clears them for
-// search; promoting one to search_ready is the three-place change documented
-// beside SEARCH_READY_ROUTES, not an edit here alone.
-const DRAFT_ROUTES = [
-  ['/organiser-terms', 'organiser-terms'],
 ] as const
 
 const CORE_SEARCH_READY_ROUTES = Object.values(CORE_PAGES)
@@ -300,11 +303,6 @@ export const ROUTE_REGISTRY: readonly RouteContract[] = [
     id,
     match: { type: 'prefix' as const, pathname },
     lifecycle: 'public_noindex' as const,
-  })),
-  ...DRAFT_ROUTES.map(([pathname, id]) => ({
-    id,
-    match: { type: 'exact' as const, pathname },
-    lifecycle: 'draft' as const,
   })),
   ...CITY_ROUTE_CONTRACTS,
   ...HELP_ROUTE_CONTRACTS,

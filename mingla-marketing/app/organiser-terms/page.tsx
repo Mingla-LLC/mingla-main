@@ -7,16 +7,11 @@ import {
   ORGANISER_TERMS_VERSION,
   organiserTermsHeading,
 } from '@/lib/organiserTermsContent'
-import { publicNoindexMetadata } from '@/lib/search/metadata'
+import { searchRouteMetadata } from '@/lib/search/metadata'
 
-// #3645 — registered `draft` in the route registry: reachable by link (the
-// footer, the Terms of Service and the Host app), but noindex and absent from
-// the sitemap until legal review clears it for search.
-export const metadata = publicNoindexMetadata('/organiser-terms', {
-  title: 'Mingla Organiser Terms',
-  description:
-    'The terms for anyone who lists, sells, messages or advertises with Mingla Host: who you contract with, fees, payouts, refunds, Buyer data and disputes.',
-})
+// #3645 — search_ready since legal review cleared it (4 Oct 2026): the title,
+// description, self-canonical and index robots come from the route registry.
+export const metadata = searchRouteMetadata('/organiser-terms')
 
 const linkClass = 'font-semibold text-warm underline-offset-4 hover:underline focus-ring'
 

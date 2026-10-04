@@ -28,6 +28,8 @@ const SEARCH_READY_PATHS = [
   '/support',
   '/privacy-policy',
   '/terms-of-service',
+  // #3645 — the Organiser Terms, the last SEARCH_READY_ROUTES base contract.
+  '/organiser-terms',
   // #3371 — the renamed Explorer core page. Core routes project after the base
   // contracts and before the help-video family, so it sits here in registry
   // emission order; its title carries a single Mingla mention.
@@ -60,10 +62,17 @@ const releaseSearchReadyPaths = releaseRouteScope.marketing
   .map((record) => record.path)
 const helpInsertionIndex = releaseSearchReadyPaths.indexOf('/support')
 assert.notEqual(helpInsertionIndex, -1, 'release route scope must retain the support insertion anchor')
+// #3645 — '/organiser-terms' is a base contract emitted right after
+// '/terms-of-service'; like '/help', it is inserted here rather than added to
+// the release-route ledger, which other suites pin at 23 rows.
+const organiserTermsInsertionIndex = releaseSearchReadyPaths.indexOf('/terms-of-service') + 1
+assert.notEqual(organiserTermsInsertionIndex, 0, 'release route scope must retain the terms-of-service insertion anchor')
 const SITEMAP_SEARCH_READY_PATHS = [
   ...releaseSearchReadyPaths.slice(0, helpInsertionIndex),
   '/help',
-  ...releaseSearchReadyPaths.slice(helpInsertionIndex),
+  ...releaseSearchReadyPaths.slice(helpInsertionIndex, organiserTermsInsertionIndex),
+  '/organiser-terms',
+  ...releaseSearchReadyPaths.slice(organiserTermsInsertionIndex),
   '/help/getting-the-apps',
   '/help/sign-up-and-create-a-brand',
   '/help/connect-a-bank-and-get-paid',
