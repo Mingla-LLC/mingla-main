@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-04 — The Organiser Terms page passed legal review and is now indexed by search engines (part of #3645, PR #3743)
 - 2026-10-01 — The Mingla Organiser Terms are published at usemingla.com/organiser-terms (hidden from search until legal review, only the clauses that are true today), linked from every site footer and the support page; the Terms of Service now point organisers to them, and the Help Centre no longer claims Mingla is the merchant of record (part of #3645, PR #3730)
 - 2026-10-03 — Support agents can select and copy text on the Help pages (`/help` and every walkthrough) to paste exact steps to a customer; every other marketing page keeps its copy protection, and Help images/video still cannot be saved or dragged out (toward #3431, PR #3728)
 - 2026-10-03 — Venue save/leave is predictable: three-way leave prompt with dirty pills, Save captions, step/destructiveOutline button looks, Settings one save bar, deck photos wait for Save deck details, blackout/tables confirm on remove, Sign out vs Sign out everywhere, no empty Venues tab (add from + only), and SheetMobile spring-back dismissGuard (toward #3655, PR #3741)
