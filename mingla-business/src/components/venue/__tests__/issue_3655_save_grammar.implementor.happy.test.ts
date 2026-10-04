@@ -65,4 +65,16 @@ describe("#3655 save grammar", () => {
     expect(src).toContain('label="Save settings"');
     expect(src).toContain("venue-settings-save-bar");
   });
+
+  test("Availability Save changes uses SaveCommitBar what-changed caption", () => {
+    const src = fs.readFileSync(
+      path.join(root, "VenueAvailabilityModule.tsx"),
+      "utf8",
+    );
+    expect(src).toContain("SaveCommitBar");
+    expect(src).toContain('label="Save changes"');
+    expect(src).toContain("availabilityChangedLabels");
+    expect(src).toContain("changedLabels={changedLabels}");
+    expect(src).toContain('testID="venue-avail-save"');
+  });
 });

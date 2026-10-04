@@ -2,6 +2,9 @@
  * Issue #2011 implementor guard — local strings remain authoritative until one
  * deliberate save. Reverting hydration/validation/patch construction to
  * parse-and-clamp-on-change makes these assertions fail.
+ *
+ * [TEST-MOD-APPROVED #3655] SaveCommitBar hosts testID on the toolbar; the
+ * primary Button is `venue-avail-save-button`.
  */
 
 import {
@@ -297,7 +300,7 @@ describe("issue #2011 availability numeric draft", () => {
     });
     expect(p2().props.value).toBe("120");
 
-    const save = renderer!.root.findByProps({ testID: "venue-avail-save" });
+    const save = renderer!.root.findByProps({ testID: "venue-avail-save-button" });
     expect(save.props.disabled).toBe(false);
     act(() => save.props.onPress?.());
     expect(mutateConfig).toHaveBeenCalledTimes(1);
@@ -326,7 +329,7 @@ describe("issue #2011 availability numeric draft", () => {
 
     expect(p2().props.value).toBe("110");
     expect(
-      renderer!.root.findByProps({ testID: "venue-avail-save" }).props.disabled,
+      renderer!.root.findByProps({ testID: "venue-avail-save-button" }).props.disabled,
     ).toBe(true);
   });
 
@@ -345,7 +348,7 @@ describe("issue #2011 availability numeric draft", () => {
     act(() => p2().props.onChangeText?.("120"));
     act(() =>
       renderer.root
-        .findByProps({ testID: "venue-avail-save" })
+        .findByProps({ testID: "venue-avail-save-button" })
         .props.onPress?.(),
     );
     const mutationOptions = mutateConfig.mock.calls[0]?.[1] as {
@@ -355,7 +358,7 @@ describe("issue #2011 availability numeric draft", () => {
 
     expect(p2().props.value).toBe("120");
     expect(
-      renderer.root.findByProps({ testID: "venue-avail-save" }).props.disabled,
+      renderer.root.findByProps({ testID: "venue-avail-save-button" }).props.disabled,
     ).toBe(false);
     expect(
       renderer.root.findByProps({ testID: "venue-avail-save-error" }),
@@ -410,7 +413,7 @@ describe("issue #2011 availability numeric draft", () => {
         .disabled,
     ).toBe(true);
     expect(
-      renderer!.root.findAllByProps({ testID: "venue-avail-save" }),
+      renderer!.root.findAllByProps({ testID: "venue-avail-save-button" }),
     ).toHaveLength(0);
   });
 });
