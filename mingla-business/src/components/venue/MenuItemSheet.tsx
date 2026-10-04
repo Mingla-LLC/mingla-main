@@ -46,13 +46,10 @@ import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
-import {
-  formatCurrency,
-  majorFromMinor,
-  normalizeCurrency,
-} from "../../utils/currency";
+import { formatCurrency, normalizeCurrency } from "../../utils/currency";
 import type { MenuItem } from "../../services/menusService";
 import {
+  formatMenuMoneyDraftFromMinor,
   menuMoneyFractionDigits,
   parseMenuMoneyDraft,
   type MenuMoneyDraftResult,
@@ -231,10 +228,11 @@ export function MenuItemSheet({
       validateMenuText("itemName", nextName).canonicalValue !== "",
     );
     clearSaveFailureRef.current?.();
-    // Hydrate the major-unit draft from stored minor cents (currency-aware).
+    // Hydrate the major-unit draft from stored minor cents (currency-aware),
+    // keeping the currency's full fraction digits on reopen (#3655 Ep18).
     setPriceDraft(
       item?.priceCents != null && item.priceCents >= 0
-        ? String(majorFromMinor(item.priceCents, code))
+        ? formatMenuMoneyDraftFromMinor(item.priceCents, code)
         : "",
     );
     setIsAvailable(item?.isAvailable ?? true);
@@ -242,7 +240,7 @@ export function MenuItemSheet({
     setPrepStation(item?.prepStation ?? null);
     setCostDraft(
       item?.costCents != null && item.costCents >= 0
-        ? String(majorFromMinor(item.costCents, code))
+        ? formatMenuMoneyDraftFromMinor(item.costCents, code)
         : "",
     );
   }, [visible, item, code]);
@@ -318,11 +316,11 @@ export function MenuItemSheet({
     const baseDescription = item?.description ?? "";
     const basePrice =
       item?.priceCents != null && item.priceCents >= 0
-        ? String(majorFromMinor(item.priceCents, code))
+        ? formatMenuMoneyDraftFromMinor(item.priceCents, code)
         : "";
     const baseCost =
       item?.costCents != null && item.costCents >= 0
-        ? String(majorFromMinor(item.costCents, code))
+        ? formatMenuMoneyDraftFromMinor(item.costCents, code)
         : "";
     const baseAvailable = item?.isAvailable ?? true;
     const baseAllowsNotes = item?.allowsNotes ?? true;

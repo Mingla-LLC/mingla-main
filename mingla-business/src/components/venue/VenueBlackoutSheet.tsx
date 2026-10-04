@@ -7,7 +7,7 @@
  * All Pressables carry a11y labels (I-39).
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 // ORCH-1193 [sheet-cutoff]: body ScrollView via SmartScrollView wrapper so the
 // CTA clears the keyboard + 42dp Done bar (I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE).
@@ -97,10 +97,12 @@ export function VenueBlackoutSheet({
   const [zone, setZone] = useState<VenueTableZone | null>(null);
   const [tableId, setTableId] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
 
   useEffect(() => {
     if (!visible) {
       setConfirmDeleteOpen(false);
+      setLeaveOpen(false);
       return;
     }
     setDateStart(blackout?.dateStart ?? "");
@@ -129,6 +131,34 @@ export function VenueBlackoutSheet({
     (appliesTo === "table" && tableId !== null);
   const canSave = rangeValid && scopeValid && !saving;
 
+  // #3655 — blackout sheet used to discard dirty edits on drag-close with no prompt.
+  const formDirty = useMemo((): boolean => {
+    if (!visible) return false;
+    const baseStart = blackout?.dateStart ?? "";
+    const baseEnd = blackout?.dateEnd ?? "";
+    const baseReason = blackout?.reason ?? "";
+    const baseApplies = blackout?.appliesTo ?? "all";
+    const baseZone = blackout?.zone ?? null;
+    const baseTable = blackout?.tableId ?? null;
+    return (
+      dateStart !== baseStart ||
+      dateEnd !== baseEnd ||
+      reason !== baseReason ||
+      appliesTo !== baseApplies ||
+      zone !== baseZone ||
+      tableId !== baseTable
+    );
+  }, [
+    visible,
+    blackout,
+    dateStart,
+    dateEnd,
+    reason,
+    appliesTo,
+    zone,
+    tableId,
+  ]);
+
   const handleSave = useCallback((): void => {
     if (!canSave) return;
     onSave({
@@ -152,11 +182,34 @@ export function VenueBlackoutSheet({
     tableId,
   ]);
 
+  const handleClose = useCallback((): void => {
+    if (deleting || saving) return;
+    if (formDirty) {
+      setLeaveOpen(true);
+      return;
+    }
+    onClose();
+  }, [deleting, formDirty, onClose, saving]);
+
+  const handleLeaveDiscard = useCallback((): void => {
+    setLeaveOpen(false);
+    onClose();
+  }, [onClose]);
+
+  const handleLeaveSave = useCallback(async (): Promise<void> => {
+    if (!canSave) throw new Error("invalid");
+    setLeaveOpen(false);
+    handleSave();
+  }, [canSave, handleSave]);
+
   return (
     <Sheet
       visible={visible}
-      onClose={onClose}
+      onClose={handleClose}
       snapPoint={0.75}
+      dismissDisabled={saving || deleting}
+      dismissGuard={() => formDirty && !saving && !deleting}
+      onRequestClose={handleClose}
       testID={testID ?? "venue-blackout-sheet"}
     >
       <View style={styles.body}>
@@ -344,6 +397,33 @@ export function VenueBlackoutSheet({
               onDelete();
             }}
             testID="venue-blackout-delete-confirm"
+          />
+        </React.Suspense>
+      ) : null}
+
+      {leaveOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            onClose={() => setLeaveOpen(false)}
+            onConfirm={handleLeaveDiscard}
+            title={
+              isEdit ? "Save your blackout changes?" : "Save this new blackout?"
+            }
+            description={
+              isEdit
+                ? "You changed this blackout. If you leave without saving, those changes are gone."
+                : "This blackout has not been saved yet. If you leave, it will be discarded."
+            }
+            variant="leave"
+            onSave={handleLeaveSave}
+            onDiscard={handleLeaveDiscard}
+            saveDisabled={!canSave}
+            confirmLoading={saving}
+            saveTestID="venue-blackout-leave-save"
+            discardTestID="venue-blackout-leave-discard"
+            keepTestID="venue-blackout-leave-keep"
+            testID="venue-blackout-leave-dialog"
           />
         </React.Suspense>
       ) : null}

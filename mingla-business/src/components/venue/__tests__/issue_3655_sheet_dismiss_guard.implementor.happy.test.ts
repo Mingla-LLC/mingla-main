@@ -55,6 +55,25 @@ describe("#3655 SheetMobile dismissGuard", () => {
     expect(src).toContain("dismissDisabled={optionsSaving}");
   });
 
+  test("table and blackout sheets leave-guard dirty dismiss", () => {
+    const tableSrc = fs.readFileSync(
+      path.join(__dirname, "..", "VenueTableSheet.tsx"),
+      "utf8",
+    );
+    const blackoutSrc = fs.readFileSync(
+      path.join(__dirname, "..", "VenueBlackoutSheet.tsx"),
+      "utf8",
+    );
+    expect(tableSrc).toContain(
+      "dismissGuard={() => formDirty && !saving && !deleting}",
+    );
+    expect(tableSrc).toContain('testID="venue-table-leave-dialog"');
+    expect(blackoutSrc).toContain(
+      "dismissGuard={() => formDirty && !saving && !deleting}",
+    );
+    expect(blackoutSrc).toContain('testID="venue-blackout-leave-dialog"');
+  });
+
   test("tables Active/Inactive confirm announces and surfaces onError", () => {
     const src = fs.readFileSync(
       path.join(__dirname, "..", "VenueTablesModule.tsx"),
