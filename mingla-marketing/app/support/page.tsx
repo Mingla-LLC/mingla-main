@@ -73,6 +73,14 @@ export default function SupportPage() {
               </li>
               <li className="list-disc marker:text-warm/80">
                 <Link
+                  href="/organiser-terms"
+                  className="font-semibold text-warm underline-offset-4 hover:underline focus-ring"
+                >
+                  Organiser Terms
+                </Link>
+              </li>
+              <li className="list-disc marker:text-warm/80">
+                <Link
                   href="/delete-account"
                   className="font-semibold text-warm underline-offset-4 hover:underline focus-ring"
                 >

@@ -16,7 +16,7 @@ export function CutoutFooter({ surface }: { surface: CutoutSurface }) {
     { title: 'Explore', links: [{ href: '/', label: 'Home' }, { href: '/going-out', label: 'Going out' }, { href: '/cities', label: 'Cities' }] },
     { title: 'Host', links: [{ href: '/host', label: 'For Hosts' }, { href: '/tools', label: 'Free tools' }, { href: '/help', label: 'Help centre' }] },
     { title: 'Company', links: [{ href: '/about', label: 'About' }, { href: 'https://career.usemingla.com', label: 'Careers', external: true as const }] },
-    { title: 'Legal', links: [{ href: '/privacy-policy', label: 'Privacy' }, { href: '/terms-of-service', label: 'Terms' }, { href: '/support', label: 'Support' }] },
+    { title: 'Legal', links: [{ href: '/privacy-policy', label: 'Privacy' }, { href: '/terms-of-service', label: 'Terms' }, { href: '/organiser-terms', label: 'Organiser Terms' }, { href: '/support', label: 'Support' }] },
   ]
   return (
     <CutoutSection band="dark" as="div" aria-label="Footer" className="pb-10">

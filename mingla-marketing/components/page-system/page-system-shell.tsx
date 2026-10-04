@@ -44,6 +44,7 @@ export function PageSystemShell({
             <Link href="/support">Support</Link>
             <Link href="/privacy-policy">Privacy</Link>
             <Link href="/terms-of-service">Terms</Link>
+            <Link href="/organiser-terms">Organiser Terms</Link>
           </nav>
         </footer>
         <aside className="ps-review-dock" aria-label="Private page-system review" data-private-review-dock data-print-hide>

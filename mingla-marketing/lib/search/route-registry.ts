@@ -188,6 +188,14 @@ const PUBLIC_NOINDEX_ROUTES = [
   ['/internal/page-system/host-event-promoter-guide', 'page-system-host-event-promoter-guide'],
 ] as const
 
+// Draft routes are public by link but never indexed and never in the sitemap.
+// #3645 — the Organiser Terms stay draft until legal review clears them for
+// search; promoting one to search_ready is the three-place change documented
+// beside SEARCH_READY_ROUTES, not an edit here alone.
+const DRAFT_ROUTES = [
+  ['/organiser-terms', 'organiser-terms'],
+] as const
+
 const CORE_SEARCH_READY_ROUTES = Object.values(CORE_PAGES)
   .filter((record) => record.lifecycle === 'search_ready')
   .map((record) => ({
@@ -292,6 +300,11 @@ export const ROUTE_REGISTRY: readonly RouteContract[] = [
     id,
     match: { type: 'prefix' as const, pathname },
     lifecycle: 'public_noindex' as const,
+  })),
+  ...DRAFT_ROUTES.map(([pathname, id]) => ({
+    id,
+    match: { type: 'exact' as const, pathname },
+    lifecycle: 'draft' as const,
   })),
   ...CITY_ROUTE_CONTRACTS,
   ...HELP_ROUTE_CONTRACTS,
