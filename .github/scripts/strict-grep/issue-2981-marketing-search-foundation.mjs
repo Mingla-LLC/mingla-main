@@ -32,6 +32,8 @@ const SEARCH_READY = [
   '/support',
   '/privacy-policy',
   '/terms-of-service',
+  // #3645 — promoted from draft after legal review.
+  '/organiser-terms',
 ]
 
 const PUBLIC_NOINDEX = [
@@ -70,6 +72,7 @@ const SEARCH_PAGE_FILES = new Map([
   ['/support', 'mingla-marketing/app/support/page.tsx'],
   ['/privacy-policy', 'mingla-marketing/app/privacy-policy/page.tsx'],
   ['/terms-of-service', 'mingla-marketing/app/terms-of-service/page.tsx'],
+  ['/organiser-terms', 'mingla-marketing/app/organiser-terms/page.tsx'],
 ])
 
 const NOINDEX_PAGE_FILES = new Map([
