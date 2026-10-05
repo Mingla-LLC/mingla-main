@@ -1039,6 +1039,85 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'build-your-menu',
+    episode: 18,
+    title: 'Build your menu',
+    blurb:
+      'Build a venue menu in Mingla Host: categories, dishes with a guest price and a private cost, choices, a service window and a cheaper smaller portion, then reorder, 86 a dish and check the public menu.',
+    duration: '4:03',
+    durationIso: 'PT4M3S',
+    chapter: 'creating',
+    intents: ['Run a venue'],
+    surfaces: ['Web', 'iOS'],
+    bambooEntryId: '__BAMBOO_ENTRY_ID__',
+    uploadedAt: '2026-10-05',
+    // Nothing is burned into this render, so the reviewed sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Open the Menu tab',
+        body:
+          'Open Lantern Room in Venue Hub and move along the tabs to Menu. Evening Plates is already on the menu; tap Add a category to start a new one.',
+      },
+      {
+        title: 'Add a Mains category',
+        body:
+          'Name the category Mains, add the line guests see under it, then choose Add category. Mains now sits on your menu.',
+      },
+      {
+        title: 'Add a dish with a price and a private cost',
+        body:
+          'In Mains, tap Add item. Name the dish Lantern Burger and set the guest price to $22. Then add what the dish costs you: only you see it, guests never do.',
+      },
+      {
+        title: 'Allow notes and choose where it is made',
+        body:
+          'Turn on Let guests add a note, choose Kitchen under Where it is made, and save. Lantern Burger now shows at $22.00 in Mains.',
+      },
+      {
+        title: 'Add a required choice',
+        body:
+          'Edit the burger and add a choice. Ask How should we cook it?, make it Pick one and Required, add three ways to cook it, then add the group.',
+      },
+      {
+        title: 'Add optional add-ons with their own prices',
+        body:
+          'Add a second group called Add-ons. Make it Pick several and optional, up to three. Each add-on can carry its own price, such as Bacon +$3 or Avocado +$3. Both groups are saved on the one dish.',
+      },
+      {
+        title: 'Give a category a service window',
+        body:
+          'Open Late Bites and set its service window to 22:00–23:00, every day.',
+      },
+      {
+        title: 'Let a smaller portion cost less',
+        body:
+          'On the Hibiscus Spritz, add a Make it group. A smaller portion can cost less: type a minus. Zero-proof is entered as -4, so it costs four dollars less.',
+      },
+      {
+        title: 'Build the rest of the menu and put it in order',
+        body:
+          'Build the other categories the same way: small plates, mains with sides or a meal option, late bites with a heat level, desserts, and drinks with a spirit or a size. Put your categories in order, move a dish with the arrows and wait for Order saved.',
+      },
+      {
+        title: 'Mark a dish 86',
+        body:
+          'Mark a dish 86\'d and it disappears from your public menu. In the video the Palm Wine Margarita is 86\'d and no longer shows under Cocktails & Drinks.',
+      },
+      {
+        title: 'Check your public menu',
+        body:
+          'Ordering through Mingla is off by default, and then your public menu shows your dishes, their descriptions and prices. Choices are shown to guests only when ordering is on. With ordering switched on for the demo, a guest picks medium rare, bacon and avocado, a required choice must be picked before a dish can be added, and the burger comes to $28 with its add-ons.',
+      },
+      {
+        title: 'Do the same on desktop',
+        body:
+          'Everything also works on desktop at host.usemingla.com. Open Menu, edit a dish to change its price, cost and choices, and check the public menu with ordering off and on.',
+        links: [{ label: 'host.usemingla.com', href: 'https://host.usemingla.com' }],
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>

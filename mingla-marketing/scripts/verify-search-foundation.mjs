@@ -51,6 +51,7 @@ const SEARCH_READY_PATHS = [
   '/help/create-a-recurring-event-in-nigeria',
   '/help/create-and-submit-your-venue',
   '/help/polish-your-listing-and-go-live',
+  '/help/build-your-menu',
 ]
 
 const releaseRouteScope = JSON.parse(
@@ -90,6 +91,7 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/help/create-a-recurring-event-in-nigeria',
   '/help/create-and-submit-your-venue',
   '/help/polish-your-listing-and-go-live',
+  '/help/build-your-menu',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [
