@@ -33,6 +33,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 import { BrandStripeCountryPicker } from "./BrandStripeCountryPicker";
+import { MinglaToSAcceptanceGate } from "../onboarding/MinglaToSAcceptanceGate";
 import { BusinessAppDownloadCta } from "../invite/BusinessAppDownloadCta";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -50,6 +51,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import {
   CURRENT_MINGLA_TOS_VERSION,
+  ORGANISER_TERMS_URL,
   useAcceptMinglaToS,
 } from "../../hooks/useMinglaToSAcceptance";
 import { brandStripeStatusKeys } from "../../hooks/useBrandStripeStatus";
@@ -68,7 +70,7 @@ import {
 } from "../../utils/bankConnectRail";
 import { isInviteFunnelValue } from "../../utils/inviteFunnelSignal";
 
-const TERMS_URL = "https://www.usemingla.com/terms-of-service/" as const;
+const TERMS_URL = ORGANISER_TERMS_URL;
 const PAYSTACK_PICKER_OPTIONS = [
   {
     code: "NG",
@@ -153,6 +155,9 @@ export default function BrandBankConnectBody(): React.ReactElement {
   const [selectedProvider, setSelectedProvider] =
     useState<BankConnectProvider>("stripe");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // #3645 PR11c — Organiser Terms must pass before Paystack bank form (Stripe
+  // path accepts via clickwrap inside handleStartStripe).
+  const [tosPassed, setTosPassed] = useState(false);
   // #948 W4 — the two Skip choices stay hidden until "Skip for now" is pressed,
   // so the primary "Add bank details" CTA keeps bank-first emphasis.
   const [skipChoicesOpen, setSkipChoicesOpen] = useState(false);
@@ -219,6 +224,10 @@ export default function BrandBankConnectBody(): React.ReactElement {
     setSelectedCountry(next.countryCode);
     setSelectedProvider(next.provider);
     setSubmitError(null);
+    // Re-prompt Organiser Terms if the host leaves and re-enters Paystack.
+    if (next.provider !== "paystack") {
+      setTosPassed(false);
+    }
   }, []);
 
   const handlePaystackConnected = useCallback((): void => {
@@ -276,9 +285,13 @@ export default function BrandBankConnectBody(): React.ReactElement {
   const handleOpenTerms = useCallback((): void => {
     Linking.openURL(TERMS_URL).catch(() => {
       setSubmitError(
-        "We couldn't open the Business Terms. Please try again in a moment.",
+        "We couldn't open the Organiser Terms. Please try again in a moment.",
       );
     });
+  }, []);
+
+  const handleTosPassed = useCallback((): void => {
+    setTosPassed(true);
   }, []);
 
   const loading =
@@ -421,13 +434,30 @@ export default function BrandBankConnectBody(): React.ReactElement {
           />
 
           {selectedProvider === "paystack" ? (
-            <BrandPaystackOnboardView
-              brandId={brand.id}
-              brandName={brand.displayName}
-              mode="create"
-              onConnected={handlePaystackConnected}
-              onCancel={(): void => handleCountryChange("GB")}
-            />
+            <>
+              {brand !== null && user !== null ? (
+                <MinglaToSAcceptanceGate
+                  brandId={brand.id}
+                  userId={user.id}
+                  onPassed={handleTosPassed}
+                  subtitle="A quick read before you connect your Nigerian bank."
+                />
+              ) : null}
+              {tosPassed ? (
+                <BrandPaystackOnboardView
+                  brandId={brand.id}
+                  brandName={brand.displayName}
+                  mode="create"
+                  onConnected={handlePaystackConnected}
+                  onCancel={(): void => handleCountryChange("GB")}
+                />
+              ) : (
+                <Text style={styles.body}>
+                  Accept the Organiser Terms to continue with Paystack bank
+                  setup.
+                </Text>
+              )}
+            </>
           ) : (
             <>
               <GlassCard
@@ -480,12 +510,12 @@ export default function BrandBankConnectBody(): React.ReactElement {
               <Pressable
                 onPress={handleOpenTerms}
                 accessibilityRole="link"
-                accessibilityLabel="Open Mingla Host Terms"
+                accessibilityLabel="Open Mingla Organiser Terms"
                 style={styles.legalPressable}
               >
                 <Text style={styles.legal}>
                   By connecting your bank you agree to Mingla{"’"}s{" "}
-                  <Text style={styles.legalLink}>Business Terms</Text>. Powered
+                  <Text style={styles.legalLink}>Organiser Terms</Text>. Powered
                   by Stripe — your data is encrypted.
                 </Text>
               </Pressable>

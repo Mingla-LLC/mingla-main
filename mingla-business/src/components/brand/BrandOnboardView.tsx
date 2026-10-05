@@ -722,7 +722,10 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
 
   // META-ORCH-1076 — Nigeria selected: render the Paystack bank-details form
   // inline (instant). "Choose a different country" returns to the picker.
-  if (brand !== null && paystackSelected) {
+  // #3645 PR11c — Paystack path requires Organiser Terms first (same gate as
+  // Stripe). Until tosPassed, fall through to the idle body so the gate sheet
+  // can show; only then enter the Nigeria bank form.
+  if (brand !== null && paystackSelected && tosPassed) {
     const backToPicker = (): void => {
       setCountryTouched(true);
       setReopenPickerOnReturn(true);
@@ -878,11 +881,18 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
             When accepted (or on mount if previously accepted), fires
             handleTosPassed and the sheet stays hidden. The "Set up payments"
             CTA below is gated on `tosPassed`. */}
-        {viewState === "idle" && brand !== null && user !== null ? (
+        {(viewState === "idle" || (paystackSelected && !tosPassed)) &&
+        brand !== null &&
+        user !== null ? (
           <MinglaToSAcceptanceGate
             brandId={brand.id}
             userId={user.id}
             onPassed={handleTosPassed}
+            subtitle={
+              paystackSelected
+                ? "A quick read before you connect your Nigerian bank."
+                : "A quick read before you sell or connect payouts."
+            }
           />
         ) : null}
 

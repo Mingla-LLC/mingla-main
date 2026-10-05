@@ -225,11 +225,14 @@ describe("#948 W2 implementor — production route wiring", () => {
     expect(countryPickerSource).toContain('"Change"');
   });
 
-  test("new route uses clickwrap orchestration without the blocking terms gate", () => {
+  test("Stripe path uses clickwrap; Paystack path opens Organiser Terms gate", () => {
     expect(routeSource).toContain("startStripeWebBankConnect({");
     expect(routeSource).toContain("CURRENT_MINGLA_TOS_VERSION");
     expect(routeSource).toContain("By connecting your bank you agree");
-    expect(routeSource).not.toContain("MinglaToSAcceptanceGate");
+    expect(routeSource).toContain("ORGANISER_TERMS_URL");
+    expect(routeSource).toContain("MinglaToSAcceptanceGate");
+    expect(routeSource).toContain('selectedProvider === "paystack"');
+    expect(routeSource).toContain("tosPassed");
   });
 
   test("route shell lazily loads the full body while native redirects to the legacy owner", () => {
