@@ -3,6 +3,8 @@
  *
  * Fails on product revert because the category sheet returns to plain Input
  * fields and the populated category card loses its service-window summary.
+ *
+ * [TEST-MOD-APPROVED #3655] Set times on Start advances to End (Episode 18).
  */
 
 import React from "react";
@@ -217,12 +219,26 @@ describe("#3565 menu service times", () => {
     call(picker, "onChange", { type: "set" }, new Date(2026, 0, 1, 17, 0));
     call(byTestID("menu-category-time-picker-done"), "onPress");
 
-    call(byTestID("menu-category-window-end"), "onPress");
-    picker = tree.root.findByProps({
-      testID: "menu-category-native-time-picker",
-    });
+    // Set times on Start advances to End — dock stays up; start is committed.
+    expect(
+      tree.root.findAllByProps({ testID: "menu-category-time-picker-dock" })
+        .length,
+    ).toBeGreaterThan(0);
+    expect(
+      String(byTestID("menu-category-window-start").props.accessibilityLabel),
+    ).toMatch(/^Service start time, /);
+    expect(
+      String(byTestID("menu-category-window-start").props.accessibilityLabel),
+    ).not.toBe("Service start time, not set");
+    expect(byTestID("menu-category-window-end").props.accessibilityLabel).toBe(
+      "Service end time, not set",
+    );
+    picker = byTestID("menu-category-native-time-picker");
     call(picker, "onChange", { type: "set" }, new Date(2026, 0, 1, 22, 30));
     call(byTestID("menu-category-time-picker-done"), "onPress");
+    expect(
+      tree.root.findAllByProps({ testID: "menu-category-time-picker-dock" }),
+    ).toHaveLength(0);
 
     expect(copy(byTestID("menu-category-window-summary"))).toBe(
       "17:00–22:30 · every day",

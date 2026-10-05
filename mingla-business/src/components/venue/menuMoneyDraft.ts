@@ -1,4 +1,8 @@
-import { minorFromMajor, normalizeCurrency } from "../../utils/currency";
+import {
+  majorFromMinor,
+  minorFromMajor,
+  normalizeCurrency,
+} from "../../utils/currency";
 
 const MAX_MENU_MONEY_CENTS = 100_000_000;
 const MAX_MENU_MONEY_CENTS_TEXT = String(MAX_MENU_MONEY_CENTS);
@@ -22,6 +26,21 @@ interface MoneyParts {
  */
 export const menuMoneyFractionDigits = (currencyCode: string): 0 | 2 =>
   minorFromMajor(1, normalizeCurrency(currencyCode)) === 1 ? 0 : 2;
+
+/**
+ * Hydrate a Price/Cost field from stored minor units with the currency's full
+ * fraction digits (#3655 Episode 18). `String(majorFromMinor(...))` drops
+ * trailing zeroes ("3.1", "12") and confuses owners on reopen.
+ */
+export const formatMenuMoneyDraftFromMinor = (
+  cents: number,
+  currencyCode: string,
+): string => {
+  const scale = menuMoneyFractionDigits(currencyCode);
+  const major = majorFromMinor(cents, currencyCode);
+  if (scale === 0) return String(Math.trunc(major));
+  return major.toFixed(scale);
+};
 
 const splitMoneyDraft = (draft: string): MoneyParts | null => {
   if (/^\d+$/.test(draft)) {

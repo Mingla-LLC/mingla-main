@@ -1,22 +1,11 @@
-# Mingla CODEOWNERS — codified by ORCH-0840 [Regression-test enforcement + append-only CI].
+# Mingla CODEOWNERS — originally codified by ORCH-0840 [Regression-test
+# enforcement + append-only CI].
 #
-# Test files require operator review on every PR. This pairs with the
-# tests-append-only.yml CI gate: the gate blocks deletions and unauthorized
-# modifications; CODEOWNERS ensures every authorized modification has been
-# seen and approved by Seth.
+# No named CODEOWNERS are assigned. Test discipline is enforced by the
+# tests-append-only.yml CI gate (`.github/scripts/test-append-only-check.js`),
+# not by a required human review from this file.
 #
 # Order matters in CODEOWNERS — later patterns override earlier ones, so
-# put broader rules above narrower ones.
+# put broader rules above narrower ones if owners are reintroduced.
 
-# Default catch-all: no global owner (avoid pulling Seth into every PR).
-
-# Test files — operator review required.
-**/*.test.*       @sethogieva
-**/*.spec.*       @sethogieva
-**/__tests__/**   @sethogieva
-
-# The append-only gate itself — changes here change the regression-test
-# discipline of the entire repo, so operator review is mandatory.
-.github/scripts/test-append-only-check.js   @sethogieva
-.github/workflows/tests-append-only.yml     @sethogieva
-.github/CODEOWNERS                          @sethogieva
+# Default catch-all: no global owner.

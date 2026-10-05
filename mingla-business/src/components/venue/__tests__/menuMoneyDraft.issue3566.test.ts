@@ -70,11 +70,10 @@ import {
 } from "../MenuItemSheet";
 // eslint-disable-next-line import/first
 import {
+  formatMenuMoneyDraftFromMinor,
   menuMoneyFractionDigits,
   parseMenuMoneyDraft,
 } from "../menuMoneyDraft";
-// eslint-disable-next-line import/first
-import { majorFromMinor } from "../../../utils/currency";
 // eslint-disable-next-line import/first
 import type { MenuItem } from "../../../services/menusService";
 // eslint-disable-next-line import/first
@@ -286,19 +285,23 @@ describe("parseMenuMoneyDraft positive grammar", () => {
   });
 });
 
+// [TEST-MOD-APPROVED #3655] hydrate keeps full fraction digits (Ep18 reopen).
 test.each([
-  [0, "USD"],
-  [1, "USD"],
-  [1250, "USD"],
-  [100_000_000, "USD"],
-  [0, "JPY"],
-  [1, "JPY"],
-  [1250, "JPY"],
-  [100_000_000, "JPY"],
+  [0, "USD", "0.00"],
+  [1, "USD", "0.01"],
+  [310, "USD", "3.10"],
+  [1200, "USD", "12.00"],
+  [1250, "USD", "12.50"],
+  [100_000_000, "USD", "1000000.00"],
+  [0, "JPY", "0"],
+  [1, "JPY", "1"],
+  [1250, "JPY", "1250"],
+  [100_000_000, "JPY", "100000000"],
 ])(
-  "stored %i minor units in %s hydrate, reparse, and publicly format without drift",
-  (storedCents, currency) => {
-    const draft = String(majorFromMinor(storedCents, currency));
+  "stored %i minor units in %s hydrate as %s, reparse, and publicly format without drift",
+  (storedCents, currency, expectedDraft) => {
+    const draft = formatMenuMoneyDraftFromMinor(storedCents, currency);
+    expect(draft).toBe(expectedDraft);
     const reparsed = parseMenuMoneyDraft(draft, currency);
     expect(reparsed).toEqual({ kind: "valid", cents: storedCents });
     if (reparsed.kind === "valid") {
@@ -347,8 +350,9 @@ test("edit hydration resaves representative stored cents unchanged", async () =>
   };
   const tree = await mountSheet({ item, onSave });
 
+  // [TEST-MOD-APPROVED #3655] full fraction digits on reopen (Ep18).
   expect(byTestId(tree, "menu-item-price").props.value).toBe("0.01");
-  expect(byTestId(tree, "menu-item-cost").props.value).toBe("1000000");
+  expect(byTestId(tree, "menu-item-cost").props.value).toBe("1000000.00");
   await pressSave(tree);
 
   expect(onSave).toHaveBeenCalledTimes(1);

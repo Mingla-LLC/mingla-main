@@ -4,6 +4,8 @@
  * The component checks below drive the real MenuItemSheet. Only its heavy leaf
  * controls are reduced to host probes, so draft ownership, validation, error
  * rendering, button gating, and the callback boundary remain production code.
+ *
+ * [TEST-MOD-APPROVED #3655] hydrate pins full fraction digits on reopen (Ep18).
  */
 
 import fs from "node:fs";
@@ -375,7 +377,7 @@ test("edit flow cannot leak signed Price or over-max Cost, then recovers exactly
   expect({
     price: lastNode(editor.tree, "menu-item-price").props.value,
     cost: lastNode(editor.tree, "menu-item-cost").props.value,
-  }).toEqual({ price: "14.9", cost: "7" });
+  }).toEqual({ price: "14.90", cost: "7.00" });
 
   await editor.enter("menu-item-price", "-0");
   await editor.enter("menu-item-cost", "1,000,000.01");

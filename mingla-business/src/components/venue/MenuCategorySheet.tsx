@@ -378,13 +378,24 @@ export function MenuCategorySheet({
     [pickerMode, commitTimePickerValue],
   );
 
-  const closeTimePicker = useCallback((): void => {
+  /**
+   * #3655 / Episode 18 — "Set times" on Start advances to End (chevron step).
+   * Only End (or a second press after both are set via End) dismisses the dock.
+   * Closing from Start used to mark both fields incomplete before the owner
+   * could pick an end time.
+   */
+  const handleSetTimes = useCallback((): void => {
     if (pickerMode !== null && tempPickerValue !== null) {
       commitTimePickerValue(pickerMode, tempPickerValue);
     }
+    if (pickerMode === "start") {
+      setTempPickerValue(dateFromHhmm(windowEnd, "17:00"));
+      setPickerMode("end");
+      return;
+    }
     setPickerMode(null);
     setTempPickerValue(null);
-  }, [pickerMode, tempPickerValue, commitTimePickerValue]);
+  }, [pickerMode, tempPickerValue, commitTimePickerValue, windowEnd]);
 
   const clearTimes = useCallback((): void => {
     onClearSaveFailure?.();
@@ -720,7 +731,7 @@ export function MenuCategorySheet({
                 variant="step"
                 size="md"
                 trailingIcon="chevR"
-                onPress={closeTimePicker}
+                onPress={handleSetTimes}
                 testID="menu-category-time-picker-done"
               />
             </View>

@@ -92,10 +92,14 @@ export function VenueTableSheet({
 }: VenueTableSheetProps): React.ReactElement {
   const isEdit = table !== null;
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
+  const [leaveOpen, setLeaveOpen] = useState<boolean>(false);
 
-  // Close the confirm dialog whenever the sheet (re)opens for a different table.
+  // Close overlays whenever the sheet (re)opens for a different table.
   useEffect(() => {
-    if (!visible) setConfirmDeleteOpen(false);
+    if (!visible) {
+      setConfirmDeleteOpen(false);
+      setLeaveOpen(false);
+    }
   }, [visible]);
 
   const showDelete = isEdit && canDelete && onDelete !== undefined;
@@ -129,6 +133,47 @@ export function VenueTableSheet({
     setPolicy(table?.reservationPolicy ?? "reservable");
     setNotes(table?.notes ?? "");
   }, [visible, table]);
+
+  // #3655 — table sheet used to discard dirty edits on drag-close with no prompt.
+  const formDirty = useMemo((): boolean => {
+    if (!visible) return false;
+    const baseName = table?.name ?? "";
+    const baseCapacity =
+      table?.capacity != null ? String(table.capacity) : "";
+    const baseMin = table?.minParty != null ? String(table.minParty) : "";
+    const baseMax = table?.maxParty != null ? String(table.maxParty) : "";
+    const baseZone = table?.zone ?? null;
+    const baseSeating = table?.seatingType ?? null;
+    const baseCombinable = table?.combinable ?? false;
+    const baseAccessible = table?.accessible ?? false;
+    const basePolicy = table?.reservationPolicy ?? "reservable";
+    const baseNotes = table?.notes ?? "";
+    return (
+      name !== baseName ||
+      capacity !== baseCapacity ||
+      minParty !== baseMin ||
+      maxParty !== baseMax ||
+      zone !== baseZone ||
+      seatingType !== baseSeating ||
+      combinable !== baseCombinable ||
+      accessible !== baseAccessible ||
+      policy !== basePolicy ||
+      notes !== baseNotes
+    );
+  }, [
+    visible,
+    table,
+    name,
+    capacity,
+    minParty,
+    maxParty,
+    zone,
+    seatingType,
+    combinable,
+    accessible,
+    policy,
+    notes,
+  ]);
 
   const capacityNum = parseIntOrNull(capacity);
   const maxPartyNum = parseIntOrNull(maxParty);
@@ -181,11 +226,34 @@ export function VenueTableSheet({
 
   const snap = useMemo<number>(() => 0.9, []);
 
+  const handleClose = useCallback((): void => {
+    if (deleting || saving) return;
+    if (formDirty) {
+      setLeaveOpen(true);
+      return;
+    }
+    onClose();
+  }, [deleting, formDirty, onClose, saving]);
+
+  const handleLeaveDiscard = useCallback((): void => {
+    setLeaveOpen(false);
+    onClose();
+  }, [onClose]);
+
+  const handleLeaveSave = useCallback(async (): Promise<void> => {
+    if (!canSave) throw new Error("invalid");
+    setLeaveOpen(false);
+    handleSave();
+  }, [canSave, handleSave]);
+
   return (
     <Sheet
       visible={visible}
-      onClose={onClose}
+      onClose={handleClose}
       snapPoint={snap}
+      dismissDisabled={saving || deleting}
+      dismissGuard={() => formDirty && !saving && !deleting}
+      onRequestClose={handleClose}
       testID={testID ?? "venue-table-sheet"}
     >
       <View style={styles.body}>
@@ -361,6 +429,29 @@ export function VenueTableSheet({
           confirmTestID="venue-table-delete-confirm"
           cancelTestID="venue-table-delete-cancel"
           testID="venue-table-delete-dialog"
+        />
+      ) : null}
+
+      {leaveOpen ? (
+        <ConfirmDialog
+          visible
+          onClose={() => setLeaveOpen(false)}
+          onConfirm={handleLeaveDiscard}
+          title={isEdit ? "Save your table changes?" : "Save this new table?"}
+          description={
+            isEdit
+              ? "You changed this table. If you leave without saving, those changes are gone."
+              : "This table has not been saved yet. If you leave, it will be discarded."
+          }
+          variant="leave"
+          onSave={handleLeaveSave}
+          onDiscard={handleLeaveDiscard}
+          saveDisabled={!canSave}
+          confirmLoading={saving}
+          saveTestID="venue-table-leave-save"
+          discardTestID="venue-table-leave-discard"
+          keepTestID="venue-table-leave-keep"
+          testID="venue-table-leave-dialog"
         />
       ) : null}
     </Sheet>

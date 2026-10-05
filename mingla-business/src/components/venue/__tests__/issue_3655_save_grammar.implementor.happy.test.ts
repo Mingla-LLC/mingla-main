@@ -25,6 +25,22 @@ describe("#3655 save grammar", () => {
     );
     expect(src).toContain('label="Set times"');
     expect(src).toContain('variant="step"');
+    // Episode 18 — Start advances to End; only End dismisses the dock.
+    expect(src).toContain("handleSetTimes");
+    expect(src).toContain('if (pickerMode === "start")');
+    expect(src).toContain('setPickerMode("end")');
+  });
+
+  test("menu money hydrate keeps full fraction digits", () => {
+    const money = fs.readFileSync(
+      path.join(root, "menuMoneyDraft.ts"),
+      "utf8",
+    );
+    const item = fs.readFileSync(path.join(root, "MenuItemSheet.tsx"), "utf8");
+    expect(money).toContain("formatMenuMoneyDraftFromMinor");
+    expect(money).toContain("major.toFixed(scale)");
+    expect(item).toContain("formatMenuMoneyDraftFromMinor");
+    expect(item).not.toContain("String(majorFromMinor");
   });
 
   test("order pad Done is secondary; Send actions carry send icon", () => {
