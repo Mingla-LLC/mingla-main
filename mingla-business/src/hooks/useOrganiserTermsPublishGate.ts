@@ -6,11 +6,13 @@
  * missing, the gate sheet opens and the caller should toast
  * ORGANISER_TERMS_PUBLISH_RETRY_TOAST so the host taps Publish again after
  * accepting (avoids auto-reentrancy across confirm dialogs / intel gates).
+ *
+ * MinglaToSAcceptanceGate is required lazily so wizard suites that do not open
+ * the gate never load expo-haptics through this module.
  */
 
 import React, { useCallback, useState } from "react";
 
-import { MinglaToSAcceptanceGate } from "../components/onboarding/MinglaToSAcceptanceGate";
 import { useAuth } from "../context/AuthContext";
 import {
   isCurrentMinglaToSAccepted,
@@ -60,15 +62,20 @@ export function useOrganiserTermsPublishGate(
     setGateOpen(false);
   }, []);
 
-  const gateElement =
-    gateOpen && resolvedBrandId !== null && userId !== null
-      ? React.createElement(MinglaToSAcceptanceGate, {
-          brandId: resolvedBrandId,
-          userId,
-          onPassed: handlePassed,
-          subtitle: "A quick read before you publish a paid listing.",
-        })
-      : null;
+  let gateElement: React.ReactElement | null = null;
+  if (gateOpen && resolvedBrandId !== null && userId !== null) {
+    // Lazy require keeps expo-haptics out of wizard suites that never open the gate.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { MinglaToSAcceptanceGate } = require(
+      "../components/onboarding/MinglaToSAcceptanceGate",
+    ) as typeof import("../components/onboarding/MinglaToSAcceptanceGate");
+    gateElement = React.createElement(MinglaToSAcceptanceGate, {
+      brandId: resolvedBrandId,
+      userId,
+      onPassed: handlePassed,
+      subtitle: "A quick read before you publish a paid listing.",
+    });
+  }
 
   return { blockPaidPublishUntilAccepted, gateElement };
 }

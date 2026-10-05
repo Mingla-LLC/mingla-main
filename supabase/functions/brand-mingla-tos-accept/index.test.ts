@@ -30,3 +30,13 @@ Deno.test("brand-mingla-tos-accept audit failure does not make accepted ToS fail
   assertEquals(source.includes("metadata:"), false);
   assertStringIncludes(source, 'target_type: "brand_team_members"');
 });
+
+Deno.test("brand-mingla-tos-accept allows event_manager+ (paid-publish audience)", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./index.ts", import.meta.url),
+  );
+
+  assertStringIncludes(source, "biz_brand_effective_rank");
+  assertStringIncludes(source, "RANK_EVENT_MANAGER");
+  assertEquals(source.includes("requirePaymentsManager"), false);
+});

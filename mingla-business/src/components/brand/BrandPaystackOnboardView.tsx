@@ -68,6 +68,7 @@ import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";
 // #1890 — whether the Done bar is actually IN this raw <Modal>'s own native
 // window, from #1841's measurement rather than from assumption.
 import { DONE_BAR_PRESENT_IN_RAW_MODAL } from "../../wrappers/keyboardClearance";
+import { MinglaToSAcceptanceGate } from "../onboarding/MinglaToSAcceptanceGate";
 
 interface Props {
   brandId: string;
@@ -95,7 +96,13 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   onCancel,
 }) => {
   const isUpdate = mode === "update";
-  const { isAuthReady } = useAuth();
+  const { isAuthReady, user } = useAuth();
+  // #3645 PR11c — Organiser Terms at the shared Paystack bank-form boundary
+  // (onboard, web bank-connect, and Payments page all render this view).
+  const [tosPassed, setTosPassed] = useState(false);
+  const handleTosPassed = useCallback((): void => {
+    setTosPassed(true);
+  }, []);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const safeArea = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
@@ -370,6 +377,27 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
 
   return (
     <GlassCard variant="elevated" padding={spacing.lg}>
+      {/* #3645 PR11c — shared Organiser Terms door for every Paystack bank form
+          site (BrandOnboardView, BrandBankConnectBody, BrandPaymentsView). */}
+      {user !== null ? (
+        <MinglaToSAcceptanceGate
+          brandId={brandId}
+          userId={user.id}
+          onPassed={handleTosPassed}
+          subtitle="A quick read before you connect your Nigerian bank."
+        />
+      ) : null}
+      {!tosPassed ? (
+        <>
+          <Text style={styles.title}>
+            {isUpdate ? "Change payout bank" : "Get paid in Nigeria"}
+          </Text>
+          <Text style={styles.subtitle}>
+            Accept the Organiser Terms to continue with Paystack bank setup.
+          </Text>
+        </>
+      ) : (
+        <>
       {onCancel != null && !isUpdate ? (
         <View style={styles.backRow}>
           <Button
@@ -648,6 +676,8 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
           </View>
         </KeyboardAvoidingView>
       </Modal>
+        </>
+      )}
     </GlassCard>
   );
 };

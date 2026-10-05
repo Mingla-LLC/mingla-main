@@ -458,6 +458,7 @@ describe("#948 W2 tester — rendered route failures and races", () => {
 
   test("the legal link is accessible and the primary CTA has an explicit label", async () => {
     tree = await mountRoute();
+    // [TEST-MOD-APPROVED #3645] Host Terms → Organiser Terms label (legal rename).
     expect(
       tree.root.findByProps({
         accessibilityLabel: "Open Mingla Organiser Terms",

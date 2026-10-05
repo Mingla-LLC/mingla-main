@@ -245,6 +245,15 @@ jest.mock("../../../wrappers/useKeyboardIsVisible", () => ({
   __esModule: true,
   useKeyboardIsVisible: () => false,
 }));
+// [TEST-MOD-APPROVED #3645] settled accepted — typed-end promotion subject stays name retention.
+jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
+  useOrganiserTermsPublishGate: () => ({
+    blockPaidPublishUntilAccepted: () => false,
+    gateElement: null,
+  }),
+  ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
+    "Accept the Organiser Terms, then tap Publish again.",
+}));
 
 import EventEditRoute from "../../../../app/event/[id]/edit";
 import RsvpEditRoute from "../../../../app/rsvp/[id]/edit";

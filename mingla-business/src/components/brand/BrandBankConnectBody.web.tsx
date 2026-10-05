@@ -33,7 +33,6 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 import { BrandStripeCountryPicker } from "./BrandStripeCountryPicker";
-import { MinglaToSAcceptanceGate } from "../onboarding/MinglaToSAcceptanceGate";
 import { BusinessAppDownloadCta } from "../invite/BusinessAppDownloadCta";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -155,9 +154,6 @@ export default function BrandBankConnectBody(): React.ReactElement {
   const [selectedProvider, setSelectedProvider] =
     useState<BankConnectProvider>("stripe");
   const [submitError, setSubmitError] = useState<string | null>(null);
-  // #3645 PR11c — Organiser Terms must pass before Paystack bank form (Stripe
-  // path accepts via clickwrap inside handleStartStripe).
-  const [tosPassed, setTosPassed] = useState(false);
   // #948 W4 — the two Skip choices stay hidden until "Skip for now" is pressed,
   // so the primary "Add bank details" CTA keeps bank-first emphasis.
   const [skipChoicesOpen, setSkipChoicesOpen] = useState(false);
@@ -224,10 +220,6 @@ export default function BrandBankConnectBody(): React.ReactElement {
     setSelectedCountry(next.countryCode);
     setSelectedProvider(next.provider);
     setSubmitError(null);
-    // Re-prompt Organiser Terms if the host leaves and re-enters Paystack.
-    if (next.provider !== "paystack") {
-      setTosPassed(false);
-    }
   }, []);
 
   const handlePaystackConnected = useCallback((): void => {
@@ -288,10 +280,6 @@ export default function BrandBankConnectBody(): React.ReactElement {
         "We couldn't open the Organiser Terms. Please try again in a moment.",
       );
     });
-  }, []);
-
-  const handleTosPassed = useCallback((): void => {
-    setTosPassed(true);
   }, []);
 
   const loading =
@@ -434,30 +422,13 @@ export default function BrandBankConnectBody(): React.ReactElement {
           />
 
           {selectedProvider === "paystack" ? (
-            <>
-              {brand !== null && user !== null ? (
-                <MinglaToSAcceptanceGate
-                  brandId={brand.id}
-                  userId={user.id}
-                  onPassed={handleTosPassed}
-                  subtitle="A quick read before you connect your Nigerian bank."
-                />
-              ) : null}
-              {tosPassed ? (
-                <BrandPaystackOnboardView
-                  brandId={brand.id}
-                  brandName={brand.displayName}
-                  mode="create"
-                  onConnected={handlePaystackConnected}
-                  onCancel={(): void => handleCountryChange("GB")}
-                />
-              ) : (
-                <Text style={styles.body}>
-                  Accept the Organiser Terms to continue with Paystack bank
-                  setup.
-                </Text>
-              )}
-            </>
+            <BrandPaystackOnboardView
+              brandId={brand.id}
+              brandName={brand.displayName}
+              mode="create"
+              onConnected={handlePaystackConnected}
+              onCancel={(): void => handleCountryChange("GB")}
+            />
           ) : (
             <>
               <GlassCard

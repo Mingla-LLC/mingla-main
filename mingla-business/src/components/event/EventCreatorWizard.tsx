@@ -97,7 +97,6 @@ import {
   describeUnmappedPublishGuard,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
-import { eventDraftIsPaid } from "../offering/publishStripeReadiness";
 import {
   ORGANISER_TERMS_PUBLISH_RETRY_TOAST,
   useOrganiserTermsPublishGate,
@@ -882,11 +881,12 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     }
     // #3645 PR11c — paid listings require current Organiser Terms acceptance.
     // Free-only publishes skip. After accept, host taps Publish again.
-    if (
-      blockPaidPublishUntilAccepted(
-        eventDraftIsPaid(liveDraft.tickets),
-      )
-    ) {
+    // Paid mirror matches eventDraftIsPaid / draftEventValidation (online-sellable
+    // tickets with price > 0) without importing publishStripeReadiness here.
+    const isPaidListing = liveDraft.tickets.some(
+      (t) => !t.isFree && (t.priceGbp ?? 0) > 0,
+    );
+    if (blockPaidPublishUntilAccepted(isPaidListing)) {
       handleShowToast(ORGANISER_TERMS_PUBLISH_RETRY_TOAST);
       return;
     }

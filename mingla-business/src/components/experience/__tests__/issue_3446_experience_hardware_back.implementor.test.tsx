@@ -244,6 +244,15 @@ jest.mock("../../../hooks/useOfferingInvitePlan", () => {
   };
   return { useOfferingInvitePlanSummary: () => summary };
 });
+// [TEST-MOD-APPROVED #3645] settled accepted — hardware-back subject stays back routing.
+jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
+  useOrganiserTermsPublishGate: () => ({
+    blockPaidPublishUntilAccepted: () => false,
+    gateElement: null,
+  }),
+  ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
+    "Accept the Organiser Terms, then tap Publish again.",
+}));
 
 
 import {

@@ -225,14 +225,15 @@ describe("#948 W2 implementor — production route wiring", () => {
     expect(countryPickerSource).toContain('"Change"');
   });
 
-  test("Stripe path uses clickwrap; Paystack path opens Organiser Terms gate", () => {
+  test("Stripe path uses clickwrap; Paystack form owns Organiser Terms gate", () => {
     expect(routeSource).toContain("startStripeWebBankConnect({");
     expect(routeSource).toContain("CURRENT_MINGLA_TOS_VERSION");
     expect(routeSource).toContain("By connecting your bank you agree");
     expect(routeSource).toContain("ORGANISER_TERMS_URL");
-    expect(routeSource).toContain("MinglaToSAcceptanceGate");
     expect(routeSource).toContain('selectedProvider === "paystack"');
-    expect(routeSource).toContain("tosPassed");
+    expect(routeSource).toContain("<BrandPaystackOnboardView");
+    // Gate lives inside BrandPaystackOnboardView (shared with Payments page).
+    expect(routeBodySource).not.toContain("MinglaToSAcceptanceGate");
   });
 
   test("route shell lazily loads the full body while native redirects to the legacy owner", () => {

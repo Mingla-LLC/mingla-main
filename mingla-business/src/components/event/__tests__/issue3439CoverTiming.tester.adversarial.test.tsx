@@ -60,6 +60,17 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (name.endsWith("/brandPayout")) return { payoutGateStatus: () => "ready" };
     if (name.endsWith("/chipInPayoutReadiness")) return { isChipInPayoutReady: () => true };
     if (name.endsWith("/paidPublishGuards") || name.endsWith("/rsvpRpcFailure")) return {};
+    // [TEST-MOD-APPROVED #3645] Organiser Terms publish door — settled accepted so
+    // cover-timing assertions stay on cover alone (same pattern as invite stubs).
+    if (name.endsWith("/useOrganiserTermsPublishGate")) {
+      return {
+        useOrganiserTermsPublishGate: () => ({
+          blockPaidPublishUntilAccepted: () => false,
+          gateElement: null,
+        }),
+        ORGANISER_TERMS_PUBLISH_RETRY_TOAST: "Accept the Organiser Terms, then tap Publish again.",
+      };
+    } // [TEST-MOD-APPROVED #3645]
     if (name.endsWith("/refundPolicyTerms")) return { OfferingRefundTermsError: class extends Error {} };
     if (name.endsWith("/recurrenceRule")) return { expandRecurrenceToDates: () => [] };
     if (name === "@mingla/brand-assets") return { MINGLA_BUSINESS_LOGO: 1 };

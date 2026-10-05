@@ -153,11 +153,34 @@ describe("#3645 PR11c — gate honesty + publish wiring", () => {
     expect(experienceWizard).toContain("useOrganiserTermsPublishGate");
   });
 
-  test("Paystack onboard + web bank connect require Organiser Terms before bank form", () => {
-    expect(onboardSource).toContain("paystackSelected && tosPassed");
-    expect(onboardSource).toContain("MinglaToSAcceptanceGate");
-    expect(bankConnectSource).toContain("MinglaToSAcceptanceGate");
+  test("Paystack bank form gates Organiser Terms at BrandPaystackOnboardView (shared)", () => {
+    expect(onboardSource).toContain("paystackSelected) {");
+    expect(onboardSource).toContain("<BrandPaystackOnboardView");
+    const paystackSource = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "components",
+        "brand",
+        "BrandPaystackOnboardView.tsx",
+      ),
+      "utf8",
+    );
+    const paymentsSource = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "components",
+        "brand",
+        "BrandPaymentsView.tsx",
+      ),
+      "utf8",
+    );
+    expect(paystackSource).toContain("MinglaToSAcceptanceGate");
+    expect(paystackSource).toContain("tosPassed");
+    expect(paymentsSource).toContain("<BrandPaystackOnboardView");
     expect(bankConnectSource).toContain("ORGANISER_TERMS_URL");
-    expect(bankConnectSource).toContain("tosPassed");
   });
 });

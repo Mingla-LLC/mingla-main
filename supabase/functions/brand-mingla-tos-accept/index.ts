@@ -7,8 +7,8 @@
  * Updates `brand_team_members.mingla_tos_accepted_at = now()` and
  * `mingla_tos_version_accepted = $version` for the (user_id, brand_id) pair.
  * Authenticated only (`requireUserId`); auth role must satisfy
- * `requirePaymentsManager` (i.e., the user is a brand admin who would
- * also be eligible to start Stripe onboarding).
+ * event_manager+ via `biz_brand_effective_rank` (aligned with paid-publish
+ * RPCs). Scanners and lower ranks cannot accept.
  *
  * Audit log entry on success per I-PROPOSED-S.
  *
@@ -22,7 +22,6 @@ import {
   corsHeaders,
   isValidUuid,
   jsonResponse,
-  requirePaymentsManager,
   requireUserId,
   serviceRoleClient,
 } from "../_shared/stripeEdgeAuth.ts";
@@ -82,12 +81,25 @@ serve(async (req) => {
 
   const supabase = serviceRoleClient();
 
-  // Same gate as Stripe ops: only brand admins / finance managers / account
-  // owners can accept ToS on behalf of the brand. This prevents any
-  // non-payment-manager team member (e.g., scanner) from clicking through
-  // the gate.
-  const forbidden = await requirePaymentsManager(supabase, brandId, userId);
-  if (forbidden) return forbidden;
+  // Same gate as paid publish: event_manager+ can accept Organiser Terms for
+  // their own brand_team_members row. Payments-manager-only would permanently
+  // 403 event managers who are allowed to publish paid listings (#3645 PR11c).
+  const RANK_EVENT_MANAGER = 40;
+  const { data: callerRank, error: rankErr } = await supabase.rpc(
+    "biz_brand_effective_rank",
+    { p_brand_id: brandId, p_user_id: userId },
+  );
+  if (rankErr) {
+    console.error("[brand-mingla-tos-accept] rank lookup failed:", rankErr);
+    return jsonResponse({ error: "internal_error" }, 500);
+  }
+  const rank = typeof callerRank === "number" ? callerRank : 0;
+  if (rank < RANK_EVENT_MANAGER) {
+    return jsonResponse(
+      { error: "forbidden", detail: "permission_denied" },
+      403,
+    );
+  }
 
   const { data: existingRow, error: existingErr } = await supabase
     .from("brand_team_members")
