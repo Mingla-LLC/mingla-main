@@ -1050,7 +1050,7 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
     chapter: 'creating',
     intents: ['Run a venue'],
     surfaces: ['Web', 'iOS'],
-    bambooEntryId: '__BAMBOO_ENTRY_ID__',
+    bambooEntryId: '0_e1h5mw0g',
     uploadedAt: '2026-10-05',
     // Nothing is burned into this render, so the reviewed sidecar track is the caption.
     hasCaptions: true,
