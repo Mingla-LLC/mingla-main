@@ -99,10 +99,15 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   const { isAuthReady, user } = useAuth();
   // #3645 PR11c — Organiser Terms at the shared Paystack bank-form boundary
   // (onboard, web bank-connect, and Payments page all render this view).
+  // No signed-in user yet → skip the gate and show the existing auth/loading
+  // bank UI (same as pre-gate). Only a real userId can accept or block.
+  const userId =
+    typeof user?.id === "string" && user.id.trim().length > 0 ? user.id : null;
   const [tosPassed, setTosPassed] = useState(false);
   const handleTosPassed = useCallback((): void => {
     setTosPassed(true);
   }, []);
+  const showBankForm = userId === null || tosPassed;
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const safeArea = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
@@ -379,15 +384,15 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
     <GlassCard variant="elevated" padding={spacing.lg}>
       {/* #3645 PR11c — shared Organiser Terms door for every Paystack bank form
           site (BrandOnboardView, BrandBankConnectBody, BrandPaymentsView). */}
-      {user !== null ? (
+      {userId !== null ? (
         <MinglaToSAcceptanceGate
           brandId={brandId}
-          userId={user.id}
+          userId={userId}
           onPassed={handleTosPassed}
           subtitle="A quick read before you connect your Nigerian bank."
         />
       ) : null}
-      {!tosPassed ? (
+      {!showBankForm ? (
         <>
           <Text style={styles.title}>
             {isUpdate ? "Change payout bank" : "Get paid in Nigeria"}

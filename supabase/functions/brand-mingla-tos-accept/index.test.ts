@@ -40,3 +40,16 @@ Deno.test("brand-mingla-tos-accept allows event_manager+ (paid-publish audience)
   assertStringIncludes(source, "RANK_EVENT_MANAGER");
   assertEquals(source.includes("requirePaymentsManager"), false);
 });
+
+Deno.test("brand-mingla-tos-accept scopes read/write to the active membership row", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./index.ts", import.meta.url),
+  );
+
+  // #3622 soft-closes outgoing owners; unscoped maybeSingle errors on two rows.
+  assertStringIncludes(source, '.is("removed_at", null)');
+  assertStringIncludes(source, '.not("accepted_at", "is", null)');
+  assertStringIncludes(source, ".maybeSingle<AcceptedRow>()");
+  // Update path must not widen to soft-closed rows via .single() without filters.
+  assertEquals(source.includes(".single<AcceptedRow>()"), false);
+});

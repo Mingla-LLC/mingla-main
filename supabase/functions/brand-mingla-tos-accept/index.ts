@@ -101,11 +101,16 @@ serve(async (req) => {
     );
   }
 
+  // Active membership only (mirrors brand-stripe-onboard). Owner reassign
+  // soft-closes the old row and inserts a new active one (#3622); unscoped
+  // maybeSingle then errors on two rows and permanently blocks accept.
   const { data: existingRow, error: existingErr } = await supabase
     .from("brand_team_members")
     .select("mingla_tos_accepted_at, mingla_tos_version_accepted")
     .eq("brand_id", brandId)
     .eq("user_id", userId)
+    .is("removed_at", null)
+    .not("accepted_at", "is", null)
     .maybeSingle<AcceptedRow>();
 
   if (existingErr) {
@@ -150,8 +155,10 @@ serve(async (req) => {
     })
     .eq("brand_id", brandId)
     .eq("user_id", userId)
+    .is("removed_at", null)
+    .not("accepted_at", "is", null)
     .select("mingla_tos_accepted_at, mingla_tos_version_accepted")
-    .single<AcceptedRow>();
+    .maybeSingle<AcceptedRow>();
 
   if (updateErr) {
     console.error("[brand-mingla-tos-accept] update failed:", updateErr);

@@ -183,4 +183,33 @@ describe("#3645 PR11c — gate honesty + publish wiring", () => {
     expect(paymentsSource).toContain("<BrandPaystackOnboardView");
     expect(bankConnectSource).toContain("ORGANISER_TERMS_URL");
   });
+
+  test("acceptance read scopes to the active membership row", () => {
+    const serviceSource = readFileSync(
+      join(__dirname, "..", "..", "services", "brandMinglaToSService.ts"),
+      "utf8",
+    );
+    expect(serviceSource).toContain('.is("removed_at", null)');
+    expect(serviceSource).toContain('.not("accepted_at", "is", null)');
+  });
+
+  test("brand-paystack-onboard edge requires current Organiser Terms version", () => {
+    const paystackEdge = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "functions",
+        "brand-paystack-onboard",
+        "index.ts",
+      ),
+      "utf8",
+    );
+    expect(paystackEdge).toContain("mingla_tos_not_accepted");
+    expect(paystackEdge).toContain('CURRENT_ORGANISER_TERMS_VERSION = "1.0"');
+    expect(paystackEdge).toContain('.is("removed_at", null)');
+  });
 });
