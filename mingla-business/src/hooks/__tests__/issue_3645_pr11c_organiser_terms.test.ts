@@ -244,5 +244,24 @@ describe("#3645 PR11c — gate honesty + publish wiring", () => {
     );
     expect(stripeEdge).toContain("mingla_tos_version_accepted");
     expect(stripeEdge).toContain('CURRENT_ORGANISER_TERMS_VERSION = "1.0"');
+    const acceptEdge = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "functions",
+        "brand-mingla-tos-accept",
+        "index.ts",
+      ),
+      "utf8",
+    );
+    expect(acceptEdge).toContain("version_not_current");
+    expect(acceptEdge).toContain('CURRENT_ORGANISER_TERMS_VERSION = "1.0"');
+    expect(acceptEdge).toContain(
+      "const version = CURRENT_ORGANISER_TERMS_VERSION",
+    );
   });
 });

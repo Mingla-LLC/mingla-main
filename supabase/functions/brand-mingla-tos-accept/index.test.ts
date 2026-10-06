@@ -17,6 +17,23 @@ Deno.test("brand-mingla-tos-accept is repeat-safe after accepted state", async (
   );
 });
 
+Deno.test("brand-mingla-tos-accept pins the server-owned current Organiser Terms version", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./index.ts", import.meta.url),
+  );
+
+  // Client-supplied strings must not write arbitrary / stale versions
+  // (v3-pre-launch-placeholder must not overwrite 1.0).
+  assertStringIncludes(source, 'CURRENT_ORGANISER_TERMS_VERSION = "1.0"');
+  assertStringIncludes(source, "version_not_current");
+  assertStringIncludes(source, "current_version: CURRENT_ORGANISER_TERMS_VERSION");
+  assertStringIncludes(
+    source,
+    "requestedVersion !== CURRENT_ORGANISER_TERMS_VERSION",
+  );
+  assertStringIncludes(source, "const version = CURRENT_ORGANISER_TERMS_VERSION");
+});
+
 Deno.test("brand-mingla-tos-accept audit failure does not make accepted ToS fail", async () => {
   const source = await Deno.readTextFile(
     new URL("./index.ts", import.meta.url),

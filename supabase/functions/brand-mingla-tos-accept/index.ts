@@ -67,17 +67,34 @@ serve(async (req) => {
     }, 400);
   }
 
-  // Version is operator-controlled; UI passes the current ToS version. Reject empty.
-  const version =
+  // #3645 PR11c — version is SERVER-OWNED. Clients must send the current
+  // Organiser Terms version (app CURRENT_MINGLA_TOS_VERSION). Any other string
+  // (including the pre-PR11c `v3-pre-launch-placeholder`) is rejected so an
+  // older binary cannot stamp / downgrade a membership row and then fail the
+  // Stripe/Paystack 1.0 edge checks. Upgrade path: ship the 1.0 app (Seth
+  // release hold), then hosts re-accept through the updated gate.
+  const CURRENT_ORGANISER_TERMS_VERSION = "1.0";
+  const requestedVersion =
     typeof body.version === "string" && body.version.trim().length > 0
       ? body.version.trim()
       : null;
-  if (version === null) {
+  if (requestedVersion === null) {
     return jsonResponse(
       { error: "validation_error", detail: "version_required" },
       400,
     );
   }
+  if (requestedVersion !== CURRENT_ORGANISER_TERMS_VERSION) {
+    return jsonResponse(
+      {
+        error: "validation_error",
+        detail: "version_not_current",
+        current_version: CURRENT_ORGANISER_TERMS_VERSION,
+      },
+      409,
+    );
+  }
+  const version = CURRENT_ORGANISER_TERMS_VERSION;
 
   const supabase = serviceRoleClient();
 
