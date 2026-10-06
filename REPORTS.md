@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-06 — The Help Centre gains episode 19, a guide to building a guest list in Mingla Host on desktop web: your book in Blast › People, adding a person by hand (country before the phone number), importing a CSV with matched name, email and phone columns, a preview and a permission-to-contact confirmation before anything is added, a group picked from your book where nothing is sent on creation, and an email or SMS campaign started with that group as the audience (toward #3431, PR #3747)
 - 2026-10-05 — The Help Centre gains episode 18, a guide to building a venue menu in Mingla Host: categories, dishes with a guest price and a private cost only you see, required and optional choices, a 22:00–23:00 service window, a cheaper smaller portion (type a minus), reordering, 86'ing a dish off the public menu, and a public menu that shows dishes, descriptions and prices with ordering off by default; also works on desktop at host.usemingla.com (toward #3431, PR #3747)
 - 2026-10-04 — Menu Set times on Start advances to End, dish price/cost reopen with full decimals, and dirty table/blackout sheets ask before discarding (toward #3655, PR #3745)
 - 2026-10-04 — Host venue device gaps from the save/leave pass: blackout remove confirm presents on iOS (nested in the sheet), dirty dish sheets ask before discarding, and Availability Save shows a what-changed caption (toward #3655, PR #3744)

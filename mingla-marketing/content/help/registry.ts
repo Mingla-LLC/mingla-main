@@ -1118,6 +1118,60 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'build-your-guest-list-and-groups',
+    episode: 19,
+    title: 'Build your guest list and groups',
+    blurb:
+      'Build your guest list in Mingla Host: add a person by hand, import a CSV after checking the preview, gather people into a group, then start an email or SMS campaign to that group.',
+    duration: '1:40',
+    durationIso: 'PT1M40S',
+    chapter: 'selling',
+    intents: ['Market to customers'],
+    surfaces: ['Web'],
+    bambooEntryId: '0_r4uiil4e',
+    uploadedAt: '2026-10-06',
+    // Nothing is burned into this render, so the reviewed sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Open People in Blast',
+        body:
+          'In Blast, open People. Your book holds the people who gave your brand their details. It starts empty.',
+      },
+      {
+        title: 'Add a person by hand',
+        body:
+          'Click Add, then type their name and an email or a phone number. For a phone number, pick the country first, then type the number. Click Add person, and they are in your book.',
+      },
+      {
+        title: 'Import a CSV file',
+        body:
+          'To bring in a whole list, click Import and choose a CSV file. Mingla matches your name, email and phone columns for you. Columns it does not need are ignored.',
+      },
+      {
+        title: 'Check the preview, then import',
+        body:
+          'The preview shows what will happen before anything is added. Confirm you have permission to contact them, then import. In the video, twelve people are added and the book now has thirteen contacts.',
+      },
+      {
+        title: 'Create a group',
+        body:
+          'Groups organise people for focused campaigns. Click Create group and name it, such as Regulars. Then choose Select from Book and tick the people you want.',
+      },
+      {
+        title: 'Review and create the group',
+        body:
+          'Review the group to see how many people are in it. Nothing is sent now, and you can change the group anytime. Create the group, and it is ready.',
+      },
+      {
+        title: 'Start a campaign to the group',
+        body:
+          'On the group page, click Start campaign. The group is already the audience. Write it as an email or an SMS.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>

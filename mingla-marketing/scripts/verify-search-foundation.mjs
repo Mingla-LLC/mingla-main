@@ -52,6 +52,7 @@ const SEARCH_READY_PATHS = [
   '/help/create-and-submit-your-venue',
   '/help/polish-your-listing-and-go-live',
   '/help/build-your-menu',
+  '/help/build-your-guest-list-and-groups',
 ]
 
 const releaseRouteScope = JSON.parse(
@@ -92,6 +93,7 @@ const SITEMAP_SEARCH_READY_PATHS = [
   '/help/create-and-submit-your-venue',
   '/help/polish-your-listing-and-go-live',
   '/help/build-your-menu',
+  '/help/build-your-guest-list-and-groups',
 ]
 
 const PUBLIC_NOINDEX_PATHS = [
