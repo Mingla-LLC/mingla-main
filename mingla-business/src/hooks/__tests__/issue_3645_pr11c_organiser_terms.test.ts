@@ -151,6 +151,19 @@ describe("#3645 PR11c — gate honesty + publish wiring", () => {
     expect(eventWizard).toContain("blockPaidPublishUntilAccepted");
     expect(tripWizard).toContain("useOrganiserTermsPublishGate");
     expect(experienceWizard).toContain("useOrganiserTermsPublishGate");
+    const stayShell = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "components",
+        "stay",
+        "StaySuiteShell.tsx",
+      ),
+      "utf8",
+    );
+    expect(stayShell).toContain("useOrganiserTermsPublishGate");
+    expect(stayShell).toContain("blockPaidPublishUntilAccepted");
   });
 
   test("Paystack bank form gates Organiser Terms at BrandPaystackOnboardView (shared)", () => {
@@ -211,5 +224,25 @@ describe("#3645 PR11c — gate honesty + publish wiring", () => {
     expect(paystackEdge).toContain("mingla_tos_not_accepted");
     expect(paystackEdge).toContain('CURRENT_ORGANISER_TERMS_VERSION = "1.0"');
     expect(paystackEdge).toContain('.is("removed_at", null)');
+    // Bank writes only — NG select_provider / status / leave stay ungated.
+    expect(paystackEdge).toContain("requiresOrganiserTerms");
+    expect(paystackEdge).toContain('action === "resolve_account"');
+    expect(paystackEdge).toContain('action === "create_subaccount"');
+    const stripeEdge = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "functions",
+        "brand-stripe-onboard",
+        "index.ts",
+      ),
+      "utf8",
+    );
+    expect(stripeEdge).toContain("mingla_tos_version_accepted");
+    expect(stripeEdge).toContain('CURRENT_ORGANISER_TERMS_VERSION = "1.0"');
   });
 });

@@ -1527,6 +1527,11 @@ jobs:
             # notify-dispatch only renders the exact manage URL from the service
             # role.
             supabase/functions/_shared/__tests__/issue_3392_venue_reservation_manage_token.test.ts
+            # #3645 PR11c — Organiser Terms accept edge: event_manager+ rank,
+            # active-row scope, repeat-safe accept. Registered HERE in the
+            # existing Stripe Deno lane (I-2148-CI-TOPOLOGY-BOUNDED — no new
+            # issue-3645 workflow).
+            supabase/functions/brand-mingla-tos-accept/index.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

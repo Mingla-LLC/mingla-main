@@ -502,33 +502,44 @@ export const brandPaystackOnboardHandler = async (
       return jsonResponse({ error: "forbidden" }, 403);
     }
 
-    // #3645 PR11c — Organiser Terms enforcement at the edge (UI gate alone is
-    // not enough: older clients / direct callers can hit bank-setup actions).
+    // #3645 PR11c — Organiser Terms at the edge for bank/account *writes* only.
+    // UI gate alone is not enough for resolve/create/update bank paths, but
+    // select_provider / clear_provider / refresh_status / disconnect must stay
+    // reachable so NG entry and status/leave flows work before acceptance.
     // Must match app CURRENT_MINGLA_TOS_VERSION / marketing ORGANISER_TERMS_VERSION.
     const CURRENT_ORGANISER_TERMS_VERSION = "1.0";
-    const { data: tosRow, error: tosError } = await supabase
-      .from("brand_team_members")
-      .select("mingla_tos_accepted_at, mingla_tos_version_accepted")
-      .eq("brand_id", brandId)
-      .eq("user_id", userId)
-      .is("removed_at", null)
-      .not("accepted_at", "is", null)
-      .maybeSingle<{
-        mingla_tos_accepted_at: string | null;
-        mingla_tos_version_accepted: string | null;
-      }>();
-    if (tosError) {
-      console.error("[brand-paystack-onboard] ToS lookup failed:", tosError);
-      return jsonResponse({ error: "internal_error" }, 500);
-    }
-    if (
-      !tosRow?.mingla_tos_accepted_at ||
-      tosRow.mingla_tos_version_accepted !== CURRENT_ORGANISER_TERMS_VERSION
-    ) {
-      return jsonResponse(
-        { error: "forbidden", detail: "mingla_tos_not_accepted" },
-        403,
-      );
+    const requiresOrganiserTerms =
+      action === "resolve_account" ||
+      action === "create_subaccount" ||
+      action === "update_subaccount" ||
+      action === "create_recipient" ||
+      action === "update_recipient" ||
+      action === "deactivate_recipient";
+    if (requiresOrganiserTerms) {
+      const { data: tosRow, error: tosError } = await supabase
+        .from("brand_team_members")
+        .select("mingla_tos_accepted_at, mingla_tos_version_accepted")
+        .eq("brand_id", brandId)
+        .eq("user_id", userId)
+        .is("removed_at", null)
+        .not("accepted_at", "is", null)
+        .maybeSingle<{
+          mingla_tos_accepted_at: string | null;
+          mingla_tos_version_accepted: string | null;
+        }>();
+      if (tosError) {
+        console.error("[brand-paystack-onboard] ToS lookup failed:", tosError);
+        return jsonResponse({ error: "internal_error" }, 500);
+      }
+      if (
+        !tosRow?.mingla_tos_accepted_at ||
+        tosRow.mingla_tos_version_accepted !== CURRENT_ORGANISER_TERMS_VERSION
+      ) {
+        return jsonResponse(
+          { error: "forbidden", detail: "mingla_tos_not_accepted" },
+          403,
+        );
+      }
     }
 
     // ── action: resolve_account ──────────────────────────────────────────────
