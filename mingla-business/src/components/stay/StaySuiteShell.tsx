@@ -657,13 +657,16 @@ function StayOverview({
     </StayActionBar>
     ) : null}
     {organiserTermsGateElement}
-    <View style={styles.toastWrap} pointerEvents="box-none">
-      <Toast
-        visible={organiserTermsToast}
-        message={ORGANISER_TERMS_PUBLISH_RETRY_TOAST}
-        onDismiss={() => setOrganiserTermsToast(false)}
-      />
-    </View>
+    {organiserTermsToast ? (
+      <View style={styles.toastWrap} pointerEvents="box-none">
+        <Toast
+          visible
+          kind="info"
+          message={ORGANISER_TERMS_PUBLISH_RETRY_TOAST}
+          onDismiss={() => setOrganiserTermsToast(false)}
+        />
+      </View>
+    ) : null}
     </View>
   );
 }

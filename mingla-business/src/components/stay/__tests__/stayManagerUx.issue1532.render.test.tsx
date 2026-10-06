@@ -242,6 +242,15 @@ jest.mock("../../../hooks/useBrandDiscoveryCurrency", () => ({
     refetch: jest.fn(),
   }),
 }));
+// [TEST-MOD-APPROVED #3645] settled accepted — manager UX subject stays UX geometry.
+jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
+  useOrganiserTermsPublishGate: () => ({
+    blockPaidPublishUntilAccepted: () => false,
+    gateElement: null,
+  }),
+  ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
+    "Accept the Organiser Terms, then tap Publish again.",
+}));
 
 import { spacing } from "../../../constants/designSystem";
 import { GlassCard } from "../../ui/GlassCard";

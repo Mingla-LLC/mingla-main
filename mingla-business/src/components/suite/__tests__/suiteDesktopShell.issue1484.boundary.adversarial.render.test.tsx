@@ -351,6 +351,15 @@ jest.mock("../../venue/VenueMenuModule", () => ({
 jest.mock("../../stay/StayReservationManagementDetail", () => ({
   StayReservationManagementDetail: stub("stay-reservation-detail"),
 }));
+// [TEST-MOD-APPROVED #3645] settled accepted — shell layout subject stays shell geometry.
+jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
+  useOrganiserTermsPublishGate: () => ({
+    blockPaidPublishUntilAccepted: () => false,
+    gateElement: null,
+  }),
+  ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
+    "Accept the Organiser Terms, then tap Publish again.",
+}));
 
 import { StyleSheet, Text as RNText } from "react-native";
 
