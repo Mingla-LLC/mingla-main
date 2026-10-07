@@ -497,11 +497,13 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // #2438 implementor suite imports this and still independently hashes disk —
 // one re-bank moves both checks. Dual-restated hex pins were the tax on every
 // Host lockfile advisory floor (#3642); collapsed on #3713.
+// [TEST-MOD-APPROVED #3762] Re-banked after intentional Host advisory floors
+// (undici / markdown-it / dompurify / sharp) + lockfile churn. Single sealed map.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
-  "app-mobile/package.json": "e41cff92c17747b26dcd73bf1da6fe77387ed3a210d9425fd8908f144c277542",
-  "app-mobile/package-lock.json": "f2f9bf896332ee2f6352b5b14fa947c90c27c5a91bc67c41c711f6140dee6a27",
-  "mingla-business/package.json": "280f6e05695cea5a7d7240c82b11b96c9883b4515a69ebecee3d347c1af7aa70",
-  "mingla-business/package-lock.json": "3de9c231b575d82bf1f362b12a80ca66fa89a13f5258ab064cb3b1198f1cdc6f",
+  "app-mobile/package.json": "8cfe7600ed5370cf9518337df3890acf21e9352432f2cbc90aac919283a1a77b",
+  "app-mobile/package-lock.json": "27314a161ae6aa67603e670fb0bd8ea567002a5526628c15b35e39163e22a534",
+  "mingla-business/package.json": "fb8baeb0ba5ef4c3ae1b8ef578454e3027f895eb978aab26c6c1ef5f81f84004",
+  "mingla-business/package-lock.json": "3a1d267fb1448fbd61e4912ce729d14ce6ef286db372b3274077793806d420a7",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other
