@@ -124,9 +124,11 @@ Deno.test("#1982 tester: revoke_brand_member source forbids hard DELETE", async 
   const end = source.indexOf("const revokeBrandInvitation = writeTool(");
   assert(start >= 0 && end > start);
   const block = source.slice(start, end);
-  assert(block.includes("removed_at"));
+  // #3660 — authoritative soft-remove RPC (not a direct UPDATE/DELETE).
+  assert(block.includes('rpc("biz_remove_brand_team_member"'));
   assert(!block.includes(".delete("));
   assert(!/\.from\(\s*"brand_members"\s*\)/.test(block));
+  assert(!/\.from\(\s*"brand_team_members"\s*\)\s*\.update/.test(block));
 });
 
 Deno.test("#1982 tester: people add requires contact; bad cursor fails", async () => {

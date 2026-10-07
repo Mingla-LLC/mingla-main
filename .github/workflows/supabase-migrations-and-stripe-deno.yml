@@ -1062,6 +1062,10 @@ jobs:
           # assertion still leaves nothing behind.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3622_reassign_owner_maintains_team_membership.tester.adversarial.pg17.test.sql
+          # Issue #3660 Phase 2 — biz_remove_brand_team_member soft-closes
+          # accepted memberships under brand_admin+, refuses sole/account owner.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_biz_remove_brand_team_member.implementor.happy.pg17.test.sql
           # Issue #3645 — payout maturity is payment + 24h (not event end + 3d);
           # cancel refund runs open in awaiting_review; PR6 charge readiness admits
           # stamped Paystack hold brands without a subaccount.

@@ -4717,19 +4717,13 @@ const revokeBrandMember = writeTool(
     if (!isUuid(args.member_id)) {
       throw new ToolError("INVALID_ARGS", "member_id must be a uuid");
     }
-    // #1983 — membership lives in brand_team_members (soft-delete via
-    // removed_at), NOT the non-existent brand_members table the pre-repair
-    // tool hard-DELETEd. The brand_team_members UPDATE RLS policy already
-    // gates this on biz_is_brand_admin_plus_for_caller, so a plain scoped
-    // UPDATE is the safe verb — a hard DELETE would orphan audit history.
-    const { data, error } = await client
-      .from("brand_team_members")
-      .update({ removed_at: new Date().toISOString() })
-      .eq("id", args.member_id)
-      .eq("brand_id", args.brand_id)
-      .is("removed_at", null)
-      .select("id")
-      .maybeSingle();
+    // #3660 — route through biz_remove_brand_team_member so owner / partner /
+    // admin-removing-owner guards apply (table trigger also enforces them).
+    // Pass brand_id so the locked row cannot be a member of a different brand.
+    const { data, error } = await client.rpc("biz_remove_brand_team_member", {
+      p_brand_id: args.brand_id,
+      p_member_id: args.member_id,
+    });
     if (error) throw new ToolError("RPC_FAILED", error.message);
     if (data === null) {
       throw new ToolError(
