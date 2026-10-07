@@ -58,6 +58,10 @@ import {
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
 import {
+  ORGANISER_TERMS_PUBLISH_RETRY_TOAST,
+  useOrganiserTermsPublishGate,
+} from "../../hooks/useOrganiserTermsPublishGate";
+import {
   usePublishStay,
   useSaveStaySettings,
   useStayInventory,
@@ -73,6 +77,7 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
+import { Toast } from "../ui/Toast";
 import { VenueMenuModule } from "../venue/VenueMenuModule";
 import { StayActionBar } from "./StayActionBar";
 import { StayInventoryManager } from "./StayInventoryManager";
@@ -298,6 +303,12 @@ function StayOverview({
   const inventory = useStayInventory(venueId);
   const currency = useBrandDiscoveryCurrency(brandId);
   const publish = usePublishStay(venueId);
+  // #3645 PR11c — stays that can publish always have a current price (paid).
+  const {
+    blockPaidPublishUntilAccepted,
+    gateElement: organiserTermsGateElement,
+  } = useOrganiserTermsPublishGate(brandId);
+  const [organiserTermsToast, setOrganiserTermsToast] = useState(false);
   const snapshot = inventory.data ?? null;
   const settings = snapshot?.settings ?? null;
   const offerings = snapshot?.offerings ?? [];
@@ -337,6 +348,16 @@ function StayOverview({
     !bankReady ||
     !venueApproved ||
     settings === null;
+
+  const handlePublishStay = useCallback((): void => {
+    if (settings === null) return;
+    // Stay publish requires a current price → always paid for Organiser Terms.
+    if (blockPaidPublishUntilAccepted(true)) {
+      setOrganiserTermsToast(true);
+      return;
+    }
+    publish.mutate({ expectedVersion: settings.version });
+  }, [settings, blockPaidPublishUntilAccepted, publish]);
 
   if (inventory.isLoading || currency.isLoading) {
     return (
@@ -610,11 +631,7 @@ function StayOverview({
       {!isActive && isWideDesktop ? (
         <Button
           label="Publish Stay"
-          onPress={() => {
-            if (settings !== null) {
-              publish.mutate({ expectedVersion: settings.version });
-            }
-          }}
+          onPress={handlePublishStay}
           disabled={publishBlocked}
           loading={publish.isPending}
           fullWidth
@@ -630,11 +647,7 @@ function StayOverview({
     <StayActionBar testID="stay-overview-action-bar">
       <Button
         label="Publish Stay"
-        onPress={() => {
-          if (settings !== null) {
-            publish.mutate({ expectedVersion: settings.version });
-          }
-        }}
+        onPress={handlePublishStay}
         disabled={publishBlocked}
         loading={publish.isPending}
         fullWidth
@@ -642,6 +655,17 @@ function StayOverview({
         testID="stay-publish"
       />
     </StayActionBar>
+    ) : null}
+    {organiserTermsGateElement}
+    {organiserTermsToast ? (
+      <View style={styles.toastWrap} pointerEvents="box-none">
+        <Toast
+          visible
+          kind="info"
+          message={ORGANISER_TERMS_PUBLISH_RETRY_TOAST}
+          onDismiss={() => setOrganiserTermsToast(false)}
+        />
+      </View>
     ) : null}
     </View>
   );
@@ -1469,6 +1493,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.md,
+  },
+  toastWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
 });
 

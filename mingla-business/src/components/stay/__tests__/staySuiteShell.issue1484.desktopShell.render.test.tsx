@@ -254,6 +254,15 @@ jest.mock("../../venue/VenueReservationsModule", () => ({
 jest.mock("../../venue/VenueWaitlistModule", () => ({
   VenueWaitlistModule: stub("waitlist"),
 }));
+// [TEST-MOD-APPROVED #3645] settled accepted — shell layout subject stays shell geometry.
+jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
+  useOrganiserTermsPublishGate: () => ({
+    blockPaidPublishUntilAccepted: () => false,
+    gateElement: null,
+  }),
+  ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
+    "Accept the Organiser Terms, then tap Publish again.",
+}));
 
 import {
   spacing,

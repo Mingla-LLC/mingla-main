@@ -73,10 +73,18 @@ jest.mock("../../hooks/useBrands", () => ({
 
 jest.mock("../../hooks/useMinglaToSAcceptance", () => ({
   CURRENT_MINGLA_TOS_VERSION: "v3-pre-launch-placeholder",
+  ORGANISER_TERMS_URL: "https://usemingla.com/organiser-terms",
   useAcceptMinglaToS: () => ({
     isPending: false,
     mutateAsync: acceptTerms,
   }),
+  useMinglaToSAcceptance: () => ({
+    data: { acceptedAt: "2026-01-01T00:00:00.000Z", versionAccepted: "v3-pre-launch-placeholder" },
+    isLoading: false,
+    isError: false,
+    refetch: jest.fn(),
+  }),
+  isCurrentMinglaToSAccepted: () => true,
 }));
 
 jest.mock("@tanstack/react-query", () => ({
@@ -450,9 +458,10 @@ describe("#948 W2 tester — rendered route failures and races", () => {
 
   test("the legal link is accessible and the primary CTA has an explicit label", async () => {
     tree = await mountRoute();
+    // [TEST-MOD-APPROVED #3645] Host Terms → Organiser Terms label (legal rename).
     expect(
       tree.root.findByProps({
-        accessibilityLabel: "Open Mingla Host Terms",
+        accessibilityLabel: "Open Mingla Organiser Terms",
       }).props.accessibilityRole,
     ).toBe("link");
     expect(

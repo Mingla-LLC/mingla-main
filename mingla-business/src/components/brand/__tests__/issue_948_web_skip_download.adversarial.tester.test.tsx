@@ -89,7 +89,35 @@ jest.mock("../../../hooks/useBrands", () => ({
 
 jest.mock("../../../hooks/useMinglaToSAcceptance", () => ({
   CURRENT_MINGLA_TOS_VERSION: "v3-pre-launch-placeholder",
+  ORGANISER_TERMS_URL: "https://usemingla.com/organiser-terms",
   useAcceptMinglaToS: () => ({ isPending: false, mutateAsync: jest.fn() }),
+  useMinglaToSAcceptance: () => ({
+    data: { acceptedAt: "2026-01-01T00:00:00.000Z", versionAccepted: "v3-pre-launch-placeholder" },
+    isLoading: false,
+    isError: false,
+    refetch: jest.fn(),
+  }),
+  isCurrentMinglaToSAccepted: () => true,
+}));
+
+jest.mock("../../../components/onboarding/MinglaToSAcceptanceGate", () => {
+  const ReactLocal = require("react") as typeof import("react");
+  const Gate = ({ onPassed }: { onPassed: () => void }): null => {
+    ReactLocal.useEffect(() => {
+      onPassed();
+    }, [onPassed]);
+    return null;
+  };
+  return {
+    MinglaToSAcceptanceGate: Gate,
+    default: Gate,
+  };
+});
+
+jest.mock("expo-haptics", () => ({
+  selectionAsync: jest.fn(),
+  notificationAsync: jest.fn(),
+  NotificationFeedbackType: { Success: "success" },
 }));
 
 jest.mock("../../../services/brandStripeService", () => ({

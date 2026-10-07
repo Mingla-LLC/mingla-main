@@ -358,19 +358,29 @@ export const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // #3645 PR11c — version-aware Organiser Terms (parity with Paystack edge /
+    // app CURRENT_MINGLA_TOS_VERSION). A non-null timestamp alone is not enough:
+    // grandfathered / prior-version rows must re-accept 1.0 before onboard.
+    const CURRENT_ORGANISER_TERMS_VERSION = "1.0";
     const { data: tosRow, error: tosError } = await supabase
       .from("brand_team_members")
-      .select("mingla_tos_accepted_at")
+      .select("mingla_tos_accepted_at, mingla_tos_version_accepted")
       .eq("brand_id", brand_id)
       .eq("user_id", userId)
       .is("removed_at", null)
       .not("accepted_at", "is", null)
-      .maybeSingle();
+      .maybeSingle<{
+        mingla_tos_accepted_at: string | null;
+        mingla_tos_version_accepted: string | null;
+      }>();
     if (tosError) {
       console.error("[brand-stripe-onboard] ToS lookup failed:", tosError);
       return jsonResponse({ error: "internal_error" }, 500);
     }
-    if (!tosRow?.mingla_tos_accepted_at) {
+    if (
+      !tosRow?.mingla_tos_accepted_at ||
+      tosRow.mingla_tos_version_accepted !== CURRENT_ORGANISER_TERMS_VERSION
+    ) {
       return jsonResponse(
         { error: "forbidden", detail: "mingla_tos_not_accepted" },
         403,

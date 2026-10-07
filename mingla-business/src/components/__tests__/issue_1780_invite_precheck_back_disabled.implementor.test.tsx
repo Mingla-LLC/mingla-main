@@ -289,6 +289,16 @@ jest.mock("../../hooks/useOfferingInvitePlan", () => ({
 jest.mock("../../hooks/useWizardHardwareBack", () => ({
   useWizardHardwareBack: (): void => undefined,
 }));
+// [TEST-MOD-APPROVED #3645] Experience mounts for real — settled accepted so
+// the invite Back pre-check stays the subject (Event/RSVP/Trip use BOUNDARY).
+jest.mock("../../hooks/useOrganiserTermsPublishGate", () => ({
+  useOrganiserTermsPublishGate: () => ({
+    blockPaidPublishUntilAccepted: () => false,
+    gateElement: null,
+  }),
+  ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
+    "Accept the Organiser Terms, then tap Publish again.",
+}));
 
 import * as designSystem from "../../constants/designSystem";
 import * as desktopLayout from "../../constants/desktopLayout";
@@ -437,6 +447,16 @@ const BOUNDARY: Record<string, () => unknown> = {
     offeringNeedsStripeToPublish: () => false,
     tripDraftIsPaid: () => false,
   }),
+  // #3645 PR11c — paid-publish Organiser Terms door. Settled accepted so this
+  // suite's subject stays the invite pre-check Back rule, not ToS.
+  useOrganiserTermsPublishGate: () => ({
+    useOrganiserTermsPublishGate: () => ({
+      blockPaidPublishUntilAccepted: () => false,
+      gateElement: null,
+    }),
+    ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
+      "Accept the Organiser Terms, then tap Publish again.",
+  }), // [TEST-MOD-APPROVED #3645]
   useIntakeSchema: () => ({
     useTripIntakeSchemasByEvent: () => intakeQuery,
     useUpsertTripIntakeSchema: () => mutation,

@@ -1,12 +1,12 @@
 /**
  * useMinglaToSAcceptance — query + mutation pair for the Mingla Host
- * platform ToS acceptance gate.
+ * Organiser Terms acceptance gate.
  *
- * Per B2a Path C V3 SPEC §6 + I-PROPOSED-U.
+ * Per B2a Path C V3 SPEC §6 + I-PROPOSED-U + #3645 PR11c.
  *
  * Query: state per (brandId, userId). `staleTime: Infinity` because acceptance
- * is one-way (once accepted, only operator-side reset can null it back) and
- * version-bumps are coordinated by orchestrator deploys.
+ * is one-way for a given version (operator bumps CURRENT_MINGLA_TOS_VERSION to
+ * force re-acceptance).
  *
  * Mutation: invalidates the query on success.
  */
@@ -92,13 +92,24 @@ export function useAcceptMinglaToS(): UseMutationResult<
 }
 
 /**
- * The current Mingla Host platform ToS version the gate enforces.
- * Operator/legal swaps the placeholder copy and bumps this version when ToS
- * materially changes (forces re-acceptance). Sub-A migration grandfathered
- * existing rows with `pre-v3-grandfathered` — bumping to a real version
- * here will require a coordinated UI nudge for grandfathered users to re-accept.
- *
- * [TRANSITIONAL] placeholder version — exit when legal signs off the V3 ToS
- * copy and operator bumps to the live version (e.g., "v1.0.0").
+ * Current Organiser Terms version the gate enforces.
+ * MUST stay equal to `ORGANISER_TERMS_VERSION` in
+ * `mingla-marketing/lib/organiserTermsContent.ts` (pinned by unit test).
+ * Bump both together when legal ships a material update.
  */
-export const CURRENT_MINGLA_TOS_VERSION = "v3-pre-launch-placeholder" as const;
+export const CURRENT_MINGLA_TOS_VERSION = "1.0" as const;
+
+/** Canonical public Organiser Terms URL (search-visible since #3743). */
+export const ORGANISER_TERMS_URL =
+  "https://usemingla.com/organiser-terms" as const;
+
+/** True when the member has accepted the currently enforced version. */
+export function isCurrentMinglaToSAccepted(
+  state: MinglaToSAcceptanceState | null | undefined,
+): boolean {
+  if (state == null) return false;
+  return (
+    state.acceptedAt != null &&
+    state.versionAccepted === CURRENT_MINGLA_TOS_VERSION
+  );
+}

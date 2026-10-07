@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-05 — Host Organiser Terms gate in the app: version 1.0 with a link to usemingla.com/organiser-terms, re-accept when the version changes, required before Paystack bank setup and before publishing a paid event/trip/experience (toward #3645, PR #3746)
 - 2026-10-04 — Menu Set times on Start advances to End, dish price/cost reopen with full decimals, and dirty table/blackout sheets ask before discarding (toward #3655, PR #3745)
 - 2026-10-04 — Host venue device gaps from the save/leave pass: blackout remove confirm presents on iOS (nested in the sheet), dirty dish sheets ask before discarding, and Availability Save shows a what-changed caption (toward #3655, PR #3744)
 - 2026-10-04 — The Organiser Terms page passed legal review and is now indexed by search engines (part of #3645, PR #3743)

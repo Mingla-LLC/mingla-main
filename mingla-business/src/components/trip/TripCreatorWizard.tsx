@@ -131,6 +131,10 @@ import {
   offeringNeedsStripeToPublish,
   tripDraftIsPaid,
 } from "../offering/publishStripeReadiness";
+import {
+  ORGANISER_TERMS_PUBLISH_RETRY_TOAST,
+  useOrganiserTermsPublishGate,
+} from "../../hooks/useOrganiserTermsPublishGate";
 import { payoutGateStatus, isBrandPayoutReady } from "../../utils/brandPayout";
 import { useBrandPaystackStatus } from "../../hooks/useBrandPaystack";
 // ORCH-0880 [Tr5 Traveler Intake Forms] — NEW Step 6 component (intake
@@ -487,6 +491,11 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   const router = useRouter();
   const { signOut } = useAuth();
   const { isWideDesktop } = useResponsiveLayout();
+  // #3645 PR11c — Organiser Terms before first paid listing publish.
+  const {
+    blockPaidPublishUntilAccepted,
+    gateElement: organiserTermsGateElement,
+  } = useOrganiserTermsPublishGate(trip.brandId);
   const [step, setStep] = useState<StepIndex>(1);
   const [step1Draft, setStep1Draft] = useState<Step1Draft>(tripToStep1Draft(trip));
   const [daysDraft, setDaysDraft] = useState<TripDayDraft[]>(tripToDaysDraft(trip));
@@ -1289,6 +1298,11 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       );
       return;
     }
+    // #3645 PR11c — paid trips require current Organiser Terms acceptance.
+    if (blockPaidPublishUntilAccepted(tripDraftIsPaid(step4Draft))) {
+      showToast(ORGANISER_TERMS_PUBLISH_RETRY_TOAST);
+      return;
+    }
     // META-ORCH-1174 Leg B2 — every package must be valid before publish.
     // Surface the first failing reason + jump back to the pricing step.
     if (!packagesValidation.ok) {
@@ -1332,7 +1346,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     }
   }, [tripLocationValid, tripNeedsStripe, tripNeedsBankForInstallments,
       packagesValidation, showToast, inviteSummary,
-    inviteEnabled, inviteRollbackReady, inviteFlag.data]);
+    inviteEnabled, inviteRollbackReady, inviteFlag.data, step4Draft,
+    blockPaidPublishUntilAccepted]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     setPublishError(null);
@@ -1943,6 +1958,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         closeDisabled={publishMutation.isPending}
         testID="trip-wizard-publish-dialog"
       />
+
+      {organiserTermsGateElement}
 
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast

@@ -50,6 +50,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import {
   CURRENT_MINGLA_TOS_VERSION,
+  ORGANISER_TERMS_URL,
   useAcceptMinglaToS,
 } from "../../hooks/useMinglaToSAcceptance";
 import { brandStripeStatusKeys } from "../../hooks/useBrandStripeStatus";
@@ -68,7 +69,7 @@ import {
 } from "../../utils/bankConnectRail";
 import { isInviteFunnelValue } from "../../utils/inviteFunnelSignal";
 
-const TERMS_URL = "https://www.usemingla.com/terms-of-service/" as const;
+const TERMS_URL = ORGANISER_TERMS_URL;
 const PAYSTACK_PICKER_OPTIONS = [
   {
     code: "NG",
@@ -276,7 +277,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
   const handleOpenTerms = useCallback((): void => {
     Linking.openURL(TERMS_URL).catch(() => {
       setSubmitError(
-        "We couldn't open the Business Terms. Please try again in a moment.",
+        "We couldn't open the Organiser Terms. Please try again in a moment.",
       );
     });
   }, []);
@@ -480,12 +481,12 @@ export default function BrandBankConnectBody(): React.ReactElement {
               <Pressable
                 onPress={handleOpenTerms}
                 accessibilityRole="link"
-                accessibilityLabel="Open Mingla Host Terms"
+                accessibilityLabel="Open Mingla Organiser Terms"
                 style={styles.legalPressable}
               >
                 <Text style={styles.legal}>
                   By connecting your bank you agree to Mingla{"’"}s{" "}
-                  <Text style={styles.legalLink}>Business Terms</Text>. Powered
+                  <Text style={styles.legalLink}>Organiser Terms</Text>. Powered
                   by Stripe — your data is encrypted.
                 </Text>
               </Pressable>

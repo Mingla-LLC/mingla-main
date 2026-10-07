@@ -7,8 +7,8 @@
  * Updates `brand_team_members.mingla_tos_accepted_at = now()` and
  * `mingla_tos_version_accepted = $version` for the (user_id, brand_id) pair.
  * Authenticated only (`requireUserId`); auth role must satisfy
- * `requirePaymentsManager` (i.e., the user is a brand admin who would
- * also be eligible to start Stripe onboarding).
+ * event_manager+ via `biz_brand_effective_rank` (aligned with paid-publish
+ * RPCs). Scanners and lower ranks cannot accept.
  *
  * Audit log entry on success per I-PROPOSED-S.
  *
@@ -22,7 +22,6 @@ import {
   corsHeaders,
   isValidUuid,
   jsonResponse,
-  requirePaymentsManager,
   requireUserId,
   serviceRoleClient,
 } from "../_shared/stripeEdgeAuth.ts";
@@ -68,32 +67,67 @@ serve(async (req) => {
     }, 400);
   }
 
-  // Version is operator-controlled; UI passes the current ToS version. Reject empty.
-  const version =
+  // #3645 PR11c — version is SERVER-OWNED. Clients must send the current
+  // Organiser Terms version (app CURRENT_MINGLA_TOS_VERSION). Any other string
+  // (including the pre-PR11c `v3-pre-launch-placeholder`) is rejected so an
+  // older binary cannot stamp / downgrade a membership row and then fail the
+  // Stripe/Paystack 1.0 edge checks. Upgrade path: ship the 1.0 app (Seth
+  // release hold), then hosts re-accept through the updated gate.
+  const CURRENT_ORGANISER_TERMS_VERSION = "1.0";
+  const requestedVersion =
     typeof body.version === "string" && body.version.trim().length > 0
       ? body.version.trim()
       : null;
-  if (version === null) {
+  if (requestedVersion === null) {
     return jsonResponse(
       { error: "validation_error", detail: "version_required" },
       400,
     );
   }
+  if (requestedVersion !== CURRENT_ORGANISER_TERMS_VERSION) {
+    return jsonResponse(
+      {
+        error: "validation_error",
+        detail: "version_not_current",
+        current_version: CURRENT_ORGANISER_TERMS_VERSION,
+      },
+      409,
+    );
+  }
+  const version = CURRENT_ORGANISER_TERMS_VERSION;
 
   const supabase = serviceRoleClient();
 
-  // Same gate as Stripe ops: only brand admins / finance managers / account
-  // owners can accept ToS on behalf of the brand. This prevents any
-  // non-payment-manager team member (e.g., scanner) from clicking through
-  // the gate.
-  const forbidden = await requirePaymentsManager(supabase, brandId, userId);
-  if (forbidden) return forbidden;
+  // Same gate as paid publish: event_manager+ can accept Organiser Terms for
+  // their own brand_team_members row. Payments-manager-only would permanently
+  // 403 event managers who are allowed to publish paid listings (#3645 PR11c).
+  const RANK_EVENT_MANAGER = 40;
+  const { data: callerRank, error: rankErr } = await supabase.rpc(
+    "biz_brand_effective_rank",
+    { p_brand_id: brandId, p_user_id: userId },
+  );
+  if (rankErr) {
+    console.error("[brand-mingla-tos-accept] rank lookup failed:", rankErr);
+    return jsonResponse({ error: "internal_error" }, 500);
+  }
+  const rank = typeof callerRank === "number" ? callerRank : 0;
+  if (rank < RANK_EVENT_MANAGER) {
+    return jsonResponse(
+      { error: "forbidden", detail: "permission_denied" },
+      403,
+    );
+  }
 
+  // Active membership only (mirrors brand-stripe-onboard). Owner reassign
+  // soft-closes the old row and inserts a new active one (#3622); unscoped
+  // maybeSingle then errors on two rows and permanently blocks accept.
   const { data: existingRow, error: existingErr } = await supabase
     .from("brand_team_members")
     .select("mingla_tos_accepted_at, mingla_tos_version_accepted")
     .eq("brand_id", brandId)
     .eq("user_id", userId)
+    .is("removed_at", null)
+    .not("accepted_at", "is", null)
     .maybeSingle<AcceptedRow>();
 
   if (existingErr) {
@@ -138,8 +172,10 @@ serve(async (req) => {
     })
     .eq("brand_id", brandId)
     .eq("user_id", userId)
+    .is("removed_at", null)
+    .not("accepted_at", "is", null)
     .select("mingla_tos_accepted_at, mingla_tos_version_accepted")
-    .single<AcceptedRow>();
+    .maybeSingle<AcceptedRow>();
 
   if (updateErr) {
     console.error("[brand-mingla-tos-accept] update failed:", updateErr);
