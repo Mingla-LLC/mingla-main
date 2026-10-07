@@ -58,8 +58,9 @@ export async function requirePaymentsManager(
   brandId: string,
   userId: string,
 ): Promise<Response | null> {
+  // #3660 Phase 3 — bank mutate is brand_owner only.
   const { data: canManage, error } = await supabase.rpc(
-    "biz_can_manage_payments_for_brand",
+    "biz_can_mutate_payouts_for_brand",
     { p_brand_id: brandId, p_user_id: userId },
   );
   if (error) {
@@ -72,11 +73,33 @@ export async function requirePaymentsManager(
   return null;
 }
 
-// META-ORCH-1074 Sub-A: the canonical brand-payments role-set (post ORCH-1047
-// owner-role rename — these are the LIVE role strings the
-// brand_team_members_role_check constraint allows). The parent + Sub-D specs
-// use the legacy owner-role label; in the shipped schema that role is `brand_owner`.
+/** #3660 Phase 3 — status/balances viewers (owner/admin/FM). */
+export async function requirePaymentsViewer(
+  supabase: SupabaseClient,
+  brandId: string,
+  userId: string,
+): Promise<Response | null> {
+  const { data: canView, error } = await supabase.rpc(
+    "biz_can_view_payments_for_brand",
+    { p_brand_id: brandId, p_user_id: userId },
+  );
+  if (error) {
+    console.error("[stripeEdgeAuth] view permission RPC failed:", error);
+    return jsonResponse({ error: "internal_error" }, 500);
+  }
+  if (canView !== true) {
+    return jsonResponse({ error: "forbidden", detail: "permission_denied" }, 403);
+  }
+  return null;
+}
+
+// #3660 Phase 3: mutate / requirePaymentsManager audience is brand_owner only.
+// View/notify audience is BRAND_PAYMENTS_VIEW_ROLES (owner/admin/FM).
 export const BRAND_PAYMENTS_ROLES = [
+  "brand_owner",
+] as const;
+
+export const BRAND_PAYMENTS_VIEW_ROLES = [
   "brand_owner",
   "brand_admin",
   "finance_manager",
@@ -135,13 +158,12 @@ export async function getBrandTeamUserIdsByRolesOrThrow(
   return Array.from(new Set((data ?? []).map((row) => String(row.user_id))));
 }
 
-// Thin wrapper kept byte-stable for existing callers: the 3 payments-manager
-// roles. Delegates to the role-parameterized resolver above.
+// Payout notices still reach the view audience (owner/admin/FM), not mutate-only.
 export async function getBrandPaymentManagerUserIds(
   supabase: SupabaseClient,
   brandId: string,
 ): Promise<string[]> {
-  return getBrandTeamUserIdsByRoles(supabase, brandId, BRAND_PAYMENTS_ROLES);
+  return getBrandTeamUserIdsByRoles(supabase, brandId, BRAND_PAYMENTS_VIEW_ROLES);
 }
 
 /**

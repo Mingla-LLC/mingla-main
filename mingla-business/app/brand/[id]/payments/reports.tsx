@@ -62,6 +62,7 @@ export default function BrandFinanceReportsRoute(): React.ReactElement {
         brandId={brandId}
         title="Payout reports"
         onBack={handleBack}
+        mode="view"
       >
         <BrandFinanceReportsView brand={brand} onBack={handleBack} />
       </BrandPaymentsPermissionGate>

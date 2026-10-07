@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-07 — Only the brand owner can connect or change the payout bank; admins and finance managers can still see payout status, with a clear owner-only message instead of a 403 storm (toward #3660, PR #3754)
 - 2026-10-07 — Host Team "Remove from team" actually removes the member (soft-close via RPC), refuses removing the brand owner, and shows clear errors instead of a silent no-op (toward #3660, PR #3753)
 - 2026-10-07 — Host pending brand invitations open a dedicated Accept/Decline screen from the Home/Hub to-do (not Account), invite email failures are honest and logged, and a regression pins every to-do action kind to a consumer (toward #3660, PR #3752)
 - 2026-10-07 — Paid publish on the server also requires Organiser Terms 1.0 (events, trips, experiences, and stays); free listings and draft saves stay open (toward #3645, PR #3749)

@@ -131,9 +131,9 @@ serve(async (req) => {
     }
     const userId = userData.user.id;
 
-    // Permission check
-    const { data: canManage, error: permError } = await supabase.rpc(
-      "biz_can_manage_payments_for_brand",
+    // #3660 Phase 3 — status refresh is a view action (owner/admin/FM).
+    const { data: canView, error: permError } = await supabase.rpc(
+      "biz_can_view_payments_for_brand",
       { p_brand_id: brand_id, p_user_id: userId },
     );
     if (permError) {
@@ -143,7 +143,7 @@ serve(async (req) => {
       );
       return jsonResponse({ error: "internal_error" }, 500);
     }
-    if (canManage !== true) {
+    if (canView !== true) {
       return jsonResponse(
         { error: "forbidden", detail: "permission_denied" },
         403,

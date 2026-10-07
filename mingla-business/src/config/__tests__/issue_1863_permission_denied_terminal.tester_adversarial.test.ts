@@ -41,7 +41,9 @@ import {
 } from "../../utils/edgeFunctionErrors";
 import {
   BRAND_PAYMENTS_MANAGER_ROLES,
+  BRAND_PAYMENTS_VIEW_ROLES,
   canManageBrandPayments,
+  canViewBrandPayments,
 } from "../../utils/brandPaymentsPermission";
 import { BRAND_ROLE_RANK, type BrandRole } from "../../utils/brandRole";
 import { mapStripeStatusErrorToViewState } from "../../utils/brandStripeUiState";
@@ -88,55 +90,73 @@ const ALL_ROLES: readonly BrandRole[] = [
 
 const RANK_LADDER: readonly number[] = [0, 10, 20, 30, 40, 50, 60];
 
-function acceptedCanManage(role: BrandRole): boolean {
-  return canManageBrandPayments({ role, accepted: true });
-}
-
 beforeEach(() => {
   mockInvoke.mockReset();
 });
 
 // ── T-A6 anti-vacuity floor, run FIRST ──────────────────────────────────────
 
-describe("#1863 T-A6 — the predicate is role-set membership, and no rank threshold reproduces it", () => {
-  it("the role table is complete and splits 3/3 — an all-true or all-false predicate fails here", () => {
+describe("#1863 T-A6 — view is role-set membership; mutate is owner-only (#3660)", () => {
+  it("view splits 3/3; mutate is brand_owner only", () => {
     expect(ALL_ROLES).toHaveLength(6);
-    expect(ALL_ROLES.filter(acceptedCanManage)).toHaveLength(3);
-    expect(ALL_ROLES.filter((r) => !acceptedCanManage(r))).toHaveLength(3);
-    expect(BRAND_PAYMENTS_MANAGER_ROLES).toHaveLength(3);
+    expect(BRAND_PAYMENTS_VIEW_ROLES).toHaveLength(3);
+    expect(BRAND_PAYMENTS_MANAGER_ROLES).toEqual(["brand_owner"]);
+    expect(
+      ALL_ROLES.filter((r) => canViewBrandPayments({ role: r, accepted: true })),
+    ).toHaveLength(3);
+    expect(
+      ALL_ROLES.filter((r) => canManageBrandPayments({ role: r, accepted: true })),
+    ).toEqual(["brand_owner"]);
   });
 
-  it("every role × accepted ∈ {true,false} matches the server's table exactly", () => {
-    const table = ALL_ROLES.map((role) => ({
+  it("every role × accepted matches view + mutate tables", () => {
+    const viewTable = ALL_ROLES.map((role) => ({
       role,
-      accepted: canManageBrandPayments({ role, accepted: true }),
-      pending: canManageBrandPayments({ role, accepted: false }),
+      accepted: canViewBrandPayments({ role, accepted: true }),
+      pending: canViewBrandPayments({ role, accepted: false }),
     }));
-    expect(table).toEqual([
+    expect(viewTable).toEqual([
       { role: "scanner", accepted: false, pending: false },
       { role: "marketing_manager", accepted: false, pending: false },
-      // rank 30 — LOWER than event_manager, and ALLOWED.
       { role: "finance_manager", accepted: true, pending: false },
-      // rank 40 — HIGHER than finance_manager, and DENIED. The whole bug.
       { role: "event_manager", accepted: false, pending: false },
       { role: "brand_admin", accepted: true, pending: false },
       { role: "brand_owner", accepted: true, pending: false },
     ]);
-    expect(canManageBrandPayments({ role: null, accepted: true })).toBe(false);
-    expect(canManageBrandPayments({ role: null, accepted: false })).toBe(false);
+    expect(
+      ALL_ROLES.map((role) => ({
+        role,
+        mutate: canManageBrandPayments({ role, accepted: true }),
+      })),
+    ).toEqual([
+      { role: "scanner", mutate: false },
+      { role: "marketing_manager", mutate: false },
+      { role: "finance_manager", mutate: false },
+      { role: "event_manager", mutate: false },
+      { role: "brand_admin", mutate: false },
+      { role: "brand_owner", mutate: true },
+    ]);
   });
 
-  it("event_manager OUTRANKS finance_manager and is still denied", () => {
+  it("event_manager OUTRANKS finance_manager and is still denied on VIEW", () => {
     expect(BRAND_ROLE_RANK.event_manager).toBeGreaterThan(
       BRAND_ROLE_RANK.finance_manager,
     );
-    expect(acceptedCanManage("event_manager")).toBe(false);
-    expect(acceptedCanManage("finance_manager")).toBe(true);
+    expect(canViewBrandPayments({ role: "event_manager", accepted: true })).toBe(
+      false,
+    );
+    expect(
+      canViewBrandPayments({ role: "finance_manager", accepted: true }),
+    ).toBe(true);
   });
 
-  it("NO rank threshold reproduces the table — fails the instant it is 'simplified' into MIN_RANK", () => {
+  it("NO rank threshold reproduces the VIEW table", () => {
     const reproducible = RANK_LADDER.some((n) =>
-      ALL_ROLES.every((r) => acceptedCanManage(r) === (BRAND_ROLE_RANK[r] >= n))
+      ALL_ROLES.every(
+        (r) =>
+          canViewBrandPayments({ role: r, accepted: true }) ===
+          (BRAND_ROLE_RANK[r] >= n),
+      )
     );
     expect(reproducible).toBe(false);
   });

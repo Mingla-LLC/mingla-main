@@ -342,9 +342,9 @@ export const handler = async (req: Request): Promise<Response> => {
     // Service-role client for DB writes.
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Permission check via biz_can_manage_payments_for_brand RPC.
+    // #3660 Phase 3 — bank mutate is brand_owner only.
     const { data: canManage, error: permError } = await supabase.rpc(
-      "biz_can_manage_payments_for_brand",
+      "biz_can_mutate_payouts_for_brand",
       { p_brand_id: brand_id, p_user_id: userId },
     );
     if (permError) {
