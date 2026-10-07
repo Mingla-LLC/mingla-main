@@ -212,6 +212,12 @@
       ]
     },
     {
+      "source": "/pending-brand-invite/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
       "source": "/people/:path*",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }

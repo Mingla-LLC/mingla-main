@@ -136,6 +136,10 @@ const EXPECTED: Record<string, Bucket> = {
   // route and is intentionally absent from every public/connect/invite exemption.
   insights: "gated-default",
   partner: "gated-default",
+  // #3660 — tokenless Accept/Decline for the signed-in invitee's own pending
+  // invite (Home/Hub to-do). Requires auth; not in INVITE_ACCEPT (token deep
+  // links stay on accept-brand-invitation / accept-scanner-invitation).
+  "pending-brand-invite": "gated-default",
   recent: "gated-default",
   // [ORCH-1062 drift-update] The `app/rsvp` authed RSVP creator route
   // (create / [id]/{index,edit,guests,preview}; shipped ORCH-1355/#831,

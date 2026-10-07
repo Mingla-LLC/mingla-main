@@ -62,7 +62,6 @@ import { UniversalCreatorSheet } from "../../src/components/ui/UniversalCreatorS
 import { RecentRow } from "../../src/components/home/RecentRow";
 import { RecentFullScreen } from "../../src/components/home/RecentFullScreen";
 import { RecentStatePanel } from "../../src/components/home/RecentStatePanel";
-import { InvitePendingSheet } from "../../src/components/team/InvitePendingSheet";
 import {
   accent,
   glass,
@@ -108,6 +107,10 @@ import type { BusinessRecentPointer } from "../../src/store/businessRecentStore"
 import { postHogService } from "../../src/services/postHogService";
 import { tripToLiveEvent } from "../../src/utils/tripToLiveEvent";
 import type { BusinessTodo } from "../../src/utils/businessTodos";
+import {
+  dispatchBusinessTodoAction,
+  pendingBrandInviteRoute,
+} from "../../src/utils/businessTodoDispatch";
 
 import {
   currencyCodeOrNull,
@@ -236,12 +239,6 @@ export default function HomeTab(): React.ReactElement {
   // ORCH-0826 M0: universal creator sheet (Create event/experience/trip)
   const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] =
     useState<boolean>(false);
-  // ORCH-1111 — pending-invite Accept/Decline sheet, opened from the invite
-  // To-Do row. Null when closed.
-  const [pendingInvite, setPendingInvite] = useState<{
-    invitationId: string;
-    brandName: string;
-  } | null>(null);
   // Cycle 17e-A REWORK: BrandDeleteSheet state — opens from BrandSwitcherSheet
   // trash icon taps. Mirrors account.tsx pattern per ORCH-0734-RW SPEC §3.3.
   const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
@@ -618,30 +615,21 @@ export default function HomeTab(): React.ReactElement {
   // priority, auto-vanishing as conditions are met. Single source of truth shared
   // with Hub (useBusinessTodos).
   const todos = useBusinessTodos();
+  // #3660 — every BusinessTodoAction kind must route through the shared
+  // dispatcher. Pending invites push a dedicated Accept/Decline route so the
+  // tap cannot fall through to Account/profile when local sheet state fails.
   const handleTodoAction = useCallback(
     (todo: BusinessTodo): void => {
-      switch (todo.action.kind) {
-        case "open_brand_switcher":
-          setSheetVisible(true);
-          return;
-        case "open_universal_creator":
-          setIsUniversalCreatorOpen(true);
-          return;
-        case "route":
-          router.push(todo.action.route as never);
-          return;
-        case "open_pending_invite":
-          // ORCH-1111 — open the Accept/Decline sheet for this invite.
-          setPendingInvite({
-            invitationId: todo.action.invitationId,
-            brandName: todo.action.brandName,
-          });
-          return;
-        default: {
-          const _exhaustive: never = todo.action;
-          return _exhaustive;
-        }
-      }
+      dispatchBusinessTodoAction(todo, {
+        openBrandSwitcher: () => setSheetVisible(true),
+        openUniversalCreator: () => setIsUniversalCreatorOpen(true),
+        route: (path) => {
+          router.push(path as never);
+        },
+        openPendingInvite: (invitationId, brandName) => {
+          router.push(pendingBrandInviteRoute(invitationId, brandName) as never);
+        },
+      });
     },
     [router],
   );
@@ -1138,25 +1126,6 @@ export default function HomeTab(): React.ReactElement {
         visible={isUniversalCreatorOpen}
         onClose={() => setIsUniversalCreatorOpen(false)}
       />
-
-      {/* ORCH-1111 — pending-invite Accept/Decline sheet. */}
-      {pendingInvite !== null ? (
-        <InvitePendingSheet
-          visible
-          invitationId={pendingInvite.invitationId}
-          brandName={pendingInvite.brandName}
-          onClose={() => setPendingInvite(null)}
-          onResolved={(kind, brandName) => {
-            setToast({
-              visible: true,
-              message:
-                kind === "accepted"
-                  ? `You've joined ${brandName}`
-                  : "Invitation declined",
-            });
-          }}
-        />
-      ) : null}
 
       <BrandDeleteSheet
         visible={deleteSheetVisible}
