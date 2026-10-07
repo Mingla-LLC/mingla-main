@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-07 — Intentional dependency floors clear the open Dependabot queue (markdown-it, dompurify, undici, brace-expansion, sharp) and the business-web boot baseline accepts the measured growth from main (Fixes #3762, toward #3493, PR #3763)
 - 2026-10-07 — Expired admin refund snapshots clean up without immutable_snapshot errors, and the pg_cron health alert names the failing job instead of saying the whole scheduler is down (toward #3660, PR #3756)
 - 2026-10-07 — When handing a brand to a new owner, the outgoing owner chooses leave (default) or stay-as-admin at invite time; accept executes that choice with audit on both sides and a single active owner (toward #3660, PR #3755)
 - 2026-10-07 — Only the brand owner can connect or change the payout bank; admins and finance managers can still see payout status, with a clear owner-only message instead of a 403 storm (toward #3660, PR #3754)
