@@ -356,6 +356,7 @@ import BrandFinanceReportsRoute from "../../../../app/brand/[id]/payments/report
 import {
   BRAND_PAYMENTS_DENIED_BODY,
   BRAND_PAYMENTS_DENIED_TITLE,
+  BRAND_PAYMENTS_VIEW_DENIED_BODY,
 } from "../../../utils/brandPaymentsPermission";
 
 /**
@@ -689,7 +690,8 @@ describe("#1863 — the brand payments routes are gated on the server's role pre
         expect(tree.queryAllByText(BRAND_PAYMENTS_DENIED_TITLE).length)
           .toBeGreaterThan(0);
       });
-      expect(tree.queryAllByText(BRAND_PAYMENTS_DENIED_BODY).length)
+      // Index route is mode="view" (#3660) — denial copy is the view audience.
+      expect(tree.queryAllByText(BRAND_PAYMENTS_VIEW_DENIED_BODY).length)
         .toBeGreaterThan(0);
 
       for (const matcher of PAYMENT_CONTROL_MATCHERS) {
@@ -863,11 +865,29 @@ describe("#1863 — the brand payments routes are gated on the server's role pre
       expect(denied.queryAllByText(BRAND_PAYMENTS_DENIED_TITLE).length)
         .toBeGreaterThan(0);
     });
+    // Onboard defaults to mutate mode — owner-only bank connect (#3660).
+    expect(denied.queryAllByText(BRAND_PAYMENTS_DENIED_BODY).length)
+      .toBeGreaterThan(0);
     await settle();
     expect(mockInvoke).toHaveBeenCalledTimes(0);
 
+    // finance_manager can VIEW payments but cannot onboard (mutate).
     mockRoleState.current = {
       role: "finance_manager",
+      accepted: true,
+      isLoading: false,
+      isError: false,
+    };
+    const fmDenied = await mount(BrandOnboardRoute);
+    await waitFor(() => {
+      expect(fmDenied.queryAllByText(BRAND_PAYMENTS_DENIED_TITLE).length)
+        .toBeGreaterThan(0);
+    });
+    expect(fmDenied.queryAllByText(BRAND_PAYMENTS_DENIED_BODY).length)
+      .toBeGreaterThan(0);
+
+    mockRoleState.current = {
+      role: "brand_owner",
       accepted: true,
       isLoading: false,
       isError: false,

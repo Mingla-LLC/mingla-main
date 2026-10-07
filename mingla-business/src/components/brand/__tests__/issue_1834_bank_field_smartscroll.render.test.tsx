@@ -245,6 +245,18 @@ jest.mock("../../../hooks/useBrandStripeTaxAccountSession", () => ({
 jest.mock("../../../hooks/useBrandStripeAccountSession", () => ({
   useBrandStripeAccountSession: () => mockIdleMutation,
 }));
+// #3660 — BrandPaymentsView now imports useCanManageBrandPayments for owner
+// mutate CTAs. The real hook pulls useCurrentBrandRole → useBrands →
+// offering-rendering → expo-video, which has no EventEmitter under this
+// jest preset. This suite proves keyboard scroll hosts, not role gating.
+jest.mock("../../../hooks/useCanManageBrandPayments", () => ({
+  useCanManageBrandPayments: () => ({
+    allowed: true,
+    isLoading: false,
+    isError: false,
+    refetch: jest.fn(),
+  }),
+}));
 
 // The NG bank form's own data layer. The bank list is irrelevant to the scroll
 // host — what matters is that the account-number Input renders.
