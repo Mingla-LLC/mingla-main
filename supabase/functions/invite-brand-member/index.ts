@@ -361,10 +361,28 @@ export async function handler(req: Request): Promise<Response> {
 
     const sent = await sendInviteEmail(resendKey, emailPayload);
     if (!sent.ok) {
-      console.error("[invite-brand-member] resend failed", sent.error);
+      // #3660 — structured failure so ops can see invitation_id + Resend detail.
+      console.error(
+        "[invite-brand-member] resend failed",
+        JSON.stringify({
+          invitation_id: inserted.id,
+          brand_id: payload.brand_id,
+          invitee_email: payload.invitee_email,
+          error: sent.error ?? "unknown",
+        }),
+      );
       await service.from("brand_invitations").delete().eq("id", inserted.id);
       return json({ error: "email_send_failed" }, 502);
     }
+    console.log(
+      "[invite-brand-member] resend accepted",
+      JSON.stringify({
+        invitation_id: inserted.id,
+        brand_id: payload.brand_id,
+        invitee_email: payload.invitee_email,
+        resend_id: sent.resendId ?? null,
+      }),
+    );
 
     // Best-effort audit row — non-fatal if it errors.
     try {

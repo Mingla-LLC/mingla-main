@@ -269,7 +269,7 @@ function roleArticle(role: string): string {
 export async function sendInviteEmail(
   apiKey: string,
   payload: ReturnType<typeof buildInviteEmail>,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; resendId?: string }> {
   try {
     // no-attachment: this is a plain transactional invite. No PDF/file
     // payload → opt-out from ORCH-0785-A's attachment-aware gate.
@@ -281,7 +281,18 @@ export async function sendInviteEmail(
       },
       body: JSON.stringify(payload),
     });
-    if (response.ok) return { ok: true };
+    if (response.ok) {
+      let resendId: string | undefined;
+      try {
+        const body = await response.json() as { id?: string };
+        if (typeof body?.id === "string" && body.id.length > 0) {
+          resendId = body.id;
+        }
+      } catch {
+        /* ignore */
+      }
+      return { ok: true, resendId };
+    }
     let detail = "";
     try {
       const body = await response.json() as { message?: string };

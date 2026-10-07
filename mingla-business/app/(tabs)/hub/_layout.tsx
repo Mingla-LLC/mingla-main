@@ -50,6 +50,10 @@ import {
 import { useHubCreatorStore } from "../../../src/store/hubCreatorStore";
 import { useVenueSuiteStore } from "../../../src/store/venueSuiteStore";
 import type { BusinessTodo } from "../../../src/utils/businessTodos";
+import {
+  dispatchBusinessTodoAction,
+  pendingBrandInviteRoute,
+} from "../../../src/utils/businessTodoDispatch";
 
 const LazyBrandSwitcherSheet = React.lazy(async () => {
   const mod = await import("../../../src/components/brand/BrandSwitcherSheet");
@@ -61,10 +65,6 @@ const LazyBrandDeleteSheet = React.lazy(async () => {
   return { default: mod.BrandDeleteSheet };
 });
 
-const LazyInvitePendingSheet = React.lazy(async () => {
-  const mod = await import("../../../src/components/team/InvitePendingSheet");
-  return { default: mod.InvitePendingSheet };
-});
 const LazyUniversalCreatorSheet = React.lazy(async () => {
   const mod = await import("../../../src/components/ui/UniversalCreatorSheet");
   return { default: mod.UniversalCreatorSheet };
@@ -129,12 +129,6 @@ export default function HubTabLayout(): React.ReactElement {
   }, [creatorRequestOpen, closeCreatorRequest]);
   const [deleteSheetVisible, setDeleteSheetVisible] = useState<boolean>(false);
   const [brandPendingDelete, setBrandPendingDelete] = useState<Brand | null>(null);
-  // ORCH-1111 — pending-invite Accept/Decline sheet (Hub shares the same
-  // smart To-Do list as Home, so the invite row + its action must work here too).
-  const [pendingInvite, setPendingInvite] = useState<{
-    invitationId: string;
-    brandName: string;
-  } | null>(null);
 
   const handleOpenSwitcher = useCallback((): void => {
     setBrandSheetVisible(true);
@@ -222,30 +216,19 @@ export default function HubTabLayout(): React.ReactElement {
     router.replace(`/(tabs)/hub/${segment}` as never);
   }, [visibleTabs.data, router]);
 
+  // #3660 — shared dispatcher so Hub cannot drift from Home on action kinds.
   const handleTodoAction = useCallback(
     (todo: BusinessTodo): void => {
-      switch (todo.action.kind) {
-        case "open_brand_switcher":
-          setBrandSheetVisible(true);
-          return;
-        case "open_universal_creator":
-          setIsUniversalCreatorOpen(true);
-          return;
-        case "route":
-          router.push(todo.action.route as never);
-          return;
-        case "open_pending_invite":
-          // ORCH-1111 — open the Accept/Decline sheet for this invite.
-          setPendingInvite({
-            invitationId: todo.action.invitationId,
-            brandName: todo.action.brandName,
-          });
-          return;
-        default: {
-          const _exhaustive: never = todo.action;
-          return _exhaustive;
-        }
-      }
+      dispatchBusinessTodoAction(todo, {
+        openBrandSwitcher: () => setBrandSheetVisible(true),
+        openUniversalCreator: () => setIsUniversalCreatorOpen(true),
+        route: (path) => {
+          router.push(path as never);
+        },
+        openPendingInvite: (invitationId, brandName) => {
+          router.push(pendingBrandInviteRoute(invitationId, brandName) as never);
+        },
+      });
     },
     [router],
   );
@@ -334,16 +317,6 @@ export default function HubTabLayout(): React.ReactElement {
           <LazyUniversalCreatorSheet
             visible
             onClose={() => setIsUniversalCreatorOpen(false)}
-          />
-        </Suspense>
-      ) : null}
-      {pendingInvite !== null ? (
-        <Suspense fallback={null}>
-          <LazyInvitePendingSheet
-            visible
-            invitationId={pendingInvite.invitationId}
-            brandName={pendingInvite.brandName}
-            onClose={() => setPendingInvite(null)}
           />
         </Suspense>
       ) : null}

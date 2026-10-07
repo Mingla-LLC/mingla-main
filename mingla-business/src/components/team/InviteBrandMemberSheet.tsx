@@ -315,7 +315,9 @@ function errorMessageFor(err: unknown): string {
       case "already_invited":
         return "There's already a pending invite for that email.";
       case "email_send_failed":
-        return "Couldn't send the email. Try again in a moment.";
+        // #3660 — invite insert is rolled back when Resend fails; say so so
+        // the inviter does not think a pending row exists without an email.
+        return "Couldn't send the invitation email. Nothing was saved — try again.";
       default:
         return "Something went wrong. Try again.";
     }
