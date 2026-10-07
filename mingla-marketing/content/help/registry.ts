@@ -1039,6 +1039,188 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'build-your-menu',
+    episode: 18,
+    title: 'Build your menu',
+    blurb:
+      'Build a venue menu in Mingla Host: categories, dishes with a guest price and a private cost, choices, a service window and a cheaper smaller portion, then reorder, 86 a dish and check the public menu.',
+    duration: '4:03',
+    durationIso: 'PT4M3S',
+    chapter: 'creating',
+    intents: ['Run a venue'],
+    surfaces: ['Web', 'iOS'],
+    bambooEntryId: '0_e1h5mw0g',
+    uploadedAt: '2026-10-05',
+    // Nothing is burned into this render, so the reviewed sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Open the Menu tab',
+        body:
+          'Open Lantern Room in Venue Hub and move along the tabs to Menu. Evening Plates is already on the menu; tap Add a category to start a new one.',
+      },
+      {
+        title: 'Add a Mains category',
+        body:
+          'Name the category Mains, add the line guests see under it, then choose Add category. Mains now sits on your menu.',
+      },
+      {
+        title: 'Add a dish with a price and a private cost',
+        body:
+          'In Mains, tap Add item. Name the dish Lantern Burger and set the guest price to $22. Then add what the dish costs you: only you see it, guests never do.',
+      },
+      {
+        title: 'Allow notes and choose where it is made',
+        body:
+          'Turn on Let guests add a note, choose Kitchen under Where it is made, and save. Lantern Burger now shows at $22.00 in Mains.',
+      },
+      {
+        title: 'Add a required choice',
+        body:
+          'Edit the burger and add a choice. Ask How should we cook it?, make it Pick one and Required, add three ways to cook it, then add the group.',
+      },
+      {
+        title: 'Add optional add-ons with their own prices',
+        body:
+          'Add a second group called Add-ons. Make it Pick several and optional, up to three. Each add-on can carry its own price, such as Bacon +$3 or Avocado +$3. Both groups are saved on the one dish.',
+      },
+      {
+        title: 'Give a category a service window',
+        body:
+          'Open Late Bites and set its service window to 22:00–23:00, every day.',
+      },
+      {
+        title: 'Let a smaller portion cost less',
+        body:
+          'On the Hibiscus Spritz, add a Make it group. A smaller portion can cost less: type a minus. Zero-proof is entered as -4, so it costs four dollars less.',
+      },
+      {
+        title: 'Build the rest of the menu and put it in order',
+        body:
+          'Build the other categories the same way: small plates, mains with sides or a meal option, late bites with a heat level, desserts, and drinks with a spirit or a size. Put your categories in order, move a dish with the arrows and wait for Order saved.',
+      },
+      {
+        title: 'Mark a dish 86',
+        body:
+          'Mark a dish 86\'d and it disappears from your public menu. In the video the Palm Wine Margarita is 86\'d and no longer shows under Cocktails & Drinks.',
+      },
+      {
+        title: 'Check your public menu',
+        body:
+          'Ordering through Mingla is off by default, and then your public menu shows your dishes, their descriptions and prices. Choices are shown to guests only when ordering is on. With ordering switched on for the demo, a guest picks medium rare, bacon and avocado, a required choice must be picked before a dish can be added, and the burger comes to $28 with its add-ons.',
+      },
+      {
+        title: 'Do the same on desktop',
+        body:
+          'Everything also works on desktop at host.usemingla.com. Open Menu, edit a dish to change its price, cost and choices, and check the public menu with ordering off and on.',
+        links: [{ label: 'host.usemingla.com', href: 'https://host.usemingla.com' }],
+      },
+    ],
+  },
+  {
+    slug: 'build-your-guest-list-and-groups',
+    episode: 19,
+    title: 'Build your guest list and groups',
+    blurb:
+      'Build your guest list in Mingla Host: add a person by hand, import a CSV after checking the preview, gather people into a group, then start an email or SMS campaign to that group.',
+    duration: '1:40',
+    durationIso: 'PT1M40S',
+    chapter: 'selling',
+    intents: ['Market to customers'],
+    surfaces: ['Web'],
+    bambooEntryId: '0_r4uiil4e',
+    uploadedAt: '2026-10-06',
+    // Nothing is burned into this render, so the reviewed sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Open People in Blast',
+        body:
+          'In Blast, open People. Your book holds the people who gave your brand their details. It starts empty.',
+      },
+      {
+        title: 'Add a person by hand',
+        body:
+          'Click Add, then type their name and an email or a phone number. For a phone number, pick the country first, then type the number. Click Add person, and they are in your book.',
+      },
+      {
+        title: 'Import a CSV file',
+        body:
+          'To bring in a whole list, click Import and choose a CSV file. Mingla matches your name, email and phone columns for you. Columns it does not need are ignored.',
+      },
+      {
+        title: 'Check the preview, then import',
+        body:
+          'The preview shows what will happen before anything is added. Confirm you have permission to contact them, then import. In the video, twelve people are added and the book now has thirteen contacts.',
+      },
+      {
+        title: 'Create a group',
+        body:
+          'Groups organise people for focused campaigns. Click Create group and name it, such as Regulars. Then choose Select from Book and tick the people you want.',
+      },
+      {
+        title: 'Review and create the group',
+        body:
+          'Review the group to see how many people are in it. Nothing is sent now, and you can change the group anytime. Create the group, and it is ready.',
+      },
+      {
+        title: 'Start a campaign to the group',
+        body:
+          'On the group page, click Start campaign. The group is already the audience. Write it as an email or an SMS.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+    ],
+  },
+  {
+    slug: 'send-a-campaign-to-a-group',
+    episode: 20,
+    title: 'Send a campaign to a group',
+    blurb:
+      'Send an email campaign to a group in Mingla Host: pick the audience, write and format the email, add an event card and a link, send it after the review, then open the sent campaign to see how it did.',
+    duration: '1:40',
+    durationIso: 'PT1M40S',
+    chapter: 'selling',
+    intents: ['Market to customers'],
+    surfaces: ['Web'],
+    bambooEntryId: '0_rg1i0r09',
+    uploadedAt: '2026-10-07',
+    // Nothing is burned into this render, so the reviewed sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Start a campaign and pick an audience',
+        body:
+          'In Blast, start a new campaign, then pick an audience. Send it to your whole book, a group, or an automatic group of buyers. In the video, the audience is the VIP guests group.',
+      },
+      {
+        title: 'Write the email',
+        body:
+          'Write a subject, then the email itself. Format your text with bold and italic from the toolbar.',
+      },
+      {
+        title: 'Add an event card',
+        body:
+          'Click + Event and choose one of your events. The email shows an event card with the date and a Get tickets button.',
+      },
+      {
+        title: 'Add a link',
+        body:
+          'Open the three-dot menu and choose Link. Paste the address, write the words your reader will see, then click Insert. The preview on the right shows the email as you write.',
+      },
+      {
+        title: 'Schedule it or send it now',
+        body:
+          'To send it later, pick a date and time with Schedule send. To send it now, check the review: it shows the audience and how many people can be reached. Nothing sends until you click Send now.',
+      },
+      {
+        title: 'See how it did',
+        body:
+          'The campaign shows as sent in Campaigns, and Overview shows how many emails were delivered and opened. Open a sent campaign to see who it reached, deliveries, opens, link clicks, bounces and unsubscribes. Opens are an estimate, so treat them as a trend. Link clicks are the stronger signal.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>
