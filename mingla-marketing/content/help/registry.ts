@@ -1172,6 +1172,55 @@ export const HELP_VIDEOS: readonly HelpVideoRecord[] = [
       },
     ],
   },
+  {
+    slug: 'send-a-campaign-to-a-group',
+    episode: 20,
+    title: 'Send a campaign to a group',
+    blurb:
+      'Send an email campaign to a group in Mingla Host: pick the audience, write and format the email, add an event card and a link, send it after the review, then open the sent campaign to see how it did.',
+    duration: '1:40',
+    durationIso: 'PT1M40S',
+    chapter: 'selling',
+    intents: ['Market to customers'],
+    surfaces: ['Web'],
+    bambooEntryId: '0_rg1i0r09',
+    uploadedAt: '2026-10-07',
+    // Nothing is burned into this render, so the reviewed sidecar track is the caption.
+    hasCaptions: true,
+    steps: [
+      {
+        title: 'Start a campaign and pick an audience',
+        body:
+          'In Blast, start a new campaign, then pick an audience. Send it to your whole book, a group, or an automatic group of buyers. In the video, the audience is the VIP guests group.',
+      },
+      {
+        title: 'Write the email',
+        body:
+          'Write a subject, then the email itself. Format your text with bold and italic from the toolbar.',
+      },
+      {
+        title: 'Add an event card',
+        body:
+          'Click + Event and choose one of your events. The email shows an event card with the date and a Get tickets button.',
+      },
+      {
+        title: 'Add a link',
+        body:
+          'Open the three-dot menu and choose Link. Paste the address, write the words your reader will see, then click Insert. The preview on the right shows the email as you write.',
+      },
+      {
+        title: 'Schedule it or send it now',
+        body:
+          'To send it later, pick a date and time with Schedule send. To send it now, check the review: it shows the audience and how many people can be reached. Nothing sends until you click Send now.',
+      },
+      {
+        title: 'See how it did',
+        body:
+          'The campaign shows as sent in Campaigns, and Overview shows how many emails were delivered and opened. Open a sent campaign to see who it reached, deliveries, opens, link clicks, bounces and unsubscribes. Opens are an estimate, so treat them as a trend. Link clicks are the stronger signal.',
+        links: [{ label: 'Mingla Host · usemingla.com/host', href: 'https://usemingla.com/host' }],
+      },
+    ],
+  },
 ]
 
 export const helpVideoForSlug = (slug: string): HelpVideoRecord | null =>
