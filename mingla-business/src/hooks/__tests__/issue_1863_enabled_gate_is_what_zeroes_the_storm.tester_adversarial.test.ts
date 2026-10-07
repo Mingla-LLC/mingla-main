@@ -40,8 +40,8 @@ import { QueryClient, QueryObserver } from "@tanstack/react-query";
 
 import { queryClient } from "../../config/queryClient";
 import {
-  BRAND_PAYMENTS_MANAGER_ROLES,
-  canManageBrandPayments,
+  BRAND_PAYMENTS_VIEW_ROLES,
+  canViewBrandPayments,
 } from "../../utils/brandPaymentsPermission";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import type { BrandRole } from "../../utils/brandRole";
@@ -68,9 +68,10 @@ const AUTH_READY = {
 } as const;
 
 function enabledFor(role: BrandRole | null, accepted: boolean): boolean {
+  // #3660 — status/balances enable on the VIEW audience (owner/admin/FM).
   return shouldEnableBrandStripeStatusQuery({
     ...AUTH_READY,
-    canManagePayments: canManageBrandPayments({ role, accepted }),
+    canManagePayments: canViewBrandPayments({ role, accepted }),
   });
 }
 
@@ -113,16 +114,15 @@ async function countInvocations(opts: {
 }
 
 describe("#1863 T-B0 — the calibration this file depends on is real", () => {
-  it("the role ladder is the full six and splits 3 allowed / 3 denied", () => {
+  it("the role ladder is the full six and splits 3 allowed / 3 denied (view)", () => {
     expect(ALL_ROLES).toHaveLength(6);
-    expect(BRAND_PAYMENTS_MANAGER_ROLES).toHaveLength(3);
+    expect(BRAND_PAYMENTS_VIEW_ROLES).toHaveLength(3);
     const allowed = ALL_ROLES.filter((r) =>
-      canManageBrandPayments({ role: r, accepted: true })
+      canViewBrandPayments({ role: r, accepted: true })
     );
     const denied = ALL_ROLES.filter(
-      (r) => !canManageBrandPayments({ role: r, accepted: true }),
+      (r) => !canViewBrandPayments({ role: r, accepted: true }),
     );
-    // An all-true or all-false predicate dies here, before any case runs.
     expect(allowed).toHaveLength(3);
     expect(denied).toHaveLength(3);
   });
@@ -150,7 +150,7 @@ describe("#1863 T-B1 — the enabled gate composes predicate → auth gate for e
       if (enabledFor(role, true)) enabledRoles.push(role);
     }
     expect([...enabledRoles].sort()).toEqual(
-      [...BRAND_PAYMENTS_MANAGER_ROLES].sort(),
+      [...BRAND_PAYMENTS_VIEW_ROLES].sort(),
     );
     // No membership at all never enables it.
     expect(enabledFor(null, true)).toBe(false);

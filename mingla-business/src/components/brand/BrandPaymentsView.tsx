@@ -77,6 +77,7 @@ import { useBrandPayoutVisibility } from "../../hooks/useBrandPayoutVisibility";
 import { useBrandStripeBalances } from "../../hooks/useBrandStripeBalances";
 import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAccountSession";
 import { useBrandStripeAccountSession } from "../../hooks/useBrandStripeAccountSession";
+import { useCanManageBrandPayments } from "../../hooks/useCanManageBrandPayments";
 import { getEffectiveBrandStripeStatus } from "../../utils/stripeOnboardingOutcome";
 // #3645 PR10 — organiser payout states ("Selling, add a bank", "Next payout on
 // <date>", "Payouts paused") land on the SAME status card, on both rails.
@@ -203,6 +204,17 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   onOpenReports,
 }) => {
   const insets = useSafeAreaInsets();
+  // #3660 — index is view-gated; bank mutate CTAs stay owner-only.
+  const { allowed: canMutatePayouts } = useCanManageBrandPayments(
+    brand?.id ?? null,
+  );
+  const handleMutatePayouts = useCallback((): void => {
+    if (!canMutatePayouts) {
+      Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+      return;
+    }
+    onOpenOnboard();
+  }, [canMutatePayouts, onOpenOnboard]);
 
   const handleExport = useCallback((): void => {
     onOpenReports();
@@ -239,25 +251,37 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   // dashboard:'none' Stripe-managed-risk Connect controllers.
   const accountSession = useBrandStripeAccountSession();
   const handleOpenAccountManagement = useCallback(async (): Promise<void> => {
+    if (!canMutatePayouts) {
+      Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+      return;
+    }
     if (brand?.id === undefined || accountSession.isPending) return;
     const result = await accountSession.mutateAsync({
       brandId: brand.id,
       surface: "account_management",
     });
     await WebBrowser.openAuthSessionAsync(result.targetUrl, RETURN_DEEP_LINK);
-  }, [accountSession, brand?.id]);
+  }, [accountSession, brand?.id, canMutatePayouts]);
   const handleOpenTaxDashboard = useCallback((): void => {
+    if (!canMutatePayouts) {
+      Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+      return;
+    }
     if (brand?.id === undefined || taxAccountSession.isPending) return;
     taxAccountSession.mutate(brand.id);
-  }, [brand?.id, taxAccountSession]);
+  }, [brand?.id, canMutatePayouts, taxAccountSession]);
 
   // ORCH-0802 — Disconnect Stripe sheet visibility. Sheet is only ever
   // reachable from the Danger zone CTA below, which itself only renders
   // when stripeStatus is active OR restricted (SPEC §6.3 visibility gate).
   const [detachSheetVisible, setDetachSheetVisible] = useState<boolean>(false);
   const handleOpenDetach = useCallback((): void => {
+    if (!canMutatePayouts) {
+      Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+      return;
+    }
     setDetachSheetVisible(true);
-  }, []);
+  }, [canMutatePayouts]);
   const handleCloseDetach = useCallback((): void => {
     setDetachSheetVisible(false);
   }, []);
@@ -449,6 +473,10 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
       paystackStatusQuery.data?.connected === true;
     const ps = paystackStatusQuery.data;
     const handleDisconnect = (): void => {
+      if (!canMutatePayouts) {
+        Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+        return;
+      }
       Alert.alert(
         "Disconnect payout bank?",
         "This brand will stop receiving payouts until you connect a bank again.",
@@ -473,6 +501,23 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           },
         ],
       );
+    };
+    const handleChangeBank = (): void => {
+      if (!canMutatePayouts) {
+        Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+        return;
+      }
+      setPaystackEditing(true);
+    };
+    const handleClearProvider = (): void => {
+      if (!canMutatePayouts) {
+        Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+        return;
+      }
+      clearPaystackMutation.mutate(brand.id, {
+        // Revert to Stripe, then open the country picker to re-pick.
+        onSuccess: () => handleMutatePayouts(),
+      });
     };
     return (
       <View style={styles.host}>
@@ -501,7 +546,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
             ? (
               <PaymentsStatusCard
                 config={paystackStatusBanner}
-                onCta={onOpenOnboard}
+                onCta={handleMutatePayouts}
               />
             )
             : null}
@@ -558,7 +603,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                 <View style={styles.notFoundBtnRow}>
                   <Button
                     label="Change bank account"
-                    onPress={() => setPaystackEditing(true)}
+                    onPress={handleChangeBank}
                     variant="secondary"
                     size="md"
                   />
@@ -594,11 +639,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                 }}
                 onCancel={connected
                   ? () => setPaystackEditing(false)
-                  : () =>
-                    clearPaystackMutation.mutate(brand.id, {
-                      // Revert to Stripe, then open the country picker to re-pick.
-                      onSuccess: () => onOpenOnboard(),
-                    })}
+                  : handleClearProvider}
               />
             )}
         </ScrollView>
@@ -713,7 +754,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         {/* SECTION A — Status Banner (the ONE status card; #3645 PR10 payout
             states are overlaid on it, never a second card) */}
         {bannerConfig !== null
-          ? <PaymentsStatusCard config={bannerConfig} onCta={onOpenOnboard} />
+          ? <PaymentsStatusCard config={bannerConfig} onCta={handleMutatePayouts} />
           : null}
 
         {stripeStatusQuery.isError
@@ -767,7 +808,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
             return (
               <BrandStripeDeadlineBanner
                 deadline={deadline}
-                onResolve={onOpenOnboard}
+                onResolve={handleMutatePayouts}
               />
             );
           })()
@@ -785,7 +826,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
             return (
               <BrandStripeKycRemediationCard
                 requirements={requirements}
-                onResolve={onOpenOnboard}
+                onResolve={handleMutatePayouts}
               />
             );
           })()
@@ -795,7 +836,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           ? (
             <BrandStripeBankSection
               brandId={brand.id}
-              onResolve={onOpenOnboard}
+              onResolve={handleMutatePayouts}
             />
           )
           : null}

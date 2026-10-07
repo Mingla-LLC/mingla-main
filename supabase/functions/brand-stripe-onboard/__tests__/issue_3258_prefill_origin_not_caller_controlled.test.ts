@@ -141,7 +141,7 @@ function withStubbedNetwork(
     }
 
     // The permission RPC says yes.
-    if (url.includes("/rest/v1/rpc/biz_can_manage_payments_for_brand")) {
+    if (url.includes("/rest/v1/rpc/biz_can_mutate_payouts_for_brand")) {
       return Promise.resolve(json(true));
     }
 

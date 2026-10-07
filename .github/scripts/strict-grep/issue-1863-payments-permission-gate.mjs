@@ -13,6 +13,9 @@
  *
  * `readFiles()` uses readFileSync, so a missing file THROWS — that is the
  * empty-scan-fails property, and it is free.
+ *
+ * #3660 Phase 3 — mutate is brand_owner only; view is owner/admin/FM. Status
+ * and balances hooks must use useCanViewBrandPayments specifically.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -42,7 +45,9 @@ const PATHS = {
   renderWorkflow: ".github/workflows/issue-1486-dormant-render-suites.yml",
 };
 
-const MANAGER_ROLES = ["brand_owner", "brand_admin", "finance_manager"];
+// #3660 — exact mutate / view arrays (pinned separately so C-6 cannot go vacuous).
+const MUTATE_ROLES = ["brand_owner"];
+const VIEW_ROLES = ["brand_owner", "brand_admin", "finance_manager"];
 
 function need(source, token, label, failures) {
   if (!source.includes(token)) failures.push(`${label}: missing ${token}`);
@@ -79,6 +84,10 @@ function predicateBody(source) {
   return source.slice(start, end);
 }
 
+function arrayLiteral(roles) {
+  return `[\n${roles.map((r) => `  "${r}",`).join("\n")}\n]`;
+}
+
 export function violations(files) {
   const failures = [];
   const authGate = files.authGate ?? "";
@@ -100,12 +109,13 @@ export function violations(files) {
   forbid(authGate, "canManagePayments?:", "C-1 auth gate", failures);
   need(authGate, "canManagePayments === true", "C-1 auth gate", failures);
 
-  // ── C-2 — BOTH hooks evaluate the predicate and feed it into the gate.
+  // ── C-2 — BOTH hooks must use the VIEW predicate (#3660 admin/FM read).
   for (const [label, source] of [
     ["C-2 status hook", statusHook],
     ["C-2 balances hook", balancesHook],
   ]) {
-    need(source, "useCanManageBrandPayments(", label, failures);
+    need(source, "useCanViewBrandPayments(", label, failures);
+    forbid(source, "useCanManageBrandPayments(", label, failures);
     const call = source.indexOf("shouldEnableBrandStripeStatusQuery({");
     const passed = call < 0 ? -1 : source.indexOf("canManagePayments", call);
     if (call < 0 || passed < 0) {
@@ -122,8 +132,6 @@ export function violations(files) {
   );
   need(queryClient, "isPermissionDeniedError(error)", "C-3 query client", failures);
   need(queryClient, "DEFAULT_QUERY_RETRY_COUNT = 2", "C-3 query client", failures);
-  // `<`, never `<=`: query-core calls retry() with the PRE-INCREMENT 0-based
-  // counter, so `<= 2` silently adds a fourth attempt to every query in the app.
   need(
     queryClient,
     "failureCount < DEFAULT_QUERY_RETRY_COUNT",
@@ -132,15 +140,15 @@ export function violations(files) {
   );
   forbid(queryClient, "retry: 2,", "C-3 query client", failures);
 
-  // ── C-4 — the WRONG shape must never be added. A rank threshold cannot
-  // express this predicate in either direction, and this is a money surface.
+  // ── C-4 — the WRONG shape must never be added.
   forbid(permissionGates, "MANAGE_PAYMENTS", "C-4 permission gates", failures);
 
-  // ── C-5 — the predicate is role-set membership; no threshold smuggled back in.
-  for (const role of MANAGER_ROLES) {
+  // ── C-5 — mutate predicate is role-set membership (owner-only).
+  for (const role of MUTATE_ROLES) {
     need(predicate, `"${role}"`, "C-5 predicate", failures);
   }
   need(predicate, "BRAND_PAYMENTS_MANAGER_ROLES", "C-5 predicate", failures);
+  need(predicate, "BRAND_PAYMENTS_VIEW_ROLES", "C-5 predicate", failures);
   const body = predicateBody(predicate);
   if (body === null) {
     failures.push("C-5 predicate: canManageBrandPayments is missing");
@@ -152,11 +160,22 @@ export function violations(files) {
     need(body, "accepted", "C-5 predicate body", failures);
   }
 
-  // ── C-6 — parity with the REAL server file, checked literal by literal.
-  for (const role of MANAGER_ROLES) {
-    need(serverAuth, `"${role}"`, "C-6 server parity", failures);
+  // ── C-6 — exact mutate + view arrays on the server, literal by literal.
+  need(
+    serverAuth,
+    `export const BRAND_PAYMENTS_ROLES = ${arrayLiteral(MUTATE_ROLES)} as const;`,
+    "C-6 server mutate roles",
+    failures,
+  );
+  need(
+    serverAuth,
+    `export const BRAND_PAYMENTS_VIEW_ROLES = ${arrayLiteral(VIEW_ROLES)} as const;`,
+    "C-6 server view roles",
+    failures,
+  );
+  for (const role of VIEW_ROLES) {
+    need(serverAuth, `"${role}"`, "C-6 server view parity", failures);
   }
-  need(serverAuth, "BRAND_PAYMENTS_ROLES", "C-6 server parity", failures);
 
   // ── C-7 — all three routes import AND render the gate.
   for (const [label, source] of [
@@ -174,10 +193,7 @@ export function violations(files) {
   need(balancesService, "unwrapFunctionError", "C-8 balances twin", failures);
   need(statusService, "export async function unwrapFunctionError", "C-8 balances twin", failures);
 
-  // ── C-8b — the role-denial classifier keys on requirePaymentsManager's
-  // ACTUAL signature, not "any 403". `brand-stripe-onboard` returns
-  // 403 {error:"forbidden", detail:"mingla_tos_not_accepted"} from its ToS gate;
-  // swallowing that would tell a user whose role is fine to change their role.
+  // ── C-8b — the role-denial classifier keys on requirePaymentsManager's signature.
   need(statusService, "PERMISSION_DENIED_DETAIL", "C-8b denial signature", failures);
   need(
     statusService,
@@ -192,9 +208,7 @@ export function violations(files) {
     failures,
   );
 
-  // ── C-9 — the __DEV__ diagnostic: a handled 403 uses console.log (which
-  // raises no LogBox notification) and the discriminator precedes the generic
-  // console.error. console.warn is NOT a substitute — it raises a yellow box.
+  // ── C-9 — the __DEV__ diagnostic.
   need(statusService, "EdgeFunctionPermissionDeniedError", "C-9 diagnostic", failures);
   const diag = statusService.indexOf("function logEdgeFunctionDiagnostic(");
   const discriminator = diag < 0 ? -1 : statusService.indexOf("status === 403", diag);
@@ -208,8 +222,7 @@ export function violations(files) {
     );
   }
 
-  // ── C-10 — the dead ViewState is WIRED, and failed-network is no longer the
-  // unconditional answer to statusQuery.isError.
+  // ── C-10 — the dead ViewState is WIRED.
   need(onboardView, "mapStripeStatusErrorToViewState(", "C-10 onboard view", failures);
   need(onboardView, 'setViewState("permission-denied")', "C-10 onboard view", failures);
   const isErrorBranch = onboardView.indexOf("if (statusQuery.isError) {");
@@ -292,8 +305,10 @@ function selfTest() {
   const mutations = [
     ["authGate", "canManagePayments: boolean;", "canManagePayments?: boolean;",
       "C-1 required field weakened to optional"],
-    ["statusHook", "useCanManageBrandPayments(brandId)", "({ allowed: true })",
-      "C-2 status hook stops evaluating the predicate"],
+    ["statusHook", "useCanViewBrandPayments(brandId)", "useCanManageBrandPayments(brandId)",
+      "C-2 status hook reverts to mutate-only predicate"],
+    ["balancesHook", "useCanViewBrandPayments(brandId)", "useCanManageBrandPayments(brandId)",
+      "C-2 balances twin reverts to mutate-only predicate"],
     ["balancesHook", "canManagePayments,\n    });", "});",
       "C-2 balances twin stops passing the conjunct"],
     ["queryClient", "failureCount < DEFAULT_QUERY_RETRY_COUNT",
@@ -308,8 +323,10 @@ function selfTest() {
     ["predicate", "(BRAND_PAYMENTS_MANAGER_ROLES as readonly string[]).includes(role)",
       "BRAND_ROLE_RANK.brand_admin >= 50",
       "C-5 the predicate is 'simplified' into a rank threshold"],
-    ["serverAuth", '"finance_manager"', '"tax_manager"',
-      "C-6 the client mirror drifts from the server role set"],
+    ["serverAuth", '"brand_owner",\n] as const;', '"tax_manager",\n] as const;',
+      "C-6 the mutate role array drifts"],
+    ["serverAuth", '"finance_manager",\n] as const;', '"tax_manager",\n] as const;',
+      "C-6 the view role array drifts"],
     ["routeIndex", "<BrandPaymentsPermissionGate", "<React.Fragment",
       "C-7 the payments route is unwrapped"],
     ["routeReports", "<BrandPaymentsPermissionGate", "<React.Fragment",

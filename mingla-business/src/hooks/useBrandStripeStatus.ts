@@ -25,7 +25,7 @@ import {
   type RefreshStatusResult,
 } from "../services/brandStripeService";
 import { shouldEnableBrandStripeStatusQuery } from "./brandStripeStatusAuthGate";
-import { useCanManageBrandPayments } from "./useCanManageBrandPayments";
+import { useCanViewBrandPayments } from "./useCanViewBrandPayments";
 import { brandKeys } from "./useBrands";
 
 const STALE_TIME_MS = 30 * 1000; // 30s — matches webhook + poll fallback per D-B2-11
@@ -47,11 +47,9 @@ export function useBrandStripeStatus(
   // status edge call is RLS auth.uid()-scoped; this keeps the uniform readiness
   // gate that the orch-1004 strict-grep enforces.
   const { isAuthReady, loading, session, user } = useAuth();
-  // #1863 §4.2 — the server refuses this endpoint with 403 permission_denied
-  // for any role outside {brand_owner, brand_admin, finance_manager}. An ADDED
-  // conjunct, never a replacement: the ORCH-1004 `isAuthReady` readiness gate
-  // stays exactly as it is.
-  const { allowed: canManagePayments } = useCanManageBrandPayments(brandId);
+  // #1863 §4.2 + #3660 Phase 3 — view audience (owner/admin/FM). Prop name
+  // stays `canManagePayments` on the shared auth-gate helper.
+  const { allowed: canManagePayments } = useCanViewBrandPayments(brandId);
   const enabled =
     isAuthReady &&
     shouldEnableBrandStripeStatusQuery({

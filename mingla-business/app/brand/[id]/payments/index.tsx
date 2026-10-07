@@ -67,6 +67,7 @@ export default function BrandPaymentsRoute(): React.ReactElement {
         brandId={brandId}
         title="Payments"
         onBack={handleBack}
+        mode="view"
       >
         <BrandPaymentsView
           brand={brand}

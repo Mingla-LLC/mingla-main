@@ -10,7 +10,7 @@ import {
 import { generateIdempotencyKey } from "./idempotency.ts";
 import { writeAudit } from "./audit.ts";
 import {
-  BRAND_PAYMENTS_ROLES,
+  BRAND_PAYMENTS_VIEW_ROLES,
   dispatchNotification,
   formatMoneyCents,
   getBrandTeamUserIdsByRoles,
@@ -309,7 +309,7 @@ async function notifyBrandManagers(
   const userIds = await getBrandTeamUserIdsByRoles(
     supabase as never,
     input.brandId,
-    input.roles ?? BRAND_PAYMENTS_ROLES,
+    input.roles ?? BRAND_PAYMENTS_VIEW_ROLES,
   );
   for (const userId of userIds) {
     await dispatchNotification({

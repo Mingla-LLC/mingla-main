@@ -33,9 +33,11 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useCanManageBrandPayments } from "../../hooks/useCanManageBrandPayments";
+import { useCanViewBrandPayments } from "../../hooks/useCanViewBrandPayments";
 import {
   BRAND_PAYMENTS_DENIED_BODY,
   BRAND_PAYMENTS_DENIED_TITLE,
+  BRAND_PAYMENTS_VIEW_DENIED_BODY,
 } from "../../utils/brandPaymentsPermission";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -48,14 +50,24 @@ export interface BrandPaymentsPermissionGateProps {
   title: string;
   onBack: () => void;
   children: React.ReactNode;
+  /**
+   * #3660 — `view` for index/reports (owner/admin/FM); `mutate` for onboard
+   * (brand_owner only). Default mutate so a missing prop stays fail-closed.
+   */
+  mode?: "view" | "mutate";
 }
 
 export const BrandPaymentsPermissionGate: React.FC<
   BrandPaymentsPermissionGateProps
-> = ({ brandId, title, onBack, children }) => {
-  const { allowed, isLoading, isError, refetch } = useCanManageBrandPayments(
-    brandId,
-  );
+> = ({ brandId, title, onBack, children, mode = "mutate" }) => {
+  const manage = useCanManageBrandPayments(brandId);
+  const view = useCanViewBrandPayments(brandId);
+  const { allowed, isLoading, isError, refetch } =
+    mode === "view" ? view : manage;
+  const deniedBody =
+    mode === "view"
+      ? BRAND_PAYMENTS_VIEW_DENIED_BODY
+      : BRAND_PAYMENTS_DENIED_BODY;
 
   // NOT-FOUND PRECEDENCE. With no brand id there is nothing to evaluate a
   // membership against, and the wrapped view already owns the correct
@@ -130,7 +142,7 @@ export const BrandPaymentsPermissionGate: React.FC<
       <Text style={styles.title} accessibilityRole="header">
         {BRAND_PAYMENTS_DENIED_TITLE}
       </Text>
-      <Text style={styles.body_}>{BRAND_PAYMENTS_DENIED_BODY}</Text>
+      <Text style={styles.body_}>{deniedBody}</Text>
       <View style={styles.btnRow}>
         <Button
           label="Back"

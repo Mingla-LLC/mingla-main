@@ -26,7 +26,7 @@
 // @ts-ignore — Deno ESM
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  BRAND_PAYMENTS_ROLES,
+  BRAND_PAYMENTS_VIEW_ROLES,
   dispatchNotification,
   formatMoneyCents,
   getBrandTeamUserIdsByRolesOrThrow,
@@ -70,7 +70,7 @@ export async function notifyBrandManagers(
   const userIds = await getBrandTeamUserIdsByRolesOrThrow(
     supabase as never,
     input.brandId,
-    input.roles ?? BRAND_PAYMENTS_ROLES,
+    input.roles ?? BRAND_PAYMENTS_VIEW_ROLES,
   );
   for (const userId of userIds) {
     await dispatchNotification({

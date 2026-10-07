@@ -1,53 +1,37 @@
 /**
- * brandPaymentsPermission — the CLIENT MIRROR of the server's payments predicate.
+ * brandPaymentsPermission — CLIENT MIRROR of server payments predicates.
  *
- * #1863 [error-toast-covers-bank-field] §4.0.1. Leaf module: the only import is
- * the `BrandRole` TYPE from ./brandRole, so `queryClient.ts` and every hook can
- * import it at boot without a cycle.
+ * #1863 [error-toast-covers-bank-field] §4.0.1 + #3660 Phase 3.
  *
- * SERVER SOURCE OF TRUTH — mirrored, never the reverse:
+ * SERVER SOURCE OF TRUTH (#3660):
  *
- *   biz_can_manage_payments_for_brand(brand, user) =
- *         biz_is_brand_admin_plus(brand, user)              -- effective rank >= 50
- *      OR EXISTS (accepted, not-removed brand_team_members row
- *                 with role = 'finance_manager')
+ *   biz_can_manage_payments_for_brand = effective rank >= brand_owner
+ *     → bank connect / detach / onboard mutate
  *
- *   supabase/migrations/20260505000000_baseline_squash_orch_0729.sql:3059-3073
- *   (biz_is_brand_admin_plus at :3136-3142; biz_brand_effective_rank current
- *   definition at supabase/migrations/20260819000000_orch_1047_*.sql:134-164,
- *   whose membership branch requires removed_at IS NULL AND accepted_at IS NOT
- *   NULL AND brands.deleted_at IS NULL).
+ *   biz_can_view_payments_for_brand =
+ *         biz_is_brand_admin_plus
+ *      OR accepted finance_manager
+ *     → status / balances / refunds visibility
  *
- * The edge functions reach it through `requirePaymentsManager` in
- * `supabase/functions/_shared/stripeEdgeAuth.ts`, which already names the answer
- * as a constant: `BRAND_PAYMENTS_ROLES = ["brand_owner","brand_admin",
- * "finance_manager"]`. `BRAND_PAYMENTS_MANAGER_ROLES` below MUST stay
- * value-identical to it.
+ * Edge mutate gate: `requirePaymentsManager` + `BRAND_PAYMENTS_ROLES`.
+ * Edge view gate: `requirePaymentsViewer` + `BRAND_PAYMENTS_VIEW_ROLES`.
+ *
+ * `BRAND_PAYMENTS_MANAGER_ROLES` MUST stay value-identical to
+ * `BRAND_PAYMENTS_ROLES` in stripeEdgeAuth.ts (#1863 C-6).
  *
  * ── THE TRAP ────────────────────────────────────────────────────────────────
- * `event_manager` is rank 40 and `finance_manager` is rank 30, so the role that
- * OUTRANKS finance manager is the one that is denied. This predicate is not
- * expressible as a rank threshold — see `issue-1863` test T-A6, which enumerates
- * every role and asserts that NO threshold reproduces the table. `>= 30` wrongly
- * admits `event_manager`; `>= 50` wrongly denies `finance_manager`. Adding a
- * `MANAGE_PAYMENTS` entry to `./permissionGates.ts` is FORBIDDEN and the
- * class-A gate `issue-1863-payments-permission-gate.mjs` (C-4) fails the build
- * if one appears.
- *
- * Authority: the SERVER is authoritative, always. This mirror is a UX and cost
- * layer — it stops a wall of unanswerable requests and stops offering controls
- * that cannot work. It is NOT access control.
+ * View is still not a rank threshold — `event_manager` (40) outranks
+ * `finance_manager` (30) and is denied on both predicates. Never add
+ * `MANAGE_PAYMENTS` to permissionGates.ts (issue-1863 gate C-4).
  */
 
 import type { BrandRole } from "./brandRole";
 
-/**
- * Value-identical to `BRAND_PAYMENTS_ROLES` in
- * `supabase/functions/_shared/stripeEdgeAuth.ts` (the parity clause of
- * I-PROPOSED-1863-CLIENT-PAYMENTS-PERMISSION-PARITY; gate assertion C-6 checks
- * these three literals against that real server file on every PR).
- */
-export const BRAND_PAYMENTS_MANAGER_ROLES = [
+/** Value-identical to `BRAND_PAYMENTS_ROLES` in stripeEdgeAuth.ts (#3660 owner-only). */
+export const BRAND_PAYMENTS_MANAGER_ROLES = ["brand_owner"] as const;
+
+/** Value-identical to `BRAND_PAYMENTS_VIEW_ROLES` in stripeEdgeAuth.ts. */
+export const BRAND_PAYMENTS_VIEW_ROLES = [
   "brand_owner",
   "brand_admin",
   "finance_manager",
@@ -56,18 +40,12 @@ export const BRAND_PAYMENTS_MANAGER_ROLES = [
 export interface BrandPaymentsPermissionInput {
   role: BrandRole | null;
   /**
-   * `brand_team_members.accepted_at IS NOT NULL`. Required, not optional: the
-   * server requires acceptance on BOTH branches of the disjunction. A client
-   * that ignored it would grant a PENDING `brand_admin` the full surface and
-   * hand them the identical 403 storm this issue exists to kill — the same bug,
-   * one invitation away.
+   * `brand_team_members.accepted_at IS NOT NULL`. Required on both predicates.
    */
   accepted: boolean;
 }
 
-/**
- * Role-set MEMBERSHIP test. No rank arithmetic anywhere in this body.
- */
+/** Mutate (bank connect/detach): brand_owner only. */
 export function canManageBrandPayments(
   input: BrandPaymentsPermissionInput,
 ): boolean {
@@ -77,25 +55,22 @@ export function canManageBrandPayments(
   return (BRAND_PAYMENTS_MANAGER_ROLES as readonly string[]).includes(role);
 }
 
-/**
- * Denial copy. Exported so the route gate, the payments view's stale-role
- * fallback, the onboard `permission-denied` ViewState and both regression
- * suites share ONE string and cannot drift.
- *
- * #1863 §4.4.1 replaced the shipped copy, which said "Only Brand Admin or
- * Finance Manager RANK can set up payments. Ask your account owner to invite
- * you with a higher role." Three concrete faults: (1) an `event_manager` at
- * rank 40 outranks Finance Manager's 30, so "rank" tells them they qualify and
- * the app is broken; (2) it omits Brand Owner, who is also allowed; (3)
- * "account owner" is a label renamed to `brand_owner` at ORCH-1047, and
- * "invite you" is wrong for someone who is already a member — they need a
- * CHANGED role, not an invitation.
- *
- * Roles are named as ROLES, never ranks, and the allowed set is stated
- * completely in the same order as BRAND_PAYMENTS_MANAGER_ROLES. There is no
- * mention of connection or retry, because there is nothing to retry.
- */
+/** View payout status / balances: owner, admin, or finance_manager. */
+export function canViewBrandPayments(
+  input: BrandPaymentsPermissionInput,
+): boolean {
+  const { role, accepted } = input;
+  if (role === null) return false;
+  if (accepted !== true) return false;
+  return (BRAND_PAYMENTS_VIEW_ROLES as readonly string[]).includes(role);
+}
+
 export const BRAND_PAYMENTS_DENIED_TITLE = "You don’t have permission";
 
+/** Mutate denial — owner-only bank changes (#3660). */
 export const BRAND_PAYMENTS_DENIED_BODY =
-  "Only the brand owner, a brand admin, or a finance manager can manage payments for this brand. Ask the brand owner to change your role.";
+  "Only the brand owner can change payouts for this brand. Ask the brand owner if you need a bank change.";
+
+/** View denial — not in the owner/admin/FM set. */
+export const BRAND_PAYMENTS_VIEW_DENIED_BODY =
+  "Only the brand owner, a brand admin, or a finance manager can view payments for this brand. Ask the brand owner to change your role.";

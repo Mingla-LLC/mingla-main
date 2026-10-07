@@ -487,8 +487,14 @@ export const brandPaystackOnboardHandler = async (
     }
     const brandId = body.brand_id as string;
 
+    // #3660 Phase 3 — default brand-scoped actions to owner-only mutate.
+    // Only refresh_status stays on the view audience (admin/FM can poll).
+    const paystackViewActions = new Set(["refresh_status"]);
+    const permissionRpc = paystackViewActions.has(String(action))
+      ? "biz_can_view_payments_for_brand"
+      : "biz_can_mutate_payouts_for_brand";
     const { data: canManage, error: permError } = await supabase.rpc(
-      "biz_can_manage_payments_for_brand",
+      permissionRpc,
       { p_brand_id: brandId, p_user_id: userId },
     );
     if (permError) {
@@ -499,7 +505,10 @@ export const brandPaystackOnboardHandler = async (
       return jsonResponse({ error: "internal_error" }, 500);
     }
     if (canManage !== true) {
-      return jsonResponse({ error: "forbidden" }, 403);
+      return jsonResponse({
+        error: "forbidden",
+        detail: "permission_denied",
+      }, 403);
     }
 
     // #3645 PR11c — Organiser Terms at the edge for bank/account *writes* only.

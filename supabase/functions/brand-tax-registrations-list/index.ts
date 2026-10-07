@@ -18,7 +18,7 @@ import {
   corsHeaders,
   isValidUuid,
   jsonResponse,
-  requirePaymentsManager,
+  requirePaymentsViewer,
   requireUserId,
   serviceRoleClient,
 } from "../_shared/stripeEdgeAuth.ts";
@@ -80,7 +80,7 @@ serve(async (req) => {
 
   const supabase = serviceRoleClient();
   // Owner gate — only a payments manager for this brand may probe its account.
-  const forbidden = await requirePaymentsManager(supabase, brandId, userId);
+  const forbidden = await requirePaymentsViewer(supabase, brandId, userId);
   if (forbidden) return forbidden;
 
   const { data: account, error: accountError } = await supabase
