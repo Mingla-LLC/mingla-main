@@ -315,9 +315,11 @@ function errorMessageFor(err: unknown): string {
       case "already_invited":
         return "There's already a pending invite for that email.";
       case "email_send_failed":
-        // #3660 — invite insert is rolled back when Resend fails; say so so
-        // the inviter does not think a pending row exists without an email.
+        // #3660 — only returned after a confirmed DELETE of the insert.
         return "Couldn't send the invitation email. Nothing was saved — try again.";
+      case "email_send_failed_invite_retained":
+        // Rollback DELETE failed; a pending row may still exist.
+        return "Couldn't send the invitation email. A pending invite may still be on the team list — check Team or try again.";
       default:
         return "Something went wrong. Try again.";
     }

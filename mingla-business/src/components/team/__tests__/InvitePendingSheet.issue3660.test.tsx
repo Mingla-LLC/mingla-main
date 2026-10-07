@@ -33,4 +33,10 @@ describe("InvitePendingSheet #3660", () => {
     expect(routeSrc).toContain("invitationId");
     expect(routeSrc).toContain("pending-brand-invite-route");
   });
+
+  test("pending-brand-invite resolves brandName from useMyPendingInvites, not the URL", () => {
+    expect(routeSrc).toContain("useMyPendingInvites");
+    expect(routeSrc).toContain("matchedInvite.brand_name");
+    expect(routeSrc).not.toContain("params.brandName");
+  });
 });
