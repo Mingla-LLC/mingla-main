@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-07 — Expired admin refund snapshots clean up without immutable_snapshot errors, and the pg_cron health alert names the failing job instead of saying the whole scheduler is down (toward #3660, PR #3756)
 - 2026-10-07 — When handing a brand to a new owner, the outgoing owner chooses leave (default) or stay-as-admin at invite time; accept executes that choice with audit on both sides and a single active owner (toward #3660, PR #3755)
 - 2026-10-07 — Only the brand owner can connect or change the payout bank; admins and finance managers can still see payout status, with a clear owner-only message instead of a 403 storm (toward #3660, PR #3754)
 - 2026-10-07 — Host Team "Remove from team" actually removes the member (soft-close via RPC), refuses removing the brand owner, and shows clear errors instead of a silent no-op (toward #3660, PR #3753)

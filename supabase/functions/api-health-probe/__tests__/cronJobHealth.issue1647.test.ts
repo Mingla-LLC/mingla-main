@@ -17,6 +17,7 @@ import {
   CRON_HEALTH_DEFAULTS,
   type CronJobHealthRow,
   evaluateCronJobHealth,
+  pgCronDownAlertCopy,
 } from "../logic.ts";
 
 function row(over: Partial<CronJobHealthRow> = {}): CronJobHealthRow {
@@ -155,4 +156,49 @@ Deno.test("#1647 — the worst offender leads the report", () => {
   assertEquals(failing[0].job, "refresh_admin_place_pool_mv");
   assertEquals(failing[1].job, "also_broken");
   assertEquals(failing[2].job, "mildly_broken");
+});
+
+Deno.test("#3660 — pg_cron down alert names the job, not just 'pg_cron is DOWN'", () => {
+  const { detail } = evaluateCronJobHealth([ISSUE_1647_ROW, row()]);
+  const copy = pgCronDownAlertCopy(detail);
+  assert(
+    copy.subject.includes("refresh_admin_place_pool_mv"),
+    `subject must name the job: ${copy.subject}`,
+  );
+  assert(
+    !copy.subject.includes("Scheduled jobs (pg_cron) is DOWN"),
+    `subject must not imply the whole scheduler is dead: ${copy.subject}`,
+  );
+  assert(
+    copy.lead.includes("refresh_admin_place_pool_mv"),
+    `lead must name the job: ${copy.lead}`,
+  );
+});
+
+Deno.test("#3660 — multi-job DOWN summary lists every failing job name", () => {
+  const { detail } = evaluateCronJobHealth([
+    row({ jobname: "job_a", consecutive_failures: 5 }),
+    row({ jobname: "job_b", consecutive_failures: 4 }),
+  ]);
+  const summary = String(detail.summary);
+  assert(summary.includes("job_a"), summary);
+  assert(summary.includes("job_b"), summary);
+  const copy = pgCronDownAlertCopy(detail);
+  assert(copy.subject.includes("job_a"), copy.subject);
+  assert(copy.subject.includes("job_b"), copy.subject);
+});
+
+Deno.test("#3660 — subject bounds long jobLabel; lead/summary keep the full list", () => {
+  // failing[] is sorted by consecutive_failures desc → job_c, job_a, job_b
+  const { detail } = evaluateCronJobHealth([
+    row({ jobname: "job_a", consecutive_failures: 5 }),
+    row({ jobname: "job_b", consecutive_failures: 4 }),
+    row({ jobname: "job_c", consecutive_failures: 6 }),
+  ]);
+  const copy = pgCronDownAlertCopy(detail);
+  assert(copy.subject.includes("job_c"), copy.subject);
+  assert(copy.subject.includes("job_a"), copy.subject);
+  assert(copy.subject.includes("and 1 more"), copy.subject);
+  assert(!copy.subject.includes("job_b"), copy.subject);
+  assert(String(detail.summary).includes("job_b"), String(detail.summary));
 });

@@ -838,10 +838,13 @@ export function evaluateCronJobHealth(
 
   if (failing.length > 0) {
     const worst = failing[0];
-    detail.summary = `${worst.jobname} has failed its last ${worst.consecutive_failures} runs` +
-      (worst.hours_since_success == null
-        ? " and has never succeeded"
-        : ` — last success ${Math.round(worst.hours_since_success / 24)} day(s) ago`);
+    const named = failing.map((r) => r.jobname).join(", ");
+    detail.summary = failing.length === 1
+      ? `${worst.jobname} has failed its last ${worst.consecutive_failures} runs` +
+        (worst.hours_since_success == null
+          ? " and has never succeeded"
+          : ` — last success ${Math.round(worst.hours_since_success / 24)} day(s) ago`)
+      : `${failing.length} scheduled jobs failing (${named}); worst: ${worst.jobname} (${worst.consecutive_failures} consecutive)`;
     return { status: "down", detail };
   }
   if (wobbling.length > 0) {
@@ -850,4 +853,42 @@ export function evaluateCronJobHealth(
   }
   detail.summary = `all ${rows.length} active scheduled jobs are succeeding`;
   return { status: "healthy", detail };
+}
+
+/**
+ * #3660 Phase 5 — email subject/lead when the pg_cron tile is DOWN.
+ * Names failing job(s); never implies the scheduler extension itself is dead.
+ */
+export function pgCronDownAlertCopy(
+  detail: Record<string, unknown>,
+): { subject: string; lead: string } {
+  const summary = typeof detail.summary === "string" ? detail.summary : "";
+  const failingJobs = Array.isArray(detail.failing)
+    ? (detail.failing as Array<{ job?: unknown }>)
+      .map((f) => (typeof f.job === "string" ? f.job : null))
+      .filter((j): j is string => j !== null)
+    : [];
+  // Subject: bound length (alert clients truncate). Full names stay in lead/summary.
+  const SUBJECT_JOB_CAP = 2;
+  const SUBJECT_CHAR_CAP = 96;
+  let jobLabel: string;
+  if (failingJobs.length > 0) {
+    const shown = failingJobs.slice(0, SUBJECT_JOB_CAP);
+    const more = failingJobs.length - shown.length;
+    jobLabel = shown.join(", ") + (more > 0 ? ` and ${more} more` : "");
+  } else {
+    jobLabel = summary.length > 0 ? summary : "unknown job";
+  }
+  if (jobLabel.length > SUBJECT_CHAR_CAP) {
+    jobLabel = `${jobLabel.slice(0, SUBJECT_CHAR_CAP - 1)}…`;
+  }
+  const fullList = failingJobs.length > 0
+    ? failingJobs.join(", ")
+    : jobLabel;
+  return {
+    subject: `⚠️ [API HEALTH] Scheduled job failing: ${jobLabel}`,
+    lead: summary.length > 0
+      ? summary
+      : `Scheduled job(s) failing: ${fullList}`,
+  };
 }

@@ -1074,6 +1074,11 @@ jobs:
           # Issue #3660 Phase 4 — owner invite handover leave-default / stay-admin.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3660_invite_handover_leave_default.implementor.happy.pg17.test.sql
+          # Issue #3660 Phase 5 — snapshot cleanup vs immutable_snapshot.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_snapshot_cleanup.implementor.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_snapshot_cleanup.tester.adversarial.pg17.test.sql
           # Issue #3645 — payout maturity is payment + 24h (not event end + 3d);
           # cancel refund runs open in awaiting_review; PR6 charge readiness admits
           # stamped Paystack hold brands without a subaccount.
