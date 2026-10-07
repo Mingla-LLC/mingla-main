@@ -63,7 +63,9 @@ describe("#3563 tester adversarial — every Sheet dismissal route", () => {
 
   test("the item sheet guards direct close callbacks in addition to the primitive", () => {
     const itemSheet = read("src/components/venue/MenuItemSheet.tsx");
-    expect(itemSheet).toContain("if (!optionsSaving) onClose()");
+    // Live shape: early-return in handleClose + Sheet dismissDisabled lock.
+    // The pre-#3572 inline `if (!optionsSaving) onClose()` literal is gone.
+    expect(itemSheet).toContain("if (optionsSaving) return;");
     expect(itemSheet).toContain("onClose={handleClose}");
     expect(itemSheet).toContain("dismissDisabled={optionsSaving}");
   });
