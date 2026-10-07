@@ -1,6 +1,9 @@
 -- Issue #1919 independent tester adversarial proof.
 -- Executes the real event publisher, public experience read, and batch helper.
 -- Every randomized fixture is transaction-local and rolled back.
+-- [TEST-MOD-APPROVED #3645] — FIXTURE SEED ONLY. PR11d requires Organiser
+-- Terms 1.0 before paid publish. Seed acceptance so T01/T02 still exercise
+-- rail readiness (assertions unchanged).
 \set ON_ERROR_STOP on
 
 BEGIN;
@@ -49,6 +52,13 @@ BEGIN
   INSERT INTO public.brand_currency_reconciliations (
     brand_id, from_currency_code, to_currency_code, reason, status
   ) VALUES (v_pending, 'USD', 'NGN', 'bank_changed', 'pending');
+
+  -- [TEST-MOD-APPROVED #3645] seed Organiser Terms so paid publish reaches rail gates.
+  UPDATE public.brand_team_members
+     SET mingla_tos_version_accepted = '1.0',
+         mingla_tos_accepted_at = now()
+   WHERE user_id = v_user
+     AND brand_id IN (v_paystack, v_unready, v_pending);
 
   PERFORM set_config('request.jwt.claim.sub', v_user::text, true);
   v_payload := jsonb_build_object(
