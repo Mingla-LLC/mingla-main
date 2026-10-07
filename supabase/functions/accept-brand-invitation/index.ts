@@ -197,6 +197,8 @@ export async function handler(req: Request): Promise<Response> {
   const invitationId = typeof body.invitationId === "string"
     ? body.invitationId.trim()
     : "";
+  // #3660 Phase 4 — leave|stay is stored on brand_invitations by the outgoing
+  // owner at invite time; acceptance must not take an invitee override.
   const hasToken = token.length >= 16 && token.length <= 256;
   const hasInvitationId = UUID_RE.test(invitationId);
   if (!hasToken && !hasInvitationId) {
@@ -301,7 +303,10 @@ export async function handler(req: Request): Promise<Response> {
 
     const { data: rpcResult, error: rpcErr } = await service.rpc(
       "accept_invite_and_transfer_brand_ownership",
-      { p_token_hash: tokenHash, p_accepting_account_id: account.id },
+      {
+        p_token_hash: tokenHash,
+        p_accepting_account_id: account.id,
+      },
     );
 
     if (rpcErr) {

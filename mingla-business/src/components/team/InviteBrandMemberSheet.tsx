@@ -81,6 +81,9 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
   const [name, setName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [role, setRole] = useState<BrandRole>("event_manager");
+  const [outgoingDisposition, setOutgoingDisposition] = useState<
+    "leave" | "stay"
+  >("leave");
   const [rolePickerVisible, setRolePickerVisible] = useState<boolean>(false);
   const [rolePickerReadOnly, setRolePickerReadOnly] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -115,13 +118,25 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
         inviteeEmail: email.trim().toLowerCase(),
         inviteeName: name.trim(),
         role,
+        ...(role === "brand_owner"
+          ? { outgoingDisposition }
+          : {}),
       });
       onSuccess({ invitationId: result.invitationId });
     } catch (err) {
       const message = errorMessageFor(err);
       setToast({ kind: "error", message });
     }
-  }, [canSubmit, email, name, role, brandId, inviteAsync, onSuccess]);
+  }, [
+    canSubmit,
+    email,
+    name,
+    role,
+    outgoingDisposition,
+    brandId,
+    inviteAsync,
+    onSuccess,
+  ]);
 
   const handleClose = useCallback((): void => {
     if (submitting) return;
@@ -142,6 +157,9 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
 
   const handlePickerSelect = useCallback((next: BrandRole): void => {
     setRole(next);
+    if (next !== "brand_owner") {
+      setOutgoingDisposition("leave");
+    }
     setRolePickerVisible(false);
   }, []);
 
@@ -243,6 +261,51 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
                 <Text style={styles.rolesExplainedText}>Roles explained</Text>
               </Pressable>
             </View>
+
+            {role === "brand_owner" ? (
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>After they accept</Text>
+                <Text style={styles.dispositionHint}>
+                  You choose what happens to your access. Leave is the default.
+                </Text>
+                <Pressable
+                  onPress={() => setOutgoingDisposition("leave")}
+                  disabled={submitting}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: outgoingDisposition === "leave" }}
+                  accessibilityLabel="I leave this brand"
+                  style={[
+                    styles.dispositionOption,
+                    outgoingDisposition === "leave"
+                      ? styles.dispositionOptionSelected
+                      : null,
+                  ]}
+                >
+                  <Text style={styles.dispositionLabel}>I leave this brand</Text>
+                  <Text style={styles.dispositionCaption}>
+                    Recommended. You lose access after they become owner.
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setOutgoingDisposition("stay")}
+                  disabled={submitting}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: outgoingDisposition === "stay" }}
+                  accessibilityLabel="I stay as admin"
+                  style={[
+                    styles.dispositionOption,
+                    outgoingDisposition === "stay"
+                      ? styles.dispositionOptionSelected
+                      : null,
+                  ]}
+                >
+                  <Text style={styles.dispositionLabel}>I stay as admin</Text>
+                  <Text style={styles.dispositionCaption}>
+                    You keep admin access after they become owner.
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
           </ScrollView>
 
         {/* Sticky bottom CTAs */}
@@ -415,6 +478,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: accent.warm,
     fontWeight: "500",
+  },
+  dispositionHint: {
+    fontSize: 13,
+    color: textTokens.secondary,
+    lineHeight: 18,
+    marginBottom: spacing.sm,
+  },
+  dispositionOption: {
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    borderRadius: radiusTokens.md,
+    paddingHorizontal: spacing.sm + 4,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  dispositionOptionSelected: {
+    borderColor: accent.warm,
+  },
+  dispositionLabel: {
+    fontSize: 15,
+    color: textTokens.primary,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  dispositionCaption: {
+    fontSize: 13,
+    color: textTokens.secondary,
+    lineHeight: 18,
   },
   actions: {
     paddingTop: spacing.sm,

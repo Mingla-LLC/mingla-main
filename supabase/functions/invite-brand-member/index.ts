@@ -88,6 +88,8 @@ export interface InvitePayload {
   // to the "Set up for you by X" attribution + "Accept & set up X" CTA.
   personal_note?: string;
   partner_setup?: boolean;
+  /** #3660 — leave|stay when role is brand_owner (default leave). */
+  outgoing_disposition: "leave" | "stay";
 }
 
 export type ValidationOutcome =
@@ -123,6 +125,14 @@ export function validateInvite(raw: unknown): ValidationOutcome {
   if (personalNote.length > PERSONAL_NOTE_MAX) fields.push("personal_note");
   const partnerSetup = body.partner_setup === true;
 
+  // #3660 — outgoing owner disposition for brand_owner invites only.
+  const dispositionRaw =
+    typeof body.outgoing_disposition === "string"
+      ? body.outgoing_disposition.trim().toLowerCase()
+      : "leave";
+  const outgoingDisposition: "leave" | "stay" =
+    role === "brand_owner" && dispositionRaw === "stay" ? "stay" : "leave";
+
   if (fields.length > 0) return { ok: false, fields };
   return {
     ok: true,
@@ -133,6 +143,7 @@ export function validateInvite(raw: unknown): ValidationOutcome {
       role,
       personal_note: personalNote.length > 0 ? personalNote : undefined,
       partner_setup: partnerSetup,
+      outgoing_disposition: outgoingDisposition,
     },
   };
 }
@@ -274,6 +285,7 @@ export async function handler(req: Request): Promise<Response> {
         token_hash: tokenHash,
         expires_at: expiresAt,
         status: "pending",
+        outgoing_disposition: payload.outgoing_disposition,
       })
       .select("id")
       .single();

@@ -66,6 +66,9 @@ export interface BrandTeamMemberRow {
   removed_at: string | null;
 }
 
+/** #3660 — outgoing owner choice when inviting brand_owner (stored on invite). */
+export type OutgoingOwnerDisposition = "leave" | "stay";
+
 export interface InviteBrandMemberInput {
   brandId: string;
   inviteeEmail: string;
@@ -75,6 +78,8 @@ export interface InviteBrandMemberInput {
   // accompany a non-partner invite as well (the edge fn just renders the note).
   personalNote?: string;
   partnerSetup?: boolean;
+  /** #3660 — when inviting brand_owner, outgoing owner chooses leave|stay. */
+  outgoingDisposition?: OutgoingOwnerDisposition;
 }
 
 export interface InviteBrandMemberResult {
@@ -155,6 +160,9 @@ export async function inviteBrandMember(
         role: input.role,
         ...(note.length > 0 ? { personal_note: note } : {}),
         ...(input.partnerSetup === true ? { partner_setup: true } : {}),
+        ...(input.role === "brand_owner" && input.outgoingDisposition
+          ? { outgoing_disposition: input.outgoingDisposition }
+          : {}),
       },
     },
   );
@@ -238,7 +246,11 @@ export async function acceptMyPendingInvitation(
 ): Promise<AcceptBrandInvitationResult> {
   const { data, error } = await supabase.functions.invoke(
     "accept-brand-invitation",
-    { body: { invitationId } },
+    {
+      body: {
+        invitationId,
+      },
+    },
   );
   if (error) {
     // ORCH-1404 — real status/code from the FunctionsHttpError context.
