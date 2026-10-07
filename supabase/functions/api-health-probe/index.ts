@@ -37,6 +37,7 @@ import {
   type ClassBReactive,
   computeEffectiveStatus,
   // Issue #1647 — the pg_cron watchdog's pure evaluator.
+  // #3660 Phase 5 — pg_cron down-alert subject names the failing job.
   type CronJobHealthRow,
   decideAvailabilityTransitions,
   decideBalanceTransition,
@@ -45,6 +46,7 @@ import {
   type DepletionObs,
   evaluateBalanceForSignal,
   evaluateCronJobHealth,
+  pgCronDownAlertCopy,
   geminiProbeOk,
   type HealthStatus,
   indicatorToStatus,
@@ -743,6 +745,12 @@ async function runAlertStateMachine(
       } else if (ctx.monitoringClass === "C" && d.charges_enabled === false) {
         subject = `🔒 [API HEALTH] ${ctx.displayName} account restricted`;
         lead = `${ctx.displayName} account restricted — charges_enabled=false${d.disabled_reason ? ` (${d.disabled_reason})` : ""}.`;
+      } else if (ctx.serviceKey === "pg_cron") {
+        // #3660 Phase 5 — name the failing job(s); do not imply the scheduler
+        // extension itself is dead.
+        const copy = pgCronDownAlertCopy(d);
+        subject = copy.subject;
+        lead = copy.lead;
       }
       await trySend(
         "alerting",
@@ -750,7 +758,9 @@ async function runAlertStateMachine(
         [
           lead,
           `Layer: ${ctx.failingLayer ?? "n/a"}. Last error: ${
-            (d.error as string) || (d.description as string) || (d.error_text as string) || "see admin hub"
+            (d.error as string) || (d.description as string) || (d.error_text as string) ||
+            (typeof d.summary === "string" ? d.summary : null) ||
+            "see admin hub"
           }.`,
           `Active mode: ${ctx.mode ?? "n/a"}.`,
           `Checked at ${new Date(nowMs).toISOString()} UTC.`,
