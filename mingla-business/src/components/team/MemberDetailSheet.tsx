@@ -188,8 +188,7 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
     : `${entry.inviteeName} will lose access to this brand. They can be re-invited later.`;
 
   return (
-    <Sheet
-      visible={visible}
+    <Sheet visible={visible}
       onClose={handleSheetClose}
       snapPoint="half"
       dismissDisabled={removePending}

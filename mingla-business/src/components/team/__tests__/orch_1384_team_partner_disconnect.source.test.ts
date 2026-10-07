@@ -130,7 +130,8 @@ describe("MemberDetailSheet — owner-only Disconnect partner (shipped ConfirmDi
     // Non-partner rows keep the exact pre-1384 affordance: label + rank gate
     // + caption. (byte-level anchors)
     expect(SHEET_SRC).toContain("label={actionLabel}");
-    expect(SHEET_SRC).toContain("disabled={!canAct}");
+    // [TEST-MOD-APPROVED #3660] Remove confirm also locks while removePending.
+    expect(SHEET_SRC).toContain("disabled={!canAct || removePending}");
     expect(SHEET_SRC).toContain("gateCaptionFor(action)");
     expect(SHEET_FLAT).toContain(
       '"Revoke invitation" : "Remove from team"',

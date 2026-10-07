@@ -47,5 +47,12 @@ describe("issue_3660 team remove", () => {
     expect(migrationSrc).toContain("brand_team_member_removed");
     expect(migrationSrc).toContain("app.allow_brand_owner_transfer");
     expect(migrationSrc).toContain("p_brand_id uuid");
+    // Brand rank gate precedes the member-row lock (no probe leak).
+    expect(migrationSrc.indexOf("biz_brand_effective_rank(p_brand_id")).toBeLessThan(
+      migrationSrc.indexOf("FOR UPDATE"),
+    );
+    expect(migrationSrc).toContain(
+      "PERFORM set_config('app.allow_brand_owner_transfer', 'on', true);",
+    );
   });
 });
