@@ -25,8 +25,14 @@ SECURITY DEFINER
 SET search_path = ''
 AS $function$
 DECLARE
-  v_uid uuid := COALESCE(p_user_id, auth.uid());
+  -- Authenticated callers are always bound to auth.uid(). Only service_role
+  -- may supply p_user_id (ops / edge workers acting for a known member).
+  v_uid uuid := CASE
+    WHEN auth.role() = 'service_role' AND p_user_id IS NOT NULL THEN p_user_id
+    ELSE auth.uid()
+  END;
   v_version text;
+  v_accepted_at timestamptz;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'not_authenticated' USING ERRCODE = '42501';
@@ -36,8 +42,8 @@ BEGIN
       USING ERRCODE = '22023', DETAIL = 'brand_id_required';
   END IF;
 
-  SELECT m.mingla_tos_version_accepted
-    INTO v_version
+  SELECT m.mingla_tos_version_accepted, m.mingla_tos_accepted_at
+    INTO v_version, v_accepted_at
   FROM public.brand_team_members AS m
   WHERE m.brand_id = p_brand_id
     AND m.user_id = v_uid
@@ -46,7 +52,8 @@ BEGIN
   LIMIT 1;
 
   -- Must match app CURRENT_MINGLA_TOS_VERSION / edge CURRENT_ORGANISER_TERMS_VERSION.
-  IF v_version IS DISTINCT FROM '1.0' THEN
+  -- Both fields required (same two-part proof as Paystack/Stripe onboard edges).
+  IF v_version IS DISTINCT FROM '1.0' OR v_accepted_at IS NULL THEN
     RAISE EXCEPTION 'mingla_tos_not_accepted'
       USING ERRCODE = 'P0001',
             DETAIL = 'organiser_terms_version_required=1.0';
@@ -55,8 +62,12 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.biz_require_current_organiser_terms(uuid, uuid) IS
-  'Issue #3645 PR11d: require the caller''s active brand_team_members row has mingla_tos_version_accepted = 1.0. Used on paid publish RPC paths only.';
+  'Issue #3645 PR11d: require the caller''s active brand_team_members row has mingla_tos_version_accepted = 1.0 AND mingla_tos_accepted_at set. Used on paid publish RPC paths only. p_user_id override is service_role-only.';
 
+REVOKE ALL ON FUNCTION public.biz_require_current_organiser_terms(uuid, uuid)
+  FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.biz_require_current_organiser_terms(uuid, uuid)
+  FROM anon;
 GRANT EXECUTE ON FUNCTION public.biz_require_current_organiser_terms(uuid, uuid)
   TO authenticated, service_role;
 

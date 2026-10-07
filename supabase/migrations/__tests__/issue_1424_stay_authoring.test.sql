@@ -9,6 +9,9 @@
 -- [TEST-MOD-APPROVED #1719] — SIGNATURE PIN ONLY. The binding all-writers
 -- amendment adds one appended/defaulted poster URL; stay authorization,
 -- inventory, and feature-flag assertions below remain unchanged.
+-- [TEST-MOD-APPROVED #3645] — FIXTURE SEED ONLY. PR11d requires Organiser
+-- Terms 1.0 before paid stay publish. Seed acceptance on the owner membership
+-- so T-3 still reaches paid_currency_not_ready (assertions unchanged).
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -170,6 +173,12 @@ UPDATE public.venue_listings
 SET claim_status = 'verified'
 WHERE brand_id = '00000000-1424-4000-8000-000000000002'
   AND slug = 'stay1424';
+-- [TEST-MOD-APPROVED #3645] seed Organiser Terms so paid publish reaches bank gate.
+UPDATE public.brand_team_members
+SET mingla_tos_version_accepted = '1.0',
+    mingla_tos_accepted_at = now()
+WHERE brand_id = '00000000-1424-4000-8000-000000000002'
+  AND user_id = '00000000-1424-4000-8000-000000000001';
 SET LOCAL ROLE authenticated;
 
 DO $settings_publish$
