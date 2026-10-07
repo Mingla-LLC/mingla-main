@@ -34,11 +34,15 @@ export async function fetchMinglaToSAcceptance(
   brandId: string,
   userId: string,
 ): Promise<MinglaToSAcceptanceState> {
+  // Active membership only — soft-closed rows from owner reassign (#3622) leave
+  // a second (brand_id, user_id) row; unscoped maybeSingle errors and fail-closes.
   const { data, error } = await supabase
     .from("brand_team_members")
     .select("mingla_tos_accepted_at, mingla_tos_version_accepted")
     .eq("brand_id", brandId)
     .eq("user_id", userId)
+    .is("removed_at", null)
+    .not("accepted_at", "is", null)
     .maybeSingle<RawAcceptanceRow>();
 
   if (error) throw error;

@@ -1,23 +1,20 @@
 /**
- * MinglaToSAcceptanceGate — pre-Stripe gate for Mingla Host platform ToS.
+ * MinglaToSAcceptanceGate — mandatory Organiser Terms gate for Mingla Host.
  *
- * Per B2a Path C V3 SPEC §6 + DEC-V3-17 + I-PROPOSED-U.
+ * Per B2a Path C V3 SPEC §6 + DEC-V3-17 + I-PROPOSED-U + #3645 PR11c.
  *
  * Behavior:
- *  - If user has already accepted current version → renders nothing (silent).
- *  - If not accepted → renders a sheet with scrollable ToS body + "I agree"
- *    checkbox + "Accept and continue" CTA. Cannot be dismissed without
- *    accepting (gate is mandatory before Stripe onboarding).
+ *  - If user has accepted CURRENT_MINGLA_TOS_VERSION → renders nothing; fires onPassed.
+ *  - Otherwise → non-dismissible sheet with short summary, link to the public
+ *    Organiser Terms, checkbox, and Accept CTA.
  *
- * Mounted in BrandOnboardView's idle state ABOVE the country picker so the
- * gate fires first.
- *
- * [TRANSITIONAL] ToS body copy is a placeholder — exit when legal signs off
- * the V3 copy and operator swaps in the live text.
+ * Full legal text lives at ORGANISER_TERMS_URL (usemingla.com/organiser-terms).
+ * This sheet does not duplicate the website body.
  */
 
 import React, { useCallback, useState } from "react";
 import {
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -39,6 +36,8 @@ import {
 } from "../../constants/designSystem";
 import {
   CURRENT_MINGLA_TOS_VERSION,
+  ORGANISER_TERMS_URL,
+  isCurrentMinglaToSAccepted,
   useAcceptMinglaToS,
   useMinglaToSAcceptance,
 } from "../../hooks/useMinglaToSAcceptance";
@@ -48,57 +47,46 @@ interface MinglaToSAcceptanceGateProps {
   userId: string;
   /** Fired when acceptance succeeds OR if already-accepted on mount */
   onPassed: () => void;
+  /**
+   * Optional context line under the title (defaults to a rail-neutral prompt).
+   * Keep free of payout lies — #1180 scans this file.
+   */
+  subtitle?: string;
 }
 
-// [TRANSITIONAL] Placeholder ToS body. EXIT condition: legal sign-off + operator
-// bumps CURRENT_MINGLA_TOS_VERSION to a real version (e.g. "v1.0.0") before
-// the B2 cycle ships to public TestFlight (Cycle B2 close).
-const PLACEHOLDER_TOS_BODY = [
-  "Mingla Host is a marketplace platform that helps you accept payments for events. By using Mingla Host, you agree to the terms below.",
+/** Short summary only — full text is on the website. Keep #1180 timing honest. */
+const ORGANISER_TERMS_SUMMARY = [
+  "Mingla Host lets you list and sell events, trips, experiences, stays and more. You are the seller; Mingla provides the software and payment rails.",
   "",
-  "1. Mingla acts as the merchant of record for ticket sales processed through this platform. You are the seller of record for the events themselves.",
+  "By continuing you agree to the Mingla Organiser Terms (Version " +
+    CURRENT_MINGLA_TOS_VERSION +
+    "). Those terms cover who sells, fees, refunds and chargebacks, payouts, and when Mingla may pause payouts.",
   "",
-  "2. Mingla collects an application fee on each ticket sale. The fee is disclosed at checkout and reported on your payouts.",
+  // #1180 — honest payout timing (binding meaning; legal source of truth is the website).
+  "Ticket and booking revenue is released to your payout account about a day after each payment, and typically arrives within 1–2 business days. In Nigeria, bank transfer fees and stamp duty are deducted from your payout.",
   "",
-  "3. Refunds and chargebacks for tickets sold via Mingla are absorbed by Mingla. We may pause your payouts if dispute volume exceeds Stripe's risk thresholds.",
-  "",
-  "4. You authorise Mingla to share your business and identity verification details with Stripe, our payment processor, to enable payouts.",
-  "",
-  "5. You acknowledge that Stripe is the 1099-K filer for US sellers; Mingla does not file tax forms on your behalf.",
-  "",
-  "6. You may disconnect your Stripe Connect account at any time via the Mingla Host app. Pending payouts and refunds in flight will continue to settle.",
-  "",
-  "7. Mingla may update these terms; material changes require re-acceptance before further onboarding actions.",
-  "",
-  // #1180 — payout hold-disclosure clause (binding meaning; final legal text
-  // owned by mingla-product). Additive to the [TRANSITIONAL] placeholder body;
-  // CURRENT_MINGLA_TOS_VERSION is NOT bumped here (operator/legal own that).
-  "8. Ticket revenue is held by Mingla and released to your payout account about a day after each payment, and typically arrives within 1–2 business days. In Nigeria, bank transfer fees and stamp duty are deducted from your payout.",
-  "",
-  // B2a Path C V3 forensics C-3: was mingla.com/business/terms — domain not Mingla-owned.
-  // [TRANSITIONAL] placeholder URL pending legal sign-off — exit when operator/legal
-  // swap the live ToS URL (likely usemingla.com/business/terms or similar).
-  "Full Terms of Service will be available at usemingla.com/terms before live launch.",
+  "Open the full Organiser Terms below before you accept.",
 ].join("\n");
 
 export function MinglaToSAcceptanceGate({
   brandId,
   userId,
   onPassed,
+  subtitle = "A quick read before you sell or connect payouts.",
 }: MinglaToSAcceptanceGateProps): React.ReactElement | null {
   const acceptanceQuery = useMinglaToSAcceptance(brandId, userId);
   const acceptMutation = useAcceptMinglaToS();
   const [agreed, setAgreed] = useState(false);
 
-  // Already-accepted bypass: any non-null acceptedAt satisfies the gate.
-  // Version-bump re-acceptance is a separate UX (operator-driven via push
-  // notification when ToS materially changes).
-  const accepted = acceptanceQuery.data?.acceptedAt != null;
+  const accepted = isCurrentMinglaToSAccepted(acceptanceQuery.data);
 
-  // When acceptance state is known and positive, fire onPassed once.
   React.useEffect(() => {
     if (accepted) onPassed();
   }, [accepted, onPassed]);
+
+  const handleOpenTerms = useCallback((): void => {
+    void Linking.openURL(ORGANISER_TERMS_URL);
+  }, []);
 
   const handleAccept = useCallback((): void => {
     if (!agreed || acceptMutation.isPending) return;
@@ -113,23 +101,18 @@ export function MinglaToSAcceptanceGate({
     );
   }, [agreed, acceptMutation, brandId, userId, onPassed]);
 
-  // While loading the acceptance query OR after successful acceptance, show
-  // nothing (parent renders normally). The sheet only shows when we KNOW
-  // the user hasn't accepted.
   if (acceptanceQuery.isLoading || accepted) {
     return null;
   }
 
   if (acceptanceQuery.isError) {
-    // Fail-open is dangerous (lets users skip the gate). Fail-closed but
-    // give them a retry path.
     return (
       <Sheet visible onClose={() => undefined}>
         <View style={styles.body}>
-          <Text style={styles.title}>Couldn't load Terms of Service</Text>
+          <Text style={styles.title}>Couldn{"'"}t load Organiser Terms</Text>
           <Text style={styles.bodyText}>
-            We need to confirm you've accepted Mingla's Business platform
-            terms before you can connect Stripe. Try again in a moment.
+            We need to confirm you{"'"}ve accepted Mingla{"'"}s Organiser Terms
+            before you continue. Try again in a moment.
           </Text>
           <Pressable
             onPress={(): void => {
@@ -149,16 +132,24 @@ export function MinglaToSAcceptanceGate({
   return (
     <Sheet visible onClose={() => undefined}>
       <View style={styles.body}>
-        <Text style={styles.title}>Accept Mingla Host terms</Text>
-        <Text style={styles.subtitle}>
-          A quick read before we connect your Stripe account.
-        </Text>
+        <Text style={styles.title}>Accept Organiser Terms</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
 
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
         >
-          <Text style={styles.tosBody}>{PLACEHOLDER_TOS_BODY}</Text>
+          <Text style={styles.tosBody}>{ORGANISER_TERMS_SUMMARY}</Text>
+          <Pressable
+            onPress={handleOpenTerms}
+            accessibilityRole="link"
+            accessibilityLabel="Open Mingla Organiser Terms in browser"
+            style={styles.linkRow}
+          >
+            <Text style={styles.linkText}>
+              Read the full Organiser Terms at usemingla.com/organiser-terms
+            </Text>
+          </Pressable>
         </ScrollView>
 
         <Pressable
@@ -168,20 +159,21 @@ export function MinglaToSAcceptanceGate({
           }}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: agreed }}
-          accessibilityLabel="I agree to the Mingla Host Platform Terms"
+          accessibilityLabel="I agree to the Mingla Organiser Terms"
           style={styles.agreeRow}
         >
           <View style={[styles.checkbox, agreed ? styles.checkboxOn : null]}>
             {agreed ? <Text style={styles.checkboxMark}>✓</Text> : null}
           </View>
           <Text style={styles.agreeText}>
-            I agree to the Mingla Host Platform Terms.
+            I agree to the Mingla Organiser Terms (Version{" "}
+            {CURRENT_MINGLA_TOS_VERSION}).
           </Text>
         </Pressable>
 
         {acceptMutation.isError ? (
           <Text style={styles.error}>
-            Couldn't save your acceptance. Tap "Accept and continue" to retry.
+            Couldn{"'"}t save your acceptance. Tap Accept and continue to retry.
           </Text>
         ) : null}
 
@@ -242,11 +234,24 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
   tosBody: {
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
+  },
+  linkRow: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingVertical: spacing.xs,
+  },
+  linkText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: accent.warm,
+    fontWeight: "600",
+    textDecorationLine: "underline",
   },
   agreeRow: {
     flexDirection: "row",

@@ -15,6 +15,7 @@ Disallow: /payment/
 Disallow: /connect/
 Disallow: /stripe-
 Disallow: /accept-brand-invitation
+Disallow: /pending-brand-invite
 Disallow: /dashboard/
 Disallow: /preview/
 Disallow: /share/

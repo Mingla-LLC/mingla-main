@@ -177,6 +177,10 @@ on:
       - "mingla-admin/src/pages/BusinessMoneyLedgerPage.jsx"
       - "mingla-admin/src/services/adminMoneyService.js"
       - "mingla-admin/src/services/identityWriteService.js"
+      # #3645 PR11c — Organiser Terms accept edge + Deno suite. Listed in BOTH
+      # path filters so a handler/test-only edit still runs the Stripe Deno lane
+      # (registering the file in DENO_TEST_FILES alone is not enough).
+      - "supabase/functions/brand-mingla-tos-accept/**"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
   pull_request:
     # issue #2881 — ready_for_review is required wherever the draft gate is set.
@@ -311,6 +315,8 @@ on:
       - "mingla-admin/src/pages/BusinessMoneyLedgerPage.jsx"
       - "mingla-admin/src/services/adminMoneyService.js"
       - "mingla-admin/src/services/identityWriteService.js"
+      # #3645 PR11c — Organiser Terms accept edge + Deno suite (both filters).
+      - "supabase/functions/brand-mingla-tos-accept/**"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
 
 # ORCH-1383 — cancel a superseded PR run instead of letting it finish.
@@ -1056,6 +1062,10 @@ jobs:
           # assertion still leaves nothing behind.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3622_reassign_owner_maintains_team_membership.tester.adversarial.pg17.test.sql
+          # Issue #3660 Phase 2 — biz_remove_brand_team_member soft-closes
+          # accepted memberships under brand_admin+, refuses sole/account owner.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_biz_remove_brand_team_member.implementor.happy.pg17.test.sql
           # Issue #3645 — payout maturity is payment + 24h (not event end + 3d);
           # cancel refund runs open in awaiting_review; PR6 charge readiness admits
           # stamped Paystack hold brands without a subaccount.
@@ -1105,6 +1115,10 @@ jobs:
             -f supabase/migrations/__tests__/issue_3645_organiser_payout_visibility.implementor.happy.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_organiser_payout_visibility.tester.adversarial.pg17.test.sql
+          # Issue #3645 PR11d — Organiser Terms 1.0 on paid publish RPCs:
+          # helper ACL + paid refuse + free/draft exemption (behavioral).
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_organiser_terms_paid_publish_rpc.implementor.happy.pg17.test.sql
           # Issue #1345 — durable outbox for paid NG reservation slot-unavailable
           # ops alerts (enqueue idempotency + authenticated cannot claim).
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -1476,6 +1490,11 @@ jobs:
             # Issue #1919 — structural last-writer, transitional-wire, and ACL
             # contract for the provider-neutral readiness migration.
             supabase/migrations/__tests__/issue_1919_provider_neutral_paid_readiness.structural.test.ts
+            # #3645 PR11d — Organiser Terms 1.0 on paid publish RPCs (helper +
+            # event/trip/experience/stay). Registered in this existing Stripe
+            # Deno lane (I-2148-CI-TOPOLOGY-BOUNDED).
+            supabase/migrations/__tests__/issue_3645_organiser_terms_paid_publish_rpc.structural.test.ts
+
             # Issue #1792 — waiter mode's server hardening. The sharpest case is
             # the metadata MERGE: `update({ metadata: {...} })` replaces the
             # whole jsonb column through PostgREST, and one such line erased the
@@ -1527,6 +1546,11 @@ jobs:
             # notify-dispatch only renders the exact manage URL from the service
             # role.
             supabase/functions/_shared/__tests__/issue_3392_venue_reservation_manage_token.test.ts
+            # #3645 PR11c — Organiser Terms accept edge: event_manager+ rank,
+            # active-row scope, repeat-safe accept. Registered HERE in the
+            # existing Stripe Deno lane (I-2148-CI-TOPOLOGY-BOUNDED — no new
+            # issue-3645 workflow).
+            supabase/functions/brand-mingla-tos-accept/index.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

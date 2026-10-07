@@ -96,6 +96,10 @@ import {
   experienceDraftIsPaid,
   offeringNeedsStripeToPublish,
 } from "../offering/publishStripeReadiness";
+import {
+  ORGANISER_TERMS_PUBLISH_RETRY_TOAST,
+  useOrganiserTermsPublishGate,
+} from "../../hooks/useOrganiserTermsPublishGate";
 import { payoutGateStatus } from "../../utils/brandPayout";
 import {
   emptyStop,
@@ -314,6 +318,11 @@ export const ExperienceCreatorWizard: React.FC<
   const brand = useCurrentBrand();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // #3645 PR11c — Organiser Terms before first paid listing publish.
+  const {
+    blockPaidPublishUntilAccepted,
+    gateElement: organiserTermsGateElement,
+  } = useOrganiserTermsPublishGate(brandId);
   // ORCH-1165: this bare ScrollView has no KAS auto-scroll, so when the Done
   // bar (42pt) is up we add 42pt of bottom padding so the last field clears it.
   const keyboardVisible = useKeyboardIsVisible();
@@ -926,6 +935,16 @@ export const ExperienceCreatorWizard: React.FC<
         setToast("Connect a bank to publish this paid experience.");
         return;
       }
+      // #3645 PR11c — paid experiences require current Organiser Terms.
+      if (
+        publish &&
+        blockPaidPublishUntilAccepted(
+          experienceDraftIsPaid({ isFree, resolvedTotalMajor }),
+        )
+      ) {
+        setToast(ORGANISER_TERMS_PUBLISH_RETRY_TOAST);
+        return;
+      }
       if (
         publish &&
         (intents.length === 0 ||
@@ -1054,6 +1073,7 @@ export const ExperienceCreatorWizard: React.FC<
     [
       brand,
       brandId,
+      blockPaidPublishUntilAccepted,
       buildPayload,
       ensureDraft,
       flushThemeWrite,
@@ -1063,9 +1083,11 @@ export const ExperienceCreatorWizard: React.FC<
       inviteEnabled,
       invitePlan,
       intents,
+      isFree,
       onComplete,
       pricingValid,
       refundValid,
+      resolvedTotalMajor,
       stopsValid,
       user?.id,
       whenAdapter,
@@ -1117,6 +1139,15 @@ export const ExperienceCreatorWizard: React.FC<
   }, [currentIntelGateKey, handleSubmit, isLiveEdit]);
 
   const beginPublish = useCallback(async (): Promise<void> => {
+    // #3645 PR11c — open Organiser Terms before invite/intel confirm for paid.
+    if (
+      blockPaidPublishUntilAccepted(
+        experienceDraftIsPaid({ isFree, resolvedTotalMajor }),
+      )
+    ) {
+      setToast(ORGANISER_TERMS_PUBLISH_RETRY_TOAST);
+      return;
+    }
     if (!inviteEnabled) {
       if (!inviteRollbackReady) {
         setToast("Checking saved invite plans before publishing.");
@@ -1154,7 +1185,7 @@ export const ExperienceCreatorWizard: React.FC<
       setCheckingInvitePublish(false);
     }
   }, [maybeOpenIntelGate, persistedInvite, inviteEnabled, inviteRollbackReady,
-    inviteFlag.data]);
+    inviteFlag.data, blockPaidPublishUntilAccepted, isFree, resolvedTotalMajor]);
 
   const closeIntelGate = useCallback((): void => {
     intelSessionRef.current?.dismissGate(currentIntelGateKey());
@@ -1734,6 +1765,7 @@ export const ExperienceCreatorWizard: React.FC<
             setInviteConfirmVisible(false);
             maybeOpenIntelGate();
           }} />
+      {organiserTermsGateElement}
     </View>
     </LazyTurnoutIntelProvider>
   );

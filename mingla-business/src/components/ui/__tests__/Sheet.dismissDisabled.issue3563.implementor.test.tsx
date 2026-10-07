@@ -28,7 +28,10 @@ describe("#3563 Sheet dismissal lock", () => {
       "if (!dismissDisabled && dismissOnScrimTap) onClose()",
     );
     const itemSheet = read("src/components/venue/MenuItemSheet.tsx");
-    expect(itemSheet).toContain("if (!optionsSaving) onClose()");
+    // #3572 / #3655 — close routes through handleClose, which refuses while
+    // optionsSaving (and optionsDirty / itemDirty); Sheet also gets the lock.
+    expect(itemSheet).toContain("if (optionsSaving) return;");
     expect(itemSheet).toContain("onClose={handleClose}");
+    expect(itemSheet).toContain("dismissDisabled={optionsSaving}");
   });
 });

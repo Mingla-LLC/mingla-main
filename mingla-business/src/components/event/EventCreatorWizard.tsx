@@ -97,6 +97,10 @@ import {
   describeUnmappedPublishGuard,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
+import {
+  ORGANISER_TERMS_PUBLISH_RETRY_TOAST,
+  useOrganiserTermsPublishGate,
+} from "../../hooks/useOrganiserTermsPublishGate";
 // issue #3284 — publish writes the refund terms first and throws this if they
 // did not land; its message is organiser copy.
 import { OfferingRefundTermsError } from "../../utils/refundPolicyTerms";
@@ -319,6 +323,11 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const liveDraft =
     useDraftEventStore((s) => s.drafts.find((d) => d.id === initialDraft.id)) ??
     initialDraft;
+  // #3645 PR11c — Organiser Terms before first paid listing publish.
+  const {
+    blockPaidPublishUntilAccepted,
+    gateElement: organiserTermsGateElement,
+  } = useOrganiserTermsPublishGate(liveDraft.brandId);
   const updateDraft = useDraftEventStore((s) => s.updateDraft);
   const setLastStep = useDraftEventStore((s) => s.setLastStep);
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
@@ -870,6 +879,17 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       handleShowToast("Connect a bank to publish paid tickets.");
       return;
     }
+    // #3645 PR11c — paid listings require current Organiser Terms acceptance.
+    // Free-only publishes skip. After accept, host taps Publish again.
+    // Paid mirror matches eventDraftIsPaid / draftEventValidation (online-sellable
+    // tickets with price > 0) without importing publishStripeReadiness here.
+    const isPaidListing = liveDraft.tickets.some(
+      (t) => !t.isFree && (t.priceGbp ?? 0) > 0,
+    );
+    if (blockPaidPublishUntilAccepted(isPaidListing)) {
+      handleShowToast(ORGANISER_TERMS_PUBLISH_RETRY_TOAST);
+      return;
+    }
     if (!inviteEnabled) {
       if (!inviteRollbackReady) {
         handleShowToast("Checking saved invite plans before publishing.");
@@ -905,7 +925,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       setCheckingInvitePublish(false);
     }
   }, [liveDraft, stripeStatus, handleShowToast, persistedInvite, inviteEnabled,
-    inviteRollbackReady, inviteFlag.data, coverAuthority.isReady]);
+    inviteRollbackReady, inviteFlag.data, coverAuthority.isReady,
+    blockPaidPublishUntilAccepted]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     if (isPublishing) return;
@@ -1502,6 +1523,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         onClose={() => setErrorsSheetVisible(false)}
         onFix={handleFixJump}
       />
+
+      {organiserTermsGateElement}
 
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast

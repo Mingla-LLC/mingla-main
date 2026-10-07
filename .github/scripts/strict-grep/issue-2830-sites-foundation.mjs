@@ -82,19 +82,19 @@ const PATHS = {
 };
 
 const EXACT_CMS_DEPENDENCIES = {
-  "@payloadcms/db-postgres": "3.88.0",
-  "@payloadcms/next": "3.88.0",
-  "@payloadcms/plugin-multi-tenant": "3.88.0",
-  "@payloadcms/richtext-lexical": "3.88.0",
-  "@payloadcms/storage-s3": "3.88.0",
-  "@payloadcms/ui": "3.88.0",
+  "@payloadcms/db-postgres": "3.90.2",
+  "@payloadcms/next": "3.90.2",
+  "@payloadcms/plugin-multi-tenant": "3.90.2",
+  "@payloadcms/richtext-lexical": "3.90.2",
+  "@payloadcms/storage-s3": "3.90.2",
+  "@payloadcms/ui": "3.90.2",
   graphql: "16.11.0",
   // `next` is floor-checked separately (NEXT_ADVISORY_FLOOR) — exact patch pins
   // made every Sites advisory clear red #2830 (#3642 → #3713).
-  payload: "3.88.0",
+  payload: "3.90.2",
   react: "19.2.6",
   "react-dom": "19.2.6",
-  sharp: "0.35.4",
+  sharp: "0.35.5",
 };
 const EXACT_PUBLIC_DEPENDENCIES = {
   // `next` floor-checked separately — see NEXT_ADVISORY_FLOOR.

@@ -29,6 +29,8 @@ import {
   listBrandInvitations,
   listMyPendingInvites,
   listBrandTeamMembers,
+  BrandInvitationServiceError,
+  removeBrandTeamMember,
   revokeBrandInvitation,
   type AcceptBrandInvitationResult,
   type BrandInvitationRow,
@@ -214,6 +216,41 @@ export const useAcceptBrandInvitation = (): {
       qc.invalidateQueries({
         queryKey: brandRoleKeys.allForBrand(result.brandId),
       });
+    },
+  });
+  return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };
+};
+
+/** #3660 — remove an accepted team member via biz_remove_brand_team_member. */
+export const useRemoveBrandTeamMember = (
+  brandId: string | null,
+): {
+  mutateAsync: (memberId: string) => Promise<void>;
+  isPending: boolean;
+} => {
+  const qc = useQueryClient();
+  const mutation = useMutation<void, Error, string>({
+    mutationFn: (memberId) => {
+      if (brandId === null) {
+        return Promise.reject(
+          new BrandInvitationServiceError(
+            "unauthenticated",
+            401,
+            "brandId required",
+          ),
+        );
+      }
+      return removeBrandTeamMember(brandId, memberId);
+    },
+    onSuccess: () => {
+      if (brandId !== null) {
+        qc.invalidateQueries({
+          queryKey: brandTeamMemberKeys.list(brandId),
+        });
+        qc.invalidateQueries({
+          queryKey: brandRoleKeys.allForBrand(brandId),
+        });
+      }
     },
   });
   return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };

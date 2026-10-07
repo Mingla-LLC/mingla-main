@@ -411,6 +411,35 @@ export async function listBrandTeamMembers(
   return (data ?? []) as BrandTeamMemberRow[];
 }
 
+/**
+ * #3660 — remove an accepted team member (soft-close). Brand admin+; server
+ * refuses removing the brand account owner and admin-removing a brand_owner.
+ * brandId binds the locked row so a cross-brand member id cannot be spliced in.
+ */
+export async function removeBrandTeamMember(
+  brandId: string,
+  memberId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("biz_remove_brand_team_member", {
+    p_brand_id: brandId,
+    p_member_id: memberId,
+  });
+  if (error) {
+    const msg = error.message ?? "";
+    let code = "server";
+    if (msg.includes("unauthenticated")) code = "unauthenticated";
+    else if (msg.includes("not_found")) code = "not_found";
+    else if (msg.includes("already_removed")) code = "already_removed";
+    else if (msg.includes("forbidden")) code = "forbidden";
+    else if (msg.includes("cannot_remove_brand_account")) {
+      code = "cannot_remove_brand_account";
+    } else if (msg.includes("active_partner_use_disconnect")) {
+      code = "active_partner_use_disconnect";
+    }
+    throw new BrandInvitationServiceError(code, 400, msg);
+  }
+}
+
 // ---------- Internals ----------
 
 /**

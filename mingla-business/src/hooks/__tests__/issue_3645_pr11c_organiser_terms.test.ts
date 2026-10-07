@@ -1,0 +1,267 @@
+/**
+ * #3645 PR11c — Organiser Terms version parity + gate honesty.
+ *
+ * App CURRENT_MINGLA_TOS_VERSION must match the public marketing page version.
+ * Gate copy must stay free of MoR / chargeback-absorb / event+3d payout lies
+ * (#1180 + #3650 AC).
+ */
+
+import { readFileSync } from "fs";
+import { join } from "path";
+
+import {
+  CURRENT_MINGLA_TOS_VERSION,
+  ORGANISER_TERMS_URL,
+} from "../../hooks/useMinglaToSAcceptance";
+
+function marketingOrganiserTermsVersion(): string {
+  const source = readFileSync(
+    join(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "..",
+      "mingla-marketing",
+      "lib",
+      "organiserTermsContent.ts",
+    ),
+    "utf8",
+  );
+  const match = source.match(
+    /export const ORGANISER_TERMS_VERSION\s*=\s*['"]([^'"]+)['"]/,
+  );
+  if (match === null) {
+    throw new Error("ORGANISER_TERMS_VERSION not found in marketing content");
+  }
+  return match[1];
+}
+
+describe("#3645 PR11c — Organiser Terms version parity", () => {
+  test("app CURRENT_MINGLA_TOS_VERSION matches marketing ORGANISER_TERMS_VERSION", () => {
+    expect(CURRENT_MINGLA_TOS_VERSION).toBe(marketingOrganiserTermsVersion());
+    expect(CURRENT_MINGLA_TOS_VERSION).toBe("1.0");
+  });
+
+  test("canonical public URL points at usemingla.com/organiser-terms", () => {
+    expect(ORGANISER_TERMS_URL).toBe("https://usemingla.com/organiser-terms");
+  });
+});
+
+describe("#3645 PR11c — gate honesty + publish wiring", () => {
+  const gateSource = readFileSync(
+    join(
+      __dirname,
+      "..",
+      "..",
+      "components",
+      "onboarding",
+      "MinglaToSAcceptanceGate.tsx",
+    ),
+    "utf8",
+  );
+  const hookSource = readFileSync(
+    join(__dirname, "..", "..", "hooks", "useMinglaToSAcceptance.ts"),
+    "utf8",
+  );
+  const publishGateSource = readFileSync(
+    join(__dirname, "..", "..", "hooks", "useOrganiserTermsPublishGate.ts"),
+    "utf8",
+  );
+  const eventWizard = readFileSync(
+    join(
+      __dirname,
+      "..",
+      "..",
+      "components",
+      "event",
+      "EventCreatorWizard.tsx",
+    ),
+    "utf8",
+  );
+  const tripWizard = readFileSync(
+    join(
+      __dirname,
+      "..",
+      "..",
+      "components",
+      "trip",
+      "TripCreatorWizard.tsx",
+    ),
+    "utf8",
+  );
+  const experienceWizard = readFileSync(
+    join(
+      __dirname,
+      "..",
+      "..",
+      "components",
+      "experience",
+      "ExperienceCreatorWizard.tsx",
+    ),
+    "utf8",
+  );
+  const onboardSource = readFileSync(
+    join(
+      __dirname,
+      "..",
+      "..",
+      "components",
+      "brand",
+      "BrandOnboardView.tsx",
+    ),
+    "utf8",
+  );
+  const bankConnectSource = readFileSync(
+    join(
+      __dirname,
+      "..",
+      "..",
+      "components",
+      "brand",
+      "BrandBankConnectBody.web.tsx",
+    ),
+    "utf8",
+  );
+
+  test("gate summary uses version-aware acceptance and public organiser-terms link", () => {
+    expect(gateSource).toContain("isCurrentMinglaToSAccepted");
+    expect(gateSource).toContain("ORGANISER_TERMS_URL");
+    expect(gateSource).toContain("usemingla.com/organiser-terms");
+    expect(gateSource).toContain("Accept Organiser Terms");
+    expect(hookSource).toContain('CURRENT_MINGLA_TOS_VERSION = "1.0"');
+  });
+
+  test("gate copy stays free of MoR / absorb-chargebacks / event+3d payout lies", () => {
+    const lower = gateSource.toLowerCase();
+    expect(lower).not.toMatch(/merchant of record/);
+    expect(lower).not.toMatch(/mingla (is|as) (the )?seller of record/);
+    expect(lower).not.toMatch(/absorb[s]? chargebacks/);
+    expect(lower).not.toMatch(/3 days after (the )?event/);
+    expect(lower).not.toMatch(/three days after/);
+    // #1180 honesty — about-a-day framing must remain.
+    expect(gateSource).toContain("about a day after each payment");
+  });
+
+  test("paid publish wizards mount the shared Organiser Terms publish gate", () => {
+    expect(publishGateSource).toContain("ORGANISER_TERMS_PUBLISH_RETRY_TOAST");
+    expect(publishGateSource).toContain("tap Publish again");
+    expect(publishGateSource).toContain("MinglaToSAcceptanceGate");
+    expect(eventWizard).toContain("useOrganiserTermsPublishGate");
+    expect(eventWizard).toContain("blockPaidPublishUntilAccepted");
+    expect(tripWizard).toContain("useOrganiserTermsPublishGate");
+    expect(experienceWizard).toContain("useOrganiserTermsPublishGate");
+    const stayShell = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "components",
+        "stay",
+        "StaySuiteShell.tsx",
+      ),
+      "utf8",
+    );
+    expect(stayShell).toContain("useOrganiserTermsPublishGate");
+    expect(stayShell).toContain("blockPaidPublishUntilAccepted");
+  });
+
+  test("Paystack bank form gates Organiser Terms at BrandPaystackOnboardView (shared)", () => {
+    expect(onboardSource).toContain("paystackSelected) {");
+    expect(onboardSource).toContain("<BrandPaystackOnboardView");
+    const paystackSource = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "components",
+        "brand",
+        "BrandPaystackOnboardView.tsx",
+      ),
+      "utf8",
+    );
+    const paymentsSource = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "components",
+        "brand",
+        "BrandPaymentsView.tsx",
+      ),
+      "utf8",
+    );
+    expect(paystackSource).toContain("MinglaToSAcceptanceGate");
+    expect(paystackSource).toContain("tosPassed");
+    expect(paymentsSource).toContain("<BrandPaystackOnboardView");
+    expect(bankConnectSource).toContain("ORGANISER_TERMS_URL");
+  });
+
+  test("acceptance read scopes to the active membership row", () => {
+    const serviceSource = readFileSync(
+      join(__dirname, "..", "..", "services", "brandMinglaToSService.ts"),
+      "utf8",
+    );
+    expect(serviceSource).toContain('.is("removed_at", null)');
+    expect(serviceSource).toContain('.not("accepted_at", "is", null)');
+  });
+
+  test("brand-paystack-onboard edge requires current Organiser Terms version", () => {
+    const paystackEdge = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "functions",
+        "brand-paystack-onboard",
+        "index.ts",
+      ),
+      "utf8",
+    );
+    expect(paystackEdge).toContain("mingla_tos_not_accepted");
+    expect(paystackEdge).toContain('CURRENT_ORGANISER_TERMS_VERSION = "1.0"');
+    expect(paystackEdge).toContain('.is("removed_at", null)');
+    // Bank writes only — NG select_provider / status / leave stay ungated.
+    expect(paystackEdge).toContain("requiresOrganiserTerms");
+    expect(paystackEdge).toContain('action === "resolve_account"');
+    expect(paystackEdge).toContain('action === "create_subaccount"');
+    const stripeEdge = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "functions",
+        "brand-stripe-onboard",
+        "index.ts",
+      ),
+      "utf8",
+    );
+    expect(stripeEdge).toContain("mingla_tos_version_accepted");
+    expect(stripeEdge).toContain('CURRENT_ORGANISER_TERMS_VERSION = "1.0"');
+    const acceptEdge = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "functions",
+        "brand-mingla-tos-accept",
+        "index.ts",
+      ),
+      "utf8",
+    );
+    expect(acceptEdge).toContain("version_not_current");
+    expect(acceptEdge).toContain('CURRENT_ORGANISER_TERMS_VERSION = "1.0"');
+    expect(acceptEdge).toContain(
+      "const version = CURRENT_ORGANISER_TERMS_VERSION",
+    );
+  });
+});

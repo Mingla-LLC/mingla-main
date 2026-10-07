@@ -329,7 +329,21 @@ export async function handler(req: Request): Promise<Response> {
       console.error(
         "[invite-brand-member] RESEND_API_KEY missing — rolling back insert",
       );
-      await service.from("brand_invitations").delete().eq("id", inserted.id);
+      const { error: rollbackErr } = await service
+        .from("brand_invitations")
+        .delete()
+        .eq("id", inserted.id);
+      if (rollbackErr) {
+        console.error(
+          "[invite-brand-member] rollback failed after missing Resend key",
+          JSON.stringify({
+            invitation_id: inserted.id,
+            brand_id: payload.brand_id,
+            error: rollbackErr.message,
+          }),
+        );
+        return json({ error: "email_send_failed_invite_retained" }, 502);
+      }
       return json({ error: "email_send_failed" }, 502);
     }
 
@@ -361,10 +375,41 @@ export async function handler(req: Request): Promise<Response> {
 
     const sent = await sendInviteEmail(resendKey, emailPayload);
     if (!sent.ok) {
-      console.error("[invite-brand-member] resend failed", sent.error);
-      await service.from("brand_invitations").delete().eq("id", inserted.id);
+      // #3660 — structured failure so ops can see invitation_id + Resend detail.
+      // Omit invitee email from logs (PII); invitation_id + brand_id correlate.
+      console.error(
+        "[invite-brand-member] resend failed",
+        JSON.stringify({
+          invitation_id: inserted.id,
+          brand_id: payload.brand_id,
+          error: sent.error ?? "unknown",
+        }),
+      );
+      const { error: rollbackErr } = await service
+        .from("brand_invitations")
+        .delete()
+        .eq("id", inserted.id);
+      if (rollbackErr) {
+        console.error(
+          "[invite-brand-member] rollback failed after resend failure",
+          JSON.stringify({
+            invitation_id: inserted.id,
+            brand_id: payload.brand_id,
+            error: rollbackErr.message,
+          }),
+        );
+        return json({ error: "email_send_failed_invite_retained" }, 502);
+      }
       return json({ error: "email_send_failed" }, 502);
     }
+    console.log(
+      "[invite-brand-member] resend accepted",
+      JSON.stringify({
+        invitation_id: inserted.id,
+        brand_id: payload.brand_id,
+        resend_id: sent.resendId ?? null,
+      }),
+    );
 
     // Best-effort audit row — non-fatal if it errors.
     try {

@@ -55,8 +55,10 @@ import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import {
   useBrandInvitations,
   useBrandTeamMembers,
+  useRemoveBrandTeamMember,
   useRevokeBrandInvitation,
 } from "../../../src/hooks/useBrandInvitations";
+import { BrandInvitationServiceError } from "../../../src/services/brandInvitationsService";
 import type {
   BrandInvitationRow,
   BrandTeamMemberRow,
@@ -150,6 +152,11 @@ export default function BrandTeamRoute(): React.ReactElement {
   const { data: invitationRows = [] } = useBrandInvitations(brandIdResolved);
   const { data: memberRows = [] } = useBrandTeamMembers(brandIdResolved);
   const { mutateAsync: revokeAsync } = useRevokeBrandInvitation(brandIdResolved);
+  const { mutateAsync: removeAsync, isPending: removePending } =
+    useRemoveBrandTeamMember(brandIdResolved);
+  // Scope late success/failure to the member that started the mutation so a
+  // second sheet open cannot inherit a stale close or error toast.
+  const removeTargetIdRef = useRef<string | null>(null);
   // ORCH-1384 — accepted, non-cancelled links keyed by partner_account_id.
   const { data: partnerLinkRows = [] } = useBrandPartnerLinks(brandIdResolved);
 
@@ -160,6 +167,7 @@ export default function BrandTeamRoute(): React.ReactElement {
   const [inviteVisible, setInviteVisible] = useState<boolean>(false);
   const [detailEntry, setDetailEntry] = useState<DisplayEntry | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
 
   // ORCH-1384 — partner_account_id → link id for accepted, non-cancelled
   // links (the badge/disconnect matcher; SPEC §4.6).
@@ -289,13 +297,35 @@ export default function BrandTeamRoute(): React.ReactElement {
   );
 
   const handleRemove = useCallback(
-    (_entry: BrandTeamEntry): void => {
-      // ORCH-1050 ships invite+accept+revoke; member removal lands in a
-      // follow-up ORCH (ORCH-1051 partner identity / team admin removal).
-      // For now this close the sheet without a destructive action.
-      setDetailEntry(null);
+    (entry: BrandTeamEntry): void => {
+      // #3660 — real removal via biz_remove_brand_team_member (no longer a no-op).
+      // Keep the sheet open on failure and pass the error into MemberDetailSheet
+      // so its in-sheet Toast can present (sibling root Modal races on iOS).
+      if (removePending) return;
+      removeTargetIdRef.current = entry.id;
+      setErrorToast(null);
+      void removeAsync(entry.id)
+        .then(() => {
+          if (removeTargetIdRef.current !== entry.id) return;
+          setDetailEntry(null);
+          deferAfterDismiss(() => setToast("Removed from team"));
+        })
+        .catch((err: unknown) => {
+          if (removeTargetIdRef.current !== entry.id) return;
+          const code =
+            err instanceof BrandInvitationServiceError ? err.code : "server";
+          const message =
+            code === "cannot_remove_brand_account"
+              ? "You can't remove the brand owner."
+              : code === "active_partner_use_disconnect"
+                ? "Disconnect this Mingla Partner from Team instead of Remove."
+                : code === "forbidden"
+                  ? "You don't have permission to remove this person."
+                  : "Couldn't remove them. Try again.";
+          setErrorToast(message);
+        });
     },
-    [],
+    [removeAsync, removePending],
   );
 
   // ORCH-1309 — cold-load resolving state: a valid brandId whose brand is still
@@ -442,9 +472,16 @@ export default function BrandTeamRoute(): React.ReactElement {
         visible={detailEntry !== null}
         entry={detailEntry?.storeEntry ?? null}
         currentRank={currentRank}
-        onClose={() => setDetailEntry(null)}
+        onClose={() => {
+          if (removePending) return;
+          setDetailEntry(null);
+          setErrorToast(null);
+        }}
         onRevoke={handleRevoke}
         onRemove={handleRemove}
+        removePending={removePending}
+        removeError={errorToast}
+        onDismissRemoveError={() => setErrorToast(null)}
         // ORCH-1384 — partner identity + owner-only disconnect. The pending-
         // invite revoke path above is UNCHANGED; the DB invite-kill trigger
         // stamps the link server-side for every writer (F-6 closed, SC-10).

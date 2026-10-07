@@ -722,6 +722,8 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
 
   // META-ORCH-1076 — Nigeria selected: render the Paystack bank-details form
   // inline (instant). "Choose a different country" returns to the picker.
+  // #3645 PR11c — Organiser Terms gate lives inside BrandPaystackOnboardView
+  // (shared with Payments + web bank-connect).
   if (brand !== null && paystackSelected) {
     const backToPicker = (): void => {
       setCountryTouched(true);
@@ -874,15 +876,14 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           </View>
         ) : null}
 
-        {/* V3 ToS gate — renders an over-everything sheet when not accepted.
-            When accepted (or on mount if previously accepted), fires
-            handleTosPassed and the sheet stays hidden. The "Set up payments"
-            CTA below is gated on `tosPassed`. */}
+        {/* V3 ToS gate — Stripe idle path only. Paystack terms live inside
+            BrandPaystackOnboardView (#3645 PR11c shared boundary). */}
         {viewState === "idle" && brand !== null && user !== null ? (
           <MinglaToSAcceptanceGate
             brandId={brand.id}
             userId={user.id}
             onPassed={handleTosPassed}
+            subtitle="A quick read before you sell or connect payouts."
           />
         ) : null}
 

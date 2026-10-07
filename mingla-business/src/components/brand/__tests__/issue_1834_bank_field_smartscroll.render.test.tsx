@@ -280,8 +280,15 @@ jest.mock("../BrandStripeCountryPicker", () => {
   return { BrandStripeCountryPicker: () => <V testID="country-picker" /> };
 });
 jest.mock("../../onboarding/MinglaToSAcceptanceGate", () => {
+  const ReactLocal = require("react") as typeof import("react");
   const { View: V } = require("react-native");
-  return { MinglaToSAcceptanceGate: () => <V testID="tos-gate" /> };
+  const Gate = ({ onPassed }: { onPassed: () => void }) => {
+    ReactLocal.useEffect(() => {
+      onPassed();
+    }, [onPassed]);
+    return ReactLocal.createElement(V, { testID: "tos-gate" });
+  };
+  return { MinglaToSAcceptanceGate: Gate };
 });
 jest.mock("../BrandStripeDetachConfirmSheet", () => {
   const { View: V } = require("react-native");

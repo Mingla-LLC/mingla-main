@@ -16,18 +16,18 @@
     "migrate": "payload migrate"
   },
   "dependencies": {
-    "@payloadcms/db-postgres": "3.88.0",
-    "@payloadcms/next": "3.88.0",
-    "@payloadcms/plugin-multi-tenant": "3.88.0",
-    "@payloadcms/richtext-lexical": "3.88.0",
-    "@payloadcms/storage-s3": "3.88.0",
-    "@payloadcms/ui": "3.88.0",
+    "@payloadcms/db-postgres": "3.90.2",
+    "@payloadcms/next": "3.90.2",
+    "@payloadcms/plugin-multi-tenant": "3.90.2",
+    "@payloadcms/richtext-lexical": "3.90.2",
+    "@payloadcms/storage-s3": "3.90.2",
+    "@payloadcms/ui": "3.90.2",
     "graphql": "16.11.0",
     "next": "16.3.8",
-    "payload": "3.88.0",
+    "payload": "3.90.2",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "sharp": "0.35.4"
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@testing-library/react": "16.3.0",
@@ -46,6 +46,9 @@
     "brace-expansion@^2": "2.1.7",
     "brace-expansion@^5": "5.0.12",
     "dompurify": "3.4.14",
+    "fast-xml-parser": "5.11.2",
+    "sharp": "0.35.5",
+    "source-map-js": "1.2.2",
     "undici": "^7.29.1"
   },
   "engines": {

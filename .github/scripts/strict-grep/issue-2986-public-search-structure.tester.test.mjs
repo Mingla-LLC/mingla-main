@@ -180,7 +180,7 @@ function expectRejected(config, code) {
 test("the real route tree has one complete unconditional robots owner per private leaf", () => {
   const leaves = discoverRouteLeaves();
   const privateFamilies = new Set(leaves.filter(isPrivateRoute).filter((p) => p !== "/").map((p) => p.split("/")[1]));
-  assert.equal(privateFamilies.size, 38, "current private family inventory must be explicit and non-vacuous");
+  assert.equal(privateFamilies.size, 39, "current private family inventory must be explicit and non-vacuous");
   assert.deepEqual(inspectPartition(readRealConfig(), leaves), []);
 });
 
