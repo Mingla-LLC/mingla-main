@@ -266,39 +266,24 @@ Deno.test("#1982 implementor: revoke_brand_invitation updates pending invite", a
 
 Deno.test("#1982 implementor: revoke_brand_member soft-deletes membership", async () => {
   const tool = domainTool("revoke_brand_member");
-  let payload: Record<string, unknown> | null = null;
-  const client = {
-    from(table: string) {
-      assertEquals(table, "brand_team_members");
-      return {
-        update: (p: Record<string, unknown>) => {
-          payload = p;
-          return {
-            eq: () => ({
-              eq: () => ({
-                is: () => ({
-                  select: () => ({
-                    maybeSingle: () =>
-                      Promise.resolve({ data: { id: MEMBER }, error: null }),
-                  }),
-                }),
-              }),
-            }),
-          };
-        },
-      };
-    },
-  };
+  const { client, rpcs } = brandClient({
+    rpc: (_name, _args) =>
+      Promise.resolve({
+        data: { id: MEMBER, removed_at: "2026-10-07T00:00:00Z" },
+        error: null,
+      }),
+  });
   const result = await tool.executor(
     { brand_id: BRAND, member_id: MEMBER },
     client as never,
     USER,
   );
-  assert(payload !== null);
-  assertEquals(
-    typeof (payload as Record<string, unknown>).removed_at,
-    "string",
-  );
+  assertEquals(rpcs.length, 1);
+  assertEquals(rpcs[0]?.name, "biz_remove_brand_team_member");
+  assertEquals(rpcs[0]?.args, {
+    p_brand_id: BRAND,
+    p_member_id: MEMBER,
+  });
   assertEquals(result, { member_id: MEMBER, revoked: true });
 });
 

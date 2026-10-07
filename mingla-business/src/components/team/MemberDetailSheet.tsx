@@ -15,8 +15,8 @@
  * becomes "Disconnect partner", wired to useDisconnectLink through this
  * component's own shipped ConfirmDialog pattern (DESIGN §2.4 —
  * minimal-diff over uniformity for a live component; custom in-app confirm,
- * never native Alert). Every OTHER member's remove stays byte-identical
- * (`handleRemove` no-op preserved — ORCH-1051 untouched, SC-9).
+ * never native Alert). Every OTHER member's Remove calls the parent's
+ * onRemove (#3660 biz_remove_brand_team_member — no longer ORCH-1051 no-op).
  */
 
 import React, { useCallback, useState } from "react";
@@ -42,6 +42,7 @@ import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+import { Toast } from "../ui/Toast";
 
 // ORCH-1384 web eager-bundle budget fix — INLINE error-copy copy.
 //
@@ -85,6 +86,14 @@ export interface MemberDetailSheetProps {
   onRevoke: (entry: BrandTeamEntry) => void;
   onRemove: (entry: BrandTeamEntry) => void;
   /**
+   * #3660 — remove failure copy rendered inside this Sheet subtree so iOS
+   * does not refuse a sibling root-level Toast Modal while the sheet is open.
+   */
+  removeError?: string | null;
+  onDismissRemoveError?: () => void;
+  /** #3660 — locks dismiss/confirm while biz_remove_brand_team_member is in flight. */
+  removePending?: boolean;
+  /**
    * ORCH-1384 — non-null EXACTLY when this entry is the member row whose
    * user_id matches an accepted, non-cancelled link's partner_account_id.
    */
@@ -102,6 +111,9 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
   onClose,
   onRevoke,
   onRemove,
+  removeError = null,
+  onDismissRemoveError,
+  removePending = false,
   partnerLink = null,
   viewerIsOwner = false,
   onPartnerDisconnected,
@@ -114,13 +126,14 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
 
   const handleConfirm = useCallback((): void => {
     if (entry === null) return;
+    if (removePending) return;
     if (entry.status === "pending") {
       onRevoke(entry);
     } else if (entry.status === "accepted") {
       onRemove(entry);
     }
     setConfirmVisible(false);
-  }, [entry, onRevoke, onRemove]);
+  }, [entry, onRevoke, onRemove, removePending]);
 
   const handleDisconnectConfirm = useCallback(async (): Promise<void> => {
     if (partnerLink === null) return;
@@ -139,6 +152,11 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
       );
     }
   }, [partnerLink, disconnectMutation, onClose, onPartnerDisconnected]);
+
+  const handleSheetClose = useCallback((): void => {
+    if (removePending) return;
+    onClose();
+  }, [removePending, onClose]);
 
   if (entry === null) {
     return null;
@@ -170,7 +188,12 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
     : `${entry.inviteeName} will lose access to this brand. They can be re-invited later.`;
 
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="half">
+    <Sheet
+      visible={visible}
+      onClose={handleSheetClose}
+      snapPoint="half"
+      dismissDisabled={removePending}
+    >
       <ScrollView
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
@@ -233,7 +256,7 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
               variant="destructive"
               size="lg"
               fullWidth
-              disabled={!canAct}
+              disabled={!canAct || removePending}
               accessibilityLabel={actionLabel}
             />
             {!canAct ? (
@@ -244,10 +267,11 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
             <View style={styles.actionSpacer} />
             <Button
               label="Cancel"
-              onPress={onClose}
+              onPress={handleSheetClose}
               variant="ghost"
               size="md"
               fullWidth
+              disabled={removePending}
               accessibilityLabel="Close member detail"
             />
           </View>
@@ -255,7 +279,7 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
           <View style={styles.actions}>
             <Button
               label="Close"
-              onPress={onClose}
+              onPress={handleSheetClose}
               variant="ghost"
               size="md"
               fullWidth
@@ -278,12 +302,17 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
           template. Do NOT move these back out to a root sibling of the Sheet. */}
       <ConfirmDialog
         visible={confirmVisible}
-        onClose={() => setConfirmVisible(false)}
+        onClose={() => {
+          if (removePending) return;
+          setConfirmVisible(false);
+        }}
         onConfirm={handleConfirm}
         title={confirmTitle}
         description={confirmDescription}
         confirmLabel={isPending ? "Revoke" : "Remove"}
         destructive
+        confirmLoading={!isPending && removePending}
+        closeDisabled={!isPending && removePending}
       />
 
       {/* ORCH-1384 — owner-only partner disconnect (dual stamp: link
@@ -307,6 +336,16 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
         errorMessage={disconnectError}
         confirmTestID="member-detail-disconnect-confirm"
       />
+
+      {/* #3660 — remove errors stay inside the Sheet Modal tree (not a root sibling). */}
+      {removeError !== null && removeError.length > 0 ? (
+        <Toast
+          visible
+          kind="error"
+          message={removeError}
+          onDismiss={() => onDismissRemoveError?.()}
+        />
+      ) : null}
     </Sheet>
   );
 };

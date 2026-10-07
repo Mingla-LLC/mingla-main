@@ -2,8 +2,7 @@
 // owner-only disconnect (SC-9 / SC-10 client legs).
 //
 // Pins, source-side with COMMS-0106 count/segment companions:
-//   1. `handleRemove` stays a NO-OP for every non-partner member (ORCH-1051
-//      untouched — SC-9's "every OTHER member's remove remains inert").
+//   1. `handleRemove` calls removeAsync (#3660 team remove; SC-9 updated).
 //   2. The pending-invite revoke client path is UNCHANGED (SC-10 — the DB
 //      invite-kill trigger owns the link stamp; zero client changes).
 //   3. The "Mingla Partner" badge renders for EXACTLY the matched row
@@ -35,21 +34,21 @@ function countOf(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
 }
 
-describe("SC-9 — general member removal stays inert (ORCH-1051 untouched)", () => {
-  test("handleRemove is still the documented no-op: closes the sheet, mutates NOTHING", () => {
+describe("SC-9 — #3660 general member removal is wired (no longer ORCH-1051 no-op)", () => {
+  // [TEST-MOD-APPROVED #3660] SC-9 previously asserted the ORCH-1051
+  // handleRemove no-op; Remove is now a real RPC with pending-scoped completion.
+  test("handleRemove calls removeAsync(entry.id) and surfaces failures", () => {
     const marker = "const handleRemove = useCallback(";
     expect(countOf(TEAM_SRC, marker)).toBe(1);
     const start = TEAM_SRC.indexOf(marker);
-    // The callback ends at its dependency-array close.
-    const end = TEAM_SRC.indexOf("[],\n  );", start);
+    const end = TEAM_SRC.indexOf("[removeAsync, removePending],", start);
     expect(end).toBeGreaterThan(start);
     const body = TEAM_SRC.slice(start, end);
-    expect(body).toContain("setDetailEntry(null)");
-    expect(body).toContain("ORCH-1051");
-    // No mutation of any kind inside the no-op.
-    expect(body).not.toContain("mutateAsync");
-    expect(body).not.toContain("disconnect");
-    expect(body).not.toContain("removed_at");
+    expect(body).toContain("removeAsync(entry.id)");
+    expect(body).toContain("biz_remove_brand_team_member");
+    expect(body).toContain("removeTargetIdRef");
+    expect(body).not.toContain("ORCH-1051");
+    expect(TEAM_SRC).toContain("useRemoveBrandTeamMember(brandIdResolved)");
   });
 
   test("SC-10 — the pending-invite revoke path is byte-untouched client-side", () => {
