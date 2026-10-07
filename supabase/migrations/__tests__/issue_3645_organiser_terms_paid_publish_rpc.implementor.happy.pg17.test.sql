@@ -169,6 +169,29 @@ BEGIN
     RAISE EXCEPTION 'E1 FAIL: paid refuse must leave draft status';
   END IF;
 
+  -- ── Door-only positive price without ToS → refuse (money-bearing, not online) ─
+  v_payload := jsonb_set(
+    v_payload,
+    '{theme,business_draft,tickets}',
+    jsonb_build_array(jsonb_build_object(
+      'name', 'Door paid', 'isFree', false, 'price', 50,
+      'capacity', 10, 'availableAt', 'door'))
+  );
+  v_raised := false;
+  BEGIN
+    PERFORM public.business_publish_event_draft(v_event, v_payload);
+    RAISE EXCEPTION 'E1b FAIL: door-only paid publish without ToS succeeded';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM <> 'mingla_tos_not_accepted' THEN RAISE; END IF;
+    v_raised := true;
+  END;
+  IF NOT v_raised THEN
+    RAISE EXCEPTION 'E1b FAIL: expected mingla_tos_not_accepted for door-only paid';
+  END IF;
+  IF (SELECT status FROM public.events WHERE id = v_event) <> 'draft' THEN
+    RAISE EXCEPTION 'E1b FAIL: door-only refuse must leave draft status';
+  END IF;
+
   -- ── Free event publish without ToS → allowed ──────────────────────────────
   v_payload := jsonb_set(
     v_payload,
@@ -183,6 +206,8 @@ BEGIN
   END IF;
 
   -- ── Experience draft save (p_publish=false) without ToS → allowed ─────────
+  -- Experience whitelist has no NGN; pass a supported currency so we reach the
+  -- draft/free ToS exemption rather than event_currency_unsupported.
   RESET ROLE;
   INSERT INTO public.events (
     id, brand_id, title, slug, event_type, status, visibility, timezone,
@@ -203,6 +228,7 @@ BEGIN
     jsonb_build_object(
       'title', 'PR11d exp draft',
       'description', 'Draft save must skip ToS.',
+      'currency', 'USD',
       'is_free', false,
       'whole_price_cents', 5000,
       'experience_intents', jsonb_build_array('group-fun'),

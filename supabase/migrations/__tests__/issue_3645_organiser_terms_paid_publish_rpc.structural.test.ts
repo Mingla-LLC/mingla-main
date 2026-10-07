@@ -84,9 +84,21 @@ Deno.test("#3645 PR11d: experience keeps draft/free exemption shape", () => {
   assert(requireIdx > paidIdx, "ToS require must sit inside the paid publish IF");
 });
 
-Deno.test("#3645 PR11d: event ToS require sits inside paid-online IF", () => {
+Deno.test("#3645 PR11d: event ToS require follows money-bearing compute", () => {
   const event = body("business_publish_event_draft");
-  const paidIdx = event.indexOf("IF COALESCE(v_paid_online, false) THEN");
+  // Terms gate any positive-price ticket (door included); rail guards stay online-only.
+  const moneyIdx = event.indexOf("INTO v_money_bearing");
   const requireIdx = event.indexOf("biz_require_current_organiser_terms");
-  assert(paidIdx >= 0 && requireIdx > paidIdx);
+  assert(moneyIdx >= 0 && requireIdx > moneyIdx);
+  assert(
+    !event.slice(0, moneyIdx).includes("biz_require_current_organiser_terms"),
+    "ToS must not sit only inside the online-paid IF",
+  );
+});
+
+Deno.test("#3645 PR11d: trip ToS require follows money-bearing compute", () => {
+  const trip = body("business_publish_trip_draft");
+  const moneyIdx = trip.indexOf("v_money_bearing := EXISTS");
+  const requireIdx = trip.indexOf("biz_require_current_organiser_terms");
+  assert(moneyIdx >= 0 && requireIdx > moneyIdx);
 });

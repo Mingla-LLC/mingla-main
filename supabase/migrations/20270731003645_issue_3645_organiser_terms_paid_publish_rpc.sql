@@ -526,8 +526,7 @@ BEGIN
     FROM jsonb_array_elements(v_tickets) t;
 
   IF COALESCE(v_paid_online, false) THEN
-    -- #3645 PR11d — Organiser Terms 1.0 before paid publish (free path skips).
-    PERFORM public.biz_require_current_organiser_terms(v_event.brand_id);
+    -- Collection + past-date stay online-only (door money cannot hit checkout 409).
     IF NOT public.pg_brand_can_collect(v_event.brand_id) THEN
       -- TRANSITIONAL wire alias; remove only under cleanup issue #1922:
       -- https://github.com/Mingla-LLC/mingla-main/issues/1922
@@ -559,6 +558,13 @@ BEGIN
          )
     INTO v_money_bearing
     FROM jsonb_array_elements(v_tickets) t;
+
+  -- #3645 PR11d — Organiser Terms 1.0 on ANY money-bearing publish (door-only
+  -- included). Matches the app gate (positive price, not online-only). Free
+  -- path skips. Collection/date guards above stay online-only.
+  IF COALESCE(v_money_bearing, false) THEN
+    PERFORM public.biz_require_current_organiser_terms(v_event.brand_id);
+  END IF;
 
   IF COALESCE(v_money_bearing, false) AND v_currency IS NULL THEN
     RAISE EXCEPTION 'event_currency_required';
@@ -882,8 +888,7 @@ BEGIN
      AND tt.available_online = true;
 
   IF COALESCE(v_trip_price_cents, 0) > 0 THEN
-    -- #3645 PR11d — Organiser Terms 1.0 before paid trip publish.
-    PERFORM public.biz_require_current_organiser_terms(v_event.brand_id);
+    -- Collection + past-date stay online-only (in-person-only paid exempt).
     IF NOT public.pg_brand_can_collect(v_event.brand_id) THEN
       -- TRANSITIONAL wire alias; remove only under cleanup issue #1922:
       -- https://github.com/Mingla-LLC/mingla-main/issues/1922
@@ -962,6 +967,12 @@ BEGIN
       AND tt.deleted_at IS NULL
       AND tt.price_cents > 0
   );
+
+  -- #3645 PR11d — Organiser Terms on any money-bearing trip (online OR door).
+  -- Collection/date guards above stay online-only.
+  IF v_money_bearing THEN
+    PERFORM public.biz_require_current_organiser_terms(v_event.brand_id);
+  END IF;
 
   PERFORM set_config('mingla.business_publish_trip_draft', 'on', true);
   PERFORM set_config('mingla.business_publish_event_draft', 'on', true);
