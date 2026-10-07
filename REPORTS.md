@@ -20,7 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
-- 2026-10-07 — Host pending brand invitations open a dedicated Accept/Decline screen from the Home/Hub to-do (not Account), invite email failures are honest and logged, and a regression pins every to-do action kind to a consumer (toward #3660, PR #TBD)
+- 2026-10-07 — Host pending brand invitations open a dedicated Accept/Decline screen from the Home/Hub to-do (not Account), invite email failures are honest and logged, and a regression pins every to-do action kind to a consumer (toward #3660, PR #3752)
 - 2026-10-07 — Paid publish on the server also requires Organiser Terms 1.0 (events, trips, experiences, and stays); free listings and draft saves stay open (toward #3645, PR #3749)
 - 2026-10-05 — Host Organiser Terms gate in the app: version 1.0 with a link to usemingla.com/organiser-terms, re-accept when the version changes, required before Paystack bank setup and before publishing a paid event/trip/experience (toward #3645, PR #3746)
 - 2026-10-04 — Menu Set times on Start advances to End, dish price/cost reopen with full decimals, and dirty table/blackout sheets ask before discarding (toward #3655, PR #3745)
