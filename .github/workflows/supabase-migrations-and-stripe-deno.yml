@@ -1482,6 +1482,11 @@ jobs:
             # Issue #1919 — structural last-writer, transitional-wire, and ACL
             # contract for the provider-neutral readiness migration.
             supabase/migrations/__tests__/issue_1919_provider_neutral_paid_readiness.structural.test.ts
+            # #3645 PR11d — Organiser Terms 1.0 on paid publish RPCs (helper +
+            # event/trip/experience/stay). Registered in this existing Stripe
+            # Deno lane (I-2148-CI-TOPOLOGY-BOUNDED).
+            supabase/migrations/__tests__/issue_3645_organiser_terms_paid_publish_rpc.structural.test.ts
+
             # Issue #1792 — waiter mode's server hardening. The sharpest case is
             # the metadata MERGE: `update({ metadata: {...} })` replaces the
             # whole jsonb column through PostgREST, and one such line erased the
