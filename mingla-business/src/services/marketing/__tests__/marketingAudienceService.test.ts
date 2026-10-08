@@ -475,7 +475,7 @@ function chainEqThen(result: { data: unknown; error: null }) {
   };
 }
 
-describe("listAudiencesForBrand (T-02 ORCH-0863 / #3682 brand scope)", () => {
+describe("listAudiencesForBrand (T-02 ORCH-0863 / #3682 brand-scope)", () => {
   const ACCOUNT_UUID = "00000000-0000-0000-0000-0000000000aa";
   const BRAND_UUID = "00000000-0000-0000-0000-0000000000b1";
   const OTHER_BRAND_UUID = "00000000-0000-0000-0000-0000000000b2";

@@ -40,6 +40,7 @@ describe("#3682 brand-scoped automatic audiences (happy)", () => {
     const service = read("src/services/marketing/marketingCampaignService.ts");
     expect(service).toContain("export async function assertAudienceMatchesCampaignBrand");
     expect(service).toContain("AUDIENCE_BRAND_MISMATCH");
+    expect(service).toContain('.select("id, brand_id, query_definition")');
     // createDraft awaits the gate before insert.
     const createIdx = service.indexOf("export async function createDraft");
     const gateInCreate = service.indexOf(

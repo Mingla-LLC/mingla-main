@@ -80,7 +80,7 @@ describe("#2514 no campaign cache key can collide across brands", () => {
 });
 
 describe("#2514 scope discipline", () => {
-  it("does not silently rescope templates; audiences are brand-scoped as of #3682", () => {
+  it("does not silently rescope templates; audiences are brand-scoped (#3682)", () => {
     // Templates still had no reported cross-brand defect. Audiences did (#3682):
     // automatic buyer groups leaked other brands on multi-brand accounts, so
     // the palette now threads currentBrand.id into useAudienceList.

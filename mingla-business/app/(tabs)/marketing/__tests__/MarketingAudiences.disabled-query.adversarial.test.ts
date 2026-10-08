@@ -18,7 +18,7 @@ describe("#1774 — People disabled-query loading and independent Groups",()=>{
     expect(people).toContain("hasResolved:query.isFetched");
   });
   it("(T-02b) preserves the original audience hook and disabled-query-safe Groups guard",()=>{
-    // #3682 — Groups are brand-scoped so a second brand's buyers never appear.
+    // #3682 — Groups are brand-scoped so a second brand's buyers never appear here.
     expect(page).toContain("const groups=useAudienceList(user?.id??null,brand?.id??null)");
     expect(page).toContain('title="Groups"');
     expect(page).toContain("!groups.hasResolved&&!groups.isError");

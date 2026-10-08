@@ -61,16 +61,64 @@ export async function assertAudienceMatchesCampaignBrand(input: {
   assertUuid(input.brand_id, "assertAudienceMatchesCampaignBrand.brand_id");
   const { data, error } = await supabase
     .from("marketing_audiences")
-    .select("id, brand_id")
+    .select("id, brand_id, query_definition")
     .eq("id", input.audience_id)
     .maybeSingle();
   if (error) throw error;
+  const row = data as {
+    brand_id?: string | null;
+    query_definition?: { kind?: string; brand_id?: string; event_id?: string } | null;
+  } | null;
   const audienceBrandId =
-    data !== null && typeof (data as { brand_id?: string | null }).brand_id === "string"
-      ? (data as { brand_id: string }).brand_id
-      : null;
+    row !== null && typeof row.brand_id === "string" ? row.brand_id : null;
   if (audienceBrandId !== input.brand_id) {
     throw new Error(AUDIENCE_BRAND_MISMATCH);
+  }
+
+  const qd = row?.query_definition;
+  if (qd === null || typeof qd !== "object") {
+    throw new Error(AUDIENCE_BRAND_MISMATCH);
+  }
+  const queryBrandId =
+    typeof qd.brand_id === "string" && qd.brand_id.length > 0
+      ? qd.brand_id
+      : null;
+  if (queryBrandId !== null && queryBrandId !== input.brand_id) {
+    throw new Error(AUDIENCE_BRAND_MISMATCH);
+  }
+  const kind = typeof qd.kind === "string" ? qd.kind : "";
+  if (
+    kind === "brand_buyers" ||
+    kind === "brand_followers" ||
+    kind === "brand_circle_extended" ||
+    kind === "all_brand_people"
+  ) {
+    if (queryBrandId !== input.brand_id) {
+      throw new Error(AUDIENCE_BRAND_MISMATCH);
+    }
+  }
+  const eventId =
+    typeof qd.event_id === "string" && qd.event_id.length > 0
+      ? qd.event_id
+      : null;
+  if (kind === "event_buyers" || eventId !== null) {
+    if (eventId === null) {
+      throw new Error(AUDIENCE_BRAND_MISMATCH);
+    }
+    const { data: eventRow, error: eventErr } = await supabase
+      .from("events")
+      .select("id, brand_id")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (eventErr) throw eventErr;
+    const eventBrandId =
+      eventRow !== null &&
+      typeof (eventRow as { brand_id?: string }).brand_id === "string"
+        ? (eventRow as { brand_id: string }).brand_id
+        : null;
+    if (eventBrandId !== input.brand_id) {
+      throw new Error(AUDIENCE_BRAND_MISMATCH);
+    }
   }
 }
 
