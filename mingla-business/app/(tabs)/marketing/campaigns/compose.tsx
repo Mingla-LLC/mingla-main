@@ -148,6 +148,9 @@ import { useComposerDraft } from "../../../../src/hooks/marketing/useComposerDra
 import { useStarterTemplates } from "../../../../src/hooks/marketing/useStarterTemplates";
 import { useUserTemplates } from "../../../../src/hooks/marketing/useUserTemplates";
 import {
+  assertAudienceMatchesCampaignBrand,
+  assertEventBelongsToBrand,
+  AUDIENCE_BRAND_MISMATCH,
   createDraft,
   ensureBrandBuyersAudience,
   ensureEventBuyersAudience,
@@ -650,9 +653,15 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setSealedAudienceKind(audienceKind);
           setIsBookAudience(true);
         } else if (audienceParam.kind === "brand") {
+          // #3682 — refuse a deep-link that targets another brand's buyers.
+          if (audienceParam.id !== brandId) {
+            throw new Error(
+              "That audience belongs to another brand. Pick one for this brand.",
+            );
+          }
           const id = await ensureBrandBuyersAudience({
             account_id: accountId,
-            brand_id: audienceParam.id,
+            brand_id: brandId,
           });
           if (cancelled) return;
           setAudienceId(id);
@@ -660,6 +669,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setSealedAudienceKind(null);
           setIsBookAudience(false);
         } else {
+          // #3682 — event buyers must belong to the active brand.
+          await assertEventBelongsToBrand({
+            event_id: audienceParam.id,
+            brand_id: brandId,
+          });
           const id = await ensureEventBuyersAudience({
             account_id: accountId,
             brand_id: brandId,
@@ -722,10 +736,39 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         if (cancelled || row === null) return;
         setCampaignId(row.id);
         setChannel(row.channel as MarketingChannelKind);
-        setAudienceId(row.audience_id);
-        const storedAudienceKind = await getMarketingAudienceKind(row.audience_id);
-        setSealedAudienceKind(storedAudienceKind);
-        setIsBookAudience(storedAudienceKind !== null);
+        // #3682 — clear a cross-brand audience left on a stale draft.
+        let restoredAudienceId: string | null = row.audience_id;
+        try {
+          await assertAudienceMatchesCampaignBrand({
+            audience_id: row.audience_id,
+            brand_id: row.brand_id,
+          });
+        } catch (err) {
+          if (
+            err instanceof Error &&
+            err.message === AUDIENCE_BRAND_MISMATCH
+          ) {
+            restoredAudienceId = null;
+            if (!cancelled) {
+              setErrorBanner(
+                "That draft's audience belongs to another brand. Pick an audience for this brand.",
+              );
+            }
+          } else {
+            throw err;
+          }
+        }
+        setAudienceId(restoredAudienceId);
+        if (restoredAudienceId !== null) {
+          const storedAudienceKind = await getMarketingAudienceKind(
+            restoredAudienceId,
+          );
+          setSealedAudienceKind(storedAudienceKind);
+          setIsBookAudience(storedAudienceKind !== null);
+        } else {
+          setSealedAudienceKind(null);
+          setIsBookAudience(false);
+        }
         // issue #2291 — DEFENSIVE READS. These were bare
         // `setSubject(row.channel_payload.subject)` /
         // `setBody(row.channel_payload.body_html)` with no fallback. On a row

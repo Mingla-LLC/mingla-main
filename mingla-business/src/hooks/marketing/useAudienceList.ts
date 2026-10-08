@@ -1,11 +1,14 @@
 /**
- * useAudienceList — Audiences tab data source (ORCH-0863).
+ * useAudienceList — Audiences tab data source (ORCH-0863 / #3682).
  *
  * Returns the merged real+virtual entry list (from
- * `listAudiencesForAccount`) PLUS a batched per-row reach lookup
+ * `listAudiencesForBrand`) PLUS a batched per-row reach lookup
  * (`Map<client_key, AudienceReachSummary | null>`). Per-row reach
  * failures degrade silently: the entry gets `reach=null` and the row
  * remains tappable. No global error overlay (SPEC SC-8).
+ *
+ * Brand-scoped: a host with several brands only sees the current brand's
+ * automatic buyer groups.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -13,7 +16,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { useAuth } from "../../context/AuthContext";
 import {
-  listAudiencesForAccount,
+  listAudiencesForBrand,
   resolveBrandBuyers,
   resolveEventBuyers,
 } from "../../services/marketing/marketingAudienceService";
@@ -45,17 +48,25 @@ export interface UseAudienceListState {
 
 export function useAudienceList(
   accountId: string | null | undefined,
+  brandId: string | null | undefined,
 ): UseAudienceListState {
   // ORCH-1004 — audiences read auth.uid()-scoped buyer rollups; gate on auth.
   const { isAuthReady } = useAuth();
   const enabled =
-    isAuthReady && typeof accountId === "string" && accountId.length > 0;
+    isAuthReady &&
+    typeof accountId === "string" &&
+    accountId.length > 0 &&
+    typeof brandId === "string" &&
+    brandId.length > 0;
   const query = useQuery<AudienceListEntry[]>({
     queryKey: enabled
-      ? marketingKeys.audiences.list(accountId as string)
+      ? marketingKeys.audiences.list(accountId as string, brandId as string)
       : marketingKeys.audiences.all,
     queryFn: async () =>
-      listAudiencesForAccount({ account_id: accountId as string }),
+      listAudiencesForBrand({
+        account_id: accountId as string,
+        brand_id: brandId as string,
+      }),
     enabled,
     staleTime: STALE_TIME_MS,
   });

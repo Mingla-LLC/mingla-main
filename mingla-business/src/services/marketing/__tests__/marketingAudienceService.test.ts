@@ -445,101 +445,122 @@ describe("marketingAudienceService — resolveRsvpGuests (ORCH-1150 D-8)", () =>
 });
 
 // ===========================================================================
-// T-02 (ORCH-0863) — listAudiencesForAccount virtual-row discovery
+// T-02 (ORCH-0863) — listAudiencesForBrand virtual-row discovery (#3682 brand scope)
 // ===========================================================================
 
-import { listAudiencesForAccount } from "../marketingAudienceService";
+import {
+  listAudiencesForAccount,
+  listAudiencesForBrand,
+} from "../marketingAudienceService";
 
-describe("listAudiencesForAccount (T-02 ORCH-0863 virtual-row discovery)", () => {
+function chainEqThen(result: { data: unknown; error: null }) {
+  // Supports .eq().eq() ... terminating in data, and .eq().in().order().
+  const terminal = {
+    ...result,
+    in: () => ({
+      order: () => result,
+    }),
+    is: () => ({
+      maybeSingle: () => result,
+    }),
+    maybeSingle: () => result,
+    order: () => result,
+  };
+  const eqNode: { eq: () => typeof eqNode } & typeof terminal = {
+    ...terminal,
+    eq: () => eqNode,
+  };
+  return {
+    select: () => eqNode,
+  };
+}
+
+describe("listAudiencesForBrand (T-02 ORCH-0863 / #3682 brand scope)", () => {
   const ACCOUNT_UUID = "00000000-0000-0000-0000-0000000000aa";
   const BRAND_UUID = "00000000-0000-0000-0000-0000000000b1";
+  const OTHER_BRAND_UUID = "00000000-0000-0000-0000-0000000000b2";
   const EVENT_UUID_A = "00000000-0000-0000-0000-0000000000e1";
   const EVENT_UUID_B = "00000000-0000-0000-0000-0000000000e2";
+  const OTHER_EVENT_UUID = "00000000-0000-0000-0000-0000000000e9";
 
   beforeEach(() => {
     (supabase.from as jest.Mock).mockReset();
   });
 
-  it("merges existing real rows with virtual rows for every brand/event with paid orders", async () => {
-    // Mock chain — 4 .from() calls in order:
-    //   1. marketing_audiences SELECT (1 existing event row)
-    //   2. marketing_campaigns SELECT (last_used_at lookup)
-    //   3. orders SELECT with events!inner join (2 events under 1 brand)
-    //   4. brands SELECT (brand name)
+  it("merges existing real rows with virtual rows for THIS brand's paid orders only", async () => {
     (supabase.from as jest.Mock)
-      // Call 1: marketing_audiences
-      .mockReturnValueOnce({
-        select: () => ({
-          eq: () => ({
-            data: [
-              {
-                id: "00000000-0000-0000-0000-000000000a01",
-                brand_id: BRAND_UUID,
-                query_definition: {
-                  kind: "event_buyers",
-                  event_id: EVENT_UUID_A,
-                  payment_statuses: ["paid", "partial_refund"],
-                },
-              },
-            ],
-            error: null,
-          }),
-        }),
-      })
-      // Call 2: marketing_campaigns last-used lookup
-      .mockReturnValueOnce({
-        select: () => ({
-          eq: () => ({
-            in: () => ({
-              order: () => ({
-                data: [
-                  {
-                    audience_id: "00000000-0000-0000-0000-000000000a01",
-                    created_at: "2026-05-13T15:25:00Z",
-                  },
-                ],
-                error: null,
-              }),
-            }),
-          }),
-        }),
-      })
-      // Call 3: orders SELECT with events!inner
-      .mockReturnValueOnce({
-        select: () => ({
-          in: () => ({
-            data: [
-              {
+      // Call 1: marketing_audiences (brand-filtered)
+      .mockReturnValueOnce(
+        chainEqThen({
+          data: [
+            {
+              id: "00000000-0000-0000-0000-000000000a01",
+              brand_id: BRAND_UUID,
+              query_definition: {
+                kind: "event_buyers",
                 event_id: EVENT_UUID_A,
-                events: { id: EVENT_UUID_A, title: "Event Alpha", brand_id: BRAND_UUID },
+                payment_statuses: ["paid", "partial_refund"],
               },
-              {
-                event_id: EVENT_UUID_B,
-                events: { id: EVENT_UUID_B, title: "Event Beta", brand_id: BRAND_UUID },
-              },
-            ],
-            error: null,
-          }),
+            },
+          ],
+          error: null,
         }),
-      })
-      // Call 4: brands SELECT (with I-PROPOSED-A deleted_at filter)
+      )
+      // Call 2: marketing_campaigns last-used lookup
+      .mockReturnValueOnce(
+        chainEqThen({
+          data: [
+            {
+              audience_id: "00000000-0000-0000-0000-000000000a01",
+              created_at: "2026-05-13T15:25:00Z",
+            },
+          ],
+          error: null,
+        }),
+      )
+      // Call 3: orders SELECT with events!inner + brand filter
       .mockReturnValueOnce({
         select: () => ({
           in: () => ({
-            is: () => ({
-              data: [{ id: BRAND_UUID, name: "Rooftop Club" }],
+            eq: () => ({
+              data: [
+                {
+                  event_id: EVENT_UUID_A,
+                  events: {
+                    id: EVENT_UUID_A,
+                    title: "Event Alpha",
+                    brand_id: BRAND_UUID,
+                  },
+                },
+                {
+                  event_id: EVENT_UUID_B,
+                  events: {
+                    id: EVENT_UUID_B,
+                    title: "Event Beta",
+                    brand_id: BRAND_UUID,
+                  },
+                },
+              ],
               error: null,
             }),
           }),
         }),
-      });
+      })
+      // Call 4: brands SELECT (single brand)
+      .mockReturnValueOnce(
+        chainEqThen({
+          data: { id: BRAND_UUID, name: "Rooftop Club" },
+          error: null,
+        }),
+      );
 
-    const entries = await listAudiencesForAccount({ account_id: ACCOUNT_UUID });
+    const entries = await listAudiencesForBrand({
+      account_id: ACCOUNT_UUID,
+      brand_id: BRAND_UUID,
+    });
 
-    // Should return: 1 brand_buyers (virtual) + 2 event_buyers (1 real + 1 virtual) = 3 entries.
     expect(entries).toHaveLength(3);
 
-    // The brand-rollup entry should be virtual (no existing brand_buyers row).
     const brandEntry = entries.find((e) => e.kind === "brand_buyers");
     expect(brandEntry).toBeDefined();
     expect(brandEntry?.audience_id).toBeNull();
@@ -547,18 +568,67 @@ describe("listAudiencesForAccount (T-02 ORCH-0863 virtual-row discovery)", () =>
     expect(brandEntry?.brand_name).toBe("Rooftop Club");
     expect(brandEntry?.display_name).toContain("Rooftop Club");
 
-    // Event A entry should be REAL (has an audience row).
     const eventA = entries.find(
       (e) => e.kind === "event_buyers" && e.event_id === EVENT_UUID_A,
     );
     expect(eventA?.audience_id).toBe("00000000-0000-0000-0000-000000000a01");
     expect(eventA?.last_used_at).toBe("2026-05-13T15:25:00Z");
 
-    // Event B entry should be VIRTUAL.
     const eventB = entries.find(
       (e) => e.kind === "event_buyers" && e.event_id === EVENT_UUID_B,
     );
     expect(eventB?.audience_id).toBeNull();
     expect(eventB?.last_used_at).toBeNull();
+    expect(typeof listAudiencesForAccount).toBe("function");
+  });
+
+  it("#3682 never returns another brand's automatic buyer groups", async () => {
+    // Empty existing audiences → no campaigns last-used query.
+    (supabase.from as jest.Mock)
+      .mockReturnValueOnce(
+        chainEqThen({
+          data: [],
+          error: null,
+        }),
+      )
+      .mockReturnValueOnce({
+        select: () => ({
+          in: () => ({
+            eq: () => ({
+              // Even if a foreign row slipped through the join, Step 4 drops it.
+              data: [
+                {
+                  event_id: OTHER_EVENT_UUID,
+                  events: {
+                    id: OTHER_EVENT_UUID,
+                    title: "Foreign Night",
+                    brand_id: OTHER_BRAND_UUID,
+                  },
+                },
+              ],
+              error: null,
+            }),
+          }),
+        }),
+      })
+      .mockReturnValueOnce(
+        chainEqThen({
+          data: { id: BRAND_UUID, name: "Lantern Room" },
+          error: null,
+        }),
+      );
+
+    const entries = await listAudiencesForBrand({
+      account_id: ACCOUNT_UUID,
+      brand_id: BRAND_UUID,
+    });
+
+    expect(entries).toHaveLength(0);
+    expect(
+      entries.some((e) => e.brand_id === OTHER_BRAND_UUID),
+    ).toBe(false);
+    expect(
+      entries.some((e) => e.display_name.includes("Foreign")),
+    ).toBe(false);
   });
 });

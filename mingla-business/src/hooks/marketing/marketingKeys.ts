@@ -26,8 +26,10 @@ export const marketingKeys = {
   },
   audiences: {
     all: ["marketing", "audiences"] as const,
-    list: (accountId: string): readonly unknown[] =>
-      ["marketing", "audiences", "list", accountId] as const,
+    // #3682 — keyed by brand so switching brand never serves another brand's
+    // automatic buyer groups from cache.
+    list: (accountId: string, brandId: string): readonly unknown[] =>
+      ["marketing", "audiences", "list", accountId, brandId] as const,
     reach: (clientKey: string): readonly unknown[] =>
       ["marketing", "audiences", "reach", clientKey] as const,
     book: (brandId: string): readonly unknown[] =>

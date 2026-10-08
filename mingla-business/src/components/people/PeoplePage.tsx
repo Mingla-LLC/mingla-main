@@ -229,7 +229,7 @@ export function PeoplePage(): React.ReactElement {
     role.rank,
     online,
   );
-  const groups=useAudienceList(user?.id??null);
+  const groups=useAudienceList(user?.id??null,brand?.id??null);
   const manualFlag = useFeatureFlag("manual_contact_groups_v1");
   const manualEnabled = authorized && manualFlag.data === true;
   const [manualGroupsState, setManualGroupsState] = React.useState<{

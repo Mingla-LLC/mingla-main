@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-08 — Host People → Groups and campaign send only use the current brand's buyers; another brand's audience can no longer be attached or blasted (toward #3682, PR #3772)
 - 2026-10-08 — Signed-in ticket buyers and free RSVPs auto-follow the brand (fail-open), and Host People/Blast labels say Friends of followers instead of Extended circle (toward #3682, PR #3774)
 - 2026-10-08 — Closing-chat engineering traps written into the handbook and runbooks so they are findable without agent memory (#3674, PR #3771)
 - 2026-10-07 — Host package-authority digests re-banked after the intentional dep floors so strict-grep stops reding every merge (toward #3762, PR #3768)
