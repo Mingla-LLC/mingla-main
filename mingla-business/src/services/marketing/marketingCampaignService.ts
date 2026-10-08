@@ -105,6 +105,7 @@ export async function assertAudienceMatchesCampaignBrand(input: {
     if (eventId === null) {
       throw new Error(AUDIENCE_BRAND_MISMATCH);
     }
+    // orch-strict-grep-allow events-type-filter — #3682 brand-scope gate: single-row brand_id lookup by known event id before send; event_type is irrelevant to the ownership check.
     const { data: eventRow, error: eventErr } = await supabase
       .from("events")
       .select("id, brand_id")
@@ -129,6 +130,7 @@ export async function assertEventBelongsToBrand(input: {
 }): Promise<void> {
   assertUuid(input.event_id, "assertEventBelongsToBrand.event_id");
   assertUuid(input.brand_id, "assertEventBelongsToBrand.brand_id");
+  // orch-strict-grep-allow events-type-filter — #3682 brand-scope gate: single-row brand_id lookup by known event id; event_type is irrelevant to the ownership check.
   const { data, error } = await supabase
     .from("events")
     .select("id, brand_id")
