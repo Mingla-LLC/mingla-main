@@ -25,6 +25,8 @@ import {
 // ISSUE-865 WP-B — the single post-finalize ad-conversion hook (CAPI fan-out,
 // deduped with the browser pixel on the shared event_id; idempotent + fail-open).
 import { fireAdConversion } from "./adConversionFire.ts";
+// #3682 — auto-follow brand after signed-in purchase (fail-open).
+import { autoFollowBrandBestEffort } from "./autoFollowBrand.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
 import {
   isEvidenceHoldCandidate,
@@ -1466,7 +1468,7 @@ async function handleTicketCheckoutPaymentIntent(
   let { data: session, error: sessionError } = await supabase
     .from("ticket_checkout_sessions")
     .select(
-      "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, provider_flow, reversal_state",
+      "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, provider_flow, reversal_state, buyer_user_id",
     )
     .eq("stripe_payment_intent_id", paymentIntentId)
     .maybeSingle();
@@ -1492,7 +1494,7 @@ async function handleTicketCheckoutPaymentIntent(
       const fallback = await supabase
         .from("ticket_checkout_sessions")
         .select(
-          "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, provider_flow, reversal_state",
+          "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, provider_flow, reversal_state, buyer_user_id",
         )
         .eq("id", mingleCheckoutSessionId)
         .maybeSingle();
@@ -1786,6 +1788,20 @@ async function handleTicketCheckoutPaymentIntent(
       console.warn(
         "[stripe-webhook] ad-conversion fire threw (non-fatal):",
         adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
+      );
+    }
+
+    // #3682 — signed-in buyer follows the brand (idempotent ON CONFLICT).
+    try {
+      await autoFollowBrandBestEffort(supabase as never, {
+        userId: session.buyer_user_id as string | null,
+        brandId: session.brand_id as string | null,
+        source: "purchase",
+      });
+    } catch (followErr) {
+      console.warn(
+        "[stripe-webhook] auto-follow threw (non-fatal):",
+        followErr instanceof Error ? followErr.message : String(followErr),
       );
     }
 

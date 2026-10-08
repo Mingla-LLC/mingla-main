@@ -645,7 +645,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           if (cancelled) return;
           setAudienceId(circle.audienceId);
           setAudienceName(
-            audienceKind === "brand_followers" ? "Followers" : "Extended circle",
+            audienceKind === "brand_followers" ? "Followers" : "Friends of followers",
           );
           setSealedAudienceKind(audienceKind);
           setIsBookAudience(true);

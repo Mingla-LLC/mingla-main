@@ -13,7 +13,7 @@ export function CircleReachSheet({visible,ring,query,onClose}:{visible:boolean;r
   const [retrying,setRetrying]=React.useState(false);
   const paginationFailureReported=React.useRef(false);
   const loadMoreInFlight=React.useRef(false);
-  const title=ring==="follower"?"Followers":"Extended circle",count=query.counts?.[ring==="follower"?"followers":"extended"]??null;
+  const title=ring==="follower"?"Followers":"Friends of followers",count=query.counts?.[ring==="follower"?"followers":"extended"]??null;
   const ready=query.hasCurrentTruth&&query.safeAvailability?.[ring==="follower"?"followers":"extended"].state==="ready";
   const sheetRef=React.useRef<View|null>(null),titleRef=React.useRef<Text|null>(null),closeRef=React.useRef<View|null>(null);
   React.useEffect(()=>{

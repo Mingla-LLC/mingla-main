@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-08 — Signed-in ticket buyers and free RSVPs auto-follow the brand (fail-open), and Host People/Blast labels say Friends of followers instead of Extended circle (toward #3682, PR #TBD)
 - 2026-10-08 — Closing-chat engineering traps written into the handbook and runbooks so they are findable without agent memory (#3674, PR #3771)
 - 2026-10-07 — Host package-authority digests re-banked after the intentional dep floors so strict-grep stops reding every merge (toward #3762, PR #3768)
 - 2026-10-07 — Intentional dependency floors clear the open Dependabot queue (markdown-it, dompurify, undici, brace-expansion, sharp) and the business-web boot baseline accepts the measured growth from main (Fixes #3762, toward #3493, PR #3763)

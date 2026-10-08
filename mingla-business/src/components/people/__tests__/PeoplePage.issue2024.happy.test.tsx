@@ -155,7 +155,7 @@ jest.mock("../PeoplePrimitives", () => ({
   BookSheet: ({ visible }: { visible: boolean }) => (visible ? <Text>BOOK SHEET</Text> : null),
   GroupsSheet: () => null,
 }));
-jest.mock("../CircleReachBlock", () => ({ CircleReachBlock: ({ ring }: { ring: string }) => <Text>{ring === "follower" ? "Followers" : "Extended circle"}</Text> }));
+jest.mock("../CircleReachBlock", () => ({ CircleReachBlock: ({ ring }: { ring: string }) => <Text>{ring === "follower" ? "Followers" : "Friends of followers"}</Text> }));
 jest.mock("../CircleReachSheet", () => ({ CircleReachSheet: () => null }));
 
 // Jest requires dependency mocks before the real component import.
@@ -216,10 +216,10 @@ beforeEach(() => {
 });
 
 describe("issue #2024 rendered People workspace happy path", () => {
-  test("renders Book then Followers, Extended circle, and Groups in the full-width 5:3 workspace", () => {
+  test("renders Book then Followers, Friends of followers, and Groups in the full-width 5:3 workspace", () => {
     renderPage();
     const output = textOf(tree.toJSON());
-    expect(output).toMatch(/Your book.*Followers.*Extended circle.*Groups/);
+    expect(output).toMatch(/Your book.*Followers.*Friends of followers.*Groups/);
     expect(output).not.toMatch(/People you can reach|Reach unavailable|Export unavailable/);
     const row = StyleSheet.flatten(tree.root.findByProps({ testID: "people-workspace-row" }).props.style);
     const bookColumn = StyleSheet.flatten(

@@ -1,0 +1,35 @@
+name: Issue 3682 auto-follow tests
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/autoFollowBrand.ts"
+      - "supabase/functions/_shared/__tests__/issue_3682_auto_follow_on_purchase*.test.ts"
+      - "supabase/functions/_shared/stripeWebhookRouter.ts"
+      - "supabase/functions/ticket-checkout-confirm/index.ts"
+      - "supabase/functions/ticket-checkout-create/index.ts"
+      - "supabase/migrations/20261008013682_issue_3682_auto_follow_on_purchase.sql"
+      - ".github/workflows/issue-3682-auto-follow-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/_shared/autoFollowBrand.ts"
+      - "supabase/functions/_shared/__tests__/issue_3682_auto_follow_on_purchase*.test.ts"
+      - "supabase/functions/_shared/stripeWebhookRouter.ts"
+      - "supabase/functions/ticket-checkout-confirm/index.ts"
+      - "supabase/functions/ticket-checkout-create/index.ts"
+      - "supabase/migrations/20261008013682_issue_3682_auto_follow_on_purchase.sql"
+      - ".github/workflows/issue-3682-auto-follow-tests.yml"
+
+jobs:
+  deno:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Happy + adversarial auto-follow contract
+        run: |
+          deno test --allow-read --allow-env \
+            supabase/functions/_shared/__tests__/issue_3682_auto_follow_on_purchase.happy.test.ts \
+            supabase/functions/_shared/__tests__/issue_3682_auto_follow_on_purchase.adversarial.test.ts

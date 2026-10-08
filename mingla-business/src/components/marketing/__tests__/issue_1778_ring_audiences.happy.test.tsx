@@ -160,7 +160,7 @@ describe("#1778 Business Circle audience contract", () => {
     expect(output).toContain("Choose who gets this");
     expect(output).toMatch(/Your brand.*Your Book.*Mingla reach.*Followers/);
     expect(output).toMatch(/Followers.*Names only.*42 people/);
-    expect(output).toMatch(/Extended.*Consent controlled.*Not available until people can control extended brand reach/);
+    expect(output).toMatch(/Friends of followers.*Consent controlled.*Not available until people can control extended brand reach/);
     expect(output).toMatch(/Groups.*VIP regulars.*Automatic.*All buyers of Mingla Test/);
     expect(output).toContain(
       "Mingla keeps follower contact details hidden. You see names and reach totals only.",
@@ -170,7 +170,7 @@ describe("#1778 Business Circle audience contract", () => {
     const extended = tree.root.findAll(
       (node: any) =>
         typeof node.props.accessibilityLabel === "string" &&
-        node.props.accessibilityLabel.startsWith("Pick audience Extended circle."),
+        node.props.accessibilityLabel.startsWith("Pick audience Friends of followers."),
     )[0];
     expect(extended.props.accessibilityState).toEqual({
       selected: false,
