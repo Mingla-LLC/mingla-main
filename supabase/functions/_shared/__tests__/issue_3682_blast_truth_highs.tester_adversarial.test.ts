@@ -15,16 +15,18 @@ Deno.test("#3682 buyer audiences still default to bought", () => {
 });
 
 Deno.test("#3682 reserved domains cover exact + suffixes", () => {
-  for (const email of [
-    "a@example.org",
-    "a@example.net",
-    "a@localhost",
-    "a@invalid",
-    "guest@sub.example.com",
-    "guest@foo.invalid",
-    "guest@foo.example.com",
-    "not-an-email",
-  ]) {
+  for (
+    const email of [
+      "a@example.org",
+      "a@example.net",
+      "a@localhost",
+      "a@invalid",
+      "guest@sub.example.com",
+      "guest@foo.invalid",
+      "guest@foo.example.com",
+      "not-an-email",
+    ]
+  ) {
     assertEquals(isUndeliverableEmailDomain(email), true, email);
   }
 });

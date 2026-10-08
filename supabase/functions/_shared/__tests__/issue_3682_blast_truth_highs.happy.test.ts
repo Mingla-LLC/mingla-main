@@ -80,7 +80,9 @@ Deno.test("#3682 rsvp and booking reasons are truthful", () => {
     "reservation",
   );
   assertEquals(
-    receiveReasonFooterSentence("rsvp", "Lantern Room").includes("bought tickets"),
+    receiveReasonFooterSentence("rsvp", "Lantern Room").includes(
+      "bought tickets",
+    ),
     false,
   );
 });

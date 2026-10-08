@@ -40,13 +40,17 @@ VALUES (
   'scheduled',
   'event'
 );
-INSERT INTO public.orders(id, event_id, buyer_user_id, payment_status, source, total_cents, currency)
+INSERT INTO public.orders(
+  id, event_id, buyer_user_id, buyer_phone_e164,
+  payment_status, source, total_cents, currency
+)
 VALUES (
   '36820000-2000-4000-8000-000000000001',
   '36820000-1000-4000-8000-000000000001',
   '36820000-0000-4000-8000-000000000002',
+  '+15553682001', -- orders_online_checkout_phone_e164_check
   'paid',
-  'web',
+  'online_checkout', -- orders_source_check: not 'web'
   1000,
   'USD'
 );

@@ -552,7 +552,9 @@ export async function handler(req: Request): Promise<Response> {
         // #3682 — reserved domains (@example.com etc.) are undeliverable and
         // must not land in the book as sendable contacts. Shared classifier
         // also covers reserved suffixes (guest@sub.example.com).
-        if (email !== null && isUndeliverableEmailDomain(email)) email = null;
+        const undeliverableDomain = emailRaw.length > 0 &&
+          isUndeliverableEmailDomain(emailRaw);
+        if (email !== null && undeliverableDomain) email = null;
         const phoneRaw = val("phone");
         const phone = resolveUserPhoneE164(phoneRaw, "");
         const keys = [email ? `e:${email}` : null, phone ? `p:${phone}` : null]
