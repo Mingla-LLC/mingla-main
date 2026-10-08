@@ -50,12 +50,112 @@ export interface ScheduleInput {
   channel_payload: CampaignChannelPayload;
 }
 
+export const AUDIENCE_BRAND_MISMATCH = "audience_brand_mismatch";
+
+/** #3682 — refuse attaching another brand's audience to this campaign. */
+export async function assertAudienceMatchesCampaignBrand(input: {
+  audience_id: string;
+  brand_id: string;
+}): Promise<void> {
+  assertUuid(input.audience_id, "assertAudienceMatchesCampaignBrand.audience_id");
+  assertUuid(input.brand_id, "assertAudienceMatchesCampaignBrand.brand_id");
+  const { data, error } = await supabase
+    .from("marketing_audiences")
+    .select("id, brand_id, query_definition")
+    .eq("id", input.audience_id)
+    .maybeSingle();
+  if (error) throw error;
+  const row = data as {
+    brand_id?: string | null;
+    query_definition?: { kind?: string; brand_id?: string; event_id?: string } | null;
+  } | null;
+  const audienceBrandId =
+    row !== null && typeof row.brand_id === "string" ? row.brand_id : null;
+  if (audienceBrandId !== input.brand_id) {
+    throw new Error(AUDIENCE_BRAND_MISMATCH);
+  }
+
+  const qd = row?.query_definition;
+  if (qd === null || typeof qd !== "object") {
+    throw new Error(AUDIENCE_BRAND_MISMATCH);
+  }
+  const queryBrandId =
+    typeof qd.brand_id === "string" && qd.brand_id.length > 0
+      ? qd.brand_id
+      : null;
+  if (queryBrandId !== null && queryBrandId !== input.brand_id) {
+    throw new Error(AUDIENCE_BRAND_MISMATCH);
+  }
+  const kind = typeof qd.kind === "string" ? qd.kind : "";
+  if (
+    kind === "brand_buyers" ||
+    kind === "brand_followers" ||
+    kind === "brand_circle_extended" ||
+    kind === "all_brand_people"
+  ) {
+    if (queryBrandId !== input.brand_id) {
+      throw new Error(AUDIENCE_BRAND_MISMATCH);
+    }
+  }
+  const eventId =
+    typeof qd.event_id === "string" && qd.event_id.length > 0
+      ? qd.event_id
+      : null;
+  if (kind === "event_buyers" || eventId !== null) {
+    if (eventId === null) {
+      throw new Error(AUDIENCE_BRAND_MISMATCH);
+    }
+    const { data: eventRow, error: eventErr } = await supabase
+      .from("events")
+      .select("id, brand_id")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (eventErr) throw eventErr;
+    const eventBrandId =
+      eventRow !== null &&
+      typeof (eventRow as { brand_id?: string }).brand_id === "string"
+        ? (eventRow as { brand_id: string }).brand_id
+        : null;
+    if (eventBrandId !== input.brand_id) {
+      throw new Error(AUDIENCE_BRAND_MISMATCH);
+    }
+  }
+}
+
+/** #3682 — refuse a deep-link event audience from another brand. */
+export async function assertEventBelongsToBrand(input: {
+  event_id: string;
+  brand_id: string;
+}): Promise<void> {
+  assertUuid(input.event_id, "assertEventBelongsToBrand.event_id");
+  assertUuid(input.brand_id, "assertEventBelongsToBrand.brand_id");
+  const { data, error } = await supabase
+    .from("events")
+    .select("id, brand_id")
+    .eq("id", input.event_id)
+    .maybeSingle();
+  if (error) throw error;
+  const eventBrandId =
+    data !== null && typeof (data as { brand_id?: string }).brand_id === "string"
+      ? (data as { brand_id: string }).brand_id
+      : null;
+  if (eventBrandId !== input.brand_id) {
+    throw new Error(
+      "That audience belongs to another brand. Pick one for this brand.",
+    );
+  }
+}
+
 export async function createDraft(
   input: DraftInput,
 ): Promise<MarketingCampaignRow> {
   assertUuid(input.account_id, "createDraft.account_id");
   assertUuid(input.brand_id, "createDraft.brand_id");
   assertUuid(input.audience_id, "createDraft.audience_id");
+  await assertAudienceMatchesCampaignBrand({
+    audience_id: input.audience_id,
+    brand_id: input.brand_id,
+  });
   const channel = input.channel_payload.kind;
   // Let Postgres generate the UUID via `DEFAULT gen_random_uuid()` on the
   // marketing_campaigns.id column. The Hermes-safe `randomId()` util
@@ -103,6 +203,25 @@ export async function updateDraft(input: {
   if (input.name !== undefined) patch.name = input.name;
   if (input.audience_id !== undefined) {
     assertUuid(input.audience_id, "updateDraft.audience_id");
+    // Load campaign brand so we can refuse a cross-brand audience swap.
+    const { data: campRow, error: campErr } = await supabase
+      .from("marketing_campaigns")
+      .select("brand_id")
+      .eq("id", input.campaign_id)
+      .maybeSingle();
+    if (campErr) throw campErr;
+    const campaignBrandId =
+      campRow !== null &&
+      typeof (campRow as { brand_id?: string }).brand_id === "string"
+        ? (campRow as { brand_id: string }).brand_id
+        : null;
+    if (campaignBrandId === null) {
+      throw new Error("updateDraft: campaign brand missing");
+    }
+    await assertAudienceMatchesCampaignBrand({
+      audience_id: input.audience_id,
+      brand_id: campaignBrandId,
+    });
     patch.audience_id = input.audience_id;
   }
   if (input.channel_payload !== undefined) {

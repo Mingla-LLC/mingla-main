@@ -39,6 +39,10 @@ import {
   type ResolvedContact,
 } from "../_shared/marketingAudience.ts";
 import {
+  assertAudienceMatchesCampaignBrand,
+  assertAudienceQueryMatchesCampaignBrand,
+} from "../_shared/marketingAudienceBrandGate.ts";
+import {
   buildMarketingBookQuote,
   parseBookQuotedAt,
   publicMarketingBookQuote,
@@ -1042,6 +1046,14 @@ async function sendEmail(
   if (audienceErr) throw new Error(`audience_load:${audienceErr.message}`);
   if (audienceData === null) throw new Error("audience_missing");
   const audience = audienceData as AudienceRow;
+  // #3682 — never send under brand A to an audience owned by brand B, or whose
+  // query_definition resolves buyers for another brand.
+  assertAudienceMatchesCampaignBrand(audience.brand_id, campaign.brand_id);
+  await assertAudienceQueryMatchesCampaignBrand(
+    supabase,
+    audience.query_definition,
+    campaign.brand_id,
+  );
 
   const { data: brandRow, error: brandErr } = await supabase
     .from("brands")
@@ -1871,6 +1883,14 @@ async function sendSms(
   if (audienceErr) throw new Error(`audience_load:${audienceErr.message}`);
   if (audienceData === null) throw new Error("audience_missing");
   const audience = audienceData as AudienceRow;
+  // #3682 — never send under brand A to an audience owned by brand B, or whose
+  // query_definition resolves buyers for another brand.
+  assertAudienceMatchesCampaignBrand(audience.brand_id, campaign.brand_id);
+  await assertAudienceQueryMatchesCampaignBrand(
+    supabase,
+    audience.query_definition,
+    campaign.brand_id,
+  );
 
   const { data: brandRow, error: brandErr } = await supabase
     .from("brands")

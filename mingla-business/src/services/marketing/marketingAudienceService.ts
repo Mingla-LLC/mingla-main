@@ -491,13 +491,15 @@ export function maskPhone(phone: string | null): string | null {
 // ---------------------------------------------------------------------------
 // Phase B — Audiences tab unified list (ORCH-0863)
 // ---------------------------------------------------------------------------
-// SPEC §6.2.3: merges three lists into one:
-//   1. Real marketing_audiences rows owned by the account.
-//   2. Discovered brand_buyers virtual rows — every brand the operator
-//      manages with >=1 paid order that has no existing brand_buyers row.
-//   3. Discovered event_buyers virtual rows — every event under those
-//      brands with >=1 paid order that has no existing event_buyers row.
+// SPEC §6.2.3: merges three lists into one, scoped to ONE brand (#3682):
+//   1. Real marketing_audiences rows for this brand.
+//   2. Discovered brand_buyers virtual row — this brand with >=1 paid order
+//      that has no existing brand_buyers row.
+//   3. Discovered event_buyers virtual rows — every event under THIS brand
+//      with >=1 paid order that has no existing event_buyers row.
 // Virtual rows are materialized lazily by the UI on first tap.
+// Cross-brand automatic groups on a multi-brand account are a data leak
+// (Lantern Room could open Harmattan Club buyers) — never list other brands.
 
 interface AudienceRowFromDb {
   id: string;
@@ -514,12 +516,6 @@ interface BrandRowMin {
   name: string | null;
 }
 
-interface EventRowMin {
-  id: string;
-  title: string | null;
-  brand_id: string;
-}
-
 interface CampaignLastUsedRow {
   audience_id: string;
   created_at: string;
@@ -527,24 +523,34 @@ interface CampaignLastUsedRow {
 
 export interface ListAudiencesInput {
   account_id: string;
+  /** Current brand — automatic groups never include other brands on the account. */
+  brand_id: string;
 }
 
+/** @deprecated Prefer listAudiencesForBrand — same contract, brand-scoped. */
 export async function listAudiencesForAccount(
   input: ListAudiencesInput,
 ): Promise<AudienceListEntry[]> {
-  assertUuid(input.account_id, "listAudiencesForAccount.account_id");
+  return listAudiencesForBrand(input);
+}
 
-  // Step 1 — Pull existing marketing_audiences rows for this account.
+export async function listAudiencesForBrand(
+  input: ListAudiencesInput,
+): Promise<AudienceListEntry[]> {
+  assertUuid(input.account_id, "listAudiencesForBrand.account_id");
+  assertUuid(input.brand_id, "listAudiencesForBrand.brand_id");
+
+  // Step 1 — Pull existing marketing_audiences rows for this brand only.
   const { data: existingAudData, error: existingAudErr } = await supabase
     .from("marketing_audiences")
     .select("id, brand_id, query_definition")
-    .eq("account_id", input.account_id);
+    .eq("account_id", input.account_id)
+    .eq("brand_id", input.brand_id);
   if (existingAudErr) throw existingAudErr;
   const existingAudiences = (existingAudData ?? []) as unknown as AudienceRowFromDb[];
 
   // Step 2 — Pull last-used timestamps per audience_id (max created_at across
-  // the account's campaigns). Same-account scope ensures we don't leak
-  // cross-account audience-use signals.
+  // this brand's campaigns). Brand scope keeps foreign-brand use signals out.
   const audienceIdsForLastUsed = existingAudiences.map((a) => a.id);
   const lastUsedByAudienceId = new Map<string, string>();
   if (audienceIdsForLastUsed.length > 0) {
@@ -552,6 +558,7 @@ export async function listAudiencesForAccount(
       .from("marketing_campaigns")
       .select("audience_id, created_at")
       .eq("account_id", input.account_id)
+      .eq("brand_id", input.brand_id)
       .in("audience_id", audienceIdsForLastUsed)
       .order("created_at", { ascending: false });
     if (campErr) throw campErr;
@@ -562,49 +569,42 @@ export async function listAudiencesForAccount(
     }
   }
 
-  // Step 3 — Discover every brand the operator manages that has >=1 paid order.
-  // Strategy: pull paid orders, derive distinct event_ids, JOIN to events to
-  // get brand_id + title, JOIN to brands for name + access gating via RLS.
-  // Note: orders RLS already scopes by the caller's brand membership; the
-  // events/brands joins respect the same membership.
+  // Step 3 — Discover paid orders for THIS brand only.
   const { data: paidOrderEvents, error: ordersErr } = await supabase
     .from("orders")
     .select("event_id, events!inner ( id, title, brand_id )")
-    .in("payment_status", ["paid", "partial_refund"]);
+    .in("payment_status", ["paid", "partial_refund"])
+    .eq("events.brand_id", input.brand_id);
   if (ordersErr) throw ordersErr;
   const paidEventRows = (paidOrderEvents ?? []) as unknown as Array<{
     event_id: string;
     events: { id: string; title: string | null; brand_id: string } | null;
   }>;
 
-  // Step 4 — Build sets of brand IDs and event IDs with paid orders.
-  const paidBrandIds = new Set<string>();
-  const paidEventByBrand = new Map<string, Map<string, string | null>>(); // brand_id → event_id → title
+  // Step 4 — Events with paid orders under this brand.
+  const paidEventById = new Map<string, string | null>(); // event_id → title
+  let hasPaidOrders = false;
   for (const row of paidEventRows) {
     if (row.events === null) continue;
-    paidBrandIds.add(row.events.brand_id);
-    if (!paidEventByBrand.has(row.events.brand_id)) {
-      paidEventByBrand.set(row.events.brand_id, new Map());
-    }
-    const evMap = paidEventByBrand.get(row.events.brand_id);
-    if (evMap !== undefined && !evMap.has(row.events.id)) {
-      evMap.set(row.events.id, row.events.title);
+    if (row.events.brand_id !== input.brand_id) continue;
+    hasPaidOrders = true;
+    if (!paidEventById.has(row.events.id)) {
+      paidEventById.set(row.events.id, row.events.title);
     }
   }
 
-  // Step 5 — Pull brand names for display (RLS gates).
-  const brandIdList = Array.from(paidBrandIds);
+  // Step 5 — Brand display name (RLS gates).
   const brandNameById = new Map<string, string>();
-  if (brandIdList.length > 0) {
-    const { data: brandsData, error: brandsErr } = await supabase
-      .from("brands")
-      .select("id, name")
-      .in("id", brandIdList)
-      .is("deleted_at", null);
-    if (brandsErr) throw brandsErr;
-    for (const b of (brandsData ?? []) as BrandRowMin[]) {
-      if (b.name !== null) brandNameById.set(b.id, b.name);
-    }
+  const { data: brandsData, error: brandsErr } = await supabase
+    .from("brands")
+    .select("id, name")
+    .eq("id", input.brand_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (brandsErr) throw brandsErr;
+  const brandRow = brandsData as BrandRowMin | null;
+  if (brandRow !== null && brandRow.name !== null) {
+    brandNameById.set(brandRow.id, brandRow.name);
   }
 
   // Step 6 — Index existing audiences by client_key for dedup.
@@ -620,17 +620,17 @@ export async function listAudiencesForAccount(
 
   // Step 7 — Merge real + virtual into a single AudienceListEntry array.
   const entries: AudienceListEntry[] = [];
+  const brandName = brandNameById.get(input.brand_id) ?? "Brand";
 
-  // 7a — Brand-rollup entries (one per brand with paid orders).
-  for (const brandId of brandIdList) {
-    const brandName = brandNameById.get(brandId) ?? "Brand";
-    const clientKey = `brand_buyers:${brandId}`;
+  // 7a — Brand-rollup entry when this brand has paid orders.
+  if (hasPaidOrders) {
+    const clientKey = `brand_buyers:${input.brand_id}`;
     const existing = existingByClientKey.get(clientKey);
     entries.push({
       client_key: clientKey,
       kind: "brand_buyers",
       audience_id: existing?.id ?? null,
-      brand_id: brandId,
+      brand_id: input.brand_id,
       brand_name: brandName,
       event_id: null,
       display_name: `${brandName} — All buyers`,
@@ -638,42 +638,35 @@ export async function listAudiencesForAccount(
     });
   }
 
-  // 7b — Event-scoped entries (one per event with paid orders).
-  for (const [brandId, evMap] of paidEventByBrand.entries()) {
-    const brandName = brandNameById.get(brandId) ?? "Brand";
-    for (const [eventId, eventTitle] of evMap.entries()) {
-      const clientKey = `event_buyers:${eventId}`;
-      const existing = existingByClientKey.get(clientKey);
-      const titleLabel = eventTitle ?? "Untitled event";
-      entries.push({
-        client_key: clientKey,
-        kind: "event_buyers",
-        audience_id: existing?.id ?? null,
-        brand_id: brandId,
-        brand_name: brandName,
-        event_id: eventId,
-        display_name: `${titleLabel} — buyers`,
-        last_used_at: existing !== undefined ? (lastUsedByAudienceId.get(existing.id) ?? null) : null,
-      });
-    }
+  // 7b — Event-scoped entries (this brand only).
+  for (const [eventId, eventTitle] of paidEventById.entries()) {
+    const clientKey = `event_buyers:${eventId}`;
+    const existing = existingByClientKey.get(clientKey);
+    const titleLabel = eventTitle ?? "Untitled event";
+    entries.push({
+      client_key: clientKey,
+      kind: "event_buyers",
+      audience_id: existing?.id ?? null,
+      brand_id: input.brand_id,
+      brand_name: brandName,
+      event_id: eventId,
+      display_name: `${titleLabel} — buyers`,
+      last_used_at: existing !== undefined ? (lastUsedByAudienceId.get(existing.id) ?? null) : null,
+    });
   }
 
   // Step 8 — Sort: real rows first (by last_used_at DESC NULLS LAST), then
-  // virtual rows alphabetically by brand_name then display_name.
+  // virtual rows alphabetically by display_name.
   entries.sort((a, b) => {
     const aReal = a.audience_id !== null;
     const bReal = b.audience_id !== null;
     if (aReal && !bReal) return -1;
     if (!aReal && bReal) return 1;
     if (aReal && bReal) {
-      // both real → last_used_at desc
       const ta = a.last_used_at ?? "";
       const tb = b.last_used_at ?? "";
       return tb.localeCompare(ta);
     }
-    // both virtual → brand_name, then display_name
-    const bn = a.brand_name.localeCompare(b.brand_name);
-    if (bn !== 0) return bn;
     return a.display_name.localeCompare(b.display_name);
   });
 

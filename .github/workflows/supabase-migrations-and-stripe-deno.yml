@@ -1627,6 +1627,10 @@ jobs:
             supabase/functions/marketing-send/quiet-hours-tz.tester.test.ts
             # ORCH-1270 — SMS quiet-hours DEFER disposition matrix + two-pass idempotency.
             supabase/functions/marketing-send/orch-1270-defer.test.ts
+            # #3682 — audience brand + query_definition gate (hermetic). Registered
+            # HERE rather than a banned issue-*.yml workflow (I-2148-CI-TOPOLOGY-BOUNDED).
+            supabase/functions/marketing-send/issue_3682_audience_brand_gate.happy.test.ts
+            supabase/functions/marketing-send/issue_3682_audience_brand_gate.tester_adversarial.test.ts
             # ORCH-1282 — MMS media threading: US MediaUrl param + NG drops media.
             supabase/functions/__tests__/marketing_send_mms_adapter.test.ts
             # Issue #1518 — NG transactional AND marketing both ride Termii's

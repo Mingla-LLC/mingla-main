@@ -80,11 +80,14 @@ describe("#2514 no campaign cache key can collide across brands", () => {
 });
 
 describe("#2514 scope discipline", () => {
-  it("does not silently rescope audiences or templates", () => {
-    // Those surfaces had no reported defect; rescoping them here would be
-    // scope creep with its own blast radius.
+  it("does not silently rescope templates; audiences are brand-scoped (#3682)", () => {
+    // Templates still had no reported cross-brand defect. Audiences did (#3682):
+    // automatic buyer groups leaked other brands on multi-brand accounts, so
+    // the palette now threads currentBrand.id into useAudienceList.
     const palette = read("src", "components", "ui", "CommandPalette.web.tsx");
-    expect(palette).toContain("useAudienceList(accountId)");
+    expect(palette).toContain(
+      "useAudienceList(accountId, currentBrand?.id ?? null)",
+    );
     expect(palette).toContain("useUserTemplates(accountId)");
   });
 });

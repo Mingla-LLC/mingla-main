@@ -71,12 +71,12 @@ export const CommandPalette: React.FC = () => {
 
   // Fetch recent items. React Query handles caching + auto-refetch on
   // window focus, so the palette always reflects current state.
-  // #2514 — campaigns are brand-scoped. Audiences and templates keep their
-  // account scope: they are not part of this issue and changing them here
-  // would be scope creep into surfaces with no reported defect.
+  // #2514 — campaigns are brand-scoped. #3682 — audiences are brand-scoped
+  // too (cross-brand automatic groups leaked other brands' buyers). Templates
+  // stay account-scoped.
   const currentBrand = useCurrentBrand();
   const campaignsQuery = useCampaigns({ brand_id: currentBrand?.id ?? null });
-  const audiencesQuery = useAudienceList(accountId);
+  const audiencesQuery = useAudienceList(accountId, currentBrand?.id ?? null);
   const templatesQuery = useUserTemplates(accountId);
 
   const recentCampaigns = (campaignsQuery.data ?? []).slice(0, RECENT_LIMIT);
