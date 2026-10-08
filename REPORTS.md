@@ -20,7 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
-- 2026-10-08 — Tip greens: #2099 adversarial soft-remove arms the brand-owner transfer bypass after #3660, and the polluted bundle-baseline orphan ref is cleared so the ratchet handoff can NO_CHANGE (toward #3682, PR #TBD)
+- 2026-10-08 — Tip greens: #2099 adversarial soft-remove arms the brand-owner transfer bypass after #3660, and the polluted bundle-baseline orphan ref is cleared so the ratchet handoff can NO_CHANGE (toward #3682, PR #3780)
 - 2026-10-08 — Main tip green again after #3773: contact-import typecheck, 1995 MANIFEST pathScope seal, auto-follow claim order fixture, events-type-filter allowlists, and #3660 JWT role revoke-before-drop (toward #3682, PR #3778)
 - 2026-10-08 — Marketing blast footers state the real reason someone is on the list, book sends use the guest's first name, the Last call starter no longer ships broken tokens, and @example.com contacts are refused on import/send (toward #3682, PR #3773)
 - 2026-10-08 — Host People → Groups and campaign send only use the current brand's buyers; another brand's audience can no longer be attached or blasted (toward #3682, PR #3772)
