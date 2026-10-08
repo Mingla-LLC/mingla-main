@@ -56,9 +56,13 @@ BEGIN
   END;
 
   -- JWT service_role arm: login role is neither postgres nor service_role.
-  -- CREATE/DROP ROLE are non-transactional — always drop before leaving.
+  -- CREATE/DROP ROLE are non-transactional — revoke grants before drop.
   BEGIN
-    EXECUTE 'DROP ROLE IF EXISTS issue_3660_snap_jwt';
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'issue_3660_snap_jwt') THEN
+      EXECUTE 'REVOKE ALL ON FUNCTION public.cleanup_admin_source_refund_query_snapshots(integer) FROM issue_3660_snap_jwt';
+      EXECUTE format('REVOKE issue_3660_snap_jwt FROM %I', session_user);
+      EXECUTE 'DROP ROLE issue_3660_snap_jwt';
+    END IF;
     EXECUTE 'CREATE ROLE issue_3660_snap_jwt NOINHERIT';
     GRANT EXECUTE ON FUNCTION public.cleanup_admin_source_refund_query_snapshots(integer)
       TO issue_3660_snap_jwt;
@@ -68,10 +72,20 @@ BEGIN
     PERFORM public.cleanup_admin_source_refund_query_snapshots(500);
     RESET ROLE;
     PERFORM set_config('request.jwt.claim.role', '', true);
-    EXECUTE 'DROP ROLE IF EXISTS issue_3660_snap_jwt';
+    EXECUTE 'REVOKE ALL ON FUNCTION public.cleanup_admin_source_refund_query_snapshots(integer) FROM issue_3660_snap_jwt';
+    EXECUTE format('REVOKE issue_3660_snap_jwt FROM %I', session_user);
+    EXECUTE 'DROP ROLE issue_3660_snap_jwt';
   EXCEPTION WHEN OTHERS THEN
     RESET ROLE;
-    EXECUTE 'DROP ROLE IF EXISTS issue_3660_snap_jwt';
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'issue_3660_snap_jwt') THEN
+      EXECUTE 'REVOKE ALL ON FUNCTION public.cleanup_admin_source_refund_query_snapshots(integer) FROM issue_3660_snap_jwt';
+      BEGIN
+        EXECUTE format('REVOKE issue_3660_snap_jwt FROM %I', session_user);
+      EXCEPTION WHEN OTHERS THEN
+        NULL;
+      END;
+      EXECUTE 'DROP ROLE issue_3660_snap_jwt';
+    END IF;
     RAISE;
   END;
 
