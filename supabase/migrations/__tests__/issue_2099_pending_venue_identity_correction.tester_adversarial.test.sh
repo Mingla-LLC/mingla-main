@@ -371,8 +371,11 @@ ok "T-1 checkpoint: the correction is blocked inside the RPC, past its first aut
 # Revoke the actor's ownership and PROVE the revocation landed before drawing
 # any conclusion from it.
 revoked="$(psql_raw <<SQL | tail -1
+-- #3660: soft-removing the brand_account owner requires the transfer bypass.
+SELECT set_config('app.allow_brand_owner_transfer', 'on', true);
 UPDATE public.brand_team_members SET removed_at=now()
 WHERE brand_id='$BRAND' AND user_id='$OWNER' AND removed_at IS NULL;
+SELECT set_config('app.allow_brand_owner_transfer', 'off', true);
 SELECT count(*) FROM public.brand_team_members
 WHERE brand_id='$BRAND' AND user_id='$OWNER' AND role='brand_owner'
   AND accepted_at IS NOT NULL AND removed_at IS NULL;
