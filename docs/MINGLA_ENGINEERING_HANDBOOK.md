@@ -360,10 +360,12 @@ You do NOT run this yourself. If you need to test an edge function locally:
 supabase functions serve <name>
 ```
 
-**Two deploy traps:**
+**Deploy traps:**
 
 - **Docker on this Mac fails as a silent no-op.** `docker info` hangs, and a Docker-bound `supabase functions deploy` can print nothing and exit 0 having deployed nothing. Deploy with `--use-api` (it bundles server-side and never touches Docker), and always confirm the function's version actually moved. Do not quit, kill or restart Docker on your own: it holds other sessions' containers. If it is wedged, ask Seth.
 - **The only proof that a worker runs is rows changing in its target table.** A green deploy, an ACTIVE function listing and passing unit tests are all consistent with nothing ever calling it (#2290: the ingest worker shipped with no cron row). A queue whose rows all have `attempt_count = 0`, `locked_at IS NULL` and no error code has never been called; a worker that fails leaves attempts and error codes behind.
+- **Merging to `main` auto-deploys the selected edge functions.** Propagation can take up to ~240s, so an early read often returns the **old** bundle. Wait, then re-check.
+- **Deploy verification is not "new string present".** Prove the old string/behaviour is **gone** and run a **negative control** (something that must still fail or still be absent). Authority and verify tooling: `docs/runbooks/PRODUCTION_SUPABASE_AUTHORITY.md`.
 
 ### 7.5b Reading app config — `expo config --json` hides config errors
 
@@ -508,6 +510,15 @@ while the app keeps running; in release it is the stuck splash screen (#990 §3)
 
 For merging `Seth` → `main`, Seth handles via GitHub PR with a pre-merge gate. You don't open PRs directly.
 
+### 7.8 Vercel web deploy traps
+
+Day-to-day rules for Host / Admin / Marketing / Sites / site-cms on Vercel. Recovery detail for ignore files and the Ignored Build Step lives in `docs/runbooks/VERCEL_VERCELIGNORE_ARCHITECTURE.md`. The standing `[deploy]` hold is in `AGENTS.md`.
+
+- **Ignored Build Step must stay the path + `[deploy]` filter.** Never replace it with bare `exit 1` (that forces extra builds Seth does not want). If the ignore command is lost on a project, copy it from a sibling Vercel project on the same team — see the runbook.
+- **A merged PR without `[deploy]` in the squash subject deploys nothing** and the dashboard shows `CANCELED`. CI and the merge do not report this; the only signal is the product still broken. Put `[deploy]` in the PR title when the change touches a Vercel surface, then confirm production reached `READY`. A redeploy via the Vercel API re-reads the same commit message and cancels again.
+- **A Vercel env change needs a rebuild.** Rotating or editing a secret/env var is a silent no-op until the next successful build. Dashboard "Sensitive" does not mean the value is unrecoverable (#3637 class) — recover or rotate through the normal secret path, then rebuild.
+- **A live-bundle grep only proves code in the eager `__common` chunk.** Symbols that live only in lazy / code-split route chunks can be absent from that grep and still be live. Do not treat `__common` absence as "not shipped".
+
 ---
 
 ## 8. Testing
@@ -595,6 +606,26 @@ The required flip is complete; do not remove the all-PR trigger, add a paths fil
 - **Take a new issue's number only from `gh issue create`'s own output** (it prints the issue URL). `gh issue create` has no `--format` flag, and a `|| gh issue list --limit 1` fallback returns whichever issue someone else created last. Check that number's title before editing any board field.
 - **When writing a gate, do not parse TypeScript fields with a regex anchored at the start of a statement.** `/^([A-Za-z_$][\w$]*)\??\s*:/` misses `readonly x: T` (house style), quoted keys and other modifiers, so the gate fails green. Never write a real field name in a gate's comments either: sibling gates grep for field names, and an example in prose blinds them. Use `…`.
 - **A new api-health tile needs its `api_health_services` row first.** `api_health_checks.service_key` is a foreign key and the probe batch-inserts, so one unknown value makes the whole tick insert zero rows.
+- **`gh pr ready` (undraft) can cancel in-flight checks that never re-run.** After undraft, look for orphan `cancelled` check names (the web build has been among them, #3596) and re-run what is needed before treating the PR as green.
+- **`BLOCKED` next to a red check is not causation.** On this repo `BLOCKED` usually means review required, not that the red check caused the block.
+- **A re-run updates `run_started_at`.** `main-health` / the pre-merge green check read that timestamp — know whether you are looking at a fresh run or an older one that still looks current in the UI.
+- **Dependabot green can be stale** relative to current `main` (#3629). Re-check against tip before trusting an old green Dependabot run.
+- **An advisory-database / npm-audit ceiling gate can go red with no commit** when advisories publish mid-day (#3640). The tree did not change; the advisory feed did.
+- **`npm audit` package severity is the max across that package's advisories.** Audit per package; do not trust the last line of the log as the one that failed the ceiling.
+- **The `mingla-site-cms` audit check is `pull_request`-only**, so it has no `main` history to compare when diagnosing a red.
+- **The #2435 / CI-batch seal discovery treats a comment that names a workflow file as a dependency.** Do not put live workflow paths in prose or test comments the seal walker will treat as inventory.
+- **Hooks that match command text match inside heredocs too** (same class as `scripts/agent-guard/bash-guard.py` segment split). Do not put blocked command shapes as line-leading content inside a heredoc body.
+- **A stacked PR plus a squash-merge conflict is resolvable by diff proof** against the intended tip — prove which side's tree is correct; do not guess merge order.
+- **#3625 deadlock (boot-payload dead band):** growth of the eager `__common` chunk in the band between `#2099`'s ~1 024 B tripwire and the bundle-baseline ratchet's ~2 048 B `NOISE_FLOOR` reds `main` with no automated repair until those floors agree. Luck (unrelated growth or shrink) is not the way out. The ratchet floor must never exceed the tightest baseline-reading gate. Do **not** hand-edit `mingla-business/scripts/ci/bundle-baseline.json` to clear it.
+
+### 8.9 Tests that prove nothing
+
+- **Delete-the-fix + counterfactual.** A regression test must fail when the fix is removed and pass when restored. "We have five tests" without fail-on-revert is not proof — suites on the shoots work looked green while proving nothing.
+- **Mutation-test / sabotage suites.** Deliberately break the production seam in several ways; any sabotage that still passes means the suite is blind to that failure mode.
+- **A source-string check is defeated by a comment containing the string.** Strip comments before matching, or assert behaviour / AST — never raw file text alone.
+- **A `RAISE WARNING` that guarded a known gap must become a hard assertion once the gap is fixed.** Leaving the warning green-forever is how the gap returns unnoticed.
+- **Mechanisms in two halves** (script + workflow, classifier + `if:`, function + replacing migration): read **both** halves before concluding the gate works.
+- **Before judging a PR-less branch by `git status` or "tests exist", run those tests** (#3666). Presence on disk is not a pass.
 
 ---
 
@@ -647,6 +678,8 @@ Either way, don't go off-piste from the contract.
 2. Write the implementation report (template in §6)
 3. Notify Seth: "Milestone <code> implementation complete. Smoke test passed. Report at <path>. Migration needs `db push`. Edge functions need deploy."
 4. Wait for Seth's QA pass before claiming closed.
+
+**Lessons and traps discovered while closing go into the relevant `docs/` file** in the same PR (or the next eng PR) — never only into agent memory. Close / worktree discipline: `docs/WORKTREE_STRATEGY.md` (CLOSE Step 1.7 and One-PR-per-CLOSE).
 
 ---
 

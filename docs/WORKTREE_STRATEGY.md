@@ -58,6 +58,7 @@ After spawn, every subsequent dispatch's prompt begins with `cd <worktree-path>`
 
 After PR merges to main:
 ```bash
+# From the repo root (or any cwd): always the repo-relative full path — never bare `reap.sh`.
 scripts/orch-worktree/reap.sh ~/Desktop/mingla-orchs/<ORCH_ID>-<label>
 ```
 
@@ -75,6 +76,10 @@ CLOSE banner cites: `Worktree reaped: <path> + branch <branch-name>`.
 closed item leaked ~4 GB: a 1–3 GB simulator and a 1–5 GB emulator disk that no
 step ever named. Both are ownership-scoped — a **Booted** simulator or a live
 `qemu -avd` belongs to another session and is kept, whatever its name says.
+
+**Lessons learned while closing go into `docs/`, not agent memory.** Write lasting
+traps into the relevant handbook section or runbook in the same PR (or the next
+eng PR). Agent-only memory is invisible to Taofeek and to the next chat (#3674).
 
 ### Sweeping what already accumulated
 
@@ -224,6 +229,7 @@ They DO serialize on:
 - **Never squash with `git reset --soft origin/main` unless you have just rebased onto that exact ref.** The commit keeps your tree on top of the newer `main`, so everything `main` gained since your real base becomes a deletion in your diff. If `git diff --name-status origin/main` lists deletions of files you never touched, the branch is mis-parented: reset to `origin/main` and re-apply only your own files.
 - **zsh does not word-split an unquoted `$VAR`.** `for f in $FILES` runs ONCE with the whole string, and the loop still prints its success line. Use `while IFS= read -r f; do …; done <<< "$FILES"`, and verify any destructive loop by re-reading state, never by the loop's own output.
 - **Never kill processes by pattern.** `pkill -f "<pattern>"` matches the command line of every session on this Mac, so a pattern precise enough to name your process names another chat's identical one too (a `run-batch.mjs --class A` kill did this twice). Capture the PID you started (`$!` or a pid file) and kill only that.
+- **Invoke `reap.sh` by its repo-root relative full path** (`scripts/orch-worktree/reap.sh …`). A bare `reap.sh` depends on cwd and often fails or runs the wrong copy.
 - **`reap.sh` can exit non-zero after fully succeeding.** The non-zero comes from a later simulator/AVD step, after the worktree and both branches are already gone. Do not retry and do not clean up by hand on its exit code: re-read `git worktree list`, `git branch --list` and `git ls-remote --heads origin`. Before any delete, resolve the path from `git worktree list --porcelain` at that moment and confirm the branch checked out there is the one you meant; a map built at the start of a sweep goes stale when a peer moves their worktree.
 
 ---
@@ -280,6 +286,9 @@ The same check runs unattended as the `Pre-merge: main is green` job on every pu
 ## One-PR-per-CLOSE (MANDATORY)
 
 Every CLOSE opens its own PR from its per-ORCH branch to `main`. Bundling two or more ORCHs into a single PR is FORBIDDEN by default.
+
+When CLOSE surfaces a lasting engineering trap, land it in `docs/` (handbook or the
+relevant runbook) in that PR or the next eng PR — **not** only in agent memory (#3674).
 
 **Rationale:**
 - Clean revert (`git revert <merge-sha>` removes exactly one ORCH)
