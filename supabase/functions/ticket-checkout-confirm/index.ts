@@ -68,6 +68,8 @@ import {
 import { fireOrderFinalizeNotifications } from "../_shared/businessNotifyTriggers.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
 import { fireAdConversion } from "../_shared/adConversionFire.ts";
+// #3682 — auto-follow brand after signed-in purchase (fail-open).
+import { autoFollowBrandBestEffort } from "../_shared/autoFollowBrand.ts";
 
 interface ConfirmRequest {
   checkoutSessionId: string;
@@ -266,7 +268,7 @@ serve(async (req) => {
   const { data: session, error: lookupError } = await supabase
     .from("ticket_checkout_sessions")
     .select(
-      "id, status, order_id, event_id, total_cents, currency, buyer_status_token_hash, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, reversal_state",
+      "id, status, order_id, event_id, total_cents, currency, brand_id, buyer_user_id, buyer_status_token_hash, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, reversal_state",
     )
     .eq("id", checkoutSessionId)
     .maybeSingle();
@@ -292,6 +294,13 @@ serve(async (req) => {
       event_id: session.event_id,
       total_cents: session.total_cents,
       currency: session.currency,
+    });
+    // #3682 — idempotent with webhook via per-order claim; guests skipped.
+    void autoFollowBrandBestEffort(supabase as never, {
+      userId: session.buyer_user_id as string | null,
+      brandId: session.brand_id as string | null,
+      source: "purchase",
+      orderId: session.order_id as string | null,
     });
     return jsonResponse({
       checkoutSessionId: session.id,
@@ -332,7 +341,9 @@ serve(async (req) => {
   if (paystackReturn.kind === "finalized") {
     const { data: paystackSession } = await supabase
       .from("ticket_checkout_sessions")
-      .select("id, order_id, event_id, total_cents, currency, brand_id")
+      .select(
+        "id, order_id, event_id, total_cents, currency, brand_id, buyer_user_id",
+      )
       .eq("id", session.id)
       .maybeSingle();
     const finalizedOrderId = (paystackSession?.order_id as string | null) ??
@@ -345,6 +356,17 @@ serve(async (req) => {
         session.total_cents,
       currency: (paystackSession?.currency as string | null) ??
         session.currency,
+    });
+
+    // #3682 — auto-follow after Paystack finalize (shared webhook path also
+    // claims; this is belt-and-suspenders for confirm-won races).
+    void autoFollowBrandBestEffort(supabase as never, {
+      userId: (paystackSession?.buyer_user_id as string | null) ??
+        (session.buyer_user_id as string | null),
+      brandId: (paystackSession?.brand_id as string | null) ??
+        (session.brand_id as string | null),
+      source: "purchase",
+      orderId: finalizedOrderId,
     });
 
     // The buyer's email + SMS are dispatched by the resolver on the call that
@@ -639,7 +661,9 @@ serve(async (req) => {
     // the order payload from the canonical tables.
     const { data: refreshedSession } = await supabase
       .from("ticket_checkout_sessions")
-      .select("id, order_id, event_id, total_cents, currency, brand_id")
+      .select(
+        "id, order_id, event_id, total_cents, currency, brand_id, buyer_user_id",
+      )
       .eq("id", session.id)
       .maybeSingle();
     if (!refreshedSession || !refreshedSession.order_id) {
@@ -707,6 +731,14 @@ serve(async (req) => {
         );
       });
     }
+
+    // #3682 — signed-in buyer follows the brand after paid finalize (fail-open).
+    void autoFollowBrandBestEffort(supabase as never, {
+      userId: refreshedSession.buyer_user_id as string | null,
+      brandId: refreshedSession.brand_id as string | null,
+      source: "purchase",
+      orderId: refreshedSession.order_id as string | null,
+    });
 
     return jsonResponse({
       checkoutSessionId: session.id,

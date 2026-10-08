@@ -273,7 +273,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
             },
             {
               key: `extended:${brandId}`,
-              name: "Extended circle",
+              name: "Friends of followers",
               kind: "brand_circle_extended",
               target_id: brandId,
               buyer_count: circleReach?.extended.count ?? 0,

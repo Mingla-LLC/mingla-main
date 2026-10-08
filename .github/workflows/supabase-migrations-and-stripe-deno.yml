@@ -811,6 +811,10 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql
 
+          # #3682 — purchase auto-follow claim survives unfollow + same-order replay.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3682_auto_follow_claim.pg17.test.sql
+
           # Issue #1793 (#1767 Phase 4) — the HONEST public ordering state. The
           # orchestrator amendment registered against this phase: a guest at a
           # paused or unswitched venue must be able to be TOLD which, rather
@@ -1392,6 +1396,11 @@ jobs:
             supabase/functions/_shared/__tests__/stripeKycStallReminder.pendingVerification.test.ts
             supabase/functions/_shared/__tests__/stripeWebhookRouter.test.ts
             supabase/functions/_shared/__tests__/stripeWebhookSignature.test.ts
+            # #3682 — auto-follow on purchase/RSVP (hermetic helper + wire
+            # contracts). Registered HERE rather than a banned issue-*.yml
+            # workflow (I-2148-CI-TOPOLOGY-BOUNDED).
+            supabase/functions/_shared/__tests__/issue_3682_auto_follow_on_purchase.happy.test.ts
+            supabase/functions/_shared/__tests__/issue_3682_auto_follow_on_purchase.adversarial.test.ts
             # ISSUE-865 WP-B — ad-conversion senders + fire helper (hermetic:
             # stubbed fetch + injected supabase; runs with the same flags).
             supabase/functions/_shared/__tests__/issue_865_wp_b_ad_conversion.test.ts

@@ -9,6 +9,8 @@ import {
   fireAdConversion,
   persistAttributionClickId,
 } from "../_shared/adConversionFire.ts";
+// #3682 — auto-follow brand after signed-in free reservation (fail-open).
+import { autoFollowBrandBestEffort } from "../_shared/autoFollowBrand.ts";
 import { STRIPE_API_VERSION, stripeTicketCheckout } from "../_shared/stripe.ts";
 import { resolvePublishableKey } from "../_shared/stripeMode.ts";
 import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
@@ -1767,6 +1769,22 @@ export const createTicketCheckoutCreateHandler = (
             );
           },
         );
+        // #3682 — free RSVP auto-follow from the persisted session buyer, not
+        // the request auth uid (idempotency can reuse another session).
+        void (async () => {
+          const { data: followSession } = await supabase
+            .from("ticket_checkout_sessions")
+            .select("buyer_user_id, brand_id")
+            .eq("id", checkoutSessionId)
+            .maybeSingle();
+          await autoFollowBrandBestEffort(supabase as never, {
+            userId: (followSession?.buyer_user_id as string | null) ?? null,
+            brandId: (followSession?.brand_id as string | null) ??
+              (typeof session.brandId === "string" ? session.brandId : null),
+            source: "rsvp",
+            orderId,
+          });
+        })();
       }
       // issue #2136 — the envelope is spread FIRST and every field the buyer
       // contract (`TicketCheckoutFreeCompleted`) declares is then written
