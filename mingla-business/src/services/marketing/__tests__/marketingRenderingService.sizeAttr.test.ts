@@ -38,6 +38,7 @@ const EMPTY_VARIABLES = {
   brand_name: null,
   event_name: null,
   event_date: null,
+      event_date_short: null,
   event_time: null,
   doors_open: null,
   event_url: null,

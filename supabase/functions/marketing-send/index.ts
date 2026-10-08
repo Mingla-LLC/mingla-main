@@ -43,6 +43,11 @@ import {
   assertAudienceQueryMatchesCampaignBrand,
 } from "../_shared/marketingAudienceBrandGate.ts";
 import {
+  receiveReasonFromAudienceKind,
+  type MarketingReceiveReason,
+} from "../_shared/marketingReceiveReason.ts";
+import { isUndeliverableEmailDomain } from "../_shared/undeliverableEmail.ts";
+import {
   buildMarketingBookQuote,
   parseBookQuotedAt,
   publicMarketingBookQuote,
@@ -1249,7 +1254,17 @@ async function sendEmail(
     });
     const unsubscribeUrl = `${getUnsubscribeOrigin()}/${unsubscribeToken}`;
 
+    // #3682 — skip reserved / example domains before Resend (reputation).
+    if (
+      contact.raw_email !== null &&
+      isUndeliverableEmailDomain(contact.raw_email)
+    ) {
+      continue;
+    }
     const variables = buildVariables(contact, brandName, embedded);
+    const receiveReason: MarketingReceiveReason =
+      contact.receive_reason ??
+      receiveReasonFromAudienceKind(audience.query_definition.kind);
     const rendered = renderMarketingEmail({
       body_html: bodyHtml,
       variables,
@@ -1258,6 +1273,7 @@ async function sendEmail(
       subject: substituteString(subject, variables),
       brand_name: brandName,
       brand_header_image_url: brandHeaderImageUrl,
+      receive_reason: receiveReason,
       offering_invite_url_marker: inviteContext === null
         ? undefined
         : OFFERING_LINK_MARKER,
@@ -2350,11 +2366,13 @@ function buildVariables(
   embedded: EmbeddedEvent[],
 ): MarketingVariables {
   const primaryEvent = embedded[0] ?? null;
+  const eventDate = primaryEvent?.date_label ?? null;
   return {
     first_name: contact.first_name,
     brand_name: brandName,
     event_name: contact.last_event_name ?? primaryEvent?.title ?? null,
-    event_date: primaryEvent?.date_label ?? null,
+    event_date: eventDate,
+    event_date_short: eventDate,
     event_time: null,
     doors_open: null,
     // ORCH-0877 — ends_at variable mirrors the EmbeddedEvent's ends_at_label
@@ -2362,6 +2380,8 @@ function buildVariables(
     // when source has no end time (Constitution #9 — no fabrication).
     ends_at: primaryEvent?.ends_at_label ?? null,
     event_url: primaryEvent?.url ?? null,
+    // Capacity is not on EmbeddedEvent yet — leave null (Constitution #9).
+    // The Last call starter no longer depends on {spots_left} (#3682).
     spots_left: null,
     previous_event_name: contact.last_event_name,
     next_event_name: primaryEvent?.title ?? null,
@@ -2373,13 +2393,15 @@ function substituteString(
   template: string,
   variables: MarketingVariables,
 ): string {
-  return template.replace(
-    /\{(first_name|event_name|event_date|event_time|doors_open|ends_at|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g,
-    (_match, key: string) => {
-      const v = (variables as unknown as Record<string, string | null>)[key];
-      return v ?? "";
-    },
-  );
+  return template
+    .replace(
+      /\{(first_name|event_name|event_date|event_date_short|event_time|doors_open|ends_at|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g,
+      (_match, key: string) => {
+        const v = (variables as unknown as Record<string, string | null>)[key];
+        return v ?? "";
+      },
+    )
+    .replace(/\{\{event:(?:\|(?:compact|medium|large))?\}\}/g, "");
 }
 
 async function loadEmbeddedEvents(

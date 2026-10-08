@@ -38,6 +38,7 @@ const EMPTY_VARIABLES: MarketingVariables = {
   first_name: "Seth",
   event_name: null,
   event_date: null,
+  event_date_short: null,
   event_time: null,
   doors_open: null,
   ends_at: null,

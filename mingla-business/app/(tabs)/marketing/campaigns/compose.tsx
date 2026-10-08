@@ -1183,6 +1183,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       brand_name: brandName,
       event_name: resolvedAudience.data?.rows[0]?.last_event_name ?? null,
       event_date: null,
+      event_date_short: null,
       event_time: null,
       doors_open: null,
       event_url: null,
@@ -1844,6 +1845,14 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   bodyHtml={body}
                   variables={previewVariables}
                   brandName={brandName}
+                  receiveReason={
+                    sealedAudienceKind === "brand_followers" ||
+                      sealedAudienceKind === "brand_circle_extended"
+                      ? "follows"
+                      : isBookAudience
+                      ? "added"
+                      : "bought"
+                  }
                   brandHeaderImageUrl={
                     currentBrand?.coverMediaType !== "video"
                       ? (currentBrand?.coverMediaUrl ?? null)
@@ -2031,6 +2040,14 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 bodyHtml={body}
                 variables={previewVariables}
                 brandName={brandName}
+                receiveReason={
+                  sealedAudienceKind === "brand_followers" ||
+                    sealedAudienceKind === "brand_circle_extended"
+                    ? "follows"
+                    : isBookAudience
+                    ? "added"
+                    : "bought"
+                }
                 brandHeaderImageUrl={
                   currentBrand?.coverMediaType !== "video"
                     ? (currentBrand?.coverMediaUrl ?? null)

@@ -84,6 +84,27 @@ export interface EmailPreviewPaneProps {
    * placeholder so the layout doesn't break.
    */
   embeddedEvents?: ReadonlyArray<PreviewEmbeddedEvent>;
+  /**
+   * #3682 — footer reason line. Defaults to bought (buyer audiences). Book /
+   * import / follow sends should pass the matching reason.
+   */
+  receiveReason?: "bought" | "imported" | "added" | "follows";
+}
+
+function previewReceiveReasonLine(
+  reason: "bought" | "imported" | "added" | "follows",
+  brand: string,
+): string {
+  switch (reason) {
+    case "bought":
+      return `You're receiving this because you bought tickets from ${brand} on Mingla.`;
+    case "imported":
+      return `You're receiving this because ${brand} imported your contact on Mingla with permission.`;
+    case "added":
+      return `You're receiving this because ${brand} added you to their guest book on Mingla.`;
+    case "follows":
+      return `You're receiving this because you follow ${brand} on Mingla.`;
+  }
 }
 
 export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
@@ -93,6 +114,7 @@ export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
   brandName,
   brandHeaderImageUrl,
   embeddedEvents = [],
+  receiveReason = "bought",
 }) => {
   const blocks = previewBlocks(bodyHtml, variables);
   const useBrandBanner = brandHeaderImageUrl !== null &&
@@ -184,17 +206,21 @@ export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
           )}
         </View>
 
-        {/* Footer — unsubscribe + brand name disclosure */}
+        {/* Footer — unsubscribe + truthful reason (#3682) */}
         <View style={styles.footer}>
           <Text style={styles.footerLine}>
-            You're receiving this because you bought tickets from{" "}
-            <Text style={styles.footerBrand}>
-              {brandName ?? "this brand"}
-            </Text>{" "}
-            on Mingla.
+            {previewReceiveReasonLine(
+              receiveReason,
+              brandName ?? "this brand",
+            )}
           </Text>
           <Text style={styles.footerLine}>
-            <Text style={styles.footerUnsubscribe}>Unsubscribe</Text> · Mingla honours this across all your purchases.
+            <Text style={styles.footerUnsubscribe}>Unsubscribe</Text>
+            {" · Mingla honours this for "}
+            <Text style={styles.footerBrand}>
+              {brandName ?? "this brand"}
+            </Text>
+            .
           </Text>
         </View>
       </View>

@@ -30,6 +30,10 @@
 import { escapeHtml } from "./email/escape.ts";
 import { renderShell, SHELL_TOKENS } from "./email/shell.ts";
 import { generateTrackingId } from "./marketingTokens.ts";
+import {
+  type MarketingReceiveReason,
+  receiveReasonFooterSentence,
+} from "./marketingReceiveReason.ts";
 // ISSUE-1001 — canonical logo resolution; replaces the silent DEAD-404
 // email-assets fallback URL with a live default.
 import { minglaLogoUrl } from "./brandAssets.ts";
@@ -42,6 +46,8 @@ export interface MarketingVariables {
   first_name: string;
   event_name: string | null;
   event_date: string | null;
+  /** Alias of event_date for older starters that used {event_date_short}. */
+  event_date_short: string | null;
   event_time: string | null;
   doors_open: string | null;
   // ORCH-0877 — end-of-event time variable. Templates may include {ends_at}
@@ -102,6 +108,11 @@ export interface RenderMarketingEmailInput {
   brand_header_image_url?: string | null;
   /** Server-owned inert marker. It is never rewritten into marketing_clicks. */
   offering_invite_url_marker?: string;
+  /**
+   * #3682 — why this recipient is on the list. Drives the unsubscribe footer
+   * reason line (bought / imported / added / follows).
+   */
+  receive_reason?: MarketingReceiveReason;
 }
 
 export interface RenderMarketingEmailResult {
@@ -113,7 +124,9 @@ export interface RenderMarketingEmailResult {
 }
 
 const VARIABLE_RE =
-  /\{(first_name|event_name|event_date|event_time|doors_open|ends_at|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g;
+  /\{(first_name|event_name|event_date|event_date_short|event_time|doors_open|ends_at|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g;
+/** #3682 — after an empty {event_id} sub, starters left literal `{{event:}}`. */
+const EMPTY_EVENT_TOKEN_RE = /\{\{event:(?:\|(?:compact|medium|large))?\}\}/g;
 // ORCH-0891 M2: extended event token regex to optionally capture a
 // `|size` suffix (compact / medium / large). Backwards-compat preserved:
 // legacy `{{event:UUID}}` tokens (no suffix) default to `medium`.
@@ -147,12 +160,15 @@ export function renderMarketingEmail(
     }
   }
   // Step 1 — variable substitution.
-  const substituted = input.body_html.replace(VARIABLE_RE, (_match, key) => {
-    const value =
-      (input.variables as unknown as Record<string, string | null>)[key];
-    if (value === null || value === undefined) return "";
-    return escapeHtml(value);
-  });
+  const substituted = input.body_html
+    .replace(VARIABLE_RE, (_match, key) => {
+      const value =
+        (input.variables as unknown as Record<string, string | null>)[key];
+      if (value === null || value === undefined) return "";
+      return escapeHtml(value);
+    })
+    // #3682 — empty {event_id} left literal `{{event:}}` in Last call starters.
+    .replace(EMPTY_EVENT_TOKEN_RE, "");
 
   // Step 1.5 — paragraph reflow (#2520).
   //
@@ -215,6 +231,7 @@ export function renderMarketingEmail(
   const unsubFooter = renderUnsubscribeFooter(
     input.unsubscribe_url,
     input.brand_name,
+    input.receive_reason ?? "bought",
   );
   const bodyWithFooter = `${withTrackingLinks}${unsubFooter}`;
 
@@ -463,13 +480,17 @@ function getTrackingLinkOrigin(): string {
 function renderUnsubscribeFooter(
   unsubscribeUrl: string,
   brandName: string,
+  reason: MarketingReceiveReason,
 ): string {
   const safeUrl = escapeHtml(unsubscribeUrl);
   const safeBrand = escapeHtml(brandName);
+  const reasonLine = escapeHtml(
+    receiveReasonFooterSentence(reason, brandName),
+  );
   return `<p style="margin:32px 0 0 0;padding-top:16px;border-top:1px solid ${BRAND_BORDER};font-size:12px;line-height:1.5;color:${BRAND_MUTED};">
-    You're receiving this because you bought tickets from ${safeBrand} on Mingla.
+    ${reasonLine}
     <a href="${safeUrl}" style="color:${BRAND_MUTED};text-decoration:underline;">Unsubscribe</a>
-    — Mingla honours this across all your purchases from ${safeBrand}.
+    — Mingla honours this for ${safeBrand}.
   </p>`;
 }
 

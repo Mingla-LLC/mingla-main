@@ -267,6 +267,7 @@ Deno.test("A6: with env unset, transactional + marketing + invite html carry ZER
           first_name: "Ada",
           event_name: null,
           event_date: null,
+  event_date_short: null,
           event_time: null,
           doors_open: null,
           ends_at: null,

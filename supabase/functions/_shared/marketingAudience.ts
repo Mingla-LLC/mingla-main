@@ -80,6 +80,8 @@ export interface ResolvedContact {
   last_purchase_at: string | null;
   email_marketing_ok: boolean;
   sms_marketing_ok: boolean;
+  /** #3682 — book provenance for the email footer reason line. */
+  receive_reason?: "bought" | "imported" | "added" | "follows";
   offering_invite?: {
     attempt_id: string;
     invite_id: string;
