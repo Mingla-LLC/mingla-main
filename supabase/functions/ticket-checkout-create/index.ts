@@ -1769,12 +1769,22 @@ export const createTicketCheckoutCreateHandler = (
             );
           },
         );
-        // #3682 — free RSVP / zero-total reservation auto-follows (source rsvp).
-        void autoFollowBrandBestEffort(supabase as never, {
-          userId,
-          brandId: typeof session.brandId === "string" ? session.brandId : null,
-          source: "rsvp",
-        });
+        // #3682 — free RSVP auto-follow from the persisted session buyer, not
+        // the request auth uid (idempotency can reuse another session).
+        void (async () => {
+          const { data: followSession } = await supabase
+            .from("ticket_checkout_sessions")
+            .select("buyer_user_id, brand_id")
+            .eq("id", checkoutSessionId)
+            .maybeSingle();
+          await autoFollowBrandBestEffort(supabase as never, {
+            userId: (followSession?.buyer_user_id as string | null) ?? null,
+            brandId: (followSession?.brand_id as string | null) ??
+              (typeof session.brandId === "string" ? session.brandId : null),
+            source: "rsvp",
+            orderId,
+          });
+        })();
       }
       // issue #2136 — the envelope is spread FIRST and every field the buyer
       // contract (`TicketCheckoutFreeCompleted`) declares is then written

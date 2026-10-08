@@ -28,6 +28,8 @@ import {
 } from "./ticketEvidenceHold.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
 import { fireAdConversion } from "./adConversionFire.ts";
+// #3682 — auto-follow brand after signed-in purchase (fail-open).
+import { autoFollowBrandBestEffort } from "./autoFollowBrand.ts";
 // ISSUE-1326 — the ONE finalize path for a paid NG (Paystack) venue reservation
 // (shared with venue-reservation-confirm). Guards + idempotent-mints + fires.
 import {
@@ -236,7 +238,9 @@ export async function handlePaystackChargeSuccess(
   // 3. Lookup the session by the persisted reference.
   const { data: session, error: sessionError } = await supabase
     .from("ticket_checkout_sessions")
-    .select("id, status, order_id, total_cents, currency, reversal_state")
+    .select(
+      "id, status, order_id, total_cents, currency, reversal_state, brand_id, buyer_user_id",
+    )
     .eq("stripe_payment_intent_id", reference)
     .maybeSingle();
   if (sessionError) {
@@ -436,6 +440,22 @@ export async function handlePaystackChargeSuccess(
     console.warn(
       "[paystack-webhook] ad-conversion fire threw (non-fatal):",
       adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
+    );
+  }
+
+  // #3682 — shared Paystack finalize path (webhook + status poll via
+  // resolvePaystackTicketReturn → handlePaystackChargeSuccess).
+  try {
+    await autoFollowBrandBestEffort(supabase as never, {
+      userId: session.buyer_user_id as string | null,
+      brandId: session.brand_id as string | null,
+      source: "purchase",
+      orderId: orderId.length > 0 ? orderId : null,
+    });
+  } catch (followErr) {
+    console.warn(
+      "[paystack-webhook] auto-follow threw (non-fatal):",
+      followErr instanceof Error ? followErr.message : String(followErr),
     );
   }
 

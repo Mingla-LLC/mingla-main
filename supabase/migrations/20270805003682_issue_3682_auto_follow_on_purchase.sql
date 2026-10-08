@@ -1,13 +1,27 @@
 -- #3682 Wave 2 slice 1 — auto-follow a brand when a signed-in guest buys.
--- Service-role SECURITY DEFINER insert; idempotent on (user_id, brand_id).
--- Guests without a buyer_user_id are skipped by the caller (web email follow is later).
+-- Service-role SECURITY DEFINER insert; per-order claim so unfollow is not undone
+-- by confirm/webhook replay. Guests without buyer_user_id are skipped by callers.
 
 BEGIN;
+
+-- Durable "we already processed auto-follow for this order" ledger.
+-- Survives hard-delete of brand_follows (unfollow), so retries cannot re-follow.
+CREATE TABLE IF NOT EXISTS public.brand_follow_auto_claims (
+  order_id uuid PRIMARY KEY REFERENCES public.orders (id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+  brand_id uuid NOT NULL REFERENCES public.brands (id) ON DELETE CASCADE,
+  source text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+REVOKE ALL ON TABLE public.brand_follow_auto_claims FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON TABLE public.brand_follow_auto_claims TO service_role;
 
 CREATE OR REPLACE FUNCTION public.biz_auto_follow_brand(
   p_user_id uuid,
   p_brand_id uuid,
-  p_source text DEFAULT 'purchase'
+  p_source text DEFAULT 'purchase',
+  p_order_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -16,6 +30,7 @@ SET search_path TO 'public', 'pg_temp'
 AS $f$
 DECLARE
   v_source text := COALESCE(NULLIF(btrim(p_source), ''), 'purchase');
+  v_claim_count integer := 0;
   v_row_count integer := 0;
 BEGIN
   IF p_user_id IS NULL OR p_brand_id IS NULL THEN
@@ -23,6 +38,25 @@ BEGIN
   END IF;
   IF v_source NOT IN ('purchase', 'rsvp', 'booking', 'brand_page', 'web_email') THEN
     RAISE EXCEPTION 'auto_follow_source_invalid' USING ERRCODE = '22023';
+  END IF;
+
+  -- Purchase/RSVP paths must claim by order so unfollow stays sticky across replay.
+  IF p_order_id IS NOT NULL THEN
+    INSERT INTO public.brand_follow_auto_claims (order_id, user_id, brand_id, source)
+    VALUES (p_order_id, p_user_id, p_brand_id, v_source)
+    ON CONFLICT (order_id) DO NOTHING;
+    GET DIAGNOSTICS v_claim_count = ROW_COUNT;
+    IF v_claim_count = 0 THEN
+      RETURN jsonb_build_object(
+        'followed', false,
+        'created', false,
+        'skipped', 'already_claimed',
+        'userId', p_user_id,
+        'brandId', p_brand_id,
+        'orderId', p_order_id,
+        'source', v_source
+      );
+    END IF;
   END IF;
 
   INSERT INTO public.brand_follows (user_id, brand_id, source)
@@ -35,17 +69,17 @@ BEGIN
     'created', (v_row_count > 0),
     'userId', p_user_id,
     'brandId', p_brand_id,
+    'orderId', p_order_id,
     'source', v_source
   );
 END
 $f$;
 
-REVOKE ALL ON FUNCTION public.biz_auto_follow_brand(uuid, uuid, text)
+REVOKE ALL ON FUNCTION public.biz_auto_follow_brand(uuid, uuid, text, uuid)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.biz_auto_follow_brand(uuid, uuid, text)
+GRANT EXECUTE ON FUNCTION public.biz_auto_follow_brand(uuid, uuid, text, uuid)
   TO service_role;
 
--- Service role already owns writes for edge paths; ensure table grant.
 GRANT SELECT, INSERT, DELETE ON TABLE public.brand_follows TO service_role;
 
 -- Display rename: "Extended circle" → "Friends of followers" for newly ensured

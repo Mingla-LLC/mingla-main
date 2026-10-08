@@ -1791,12 +1791,13 @@ async function handleTicketCheckoutPaymentIntent(
       );
     }
 
-    // #3682 — signed-in buyer follows the brand (idempotent ON CONFLICT).
+    // #3682 — signed-in buyer follows the brand (per-order claim + ON CONFLICT).
     try {
       await autoFollowBrandBestEffort(supabase as never, {
         userId: session.buyer_user_id as string | null,
         brandId: session.brand_id as string | null,
         source: "purchase",
+        orderId,
       });
     } catch (followErr) {
       console.warn(

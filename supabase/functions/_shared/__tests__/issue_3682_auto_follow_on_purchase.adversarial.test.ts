@@ -13,8 +13,11 @@ const confirmSrc = Deno.readTextFileSync(
 const createSrc = Deno.readTextFileSync(
   "supabase/functions/ticket-checkout-create/index.ts",
 );
+const paystackSrc = Deno.readTextFileSync(
+  "supabase/functions/_shared/paystackWebhookRouter.ts",
+);
 const migrationSrc = Deno.readTextFileSync(
-  "supabase/migrations/20261008013682_issue_3682_auto_follow_on_purchase.sql",
+  "supabase/migrations/20270805003682_issue_3682_auto_follow_on_purchase.sql",
 );
 
 Deno.test("#3682 adversarial: undefined / empty ids never call RPC", async () => {
@@ -37,36 +40,48 @@ Deno.test("#3682 adversarial: undefined / empty ids never call RPC", async () =>
     userId: "  ",
     brandId: "brand-1",
   });
-  // Guests are null/undefined; whitespace is also skipped after trim.
   assertEquals(calls, 0);
 });
 
 Deno.test("#3682 adversarial: confirm auto-follow is fire-and-forget (void)", () => {
-  // Must not block the buyer confirmation response.
   assert(confirmSrc.includes("void autoFollowBrandBestEffort"));
   assert(!/await autoFollowBrandBestEffort/.test(confirmSrc));
 });
 
-Deno.test("#3682 adversarial: free create only auto-follows on non-replay", () => {
-  const callIdx = createSrc.indexOf(
-    "void autoFollowBrandBestEffort(supabase as never, {",
-  );
+Deno.test("#3682 adversarial: free create reads persisted buyer_user_id, not request uid", () => {
+  const callIdx = createSrc.indexOf("autoFollowBrandBestEffort(supabase as never, {");
   assert(callIdx > 0);
-  // fireAdConversion + catch sit between the replay gate and the follow call.
-  const window = createSrc.slice(Math.max(0, callIdx - 1200), callIdx + 200);
+  const window = createSrc.slice(Math.max(0, callIdx - 1600), callIdx + 400);
+  assert(window.includes('from("ticket_checkout_sessions")'));
+  assert(window.includes("buyer_user_id"));
   assert(window.includes("finalizedRecord.replayed !== true"));
   assert(window.includes('source: "rsvp"'));
+  assert(window.includes("followSession?.buyer_user_id"));
+  // Must not pass the request auth uid as the follow subject.
+  assert(!/userId,\s*\n\s*brandId: typeof session\.brandId/.test(window));
 });
 
-Deno.test("#3682 adversarial: migration refuses anon/authenticated execute", () => {
-  assert(
-    migrationSrc.includes(
-      "REVOKE ALL ON FUNCTION public.biz_auto_follow_brand(uuid, uuid, text)\n  FROM PUBLIC, anon, authenticated;",
-    ) ||
-      migrationSrc.includes(
-        "FROM PUBLIC, anon, authenticated",
-      ),
-  );
+Deno.test("#3682 adversarial: Paystack shared finalize path wires auto-follow", () => {
+  assert(paystackSrc.includes("autoFollowBrandBestEffort"));
+  const finalizeIdx = paystackSrc.indexOf('"biz_ticket_checkout_finalize"');
+  const followIdx = paystackSrc.indexOf("autoFollowBrandBestEffort", finalizeIdx);
+  assert(finalizeIdx > 0 && followIdx > finalizeIdx);
+});
+
+Deno.test("#3682 adversarial: migration refuses anon/authenticated + claims unfollow safety", () => {
+  assert(migrationSrc.includes("FROM PUBLIC, anon, authenticated"));
   assert(migrationSrc.includes("auto_follow_source_invalid"));
   assert(migrationSrc.includes("auto_follow_args_required"));
+  assert(migrationSrc.includes("already_claimed"));
+  assert(migrationSrc.includes("brand_follow_auto_claims"));
+});
+
+Deno.test("#3682 adversarial: no banned issue-3682 workflow file", () => {
+  let missing = false;
+  try {
+    Deno.statSync(".github/workflows/issue-3682-auto-follow-tests.yml");
+  } catch {
+    missing = true;
+  }
+  assert(missing, "issue-3682-auto-follow-tests.yml must not exist");
 });

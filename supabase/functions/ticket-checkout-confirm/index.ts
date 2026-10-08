@@ -295,11 +295,12 @@ serve(async (req) => {
       total_cents: session.total_cents,
       currency: session.currency,
     });
-    // #3682 — idempotent with webhook; guests with no buyer_user_id are skipped.
+    // #3682 — idempotent with webhook via per-order claim; guests skipped.
     void autoFollowBrandBestEffort(supabase as never, {
       userId: session.buyer_user_id as string | null,
       brandId: session.brand_id as string | null,
       source: "purchase",
+      orderId: session.order_id as string | null,
     });
     return jsonResponse({
       checkoutSessionId: session.id,
@@ -357,13 +358,15 @@ serve(async (req) => {
         session.currency,
     });
 
-    // #3682 — auto-follow after Paystack finalize (fail-open, idempotent).
+    // #3682 — auto-follow after Paystack finalize (shared webhook path also
+    // claims; this is belt-and-suspenders for confirm-won races).
     void autoFollowBrandBestEffort(supabase as never, {
       userId: (paystackSession?.buyer_user_id as string | null) ??
         (session.buyer_user_id as string | null),
       brandId: (paystackSession?.brand_id as string | null) ??
         (session.brand_id as string | null),
       source: "purchase",
+      orderId: finalizedOrderId,
     });
 
     // The buyer's email + SMS are dispatched by the resolver on the call that
@@ -734,6 +737,7 @@ serve(async (req) => {
       userId: refreshedSession.buyer_user_id as string | null,
       brandId: refreshedSession.brand_id as string | null,
       source: "purchase",
+      orderId: refreshedSession.order_id as string | null,
     });
 
     return jsonResponse({
