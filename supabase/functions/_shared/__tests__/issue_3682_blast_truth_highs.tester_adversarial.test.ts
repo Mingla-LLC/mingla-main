@@ -14,12 +14,15 @@ Deno.test("#3682 buyer audiences still default to bought", () => {
   assertEquals(receiveReasonFromAudienceKind("event_buyers"), "bought");
 });
 
-Deno.test("#3682 reserved domains cover example.org/net and localhost", () => {
+Deno.test("#3682 reserved domains cover exact + suffixes", () => {
   for (const email of [
     "a@example.org",
     "a@example.net",
     "a@localhost",
     "a@invalid",
+    "guest@sub.example.com",
+    "guest@foo.invalid",
+    "guest@foo.example.com",
     "not-an-email",
   ]) {
     assertEquals(isUndeliverableEmailDomain(email), true, email);
@@ -33,7 +36,7 @@ Deno.test("#3682 added reason never claims bought tickets", () => {
       first_name: "there",
       event_name: null,
       event_date: null,
-  event_date_short: null,
+      event_date_short: null,
       event_time: null,
       doors_open: null,
       ends_at: null,
@@ -57,7 +60,7 @@ Deno.test("#3682 added reason never claims bought tickets", () => {
 Deno.test("#3682 Last call starter migration drops unsupported tokens", async () => {
   const sql = await Deno.readTextFile(
     new URL(
-      "../../../migrations/20261008003682_issue_3682_blast_truth_highs.sql",
+      "../../../migrations/20270806003682_issue_3682_blast_truth_highs.sql",
       import.meta.url,
     ),
   );
@@ -65,4 +68,8 @@ Deno.test("#3682 Last call starter migration drops unsupported tokens", async ()
   assertStringIncludes(sql, "Almost sold out — see you {event_date}");
   assertStringIncludes(sql, "split_part(btrim(COALESCE(p.display_name");
   assertStringIncludes(sql, "receive_reason");
+  assertStringIncludes(sql, "biz_marketing_circle_send_audience_v1");
+  assertStringIncludes(sql, "friend_of_follower");
+  assertStringIncludes(sql, "WHEN 'event_rsvp' THEN 'rsvp'");
+  assertEquals(sql.includes("WHEN 'event_rsvp' THEN 'bought'"), false);
 });

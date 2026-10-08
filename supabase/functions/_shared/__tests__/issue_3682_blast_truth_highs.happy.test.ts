@@ -45,10 +45,43 @@ Deno.test("#3682 footer reason follows for followers audience", () => {
   assertEquals(rendered.html.includes("bought tickets"), false);
 });
 
+Deno.test("#3682 friends-of-followers get friend_of_follower reason", () => {
+  assertEquals(
+    receiveReasonFromAudienceKind("brand_circle_extended"),
+    "friend_of_follower",
+  );
+  const sentence = receiveReasonFooterSentence(
+    "friend_of_follower",
+    "Lantern Room",
+  );
+  assertStringIncludes(sentence, "a friend follows");
+  assertEquals(sentence.includes("you follow"), false);
+});
+
+Deno.test("#3682 book audiences default to guest_book not added/follows", () => {
+  assertEquals(receiveReasonFromAudienceKind("all_brand_people"), "guest_book");
+  assertEquals(receiveReasonFromAudienceKind("manual_group"), "guest_book");
+});
+
 Deno.test("#3682 imported reason sentence", () => {
   assertEquals(
     receiveReasonFooterSentence("imported", "Lantern Room"),
     "You're receiving this because Lantern Room imported your contact on Mingla with permission.",
+  );
+});
+
+Deno.test("#3682 rsvp and booking reasons are truthful", () => {
+  assertStringIncludes(
+    receiveReasonFooterSentence("rsvp", "Lantern Room"),
+    "RSVP'd",
+  );
+  assertStringIncludes(
+    receiveReasonFooterSentence("booking", "Lantern Room"),
+    "reservation",
+  );
+  assertEquals(
+    receiveReasonFooterSentence("rsvp", "Lantern Room").includes("bought tickets"),
+    false,
   );
 });
 

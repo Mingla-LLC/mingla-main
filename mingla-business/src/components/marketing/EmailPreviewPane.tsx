@@ -86,24 +86,48 @@ export interface EmailPreviewPaneProps {
   embeddedEvents?: ReadonlyArray<PreviewEmbeddedEvent>;
   /**
    * #3682 — footer reason line. Defaults to bought (buyer audiences). Book /
-   * import / follow sends should pass the matching reason.
+   * import / follow / RSVP / circle sends should pass the matching reason.
    */
-  receiveReason?: "bought" | "imported" | "added" | "follows";
+  receiveReason?:
+    | "bought"
+    | "rsvp"
+    | "booking"
+    | "imported"
+    | "added"
+    | "follows"
+    | "friend_of_follower"
+    | "guest_book";
 }
 
 function previewReceiveReasonLine(
-  reason: "bought" | "imported" | "added" | "follows",
+  reason:
+    | "bought"
+    | "rsvp"
+    | "booking"
+    | "imported"
+    | "added"
+    | "follows"
+    | "friend_of_follower"
+    | "guest_book",
   brand: string,
 ): string {
   switch (reason) {
     case "bought":
       return `You're receiving this because you bought tickets from ${brand} on Mingla.`;
+    case "rsvp":
+      return `You're receiving this because you RSVP'd to an event from ${brand} on Mingla.`;
+    case "booking":
+      return `You're receiving this because you made a reservation with ${brand} on Mingla.`;
     case "imported":
       return `You're receiving this because ${brand} imported your contact on Mingla with permission.`;
     case "added":
       return `You're receiving this because ${brand} added you to their guest book on Mingla.`;
     case "follows":
       return `You're receiving this because you follow ${brand} on Mingla.`;
+    case "friend_of_follower":
+      return `You're receiving this because a friend follows ${brand} on Mingla.`;
+    case "guest_book":
+      return `You're receiving this because you're on ${brand}'s guest list on Mingla.`;
   }
 }
 

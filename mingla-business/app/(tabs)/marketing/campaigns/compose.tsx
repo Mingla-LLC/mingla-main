@@ -203,6 +203,7 @@ import {
   useBookBlastPreview,
   useConfirmBookBlast,
 } from "../../../../src/hooks/marketing/useBookBlastPreview";
+import { useBrandPeople } from "../../../../src/hooks/marketing/useBrandPeople";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
 import { useShareNetworkState } from "../../../../src/components/ui/useShareNetworkState";
@@ -391,6 +392,16 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const bookOnline = useShareNetworkState();
   const [showAudiencePicker, setShowAudiencePicker] = useState(false);
   const roleResolved = !currentBrandRole.isLoading && !currentBrandRole.isError;
+  // #3682 — Book / Personalize / follower previews need a real first name even
+  // when useResolveAudience returns no buyer rows (manual / followers / book).
+  const previewBookPeople = useBrandPeople(
+    brandId,
+    null,
+    roleResolved,
+    currentBrandRole.accepted,
+    currentBrandRole.rank,
+    bookOnline,
+  );
   const followerDeliveryFlag = channel === "sms"
     ? followerSmsFlag
     : followerEmailFlag;
@@ -1176,8 +1187,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // live-preview pane via the editor's props.
   const previewVariables = useMemo<PreviewVariables>(() => {
     const firstBuyerName = resolvedAudience.data?.rows[0]?.display_name ?? null;
+    const firstBookName = previewBookPeople.rows[0]?.displayName ?? null;
+    const displayName = firstBuyerName ?? firstBookName;
     const firstName =
-      firstBuyerName !== null ? firstBuyerName.split(/\s+/)[0] : null;
+      displayName !== null ? displayName.split(/\s+/)[0] : null;
     return {
       first_name: firstName,
       brand_name: brandName,
@@ -1192,7 +1205,24 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       next_event_name: null,
       event_id: null,
     };
-  }, [resolvedAudience.data, brandName]);
+  }, [resolvedAudience.data, brandName, previewBookPeople.rows]);
+
+  // #3682 — preview footer reason. Mixed book audiences use guest_book (not
+  // "added"/"follows"); Friends of followers use friend_of_follower.
+  const previewReceiveReason = useMemo(() => {
+    if (sealedAudienceKind === "brand_followers") return "follows" as const;
+    if (sealedAudienceKind === "brand_circle_extended") {
+      return "friend_of_follower" as const;
+    }
+    if (
+      isBookAudience ||
+      sealedAudienceKind === "all_brand_people" ||
+      sealedAudienceKind === "manual_group"
+    ) {
+      return "guest_book" as const;
+    }
+    return "bought" as const;
+  }, [sealedAudienceKind, isBookAudience]);
 
   const reach = resolvedAudience.data?.reach ?? null;
 
@@ -1845,14 +1875,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   bodyHtml={body}
                   variables={previewVariables}
                   brandName={brandName}
-                  receiveReason={
-                    sealedAudienceKind === "brand_followers" ||
-                      sealedAudienceKind === "brand_circle_extended"
-                      ? "follows"
-                      : isBookAudience
-                      ? "added"
-                      : "bought"
-                  }
+                  receiveReason={previewReceiveReason}
                   brandHeaderImageUrl={
                     currentBrand?.coverMediaType !== "video"
                       ? (currentBrand?.coverMediaUrl ?? null)
@@ -2040,14 +2063,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 bodyHtml={body}
                 variables={previewVariables}
                 brandName={brandName}
-                receiveReason={
-                  sealedAudienceKind === "brand_followers" ||
-                    sealedAudienceKind === "brand_circle_extended"
-                    ? "follows"
-                    : isBookAudience
-                    ? "added"
-                    : "bought"
-                }
+                receiveReason={previewReceiveReason}
                 brandHeaderImageUrl={
                   currentBrand?.coverMediaType !== "video"
                     ? (currentBrand?.coverMediaUrl ?? null)

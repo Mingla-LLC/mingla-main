@@ -12,6 +12,7 @@ import {
   renderContactImportAttestation,
   suggestContactImportMapping,
 } from "./importContract.ts";
+import { isUndeliverableEmailDomain } from "../_shared/undeliverableEmail.ts";
 
 type Provider = "eventbrite" | "mailchimp" | "generic";
 type Dialect = "comma" | "semicolon" | "tab";
@@ -549,23 +550,9 @@ export async function handler(req: Request): Promise<Response> {
           ? emailRaw
           : null;
         // #3682 — reserved domains (@example.com etc.) are undeliverable and
-        // must not land in the book as sendable contacts.
-        const undeliverableDomain = email !== null && (() => {
-          const at = email!.lastIndexOf("@");
-          const domain = at > 0 ? email!.slice(at + 1) : "";
-          return (
-            domain === "example.com" ||
-            domain === "example.org" ||
-            domain === "example.net" ||
-            domain === "example.edu" ||
-            domain === "invalid" ||
-            domain === "localhost" ||
-            domain === "test" ||
-            domain === "local" ||
-            !domain.includes(".")
-          );
-        })();
-        if (undeliverableDomain) email = null;
+        // must not land in the book as sendable contacts. Shared classifier
+        // also covers reserved suffixes (guest@sub.example.com).
+        if (email !== null && isUndeliverableEmailDomain(email)) email = null;
         const phoneRaw = val("phone");
         const phone = resolveUserPhoneE164(phoneRaw, "");
         const keys = [email ? `e:${email}` : null, phone ? `p:${phone}` : null]

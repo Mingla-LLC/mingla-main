@@ -19,6 +19,11 @@ on:
       # is locked at 200 origins, so its gates live here rather than in a new
       # workflow of their own.
       - "supabase/functions/_shared/marketingEmailRender.ts"
+      - "supabase/functions/_shared/marketingReceiveReason.ts"
+      - "supabase/functions/_shared/undeliverableEmail.ts"
+      - "supabase/functions/_shared/__tests__/issue_3682_blast_truth_highs.happy.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3682_blast_truth_highs.tester_adversarial.test.ts"
+      - "supabase/migrations/20270806003682_issue_3682_blast_truth_highs.sql"
       - "supabase/functions/_shared/email/shell.ts"
       - "supabase/functions/_shared/issue_2520_email_paragraphs.test.ts"
       - "supabase/functions/_shared/issue_2520_email_paragraphs.tester_adversarial.test.ts"
@@ -110,6 +115,14 @@ jobs:
           deno test --allow-env --allow-read \
             supabase/functions/_shared/issue_2509_blast_durability.test.ts \
             supabase/functions/_shared/issue_2509_blast_durability.tester_adversarial.test.ts
+      - name: "#3682 blast truth highs (receive-reason + undeliverable domains)"
+        run: |
+          deno fmt --check \
+            supabase/functions/_shared/__tests__/issue_3682_blast_truth_highs.happy.test.ts \
+            supabase/functions/_shared/__tests__/issue_3682_blast_truth_highs.tester_adversarial.test.ts
+          deno test --allow-env --allow-read \
+            supabase/functions/_shared/__tests__/issue_3682_blast_truth_highs.happy.test.ts \
+            supabase/functions/_shared/__tests__/issue_3682_blast_truth_highs.tester_adversarial.test.ts
       - name: "#2520 neighbouring email-pipeline suites must stay green"
         run: |
           deno test --allow-env --allow-read --no-check \
