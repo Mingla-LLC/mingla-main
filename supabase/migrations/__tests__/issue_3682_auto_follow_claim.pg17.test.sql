@@ -46,7 +46,7 @@ VALUES (
   '36820000-1000-4000-8000-000000000001',
   '36820000-0000-4000-8000-000000000002',
   'paid',
-  'online_checkout',
+  'online_checkout', -- orders_source_check: not 'web'
   1000,
   'USD'
 );
