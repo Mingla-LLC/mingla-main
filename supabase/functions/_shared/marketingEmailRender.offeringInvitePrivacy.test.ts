@@ -6,6 +6,7 @@ const base = {
     first_name: "Ada",
     event_name: "Dinner",
     event_date: null,
+  event_date_short: null,
     event_time: null,
     doors_open: null,
     ends_at: null,

@@ -1631,6 +1631,10 @@ jobs:
             # HERE rather than a banned issue-*.yml workflow (I-2148-CI-TOPOLOGY-BOUNDED).
             supabase/functions/marketing-send/issue_3682_audience_brand_gate.happy.test.ts
             supabase/functions/marketing-send/issue_3682_audience_brand_gate.tester_adversarial.test.ts
+            # #3682 Wave 1 — blast footer reason / undeliverable domains (hermetic).
+            # Registered HERE rather than only on issue-1995 (also wired there).
+            supabase/functions/_shared/__tests__/issue_3682_blast_truth_highs.happy.test.ts
+            supabase/functions/_shared/__tests__/issue_3682_blast_truth_highs.tester_adversarial.test.ts
             # ORCH-1282 — MMS media threading: US MediaUrl param + NG drops media.
             supabase/functions/__tests__/marketing_send_mms_adapter.test.ts
             # Issue #1518 — NG transactional AND marketing both ride Termii's

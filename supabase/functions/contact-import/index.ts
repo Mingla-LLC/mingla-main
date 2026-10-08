@@ -12,6 +12,7 @@ import {
   renderContactImportAttestation,
   suggestContactImportMapping,
 } from "./importContract.ts";
+import { isUndeliverableEmailDomain } from "../_shared/undeliverableEmail.ts";
 
 type Provider = "eventbrite" | "mailchimp" | "generic";
 type Dialect = "comma" | "semicolon" | "tab";
@@ -545,9 +546,13 @@ export async function handler(req: Request): Promise<Response> {
         const name = val("full_name") ||
           [val("first_name"), val("last_name")].filter(Boolean).join(" ");
         const emailRaw = val("email").toLowerCase();
-        const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)
+        let email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)
           ? emailRaw
           : null;
+        // #3682 — reserved domains (@example.com etc.) are undeliverable and
+        // must not land in the book as sendable contacts. Shared classifier
+        // also covers reserved suffixes (guest@sub.example.com).
+        if (email !== null && isUndeliverableEmailDomain(email)) email = null;
         const phoneRaw = val("phone");
         const phone = resolveUserPhoneE164(phoneRaw, "");
         const keys = [email ? `e:${email}` : null, phone ? `p:${phone}` : null]
@@ -556,9 +561,16 @@ export async function handler(req: Request): Promise<Response> {
           x !== undefined
         );
         let outcome: string = "added", reasonCode: string | null = null;
-        if (!email && !phone) {
+        if (undeliverableDomain && !phone) {
           outcome = "invalid";
-          reasonCode = phoneRaw ? "phone_country_required" : "no_contact";
+          reasonCode = "undeliverable_domain";
+        } else if (!email && !phone) {
+          outcome = "invalid";
+          reasonCode = phoneRaw
+            ? "phone_country_required"
+            : (emailRaw.length > 0 && !undeliverableDomain
+              ? "invalid_email"
+              : "no_contact");
         } else if (new Set(bridge).size > 1) {
           outcome = "review";
           reasonCode = "ambiguous_identity";

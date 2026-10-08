@@ -15,6 +15,8 @@ export interface PreviewVariables {
   first_name?: string | null;
   event_name?: string | null;
   event_date?: string | null;
+  /** Alias of event_date for older starters that used {event_date_short}. */
+  event_date_short?: string | null;
   event_time?: string | null;
   doors_open?: string | null;
   brand_name?: string | null;
@@ -32,7 +34,7 @@ export interface PreviewBlock {
 }
 
 const VAR_RE =
-  /\{(first_name|event_name|event_date|event_time|doors_open|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g;
+  /\{(first_name|event_name|event_date|event_date_short|event_time|doors_open|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g;
 // ORCH-0891 M1: optionally capture the `|size` suffix introduced by the
 // Tiptap composer rewrite + tenTapTokenBridge extension. The preview-side
 // event card already renders at a fixed size; the size info is captured
