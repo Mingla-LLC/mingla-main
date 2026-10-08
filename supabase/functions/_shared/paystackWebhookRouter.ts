@@ -445,18 +445,15 @@ export async function handlePaystackChargeSuccess(
 
   // #3682 — shared Paystack finalize path (webhook + status poll via
   // resolvePaystackTicketReturn → handlePaystackChargeSuccess).
-  try {
-    await autoFollowBrandBestEffort(supabase as never, {
+  // Fire-and-forget: confirm/status await this handler; never block tickets
+  // on follow. Helper also races a short deadline if any caller awaits.
+  if (orderId.length > 0) {
+    void autoFollowBrandBestEffort(supabase as never, {
       userId: session.buyer_user_id as string | null,
       brandId: session.brand_id as string | null,
       source: "purchase",
-      orderId: orderId.length > 0 ? orderId : null,
+      orderId,
     });
-  } catch (followErr) {
-    console.warn(
-      "[paystack-webhook] auto-follow threw (non-fatal):",
-      followErr instanceof Error ? followErr.message : String(followErr),
-    );
   }
 
   return { status: "finalized", orderId, paidAtIso };

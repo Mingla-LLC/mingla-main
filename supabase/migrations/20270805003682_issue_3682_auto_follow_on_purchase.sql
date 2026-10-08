@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS public.brand_follow_auto_claims (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE public.brand_follow_auto_claims ENABLE ROW LEVEL SECURITY;
+-- No client policies: deny-all for anon/authenticated; service_role + SECURITY DEFINER write.
+
 REVOKE ALL ON TABLE public.brand_follow_auto_claims FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT ON TABLE public.brand_follow_auto_claims TO service_role;
 
@@ -40,7 +43,11 @@ BEGIN
     RAISE EXCEPTION 'auto_follow_source_invalid' USING ERRCODE = '22023';
   END IF;
 
-  -- Purchase/RSVP paths must claim by order so unfollow stays sticky across replay.
+  -- Purchase/RSVP/booking MUST claim by order so unfollow stays sticky across replay.
+  IF v_source IN ('purchase', 'rsvp', 'booking') AND p_order_id IS NULL THEN
+    RAISE EXCEPTION 'auto_follow_order_required' USING ERRCODE = '22023';
+  END IF;
+
   IF p_order_id IS NOT NULL THEN
     INSERT INTO public.brand_follow_auto_claims (order_id, user_id, brand_id, source)
     VALUES (p_order_id, p_user_id, p_brand_id, v_source)

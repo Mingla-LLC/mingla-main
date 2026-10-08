@@ -811,6 +811,10 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql
 
+          # #3682 — purchase auto-follow claim survives unfollow + same-order replay.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3682_auto_follow_claim.pg17.test.sql
+
           # Issue #1793 (#1767 Phase 4) — the HONEST public ordering state. The
           # orchestrator amendment registered against this phase: a guest at a
           # paused or unswitched venue must be able to be TOLD which, rather

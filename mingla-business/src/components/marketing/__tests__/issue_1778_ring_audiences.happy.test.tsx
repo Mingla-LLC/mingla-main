@@ -1,3 +1,4 @@
+// #3682 — product label "Extended circle" → "Friends of followers".
 import React from "react";
 import fs from "fs";
 import path from "path";

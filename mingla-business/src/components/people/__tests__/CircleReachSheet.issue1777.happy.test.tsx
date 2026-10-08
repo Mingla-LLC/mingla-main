@@ -1,3 +1,4 @@
+// #3682 — product label "Extended circle" → "Friends of followers".
 import React from "react";import { jest } from "@jest/globals";
 import { describe,expect,test } from "@jest/globals";import { readFileSync } from "node:fs";import path from "node:path";
 import { FlatList } from "react-native";

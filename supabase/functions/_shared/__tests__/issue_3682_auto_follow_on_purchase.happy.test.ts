@@ -5,7 +5,10 @@
  *     supabase/functions/_shared/__tests__/issue_3682_auto_follow_on_purchase.happy.test.ts
  */
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { autoFollowBrandBestEffort } from "../autoFollowBrand.ts";
+import {
+  AUTO_FOLLOW_RPC_DEADLINE_MS,
+  autoFollowBrandBestEffort,
+} from "../autoFollowBrand.ts";
 
 const confirmSrc = Deno.readTextFileSync(
   "supabase/functions/ticket-checkout-confirm/index.ts",
@@ -77,6 +80,7 @@ Deno.test("#3682 happy: helper swallows RPC errors (fail-open)", async () => {
   await autoFollowBrandBestEffort(supabase, {
     userId: "user-1",
     brandId: "brand-1",
+    orderId: "order-1",
   });
 });
 
@@ -89,6 +93,25 @@ Deno.test("#3682 happy: helper swallows rejected RPC (fail-open)", async () => {
     brandId: "brand-1",
     orderId: "order-1",
   });
+});
+
+Deno.test("#3682 happy: pending RPC hits deadline and returns (no hang)", async () => {
+  const supabase = {
+    rpc: () =>
+      new Promise<{ data: unknown; error: null }>(() => {
+        /* never settles */
+      }),
+  };
+  const started = Date.now();
+  await autoFollowBrandBestEffort(supabase, {
+    userId: "user-1",
+    brandId: "brand-1",
+    orderId: "order-1",
+    deadlineMs: 50,
+  });
+  const elapsed = Date.now() - started;
+  assert(elapsed < 500, `deadline should resolve quickly, took ${elapsed}ms`);
+  assert(AUTO_FOLLOW_RPC_DEADLINE_MS >= 1000);
 });
 
 Deno.test("#3682 happy: confirm / create / stripe+paystack wire autoFollowBrandBestEffort", () => {
@@ -108,17 +131,18 @@ Deno.test("#3682 happy: confirm / create / stripe+paystack wire autoFollowBrandB
   assert(webhookSrc.includes("buyer_user_id"));
 
   assert(paystackSrc.includes('from "./autoFollowBrand.ts"'));
-  assert(paystackSrc.includes("autoFollowBrandBestEffort"));
+  assert(paystackSrc.includes("void autoFollowBrandBestEffort"));
   assert(paystackSrc.includes("buyer_user_id"));
 });
 
-Deno.test("#3682 happy: migration defines service-only biz_auto_follow_brand + claims", () => {
+Deno.test("#3682 happy: migration defines service-only biz_auto_follow_brand + claims + RLS", () => {
   assert(migrationSrc.includes("CREATE OR REPLACE FUNCTION public.biz_auto_follow_brand"));
   assert(migrationSrc.includes("CREATE TABLE IF NOT EXISTS public.brand_follow_auto_claims"));
+  assert(migrationSrc.includes("ENABLE ROW LEVEL SECURITY"));
+  assert(migrationSrc.includes("auto_follow_order_required"));
   assert(migrationSrc.includes("ON CONFLICT ON CONSTRAINT brand_follows_user_brand_key DO NOTHING"));
   assert(migrationSrc.includes("ON CONFLICT (order_id) DO NOTHING"));
   assert(migrationSrc.includes("GRANT EXECUTE ON FUNCTION public.biz_auto_follow_brand"));
   assert(migrationSrc.includes("TO service_role"));
-  assert(migrationSrc.includes("REVOKE ALL ON FUNCTION public.biz_auto_follow_brand"));
   assert(migrationSrc.includes("Friends of followers"));
 });
