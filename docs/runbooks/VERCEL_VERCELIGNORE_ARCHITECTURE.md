@@ -62,6 +62,34 @@ These files do NOT need to list sibling projects — Vercel's Root Directory set
 
 ---
 
+## Ignored Build Step and `[deploy]`
+
+Every Vercel project on the Mingla team (`mingla-admin`, `mingla-business`,
+`mingla-marketing`, `mingla-site-cms`, `mingla-sites`) uses an **Ignored Build Step**
+that skips the build unless the commit subject contains `[deploy]` (and usually a
+path filter for that project's root). Standing hold: `AGENTS.md`. Day-to-day traps:
+`docs/MINGLA_ENGINEERING_HANDBOOK.md` §7.8.
+
+**Keep the Ignored Build Step as the path + `[deploy]` filter.** Never replace it
+with bare `exit 1` — that forces a build on every push and burns capacity Seth does
+not want. If a project's ignore command is missing or wrong, open a sibling project
+on the same team that still has the correct command and copy that command across;
+do not invent a new shape.
+
+**Silent cancel:** a squash merge whose subject lacks `[deploy]` shows
+`CANCELED` in the Vercel dashboard and deploys nothing. CI does not fail for this.
+Confirm production reached `READY` after any web merge that was meant to ship. A
+redeploy through the Vercel API re-reads the same commit message and cancels again —
+fix with a new commit whose subject carries `[deploy]`.
+
+**Env and secrets need a rebuild.** Changing a Vercel environment variable or
+rotating a secret does nothing until the next successful production build. Dashboard
+"Sensitive" does not mean the value is unrecoverable (#3637 class): recover or
+rotate through the normal secret path, then trigger a rebuild that actually runs
+(subject must carry `[deploy]` if the Ignored Build Step is in force).
+
+---
+
 ## Verification
 
 After changing any `.vercelignore`:
