@@ -22,20 +22,23 @@
  *            useState toggling — the fabricated-Following failure mode).
  *   R-6      followPending disables the control (Pressable contract +
  *            aria-disabled) and the label still tells the truth.
- *   R-7/R-8  palette-token honesty under a NON-DEFAULT theme: the button
- *            paints with the derived palette accent, and the brand-orange
- *            defaults (#eb7825 / #f97316) appear NOWHERE in its markup — a
- *            hardcoded hex would survive a theme change and fail here.
+ *   R-7/R-8  palette-token honesty under a NON-DEFAULT theme: idle Follow
+ *            paints with the derived palette accent; Following uses a
+ *            surface wash (never accent fill) — brand-orange defaults appear
+ *            NOWHERE in its markup.
  *   R-9      desktop panel composition: Follow sits BETWEEN the socials row
  *            and the Share button, and that panel slice carries no contact
  *            data (no mailto:, no tel:, not the fixture's email/phone).
- *   R-10     a11y flip on the mounted node: aria-label Follow↔Unfollow and
- *            aria-selected track isFollowing per spec §4.
- *   R-11     no fabricated audience numbers reach the DOM: a data-rich page
- *            emits no "follower(s)" and no count glued to Follow/Following —
- *            the render-level teeth behind the rewritten orch_1155
- *            server-truth assertions (a fabricated count that satisfies a
- *            source grep still fails here, where the DOM is inspected).
+ *   R-10     a11y flip on the mounted node: aria-label Follow↔Following and
+ *            accessibilityState.selected track isFollowing (C7: Unfollow is
+ *            menu-only, not the button label).
+ *   R-11     no fabricated audience numbers reach the DOM when the host does
+ *            not pass followerCount: a data-rich page emits no "follower(s)"
+ *            and no count glued to Follow/Following.
+ *
+ * [TEST-MOD-APPROVED #3682] Wave-2 Follow Design Contract: SharedFollowButton
+ * owns chrome; Following a11y label is "Following {Brand}" (not Unfollow);
+ * Following fill is surface wash + edge (not transparent + accent border).
  *
  * VACUITY GUARDS — every absence assertion is paired with a presence leg from
  * the same fixture (the #1484 silent-pass class).
@@ -43,7 +46,7 @@
  * FAILS-ON-REVERT (verified by TRUE LINE-DELETION of the renderer gate
  * `if (onToggleFollow === undefined) return null;` — run output in the #679
  * verdict comment): R-1 and R-2's absence legs go RED (an ungated button
- * renders for hosts that passed no callback). Deleting either <FollowButton
+ * renders for hosts that passed no callback). Deleting either BrandFollowControl
  * mount fails the paired presence legs; hardcoding the button color fails
  * R-7/R-8; local-state flipping fails R-5; dropping accessibilityState fails
  * R-6/R-10.
@@ -290,14 +293,14 @@ async function mount(overrides: ElementOverrides = {}): Promise<Tree> {
 }
 
 const FOLLOW_LABEL = `Follow ${BRAND_NAME}`;
-const UNFOLLOW_LABEL = `Unfollow ${BRAND_NAME}`;
+const FOLLOWING_LABEL = `Following ${BRAND_NAME}`;
 
 /** Count of follow-control HOST nodes in emitted markup (aria truth). */
 function followButtonCount(html: string): number {
   return (
     html.split(`aria-label="${FOLLOW_LABEL}"`).length -
     1 +
-    (html.split(`aria-label="${UNFOLLOW_LABEL}"`).length - 1)
+    (html.split(`aria-label="${FOLLOWING_LABEL}"`).length - 1)
   );
 }
 
@@ -446,7 +449,7 @@ describe("#679 R-5 · pressing fires the host and NEVER self-flips the label", (
     const nowActive = tree.root.findAll(
       (node) =>
         typeof node.type !== "string" &&
-        node.props.accessibilityLabel === UNFOLLOW_LABEL,
+        node.props.accessibilityLabel === FOLLOWING_LABEL,
     );
     expect(nowActive.length).toBeGreaterThan(0);
     tree.unmount();
@@ -511,15 +514,16 @@ describe("#679 R-7 · idle button paints with the DERIVED palette accent", () =>
   });
 });
 
-describe("#679 R-8 · active button: transparent fill + accent border, no hardcoded hex", () => {
-  test("Following state styles come from the palette too", () => {
+describe("#679 R-8 · active button: surface wash fill, never accent fill", () => {
+  test("Following state styles come from the surface wash, not accent fill", () => {
     setViewport(PHONE_WIDTH);
     const accent = createThemePalette(THEME_BLUE).accent;
     const html = markup({ onToggleFollow: () => undefined, isFollowing: true });
-    const tag = followButtonTag(html, UNFOLLOW_LABEL);
-    // border carries the accent; the fill does NOT (transparent per spec §4)
-    expect(tag).toContain(`border-top-color:${rgbaOf(accent)}`);
+    const tag = followButtonTag(html, FOLLOWING_LABEL);
+    // Contract C3 — Following never paints accent as fill; wash + edge instead.
     expect(tag).not.toContain(`background-color:${rgbaOf(accent)}`);
+    expect(tag).toMatch(/background-color:(rgba?|#)/);
+    expect(tag).toMatch(/border-top-color:(rgba?|#)/);
     for (const orange of BRAND_ORANGE_FORMS) {
       expect(tag.toLowerCase()).not.toContain(orange.toLowerCase());
     }
@@ -575,7 +579,7 @@ describe("#679 R-10 · a11y state tracks isFollowing", () => {
   // read — so the shipped surface is correct. When leg 5 wires web, the
   // FollowButton must ALSO pass flat `aria-selected` for web AT parity; this
   // block pins today's contract so that change is deliberate.
-  test("mounted Pressable carries accessibilityState.selected per spec §4; DOM label flips", async () => {
+  test("mounted Pressable carries accessibilityState.selected; DOM label flips Follow↔Following", async () => {
     setViewport(PHONE_WIDTH);
 
     // native contract — the mounted Pressable's accessibilityState
@@ -584,7 +588,7 @@ describe("#679 R-10 · a11y state tracks isFollowing", () => {
         onToggleFollow: () => undefined,
         isFollowing: state,
       });
-      const label = state ? UNFOLLOW_LABEL : FOLLOW_LABEL;
+      const label = state ? FOLLOWING_LABEL : FOLLOW_LABEL;
       const pressables = tree.root.findAll(
         (node) =>
           typeof node.type !== "string" &&
@@ -602,10 +606,10 @@ describe("#679 R-10 · a11y state tracks isFollowing", () => {
     // DOM truth — the accessible NAME flips both ways (this IS emitted on web)
     const idle = markup({ onToggleFollow: () => undefined, isFollowing: false });
     expect(idle).toContain(`aria-label="${FOLLOW_LABEL}"`);
-    expect(idle).not.toContain(`aria-label="${UNFOLLOW_LABEL}"`);
+    expect(idle).not.toContain(`aria-label="${FOLLOWING_LABEL}"`);
 
     const active = markup({ onToggleFollow: () => undefined, isFollowing: true });
-    expect(active).toContain(`aria-label="${UNFOLLOW_LABEL}"`);
+    expect(active).toContain(`aria-label="${FOLLOWING_LABEL}"`);
     expect(active).not.toContain(`aria-label="${FOLLOW_LABEL}"`);
   });
 });
@@ -614,7 +618,7 @@ describe("#679 R-10 · a11y state tracks isFollowing", () => {
 // R-11 — no fabricated audience numbers reach the DOM
 // ---------------------------------------------------------------------------
 
-describe("#679 R-11 · a data-rich page emits no follower counts, ever", () => {
+describe("#679 R-11 · without followerCount, page emits no follower counts", () => {
   test("no 'follower(s)', no digit glued to Follow/Following, no 'subscrib'", () => {
     for (const width of [PHONE_WIDTH, DESKTOP_WIDTH]) {
       setViewport(width);

@@ -302,9 +302,9 @@ export interface RsvpOfferingBodyProps {
   onOpenBrand?: (brandSlug: string) => void;
   /**
    * #3682 Follow contract (a) — optional Follow control rendered as a sibling of
-   * the Presented-by identity pressable (never nested inside it). Hosts pass
-   * `<FollowButton/>` from `@mingla/brand-rendering` so this package stays free
-   * of a brand↔offering import cycle. Absent ⇒ identity-only card (today).
+   * the Presented-by identity pressable (never nested inside it). Hosts pass a
+   * Follow control ReactNode so this package stays free of a brand↔offering
+   * import cycle. Absent ⇒ identity-only card (today).
    */
   presentedByFollow?: React.ReactNode;
   /** issue #2468 — carries the stored coordinate, not just the text label.
