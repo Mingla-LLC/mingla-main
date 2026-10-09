@@ -449,6 +449,24 @@ const renderPublicEventPage = (
         return jest.requireActual("@mingla/offering-rendering/rsvpGuestSnapshot");
       case "./RsvpStatusBanner":
         return { RsvpStatusBanner: "RsvpStatusBanner" };
+      // [TEST-MOD-APPROVED #3682] Harness registration only — ADDITION, no
+      // assertion changed. Wave 2.3 mounted FollowButton on the presented-by
+      // chip; the close-callback contract is unrelated and every close
+      // assertion below is untouched.
+      case "@mingla/brand-rendering/FollowButton":
+        return { FollowButton: () => null };
+      // [TEST-MOD-APPROVED #3682] Harness registration only — ADDITION, no
+      // assertion changed. Wave 2.4 wires useBrandFollow for the presented-by
+      // chip state; the close-callback contract is unrelated and every close
+      // assertion below is untouched.
+      case "../../hooks/useBrandFollow":
+        return require("./harness/useBrandFollow.publicEventPage.mock");
+      // [TEST-MOD-APPROVED #3682] Harness registration only — ADDITION, no
+      // assertion changed. #3782 mounted SimpleConfirmDialog for unfollow /
+      // follow confirm; the close-callback contract is unrelated and every
+      // close assertion below is untouched.
+      case "../ui/SimpleConfirmDialog":
+        return { SimpleConfirmDialog: () => null };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }

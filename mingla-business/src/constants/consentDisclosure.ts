@@ -12,6 +12,8 @@
  *     §1a — visible checkbox label
  *     §1b — EXACT disclosure string (recorded)
  *     §2  — full Terms & Conditions / consent sheet body
+ *   Follow Design Contract v3 surface b — names Follow {Brand} in the label
+ *     and recorded disclosure; bump DISCLOSURE_VERSION when wording changes.
  *
  * The app-mobile consumer surface (S2) carries a byte-identical copy in
  * `app-mobile/src/constants/consentDisclosure.ts` — the two cannot share a
@@ -24,15 +26,46 @@
  * §2 body changes; the server stores both the version and the resolved text so
  * the burden-of-proof artifact cannot drift with a stale client (DESIGN §6 / OQ-4).
  */
-export const DISCLOSURE_VERSION = "2026-06-19" as const;
+export const DISCLOSURE_VERSION = "2026-10-08" as const;
 
 /**
- * §1b — the EXACT disclosure string recorded VERBATIM into
+ * Guest checkout (no buyer_user_id) — auto-follow is skipped, so do not record
+ * or display the Follow clause. Same pre-follow §1b / version as onboarding.
+ * Signed-in checkout uses DISCLOSURE_VERSION + CONSENT_DISCLOSURE_TEXT above.
+ */
+export const GUEST_CHECKOUT_DISCLOSURE_VERSION = "2026-06-19" as const;
+export const GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT =
+  "I agree to Mingla's Terms & Conditions and Privacy Policy, and I consent to receive from Mingla LLC and the businesses I book with: (1) transactional and account messages including booking and reservation confirmations, changes, cancellations, refunds, waitlist updates, and payment notices; (2) event and reservation reminders for this booking and for future events; and (3) marketing and promotional messages, including offers and announcements from venues and experience brands. These messages may be sent by email, in-app notification, push notification, and recurring automated text message (SMS) to the phone number I provide. Message frequency varies. Msg & data rates may apply. Consent to texts is not a condition of any purchase. Reply STOP to any text to opt out, or HELP for help; you can also unsubscribe from email via the link in any message or change your preferences in the Mingla app at any time. Full terms: https://www.usemingla.com/terms-of-service | Privacy: https://www.usemingla.com/privacy-policy | SMS terms: https://www.usemingla.com/sms-terms.";
+export const GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX =
+  " and to receive booking confirmations, reminders, account updates, and marketing from Mingla and the businesses I book with — by email, push, and text. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out of texts, HELP for help.";
+
+/** Placeholder in §1a / §1b templates; filled with the checkout brand name. */
+export const CONSENT_BRAND_PLACEHOLDER = "{Brand}" as const;
+
+export function resolveConsentBrandName(
+  brandName: string | null | undefined,
+): string {
+  const trimmed = typeof brandName === "string" ? brandName.trim() : "";
+  return trimmed.length > 0 ? trimmed : "this brand";
+}
+
+/**
+ * §1b — the EXACT disclosure string template recorded VERBATIM into
  * `consent_records.disclosure_text` for BOTH scope='transactional' AND
- * scope='marketing'. No paraphrase. (COPY §1b, all placeholders FILLED.)
+ * scope='marketing' after `{Brand}` is replaced. No paraphrase.
  */
 export const CONSENT_DISCLOSURE_TEXT =
-  "I agree to Mingla's Terms & Conditions and Privacy Policy, and I consent to receive from Mingla LLC and the businesses I book with: (1) transactional and account messages including booking and reservation confirmations, changes, cancellations, refunds, waitlist updates, and payment notices; (2) event and reservation reminders for this booking and for future events; and (3) marketing and promotional messages, including offers and announcements from venues and experience brands. These messages may be sent by email, in-app notification, push notification, and recurring automated text message (SMS) to the phone number I provide. Message frequency varies. Msg & data rates may apply. Consent to texts is not a condition of any purchase. Reply STOP to any text to opt out, or HELP for help; you can also unsubscribe from email via the link in any message or change your preferences in the Mingla app at any time. Full terms: https://www.usemingla.com/terms-of-service | Privacy: https://www.usemingla.com/privacy-policy | SMS terms: https://www.usemingla.com/sms-terms.";
+  "I agree to Mingla's Terms & Conditions and Privacy Policy, and I consent to follow {Brand} on Mingla and to receive from Mingla LLC and the businesses I book with: (1) transactional and account messages including booking and reservation confirmations, changes, cancellations, refunds, waitlist updates, and payment notices; (2) event and reservation reminders for this booking and for future events; and (3) marketing and promotional messages, including offers and announcements from venues and experience brands. These messages may be sent by email, in-app notification, push notification, and recurring automated text message (SMS) to the phone number I provide. Message frequency varies. Msg & data rates may apply. Consent to texts is not a condition of any purchase. You can unfollow a brand anytime. Reply STOP to any text to opt out, or HELP for help; you can also unsubscribe from email via the link in any message or change your preferences in the Mingla app at any time. Full terms: https://www.usemingla.com/terms-of-service | Privacy: https://www.usemingla.com/privacy-policy | SMS terms: https://www.usemingla.com/sms-terms.";
+
+/** Resolve §1b with the live brand name for the consent_records write. */
+export function consentDisclosureText(
+  brandName: string | null | undefined,
+): string {
+  return CONSENT_DISCLOSURE_TEXT.replaceAll(
+    CONSENT_BRAND_PLACEHOLDER,
+    resolveConsentBrandName(brandName),
+  );
+}
 
 /**
  * §2 — the full Terms & Conditions / consent sheet body (verbatim, FILLED).
@@ -42,7 +75,7 @@ export const CONSENT_DISCLOSURE_TEXT =
  */
 export const CONSENT_TERMS_BODY = `Mingla — Terms, Notifications & Consent
 
-Last updated: 2026-06-19
+Last updated: 2026-10-08
 
 By creating a Mingla account or completing a booking, you agree to these terms and to Mingla's full Terms of Service and Privacy Policy, which are incorporated here by reference. If you do not agree, do not create an account or complete a booking.
 
@@ -62,8 +95,9 @@ Any dispute about an event, reservation, experience, refund, service, injury, or
 To the fullest extent permitted by law, Mingla and its officers, employees, and partners are not liable for any indirect, incidental, special, consequential, or punitive damages, or for any loss arising from your use of the app, any listing, any Business, or any event or experience. To the fullest extent permitted by law, you release Mingla from claims arising out of disputes with Businesses or other users or from your participation in any real-world activity discovered through Mingla. Mingla's total liability for any claim is limited to the greater of the amount you paid Mingla (not the Business) for the transaction at issue or the amount permitted by applicable law. Some jurisdictions do not allow certain limitations; where that applies, the limitation applies to the maximum extent permitted.
 
 6. Communications & consent — what you're signing up for.
-When you create an account or complete a booking and check the consent box, you agree to receive the following from Mingla and from the Businesses you book with:
+When you create an account or complete a booking and check the consent box, you agree to follow the Business you book with on Mingla (so you hear about new dates and offers first) and to receive the following from Mingla and from the Businesses you book with:
 
+- Follow — you follow that Business on Mingla. Unfollow anytime in the app, on the brand page, or via the link in your confirmation email.
 - Transactional & account messages — booking and reservation confirmations, changes, cancellations, refunds, waitlist updates, payment notices, and account/security messages. These are required to use Mingla and are tied to your activity.
 - Reminders — reminders for the event, experience, trip, or reservation you book, and for future events you may be interested in.
 - Marketing & promotional messages — offers, announcements, new events, and promotions from Mingla and from venues and experience brands, including via marketing blasts.
@@ -71,12 +105,13 @@ When you create an account or complete a booking and check the consent box, you 
 These may be delivered by email, in-app notification, push notification, and recurring automated text message (SMS) to the contact details you provide. Message frequency varies. Msg & data rates may apply. Consent to receive marketing texts is not a condition of any purchase.
 
 7. How to opt out.
+- Unfollow a brand: use Undo on the confirmation screen, the Unfollow link in your confirmation email, or Unfollow on the brand page in Mingla.
 - Text (SMS): reply STOP to any text to stop texts, or HELP for help. We also honor quit, end, cancel, unsubscribe, revoke, and opt out.
 - Email: use the unsubscribe link in any marketing email.
 - In-app: open the Mingla app and adjust your notification preferences at any time, per channel and per category.
 - Outside the US: opt-out may also run through your local registry (for example, in Nigeria, the NCC DND service by texting STOP to 2442) and the in-app preference center.
 
-We honor opt-out requests received by any reasonable means and process them promptly (within the timeframes required by law). Opting out of marketing does not stop transactional or account messages, which are required to deliver what you booked. You may still receive a single confirmation message after you opt out.
+We honor opt-out requests received by any reasonable means and process them promptly (within the timeframes required by law). Opting out of marketing does not stop transactional or account messages, which are required to deliver what you booked. You may still receive a single confirmation message after you opt out. Unfollowing a brand stops that brand's marketing; your tickets and booking reminders still arrive.
 
 8. Data handling.
 We collect and use the contact details and information you provide (including your name, email, phone number, and country) to operate Mingla, deliver the messages above, process bookings and payments, prevent fraud, and improve the service, as described in our Privacy Policy. We share necessary booking details with the Business you book with so it can fulfill your reservation or order. We do not sell your personal information except as described in the Privacy Policy. Where required, our lawful basis for marketing is your consent, which you may withdraw at any time as described in section 7. We record the date, time, exact text of this disclosure, and your country at the time you consent, as proof of your consent.
@@ -93,11 +128,60 @@ We may update these terms; material changes will be notified in-app or by email,
 Full Terms of Service: https://www.usemingla.com/terms-of-service · Privacy Policy: https://www.usemingla.com/privacy-policy · SMS Terms: https://www.usemingla.com/sms-terms`;
 
 /**
+ * §2 body for the T&C sheet. Guests get the Follow clauses stripped so the
+ * sheet cannot promise auto-follow that never runs (anonymous buyer_user_id).
+ * Keeps one source string so the guest path does not double the boot payload.
+ */
+export function consentTermsBody(followCapable: boolean): string {
+  if (followCapable) return CONSENT_TERMS_BODY;
+  return CONSENT_TERMS_BODY
+    .replace("Last updated: 2026-10-08", "Last updated: 2026-06-19")
+    .replace(
+      "you agree to follow the Business you book with on Mingla (so you hear about new dates and offers first) and to receive the following from Mingla and from the Businesses you book with:",
+      "you agree to receive the following from Mingla and from the Businesses you book with:",
+    )
+    .replace(
+      "- Follow — you follow that Business on Mingla. Unfollow anytime in the app, on the brand page, or via the link in your confirmation email.\n",
+      "",
+    )
+    .replace(
+      "- Unfollow a brand: use Undo on the confirmation screen, the Unfollow link in your confirmation email, or Unfollow on the brand page in Mingla.\n",
+      "",
+    )
+    .replace(
+      "Unfollowing a brand stops that brand's marketing; your tickets and booking reminders still arrive.",
+      "Guest checkout does not create a Mingla Follow; sign in and book again (or follow on the brand page) to follow a brand.",
+    );
+}
+
+/**
  * §1a — the short visible label rendered next to the checkbox. The
  * "[terms and conditions]" token is replaced by an underlined tappable link in
- * the component; the surrounding text is rendered verbatim.
+ * the component; the surrounding text is rendered verbatim. The brand phrase
+ * between FOLLOW_BEFORE and FOLLOW_AFTER is rendered at 600 weight (contract b).
  */
 export const CONSENT_VISIBLE_LABEL_PREFIX = "I agree to Mingla's ";
 export const CONSENT_VISIBLE_LABEL_LINK = "terms and conditions";
+export const CONSENT_VISIBLE_FOLLOW_BEFORE = ", to follow ";
+export const CONSENT_VISIBLE_FOLLOW_AFTER =
+  " on Mingla, and to receive booking confirmations, reminders, account updates, and marketing from Mingla and the businesses I book with — by email, push, and text. Unfollow anytime. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out of texts, HELP for help.";
+
+/** Template suffix with `{Brand}` — prefer the split FOLLOW_* parts for emphasis. */
 export const CONSENT_VISIBLE_LABEL_SUFFIX =
-  " and to receive booking confirmations, reminders, account updates, and marketing from Mingla and the businesses I book with — by email, push, and text. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out of texts, HELP for help.";
+  `${CONSENT_VISIBLE_FOLLOW_BEFORE}${CONSENT_BRAND_PLACEHOLDER}${CONSENT_VISIBLE_FOLLOW_AFTER}`;
+
+export function consentVisibleLabelSuffix(
+  brandName: string | null | undefined,
+): string {
+  return CONSENT_VISIBLE_LABEL_SUFFIX.replaceAll(
+    CONSENT_BRAND_PLACEHOLDER,
+    resolveConsentBrandName(brandName),
+  );
+}
+
+/** RSVP contact-form helper (contract b) — no checkbox on RSVP today. */
+export function rsvpFollowHelperLine(
+  brandName: string | null | undefined,
+): string {
+  return `We'll use this for your RSVP, and you'll follow ${resolveConsentBrandName(brandName)} for new dates. Unfollow anytime.`;
+}

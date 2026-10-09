@@ -111,9 +111,13 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // already counted; census +1 for the Host twin call site only (token
   // restated so append-only CI sees it on the commit that modified this file).
   //
+  // [TEST-MOD-APPROVED #3682] Wave 2.4 `brand-follow-action` edge upserts
+  // `brand_follows` on `(user_id,brand_id)` for one-tap email Follow — same
+  // arbiter; census +1 for the edge call site (90).
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 89);
+  assert.equal(sites.length, 90);
   assert.equal(sites.some((site) => site.table === "user_stats"), false);
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);

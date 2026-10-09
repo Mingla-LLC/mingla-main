@@ -103,12 +103,20 @@ import {
 // verbatim disclosure copy + the §2 T&C sheet.
 import { recordConsent } from "../../../src/services/consentService";
 import {
-  CONSENT_DISCLOSURE_TEXT,
-  CONSENT_VISIBLE_LABEL_PREFIX,
+  CONSENT_VISIBLE_FOLLOW_AFTER,
+  CONSENT_VISIBLE_FOLLOW_BEFORE,
   CONSENT_VISIBLE_LABEL_LINK,
-  CONSENT_VISIBLE_LABEL_SUFFIX,
+  CONSENT_VISIBLE_LABEL_PREFIX,
   DISCLOSURE_VERSION,
+  GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT,
+  GUEST_CHECKOUT_DISCLOSURE_VERSION,
+  GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX,
+  consentDisclosureText,
+  consentTermsBody,
+  consentVisibleLabelSuffix,
+  resolveConsentBrandName,
 } from "../../../src/constants/consentDisclosure";
+import { supabase } from "../../../src/services/supabase";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -299,20 +307,74 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   // Shown after the buyer taps a disabled Pay button with fields valid but the
   // box unchecked — never a silent dead tap (DESIGN §S3.4).
   const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
+  // #3682 — Follow clause only when a signed-in buyer can actually auto-follow.
+  // Guests get the pre-follow disclosure (auto-follow skips null buyer_user_id).
+  // authReady gates the checkbox so we never show guest copy, accept it, then
+  // record a Follow grant after a late session hydrate.
+  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [signedInBuyer, setSignedInBuyer] = useState<boolean>(false);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const acceptedGrantRef = useRef<{
+    followCapable: boolean;
+    userId: string | null;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => supabase.auth?.getSession?.())
+      .then((result) => {
+        if (cancelled) return;
+        const id = result?.data?.session?.user?.id;
+        const readyId = typeof id === "string" && id.length > 0 ? id : null;
+        setSessionUserId(readyId);
+        setSignedInBuyer(readyId !== null);
+        setAuthReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSessionUserId(null);
+          setSignedInBuyer(false);
+          setAuthReady(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Checking the box constitutes the bundled grant: DEC-186 folds marketing into
   // the single mandatory consent, so `marketingOptIn` rides with `termsAccepted`
   // (the downstream payment payload reads `marketingOptIn`).
   const acceptTerms = useCallback((): void => {
+    if (!authReady) return;
+    acceptedGrantRef.current = {
+      followCapable: signedInBuyer,
+      userId: sessionUserId,
+    };
     setBuyer({ termsAccepted: true, marketingOptIn: true });
     setConsentHintVisible(false);
-  }, [setBuyer]);
+  }, [authReady, sessionUserId, setBuyer, signedInBuyer]);
 
   const toggleTerms = useCallback((): void => {
+    if (!authReady) return;
     const next = !(buyer.termsAccepted === true);
+    if (next) {
+      acceptedGrantRef.current = {
+        followCapable: signedInBuyer,
+        userId: sessionUserId,
+      };
+    } else {
+      acceptedGrantRef.current = null;
+    }
     setBuyer({ termsAccepted: next, marketingOptIn: next });
     if (next) setConsentHintVisible(false);
-  }, [buyer.termsAccepted, setBuyer]);
+  }, [
+    authReady,
+    buyer.termsAccepted,
+    sessionUserId,
+    setBuyer,
+    signedInBuyer,
+  ]);
 
   // Touched flags — show validation errors only after first focus blur,
   // so a fresh-mount form doesn't immediately scream red.
@@ -492,14 +554,24 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     // not deadlock checkout — we log and proceed (Constitution #3: surfaced via
     // console, never silently swallowed).
     try {
+      // Bind the audit row to the disclosure the buyer actually accepted when
+      // they checked the box (acceptedGrantRef). Do not re-derive from a
+      // late-hydrated session — that caused guest copy + Follow grant.
+      const grant = acceptedGrantRef.current;
+      const followCapable = grant?.followCapable === true;
+      const buyerUserId = followCapable ? grant?.userId ?? null : null;
       const consentResult = await recordConsent({
         source: "checkout",
-        disclosureText: CONSENT_DISCLOSURE_TEXT,
-        disclosureVersion: DISCLOSURE_VERSION,
+        disclosureText: followCapable
+          ? consentDisclosureText(brand?.displayName)
+          : GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT,
+        disclosureVersion: followCapable
+          ? DISCLOSURE_VERSION
+          : GUEST_CHECKOUT_DISCLOSURE_VERSION,
         phone: buyer.phone,
         email: buyer.email,
         countryCode: phoneCountry,
-        userId: null,
+        userId: buyerUserId,
         // #3524 — the route param we already hold. The server resolves the host
         // from it, so the legal record says WHICH business the buyer agreed to
         // hear from instead of recording the grant Mingla-globally. Nothing else
@@ -721,11 +793,13 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   // META-ORCH-1161 Sub-A.2 (DEC-186) — single source of the Pay-button gate so
   // the visual disabled state, the pointer-events pass-through, and the
   // tap-capture overlay all agree.
-  const continueDisabled = isContinueDisabled({
-    fieldsValid: validation.isValid,
-    termsAccepted,
-    submitting,
-  });
+  const continueDisabled =
+    !authReady ||
+    isContinueDisabled({
+      fieldsValid: validation.isValid,
+      termsAccepted,
+      submitting,
+    });
 
   if (event === null || hasNoLines) {
     // Render an empty shell — useEffect above redirects on the next tick.
@@ -892,11 +966,17 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         <Pressable
           onPress={toggleTerms}
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: termsAccepted }}
-          accessibilityLabel="I agree to all terms and conditions and to receive booking confirmations, reminders, account updates, and marketing from Mingla and the businesses I book with by email, push, and text."
+          accessibilityState={{ checked: termsAccepted, disabled: !authReady }}
+          accessibilityLabel={`${CONSENT_VISIBLE_LABEL_PREFIX}${CONSENT_VISIBLE_LABEL_LINK}${
+            signedInBuyer
+              ? consentVisibleLabelSuffix(brand?.displayName)
+              : GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
+          }`}
+          disabled={!authReady}
           style={({ pressed }) => [
             styles.checkboxRow,
             pressed && styles.checkboxRowPressed,
+            !authReady && styles.checkboxRowPressed,
           ]}
         >
           <View
@@ -920,7 +1000,17 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             >
               {CONSENT_VISIBLE_LABEL_LINK}
             </Text>
-            {CONSENT_VISIBLE_LABEL_SUFFIX}
+            {signedInBuyer ? (
+              <>
+                {CONSENT_VISIBLE_FOLLOW_BEFORE}
+                <Text style={styles.checkboxFollowBrand}>
+                  {resolveConsentBrandName(brand?.displayName)}
+                </Text>
+                {CONSENT_VISIBLE_FOLLOW_AFTER}
+              </>
+            ) : (
+              GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
+            )}
           </Text>
         </Pressable>
         {consentHintVisible && !termsAccepted ? (
@@ -983,6 +1073,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           acceptTerms();
           setTermsSheetVisible(false);
         }}
+        bodyText={consentTermsBody(signedInBuyer)}
       />
     </View>
   );
@@ -1140,6 +1231,11 @@ const styles = StyleSheet.create({
     color: accent.warm,
     fontWeight: "600",
     textDecorationLine: "underline",
+  },
+  // #3682 contract b — brand phrase is the only emphasis in the label (600 / white).
+  checkboxFollowBrand: {
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   // Red flash on the box when the buyer taps a disabled Pay with the box
   // unchecked (DESIGN §S3.4 — never a silent dead tap).

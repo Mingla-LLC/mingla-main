@@ -39,7 +39,10 @@ import { MapboxAddressInput, type PlaceDetails } from './location/MapboxAddressI
 import { sendOtp, verifyOtp, OtpChannel } from '../services/otpService'
 // META-ORCH-1161 Sub-A.2 (DEC-186) — bundled-mandatory consent writer + verbatim disclosure.
 import { recordConsent } from '../services/consentService'
-import { CONSENT_DISCLOSURE_TEXT, DISCLOSURE_VERSION } from '../constants/consentDisclosure'
+import {
+  ONBOARDING_CONSENT_DISCLOSURE_TEXT,
+  ONBOARDING_DISCLOSURE_VERSION,
+} from '../constants/consentDisclosure'
 import { logger } from '../utils/logger'
 // ORCH-1258 (Apple 2.1): ATT must be the FIRST permission prompt. The onboarding
 // location request awaits whenAttResolved() so location can NEVER precede the ATT
@@ -1415,10 +1418,13 @@ const OnboardingFlow = ({
           const { data: authData } = await supabase.auth.getUser()
           const grantedUserId = authData?.user?.id ?? null
           const grantedEmail = authData?.user?.email ?? null
+          // Onboarding checkbox still shows `onboarding:phone.consent_*` copy
+          // (no Follow clause). Record that disclosure + the pre-follow
+          // version pin — do not claim the checkout Follow §1b the user never saw.
           const consentResult = await recordConsent({
             source: 'onboarding',
-            disclosureText: CONSENT_DISCLOSURE_TEXT,
-            disclosureVersion: DISCLOSURE_VERSION,
+            disclosureText: ONBOARDING_CONSENT_DISCLOSURE_TEXT,
+            disclosureVersion: ONBOARDING_DISCLOSURE_VERSION,
             phone: buildE164(),
             email: grantedEmail,
             countryCode: data.phoneCountryCode,

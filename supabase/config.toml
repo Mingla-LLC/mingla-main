@@ -470,6 +470,11 @@ verify_jwt = false
 [functions.self-serve-unsubscribe]
 verify_jwt = false
 
+# #3682 Wave 2.4 — one-tap follow/unfollow from ticket confirmation emails.
+# Public HTML landing; auth is the HS256 token (not a user JWT).
+[functions.brand-follow-action]
+verify_jwt = false
+
 # ORCH-1271 — admin-write-primitive is the audited-write PRIMITIVE prover (and
 # the wave-2 skeleton for Stripe-touching admin actions). verify_jwt=true: the
 # gateway rejects callers with no JWT (401); the fn then re-verifies the JWT is

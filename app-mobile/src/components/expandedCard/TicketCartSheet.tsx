@@ -15,7 +15,7 @@
  *   3. Tier rows (one per visible+available ticket, sorted by displayOrder),
  *      rendered via `<QuantityRow>` from `@mingla/offering-rendering` with a
  *      dark-mode theme override + `ConsumerCartCard` host wrapper.
- *   4. Marketing opt-in checkbox (default unchecked, GDPR/CAN-SPAM compliance).
+ *   4. Bundled consent checkbox (#3682 Follow when signed-in; guest copy otherwise).
  *   5. Buyer recap card (read-only Name / Email / Phone, from auth profile).
  *   6. Sticky bottom bar: Subtotal label + value, primary CTA.
  *
@@ -31,8 +31,10 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -74,6 +76,21 @@ import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 // issue #2265 — TYPE ONLY. A value import here would pull the Stripe native SDK
 // into the cart sheet's module graph; `import type` is erased at compile time.
 import type { NativeCheckoutPhase } from "../../payments/nativeCheckoutFlow";
+import {
+  CONSENT_VISIBLE_FOLLOW_AFTER,
+  CONSENT_VISIBLE_FOLLOW_BEFORE,
+  CONSENT_VISIBLE_LABEL_LINK,
+  CONSENT_VISIBLE_LABEL_PREFIX,
+  DISCLOSURE_VERSION,
+  GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT,
+  GUEST_CHECKOUT_DISCLOSURE_VERSION,
+  GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX,
+  consentDisclosureText,
+  consentTermsBody,
+  consentVisibleLabelSuffix,
+  resolveConsentBrandName,
+} from "../../constants/consentDisclosure";
+import { recordConsent } from "../../services/consentService";
 import { Icon } from "../ui/Icon";
 // ORCH-1025 [Seamless native consumer cart] — the buyer billing-address +
 // "Calculate tax" gate (CartTaxPreview) is RETIRED. Tax is computed server-side
@@ -259,6 +276,10 @@ export interface TicketCartSheetProps {
   buyerName: string;
   buyerEmail: string;
   buyerPhone: string;
+  /** #3682 — brand name for Follow disclosure; omitted → "this brand". */
+  brandName?: string | null;
+  /** #3682 — signed-in account id when auto-follow can run; null for guests. */
+  buyerUserId?: string | null;
   /** True while the upstream `runNativeCheckout` is in flight. */
   isSubmitting: boolean;
   /**
@@ -321,7 +342,7 @@ export interface TicketCartSheetProps {
 
 export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   visible,
-  eventId: _eventId,
+  eventId,
   tickets,
   fallbackCurrency,
   initialTicketTypeId,
@@ -331,6 +352,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   buyerName,
   buyerEmail,
   buyerPhone,
+  brandName = null,
+  buyerUserId = null,
   isSubmitting,
   pendingPhase = null,
   clearFloatingNav = true,
@@ -353,7 +376,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const { lines, totals, setLineQuantity, reset } = useTicketCart(
     fallbackCurrency,
   );
+  // #3682 — bundled consent (Follow when signed-in). ORCH-0847 gate requires
+  // this exact `useState<boolean>(false)` shape for marketingOptIn.
   const [marketingOptIn, setMarketingOptIn] = useState<boolean>(false);
+  const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
+  const [termsSheetVisible, setTermsSheetVisible] = useState<boolean>(false);
+  const signedInBuyer =
+    typeof buyerUserId === "string" && buyerUserId.length > 0;
+  const termsAccepted = marketingOptIn;
   // ORCH-1025 — "What's included" breakdown panel expand/collapse.
   const [breakdownOpen, setBreakdownOpen] = useState<boolean>(false);
   const [highlightUnchosen, setHighlightUnchosen] = useState<boolean>(false);
@@ -566,6 +596,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       lastOpenSeedRef.current = null;
       reset();
       setMarketingOptIn(false);
+      setConsentHintVisible(false);
+      setTermsSheetVisible(false);
       setHighlightUnchosen(false);
       setIntakeAnswers({});
       setIntakeErrors({});
@@ -639,6 +671,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     }
     if (totals.isEmpty) return;
     if (hasUnsupportedRequired) return;
+    if (!termsAccepted) {
+      setConsentHintVisible(true);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
 
     // ORCH-1016 REWORK (D2) — required-field validation BEFORE payment.
     // Mirrors the business validator AND the edge fn's required gate so the
@@ -673,6 +710,20 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     );
 
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // Non-blocking audit write — checkbox act already constitutes consent.
+    void recordConsent({
+      source: "checkout",
+      disclosureText: signedInBuyer
+        ? consentDisclosureText(brandName)
+        : GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT,
+      disclosureVersion: signedInBuyer
+        ? DISCLOSURE_VERSION
+        : GUEST_CHECKOUT_DISCLOSURE_VERSION,
+      phone: buyerPhone,
+      email: buyerEmail,
+      userId: signedInBuyer ? buyerUserId : null,
+      eventId,
+    }).catch(() => undefined);
     // ORCH-1025 — payload omits `address` and `taxCalculationId` (G-2). The
     // all-in total (derived only from server all_in_cents) rides as `totalCents`
     // for the paid/free branch + telemetry; the charge is the PI amount.
@@ -698,11 +749,18 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     totals.isEmpty,
     isSubmitting,
     hasUnsupportedRequired,
+    termsAccepted,
+    marketingOptIn,
+    signedInBuyer,
+    brandName,
+    buyerUserId,
+    buyerPhone,
+    buyerEmail,
+    eventId,
     selectedSchemaTiers,
     intakeAnswers,
     intakeSchemasByTier,
     lines,
-    marketingOptIn,
     pricing.allInCents,
     multiDaySelection,
     onCheckout,
@@ -759,7 +817,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     dayTruthUnavailable ||
     (!missingRequiredDay && totals.isEmpty) ||
     isSubmitting ||
-    hasUnsupportedRequired;
+    hasUnsupportedRequired ||
+    !termsAccepted;
   const ctaPressDisabled =
     isSubmitting || hasUnsupportedRequired || dayTruthUnavailable ||
     (!missingRequiredDay && totals.isEmpty);
@@ -945,12 +1004,22 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           </View>
         ) : ticketRows}
 
-        {/* Marketing opt-in */}
+        {/* #3682 — bundled consent (Follow when signed-in). */}
         <Pressable
-          onPress={() => setMarketingOptIn((v) => !v)}
+          onPress={() => {
+            setMarketingOptIn((v) => {
+              const next = !v;
+              if (next) setConsentHintVisible(false);
+              return next;
+            });
+          }}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: marketingOptIn }}
-          accessibilityLabel="Email me about this organiser’s future events"
+          accessibilityLabel={`${CONSENT_VISIBLE_LABEL_PREFIX}${CONSENT_VISIBLE_LABEL_LINK}${
+            signedInBuyer
+              ? consentVisibleLabelSuffix(brandName)
+              : GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
+          }`}
           disabled={isSubmitting}
           style={({ pressed }) => [
             styles.checkboxRow,
@@ -961,6 +1030,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             style={[
               styles.checkboxBox,
               marketingOptIn && styles.checkboxBoxChecked,
+              consentHintVisible && !marketingOptIn && styles.checkboxBoxFlash,
             ]}
           >
             {marketingOptIn ? (
@@ -968,9 +1038,73 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             ) : null}
           </View>
           <Text style={styles.checkboxLabel}>
-            Email me about this organiser’s future events
+            {CONSENT_VISIBLE_LABEL_PREFIX}
+            <Text
+              style={styles.checkboxLink}
+              onPress={() => setTermsSheetVisible(true)}
+              accessibilityRole="link"
+              accessibilityLabel="Open all terms and conditions"
+            >
+              {CONSENT_VISIBLE_LABEL_LINK}
+            </Text>
+            {signedInBuyer ? (
+              <>
+                {CONSENT_VISIBLE_FOLLOW_BEFORE}
+                <Text style={styles.checkboxFollowBrand}>
+                  {resolveConsentBrandName(brandName)}
+                </Text>
+                {CONSENT_VISIBLE_FOLLOW_AFTER}
+              </>
+            ) : (
+              GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
+            )}
           </Text>
         </Pressable>
+        {consentHintVisible && !marketingOptIn ? (
+          <Text style={styles.consentRequiredHint}>
+            Please agree to continue.
+          </Text>
+        ) : null}
+        <Modal
+          visible={termsSheetVisible}
+          animationType="fade"
+          transparent
+          onRequestClose={() => setTermsSheetVisible(false)}
+        >
+          <View style={styles.termsSheetScrim}>
+            <View style={styles.termsSheetCard}>
+              <Text style={styles.termsSheetTitle}>Terms &amp; Conditions</Text>
+              <ScrollView
+                style={styles.termsSheetScroll}
+                contentContainerStyle={styles.termsSheetScrollContent}
+              >
+                <Text style={styles.termsSheetBody}>
+                  {consentTermsBody(signedInBuyer)}
+                </Text>
+              </ScrollView>
+              <Pressable
+                onPress={() => {
+                  setMarketingOptIn(true);
+                  setConsentHintVisible(false);
+                  setTermsSheetVisible(false);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="I agree"
+                style={styles.termsSheetAgree}
+              >
+                <Text style={styles.termsSheetAgreeLabel}>I agree</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setTermsSheetVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close terms"
+                style={styles.termsSheetClose}
+              >
+                <Text style={styles.termsSheetCloseLabel}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
 
         {/* Buyer recap */}
         <ConsumerCartCard style={styles.recapCard}>
@@ -1307,6 +1441,71 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.72)",
     lineHeight: 20,
+  },
+  checkboxLink: {
+    color: "#eb7825",
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
+  checkboxFollowBrand: {
+    fontWeight: "600",
+    color: "#ffffff",
+  },
+  checkboxBoxFlash: {
+    borderColor: "#ef4444",
+  },
+  consentRequiredHint: {
+    marginTop: 6,
+    fontSize: 12,
+    color: "#ef4444",
+    fontWeight: "500",
+  },
+  termsSheetScrim: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.72)",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  termsSheetCard: {
+    backgroundColor: "#16181d",
+    borderRadius: 16,
+    padding: 20,
+    maxHeight: "80%",
+  },
+  termsSheetTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#ffffff",
+    marginBottom: 12,
+  },
+  termsSheetScroll: { maxHeight: 360 },
+  termsSheetScrollContent: { paddingBottom: 12 },
+  termsSheetBody: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: "rgba(255,255,255,0.72)",
+  },
+  termsSheetAgree: {
+    marginTop: 12,
+    backgroundColor: "#eb7825",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  termsSheetAgreeLabel: {
+    color: "#ffffff",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  termsSheetClose: {
+    marginTop: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  termsSheetCloseLabel: {
+    color: "rgba(255,255,255,0.72)",
+    fontWeight: "600",
+    fontSize: 14,
   },
   // Buyer recap
   recapCard: {

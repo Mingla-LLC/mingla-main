@@ -30,7 +30,18 @@ export interface TicketBodyInput {
   brand: {
     name: string;
     profilePhotoUrl: string | null;
+    /** Optional public slug for Follow-again / brand page links (#3682 d). */
+    slug?: string | null;
   };
+  /**
+   * #3682 Wave 2.4 — follow status + one-tap unfollow in ticket / order emails.
+   * Omit when the dispatcher could not mint a token (signed-out / misconfig).
+   */
+  follow?: {
+    unfollowUrl: string | null;
+    followUrl: string | null;
+    reason?: "purchase" | "rsvp" | "booking";
+  } | null;
   order: {
     id: string;
     shortId: string;

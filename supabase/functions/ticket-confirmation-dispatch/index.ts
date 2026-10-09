@@ -47,6 +47,14 @@ import { ticketPdfStoragePath } from "../_shared/ticketPdfPath.ts";
 // ORCH-0859 (Tr2): trip-shaped confirmation email helper. Used only when
 // event_type='trip' — event_type='event' path unchanged.
 import { renderTripConfirmationEmail } from "../_shared/email/tripConfirmationEmail.ts";
+import {
+  brandFollowActionPublicUrl,
+  signBrandFollowToken,
+} from "../_shared/brandFollowTokens.ts";
+import {
+  PRODUCTION_BUSINESS_WEB_ORIGIN,
+} from "../_shared/businessWebOrigin.ts";
+import { resolveBrandPublicUrl } from "../_shared/brandPublicUrl.ts";
 // ORCH-1195 FIX 4 — experience-shaped confirmation (includes the itinerary/stops).
 import { renderExperienceConfirmationEmail } from "../_shared/email/experienceConfirmationEmail.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
@@ -239,6 +247,8 @@ interface OrderJoin {
       // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline]: brand contact_email
       // surfaced to refund/cancel email body adapters via BuyerContext.organizerEmail.
       contact_email: string | null;
+      /** #3682 d — public slug for Follow-again / brand page links. */
+      slug: string | null;
     };
   };
 }
@@ -784,6 +794,7 @@ function buildRenderContext(args: {
     brand: {
       name: order.events.brands.name ?? "your host",
       profilePhotoUrl: order.events.brands.profile_photo_url ?? null,
+      slug: order.events.brands.slug ?? null,
     },
     order: {
       id: order.id,
@@ -815,6 +826,70 @@ function buildRenderContext(args: {
   }));
 
   return { bodyInput, ticketsForPdf };
+}
+
+/**
+ * #3682 Wave 2.4 — mint one-tap unfollow only when the follow row already
+ * exists (auto-follow is async / fire-and-forget on some finalize paths).
+ * Otherwise offer a brand-page Follow CTA. Fail-open: never block dispatch.
+ */
+async function attachTicketFollowBlock(
+  supabase: ReturnType<typeof serviceClient>,
+  bodyInput: TicketBodyInput,
+  order: OrderJoin,
+): Promise<TicketBodyInput> {
+  const brandId = order.events.brands.id ?? order.events.brand_id;
+  const brandSlug = order.events.brands.slug ?? null;
+  const brandPageUrl = resolveBrandPublicUrl({
+    origin: PRODUCTION_BUSINESS_WEB_ORIGIN,
+    slug: brandSlug,
+  });
+  const userId = typeof order.buyer_user_id === "string"
+    ? order.buyer_user_id.trim()
+    : "";
+
+  if (userId.length > 0 && typeof brandId === "string" && brandId.length > 0) {
+    try {
+      const { data: followRow } = await supabase
+        .from("brand_follows")
+        .select("brand_id")
+        .eq("user_id", userId)
+        .eq("brand_id", brandId)
+        .maybeSingle();
+      if (followRow !== null) {
+        const token = await signBrandFollowToken({
+          action: "unfollow",
+          brand_id: brandId,
+          user_id: userId,
+        });
+        return {
+          ...bodyInput,
+          follow: {
+            unfollowUrl: brandFollowActionPublicUrl(token),
+            followUrl: null,
+            reason: "purchase",
+          },
+        };
+      }
+    } catch (err) {
+      console.warn(
+        "[ticket-confirmation-dispatch] follow token mint failed (non-fatal)",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  if (brandPageUrl !== null) {
+    return {
+      ...bodyInput,
+      follow: {
+        unfollowUrl: null,
+        followUrl: brandPageUrl,
+        reason: "purchase",
+      },
+    };
+  }
+  return bodyInput;
 }
 
 // ORCH-0869 (Tr3) Stage 1b helpers — kind-routed installment email senders.
@@ -1073,7 +1148,7 @@ export const handler = async (req: Request): Promise<Response> => {
         brand_id,
         event_type,
         theme,
-        brands!inner ( id, name, profile_photo_url, contact_email )
+        brands!inner ( id, name, profile_photo_url, contact_email, slug )
       )
     `)
     .eq("id", orderId)
@@ -1134,7 +1209,7 @@ export const handler = async (req: Request): Promise<Response> => {
     "[ticket-confirmation-dispatch]",
   );
 
-  const context = buildRenderContext({
+  const contextBase = buildRenderContext({
     order,
     lineItems: (lineItems ?? []) as unknown as Array<{
       quantity: number | null;
@@ -1160,6 +1235,15 @@ export const handler = async (req: Request): Promise<Response> => {
       }
       | null,
   });
+  const bodyWithFollow = await attachTicketFollowBlock(
+    supabase,
+    contextBase.bodyInput,
+    order,
+  );
+  const context: RenderContext = {
+    ...contextBase,
+    bodyInput: bodyWithFollow,
+  };
 
   const ticketCount = context.bodyInput.order.tickets.length;
   const eventTitle = context.bodyInput.event.title;
@@ -1241,36 +1325,41 @@ export const handler = async (req: Request): Promise<Response> => {
         ?.business_trip as
           | Record<string, unknown>
           | undefined) ?? {};
+      // #3524 A8 — keep the exact direct-call shape on one line.
+      // #3682 Wave 2.4 — follow is a first-class input on the trip template
+      // (inside the 600px shell), not a post-</body> splice.
       renderEmailBody = (appCtaClaimUrl) => renderTripConfirmationEmail({
-        appCtaClaimUrl,
-        recipient: {
-          name: order.buyer_name,
-          email: order.buyer_email ?? "",
-        },
-        trip: {
-          title: context.bodyInput.event.title,
-          startAtIso: typeof themeBT.startAt === "string"
-            ? themeBT.startAt
-            : null,
-          endAtIso: typeof themeBT.endAt === "string" ? themeBT.endAt : null,
-          destinationText: typeof themeBT.destinationLocationText === "string"
-            ? themeBT.destinationLocationText
-            : null,
-          timezone: context.bodyInput.event.timezone,
-          days: tripDays,
-          inclusions: tripInclusions,
-        },
-        brand: {
-          name: context.bodyInput.brand.name,
-          profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
-        },
-        order: {
-          id: context.bodyInput.order.id,
-          shortId: context.bodyInput.order.shortId,
-          totalCents: order.total_cents,
-          currency: order.currency,
-        },
-      });
+          appCtaClaimUrl,
+          follow: context.bodyInput.follow,
+          recipient: {
+            name: order.buyer_name,
+            email: order.buyer_email ?? "",
+          },
+          trip: {
+            title: context.bodyInput.event.title,
+            startAtIso: typeof themeBT.startAt === "string"
+              ? themeBT.startAt
+              : null,
+            endAtIso: typeof themeBT.endAt === "string" ? themeBT.endAt : null,
+            destinationText:
+              typeof themeBT.destinationLocationText === "string"
+                ? themeBT.destinationLocationText
+                : null,
+            timezone: context.bodyInput.event.timezone,
+            days: tripDays,
+            inclusions: tripInclusions,
+          },
+          brand: {
+            name: context.bodyInput.brand.name,
+            profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
+          },
+          order: {
+            id: context.bodyInput.order.id,
+            shortId: context.bodyInput.order.shortId,
+            totalCents: order.total_cents,
+            currency: order.currency,
+          },
+        });
     } else if (isExperience) {
       // ORCH-1195 FIX 4 — experiences emailed via the generic event template
       // before this, so the itinerary/stops were missing. Fetch the stops and
@@ -1288,36 +1377,38 @@ export const handler = async (req: Request): Promise<Response> => {
         start_time: string | null;
         price_cents: number | null;
       }>;
+      // #3524 A8 — keep the exact direct-call shape on one line.
       renderEmailBody = (appCtaClaimUrl) => renderExperienceConfirmationEmail({
-        appCtaClaimUrl,
-        recipient: {
-          name: order.buyer_name,
-          email: order.buyer_email ?? "",
-        },
-        experience: {
-          title: context.bodyInput.event.title,
-          dateIso: context.bodyInput.event.startAt,
-          timezone: context.bodyInput.event.timezone,
-          venueText: context.bodyInput.event.locationText,
-          stops: expStops.map((s) => ({
-            stopOrder: s.stop_order,
-            placeName: s.place_name,
-            address: s.address,
-            startTime: s.start_time,
-            priceCents: s.price_cents,
-          })),
-        },
-        brand: {
-          name: context.bodyInput.brand.name,
-          profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
-        },
-        order: {
-          id: context.bodyInput.order.id,
-          shortId: context.bodyInput.order.shortId,
-          totalCents: order.total_cents,
-          currency: order.currency,
-        },
-      });
+          appCtaClaimUrl,
+          follow: context.bodyInput.follow,
+          recipient: {
+            name: order.buyer_name,
+            email: order.buyer_email ?? "",
+          },
+          experience: {
+            title: context.bodyInput.event.title,
+            dateIso: context.bodyInput.event.startAt,
+            timezone: context.bodyInput.event.timezone,
+            venueText: context.bodyInput.event.locationText,
+            stops: expStops.map((s) => ({
+              stopOrder: s.stop_order,
+              placeName: s.place_name,
+              address: s.address,
+              startTime: s.start_time,
+              priceCents: s.price_cents,
+            })),
+          },
+          brand: {
+            name: context.bodyInput.brand.name,
+            profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
+          },
+          order: {
+            id: context.bodyInput.order.id,
+            shortId: context.bodyInput.order.shortId,
+            totalCents: order.total_cents,
+            currency: order.currency,
+          },
+        });
     } else {
       renderEmailBody = (appCtaClaimUrl) => renderTransactionalEmail({
         variant: context.bodyInput.variant,

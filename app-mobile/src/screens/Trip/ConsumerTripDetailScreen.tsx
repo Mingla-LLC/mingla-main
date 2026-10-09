@@ -1232,6 +1232,8 @@ export default function ConsumerTripDetailScreen({
         }
         buyerEmail={user?.email ?? profile?.email ?? ""}
         buyerPhone={profile?.phone ?? ""}
+        brandName={seed?.brandName ?? null}
+        buyerUserId={user?.id ?? null}
         isSubmitting={checkoutInFlight}
         pendingPhase={checkoutPhase}
         clearFloatingNav={false}

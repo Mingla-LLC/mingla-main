@@ -114,3 +114,87 @@ describe("#2689 REVERT GUARD", () => {
     expect(head).not.toContain("await ");
   });
 });
+
+// #3682 Wave 2.4 — trip/experience buyers also await recordConsent before the
+// free create / navigate. Same #2689 ordering defect applies on those routes.
+const EXPERIENCE_BUYER = readFileSync(
+  join(
+    __dirname,
+    "../../../app/checkout-experience/[experienceEventId]/buyer.tsx",
+  ),
+  "utf8",
+);
+const TRIP_BUYER = readFileSync(
+  join(__dirname, "../../../app/checkout-trip/[tripEventId]/buyer.tsx"),
+  "utf8",
+);
+
+describe("#2689 / #3682 experience buyer claims submit before consent await", () => {
+  it("claims the guard and shows the spinner BEFORE the consent round trip", () => {
+    const claim = EXPERIENCE_BUYER.indexOf("submitInFlight.current = true;");
+    const spinner = EXPERIENCE_BUYER.indexOf("setSubmitting(true);");
+    const consent = EXPERIENCE_BUYER.indexOf("await recordConsent({");
+    expect(claim).toBeGreaterThanOrEqual(0);
+    expect(spinner).toBeGreaterThanOrEqual(0);
+    expect(consent).toBeGreaterThanOrEqual(0);
+    expect(claim).toBeLessThan(consent);
+    expect(spinner).toBeLessThan(consent);
+  });
+
+  it("guards with a REF and releases on free finally + after paid push", () => {
+    expect(EXPERIENCE_BUYER).toContain(
+      "const submitInFlight = useRef<boolean>(false);",
+    );
+    expect(EXPERIENCE_BUYER).toContain("if (submitInFlight.current) return;");
+    const free = EXPERIENCE_BUYER.indexOf("if (totals.isFree) {");
+    expect(free).toBeGreaterThanOrEqual(0);
+    expect(EXPERIENCE_BUYER.indexOf("submitInFlight.current = false;", free)).toBeGreaterThan(
+      free,
+    );
+    const push = EXPERIENCE_BUYER.indexOf(
+      "router.push(`/checkout-experience/${experienceEventId}/payment` as never);",
+    );
+    expect(push).toBeGreaterThanOrEqual(0);
+    const release = EXPERIENCE_BUYER.indexOf(
+      "submitInFlight.current = false;",
+      push,
+    );
+    expect(release).toBeGreaterThan(push);
+    expect(release - push).toBeLessThan(120);
+  });
+});
+
+describe("#2689 / #3682 trip buyer claims submit before consent await", () => {
+  it("claims the guard and shows the spinner BEFORE the consent round trip", () => {
+    const handler = TRIP_BUYER.indexOf("const handleContinue = useCallback(");
+    expect(handler).toBeGreaterThanOrEqual(0);
+    const claim = TRIP_BUYER.indexOf("submitInFlight.current = true;", handler);
+    const spinner = TRIP_BUYER.indexOf("setSubmitting(true);", handler);
+    const consent = TRIP_BUYER.indexOf("await recordConsent({", handler);
+    expect(claim).toBeGreaterThanOrEqual(0);
+    expect(spinner).toBeGreaterThanOrEqual(0);
+    expect(consent).toBeGreaterThanOrEqual(0);
+    expect(claim).toBeLessThan(consent);
+    expect(spinner).toBeLessThan(consent);
+    const head = TRIP_BUYER.slice(handler, claim);
+    expect(head).not.toContain("await ");
+  });
+
+  it("releases the guard on non-submit navigation branches", () => {
+    expect(TRIP_BUYER).toContain("const submitInFlight = useRef<boolean>(false);");
+    const intake = TRIP_BUYER.indexOf(
+      "router.push(`/checkout-trip/${tripEventId}/intake` as never);",
+    );
+    expect(intake).toBeGreaterThanOrEqual(0);
+    expect(TRIP_BUYER.indexOf("submitInFlight.current = false;", intake)).toBeGreaterThan(
+      intake,
+    );
+    const payment = TRIP_BUYER.indexOf(
+      "router.push(`/checkout-trip/${tripEventId}/payment` as never);",
+    );
+    expect(payment).toBeGreaterThanOrEqual(0);
+    expect(
+      TRIP_BUYER.indexOf("submitInFlight.current = false;", payment),
+    ).toBeGreaterThan(payment);
+  });
+});

@@ -9,6 +9,10 @@ import { formatMoneyFromCents, formatMoneyOrFree } from "./currency.ts";
 import { SHELL_TOKENS } from "./shell.ts";
 import { ticketCopyFor } from "./copy.ts";
 import { buildCalendarLinks, renderCalendarBlockHtml } from "./calendar.ts";
+import {
+  renderTicketFollowBlockHtml,
+  ticketFollowTextLines,
+} from "./ticketFollow.ts";
 import type { TicketBodyInput } from "./types.ts";
 
 const {
@@ -231,6 +235,16 @@ export function renderTicketBody(
     ${renderLineItems(input.order)}
     ${orderShortLineHtml}
     ${renderCalendarSection(input)}
+    ${
+      input.follow
+        ? renderTicketFollowBlockHtml({
+          brandName: input.brand.name,
+          unfollowUrl: input.follow.unfollowUrl,
+          followUrl: input.follow.followUrl,
+          reason: input.follow.reason,
+        })
+        : ""
+    }
     ${renderDownloadAppCta(appCtaClaimUrl)}`;
 
   const totalText = input.order.totalCents > 0
@@ -263,6 +277,17 @@ export function renderTicketBody(
     vatNoteText,
     "",
     `Order #${input.order.shortId}`,
+    ...(input.follow
+      ? [
+        "",
+        ...ticketFollowTextLines({
+          brandName: input.brand.name,
+          unfollowUrl: input.follow.unfollowUrl,
+          followUrl: input.follow.followUrl,
+          reason: input.follow.reason,
+        }),
+      ]
+      : []),
     // #2240 — the SAME working link the HTML body carries, from the same
     // resolver and the same `appCtaClaimUrl`, so the two bodies cannot diverge.
     appCtaTextLine(

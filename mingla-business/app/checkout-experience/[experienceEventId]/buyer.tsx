@@ -20,6 +20,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -75,6 +76,22 @@ import {
   freeCheckoutErrorMessage,
   isFreeReservationAlreadyExists,
 } from "../../../src/services/ticketCheckoutService";
+import { recordConsent } from "../../../src/services/consentService";
+import {
+  CONSENT_VISIBLE_FOLLOW_AFTER,
+  CONSENT_VISIBLE_FOLLOW_BEFORE,
+  CONSENT_VISIBLE_LABEL_LINK,
+  CONSENT_VISIBLE_LABEL_PREFIX,
+  DISCLOSURE_VERSION,
+  GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT,
+  GUEST_CHECKOUT_DISCLOSURE_VERSION,
+  GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX,
+  consentDisclosureText,
+  consentTermsBody,
+  consentVisibleLabelSuffix,
+  resolveConsentBrandName,
+} from "../../../src/constants/consentDisclosure";
+import { supabase } from "../../../src/services/supabase";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -86,6 +103,11 @@ import {
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { ConsentTermsSheet } from "../../../src/components/checkout/ConsentTermsSheet";
+import {
+  isContinueDisabled,
+  shouldShowConsentHintOnDisabledTap,
+} from "../../../src/components/checkout/checkoutConsentGate";
 
 import {
   PhoneInput,
@@ -186,11 +208,73 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
 
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
+  const experienceBrand = query.data?.brand ?? null;
+  const brandDisplayName = experienceBrand?.name ?? null;
   const { lines, buyer, setBuyer, recordResult } = useCart();
   const totals = useCartTotals();
 
   const [submitting, setSubmitting] = useState<boolean>(false);
+  // issue #2689 — synchronous re-entry guard (ref, not batched state). Consent
+  // is awaited before createTicketCheckout; without this claim two taps both
+  // enter the free rail. Mirrors checkout/[eventId]/buyer.tsx.
+  const submitInFlight = useRef<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const termsAccepted = buyer.termsAccepted === true;
+  const [termsSheetVisible, setTermsSheetVisible] = useState<boolean>(false);
+  const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
+  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [signedInBuyer, setSignedInBuyer] = useState<boolean>(false);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const acceptedGrantRef = useRef<{
+    followCapable: boolean;
+    userId: string | null;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => supabase.auth?.getSession?.())
+      .then((result) => {
+        if (cancelled) return;
+        const id = result?.data?.session?.user?.id;
+        const readyId = typeof id === "string" && id.length > 0 ? id : null;
+        setSessionUserId(readyId);
+        setSignedInBuyer(readyId !== null);
+        setAuthReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSessionUserId(null);
+          setSignedInBuyer(false);
+          setAuthReady(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const acceptTerms = useCallback((): void => {
+    if (!authReady) return;
+    acceptedGrantRef.current = {
+      followCapable: signedInBuyer,
+      userId: sessionUserId,
+    };
+    setBuyer({ termsAccepted: true, marketingOptIn: true });
+    setConsentHintVisible(false);
+  }, [authReady, sessionUserId, setBuyer, signedInBuyer]);
+  const toggleTerms = useCallback((): void => {
+    if (!authReady) return;
+    const next = !(buyer.termsAccepted === true);
+    if (next) {
+      acceptedGrantRef.current = {
+        followCapable: signedInBuyer,
+        userId: sessionUserId,
+      };
+    } else {
+      acceptedGrantRef.current = null;
+    }
+    setBuyer({ termsAccepted: next, marketingOptIn: next });
+    if (next) setConsentHintVisible(false);
+  }, [authReady, buyer.termsAccepted, sessionUserId, setBuyer, signedInBuyer]);
 
   const [nameTouched, setNameTouched] = useState<boolean>(false);
   const [emailTouched, setEmailTouched] = useState<boolean>(false);
@@ -271,16 +355,66 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     }
   }, [router, experienceEventId]);
 
+  const showConsentHint = useCallback((): void => {
+    setNameTouched(true);
+    setEmailTouched(true);
+    setPhoneTouched(true);
+    if (
+      shouldShowConsentHintOnDisabledTap({
+        fieldsValid: validation.isValid,
+        termsAccepted,
+      })
+    ) {
+      setConsentHintVisible(true);
+    }
+  }, [termsAccepted, validation.isValid]);
+
   const handleContinue = useCallback(async (): Promise<void> => {
     setNameTouched(true);
     setEmailTouched(true);
     setPhoneTouched(true);
     if (!validation.isValid) return;
+    if (!termsAccepted) {
+      setConsentHintVisible(true);
+      return;
+    }
     if (experienceEventId === null) return;
+    // issue #2689 — claim before the consent network round trip (re-entry window).
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
+    setSubmitting(true);
     setSubmitError(null);
+    try {
+      const grant = acceptedGrantRef.current;
+      const followCapable = grant?.followCapable === true;
+      const buyerUserId = followCapable ? grant?.userId ?? null : null;
+      const consentResult = await recordConsent({
+        source: "checkout",
+        disclosureText: followCapable
+          ? consentDisclosureText(brandDisplayName)
+          : GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT,
+        disclosureVersion: followCapable
+          ? DISCLOSURE_VERSION
+          : GUEST_CHECKOUT_DISCLOSURE_VERSION,
+        phone: buyer.phone,
+        email: buyer.email,
+        countryCode: phoneCountry,
+        userId: buyerUserId,
+        eventId: experienceEventId,
+      });
+      if (!consentResult.ok) {
+        console.error(
+          "[checkout-experience-buyer] consent_records write failed (proceeding; checkbox act stands)",
+        );
+      }
+    } catch (consentErr) {
+      console.error(
+        "[checkout-experience-buyer] consent write threw",
+        consentErr,
+      );
+    }
     if (totals.isFree) {
       try {
-        setSubmitting(true);
         const result = await createTicketCheckout({
           eventId: experienceEventId,
           buyer,
@@ -321,24 +455,40 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
         }
         setSubmitError(freeCheckoutErrorMessage(error));
       } finally {
+        submitInFlight.current = false;
         setSubmitting(false);
       }
       return;
     }
+    // issue #2689 — release immediately after paid push so back cannot strand
+    // a mounted screen on a permanently dead button.
     router.push(`/checkout-experience/${experienceEventId}/payment` as never);
+    submitInFlight.current = false;
+    setSubmitting(false);
   }, [
     validation.isValid,
+    termsAccepted,
     experienceEventId,
     totals.isFree,
     lines,
     buyer,
     recordResult,
     router,
+    brandDisplayName,
+    phoneCountry,
   ]);
 
   const continueLabel = totals.isFree
     ? "Reserve free spot"
     : "Continue to payment";
+
+  const continueDisabled =
+    !authReady ||
+    isContinueDisabled({
+      fieldsValid: validation.isValid,
+      termsAccepted,
+      submitting,
+    });
 
   if (experience === null || hasNoLines) {
     return (
@@ -498,10 +648,15 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
         </View>
 
         <Pressable
-          onPress={() => setBuyer({ marketingOptIn: !buyer.marketingOptIn })}
+          onPress={toggleTerms}
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: buyer.marketingOptIn }}
-          accessibilityLabel="Email me about this organiser's future experiences and events"
+          accessibilityState={{ checked: termsAccepted, disabled: !authReady }}
+          accessibilityLabel={`${CONSENT_VISIBLE_LABEL_PREFIX}${CONSENT_VISIBLE_LABEL_LINK}${
+            signedInBuyer
+              ? consentVisibleLabelSuffix(brandDisplayName)
+              : GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
+          }`}
+          disabled={!authReady}
           style={({ pressed }) => [
             styles.checkboxRow,
             pressed && styles.checkboxRowPressed,
@@ -510,17 +665,42 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           <View
             style={[
               styles.checkboxBox,
-              buyer.marketingOptIn && styles.checkboxBoxChecked,
+              termsAccepted && styles.checkboxBoxChecked,
+              consentHintVisible && !termsAccepted && styles.checkboxBoxFlash,
             ]}
           >
-            {buyer.marketingOptIn ? (
+            {termsAccepted ? (
               <Icon name="check" size={14} color={textTokens.primary} />
             ) : null}
           </View>
           <Text style={styles.checkboxLabel}>
-            Email me about this organiser&apos;s future experiences and events
+            {CONSENT_VISIBLE_LABEL_PREFIX}
+            <Text
+              style={styles.checkboxLinkUnderlined}
+              onPress={() => setTermsSheetVisible(true)}
+              accessibilityRole="link"
+              accessibilityLabel="Open all terms and conditions"
+            >
+              {CONSENT_VISIBLE_LABEL_LINK}
+            </Text>
+            {signedInBuyer ? (
+              <>
+                {CONSENT_VISIBLE_FOLLOW_BEFORE}
+                <Text style={styles.checkboxFollowBrand}>
+                  {resolveConsentBrandName(brandDisplayName)}
+                </Text>
+                {CONSENT_VISIBLE_FOLLOW_AFTER}
+              </>
+            ) : (
+              GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
+            )}
           </Text>
         </Pressable>
+        {consentHintVisible && !termsAccepted ? (
+          <Text style={styles.consentRequiredHint}>
+            Please agree to continue.
+          </Text>
+        ) : null}
         {submitError !== null ? (
           <Text style={styles.errorText}>{submitError}</Text>
         ) : null}
@@ -541,16 +721,33 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
               : formatCurrency(totals.total, totals.currency)}
           </Text>
         </View>
-        <Button
-          label={continueLabel}
-          onPress={handleContinue}
-          variant="primary"
-          size="lg"
-          fullWidth
-          loading={submitting}
-          disabled={!validation.isValid || submitting}
-        />
+        <Pressable
+          onPress={continueDisabled ? showConsentHint : undefined}
+          accessibilityRole="button"
+          accessibilityLabel={continueLabel}
+        >
+          <View pointerEvents={continueDisabled ? "none" : "auto"}>
+            <Button
+              label={continueLabel}
+              onPress={handleContinue}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={submitting}
+              disabled={continueDisabled}
+            />
+          </View>
+        </Pressable>
       </View>
+      <ConsentTermsSheet
+        visible={termsSheetVisible}
+        onClose={() => setTermsSheetVisible(false)}
+        onAgree={() => {
+          acceptTerms();
+          setTermsSheetVisible(false);
+        }}
+        bodyText={consentTermsBody(signedInBuyer)}
+      />
     </View>
   );
 }
@@ -660,6 +857,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: textTokens.secondary,
     lineHeight: 20,
+  },
+  checkboxLinkUnderlined: {
+    color: accent.warm,
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
+  checkboxFollowBrand: {
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  checkboxBoxFlash: {
+    borderColor: semantic.error,
+  },
+  consentRequiredHint: {
+    marginTop: 6,
+    fontSize: 12,
+    color: semantic.error,
+    fontWeight: "500",
   },
   bottomBar: {
     position: "absolute",
