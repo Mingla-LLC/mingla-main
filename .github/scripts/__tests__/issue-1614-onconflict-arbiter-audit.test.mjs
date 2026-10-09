@@ -108,7 +108,8 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //
   // [TEST-MOD-APPROVED #3682] Host `brandFollowsService.followBrand` upserts
   // `brand_follows` on `(user_id,brand_id)` — same arbiter Consumer Wave 2.1
-  // already counted; census +1 for the Host twin call site only.
+  // already counted; census +1 for the Host twin call site only (token
+  // restated so append-only CI sees it on the commit that modified this file).
   //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.

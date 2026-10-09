@@ -57,12 +57,18 @@ export function SimpleConfirmDialog({
       onRequestClose={onClose}
       accessibilityViewIsModal
     >
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button">
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss"
+      >
         <Pressable
           style={styles.card}
           onPress={(event) => event.stopPropagation()}
           testID={testID}
           accessibilityRole="summary"
+          accessibilityLabel={title}
         >
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.description}>{description}</Text>

@@ -570,7 +570,7 @@ Deno.test("#1556 ADV-7 — the bubble body renders exactly once, inside the type
   // author body before the STOP footer (`smsBlastBodyWithFollow` →
   // `bodyWithFooter`). The footer owner remains `bodyWithFooter`; only the
   // argument is the Follow-augmented body so quote/preview/dispatch stay
-  // byte-aligned.
+  // byte-aligned. Token restated on the commit that amended ADV-7.
   assert(
     /const wire = bodyWithFooter\(bodyForWire\);/.test(paneSrc) &&
       paneSrc.includes("smsBlastBodyWithFollow"),

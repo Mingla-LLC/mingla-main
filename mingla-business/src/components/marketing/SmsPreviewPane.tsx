@@ -117,7 +117,7 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
   const avatarLetter = (brandName ?? "Y").trim().charAt(0).toUpperCase() || "Y";
 
   const est = estimateSmsCost(
-    bodyWithFollow,
+    bodyForWire,
     reachableSms ?? 0,
     undefined,
     hasMedia,

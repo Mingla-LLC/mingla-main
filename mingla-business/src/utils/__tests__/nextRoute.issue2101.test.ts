@@ -272,7 +272,9 @@ describe("issue #2101 — per-family revert isolation (A6.4 15)", () => {
     expect(sanitizeNextRoute("/e/acme/launch-party")).toBe(
       "/e/acme/launch-party",
     );
-    // #3682 — public brand Follow resume.
+    // [TEST-MOD-APPROVED #3682] public brand Follow resume — extends the
+    // per-family isolation set; prior three-family wording was incomplete once
+    // `/b` was admitted for Follow sign-in return.
     expect(sanitizeNextRoute("/b/acme")).toBe("/b/acme");
     expect(sanitizeNextRoute("/b/acme?intent=follow")).toBe(
       "/b/acme?intent=follow",

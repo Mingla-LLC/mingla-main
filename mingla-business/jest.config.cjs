@@ -402,6 +402,10 @@ module.exports = {
     // The @mingla/offering-rendering barrel eagerly re-exports RN component .tsx —
     // map to a mock that re-exports the REAL pure helpers + stubs the components.
     "^@mingla/offering-rendering$": "<rootDir>/__manual_mocks__/offering-rendering.js",
+    // #3682 — FollowButton deep-imports themePalette; the barrel mock above does
+    // not cover that subpath, so Jest fails suites that mount PublicEventPage.
+    "^@mingla/offering-rendering/themePalette$":
+      "<rootDir>/../packages/offering-rendering/themePalette.ts",
     // #1559 — resolution repair, NOT a mock. `node_modules/@mingla/*` is a
     // workspace symlink; inside a git worktree it points at the ANCHOR
     // checkout, so a DEEP `@mingla/brand-rendering/<sub>` specifier resolved

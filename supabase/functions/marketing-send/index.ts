@@ -555,16 +555,21 @@ export async function handleMarketingSendRequest(
     if (candidates.error) {
       return bookRpcErrorResponse(candidates.error.message);
     }
-    const followBrand = await resolveFollowBrandForQuote(
-      supabase,
-      candidates.data,
-    );
     const publicPeopleQuote = (
       value: Awaited<ReturnType<typeof buildMarketingBookQuote>>,
     ) => publicMarketingBookQuote(value);
     const requestedQuotedAt = isConfirmPeopleAction
       ? parseBookQuotedAt(body.quotedAt)
       : new Date();
+    let followBrand: { name: string; slug: string } | null;
+    try {
+      followBrand = await resolveFollowBrandForQuote(
+        supabase,
+        candidates.data,
+      );
+    } catch {
+      return jsonResponse({ error: "BOOK_BLAST_COST_UNAVAILABLE" }, 503);
+    }
     if (requestedQuotedAt === null) {
       const refreshed = await safeBookQuote(candidates.data, followBrand);
       return jsonResponse({
@@ -748,8 +753,16 @@ async function resolveFollowBrandForQuote(
     .select("name, slug")
     .eq("id", brandId)
     .maybeSingle();
-  if (error || data === null) return null;
+  // Fail closed on lookup errors: silent null would price SMS without Follow
+  // while dispatch (which re-reads the brand) still appends it (#3682).
+  if (error) {
+    throw new Error(`follow_brand_lookup:${error.message ?? String(error)}`);
+  }
+  if (data === null) {
+    throw new Error("follow_brand_lookup:brand_missing");
+  }
   const slug = typeof data.slug === "string" ? data.slug.trim() : "";
+  // No public slug ⇒ Follow URL cannot be formed; omit (same as dispatch).
   if (slug.length === 0) return null;
   const name = typeof data.name === "string" && data.name.trim().length > 0
     ? data.name.trim()

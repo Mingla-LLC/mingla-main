@@ -141,7 +141,10 @@ import {
 // explanatory UI. Both are advisory: the server is authoritative.
 import { usePublicTicketCheckoutRouteAccess } from "../../hooks/usePublicTicketCheckoutRouteAccess";
 import { TicketCheckoutAccessNotice } from "./TicketCheckoutAccessNotice";
-import { FollowButton } from "@mingla/brand-rendering";
+// Deep import — do NOT pull the brand-rendering barrel (PublicBrandPage + lucide)
+// into the public event chunk; that shared the Brand page into eager `__common`
+// (+~48KB) via Metro hoist (#3682 / ORCH-1083).
+import { FollowButton } from "@mingla/brand-rendering/FollowButton";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandFollow } from "../../hooks/useBrandFollow";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";

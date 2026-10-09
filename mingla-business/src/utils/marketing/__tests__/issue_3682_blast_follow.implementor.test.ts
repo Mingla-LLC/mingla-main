@@ -7,6 +7,7 @@ import { describe, expect, test } from "@jest/globals";
 import {
   appendSmsFollowLine,
   brandFollowPublicUrl,
+  smsBlastBodyWithFollow,
 } from "../blastFollow";
 
 describe("#3682 Wave 2.3 — blastFollow client helpers", () => {
@@ -23,5 +24,13 @@ describe("#3682 Wave 2.3 — blastFollow client helpers", () => {
     expect(once).toContain(url);
     const twice = appendSmsFollowLine(once, "Acme", url);
     expect(twice).toBe(once);
+  });
+
+  test("smsBlastBodyWithFollow corpus (shared with edge Deno suite)", () => {
+    expect(smsBlastBodyWithFollow("Hi", "Acme", "acme")).toBe(
+      `Hi\n\nFollow Acme: https://host.usemingla.com/b/acme?intent=follow`,
+    );
+    expect(smsBlastBodyWithFollow("Hi", "Acme", null)).toBe("Hi");
+    expect(smsBlastBodyWithFollow("Hi", "Acme", "")).toBe("Hi");
   });
 });
