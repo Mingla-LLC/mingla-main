@@ -51,7 +51,8 @@ describe("Issue #679 — Follow is callback-gated, honest, and doubly inserted",
   });
 
   test("G-3 BOTH insertion sites reference BrandFollowControl at the spec'd points", () => {
-    expect(brandPage.split("<BrandFollowControl").length - 1).toBe(2);
+    // Mount tags only — `React.FC<BrandFollowControlProps>` also contains the prefix.
+    expect(brandPage.match(/<BrandFollowControl[\s>]/g)?.length ?? 0).toBe(2);
 
     const phoneWrap = brandPage.indexOf("styles.phoneIdentityWrap");
     expect(phoneWrap).toBeGreaterThan(-1);

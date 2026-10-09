@@ -16,8 +16,9 @@ export type FollowVisualState =
 
 export type FollowButtonSize = "sm" | "md" | "lg";
 
-const isDarkSurface = (palette: ThemePalette): boolean =>
-  palette.primaryText.toLowerCase() === "#ffffff";
+/** Wash direction follows the opaque surface under the button, not page text. */
+const isDarkSurface = (surface: string): boolean =>
+  contrastRatio("#ffffff", surface) >= contrastRatio("#000000", surface);
 
 /** Composite a translucent rgba(...) fill over an opaque hex surface → #rrggbb. */
 export const compositeRgbaOverHex = (
@@ -74,7 +75,7 @@ export function followTokens(
   palette: ThemePalette,
   surface: string,
 ): FollowTokens {
-  const dark = isDarkSurface(palette);
+  const dark = isDarkSurface(surface);
   const followFill = palette.accent;
   const followLabel = palette.accentText;
   const accentOnSurface = contrastRatio(followFill, surface);
@@ -96,23 +97,18 @@ export function followTokens(
   const followingEdge = dark
     ? hexToRgba("#ffffff", 0.4)
     : hexToRgba("#10141f", 0.5);
-  const followingLabel = palette.primaryText;
+  // Label must read on the Following fill (surface-derived), not page text alone.
+  const followingLabel = dark ? "#ffffff" : "#10141f";
   const followingIcon =
     contrastRatio(palette.accent, followingFill) >= 3
       ? palette.accent
-      : palette.primaryText;
+      : followingLabel;
 
   const disabledWash = dark
     ? hexToRgba("#ffffff", 0.08)
     : hexToRgba("#10141f", 0.04);
   const disabledFill = compositeRgbaOverHex(disabledWash, surface);
-  // Soften primary text toward the surface (~30% mix) for disabled label.
-  const disabledLabel = mixTowardBlack(
-    palette.primaryText === "#ffffff" || palette.primaryText === "#FFFFFF"
-      ? "#bfc0c1"
-      : palette.primaryText,
-    0.15,
-  );
+  const disabledLabel = dark ? "#bfc0c1" : mixTowardBlack("#10141f", 0.15);
 
   return {
     followFill,
