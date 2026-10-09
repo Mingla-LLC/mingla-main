@@ -141,8 +141,14 @@ import {
 // explanatory UI. Both are advisory: the server is authoritative.
 import { usePublicTicketCheckoutRouteAccess } from "../../hooks/usePublicTicketCheckoutRouteAccess";
 import { TicketCheckoutAccessNotice } from "./TicketCheckoutAccessNotice";
+// Deep import — do NOT pull the brand-rendering barrel (PublicBrandPage + lucide)
+// into the public event chunk; that shared the Brand page into eager `__common`
+// (+~48KB) via Metro hoist (#3682 / ORCH-1083).
+import { FollowButton } from "@mingla/brand-rendering/FollowButton";
 import { useAuth } from "../../context/AuthContext";
+import { useBrandFollow } from "../../hooks/useBrandFollow";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
+import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";
 import {
@@ -480,6 +486,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const userBrands = useBrandList();
   const { isDesktop } = useResponsiveLayout();
   const online = useBuyerWebOnline();
+  // #3682 Wave 2.3 — Presented-by Follow on buyer-web event / RSVP pages.
+  const brandFollow = useBrandFollow(user?.id ?? null, brand?.id ?? null);
+  const [followUnfollowOpen, setFollowUnfollowOpen] = useState(false);
+  const [followSignInOpen, setFollowSignInOpen] = useState(false);
 
   // ORCH-1291 [rsvp-chip-in] — the last-submitted guest contact, captured at RSVP
   // so an anon web chip-in can supply guestEmail to rsvp-contribution-create.
@@ -822,6 +832,32 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const dismissToast = useCallback((): void => {
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
+
+  // #3682 A — Presented-by Follow sibling (C7: Following opens menu, not unfollow).
+  const presentedByFollow =
+    brand !== null && brand !== undefined ? (
+      <FollowButton
+        brandName={brand.displayName}
+        palette={palette}
+        isFollowing={brandFollow.isFollowing}
+        followPending={brandFollow.isPending}
+        size="lg"
+        onPress={() => {
+          if (!user?.id) {
+            setFollowSignInOpen(true);
+            return;
+          }
+          if (brandFollow.isFollowing) {
+            setFollowUnfollowOpen(true);
+            return;
+          }
+          void brandFollow.follow().catch(() => {
+            showToast("Couldn't follow. Try again.");
+          });
+        }}
+        testID="public-event-presented-by-follow"
+      />
+    ) : undefined;
 
   // ORCH-1138 — the page-level variant (cancelled / password-gate keep the shared
   // renderer's dedicated LEGACY render; everything else gets the FOUNDATION page).
@@ -1619,6 +1655,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             recordShareDestination("view_brand");
             router.push(`/b/${slug}` as never);
           }}
+          presentedByFollow={presentedByFollow}
           onOpenMaps={openMapsForTarget}
           onCopyAddress={copyAddressForTarget}
           staticMapUrl={staticMapUrl}
@@ -1740,6 +1777,45 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             ) : null}
           </>
         ) : null}
+        <SimpleConfirmDialog
+          visible={followSignInOpen}
+          onClose={() => setFollowSignInOpen(false)}
+          onConfirm={() => {
+            setFollowSignInOpen(false);
+            const resume =
+              typeof brand?.slug === "string" && brand.slug.length > 0
+                ? `/b/${brand.slug}`
+                : `/e/${event.brandSlug}/${event.eventSlug}`;
+            router.push(`/auth?next=${encodeURIComponent(resume)}` as never);
+          }}
+          title={`Sign in to follow ${brand?.displayName ?? "this brand"}`}
+          description="Hear about new dates first."
+          confirmLabel="Sign in"
+          cancelLabel="Not now"
+          testID="public-event-follow-signin"
+        />
+        <SimpleConfirmDialog
+          visible={followUnfollowOpen}
+          onClose={() => setFollowUnfollowOpen(false)}
+          onConfirm={() => {
+            void brandFollow
+              .unfollow()
+              .then(() => {
+                setFollowUnfollowOpen(false);
+                showToast(`Unfollowed ${brand?.displayName ?? "brand"}.`);
+              })
+              .catch(() => {
+                showToast("Couldn't update. Try again.");
+              });
+          }}
+          title={`Following ${brand?.displayName ?? "this brand"}`}
+          description="Stop hearing about new dates from this brand."
+          confirmLabel="Unfollow"
+          cancelLabel="Cancel"
+          destructive
+          confirmLoading={brandFollow.isPending}
+          testID="public-event-unfollow"
+        />
       </View>
     );
   }
@@ -1818,6 +1894,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             recordShareDestination("view_brand");
             router.push(`/b/${slug}` as never);
           }}
+          presentedByFollow={presentedByFollow}
           onOpenMaps={openMapsForTarget}
           onCopyAddress={copyAddressForTarget}
           staticMapUrl={staticMapUrl}
@@ -1967,6 +2044,45 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           ) : null}
         </>
       ) : null}
+      <SimpleConfirmDialog
+        visible={followSignInOpen}
+        onClose={() => setFollowSignInOpen(false)}
+        onConfirm={() => {
+          setFollowSignInOpen(false);
+          const resume =
+            typeof brand?.slug === "string" && brand.slug.length > 0
+              ? `/b/${brand.slug}`
+              : `/e/${event.brandSlug}/${event.eventSlug}`;
+          router.push(`/auth?next=${encodeURIComponent(resume)}` as never);
+        }}
+        title={`Sign in to follow ${brand?.displayName ?? "this brand"}`}
+        description="Hear about new dates first."
+        confirmLabel="Sign in"
+        cancelLabel="Not now"
+        testID="public-event-follow-signin"
+      />
+      <SimpleConfirmDialog
+        visible={followUnfollowOpen}
+        onClose={() => setFollowUnfollowOpen(false)}
+        onConfirm={() => {
+          void brandFollow
+            .unfollow()
+            .then(() => {
+              setFollowUnfollowOpen(false);
+              showToast(`Unfollowed ${brand?.displayName ?? "brand"}.`);
+            })
+            .catch(() => {
+              showToast("Couldn't update. Try again.");
+            });
+        }}
+        title={`Following ${brand?.displayName ?? "this brand"}`}
+        description="Stop hearing about new dates from this brand."
+        confirmLabel="Unfollow"
+        cancelLabel="Cancel"
+        destructive
+        confirmLoading={brandFollow.isPending}
+        testID="public-event-unfollow"
+      />
     </View>
   );
 };

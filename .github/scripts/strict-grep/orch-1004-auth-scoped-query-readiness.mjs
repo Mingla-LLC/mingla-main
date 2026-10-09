@@ -241,6 +241,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   // [TEST-MOD-APPROVED #1780] Wizard invite plan, Book, groups and quote reads
   // are auth.uid() and event-scope RPCs; every query folds isAuthReady into enabled.
   "useOfferingInvitePlan.ts",
+  // #3682 Wave 2.3 — brand_follows is auth.uid()-scoped; folds isAuthReady.
+  "useBrandFollow.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads

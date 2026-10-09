@@ -60,6 +60,10 @@ import {
   renderMarketingEmail,
 } from "../_shared/marketingEmailRender.ts";
 import {
+  brandFollowPublicUrl,
+  smsBlastBodyWithFollow,
+} from "../_shared/marketingBlastFollow.ts";
+import {
   generateTrackingId,
   signUnsubscribeToken,
 } from "../_shared/marketingTokens.ts";
@@ -557,8 +561,17 @@ export async function handleMarketingSendRequest(
     const requestedQuotedAt = isConfirmPeopleAction
       ? parseBookQuotedAt(body.quotedAt)
       : new Date();
+    let followBrand: { name: string; slug: string } | null;
+    try {
+      followBrand = await resolveFollowBrandForQuote(
+        supabase,
+        candidates.data,
+      );
+    } catch {
+      return jsonResponse({ error: "BOOK_BLAST_COST_UNAVAILABLE" }, 503);
+    }
     if (requestedQuotedAt === null) {
-      const refreshed = await safeBookQuote(candidates.data);
+      const refreshed = await safeBookQuote(candidates.data, followBrand);
       return jsonResponse({
         error: "BOOK_BLAST_PREVIEW_STALE",
         preview: refreshed,
@@ -569,6 +582,7 @@ export async function handleMarketingSendRequest(
       quote = await buildMarketingBookQuote(
         candidates.data as never,
         requestedQuotedAt,
+        { followBrand },
       );
     } catch (error) {
       return jsonResponse({
@@ -727,10 +741,44 @@ export function bookRpcErrorEnvelope(
   return { error: "BOOK_BLAST_PREVIEW_STALE", status: 409 };
 }
 
-async function safeBookQuote(candidates: unknown) {
+async function resolveFollowBrandForQuote(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  candidates: unknown,
+): Promise<{ name: string; slug: string } | null> {
+  const brandId = (candidates as { brandId?: unknown } | null)?.brandId;
+  if (typeof brandId !== "string" || brandId.length === 0) return null;
+  const { data, error } = await db
+    .from("brands")
+    .select("name, slug")
+    .eq("id", brandId)
+    .maybeSingle();
+  // Fail closed on lookup errors: silent null would price SMS without Follow
+  // while dispatch (which re-reads the brand) still appends it (#3682).
+  if (error) {
+    throw new Error(`follow_brand_lookup:${error.message ?? String(error)}`);
+  }
+  if (data === null) {
+    throw new Error("follow_brand_lookup:brand_missing");
+  }
+  const slug = typeof data.slug === "string" ? data.slug.trim() : "";
+  // No public slug ⇒ Follow URL cannot be formed; omit (same as dispatch).
+  if (slug.length === 0) return null;
+  const name = typeof data.name === "string" && data.name.trim().length > 0
+    ? data.name.trim()
+    : "Mingla brand";
+  return { name, slug };
+}
+
+async function safeBookQuote(
+  candidates: unknown,
+  followBrand: { name: string; slug: string } | null = null,
+) {
   try {
     return publicMarketingBookQuote(
-      await buildMarketingBookQuote(candidates as never),
+      await buildMarketingBookQuote(candidates as never, new Date(), {
+        followBrand,
+      }),
     );
   } catch {
     return null;
@@ -1265,6 +1313,9 @@ async function sendEmail(
     const receiveReason: MarketingReceiveReason =
       contact.receive_reason ??
       receiveReasonFromAudienceKind(audience.query_definition.kind);
+    const brandFollowUrl = brandSlug !== null && brandSlug.length > 0
+      ? brandFollowPublicUrl(brandSlug)
+      : null;
     const rendered = renderMarketingEmail({
       body_html: bodyHtml,
       variables,
@@ -1274,6 +1325,7 @@ async function sendEmail(
       brand_name: brandName,
       brand_header_image_url: brandHeaderImageUrl,
       receive_reason: receiveReason,
+      brand_follow_url: brandFollowUrl,
       offering_invite_url_marker: inviteContext === null
         ? undefined
         : OFFERING_LINK_MARKER,
@@ -1910,12 +1962,13 @@ async function sendSms(
 
   const { data: brandRow, error: brandErr } = await supabase
     .from("brands")
-    .select("id, name")
+    .select("id, name, slug")
     .eq("id", campaign.brand_id)
     .maybeSingle();
   if (brandErr) throw new Error(`brand_load:${brandErr.message}`);
-  const brandName: string = (brandRow as { name?: string } | null)?.name ??
-    "Mingla brand";
+  const brandRowSms = brandRow as { name?: string; slug?: string | null } | null;
+  const brandName: string = brandRowSms?.name ?? "Mingla brand";
+  const brandSlugSms: string | null = brandRowSms?.slug ?? null;
 
   // 2. Resolve audience (service-role bypasses RLS). reachable_sms is now truthful
   //    (Sub-B phone-suppression fix in marketingAudience.ts).
@@ -1925,8 +1978,10 @@ async function sendSms(
     campaign.id,
   );
 
-  const rawBody = (campaign.channel_payload.body ?? "").trim();
-  if (rawBody.length === 0) throw new Error("sms_body_empty");
+  const rawBodyBase = (campaign.channel_payload.body ?? "").trim();
+  if (rawBodyBase.length === 0) throw new Error("sms_body_empty");
+  // #3682 Wave 2.3 — every SMS blast carries a Follow URL line (same owner as Book quote).
+  const rawBody = smsBlastBodyWithFollow(rawBodyBase, brandName, brandSlugSms);
   const isOfferingAudience = audience.query_definition.kind ===
     "offering_send_group";
   if (rawBody.includes(OFFERING_LINK_MARKER) !== isOfferingAudience) {

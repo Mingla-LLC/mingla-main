@@ -146,6 +146,8 @@ export interface FoundationRsvpPreviewProps {
   onRsvpResolved?: (snapshot: RsvpGuestSnapshot) => void;
   /** #3416 D1 — re-check a restored pass the host could not confirm. */
   onRecoveryRetry?: (() => void) | null;
+  /** #3682 — Presented-by Follow slot (adapter-owned FollowButton). */
+  presentedByFollow?: React.ReactNode;
 }
 
 export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (props) => {
@@ -183,6 +185,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     restoredRsvp = null,
     onRsvpResolved,
     onRecoveryRetry,
+    presentedByFollow,
   } = props;
   const { isDesktop } = useResponsiveLayout();
   const acquisitionClosed =
@@ -386,6 +389,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
           // ORCH-1163-R2 — desktop relocates the inline box to the sticky panel
           // (PARITY with FoundationEventPreview's hideTicketBox).
           hideDecisionBox={isDesktop || acquisitionClosed}
+          presentedByFollow={presentedByFollow}
           testID="orch-1163-rsvp-body"
         />
       </ParallaxCoverShell>

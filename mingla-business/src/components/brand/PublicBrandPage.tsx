@@ -24,6 +24,8 @@ import {
   tripPublicPath,
   venuePublicPath,
 } from "../../constants/publicUrls";
+import { useAuth } from "../../context/AuthContext";
+import { useBrandFollow } from "../../hooks/useBrandFollow";
 import type {
   PublicExperienceCard,
   PublicTripCard,
@@ -37,6 +39,8 @@ import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicP
 import { useThemeFont } from "../../theme/useThemeFont";
 
 import { ShareModal } from "../ui/ShareModal";
+import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
+import { Toast } from "../ui/Toast";
 
 interface PublicBrandPageProps {
   brand: Brand;
@@ -206,7 +210,18 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  // #3682 Wave 2.3 — Follow on buyer web / Host preview. Anon-tolerant: useAuth
+  // returns null user; the Follow control still renders and prompts sign-in.
+  const brandFollow = useBrandFollow(user?.id ?? null, brand.id);
   const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [unfollowOpen, setUnfollowOpen] = useState(false);
+  const [signInFollowOpen, setSignInFollowOpen] = useState(false);
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    kind: "success" | "error" | "info";
+  }>({ visible: false, message: "", kind: "info" });
   const theme = useMemo(
     () => resolvedTheme ?? resolveTheme(brand.theme, null),
     [brand.theme, resolvedTheme],
@@ -345,6 +360,61 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     [router],
   );
 
+  const showToast = useCallback(
+    (message: string, kind: "success" | "error" | "info"): void => {
+      setToast({ visible: true, message, kind });
+    },
+    [],
+  );
+
+  // #3682 C7 — Follow tap only follows; Following opens ConfirmDialog (Alert.alert
+  // is a silent no-op on react-native-web).
+  const handleToggleFollow = useCallback((): void => {
+    if (!user?.id) {
+      setSignInFollowOpen(true);
+      return;
+    }
+    brandFollow
+      .follow()
+      .then(() => {
+        showToast(`You're following ${brand.displayName}.`, "success");
+        captureWeb("brand_followed", {
+          surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
+          brand_id: brand.id,
+          brand_slug: brand.slug,
+          source: "brand_page",
+        });
+      })
+      .catch(() => {
+        showToast(
+          `Couldn't follow ${brand.displayName}. Try again.`,
+          "error",
+        );
+      });
+  }, [brand.displayName, brand.id, brand.slug, brandFollow, showToast, user?.id]);
+
+  const handleFollowingMenu = useCallback((): void => {
+    setUnfollowOpen(true);
+  }, []);
+
+  const handleConfirmUnfollow = useCallback((): void => {
+    brandFollow
+      .unfollow()
+      .then(() => {
+        setUnfollowOpen(false);
+        showToast(`Unfollowed ${brand.displayName}.`, "success");
+        captureWeb("brand_unfollowed", {
+          surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
+          brand_id: brand.id,
+          brand_slug: brand.slug,
+          source: "brand_page",
+        });
+      })
+      .catch(() => {
+        showToast("Couldn't update. Try again.", "error");
+      });
+  }, [brand.displayName, brand.id, brand.slug, brandFollow, showToast]);
+
   const pageTitle =
     venue?.isVerifiedVenue === true && venue.city !== null
       ? `${brand.displayName} · ${venue.city} on Mingla`
@@ -413,6 +483,8 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         menu={menu}
         venues={venues}
         venuesLoadState={venuesLoadState}
+        isFollowing={brandFollow.isFollowing}
+        followPending={brandFollow.isPending}
         venue={
           venue === null
             ? null
@@ -428,6 +500,8 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         callbacks={{
           onClose: handleClose,
           onShare: handleShare,
+          onToggleFollow: handleToggleFollow,
+          onFollowingMenu: handleFollowingMenu,
           onOpenEvent: handleOpenEvent,
           onOpenTrip: handleOpenTrip,
           onOpenExperience: handleOpenExperience,
@@ -452,6 +526,42 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         contentKind="brand"
         title={`${brand.displayName} on Mingla`}
         description={brand.bio?.slice(0, 200) ?? brand.tagline}
+      />
+      <SimpleConfirmDialog
+        visible={signInFollowOpen}
+        onClose={() => setSignInFollowOpen(false)}
+        onConfirm={() => {
+          setSignInFollowOpen(false);
+          const resume = `/b/${brand.slug}`;
+          router.push(
+            `/auth?next=${encodeURIComponent(resume)}` as never,
+          );
+        }}
+        title={`Sign in to follow ${brand.displayName}`}
+        description="Hear about new dates first."
+        confirmLabel="Sign in"
+        cancelLabel="Not now"
+        testID="public-brand-follow-signin"
+      />
+      <SimpleConfirmDialog
+        visible={unfollowOpen}
+        onClose={() => setUnfollowOpen(false)}
+        onConfirm={handleConfirmUnfollow}
+        title={`Following ${brand.displayName}`}
+        description="Stop hearing about new dates from this brand."
+        confirmLabel="Unfollow"
+        cancelLabel="Cancel"
+        destructive
+        confirmLoading={brandFollow.isPending}
+        testID="public-brand-unfollow"
+      />
+      <Toast
+        visible={toast.visible}
+        kind={toast.kind}
+        message={toast.message}
+        onDismiss={() =>
+          setToast((prev) => ({ ...prev, visible: false }))
+        }
       />
     </>
   );

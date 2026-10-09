@@ -66,7 +66,17 @@ jest.mock("@tanstack/react-query", () => ({
     invalidateQueries: () => Promise.resolve(),
     refetchQueries: () => Promise.resolve(),
   }),
+  // [TEST-MOD-APPROVED #3682] Harness only — Presented-by Follow uses
+  // useBrandFollow → useMutation; this suite proves transition overlays, not Follow.
+  useMutation: () => ({
+    mutateAsync: async () => false,
+    isPending: false,
+  }),
 }));
+jest.mock(
+  "../../../hooks/useBrandFollow",
+  () => require("./harness/useBrandFollow.publicEventPage.mock"),
+);
 // [TEST-MOD-APPROVED #2101] Harness registration only — the transition-overlay
 // contract is unrelated to checkout eligibility, so the adapter is pinned to
 // its legacy pass-through and the notice renders nothing.

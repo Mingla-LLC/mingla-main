@@ -122,6 +122,14 @@ jest.mock("@tanstack/react-query", () => ({
   }),
 }));
 
+// [TEST-MOD-APPROVED #3682] Shared Follow double — PublicEventPage mounts
+// useBrandFollow; without this the suite loads brandFollowsService → supabase.
+jest.mock(
+  "../../../hooks/useBrandFollow",
+  () => require("./harness/useBrandFollow.publicEventPage.mock"),
+);
+
+
 // The occurrence read. Mocked at the HOOK boundary so the test controls the
 // materialised `event_dates` rows AND can prove the query is disabled for a
 // single-date event (the "no extra network" half of the no-regression claim).

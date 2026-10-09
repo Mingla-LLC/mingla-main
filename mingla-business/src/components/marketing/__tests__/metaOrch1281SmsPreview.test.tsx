@@ -57,7 +57,11 @@ describe("ORCH-1281 — SmsPreviewPane channel-branch", () => {
 
   it("passes channel-aware review props (MESSAGE row) to ComposerReviewSheet", () => {
     expect(COMPOSE).toMatch(/channelKind=\{channel === "sms" \? "sms" : "email"\}/);
-    expect(COMPOSE).toMatch(/messagePreview=\{bodyWithFooter\(smsBody\)/);
+    // [TEST-MOD-APPROVED #3682] Review sheet previews Follow+STOP wire body,
+    // same owner as SmsPreviewPane / Book quote / dispatch.
+    expect(COMPOSE).toMatch(
+      /messagePreview=\{bodyWithFooter\(\s*smsBlastBodyWithFollow\(smsBody/,
+    );
   });
 
   it("ComposerReviewSheet shows a MESSAGE section for sms (not SUBJECT)", () => {
@@ -69,8 +73,10 @@ describe("ORCH-1281 — SmsPreviewPane channel-branch", () => {
   });
 
   it("SmsPreviewPane renders the wire body (STOP footer) + text-message caption, not email chrome", () => {
-    // Uses the shared wire-body helper (so the previewed text = what is sent).
-    expect(PANE).toMatch(/bodyWithFooter\(body\)/);
+    // [TEST-MOD-APPROVED #3682] Follow folds into author body, then STOP footer
+    // (`bodyForWire` → `bodyWithFooter` / `estimateSmsCost`).
+    expect(PANE).toMatch(/smsBlastBodyWithFollow\(body,/);
+    expect(PANE).toMatch(/bodyWithFooter\(bodyForWire\)/);
     // Honest sender caption (SMS/MMS), not an email FROM/Unsubscribe.
     expect(PANE).toContain("Text message · SMS");
     expect(PANE).toContain("Picture message · MMS");
@@ -79,7 +85,7 @@ describe("ORCH-1281 — SmsPreviewPane channel-branch", () => {
     expect(PANE).not.toMatch(/>\s*Unsubscribe\s*</);
     expect(PANE).not.toMatch(/>\s*FROM\s*</);
     // Live count via the SAME cost util the composer + adapter use.
-    expect(PANE).toMatch(/estimateSmsCost\(body,/);
+    expect(PANE).toMatch(/estimateSmsCost\(\s*bodyForWire,/);
   });
 
   it("SmsPreviewPane has an empty state + honest preview footer note", () => {

@@ -25,6 +25,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { smsBlastBodyWithFollow } from "../../utils/marketing/blastFollow";
 import { bodyWithFooter, estimateSmsCost } from "../../utils/smsCost";
 
 // Phone-canvas palette — a dark iMessage-like screen. Local constants (not
@@ -40,6 +41,8 @@ export interface SmsPreviewPaneProps {
   /** Raw smsBody as typed (no footer — appended here via bodyWithFooter). */
   body: string;
   brandName: string | null;
+  /** #3682 — when set, preview appends the same Follow URL line as send. */
+  brandSlug?: string | null;
   /** For the count line; may be null. */
   reachableSms: number | null;
   /** Brand default currency — reserved for a future cost line (SPEC §3.3). */
@@ -79,11 +82,17 @@ function renderWithLinks(wire: string): React.ReactNode[] {
 export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
   body,
   brandName,
+  brandSlug = null,
   reachableSms,
   hasMedia = false,
   mediaUris = [],
 }) => {
-  const wire = bodyWithFooter(body);
+  // Compose Follow (when slug known) then STOP footer — same order as edge
+  // `smsBlastBodyWithFollow` + `composeSmsBody`. Keep `bodyWithFooter(body)` as
+  // a named intermediate so #1556 ADV-7's ORCH-1281/1289 source contract still
+  // sees the footer owner; Follow is folded into `body` first.
+  const bodyForWire = smsBlastBodyWithFollow(body, brandName, brandSlug);
+  const wire = bodyWithFooter(bodyForWire);
   const isEmpty = body.trim().length === 0 && !hasMedia;
   const showCount = body.trim().length > 0 || hasMedia;
   // =========================================================================
@@ -107,7 +116,12 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
   const hasTypedBody = body.trim().length > 0;
   const avatarLetter = (brandName ?? "Y").trim().charAt(0).toUpperCase() || "Y";
 
-  const est = estimateSmsCost(body, reachableSms ?? 0, undefined, hasMedia);
+  const est = estimateSmsCost(
+    bodyForWire,
+    reachableSms ?? 0,
+    undefined,
+    hasMedia,
+  );
   const countUnit = est.encoding === "MMS"
     ? "1 message"
     : `${est.segmentsPerRecipient} ${est.segmentsPerRecipient === 1 ? "segment" : "segments"}`;

@@ -53,7 +53,7 @@ export const NEXT_ROUTE_ALLOWLIST: readonly string[] = [
  * issue #2101 [named-buyer checkout] — the PUBLIC OFFERING families.
  *
  * THE COMPLETE AUTHORIZED SET IS THE UNION of the five static workflow prefixes
- * in `NEXT_ROUTE_ALLOWLIST` above PLUS exactly these three public offering
+ * in `NEXT_ROUTE_ALLOWLIST` above PLUS exactly these public offering / brand
  * families. This is CATEGORIZATION INSIDE ONE VALIDATOR — not a second
  * sanitizer, not a caller bypass, and not a parallel decision path. Both
  * categories are matched by the SAME `isAllowlistedPath` below, inside the SAME
@@ -66,7 +66,8 @@ export const NEXT_ROUTE_ALLOWLIST: readonly string[] = [
  * only the five workflow prefixes, `/t/…`, `/exp/…` and `/e/…` all sanitize to
  * `null` and `app/auth/index.tsx` falls back to `AppRoutes.home` —
  * `/(tabs)/home`, the ORGANISER tab shell. That is not "no resume", it is a
- * consumer buyer deposited in the organiser app.
+ * consumer buyer deposited in the organiser app. `#3682` adds `/b/…` so Follow
+ * sign-in returns to the public brand page instead of the organiser home.
  *
  * WHY `/e` CANNOT REACH `/event/*`. Matching is segment-safe in BOTH
  * directions. `"/event/create".startsWith("/e/")` is FALSE, so the `/e` family
@@ -79,13 +80,17 @@ export const NEXT_ROUTE_ALLOWLIST: readonly string[] = [
  * SAFETY OF THE ADMISSION. Each family opens exactly one public buyer route
  * that reads only its own path segments and never carries a credential in its
  * URL. Every value that survives validation with one of these heads is
- * same-origin and scheme-less, so "enumerate, don't generalise" holds: three
+ * same-origin and scheme-less, so "enumerate, don't generalise" holds: four
  * enumerated families is still an enumeration.
  */
 const PUBLIC_OFFERING_NEXT_ROUTE_PREFIXES: readonly string[] = [
   "/t", // canonical Trip public paths   — tripPublicPath()
   "/exp", // canonical Experience public paths — experiencePublicPath()
   "/e", // canonical Event public paths  — eventPublicPath()
+  // #3682 Wave 2.3 — public brand page (Follow sign-in resume). Reads only its
+  // slug segment; never carries a credential in the URL. Segment-safe matching
+  // rejects `/b-evil` the same way `/e` rejects `/event/*`.
+  "/b",
 ] as const;
 
 /** Bound the surface — nothing legitimate is anywhere near this long. */

@@ -34,6 +34,7 @@ import {
   type MarketingReceiveReason,
   receiveReasonFooterSentence,
 } from "./marketingReceiveReason.ts";
+import { renderBlastFollowPanelHtml } from "./marketingBlastFollow.ts";
 // ISSUE-1001 — canonical logo resolution; replaces the silent DEAD-404
 // email-assets fallback URL with a live default.
 import { minglaLogoUrl } from "./brandAssets.ts";
@@ -113,6 +114,11 @@ export interface RenderMarketingEmailInput {
    * reason line (bought / imported / added / follows).
    */
   receive_reason?: MarketingReceiveReason;
+  /**
+   * #3682 Wave 2.3 — public brand Follow deep link. When set, a Follow panel
+   * is injected above the unsubscribe footer on every blast email.
+   */
+  brand_follow_url?: string | null;
 }
 
 export interface RenderMarketingEmailResult {
@@ -225,7 +231,19 @@ export function renderMarketingEmail(
     },
   );
 
-  // Step 4 — unsubscribe footer (unsubscribe URL is NOT tracked — must
+  // Step 4a — #3682 Follow panel (tracked href via Step 3 rewrite only when
+  // the URL was already in the body; this panel is injected AFTER tracking
+  // rewrite so we rewrite its href here explicitly with a fresh tracking id).
+  const followUrl = (input.brand_follow_url ?? "").trim();
+  let followPanel = "";
+  if (followUrl.length > 0) {
+    const trackingId = generateTrackingId();
+    links.push({ tracking_id: trackingId, destination_url: followUrl });
+    const trackedFollowUrl = `${trackingOrigin}/${trackingId}`;
+    followPanel = renderBlastFollowPanelHtml(input.brand_name, trackedFollowUrl);
+  }
+
+  // Step 4b — unsubscribe footer (unsubscribe URL is NOT tracked — must
   // remain a direct link so the unsubscribe edge function receives the
   // signed token verbatim).
   const unsubFooter = renderUnsubscribeFooter(
@@ -233,7 +251,7 @@ export function renderMarketingEmail(
     input.brand_name,
     input.receive_reason ?? "bought",
   );
-  const bodyWithFooter = `${withTrackingLinks}${unsubFooter}`;
+  const bodyWithFooter = `${withTrackingLinks}${followPanel}${unsubFooter}`;
 
   // Step 5 — brand-shell wrap.
   const html = renderShell({
@@ -262,6 +280,9 @@ export function renderMarketingEmail(
     .replace(/<[^>]+>/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim() + `\n\nUnsubscribe: ${input.unsubscribe_url}`;
+  if (followUrl.length > 0) {
+    text += `\n\nFollow ${input.brand_name}: ${followUrl}`;
+  }
   if (input.offering_invite_url_marker !== undefined) {
     text += `\n\nEvent link: ${input.offering_invite_url_marker}`;
   }

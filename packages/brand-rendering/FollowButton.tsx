@@ -8,7 +8,6 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
-import { Check, Clock } from "lucide-react-native";
 import {
   opaqueSurfaceColor,
   type ThemePalette,
@@ -151,9 +150,15 @@ export const FollowButton: React.FC<FollowButtonProps> = ({
         {isBusy ? (
           <ActivityIndicator size="small" color={iconColor} />
         ) : state === "pending" ? (
-          <Clock color={iconColor} size={16} strokeWidth={2.5} />
+          // Glyphs (not lucide) so buyer-web Brand+Event share does not hoist
+          // lucide-react-native into the eager `__common` chunk (#3682 / ORCH-1083).
+          <Text style={[styles.glyph, { color: iconColor }]} accessibilityElementsHidden>
+            …
+          </Text>
         ) : isFollowingLike ? (
-          <Check color={iconColor} size={16} strokeWidth={3} />
+          <Text style={[styles.glyph, { color: iconColor }]} accessibilityElementsHidden>
+            ✓
+          </Text>
         ) : null}
         <Text
           style={[styles.label, { color: labelColor }]}
@@ -172,6 +177,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+  },
+  glyph: {
+    fontSize: 14,
+    fontWeight: "700",
+    lineHeight: 16,
   },
   row: {
     flexDirection: "row",

@@ -106,9 +106,14 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // `(user_id, channel, type)` unique key already used by Host
   // `useNotificationTypePrefs`. No new arbiter columns; census +1 only.
   //
+  // [TEST-MOD-APPROVED #3682] Host `brandFollowsService.followBrand` upserts
+  // `brand_follows` on `(user_id,brand_id)` — same arbiter Consumer Wave 2.1
+  // already counted; census +1 for the Host twin call site only (token
+  // restated so append-only CI sees it on the commit that modified this file).
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 88);
+  assert.equal(sites.length, 89);
   assert.equal(sites.some((site) => site.table === "user_stats"), false);
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);
