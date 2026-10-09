@@ -365,6 +365,10 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   });
   const totalSteps = tripFunnelTotalSteps(counterShape);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  // issue #2689 — synchronous re-entry guard across the consent await + switch.
+  // Mirrors checkout/[eventId]/buyer.tsx; freeReservationFiredRef alone does
+  // not cover go_intake / go_payment duplicate navigations during consent.
+  const submitInFlight = useRef<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const termsAccepted = buyer.termsAccepted === true;
   const [termsSheetVisible, setTermsSheetVisible] = useState<boolean>(false);
@@ -528,8 +532,18 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
    */
   const freeReservationFiredRef = useRef<boolean>(false);
   const runFreeReservation = useCallback(async (): Promise<void> => {
-    if (tripEventId === null) return;
-    if (freeReservationFiredRef.current) return;
+    if (tripEventId === null) {
+      submitInFlight.current = false;
+      setSubmitting(false);
+      return;
+    }
+    if (freeReservationFiredRef.current) {
+      // Already claimed a free submit this mount; release the #2689 handler
+      // guard so a stranded spinner cannot lock the CTA.
+      submitInFlight.current = false;
+      setSubmitting(false);
+      return;
+    }
     freeReservationFiredRef.current = true;
     // issue #3351 — the answers the traveller committed on /intake, flattened
     // by the shared helper into the array shape `ticket-checkout-create`
@@ -587,6 +601,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
       // to "your ticket may already be reserved".
       setSubmitError(freeCheckoutErrorMessage(error));
     } finally {
+      submitInFlight.current = false;
       setSubmitting(false);
     }
   }, [tripEventId, intakeFormData, lines, buyer, recordResult, router]);
@@ -615,6 +630,10 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
       return;
     }
     if (tripEventId === null) return;
+    // issue #2689 — claim before the consent network round trip (re-entry window).
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
+    setSubmitting(true);
     setSubmitError(null);
     try {
       const grant = acceptedGrantRef.current;
@@ -644,26 +663,40 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     }
     // issue #3351 — ONE switch on the owner's decision. No other navigation and
     // no other create call may live in this handler.
+    //
+    // issue #2689 — non-submit branches release immediately after navigate (or
+    // on wait) so a stack push cannot strand this mounted screen. submit_free
+    // releases in runFreeReservation's finally.
     switch (detailsDecision) {
       case "wait":
         // The schema read has not settled (or failed): the control is already
         // disabled, and no request may be issued with unknown questions.
+        submitInFlight.current = false;
+        setSubmitting(false);
         return;
       case "go_intake":
         router.push(`/checkout-trip/${tripEventId}/intake` as never);
+        submitInFlight.current = false;
+        setSubmitting(false);
         return;
       case "submit_free":
         await runFreeReservation();
         return;
       case "go_payment":
         router.push(`/checkout-trip/${tripEventId}/payment` as never);
+        submitInFlight.current = false;
+        setSubmitting(false);
         return;
       case "go_details_finalize":
         // Only the intake screen's exit produces this; unreachable from here.
+        submitInFlight.current = false;
+        setSubmitting(false);
         return;
       default: {
         const unreachable: never = detailsDecision;
         void unreachable;
+        submitInFlight.current = false;
+        setSubmitting(false);
         return;
       }
     }

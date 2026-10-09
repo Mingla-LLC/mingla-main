@@ -214,6 +214,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   const totals = useCartTotals();
 
   const [submitting, setSubmitting] = useState<boolean>(false);
+  // issue #2689 — synchronous re-entry guard (ref, not batched state). Consent
+  // is awaited before createTicketCheckout; without this claim two taps both
+  // enter the free rail. Mirrors checkout/[eventId]/buyer.tsx.
+  const submitInFlight = useRef<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const termsAccepted = buyer.termsAccepted === true;
   const [termsSheetVisible, setTermsSheetVisible] = useState<boolean>(false);
@@ -375,6 +379,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
       return;
     }
     if (experienceEventId === null) return;
+    // issue #2689 — claim before the consent network round trip (re-entry window).
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
+    setSubmitting(true);
     setSubmitError(null);
     try {
       const grant = acceptedGrantRef.current;
@@ -407,7 +415,6 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     }
     if (totals.isFree) {
       try {
-        setSubmitting(true);
         const result = await createTicketCheckout({
           eventId: experienceEventId,
           buyer,
@@ -448,11 +455,16 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
         }
         setSubmitError(freeCheckoutErrorMessage(error));
       } finally {
+        submitInFlight.current = false;
         setSubmitting(false);
       }
       return;
     }
+    // issue #2689 — release immediately after paid push so back cannot strand
+    // a mounted screen on a permanently dead button.
     router.push(`/checkout-experience/${experienceEventId}/payment` as never);
+    submitInFlight.current = false;
+    setSubmitting(false);
   }, [
     validation.isValid,
     termsAccepted,
