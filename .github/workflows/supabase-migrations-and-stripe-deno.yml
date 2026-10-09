@@ -1401,6 +1401,8 @@ jobs:
             # workflow (I-2148-CI-TOPOLOGY-BOUNDED).
             supabase/functions/_shared/__tests__/issue_3682_auto_follow_on_purchase.happy.test.ts
             supabase/functions/_shared/__tests__/issue_3682_auto_follow_on_purchase.adversarial.test.ts
+            # #3682 Wave 2.3 — blast Follow CTA (email panel + SMS append).
+            supabase/functions/_shared/__tests__/issue_3682_blast_follow_cta.happy.test.ts
             # ISSUE-865 WP-B — ad-conversion senders + fire helper (hermetic:
             # stubbed fetch + injected supabase; runs with the same flags).
             supabase/functions/_shared/__tests__/issue_865_wp_b_ad_conversion.test.ts

@@ -31,6 +31,7 @@ import {
   previewBlocks,
   type PreviewVariables,
 } from "../../services/marketing/marketingRenderingService";
+import { brandFollowPublicUrl } from "../../utils/marketing/blastFollow";
 // ISSUE-1001 — the real wordmark replaces the "Mingla" text header, so the
 // preview mirrors what recipients actually see from _shared/email/shell.ts.
 import { MINGLA_WORDMARK } from "@mingla/brand-assets";
@@ -97,6 +98,11 @@ export interface EmailPreviewPaneProps {
     | "follows"
     | "friend_of_follower"
     | "guest_book";
+  /**
+   * #3682 Wave 2.3 — when set, render the Follow panel above the footer
+   * (mirrors marketingEmailRender brand_follow_url injection).
+   */
+  brandSlug?: string | null;
 }
 
 function previewReceiveReasonLine(
@@ -139,6 +145,7 @@ export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
   brandHeaderImageUrl,
   embeddedEvents = [],
   receiveReason = "bought",
+  brandSlug = null,
 }) => {
   const blocks = previewBlocks(bodyHtml, variables);
   const useBrandBanner = brandHeaderImageUrl !== null &&
@@ -146,6 +153,11 @@ export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
     brandHeaderImageUrl.length > 0;
   const eventLookup = new Map<string, PreviewEmbeddedEvent>();
   for (const e of embeddedEvents) eventLookup.set(e.id, e);
+  const followBrand = brandName ?? "this brand";
+  const followUrl =
+    typeof brandSlug === "string" && brandSlug.trim().length > 0
+      ? brandFollowPublicUrl(brandSlug)
+      : null;
 
   return (
     <ScrollView
@@ -229,6 +241,19 @@ export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
             })
           )}
         </View>
+
+        {/* #3682 Wave 2.3 — Follow panel (every blast) */}
+        {followUrl !== null ? (
+          <View style={styles.followPanel} testID="email-preview-follow-panel">
+            <Text style={styles.followTitle}>Follow {followBrand} on Mingla</Text>
+            <Text style={styles.followBody}>
+              Hear about new dates first. Unfollow any time.
+            </Text>
+            <View style={styles.followCta}>
+              <Text style={styles.followCtaLabel}>Follow {followBrand}</Text>
+            </View>
+          </View>
+        ) : null}
 
         {/* Footer — unsubscribe + truthful reason (#3682) */}
         <View style={styles.footer}>
@@ -391,6 +416,45 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: MUTED,
     fontStyle: "italic",
+  },
+  followPanel: {
+    marginHorizontal: 24,
+    marginTop: 8,
+    marginBottom: 8,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: FRAME_BORDER,
+    backgroundColor: CREAM,
+    alignItems: "center",
+    gap: 8,
+  },
+  followTitle: {
+    ...typography.body,
+    fontWeight: "700",
+    color: INK_DEEP,
+    fontSize: 16,
+    textAlign: "center",
+  },
+  followBody: {
+    ...typography.bodySm,
+    color: MUTED,
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  followCta: {
+    marginTop: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 999,
+    backgroundColor: INK_DEEP,
+  },
+  followCtaLabel: {
+    ...typography.body,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    fontSize: 15,
   },
   footer: {
     paddingHorizontal: 24,

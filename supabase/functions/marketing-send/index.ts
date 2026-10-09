@@ -60,6 +60,10 @@ import {
   renderMarketingEmail,
 } from "../_shared/marketingEmailRender.ts";
 import {
+  appendSmsFollowLine,
+  brandFollowPublicUrl,
+} from "../_shared/marketingBlastFollow.ts";
+import {
   generateTrackingId,
   signUnsubscribeToken,
 } from "../_shared/marketingTokens.ts";
@@ -1265,6 +1269,9 @@ async function sendEmail(
     const receiveReason: MarketingReceiveReason =
       contact.receive_reason ??
       receiveReasonFromAudienceKind(audience.query_definition.kind);
+    const brandFollowUrl = brandSlug !== null && brandSlug.length > 0
+      ? brandFollowPublicUrl(brandSlug)
+      : null;
     const rendered = renderMarketingEmail({
       body_html: bodyHtml,
       variables,
@@ -1274,6 +1281,7 @@ async function sendEmail(
       brand_name: brandName,
       brand_header_image_url: brandHeaderImageUrl,
       receive_reason: receiveReason,
+      brand_follow_url: brandFollowUrl,
       offering_invite_url_marker: inviteContext === null
         ? undefined
         : OFFERING_LINK_MARKER,
@@ -1910,12 +1918,13 @@ async function sendSms(
 
   const { data: brandRow, error: brandErr } = await supabase
     .from("brands")
-    .select("id, name")
+    .select("id, name, slug")
     .eq("id", campaign.brand_id)
     .maybeSingle();
   if (brandErr) throw new Error(`brand_load:${brandErr.message}`);
-  const brandName: string = (brandRow as { name?: string } | null)?.name ??
-    "Mingla brand";
+  const brandRowSms = brandRow as { name?: string; slug?: string | null } | null;
+  const brandName: string = brandRowSms?.name ?? "Mingla brand";
+  const brandSlugSms: string | null = brandRowSms?.slug ?? null;
 
   // 2. Resolve audience (service-role bypasses RLS). reachable_sms is now truthful
   //    (Sub-B phone-suppression fix in marketingAudience.ts).
@@ -1925,8 +1934,16 @@ async function sendSms(
     campaign.id,
   );
 
-  const rawBody = (campaign.channel_payload.body ?? "").trim();
-  if (rawBody.length === 0) throw new Error("sms_body_empty");
+  const rawBodyBase = (campaign.channel_payload.body ?? "").trim();
+  if (rawBodyBase.length === 0) throw new Error("sms_body_empty");
+  // #3682 Wave 2.3 — every SMS blast carries a Follow URL line.
+  const rawBody = brandSlugSms !== null && brandSlugSms.length > 0
+    ? appendSmsFollowLine(
+      rawBodyBase,
+      brandName,
+      brandFollowPublicUrl(brandSlugSms),
+    )
+    : rawBodyBase;
   const isOfferingAudience = audience.query_definition.kind ===
     "offering_send_group";
   if (rawBody.includes(OFFERING_LINK_MARKER) !== isOfferingAudience) {

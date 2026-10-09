@@ -130,6 +130,8 @@ export interface FoundationEventPreviewProps {
   refundPolicyState: RefundPolicyReadState;
   /** issue #3284 — passthrough of the name guests are told to contact. */
   refundHostName?: string | null;
+  /** #3682 — Presented-by Follow slot (adapter-owned FollowButton). */
+  presentedByFollow?: React.ReactNode;
   testID?: string;
 }
 
@@ -169,6 +171,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   onSeeWhosGoing,
   refundPolicyState,
   refundHostName,
+  presentedByFollow,
   testID,
 }) => {
   const { isDesktop } = useResponsiveLayout();
@@ -226,6 +229,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       // issue #3284 — section 9 refund terms (adapter-mapped, props-only).
       refundPolicyState={refundPolicyState}
       refundHostName={refundHostName}
+      presentedByFollow={presentedByFollow}
       testID="orch-1167-event-body"
     />
   );

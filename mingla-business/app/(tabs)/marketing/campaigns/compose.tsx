@@ -312,6 +312,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const currentBrand = useCurrentBrand();
   const brandId = currentBrand?.id ?? null;
   const brandName = currentBrand?.displayName ?? null;
+  const brandSlug = currentBrand?.slug ?? null;
   const brandAddress = currentBrand?.address ?? null;
   const importFlag = useFeatureFlag("contact_import_v1"),
     bookFlag = useFeatureFlag("brand_book_blast_v1"),
@@ -1864,6 +1865,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 <SmsPreviewPane
                   body={smsBody}
                   brandName={brandName}
+                  brandSlug={brandSlug}
                   reachableSms={reach?.reachable_sms ?? null}
                   currencyCode={currentBrand?.defaultCurrency ?? "USD"}
                   hasMedia={mmsMedia.length > 0}
@@ -1875,6 +1877,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   bodyHtml={body}
                   variables={previewVariables}
                   brandName={brandName}
+                  brandSlug={brandSlug}
                   receiveReason={previewReceiveReason}
                   brandHeaderImageUrl={
                     currentBrand?.coverMediaType !== "video"
@@ -2052,6 +2055,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
               <SmsPreviewPane
                 body={smsBody}
                 brandName={brandName}
+                brandSlug={brandSlug}
                 reachableSms={reach?.reachable_sms ?? null}
                 currencyCode={currentBrand?.defaultCurrency ?? "USD"}
                 hasMedia={mmsMedia.length > 0}
@@ -2063,6 +2067,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 bodyHtml={body}
                 variables={previewVariables}
                 brandName={brandName}
+                brandSlug={brandSlug}
                 receiveReason={previewReceiveReason}
                 brandHeaderImageUrl={
                   currentBrand?.coverMediaType !== "video"
