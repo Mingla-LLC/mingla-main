@@ -55,6 +55,11 @@ import {
   PRODUCTION_BUSINESS_WEB_ORIGIN,
 } from "../_shared/businessWebOrigin.ts";
 import { resolveBrandPublicUrl } from "../_shared/brandPublicUrl.ts";
+import {
+  renderTicketFollowBlockHtml,
+  ticketFollowFooterHtml,
+  ticketFollowTextLines,
+} from "../_shared/email/ticketFollow.ts";
 // ORCH-1195 FIX 4 — experience-shaped confirmation (includes the itinerary/stops).
 import { renderExperienceConfirmationEmail } from "../_shared/email/experienceConfirmationEmail.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
@@ -829,10 +834,12 @@ function buildRenderContext(args: {
 }
 
 /**
- * #3682 Wave 2.4 — mint one-tap unfollow (signed-in) or brand-page Follow CTA.
- * Fail-open: never block confirmation dispatch on token/secret issues.
+ * #3682 Wave 2.4 — mint one-tap unfollow only when the follow row already
+ * exists (auto-follow is async / fire-and-forget on some finalize paths).
+ * Otherwise offer a brand-page Follow CTA. Fail-open: never block dispatch.
  */
 async function attachTicketFollowBlock(
+  supabase: ReturnType<typeof serviceClient>,
   bodyInput: TicketBodyInput,
   order: OrderJoin,
 ): Promise<TicketBodyInput> {
@@ -848,19 +855,27 @@ async function attachTicketFollowBlock(
 
   if (userId.length > 0 && typeof brandId === "string" && brandId.length > 0) {
     try {
-      const token = await signBrandFollowToken({
-        action: "unfollow",
-        brand_id: brandId,
-        user_id: userId,
-      });
-      return {
-        ...bodyInput,
-        follow: {
-          unfollowUrl: brandFollowActionPublicUrl(token),
-          followUrl: null,
-          reason: "purchase",
-        },
-      };
+      const { data: followRow } = await supabase
+        .from("brand_follows")
+        .select("brand_id")
+        .eq("user_id", userId)
+        .eq("brand_id", brandId)
+        .maybeSingle();
+      if (followRow !== null) {
+        const token = await signBrandFollowToken({
+          action: "unfollow",
+          brand_id: brandId,
+          user_id: userId,
+        });
+        return {
+          ...bodyInput,
+          follow: {
+            unfollowUrl: brandFollowActionPublicUrl(token),
+            followUrl: null,
+            reason: "purchase",
+          },
+        };
+      }
     } catch (err) {
       console.warn(
         "[ticket-confirmation-dispatch] follow token mint failed (non-fatal)",
@@ -880,6 +895,53 @@ async function attachTicketFollowBlock(
     };
   }
   return bodyInput;
+}
+
+/** Inject Wave 2.4 follow block + footer into trip/experience HTML shells. */
+function withFollowOnRenderedEmail<T extends { html: string; text: string }>(
+  rendered: T,
+  follow: TicketBodyInput["follow"] | undefined,
+  brandName: string,
+): T {
+  if (follow === undefined) return rendered;
+  const blockHtml = renderTicketFollowBlockHtml({
+    brandName,
+    unfollowUrl: follow.unfollowUrl,
+    followUrl: follow.followUrl,
+    reason: follow.reason,
+  });
+  const footerHtml = ticketFollowFooterHtml({
+    brandName,
+    unfollowUrl: follow.unfollowUrl,
+    reason: follow.reason,
+  });
+  const textExtra = ticketFollowTextLines({
+    brandName,
+    unfollowUrl: follow.unfollowUrl,
+    followUrl: follow.followUrl,
+    reason: follow.reason,
+  });
+  let html = rendered.html;
+  if (blockHtml.length > 0) {
+    html = html.includes("</body>")
+      ? html.replace(/<\/body>/i, `${blockHtml}</body>`)
+      : `${html}${blockHtml}`;
+  }
+  if (footerHtml.length > 0) {
+    // Prefer a trailing footer slot; fall back to append before </body>.
+    if (html.includes("</body>")) {
+      html = html.replace(
+        /<\/body>/i,
+        `<p style="font-size:12px;line-height:18px;color:#6b7280;margin:16px 0 0 0;">${footerHtml}</p></body>`,
+      );
+    } else {
+      html = `${html}<p style="font-size:12px;line-height:18px;color:#6b7280;margin:16px 0 0 0;">${footerHtml}</p>`;
+    }
+  }
+  const text = textExtra.length > 0
+    ? `${rendered.text}\n\n${textExtra.join("\n")}`
+    : rendered.text;
+  return { ...rendered, html, text };
 }
 
 // ORCH-0869 (Tr3) Stage 1b helpers — kind-routed installment email senders.
@@ -1226,6 +1288,7 @@ export const handler = async (req: Request): Promise<Response> => {
       | null,
   });
   const bodyWithFollow = await attachTicketFollowBlock(
+    supabase,
     contextBase.bodyInput,
     order,
   );
@@ -1314,36 +1377,42 @@ export const handler = async (req: Request): Promise<Response> => {
         ?.business_trip as
           | Record<string, unknown>
           | undefined) ?? {};
-      renderEmailBody = (appCtaClaimUrl) => renderTripConfirmationEmail({
-        appCtaClaimUrl,
-        recipient: {
-          name: order.buyer_name,
-          email: order.buyer_email ?? "",
-        },
-        trip: {
-          title: context.bodyInput.event.title,
-          startAtIso: typeof themeBT.startAt === "string"
-            ? themeBT.startAt
-            : null,
-          endAtIso: typeof themeBT.endAt === "string" ? themeBT.endAt : null,
-          destinationText: typeof themeBT.destinationLocationText === "string"
-            ? themeBT.destinationLocationText
-            : null,
-          timezone: context.bodyInput.event.timezone,
-          days: tripDays,
-          inclusions: tripInclusions,
-        },
-        brand: {
-          name: context.bodyInput.brand.name,
-          profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
-        },
-        order: {
-          id: context.bodyInput.order.id,
-          shortId: context.bodyInput.order.shortId,
-          totalCents: order.total_cents,
-          currency: order.currency,
-        },
-      });
+      renderEmailBody = (appCtaClaimUrl) =>
+        withFollowOnRenderedEmail(
+          renderTripConfirmationEmail({
+            appCtaClaimUrl,
+            recipient: {
+              name: order.buyer_name,
+              email: order.buyer_email ?? "",
+            },
+            trip: {
+              title: context.bodyInput.event.title,
+              startAtIso: typeof themeBT.startAt === "string"
+                ? themeBT.startAt
+                : null,
+              endAtIso: typeof themeBT.endAt === "string" ? themeBT.endAt : null,
+              destinationText:
+                typeof themeBT.destinationLocationText === "string"
+                  ? themeBT.destinationLocationText
+                  : null,
+              timezone: context.bodyInput.event.timezone,
+              days: tripDays,
+              inclusions: tripInclusions,
+            },
+            brand: {
+              name: context.bodyInput.brand.name,
+              profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
+            },
+            order: {
+              id: context.bodyInput.order.id,
+              shortId: context.bodyInput.order.shortId,
+              totalCents: order.total_cents,
+              currency: order.currency,
+            },
+          }),
+          context.bodyInput.follow,
+          context.bodyInput.brand.name,
+        );
     } else if (isExperience) {
       // ORCH-1195 FIX 4 — experiences emailed via the generic event template
       // before this, so the itinerary/stops were missing. Fetch the stops and
@@ -1361,36 +1430,41 @@ export const handler = async (req: Request): Promise<Response> => {
         start_time: string | null;
         price_cents: number | null;
       }>;
-      renderEmailBody = (appCtaClaimUrl) => renderExperienceConfirmationEmail({
-        appCtaClaimUrl,
-        recipient: {
-          name: order.buyer_name,
-          email: order.buyer_email ?? "",
-        },
-        experience: {
-          title: context.bodyInput.event.title,
-          dateIso: context.bodyInput.event.startAt,
-          timezone: context.bodyInput.event.timezone,
-          venueText: context.bodyInput.event.locationText,
-          stops: expStops.map((s) => ({
-            stopOrder: s.stop_order,
-            placeName: s.place_name,
-            address: s.address,
-            startTime: s.start_time,
-            priceCents: s.price_cents,
-          })),
-        },
-        brand: {
-          name: context.bodyInput.brand.name,
-          profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
-        },
-        order: {
-          id: context.bodyInput.order.id,
-          shortId: context.bodyInput.order.shortId,
-          totalCents: order.total_cents,
-          currency: order.currency,
-        },
-      });
+      renderEmailBody = (appCtaClaimUrl) =>
+        withFollowOnRenderedEmail(
+          renderExperienceConfirmationEmail({
+            appCtaClaimUrl,
+            recipient: {
+              name: order.buyer_name,
+              email: order.buyer_email ?? "",
+            },
+            experience: {
+              title: context.bodyInput.event.title,
+              dateIso: context.bodyInput.event.startAt,
+              timezone: context.bodyInput.event.timezone,
+              venueText: context.bodyInput.event.locationText,
+              stops: expStops.map((s) => ({
+                stopOrder: s.stop_order,
+                placeName: s.place_name,
+                address: s.address,
+                startTime: s.start_time,
+                priceCents: s.price_cents,
+              })),
+            },
+            brand: {
+              name: context.bodyInput.brand.name,
+              profilePhotoUrl: context.bodyInput.brand.profilePhotoUrl,
+            },
+            order: {
+              id: context.bodyInput.order.id,
+              shortId: context.bodyInput.order.shortId,
+              totalCents: order.total_cents,
+              currency: order.currency,
+            },
+          }),
+          context.bodyInput.follow,
+          context.bodyInput.brand.name,
+        );
     } else {
       renderEmailBody = (appCtaClaimUrl) => renderTransactionalEmail({
         variant: context.bodyInput.variant,

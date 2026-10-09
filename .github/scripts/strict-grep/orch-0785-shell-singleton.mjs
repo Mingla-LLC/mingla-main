@@ -34,6 +34,10 @@ const ALLOWLIST_DIRS = [
   // link. These are web pages, not email bodies — the email-shell-singleton
   // invariant is scoped to email composition, not HTTP responses.
   path.join("supabase", "functions", "marketing-unsubscribe"),
+  // brand-follow-action serves the same class of browser landing page for
+  // one-tap follow / unfollow from order emails (#3682 Wave 2.4). Not an
+  // email body.
+  path.join("supabase", "functions", "brand-follow-action"),
 ];
 
 const failures = [];

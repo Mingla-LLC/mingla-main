@@ -28,6 +28,16 @@
  */
 export const DISCLOSURE_VERSION = "2026-10-08" as const;
 
+/**
+ * Onboarding phone-consent audit pin. The visible checkbox is still the
+ * `onboarding:phone.consent_*` i18n strings (no Follow clause). Keep this
+ * pre-follow §1b + version so the consent_records row matches what the user
+ * saw; checkout Follow wording must not be written here (#3682 Copilot).
+ */
+export const ONBOARDING_DISCLOSURE_VERSION = "2026-06-19" as const;
+export const ONBOARDING_CONSENT_DISCLOSURE_TEXT =
+  "I agree to Mingla's Terms & Conditions and Privacy Policy, and I consent to receive from Mingla LLC and the businesses I book with: (1) transactional and account messages including booking and reservation confirmations, changes, cancellations, refunds, waitlist updates, and payment notices; (2) event and reservation reminders for this booking and for future events; and (3) marketing and promotional messages, including offers and announcements from venues and experience brands. These messages may be sent by email, in-app notification, push notification, and recurring automated text message (SMS) to the phone number I provide. Message frequency varies. Msg & data rates may apply. Consent to texts is not a condition of any purchase. Reply STOP to any text to opt out, or HELP for help; you can also unsubscribe from email via the link in any message or change your preferences in the Mingla app at any time. Full terms: https://www.usemingla.com/terms-of-service | Privacy: https://www.usemingla.com/privacy-policy | SMS terms: https://www.usemingla.com/sms-terms.";
+
 /** Placeholder in §1a / §1b templates; filled with the checkout brand name. */
 export const CONSENT_BRAND_PLACEHOLDER = "{Brand}" as const;
 

@@ -449,6 +449,12 @@ const renderPublicEventPage = (
         return jest.requireActual("@mingla/offering-rendering/rsvpGuestSnapshot");
       case "./RsvpStatusBanner":
         return { RsvpStatusBanner: "RsvpStatusBanner" };
+      // [TEST-MOD-APPROVED #3682] Harness registration only — ADDITION, no
+      // assertion changed. Wave 2.3 mounted FollowButton on the presented-by
+      // chip; the close-callback contract is unrelated and every close
+      // assertion below is untouched.
+      case "@mingla/brand-rendering/FollowButton":
+        return { FollowButton: () => null };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }

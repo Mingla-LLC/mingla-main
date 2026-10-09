@@ -36,8 +36,10 @@ import {
 
 // [TEST-MOD-APPROVED #3682] Frozen snapshot retargeted for Follow Design Contract
 // surface b: §1b now names follow `{Brand}` and "You can unfollow a brand anytime."
-// Length 1137 (was 1071). Do NOT "fix" this to match a drifted constant —
-// if they diverge, the CONSTANT changed and that is the defect.
+// Length 1137 (was 1071). Guest/onboarding keep the pre-follow disclosure pin
+// separately — this freeze is checkout Follow §1b only. Do NOT "fix" this to
+// match a drifted constant — if they diverge, the CONSTANT changed and that is
+// the defect.
 const FROZEN_DISCLOSURE_1B =
   "I agree to Mingla's Terms & Conditions and Privacy Policy, and I consent to follow {Brand} on Mingla and to receive from Mingla LLC and the businesses I book with: (1) transactional and account messages including booking and reservation confirmations, changes, cancellations, refunds, waitlist updates, and payment notices; (2) event and reservation reminders for this booking and for future events; and (3) marketing and promotional messages, including offers and announcements from venues and experience brands. These messages may be sent by email, in-app notification, push notification, and recurring automated text message (SMS) to the phone number I provide. Message frequency varies. Msg & data rates may apply. Consent to texts is not a condition of any purchase. You can unfollow a brand anytime. Reply STOP to any text to opt out, or HELP for help; you can also unsubscribe from email via the link in any message or change your preferences in the Mingla app at any time. Full terms: https://www.usemingla.com/terms-of-service | Privacy: https://www.usemingla.com/privacy-policy | SMS terms: https://www.usemingla.com/sms-terms.";
 

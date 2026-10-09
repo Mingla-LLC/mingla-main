@@ -457,7 +457,9 @@
         "UNSUBSCRIBE_TOKEN_SECRET"
       ],
       "required_bundle_fields": {},
-      "required_top_level": []
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
     },
     "brand-mingla-tos-accept": {
       "migration_fallback_top_level": [],
@@ -2649,7 +2651,9 @@
         "UNSUBSCRIBE_TOKEN_SECRET"
       ],
       "closure_call_identifiers": [],
-      "dynamic_getters": [],
+      "dynamic_getters": [
+        "SECRET_ENV"
+      ],
       "local_call_identifiers": [
         "secretEnvKey"
       ]

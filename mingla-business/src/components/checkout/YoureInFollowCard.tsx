@@ -1,6 +1,10 @@
 /**
  * #3682 Wave 2.4 / design contract surface c — "You're in" follow card.
  * Renders between the QR card and DownloadMinglaCta on web confirm.
+ *
+ * Auth is read via supabase.auth.getSession (not useAuth) so confirm screens
+ * mounted in CartProvider-only tests do not throw. Follow state is owned here
+ * via brandFollowsService.getFollowMeta — one read, no useBrandFollow cache.
  */
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -11,9 +15,8 @@ import {
   View,
 } from "react-native";
 
-import { useAuth } from "../../context/AuthContext";
-import { useBrandFollow } from "../../hooks/useBrandFollow";
 import { brandFollowsService } from "../../services/brandFollowsService";
+import { supabase } from "../../services/supabase";
 import { Icon } from "../ui/Icon";
 
 export type YoureInFollowCardProps = {
@@ -33,22 +36,37 @@ export function YoureInFollowCard({
   brandSlug,
   testID = "youre-in-follow-card",
 }: YoureInFollowCardProps): React.ReactElement | null {
-  const { user } = useAuth();
-  const brandFollow = useBrandFollow(user?.id ?? null, brandId);
+  const [userId, setUserId] = useState<string | null>(null);
   const [mode, setMode] = useState<CardMode>("loading");
   const [undoError, setUndoError] = useState<string | null>(null);
-  const [offerBusy, setOfferBusy] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => supabase.auth?.getSession?.())
+      .then((result) => {
+        if (cancelled) return;
+        setUserId(result?.data?.session?.user?.id ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setUserId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     const resolve = async (): Promise<void> => {
-      if (!user?.id || !brandId) {
+      if (!userId || !brandId) {
         // Signed-out / no brand: contact-keyed follow is Wave 2.5 — offer soft CTA.
         if (!cancelled) setMode(brandName.trim().length > 0 ? "offer" : "hidden");
         return;
       }
       try {
-        const meta = await brandFollowsService.getFollowMeta(user.id, brandId);
+        const meta = await brandFollowsService.getFollowMeta(userId, brandId);
         if (cancelled) return;
         if (!meta.following) {
           setMode("offer");
@@ -60,44 +78,49 @@ export function YoureInFollowCard({
         }
         setMode("already");
       } catch {
-        if (!cancelled) setMode(brandFollow.isFollowing ? "following_undo" : "offer");
+        if (!cancelled) setMode("offer");
       }
     };
     void resolve();
     return () => {
       cancelled = true;
     };
-  }, [brandId, brandFollow.isFollowing, brandName, user?.id]);
+  }, [brandId, brandName, userId]);
 
   const onUndo = useCallback(async (): Promise<void> => {
+    if (!userId || !brandId) return;
     setUndoError(null);
+    setBusy(true);
     try {
-      await brandFollow.unfollow();
+      await brandFollowsService.unfollowBrand(userId, brandId);
       setMode("offer");
     } catch {
       setUndoError("Couldn't undo. Try again, or unfollow from your email.");
+    } finally {
+      setBusy(false);
     }
-  }, [brandFollow]);
+  }, [brandId, userId]);
 
   const onFollow = useCallback(async (): Promise<void> => {
-    if (!user?.id) {
+    if (!userId) {
       // Soft path: open brand page when signed out (sheet m is Wave 2.5).
       if (typeof window !== "undefined" && brandSlug && brandSlug.length > 0) {
         window.location.assign(`/b/${encodeURIComponent(brandSlug)}`);
       }
       return;
     }
-    setOfferBusy(true);
+    if (!brandId) return;
+    setBusy(true);
     setUndoError(null);
     try {
-      await brandFollow.follow();
+      await brandFollowsService.followBrand(userId, brandId);
       setMode("following_undo");
     } catch {
       setUndoError(`Couldn't follow ${brandName}. Try again.`);
     } finally {
-      setOfferBusy(false);
+      setBusy(false);
     }
-  }, [brandFollow, brandName, brandSlug, user?.id]);
+  }, [brandId, brandName, brandSlug, userId]);
 
   if (mode === "hidden" || mode === "loading") {
     return null;
@@ -140,13 +163,13 @@ export function YoureInFollowCard({
             onPress={() => {
               void onUndo();
             }}
-            disabled={brandFollow.isPending}
+            disabled={busy}
             accessibilityRole="button"
             accessibilityLabel={`Undo following ${name}`}
             style={styles.undoHit}
             testID={`${testID}-undo`}
           >
-            {brandFollow.isPending ? (
+            {busy ? (
               <ActivityIndicator size="small" color="#f59a55" />
             ) : (
               <Text style={styles.undo}>Undo</Text>
@@ -178,13 +201,13 @@ export function YoureInFollowCard({
           onPress={() => {
             void onFollow();
           }}
-          disabled={offerBusy || brandFollow.isPending}
+          disabled={busy}
           accessibilityRole="button"
           accessibilityLabel={`Follow ${name}`}
           style={styles.followHit}
           testID={`${testID}-follow`}
         >
-          {offerBusy || brandFollow.isPending ? (
+          {busy ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <Text style={styles.followLabel}>Follow</Text>

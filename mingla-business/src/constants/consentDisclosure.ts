@@ -28,6 +28,17 @@
  */
 export const DISCLOSURE_VERSION = "2026-10-08" as const;
 
+/**
+ * Guest checkout (no buyer_user_id) — auto-follow is skipped, so do not record
+ * or display the Follow clause. Same pre-follow §1b / version as onboarding.
+ * Signed-in checkout uses DISCLOSURE_VERSION + CONSENT_DISCLOSURE_TEXT above.
+ */
+export const GUEST_CHECKOUT_DISCLOSURE_VERSION = "2026-06-19" as const;
+export const GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT =
+  "I agree to Mingla's Terms & Conditions and Privacy Policy, and I consent to receive from Mingla LLC and the businesses I book with: (1) transactional and account messages including booking and reservation confirmations, changes, cancellations, refunds, waitlist updates, and payment notices; (2) event and reservation reminders for this booking and for future events; and (3) marketing and promotional messages, including offers and announcements from venues and experience brands. These messages may be sent by email, in-app notification, push notification, and recurring automated text message (SMS) to the phone number I provide. Message frequency varies. Msg & data rates may apply. Consent to texts is not a condition of any purchase. Reply STOP to any text to opt out, or HELP for help; you can also unsubscribe from email via the link in any message or change your preferences in the Mingla app at any time. Full terms: https://www.usemingla.com/terms-of-service | Privacy: https://www.usemingla.com/privacy-policy | SMS terms: https://www.usemingla.com/sms-terms.";
+export const GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX =
+  " and to receive booking confirmations, reminders, account updates, and marketing from Mingla and the businesses I book with — by email, push, and text. Message frequency varies. Msg & data rates may apply. Reply STOP to opt out of texts, HELP for help.";
+
 /** Placeholder in §1a / §1b templates; filled with the checkout brand name. */
 export const CONSENT_BRAND_PLACEHOLDER = "{Brand}" as const;
 

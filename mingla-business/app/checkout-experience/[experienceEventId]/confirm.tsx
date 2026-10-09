@@ -47,6 +47,7 @@ import {
 } from "../../../src/components/checkout/checkoutPersistence";
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
 import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
+import { YoureInFollowCard } from "../../../src/components/checkout/YoureInFollowCard";
 import {
   TicketConfirmVerdictHero,
   type TicketConfirmEnding,
@@ -96,6 +97,7 @@ function CheckoutExperienceConfirmScreenInner({
 
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
+  const experienceBrand = query.data?.brand ?? null;
   const { lines, buyer, result, recordResult, setLineQuantity, setBuyer } =
     useCart();
 
@@ -587,6 +589,12 @@ function CheckoutExperienceConfirmScreenInner({
             />
           ) : null}
         </GlassCard>
+        {/* #3682 Wave 2.4 / contract c — follow status + Undo (parity with event). */}
+        <YoureInFollowCard
+          brandId={experience?.brandId ?? experienceBrand?.id ?? null}
+          brandName={experienceBrand?.name ?? "this brand"}
+          brandSlug={experience?.brandSlug ?? experienceBrand?.slug ?? null}
+        />
         {/* #2217 — the standalone guest-list card is DELETED and its
             attendance-claim authority folded into the ONE app card below, which
             now carries ONE device-aware button instead of the two-store pair. */}

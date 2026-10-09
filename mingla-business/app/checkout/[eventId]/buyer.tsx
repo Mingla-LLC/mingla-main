@@ -108,10 +108,14 @@ import {
   CONSENT_VISIBLE_LABEL_LINK,
   CONSENT_VISIBLE_LABEL_PREFIX,
   DISCLOSURE_VERSION,
+  GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT,
+  GUEST_CHECKOUT_DISCLOSURE_VERSION,
+  GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX,
   consentDisclosureText,
   consentVisibleLabelSuffix,
   resolveConsentBrandName,
 } from "../../../src/constants/consentDisclosure";
+import { supabase } from "../../../src/services/supabase";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -302,6 +306,27 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   // Shown after the buyer taps a disabled Pay button with fields valid but the
   // box unchecked — never a silent dead tap (DESIGN §S3.4).
   const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
+  // #3682 — Follow clause only when a signed-in buyer can actually auto-follow.
+  // Guests get the pre-follow disclosure (auto-follow skips null buyer_user_id).
+  const [signedInBuyer, setSignedInBuyer] = useState<boolean>(false);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => supabase.auth?.getSession?.())
+      .then((result) => {
+        if (cancelled) return;
+        setSignedInBuyer(
+          typeof result?.data?.session?.user?.id === "string" &&
+            result.data.session.user.id.length > 0,
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setSignedInBuyer(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Checking the box constitutes the bundled grant: DEC-186 folds marketing into
   // the single mandatory consent, so `marketingOptIn` rides with `termsAccepted`
@@ -495,14 +520,28 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     // not deadlock checkout — we log and proceed (Constitution #3: surfaced via
     // console, never silently swallowed).
     try {
+      // Re-read session at submit so a late sign-in still gets the Follow grant.
+      let buyerUserId: string | null = null;
+      try {
+        const sessionResult = await supabase.auth?.getSession?.();
+        const id = sessionResult?.data?.session?.user?.id;
+        buyerUserId = typeof id === "string" && id.length > 0 ? id : null;
+      } catch {
+        buyerUserId = null;
+      }
+      const followCapable = buyerUserId !== null;
       const consentResult = await recordConsent({
         source: "checkout",
-        disclosureText: consentDisclosureText(brand?.displayName),
-        disclosureVersion: DISCLOSURE_VERSION,
+        disclosureText: followCapable
+          ? consentDisclosureText(brand?.displayName)
+          : GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT,
+        disclosureVersion: followCapable
+          ? DISCLOSURE_VERSION
+          : GUEST_CHECKOUT_DISCLOSURE_VERSION,
         phone: buyer.phone,
         email: buyer.email,
         countryCode: phoneCountry,
-        userId: null,
+        userId: buyerUserId,
         // #3524 — the route param we already hold. The server resolves the host
         // from it, so the legal record says WHICH business the buyer agreed to
         // hear from instead of recording the grant Mingla-globally. Nothing else
@@ -896,7 +935,11 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           onPress={toggleTerms}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: termsAccepted }}
-          accessibilityLabel={`${CONSENT_VISIBLE_LABEL_PREFIX}${CONSENT_VISIBLE_LABEL_LINK}${consentVisibleLabelSuffix(brand?.displayName)}`}
+          accessibilityLabel={`${CONSENT_VISIBLE_LABEL_PREFIX}${CONSENT_VISIBLE_LABEL_LINK}${
+            signedInBuyer
+              ? consentVisibleLabelSuffix(brand?.displayName)
+              : GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
+          }`}
           style={({ pressed }) => [
             styles.checkboxRow,
             pressed && styles.checkboxRowPressed,
@@ -923,11 +966,17 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             >
               {CONSENT_VISIBLE_LABEL_LINK}
             </Text>
-            {CONSENT_VISIBLE_FOLLOW_BEFORE}
-            <Text style={styles.checkboxFollowBrand}>
-              {resolveConsentBrandName(brand?.displayName)}
-            </Text>
-            {CONSENT_VISIBLE_FOLLOW_AFTER}
+            {signedInBuyer ? (
+              <>
+                {CONSENT_VISIBLE_FOLLOW_BEFORE}
+                <Text style={styles.checkboxFollowBrand}>
+                  {resolveConsentBrandName(brand?.displayName)}
+                </Text>
+                {CONSENT_VISIBLE_FOLLOW_AFTER}
+              </>
+            ) : (
+              GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
+            )}
           </Text>
         </Pressable>
         {consentHintVisible && !termsAccepted ? (

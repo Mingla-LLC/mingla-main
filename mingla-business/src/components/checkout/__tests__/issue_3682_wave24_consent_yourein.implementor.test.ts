@@ -34,6 +34,9 @@ describe("#3682 Wave 2.4 — checkout consent names Follow (surface b)", () => {
     expect(src).toContain("CONSENT_VISIBLE_FOLLOW_BEFORE");
     expect(src).toContain("checkboxFollowBrand");
     expect(src).toContain("resolveConsentBrandName(brand?.displayName)");
+    // Guest path must not promise Follow (auto-follow skips null buyer_user_id).
+    expect(src).toContain("GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT");
+    expect(src).toContain("GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX");
   });
 
   test("Explorer mirror matches Host DISCLOSURE_VERSION", () => {
@@ -49,13 +52,15 @@ describe("#3682 Wave 2.4 — checkout consent names Follow (surface b)", () => {
     expect(explorer).toContain("follow {Brand} on Mingla");
   });
 
-  test("RSVP contact helper names follow", () => {
+  test("RSVP contact helper names follow only when signed in", () => {
     const src = readFileSync(
       join(ROOT, "../packages/offering-rendering/RsvpOfferingBody.tsx"),
       "utf8",
     );
     expect(src).toContain("you'll follow");
     expect(src).toContain("Unfollow anytime.");
+    expect(src).toContain("We'll only use this to update you about this event.");
+    expect(src).toContain("isLoggedIn");
   });
 });
 
@@ -69,7 +74,20 @@ describe("#3682 Wave 2.4 — You're in follow card (surface c)", () => {
     expect(downloadIdx).toBeGreaterThan(followIdx);
   });
 
-  test("card implements Undo / already / offer modes", () => {
+  test("trip and experience confirms mount the same follow card", () => {
+    for (const rel of [
+      "app/checkout-trip/[tripEventId]/confirm.tsx",
+      "app/checkout-experience/[experienceEventId]/confirm.tsx",
+    ]) {
+      const src = read(rel);
+      expect(src).toContain("YoureInFollowCard");
+      expect(src.indexOf("<YoureInFollowCard")).toBeLessThan(
+        src.indexOf("<DownloadMinglaCta"),
+      );
+    }
+  });
+
+  test("card implements Undo / already / offer modes without AuthProvider", () => {
     const src = read("src/components/checkout/YoureInFollowCard.tsx");
     expect(src).toContain("You're now following");
     expect(src).toContain("You follow");
@@ -77,6 +95,8 @@ describe("#3682 Wave 2.4 — You're in follow card (surface c)", () => {
     expect(src).toContain("Undo");
     expect(src).toContain("getFollowMeta");
     expect(src).toContain("accessibilityLiveRegion");
+    expect(src).not.toContain("useAuth");
+    expect(src).not.toContain("useBrandFollow");
   });
 
   test("brandFollowsService exposes getFollowMeta for Undo gating", () => {
