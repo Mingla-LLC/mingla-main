@@ -900,10 +900,10 @@ async function attachTicketFollowBlock(
 /** Inject Wave 2.4 follow block + footer into trip/experience HTML shells. */
 function withFollowOnRenderedEmail<T extends { html: string; text: string }>(
   rendered: T,
-  follow: TicketBodyInput["follow"] | undefined,
+  follow: TicketBodyInput["follow"] | null | undefined,
   brandName: string,
 ): T {
-  if (follow === undefined) return rendered;
+  if (follow == null) return rendered;
   const blockHtml = renderTicketFollowBlockHtml({
     brandName,
     unfollowUrl: follow.unfollowUrl,
