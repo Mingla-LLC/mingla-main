@@ -327,6 +327,7 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // Proof this replacement BITES rather than merely counting higher: remove the
   // new function's contract entry and the deepEqual above fails with
   // `contract:function_set_mismatch` before this line is ever reached.
+  // Census after Wave 2.5 edge trio (request/confirm/resolve).
   assert.equal(Object.keys(contract.functions).length, 240);
   assert.equal(manifest.secrets.length, 88);
 });
