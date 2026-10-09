@@ -31,12 +31,18 @@ export interface ConsentTermsSheetProps {
   onClose: () => void;
   /** OQ-3 — "I agree" checks the box AND closes. */
   onAgree: () => void;
+  /**
+   * #3682 — body must match the checkbox the buyer sees. Guests get
+   * GUEST_CHECKOUT_TERMS_BODY (no Follow promise); signed-in get CONSENT_TERMS_BODY.
+   */
+  bodyText?: string;
 }
 
 export const ConsentTermsSheet: React.FC<ConsentTermsSheetProps> = ({
   visible,
   onClose,
   onAgree,
+  bodyText = CONSENT_TERMS_BODY,
 }) => {
   return (
     <Modal
@@ -54,7 +60,7 @@ export const ConsentTermsSheet: React.FC<ConsentTermsSheetProps> = ({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator
         >
-          <Text style={styles.body}>{CONSENT_TERMS_BODY}</Text>
+          <Text style={styles.body}>{bodyText}</Text>
         </ScrollView>
         <View style={styles.footer}>
           <Button

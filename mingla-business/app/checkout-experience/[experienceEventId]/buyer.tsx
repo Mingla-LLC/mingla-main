@@ -87,6 +87,7 @@ import {
   GUEST_CHECKOUT_DISCLOSURE_VERSION,
   GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX,
   consentDisclosureText,
+  consentTermsBody,
   consentVisibleLabelSuffix,
   resolveConsentBrandName,
 } from "../../../src/constants/consentDisclosure";
@@ -733,6 +734,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           acceptTerms();
           setTermsSheetVisible(false);
         }}
+        bodyText={consentTermsBody(signedInBuyer)}
       />
     </View>
   );

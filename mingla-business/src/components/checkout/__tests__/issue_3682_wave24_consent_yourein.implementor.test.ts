@@ -64,6 +64,12 @@ describe("#3682 Wave 2.4 — checkout consent names Follow (surface b)", () => {
     expect(src).toContain("GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT");
     expect(src).toContain("recordConsent");
     expect(src).toContain("buyerUserId");
+    expect(src).toContain("eventId");
+    expect(src).toMatch(
+      /const\s*\[\s*marketingOptIn\s*,\s*setMarketingOptIn\s*\]\s*=\s*useState<\s*boolean\s*>\s*\(\s*false\s*\)/,
+    );
+    expect(src).toContain("consentTermsBody");
+    expect(src).toContain("setTermsSheetVisible(true)");
   });
 
   test("Explorer mirror matches Host DISCLOSURE_VERSION", () => {

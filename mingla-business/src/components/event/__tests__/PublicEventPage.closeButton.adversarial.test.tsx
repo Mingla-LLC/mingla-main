@@ -461,6 +461,12 @@ const renderPublicEventPage = (
       // assertion below is untouched.
       case "../../hooks/useBrandFollow":
         return require("./harness/useBrandFollow.publicEventPage.mock");
+      // [TEST-MOD-APPROVED #3682] Harness registration only — ADDITION, no
+      // assertion changed. #3782 mounted SimpleConfirmDialog for unfollow /
+      // follow confirm; the close-callback contract is unrelated and every
+      // close assertion below is untouched.
+      case "../ui/SimpleConfirmDialog":
+        return { SimpleConfirmDialog: () => null };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }

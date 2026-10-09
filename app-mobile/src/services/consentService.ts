@@ -27,6 +27,11 @@ export interface RecordConsentInput {
   countryCode?: string | null;
   /** The just-created user id. */
   userId?: string | null;
+  /**
+   * #3682 / #3524 — offering id so record-consent can resolve brand_id/event_id
+   * for the Follow grant (same field the Host buyer rails already send).
+   */
+  eventId?: string | null;
 }
 
 export interface RecordConsentResult {
@@ -47,6 +52,7 @@ export const recordConsent = async (
       email: input.email ?? null,
       countryCode: input.countryCode ?? null,
       userId: input.userId ?? null,
+      eventId: input.eventId ?? null,
     },
   });
   if (error) {

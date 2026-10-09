@@ -309,6 +309,7 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // `brand-follow-action`, the public GET-confirm / POST-mutate endpoint for
   // one-tap Follow/Unfollow links in ticket confirmation emails. Its contract
   // entry is the scanner's own env reads (token secret + service role).
+  // Census pin only — meaning still lives in auditFunctionSecretContract().
   //
   // Note for #3528: this line is a COUNT, and a count signals "something
   // changed", not "something is wrong". The assertion that carries the meaning

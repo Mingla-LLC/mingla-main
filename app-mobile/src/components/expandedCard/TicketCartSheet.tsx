@@ -31,8 +31,10 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -84,6 +86,7 @@ import {
   GUEST_CHECKOUT_DISCLOSURE_VERSION,
   GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX,
   consentDisclosureText,
+  consentTermsBody,
   consentVisibleLabelSuffix,
   resolveConsentBrandName,
 } from "../../constants/consentDisclosure";
@@ -339,7 +342,7 @@ export interface TicketCartSheetProps {
 
 export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   visible,
-  eventId: _eventId,
+  eventId,
   tickets,
   fallbackCurrency,
   initialTicketTypeId,
@@ -373,12 +376,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const { lines, totals, setLineQuantity, reset } = useTicketCart(
     fallbackCurrency,
   );
-  // #3682 — bundled consent (Follow when signed-in). marketingOptIn rides with
-  // acceptance so the finalize path keeps its existing payload field.
-  const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
+  // #3682 — bundled consent (Follow when signed-in). ORCH-0847 gate requires
+  // this exact `useState<boolean>(false)` shape for marketingOptIn.
+  const [marketingOptIn, setMarketingOptIn] = useState<boolean>(false);
   const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
+  const [termsSheetVisible, setTermsSheetVisible] = useState<boolean>(false);
   const signedInBuyer =
     typeof buyerUserId === "string" && buyerUserId.length > 0;
+  const termsAccepted = marketingOptIn;
   // ORCH-1025 — "What's included" breakdown panel expand/collapse.
   const [breakdownOpen, setBreakdownOpen] = useState<boolean>(false);
   const [highlightUnchosen, setHighlightUnchosen] = useState<boolean>(false);
@@ -591,6 +596,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       lastOpenSeedRef.current = null;
       reset();
       setMarketingOptIn(false);
+      setConsentHintVisible(false);
+      setTermsSheetVisible(false);
       setHighlightUnchosen(false);
       setIntakeAnswers({});
       setIntakeErrors({});
@@ -715,6 +722,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       phone: buyerPhone,
       email: buyerEmail,
       userId: signedInBuyer ? buyerUserId : null,
+      eventId,
     }).catch(() => undefined);
     // ORCH-1025 — payload omits `address` and `taxCalculationId` (G-2). The
     // all-in total (derived only from server all_in_cents) rides as `totalCents`
@@ -728,7 +736,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       lines: lines
         .filter((l) => l.quantity > 0)
         .map((l) => ({ ticketTypeId: l.ticketTypeId, quantity: l.quantity })),
-      marketingOptIn: true,
+      marketingOptIn,
       totalCents: pricing.allInCents,
       intakeFormData,
       // ⚠️ DELETE THIS AND every Explorer pass mints undated, admitting on
@@ -742,11 +750,13 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     isSubmitting,
     hasUnsupportedRequired,
     termsAccepted,
+    marketingOptIn,
     signedInBuyer,
     brandName,
     buyerUserId,
     buyerPhone,
     buyerEmail,
+    eventId,
     selectedSchemaTiers,
     intakeAnswers,
     intakeSchemasByTier,
@@ -997,14 +1007,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         {/* #3682 — bundled consent (Follow when signed-in). */}
         <Pressable
           onPress={() => {
-            setTermsAccepted((v) => {
+            setMarketingOptIn((v) => {
               const next = !v;
               if (next) setConsentHintVisible(false);
               return next;
             });
           }}
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: termsAccepted }}
+          accessibilityState={{ checked: marketingOptIn }}
           accessibilityLabel={`${CONSENT_VISIBLE_LABEL_PREFIX}${CONSENT_VISIBLE_LABEL_LINK}${
             signedInBuyer
               ? consentVisibleLabelSuffix(brandName)
@@ -1019,17 +1029,24 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           <View
             style={[
               styles.checkboxBox,
-              termsAccepted && styles.checkboxBoxChecked,
-              consentHintVisible && !termsAccepted && styles.checkboxBoxFlash,
+              marketingOptIn && styles.checkboxBoxChecked,
+              consentHintVisible && !marketingOptIn && styles.checkboxBoxFlash,
             ]}
           >
-            {termsAccepted ? (
+            {marketingOptIn ? (
               <Icon name="check" size={14} color="#ffffff" />
             ) : null}
           </View>
           <Text style={styles.checkboxLabel}>
             {CONSENT_VISIBLE_LABEL_PREFIX}
-            <Text style={styles.checkboxLink}>{CONSENT_VISIBLE_LABEL_LINK}</Text>
+            <Text
+              style={styles.checkboxLink}
+              onPress={() => setTermsSheetVisible(true)}
+              accessibilityRole="link"
+              accessibilityLabel="Open all terms and conditions"
+            >
+              {CONSENT_VISIBLE_LABEL_LINK}
+            </Text>
             {signedInBuyer ? (
               <>
                 {CONSENT_VISIBLE_FOLLOW_BEFORE}
@@ -1043,11 +1060,51 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             )}
           </Text>
         </Pressable>
-        {consentHintVisible && !termsAccepted ? (
+        {consentHintVisible && !marketingOptIn ? (
           <Text style={styles.consentRequiredHint}>
             Please agree to continue.
           </Text>
         ) : null}
+        <Modal
+          visible={termsSheetVisible}
+          animationType="fade"
+          transparent
+          onRequestClose={() => setTermsSheetVisible(false)}
+        >
+          <View style={styles.termsSheetScrim}>
+            <View style={styles.termsSheetCard}>
+              <Text style={styles.termsSheetTitle}>Terms &amp; Conditions</Text>
+              <ScrollView
+                style={styles.termsSheetScroll}
+                contentContainerStyle={styles.termsSheetScrollContent}
+              >
+                <Text style={styles.termsSheetBody}>
+                  {consentTermsBody(signedInBuyer)}
+                </Text>
+              </ScrollView>
+              <Pressable
+                onPress={() => {
+                  setMarketingOptIn(true);
+                  setConsentHintVisible(false);
+                  setTermsSheetVisible(false);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="I agree"
+                style={styles.termsSheetAgree}
+              >
+                <Text style={styles.termsSheetAgreeLabel}>I agree</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setTermsSheetVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close terms"
+                style={styles.termsSheetClose}
+              >
+                <Text style={styles.termsSheetCloseLabel}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
 
         {/* Buyer recap */}
         <ConsumerCartCard style={styles.recapCard}>
@@ -1402,6 +1459,53 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#ef4444",
     fontWeight: "500",
+  },
+  termsSheetScrim: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.72)",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  termsSheetCard: {
+    backgroundColor: "#16181d",
+    borderRadius: 16,
+    padding: 20,
+    maxHeight: "80%",
+  },
+  termsSheetTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#ffffff",
+    marginBottom: 12,
+  },
+  termsSheetScroll: { maxHeight: 360 },
+  termsSheetScrollContent: { paddingBottom: 12 },
+  termsSheetBody: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: "rgba(255,255,255,0.72)",
+  },
+  termsSheetAgree: {
+    marginTop: 12,
+    backgroundColor: "#eb7825",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  termsSheetAgreeLabel: {
+    color: "#ffffff",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  termsSheetClose: {
+    marginTop: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  termsSheetCloseLabel: {
+    color: "rgba(255,255,255,0.72)",
+    fontWeight: "600",
+    fontSize: 14,
   },
   // Buyer recap
   recapCard: {

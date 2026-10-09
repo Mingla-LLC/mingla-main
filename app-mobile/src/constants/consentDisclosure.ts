@@ -142,6 +142,32 @@ Full Terms of Service: https://www.usemingla.com/terms-of-service · Privacy Pol
  * the component; the surrounding text is rendered verbatim. The brand phrase
  * between FOLLOW_BEFORE and FOLLOW_AFTER is rendered at 600 weight (contract b).
  */
+/**
+ * §2 body for an in-cart T&C sheet. Guests get Follow clauses stripped so the
+ * sheet cannot promise auto-follow that never runs without a user id.
+ */
+export function consentTermsBody(followCapable: boolean): string {
+  if (followCapable) return CONSENT_TERMS_BODY;
+  return CONSENT_TERMS_BODY
+    .replace("Last updated: 2026-10-08", "Last updated: 2026-06-19")
+    .replace(
+      "you agree to follow the Business you book with on Mingla (so you hear about new dates and offers first) and to receive the following from Mingla and from the Businesses you book with:",
+      "you agree to receive the following from Mingla and from the Businesses you book with:",
+    )
+    .replace(
+      "- Follow — you follow that Business on Mingla. Unfollow anytime in the app, on the brand page, or via the link in your confirmation email.\n",
+      "",
+    )
+    .replace(
+      "- Unfollow a brand: use Undo on the confirmation screen, the Unfollow link in your confirmation email, or Unfollow on the brand page in Mingla.\n",
+      "",
+    )
+    .replace(
+      "Unfollowing a brand stops that brand's marketing; your tickets and booking reminders still arrive.",
+      "Guest checkout does not create a Mingla Follow; sign in and book again (or follow on the brand page) to follow a brand.",
+    );
+}
+
 export const CONSENT_VISIBLE_LABEL_PREFIX = "I agree to Mingla's ";
 export const CONSENT_VISIBLE_LABEL_LINK = "terms and conditions";
 export const CONSENT_VISIBLE_FOLLOW_BEFORE = ", to follow ";
