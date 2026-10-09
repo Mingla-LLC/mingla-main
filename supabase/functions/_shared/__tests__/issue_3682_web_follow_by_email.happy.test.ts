@@ -98,6 +98,12 @@ Deno.test("#3682 Wave 2.5 happy: edge functions wired (no account leak + GET/POS
   assert(requestSrc.includes("renderFollowInviteEmail"));
   assert(requestSrc.includes("brand_follow_email_pending"));
   assert(requestSrc.includes("signWebFollowEmailToken"));
+  assert(requestSrc.includes('biz_web_follow_rate_hit'));
+  assert(requestSrc.includes('.eq("email", email)'));
+  assert(!requestSrc.includes(".ilike("));
+  assert(requestSrc.includes("crypto.randomUUID"));
+  assert(requestSrc.includes("upsertErr"));
+  assert(requestSrc.includes("sent.ok"));
   // Invalid email is the one client-visible error (M2).
   assert(requestSrc.includes("invalid_email"));
   assert(requestSrc.includes("status: 400"));
@@ -110,6 +116,7 @@ Deno.test("#3682 Wave 2.5 happy: edge functions wired (no account leak + GET/POS
   assert(confirmSrc.includes('method="POST"'));
   assert(confirmSrc.includes('p_source: "web_email"'));
   assert(confirmSrc.includes("renderFollowConfirmedEmail"));
+  assert(confirmSrc.includes("sent.ok"));
   const getIdx = confirmSrc.indexOf('if (req.method === "GET")');
   const followIdx = confirmSrc.indexOf("biz_auto_follow_brand");
   assert(getIdx > 0 && followIdx > getIdx);
@@ -117,9 +124,10 @@ Deno.test("#3682 Wave 2.5 happy: edge functions wired (no account leak + GET/POS
   const inviteSrc = await Deno.readTextFile(
     new URL("../../resolve-follow-invite/index.ts", import.meta.url),
   );
-  assert(inviteSrc.includes('p_source: "web_follow_invite"'));
+  assert(inviteSrc.includes("biz_claim_web_follow_invite"));
   assert(inviteSrc.includes('if (req.method === "POST" && !userId)'));
   assert(inviteSrc.includes("unauthorized"));
+  assert(inviteSrc.includes("emailMismatch"));
 
   const config = await Deno.readTextFile(
     new URL("../../../config.toml", import.meta.url),
@@ -135,6 +143,8 @@ Deno.test("#3682 Wave 2.5 happy: edge functions wired (no account leak + GET/POS
     ),
   );
   assert(migration.includes("brand_follow_email_pending"));
+  assert(migration.includes("biz_web_follow_rate_hit"));
+  assert(migration.includes("biz_claim_web_follow_invite"));
   assert(migration.includes("'web_follow_invite'"));
   assert(migration.includes("'web_email'"));
 });

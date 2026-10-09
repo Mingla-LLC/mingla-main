@@ -36,7 +36,10 @@ describe("#3682 Wave 2.3 — buyer-web Follow wiring", () => {
     expect(wrapper).toContain("onToggleFollow: handleToggleFollow");
     expect(wrapper).toContain("onFollowingMenu: handleFollowingMenu");
     expect(wrapper).toContain("isFollowing={brandFollow.isFollowing}");
-    expect(wrapper).toContain("followPending={brandFollow.isPending");
+    // [TEST-MOD-APPROVED #3682] Wave 2.5 Pending includes email-sheet state.
+    expect(wrapper).toContain(
+      "followPending={brandFollow.isPending || followEmailPending}",
+    );
     // Alert.alert is a silent no-op on web — ConfirmDialog is required.
     expect(wrapper).toContain('testID="public-brand-unfollow"');
     expect(wrapper).toContain('testID="public-brand-follow-signin"');

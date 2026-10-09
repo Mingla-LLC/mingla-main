@@ -47,10 +47,11 @@ export function renderFollowConfirmEmail(input: {
   const subject = `Confirm you want to follow ${brand}`;
   const preheader =
     "One tap and you're following. The link works for 24 hours.";
+  const ctaHtml = ctaButton(input.confirmUrl, `Yes, follow ${brand}`);
   const bodyHtml = `
 <p style="margin:0 0 12px 0;font-size:22px;line-height:28px;font-weight:800;color:${BRAND_INK};">Confirm you want to follow ${escapeHtml(brand)}</p>
 <p style="margin:0;font-size:15px;line-height:22px;color:${BRAND_MUTED};">Tap below to get ${escapeHtml(brand)}'s new dates and offers on Mingla.</p>
-${ctaButton(input.confirmUrl, `Yes, follow ${brand}`)}
+${ctaHtml}
 <p style="margin:16px 0 0 0;font-size:13px;line-height:20px;color:${BRAND_MUTED};">Didn't ask for this? Ignore this email and nothing changes. The link works for 24 hours.</p>
 <p style="margin:12px 0 0 0;font-size:12px;line-height:18px;color:${BRAND_MUTED};">Sent by Mingla for ${escapeHtml(brand)}</p>`;
   const text = [
@@ -71,10 +72,11 @@ export function renderFollowConfirmedEmail(input: {
   const brand = input.brandName.trim() || "this brand";
   const subject = `You now follow ${brand}`;
   const preheader = "You'll hear about new dates first.";
+  const ctaHtml = ctaButton(input.brandUrl, "See their page");
   const bodyHtml = `
 <p style="margin:0 0 12px 0;font-size:22px;line-height:28px;font-weight:800;color:${BRAND_INK};">You now follow ${escapeHtml(brand)}</p>
 <p style="margin:0;font-size:15px;line-height:22px;color:${BRAND_MUTED};">You'll hear about new dates and offers first, by email and in the Mingla app.</p>
-${ctaButton(input.brandUrl, "See their page")}`;
+${ctaHtml}`;
   const text = [
     `You now follow ${brand}`,
     "",
@@ -92,10 +94,11 @@ export function renderFollowInviteEmail(input: {
   const subject = `${brand} invited you to Mingla`;
   const preheader =
     "Get the app to finish following. The link works for 72 hours.";
+  const ctaHtml = ctaButton(input.oneLinkUrl, "Get the app");
   const bodyHtml = `
 <p style="margin:0 0 12px 0;font-size:22px;line-height:28px;font-weight:800;color:${BRAND_INK};">${escapeHtml(brand)} invited you to Mingla</p>
 <p style="margin:0;font-size:15px;line-height:22px;color:${BRAND_MUTED};">Get the app to finish following ${escapeHtml(brand)}. You'll hear about new dates first and see who's going.</p>
-${ctaButton(input.oneLinkUrl, "Get the app")}
+${ctaHtml}
 <p style="margin:16px 0 0 0;font-size:13px;line-height:20px;color:${BRAND_MUTED};">Already have Mingla? The button opens it. You can also sign in with this email and follow from ${escapeHtml(brand)}'s page.</p>
 <p style="margin:12px 0 0 0;font-size:13px;line-height:20px;color:${BRAND_MUTED};">Didn't ask for this? Ignore this email. We won't email you again unless you ask.</p>`;
   const text = [

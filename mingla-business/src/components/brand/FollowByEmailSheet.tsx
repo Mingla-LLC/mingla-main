@@ -15,7 +15,7 @@ import {
 } from "react-native";
 
 import { accent, radius, spacing, text as textTokens } from "../../constants/designSystem";
-import { supabase } from "../../services/supabaseClient";
+import { supabase } from "../../services/supabase";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 
@@ -228,12 +228,10 @@ export const FollowByEmailSheet: React.FC<FollowByEmailSheetProps> = ({
                 phase === "invalid" && styles.inputInvalid,
               ]}
               accessibilityLabel="Email"
-              accessibilityState={{ invalid: phase === "invalid" }}
-              // @ts-expect-error web a11y
-              aria-invalid={phase === "invalid" ? true : undefined}
-              // @ts-expect-error web a11y
-              aria-describedby={
-                phase === "invalid" ? `${testID}-error` : undefined
+              accessibilityHint={
+                phase === "invalid"
+                  ? "Enter a full email address, like name@example.com."
+                  : undefined
               }
               testID={`${testID}-email`}
             />

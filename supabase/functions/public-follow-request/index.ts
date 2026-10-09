@@ -2,7 +2,7 @@
  * #3682 Wave 2.5 — signed-out web Follow sheet POST.
  * Always returns 202 { status: "sent" } after a ≥600ms floor (no account leak).
  * Existing profile email → n1 confirm (24h). Unknown email → n4 invite (72h).
- * verify_jwt: false — public; rate-limited by IP.
+ * verify_jwt: false — public; rate-limited by durable IP bucket + per-email silent.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { serviceClient, ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
@@ -22,11 +22,7 @@ import { sendInviteEmail } from "../_shared/brandInviteEmail.ts";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const FLOOR_MS = 600;
-const RATE_WINDOW_MS = 10 * 60 * 1000;
-const RATE_MAX = 5;
-
-type RateBucket = { count: number; resetAt: number };
-const IP_BUCKETS = new Map<string, RateBucket>();
+const EMAIL_RESEND_SILENT_MS = 30_000;
 
 function clientIp(req: Request): string {
   const fwd = req.headers.get("x-forwarded-for") ?? "";
@@ -35,22 +31,15 @@ function clientIp(req: Request): string {
   return req.headers.get("cf-connecting-ip") ?? "unknown";
 }
 
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  const bucket = IP_BUCKETS.get(ip);
-  if (!bucket || bucket.resetAt <= now) {
-    IP_BUCKETS.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return false;
-  }
-  if (bucket.count >= RATE_MAX) return true;
-  bucket.count += 1;
-  return false;
-}
-
 function normalizeEmail(raw: string): string | null {
   const email = raw.trim().toLowerCase();
   if (!EMAIL_RE.test(email) || email.length > 254) return null;
   return email;
+}
+
+function followFromHeader(brandName: string): string {
+  const safe = brandName.replace(/[<>\r\n]/g, "").trim() || "Mingla";
+  return safe + " via Mingla <follow@usemingla.com>";
 }
 
 async function sleepFloor(started: number): Promise<void> {
@@ -104,21 +93,28 @@ serve(async (req) => {
     );
   }
 
-  // Device/IP throttle is the only LOUD rate limit (M1: per-email silent).
-  if (rateLimited(ip)) {
-    await sleepFloor(started);
-    return new Response(
-      JSON.stringify({
-        error: "rate_limited",
-        message:
-          "Too many tries from this device. Wait a few minutes and try again.",
-      }),
-      { status: 429, headers: { ...headers, "Content-Type": "application/json" } },
-    );
-  }
-
   try {
     const supabase = serviceClient();
+
+    // Durable IP throttle (shared across isolates). Loud 429 only.
+    const { data: limited, error: rateErr } = await supabase.rpc(
+      "biz_web_follow_rate_hit",
+      { p_bucket_key: `ip:${ip}`, p_window_seconds: 600, p_max_hits: 5 },
+    );
+    if (rateErr) {
+      console.error("[public-follow-request] rate rpc failed", rateErr.message);
+    } else if (limited === true) {
+      await sleepFloor(started);
+      return new Response(
+        JSON.stringify({
+          error: "rate_limited",
+          message:
+            "Too many tries from this device. Wait a few minutes and try again.",
+        }),
+        { status: 429, headers: { ...headers, "Content-Type": "application/json" } },
+      );
+    }
+
     const { data: brandRow } = await supabase
       .from("brands")
       .select("id, name, slug")
@@ -130,16 +126,33 @@ serve(async (req) => {
     }
     const brandName = (brandRow.name as string | null)?.trim() || "this brand";
 
+    // Exact normalized equality — never ilike (wildcards in local-part).
     const { data: profile } = await supabase
       .from("profiles")
       .select("id, email")
-      .ilike("email", email)
+      .eq("email", email)
       .maybeSingle();
 
+    // M1 — per-email silent throttle: recent pending → 202 without resend.
+    const { data: existingPending } = await supabase
+      .from("brand_follow_email_pending")
+      .select("id, created_at, consumed_at")
+      .eq("email_normalized", email)
+      .eq("brand_id", brandId)
+      .maybeSingle();
+    if (
+      existingPending &&
+      existingPending.consumed_at == null &&
+      typeof existingPending.created_at === "string" &&
+      Date.now() - new Date(existingPending.created_at).getTime() <
+        EMAIL_RESEND_SILENT_MS
+    ) {
+      await sleepFloor(started);
+      return jsonSent(headers);
+    }
+
     const apiKey = Deno.env.get("RESEND_API_KEY") ?? "";
-    const from =
-      Deno.env.get("RESEND_SYSTEM_FROM") ??
-      `${brandName} via Mingla <follow@usemingla.com>`;
+    const from = followFromHeader(brandName);
 
     if (profile?.id) {
       const token = await signWebFollowEmailToken({
@@ -151,67 +164,103 @@ serve(async (req) => {
       const expiresAt = new Date(
         Date.now() + CONFIRM_TTL_SECONDS * 1000,
       ).toISOString();
-      await supabase.from("brand_follow_email_pending").upsert(
-        {
-          brand_id: brandId,
-          email_normalized: email,
-          kind: "confirm",
-          token_hash: tokenHash,
-          user_id: profile.id,
-          expires_at: expiresAt,
-          consumed_at: null,
-        },
-        { onConflict: "email_normalized,brand_id" },
-      );
+      const { error: upsertErr } = await supabase
+        .from("brand_follow_email_pending")
+        .upsert(
+          {
+            brand_id: brandId,
+            email_normalized: email,
+            kind: "confirm",
+            token_hash: tokenHash,
+            user_id: profile.id,
+            expires_at: expiresAt,
+            consumed_at: null,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: "email_normalized,brand_id" },
+        );
+      if (upsertErr) {
+        console.error(
+          "[public-follow-request] confirm pending upsert failed",
+          upsertErr.message,
+        );
+        await sleepFloor(started);
+        return jsonSent(headers);
+      }
       const rendered = renderFollowConfirmEmail({
         brandName,
         confirmUrl: webFollowConfirmPublicUrl(token),
       });
       if (apiKey.length > 0) {
-        await sendInviteEmail(apiKey, {
+        const sent = await sendInviteEmail(apiKey, {
           from,
           to: [email],
           subject: rendered.subject,
           html: rendered.html,
           text: rendered.text,
         });
+        if (!sent.ok) {
+          console.error(
+            "[public-follow-request] confirm send failed",
+            sent.error ?? "unknown",
+          );
+        }
       } else {
         console.warn("[public-follow-request] RESEND_API_KEY missing; confirm not sent");
       }
     } else {
+      // Opaque subject — email lives only in the pending ledger (not in OneLink JWT).
+      const opaqueSubject = crypto.randomUUID();
       const token = await signWebFollowEmailToken({
         kind: "invite",
         brand_id: brandId,
-        subject: email,
+        subject: opaqueSubject,
       });
       const tokenHash = await hashWebFollowToken(token);
       const expiresAt = new Date(
         Date.now() + INVITE_TTL_SECONDS * 1000,
       ).toISOString();
-      await supabase.from("brand_follow_email_pending").upsert(
-        {
-          brand_id: brandId,
-          email_normalized: email,
-          kind: "invite",
-          token_hash: tokenHash,
-          user_id: null,
-          expires_at: expiresAt,
-          consumed_at: null,
-        },
-        { onConflict: "email_normalized,brand_id" },
-      );
+      const { error: upsertErr } = await supabase
+        .from("brand_follow_email_pending")
+        .upsert(
+          {
+            brand_id: brandId,
+            email_normalized: email,
+            kind: "invite",
+            token_hash: tokenHash,
+            user_id: null,
+            expires_at: expiresAt,
+            consumed_at: null,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: "email_normalized,brand_id" },
+        );
+      if (upsertErr) {
+        console.error(
+          "[public-follow-request] invite pending upsert failed",
+          upsertErr.message,
+        );
+        await sleepFloor(started);
+        return jsonSent(headers);
+      }
       const rendered = renderFollowInviteEmail({
         brandName,
         oneLinkUrl: webFollowInviteOneLinkUrl(token),
       });
       if (apiKey.length > 0) {
-        await sendInviteEmail(apiKey, {
+        const sent = await sendInviteEmail(apiKey, {
           from,
           to: [email],
           subject: rendered.subject,
           html: rendered.html,
           text: rendered.text,
         });
+        if (!sent.ok) {
+          console.error(
+            "[public-follow-request] invite send failed",
+            sent.error ?? "unknown",
+          );
+        }
       } else {
         console.warn("[public-follow-request] RESEND_API_KEY missing; invite not sent");
       }

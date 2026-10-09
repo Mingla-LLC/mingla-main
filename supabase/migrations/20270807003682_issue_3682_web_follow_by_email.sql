@@ -96,4 +96,138 @@ $f$;
 REVOKE ALL ON FUNCTION public.biz_auto_follow_brand(uuid, uuid, text, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.biz_auto_follow_brand(uuid, uuid, text, uuid) TO service_role;
 
+-- Durable IP/email request throttle (shared across edge isolates).
+CREATE TABLE IF NOT EXISTS public.brand_follow_request_rate (
+  bucket_key text PRIMARY KEY,
+  window_started_at timestamptz NOT NULL,
+  hit_count integer NOT NULL DEFAULT 0
+);
+
+ALTER TABLE public.brand_follow_request_rate ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.brand_follow_request_rate FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.brand_follow_request_rate TO service_role;
+
+CREATE OR REPLACE FUNCTION public.biz_web_follow_rate_hit(
+  p_bucket_key text,
+  p_window_seconds integer DEFAULT 600,
+  p_max_hits integer DEFAULT 5
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $f$
+DECLARE
+  v_now timestamptz := now();
+  v_row public.brand_follow_request_rate%ROWTYPE;
+  v_window interval := make_interval(secs => GREATEST(p_window_seconds, 1));
+BEGIN
+  IF p_bucket_key IS NULL OR btrim(p_bucket_key) = '' THEN
+    RETURN false;
+  END IF;
+
+  SELECT * INTO v_row
+  FROM public.brand_follow_request_rate
+  WHERE bucket_key = p_bucket_key
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    INSERT INTO public.brand_follow_request_rate (bucket_key, window_started_at, hit_count)
+    VALUES (p_bucket_key, v_now, 1);
+    RETURN false;
+  END IF;
+
+  IF v_row.window_started_at + v_window <= v_now THEN
+    UPDATE public.brand_follow_request_rate
+    SET window_started_at = v_now, hit_count = 1
+    WHERE bucket_key = p_bucket_key;
+    RETURN false;
+  END IF;
+
+  IF v_row.hit_count >= p_max_hits THEN
+    RETURN true;
+  END IF;
+
+  UPDATE public.brand_follow_request_rate
+  SET hit_count = hit_count + 1
+  WHERE bucket_key = p_bucket_key;
+  RETURN false;
+END;
+$f$;
+
+REVOKE ALL ON FUNCTION public.biz_web_follow_rate_hit(text, integer, integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.biz_web_follow_rate_hit(text, integer, integer) TO service_role;
+
+-- Single-claimer invite attach (follow + consume in one transaction).
+CREATE OR REPLACE FUNCTION public.biz_claim_web_follow_invite(
+  p_token_hash text,
+  p_user_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $f$
+DECLARE
+  v_pending public.brand_follow_email_pending%ROWTYPE;
+  v_updated integer := 0;
+BEGIN
+  IF p_token_hash IS NULL OR btrim(p_token_hash) = '' OR p_user_id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'args_required');
+  END IF;
+
+  SELECT * INTO v_pending
+  FROM public.brand_follow_email_pending
+  WHERE token_hash = p_token_hash
+    AND kind = 'invite'
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'invalid_token');
+  END IF;
+
+  IF v_pending.consumed_at IS NOT NULL THEN
+    RETURN jsonb_build_object(
+      'ok', true,
+      'already', true,
+      'brand_id', v_pending.brand_id
+    );
+  END IF;
+
+  IF v_pending.expires_at < now() THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'expired');
+  END IF;
+
+  PERFORM public.biz_auto_follow_brand(
+    p_user_id,
+    v_pending.brand_id,
+    'web_follow_invite',
+    NULL
+  );
+
+  UPDATE public.brand_follow_email_pending
+  SET consumed_at = now(), user_id = p_user_id
+  WHERE id = v_pending.id
+    AND consumed_at IS NULL;
+  GET DIAGNOSTICS v_updated = ROW_COUNT;
+
+  IF v_updated = 0 THEN
+    RETURN jsonb_build_object(
+      'ok', true,
+      'already', true,
+      'brand_id', v_pending.brand_id
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'brand_id', v_pending.brand_id,
+    'email', v_pending.email_normalized
+  );
+END;
+$f$;
+
+REVOKE ALL ON FUNCTION public.biz_claim_web_follow_invite(text, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.biz_claim_web_follow_invite(text, uuid) TO service_role;
+
 COMMIT;

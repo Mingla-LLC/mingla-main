@@ -127,27 +127,50 @@ serve(async (req) => {
     );
   }
 
-  await supabase
+  const { error: consumeErr, count: consumeCount } = await supabase
     .from("brand_follow_email_pending")
-    .update({ consumed_at: new Date().toISOString() })
-    .eq("id", pending.id);
+    .update({ consumed_at: new Date().toISOString() }, { count: "exact" })
+    .eq("id", pending.id)
+    .is("consumed_at", null);
+  if (consumeErr) {
+    console.error("[public-follow-confirm] consume failed", consumeErr.message);
+    return htmlError(
+      "Couldn't finish following",
+      "Try again in a moment, or follow from the brand page on Mingla.",
+      500,
+    );
+  }
+  if ((consumeCount ?? 0) === 0) {
+    return htmlOk(
+      `You now follow ${brandName}`,
+      "We already confirmed this follow.",
+      brandUrl,
+    );
+  }
 
-  // n2 — send once (consumed_at gates replay).
+  // n2 — best-effort once the follow + consume landed.
+  let n2Sent = false;
   try {
     const apiKey = Deno.env.get("RESEND_API_KEY") ?? "";
     const to = (pending.email_normalized as string | null) ?? "";
     if (apiKey.length > 0 && to.length > 0) {
       const rendered = renderFollowConfirmedEmail({ brandName, brandUrl });
-      const from =
-        Deno.env.get("RESEND_SYSTEM_FROM") ??
-        `${brandName} via Mingla <follow@usemingla.com>`;
-      await sendInviteEmail(apiKey, {
+      const safeBrand = brandName.replace(/[<>\r\n]/g, "").trim() || "Mingla";
+      const from = safeBrand + " via Mingla <follow@usemingla.com>";
+      const sent = await sendInviteEmail(apiKey, {
         from,
         to: [to],
         subject: rendered.subject,
         html: rendered.html,
         text: rendered.text,
       });
+      n2Sent = sent.ok === true;
+      if (!sent.ok) {
+        console.error(
+          "[public-follow-confirm] n2 send failed (non-fatal)",
+          sent.error ?? "unknown",
+        );
+      }
     }
   } catch (err) {
     console.error(
@@ -158,7 +181,9 @@ serve(async (req) => {
 
   return htmlOk(
     `You now follow ${brandName}`,
-    "We sent a confirmation to your inbox.",
+    n2Sent
+      ? "We sent a confirmation to your inbox."
+      : "You're following. A confirmation email may arrive shortly.",
     brandUrl,
   );
 });

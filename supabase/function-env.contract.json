@@ -1551,7 +1551,6 @@
         "GUEST_FUNNEL_ONELINK_URL",
         "MINGLA_BRAND_FOLLOW_LINK_ORIGIN",
         "RESEND_API_KEY",
-        "RESEND_SYSTEM_FROM",
         "UNSUBSCRIBE_TOKEN_SECRET"
       ],
       "required_bundle_fields": {},
@@ -1566,7 +1565,6 @@
         "GUEST_FUNNEL_ONELINK_URL",
         "MINGLA_BRAND_FOLLOW_LINK_ORIGIN",
         "RESEND_API_KEY",
-        "RESEND_SYSTEM_FROM",
         "UNSUBSCRIBE_TOKEN_SECRET"
       ],
       "required_bundle_fields": {},

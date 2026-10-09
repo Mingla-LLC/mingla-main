@@ -1,8 +1,8 @@
 /**
  * #3682 Wave 2.5 — resolve / attach a follow_invite token after OTP verify.
- * GET (auth): returns { email, brandId, brandName, brandSlug, expired } without consuming.
- * POST (auth): attaches brand_follows with source web_follow_invite; single-use.
- * verify_jwt: true — caller must be signed in.
+ * GET (auth optional): returns { email, brandId, brandName, brandSlug, expired } without consuming.
+ * POST (auth): attaches brand_follows with source web_follow_invite via atomic claim RPC.
+ * verify_jwt: false — POST checks JWT in-code; GET may be anonymous (WelcomeScreen peek).
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -34,7 +34,6 @@ serve(async (req) => {
     return json({ error: "token_required" }, 400);
   }
 
-  // GET may be anonymous (WelcomeScreen prefill). POST requires a signed-in user.
   let userId: string | null = null;
   let userEmail = "";
   const authHeader = req.headers.get("Authorization") ?? "";
@@ -82,7 +81,8 @@ serve(async (req) => {
     .maybeSingle();
   const brandName = (brandRow?.name as string | null)?.trim() || "this brand";
   const brandSlug = (brandRow?.slug as string | null) ?? null;
-  const email = (pending?.email_normalized as string | null) ?? payload.subject;
+  // Email is ledger-only (invite JWT subject is opaque).
+  const email = (pending?.email_normalized as string | null) ?? null;
 
   if (!pending || new Date(pending.expires_at as string).getTime() < Date.now()) {
     return json({
@@ -103,6 +103,9 @@ serve(async (req) => {
       brandSlug,
       expired: false,
       consumed: pending.consumed_at !== null,
+      // O6 hint for clients comparing to the signed-in session.
+      emailMismatch: userEmail.length > 0 && email !== null &&
+        userEmail !== email,
     });
   }
 
@@ -116,36 +119,39 @@ serve(async (req) => {
     });
   }
 
-  // O6 — different signed-in email: client shows confirm; we still attach to
-  // the calling user when they POST (contract: follow on this account).
-  void userEmail;
-
   if (!userId) {
     return json({ error: "unauthorized" }, 401);
   }
 
-  const { error: followErr } = await supabase.rpc("biz_auto_follow_brand", {
-    p_user_id: userId,
-    p_brand_id: payload.brand_id,
-    p_source: "web_follow_invite",
-    p_order_id: null,
-  });
-  if (followErr) {
-    console.error("[resolve-follow-invite] attach failed", followErr.message);
+  // O6 — different signed-in email requires client confirm before POST.
+  // Server still attaches to the calling user when they POST (follow on this account).
+  void userEmail;
+
+  const { data: claim, error: claimErr } = await supabase.rpc(
+    "biz_claim_web_follow_invite",
+    { p_token_hash: tokenHash, p_user_id: userId },
+  );
+  if (claimErr) {
+    console.error("[resolve-follow-invite] claim failed", claimErr.message);
     return json({ error: "attach_failed" }, 500);
   }
-
-  await supabase
-    .from("brand_follow_email_pending")
-    .update({
-      consumed_at: new Date().toISOString(),
-      user_id: userId,
-    })
-    .eq("id", pending.id);
+  const claimObj = (claim ?? {}) as {
+    ok?: boolean;
+    error?: string;
+    already?: boolean;
+    brand_id?: string;
+  };
+  if (claimObj.ok !== true) {
+    if (claimObj.error === "expired") {
+      return json({ error: "expired", expired: true }, 410);
+    }
+    return json({ error: claimObj.error ?? "attach_failed" }, 400);
+  }
 
   return json({
     ok: true,
-    brandId: payload.brand_id,
+    already: claimObj.already === true,
+    brandId: claimObj.brand_id ?? payload.brand_id,
     brandName,
     brandSlug,
   });
