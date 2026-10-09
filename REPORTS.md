@@ -20,7 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
-- 2026-10-08 — Checkout consent names Follow {Brand}, You're-in Undo card, and ticket emails carry a follow block with one-tap unfollow (toward #3682, PR #TBD)
+- 2026-10-08 — Checkout consent names Follow {Brand}, You're-in Undo card, and ticket emails carry a follow block with one-tap unfollow (toward #3682, PR #3784)
 - 2026-10-08 — Buyer web Follow on brand and Presented-by, plus a Follow CTA on every blast email and SMS (toward #3682, PR #3782)
 - 2026-10-08 — Shared Follow control on brand and Presented-by: Follow follows, Following opens Unfollow (no one-tap unfollow), contrast-safe tokens, and re-follow upserts ignore duplicates (toward #3682, PR #3781)
 - 2026-10-08 — Tip greens: #2099 adversarial soft-remove arms the brand-owner transfer bypass after #3660, and the polluted bundle-baseline orphan ref is cleared so the ratchet handoff can NO_CHANGE (toward #3682, PR #3780)
