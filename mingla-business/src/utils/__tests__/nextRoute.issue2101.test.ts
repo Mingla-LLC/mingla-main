@@ -264,7 +264,7 @@ describe("issue #2101 — accepted-and-harmless classes are ACCEPTED, with same-
 describe("issue #2101 — per-family revert isolation (A6.4 15)", () => {
   test("each family's canonical happy path is independently asserted", () => {
     // Deleting ONE admission from the internal tuple reds exactly one of these
-    // three expectations and leaves the other two green.
+    // expectations and leaves the others green.
     expect(sanitizeNextRoute("/t/acme/bali")).toBe("/t/acme/bali");
     expect(sanitizeNextRoute("/exp/acme/sunset-sail")).toBe(
       "/exp/acme/sunset-sail",
@@ -272,6 +272,16 @@ describe("issue #2101 — per-family revert isolation (A6.4 15)", () => {
     expect(sanitizeNextRoute("/e/acme/launch-party")).toBe(
       "/e/acme/launch-party",
     );
+    // #3682 — public brand Follow resume.
+    expect(sanitizeNextRoute("/b/acme")).toBe("/b/acme");
+    expect(sanitizeNextRoute("/b/acme?intent=follow")).toBe(
+      "/b/acme?intent=follow",
+    );
+  });
+
+  test("#3682 /b is segment-safe (rejects /b-evil and /brand prefix confusion)", () => {
+    expect(sanitizeNextRoute("/b-evil")).toBeNull();
+    expect(sanitizeNextRoute("/brand/123")).toBe("/brand/123");
   });
 
   test("a revert that restores today's behaviour makes the Event happy path RED", () => {

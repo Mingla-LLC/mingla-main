@@ -193,6 +193,7 @@ import {
 } from "../../../../src/utils/browserFilePicker";
 import { BrandCoverError } from "../../../../src/utils/brandCoverRules";
 // ORCH-1281 — wire body (incl. STOP footer) for the review-sheet MESSAGE row.
+import { smsBlastBodyWithFollow } from "../../../../src/utils/marketing/blastFollow";
 import { bodyWithFooter } from "../../../../src/utils/smsCost";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../../../src/hooks/useCurrentBrandRole";
@@ -1943,7 +1944,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           }
           // ORCH-1281 — SMS shows a MESSAGE row (wire body) instead of SUBJECT.
           channelKind={channel === "sms" ? "sms" : "email"}
-          messagePreview={bodyWithFooter(smsBody).slice(0, 160)}
+          messagePreview={bodyWithFooter(
+            smsBlastBodyWithFollow(smsBody, brandName, brandSlug),
+          ).slice(0, 160)}
           hasMedia={mmsMedia.length > 0}
           estimatedCostLabel={
             isBookAudience && bookQuote !== null

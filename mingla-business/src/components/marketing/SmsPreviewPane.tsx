@@ -25,10 +25,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import {
-  appendSmsFollowLine,
-  brandFollowPublicUrl,
-} from "../../utils/marketing/blastFollow";
+import { smsBlastBodyWithFollow } from "../../utils/marketing/blastFollow";
 import { bodyWithFooter, estimateSmsCost } from "../../utils/smsCost";
 
 // Phone-canvas palette — a dark iMessage-like screen. Local constants (not
@@ -90,15 +87,12 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
   hasMedia = false,
   mediaUris = [],
 }) => {
-  const bodyWithFollow =
-    typeof brandSlug === "string" && brandSlug.trim().length > 0
-      ? appendSmsFollowLine(
-        body,
-        brandName ?? "this brand",
-        brandFollowPublicUrl(brandSlug),
-      )
-      : body;
-  const wire = bodyWithFooter(bodyWithFollow);
+  // Compose Follow (when slug known) then STOP footer — same order as edge
+  // `smsBlastBodyWithFollow` + `composeSmsBody`. Keep `bodyWithFooter(body)` as
+  // a named intermediate so #1556 ADV-7's ORCH-1281/1289 source contract still
+  // sees the footer owner; Follow is folded into `body` first.
+  const bodyForWire = smsBlastBodyWithFollow(body, brandName, brandSlug);
+  const wire = bodyWithFooter(bodyForWire);
   const isEmpty = body.trim().length === 0 && !hasMedia;
   const showCount = body.trim().length > 0 || hasMedia;
   // =========================================================================

@@ -145,7 +145,7 @@ import { FollowButton } from "@mingla/brand-rendering";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandFollow } from "../../hooks/useBrandFollow";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
-import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";
 import {
@@ -1774,7 +1774,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             ) : null}
           </>
         ) : null}
-        <ConfirmDialog
+        <SimpleConfirmDialog
           visible={followSignInOpen}
           onClose={() => setFollowSignInOpen(false)}
           onConfirm={() => {
@@ -1791,7 +1791,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           cancelLabel="Not now"
           testID="public-event-follow-signin"
         />
-        <ConfirmDialog
+        <SimpleConfirmDialog
           visible={followUnfollowOpen}
           onClose={() => setFollowUnfollowOpen(false)}
           onConfirm={() => {
@@ -2041,7 +2041,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           ) : null}
         </>
       ) : null}
-      <ConfirmDialog
+      <SimpleConfirmDialog
         visible={followSignInOpen}
         onClose={() => setFollowSignInOpen(false)}
         onConfirm={() => {
@@ -2058,7 +2058,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         cancelLabel="Not now"
         testID="public-event-follow-signin"
       />
-      <ConfirmDialog
+      <SimpleConfirmDialog
         visible={followUnfollowOpen}
         onClose={() => setFollowUnfollowOpen(false)}
         onConfirm={() => {

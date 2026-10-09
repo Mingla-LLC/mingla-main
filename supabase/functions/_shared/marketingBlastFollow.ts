@@ -28,6 +28,25 @@ export function appendSmsFollowLine(
 }
 
 /**
+ * One owner for the automatic Follow line used by Book SMS quote AND dispatch.
+ * Call before `marketingBookSmsWireBody` / adapter compose so segment pricing
+ * matches the bytes that land on the wire (#3682 Copilot).
+ */
+export function smsBlastBodyWithFollow(
+  rawBody: string,
+  brandName: string | null | undefined,
+  brandSlug: string | null | undefined,
+): string {
+  const slug = typeof brandSlug === "string" ? brandSlug.trim() : "";
+  if (slug.length === 0) return rawBody;
+  const name =
+    typeof brandName === "string" && brandName.trim().length > 0
+      ? brandName.trim()
+      : "this brand";
+  return appendSmsFollowLine(rawBody, name, brandFollowPublicUrl(slug));
+}
+
+/**
  * Email Follow panel injected above the unsubscribe footer.
  * Inline styles only (Gmail strips <head> CSS). Links are http(s) so the
  * existing marketingEmailRender href rewrite can track clicks.

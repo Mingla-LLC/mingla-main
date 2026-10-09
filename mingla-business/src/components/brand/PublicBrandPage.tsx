@@ -38,8 +38,8 @@ import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
 import { useThemeFont } from "../../theme/useThemeFont";
 
-import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ShareModal } from "../ui/ShareModal";
+import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 import { Toast } from "../ui/Toast";
 
 interface PublicBrandPageProps {
@@ -527,7 +527,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         title={`${brand.displayName} on Mingla`}
         description={brand.bio?.slice(0, 200) ?? brand.tagline}
       />
-      <ConfirmDialog
+      <SimpleConfirmDialog
         visible={signInFollowOpen}
         onClose={() => setSignInFollowOpen(false)}
         onConfirm={() => {
@@ -543,7 +543,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         cancelLabel="Not now"
         testID="public-brand-follow-signin"
       />
-      <ConfirmDialog
+      <SimpleConfirmDialog
         visible={unfollowOpen}
         onClose={() => setUnfollowOpen(false)}
         onConfirm={handleConfirmUnfollow}

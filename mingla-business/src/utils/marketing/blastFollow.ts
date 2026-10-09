@@ -24,3 +24,18 @@ export function appendSmsFollowLine(
   if (trimmed.includes(followUrl)) return trimmed;
   return trimmed.length === 0 ? line : `${trimmed}\n\n${line}`;
 }
+
+/** Client mirror of edge `smsBlastBodyWithFollow` (composer preview + review). */
+export function smsBlastBodyWithFollow(
+  rawBody: string,
+  brandName: string | null | undefined,
+  brandSlug: string | null | undefined,
+): string {
+  const slug = typeof brandSlug === "string" ? brandSlug.trim() : "";
+  if (slug.length === 0) return rawBody;
+  const name =
+    typeof brandName === "string" && brandName.trim().length > 0
+      ? brandName.trim()
+      : "this brand";
+  return appendSmsFollowLine(rawBody, name, brandFollowPublicUrl(slug));
+}

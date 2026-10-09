@@ -1,4 +1,5 @@
 import { composeSmsBody, computeSegments } from "./adapters/smsAdapter.ts";
+import { smsBlastBodyWithFollow } from "./marketingBlastFollow.ts";
 import { allocateSmsCosts } from "./smsPriceBook.ts";
 import type { SmsRateV1 } from "./smsPriceBook.ts";
 
@@ -134,7 +135,12 @@ function stable(value: unknown): string {
 export async function buildMarketingBookQuote(
   input: MarketingBookCandidateResponse,
   now = new Date(),
-  options: { trackingOrigin?: string; smsRates?: SmsRateV1[] } = {},
+  options: {
+    trackingOrigin?: string;
+    smsRates?: SmsRateV1[];
+    /** #3682 — same Follow line dispatch appends; required for SMS segment parity. */
+    followBrand?: { name: string; slug: string } | null;
+  } = {},
 ) {
   now = new Date(Math.floor(now.getTime() / 1000) * 1000);
   if (
@@ -163,8 +169,13 @@ export async function buildMarketingBookQuote(
   );
   let estimatedCostMinor: number | null = null, currency: string | null = null;
   if (input.channel === "sms" && reachable.length > 0) {
-    const wireBody = marketingBookSmsWireBody(
+    const authorBody = smsBlastBodyWithFollow(
       String(input.content.body ?? ""),
+      options.followBrand?.name,
+      options.followBrand?.slug,
+    );
+    const wireBody = marketingBookSmsWireBody(
+      authorBody,
       options.trackingOrigin ?? resolveMarketingTrackingOrigin(),
     );
     const segments = computeSegments(wireBody);

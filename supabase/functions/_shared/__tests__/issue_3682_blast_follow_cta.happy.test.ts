@@ -11,7 +11,10 @@ import {
   appendSmsFollowLine,
   brandFollowPublicUrl,
   renderBlastFollowPanelHtml,
+  smsBlastBodyWithFollow,
 } from "../marketingBlastFollow.ts";
+import { marketingBookSmsWireBody } from "../marketingBookQuote.ts";
+import { computeSegments } from "../adapters/smsAdapter.ts";
 import {
   renderMarketingEmail,
   type MarketingVariables,
@@ -96,6 +99,23 @@ Deno.test("#3682 happy: marketing-send wires brand_follow_url + SMS append", () 
     new URL("../../marketing-send/index.ts", import.meta.url),
   );
   assert(sendSrc.includes("brand_follow_url: brandFollowUrl"));
-  assert(sendSrc.includes("appendSmsFollowLine"));
+  assert(sendSrc.includes("smsBlastBodyWithFollow"));
   assert(sendSrc.includes("brandFollowPublicUrl"));
+  assert(sendSrc.includes("followBrand"));
+});
+
+Deno.test("#3682 happy: quote and dispatch share Follow owner — segment boundary", () => {
+  // Author body sized so STOP footer alone stays 1 segment, but Follow + STOP
+  // crosses into 2 — pricing must see the Follow bytes (Copilot).
+  const raw = "A".repeat(120);
+  const withFollow = smsBlastBodyWithFollow(raw, "Acme", "acme");
+  const origin = "https://usemingla.com/m";
+  const wireWithout = marketingBookSmsWireBody(raw, origin);
+  const wireWith = marketingBookSmsWireBody(withFollow, origin);
+  assertEquals(computeSegments(wireWithout), 1);
+  assert(
+    computeSegments(wireWith) >= 2,
+    "Follow line must bump segments at the boundary",
+  );
+  assertEquals(smsBlastBodyWithFollow(withFollow, "Acme", "acme"), withFollow);
 });

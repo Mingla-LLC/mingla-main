@@ -60,8 +60,8 @@ import {
   renderMarketingEmail,
 } from "../_shared/marketingEmailRender.ts";
 import {
-  appendSmsFollowLine,
   brandFollowPublicUrl,
+  smsBlastBodyWithFollow,
 } from "../_shared/marketingBlastFollow.ts";
 import {
   generateTrackingId,
@@ -555,6 +555,10 @@ export async function handleMarketingSendRequest(
     if (candidates.error) {
       return bookRpcErrorResponse(candidates.error.message);
     }
+    const followBrand = await resolveFollowBrandForQuote(
+      supabase,
+      candidates.data,
+    );
     const publicPeopleQuote = (
       value: Awaited<ReturnType<typeof buildMarketingBookQuote>>,
     ) => publicMarketingBookQuote(value);
@@ -562,7 +566,7 @@ export async function handleMarketingSendRequest(
       ? parseBookQuotedAt(body.quotedAt)
       : new Date();
     if (requestedQuotedAt === null) {
-      const refreshed = await safeBookQuote(candidates.data);
+      const refreshed = await safeBookQuote(candidates.data, followBrand);
       return jsonResponse({
         error: "BOOK_BLAST_PREVIEW_STALE",
         preview: refreshed,
@@ -573,6 +577,7 @@ export async function handleMarketingSendRequest(
       quote = await buildMarketingBookQuote(
         candidates.data as never,
         requestedQuotedAt,
+        { followBrand },
       );
     } catch (error) {
       return jsonResponse({
@@ -731,10 +736,36 @@ export function bookRpcErrorEnvelope(
   return { error: "BOOK_BLAST_PREVIEW_STALE", status: 409 };
 }
 
-async function safeBookQuote(candidates: unknown) {
+async function resolveFollowBrandForQuote(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  candidates: unknown,
+): Promise<{ name: string; slug: string } | null> {
+  const brandId = (candidates as { brandId?: unknown } | null)?.brandId;
+  if (typeof brandId !== "string" || brandId.length === 0) return null;
+  const { data, error } = await db
+    .from("brands")
+    .select("name, slug")
+    .eq("id", brandId)
+    .maybeSingle();
+  if (error || data === null) return null;
+  const slug = typeof data.slug === "string" ? data.slug.trim() : "";
+  if (slug.length === 0) return null;
+  const name = typeof data.name === "string" && data.name.trim().length > 0
+    ? data.name.trim()
+    : "Mingla brand";
+  return { name, slug };
+}
+
+async function safeBookQuote(
+  candidates: unknown,
+  followBrand: { name: string; slug: string } | null = null,
+) {
   try {
     return publicMarketingBookQuote(
-      await buildMarketingBookQuote(candidates as never),
+      await buildMarketingBookQuote(candidates as never, new Date(), {
+        followBrand,
+      }),
     );
   } catch {
     return null;
@@ -1936,14 +1967,8 @@ async function sendSms(
 
   const rawBodyBase = (campaign.channel_payload.body ?? "").trim();
   if (rawBodyBase.length === 0) throw new Error("sms_body_empty");
-  // #3682 Wave 2.3 — every SMS blast carries a Follow URL line.
-  const rawBody = brandSlugSms !== null && brandSlugSms.length > 0
-    ? appendSmsFollowLine(
-      rawBodyBase,
-      brandName,
-      brandFollowPublicUrl(brandSlugSms),
-    )
-    : rawBodyBase;
+  // #3682 Wave 2.3 — every SMS blast carries a Follow URL line (same owner as Book quote).
+  const rawBody = smsBlastBodyWithFollow(rawBodyBase, brandName, brandSlugSms);
   const isOfferingAudience = audience.query_definition.kind ===
     "offering_send_group";
   if (rawBody.includes(OFFERING_LINK_MARKER) !== isOfferingAudience) {

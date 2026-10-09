@@ -3,6 +3,7 @@
 // tap; Following opens a host menu).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import { brandFollowsService } from "../services/brandFollowsService";
 
 export const brandFollowKeys = {
@@ -23,7 +24,10 @@ export function useBrandFollow(
   brandId: string | null,
 ): UseBrandFollowResult {
   const queryClient = useQueryClient();
-  const enabled = !!userId && !!brandId;
+  // brand_follows is auth.uid()-scoped; wait for a ready session so a cold
+  // web load cannot cache an RLS-empty miss as "not following" (ORCH-1004).
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && !!userId && !!brandId;
   const statusKey = brandFollowKeys.status(brandId ?? "", userId ?? "");
 
   const statusQuery = useQuery({

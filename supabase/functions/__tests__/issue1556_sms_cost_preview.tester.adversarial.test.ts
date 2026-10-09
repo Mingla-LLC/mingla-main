@@ -566,9 +566,15 @@ Deno.test("#1556 ADV-7 — the bubble body renders exactly once, inside the type
   // The guard must not have been bought by re-routing the pane: ORCH-1281 and
   // ORCH-1289 both require the bubble to render the COMPOSED body, footer and
   // all, once something is typed.
+  // [TEST-MOD-APPROVED #3682] Wave 2.3 folds the Follow URL line into the
+  // author body before the STOP footer (`smsBlastBodyWithFollow` →
+  // `bodyWithFooter`). The footer owner remains `bodyWithFooter`; only the
+  // argument is the Follow-augmented body so quote/preview/dispatch stay
+  // byte-aligned.
   assert(
-    /const wire = bodyWithFooter\(body\);/.test(paneSrc),
-    "the pane no longer previews bodyWithFooter(body) — ORCH-1281/1289 contract broken",
+    /const wire = bodyWithFooter\(bodyForWire\);/.test(paneSrc) &&
+      paneSrc.includes("smsBlastBodyWithFollow"),
+    "the pane no longer previews bodyWithFooter(Follow-augmented body) — ORCH-1281/1289+#3682 contract broken",
   );
   // And the composed body the pane shows is exactly what #1556 says it shows:
   // the author's characters, unfolded.

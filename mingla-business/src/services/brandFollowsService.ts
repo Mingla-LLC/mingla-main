@@ -13,12 +13,16 @@ export const brandFollowsService = {
   },
 
   async unfollowBrand(userId: string, brandId: string): Promise<void> {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("brand_follows")
       .delete()
       .eq("user_id", userId)
-      .eq("brand_id", brandId);
+      .eq("brand_id", brandId)
+      .select("brand_id");
     if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error("brand_follow_unfollow_noop");
+    }
   },
 
   async isFollowing(userId: string, brandId: string): Promise<boolean> {
