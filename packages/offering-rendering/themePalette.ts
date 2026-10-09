@@ -91,7 +91,7 @@ const linearizeSrgb = (channel: number): number => {
     : ((normalized + 0.055) / 1.055) ** 2.4;
 };
 
-const relativeLuminance = (hex: string): number => {
+export const relativeLuminance = (hex: string): number => {
   const { r, g, b } = parseHexColor(hex);
   return (
     0.2126 * linearizeSrgb(r) +
@@ -100,7 +100,7 @@ const relativeLuminance = (hex: string): number => {
   );
 };
 
-const contrastRatio = (a: string, b: string): number => {
+export const contrastRatio = (a: string, b: string): number => {
   const lighter = Math.max(relativeLuminance(a), relativeLuminance(b));
   const darker = Math.min(relativeLuminance(a), relativeLuminance(b));
   return (lighter + 0.05) / (darker + 0.05);

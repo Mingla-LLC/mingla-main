@@ -239,7 +239,7 @@ describe("ORCH-1155 brand page — adversarial data/parity contract", () => {
     const panel = brandPage.slice(panelStart, panelStart + 2000);
     expect(panel).toMatch(/Share/);
     expect(panel).toMatch(/Next up/);
-    expect(panel).toContain("<FollowButton");
+    expect(panel).toContain("<BrandFollowControl");
     // the mounted button is the gated one — the gate must still exist in-file
     expect(brandPage).toContain(
       "if (onToggleFollow === undefined) return null;",

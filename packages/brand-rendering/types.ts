@@ -208,6 +208,9 @@ export interface PublicBrandCallbacks {
   // Issue #679 — host-provided Follow toggle. ABSENT ⇒ no Follow UI renders
   // (the callback gate that keeps buyer-web + business preview unchanged).
   onToggleFollow?: () => void;
+  // #3682 — when following, open the Following menu (Mute / Unfollow). Absent
+  // ⇒ Following taps still call onToggleFollow (legacy one-tap toggle).
+  onFollowingMenu?: () => void;
   onOpenEvent: (event: PublicBrandEvent) => void;
   onOpenTrip: (trip: PublicBrandTrip) => void;
   onOpenExperience?: (experience: PublicBrandExperience) => void;
@@ -243,6 +246,9 @@ export interface PublicBrandPageProps {
   // server state). Only read when callbacks.onToggleFollow is provided.
   isFollowing?: boolean;
   followPending?: boolean;
+  // #3682 — why-caption under Follow (e.g. "Following since Oct") and count.
+  followCaption?: string | null;
+  followerCount?: number | null;
   // Issue #1365 — verified venues for the Reservations tab.
   // Absent / [] ⇒ section omitted (real-data-only).
   venues?: PublicBrandVenueSummary[];

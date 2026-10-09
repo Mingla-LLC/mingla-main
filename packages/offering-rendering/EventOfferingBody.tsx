@@ -296,6 +296,12 @@ export interface EventOfferingBodyProps {
 
   // Links / maps.
   onOpenBrand?: (brandSlug: string) => void;
+  /**
+   * #3682 — optional Follow control rendered as a sibling of the Presented-by
+   * identity (never nested inside the identity Pressable). Absent ⇒ card is
+   * identity-only (host preview / no follow callback).
+   */
+  presentedByFollow?: React.ReactNode;
   /** issue #2468 — carries the stored coordinate, not just the text label.
    *  issue #2508 — plus the app the guest picked (undefined ⇒ nothing asked). */
   onOpenMaps?: (target: MapsOpenTarget, app?: MapsAppId) => void;
@@ -393,6 +399,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   onChangeTicketQuantity,
   onProceedToCart,
   onOpenBrand,
+  presentedByFollow,
   onOpenMaps,
   onCopyAddress,
   staticMapUrl = null,
@@ -693,62 +700,68 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
       )}
       {/* testID="orch-1167-ticket-box" — gate anchor (rendered by EventTicketBox). */}
 
-      {/* (6) Presented By — brand card → onOpenBrand. */}
-      <View style={styles.section}>
-        <Pressable
-          onPress={() => {
-            if (brand?.slug !== undefined) onOpenBrand?.(brand.slug);
-          }}
-          disabled={brand?.slug === undefined || onOpenBrand === undefined}
-          accessibilityRole={onOpenBrand !== undefined ? "button" : undefined}
-          accessibilityLabel={
-            brand?.displayName !== undefined
-              ? `View ${brand.displayName}`
-              : "View brand"
-          }
-          style={[styles.brandRow, surface.card]}
-        >
-          <View style={[styles.brandTile, { backgroundColor: palette.accent }]}>
-            {brand?.photo !== undefined && brand.photo.length > 0 ? (
-              <Image
-                source={{ uri: brand.photo }}
-                style={styles.brandPhoto}
-                resizeMode="cover"
-                accessibilityLabel={`${brand.displayName ?? "Brand"} profile photo`}
-              />
-            ) : (
-              <View style={styles.brandInitialWrap}>
-                <Text
-                  style={[
-                    styles.brandInitial,
-                    { color: palette.accentText, fontFamily: boldFamily },
-                  ]}
-                >
-                  {(brand?.displayName?.trim()[0] ?? "•").toUpperCase()}
-                </Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.brandTextCol}>
-            <Text style={[styles.brandKicker, surface.tertiaryText]}>
-              Presented by
-            </Text>
-            <Text
-              style={[
-                styles.brandName,
-                surface.primaryText,
-                { fontFamily: boldFamily },
-              ]}
-            >
-              {brand?.displayName ?? "Brand"}
-            </Text>
-          </View>
-          {onOpenBrand !== undefined ? (
-            <Text style={[styles.brandCta, { color: palette.accent }]}>
-              View
-            </Text>
+      {/* (6) Presented By — identity Pressable + optional sibling Follow (#3682 A). */}
+      <View style={styles.section} testID="presented-by-card">
+        <View style={[styles.brandCard, surface.card]}>
+          <Pressable
+            onPress={() => {
+              if (brand?.slug !== undefined) onOpenBrand?.(brand.slug);
+            }}
+            disabled={brand?.slug === undefined || onOpenBrand === undefined}
+            accessibilityRole={onOpenBrand !== undefined ? "link" : undefined}
+            accessibilityLabel={
+              brand?.displayName !== undefined
+                ? `${brand.displayName}. Open brand page`
+                : "Open brand page"
+            }
+            style={styles.brandRow}
+          >
+            <View style={[styles.brandTile, { backgroundColor: palette.accent }]}>
+              {brand?.photo !== undefined && brand.photo.length > 0 ? (
+                <Image
+                  source={{ uri: brand.photo }}
+                  style={styles.brandPhoto}
+                  resizeMode="cover"
+                  accessibilityLabel={`${brand.displayName ?? "Brand"} profile photo`}
+                />
+              ) : (
+                <View style={styles.brandInitialWrap}>
+                  <Text
+                    style={[
+                      styles.brandInitial,
+                      { color: palette.accentText, fontFamily: boldFamily },
+                    ]}
+                  >
+                    {(brand?.displayName?.trim()[0] ?? "•").toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.brandTextCol}>
+              <Text style={[styles.brandKicker, { color: palette.secondaryText }]}>
+                Presented by
+              </Text>
+              <Text
+                style={[
+                  styles.brandName,
+                  surface.primaryText,
+                  { fontFamily: boldFamily },
+                ]}
+                numberOfLines={2}
+              >
+                {brand?.displayName ?? "Brand"}
+              </Text>
+            </View>
+            {presentedByFollow === undefined && onOpenBrand !== undefined ? (
+              <Text style={[styles.brandCta, { color: palette.accent }]}>
+                View
+              </Text>
+            ) : null}
+          </Pressable>
+          {presentedByFollow !== undefined ? (
+            <View style={styles.brandFollowSlot}>{presentedByFollow}</View>
           ) : null}
-        </Pressable>
+        </View>
       </View>
 
       {/* (7) About — collapsible. */}
@@ -1612,13 +1625,18 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   // ---- brand ----
+  brandCard: {
+    borderRadius: 16,
+    overflow: "hidden",
+    padding: 14,
+  },
+  brandFollowSlot: {
+    marginTop: 12,
+  },
   brandRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
   },
   brandTile: { width: 42, height: 42, borderRadius: 999, overflow: "hidden" },
   brandPhoto: { width: "100%", height: "100%" },
