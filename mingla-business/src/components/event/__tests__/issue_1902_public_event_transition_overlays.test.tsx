@@ -73,15 +73,10 @@ jest.mock("@tanstack/react-query", () => ({
     isPending: false,
   }),
 }));
-jest.mock("../../../hooks/useBrandFollow", () => ({
-  useBrandFollow: () => ({
-    isFollowing: false,
-    isPending: false,
-    toggle: async () => false,
-    follow: async () => undefined,
-    unfollow: async () => undefined,
-  }),
-}));
+jest.mock(
+  "../../../hooks/useBrandFollow",
+  () => require("./harness/useBrandFollow.publicEventPage.mock"),
+);
 // [TEST-MOD-APPROVED #2101] Harness registration only — the transition-overlay
 // contract is unrelated to checkout eligibility, so the adapter is pinned to
 // its legacy pass-through and the notice renders nothing.

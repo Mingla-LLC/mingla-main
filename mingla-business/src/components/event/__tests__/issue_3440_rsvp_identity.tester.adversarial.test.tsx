@@ -61,6 +61,14 @@ jest.mock("@tanstack/react-query", () => ({
     refetchQueries: () => Promise.resolve(),
   }),
 }));
+
+// [TEST-MOD-APPROVED #3682] Shared Follow double — PublicEventPage mounts
+// useBrandFollow; without this the suite loads brandFollowsService → supabase.
+jest.mock(
+  "../../../hooks/useBrandFollow",
+  () => require("./harness/useBrandFollow.publicEventPage.mock"),
+);
+
 jest.mock("../../../hooks/usePublicTicketCheckoutRouteAccess", () => ({
   usePublicTicketCheckoutRouteAccess: () => ({
     state: "unrestricted",

@@ -243,6 +243,14 @@ jest.mock("@tanstack/react-query", () => ({
     isLoading: false,
   }),
 }));
+
+// [TEST-MOD-APPROVED #3682] Shared Follow double — PublicEventPage mounts
+// useBrandFollow; without this the suite loads brandFollowsService → supabase.
+jest.mock(
+  "../../../hooks/useBrandFollow",
+  () => require("./harness/useBrandFollow.publicEventPage.mock"),
+);
+
 jest.mock("../../../services/socialProofService", () => ({
   fetchSocialProof: jest.fn(),
   socialProofKeys: { summary: (id: string) => ["socialProof", id] },
