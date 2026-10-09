@@ -1,3 +1,6 @@
+export { FollowButton } from "./FollowButton";
+export { followTokens, resolveFollowVisualState } from "./followTokens";
+export type { FollowVisualState, FollowButtonSize } from "./followTokens";
 export { PublicBrandPage } from "./PublicBrandPage";
 // META-ORCH-1255(C) — the shared menu section renderer (the venue public page
 // §6.6 reuses the brand page's Menu composition verbatim, currency-aware).

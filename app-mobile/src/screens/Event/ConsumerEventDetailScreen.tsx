@@ -46,6 +46,7 @@ import React, {
 } from "react";
 import {
   AccessibilityInfo,
+  Alert,
   ActivityIndicator,
   InteractionManager,
   Pressable,
@@ -56,6 +57,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
+import { FollowButton } from "@mingla/brand-rendering";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -164,6 +166,8 @@ import * as WebBrowser from "expo-web-browser";
 import { supabase } from "../../services/supabase";
 import { type ChipInResult } from "@mingla/offering-rendering";
 import { toastManager } from "../../components/ui/Toast";
+import { useBrandFollow } from "../../hooks/useBrandFollow";
+import { HapticFeedback } from "../../utils/hapticFeedback";
 import { useAppStore } from "../../store/appStore";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion capture (PostHog
 // runs alongside the existing analytics; no Mixpanel call exists at this site).
@@ -381,6 +385,12 @@ export default function ConsumerEventDetailScreen({
   const canonical = coldReadPlan.canonical;
   const canonicalSeed = canonical === null ? null : canonicalToTransientCard(canonical);
   const seed = seedProp ?? canonicalSeed ?? coldSeedQuery.data ?? null;
+
+  // #3682 — Presented-by Follow on the event body (contract A).
+  const brandFollow = useBrandFollow(
+    user?.id ?? null,
+    seed !== null && typeof seed.brandId === "string" ? seed.brandId : null,
+  );
 
   const [cartVisible, setCartVisible] = useState<boolean>(false);
   const [initialTicketTypeId, setInitialTicketTypeId] = useState<string | null>(
@@ -1515,6 +1525,48 @@ export default function ConsumerEventDetailScreen({
   // + collapsible About + the static map) byte-identically with buyer-web/
   // business. The STANDARD ticketed branch (EventOfferingBody) is untouched.
 
+  // #3682 A — shared Presented-by Follow slot for ticketed + RSVP bodies.
+  const presentedByFollow =
+    seed !== null ? (
+      <FollowButton
+        brandName={seed.brandName}
+        palette={palette}
+        isFollowing={brandFollow.isFollowing}
+        followPending={brandFollow.isPending}
+        size="lg"
+        onPress={() => {
+          if (!user?.id) {
+            Alert.alert(
+              `Sign in to follow ${seed.brandName}`,
+              "Hear about new dates first.",
+            );
+            return;
+          }
+          if (brandFollow.isFollowing) {
+            Alert.alert(`Following ${seed.brandName}`, undefined, [
+              {
+                text: "Unfollow",
+                style: "destructive",
+                onPress: () => {
+                  void brandFollow.unfollow().catch(() => {
+                    /* toast owned by brand page path; keep quiet here */
+                  });
+                },
+              },
+              { text: "Cancel", style: "cancel" },
+            ]);
+            return;
+          }
+          void brandFollow
+            .follow()
+            .then(() => {
+              HapticFeedback.light();
+            })
+            .catch(() => {});
+        }}
+      />
+    ) : undefined;
+
   // ORCH-1167-R2 (change 4) — the floating Get-tickets bar is PERSISTENT on the
   // consumer sheet too (was regressing: anchored to the body top it hid right
   // after the cover). It stays pinned the whole scroll, reflects the live Σ-all-in
@@ -1684,6 +1736,7 @@ export default function ConsumerEventDetailScreen({
                 onChangeTicketQuantity={handleChangeTicketQuantity}
                 onProceedToCart={handleProceedToCart}
                 onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
+                presentedByFollow={presentedByFollow}
                 onOpenMaps={openMapsForTarget}
                 onCopyAddress={copyAddressForTarget}
                 staticMapUrl={bodyStaticMapUrl}
@@ -1733,6 +1786,7 @@ export default function ConsumerEventDetailScreen({
                 isLoggedIn={user !== null}
                 onSubmit={rsvpOnSubmit}
                 onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
+                presentedByFollow={presentedByFollow}
                 onOpenMaps={openMapsForTarget}
                 onCopyAddress={copyAddressForTarget}
                 staticMapUrl={rsvpBodyStaticMapUrl}

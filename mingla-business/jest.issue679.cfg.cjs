@@ -84,6 +84,12 @@ module.exports = {
     // into visible/a11y copy, section labels stay mapped, and callbacks retain
     // their original object identity and lowercase routing discriminator.
     "**/__tests__/issue_3430_upcoming_kind_labels.tester.adversarial.render.test.tsx",
+    // #3682 Follow Design Contract — token contrast + visual-state mapping.
+    // Named here for reason #1 in this file's header; paired MANIFEST
+    // expectedFiles entry required (manifest validator fails closed otherwise).
+    "**/__tests__/issue_3682_follow_tokens.test.ts",
+    // #3682 (a) — Presented-by sibling Follow slot on Event + RSVP bodies.
+    "**/__tests__/issue_3682_presented_by_follow_slot.test.ts",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|react-native-svg|lucide-react-native|expo|@expo)",

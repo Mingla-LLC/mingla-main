@@ -20,6 +20,10 @@ export interface UseBrandFollowResult {
   isPending: boolean;
   /** Resolves with the NEW server-confirmed state; rejects on failure. */
   toggle: () => Promise<boolean>;
+  /** Follow only (idempotent). */
+  follow: () => Promise<void>;
+  /** Unfollow only (idempotent). */
+  unfollow: () => Promise<void>;
 }
 
 export function useBrandFollow(
@@ -71,5 +75,13 @@ export function useBrandFollow(
     isFollowing,
     isPending: mutation.isPending,
     toggle: () => mutation.mutateAsync(!isFollowing),
+    follow: async () => {
+      if (isFollowing) return;
+      await mutation.mutateAsync(true);
+    },
+    unfollow: async () => {
+      if (!isFollowing) return;
+      await mutation.mutateAsync(false);
+    },
   };
 }

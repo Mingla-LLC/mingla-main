@@ -42,6 +42,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
+import { FollowButton as SharedFollowButton } from "./FollowButton";
 import {
   AtSign,
   CalendarCheck,
@@ -306,6 +307,8 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // defaults type them boolean with IDENTICAL behavior (every consumer
   // compares `=== true`, so false ≡ undefined).
   isFollowing = false,
+  followCaption = null,
+  followerCount = null,
   followPending = false,
   venues = [],
   venuesLoadState = "ready",
@@ -783,12 +786,15 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       {!isDesktop ? (
         <View style={styles.phoneIdentityWrap}>
           {identityBlock}
-          <FollowButton
+          <BrandFollowControl
             brand={brand}
             palette={palette}
             isFollowing={isFollowing}
             followPending={followPending}
+            followCaption={followCaption}
+            followerCount={followerCount}
             onToggleFollow={callbacks.onToggleFollow}
+            onFollowingMenu={callbacks.onFollowingMenu}
           />
           {socialsBlock}
           {featuredTeaser}
@@ -825,12 +831,15 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           </View>
         </View>
         {socialsBlock}
-        <FollowButton
+        <BrandFollowControl
           brand={brand}
           palette={palette}
           isFollowing={isFollowing}
           followPending={followPending}
+          followCaption={followCaption}
+          followerCount={followerCount}
           onToggleFollow={callbacks.onToggleFollow}
+          onFollowingMenu={callbacks.onFollowingMenu}
           desktop
         />
         <Pressable
@@ -1050,65 +1059,78 @@ const SocialIcon: React.FC<{
   return <Icon color={color} size={size} strokeWidth={strokeWidth} />;
 };
 
-// Issue #679 — Follow/Following toggle. Renders ONLY when the host provides
-// callbacks.onToggleFollow (THE gate: hosts that pass nothing — buyer-web and
-// the business in-app preview — render no follow surface at all). State is
-// server-truth via the host's isFollowing prop; the renderer holds none.
-// The destructured parameter carries the annotation DIRECTLY (not only via
-// React.FC): the #1403/#874 typecheck-delta harnesses run a tsc graph where
-// the react module does not resolve, so a React.FC-only annotation leaves the
-// bindings implicitly any (TS7031) — an explicit parameter type keeps this
-// component contributing ZERO delta diagnostics.
-type BrandFollowButtonProps = {
+// Issue #679 / #3682 — Follow control. Renders ONLY when the host provides
+// callbacks.onToggleFollow (THE gate). Following taps open onFollowingMenu when
+// provided so unfollow is never one-tap (contract C7 / E5).
+type BrandFollowControlProps = {
   brand: PublicBrand;
   palette: ThemePalette;
   isFollowing?: boolean;
   followPending?: boolean;
+  followCaption?: string | null;
+  followerCount?: number | null;
   onToggleFollow?: () => void;
+  onFollowingMenu?: () => void;
   desktop?: boolean;
 };
-const FollowButton: React.FC<BrandFollowButtonProps> = ({
+const BrandFollowControl: React.FC<BrandFollowControlProps> = ({
   brand,
   palette,
   isFollowing,
   followPending,
+  followCaption,
+  followerCount,
   onToggleFollow,
+  onFollowingMenu,
   desktop,
-}: BrandFollowButtonProps) => {
+}: BrandFollowControlProps) => {
+  // orch-strict-grep / issue 679 gate — keep the exact predicate the gates pin.
   if (onToggleFollow === undefined) return null;
   const active = isFollowing === true;
+  const countLine =
+    typeof followerCount === "number"
+      ? followerCount === 0
+        ? "Be the first to follow"
+        : followerCount === 1
+          ? "1 follower"
+          : followerCount >= 1000
+            ? `${(followerCount / 1000).toFixed(followerCount >= 10000 ? 0 : 1).replace(/\.0$/, "")}k followers`
+            : `${followerCount} followers`
+      : null;
+  const caption =
+    followCaption !== undefined && followCaption !== null && followCaption.length > 0
+      ? followCaption
+      : null;
+  const why =
+    caption !== null && countLine !== null
+      ? `${caption} · ${countLine}`
+      : caption ?? countLine;
   return (
-    <Pressable
-      onPress={onToggleFollow}
-      disabled={followPending === true}
-      accessibilityRole="button"
-      accessibilityLabel={
-        active
-          ? `Unfollow ${brand.displayName}`
-          : `Follow ${brand.displayName}`
-      }
-      accessibilityState={{
-        selected: isFollowing === true,
-        disabled: followPending === true,
-      }}
-      style={({ pressed }) => [
-        styles.followBtn,
-        desktop ? styles.followBtnDesk : styles.followBtnPhone,
-        active
-          ? { backgroundColor: "transparent", borderColor: palette.accent }
-          : { backgroundColor: palette.accent, borderColor: palette.accent },
-        pressed && styles.cardPressed,
-      ]}
-    >
-      <Text
-        style={[
-          styles.followLabel,
-          { color: active ? palette.primaryText : palette.accentText },
-        ]}
-      >
-        {isFollowing === true ? "Following" : "Follow"}
-      </Text>
-    </Pressable>
+    <View style={desktop ? styles.followWrapDesk : styles.followWrapPhone}>
+      <SharedFollowButton
+        brandName={brand.displayName}
+        palette={palette}
+        isFollowing={isFollowing}
+        followPending={followPending}
+        size="lg"
+        onPress={() => {
+          if (active && onFollowingMenu !== undefined) {
+            onFollowingMenu();
+            return;
+          }
+          onToggleFollow();
+        }}
+        style={desktop ? styles.followBtnDesk : styles.followBtnPhone}
+      />
+      {why !== null ? (
+        <Text
+          style={[styles.followCaption, { color: palette.secondaryText }]}
+          numberOfLines={2}
+        >
+          {why}
+        </Text>
+      ) : null}
+    </View>
   );
 };
 
@@ -2793,26 +2815,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // Issue #679 — Follow/Following (Share-button family; ≥44pt touch target).
-  followBtn: {
-    minHeight: 44,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 20,
-  },
-  followBtnPhone: {
+  // Issue #679 / #3682 — Follow wrap (button owns its own chrome).
+  followWrapPhone: {
     marginTop: 12,
     marginBottom: 4,
   },
-  followBtnDesk: {
+  followWrapDesk: {
     marginTop: 18,
+  },
+  followBtnPhone: {
+    marginTop: 0,
+  },
+  followBtnDesk: {
     minHeight: 48,
   },
-  followLabel: {
-    fontSize: 14,
-    fontWeight: "900",
+  followCaption: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "500",
   },
   deskShareLabel: {
     fontSize: 14,

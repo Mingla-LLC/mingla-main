@@ -107,7 +107,7 @@ describe("ORCH-1155 public brand page — Direction-A redesign", () => {
   });
 
   // Issue #679 REWRITE [TEST-MOD-APPROVED #679] — the panel now carries the
-  // gated FollowButton between socials and Share (spec insertion point).
+  // gated BrandFollowControl between socials and Share (spec insertion point).
   test("desktop sticky panel carries Follow + Share + Next-up; NO Reserve, NO contact-in-panel", () => {
     expect(brandPage).toContain("stickyPanel");
     expect(brandPage).toContain("deskShareBtn");
@@ -116,7 +116,7 @@ describe("ORCH-1155 public brand page — Direction-A redesign", () => {
     const panelStart = brandPage.indexOf("const stickyPanel");
     const panelEnd = brandPage.indexOf("// Desktop hero overlay");
     const panelSrc = brandPage.slice(panelStart, panelEnd);
-    expect(panelSrc).toContain("FollowButton");
+    expect(panelSrc).toContain("BrandFollowControl");
     expect(panelSrc).not.toContain("mailto:");
   });
 

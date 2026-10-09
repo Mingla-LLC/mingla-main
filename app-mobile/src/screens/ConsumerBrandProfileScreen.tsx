@@ -85,39 +85,68 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
   const handleToggleFollow = (): void => {
     if (!user?.id) {
       // Anon gate — mirrors AppHandlers.tsx "Sign in to save" (spec §4/§5).
-      // No mutation, no analytics event.
+      // Contract e: Sign in to follow {Brand}.
       Alert.alert(
-        "Sign in to follow",
-        "Create an account or sign in to follow brands.",
+        `Sign in to follow ${detail.brand.displayName}`,
+        "Hear about new dates first.",
       );
       return;
     }
+    // #3682 C7 — Follow tap only follows; Following opens onFollowingMenu.
     brandFollow
-      .toggle()
-      .then((nowFollowing) => {
-        if (nowFollowing) {
-          // Light haptic + the reachability toast on FOLLOW success only;
-          // unfollow success is silent (the flipped button is the feedback).
-          HapticFeedback.light();
-          toastManager.show(
-            `Following ${detail.brand.displayName} — they can reach you about what's coming up.`,
-            "success",
-          );
-        }
-        // Analytics on mutation SUCCESS only (server truth, never optimistic).
-        postHogService.capture(
-          nowFollowing ? "brand_followed" : "brand_unfollowed",
-          {
-            surface: "consumer_native",
-            brand_id: detail.brand.id,
-            brand_slug: detail.brand.slug,
-            source: "brand_page",
-          },
+      .follow()
+      .then(() => {
+        HapticFeedback.light();
+        toastManager.show(
+          `You're following ${detail.brand.displayName}.`,
+          "success",
         );
+        postHogService.capture("brand_followed", {
+          surface: "consumer_native",
+          brand_id: detail.brand.id,
+          brand_slug: detail.brand.slug,
+          source: "brand_page",
+        });
       })
       .catch(() => {
-        toastManager.show("Couldn't update. Try again.", "error");
+        toastManager.show(
+          `Couldn't follow ${detail.brand.displayName}. Try again.`,
+          "error",
+        );
       });
+  };
+
+  const handleFollowingMenu = (): void => {
+    Alert.alert(
+      `Following ${detail.brand.displayName}`,
+      undefined,
+      [
+        {
+          text: "Unfollow",
+          style: "destructive",
+          onPress: () => {
+            brandFollow
+              .unfollow()
+              .then(() => {
+                toastManager.show(
+                  `Unfollowed ${detail.brand.displayName}.`,
+                  "success",
+                );
+                postHogService.capture("brand_unfollowed", {
+                  surface: "consumer_native",
+                  brand_id: detail.brand.id,
+                  brand_slug: detail.brand.slug,
+                  source: "brand_page",
+                });
+              })
+              .catch(() => {
+                toastManager.show("Couldn't update. Try again.", "error");
+              });
+          },
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
+    );
   };
 
   return (
@@ -157,6 +186,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
           onClose: () => router.back(),
           onShare: handleShare,
           onToggleFollow: handleToggleFollow,
+          onFollowingMenu: handleFollowingMenu,
           onOpenEvent: (event: PublicBrandEvent) => {
             void WebBrowser.openBrowserAsync(consumerBrandEventUrl(event));
           },
