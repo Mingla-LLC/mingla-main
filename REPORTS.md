@@ -20,7 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
-- 2026-10-08 — Buyer web Follow on brand and Presented-by, plus a Follow CTA on every blast email and SMS (toward #3682, PR #TBD)
+- 2026-10-08 — Buyer web Follow on brand and Presented-by, plus a Follow CTA on every blast email and SMS (toward #3682, PR #3782)
 - 2026-10-08 — Shared Follow control on brand and Presented-by: Follow follows, Following opens Unfollow (no one-tap unfollow), contrast-safe tokens, and re-follow upserts ignore duplicates (toward #3682, PR #3781)
 - 2026-10-08 — Tip greens: #2099 adversarial soft-remove arms the brand-owner transfer bypass after #3660, and the polluted bundle-baseline orphan ref is cleared so the ratchet handoff can NO_CHANGE (toward #3682, PR #3780)
 - 2026-10-08 — Main tip green again after #3773: contact-import typecheck, 1995 MANIFEST pathScope seal, auto-follow claim order fixture, events-type-filter allowlists, and #3660 JWT role revoke-before-drop (toward #3682, PR #3778)
