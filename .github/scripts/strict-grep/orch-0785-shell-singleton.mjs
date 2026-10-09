@@ -38,6 +38,9 @@ const ALLOWLIST_DIRS = [
   // one-tap follow / unfollow from order emails (#3682 Wave 2.4). Not an
   // email body.
   path.join("supabase", "functions", "brand-follow-action"),
+  // public-follow-confirm serves the confirm / success HTML for signed-out
+  // web follow-by-email (#3682 Wave 2.5). Browser landing, not an email body.
+  path.join("supabase", "functions", "public-follow-confirm"),
 ];
 
 const failures = [];

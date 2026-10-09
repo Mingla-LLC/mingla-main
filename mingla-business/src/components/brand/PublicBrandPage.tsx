@@ -38,6 +38,7 @@ import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
 import { useThemeFont } from "../../theme/useThemeFont";
 
+import { FollowByEmailSheet } from "./FollowByEmailSheet";
 import { ShareModal } from "../ui/ShareModal";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 import { Toast } from "../ui/Toast";
@@ -217,6 +218,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [unfollowOpen, setUnfollowOpen] = useState(false);
   const [signInFollowOpen, setSignInFollowOpen] = useState(false);
+  // #3682 Wave 2.5 — signed-out web Follow opens email sheet (m), not auth.
+  const [followByEmailOpen, setFollowByEmailOpen] = useState(false);
+  const [followEmailPending, setFollowEmailPending] = useState(false);
   const [toast, setToast] = useState<{
     visible: boolean;
     message: string;
@@ -371,6 +375,11 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // is a silent no-op on react-native-web).
   const handleToggleFollow = useCallback((): void => {
     if (!user?.id) {
+      // Web: email sheet (m). Native Host preview: keep sign-in prompt.
+      if (Platform.OS === "web") {
+        setFollowByEmailOpen(true);
+        return;
+      }
       setSignInFollowOpen(true);
       return;
     }
@@ -484,7 +493,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         venues={venues}
         venuesLoadState={venuesLoadState}
         isFollowing={brandFollow.isFollowing}
-        followPending={brandFollow.isPending}
+        followPending={brandFollow.isPending || followEmailPending}
+        followState={
+          followEmailPending && !brandFollow.isFollowing
+            ? "pending"
+            : undefined
+        }
         venue={
           venue === null
             ? null
@@ -526,6 +540,21 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         contentKind="brand"
         title={`${brand.displayName} on Mingla`}
         description={brand.bio?.slice(0, 200) ?? brand.tagline}
+      />
+      <FollowByEmailSheet
+        visible={followByEmailOpen}
+        brandId={brand.id}
+        brandName={brand.displayName}
+        onClose={() => setFollowByEmailOpen(false)}
+        onSent={() => {
+          setFollowEmailPending(true);
+          captureWeb("brand_follow_email_requested", {
+            surface: "buyer_web",
+            brand_id: brand.id,
+            brand_slug: brand.slug,
+            source: "brand_page",
+          });
+        }}
       />
       <SimpleConfirmDialog
         visible={signInFollowOpen}

@@ -62,6 +62,11 @@ interface WelcomeScreenProps {
   /** Opens the panel already expanded — how the claim sheet's "that's not me"
    * flow lands here, so the guest does not have to find it. */
   emailPanelInitiallyOpen?: boolean;
+  /**
+   * #3682 Wave 2.5 — follow_invite first open: open on the code step with the
+   * email filled in and send exactly one code.
+   */
+  followInvite?: { brandName: string; email: string } | null;
 }
 
 /** One resend per 30 seconds, with a visible countdown. A guest tapping resend
@@ -85,6 +90,7 @@ export default function WelcomeScreen({
   onSendEmailCode,
   onVerifyEmailCode,
   emailPanelInitiallyOpen = false,
+  followInvite = null,
 }: WelcomeScreenProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -97,8 +103,14 @@ export default function WelcomeScreen({
   // code. Nothing here is logged.
   const emailSignInAvailable = onSendEmailCode !== undefined &&
     onVerifyEmailCode !== undefined;
+  const followInviteActive =
+    followInvite !== null &&
+    followInvite !== undefined &&
+    typeof followInvite.email === "string" &&
+    followInvite.email.length > 0 &&
+    emailSignInAvailable;
   const [emailPanelOpen, setEmailPanelOpen] = useState(
-    emailPanelInitiallyOpen && emailSignInAvailable,
+    (emailPanelInitiallyOpen || followInviteActive) && emailSignInAvailable,
   );
 
   /**
@@ -114,15 +126,45 @@ export default function WelcomeScreen({
    * It only ever OPENS. It never closes a panel the guest opened themselves.
    */
   useEffect(() => {
-    if (emailPanelInitiallyOpen && emailSignInAvailable) setEmailPanelOpen(true);
-  }, [emailPanelInitiallyOpen, emailSignInAvailable]);
-  const [emailStep, setEmailStep] = useState<"address" | "code">("address");
-  const [emailAddress, setEmailAddress] = useState("");
+    if ((emailPanelInitiallyOpen || followInviteActive) && emailSignInAvailable) {
+      setEmailPanelOpen(true);
+    }
+  }, [emailPanelInitiallyOpen, followInviteActive, emailSignInAvailable]);
+  const [emailStep, setEmailStep] = useState<"address" | "code">(
+    followInviteActive ? "code" : "address",
+  );
+  const [emailAddress, setEmailAddress] = useState(
+    followInviteActive ? followInvite!.email : "",
+  );
   const [emailCode, setEmailCode] = useState("");
   const [emailBusy, setEmailBusy] = useState(false);
   // Always a SENTENCE, never a raw provider message.
   const [emailError, setEmailError] = useState<string | null>(null);
   const [resendIn, setResendIn] = useState(0);
+  const followInviteCodeSentRef = useRef(false);
+
+  // #3682 Wave 2.5 O1 — send exactly one code when the invite lands.
+  useEffect(() => {
+    if (!followInviteActive || !onSendEmailCode) return;
+    if (followInviteCodeSentRef.current) return;
+    followInviteCodeSentRef.current = true;
+    setEmailStep("code");
+    setEmailAddress(followInvite!.email);
+    setEmailPanelOpen(true);
+    setEmailBusy(true);
+    void onSendEmailCode(followInvite!.email)
+      .then((result) => {
+        if (!result.ok) {
+          setEmailError(
+            result.error ??
+              "We couldn't reach Mingla. Check your connection and try again.",
+          );
+        } else {
+          setResendIn(RESEND_COOLDOWN_SECONDS);
+        }
+      })
+      .finally(() => setEmailBusy(false));
+  }, [followInviteActive, followInvite, onSendEmailCode]);
 
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -456,10 +498,16 @@ export default function WelcomeScreen({
                 transform: [{ translateY: taglineTranslateY }],
               },
             ]}
-            accessibilityLabel={WELCOME_TAGLINE_ACCESSIBILITY}
+            accessibilityLabel={
+              followInviteActive
+                ? `Finish following ${followInvite!.brandName}`
+                : WELCOME_TAGLINE_ACCESSIBILITY
+            }
             accessibilityRole="header"
           >
-            {WELCOME_TAGLINE}
+            {followInviteActive
+              ? `Finish following ${followInvite!.brandName}`
+              : WELCOME_TAGLINE}
           </Animated.Text>
 
         <View style={styles.authGroup}>
@@ -663,7 +711,9 @@ export default function WelcomeScreen({
                   ) : (
                     <>
                       <Text style={styles.emailPanelLabel}>
-                        Enter the 6-digit code we emailed you.
+                        {followInviteActive
+                          ? `We emailed a 6-digit code to ${followInvite!.email}`
+                          : "Enter the 6-digit code we emailed you."}
                       </Text>
                       <TextInput
                         value={emailCode}
@@ -693,7 +743,11 @@ export default function WelcomeScreen({
                         disabled={emailBusy}
                         activeOpacity={0.9}
                         accessibilityRole="button"
-                        accessibilityLabel="Sign in with this code"
+                        accessibilityLabel={
+                          followInviteActive
+                            ? `Verify code and follow ${followInvite!.brandName}`
+                            : "Sign in with this code"
+                        }
                         accessibilityState={{
                           disabled: emailBusy,
                           busy: emailBusy,
@@ -707,7 +761,9 @@ export default function WelcomeScreen({
                             style={styles.emailSubmitText}
                             maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
                           >
-                            Sign in
+                            {followInviteActive
+                              ? "Verify and follow"
+                              : "Sign in"}
                           </Text>
                         )}
                       </TouchableOpacity>

@@ -9,7 +9,7 @@
  * `app/index.tsx`). There is NO second inline payload→nav mapping anywhere.
  *
  * Payload contract (SPEC §B.1):
- *   deep_link_value ∈ {brand, event, trip, experience, referral, internal}
+ *   deep_link_value ∈ {brand, event, trip, experience, referral, internal, follow_invite}
  *   deep_link_sub1  = primary slug (brandSlug for entities; referral_code for
  *                     `referral`; a `mingla://` path for `internal`)
  *   deep_link_sub2  = secondary slug (eventSlug/tripSlug/experienceSlug)
@@ -46,6 +46,8 @@ export type OneLinkDestination =
     }
   | { kind: 'internal'; url: string } // a mingla:// path → deepLinkService
   | { kind: 'referral'; referralCode: string }
+  /** #3682 Wave 2.5 — web follow-by-email invite (token in deep_link_sub1). */
+  | { kind: 'follow_invite'; token: string }
   | null;
 
 const OPAQUE_SHARE_ID_RE = /^[a-f0-9]{36}$/;
@@ -130,6 +132,11 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
         const directReferralCode = sanitizeReferralCode(sub1);
         if (!directReferralCode) return null;
         return { kind: 'referral', referralCode: directReferralCode };
+
+      case 'follow_invite':
+        // #3682 Wave 2.5 — invite token only; email/brand resolve via edge.
+        if (!sub1) return null;
+        return { kind: 'follow_invite', token: sub1 };
 
       default:
         // Unknown discriminator — log, never guess (SPEC §B.2).

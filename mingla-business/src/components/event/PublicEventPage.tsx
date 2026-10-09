@@ -148,6 +148,7 @@ import { FollowButton } from "@mingla/brand-rendering/FollowButton";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandFollow } from "../../hooks/useBrandFollow";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
+import { FollowByEmailSheet } from "../brand/FollowByEmailSheet";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";
@@ -490,6 +491,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const brandFollow = useBrandFollow(user?.id ?? null, brand?.id ?? null);
   const [followUnfollowOpen, setFollowUnfollowOpen] = useState(false);
   const [followSignInOpen, setFollowSignInOpen] = useState(false);
+  const [followByEmailOpen, setFollowByEmailOpen] = useState(false);
+  const [followEmailPending, setFollowEmailPending] = useState(false);
 
   // ORCH-1291 [rsvp-chip-in] — the last-submitted guest contact, captured at RSVP
   // so an anon web chip-in can supply guestEmail to rsvp-contribution-create.
@@ -840,10 +843,19 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         brandName={brand.displayName}
         palette={palette}
         isFollowing={brandFollow.isFollowing}
-        followPending={brandFollow.isPending}
+        followPending={brandFollow.isPending || followEmailPending}
+        state={
+          followEmailPending && !brandFollow.isFollowing
+            ? "pending"
+            : undefined
+        }
         size="lg"
         onPress={() => {
           if (!user?.id) {
+            if (Platform.OS === "web") {
+              setFollowByEmailOpen(true);
+              return;
+            }
             setFollowSignInOpen(true);
             return;
           }
@@ -1777,6 +1789,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             ) : null}
           </>
         ) : null}
+        {brand?.id ? (
+          <FollowByEmailSheet
+            visible={followByEmailOpen}
+            brandId={brand.id}
+            brandName={brand.displayName}
+            onClose={() => setFollowByEmailOpen(false)}
+            onSent={() => setFollowEmailPending(true)}
+          />
+        ) : null}
         <SimpleConfirmDialog
           visible={followSignInOpen}
           onClose={() => setFollowSignInOpen(false)}
@@ -2043,6 +2064,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             </React.Suspense>
           ) : null}
         </>
+      ) : null}
+      {brand?.id ? (
+        <FollowByEmailSheet
+          visible={followByEmailOpen}
+          brandId={brand.id}
+          brandName={brand.displayName}
+          onClose={() => setFollowByEmailOpen(false)}
+          onSent={() => setFollowEmailPending(true)}
+        />
       ) : null}
       <SimpleConfirmDialog
         visible={followSignInOpen}

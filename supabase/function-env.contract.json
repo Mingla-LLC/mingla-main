@@ -1544,6 +1544,36 @@
       "required_bundle_fields": {},
       "required_top_level": []
     },
+    "public-follow-confirm": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "BRAND_FOLLOW_TOKEN_SECRET",
+        "GUEST_FUNNEL_ONELINK_URL",
+        "MINGLA_BRAND_FOLLOW_LINK_ORIGIN",
+        "RESEND_API_KEY",
+        "RESEND_SYSTEM_FROM",
+        "UNSUBSCRIBE_TOKEN_SECRET"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "public-follow-request": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "BRAND_FOLLOW_TOKEN_SECRET",
+        "GUEST_FUNNEL_ONELINK_URL",
+        "MINGLA_BRAND_FOLLOW_LINK_ORIGIN",
+        "RESEND_API_KEY",
+        "RESEND_SYSTEM_FROM",
+        "UNSUBSCRIBE_TOKEN_SECRET"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
     "public-submit-rsvp": {
       "migration_fallback_top_level": [],
       "optional_top_level": [],
@@ -1600,6 +1630,19 @@
       "optional_top_level": [],
       "required_bundle_fields": {},
       "required_top_level": []
+    },
+    "resolve-follow-invite": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "BRAND_FOLLOW_TOKEN_SECRET",
+        "GUEST_FUNNEL_ONELINK_URL",
+        "MINGLA_BRAND_FOLLOW_LINK_ORIGIN",
+        "UNSUBSCRIBE_TOKEN_SECRET"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
     },
     "resend-webhook": {
       "migration_fallback_top_level": [
@@ -3136,6 +3179,23 @@
       ],
       "local_call_identifiers": [
         "resolveTikTokToken"
+      ]
+    },
+    "supabase/functions/_shared/webFollowEmailTokens.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "BRAND_FOLLOW_TOKEN_SECRET",
+        "GUEST_FUNNEL_ONELINK_URL",
+        "MINGLA_BRAND_FOLLOW_LINK_ORIGIN",
+        "SUPABASE_URL",
+        "UNSUBSCRIBE_TOKEN_SECRET"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "SECRET_ENV"
+      ],
+      "local_call_identifiers": [
+        "secretEnvKey"
       ]
     },
     "supabase/functions/admin-ad-connect/index.ts": {
