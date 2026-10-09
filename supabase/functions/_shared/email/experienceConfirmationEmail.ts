@@ -21,6 +21,12 @@
 import type { SenderIdentity } from "./senders.ts";
 // ISSUE-1001 — canonical logo resolution (env override, live fail-safe default).
 import { appCtaTextLine, renderAppCtaHtml } from "./appLink.ts";
+import {
+  renderTicketFollowBlockHtml,
+  ticketFollowFooterHtml,
+  ticketFollowTextLines,
+} from "./ticketFollow.ts";
+import type { TicketBodyInput } from "./types.ts";
 import { minglaLogoUrl } from "../brandAssets.ts";
 import { resolveRuntimeString } from "../runtimeConfig.ts";
 
@@ -62,6 +68,8 @@ interface ExperienceConfirmationInput {
    * none, and the single CTA then falls back to the download page (appLink.ts).
    */
   appCtaClaimUrl?: string | null;
+  /** #3682 Wave 2.4 — follow status block inside the 600px message. */
+  follow?: TicketBodyInput["follow"];
 }
 
 interface ExperienceConfirmationResult {
@@ -248,6 +256,17 @@ export function renderExperienceConfirmationEmail(
                 <tr><td style="padding:8px 0;font-size:14px;color:#475569;border-top:1px solid #E5E7EB;">Total paid</td><td style="padding:8px 0;font-size:16px;font-weight:700;color:#0F172A;text-align:right;border-top:1px solid #E5E7EB;">${escapeHtml(priceLabel)}</td></tr>
               </table>
 
+              ${
+                input.follow
+                  ? renderTicketFollowBlockHtml({
+                    brandName: input.brand.name,
+                    unfollowUrl: input.follow.unfollowUrl,
+                    followUrl: input.follow.followUrl,
+                    reason: input.follow.reason,
+                  })
+                  : ""
+              }
+
               ${renderExperienceAppCta(input.appCtaClaimUrl)}
 
               <p style="font-size:13px;color:#475569;margin:24px 0 0 0;line-height:1.5;">Questions? Reply directly to ${escapeHtml(input.brand.name)} — they'll receive your message at the email they set up for the brand.</p>
@@ -257,6 +276,17 @@ export function renderExperienceConfirmationEmail(
             <td style="padding:16px 32px;background:#F8FAFC;border-top:1px solid #E5E7EB;text-align:center;">
               <p style="font-size:12px;color:#94A3B8;margin:0;">${escapeHtml(footerAddress)}</p>
               <p style="font-size:12px;color:#94A3B8;margin:4px 0 0 0;">Support: <a href="mailto:${supportEmail}" style="color:#94A3B8;">${supportEmail}</a></p>
+              ${
+                input.follow
+                  ? `<p style="font-size:12px;color:#94A3B8;margin:8px 0 0 0;">${
+                    ticketFollowFooterHtml({
+                      brandName: input.brand.name,
+                      unfollowUrl: input.follow.unfollowUrl,
+                      reason: input.follow.reason,
+                    })
+                  }</p>`
+                  : ""
+              }
             </td>
           </tr>
         </table>
@@ -290,6 +320,15 @@ export function renderExperienceConfirmationEmail(
       "Your ticket, the details, and who's going — all in the app",
       input.appCtaClaimUrl,
     ),
+    ``,
+    ...(input.follow
+      ? ticketFollowTextLines({
+        brandName: input.brand.name,
+        unfollowUrl: input.follow.unfollowUrl,
+        followUrl: input.follow.followUrl,
+        reason: input.follow.reason,
+      })
+      : []),
     ``,
     `Reply to ${input.brand.name} with questions.`,
     `Support: ${supportEmail}`,

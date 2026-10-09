@@ -455,6 +455,12 @@ const renderPublicEventPage = (
       // assertion below is untouched.
       case "@mingla/brand-rendering/FollowButton":
         return { FollowButton: () => null };
+      // [TEST-MOD-APPROVED #3682] Harness registration only — ADDITION, no
+      // assertion changed. Wave 2.4 wires useBrandFollow for the presented-by
+      // chip state; the close-callback contract is unrelated and every close
+      // assertion below is untouched.
+      case "../../hooks/useBrandFollow":
+        return require("./harness/useBrandFollow.publicEventPage.mock");
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }

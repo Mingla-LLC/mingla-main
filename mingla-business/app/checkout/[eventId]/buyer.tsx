@@ -308,20 +308,33 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
   // #3682 — Follow clause only when a signed-in buyer can actually auto-follow.
   // Guests get the pre-follow disclosure (auto-follow skips null buyer_user_id).
+  // authReady gates the checkbox so we never show guest copy, accept it, then
+  // record a Follow grant after a late session hydrate.
+  const [authReady, setAuthReady] = useState<boolean>(false);
   const [signedInBuyer, setSignedInBuyer] = useState<boolean>(false);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const acceptedGrantRef = useRef<{
+    followCapable: boolean;
+    userId: string | null;
+  } | null>(null);
   useEffect(() => {
     let cancelled = false;
     void Promise.resolve()
       .then(() => supabase.auth?.getSession?.())
       .then((result) => {
         if (cancelled) return;
-        setSignedInBuyer(
-          typeof result?.data?.session?.user?.id === "string" &&
-            result.data.session.user.id.length > 0,
-        );
+        const id = result?.data?.session?.user?.id;
+        const readyId = typeof id === "string" && id.length > 0 ? id : null;
+        setSessionUserId(readyId);
+        setSignedInBuyer(readyId !== null);
+        setAuthReady(true);
       })
       .catch(() => {
-        if (!cancelled) setSignedInBuyer(false);
+        if (!cancelled) {
+          setSessionUserId(null);
+          setSignedInBuyer(false);
+          setAuthReady(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -332,15 +345,35 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   // the single mandatory consent, so `marketingOptIn` rides with `termsAccepted`
   // (the downstream payment payload reads `marketingOptIn`).
   const acceptTerms = useCallback((): void => {
+    if (!authReady) return;
+    acceptedGrantRef.current = {
+      followCapable: signedInBuyer,
+      userId: sessionUserId,
+    };
     setBuyer({ termsAccepted: true, marketingOptIn: true });
     setConsentHintVisible(false);
-  }, [setBuyer]);
+  }, [authReady, sessionUserId, setBuyer, signedInBuyer]);
 
   const toggleTerms = useCallback((): void => {
+    if (!authReady) return;
     const next = !(buyer.termsAccepted === true);
+    if (next) {
+      acceptedGrantRef.current = {
+        followCapable: signedInBuyer,
+        userId: sessionUserId,
+      };
+    } else {
+      acceptedGrantRef.current = null;
+    }
     setBuyer({ termsAccepted: next, marketingOptIn: next });
     if (next) setConsentHintVisible(false);
-  }, [buyer.termsAccepted, setBuyer]);
+  }, [
+    authReady,
+    buyer.termsAccepted,
+    sessionUserId,
+    setBuyer,
+    signedInBuyer,
+  ]);
 
   // Touched flags — show validation errors only after first focus blur,
   // so a fresh-mount form doesn't immediately scream red.
@@ -520,16 +553,12 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     // not deadlock checkout — we log and proceed (Constitution #3: surfaced via
     // console, never silently swallowed).
     try {
-      // Re-read session at submit so a late sign-in still gets the Follow grant.
-      let buyerUserId: string | null = null;
-      try {
-        const sessionResult = await supabase.auth?.getSession?.();
-        const id = sessionResult?.data?.session?.user?.id;
-        buyerUserId = typeof id === "string" && id.length > 0 ? id : null;
-      } catch {
-        buyerUserId = null;
-      }
-      const followCapable = buyerUserId !== null;
+      // Bind the audit row to the disclosure the buyer actually accepted when
+      // they checked the box (acceptedGrantRef). Do not re-derive from a
+      // late-hydrated session — that caused guest copy + Follow grant.
+      const grant = acceptedGrantRef.current;
+      const followCapable = grant?.followCapable === true;
+      const buyerUserId = followCapable ? grant?.userId ?? null : null;
       const consentResult = await recordConsent({
         source: "checkout",
         disclosureText: followCapable
@@ -763,11 +792,13 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   // META-ORCH-1161 Sub-A.2 (DEC-186) — single source of the Pay-button gate so
   // the visual disabled state, the pointer-events pass-through, and the
   // tap-capture overlay all agree.
-  const continueDisabled = isContinueDisabled({
-    fieldsValid: validation.isValid,
-    termsAccepted,
-    submitting,
-  });
+  const continueDisabled =
+    !authReady ||
+    isContinueDisabled({
+      fieldsValid: validation.isValid,
+      termsAccepted,
+      submitting,
+    });
 
   if (event === null || hasNoLines) {
     // Render an empty shell — useEffect above redirects on the next tick.
@@ -934,15 +965,17 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         <Pressable
           onPress={toggleTerms}
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: termsAccepted }}
+          accessibilityState={{ checked: termsAccepted, disabled: !authReady }}
           accessibilityLabel={`${CONSENT_VISIBLE_LABEL_PREFIX}${CONSENT_VISIBLE_LABEL_LINK}${
             signedInBuyer
               ? consentVisibleLabelSuffix(brand?.displayName)
               : GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
           }`}
+          disabled={!authReady}
           style={({ pressed }) => [
             styles.checkboxRow,
             pressed && styles.checkboxRowPressed,
+            !authReady && styles.checkboxRowPressed,
           ]}
         >
           <View

@@ -1871,6 +1871,8 @@ export default function ConsumerEventDetailScreen({
         }
         buyerEmail={user?.email ?? profile?.email ?? ""}
         buyerPhone={profile?.phone ?? ""}
+        brandName={seed.brandName}
+        buyerUserId={user?.id ?? null}
         isSubmitting={checkoutInFlight}
         pendingPhase={checkoutPhase}
         multiDaySelection={multiDaySelection}

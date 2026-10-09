@@ -2,9 +2,9 @@
  * #3682 Wave 2.4 / design contract surface c — "You're in" follow card.
  * Renders between the QR card and DownloadMinglaCta on web confirm.
  *
- * Auth is read via supabase.auth.getSession (not useAuth) so confirm screens
- * mounted in CartProvider-only tests do not throw. Follow state is owned here
- * via brandFollowsService.getFollowMeta — one read, no useBrandFollow cache.
+ * Auth is read via supabase.auth.getSession (not AuthContext) so confirm
+ * screens mounted in CartProvider-only tests do not throw. Follow state is
+ * owned here via brandFollowsService.getFollowMeta — one read, no hook cache.
  */
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -29,6 +29,8 @@ export type YoureInFollowCardProps = {
 type CardMode = "loading" | "following_undo" | "already" | "offer" | "hidden";
 
 const AUTO_FOLLOW_SOURCES = new Set(["purchase", "rsvp", "booking"]);
+/** Undo only when this confirm likely created the row (not an older follow). */
+const UNDO_WINDOW_MS = 15 * 60 * 1000;
 
 export function YoureInFollowCard({
   brandId,
@@ -72,11 +74,12 @@ export function YoureInFollowCard({
           setMode("offer");
           return;
         }
-        if (meta.source !== null && AUTO_FOLLOW_SOURCES.has(meta.source)) {
-          setMode("following_undo");
-          return;
-        }
-        setMode("already");
+        const freshAutoFollow =
+          meta.source !== null &&
+          AUTO_FOLLOW_SOURCES.has(meta.source) &&
+          meta.createdAtMs !== null &&
+          Date.now() - meta.createdAtMs <= UNDO_WINDOW_MS;
+        setMode(freshAutoFollow ? "following_undo" : "already");
       } catch {
         if (!cancelled) setMode("offer");
       }

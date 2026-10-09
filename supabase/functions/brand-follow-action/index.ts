@@ -3,6 +3,9 @@
 // Mounted at `/functions/v1/brand-follow-action/{signed_token}`.
 // verify_jwt: false — authenticated by HS256 token (BRAND_FOLLOW_TOKEN_SECRET
 // or UNSUBSCRIBE_TOKEN_SECRET fallback).
+//
+// GET never mutates: scanners and link-preview fetchers open email links.
+// Mutation runs only on an explicit POST from the confirmation form.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { serviceClient, ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
@@ -23,7 +26,7 @@ serve(async (req) => {
   if (req.method !== "GET" && req.method !== "POST") {
     return htmlError(
       "Unsupported request",
-      "This follow link only accepts GET requests.",
+      "This follow link only accepts GET and POST requests.",
       405,
     );
   }
@@ -80,6 +83,11 @@ serve(async (req) => {
     slug: brandSlug,
   }) ?? PRODUCTION_BUSINESS_WEB_ORIGIN;
 
+  // GET: confirm only — no brand_follows write/delete (email scanners).
+  if (req.method === "GET") {
+    return htmlConfirm(payload.action, brandName, token);
+  }
+
   if (payload.action === "unfollow") {
     const { error } = await supabase
       .from("brand_follows")
@@ -126,6 +134,58 @@ serve(async (req) => {
     `Open ${brandName}`,
   );
 });
+
+function htmlConfirm(
+  action: BrandFollowTokenPayload["action"],
+  brandName: string,
+  token: string,
+): Response {
+  const safeBrand = escapeHtml(brandName);
+  const safeToken = encodeURIComponent(token);
+  const isUnfollow = action === "unfollow";
+  const title = isUnfollow
+    ? `Unfollow ${safeBrand}?`
+    : `Follow ${safeBrand}?`;
+  const body = isUnfollow
+    ? "Confirm to stop getting new dates and offers from this brand. Your tickets and reminders still arrive."
+    : "Confirm to hear about new dates and offers first.";
+  const button = isUnfollow ? "Yes, unfollow" : "Yes, follow";
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>${title} — Mingla</title>
+  </head>
+  <body style="margin:0;padding:32px 16px;background:#F5F5F7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0F1115;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="480" cellpadding="0" cellspacing="0" border="0" style="background:#FFFFFF;border-radius:16px;padding:28px;">
+            <tr>
+              <td>
+                <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;">${title}</h1>
+                <p style="margin:0 0 20px 0;font-size:14px;line-height:1.55;color:#5B6172;">${escapeHtml(body)}</p>
+                <form method="POST" action="/functions/v1/brand-follow-action/${safeToken}">
+                  <button type="submit" style="display:inline-block;background:#c2560f;color:#FFFFFF;border:0;font-weight:700;font-size:14px;padding:12px 18px;border-radius:12px;cursor:pointer;">${escapeHtml(button)}</button>
+                </form>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+  return new Response(html, {
+    status: 200,
+    headers: {
+      ...ticketCorsHeaders,
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
 
 function htmlOk(
   title: string,

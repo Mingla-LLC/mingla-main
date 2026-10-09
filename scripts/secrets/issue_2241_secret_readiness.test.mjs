@@ -305,6 +305,11 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // the same shape as its sibling `attendance-claim-link` because it reads the
   // same pepper ring through the same bundle-first getter.
   //
+  // [TEST-MOD-APPROVED #3682] 236 -> 237: #3682 Wave 2.4 adds
+  // `brand-follow-action`, the public GET-confirm / POST-mutate endpoint for
+  // one-tap Follow/Unfollow links in ticket confirmation emails. Its contract
+  // entry is the scanner's own env reads (token secret + service role).
+  //
   // Note for #3528: this line is a COUNT, and a count signals "something
   // changed", not "something is wrong". The assertion that carries the meaning
   // is the `deepEqual(auditFunctionSecretContract(), [])` above it, which is
@@ -315,7 +320,7 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // Proof this replacement BITES rather than merely counting higher: remove the
   // new function's contract entry and the deepEqual above fails with
   // `contract:function_set_mismatch` before this line is ever reached.
-  assert.equal(Object.keys(contract.functions).length, 236);
+  assert.equal(Object.keys(contract.functions).length, 237);
   assert.equal(manifest.secrets.length, 88);
 });
 

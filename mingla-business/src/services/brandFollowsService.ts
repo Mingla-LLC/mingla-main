@@ -7,6 +7,8 @@ export type BrandFollowMeta = {
   following: boolean;
   /** brand_follows.source when following; null when not. */
   source: string | null;
+  /** brand_follows.created_at ms when following; null when not. */
+  createdAtMs: number | null;
 };
 
 export const brandFollowsService = {
@@ -36,22 +38,29 @@ export const brandFollowsService = {
     return meta.following;
   },
 
-  /** Wave 2.4 — distinguish auto-follow (Undo) vs prior follow (no Undo). */
+  /** Wave 2.4 — distinguish fresh auto-follow (Undo) vs prior follow (no Undo). */
   async getFollowMeta(userId: string, brandId: string): Promise<BrandFollowMeta> {
     const { data, error } = await supabase
       .from("brand_follows")
-      .select("brand_id, source")
+      .select("brand_id, source, created_at")
       .eq("user_id", userId)
       .eq("brand_id", brandId)
       .maybeSingle();
     if (error) throw error;
     if (data === null) {
-      return { following: false, source: null };
+      return { following: false, source: null, createdAtMs: null };
     }
     const source =
       typeof (data as { source?: unknown }).source === "string"
         ? (data as { source: string }).source
         : null;
-    return { following: true, source };
+    const createdRaw = (data as { created_at?: unknown }).created_at;
+    const createdAtMs =
+      typeof createdRaw === "string" ? Date.parse(createdRaw) : NaN;
+    return {
+      following: true,
+      source,
+      createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : null,
+    };
   },
 };

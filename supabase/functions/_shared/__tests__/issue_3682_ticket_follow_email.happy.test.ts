@@ -128,4 +128,14 @@ Deno.test("#3682 happy: brandFollowTokens + brand-follow-action wired", async ()
   );
   assert(actionSrc.includes("verifyBrandFollowToken"));
   assert(actionSrc.includes("You've unfollowed"));
+  // GET must confirm; mutation only on POST (email scanners open GET).
+  assert(actionSrc.includes('if (req.method === "GET")'));
+  assert(actionSrc.includes("htmlConfirm"));
+  assert(actionSrc.includes('method="POST"'));
+  const getConfirmIdx = actionSrc.indexOf('if (req.method === "GET")');
+  const deleteIdx = actionSrc.indexOf('.delete()');
+  const upsertIdx = actionSrc.indexOf('.upsert(');
+  assert(getConfirmIdx > 0);
+  assert(deleteIdx > getConfirmIdx);
+  assert(upsertIdx > getConfirmIdx);
 });
