@@ -5,6 +5,7 @@
 import { renderShell } from "./shell.ts";
 import { renderTicketBody } from "./ticketBody.ts";
 import { renderGenericBody } from "./genericBody.ts";
+import { ticketFollowFooterHtml } from "./ticketFollow.ts";
 import {
   assertNotResendSandbox,
   EMAIL_SENDERS,
@@ -101,12 +102,29 @@ export function renderTransactionalEmail(input: RenderInput): RenderResult {
     }
   }
 
+  let footerFollowLineHtml: string | null = null;
+  if (
+    input.body.variant === "ticket_confirmation_paid" ||
+    input.body.variant === "ticket_confirmation_free" ||
+    input.body.variant === "ticket_confirmation_pending"
+  ) {
+    const ticketBody = input.body as TicketBodyInput;
+    if (ticketBody.follow) {
+      footerFollowLineHtml = ticketFollowFooterHtml({
+        brandName: ticketBody.brand.name,
+        unfollowUrl: ticketBody.follow.unfollowUrl,
+        reason: ticketBody.follow.reason,
+      });
+    }
+  }
+
   const html = renderShell({
     preheader,
     bodyHtml,
     supportEmail,
     logoUrl,
     footerAddress,
+    footerFollowLineHtml,
   });
 
   const from = input.sender ?? resolveSender(input.variant);

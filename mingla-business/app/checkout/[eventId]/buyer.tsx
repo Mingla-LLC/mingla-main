@@ -103,11 +103,14 @@ import {
 // verbatim disclosure copy + the §2 T&C sheet.
 import { recordConsent } from "../../../src/services/consentService";
 import {
-  CONSENT_DISCLOSURE_TEXT,
-  CONSENT_VISIBLE_LABEL_PREFIX,
+  CONSENT_VISIBLE_FOLLOW_AFTER,
+  CONSENT_VISIBLE_FOLLOW_BEFORE,
   CONSENT_VISIBLE_LABEL_LINK,
-  CONSENT_VISIBLE_LABEL_SUFFIX,
+  CONSENT_VISIBLE_LABEL_PREFIX,
   DISCLOSURE_VERSION,
+  consentDisclosureText,
+  consentVisibleLabelSuffix,
+  resolveConsentBrandName,
 } from "../../../src/constants/consentDisclosure";
 
 import { Button } from "../../../src/components/ui/Button";
@@ -494,7 +497,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     try {
       const consentResult = await recordConsent({
         source: "checkout",
-        disclosureText: CONSENT_DISCLOSURE_TEXT,
+        disclosureText: consentDisclosureText(brand?.displayName),
         disclosureVersion: DISCLOSURE_VERSION,
         phone: buyer.phone,
         email: buyer.email,
@@ -893,7 +896,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           onPress={toggleTerms}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: termsAccepted }}
-          accessibilityLabel="I agree to all terms and conditions and to receive booking confirmations, reminders, account updates, and marketing from Mingla and the businesses I book with by email, push, and text."
+          accessibilityLabel={`${CONSENT_VISIBLE_LABEL_PREFIX}${CONSENT_VISIBLE_LABEL_LINK}${consentVisibleLabelSuffix(brand?.displayName)}`}
           style={({ pressed }) => [
             styles.checkboxRow,
             pressed && styles.checkboxRowPressed,
@@ -920,7 +923,11 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             >
               {CONSENT_VISIBLE_LABEL_LINK}
             </Text>
-            {CONSENT_VISIBLE_LABEL_SUFFIX}
+            {CONSENT_VISIBLE_FOLLOW_BEFORE}
+            <Text style={styles.checkboxFollowBrand}>
+              {resolveConsentBrandName(brand?.displayName)}
+            </Text>
+            {CONSENT_VISIBLE_FOLLOW_AFTER}
           </Text>
         </Pressable>
         {consentHintVisible && !termsAccepted ? (
@@ -1140,6 +1147,11 @@ const styles = StyleSheet.create({
     color: accent.warm,
     fontWeight: "600",
     textDecorationLine: "underline",
+  },
+  // #3682 contract b — brand phrase is the only emphasis in the label (600 / white).
+  checkboxFollowBrand: {
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
   // Red flash on the box when the buyer taps a disabled Pay with the box
   // unchecked (DESIGN §S3.4 — never a silent dead tap).

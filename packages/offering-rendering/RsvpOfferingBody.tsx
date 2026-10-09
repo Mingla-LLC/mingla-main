@@ -1266,7 +1266,7 @@ export const useRsvpOfferingState = (
   const contactForm = showContactForm ? (
     <View style={[styles.formCard, surface.card]} testID="orch-1157-rsvp-contact">
       <Text style={[styles.formMicro, surface.tertiaryText]}>
-        We'll only use this to update you about this event.
+        {`We'll use this for your RSVP, and you'll follow ${brand?.displayName?.trim() || "this brand"} for new dates. Unfollow anytime.`}
       </Text>
       <RsvpField
         ref={primaryNameRef}

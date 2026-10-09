@@ -33,6 +33,11 @@ export interface ShellInput {
    * When null/undefined, the standard Mingla-logo header renders.
    */
   brandHeaderImageUrl?: string | null;
+  /**
+   * #3682 Wave 2.4 — optional HTML (already escaped) inserted before the
+   * generic FOOTER_DISCLAIMER. Used for order-email follow/unfollow footer line.
+   */
+  footerFollowLineHtml?: string | null;
 }
 
 export function renderShell(input: ShellInput): string {
@@ -89,6 +94,12 @@ export function renderShell(input: ShellInput): string {
                 <img src="${logo}" alt="Mingla" width="100" style="display:block;border:0;outline:none;text-decoration:none;height:auto;max-width:100px;margin:0 0 10px 0;" />
                 <p style="margin:0 0 8px 0;">Need help? <a href="mailto:${support}" style="color:${BRAND_ORANGE};text-decoration:none;">${support}</a></p>
                 <p style="margin:0 0 8px 0;">${address}</p>
+                ${
+                  input.footerFollowLineHtml &&
+                    input.footerFollowLineHtml.trim().length > 0
+                    ? `<p style="margin:0 0 8px 0;font-size:12px;line-height:18px;color:#6b6f76;">${input.footerFollowLineHtml}</p>`
+                    : ""
+                }
                 <p style="margin:0;font-size:12px;color:${BRAND_MUTED};">${escapeHtml(FOOTER_DISCLAIMER)}</p>
               </td>
             </tr>

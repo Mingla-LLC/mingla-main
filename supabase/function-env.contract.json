@@ -449,6 +449,16 @@
         "RESEND_API_KEY"
       ]
     },
+    "brand-follow-action": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "BRAND_FOLLOW_TOKEN_SECRET",
+        "MINGLA_BRAND_FOLLOW_LINK_ORIGIN",
+        "UNSUBSCRIBE_TOKEN_SECRET"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
     "brand-mingla-tos-accept": {
       "migration_fallback_top_level": [],
       "optional_top_level": [],
@@ -2039,7 +2049,11 @@
       "migration_fallback_top_level": [
         "ATTENDANCE_CLAIM_PEPPER"
       ],
-      "optional_top_level": [],
+      "optional_top_level": [
+        "BRAND_FOLLOW_TOKEN_SECRET",
+        "MINGLA_BRAND_FOLLOW_LINK_ORIGIN",
+        "UNSUBSCRIBE_TOKEN_SECRET"
+      ],
       "required_bundle_fields": {
         "AD_CONVERSION_TOKENS": [
           "ATTENDANCE_CLAIM_PEPPER"
@@ -2624,6 +2638,20 @@
       ],
       "local_call_identifiers": [
         "getEnv"
+      ]
+    },
+    "supabase/functions/_shared/brandFollowTokens.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "BRAND_FOLLOW_TOKEN_SECRET",
+        "MINGLA_BRAND_FOLLOW_LINK_ORIGIN",
+        "SUPABASE_URL",
+        "UNSUBSCRIBE_TOKEN_SECRET"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [],
+      "local_call_identifiers": [
+        "secretEnvKey"
       ]
     },
     "supabase/functions/_shared/marketingTokens.ts": {

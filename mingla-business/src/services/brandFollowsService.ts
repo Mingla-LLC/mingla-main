@@ -3,6 +3,12 @@
 // delete / isFollowing. Upsert uses ignoreDuplicates so re-follow is a no-op.
 import { supabase } from "./supabase";
 
+export type BrandFollowMeta = {
+  following: boolean;
+  /** brand_follows.source when following; null when not. */
+  source: string | null;
+};
+
 export const brandFollowsService = {
   async followBrand(userId: string, brandId: string): Promise<void> {
     const { error } = await supabase.from("brand_follows").upsert(
@@ -26,13 +32,26 @@ export const brandFollowsService = {
   },
 
   async isFollowing(userId: string, brandId: string): Promise<boolean> {
+    const meta = await brandFollowsService.getFollowMeta(userId, brandId);
+    return meta.following;
+  },
+
+  /** Wave 2.4 — distinguish auto-follow (Undo) vs prior follow (no Undo). */
+  async getFollowMeta(userId: string, brandId: string): Promise<BrandFollowMeta> {
     const { data, error } = await supabase
       .from("brand_follows")
-      .select("brand_id")
+      .select("brand_id, source")
       .eq("user_id", userId)
       .eq("brand_id", brandId)
       .maybeSingle();
     if (error) throw error;
-    return data !== null;
+    if (data === null) {
+      return { following: false, source: null };
+    }
+    const source =
+      typeof (data as { source?: unknown }).source === "string"
+        ? (data as { source: string }).source
+        : null;
+    return { following: true, source };
   },
 };

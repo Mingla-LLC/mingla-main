@@ -47,6 +47,14 @@ import { ticketPdfStoragePath } from "../_shared/ticketPdfPath.ts";
 // ORCH-0859 (Tr2): trip-shaped confirmation email helper. Used only when
 // event_type='trip' — event_type='event' path unchanged.
 import { renderTripConfirmationEmail } from "../_shared/email/tripConfirmationEmail.ts";
+import {
+  brandFollowActionPublicUrl,
+  signBrandFollowToken,
+} from "../_shared/brandFollowTokens.ts";
+import {
+  PRODUCTION_BUSINESS_WEB_ORIGIN,
+} from "../_shared/businessWebOrigin.ts";
+import { resolveBrandPublicUrl } from "../_shared/brandPublicUrl.ts";
 // ORCH-1195 FIX 4 — experience-shaped confirmation (includes the itinerary/stops).
 import { renderExperienceConfirmationEmail } from "../_shared/email/experienceConfirmationEmail.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
@@ -239,6 +247,8 @@ interface OrderJoin {
       // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline]: brand contact_email
       // surfaced to refund/cancel email body adapters via BuyerContext.organizerEmail.
       contact_email: string | null;
+      /** #3682 d — public slug for Follow-again / brand page links. */
+      slug: string | null;
     };
   };
 }
@@ -784,6 +794,7 @@ function buildRenderContext(args: {
     brand: {
       name: order.events.brands.name ?? "your host",
       profilePhotoUrl: order.events.brands.profile_photo_url ?? null,
+      slug: order.events.brands.slug ?? null,
     },
     order: {
       id: order.id,
@@ -815,6 +826,60 @@ function buildRenderContext(args: {
   }));
 
   return { bodyInput, ticketsForPdf };
+}
+
+/**
+ * #3682 Wave 2.4 — mint one-tap unfollow (signed-in) or brand-page Follow CTA.
+ * Fail-open: never block confirmation dispatch on token/secret issues.
+ */
+async function attachTicketFollowBlock(
+  bodyInput: TicketBodyInput,
+  order: OrderJoin,
+): Promise<TicketBodyInput> {
+  const brandId = order.events.brands.id ?? order.events.brand_id;
+  const brandSlug = order.events.brands.slug ?? null;
+  const brandPageUrl = resolveBrandPublicUrl({
+    origin: PRODUCTION_BUSINESS_WEB_ORIGIN,
+    slug: brandSlug,
+  });
+  const userId = typeof order.buyer_user_id === "string"
+    ? order.buyer_user_id.trim()
+    : "";
+
+  if (userId.length > 0 && typeof brandId === "string" && brandId.length > 0) {
+    try {
+      const token = await signBrandFollowToken({
+        action: "unfollow",
+        brand_id: brandId,
+        user_id: userId,
+      });
+      return {
+        ...bodyInput,
+        follow: {
+          unfollowUrl: brandFollowActionPublicUrl(token),
+          followUrl: null,
+          reason: "purchase",
+        },
+      };
+    } catch (err) {
+      console.warn(
+        "[ticket-confirmation-dispatch] follow token mint failed (non-fatal)",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  if (brandPageUrl !== null) {
+    return {
+      ...bodyInput,
+      follow: {
+        unfollowUrl: null,
+        followUrl: brandPageUrl,
+        reason: "purchase",
+      },
+    };
+  }
+  return bodyInput;
 }
 
 // ORCH-0869 (Tr3) Stage 1b helpers — kind-routed installment email senders.
@@ -1073,7 +1138,7 @@ export const handler = async (req: Request): Promise<Response> => {
         brand_id,
         event_type,
         theme,
-        brands!inner ( id, name, profile_photo_url, contact_email )
+        brands!inner ( id, name, profile_photo_url, contact_email, slug )
       )
     `)
     .eq("id", orderId)
@@ -1134,7 +1199,7 @@ export const handler = async (req: Request): Promise<Response> => {
     "[ticket-confirmation-dispatch]",
   );
 
-  const context = buildRenderContext({
+  const contextBase = buildRenderContext({
     order,
     lineItems: (lineItems ?? []) as unknown as Array<{
       quantity: number | null;
@@ -1160,6 +1225,14 @@ export const handler = async (req: Request): Promise<Response> => {
       }
       | null,
   });
+  const bodyWithFollow = await attachTicketFollowBlock(
+    contextBase.bodyInput,
+    order,
+  );
+  const context: RenderContext = {
+    ...contextBase,
+    bodyInput: bodyWithFollow,
+  };
 
   const ticketCount = context.bodyInput.order.tickets.length;
   const eventTitle = context.bodyInput.event.title;
