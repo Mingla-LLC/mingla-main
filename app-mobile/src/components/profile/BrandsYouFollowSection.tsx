@@ -56,15 +56,10 @@ function formatWhy(row: BrandFollowRow): string {
 
 function formatChannels(row: BrandFollowRow): string {
   if (brandFollowIsMuted(row.mutedUntil)) return "";
+  if (!row.channels.email && !row.channels.sms) return "Emails and texts stopped";
   if (!row.channels.email) return "Emails stopped";
-  const parts: string[] = [];
-  if (row.channels.push) parts.push("Push");
-  if (row.channels.email) parts.push("email");
-  if (row.channels.sms) parts.push("text");
-  if (parts.length === 0) return "Emails stopped";
-  if (parts.length === 1) return `${parts[0]} only`;
-  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-  return "Push, email and text";
+  if (!row.channels.sms) return "Email only";
+  return "Email and text";
 }
 
 export const BrandsYouFollowSection: React.FC = () => {

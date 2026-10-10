@@ -128,21 +128,17 @@ export const brandFollowsService = {
   },
 
   async setChannel(
-    userId: string,
+    _userId: string,
     brandId: string,
     channel: BrandFollowChannel,
     enabled: boolean,
   ): Promise<void> {
-    const { error } = await supabase.from("brand_follow_channel_prefs").upsert(
-      {
-        user_id: userId,
-        brand_id: brandId,
-        channel,
-        enabled,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,brand_id,channel" },
-    );
+    // SECURITY DEFINER RPC — table has no authenticated INSERT/UPDATE (#1856).
+    const { error } = await supabase.rpc("biz_brand_follow_set_channel_v1", {
+      p_brand_id: brandId,
+      p_channel: channel,
+      p_enabled: enabled,
+    });
     if (error) throw error;
   },
 

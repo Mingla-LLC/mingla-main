@@ -5,7 +5,6 @@ import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -109,9 +108,15 @@ export const BrandsYouFollowManageSheet: React.FC<Props> = ({
         onClose={onClose}
         snapPoints={["92%"]}
         theme="light"
-        scrollMode="none"
+        scrollMode="scroll"
         wrapInRNModal
         accessibilityLabel="Brands you follow"
+        scrollProps={{
+          contentContainerStyle: {
+            paddingBottom: 40,
+            gap: 12,
+          },
+        }}
       >
         <View style={styles.root} testID="brands-you-follow-manage">
           <View style={styles.headerRow}>
@@ -128,8 +133,8 @@ export const BrandsYouFollowManageSheet: React.FC<Props> = ({
             <View style={{ width: 44 }} />
           </View>
           <Text style={styles.intro}>
-            Choose how each brand reaches you. Tickets and order updates always
-            come through.
+            Choose how each brand reaches you by email and text. Tickets and
+            order updates always come through.
           </Text>
 
           {showSearch ? (
@@ -182,7 +187,27 @@ export const BrandsYouFollowManageSheet: React.FC<Props> = ({
             <ActivityIndicator color="#c2560f" style={{ marginTop: 24 }} />
           ) : null}
 
-          {!listQuery.isLoading && rows.length === 0 ? (
+          {listQuery.isError ? (
+            <View style={styles.empty} testID="brands-manage-error">
+              <Text style={styles.emptyTitle}>Couldn&apos;t load brands</Text>
+              <Text style={styles.emptyBody}>
+                Check your connection and try again.
+              </Text>
+              <Pressable
+                onPress={() => void listQuery.refetch()}
+                style={styles.retry}
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading brands you follow"
+                testID="brands-manage-retry"
+              >
+                <Text style={styles.retryText}>Try again</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {!listQuery.isLoading &&
+          !listQuery.isError &&
+          rows.length === 0 ? (
             <View style={styles.empty} testID="brands-manage-empty">
               <View style={styles.emptyIcon}>
                 <Ionicons name="storefront-outline" size={26} color="#c2560f" />
@@ -197,6 +222,7 @@ export const BrandsYouFollowManageSheet: React.FC<Props> = ({
           ) : null}
 
           {!listQuery.isLoading &&
+          !listQuery.isError &&
           rows.length > 0 &&
           filtered.length === 0 ? (
             <Text style={styles.noResults}>
@@ -204,103 +230,104 @@ export const BrandsYouFollowManageSheet: React.FC<Props> = ({
             </Text>
           ) : null}
 
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 40, gap: 12 }}
-          >
-            {filtered.map((row) => {
-              const muted = brandFollowIsMuted(row.mutedUntil);
-              return (
-                <View
-                  key={row.brandId}
-                  style={styles.card}
-                  testID={`brands-manage-card-${row.brandId}`}
-                >
-                  <View style={styles.cardHeader}>
-                    <View style={styles.logo}>
-                      <Text style={styles.monogram}>
-                        {(row.brandName[0] ?? "?").toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.cardName} numberOfLines={1}>
-                        {row.brandName}
-                      </Text>
-                      <Text style={styles.cardCaption} numberOfLines={1}>
-                        {muted
-                          ? formatMuted(row.mutedUntil)
-                          : !row.channels.email
-                            ? "Emails stopped from an email link"
-                            : `Following since ${new Date(
-                                row.createdAt,
-                              ).toLocaleDateString(undefined, {
-                                month: "short",
-                              })}`}
-                      </Text>
-                    </View>
-                    {muted ? (
-                      <Pressable
-                        onPress={() => void unmute(row)}
-                        hitSlop={8}
-                        testID={`brands-manage-unmute-${row.brandId}`}
-                      >
-                        <Text style={styles.unmute}>Unmute</Text>
-                      </Pressable>
-                    ) : (
-                      <Pressable
-                        onPress={() => setOverflow(row)}
-                        hitSlop={8}
-                        style={styles.more}
-                      >
-                        <Ionicons
-                          name="ellipsis-horizontal"
-                          size={20}
-                          color="#6b7280"
-                        />
-                      </Pressable>
-                    )}
-                  </View>
-                  <View style={[styles.channels, muted && { opacity: 0.45 }]}>
-                    {(
-                      [
-                        ["push", "Push", "phone-portrait-outline"],
-                        ["email", "Email", "mail-outline"],
-                        ["sms", "Text", "chatbubble-outline"],
-                      ] as const
-                    ).map(([ch, label, icon]) => {
-                      const on = row.channels[ch];
-                      return (
+          {!listQuery.isError
+            ? filtered.map((row) => {
+                const muted = brandFollowIsMuted(row.mutedUntil);
+                return (
+                  <View
+                    key={row.brandId}
+                    style={styles.card}
+                    testID={`brands-manage-card-${row.brandId}`}
+                  >
+                    <View style={styles.cardHeader}>
+                      <View style={styles.logo}>
+                        <Text style={styles.monogram}>
+                          {(row.brandName[0] ?? "?").toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.cardName} numberOfLines={1}>
+                          {row.brandName}
+                        </Text>
+                        <Text style={styles.cardCaption} numberOfLines={1}>
+                          {muted
+                            ? formatMuted(row.mutedUntil)
+                            : !row.channels.email
+                              ? "Emails stopped"
+                              : `Following since ${new Date(
+                                  row.createdAt,
+                                ).toLocaleDateString(undefined, {
+                                  month: "short",
+                                })}`}
+                        </Text>
+                      </View>
+                      {muted ? (
                         <Pressable
-                          key={ch}
-                          disabled={muted}
-                          onPress={() => void toggleChannel(row, ch)}
-                          style={[styles.channelBtn, on && styles.channelOn]}
-                          accessibilityRole="switch"
-                          accessibilityState={{ checked: on }}
-                          accessibilityLabel={`${label} from ${row.brandName}, ${on ? "on" : "off"}`}
-                          testID={`brands-manage-${ch}-${row.brandId}`}
+                          onPress={() => void unmute(row)}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Unmute ${row.brandName}`}
+                          testID={`brands-manage-unmute-${row.brandId}`}
+                        >
+                          <Text style={styles.unmute}>Unmute</Text>
+                        </Pressable>
+                      ) : (
+                        <Pressable
+                          onPress={() => setOverflow(row)}
+                          hitSlop={8}
+                          style={styles.more}
+                          accessibilityRole="button"
+                          accessibilityLabel={`More options for ${row.brandName}`}
+                          testID={`brands-manage-more-${row.brandId}`}
                         >
                           <Ionicons
-                            name={icon}
-                            size={16}
-                            color={on ? "#fff" : "#374151"}
+                            name="ellipsis-horizontal"
+                            size={20}
+                            color="#6b7280"
                           />
-                          <Text
-                            style={[
-                              styles.channelLabel,
-                              on && styles.channelLabelOn,
-                            ]}
-                          >
-                            {label}
-                          </Text>
                         </Pressable>
-                      );
-                    })}
+                      )}
+                    </View>
+                    <View style={[styles.channels, muted && { opacity: 0.45 }]}>
+                      {(
+                        [
+                          ["email", "Email", "mail-outline"],
+                          ["sms", "Text", "chatbubble-outline"],
+                        ] as const
+                      ).map(([ch, label, icon]) => {
+                        const on = row.channels[ch];
+                        return (
+                          <Pressable
+                            key={ch}
+                            disabled={muted}
+                            onPress={() => void toggleChannel(row, ch)}
+                            style={[styles.channelBtn, on && styles.channelOn]}
+                            accessibilityRole="switch"
+                            accessibilityState={{ checked: on }}
+                            accessibilityLabel={`${label} from ${row.brandName}, ${on ? "on" : "off"}`}
+                            testID={`brands-manage-${ch}-${row.brandId}`}
+                          >
+                            <Ionicons
+                              name={icon}
+                              size={16}
+                              color={on ? "#fff" : "#374151"}
+                            />
+                            <Text
+                              style={[
+                                styles.channelLabel,
+                                on && styles.channelLabelOn,
+                              ]}
+                            >
+                              {label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
                   </View>
-                </View>
-              );
-            })}
-          </ScrollView>
+                );
+              })
+            : null}
         </View>
       </BaseBottomSheet>
 
@@ -454,6 +481,16 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 6,
   },
+  retry: {
+    marginTop: 16,
+    minHeight: 44,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: "#c2560f",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  retryText: { fontSize: 15, fontWeight: "700", color: "#fff" },
   noResults: {
     fontSize: 14,
     color: "#6b7280",

@@ -1,7 +1,7 @@
 /**
  * #3682 Wave 2.5 — signed-out web Follow sheet (design contract surface m).
  * Always shows "Check your email to finish following" after a successful send
- * (no account-existence leak). Uses Modal (not gorhom).
+ * (without revealing whether an account exists). Uses Modal (not gorhom).
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
