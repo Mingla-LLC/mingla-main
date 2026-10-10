@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-10 — Guests can mute brands they follow (1 week / 30 days / until), manage per-brand push/email/text, and see Brands you follow on Profile — muted guests are skipped on follower blasts (toward #3682, PR #3787)
 - 2026-10-09 — Signed-out guests can Follow a brand by email on buyer web (confirm link or install invite → OTP attach), with no account-existence leak (toward #3682, PR #3786)
 - 2026-10-08 — Checkout consent names Follow {Brand}, You're-in Undo card, and ticket emails carry a follow block with one-tap unfollow (toward #3682, PR #3784)
 - 2026-10-08 — Buyer web Follow on brand and Presented-by, plus a Follow CTA on every blast email and SMS (toward #3682, PR #3782)
