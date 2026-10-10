@@ -118,6 +118,8 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // [TEST-MOD-APPROVED #3682] Wave 2.5 `public-follow-request` upserts
   // `brand_follow_email_pending` on `(email_normalized,brand_id)` twice
   // (confirm + invite arms) — new arbiter; census +2 (92).
+  // Wave 2.6 channel prefs write via `biz_brand_follow_set_channel_v1` RPC
+  // (no client upsert) — census unchanged at 92.
   //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.

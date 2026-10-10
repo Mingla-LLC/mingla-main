@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,7 +17,8 @@ import {
   useBrandBySlug,
   usePublicBrandVenues,
 } from "../hooks/useBrandBySlug";
-import { useBrandFollow } from "../hooks/useBrandFollow";
+import { brandFollowKeys, useBrandFollow } from "../hooks/useBrandFollow";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useBrandHappeningNow,
   useBrandPast,
@@ -28,6 +29,9 @@ import { shareContent } from "../services/contentShareAdapter";
 import { toastManager } from "../components/ui/Toast";
 import { ToastContainer } from "../components/ui/ToastContainer";
 import { HapticFeedback } from "../utils/hapticFeedback";
+import { BrandFollowOverflowSheet } from "../components/profile/BrandFollowOverflowSheet";
+import { BrandsYouFollowManageSheet } from "../components/profile/BrandsYouFollowManageSheet";
+import type { BrandFollowRow } from "../services/brandFollowsService";
 
 export default function ConsumerBrandProfileScreen(): React.ReactElement {
   const router = useRouter();
@@ -47,6 +51,21 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
     user?.id ?? null,
     query.data?.brand?.id ?? null,
   );
+  const queryClient = useQueryClient();
+  const [followingMenuOpen, setFollowingMenuOpen] = useState(false);
+  const [manageChannelsOpen, setManageChannelsOpen] = useState(false);
+  const invalidateFollow = useCallback(() => {
+    const uid = user?.id;
+    const bid = query.data?.brand?.id;
+    if (uid && bid) {
+      void queryClient.invalidateQueries({
+        queryKey: brandFollowKeys.status(bid, uid),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: brandFollowKeys.list(uid),
+      });
+    }
+  }, [query.data?.brand?.id, queryClient, user?.id]);
 
   const handleShare = useCallback((): void => {
     if (typeof slug !== "string") return;
@@ -116,37 +135,22 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
       });
   };
 
+  // Cross-platform Following menu (Android Alert caps at 3 buttons).
+  const followingMenuRow: BrandFollowRow | null = brandFollow.isFollowing
+    ? {
+        brandId: detail.brand.id,
+        brandName: detail.brand.displayName,
+        brandSlug: detail.brand.slug ?? null,
+        logoUrl: null,
+        source: "brand_page",
+        createdAt: new Date().toISOString(),
+        mutedUntil: brandFollow.mutedUntil,
+        channels: { push: true, email: true, sms: true },
+      }
+    : null;
+
   const handleFollowingMenu = (): void => {
-    Alert.alert(
-      `Following ${detail.brand.displayName}`,
-      undefined,
-      [
-        {
-          text: "Unfollow",
-          style: "destructive",
-          onPress: () => {
-            brandFollow
-              .unfollow()
-              .then(() => {
-                toastManager.show(
-                  `Unfollowed ${detail.brand.displayName}.`,
-                  "success",
-                );
-                postHogService.capture("brand_unfollowed", {
-                  surface: "consumer_native",
-                  brand_id: detail.brand.id,
-                  brand_slug: detail.brand.slug,
-                  source: "brand_page",
-                });
-              })
-              .catch(() => {
-                toastManager.show("Couldn't update. Try again.", "error");
-              });
-          },
-        },
-        { text: "Cancel", style: "cancel" },
-      ],
-    );
+    setFollowingMenuOpen(true);
   };
 
   return (
@@ -165,6 +169,13 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
         menu={detail.menu}
         isFollowing={brandFollow.isFollowing}
         followPending={brandFollow.isPending}
+        followState={
+          brandFollow.isMuted
+            ? "muted"
+            : brandFollow.isFollowing
+              ? "following"
+              : "not_following"
+        }
         venues={venuesQuery.data ?? []}
         venuesLoadState={
           venuesQuery.isLoading || venuesQuery.isFetching
@@ -245,6 +256,35 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
           cold /b/ deep link (investigation D-2). Warm-nav double-mount is
           benign: identical absolute-positioned overlay. */}
       <ToastContainer />
+      <BrandFollowOverflowSheet
+        visible={followingMenuOpen && followingMenuRow !== null}
+        row={followingMenuRow}
+        userId={user?.id ?? null}
+        onClose={() => setFollowingMenuOpen(false)}
+        onMuted={() => {
+          setFollowingMenuOpen(false);
+          invalidateFollow();
+        }}
+        onUnfollowed={() => {
+          setFollowingMenuOpen(false);
+          invalidateFollow();
+          postHogService.capture("brand_unfollowed", {
+            surface: "consumer_native",
+            brand_id: detail.brand.id,
+            brand_slug: detail.brand.slug,
+            source: "brand_page",
+          });
+        }}
+        onOpenChannels={() => {
+          setFollowingMenuOpen(false);
+          setManageChannelsOpen(true);
+        }}
+      />
+      <BrandsYouFollowManageSheet
+        visible={manageChannelsOpen}
+        onClose={() => setManageChannelsOpen(false)}
+        userId={user?.id ?? null}
+      />
     </View>
   );
 }

@@ -39,6 +39,7 @@ import { useProfileInterests, useUpdateProfileInterests } from "../hooks/useProf
 import ProfileHeroSection from "./profile/ProfileHeroSection";
 import ProfileInterestsSection from "./profile/ProfileInterestsSection";
 import { YourCircleSection } from "./profile/circle/YourCircleSection";
+import { BrandsYouFollowSection } from "./profile/BrandsYouFollowSection";
 import ProfileStatsRow from "./profile/ProfileStatsRow";
 import { fetchUserLevel } from "../services/userLevelService";
 import { userLevelKeys } from "../hooks/queryKeys";
@@ -574,6 +575,11 @@ function ProfilePage({
                 else if (stat === "connections") onNavigateToConnections?.();
               }}
             />
+          </GlassCard>
+
+          {/* #3682 Wave 2.6 — Brands you follow (before Account). */}
+          <GlassCard variant="base">
+            <BrandsYouFollowSection />
           </GlassCard>
 
           {/* 5. Account card */}
