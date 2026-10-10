@@ -148,8 +148,15 @@ import { FollowButton } from "@mingla/brand-rendering/FollowButton";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandFollow } from "../../hooks/useBrandFollow";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
-import { FollowByEmailSheet } from "../brand/FollowByEmailSheet";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
+
+// Lazy: FollowByEmailSheet pulls supabase + Button/reanimated; keep them off
+// the PublicEventPage eager graph for jest suites without env (#3682).
+const FollowByEmailSheet = React.lazy(() =>
+  import("../brand/FollowByEmailSheet").then((m) => ({
+    default: m.FollowByEmailSheet,
+  })),
+);
 import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";
 import {
@@ -1789,14 +1796,16 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             ) : null}
           </>
         ) : null}
-        {brand?.id ? (
-          <FollowByEmailSheet
-            visible={followByEmailOpen}
-            brandId={brand.id}
-            brandName={brand.displayName}
-            onClose={() => setFollowByEmailOpen(false)}
-            onSent={() => setFollowEmailPending(true)}
-          />
+        {brand?.id && followByEmailOpen ? (
+          <React.Suspense fallback={null}>
+            <FollowByEmailSheet
+              visible={followByEmailOpen}
+              brandId={brand.id}
+              brandName={brand.displayName}
+              onClose={() => setFollowByEmailOpen(false)}
+              onSent={() => setFollowEmailPending(true)}
+            />
+          </React.Suspense>
         ) : null}
         <SimpleConfirmDialog
           visible={followSignInOpen}
@@ -2065,14 +2074,16 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           ) : null}
         </>
       ) : null}
-      {brand?.id ? (
-        <FollowByEmailSheet
-          visible={followByEmailOpen}
-          brandId={brand.id}
-          brandName={brand.displayName}
-          onClose={() => setFollowByEmailOpen(false)}
-          onSent={() => setFollowEmailPending(true)}
-        />
+      {brand?.id && followByEmailOpen ? (
+        <React.Suspense fallback={null}>
+          <FollowByEmailSheet
+            visible={followByEmailOpen}
+            brandId={brand.id}
+            brandName={brand.displayName}
+            onClose={() => setFollowByEmailOpen(false)}
+            onSent={() => setFollowEmailPending(true)}
+          />
+        </React.Suspense>
       ) : null}
       <SimpleConfirmDialog
         visible={followSignInOpen}

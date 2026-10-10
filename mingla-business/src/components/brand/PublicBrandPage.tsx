@@ -38,10 +38,15 @@ import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
 import { useThemeFont } from "../../theme/useThemeFont";
 
-import { FollowByEmailSheet } from "./FollowByEmailSheet";
 import { ShareModal } from "../ui/ShareModal";
 import { SimpleConfirmDialog } from "../ui/SimpleConfirmDialog";
 import { Toast } from "../ui/Toast";
+
+// Lazy: keeps supabase + Button/reanimated off PublicBrandPage's eager graph
+// so PublicEventPage/Brand jest suites without env/mocks still load (#3682).
+const FollowByEmailSheet = React.lazy(() =>
+  import("./FollowByEmailSheet").then((m) => ({ default: m.FollowByEmailSheet })),
+);
 
 interface PublicBrandPageProps {
   brand: Brand;
@@ -541,21 +546,25 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         title={`${brand.displayName} on Mingla`}
         description={brand.bio?.slice(0, 200) ?? brand.tagline}
       />
-      <FollowByEmailSheet
-        visible={followByEmailOpen}
-        brandId={brand.id}
-        brandName={brand.displayName}
-        onClose={() => setFollowByEmailOpen(false)}
-        onSent={() => {
-          setFollowEmailPending(true);
-          captureWeb("brand_follow_email_requested", {
-            surface: "buyer_web",
-            brand_id: brand.id,
-            brand_slug: brand.slug,
-            source: "brand_page",
-          });
-        }}
-      />
+      {followByEmailOpen ? (
+        <React.Suspense fallback={null}>
+          <FollowByEmailSheet
+            visible={followByEmailOpen}
+            brandId={brand.id}
+            brandName={brand.displayName}
+            onClose={() => setFollowByEmailOpen(false)}
+            onSent={() => {
+              setFollowEmailPending(true);
+              captureWeb("brand_follow_email_requested", {
+                surface: "buyer_web",
+                brand_id: brand.id,
+                brand_slug: brand.slug,
+                source: "brand_page",
+              });
+            }}
+          />
+        </React.Suspense>
+      ) : null}
       <SimpleConfirmDialog
         visible={signInFollowOpen}
         onClose={() => setSignInFollowOpen(false)}

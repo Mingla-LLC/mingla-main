@@ -93,7 +93,8 @@ BEGIN
 END;
 $f$;
 
-REVOKE ALL ON FUNCTION public.biz_auto_follow_brand(uuid, uuid, text, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_auto_follow_brand(uuid, uuid, text, uuid)
+  FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_auto_follow_brand(uuid, uuid, text, uuid) TO service_role;
 
 -- Durable IP/email request throttle (shared across edge isolates).
@@ -119,43 +120,39 @@ SET search_path TO 'public', 'pg_temp'
 AS $f$
 DECLARE
   v_now timestamptz := now();
-  v_row public.brand_follow_request_rate%ROWTYPE;
   v_window interval := make_interval(secs => GREATEST(p_window_seconds, 1));
+  v_hit integer;
 BEGIN
+  -- Fail closed: empty key cannot be rate-decided → treat as limited.
   IF p_bucket_key IS NULL OR btrim(p_bucket_key) = '' THEN
-    RETURN false;
-  END IF;
-
-  SELECT * INTO v_row
-  FROM public.brand_follow_request_rate
-  WHERE bucket_key = p_bucket_key
-  FOR UPDATE;
-
-  IF NOT FOUND THEN
-    INSERT INTO public.brand_follow_request_rate (bucket_key, window_started_at, hit_count)
-    VALUES (p_bucket_key, v_now, 1);
-    RETURN false;
-  END IF;
-
-  IF v_row.window_started_at + v_window <= v_now THEN
-    UPDATE public.brand_follow_request_rate
-    SET window_started_at = v_now, hit_count = 1
-    WHERE bucket_key = p_bucket_key;
-    RETURN false;
-  END IF;
-
-  IF v_row.hit_count >= p_max_hits THEN
     RETURN true;
   END IF;
 
-  UPDATE public.brand_follow_request_rate
-  SET hit_count = hit_count + 1
-  WHERE bucket_key = p_bucket_key;
-  RETURN false;
+  -- Single atomic upsert: concurrent first hits cannot race past INSERT.
+  INSERT INTO public.brand_follow_request_rate AS r (
+    bucket_key,
+    window_started_at,
+    hit_count
+  )
+  VALUES (p_bucket_key, v_now, 1)
+  ON CONFLICT (bucket_key) DO UPDATE
+  SET
+    window_started_at = CASE
+      WHEN r.window_started_at + v_window <= v_now THEN v_now
+      ELSE r.window_started_at
+    END,
+    hit_count = CASE
+      WHEN r.window_started_at + v_window <= v_now THEN 1
+      ELSE r.hit_count + 1
+    END
+  RETURNING r.hit_count INTO v_hit;
+
+  RETURN v_hit > GREATEST(p_max_hits, 1);
 END;
 $f$;
 
-REVOKE ALL ON FUNCTION public.biz_web_follow_rate_hit(text, integer, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_web_follow_rate_hit(text, integer, integer)
+  FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_web_follow_rate_hit(text, integer, integer) TO service_role;
 
 -- Single-claimer invite attach (follow + consume in one transaction).
@@ -227,7 +224,8 @@ BEGIN
 END;
 $f$;
 
-REVOKE ALL ON FUNCTION public.biz_claim_web_follow_invite(text, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_claim_web_follow_invite(text, uuid)
+  FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_claim_web_follow_invite(text, uuid) TO service_role;
 
 COMMIT;

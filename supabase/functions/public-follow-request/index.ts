@@ -101,9 +101,11 @@ serve(async (req) => {
       "biz_web_follow_rate_hit",
       { p_bucket_key: `ip:${ip}`, p_window_seconds: 600, p_max_hits: 5 },
     );
-    if (rateErr) {
-      console.error("[public-follow-request] rate rpc failed", rateErr.message);
-    } else if (limited === true) {
+    // Fail closed: RPC error or limited=true both refuse the send.
+    if (rateErr || limited === true) {
+      if (rateErr) {
+        console.error("[public-follow-request] rate rpc failed", rateErr.message);
+      }
       await sleepFloor(started);
       return new Response(
         JSON.stringify({

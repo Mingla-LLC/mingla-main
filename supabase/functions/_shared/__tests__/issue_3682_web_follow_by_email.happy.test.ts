@@ -99,6 +99,7 @@ Deno.test("#3682 Wave 2.5 happy: edge functions wired (no account leak + GET/POS
   assert(requestSrc.includes("brand_follow_email_pending"));
   assert(requestSrc.includes("signWebFollowEmailToken"));
   assert(requestSrc.includes('biz_web_follow_rate_hit'));
+  assert(requestSrc.includes("rateErr || limited === true"));
   assert(requestSrc.includes('.eq("email", email)'));
   assert(!requestSrc.includes(".ilike("));
   assert(requestSrc.includes("crypto.randomUUID"));
@@ -147,4 +148,15 @@ Deno.test("#3682 Wave 2.5 happy: edge functions wired (no account leak + GET/POS
   assert(migration.includes("biz_claim_web_follow_invite"));
   assert(migration.includes("'web_follow_invite'"));
   assert(migration.includes("'web_email'"));
+  assert(migration.includes("ON CONFLICT (bucket_key) DO UPDATE"));
+  assert(
+    migration.includes(
+      "REVOKE ALL ON FUNCTION public.biz_web_follow_rate_hit(text, integer, integer)\n  FROM PUBLIC, anon, authenticated;",
+    ),
+  );
+  assert(
+    migration.includes(
+      "REVOKE ALL ON FUNCTION public.biz_claim_web_follow_invite(text, uuid)\n  FROM PUBLIC, anon, authenticated;",
+    ),
+  );
 });

@@ -65,13 +65,16 @@ describe("#3682 Wave 2.5 — signed-out Follow by email sheet", () => {
 
   test("PublicBrandPage + PublicEventPage open FollowByEmailSheet when signed out on web", () => {
     const brand = src();
-    expect(brand).toContain("FollowByEmailSheet");
+    // [TEST-MOD-APPROVED #3682] Lazy boundary keeps supabase/reanimated off eager graph.
+    expect(brand).toContain("React.lazy(() =>");
+    expect(brand).toContain('import("./FollowByEmailSheet")');
     expect(brand).toContain("setFollowByEmailOpen(true)");
     expect(brand).toContain('Platform.OS === "web"');
     expect(brand).toContain('followState={');
 
     const event = eventSrc();
-    expect(event).toContain("FollowByEmailSheet");
+    expect(event).toContain("React.lazy(() =>");
+    expect(event).toContain('import("../brand/FollowByEmailSheet")');
     expect(event).toContain("setFollowByEmailOpen(true)");
     expect(event).toContain("followEmailPending");
   });

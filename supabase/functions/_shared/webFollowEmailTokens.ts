@@ -12,7 +12,7 @@ export type WebFollowEmailKind = "confirm" | "invite";
 export interface WebFollowEmailTokenPayload {
   kind: WebFollowEmailKind;
   brand_id: string;
-  /** Normalized email for invite; auth user id for confirm. */
+  /** Opaque capability for invite (UUID); auth user id for confirm. */
   subject: string;
   exp: number;
 }
