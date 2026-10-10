@@ -576,7 +576,25 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     previewError: bookPreviewError,
     quote: bookQuote,
     nowMs: bookNow,
+    channel: channel === "sms" ? "sms" : channel === "email" ? "email" : "push",
   });
+
+  const bookAllowanceLabel = (() => {
+    const allowance = bookQuote?.allowance;
+    if (!allowance || !isBookAudience) return undefined;
+    if (channel === "sms") {
+      return `${allowance.smsRemaining} of ${allowance.smsCap} texts left this month`;
+    }
+    if (channel === "email") {
+      return `${allowance.emailRemaining} of ${allowance.emailCap} emails left this month`;
+    }
+    return undefined;
+  })();
+
+  const bookWeekBlastWarning =
+    isBookAudience &&
+    bookQuote?.allowance != null &&
+    bookQuote.allowance.blastsThisWeek >= bookQuote.allowance.weekWarningAt;
 
   const bookPreviewFailure = (error: unknown): string => {
     const code = error instanceof Error ? error.message : "BOOK_BLAST_FAILED";
@@ -588,6 +606,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       return "MMS media could not be verified. Fix the media or refresh the preview.";
     if (code.includes("FORBIDDEN"))
       return "You no longer have permission to send this campaign.";
+    if (code.includes("MONTHLY_CAP"))
+      return "This blast would exceed your monthly send limit. Lower the audience or wait until next month.";
     if (code.includes("FLAG_DISABLED") || code.includes("AUDIENCE_NOT_FOUND"))
       return "Book blasts aren't available. Your access or this feature changed.";
     return "The server preview is unavailable. Refresh it before confirming.";
@@ -1967,6 +1987,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           disabledReason={isBookAudience ? bookDisabledReason : null}
           retryDisabled={isBookAudience && !bookOnline}
           staleDetail={bookStaleDetail}
+          allowanceLabel={bookAllowanceLabel}
+          weekBlastWarning={bookWeekBlastWarning}
           onRetryPreview={
             isBookAudience && campaignId !== null
               ? () => {

@@ -961,7 +961,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                         <View style={styles.rowLabelWrap}>
                           <Text style={styles.rowLabel}>Brands you follow</Text>
                           <Text style={styles.rowHint}>
-                            Choose email and text for each one.
+                            Choose push, email and text for each one.
                           </Text>
                         </View>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>

@@ -592,7 +592,19 @@ export async function handleMarketingSendRequest(
       }, error instanceof Error && error.message.includes("mms") ? 409 : 503);
     }
     if (isPreviewPeopleAction) {
-      return jsonResponse(publicPeopleQuote(quote));
+      const brandId = (candidates.data as { brandId?: unknown } | null)?.brandId;
+      let allowance: unknown = null;
+      if (typeof brandId === "string" && brandId.length > 0) {
+        const usage = await supabase.rpc("biz_brand_blast_usage_v1", {
+          p_actor_id: actor.user.id,
+          p_brand_id: brandId,
+        });
+        if (!usage.error) allowance = usage.data;
+      }
+      return jsonResponse({
+        ...publicPeopleQuote(quote),
+        ...(allowance !== null ? { allowance } : {}),
+      });
     }
     if (
       body.quoteHash !== quote.quoteHash ||
@@ -737,6 +749,9 @@ export function bookRpcErrorEnvelope(
   }
   if (message.includes("book_blast_zero_recipients")) {
     return { error: "BOOK_BLAST_ZERO_RECIPIENTS", status: 409 };
+  }
+  if (message.includes("book_blast_monthly_cap_exceeded")) {
+    return { error: "BOOK_BLAST_MONTHLY_CAP_EXCEEDED", status: 409 };
   }
   return { error: "BOOK_BLAST_PREVIEW_STALE", status: 409 };
 }

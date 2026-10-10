@@ -133,8 +133,8 @@ export const BrandsYouFollowManageSheet: React.FC<Props> = ({
             <View style={{ width: 44 }} />
           </View>
           <Text style={styles.intro}>
-            Choose how each brand reaches you by email and text. Tickets and
-            order updates always come through.
+            Choose how each brand reaches you by push, email and text. Tickets
+            and order updates always come through.
           </Text>
 
           {showSearch ? (
@@ -291,6 +291,7 @@ export const BrandsYouFollowManageSheet: React.FC<Props> = ({
                     <View style={[styles.channels, muted && { opacity: 0.45 }]}>
                       {(
                         [
+                          ["push", "Push", "notifications-outline"],
                           ["email", "Email", "mail-outline"],
                           ["sms", "Text", "chatbubble-outline"],
                         ] as const

@@ -38,6 +38,7 @@ export function getBookBlastDisabledReason(input: {
   previewError: string | null;
   quote: MarketingBookQuote | null;
   nowMs: number;
+  channel?: "email" | "sms" | "push";
 }): string | null {
   if (!input.featureReady) {
     return "Book blasts aren't available while access is being checked.";
@@ -54,6 +55,17 @@ export function getBookBlastDisabledReason(input: {
   }
   if (input.quote.reachableCount === 0) {
     return "No reachable people are available for this channel.";
+  }
+  const allowance = input.quote.allowance;
+  if (allowance && input.channel === "sms") {
+    if (input.quote.reachableCount > allowance.smsRemaining) {
+      return `This blast needs ${input.quote.reachableCount} texts, but only ${allowance.smsRemaining} of ${allowance.smsCap} remain this month.`;
+    }
+  }
+  if (allowance && input.channel === "email") {
+    if (input.quote.reachableCount > allowance.emailRemaining) {
+      return `This blast needs ${input.quote.reachableCount} emails, but only ${allowance.emailRemaining} of ${allowance.emailCap} remain this month.`;
+    }
   }
   return null;
 }
