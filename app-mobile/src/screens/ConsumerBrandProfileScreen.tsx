@@ -117,36 +117,93 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
   };
 
   const handleFollowingMenu = (): void => {
-    Alert.alert(
-      `Following ${detail.brand.displayName}`,
-      undefined,
-      [
-        {
-          text: "Unfollow",
-          style: "destructive",
-          onPress: () => {
-            brandFollow
-              .unfollow()
-              .then(() => {
-                toastManager.show(
-                  `Unfollowed ${detail.brand.displayName}.`,
-                  "success",
-                );
-                postHogService.capture("brand_unfollowed", {
-                  surface: "consumer_native",
-                  brand_id: detail.brand.id,
-                  brand_slug: detail.brand.slug,
-                  source: "brand_page",
+    const brandName = detail.brand.displayName;
+    const muteOptions: {
+      text: string;
+      onPress?: () => void;
+      style?: "cancel" | "destructive" | "default";
+    }[] = brandFollow.isMuted
+      ? [
+          {
+            text: "Unmute",
+            onPress: () => {
+              brandFollow
+                .unmute()
+                .then(() => {
+                  toastManager.show(`${brandName} unmuted`, "success");
+                })
+                .catch(() => {
+                  toastManager.show("Couldn't save that. Try again.", "error");
                 });
-              })
-              .catch(() => {
-                toastManager.show("Couldn't update. Try again.", "error");
-              });
+            },
           },
+        ]
+      : [
+          {
+            text: "Mute for 1 week",
+            onPress: () => {
+              brandFollow
+                .mute("week")
+                .then(() => {
+                  toastManager.show(`Muted ${brandName} for 1 week`, "success");
+                })
+                .catch(() => {
+                  toastManager.show("Couldn't save that. Try again.", "error");
+                });
+            },
+          },
+          {
+            text: "Mute for 30 days",
+            onPress: () => {
+              brandFollow
+                .mute("month")
+                .then(() => {
+                  toastManager.show(`Muted ${brandName} for 30 days`, "success");
+                })
+                .catch(() => {
+                  toastManager.show("Couldn't save that. Try again.", "error");
+                });
+            },
+          },
+          {
+            text: "Mute until I turn it back on",
+            onPress: () => {
+              brandFollow
+                .mute("indefinite")
+                .then(() => {
+                  toastManager.show(`Muted ${brandName}`, "success");
+                })
+                .catch(() => {
+                  toastManager.show("Couldn't save that. Try again.", "error");
+                });
+            },
+          },
+        ];
+
+    Alert.alert(`Following ${brandName}`, undefined, [
+      ...muteOptions,
+      {
+        text: `Unfollow ${brandName}`,
+        style: "destructive",
+        onPress: () => {
+          brandFollow
+            .unfollow()
+            .then(() => {
+              toastManager.show(`Unfollowed ${brandName}.`, "success");
+              postHogService.capture("brand_unfollowed", {
+                surface: "consumer_native",
+                brand_id: detail.brand.id,
+                brand_slug: detail.brand.slug,
+                source: "brand_page",
+              });
+            })
+            .catch(() => {
+              toastManager.show("Couldn't update. Try again.", "error");
+            });
         },
-        { text: "Cancel", style: "cancel" },
-      ],
-    );
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   return (
@@ -165,6 +222,13 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
         menu={detail.menu}
         isFollowing={brandFollow.isFollowing}
         followPending={brandFollow.isPending}
+        followState={
+          brandFollow.isMuted
+            ? "muted"
+            : brandFollow.isFollowing
+              ? "following"
+              : "not_following"
+        }
         venues={venuesQuery.data ?? []}
         venuesLoadState={
           venuesQuery.isLoading || venuesQuery.isFetching

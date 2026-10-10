@@ -47,6 +47,7 @@ import type {
   MatrixCategoryRow,
   NotificationChannel,
 } from "./notificationPrefsMatrix";
+import { BrandsYouFollowManageSheet } from "./BrandsYouFollowManageSheet";
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -120,6 +121,8 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
+  // #3682 Wave 2.6 — manage brands you follow (child of settings sheet).
+  const [showBrandsScreen, setShowBrandsScreen] = useState(false);
 
   // Delete account state
   const [isDeleting, setIsDeleting] = useState(false);
@@ -669,7 +672,8 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
     showLanguagePicker ||
     showBirthdayPicker ||
     showCountryPicker ||
-    showDeleteConfirmModal;
+    showDeleteConfirmModal ||
+    showBrandsScreen;
 
   const handleRootClose = useCallback(() => {
     // Suppressed-for-child close is internal, not a user dismiss — swallow it.
@@ -678,7 +682,8 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
       showLanguagePicker ||
       showBirthdayPicker ||
       showCountryPicker ||
-      showDeleteConfirmModal
+      showDeleteConfirmModal ||
+      showBrandsScreen
     ) {
       return;
     }
@@ -690,6 +695,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
     showBirthdayPicker,
     showCountryPicker,
     showDeleteConfirmModal,
+    showBrandsScreen,
   ]);
 
   // --- Render ---
@@ -943,6 +949,29 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                       </Text>
                     </View>
                     {sec.rows.map((row) => renderCategoryRow(row))}
+                    {sec.section === "Marketing" ? (
+                      <TouchableOpacity
+                        style={[styles.row, styles.rowMultiline, { backgroundColor: "#fffaf6" }]}
+                        activeOpacity={0.7}
+                        onPress={() => setShowBrandsScreen(true)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Brands you follow. Manage."
+                        testID="settings-brands-you-follow-row"
+                      >
+                        <View style={styles.rowLabelWrap}>
+                          <Text style={styles.rowLabel}>Brands you follow</Text>
+                          <Text style={styles.rowHint}>
+                            Choose push, email and text for each one.
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <Text style={{ fontSize: 15, fontWeight: "600", color: "#c2560f" }}>
+                            Manage
+                          </Text>
+                          <Icon name="chevron-forward" size={16} color="#c2560f" />
+                        </View>
+                      </TouchableOpacity>
+                    ) : null}
                     <View style={styles.prefSectionGap} />
                   </View>
                 ))
@@ -1248,6 +1277,12 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
             )}
         </View>
       </BaseBottomSheet>
+
+      <BrandsYouFollowManageSheet
+        visible={showBrandsScreen}
+        onClose={() => setShowBrandsScreen(false)}
+        userId={user?.id ?? null}
+      />
     </>
   );
 }
