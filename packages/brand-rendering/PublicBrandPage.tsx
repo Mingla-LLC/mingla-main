@@ -310,6 +310,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   followCaption = null,
   followerCount = null,
   followPending = false,
+  followState = undefined,
   venues = [],
   venuesLoadState = "ready",
   theme,
@@ -791,6 +792,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
             palette={palette}
             isFollowing={isFollowing}
             followPending={followPending}
+            followState={followState}
             followCaption={followCaption}
             followerCount={followerCount}
             onToggleFollow={callbacks.onToggleFollow}
@@ -836,6 +838,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           palette={palette}
           isFollowing={isFollowing}
           followPending={followPending}
+          followState={followState}
           followCaption={followCaption}
           followerCount={followerCount}
           onToggleFollow={callbacks.onToggleFollow}
@@ -1067,6 +1070,8 @@ type BrandFollowControlProps = {
   palette: ThemePalette;
   isFollowing?: boolean;
   followPending?: boolean;
+  /** #3682 Wave 2.5 — email-sheet Pending (not busy spinner). */
+  followState?: import("./followTokens").FollowVisualState;
   followCaption?: string | null;
   followerCount?: number | null;
   onToggleFollow?: () => void;
@@ -1078,6 +1083,7 @@ const BrandFollowControl: React.FC<BrandFollowControlProps> = ({
   palette,
   isFollowing,
   followPending,
+  followState,
   followCaption,
   followerCount,
   onToggleFollow,
@@ -1086,7 +1092,7 @@ const BrandFollowControl: React.FC<BrandFollowControlProps> = ({
 }: BrandFollowControlProps) => {
   // orch-strict-grep / issue 679 gate — keep the exact predicate the gates pin.
   if (onToggleFollow === undefined) return null;
-  const active = isFollowing === true;
+  const active = isFollowing === true && followState !== "pending";
   const countLine =
     typeof followerCount === "number"
       ? followerCount === 0
@@ -1112,6 +1118,7 @@ const BrandFollowControl: React.FC<BrandFollowControlProps> = ({
         palette={palette}
         isFollowing={isFollowing}
         followPending={followPending}
+        state={followState}
         size="lg"
         onPress={() => {
           if (active && onFollowingMenu !== undefined) {

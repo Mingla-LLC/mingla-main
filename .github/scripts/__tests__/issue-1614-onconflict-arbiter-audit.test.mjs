@@ -115,9 +115,20 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // `brand_follows` on `(user_id,brand_id)` for one-tap email Follow — same
   // arbiter; census +1 for the edge call site (90).
   //
+  // [TEST-MOD-APPROVED #3682] Wave 2.5 `public-follow-request` upserts
+  // `brand_follow_email_pending` on `(email_normalized,brand_id)` twice
+  // (confirm + invite arms) — new arbiter; census +2 (92).
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 90);
+  assert.equal(sites.length, 92);
+  assert.equal(
+    sites.some((site) =>
+      site.table === "brand_follow_email_pending" &&
+      site.columns.join(",") === "email_normalized,brand_id"
+    ),
+    true,
+  );
   assert.equal(sites.some((site) => site.table === "user_stats"), false);
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);

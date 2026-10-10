@@ -475,6 +475,18 @@ verify_jwt = false
 [functions.brand-follow-action]
 verify_jwt = false
 
+# #3682 Wave 2.5 — signed-out web Follow sheet (always 202 after floor).
+[functions.public-follow-request]
+verify_jwt = false
+
+# #3682 Wave 2.5 — n1 confirm landing (GET) + POST mutate.
+[functions.public-follow-confirm]
+verify_jwt = false
+
+# #3682 Wave 2.5 — peek invite (anon GET) + attach after OTP (POST + JWT).
+[functions.resolve-follow-invite]
+verify_jwt = false
+
 # ORCH-1271 — admin-write-primitive is the audited-write PRIMITIVE prover (and
 # the wave-2 skeleton for Stripe-touching admin actions). verify_jwt=true: the
 # gateway rejects callers with no JWT (401); the fn then re-verifies the JWT is

@@ -78,6 +78,17 @@ const FOUND_CASES: Case[] = [
     expected: { kind: "referral", referralCode: "SETH-8Q2" },
   },
   {
+    name: "follow_invite → follow_invite token (#3682 Wave 2.5)",
+    data: {
+      deep_link_value: "follow_invite",
+      deep_link_sub1: "follow-invite-token-example",
+    },
+    expected: {
+      kind: "follow_invite",
+      token: "follow-invite-token-example",
+    },
+  },
+  {
     name: "internal (mingla:// path) → internal",
     data: { deep_link_value: "internal", deep_link_sub1: "mingla://discover?paired=true" },
     expected: { kind: "internal", url: "mingla://discover?paired=true" },
@@ -104,6 +115,7 @@ const NULL_CASES: Case[] = [
   { name: "trip with NO sub1 → null", data: { deep_link_value: "trip", deep_link_sub2: "x" }, expected: null },
   { name: "brand with NO sub1 → null", data: { deep_link_value: "brand" }, expected: null },
   { name: "referral with NO sub1 → null", data: { deep_link_value: "referral" }, expected: null },
+  { name: "follow_invite with NO sub1 → null", data: { deep_link_value: "follow_invite" }, expected: null },
   { name: "internal with NO sub1 → null", data: { deep_link_value: "internal" }, expected: null },
   { name: "unknown discriminator → null", data: { deep_link_value: "coupon", deep_link_sub1: "x" }, expected: null },
   { name: "empty payload → null", data: {}, expected: null },

@@ -246,6 +246,8 @@ export interface PublicBrandPageProps {
   // server state). Only read when callbacks.onToggleFollow is provided.
   isFollowing?: boolean;
   followPending?: boolean;
+  /** #3682 Wave 2.5 — explicit visual state (e.g. email Pending). */
+  followState?: import("./followTokens").FollowVisualState;
   // #3682 — why-caption under Follow (e.g. "Following since Oct") and count.
   followCaption?: string | null;
   followerCount?: number | null;

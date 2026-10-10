@@ -400,6 +400,11 @@ function AppContent() {
    * guest sent here by "that's not me" does not have to find it. */
   const [attendanceClaimWantsEmailSignIn, setAttendanceClaimWantsEmailSignIn] =
     useState(false);
+  // #3682 Wave 2.5 — follow_invite OneLink → WelcomeScreen code step.
+  const [followInviteWelcome, setFollowInviteWelcome] = useState<{
+    brandName: string;
+    email: string;
+  } | null>(null);
 
   useEffect(() => {
     void readAttendanceClaimHandoffMarker().then((marker) => {
@@ -408,6 +413,138 @@ function AppContent() {
       if (marker !== null) setAttendanceClaimWantsEmailSignIn(true);
     });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    void (async () => {
+      const {
+        hydratePendingFollowInvite,
+        subscribePendingFollowInvite,
+        getPendingFollowInvite,
+      } = await import("../src/services/pendingFollowInvite");
+      await hydratePendingFollowInvite();
+      const peek = async (): Promise<void> => {
+        const pending = getPendingFollowInvite();
+        if (!pending?.token || cancelled) return;
+        try {
+          const base = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? "").replace(
+            /\/$/,
+            "",
+          );
+          const res = await fetch(
+            `${base}/functions/v1/resolve-follow-invite?token=${encodeURIComponent(pending.token)}`,
+            {
+              headers: {
+                apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
+              },
+            },
+          );
+          if (!res.ok || cancelled) return;
+          const body = (await res.json()) as {
+            email?: string | null;
+            brandName?: string;
+            expired?: boolean;
+          };
+          if (body.expired || !body.email || !body.brandName) return;
+          setFollowInviteWelcome({
+            email: body.email,
+            brandName: body.brandName,
+          });
+        } catch {
+          /* peek is best-effort */
+        }
+      };
+      unsub = subscribePendingFollowInvite(() => {
+        void peek();
+      });
+      await peek();
+    })();
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, []);
+
+  // #3682 Wave 2.5 — after OTP/session, attach pending follow_invite once.
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return;
+    let cancelled = false;
+    void (async () => {
+      const {
+        getPendingFollowInvite,
+        clearPendingFollowInvite,
+        hydratePendingFollowInvite,
+        setPendingFollowInvite,
+      } = await import("../src/services/pendingFollowInvite");
+      await hydratePendingFollowInvite();
+      const pending = getPendingFollowInvite();
+      if (!pending?.token || cancelled) return;
+      try {
+        const sessionEmail = (user.email ?? "").trim().toLowerCase();
+        const base = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? "").replace(
+          /\/$/,
+          "",
+        );
+        const peekRes = await fetch(
+          `${base}/functions/v1/resolve-follow-invite?token=${encodeURIComponent(pending.token)}`,
+          {
+            headers: {
+              apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
+            },
+          },
+        );
+        if (!peekRes.ok || cancelled) return;
+        const peek = (await peekRes.json()) as {
+          email?: string | null;
+          brandName?: string;
+          emailMismatch?: boolean;
+        };
+        const invited = (peek.email ?? "").trim().toLowerCase();
+        // O6 — invited email differs from this session: confirm before attach.
+        if (
+          invited.length > 0 &&
+          sessionEmail.length > 0 &&
+          invited !== sessionEmail
+        ) {
+          await setPendingFollowInvite({
+            token: pending.token,
+            email: invited,
+            brandName: peek.brandName,
+          });
+          const ok = await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              `Follow ${peek.brandName ?? "this brand"} on this account?`,
+              `This invite was for ${invited}. You're signed in as ${sessionEmail}.`,
+              [
+                { text: "Not now", style: "cancel", onPress: () => resolve(false) },
+                { text: "Follow here", onPress: () => resolve(true) },
+              ],
+              { cancelable: true, onDismiss: () => resolve(false) },
+            );
+          });
+          if (!ok || cancelled) return;
+        }
+        const { supabase } = await import("../src/services/supabase");
+        const { data, error } = await supabase.functions.invoke(
+          "resolve-follow-invite",
+          { body: { token: pending.token } },
+        );
+        if (error || cancelled) return;
+        await clearPendingFollowInvite();
+        setFollowInviteWelcome(null);
+        const slug = (data as { brandSlug?: string } | null)?.brandSlug;
+        if (slug) {
+          router.push(`/b/${encodeURIComponent(slug)}` as never);
+        }
+      } catch (e) {
+        console.warn("[follow_invite] post-auth attach failed:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, user?.id, user?.email]);
 
   /**
    * #3524 — WHOSE ACCOUNT THE SHEET IS ABOUT TO USE.
@@ -622,6 +759,8 @@ function AppContent() {
   // like isAuthenticated are not.
   const userIdRef = useRef<string | undefined>(undefined);
   userIdRef.current = user?.id;
+  const userEmailRef = useRef<string | undefined>(undefined);
+  userEmailRef.current = user?.email?.trim().toLowerCase() || undefined;
   // Generation counter for refreshAllSessions() concurrency protection.
   // Declared here (top of component) so it persists stably across renders and is
   // visible to any future developer extracting refreshAllSessions to a custom hook.
@@ -2332,6 +2471,82 @@ function AppContent() {
           handleDeepLinkRef.current(dest.url);
           return;
 
+        case 'follow_invite': {
+          // #3682 Wave 2.5 — hold token; signed-in attach peeks first (O6).
+          void (async () => {
+            const {
+              setPendingFollowInvite,
+              clearPendingFollowInvite,
+            } = await import("../src/services/pendingFollowInvite");
+            await setPendingFollowInvite({ token: dest.token });
+            if (!userIdRef.current) return;
+            try {
+              const base = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? "").replace(
+                /\/$/,
+                "",
+              );
+              const peekRes = await fetch(
+                `${base}/functions/v1/resolve-follow-invite?token=${encodeURIComponent(dest.token)}`,
+                {
+                  headers: {
+                    apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
+                  },
+                },
+              );
+              if (!peekRes.ok) return;
+              const peek = (await peekRes.json()) as {
+                email?: string | null;
+                brandName?: string;
+                brandSlug?: string | null;
+              };
+              const invited = (peek.email ?? "").trim().toLowerCase();
+              const sessionEmail = userEmailRef.current ?? "";
+              if (
+                invited.length > 0 &&
+                sessionEmail.length > 0 &&
+                invited !== sessionEmail
+              ) {
+                await setPendingFollowInvite({
+                  token: dest.token,
+                  email: invited,
+                  brandName: peek.brandName,
+                  brandSlug: peek.brandSlug ?? undefined,
+                });
+                const ok = await new Promise<boolean>((resolve) => {
+                  Alert.alert(
+                    `Follow ${peek.brandName ?? "this brand"} on this account?`,
+                    `This invite was for ${invited}. You're signed in as ${sessionEmail}.`,
+                    [
+                      {
+                        text: "Not now",
+                        style: "cancel",
+                        onPress: () => resolve(false),
+                      },
+                      { text: "Follow here", onPress: () => resolve(true) },
+                    ],
+                    { cancelable: true, onDismiss: () => resolve(false) },
+                  );
+                });
+                if (!ok) return;
+              }
+              const { supabase } = await import("../src/services/supabase");
+              const { data, error } = await supabase.functions.invoke(
+                "resolve-follow-invite",
+                { body: { token: dest.token } },
+              );
+              if (!error && data?.brandSlug) {
+                await clearPendingFollowInvite();
+                router.push(
+                  `/b/${encodeURIComponent(data.brandSlug)}` as never,
+                );
+              }
+            } catch (e) {
+              console.warn("[OneLink] follow_invite attach failed:", e);
+            }
+          })();
+          return;
+        }
+
         case 'entity': {
           // Any entity may piggyback a referral code — capture it before nav.
           if (dest.referralCode) {
@@ -2755,6 +2970,7 @@ function AppContent() {
           onSendEmailCode={signInWithEmailCode}
           onVerifyEmailCode={verifyEmailCode}
           emailPanelInitiallyOpen={attendanceClaimWantsEmailSignIn}
+          followInvite={followInviteWelcome}
         />
       </ErrorBoundary>
       {attendanceClaimOverlay}
