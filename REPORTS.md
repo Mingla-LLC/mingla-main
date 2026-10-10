@@ -20,7 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
-- 2026-10-10 — Hosts see remaining monthly SMS/email allowance on blast review, get a 4th-blast-in-a-week Send anyway warning, and confirm is blocked past 100 SMS / 1,000 emails; guests can toggle Push per brand again (toward #3682, PR #TBD)
+- 2026-10-10 — Hosts see remaining monthly SMS/email allowance on blast review, get a 4th-blast-in-a-week Send anyway warning, and confirm is blocked past 100 SMS / 1,000 emails; guests can toggle Push per brand again (toward #3682, PR #3788)
 - 2026-10-10 — Guests can mute brands they follow (1 week / 30 days / until), manage per-brand push/email/text, and see Brands you follow on Profile — muted guests are skipped on follower blasts (toward #3682, PR #3787)
 - 2026-10-09 — Signed-out guests can Follow a brand by email on buyer web (confirm link or install invite → OTP attach), with no account-existence leak (toward #3682, PR #3786)
 - 2026-10-08 — Checkout consent names Follow {Brand}, You're-in Undo card, and ticket emails carry a follow block with one-tap unfollow (toward #3682, PR #3784)
