@@ -20064,7 +20064,7 @@
       "providerWorkflow": ".github/workflows/issue-873-guest-status-roster-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "cedc4176f9689f415ec844fd964e3f6724436912f6755fb5fe8311c8f5f2f433",
+        "sourceSha256": "345db3ad93ffa296ad0bf5fb5759001345abac0598a798d9bcd1db3a489fbfb2",
         "triggers": [
           "pull_request",
           "push"
@@ -20095,6 +20095,7 @@
           "mingla-business/src/services/__tests__/issue_1780_outbox_contract.tester_adversarial.test.ts",
           "mingla-business/src/services/__tests__/issue_1780_stale_group_intent.tester_adversarial.test.ts",
           "mingla-business/src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts",
+          "mingla-business/src/services/__tests__/issue_3682_wizard_invite_followers.implementor.test.ts",
           "mingla-business/src/services/businessEvents.ts",
           "mingla-business/src/services/offeringInvitePlanService.ts",
           "mingla-business/src/services/rsvpEvents.ts",
@@ -20109,12 +20110,14 @@
           "supabase/functions/offering-invite-dispatch/issue_1780_zero_reachable_resume.tester_adversarial.test.ts",
           "supabase/migrations/20270319000873_issue_0873_guest_status_roster.sql",
           "supabase/migrations/20270712001780_issue_1780_wizard_invite_plans.sql",
+          "supabase/migrations/20270811003682_issue_3682_wizard_invite_followers.sql",
           "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql",
           "supabase/migrations/__tests__/issue_1780_normalized_plan_members.tester_adversarial.pg17.test.sql",
           "supabase/migrations/__tests__/issue_1780_observability_rollback.tester_adversarial.pg17.test.sql",
           "supabase/migrations/__tests__/issue_1780_outbox_contract.tester_adversarial.pg17.test.sql",
           "supabase/migrations/__tests__/issue_1780_publish_tail.tester_adversarial.pg17.test.sql",
-          "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
+          "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_3682_wizard_invite_followers.happy.pg17.test.sql"
         ],
         "jobKeys": [
           "action-edge",

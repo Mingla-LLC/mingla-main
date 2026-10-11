@@ -132,21 +132,33 @@ DECLARE
   v_ids uuid[] := '{}'; v_explicit uuid[] := '{}'; v_excluded uuid[] := '{}';
   v_groups uuid[] := '{}'; v_everyone boolean; v_followers boolean; v_friends boolean;
   v_request_hash text; v_prior private.brand_offering_invite_mutation_receipts%ROWTYPE; v_result jsonb;
-  v_rings text[] := '{}';
+  v_rings text[] := '{}'; v_keys text[]; v_flags boolean;
 BEGIN
   SELECT * INTO v_scope FROM private.issue_1780_event_scope(p_event_id, v_actor);
   IF p_client_request_id IS NULL OR p_expected_revision IS NULL OR p_expected_revision < 0
-     OR jsonb_typeof(p_selection) <> 'object'
-     OR (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(p_selection) k)
-        <> ARRAY[
-          'excludedPersonIds',
-          'includeEveryone',
-          'includeFollowers',
-          'includeFriendsOfFollowers',
-          'manualGroupIds',
-          'personIds'
-        ]::text[]
-     OR jsonb_typeof(p_selection -> 'manualGroupIds') <> 'array'
+     OR jsonb_typeof(p_selection) <> 'object' THEN
+    RAISE EXCEPTION 'wizard_invite_selection_invalid' USING ERRCODE = '22023';
+  END IF;
+  -- Accept legacy four-key Host payloads (new booleans default false) and the
+  -- six-key shape; reject any other key set so unknown fields cannot sneak in.
+  SELECT array_agg(k ORDER BY k) INTO v_keys FROM jsonb_object_keys(p_selection) k;
+  IF v_keys = ARRAY[
+       'excludedPersonIds', 'includeEveryone', 'manualGroupIds', 'personIds'
+     ]::text[] THEN
+    p_selection := p_selection || jsonb_build_object(
+      'includeFollowers', false,
+      'includeFriendsOfFollowers', false);
+  ELSIF v_keys IS DISTINCT FROM ARRAY[
+       'excludedPersonIds',
+       'includeEveryone',
+       'includeFollowers',
+       'includeFriendsOfFollowers',
+       'manualGroupIds',
+       'personIds'
+     ]::text[] THEN
+    RAISE EXCEPTION 'wizard_invite_selection_invalid' USING ERRCODE = '22023';
+  END IF;
+  IF jsonb_typeof(p_selection -> 'manualGroupIds') <> 'array'
      OR jsonb_typeof(p_selection -> 'personIds') <> 'array'
      OR jsonb_typeof(p_selection -> 'excludedPersonIds') <> 'array'
      OR jsonb_typeof(p_selection -> 'includeEveryone') <> 'boolean'
@@ -192,6 +204,27 @@ BEGIN
   IF NOT COALESCE((SELECT is_enabled FROM public.feature_flags
       WHERE flag_key = 'business_wizard_invite_selection_v1'), false) THEN
     RAISE EXCEPTION 'wizard_invite_feature_disabled' USING ERRCODE = '55000';
+  END IF;
+  -- Same rollout flags as issue_1777_brand_reach_scope_status — do not expand
+  -- circle sources while that ring's reach is intentionally unavailable.
+  -- Live resolve (not sealed materialization) so refresh_pending is not required.
+  IF v_followers THEN
+    SELECT count(*) = 1 AND bool_and(is_enabled) INTO v_flags
+      FROM public.feature_flags WHERE flag_key = 'brand_circle_followers_v1';
+    IF NOT COALESCE(v_flags, false) THEN
+      RAISE EXCEPTION 'wizard_invite_circle_unavailable' USING ERRCODE = '55000';
+    END IF;
+  END IF;
+  IF v_friends THEN
+    SELECT count(*) = 3 AND bool_and(is_enabled) INTO v_flags
+      FROM public.feature_flags
+     WHERE flag_key IN (
+       'brand_circle_extended_v1',
+       'brand_circle_extended_controls_ios_v1',
+       'brand_circle_extended_controls_android_v1');
+    IF NOT COALESCE(v_flags, false) THEN
+      RAISE EXCEPTION 'wizard_invite_circle_unavailable' USING ERRCODE = '55000';
+    END IF;
   END IF;
   IF EXISTS(SELECT 1 FROM unnest(v_groups) gid LEFT JOIN public.marketing_audiences a
       ON a.id = gid AND a.brand_id = v_scope.brand_id AND a.deleted_at IS NULL

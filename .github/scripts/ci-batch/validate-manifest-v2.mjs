@@ -499,10 +499,11 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // Host lockfile advisory floor (#3642); collapsed on #3713.
 // [TEST-MOD-APPROVED #3762] Re-banked after intentional Host advisory floors
 // (undici / markdown-it / dompurify / sharp) + lockfile churn. Single sealed map.
+// [TEST-MOD-APPROVED #3682] Re-banked after Wave 2.8b test:issue-1780 script edit.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "8cfe7600ed5370cf9518337df3890acf21e9352432f2cbc90aac919283a1a77b",
   "app-mobile/package-lock.json": "27314a161ae6aa67603e670fb0bd8ea567002a5526628c15b35e39163e22a534",
-  "mingla-business/package.json": "fb8baeb0ba5ef4c3ae1b8ef578454e3027f895eb978aab26c6c1ef5f81f84004",
+  "mingla-business/package.json": "cbddce51006bde67db3adb9c481ff0097b391a79a6f77cbc94f363f9f488c571",
   "mingla-business/package-lock.json": "3a1d267fb1448fbd61e4912ce729d14ce6ef286db372b3274077793806d420a7",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and

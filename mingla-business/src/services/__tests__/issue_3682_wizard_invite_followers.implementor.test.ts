@@ -23,6 +23,11 @@ describe("issue #3682 Wave 2.8b — wizard invite followers", () => {
     expect(migration).toContain("muted_until");
     expect(migration).toContain("'follower'");
     expect(migration).toContain("'extended'");
+    // Legacy four-key Host payloads stay accepted; unknown key sets still fail.
+    expect(migration).toContain("'manualGroupIds', 'personIds'");
+    expect(migration).toContain("includeFollowers', false");
+    expect(migration).toContain("wizard_invite_circle_unavailable");
+    expect(migration).toContain("brand_circle_followers_v1");
     expect(service).toContain("includeFollowers: boolean");
     expect(service).toContain("includeFriendsOfFollowers: boolean");
   });
