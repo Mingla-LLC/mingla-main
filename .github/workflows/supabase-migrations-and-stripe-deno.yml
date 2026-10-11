@@ -1171,6 +1171,17 @@ jobs:
           # nothing changed". It commits its own fixtures and removes them.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest_races.pg17.test.sql
+          # Issue #3660 tester2 FINAL RETEST (written by the tester after rework 3).
+          # 21 fixtures of the tester's own, across ticket orders, RSVP
+          # contributions, venue deposits, menu orders and instalments, are put
+          # to the money rule and then to the REAL payout sweep run sixty days
+          # ahead. Each must land in its class: both block-and-ledger (and stop
+          # blocking once released), neither, or rule-only for the documented
+          # reasons. Then: provider targets carried across several deletions of
+          # one account come back once each, and malformed earlier audit rows
+          # are ignored.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest3_sweep_agreement.pg17.test.sql
           # Issue #3660 rework — the tester's two reproductions (KD-1 = the kept
           # login un-deleting its own brand, KD-2 = a paid order on a just-ended
           # event with no payout yet). They failed on purpose and were left out
