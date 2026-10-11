@@ -42,6 +42,27 @@ export function dollarsToCents(dollars) {
   return Math.round(value * 100);
 }
 
+/** toward #3697 Wave 2 — budget + schedule fields for admin-ad-create-campaign. */
+export function budgetPayloadFromState(budget) {
+  const mode = budget?.mode === "lifetime" ? "lifetime" : "daily";
+  const amount = mode === "lifetime"
+    ? (Number(budget.amountCents) || Number(budget.dailyCentsForChannel) || 0)
+    : (Number(budget.dailyCentsForChannel) || Number(budget.amountCents) || 0);
+  const body = {
+    type: mode,
+    amount_cents: amount,
+  };
+  if (typeof budget?.capCents === "number" && budget.capCents > 0) {
+    body.cap_cents = budget.capCents;
+  } else if (mode === "lifetime") {
+    body.cap_cents = amount;
+  }
+  const schedule = {};
+  if (budget?.startsAt) schedule.starts_at = budget.startsAt;
+  if (budget?.endsAt) schedule.ends_at = budget.endsAt;
+  return { budget: body, ...(Object.keys(schedule).length ? { schedule } : {}) };
+}
+
 /** Spec §4.4: auto-suggested campaign name — "{brand} — {title} — {YYYY-MM-DD}", editable. */
 export function suggestCampaignName({ brandName, title, date = new Date() }) {
   const day = date.toISOString().slice(0, 10);
@@ -171,7 +192,7 @@ export function buildCreatePayload(platform, state) {
       objective,
       optimization_goal: goalDefaults.optimization_goal,
       billing_event: goalDefaults.billing_event,
-      budget: { type: "daily", amount_cents: budget.dailyCentsForChannel },
+      ...budgetPayloadFromState(budget),
       // ISSUE-989: real city + interest targeting. City location_ids (resolved
       // via the search proxy) REPLACE country resolution when present; interest
       // category ids narrow the ad group; gender now maps correctly (the old
@@ -218,7 +239,7 @@ export function buildCreatePayload(platform, state) {
       request_id: requestId,
       name,
       objective: goal.platforms?.reddit?.objective ?? "CLICKS",
-      budget: { type: "daily", amount_cents: budget.dailyCentsForChannel },
+      ...budgetPayloadFromState(budget),
       // ISSUE-989: gender (scalar, was silently dropped — Lane D finding #2) +
       // community/interest names via passthrough.reddit (the serializer takes
       // NAMES verbatim). Reddit has NO age field (R-8) — age is never sent.
@@ -258,7 +279,7 @@ export function buildCreatePayload(platform, state) {
       name,
       objective: goal.platforms?.snapchat?.objective ?? "TRAFFIC",
       optimization_goal: goal.platforms?.snapchat?.optimization_goal ?? "SWIPES",
-      budget: { type: "daily", amount_cents: budget.dailyCentsForChannel },
+      ...budgetPayloadFromState(budget),
       // ISSUE-989: age/gender via demographics (STRINGS — GR-39). Absent →
       // server default [{min_age:"18"}].
       // ISSUE-992 (3a): city circles + SCLS interest segments now travel. Circles
@@ -312,7 +333,7 @@ export function buildCreatePayload(platform, state) {
       lane,
       request_id: requestId,
       name,
-      budget: { type: "daily", amount_cents: budget.dailyCentsForChannel },
+      ...budgetPayloadFromState(budget),
       // ISSUE-989: named city locations [{name, country_code}] — the create fn
       // re-resolves each to an ENABLED geoTargetConstant by name (the London/
       // Ontario disambiguation path already wired backend-side). Empty → the
@@ -375,7 +396,7 @@ export function buildCreatePayload(platform, state) {
     objective: goal.metaObjective,
     optimization_goal: goal.metaOptimizationGoal,
     billing_event: "IMPRESSIONS",
-    budget: { type: "daily", amount_cents: budget.dailyCentsForChannel },
+    ...budgetPayloadFromState(budget),
     // ISSUE-989: real city + radius + interest targeting. cities carry the
     // resolved Meta geo keys with the chosen radius (the server enforces
     // {key,radius,distance_unit} and Meta's 1-50mi bounds); interests carry the

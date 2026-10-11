@@ -119,7 +119,18 @@ export function CampaignBuilderPage() {
     ageMax: DEFAULT_AGE_MAX,
     gender: "all",
   });
-  const [budget, setBudget] = useState({ totalDailyCents: 0, strategy: "auto", allowlist: null });
+  const [budget, setBudget] = useState({
+    mode: "daily",
+    totalDailyCents: 0,
+    totalLifetimeCents: 0,
+    startsAt: null,
+    endsAt: null,
+    startsAtLocal: "",
+    endsAtLocal: "",
+    capCents: null,
+    strategy: "auto",
+    allowlist: null,
+  });
   const [creative, setCreative] = useState({
     // ISSUE-995 [Campaign Builder creative] Wave 3 — media kind. "image" keeps
     // the existing byte-upload flow; "video" references an already-hosted asset
@@ -203,11 +214,6 @@ export function CampaignBuilderPage() {
   // across retries so every (platform × destination) row shares it. Only attached
   // when there is more than one destination — a single-destination build carries
   // no group (NULL), keeping that path byte-identical.
-  const destGroupIdRef = useRef(null);
-  const destGroupId = () => {
-    if (!destGroupIdRef.current) destGroupIdRef.current = crypto.randomUUID();
-    return destGroupIdRef.current;
-  };
 
   const dirty = Boolean(
     destinations.length > 0 || creative.publicUrl || copy.primary || budget.totalDailyCents > 0,
@@ -522,12 +528,16 @@ export function CampaignBuilderPage() {
       case "goal":
         return goalIds.length > 0;
       case "destination":
-        return destinations.length > 0;
+        return destinations.length === 1;
       case "audience":
         return validateAudience(audience).length === 0;
-      case "budget":
-        return validateBudget({ totalDailyCents: budget.totalDailyCents, channelRows }).length === 0 &&
+      case "budget": {
+        const mode = budget.mode === "lifetime" ? "lifetime" : "daily";
+        const amount = mode === "lifetime" ? budget.totalLifetimeCents : budget.totalDailyCents;
+        if (mode === "lifetime" && !budget.endsAt) return false;
+        return validateBudget({ totalDailyCents: amount || 0, channelRows }).length === 0 &&
           allocations.length > 0;
+      }
       case "creative": {
         // ISSUE-995: a video creative must be RECORDED (its bytes live off-
         // client, so the library row id is the only way to reference it);
@@ -619,8 +629,29 @@ export function CampaignBuilderPage() {
     // out to one ad per (destination × platform), each with its own landing URL
     // and pid attribution. A single-destination selection runs exactly one
     // destination iteration, keyed by bare platform → byte-identical to before.
-    const multiDest = destinations.length > 1;
-    const groupId = multiDest ? destGroupId() : null;
+    // toward #3697 Wave 2 (#3707): one destination per create — never silent budget multiply.
+    if (destinations.length > 1) {
+      addToast({
+        variant: "error",
+        title: "One page per campaign",
+        message: "Pick a single destination. Create a separate campaign for another page.",
+      });
+      if (validateOnly) setValidatingShapes(false);
+      else setSubmitting(false);
+      return;
+    }
+    if (budget.mode === "lifetime" && !budget.endsAt) {
+      addToast({
+        variant: "error",
+        title: "End date required",
+        message: "A total (lifetime) budget needs an end date.",
+      });
+      if (validateOnly) setValidatingShapes(false);
+      else setSubmitting(false);
+      return;
+    }
+    const multiDest = false;
+    const groupId = null;
     const baseName = name || suggestCampaignName({ brandName: firstDestination?.brand_name, title: firstDestination?.title });
     for (const dest of destinations) {
       const destSlot = `${dest.page_type}:${dest.id}`;
@@ -648,7 +679,18 @@ export function CampaignBuilderPage() {
           // and payload.js emits the destinations[] array + destination_group_id.
           destinationGroupId: groupId,
           audience,
-          budget: { dailyCentsForChannel: allocation.dailyCents },
+          budget: {
+            dailyCentsForChannel: allocation.dailyCents,
+            mode: budget.mode === "lifetime" ? "lifetime" : "daily",
+            amountCents: budget.mode === "lifetime"
+              ? Math.floor((budget.totalLifetimeCents || 0) / Math.max(allocations.length, 1))
+              : allocation.dailyCents,
+            capCents: budget.mode === "lifetime"
+              ? Math.floor((budget.totalLifetimeCents || 0) / Math.max(allocations.length, 1))
+              : (budget.capCents ?? null),
+            startsAt: budget.startsAt,
+            endsAt: budget.endsAt,
+          },
           creative: {
             // ISSUE-995: kind drives the payload media descriptor — video rides
             // on the library ref (creative_library_id), image on the inline URL.

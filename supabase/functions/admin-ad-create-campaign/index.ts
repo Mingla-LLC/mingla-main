@@ -160,6 +160,14 @@ import {
   AdDestinationError,
   resolveAdDestination,
 } from "../_shared/adDestination.ts";
+import {
+  type BudgetMode,
+  computeAdMinimum,
+  computeCapCents,
+  googleTotalDaysOk,
+  parseCampaignSchedule,
+} from "../_shared/adMoney.ts";
+import type { Platform } from "../_shared/adChannelCore.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -312,6 +320,33 @@ function pickDestGroupId(body: Record<string, unknown>): string | null {
     : null;
 }
 
+/** toward #3697 Wave 2 — money columns stamped on every ad_campaigns insert. */
+type Wave2MoneyPersist = {
+  brand_id: string | null;
+  owner_kind: "mingla" | "host";
+  cap_cents: number;
+  lifetime_budget_cents: number | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  currency: string;
+};
+
+async function resolveBrandIdForSlug(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  brandSlug: string,
+): Promise<string | null> {
+  const slug = brandSlug.trim();
+  if (!slug) return null;
+  const { data } = await supabase
+    .from("brands")
+    .select("id")
+    .ilike("slug", slug)
+    .is("deleted_at", null)
+    .maybeSingle();
+  return data?.id ? String(data.id) : null;
+}
+
 /**
  * ISSUE-979 Bug 3 [Campaign Builder correctness] — the GLOBAL compliance intent
  * (AI-generated disclosure + special-ad-category) now reaches every platform's
@@ -391,10 +426,26 @@ serve(async (req: Request): Promise<Response> => {
   if (!isPlatform(platform)) return json({ error: "validation_error", detail: "platform_invalid" }, 400);
   if (!isLane(lane)) return json({ error: "validation_error", detail: "lane_invalid" }, 400);
 
-  // ISSUE-1002 [multi-destination fan-out] — the shared group id for the N
-  // ad_campaigns rows this fan-out produces (one call per destination × platform).
-  // NULL for single-destination/legacy builds → those rows are byte-identical.
+  // ISSUE-1002 [multi-destination fan-out] — REJECTED in Wave 2 (#3707 / A3-11).
+  // Multi-select used to fan out N campaigns each carrying the full channel
+  // budget (silent multiply). Create one campaign per page; Duplicate for another.
   const destGroupId = pickDestGroupId(body);
+  if (destGroupId) {
+    return json({
+      error: "validation_error",
+      detail: "multi_destination_fanout_forbidden",
+      message:
+        "Create one campaign per page. Duplicate for another page instead of multi-select.",
+    }, 422);
+  }
+  if (Array.isArray(body.destinations) && body.destinations.length > 1) {
+    return json({
+      error: "validation_error",
+      detail: "multi_destination_fanout_forbidden",
+      message:
+        "Create one campaign per page. Duplicate for another page instead of multi-select.",
+    }, 422);
+  }
 
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (!name) return json({ error: "validation_error", detail: "name_required" }, 400);
@@ -407,27 +458,84 @@ serve(async (req: Request): Promise<Response> => {
   const billingEvent = typeof body.billing_event === "string" ? body.billing_event : "IMPRESSIONS";
 
   const budget = (body.budget ?? {}) as Record<string, unknown>;
-  const budgetType = budget.type ?? "daily";
-  const amountCents = budget.amount_cents;
-  if (budgetType !== "daily") {
-    // A3 §A persists daily_budget_cents only; lifetime budgets land with the
-    // builder (#864). Flagged in the WP1 report.
-    return json({ error: "validation_error", detail: "budget_type_unsupported_wp1" }, 422);
+  const budgetTypeRaw = typeof budget.type === "string" ? budget.type : "daily";
+  if (budgetTypeRaw !== "daily" && budgetTypeRaw !== "lifetime") {
+    return json({ error: "validation_error", detail: "budget_type_unsupported" }, 422);
   }
+  const budgetType = budgetTypeRaw as BudgetMode;
+  const amountCents = budget.amount_cents;
   if (!Number.isInteger(amountCents) || (amountCents as number) <= 0) {
     return json({ error: "validation_error", detail: "budget_amount_cents_invalid" }, 400);
   }
-  // QA P3-9: sane business ceiling — $1M/day. A typo'd budget must die here,
-  // not at Meta (the conversion layer separately guards integer-precision).
-  const MAX_DAILY_BUDGET_CENTS = 100_000_000;
-  if ((amountCents as number) > MAX_DAILY_BUDGET_CENTS) {
+  // QA P3-9: sane business ceiling — $1M (daily or lifetime). A typo'd budget
+  // must die here, not at Meta (the conversion layer separately guards precision).
+  const MAX_BUDGET_CENTS = 100_000_000;
+  if ((amountCents as number) > MAX_BUDGET_CENTS) {
     return json({
       error: "budget_above_maximum",
       detail:
-        `Daily budget ${amountCents}¢ exceeds the ${MAX_DAILY_BUDGET_CENTS}¢ ($1,000,000/day) ceiling.`,
-      max_cents: MAX_DAILY_BUDGET_CENTS,
+        `Budget ${amountCents}¢ exceeds the ${MAX_BUDGET_CENTS}¢ ($1,000,000) ceiling.`,
+      max_cents: MAX_BUDGET_CENTS,
     }, 422);
   }
+
+  const schedule = parseCampaignSchedule(body.schedule ?? body);
+  if (budgetType === "lifetime" && !schedule.ends_at) {
+    return json({
+      error: "validation_error",
+      detail: "lifetime_budget_requires_end_date",
+      message: "A total (lifetime) budget needs an end date.",
+    }, 422);
+  }
+  if (platform === "google" && !googleTotalDaysOk(budgetType, schedule.days)) {
+    return json({
+      error: "validation_error",
+      detail: "google_min_total_days",
+      message: `Google needs at least 3 days for a total budget. Your dates cover ${
+        schedule.days ?? 0
+      }.`,
+    }, 422);
+  }
+
+  const capCents = computeCapCents({
+    mode: budgetType,
+    amountCents: amountCents as number,
+    days: schedule.days,
+    capCents: typeof budget.cap_cents === "number" ? budget.cap_cents as number : null,
+  });
+
+  // D1 platform minimum (#3709) — lifetime totals use the shared table × days.
+  // Daily mode keeps the existing per-platform floor checks in each branch
+  // (Meta connection floors, TikTok/Snap adapter floors); the builder uses the
+  // same computeAdMinimum helper for both modes.
+  if (budgetType === "lifetime") {
+    const minResult = computeAdMinimum({
+      platforms: [platform as Platform],
+      days: schedule.days ?? 1,
+      mode: "lifetime",
+      ownerKind: "mingla",
+    });
+    if ((amountCents as number) < minResult.min_budget_cents) {
+      return json({
+        error: "budget_below_platform_minimum",
+        detail: minResult.message,
+        min_budget_cents: minResult.min_budget_cents,
+        breakdown: minResult.breakdown,
+      }, 422);
+    }
+  }
+
+  const wave2MoneyBase: Omit<Wave2MoneyPersist, "brand_id"> = {
+    owner_kind: "mingla",
+    cap_cents: capCents,
+    lifetime_budget_cents: budgetType === "lifetime" ? amountCents as number : null,
+    starts_at: schedule.starts_at,
+    ends_at: schedule.ends_at,
+    currency: typeof budget.currency === "string" && budget.currency.trim()
+      ? budget.currency.trim().toUpperCase()
+      : "USD",
+  };
+  const dailyBudgetForPersist = budgetType === "lifetime" ? null : amountCents as number;
 
   // ══ GOOGLE branch (ISSUE-867 WP2 — AC-G-2) ══════════════════════════════════
   // ONE atomic googleAds:mutate (partialFailure:false — native no-orphan
@@ -754,6 +862,10 @@ serve(async (req: Request): Promise<Response> => {
         }
 
         // (7) Persist ONE campaign+ad_set+ad row set — objective DEMAND_GEN, PAUSED.
+        const moneyGV: Wave2MoneyPersist = {
+          brand_id: await resolveBrandIdForSlug(supabase, brandSlugGV),
+          ...wave2MoneyBase,
+        };
         const { data: campaignRowGV, error: campaignErrGV } = await supabase
           .from("ad_campaigns")
           .insert({
@@ -763,7 +875,7 @@ serve(async (req: Request): Promise<Response> => {
             name,
             objective: "DEMAND_GEN", // normalized-per-platform: the advertising channel type
             status: "PAUSED",
-            daily_budget_cents: amountCents,
+            daily_budget_cents: dailyBudgetForPersist,
             delivery_status: deliveryStatusGV,
             status_synced_at: new Date().toISOString(),
             targeting: geoTargetingRecordGV,
@@ -777,6 +889,7 @@ serve(async (req: Request): Promise<Response> => {
             dest_group_id: destGroupId,
             request_id: requestIdG,
             created_by: user.id,
+            ...moneyGV,
           })
           .select("*")
           .single();
@@ -1227,6 +1340,10 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       // (6) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
+      const moneyG: Wave2MoneyPersist = {
+        brand_id: await resolveBrandIdForSlug(supabase, brandSlugG),
+        ...wave2MoneyBase,
+      };
       const { data: campaignRowG, error: campaignErrG } = await supabase
         .from("ad_campaigns")
         .insert({
@@ -1236,7 +1353,7 @@ serve(async (req: Request): Promise<Response> => {
           name,
           objective: "SEARCH", // normalized-per-platform: the advertising channel type
           status: "PAUSED",
-          daily_budget_cents: amountCents,
+          daily_budget_cents: dailyBudgetForPersist,
           delivery_status: deliveryStatusG,
           status_synced_at: new Date().toISOString(),
           targeting: geoTargetingRecord,
@@ -1250,6 +1367,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
           request_id: requestIdG,
           created_by: user.id,
+          ...moneyG,
         })
         .select("*")
         .single();
@@ -1877,6 +1995,10 @@ serve(async (req: Request): Promise<Response> => {
       };
 
       // (7) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
+      const moneyS: Wave2MoneyPersist = {
+        brand_id: await resolveBrandIdForSlug(supabase, brandSlugS),
+        ...wave2MoneyBase,
+      };
       const { data: campaignRowS, error: campaignErrS } = await supabase
         .from("ad_campaigns")
         .insert({
@@ -1886,7 +2008,7 @@ serve(async (req: Request): Promise<Response> => {
           name,
           objective: objectiveS, // the objective_v2_type value (S-1)
           status: "PAUSED",
-          daily_budget_cents: budgetLevelS === "campaign" ? amountCents : null,
+          daily_budget_cents: budgetLevelS === "campaign" ? dailyBudgetForPersist : null,
           delivery_status: deliveryStatusS,
           status_synced_at: new Date().toISOString(),
           targeting: targetingRecordS,
@@ -1901,6 +2023,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
           request_id: requestIdS,
           created_by: user.id,
+          ...moneyS,
         })
         .select("*")
         .single();
@@ -2590,6 +2713,10 @@ serve(async (req: Request): Promise<Response> => {
       };
 
       // (9) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
+      const moneyT: Wave2MoneyPersist = {
+        brand_id: await resolveBrandIdForSlug(supabase, brandSlugT),
+        ...wave2MoneyBase,
+      };
       const { data: campaignRowT, error: campaignErrT } = await supabase
         .from("ad_campaigns")
         .insert({
@@ -2599,7 +2726,7 @@ serve(async (req: Request): Promise<Response> => {
           name,
           objective: objectiveT,
           status: "PAUSED",
-          daily_budget_cents: budgetLevelT === "campaign" ? amountCents : null,
+          daily_budget_cents: budgetLevelT === "campaign" ? dailyBudgetForPersist : null,
           delivery_status: deliveryStatusT,
           status_synced_at: new Date().toISOString(),
           targeting: targetingRecordT,
@@ -2614,6 +2741,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
           request_id: requestIdT,
           created_by: user.id,
+          ...moneyT,
         })
         .select("*")
         .single();
@@ -3062,6 +3190,10 @@ serve(async (req: Request): Promise<Response> => {
       const allWarningsR = [...creativeWarningsR, ...createdR.targetingWarnings];
 
       // (6) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
+      const moneyR: Wave2MoneyPersist = {
+        brand_id: await resolveBrandIdForSlug(supabase, brandSlugR),
+        ...wave2MoneyBase,
+      };
       const { data: campaignRowR, error: campaignErrR } = await supabase
         .from("ad_campaigns")
         .insert({
@@ -3087,6 +3219,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
           request_id: requestIdR,
           created_by: user.id,
+          ...moneyR,
         })
         .select("*")
         .single();
@@ -3473,7 +3606,9 @@ serve(async (req: Request): Promise<Response> => {
   const campaignInput = {
     name,
     objective,
-    dailyBudgetCents: amountCents as number, // CBO (OD-3) — budget on the campaign
+    ...(budgetType === "lifetime"
+      ? { lifetimeBudgetCents: amountCents as number }
+      : { dailyBudgetCents: amountCents as number }), // CBO (OD-3)
     bidStrategy, // QA P1-1 — explicit LOWEST_COST_WITHOUT_CAP, never a Meta default
     specialAdCategories,
     specialAdCategoryCountry: Array.isArray(body.special_ad_category_country)
@@ -3488,6 +3623,8 @@ serve(async (req: Request): Promise<Response> => {
     optimizationGoal,
     billingEvent,
     targeting,
+    ...(schedule.starts_at ? { startTime: schedule.starts_at } : {}),
+    ...(schedule.ends_at ? { endTime: schedule.ends_at } : {}),
     validateOnly,
   };
   const creativeInput = {
@@ -3601,6 +3738,10 @@ serve(async (req: Request): Promise<Response> => {
     });
 
     // ── Persist ONE campaign+ad_set+ad row set (only now that all IDs exist). ──
+    const metaMoney: Wave2MoneyPersist = {
+      brand_id: await resolveBrandIdForSlug(supabase, brandSlug),
+      ...wave2MoneyBase,
+    };
     const { data: campaignRow, error: campaignInsertError } = await supabase
       .from("ad_campaigns")
       .insert({
@@ -3610,7 +3751,7 @@ serve(async (req: Request): Promise<Response> => {
         name,
         objective,
         status: "PAUSED",
-        daily_budget_cents: amountCents,
+        daily_budget_cents: dailyBudgetForPersist,
         delivery_status: deliveryStatus,
         status_synced_at: new Date().toISOString(),
         targeting,
@@ -3624,6 +3765,7 @@ serve(async (req: Request): Promise<Response> => {
         dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
         request_id: requestId,
         created_by: user.id,
+        ...metaMoney,
       })
       .select("*")
       .single();
@@ -3644,6 +3786,8 @@ serve(async (req: Request): Promise<Response> => {
           optimization_goal: optimizationGoal,
           billing_event: billingEvent,
           status: "PAUSED",
+          schedule_start_at: schedule.starts_at,
+          schedule_end_at: schedule.ends_at,
         })
         .select("*")
         .single();
