@@ -1415,6 +1415,8 @@ jobs:
             supabase/functions/_shared/__tests__/issue_3682_manage_follows.happy.test.ts
             # #3682 Wave 2.7 — blast caps + week warning wiring.
             supabase/functions/_shared/__tests__/issue_3682_blast_caps.happy.test.ts
+            # #3682 Wave 2.8 — Show me as going / Who's going privacy migration pins.
+            supabase/migrations/__tests__/issue_3682_show_me_as_going.happy.test.ts
             # ISSUE-865 WP-B — ad-conversion senders + fire helper (hermetic:
             # stubbed fetch + injected supabase; runs with the same flags).
             supabase/functions/_shared/__tests__/issue_865_wp_b_ad_conversion.test.ts

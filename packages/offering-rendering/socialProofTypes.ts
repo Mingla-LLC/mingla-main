@@ -92,4 +92,11 @@ export type PeerGuestListPage = {
   hasMore: boolean;
   nextOffset: number | null;
   guests: PeerGuestRow[];
+  /**
+   * #3682 — guests who stay anonymous for this viewer (not opted in, not
+   * friends). Sheet copy: "+N others keep it private".
+   */
+  privateOthersCount?: number;
+  /** #3682 — viewer's own Show me as going flag when they have attendance. */
+  viewerShowMeAsGoing?: boolean | null;
 };

@@ -59,10 +59,12 @@ import {
   Easing,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from "react-native";
 import { useNetInfo } from "@react-native-community/netinfo";
+import { useQueryClient } from "@tanstack/react-query";
 
 import type { PeerGuestRow } from "@mingla/offering-rendering";
 
@@ -75,6 +77,7 @@ import { postHogService } from "../services/postHogService";
 import { useAppStore } from "../store/appStore";
 import { useFriends } from "../hooks/useFriends";
 import { useEventGuestList } from "../hooks/useEventGuestList";
+import { guestListKeys } from "../hooks/queryKeys";
 import {
   hasOpenDirectMessageSink,
   openDirectMessageInApp,
@@ -83,6 +86,7 @@ import {
   GuestListAttendanceRequiredError,
   GuestListGatedError,
   GuestListUnavailableError,
+  setShowMeAsGoing,
 } from "../services/socialProofService";
 import { messagingService } from "../services/messagingService";
 
@@ -174,6 +178,8 @@ export function EventGuestListSheet({
 }: EventGuestListSheetProps): React.ReactElement {
   const viewerId = useAppStore((s) => s.user?.id);
   const netInfo = useNetInfo();
+  const queryClient = useQueryClient();
+  const [showMeBusy, setShowMeBusy] = useState(false);
   const {
     pages, isLoading, isError, error, refetch, fetchNextPage, hasNextPage,
     isFetchingNextPage, isFetchNextPageError,
@@ -182,6 +188,9 @@ export function EventGuestListSheet({
     eventId,
     visible && viewerId !== undefined,
   );
+  const rosterMeta = pages[0] ?? null;
+  const privateOthersCount = rosterMeta?.privateOthersCount ?? 0;
+  const viewerShowMeAsGoing = rosterMeta?.viewerShowMeAsGoing ?? null;
   // Cross-refs for the action state machines. addFriend THROWS on failure
   // (useFriends.ts) and already invalidates friendsKeys.requests on success —
   // no extra cache work here. blocked-users auto-fetch is skipped: the server
@@ -1060,6 +1069,37 @@ export function EventGuestListSheet({
       </Animated.View>
     ) : null;
 
+  const headerSubtitle =
+    privateOthersCount > 0
+      ? `${goingCount} going · +${privateOthersCount} others keep it private`
+      : `${goingCount} going`;
+
+  const onToggleShowMeAsGoing = useCallback(
+    async (next: boolean) => {
+      if (!eventId || showMeBusy) return;
+      setShowMeBusy(true);
+      try {
+        await setShowMeAsGoing(eventId, next);
+        await queryClient.invalidateQueries({
+          queryKey: guestListKeys.list(eventId),
+        });
+        HapticFeedback.light();
+        postHogService.capture("show_me_as_going_toggled", {
+          event_id: eventId,
+          show: next,
+        });
+      } catch {
+        Alert.alert(
+          "Couldn’t update",
+          "We couldn’t save Show me as going. Try again.",
+        );
+      } finally {
+        setShowMeBusy(false);
+      }
+    },
+    [eventId, queryClient, showMeBusy],
+  );
+
   const header = (
     <View style={styles.header} testID="orch-1341-guest-sheet">
       <View style={styles.headerIconShell}>
@@ -1069,7 +1109,26 @@ export function EventGuestListSheet({
         <Text style={styles.headerTitle} accessibilityRole="header">
           Who's going
         </Text>
-        <Text style={styles.headerSubtitle}>{`${goingCount} going`}</Text>
+        <Text style={styles.headerSubtitle}>{headerSubtitle}</Text>
+        {viewerShowMeAsGoing !== null ? (
+          <View
+            style={styles.showMeRow}
+            testID="issue-3682-show-me-as-going-row"
+          >
+            <Text style={styles.showMeLabel}>Show me as going</Text>
+            <Switch
+              value={viewerShowMeAsGoing === true}
+              onValueChange={(v) => {
+                void onToggleShowMeAsGoing(v);
+              }}
+              disabled={showMeBusy}
+              trackColor={{ false: "#3a3a3c", true: "#34c759" }}
+              thumbColor="#ffffff"
+              accessibilityLabel="Show me as going"
+              testID="issue-3682-show-me-as-going-switch"
+            />
+          </View>
+        ) : null}
       </View>
       <Pressable
         onPress={onClose}
@@ -1127,7 +1186,7 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 12,
     paddingHorizontal: 20,
     paddingTop: 4,
@@ -1157,6 +1216,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: "rgba(255, 255, 255, 0.58)",
+  },
+  showMeRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  showMeLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.86)",
   },
   closeButton: {
     width: 44,
