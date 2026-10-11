@@ -621,8 +621,8 @@ COMMENT ON FUNCTION public.biz_my_host_account_deletion_blockers() IS
 -- The owner's UPDATE policy on public.brands has no deleted_at condition, so
 -- after a deletion the kept login could bring its own brand back with one
 -- direct table write (and its public page with it). No screen in any Mingla
--- app sends that write; the only shipped restore is the admin console's
--- admin_set_brand_deleted, which requires is_admin_user().
+-- app sends that write as an ordinary user; the only shipped restore is the
+-- admin_set_brand_deleted function, which requires is_admin_user().
 --
 -- This guard refuses exactly one transition (deleted_at set -> NULL) for
 -- exactly the API roles (authenticated, anon) when the caller is not an admin.
