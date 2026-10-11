@@ -115,7 +115,11 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // ═══════════════════════════════════════════════════════════════════════════
 const HARD_CEILING = {
   common: { raw: 2_800_000, brotli: 550_000 },
-  eager: { raw: 4_000_000, brotli: 750_000 },
+  // 2026-10-11 — eager brotli 750_000 → 775_000 after #3785 recorded
+  // eager.brotli at 731,271 B, which left less than one 25 KB PR allowance
+  // under the old ceiling and reded #2524 guard 4 on every PR. Human limit
+  // move only; automation still cannot raise this.
+  eager: { raw: 4_000_000, brotli: 775_000 },
 };
 
 // How much ONE pull request may add on top of main's measured baseline.
