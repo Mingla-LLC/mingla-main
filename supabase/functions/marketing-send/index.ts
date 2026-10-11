@@ -572,9 +572,21 @@ export async function handleMarketingSendRequest(
     }
     if (requestedQuotedAt === null) {
       const refreshed = await safeBookQuote(candidates.data, followBrand);
+      if (refreshed === null) {
+        return jsonResponse({ error: "BOOK_BLAST_COST_UNAVAILABLE" }, 503);
+      }
+      const withAllowance = await attachBookAllowance(
+        supabase,
+        actor.user.id,
+        candidates.data,
+        refreshed,
+      );
+      if (!withAllowance.ok) {
+        return jsonResponse({ error: withAllowance.error }, 503);
+      }
       return jsonResponse({
         error: "BOOK_BLAST_PREVIEW_STALE",
-        preview: refreshed,
+        preview: withAllowance.quote,
       }, 409);
     }
     let quote;
@@ -592,28 +604,34 @@ export async function handleMarketingSendRequest(
       }, error instanceof Error && error.message.includes("mms") ? 409 : 503);
     }
     if (isPreviewPeopleAction) {
-      const brandId = (candidates.data as { brandId?: unknown } | null)?.brandId;
-      let allowance: unknown = null;
-      if (typeof brandId === "string" && brandId.length > 0) {
-        const usage = await supabase.rpc("biz_brand_blast_usage_v1", {
-          p_actor_id: actor.user.id,
-          p_brand_id: brandId,
-        });
-        if (!usage.error) allowance = usage.data;
+      const withAllowance = await attachBookAllowance(
+        supabase,
+        actor.user.id,
+        candidates.data,
+        publicPeopleQuote(quote),
+      );
+      if (!withAllowance.ok) {
+        return jsonResponse({ error: withAllowance.error }, 503);
       }
-      return jsonResponse({
-        ...publicPeopleQuote(quote),
-        ...(allowance !== null ? { allowance } : {}),
-      });
+      return jsonResponse(withAllowance.quote);
     }
     if (
       body.quoteHash !== quote.quoteHash ||
       body.expectedCostMinor !== quote.estimatedCostMinor ||
       body.currency !== quote.currency
     ) {
+      const withAllowance = await attachBookAllowance(
+        supabase,
+        actor.user.id,
+        candidates.data,
+        publicPeopleQuote(quote),
+      );
+      if (!withAllowance.ok) {
+        return jsonResponse({ error: withAllowance.error }, 503);
+      }
       return jsonResponse({
         error: "BOOK_BLAST_PREVIEW_STALE",
-        preview: publicPeopleQuote(quote),
+        preview: withAllowance.quote,
       }, 409);
     }
     if (quote.reachableCount === 0) {
@@ -798,6 +816,30 @@ async function safeBookQuote(
   } catch {
     return null;
   }
+}
+
+async function attachBookAllowance(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+  actorId: string,
+  candidates: unknown,
+  publicQuote: Record<string, unknown>,
+): Promise<
+  | { ok: true; quote: Record<string, unknown> }
+  | { ok: false; error: string }
+> {
+  const brandId = (candidates as { brandId?: unknown } | null)?.brandId;
+  if (typeof brandId !== "string" || brandId.length === 0) {
+    return { ok: false, error: "BOOK_BLAST_COST_UNAVAILABLE" };
+  }
+  const usage = await db.rpc("biz_brand_blast_usage_v1", {
+    p_actor_id: actorId,
+    p_brand_id: brandId,
+  });
+  if (usage.error || usage.data == null || typeof usage.data !== "object") {
+    return { ok: false, error: "BOOK_BLAST_COST_UNAVAILABLE" };
+  }
+  return { ok: true, quote: { ...publicQuote, allowance: usage.data } };
 }
 
 async function verifyCampaignOwnership(

@@ -92,6 +92,12 @@ BEGIN
     RETURN;
   END IF;
 
+  -- Serialize brand×channel confirm races so two campaigns cannot both pass
+  -- the pre-insert read and exceed the monthly aggregate.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended('blast_cap:' || p_brand_id::text || ':' || p_channel, 3682)
+  );
+
   SELECT COALESCE(SUM(e.reachable_count), 0)::integer
   INTO v_used
   FROM public.marketing_book_send_executions e

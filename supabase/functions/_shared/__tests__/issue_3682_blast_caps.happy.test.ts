@@ -13,6 +13,8 @@ Deno.test("#3682 Wave 2.7 happy: migration pins usage + assert + confirm gates",
   assert(migration.includes("biz_brand_blast_usage_v1"));
   assert(migration.includes("biz_assert_brand_blast_allowance_v1"));
   assert(migration.includes("book_blast_monthly_cap_exceeded"));
+  assert(migration.includes("pg_advisory_xact_lock"));
+  assert(migration.includes("blast_cap:"));
   assert(migration.includes("smsCap"));
   assert(migration.includes("emailCap"));
   assert(migration.includes("blastsThisWeek"));
@@ -31,9 +33,11 @@ Deno.test("#3682 Wave 2.7 happy: marketing-send surfaces allowance + cap error",
     new URL("../../marketing-send/index.ts", import.meta.url),
   );
   assert(send.includes("biz_brand_blast_usage_v1"));
+  assert(send.includes("attachBookAllowance"));
   assert(send.includes("allowance"));
   assert(send.includes("BOOK_BLAST_MONTHLY_CAP_EXCEEDED"));
   assert(send.includes("book_blast_monthly_cap_exceeded"));
+  assert(send.includes("BOOK_BLAST_COST_UNAVAILABLE"));
 });
 
 Deno.test("#3682 Wave 2.7 happy: Host review sheet + compose wire warning + allowance", async () => {

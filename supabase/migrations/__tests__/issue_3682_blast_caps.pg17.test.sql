@@ -12,6 +12,13 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'assert rpc missing';
   END IF;
+  IF position(
+    'pg_advisory_xact_lock' IN pg_get_functiondef(
+      'public.biz_assert_brand_blast_allowance_v1(uuid,text,integer)'::regprocedure
+    )
+  ) = 0 THEN
+    RAISE EXCEPTION 'cap assert missing brand/channel advisory lock';
+  END IF;
   IF has_function_privilege(
     'authenticated',
     'public.biz_brand_blast_usage_v1(uuid,uuid)',
