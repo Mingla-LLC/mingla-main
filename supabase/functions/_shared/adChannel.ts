@@ -34,8 +34,8 @@ import {
   type CreateCampaignInput,
   type CreateCreativeInput,
   type Lane,
-  PLATFORMS,
   type Platform,
+  PLATFORMS,
 } from "./adChannelCore.ts";
 
 // ── Registry (A3 §B getAdapter) ───────────────────────────────────────────────
@@ -61,7 +61,8 @@ export function getAdapter(platform: Platform): ChannelAdapter {
 }
 
 export function isPlatform(value: unknown): value is Platform {
-  return typeof value === "string" && (PLATFORMS as readonly string[]).includes(value);
+  return typeof value === "string" &&
+    (PLATFORMS as readonly string[]).includes(value);
 }
 
 export function isLane(value: unknown): value is Lane {
@@ -271,8 +272,9 @@ export interface AtomicCreateFailure {
 export class AtomicCreateError extends Error {
   readonly failure: AtomicCreateFailure;
   constructor(failure: AtomicCreateFailure) {
-    const causeMessage =
-      failure.cause instanceof Error ? failure.cause.message : String(failure.cause);
+    const causeMessage = failure.cause instanceof Error
+      ? failure.cause.message
+      : String(failure.cause);
     super(`atomic create failed at step "${failure.step}": ${causeMessage}`);
     this.name = "AtomicCreateError";
     this.failure = failure;
@@ -351,7 +353,11 @@ export async function createFullCampaignAtomic(
   // 2. Ad set
   let adSetExternalId: string;
   try {
-    const created = await adapter.createAdSet(conn, campaignExternalId, input.adSet);
+    const created = await adapter.createAdSet(
+      conn,
+      campaignExternalId,
+      input.adSet,
+    );
     adSetExternalId = created.externalId;
     partial.external_adset_id = adSetExternalId;
   } catch (cause) {

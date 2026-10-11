@@ -441,9 +441,8 @@ async function resolveAdDestinationLegacy(
         "The public destination could not be checked.",
       );
     }
-    const enabled =
-      (settings.data as { reservations_enabled?: unknown } | null)
-        ?.reservations_enabled === true;
+    const enabled = (settings.data as { reservations_enabled?: unknown } | null)
+      ?.reservations_enabled === true;
     if (!enabled) {
       throw new AdDestinationError(
         "destination_not_public",
