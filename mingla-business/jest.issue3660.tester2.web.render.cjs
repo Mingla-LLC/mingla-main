@@ -18,6 +18,9 @@ module.exports = {
   },
   testMatch: [
     "**/__tests__/issue_3660_delete_route_states.tester2.web.render.test.tsx",
+    // #3660 rework (added by the implementor): the F-5 / F-8 render-proof reuses
+    // this config and the same mock harness, so the one CI step runs both.
+    "**/__tests__/issue_3660_rework_route.implementor.web.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|expo|@expo)",

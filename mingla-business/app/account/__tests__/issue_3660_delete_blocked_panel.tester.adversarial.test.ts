@@ -100,7 +100,20 @@ Deno.test("#3660 SC-13 · a blocked error goes to the blocked step BEFORE any to
   assert(returnAt > setStepAt, "the blocked branch must return before the failure toast");
   assert(toastAt > returnAt, "the failure toast must come after the blocked branch has returned");
   assertStringIncludes(catchBlock, "setConfirmBlockers(err.blockers)");
-  assertStringIncludes(catchBlock, "showToast(ACCOUNT_DELETION_FAILED_MESSAGE)");
+  // [TEST-MOD-APPROVED #3660] rework F-5: the toast's words are now chosen by
+  // what is known (a failure with no answer must not say "Nothing was changed"),
+  // so the catch hands the error to describeDeletionFailure instead of always
+  // showing ACCOUNT_DELETION_FAILED_MESSAGE. Both messages are pinned word for
+  // word in the Jest suite and in the rework render-proof.
+  assertStringIncludes(catchBlock, "showToast(describeDeletionFailure(err))");
+  assert(
+    !catchBlock.includes("showToast(ACCOUNT_DELETION_FAILED_MESSAGE)"),
+    "the failure toast must not be hardcoded to 'Nothing was changed'",
+  );
+  assertStringIncludes(
+    errors,
+    '"We couldn\'t confirm whether your account was deleted. Check your connection and try again."',
+  );
 });
 
 Deno.test("#3660 SC-13 · the old generic failure toast is gone", () => {

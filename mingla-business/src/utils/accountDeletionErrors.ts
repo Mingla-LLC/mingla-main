@@ -11,6 +11,12 @@
  *   500 — `{ code: "account_deletion_failed" }`. NOTHING was changed.
  *
  * The decision is made on `code`, never on message text.
+ *
+ * A failure the server never ANSWERED is a third thing (#3660 rework, F-5):
+ * no HTTP status at all (network error, lost response), or a 5xx that is not
+ * the server's own coded answer (a gateway timeout). The deletion may already
+ * have committed, so the app must not say "Nothing was changed". Retrying is
+ * safe: the server reports an already-finished deletion as done.
  */
 
 export interface DeletionBlockerItem {
@@ -44,6 +50,24 @@ export class AccountDeletionFailedError extends Error {
   }
 }
 
+/**
+ * No answer was received, so nobody knows whether the deletion happened. A
+ * subclass of the failed error: code that only asks "did it fail?" still gets
+ * yes; code that chooses the WORDS must test for this class first.
+ */
+export class AccountDeletionUnconfirmedError extends AccountDeletionFailedError {
+  constructor() {
+    super("account_deletion_unconfirmed");
+    this.name = "AccountDeletionUnconfirmedError";
+    Object.setPrototypeOf(this, AccountDeletionUnconfirmedError.prototype);
+  }
+}
+
+/** Shown ONLY when the failure carried no answer from the server. */
+export const ACCOUNT_DELETION_UNCONFIRMED_MESSAGE =
+  "We couldn't confirm whether your account was deleted. Check your connection and try again.";
+
+/** Shown for a real refusal-to-run answered by the server: it is true there. */
 export const ACCOUNT_DELETION_FAILED_MESSAGE =
   "We couldn't delete your account. Nothing was changed. Try again, or contact support if it keeps happening.";
 
@@ -51,6 +75,21 @@ export const ACCOUNT_DELETION_BLOCKED_TITLE = "You can't delete your account yet
 
 export const ACCOUNT_DELETION_UNKNOWN_BLOCKER_MESSAGE =
   "Something on your account needs attention before it can be deleted. Contact support.";
+
+/**
+ * Shown on the success screen when the login is kept because the Host owned a
+ * brand (`retainedReason === "business_records_retained"`). For that Host the
+ * older advice to delete in the Mingla app would not remove the login either.
+ */
+export const ACCOUNT_DELETION_RECORDS_RETAINED_LINE =
+  "Your login is kept so your sales and ticket records stay intact. Your Host account, brands and public pages are gone.";
+
+/** The words for a failed deletion, chosen by what is actually known. */
+export function describeDeletionFailure(error: unknown): string {
+  return error instanceof AccountDeletionUnconfirmedError
+    ? ACCOUNT_DELETION_UNCONFIRMED_MESSAGE
+    : ACCOUNT_DELETION_FAILED_MESSAGE;
+}
 
 /** Shown in the "what you'll lose" list when the Host has partner connections. */
 export const ACCOUNT_DELETION_PARTNER_LINKS_LINE =
@@ -96,8 +135,9 @@ export function normalizeDeletionBlockers(value: unknown): DeletionBlocker[] {
 
 /**
  * Turns a non-2xx `delete-user` response into the error the screen acts on.
- * 409 + `code === "account_deletion_blocked"` is a block; anything else,
- * including a body that could not be read, is a failure.
+ * 409 + `code === "account_deletion_blocked"` is a block. Anything else is a
+ * failure: "nothing was changed" when the server said so (or refused the
+ * request with a 4xx), "could not confirm" when there was no answer.
  */
 export function parseDeletionFailure(status: number, body: unknown): Error {
   if (
@@ -108,6 +148,17 @@ export function parseDeletionFailure(status: number, body: unknown): Error {
     return new AccountDeletionBlockedError(
       normalizeDeletionBlockers(body.blockers),
     );
+  }
+  // The server's own coded "it did not run" answer: nothing was changed.
+  if (isRecord(body) && body.code === "account_deletion_failed") {
+    return new AccountDeletionFailedError();
+  }
+  // No HTTP status at all, or a 5xx that is not the server's coded answer
+  // (a gateway timeout): the outcome is unknown.
+  const answered =
+    typeof status === "number" && Number.isFinite(status) && status >= 100;
+  if (!answered || status >= 500) {
+    return new AccountDeletionUnconfirmedError();
   }
   return new AccountDeletionFailedError();
 }

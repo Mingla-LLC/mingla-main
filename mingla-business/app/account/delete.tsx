@@ -24,7 +24,14 @@
  * ORCH-0710: ALL hooks declared BEFORE any conditional early-return.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -69,10 +76,11 @@ import {
 } from "../../src/utils/accountDeletionPreview";
 import {
   ACCOUNT_DELETION_BLOCKED_TITLE,
-  ACCOUNT_DELETION_FAILED_MESSAGE,
   ACCOUNT_DELETION_PARTNER_LINKS_LINE,
+  ACCOUNT_DELETION_RECORDS_RETAINED_LINE,
   AccountDeletionBlockedError,
   describeDeletionBlocker,
+  describeDeletionFailure,
   type DeletionBlocker,
 } from "../../src/utils/accountDeletionErrors";
 import { formatCurrency } from "../../src/utils/currency";
@@ -90,6 +98,13 @@ import { Toast } from "../../src/components/ui/Toast";
 type DeleteStep = 1 | 2 | 3 | 4 | "blocked";
 
 const SIGN_OUT_DELAY_MS = 1200;
+
+/**
+ * #3660 rework (F-8) — WHY the login was kept, for the success screen. Carried
+ * by context so `<Step4Success retained={authRetained} />` keeps the exact
+ * shape the #2321 guard pins. `null` = the server gave no reason.
+ */
+const RetainedReasonContext = createContext<string | null>(null);
 
 export default function DeleteAccountRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -127,6 +142,7 @@ export default function DeleteAccountRoute(): React.ReactElement {
   // A hardcoded headline over a surviving login is the same lie the consumer app
   // shipped. See I-2321-RETAINED-AUTH-CANNOT-CLAIM-DELETED.
   const [authRetained, setAuthRetained] = useState<boolean>(false);
+  const [retainedReason, setRetainedReason] = useState<string | null>(null);
   const [confirmEmailInput, setConfirmEmailInput] = useState<string>("");
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
@@ -212,6 +228,7 @@ export default function DeleteAccountRoute(): React.ReactElement {
       const result = await requestDeletion();
       const retained = result.authRetained === true;
       setAuthRetained(retained);
+      setRetainedReason(retained ? (result.retainedReason ?? null) : null);
       setStep(4);
       // #2321 — the server's own `message` can be wrong (it claimed a surviving
       // Explorer login for accounts that had none), so the client states the
@@ -239,7 +256,9 @@ export default function DeleteAccountRoute(): React.ReactElement {
         setStep("blocked");
         return;
       }
-      showToast(ACCOUNT_DELETION_FAILED_MESSAGE);
+      // "Nothing was changed" only when the server said so; a failure with no
+      // answer says the outcome could not be confirmed (#3660 rework, F-5).
+      showToast(describeDeletionFailure(err));
       setStep(3);
     }
   }, [confirmMatches, deleting, requestDeletion, signOut, router, showToast]);
@@ -314,7 +333,11 @@ export default function DeleteAccountRoute(): React.ReactElement {
             onBack={handleBack}
           />
         ) : null}
-        {step === 4 ? <Step4Success retained={authRetained} /> : null}
+        {step === 4 ? (
+          <RetainedReasonContext.Provider value={retainedReason}>
+            <Step4Success retained={authRetained} />
+          </RetainedReasonContext.Provider>
+        ) : null}
         {step === "blocked" ? (
           <BlockedPanel
             blockers={confirmBlockers}
@@ -707,9 +730,7 @@ const Step4Success: React.FC<Step4SuccessProps> = ({ retained }) => (
         <Text style={styles.successBody}>
           Your business account is gone. Your Explorer login still works.
         </Text>
-        <Text style={styles.successBody}>
-          To remove that too, delete your account in the Mingla app.
-        </Text>
+        <RetainedNextStep fallback="To remove that too, delete your account in the Mingla app." />
       </>
     ) : (
       <>
@@ -726,6 +747,21 @@ const Step4Success: React.FC<Step4SuccessProps> = ({ retained }) => (
     />
   </View>
 );
+
+// #3660 rework (F-8) — the last line of the retained screen. A Host who owned
+// a brand keeps the login so sales and ticket records stay intact; telling them
+// to delete in the Mingla app would not remove it either, so they get the true
+// reason instead. Everyone else gets the unchanged #2321 line (`fallback`).
+const RetainedNextStep: React.FC<{ fallback: string }> = ({ fallback }) => {
+  const reason = useContext(RetainedReasonContext);
+  return (
+    <Text style={styles.successBody}>
+      {reason === "business_records_retained"
+        ? ACCOUNT_DELETION_RECORDS_RETAINED_LINE
+        : fallback}
+    </Text>
+  );
+};
 
 // ============================================================
 // CascadeRow (composed inline)

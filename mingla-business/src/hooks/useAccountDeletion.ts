@@ -25,6 +25,7 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import {
   AccountDeletionFailedError,
+  AccountDeletionUnconfirmedError,
   normalizeDeletionBlockers,
   parseDeletionFailure,
   type DeletionBlocker,
@@ -65,14 +66,19 @@ const BLOCKERS_DISABLED_KEY = ["account-deletion", "blockers-disabled"] as const
 /**
  * `functions.invoke` reports a non-2xx as an error whose `context` is the raw
  * Response. The body is where the server says WHY, so read it; anything that
- * cannot be read is a plain failure.
+ * cannot be read is a failure whose wording depends on whether the server
+ * answered at all (see accountDeletionErrors).
  */
 const toDeletionError = async (error: unknown): Promise<Error> => {
   const context = (error as { context?: unknown } | null)?.context;
   if (context === null || typeof context !== "object") {
-    return new AccountDeletionFailedError();
+    // No response at all (network error, lost response): the deletion may
+    // have committed. Never "nothing was changed" here (#3660 rework, F-5).
+    return new AccountDeletionUnconfirmedError();
   }
   const response = context as { status?: unknown; json?: unknown };
+  // A fetch-level failure carries the thrown error as `context`, with no
+  // status: 0 is read as "no answer" by parseDeletionFailure.
   const status = typeof response.status === "number" ? response.status : 0;
   if (typeof response.json !== "function") {
     return parseDeletionFailure(status, null);

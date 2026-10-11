@@ -223,3 +223,90 @@ describe("#3660 fixed screen copy", () => {
     );
   });
 });
+
+// ── #3660 rework (appended; nothing above is changed) ───────────────────────
+// F-5: a failure the server never answered must not be worded as "nothing was
+// changed". F-8: the records-retained line exists with its exact words.
+describe("#3660 rework F-5 · a failure with no answer is not 'nothing was changed'", () => {
+  const {
+    ACCOUNT_DELETION_UNCONFIRMED_MESSAGE,
+    AccountDeletionUnconfirmedError,
+    describeDeletionFailure,
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+  } = require("../accountDeletionErrors");
+
+  test("no HTTP status at all → unconfirmed", () => {
+    for (const status of [0, NaN, -1, undefined as unknown as number]) {
+      for (const body of [null, undefined, "", { error: "x" }]) {
+        const err = parseDeletionFailure(status, body);
+        expect(err).toBeInstanceOf(AccountDeletionUnconfirmedError);
+        // Still a failure for code that only asks "did it fail?".
+        expect(err).toBeInstanceOf(AccountDeletionFailedError);
+        expect(err).not.toBeInstanceOf(AccountDeletionBlockedError);
+      }
+    }
+  });
+
+  test("a 5xx that is NOT the server's coded answer (gateway timeout) → unconfirmed", () => {
+    for (const status of [500, 502, 503, 504, 546]) {
+      for (const body of [null, "<html>Gateway Timeout</html>", { message: "timeout" }, { error: "boom" }]) {
+        expect(parseDeletionFailure(status, body)).toBeInstanceOf(AccountDeletionUnconfirmedError);
+      }
+    }
+  });
+
+  test("the server's own coded failure → plain failed, on any status", () => {
+    for (const status of [500, 503]) {
+      const err = parseDeletionFailure(status, {
+        success: false,
+        error: "account_deletion_failed",
+        code: "account_deletion_failed",
+      });
+      expect(err).toBeInstanceOf(AccountDeletionFailedError);
+      expect(err).not.toBeInstanceOf(AccountDeletionUnconfirmedError);
+    }
+  });
+
+  test("a 4xx refusal is answered, so it is a plain failure, not unconfirmed", () => {
+    for (const status of [400, 401, 403, 405, 409]) {
+      const err = parseDeletionFailure(status, { error: "Unauthorized or invalid token" });
+      expect(err).toBeInstanceOf(AccountDeletionFailedError);
+      expect(err).not.toBeInstanceOf(AccountDeletionUnconfirmedError);
+    }
+  });
+
+  test("a block is still a block whatever else is true", () => {
+    expect(
+      parseDeletionFailure(409, { code: "account_deletion_blocked", blockers: [] }),
+    ).toBeInstanceOf(AccountDeletionBlockedError);
+  });
+
+  test("the words follow what is known", () => {
+    expect(ACCOUNT_DELETION_UNCONFIRMED_MESSAGE).toBe(
+      "We couldn't confirm whether your account was deleted. Check your connection and try again.",
+    );
+    expect(describeDeletionFailure(parseDeletionFailure(0, null))).toBe(
+      ACCOUNT_DELETION_UNCONFIRMED_MESSAGE,
+    );
+    expect(describeDeletionFailure(parseDeletionFailure(504, null))).toBe(
+      ACCOUNT_DELETION_UNCONFIRMED_MESSAGE,
+    );
+    expect(
+      describeDeletionFailure(parseDeletionFailure(500, { code: "account_deletion_failed" })),
+    ).toBe(ACCOUNT_DELETION_FAILED_MESSAGE);
+    expect(describeDeletionFailure(new Error("anything else"))).toBe(
+      ACCOUNT_DELETION_FAILED_MESSAGE,
+    );
+    expect(ACCOUNT_DELETION_UNCONFIRMED_MESSAGE).not.toMatch(/nothing was changed/i);
+  });
+});
+
+describe("#3660 rework F-8 · the records-retained line", () => {
+  test("exact words", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ACCOUNT_DELETION_RECORDS_RETAINED_LINE } = require("../accountDeletionErrors");
+    expect(ACCOUNT_DELETION_RECORDS_RETAINED_LINE).toBe(
+      "Your login is kept so your sales and ticket records stay intact. Your Host account, brands and public pages are gone.",
+    );
+  });
+});
