@@ -1,3 +1,10 @@
+// STATUS (implementor rework, #3660): THIS TEST NOW PASSES AND IS REGISTERED IN
+// CI, in the Stripe Deno lane of the Supabase migrations workflow. The defect
+// (F-3) was fixed in deleteAuthUserIfReady: the surviving-profile probe error is
+// logged and no longer thrown. Not one line of the tester's test below was
+// changed; its header is kept as written and describes the state BEFORE the fix.
+// The implementor's own guard is issue_3660_rework.implementor.test.ts.
+
 /**
  * #3660 — INDEPENDENT TESTER (tester2). KNOWN DEFECT, NOT REGISTERED IN CI.
  *

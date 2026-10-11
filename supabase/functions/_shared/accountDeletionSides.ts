@@ -665,7 +665,16 @@ export async function deleteAuthUserIfReady(
       .eq("id", userId)
       .maybeSingle();
     if (surviveError) {
-      throw new Error(`surviving-profile probe failed: ${surviveError.message}`);
+      // #3660 rework (F-3): the login is ALREADY gone here. Before #3660 this
+      // probe read only `data`, so a probe error still answered "deleted", and
+      // SC-10 says the explorer side is unchanged. A first cut of #3660 threw
+      // here and told a user whose login had just been removed that the
+      // deletion failed. The error is logged (not swallowed) and never thrown,
+      // on either side. Do not turn this back into a throw.
+      console.error(
+        `[delete-user] surviving-profile probe failed after login removal for ${userId}:`,
+        surviveError.message,
+      );
     }
 
     if (survivingProfile) {
