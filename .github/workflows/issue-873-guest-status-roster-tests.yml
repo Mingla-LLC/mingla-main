@@ -12,6 +12,7 @@ on:
       # four Business creation flows extend this lane's existing invite rail.
       - "supabase/migrations/20270712001780_issue_1780_wizard_invite_plans.sql"
       - "supabase/migrations/20270811003682_issue_3682_wizard_invite_followers.sql"
+      - "supabase/migrations/20270812003682_issue_3682_wizard_invite_followers_fixup.sql"
       - "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_3682_wizard_invite_followers.happy.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_normalized_plan_members.tester_adversarial.pg17.test.sql"
@@ -68,6 +69,7 @@ on:
       # four Business creation flows extend this lane's existing invite rail.
       - "supabase/migrations/20270712001780_issue_1780_wizard_invite_plans.sql"
       - "supabase/migrations/20270811003682_issue_3682_wizard_invite_followers.sql"
+      - "supabase/migrations/20270812003682_issue_3682_wizard_invite_followers_fixup.sql"
       - "supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_3682_wizard_invite_followers.happy.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1780_normalized_plan_members.tester_adversarial.pg17.test.sql"

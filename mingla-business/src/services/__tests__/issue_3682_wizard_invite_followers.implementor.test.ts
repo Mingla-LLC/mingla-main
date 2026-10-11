@@ -18,16 +18,18 @@ describe("issue #3682 Wave 2.8b — wizard invite followers", () => {
   test("selection key lock includes Followers and Friends of followers booleans", () => {
     expect(migration).toContain("'includeFollowers'");
     expect(migration).toContain("'includeFriendsOfFollowers'");
+    const fixup = read(
+      "../supabase/migrations/20270812003682_issue_3682_wizard_invite_followers_fixup.sql",
+    );
     expect(migration).toContain("private.issue_3682_circle_invite_person_ids");
-    expect(migration).toContain("issue_1777_resolve_brand_circle_members");
-    expect(migration).toContain("muted_until");
-    expect(migration).toContain("'follower'");
-    expect(migration).toContain("'extended'");
-    // Legacy four-key Host payloads stay accepted; unknown key sets still fail.
-    expect(migration).toContain("'manualGroupIds', 'personIds'");
-    expect(migration).toContain("includeFollowers', false");
-    expect(migration).toContain("wizard_invite_circle_unavailable");
-    expect(migration).toContain("brand_circle_followers_v1");
+    expect(fixup).toContain("private.issue_3682_circle_invite_person_ids");
+    expect(fixup).toContain("issue_1777_resolve_brand_circle_members");
+    expect(fixup).toContain("muted_until");
+    expect(fixup).toContain("never promote circle hits into Your Book");
+    expect(fixup).toContain("v_candidate_count > 500");
+    expect(fixup).toContain("v_legacy_hash");
+    expect(fixup).toContain("wizard_invite_circle_unavailable");
+    expect(fixup).toContain("brand_circle_followers_v1");
     expect(service).toContain("includeFollowers: boolean");
     expect(service).toContain("includeFriendsOfFollowers: boolean");
   });
@@ -35,6 +37,7 @@ describe("issue #3682 Wave 2.8b — wizard invite followers", () => {
   test("Host picker exposes Followers and Friends of followers sources", () => {
     expect(picker).toContain('title="Followers"');
     expect(picker).toContain('title="Friends of followers"');
+    expect(picker).toContain("already in Your Book");
     expect(picker).toContain("onSelectFollowers");
     expect(picker).toContain("onSelectFriendsOfFollowers");
     expect(picker).toContain("includeFollowers: true");

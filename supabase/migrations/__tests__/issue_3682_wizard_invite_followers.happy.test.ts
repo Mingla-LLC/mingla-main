@@ -12,26 +12,30 @@ const migration = Deno.readTextFileSync(
     root,
   ),
 );
+const fixup = Deno.readTextFileSync(
+  new URL(
+    "supabase/migrations/20270812003682_issue_3682_wizard_invite_followers_fixup.sql",
+    root,
+  ),
+);
 
 Deno.test("#3682 wizard invite selection widens to Followers + Friends of followers", () => {
   assertStringIncludes(migration, "'includeFollowers'");
   assertStringIncludes(migration, "'includeFriendsOfFollowers'");
-  assertStringIncludes(migration, "private.issue_3682_circle_invite_person_ids");
-  assertStringIncludes(migration, "issue_1777_resolve_brand_circle_members");
-  assertStringIncludes(migration, "muted_until");
-  assertStringIncludes(migration, "wizard_invite_circle_unavailable");
-  assertStringIncludes(migration, "brand_circle_followers_v1");
+  assertStringIncludes(fixup, "private.issue_3682_circle_invite_person_ids");
+  assertStringIncludes(fixup, "issue_1777_resolve_brand_circle_members");
+  assertStringIncludes(fixup, "muted_until");
+  assertStringIncludes(fixup, "wizard_invite_circle_unavailable");
+  assertStringIncludes(fixup, "brand_circle_followers_v1");
 });
 
 Deno.test("#3682 clear RPC empties the new follower flags", () => {
-  assertStringIncludes(migration, "'includeFollowers', false");
-  assertStringIncludes(migration, "'includeFriendsOfFollowers', false");
+  assertStringIncludes(fixup, "'includeFollowers', false");
+  assertStringIncludes(fixup, "'includeFriendsOfFollowers', false");
 });
 
-Deno.test("#3682 legacy four-key selection remains accepted", () => {
-  assertStringIncludes(migration, "'manualGroupIds', 'personIds'");
-  assertStringIncludes(
-    migration,
-    "Accept legacy four-key Host payloads",
-  );
+Deno.test("#3682 circle invites do not promote into Your Book and preflight the 500 cap", () => {
+  assertStringIncludes(fixup, "never promote circle hits into Your Book");
+  assertStringIncludes(fixup, "v_candidate_count > 500");
+  assertStringIncludes(fixup, "v_legacy_hash");
 });

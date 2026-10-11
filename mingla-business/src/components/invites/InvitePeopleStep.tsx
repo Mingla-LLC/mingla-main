@@ -523,9 +523,9 @@ export function InviteSourcePicker(props: {
         action="Select all" disabled={props.disabled} onPress={props.onSelectEveryone}
         accessibilityRole="checkbox" accessibilityChecked={selectAllChecked} />
       <View style={styles.divider} />
-      <SourceRow title="Followers" detail="People who follow this brand"
+      <SourceRow title="Followers" detail="Followers who are already in Your Book"
         action="Select" disabled={props.disabled} onPress={props.onSelectFollowers} />
-      <SourceRow title="Friends of followers" detail="Friends of people who follow this brand"
+      <SourceRow title="Friends of followers" detail="Friends of followers who are already in Your Book"
         action="Select" disabled={props.disabled} onPress={props.onSelectFriendsOfFollowers} />
       <View style={styles.divider} />
       <Text style={styles.sourceTitle}>Saved groups</Text>
