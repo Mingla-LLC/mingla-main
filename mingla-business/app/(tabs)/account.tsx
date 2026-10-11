@@ -122,7 +122,7 @@ export default function AccountTab(): React.ReactElement {
     if (lastRecoveryEvent !== null) {
       setToast({
         visible: true,
-        message: "Welcome back — your account has been recovered.",
+        message: "Welcome back to Mingla Host.",
       });
       clearLastRecoveryEvent();
     }

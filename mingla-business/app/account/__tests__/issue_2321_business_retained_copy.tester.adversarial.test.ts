@@ -57,16 +57,16 @@ Deno.test("#2321 tester · retained Business deletion names the surviving Explor
     "To remove that too, delete your account in the Mingla app.",
   );
   assert(
-    !retainedArm.includes("Account scheduled for deletion"),
+    !retainedArm.includes("Account and login deleted"),
     "a retained login must not render the non-retained/recoverable headline",
   );
 });
 
 Deno.test("#2321 tester · true auth removal keeps the existing recoverable-deletion copy", () => {
-  assertStringIncludes(removedArm, "Account scheduled for deletion");
+  assertStringIncludes(removedArm, "Account and login deleted");
   assertStringIncludes(
     removedArm,
-    "You can recover it by signing in again within 30 days.",
+    "Your Mingla Host account and your login have been removed. This can't be undone.",
   );
   assert(
     !removedArm.includes("Business Account Deleted"),

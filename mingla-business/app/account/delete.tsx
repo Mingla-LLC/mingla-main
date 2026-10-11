@@ -1,21 +1,20 @@
 /**
- * Delete account route — Cycle 14 J-A4 4-step internal state machine
- * (DEC-096 D-14-10..D-14-14).
+ * Delete account route — Cycle 14 J-A4 internal state machine, rebuilt by #3660.
  *
- * 4 steps in single route (NOT 4 separate routes — keeps stack clean for back nav):
+ * Steps in a single route (NOT separate routes — keeps the stack clean for back nav):
  *   Step 1 — Warn — full-bleed warning + Apple privacy-relay note (if applicable)
- *   Step 2 — Cascade preview — itemized counts + active-events warn block
+ *   Step 2 — Cascade preview — itemized counts + the server's own "can this be
+ *            deleted right now?" answer
  *   Step 3 — Type-to-confirm — account email match
- *   Step 4 — Confirmation — success toast + signOut + navigate to BusinessWelcomeScreen
+ *   Step 4 — Confirmation — signOut + navigate to BusinessWelcomeScreen
+ *   "blocked" — the server refused; shows what has to be finished first
  *
- * D-14-12 (FORCED): UPDATE creator_accounts.deleted_at = now() via existing
- * self-write UPDATE RLS policy. NO insert into account_deletion_requests
- * (B-cycle service-role edge fn writes that audit row).
- *
- * D-14-14: warn-loudly-don't-block on active events.
- *
- * I-35 invariant: deleted_at is the soft-delete marker; recover-on-sign-in
- * auto-clears (per AuthContext bootstrap MOD).
+ * The rule (#3660): a Host account deletion either completes or changes
+ * nothing. No tickets or RSVPs on a live or upcoming event means the deletion
+ * goes through and those events are taken down. Tickets or RSVPs on a live or
+ * upcoming event means it is refused, with the reason, and nothing is touched.
+ * The server decides; the counts on step 2 come from on-device stores and are
+ * a preview only. Deletion is final.
  *
  * Selector pattern rule (Cycle 9c v2 + Cycle 12 lesson): all multi-record
  * reads use raw `entries` selector + useMemo for cascade preview aggregation.
@@ -23,8 +22,6 @@
  * I-21: operator-side route. NEVER imported by anon-tolerant buyer routes.
  *
  * ORCH-0710: ALL hooks declared BEFORE any conditional early-return.
- *
- * Per Cycle 14 SPEC §4.7.4.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -53,7 +50,11 @@ import {
   text as textTokens,
 } from "../../src/constants/designSystem";
 import { useAuth } from "../../src/context/AuthContext";
-import { useRequestAccountDeletion } from "../../src/hooks/useAccountDeletion";
+import {
+  useAccountDeletionBlockers,
+  useRequestAccountDeletion,
+} from "../../src/hooks/useAccountDeletion";
+import { usePartnerBrandLinks } from "../../src/hooks/usePartnerBrandLinks";
 import { useBrandTeamStore } from "../../src/store/brandTeamStore";
 import { useBrandList } from "../../src/store/currentBrandStore";
 import { useDoorSalesStore } from "../../src/store/doorSalesStore";
@@ -66,6 +67,14 @@ import {
   EMPTY_PREVIEW,
   type AccountDeletionPreview,
 } from "../../src/utils/accountDeletionPreview";
+import {
+  ACCOUNT_DELETION_BLOCKED_TITLE,
+  ACCOUNT_DELETION_FAILED_MESSAGE,
+  ACCOUNT_DELETION_PARTNER_LINKS_LINE,
+  AccountDeletionBlockedError,
+  describeDeletionBlocker,
+  type DeletionBlocker,
+} from "../../src/utils/accountDeletionErrors";
 import { formatCurrency } from "../../src/utils/currency";
 import {
   computeConfirmMatches,
@@ -78,7 +87,7 @@ import type { IconName } from "../../src/components/ui/Icon";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Toast } from "../../src/components/ui/Toast";
 
-type DeleteStep = 1 | 2 | 3 | 4;
+type DeleteStep = 1 | 2 | 3 | 4 | "blocked";
 
 const SIGN_OUT_DELAY_MS = 1200;
 
@@ -100,6 +109,20 @@ export default function DeleteAccountRoute(): React.ReactElement {
     useRequestAccountDeletion();
 
   const [step, setStep] = useState<DeleteStep>(1);
+  // #3660 — what the server said has to be finished first, from the 409.
+  const [confirmBlockers, setConfirmBlockers] = useState<DeletionBlocker[]>([]);
+
+  // #3660 — the server's own preflight, asked when step 2 opens. The on-device
+  // counts below cannot know about a sale made on another device.
+  const blockersQuery = useAccountDeletionBlockers(step === 2);
+  const partnerLinksQuery = usePartnerBrandLinks();
+  const activePartnerLinkCount = useMemo<number>(
+    () =>
+      (partnerLinksQuery.data ?? []).filter(
+        (link) => link.accepted_at !== null && link.cancelled_at === null,
+      ).length,
+    [partnerLinksQuery.data],
+  );
   // #2321 — the success view must know whether the login actually went away.
   // A hardcoded headline over a surviving login is the same lie the consumer app
   // shipped. See I-2321-RETAINED-AUTH-CANNOT-CLAIM-DELETED.
@@ -163,8 +186,8 @@ export default function DeleteAccountRoute(): React.ReactElement {
   }, []);
 
   const handleBack = useCallback((): void => {
-    if (step > 1 && step < 4 && !deleting) {
-      setStep((s) => Math.max(1, s - 1) as DeleteStep);
+    if (typeof step === "number" && step > 1 && step < 4 && !deleting) {
+      setStep((step - 1) as DeleteStep);
       return;
     }
     if (router.canGoBack()) {
@@ -208,12 +231,23 @@ export default function DeleteAccountRoute(): React.ReactElement {
         }
         router.replace("/" as never);
       }, SIGN_OUT_DELAY_MS);
-    } catch (_err) {
-      showToast("Couldn't delete. Tap to try again.");
-      setStep(3);
+    } catch (err) {
       setConfirmEmailInput("");
+      if (err instanceof AccountDeletionBlockedError) {
+        // Refused: nothing was changed. Say why, with no toast on top.
+        setConfirmBlockers(err.blockers);
+        setStep("blocked");
+        return;
+      }
+      showToast(ACCOUNT_DELETION_FAILED_MESSAGE);
+      setStep(3);
     }
   }, [confirmMatches, deleting, requestDeletion, signOut, router, showToast]);
+
+  const handleGoHome = useCallback((): void => {
+    if (deleting) return;
+    router.replace("/(tabs)/home" as never);
+  }, [deleting, router]);
 
   // ---- Render ----
 
@@ -256,8 +290,14 @@ export default function DeleteAccountRoute(): React.ReactElement {
         {step === 2 ? (
           <Step2Preview
             preview={preview}
+            partnerLinkCount={activePartnerLinkCount}
+            blockersLoading={blockersQuery.isLoading}
+            blockersFailed={blockersQuery.isError}
+            blockers={blockersQuery.data ?? []}
             onContinue={() => setStep(3)}
             onBack={handleBack}
+            onGoHome={handleGoHome}
+            onClose={handleClose}
           />
         ) : null}
         {step === 3 ? (
@@ -275,6 +315,13 @@ export default function DeleteAccountRoute(): React.ReactElement {
           />
         ) : null}
         {step === 4 ? <Step4Success retained={authRetained} /> : null}
+        {step === "blocked" ? (
+          <BlockedPanel
+            blockers={confirmBlockers}
+            onGoHome={handleGoHome}
+            onClose={handleClose}
+          />
+        ) : null}
       </ScrollView>
 
       <View style={styles.toastWrap} pointerEvents="box-none">
@@ -310,9 +357,10 @@ const Step1Warn: React.FC<Step1WarnProps> = ({
     </View>
     <Text style={styles.warnTitle}>Delete your Mingla Host account?</Text>
     <Text style={styles.warnBody}>
-      You'll lose access to all your brands, events, ticket data, team
-      memberships, and history. You have 30 days to recover by signing in
-      again — after that, everything is permanently erased.
+      Your brands, events, team access and public pages are removed straight
+      away, and your payout bank is disconnected. This can't be undone in the
+      app. If a live or upcoming event has tickets or RSVPs, you'll need to
+      cancel it or let it finish first.
     </Text>
     {provider === "apple" ? (
       <View style={styles.appleNote}>
@@ -350,14 +398,30 @@ const Step1Warn: React.FC<Step1WarnProps> = ({
 
 interface Step2PreviewProps {
   preview: AccountDeletionPreview;
+  /** #3660 — accepted, live partner connections; they end with the account. */
+  partnerLinkCount: number;
+  /** #3660 — the server preflight is still being asked. */
+  blockersLoading: boolean;
+  /** #3660 — the server preflight could not be asked. The delete re-checks. */
+  blockersFailed: boolean;
+  /** #3660 — what the server says must be finished first. Empty = nothing. */
+  blockers: DeletionBlocker[];
   onContinue: () => void;
   onBack: () => void;
+  onGoHome: () => void;
+  onClose: () => void;
 }
 
 const Step2Preview: React.FC<Step2PreviewProps> = ({
   preview,
+  partnerLinkCount,
+  blockersLoading,
+  blockersFailed,
+  blockers,
   onContinue,
   onBack,
+  onGoHome,
+  onClose,
 }) => (
   <View style={styles.previewHost}>
     <Text style={styles.previewTitle}>Here's what you'll lose</Text>
@@ -410,7 +474,11 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
           label={`${preview.teamInvitationsCount} team invitation${preview.teamInvitationsCount === 1 ? "" : "s"} sent`}
         />
       ) : null}
-      {preview.brandsOwnedCount === 0 &&
+      {partnerLinkCount > 0 ? (
+        <CascadeRow icon="users" label={ACCOUNT_DELETION_PARTNER_LINKS_LINE} />
+      ) : null}
+      {partnerLinkCount === 0 &&
+      preview.brandsOwnedCount === 0 &&
       preview.brandsTeamMemberCount === 0 &&
       preview.liveEventsCount === 0 &&
       preview.pastEventsCount === 0 &&
@@ -425,14 +493,24 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
       ) : null}
     </View>
 
-    {/* D-14-14 active-events warn block */}
+    {/* #3660 active-events block: what happens to them, stated plainly. */}
     {preview.hasActiveOrUpcomingEvents ? (
       <View style={styles.activeEventsWarn}>
         <Icon name="flag" size={16} color={accent.warm} />
         <Text style={styles.activeEventsWarnText}>
-          You have live or upcoming events. Buyers will lose access to those
-          events when your account is permanently deleted on day 31. Consider
-          cancelling them first.
+          You have live or upcoming events. Events with no tickets or RSVPs are
+          taken down when you delete. Events with tickets or RSVPs must be
+          cancelled or finished first.
+        </Text>
+      </View>
+    ) : null}
+
+    {blockersFailed ? (
+      <View style={styles.activeEventsWarn}>
+        <Icon name="flag" size={16} color={accent.warm} />
+        <Text style={styles.activeEventsWarnText}>
+          We couldn't check your events right now. You can continue; we'll
+          check again before anything is deleted.
         </Text>
       </View>
     ) : null}
@@ -446,13 +524,75 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
         onPress={onBack}
       />
     </View>
+    {blockers.length > 0 ? (
+      <BlockedPanel blockers={blockers} onGoHome={onGoHome} onClose={onClose} />
+    ) : (
+      <View style={styles.ctaRow}>
+        <Button
+          label={blockersLoading ? "Checking…" : "Continue"}
+          variant="secondary"
+          size="md"
+          fullWidth
+          disabled={blockersLoading}
+          onPress={onContinue}
+          accessibilityLabel={blockersLoading ? "Checking" : "Continue"}
+        />
+      </View>
+    )}
+  </View>
+);
+
+// ============================================================
+// BlockedPanel — the server refused; nothing was changed (#3660)
+// ============================================================
+
+interface BlockedPanelProps {
+  blockers: DeletionBlocker[];
+  onGoHome: () => void;
+  onClose: () => void;
+}
+
+const BlockedPanel: React.FC<BlockedPanelProps> = ({
+  blockers,
+  onGoHome,
+  onClose,
+}) => (
+  <View style={styles.blockedHost}>
+    <View style={styles.blockedCard} accessibilityRole="alert">
+      <View style={styles.blockedTitleRow}>
+        <Icon name="flag" size={16} color={accent.warm} />
+        <Text style={styles.blockedTitle}>{ACCOUNT_DELETION_BLOCKED_TITLE}</Text>
+      </View>
+      {blockers.length === 0 ? (
+        <Text style={styles.blockedLine}>
+          {describeDeletionBlocker({ code: "unknown", count: 0 })}
+        </Text>
+      ) : (
+        blockers.map((blocker, index) => (
+          <Text key={`${blocker.code}-${index}`} style={styles.blockedLine}>
+            {describeDeletionBlocker(blocker)}
+          </Text>
+        ))
+      )}
+    </View>
     <View style={styles.ctaRow}>
       <Button
-        label="Continue"
+        label="Go to Home"
         variant="secondary"
         size="md"
         fullWidth
-        onPress={onContinue}
+        onPress={onGoHome}
+        accessibilityLabel="Go to Home"
+      />
+    </View>
+    <View style={styles.ctaRow}>
+      <Button
+        label="Close"
+        variant="ghost"
+        size="md"
+        fullWidth
+        onPress={onClose}
+        accessibilityLabel="Close"
       />
     </View>
   </View>
@@ -577,10 +717,9 @@ const Step4Success: React.FC<Step4SuccessProps> = ({ retained }) => (
       </>
     ) : (
       <>
-        <Text style={styles.successTitle}>Account scheduled for deletion</Text>
+        <Text style={styles.successTitle}>Account and login deleted</Text>
         <Text style={styles.successBody}>
-          You can recover it by signing in again within 30 days. After that,
-          everything will be permanently erased.
+          {"Your Mingla Host account and your login have been removed. This can't be undone."}
         </Text>
       </>
     )}
@@ -757,6 +896,35 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     lineHeight: 17,
+    color: textTokens.secondary,
+  },
+
+  // Blocked panel (#3660) — built from the activeEventsWarn block ------
+  blockedHost: {
+    gap: spacing.sm,
+  },
+  blockedCard: {
+    gap: spacing.sm,
+    padding: spacing.md - 2,
+    borderRadius: radiusTokens.md,
+    backgroundColor: "rgba(235, 120, 37, 0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(235, 120, 37, 0.30)",
+  },
+  blockedTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  blockedTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  blockedLine: {
+    fontSize: 13,
+    lineHeight: 19,
     color: textTokens.secondary,
   },
 
