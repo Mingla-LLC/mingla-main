@@ -12,8 +12,11 @@
 -- exception rolls the whole call back. There is no EXCEPTION block anywhere in
 -- these functions, on purpose.
 --
--- It creates three functions and nothing else: no table, column, index,
--- trigger, policy, constraint or foreign key changes, and it writes no rows.
+-- It creates three functions for the deletion, plus one narrowly scoped guard
+-- trigger on public.brands (section 4: a signed-in, non-admin user may not
+-- clear brands.deleted_at, so "deletion is final" is enforced by the database).
+-- No table, column, index, policy, constraint or foreign key changes, and it
+-- writes no rows.
 -- `issue_2063_guard_brand_soft_delete` and `tg_brand_team_members_removal_guard`
 -- are NOT replaced, dropped or bypassed (no GUC, no session_replication_role).
 
@@ -109,11 +112,28 @@ BEGIN
     AND EXISTS (
       SELECT 1 FROM public.ticket_checkout_sessions s
       WHERE s.event_id = e.id
-        AND s.status IN (
-          'pending_free', 'requires_payment',
-          'awaiting_web_redirect', 'processing_payment'
+        AND (
+          (
+            s.status IN (
+              'pending_free', 'requires_payment',
+              'awaiting_web_redirect', 'processing_payment'
+            )
+            AND s.expires_at > now()
+          )
+          -- A payment the provider is processing right now still finalises
+          -- into a paid order after the session's expiry time has passed
+          -- (the finalize path does not look at expires_at). It counts for as
+          -- long as it is unresolved. The other open statuses do NOT count
+          -- once expired: nothing ever flips an abandoned cart to `expired`,
+          -- so counting them would refuse a Host for weeks over a cart nobody
+          -- is paying for, and a late payment on one of those after the
+          -- deletion is refused and reversed by biz_ticket_checkout_finalize.
+          OR (
+            s.status = 'processing_payment'
+            AND s.revoked_at IS NULL
+            AND s.order_id IS NULL
+          )
         )
-        AND s.expires_at > now()
     );
   IF cardinality(v_ids) > 0 THEN
     v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
@@ -177,6 +197,29 @@ BEGIN
         JOIN public.events e ON e.id = t.event_id
         WHERE e.brand_id = ANY (v_brand_ids)
           AND t.status = 'refund_pending')
+    -- A paid, non-zero, not fully refunded order whose money has not been
+    -- released to the organiser. The release row is created by a sweep that
+    -- runs after the payment, so "no release row yet" is NOT evidence that
+    -- nothing is owed: only an item under a `released` release is. Orders on
+    -- a live or upcoming event are already reported as tickets_sold above, so
+    -- this arm counts the rest (ended, cancelled, draft, taken-down events):
+    -- together the two arms refuse on every such order on ANY event of an
+    -- owned brand. A free order (total 0) and a fully refunded order
+    -- (payment_status refunded) never count.
+    + (SELECT count(*) FROM public.orders o
+        JOIN public.events e ON e.id = o.event_id
+        WHERE e.brand_id = ANY (v_brand_ids)
+          AND NOT (e.id = ANY (v_event_ids))
+          AND o.payment_status IN ('paid', 'partial_refund')
+          AND o.total_cents > 0
+          AND NOT EXISTS (
+            SELECT 1
+            FROM public.payout_release_items i
+            JOIN public.brand_payout_releases pr ON pr.id = i.release_id
+            WHERE i.source_type = 'order'
+              AND i.source_id = o.id
+              AND pr.status = 'released'
+          ))
   )::integer INTO v_count;
   IF v_count > 0 THEN
     v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
@@ -228,8 +271,11 @@ DECLARE
   v_events_taken_down integer := 0;
   v_memberships_removed integer := 0;
   v_partner_links_ended integer := 0;
+  v_invitations_revoked integer := 0;
+  v_pending_partner_links_closed integer := 0;
   v_stripe_accounts jsonb := '[]'::jsonb;
   v_paystack_subaccounts jsonb := '[]'::jsonb;
+  v_prior_before jsonb;
 BEGIN
   IF auth.role() IS DISTINCT FROM 'service_role' THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
@@ -314,10 +360,26 @@ BEGIN
       )
   ) INTO v_has_foreign_membership;
 
+  --    Nothing is written, but the provider targets of the deletion that DID
+  --    happen are returned again, read from its own audit row. If the first
+  --    response was lost after the commit (timeout, crash before the provider
+  --    step) the Stripe account and Paystack subaccount were never deactivated
+  --    at the provider; the caller re-runs that step from this answer. Both
+  --    provider calls are safe to repeat. audit_log is append-only (its
+  --    update/delete trigger), so this source cannot be edited away, and the
+  --    row is found by target, not by user_id, which a removed login nulls.
   IF v_account_deleted_at IS NOT NULL
      AND cardinality(v_brand_ids) = 0
      AND cardinality(v_link_ids) = 0
      AND NOT v_has_foreign_membership THEN
+    SELECT al.before INTO v_prior_before
+    FROM public.audit_log al
+    WHERE al.action = 'host_account.deleted'
+      AND al.target_type = 'creator_account'
+      AND al.target_id = p_user_id::text
+    ORDER BY al.created_at DESC, al.id DESC
+    LIMIT 1;
+
     RETURN jsonb_build_object(
       'status', 'deleted',
       'already_deleted', true,
@@ -325,8 +387,12 @@ BEGIN
       'events_taken_down', 0,
       'memberships_removed', 0,
       'partner_links_ended', 0,
-      'stripe_accounts', '[]'::jsonb,
-      'paystack_subaccounts', '[]'::jsonb
+      'stripe_accounts',
+        CASE WHEN jsonb_typeof(v_prior_before->'stripe_accounts') = 'array'
+             THEN v_prior_before->'stripe_accounts' ELSE '[]'::jsonb END,
+      'paystack_subaccounts',
+        CASE WHEN jsonb_typeof(v_prior_before->'paystack_subaccounts') = 'array'
+             THEN v_prior_before->'paystack_subaccounts' ELSE '[]'::jsonb END
     );
   END IF;
 
@@ -392,6 +458,31 @@ BEGIN
          paystack_subaccount_code = NULL
    WHERE id = ANY (v_brand_ids);
 
+  -- 7.4a Nobody may accept their way into a deleted brand. Revoke every
+  --      pending team invitation on the brands just deleted, with the same
+  --      stamp the Host app's own "revoke invitation" writes (status revoked +
+  --      revoked_at). For an owner-handover invitation the existing
+  --      partner_brand_links_invite_kill_trigger closes the partner link that
+  --      was waiting on it.
+  UPDATE public.brand_invitations bi
+     SET status = 'revoked',
+         revoked_at = v_now
+   WHERE bi.brand_id = ANY (v_brand_ids)
+     AND bi.status = 'pending';
+  GET DIAGNOSTICS v_invitations_revoked = ROW_COUNT;
+
+  -- 7.4b Close every partner link on those brands that was invited but never
+  --      accepted (whatever the trigger above did not already close). Accepted
+  --      links and other members' team rows on the deleted brand are left as
+  --      they are, exactly as an ordinary brand deletion leaves them.
+  UPDATE public.partner_brand_links pl
+     SET cancelled_at = v_now,
+         cancelled_reason = 'invitation_revoked'
+   WHERE pl.brand_id = ANY (v_brand_ids)
+     AND pl.accepted_at IS NULL
+     AND pl.cancelled_at IS NULL;
+  GET DIAGNOSTICS v_pending_partner_links_closed = ROW_COUNT;
+
   -- 7.5a End the user's partner links. This is the first half of the atomic
   --      dual-stamp partner_disconnect_link performs (that function cannot be
   --      called here: it requires a non-null auth.uid()). The second half, the
@@ -447,13 +538,20 @@ BEGIN
     'host_account.deleted',
     'creator_account',
     p_user_id::text,
-    jsonb_build_object('paystack_subaccounts', v_paystack_subaccounts),
+    -- `before` is also the durable source of the provider targets for a retry
+    -- (step 6): keep both lists here, complete.
+    jsonb_build_object(
+      'paystack_subaccounts', v_paystack_subaccounts,
+      'stripe_accounts', v_stripe_accounts
+    ),
     jsonb_build_object(
       'brand_ids', to_jsonb(v_brand_ids),
       'event_ids_taken_down', to_jsonb(v_event_ids),
       'events_taken_down', v_events_taken_down,
       'memberships_removed', v_memberships_removed,
       'partner_links_ended', v_partner_links_ended,
+      'invitations_revoked', v_invitations_revoked,
+      'pending_partner_links_closed', v_pending_partner_links_closed,
       'stripe_accounts_detached', jsonb_array_length(v_stripe_accounts)
     )
   );
@@ -466,6 +564,8 @@ BEGIN
     'events_taken_down', v_events_taken_down,
     'memberships_removed', v_memberships_removed,
     'partner_links_ended', v_partner_links_ended,
+    'invitations_revoked', v_invitations_revoked,
+    'pending_partner_links_closed', v_pending_partner_links_closed,
     'stripe_accounts', v_stripe_accounts,
     'paystack_subaccounts', v_paystack_subaccounts
   );
@@ -514,6 +614,50 @@ GRANT EXECUTE ON FUNCTION public.biz_my_host_account_deletion_blockers()
 
 COMMENT ON FUNCTION public.biz_my_host_account_deletion_blockers() IS
   'Issue #3660: the caller''s own Host account deletion blockers (auth.uid() only). Read-only preview for the delete screen; biz_delete_host_account re-checks under lock.';
+
+-- ---------------------------------------------------------------------------
+-- 4. "Deletion is final": a signed-in user may not un-delete a brand.
+--
+-- The owner's UPDATE policy on public.brands has no deleted_at condition, so
+-- after a deletion the kept login could bring its own brand back with one
+-- direct table write (and its public page with it). No screen in any Mingla
+-- app sends that write; the only shipped restore is the admin console's
+-- admin_set_brand_deleted, which requires is_admin_user().
+--
+-- This guard refuses exactly one transition (deleted_at set -> NULL) for
+-- exactly the API roles (authenticated, anon) when the caller is not an admin.
+-- The service role, an admin, and a direct database session are unaffected, so
+-- support can still restore a brand. Setting deleted_at is not touched here:
+-- issue_2063_guard_brand_soft_delete owns that direction and is not edited.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.issue_3660_guard_brand_undelete()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+BEGIN
+  IF OLD.deleted_at IS NOT NULL
+     AND NEW.deleted_at IS NULL
+     AND COALESCE(auth.role(), '') IN ('authenticated', 'anon')
+     AND NOT COALESCE(public.is_admin_user(), false) THEN
+    RAISE EXCEPTION 'brand_restore_forbidden' USING ERRCODE = '42501';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_3660_guard_brand_undelete()
+  FROM PUBLIC, anon, authenticated, service_role;
+
+COMMENT ON FUNCTION public.issue_3660_guard_brand_undelete() IS
+  'Issue #3660: a signed-in non-admin user may not clear brands.deleted_at. Service role and is_admin_user() still can (support restore).';
+
+DROP TRIGGER IF EXISTS issue_3660_guard_brand_undelete ON public.brands;
+CREATE TRIGGER issue_3660_guard_brand_undelete
+  BEFORE UPDATE OF deleted_at ON public.brands
+  FOR EACH ROW
+  EXECUTE FUNCTION public.issue_3660_guard_brand_undelete();
 
 -- ---------------------------------------------------------------------------
 -- Self-verify. Looks at objects only, never at data.
@@ -568,6 +712,19 @@ BEGIN
       AND t.tgenabled <> 'D'
   ) THEN
     RAISE EXCEPTION 'issue_3660 verify: issue_2063_guard_brand_soft_delete is missing or disabled';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger t
+    WHERE t.tgrelid = 'public.brands'::regclass
+      AND t.tgname = 'issue_3660_guard_brand_undelete'
+      AND NOT t.tgisinternal
+      AND t.tgenabled <> 'D'
+  ) THEN
+    RAISE EXCEPTION 'issue_3660 verify: issue_3660_guard_brand_undelete is missing or disabled';
+  END IF;
+  IF has_function_privilege('anon', 'public.issue_3660_guard_brand_undelete()', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.issue_3660_guard_brand_undelete()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'issue_3660 verify: the un-delete guard function is callable by an API role';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM pg_trigger t

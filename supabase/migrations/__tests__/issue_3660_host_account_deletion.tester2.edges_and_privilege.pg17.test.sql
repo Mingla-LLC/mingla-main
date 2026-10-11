@@ -265,6 +265,28 @@ BEGIN
   -- A3 was soft-deleted long before this deletion, with an event and a paid
   -- order still under it.
   UPDATE public.brands SET deleted_at = now() - interval '40 days' WHERE id = v_a3;
+  -- [TEST-MOD-APPROVED #3660] rework F-1 (added by the implementor; no line of
+  -- the tester's suite is removed or changed). Since the F-1 fix, a paid order
+  -- with no RELEASED payout blocks on any event. The ended and the cancelled
+  -- event in this fixture exist to prove that a FINISHED event's sales do not
+  -- hold a Host hostage, so their orders are now marked paid out: one released
+  -- payout whose items cover them. Every assertion below is unchanged.
+  WITH r AS (
+    INSERT INTO public.brand_payout_releases
+      (id, brand_id, occurrence_key, surface, provider, currency, anchor_end_at,
+       releasable_at, gross_cents, net_release_cents, status)
+    VALUES (gen_random_uuid(), v_a1, 't2-3660-rel-' || gen_random_uuid()::text, 'order',
+            'stripe', 'usd', date_trunc('second', now()) - interval '2 days',
+            date_trunc('second', now()) - interval '1 day', 5000, 5000, 'released')
+    RETURNING id)
+  INSERT INTO public.payout_release_items
+    (id, release_id, source_type, source_id, gross_cents, refunded_cents,
+     disputed_cents, mingla_fee_cents, partner_share_cents, provider_fee_cents,
+     net_cents, source_finalized_at)
+  SELECT gen_random_uuid(), r.id, 'order', o.id, o.total_cents, 0, 0, 0, 0, 0,
+         o.total_cents, now()
+  FROM r, public.orders o
+  WHERE o.event_id IN (v_e_ended, v_e_cancelled);
   SET LOCAL session_replication_role = origin;
   IF current_setting('session_replication_role') <> 'origin' THEN
     RAISE EXCEPTION 't2 3660: triggers are not live for the calls under test';

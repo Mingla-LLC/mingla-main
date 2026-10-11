@@ -1153,6 +1153,22 @@ jobs:
           # the dblink extension and its schema before it exits.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.races.pg17.test.sql
+          # Issue #3660 rework — the tester's two reproductions (KD-1 = the kept
+          # login un-deleting its own brand, KD-2 = a paid order on a just-ended
+          # event with no payout yet). They failed on purpose and were left out
+          # of CI until their defects were fixed; they pass now and guard the
+          # fixes from the tester's side.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.known_defects.pg17.test.sql
+          # Issue #3660 rework — implementor suite, one group per finding fixed
+          # in the database: unpaid-out orders block on any event (free and
+          # refunded do not); a signed-in non-admin cannot clear
+          # brands.deleted_at (admin and service role can); a retry returns the
+          # provider targets again and writes nothing; pending invitations and
+          # never-accepted partner links on a deleted brand are closed; an
+          # expired checkout cannot become an order after the deletion.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.rework.implementor.pg17.test.sql
           # Issue #3645 — payout maturity is payment + 24h (not event end + 3d);
           # cancel refund runs open in awaiting_review; PR6 charge readiness admits
           # stamped Paystack hold brands without a subaccount.

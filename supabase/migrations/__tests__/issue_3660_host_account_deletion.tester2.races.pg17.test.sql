@@ -306,9 +306,15 @@ BEGIN
   END IF;
   IF v_result2->>'status' IS DISTINCT FROM 'deleted'
      OR (v_result2->>'already_deleted')::boolean IS NOT TRUE
-     OR jsonb_array_length(v_result2->'stripe_accounts') <> 0
+     -- [TEST-MOD-APPROVED #3660] rework F-5 (changed by the implementor on the
+     -- coordinator's ruling). This line used to require an EMPTY stripe_accounts
+     -- list on the second call. The ruling reverses that: a retry must return
+     -- the provider targets again so a lost first response cannot leave the
+     -- Stripe account live. The assertion is now the stronger one: the second
+     -- call returns exactly the first call's list, and still no brand to delete.
+     OR v_result2->'stripe_accounts' IS DISTINCT FROM v_result->'stripe_accounts'
      OR jsonb_array_length(v_result2->'brand_ids') <> 0 THEN
-    RAISE EXCEPTION 't2 3660 R2: deletion 2 must report already_deleted with nothing to detach: %', v_result2;
+    RAISE EXCEPTION 't2 3660 R2: deletion 2 must report already_deleted, the same provider targets as deletion 1 and no brand: %', v_result2;
   END IF;
   SELECT count(*) INTO v_count FROM public.audit_log
    WHERE user_id = v.h AND action = 'host_account.deleted';

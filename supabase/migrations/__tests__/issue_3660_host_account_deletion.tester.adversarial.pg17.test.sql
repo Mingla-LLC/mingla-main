@@ -150,6 +150,7 @@ DECLARE
   f_menu text;
   f_release text;
   f_split text;
+  f_paid_out text;
 BEGIN
   v_users := ARRAY[v_owner, v_other_owner, v_partner];
   v_brands := ARRAY[v_brand, v_other_brand];
@@ -244,6 +245,24 @@ BEGIN
     VALUES (gen_random_uuid(), gen_random_uuid(), %1$L, %3$L, 100, 50, 'USD',
             'fee_i3660_' || gen_random_uuid()::text, %2$L)$f$;
 
+  -- %1$L = brand id, %2$L = event id: a RELEASED payout covering every order
+  -- on that event.
+  f_paid_out := $f$WITH r AS (
+      INSERT INTO public.brand_payout_releases
+        (id, brand_id, occurrence_key, surface, provider, currency, anchor_end_at,
+         releasable_at, gross_cents, net_release_cents, status)
+      VALUES (gen_random_uuid(), %1$L, 'i3660-' || gen_random_uuid()::text, 'order',
+              'stripe', 'usd', date_trunc('second', now()) - interval '2 days',
+              date_trunc('second', now()) - interval '1 day', 1000, 1000, 'released')
+      RETURNING id)
+    INSERT INTO public.payout_release_items
+      (id, release_id, source_type, source_id, gross_cents, refunded_cents,
+       disputed_cents, mingla_fee_cents, partner_share_cents, provider_fee_cents,
+       net_cents, source_finalized_at)
+    SELECT gen_random_uuid(), r.id, 'order', o.id, o.total_cents, 0, 0, 0, 0, 0,
+           o.total_cents, now()
+    FROM r, public.orders o WHERE o.event_id = %2$L$f$;
+
   -- ==========================================================================
   -- Baseline: with no sales the same owner IS deleted. Without this, every
   -- "blocked" below could be a function that blocks everything.
@@ -280,7 +299,19 @@ BEGIN
   PERFORM pg_temp.i3660_case('not_going RSVP', format(f_rsvp, v_event, 'not_going', 'approved'), v_owner, 'deleted', v_users, v_brands);
   PERFORM pg_temp.i3660_case('denied RSVP', format(f_rsvp, v_event, 'going', 'denied'), v_owner, 'deleted', v_users, v_brands);
   PERFORM pg_temp.i3660_case('refunded RSVP contribution', format(f_contrib, v_event, 'refunded', v_brand), v_owner, 'deleted', v_users, v_brands);
-  PERFORM pg_temp.i3660_case('paid order on a PAST event', format(f_order, v_past_event, 'paid', 1000), v_owner, 'deleted', v_users, v_brands);
+  -- [TEST-MOD-APPROVED #3660] rework F-1: a paid order on a past event now
+  -- blocks until it has been paid out, so this "does not count" case is the
+  -- PAID-OUT one (a released payout item covers the order). The unpaid case is
+  -- asserted the other way round straight below and in the rework suite.
+  PERFORM pg_temp.i3660_case('paid order on a PAST event, paid out',
+    format(f_order, v_past_event, 'paid', 1000) || ';' || format(f_paid_out, v_brand, v_past_event),
+    v_owner, 'deleted', v_users, v_brands);
+  PERFORM pg_temp.i3660_case('paid order on a PAST event, NOT yet paid out',
+    format(f_order, v_past_event, 'paid', 1000), v_owner, 'money_in_motion', v_users, v_brands);
+  PERFORM pg_temp.i3660_case('free order on a PAST event',
+    format(f_order, v_past_event, 'paid', 0), v_owner, 'deleted', v_users, v_brands);
+  PERFORM pg_temp.i3660_case('refunded order on a PAST event',
+    format(f_order, v_past_event, 'refunded', 1000), v_owner, 'deleted', v_users, v_brands);
   PERFORM pg_temp.i3660_case('valid ticket on a PAST event', format(f_ticket, v_past_event, 'valid'), v_owner, 'deleted', v_users, v_brands);
   -- A brand the user is only a team member of is never considered.
   PERFORM pg_temp.i3660_case('paid order on a brand the user does not own', format(f_order, v_other_event, 'paid', 1000), v_owner, 'deleted', v_users, v_brands);

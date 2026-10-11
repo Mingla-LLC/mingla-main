@@ -1,4 +1,13 @@
 \set ON_ERROR_STOP on
+-- STATUS (implementor rework, #3660): BOTH CASES NOW PASS AND THIS FILE IS
+-- REGISTERED IN CI, in the migrations job of the Supabase migrations workflow.
+-- KD-1 was fixed by the issue_3660_guard_brand_undelete trigger; KD-2 by the
+-- unpaid-out-order arm of the money_in_motion blocker. Not one line of the
+-- tester's cases below was changed; the header underneath is kept as written
+-- and describes the state BEFORE the fixes. The implementor's own guards for
+-- the same two findings are in
+-- issue_3660_host_account_deletion.rework.implementor.pg17.test.sql.
+--
 -- Issue #3660 — INDEPENDENT TESTER (tester2). KNOWN DEFECTS, NOT REGISTERED IN CI.
 --
 -- This file FAILS on the branch on purpose. It holds the reproductions for two
