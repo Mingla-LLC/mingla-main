@@ -1153,6 +1153,24 @@ jobs:
           # the dblink extension and its schema before it exits.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.races.pg17.test.sql
+          # Issue #3660 tester2 RETEST (written by the tester after the rework).
+          # Through real roles: every route for a signed-in user to clear
+          # brands.deleted_at is refused while an admin and the service role
+          # can still restore and a live brand is still editable; a revoked
+          # invitation cannot be accepted through the real accept function; a
+          # retry returns the first call's provider targets and writes
+          # nothing; an account with no audit row retries to empty lists; an
+          # expired checkout blocks only while its payment is processing.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest.pg17.test.sql
+          # Issue #3660 tester2 RETEST, REAL concurrency (dblink, loopback).
+          # The rework's invitation revoke takes its locks in the opposite
+          # order to an invitation acceptance. Two sessions are driven into
+          # that cycle on purpose; the only endings allowed are "deletion
+          # complete, acceptance refused" or "deletion failed as a whole,
+          # nothing changed". It commits its own fixtures and removes them.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest_races.pg17.test.sql
           # Issue #3660 rework — the tester's two reproductions (KD-1 = the kept
           # login un-deleting its own brand, KD-2 = a paid order on a just-ended
           # event with no payout yet). They failed on purpose and were left out
@@ -1699,6 +1717,23 @@ jobs:
             # bodies never crash and never read as success; a retry after a
             # lost response ends done and calls no provider twice.
             supabase/functions/_shared/__tests__/issue_3660_wire_contract.tester2.adversarial.test.ts
+            # #3660 tester2 RETEST — the retry contract after the rework: the
+            # retry answer the database really gives (with provider targets)
+            # re-runs Stripe and Paystack; a provider saying "already gone" is
+            # still done; an account deleted by an earlier build retries to done
+            # with no provider call; an unanswered or uncoded-5xx failure never
+            # tells the Host that nothing was changed.
+            supabase/functions/_shared/__tests__/issue_3660_retry_contract.tester2.retest.test.ts
+            # #3660 — registered by the tester at retest. Both files were reported
+            # as registered in this lane by the rework, and neither was: no
+            # workflow listed them. The first is the implementor's own guard for
+            # the edge-module half of the rework (the explorer side answers as
+            # before when the profile probe fails after the login is gone; a
+            # retry whose answer carries provider targets re-runs them). The
+            # second is the tester's reproduction of that explorer-side finding,
+            # which passes now that it is fixed.
+            supabase/functions/_shared/__tests__/issue_3660_rework.implementor.test.ts
+            supabase/functions/_shared/__tests__/issue_3660_explorer_profile_probe_parity.tester2.known_defect.test.ts
             # #3660 — the Host delete ROUTE: no recovery promise left on any
             # screen, and a refusal reaches the blocked panel instead of a toast.
             mingla-business/app/account/__tests__/issue_3660_delete_blocked_panel.tester.adversarial.test.ts
