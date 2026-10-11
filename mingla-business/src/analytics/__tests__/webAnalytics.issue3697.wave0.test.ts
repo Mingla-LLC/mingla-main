@@ -1,0 +1,133 @@
+/**
+ * toward #3697 Wave 0a/0b — pre-consent first-party click + Reject stamp.
+ * Append-only.
+ */
+interface FakeScript {
+  src: string;
+  async: boolean;
+  attrs: Record<string, string>;
+  setAttribute(name: string, value: string): void;
+}
+
+function harness(search = ""): {
+  analytics: typeof import("../webAnalytics.web");
+  fetches: Array<{ url: string; body: Record<string, unknown> }>;
+  session: Map<string, string>;
+  local: Map<string, string>;
+  scripts: FakeScript[];
+  posthog: { init: jest.Mock };
+} {
+  const scripts: FakeScript[] = [];
+  const local = new Map<string, string>();
+  const session = new Map<string, string>();
+  const fetches: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const posthog = {
+    init: jest.fn(),
+    opt_in_capturing: jest.fn(),
+    opt_out_capturing: jest.fn(),
+    capture: jest.fn(),
+    identify: jest.fn(),
+    getFeatureFlag: jest.fn(),
+  };
+  const win: Record<string, unknown> = {
+    document: {
+      referrer: "",
+      createElement: (): FakeScript => ({
+        src: "",
+        async: false,
+        attrs: {},
+        setAttribute(name: string, value: string): void {
+          this.attrs[name] = value;
+        },
+      }),
+      querySelector: (): null => null,
+      head: {
+        appendChild: (script: FakeScript): void => {
+          scripts.push(script);
+        },
+      },
+    },
+    location: { search, href: `https://business.usemingla.com/e/b/e${search}` },
+    localStorage: {
+      getItem: (key: string): string | null => local.get(key) ?? null,
+      setItem: (key: string, value: string): void => {
+        local.set(key, value);
+      },
+    },
+    sessionStorage: {
+      getItem: (key: string): string | null => session.get(key) ?? null,
+      setItem: (key: string, value: string): void => {
+        session.set(key, value);
+      },
+    },
+  };
+  jest.resetModules();
+  jest.doMock("expo-constants", () => ({
+    __esModule: true,
+    default: {
+      expoConfig: {
+        extra: {
+          EXPO_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: "anon",
+        },
+      },
+    },
+  }));
+  jest.doMock("posthog-js", () => ({ __esModule: true, default: posthog }));
+  (globalThis as unknown as { window: unknown }).window = win;
+  (globalThis as unknown as { fetch: unknown }).fetch = (
+    url: string,
+    init?: { body?: string },
+  ) => {
+    fetches.push({
+      url: String(url),
+      body: init?.body ? JSON.parse(init.body) as Record<string, unknown> : {},
+    });
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ click_id: "click-pre" }),
+    });
+  };
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const analytics = require("../webAnalytics.web") as typeof import("../webAnalytics.web");
+  return { analytics, fetches, session, local, scripts, posthog };
+}
+
+afterEach(() => {
+  delete (globalThis as unknown as { window?: unknown }).window;
+  delete (globalThis as unknown as { fetch?: unknown }).fetch;
+  jest.resetModules();
+});
+
+test("F-1: pre-consent ad signal posts touch with consent_state=pending", async () => {
+  const h = harness("?fbclid=ABC&mc_id=camp1");
+  h.analytics.captureAdClickIds({ pageType: "event", brandSlug: "b" });
+  await new Promise((r) => setTimeout(r, 0));
+  expect(h.posthog.init).not.toHaveBeenCalled();
+  expect(h.scripts).toHaveLength(0);
+  expect(h.fetches).toHaveLength(1);
+  expect(h.fetches[0].body.kind).toBe("touch");
+  expect(h.fetches[0].body.consent_state).toBe("pending");
+  expect(h.session.get("mingla_ad_click_v1")).toContain("click-pre");
+});
+
+test("F-3: Reject stamps consent rejected and does not boot vendors", async () => {
+  const h = harness("?fbclid=ABC");
+  h.analytics.captureAdClickIds();
+  await new Promise((r) => setTimeout(r, 0));
+  h.analytics.denyConsent();
+  await new Promise((r) => setTimeout(r, 0));
+  expect(h.local.get("mingla_consent_v1")).toContain('"denied"');
+  expect(h.posthog.init).not.toHaveBeenCalled();
+  const consentPosts = h.fetches.filter((f) => f.body.kind === "consent");
+  expect(consentPosts.length).toBeGreaterThanOrEqual(1);
+  expect(consentPosts[0].body.consent_state).toBe("rejected");
+});
+
+test("Wave 0d: postAttributionConversion is a no-op", () => {
+  const h = harness("?fbclid=ABC");
+  h.local.set("mingla_consent_v1", JSON.stringify({ choice: "granted", ts: 1 }));
+  const before = h.fetches.length;
+  h.analytics.postAttributionConversion({ eventId: "ord-1", valueCents: 100 });
+  expect(h.fetches.length).toBe(before);
+});

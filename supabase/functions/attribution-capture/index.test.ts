@@ -1,4 +1,6 @@
 // ISSUE-865 WP-A — runtime tests for attribution-capture.
+// [TEST-MOD-APPROVED #3697] conversion via handleCapture is refused (Wave 0d);
+// hermetic recordConversion coverage remains available for hashing helpers.
 //
 // Exercises the exported handler (NOT source-grep — COMMS-0106) with an
 // injected mock client:
@@ -15,7 +17,12 @@
 //
 // Run: deno test --allow-none supabase/functions/attribution-capture/index.test.ts
 import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { handleCapture, sha256Hex, type CaptureDeps } from "./index.ts";
+import {
+  handleCapture,
+  recordConversion,
+  sha256Hex,
+  type CaptureDeps,
+} from "./index.ts";
 
 // ── Chainable mock Supabase client ───────────────────────────────────────────
 interface MockOpts {
@@ -91,35 +98,36 @@ Deno.test("fail-open: malformed JSON -> 200 soft, never 5xx", async () => {
 });
 
 Deno.test("fail-open: storage unavailable -> 200 soft, never 5xx", async () => {
-  const res = await handleCapture(post({ event_id: "e1" }), { getClient: () => null });
+  const res = await handleCapture(post({ network: "meta" }), { getClient: () => null });
   assertEquals(res.status, 200);
   assertEquals((await res.json()).soft_error, "storage_unavailable");
 });
 
 Deno.test("fail-open: a THROWING client is absorbed -> 200, never throws/5xx (RT-1 revert anchor)", async () => {
-  // conversion path
+  // toward #3697: anon conversion path is refused before write; touch still absorbs throws.
   const c = await handleCapture(post({ event_id: "e1", value_cents: 500 }), deps({ throwOnWrite: true }));
   assertEquals(c.status, 200);
-  assertEquals((await c.json()).ok, false);
-  // touch path
+  assertEquals((await c.json()).soft_error, "conversion_requires_trusted_path");
   const t = await handleCapture(post({ network: "meta", surface: "web" }), deps({ throwOnWrite: true }));
   assertEquals(t.status, 200);
   assertEquals((await t.json()).ok, false);
 });
 
 Deno.test("fail-open: a DB error is absorbed -> 200 soft", async () => {
-  const res = await handleCapture(post({ event_id: "e2" }), deps({ errorOnWrite: true }));
+  const res = await handleCapture(post({ network: "meta" }), deps({ errorOnWrite: true }));
   assertEquals(res.status, 200);
-  assertEquals((await res.json()).soft_error, "conversion_not_recorded");
+  assertEquals((await res.json()).soft_error, "touch_not_recorded");
 });
 
-// ── IDEMPOTENCY (handler-level dedup reporting; DB UNIQUE proven in SQL suite) ─
+// ── IDEMPOTENCY (trusted recordConversion helper; anon HTTP refuses conversion) ─
 
 Deno.test("idempotent: no inserted row -> deduped=true", async () => {
-  const res = await handleCapture(
-    post({ kind: "conversion", event_id: "dup", event_name: "Purchase" }),
-    deps({ conversionInserted: false }),
-  );
+  const client = mockClient({ conversionInserted: false });
+  const res = await recordConversion(client, {
+    kind: "conversion",
+    event_id: "dup",
+    event_name: "Purchase",
+  });
   const j = await res.json();
   assertEquals(res.status, 200);
   assertEquals(j.ok, true);
@@ -127,17 +135,28 @@ Deno.test("idempotent: no inserted row -> deduped=true", async () => {
 });
 
 Deno.test("idempotent: fresh insert -> deduped=false", async () => {
-  const res = await handleCapture(
-    post({ kind: "conversion", event_id: "fresh", event_name: "Purchase" }),
-    deps({ conversionInserted: true }),
-  );
+  const client = mockClient({ conversionInserted: true });
+  const res = await recordConversion(client, {
+    kind: "conversion",
+    event_id: "fresh",
+    event_name: "Purchase",
+  });
   assertEquals((await res.json()).deduped, false);
 });
 
 Deno.test("conversion missing event_id -> soft error, never 5xx", async () => {
-  const res = await handleCapture(post({ kind: "conversion" }), deps({}));
+  const res = await recordConversion(mockClient({}), { kind: "conversion" });
   assertEquals(res.status, 200);
   assertEquals((await res.json()).soft_error, "event_id_required");
+});
+
+Deno.test("toward #3697: anon handleCapture refuses conversion", async () => {
+  const res = await handleCapture(
+    post({ kind: "conversion", event_id: "blocked" }),
+    deps({ conversionInserted: true }),
+  );
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).soft_error, "conversion_requires_trusted_path");
 });
 
 // ── TOUCH ────────────────────────────────────────────────────────────────────

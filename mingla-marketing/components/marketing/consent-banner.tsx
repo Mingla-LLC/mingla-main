@@ -28,6 +28,7 @@ import {
   readMarketingConsent,
   type MarketingConsentValue,
 } from '@/components/marketing/posthog-provider'
+import { captureMarketingAdClickIds } from '@/lib/ad-click-capture'
 
 // Storage ownership is canonical in posthog-provider.tsx. This compatibility
 // export preserves the established key contract: mingla_consent_v1.
@@ -45,6 +46,7 @@ export function ConsentBanner(): React.ReactElement | null {
   const [decision, setDecision] = useState<MarketingConsentValue | 'pending'>('pending')
 
   // On mount: re-apply any prior decision; otherwise show the banner.
+  // toward #3697: first-party ad click may record before Accept.
   useEffect(() => {
     const stored = readMarketingConsent()
     if (stored) {
@@ -52,13 +54,15 @@ export function ConsentBanner(): React.ReactElement | null {
     } else {
       setDecision('pending')
     }
+    captureMarketingAdClickIds()
   }, [])
 
   const choose = (value: MarketingConsentValue): void => {
     persistMarketingConsent(value)
     setDecision(value)
     // Consent-rate measurement is grant-only and runs after the one-flight boot.
-    // Reject has no analytics-side effect; deny rate remains derived downstream.
+    // toward #3697: Reject stamps first-party consent; Accept re-runs capture.
+    captureMarketingAdClickIds()
     if (value === 'granted') {
       void posthogOptIn().then(() => captureMarketingConsentGrantOnce())
     }

@@ -52,13 +52,19 @@ type Lane = "consumer" | "business";
 type Surface = "web" | "ios" | "android";
 type EventType = "purchase" | "reservation" | "lead" | "view";
 
+type ConsentState = "pending" | "granted" | "rejected";
+
 interface CaptureBody {
-  kind?: "touch" | "conversion";
+  // toward #3697 / #3702: anon HTTP may touch or update consent only.
+  // Conversion rows are written solely by trusted post-finalize paths
+  // (adConversionFire). kind:"conversion" is refused on this endpoint.
+  kind?: "touch" | "conversion" | "consent";
   // shared
   surface?: Surface;
   lane?: Lane;
   user_id?: string;
-  // touch
+  // touch / consent
+  consent_state?: ConsentState;
   network?: Network;
   external_click_id?: string;
   af_c_id?: string;
@@ -74,7 +80,7 @@ interface CaptureBody {
   referrer?: string;
   utm?: Record<string, unknown>;
   dest?: {
-    page_type?: "event" | "trip" | "brand" | "venue";
+    page_type?: "event" | "trip" | "brand" | "venue" | "experience";
     brand_slug?: string;
     entity_slug?: string;
     event_id?: string;
@@ -318,11 +324,18 @@ export async function handleCapture(
       return json({ ok: false, soft_error: "storage_unavailable" });
     }
 
-    const isConversion = body.kind === "conversion" ||
-      (!!body.event_id && body.kind !== "touch");
-
-    if (isConversion) {
-      return await recordConversion(client, body);
+    // toward #3697 Wave 0d / #3702: refuse conversion on this anon endpoint.
+    // event_id alone used to route here; that let any browser forge a row.
+    const looksLikeConversion = body.kind === "conversion" ||
+      (!!body.event_id && body.kind !== "touch" && body.kind !== "consent");
+    if (looksLikeConversion) {
+      return json({
+        ok: false,
+        soft_error: "conversion_requires_trusted_path",
+      });
+    }
+    if (body.kind === "consent") {
+      return await recordConsent(client, body);
     }
     return await recordTouch(client, req, body);
   } catch (err) {
@@ -333,7 +346,38 @@ export async function handleCapture(
   }
 }
 
-async function recordConversion(
+/** toward #3697: stamp Accept/Reject onto an existing first-party click. */
+async function recordConsent(
+  client: SupabaseClient,
+  body: CaptureBody,
+): Promise<Response> {
+  const clickId = typeof body.click_id === "string" ? body.click_id.trim() : "";
+  const consent = oneOf<ConsentState>(body.consent_state, [
+    "pending",
+    "granted",
+    "rejected",
+  ] as const);
+  if (!clickId || !consent || consent === "pending") {
+    return json({ ok: false, soft_error: "consent_args_required" });
+  }
+  const { data, error } = await client
+    .from("ad_attribution_touches")
+    .update({ consent_state: consent })
+    .eq("click_id", clickId)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("[attribution-capture] consent update error:", error.message);
+    return json({ ok: false, soft_error: "consent_not_recorded" });
+  }
+  if (!data) {
+    return json({ ok: false, soft_error: "click_not_found" });
+  }
+  return json({ ok: true, kind: "consent", click_id: clickId, consent_state: consent });
+}
+
+/** Kept for hermetic unit coverage of hashing; not reachable from handleCapture. */
+export async function recordConversion(
   client: SupabaseClient,
   body: CaptureBody,
 ): Promise<Response> {
@@ -486,9 +530,18 @@ async function recordTouch(
     mcId !== null || campaign.campaignId !== null || network !== "other";
   const entrySource = classifyEntrySource({ hasAdSignal, referrerHost });
 
+  // Default granted when omitted so legacy callers keep sharing; Wave 0 clients
+  // send pending/granted/rejected explicitly.
+  const consentState = oneOf<ConsentState>(body.consent_state, [
+    "pending",
+    "granted",
+    "rejected",
+  ] as const) ?? "granted";
+
   const row = {
     click_id: clickId,
     network,
+    consent_state: consentState,
     external_click_id: typeof body.external_click_id === "string"
       ? body.external_click_id
       : null,
@@ -502,7 +555,7 @@ async function recordTouch(
     utm: body.utm && typeof body.utm === "object" ? body.utm : {},
     dest_page_type: oneOf(
       body.dest?.page_type,
-      ["event", "trip", "brand", "venue"] as const,
+      ["event", "trip", "brand", "venue", "experience"] as const,
     ),
     dest_brand_slug: typeof body.dest?.brand_slug === "string"
       ? body.dest.brand_slug

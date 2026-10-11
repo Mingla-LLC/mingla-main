@@ -15,7 +15,8 @@
  *        (Meta 'Purchase'/eventID, TikTok 'CompletePayment'/event_id, Snap
  *        'PURCHASE'/client_dedup_id, Reddit 'Purchase'/conversion_id) — SC-5/SC-15.
  *   (A4) RESERVATION path — event_id = reservationId with the reservation-branch
- *        event names (Meta 'Schedule', TikTok 'CompleteRegistration', Snap 'SAVE',
+ *        event names (Meta 'CompleteRegistration', TikTok 'CompleteRegistration', Snap 'SIGN_UP',
+ * [TEST-MOD-APPROVED #3697] F-4 sign-up taxonomy
  *        Reddit 'Lead'); a server-only send (no browser reservation pixel).
  *   (A5) A HANGING sender cannot exceed the bounded timeout nor throw upward.
  *   (A6) Reddit pending-config does NOT block the other three (fan-out isolation).
@@ -200,12 +201,12 @@ Deno.test("A4 fireAdConversion: venue reservation keys on reservationId with the
   });
   const byHost = (needle: string) => calls.find((c) => c.url.includes(needle));
   const meta = JSON.parse(byHost("graph.facebook.com")!.body);
-  assertEquals(meta.data[0].event_name, "Schedule"); // reservation branch, NOT 'Purchase'
+  assertEquals(meta.data[0].event_name, "CompleteRegistration"); // F-4 sign-up
   assertEquals(meta.data[0].event_id, RESV_ID); // keyed on the reservation id
   const tt = JSON.parse(byHost("business-api.tiktok.com")!.body);
   assertEquals(tt.data[0].event, "CompleteRegistration");
   const sn = JSON.parse(byHost("tr.snapchat.com")!.body);
-  assertEquals(sn.data[0].event_name, "SAVE");
+  assertEquals(sn.data[0].event_name, "SIGN_UP");
   // Reservation PII is ALSO hashed on the wire (SC-9 across the reservation path).
   const expectedEmailHash = await sha256Hex("buyer.secret@example.com");
   assertStringIncludes(byHost("graph.facebook.com")!.body, expectedEmailHash);

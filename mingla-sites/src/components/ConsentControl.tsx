@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CONSENT_EVENT, CONSENT_KEY, sendSiteEvent } from "../lib/clientAnalytics";
+import {
+  captureSiteAdClickIds,
+  CONSENT_EVENT,
+  CONSENT_KEY,
+  sendSiteEvent,
+} from "../lib/clientAnalytics";
 
 type Consent = "granted" | "necessary" | null;
 
@@ -23,7 +28,11 @@ export function ConsentControl({ siteId, brandId, publicationId }: { siteId: str
     setExpanded(false);
     if (next === "granted") {
       await sendSiteEvent({ siteId, brandId, publicationId }, "consent_granted");
+      captureSiteAdClickIds();
       window.dispatchEvent(new Event(CONSENT_EVENT));
+    } else {
+      // toward #3697 / #3703: stamp Reject on any first-party ad click.
+      captureSiteAdClickIds();
     }
   };
 

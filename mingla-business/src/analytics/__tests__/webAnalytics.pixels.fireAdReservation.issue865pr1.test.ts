@@ -4,13 +4,14 @@
  * NEW (append-only). The reservation twin of fireAdPurchase, proven under the
  * SAME consent gate:
  *   • pre-consent, fireAdReservation is a NO-OP (no pixel, no throw) — SC-8/RT-3,
- *   • on consent grant it fires the LEAD-type Meta event 'Schedule' with the
- *     shared event_id as `eventID` (dedups with the server CAPI lead send),
+ *   • on consent grant it fires Meta 'CompleteRegistration' with the
+ *     shared event_id as `eventID` (dedups with the server CAPI sign-up send),
  *   • it is NEVER a value'd 'Purchase' (the two-tier boundary),
  *   • absent pixel id / a load failure is a silent no-op (fail-open).
+ * [TEST-MOD-APPROVED #3697] F-4: Schedule → CompleteRegistration
  *
  * fails-on-revert target: the consent gate (fireAdReservation firing pre-consent),
- * and the lead-branch event name ('Schedule', not 'Purchase').
+ * and the sign-up event name ('CompleteRegistration', not 'Purchase').
  *
  * Mirrors the shipped webAnalytics.pixels.issue865 harness (fake window/document +
  * mocked expo-constants/posthog-js). No network, no real pixel scripts.
@@ -105,7 +106,7 @@ test("CONSENT GATE — fireAdReservation is a NO-OP before grantConsent (SC-8 / 
   expect(getFbq()).toBeUndefined();
 });
 
-test("grantConsent → fireAdReservation fires the LEAD Meta event 'Schedule' with the shared eventID (not 'Purchase')", async () => {
+test("grantConsent → fireAdReservation fires Meta 'CompleteRegistration' with the shared eventID (not 'Purchase')", async () => {
   const { wa, getFbq } = loadHarness(META_EXTRA);
   await wa.initWebAnalytics();
   await wa.grantConsent();
@@ -114,20 +115,20 @@ test("grantConsent → fireAdReservation fires the LEAD Meta event 'Schedule' wi
   const fbq = getFbq();
   expect(fbq).toBeDefined();
   const queued = ((fbq as unknown as { queue?: unknown[][] }).queue ?? []) as unknown[][];
-  const schedule = queued.find((a) => a[0] === "track" && a[1] === "Schedule");
+  const schedule = queued.find((a) => a[0] === "track" && a[1] === "CompleteRegistration");
   expect(schedule).toBeDefined();
   expect(schedule?.[3]).toEqual({ eventID: "resv-xyz" }); // == server CAPI event_id
   // It is NEVER a value'd Purchase (the two-tier boundary).
   expect(queued.find((a) => a[0] === "track" && a[1] === "Purchase")).toBeUndefined();
 });
 
-test("free RSVP with no value — 'Schedule' still fires (£0 lead), no throw", async () => {
+test("free RSVP with no value — 'CompleteRegistration' still fires (£0 sign-up), no throw", async () => {
   const { wa, getFbq } = loadHarness(META_EXTRA);
   await wa.initWebAnalytics();
   await wa.grantConsent();
   expect(() => wa.fireAdReservation("resv-free")).not.toThrow();
   const queued = ((getFbq() as unknown as { queue?: unknown[][] }).queue ?? []) as unknown[][];
-  expect(queued.some((a) => a[0] === "track" && a[1] === "Schedule")).toBe(true);
+  expect(queued.some((a) => a[0] === "track" && a[1] === "CompleteRegistration")).toBe(true);
 });
 
 test("NO-OP when the pixel id is absent (silent, never throws)", async () => {
