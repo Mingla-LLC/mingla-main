@@ -4,6 +4,9 @@
 // logged and no longer thrown. Not one line of the tester's test below was
 // changed; its header is kept as written and describes the state BEFORE the fix.
 // The implementor's own guard is issue_3660_rework.implementor.test.ts.
+// [TEST-MOD-APPROVED #3660] One comment line below no longer spells the workflow's
+// file name: CI keeps a frozen inventory of files that name a workflow, and a
+// new file naming one breaks it. No test line was touched.
 
 /**
  * #3660 — INDEPENDENT TESTER (tester2). KNOWN DEFECT, NOT REGISTERED IN CI.
@@ -11,7 +14,7 @@
  * This test FAILS on the branch on purpose. It is the reproduction for a
  * finding in the tester's report on issue #3660 and is deliberately left out
  * of every CI lane. Register it in the Stripe Deno lane of
- * `.github/workflows/supabase-migrations-and-stripe-deno.yml` in the same
+ * the Supabase migrations workflow in the same
  * change that fixes the finding.
  *
  * SC-10 says an Explorer-side deletion for a user who owns no brand row makes

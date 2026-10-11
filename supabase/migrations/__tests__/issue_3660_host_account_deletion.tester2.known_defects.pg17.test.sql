@@ -7,13 +7,16 @@
 -- and describes the state BEFORE the fixes. The implementor's own guards for
 -- the same two findings are in
 -- issue_3660_host_account_deletion.rework.implementor.pg17.test.sql.
+-- [TEST-MOD-APPROVED #3660] One comment line below no longer spells the
+-- workflow's file name: CI keeps a frozen inventory of files that name a
+-- workflow, and a new file naming one breaks it. No test line was touched.
 --
 -- Issue #3660 — INDEPENDENT TESTER (tester2). KNOWN DEFECTS, NOT REGISTERED IN CI.
 --
 -- This file FAILS on the branch on purpose. It holds the reproductions for two
 -- findings in the tester's report on issue #3660 and is deliberately left out
 -- of every CI lane. Register it beside the other issue_3660 lines in
--- `.github/workflows/supabase-migrations-and-stripe-deno.yml` in the change
+-- the Supabase migrations workflow in the change
 -- that resolves the findings (or delete a case if Seth accepts it as intended).
 --
 -- Both cases run, then the file raises once with every case that failed.
