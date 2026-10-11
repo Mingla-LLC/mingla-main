@@ -20,7 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
-- 2026-10-11 — Ad clicks can be counted first-party before the cookie banner; Reject stops platform sharing; free tickets/RSVPs are sign-ups not $0 purchases; browsers can no longer write conversion rows (toward #3697, PR #TBD)
+- 2026-10-11 — Ad clicks can be counted first-party before the cookie banner; Reject stops platform sharing; free tickets/RSVPs are sign-ups not $0 purchases; browsers can no longer write conversion rows (toward #3697, PR #3791)
 - 2026-10-11 — Hosts can invite Followers and Friends of followers when creating an offering (alongside Your Book); flag stays off until ops flip (toward #3682, PR #3790)
 - 2026-10-11 — Who's going defaults to private: Show me as going starts off, friends still see friends, and the guest list says N going · M keep it private (toward #3682, PR #3789)
 - 2026-10-10 — Hosts see remaining monthly SMS/email allowance on blast review, get a 4th-blast-in-a-week Send anyway warning, and confirm is blocked past 100 SMS / 1,000 emails; guests can toggle Push per brand again (toward #3682, PR #3788)
