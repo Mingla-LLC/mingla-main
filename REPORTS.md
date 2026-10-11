@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-11 — Deleting a Host account now either finishes completely or changes nothing: events with no tickets or RSVPs are taken down with the account, a live or upcoming event with tickets or RSVPs stops the deletion with a clear reason, partner connections end, and the app no longer promises 30 days to recover (toward #3660, PR #TBD)
 - 2026-10-11 — Hosts can invite Followers and Friends of followers when creating an offering (alongside Your Book); flag stays off until ops flip (toward #3682, PR #3790)
 - 2026-10-11 — Who's going defaults to private: Show me as going starts off, friends still see friends, and the guest list says N going · M keep it private (toward #3682, PR #3789)
 - 2026-10-10 — Hosts see remaining monthly SMS/email allowance on blast review, get a 4th-blast-in-a-week Send anyway warning, and confirm is blocked past 100 SMS / 1,000 emails; guests can toggle Push per brand again (toward #3682, PR #3788)

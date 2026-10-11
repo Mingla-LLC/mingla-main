@@ -1,5 +1,22 @@
 # Invariant Registry
 
+## DRAFT — issue #3660 (Host account deletion completes or changes nothing)
+
+### I-PROPOSED-3660-HOST-DELETION-IS-ONE-TRANSACTION (DRAFT)
+
+- **Rule:** Every database write of a Host account deletion happens inside `public.biz_delete_host_account`, in one transaction: a refusal returns before any write, and any error rolls the whole call back. `purgeBusinessSideData` makes one RPC call and no table write. No provider call (Stripe, Paystack), trial-phone record or login deletion happens before that call returns `deleted`. After it returns `deleted`, `delete-user` answers 2xx whatever the later steps do. A refusal is HTTP 409 with `code = "account_deletion_blocked"`; a failed call is HTTP 500 with `code = "account_deletion_failed"`; in both, nothing was changed.
+- **Scope:** `supabase/functions/_shared/accountDeletionSides.ts`, `supabase/functions/delete-user/index.ts` (business side), migration `20270813003660_issue_3660_host_account_deletion_atomic.sql`. `issue_2063_guard_brand_soft_delete` and `tg_brand_team_members_removal_guard` are not edited and not bypassed: the function satisfies them (it takes zero-sale upcoming events down before the brand, and ends the user's partner links before their team rows).
+- **Enforcement:** Deno `issue_3660_host_account_deletion.implementor.happy.test.ts` and `issue_3660_auth_step_after_purge.tester.adversarial.test.ts` (both execute the real module against a recording client) in the Stripe Deno lane of `supabase-migrations-and-stripe-deno.yml`; pg17 `issue_3660_host_account_deletion.tester.adversarial.pg17.test.sql` (blocked writes nothing; a forced write failure raises and leaves every row as it was) in the migrations job of the same workflow.
+- **Regression test:** the Deno happy suite fails if any of the three table writes returns to `purgeBusinessSideData` or if a provider is called before the RPC or on a blocked result.
+- **Status:** DRAFT until this PR merges, the migration is applied under the reviewed lane, and one real Host deletion and one real refusal are observed in production and recorded on #3660.
+
+### I-PROPOSED-3660-DELETED-HOST-ACCOUNT-OWNS-NO-LIVE-BRAND (DRAFT)
+
+- **Rule:** `creator_accounts.deleted_at IS NOT NULL` implies no brand with that `account_id` has `deleted_at IS NULL`. Nothing but `public.biz_delete_host_account` sets that column.
+- **Scope:** `public.creator_accounts`, `public.brands`. Clearing the marker (sign-in to Host again) is allowed and yields an empty Host account; it never brings a brand back.
+- **Enforcement:** pg17 `issue_3660_host_account_deletion.implementor.happy.pg17.test.sql` (SC-2, SC-15) and the adversarial suite above; after deploy, this read-only query must return no row and its result is recorded on #3660: `SELECT ca.id FROM public.creator_accounts ca WHERE ca.deleted_at IS NOT NULL AND EXISTS (SELECT 1 FROM public.brands b WHERE b.account_id = ca.id AND b.deleted_at IS NULL);`
+- **Status:** DRAFT. One production row (the host of brand `64c788b0-…`) violates the rule today, from before this change; the migration writes no data and takes no action on it. Stays DRAFT until Seth has decided that row's outcome and the query above returns nothing.
+
 ## DRAFT — issue #3655 (venue save/leave is predictable)
 
 ### I-PROPOSED-3655-VENUE-LEAVE-THREE-WAY (DRAFT)
