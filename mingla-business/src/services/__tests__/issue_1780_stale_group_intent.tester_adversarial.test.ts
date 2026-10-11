@@ -115,10 +115,11 @@ describe("#1780 stale saved-group/Everyone recovery", () => {
       return args[1]?.type === "NullLiteral";
     });
 
-    // Everyone and Saved groups both intentionally have no localDesired IDs
-    // until the server expands them. This proves why their receipt cannot be
-    // treated as disposable local retry bookkeeping.
-    expect(receiptOnlyMutations).toHaveLength(2);
+    // Everyone, Followers, Friends of followers, and Saved groups intentionally
+    // have no localDesired IDs until the server expands them. This proves why
+    // their receipt cannot be treated as disposable local retry bookkeeping.
+    // [TEST-MOD-APPROVED #3682] Wave 2.8b adds two circle source buttons.
+    expect(receiptOnlyMutations).toHaveLength(4);
   });
 
   test("a revision conflict retains the only exact intent for explicit retry", () => {

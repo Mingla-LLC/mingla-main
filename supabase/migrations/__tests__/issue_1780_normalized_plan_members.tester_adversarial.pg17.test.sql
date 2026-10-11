@@ -234,7 +234,7 @@ DECLARE v_plan jsonb;
 BEGIN
   v_plan:=public.biz_replace_offering_invite_plan_v1(
     '00000000-1780-4000-8000-000000000804',
-    '{"includeEveryone":false,"manualGroupIds":["00000000-1780-4000-8000-000000000821"],"personIds":["00000000-1780-4000-8000-000000000811","00000000-1780-4000-8000-000000000811"],"excludedPersonIds":[]}',
+    '{"includeEveryone":false,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":["00000000-1780-4000-8000-000000000821"],"personIds":["00000000-1780-4000-8000-000000000811","00000000-1780-4000-8000-000000000811"],"excludedPersonIds":[]}',
     0,'00000000-1780-4000-8000-000000000841'
   );
   IF (v_plan->>'selectionRevision')::bigint<>1
@@ -273,7 +273,7 @@ BEGIN
 
   v_plan:=public.biz_replace_offering_invite_plan_v1(
     '00000000-1780-4000-8000-000000000804',
-    '{"includeEveryone":false,"manualGroupIds":[],"personIds":["00000000-1780-4000-8000-000000000811","00000000-1780-4000-8000-000000000813"],"excludedPersonIds":[]}',
+    '{"includeEveryone":false,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":[],"personIds":["00000000-1780-4000-8000-000000000811","00000000-1780-4000-8000-000000000813"],"excludedPersonIds":[]}',
     1,'00000000-1780-4000-8000-000000000842'
   );
   IF (v_plan->>'selectionRevision')::bigint<>2
@@ -295,7 +295,7 @@ BEGIN
 
   v_plan:=public.biz_replace_offering_invite_plan_v1(
     '00000000-1780-4000-8000-000000000804',
-    '{"includeEveryone":false,"manualGroupIds":["00000000-1780-4000-8000-000000000821"],"personIds":["00000000-1780-4000-8000-000000000811"],"excludedPersonIds":["00000000-1780-4000-8000-000000000813"]}',
+    '{"includeEveryone":false,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":["00000000-1780-4000-8000-000000000821"],"personIds":["00000000-1780-4000-8000-000000000811"],"excludedPersonIds":["00000000-1780-4000-8000-000000000813"]}',
     3,'00000000-1780-4000-8000-000000000844'
   );
   IF (v_plan->>'selectionRevision')::bigint<>4
@@ -367,7 +367,7 @@ BEGIN
   BEGIN
     PERFORM public.biz_replace_offering_invite_plan_v1(
       '00000000-1780-4000-8000-000000000804',
-      '{"includeEveryone":false,"manualGroupIds":["00000000-1780-4000-8000-000000000822"],"personIds":[],"excludedPersonIds":[]}',
+      '{"includeEveryone":false,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":["00000000-1780-4000-8000-000000000822"],"personIds":[],"excludedPersonIds":[]}',
       4,'00000000-1780-4000-8000-000000000845'
     );
     RAISE EXCEPTION 'T-1780-MEM-07 FAIL: 501 normalized members were accepted';

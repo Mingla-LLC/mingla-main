@@ -208,8 +208,9 @@ describe("issue #1780 tester adversarial — required Invite people states", () 
     const json = renderer.toJSON();
     const text = treeText(json).replace(/\s+/g, " ").trim();
     expect(countExactText(json, "Invite people")).toBe(1);
+    // [TEST-MOD-APPROVED #3682] subtitle names Followers / Friends of followers.
     expect(text).toContain(
-      "Choose people from Your Book. Nothing sends until this trip is published.",
+      "Choose people from Your Book, followers, or friends of followers. Nothing sends until this trip is published.",
     );
     expect(text).toContain("Nothing sends yet");
   });
@@ -219,11 +220,14 @@ describe("issue #1780 tester adversarial — required Invite people states", () 
     const json = renderer.toJSON();
     const text = treeText(json);
     expect(countExactText(json, "Invite people")).toBe(0);
+    // [TEST-MOD-APPROVED #3682] subtitle names Followers / Friends of followers.
     expect(text).not.toContain(
-      "Choose people from Your Book. Nothing sends until this event is published.",
+      "Choose people from Your Book, followers, or friends of followers. Nothing sends until this event is published.",
     );
     expect(text).toContain("Nothing sends yet");
     expect(text).toContain("Saved groups");
+    expect(text).toContain("Followers"); // [TEST-MOD-APPROVED #3682]
+    expect(text).toContain("Friends of followers"); // [TEST-MOD-APPROVED #3682]
     expect(text).toContain("Launch circle");
     expect(button(renderer, /^Select all$/i)).toBeDefined();
     expect(button(renderer, /^(?:Choose people|Edit selection)$/i)).toBeDefined();
@@ -243,6 +247,8 @@ describe("issue #1780 tester adversarial — required Invite people states", () 
           selectedCount={selectedCount as number}
           disabled={false}
           onSelectEveryone={jest.fn()}
+          onSelectFollowers={jest.fn()} // [TEST-MOD-APPROVED #3682]
+          onSelectFriendsOfFollowers={jest.fn()} // [TEST-MOD-APPROVED #3682]
           onSelectGroup={jest.fn()}
           onChoosePeople={jest.fn()}
         />,

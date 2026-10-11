@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-11 — Hosts can invite Followers and Friends of followers when creating an offering (alongside Your Book); flag stays off until ops flip (toward #3682, PR #3790)
 - 2026-10-11 — Who's going defaults to private: Show me as going starts off, friends still see friends, and the guest list says N going · M keep it private (toward #3682, PR #3789)
 - 2026-10-10 — Hosts see remaining monthly SMS/email allowance on blast review, get a 4th-blast-in-a-week Send anyway warning, and confirm is blocked past 100 SMS / 1,000 emails; guests can toggle Push per brand again (toward #3682, PR #3788)
 - 2026-10-10 — Guests can mute brands they follow (1 week / 30 days / until), manage per-brand push/email/text, and see Brands you follow on Profile — muted guests are skipped on follower blasts (toward #3682, PR #3787)

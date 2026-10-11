@@ -1,4 +1,5 @@
 -- #1780 implementor happy path: private snapshots, exact revisions, 500-person
+-- [TEST-MOD-APPROVED #3682] selection key lock gains includeFollowers + includeFriendsOfFollowers
 -- ceiling, old-client no-plan behavior, and publish-time durable intent.
 \set ON_ERROR_STOP on
 BEGIN;
@@ -148,7 +149,7 @@ DECLARE v_first jsonb;
 BEGIN
   v_first:=public.biz_replace_offering_invite_plan_v1(
     '00000000-1780-4000-8000-000000000010',
-    '{"includeEveryone":true,"manualGroupIds":["00000000-1780-4000-8000-000000000030","00000000-1780-4000-8000-000000000030"],"personIds":["00000000-1780-4000-8000-000000000020","00000000-1780-4000-8000-000000000020"],"excludedPersonIds":["00000000-1780-4000-8000-000000000022"]}',
+    '{"includeEveryone":true,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":["00000000-1780-4000-8000-000000000030","00000000-1780-4000-8000-000000000030"],"personIds":["00000000-1780-4000-8000-000000000020","00000000-1780-4000-8000-000000000020"],"excludedPersonIds":["00000000-1780-4000-8000-000000000022"]}',
     0,'00000000-1780-4000-8000-000000000050');
   IF (v_first->>'selectedCount')::integer<>2 OR (v_first->>'selectionRevision')::integer<>1
      OR v_first->'brandPersonIds'<>jsonb_build_array(
@@ -175,7 +176,7 @@ DECLARE v_replay jsonb; v_after jsonb; v_state text;
 BEGIN
   v_replay:=public.biz_replace_offering_invite_plan_v1(
     '00000000-1780-4000-8000-000000000010',
-    '{"includeEveryone":true,"manualGroupIds":["00000000-1780-4000-8000-000000000030","00000000-1780-4000-8000-000000000030"],"personIds":["00000000-1780-4000-8000-000000000020","00000000-1780-4000-8000-000000000020"],"excludedPersonIds":["00000000-1780-4000-8000-000000000022"]}',
+    '{"includeEveryone":true,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":["00000000-1780-4000-8000-000000000030","00000000-1780-4000-8000-000000000030"],"personIds":["00000000-1780-4000-8000-000000000020","00000000-1780-4000-8000-000000000020"],"excludedPersonIds":["00000000-1780-4000-8000-000000000022"]}',
     0,'00000000-1780-4000-8000-000000000050');
   v_after:=public.biz_get_offering_invite_plan_v1('00000000-1780-4000-8000-000000000010');
   IF (v_replay->>'replayed')::boolean IS DISTINCT FROM true
@@ -185,7 +186,7 @@ BEGIN
   BEGIN
     PERFORM public.biz_replace_offering_invite_plan_v1(
       '00000000-1780-4000-8000-000000000010',
-      '{"includeEveryone":false,"manualGroupIds":[],"personIds":[],"excludedPersonIds":[]}',
+      '{"includeEveryone":false,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":[],"personIds":[],"excludedPersonIds":[]}',
       0,'00000000-1780-4000-8000-000000000051');
     RAISE EXCEPTION 'T-1780-03 FAIL: published offering accepted a new mutation';
   EXCEPTION WHEN OTHERS THEN
@@ -204,7 +205,7 @@ DECLARE v_replay jsonb;
 BEGIN
   v_replay:=public.biz_replace_offering_invite_plan_v1(
     '00000000-1780-4000-8000-000000000010',
-    '{"includeEveryone":true,"manualGroupIds":["00000000-1780-4000-8000-000000000030","00000000-1780-4000-8000-000000000030"],"personIds":["00000000-1780-4000-8000-000000000020","00000000-1780-4000-8000-000000000020"],"excludedPersonIds":["00000000-1780-4000-8000-000000000022"]}',
+    '{"includeEveryone":true,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":["00000000-1780-4000-8000-000000000030","00000000-1780-4000-8000-000000000030"],"personIds":["00000000-1780-4000-8000-000000000020","00000000-1780-4000-8000-000000000020"],"excludedPersonIds":["00000000-1780-4000-8000-000000000022"]}',
     0,'00000000-1780-4000-8000-000000000050');
   IF (v_replay->>'replayed')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'T-1780-03A FAIL: deleted offering lost acknowledged receipt replay';
@@ -212,7 +213,7 @@ BEGIN
   BEGIN
     PERFORM public.biz_replace_offering_invite_plan_v1(
       '00000000-1780-4000-8000-000000000010',
-      '{"includeEveryone":false,"manualGroupIds":[],"personIds":[],"excludedPersonIds":[]}',
+      '{"includeEveryone":false,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":[],"personIds":[],"excludedPersonIds":[]}',
       1,'00000000-1780-4000-8000-000000000057');
     RAISE EXCEPTION 'T-1780-03B FAIL: deleted offering accepted a new mutation';
   EXCEPTION WHEN OTHERS THEN
@@ -231,7 +232,7 @@ BEGIN
   BEGIN
     PERFORM public.biz_replace_offering_invite_plan_v1(
       '00000000-1780-4000-8000-000000000010',
-      '{"includeEveryone":false,"manualGroupIds":[],"personIds":[],"excludedPersonIds":[]}',
+      '{"includeEveryone":false,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":[],"personIds":[],"excludedPersonIds":[]}',
       1,'00000000-1780-4000-8000-000000000053');
     RAISE EXCEPTION 'T-1780-03C FAIL: flag-off empty replace was accepted';
   EXCEPTION WHEN OTHERS THEN
@@ -255,7 +256,7 @@ BEGIN
   BEGIN
     PERFORM public.biz_replace_offering_invite_plan_v1(
       '00000000-1780-4000-8000-000000000010',
-      '{"includeEveryone":false,"manualGroupIds":[],"personIds":[],"excludedPersonIds":["00000000-1780-4000-8000-000000000023"]}',
+      '{"includeEveryone":false,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":[],"personIds":[],"excludedPersonIds":["00000000-1780-4000-8000-000000000023"]}',
       1,'00000000-1780-4000-8000-000000000055');
     RAISE EXCEPTION 'T-1780-03E FAIL: foreign exclusion was accepted';
   EXCEPTION WHEN OTHERS THEN
@@ -264,7 +265,7 @@ BEGIN
   BEGIN
     PERFORM public.biz_replace_offering_invite_plan_v1(
       '00000000-1780-4000-8000-000000000010',
-      '{"includeEveryone":false,"manualGroupIds":[],"personIds":[],"excludedPersonIds":[]}',
+      '{"includeEveryone":false,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":[],"personIds":[],"excludedPersonIds":[]}',
       0,'00000000-1780-4000-8000-000000000056');
     RAISE EXCEPTION 'T-1780-03F FAIL: stale revision was accepted';
   EXCEPTION WHEN OTHERS THEN
@@ -286,7 +287,7 @@ BEGIN
   BEGIN
     PERFORM public.biz_replace_offering_invite_plan_v1(
       '00000000-1780-4000-8000-000000000010',
-      '{"includeEveryone":true,"manualGroupIds":[],"personIds":[],"excludedPersonIds":[]}',
+      '{"includeEveryone":true,"includeFollowers":false,"includeFriendsOfFollowers":false,"manualGroupIds":[],"personIds":[],"excludedPersonIds":[]}',
       1,'00000000-1780-4000-8000-000000000052');
     RAISE EXCEPTION 'T-1780-04 FAIL: >500 selection was truncated/accepted';
   EXCEPTION WHEN OTHERS THEN
