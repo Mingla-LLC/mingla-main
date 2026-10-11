@@ -124,6 +124,7 @@ function serviceError(error: ServiceErrorLike): WizardInvitePlanError {
     !["wizard_invite_forbidden", "wizard_invite_not_found_or_forbidden",
       "wizard_invite_selection_invalid", "wizard_invite_selection_too_large",
       "wizard_invite_plan_locked", "wizard_invite_feature_disabled",
+      "wizard_invite_circle_unavailable",
       "wizard_invite_offering_not_draft", "wizard_invite_auth_required"].includes(code),
     currentRevisionMatch ? Number(currentRevisionMatch[1]) : null);
 }
