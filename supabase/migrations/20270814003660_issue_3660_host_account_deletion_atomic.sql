@@ -12,7 +12,7 @@
 -- exception rolls the whole call back. There is no EXCEPTION block anywhere in
 -- these functions, on purpose.
 --
--- It creates four functions for the deletion, plus one narrowly scoped guard
+-- It creates five functions for the deletion, plus one narrowly scoped guard
 -- trigger on public.brands (section 4: a signed-in, non-admin user may not
 -- clear brands.deleted_at, so "deletion is final" is enforced by the database).
 -- No table, column, index, policy, constraint or foreign key changes, and it
@@ -54,8 +54,10 @@ CREATE SCHEMA IF NOT EXISTS private;
 --     therefore: has a snapshot, OR has the provider reference that earns it
 --     one. A CASH door sale has neither: Mingla never held that money.
 --   * the arm's own status / amount conditions, and "something is left to pay"
---     (gross minus refunds > 0; the sweep's `gross-refunded-disputed>0`
---     without the dispute term, because an open dispute is money in motion).
+--     (the sweep's `gross-refunded-disputed>0`, with one difference: only a
+--     TERMINALLY LOST dispute comes off here. The sweep also takes off a
+--     dispute that is still open; an open dispute is money in motion, so it
+--     keeps counting. See ARM 1 and ARM 4.)
 --
 -- What is deliberately NOT mirrored, in every arm:
 --   * maturity (`anchor_end_at + 3 days <= p_now`): that is WHEN the sweep
@@ -102,7 +104,21 @@ AS $function$
     AND NOT (e.id = ANY (p_skip_event_ids))
     AND o.payment_status IN ('paid', 'partial_refund')
     AND o.total_cents > 0
-    AND o.total_cents - o.refunded_amount_cents > 0
+    -- Something is left to pay out. Refunds come off, and so does a dispute
+    -- that is TERMINALLY LOST (Stripe status 'lost'): that money went back to
+    -- the cardholder and is not held by anyone. The sweep subtracts every
+    -- dispute that is not won (lines 618-619: `d.status NOT IN
+    -- ('won','warning_closed')`) and then requires gross-refunded-disputed>0
+    -- (line 754), so an order lost in full is never ledgered and nothing can
+    -- ever release it. Only 'lost' comes off here: an OPEN dispute is money in
+    -- motion and still counts; a dispute the merchant WON takes nothing off.
+    -- (The sweep's dispute term reads stripe_disputes only, so that is all
+    -- that is mirrored. A Paystack dispute changes a payout item once one
+    -- exists, in record_paystack_dispute_outcome, and never stops the sweep
+    -- from ledgering the sale, so it never strands a Host here.)
+    AND o.total_cents - o.refunded_amount_cents - COALESCE((
+          SELECT sum(d.amount)::integer FROM public.stripe_disputes d
+          WHERE d.order_id = o.id AND d.status = 'lost'), 0) > 0
     AND b.payout_hold_cutover_at IS NOT NULL
     AND o.created_at > b.payout_hold_cutover_at
     AND EXISTS (
@@ -211,11 +227,17 @@ AS $function$
     AND vo.payment_status IN ('paid', 'partial_refund')
     AND vo.total_cents > 0
     AND vo.confirmed_at IS NOT NULL
+    -- Refunds come off, and a TERMINALLY LOST dispute (same rule as ARM 1;
+    -- sweep lines 689-690: `d.venue_order_id=vo.id AND d.status NOT IN
+    -- ('won','warning_closed')`, then line 754).
     AND vo.total_cents - COALESCE((
           SELECT sum(sr.buyer_refund_processed_cents)::integer
           FROM public.source_refunds sr
           WHERE sr.source_type = 'venue_menu_order' AND sr.source_id = vo.id
-            AND sr.buyer_state = 'processed'), 0) > 0
+            AND sr.buyer_state = 'processed'), 0)
+        - COALESCE((
+          SELECT sum(d.amount)::integer FROM public.stripe_disputes d
+          WHERE d.venue_order_id = vo.id AND d.status = 'lost'), 0) > 0
     AND b.payout_hold_cutover_at IS NOT NULL
     AND vo.created_at > b.payout_hold_cutover_at
     AND (
@@ -279,6 +301,107 @@ REVOKE ALL ON FUNCTION private.host_account_unreleased_held_money(uuid[], uuid[]
 
 COMMENT ON FUNCTION private.host_account_unreleased_held_money(uuid[], uuid[]) IS
   'Issue #3660: money Mingla holds for these brands that the payout sweep would ledger and that no RELEASED payout item covers. One arm per sweep arm; mirror every change to run_payout_release_dark_sweep here.';
+
+-- ---------------------------------------------------------------------------
+-- 0b. Provider targets of EARLIER deletions of an account, checked against
+--     TODAY before they are handed out.
+--
+-- A deletion returns the Stripe accounts and Paystack subaccounts it detached
+-- so the caller can deactivate them at the provider, and a retry (or a later
+-- deletion after sign-in recovery) has to return the earlier ones again in
+-- case the first response was lost. Those earlier targets live in the
+-- account's host_account.deleted audit rows. They are HISTORY. Between the
+-- first deletion and the retry, support can restore the brand and hand it to
+-- another owner, and that owner can reconnect payouts, which reuses the SAME
+-- Stripe account id. Returning the old target then would have the caller
+-- delete another owner's live payout account at the provider.
+--
+-- So an earlier target is returned ONLY when all of this is true right now:
+--   * the audit entry names its brand (an entry without a brand id cannot be
+--     checked, so it is not returned);
+--   * that brand is still owned by this account;
+--   * that brand is still deleted;
+--   * Stripe: the brand's stripe_connect_accounts row still carries that exact
+--     account id AND is still stamped detached;
+--   * Paystack: the brand still has no subaccount code (the deletion cleared
+--     it; that is its detach stamp) and no active payout recipient. The code
+--     itself cannot be compared because the deletion cleared it from the row;
+--     the audit entry is the only place it still exists.
+-- Anything that fails a test is dropped silently. It must never reach the
+-- caller. Entries that are not objects, or miss a field, are dropped too.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.host_account_earlier_provider_targets(p_user_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+  WITH rows AS (
+    SELECT al.before
+    FROM public.audit_log al
+    WHERE al.action = 'host_account.deleted'
+      AND al.target_type = 'creator_account'
+      AND al.target_id = p_user_id::text
+      AND jsonb_typeof(al.before) = 'object'
+  ),
+  stripe AS (
+    SELECT DISTINCT x->>'brand_id' AS brand_id, x->>'stripe_account_id' AS stripe_account_id
+    FROM rows r
+    CROSS JOIN LATERAL jsonb_array_elements(
+      CASE WHEN jsonb_typeof(r.before->'stripe_accounts') = 'array'
+           THEN r.before->'stripe_accounts' ELSE '[]'::jsonb END) x
+    WHERE jsonb_typeof(x) = 'object'
+      AND x->>'brand_id' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+      AND COALESCE(x->>'stripe_account_id', '') <> ''
+  ),
+  paystack AS (
+    SELECT DISTINCT x->>'brand_id' AS brand_id, x->>'subaccount_code' AS subaccount_code
+    FROM rows r
+    CROSS JOIN LATERAL jsonb_array_elements(
+      CASE WHEN jsonb_typeof(r.before->'paystack_subaccounts') = 'array'
+           THEN r.before->'paystack_subaccounts' ELSE '[]'::jsonb END) x
+    WHERE jsonb_typeof(x) = 'object'
+      AND x->>'brand_id' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+      AND COALESCE(x->>'subaccount_code', '') <> ''
+  )
+  SELECT jsonb_build_object(
+    'stripe_accounts', COALESCE((
+      SELECT jsonb_agg(
+               jsonb_build_object('brand_id', t.brand_id, 'stripe_account_id', t.stripe_account_id)
+               ORDER BY t.brand_id, t.stripe_account_id)
+      FROM stripe t
+      WHERE EXISTS (
+        SELECT 1
+        FROM public.brands b
+        JOIN public.stripe_connect_accounts sca ON sca.brand_id = b.id
+        WHERE b.id = t.brand_id::uuid
+          AND b.account_id = p_user_id
+          AND b.deleted_at IS NOT NULL
+          AND sca.stripe_account_id = t.stripe_account_id
+          AND sca.detached_at IS NOT NULL)), '[]'::jsonb),
+    'paystack_subaccounts', COALESCE((
+      SELECT jsonb_agg(
+               jsonb_build_object('brand_id', t.brand_id, 'subaccount_code', t.subaccount_code)
+               ORDER BY t.brand_id, t.subaccount_code)
+      FROM paystack t
+      WHERE EXISTS (
+        SELECT 1
+        FROM public.brands b
+        WHERE b.id = t.brand_id::uuid
+          AND b.account_id = p_user_id
+          AND b.deleted_at IS NOT NULL
+          AND b.paystack_subaccount_code IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM public.brand_paystack_recipients r
+            WHERE r.brand_id = b.id AND r.is_active))), '[]'::jsonb)
+  );
+$function$;
+
+REVOKE ALL ON FUNCTION private.host_account_earlier_provider_targets(uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+COMMENT ON FUNCTION private.host_account_earlier_provider_targets(uuid) IS
+  'Issue #3660: provider targets recorded by earlier deletions of this account that are STILL true today (brand still owned by the account, still deleted, provider row still detached). Anything else is dropped and must never be handed to delete-user.';
 
 -- ---------------------------------------------------------------------------
 -- 1. Preflight: every reason a Host account deletion must be refused.
@@ -515,6 +638,9 @@ DECLARE
   v_stripe_accounts jsonb := '[]'::jsonb;
   v_paystack_subaccounts jsonb := '[]'::jsonb;
   v_stripe_detached_now integer := 0;
+  v_earlier jsonb;
+  v_new_stripe_accounts jsonb := '[]'::jsonb;
+  v_new_paystack_subaccounts jsonb := '[]'::jsonb;
 BEGIN
   IF auth.role() IS DISTINCT FROM 'service_role' THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
@@ -611,29 +737,12 @@ BEGIN
      AND cardinality(v_brand_ids) = 0
      AND cardinality(v_link_ids) = 0
      AND NOT v_has_foreign_membership THEN
-    -- Every host_account.deleted row of this account contributes (not just
-    -- the newest: two rows written in one transaction share a created_at, and
-    -- "newest" would then be a coin toss), de-duplicated.
-    SELECT COALESCE(jsonb_agg(t.x ORDER BY t.x->>'brand_id', t.x->>'stripe_account_id'), '[]'::jsonb)
-    INTO v_stripe_accounts
-    FROM (
-      SELECT DISTINCT jsonb_array_elements(al.before->'stripe_accounts') AS x
-      FROM public.audit_log al
-      WHERE al.action = 'host_account.deleted'
-        AND al.target_type = 'creator_account'
-        AND al.target_id = p_user_id::text
-        AND jsonb_typeof(al.before->'stripe_accounts') = 'array'
-    ) t;
-    SELECT COALESCE(jsonb_agg(t.x ORDER BY t.x->>'brand_id', t.x->>'subaccount_code'), '[]'::jsonb)
-    INTO v_paystack_subaccounts
-    FROM (
-      SELECT DISTINCT jsonb_array_elements(al.before->'paystack_subaccounts') AS x
-      FROM public.audit_log al
-      WHERE al.action = 'host_account.deleted'
-        AND al.target_type = 'creator_account'
-        AND al.target_id = p_user_id::text
-        AND jsonb_typeof(al.before->'paystack_subaccounts') = 'array'
-    ) t;
+    -- Every host_account.deleted row of this account contributes, but only
+    -- the targets that are STILL true today (see
+    -- private.host_account_earlier_provider_targets above).
+    v_earlier := private.host_account_earlier_provider_targets(p_user_id);
+    v_stripe_accounts := v_earlier->'stripe_accounts';
+    v_paystack_subaccounts := v_earlier->'paystack_subaccounts';
 
     RETURN jsonb_build_object(
       'status', 'deleted',
@@ -744,37 +853,35 @@ BEGIN
   --      subaccount of the first deletion would then never be deactivated.
   --      So every earlier host_account.deleted audit row for this account
   --      contributes its targets, merged with this run's and de-duplicated.
-  --      Both provider calls are safe to repeat. The merged lists are what the
-  --      audit row below stores, so the newest row always holds them all.
+  --      Both provider calls are safe to repeat. The audit row below stores
+  --      only what THIS run detached, each entry with its brand id, so every
+  --      row is a true record of one run and can be checked later.
+  --      Earlier targets are only taken when they are STILL true today
+  --      (private.host_account_earlier_provider_targets): a brand since
+  --      restored, reassigned or reconnected is dropped.
+  v_new_stripe_accounts := v_stripe_accounts;
+  v_new_paystack_subaccounts := v_paystack_subaccounts;
+  v_earlier := private.host_account_earlier_provider_targets(p_user_id);
+
   SELECT COALESCE(jsonb_agg(t.x ORDER BY t.x->>'brand_id', t.x->>'stripe_account_id'), '[]'::jsonb)
   INTO v_stripe_accounts
   FROM (
-    SELECT DISTINCT x
+    SELECT DISTINCT u.x
     FROM (
-      SELECT jsonb_array_elements(v_stripe_accounts) AS x
+      SELECT jsonb_array_elements(v_new_stripe_accounts) AS x
       UNION ALL
-      SELECT jsonb_array_elements(al.before->'stripe_accounts')
-      FROM public.audit_log al
-      WHERE al.action = 'host_account.deleted'
-        AND al.target_type = 'creator_account'
-        AND al.target_id = p_user_id::text
-        AND jsonb_typeof(al.before->'stripe_accounts') = 'array'
+      SELECT jsonb_array_elements(v_earlier->'stripe_accounts')
     ) u
   ) t;
 
   SELECT COALESCE(jsonb_agg(t.x ORDER BY t.x->>'brand_id', t.x->>'subaccount_code'), '[]'::jsonb)
   INTO v_paystack_subaccounts
   FROM (
-    SELECT DISTINCT x
+    SELECT DISTINCT u.x
     FROM (
-      SELECT jsonb_array_elements(v_paystack_subaccounts) AS x
+      SELECT jsonb_array_elements(v_new_paystack_subaccounts) AS x
       UNION ALL
-      SELECT jsonb_array_elements(al.before->'paystack_subaccounts')
-      FROM public.audit_log al
-      WHERE al.action = 'host_account.deleted'
-        AND al.target_type = 'creator_account'
-        AND al.target_id = p_user_id::text
-        AND jsonb_typeof(al.before->'paystack_subaccounts') = 'array'
+      SELECT jsonb_array_elements(v_earlier->'paystack_subaccounts')
     ) u
   ) t;
 
@@ -833,11 +940,14 @@ BEGIN
     'host_account.deleted',
     'creator_account',
     p_user_id::text,
-    -- `before` is also the durable source of the provider targets for a retry
-    -- (step 6): keep both lists here, complete.
+    -- `before` is the durable source of the provider targets for a retry
+    -- (step 6) and for a later deletion (7.4c). It holds what THIS run
+    -- detached: {brand_id, stripe_account_id} and {brand_id, subaccount_code}.
+    -- The brand id is what lets a later call check the target is still this
+    -- account's, still deleted and still detached before returning it.
     jsonb_build_object(
-      'paystack_subaccounts', v_paystack_subaccounts,
-      'stripe_accounts', v_stripe_accounts
+      'paystack_subaccounts', v_new_paystack_subaccounts,
+      'stripe_accounts', v_new_stripe_accounts
     ),
     jsonb_build_object(
       'brand_ids', to_jsonb(v_brand_ids),
@@ -961,6 +1071,11 @@ DO $verify$
 DECLARE
   v_fn regprocedure;
 BEGIN
+  IF to_regprocedure('private.host_account_earlier_provider_targets(uuid)') IS NULL
+     OR has_function_privilege('anon', 'private.host_account_earlier_provider_targets(uuid)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'private.host_account_earlier_provider_targets(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'issue_3660 verify: host_account_earlier_provider_targets is missing or callable by an API role';
+  END IF;
   IF to_regprocedure('private.host_account_unreleased_held_money(uuid[], uuid[])') IS NULL
      OR has_function_privilege('anon', 'private.host_account_unreleased_held_money(uuid[], uuid[])', 'EXECUTE')
      OR has_function_privilege('authenticated', 'private.host_account_unreleased_held_money(uuid[], uuid[])', 'EXECUTE') THEN

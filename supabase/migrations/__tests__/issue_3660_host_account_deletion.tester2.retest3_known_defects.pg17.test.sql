@@ -1,4 +1,14 @@
 \set ON_ERROR_STOP on
+-- STATUS (implementor, fourth rework, #3660): BOTH CASES NOW PASS AND THIS FILE
+-- IS REGISTERED IN CI, in the migrations job of the Supabase migrations
+-- workflow. FK-1 was fixed by checking every earlier provider target against
+-- today before returning it (private.host_account_earlier_provider_targets);
+-- FK-2 by taking a terminally lost dispute off what counts as held money. Not
+-- one line of the tester's cases was changed. The header underneath is kept as
+-- written and describes the state BEFORE the fixes. The implementor's own
+-- guards are the FK-1 and FK-2 groups of
+-- issue_3660_host_account_deletion.rework.implementor.pg17.test.sql.
+--
 -- Issue #3660 — INDEPENDENT TESTER (tester2) FINAL RETEST. KNOWN DEFECTS, NOT
 -- REGISTERED IN CI.
 --

@@ -26,6 +26,12 @@
 --        real sweep is run and must agree with the rule on the same fixtures.
 --   RN-3 (third rework)  A later deletion returns the provider targets of
 --        earlier deletions of the same account, de-duplicated.
+--   FK-1 (fourth rework)  ...but only the earlier targets that are still true
+--        today: brand still owned by the account, still deleted, provider row
+--        still detached with that id. A brand since handed to another owner,
+--        reconnected, or an entry that names no brand, is never returned.
+--   FK-2 (fourth rework)  A dispute terminally lost for the full amount is not
+--        held money and does not block; lost in part, open or won still does.
 --
 -- Runs as supabase_admin: money fixtures need session_replication_role =
 -- replica, and F-2 switches to the real `authenticated` role. The replica role
@@ -1191,6 +1197,383 @@ BEGIN
   END IF;
 
   RAISE NOTICE 'issue_3660 rework RN-3 PASS';
+END;
+$$;
+
+-- ============================================================================
+-- FK-1 (fourth rework) — an earlier provider target is returned only if it is
+-- STILL true today: the brand is still owned by this account, still deleted,
+-- and its provider row still carries that id with the detach stamp. Otherwise
+-- it is dropped, on a retry AND on a fresh deletion after sign-in recovery.
+-- ============================================================================
+DO $$
+DECLARE
+  v_h uuid := gen_random_uuid();      -- the Host who deletes
+  v_n uuid := gen_random_uuid();      -- the new owner support hands a brand to
+  v_adm uuid := gen_random_uuid();
+  v_keep uuid := gen_random_uuid();   -- stays deleted under H: the positive control
+  v_moved uuid := gen_random_uuid();  -- restored + reassigned to N, NOT reconnected
+  v_back uuid := gen_random_uuid();   -- restored to H and reconnected
+  v_swap uuid := gen_random_uuid();   -- still H's and deleted, but its Stripe row now holds another id
+  v_live uuid := gen_random_uuid();   -- still H's and deleted, but its Stripe row is attached again
+  v_psr uuid := gen_random_uuid();    -- still H's and deleted, Paystack recipient active again
+  v_own uuid := gen_random_uuid();    -- still deleted and detached, but now owned by N
+  v_undel uuid := gen_random_uuid();  -- still H's and detached, but no longer deleted
+  v_sfx text := replace(gen_random_uuid()::text, '-', '');
+  v_first jsonb;
+  v_retry jsonb;
+  v_fresh jsonb;
+  v_helper jsonb;
+  v_ids text;
+  v_codes text;
+BEGIN
+  INSERT INTO auth.users(id, email) VALUES
+    (v_h, 'i3660r-fk1-h-' || v_sfx || '@example.test'),
+    (v_n, 'i3660r-fk1-n-' || v_sfx || '@example.test'),
+    (v_adm, 'i3660r-fk1-a-' || v_sfx || '@example.test');
+  INSERT INTO public.creator_accounts(id, email)
+  SELECT u.id, u.email FROM auth.users u WHERE u.id IN (v_h, v_n, v_adm);
+  INSERT INTO public.admin_users(email, status)
+  VALUES ('i3660r-fk1-a-' || v_sfx || '@example.test', 'active');
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency)
+  SELECT x.id, v_h, 'I3660R FK1 ' || x.tag, 'i3660r-fk1-' || x.tag || '-' || v_sfx, 'USD'
+  FROM (VALUES (v_keep, 'keep'), (v_moved, 'moved'), (v_back, 'back'),
+               (v_swap, 'swap'), (v_live, 'live'), (v_psr, 'psr'),
+               (v_own, 'own'), (v_undel, 'undel')) x(id, tag);
+  INSERT INTO public.stripe_connect_accounts(brand_id, stripe_account_id, country, default_currency)
+  SELECT x.id, 'acct_fk1' || x.tag || '_' || left(v_sfx, 8), 'US', 'USD'
+  FROM (VALUES (v_keep, 'keep'), (v_moved, 'moved'), (v_back, 'back'),
+               (v_swap, 'swap'), (v_live, 'live'), (v_own, 'own'), (v_undel, 'undel')) x(id, tag);
+  UPDATE public.brands SET paystack_subaccount_code = 'ACCT_fk1keep_' || left(v_sfx, 8) WHERE id = v_keep;
+  UPDATE public.brands SET paystack_subaccount_code = 'ACCT_fk1moved_' || left(v_sfx, 8) WHERE id = v_moved;
+  UPDATE public.brands SET paystack_subaccount_code = 'ACCT_fk1psr_' || left(v_sfx, 8) WHERE id = v_psr;
+  INSERT INTO public.brand_paystack_recipients
+    (brand_id, recipient_code, bank_code, account_fingerprint, account_number_masked, account_name)
+  VALUES (v_psr, 'RCP_fk1psr_' || left(v_sfx, 8), '000', 'hmac-sha256:' || repeat('b', 64),
+          '••••0000', 'I3660R Fixture');
+
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', 'service_role', true);
+  PERFORM set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  -- 1. H is deleted. Seven Stripe targets, three Paystack targets.
+  v_first := public.biz_delete_host_account(v_h);
+  IF v_first->>'status' IS DISTINCT FROM 'deleted'
+     OR jsonb_array_length(v_first->'stripe_accounts') <> 7
+     OR jsonb_array_length(v_first->'paystack_subaccounts') <> 3 THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 fixture: first deletion wrong: %', v_first;
+  END IF;
+
+  -- What the audit row stores: every entry names its brand.
+  IF EXISTS (
+    SELECT 1 FROM public.audit_log al,
+      jsonb_array_elements(al.before->'stripe_accounts' || al.before->'paystack_subaccounts') x
+    WHERE al.action = 'host_account.deleted' AND al.target_id = v_h::text
+      AND NOT (x ? 'brand_id')) THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1: an audit entry does not name its brand';
+  END IF;
+
+  -- Positive control: with nothing changed, a retry returns everything again.
+  v_retry := public.biz_delete_host_account(v_h);
+  IF v_retry->'stripe_accounts' IS DISTINCT FROM v_first->'stripe_accounts'
+     OR v_retry->'paystack_subaccounts' IS DISTINCT FROM v_first->'paystack_subaccounts' THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 control: an untouched retry lost targets: %', v_retry;
+  END IF;
+
+  -- 2. The world moves on.
+  --  (moved) support restores the brand and hands it to N. N does NOT reconnect:
+  --          the Stripe row is still stamped detached with the same id.
+  PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claim.sub', v_adm::text, true);
+  PERFORM set_config('request.jwt.claims',
+    jsonb_build_object('role', 'authenticated', 'sub', v_adm)::text, true);
+  SET LOCAL ROLE authenticated;
+  PERFORM public.admin_set_brand_deleted(v_moved, false, 'i3660r support restore');
+  PERFORM public.admin_reassign_brand_owner(v_moved, v_n, 'i3660r reassign to the new owner');
+  RESET ROLE;
+  IF NOT EXISTS (SELECT 1 FROM public.brands b JOIN public.stripe_connect_accounts s ON s.brand_id = b.id
+                 WHERE b.id = v_moved AND b.account_id = v_n AND b.deleted_at IS NULL
+                   AND s.detached_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 fixture: the moved brand is not live under N with its Stripe row still detached';
+  END IF;
+  --  (own) the brand changes hands while STILL deleted and STILL detached, so
+  --        only the ownership test can drop it. (Written with triggers off: a
+  --        brand's account is immutable through the normal paths.)
+  PERFORM set_config('session_replication_role', 'replica', true);
+  UPDATE public.brands SET account_id = v_n WHERE id = v_own;
+  -- ...and H's own team row on it is closed, as a real handover closes it, so
+  -- H has nothing live left and the retry below takes the already-deleted path.
+  UPDATE public.brand_team_members SET removed_at = now()
+   WHERE brand_id = v_own AND user_id = v_h AND removed_at IS NULL;
+  PERFORM set_config('session_replication_role', 'origin', true);
+  --  (swap) still H's and deleted, but the Stripe row now holds a different id.
+  UPDATE public.stripe_connect_accounts
+     SET stripe_account_id = 'acct_fk1swapNEW_' || left(v_sfx, 8) WHERE brand_id = v_swap;
+  --  (live) still H's and deleted, but the Stripe row was attached again.
+  UPDATE public.stripe_connect_accounts SET detached_at = NULL WHERE brand_id = v_live;
+  --  (psr) still H's and deleted, but its Paystack recipient is active again.
+  UPDATE public.brand_paystack_recipients SET is_active = true WHERE brand_id = v_psr;
+  --  An older-style audit row whose entries carry NO brand id, plus junk.
+  INSERT INTO public.audit_log(user_id, action, target_type, target_id, before, after)
+  VALUES (v_h, 'host_account.deleted', 'creator_account', v_h::text,
+    jsonb_build_object(
+      'stripe_accounts', jsonb_build_array(
+        jsonb_build_object('stripe_account_id', 'acct_fk1NOBRAND_' || left(v_sfx, 8)),
+        jsonb_build_object('brand_id', 'not-a-uuid', 'stripe_account_id', 'acct_fk1BADBRAND'),
+        jsonb_build_object('brand_id', v_keep),
+        'null'::jsonb, to_jsonb(7), to_jsonb('x'::text)),
+      'paystack_subaccounts', jsonb_build_array(
+        jsonb_build_object('subaccount_code', 'ACCT_fk1NOBRAND_' || left(v_sfx, 8)),
+        'null'::jsonb)),
+    '{}'::jsonb);
+
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', 'service_role', true);
+  PERFORM set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  -- 3a. H retries while still marked deleted.
+  v_retry := public.biz_delete_host_account(v_h);
+  IF (v_retry->>'already_deleted')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1: expected the already-deleted path, got %', v_retry;
+  END IF;
+  SELECT string_agg(x->>'stripe_account_id', ',' ORDER BY x->>'stripe_account_id') INTO v_ids
+  FROM jsonb_array_elements(v_retry->'stripe_accounts') x;
+  SELECT string_agg(x->>'subaccount_code', ',' ORDER BY x->>'subaccount_code') INTO v_codes
+  FROM jsonb_array_elements(v_retry->'paystack_subaccounts') x;
+
+  IF v_ids LIKE '%acct_fk1moved_%' THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 RETRY: returned the Stripe account of a brand now owned by another account: %', v_ids;
+  END IF;
+  IF v_codes LIKE '%ACCT_fk1moved_%' THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 RETRY: returned the Paystack subaccount of a brand now owned by another account: %', v_codes;
+  END IF;
+  IF v_ids LIKE '%acct_fk1own_%' THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 RETRY: returned the Stripe account of a deleted brand that now belongs to another account: %', v_ids;
+  END IF;
+  IF v_ids LIKE '%acct_fk1swap_%' OR v_ids LIKE '%acct_fk1swapNEW_%' THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 RETRY: returned an id the brand''s Stripe row no longer carries: %', v_ids;
+  END IF;
+  IF v_ids LIKE '%acct_fk1live_%' THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 RETRY: returned a Stripe account that is attached again: %', v_ids;
+  END IF;
+  IF v_codes LIKE '%ACCT_fk1psr_%' THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 RETRY: returned a Paystack subaccount whose recipient is active again: %', v_codes;
+  END IF;
+  IF v_ids LIKE '%NOBRAND%' OR v_ids LIKE '%BADBRAND%' OR v_codes LIKE '%NOBRAND%' THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 RETRY: returned an entry that names no brand and cannot be checked: % / %', v_ids, v_codes;
+  END IF;
+  -- Exactly what is still true: the untouched brand, and the one restored
+  -- below has not happened yet, so "back" is still deleted and detached.
+  IF v_ids IS DISTINCT FROM (
+       SELECT string_agg(x, ',' ORDER BY x) FROM unnest(ARRAY[
+         'acct_fk1back_' || left(v_sfx, 8), 'acct_fk1keep_' || left(v_sfx, 8),
+         'acct_fk1undel_' || left(v_sfx, 8)]) x)
+     OR v_codes IS DISTINCT FROM 'ACCT_fk1keep_' || left(v_sfx, 8) THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 RETRY: expected exactly the still-true targets, got % / %', v_ids, v_codes;
+  END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_retry->'stripe_accounts' || v_retry->'paystack_subaccounts') x
+             WHERE jsonb_typeof(x) <> 'object' OR NOT (x ? 'brand_id')) THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 RETRY: a malformed entry was passed through: %', v_retry;
+  END IF;
+
+  -- (undel) the brand is restored to H but payouts are NOT reconnected: still
+  -- H's, Stripe row still detached with the same id, so only the "still
+  -- deleted" test can drop it. Checked on the function that does the checking,
+  -- then put back (a live owned brand would send the next call down the
+  -- fresh-deletion path, where it is deleted again as a NEW target).
+  PERFORM set_config('session_replication_role', 'replica', true);
+  UPDATE public.brands SET deleted_at = NULL WHERE id = v_undel;
+  PERFORM set_config('session_replication_role', 'origin', true);
+  v_helper := private.host_account_earlier_provider_targets(v_h);
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_helper->'stripe_accounts') x
+             WHERE x->>'stripe_account_id' LIKE 'acct_fk1undel_%') THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1: a brand that is no longer deleted is still listed as an earlier target: %', v_helper;
+  END IF;
+  PERFORM set_config('session_replication_role', 'replica', true);
+  UPDATE public.brands SET deleted_at = now() WHERE id = v_undel;
+  PERFORM set_config('session_replication_role', 'origin', true);
+
+  -- (back) the brand is restored to H and reconnected: same id, detach cleared.
+  -- It is no longer deleted or detached, so as an EARLIER target it is not true.
+  PERFORM set_config('session_replication_role', 'replica', true);
+  UPDATE public.brands SET deleted_at = NULL WHERE id = v_back;
+  UPDATE public.stripe_connect_accounts SET detached_at = NULL WHERE brand_id = v_back;
+  PERFORM set_config('session_replication_role', 'origin', true);
+  v_helper := private.host_account_earlier_provider_targets(v_h);
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_helper->'stripe_accounts') x
+             WHERE x->>'stripe_account_id' LIKE 'acct_fk1back_%') THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1: a brand restored to its owner and reconnected is still listed as an earlier target: %', v_helper;
+  END IF;
+  -- Put it back to deleted + detached so the fresh deletion below is about
+  -- the earlier targets only (a live owned brand would be deleted afresh,
+  -- which is a NEW target and correct).
+  PERFORM set_config('session_replication_role', 'replica', true);
+  UPDATE public.brands SET deleted_at = now() WHERE id = v_back;
+  UPDATE public.stripe_connect_accounts SET detached_at = now() WHERE brand_id = v_back;
+  PERFORM set_config('session_replication_role', 'origin', true);
+
+  -- 3b. H reopens the app (sign-in recovery clears the marker) and deletes again.
+  UPDATE public.creator_accounts SET deleted_at = NULL WHERE id = v_h;
+  v_fresh := public.biz_delete_host_account(v_h);
+  IF v_fresh->>'status' IS DISTINCT FROM 'deleted'
+     OR (v_fresh->>'already_deleted')::boolean IS NOT FALSE THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1: expected a fresh deletion, got %', v_fresh;
+  END IF;
+  IF v_fresh->'stripe_accounts' IS DISTINCT FROM v_retry->'stripe_accounts'
+     OR v_fresh->'paystack_subaccounts' IS DISTINCT FROM v_retry->'paystack_subaccounts' THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1 FRESH: a fresh deletion returned different earlier targets than the retry: % vs %',
+      v_fresh, v_retry;
+  END IF;
+  -- The new owner's brand was never touched by any of this.
+  IF NOT EXISTS (SELECT 1 FROM public.brands WHERE id = v_moved AND account_id = v_n AND deleted_at IS NULL) THEN
+    RAISE EXCEPTION 'issue_3660 rework FK-1: the brand handed to another owner was modified';
+  END IF;
+
+  RAISE NOTICE 'issue_3660 rework FK-1 PASS';
+END;
+$$;
+
+-- ============================================================================
+-- FK-2 (fourth rework) — a dispute that is terminally LOST is not held money.
+-- Lost in full: nothing is left, the sweep never ledgers it, it must not
+-- block. Lost in part: the remainder is held and blocks. Open: blocks (money
+-- in motion; the same held-money arm covers it, because only 'lost' is
+-- subtracted). Won: blocks until released.
+-- ============================================================================
+DO $$
+DECLARE
+  v_owner uuid := gen_random_uuid();
+  v_brand uuid := gen_random_uuid();
+  v_old uuid := gen_random_uuid();
+  v_sfx text := replace(gen_random_uuid()::text, '-', '');
+  v_o uuid := gen_random_uuid();
+  v_m uuid := gen_random_uuid();
+  f_order text;    -- an online order of 5000 with its fee snapshot
+  f_menu text;     -- a Mingla-path menu order of 1000 with its fee snapshot
+  f_dispute text;  -- %1 'order_id' | 'venue_order_id', %2 subject id, %3 amount, %4 status
+  f_released text;
+BEGIN
+  INSERT INTO auth.users(id) VALUES (v_owner);
+  INSERT INTO public.creator_accounts(id, email) VALUES (v_owner, 'i3660r-fk2@example.test');
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency)
+  VALUES (v_brand, v_owner, 'I3660R FK2', 'i3660r-fk2-' || v_sfx, 'USD');
+  UPDATE public.brands SET payout_hold_cutover_at = now() - interval '30 days' WHERE id = v_brand;
+  INSERT INTO public.events(id, brand_id, created_by, title, slug, status)
+  VALUES (v_old, v_brand, v_owner, 'I3660R FK2 Old', 'i3660r-fk2-o-' || v_sfx, 'scheduled');
+  INSERT INTO public.event_dates(event_id, start_at, end_at)
+  VALUES (v_old, now() - interval '11 days', now() - interval '10 days');
+
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', 'service_role', true);
+  PERFORM set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  f_order := format($f$INSERT INTO public.orders
+      (id, event_id, buyer_email, buyer_name, total_cents, currency, payment_status,
+       source, payment_method, stripe_payment_intent_id, created_at)
+    VALUES (%1$L, %2$L, 'i3660r-buyer@example.test', 'I3660R Buyer', 5000, 'USD', 'paid',
+            'legacy', 'online_card', 'pi_i3660r_fk2', now() - interval '12 days');
+    INSERT INTO public.payout_source_fee_snapshots
+      (id, source_type, source_id, provider_fee_cents, captured_at)
+    VALUES (gen_random_uuid(), 'order', %1$L, 0, now())$f$, v_o, v_old);
+  f_menu := format($f$INSERT INTO public.venue_orders
+      (id, session_id, brand_id, venue_id, qr_spot_id, source, money_path, currency,
+       subtotal_cents, effective_take_rate_bps, service_fee_bps, pass_mingla_fee,
+       pass_service_fee, pass_tax, buyer_subtotal_cents, total_cents, idempotency_key,
+       payment_status, fulfillment_status, acknowledged_at, acknowledged_by_user_id,
+       confirmed_at, created_at, provider, stripe_payment_intent_id,
+       buyer_name, buyer_email, buyer_phone_e164)
+    VALUES (%1$L, gen_random_uuid(), %2$L, gen_random_uuid(), gen_random_uuid(), 'guest_qr',
+            'mingla', 'USD', 1000, 0, 0, false, false, false, 1000, 1000,
+            'i3660r-' || gen_random_uuid()::text, 'paid', 'delivered',
+            now() - interval '12 days', gen_random_uuid(), now() - interval '12 days',
+            now() - interval '12 days', 'stripe', 'pi_i3660r_fk2m',
+            'I3660R Guest', 'i3660r-guest@example.test', '+12015550195');
+    INSERT INTO public.payout_source_fee_snapshots
+      (id, source_type, source_id, provider_fee_cents, captured_at)
+    VALUES (gen_random_uuid(), 'venue_menu_order', %1$L, 0, now())$f$, v_m, v_brand);
+  f_dispute := $f$INSERT INTO public.stripe_disputes
+      (stripe_dispute_id, stripe_charge_id, stripe_account_id, %1$s, amount, currency,
+       status, reason, raw_event)
+    VALUES ('dp_i3660r_' || left(replace(gen_random_uuid()::text, '-', ''), 14),
+            'ch_i3660r_fk2', 'acct_i3660r_fk2', %2$L, %3$s, 'usd', %4$L, 'fraudulent', '{}'::jsonb)$f$;
+  f_released := $f$WITH r AS (
+      INSERT INTO public.brand_payout_releases
+        (id, brand_id, occurrence_key, surface, provider, currency, anchor_end_at,
+         releasable_at, gross_cents, net_release_cents, status)
+      VALUES (gen_random_uuid(), %1$L, 'i3660r-' || gen_random_uuid()::text, 'order',
+              'stripe', 'usd', date_trunc('second', now()) - interval '2 days',
+              date_trunc('second', now()) - interval '1 day', 1000, 1000, 'released')
+      RETURNING id)
+    INSERT INTO public.payout_release_items
+      (id, release_id, source_type, source_id, gross_cents, refunded_cents,
+       disputed_cents, mingla_fee_cents, partner_share_cents, provider_fee_cents,
+       net_cents, source_finalized_at)
+    SELECT gen_random_uuid(), r.id, %2$L, %3$L, 1000, 0, 0, 0, 0, 0, 1000, now() FROM r$f$;
+
+  PERFORM pg_temp.i3660r_case('FK-2 baseline', 'SELECT 1', v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('FK-2 control: the order with no dispute blocks', f_order, v_owner, 'money_in_motion');
+
+  -- ── ticket orders ──────────────────────────────────────────────────────────
+  PERFORM pg_temp.i3660r_case('order: dispute LOST in full',
+    f_order || ';' || format(f_dispute, 'order_id', v_o, 5000, 'lost'), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('order: two disputes LOST that add up to the whole amount',
+    f_order || ';' || format(f_dispute, 'order_id', v_o, 3000, 'lost') || ';' || format(f_dispute, 'order_id', v_o, 2000, 'lost'),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('order: dispute LOST in part (the rest is still held)',
+    f_order || ';' || format(f_dispute, 'order_id', v_o, 2000, 'lost'), v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('order: dispute OPEN (needs_response)',
+    f_order || ';' || format(f_dispute, 'order_id', v_o, 5000, 'needs_response'), v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('order: dispute OPEN (under_review)',
+    f_order || ';' || format(f_dispute, 'order_id', v_o, 5000, 'under_review'), v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('order: dispute WON by the merchant, not yet released',
+    f_order || ';' || format(f_dispute, 'order_id', v_o, 5000, 'won'), v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('order: dispute WON by the merchant, released',
+    f_order || ';' || format(f_dispute, 'order_id', v_o, 5000, 'won') || ';' || format(f_released, v_brand, 'order', v_o),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('order: an inquiry closed without a chargeback (warning_closed)',
+    f_order || ';' || format(f_dispute, 'order_id', v_o, 5000, 'warning_closed'), v_owner, 'money_in_motion');
+  -- A lost dispute on ANOTHER order takes nothing off this one.
+  PERFORM pg_temp.i3660r_case('order: a LOST dispute that belongs to a different order',
+    f_order || ';' || format(f_dispute, 'order_id', gen_random_uuid(), 5000, 'lost'), v_owner, 'money_in_motion');
+
+  -- ── menu orders ────────────────────────────────────────────────────────────
+  PERFORM pg_temp.i3660r_case('FK-2 control: the menu order with no dispute blocks', f_menu, v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('menu order: dispute LOST in full',
+    f_menu || ';' || format(f_dispute, 'venue_order_id', v_m, 1000, 'lost'), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('menu order: dispute LOST in part',
+    f_menu || ';' || format(f_dispute, 'venue_order_id', v_m, 400, 'lost'), v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('menu order: dispute OPEN',
+    f_menu || ';' || format(f_dispute, 'venue_order_id', v_m, 1000, 'needs_response'), v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('menu order: dispute WON, not yet released',
+    f_menu || ';' || format(f_dispute, 'venue_order_id', v_m, 1000, 'won'), v_owner, 'money_in_motion');
+
+  -- ── and the real sweep agrees on the two terminal cases ───────────────────
+  BEGIN
+    PERFORM set_config('session_replication_role', 'replica', true);
+    EXECUTE f_order;
+    EXECUTE format(f_dispute, 'order_id', v_o, 5000, 'lost');
+    EXECUTE f_menu;
+    EXECUTE format(f_dispute, 'venue_order_id', v_m, 400, 'lost');
+    PERFORM set_config('session_replication_role', 'origin', true);
+    PERFORM public.run_payout_release_dark_sweep(now() + interval '60 days');
+    -- Lost in full: the sweep opens nothing, and the rule counts nothing.
+    IF EXISTS (SELECT 1 FROM public.payout_release_items WHERE source_type = 'order' AND source_id = v_o)
+       OR EXISTS (SELECT 1 FROM private.host_account_unreleased_held_money(ARRAY[v_brand], ARRAY[]::uuid[]) h
+                  WHERE h.source_type = 'order') THEN
+      RAISE EXCEPTION 'issue_3660 rework FK-2 sweep: an order lost in full was ledgered or counted';
+    END IF;
+    -- Lost in part: the sweep opens an item, and the rule counts it.
+    IF NOT EXISTS (SELECT 1 FROM public.payout_release_items WHERE source_type = 'venue_menu_order' AND source_id = v_m)
+       OR NOT EXISTS (SELECT 1 FROM private.host_account_unreleased_held_money(ARRAY[v_brand], ARRAY[]::uuid[]) h
+                      WHERE h.source_type = 'venue_menu_order' AND h.source_id = v_m) THEN
+      RAISE EXCEPTION 'issue_3660 rework FK-2 sweep: a menu order lost in part was not ledgered, or not counted';
+    END IF;
+    RAISE EXCEPTION 'i3660r_rollback' USING ERRCODE = 'I3661';
+  EXCEPTION WHEN SQLSTATE 'I3661' THEN
+    NULL;
+  END;
+
+  RAISE NOTICE 'issue_3660 rework FK-2 PASS';
 END;
 $$;
 
