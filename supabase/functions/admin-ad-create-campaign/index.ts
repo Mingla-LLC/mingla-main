@@ -471,7 +471,7 @@ serve(async (req: Request): Promise<Response> => {
       const entitySlugGV = typeof destinationGV.entity_slug === "string"
         ? destinationGV.entity_slug.trim()
         : "";
-      if (!["event", "trip", "brand", "venue"].includes(pageTypeGV)) {
+      if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site"].includes(pageTypeGV)) {
         return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
       }
       if (!brandSlugGV) {
@@ -1039,7 +1039,7 @@ serve(async (req: Request): Promise<Response> => {
     const entitySlugG = typeof destinationG.entity_slug === "string"
       ? destinationG.entity_slug.trim()
       : "";
-    if (!["event", "trip", "brand", "venue"].includes(pageTypeG)) {
+    if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site"].includes(pageTypeG)) {
       return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
     }
     if (!brandSlugG) {
@@ -1562,7 +1562,7 @@ serve(async (req: Request): Promise<Response> => {
     const entitySlugS = typeof destinationS.entity_slug === "string"
       ? destinationS.entity_slug.trim()
       : "";
-    if (!["event", "trip", "brand", "venue"].includes(pageTypeS)) {
+    if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site"].includes(pageTypeS)) {
       return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
     }
     if (!brandSlugS) {
@@ -2226,7 +2226,7 @@ serve(async (req: Request): Promise<Response> => {
     const entitySlugT = typeof destinationT.entity_slug === "string"
       ? destinationT.entity_slug.trim()
       : "";
-    if (!["event", "trip", "brand", "venue"].includes(pageTypeT)) {
+    if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site"].includes(pageTypeT)) {
       return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
     }
     if (!brandSlugT) {
@@ -2807,7 +2807,7 @@ serve(async (req: Request): Promise<Response> => {
     const entitySlugR = typeof destinationR.entity_slug === "string"
       ? destinationR.entity_slug.trim()
       : "";
-    if (!["event", "trip", "brand", "venue"].includes(pageTypeR)) {
+    if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site"].includes(pageTypeR)) {
       return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
     }
     if (!brandSlugR) {
@@ -3271,7 +3271,7 @@ serve(async (req: Request): Promise<Response> => {
   const pageType = destination.page_type ?? "";
   const brandSlug = typeof destination.brand_slug === "string" ? destination.brand_slug.trim() : "";
   const entitySlug = typeof destination.entity_slug === "string" ? destination.entity_slug.trim() : "";
-  if (!["event", "trip", "brand", "venue"].includes(pageType)) {
+  if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site"].includes(pageType)) {
     return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
   }
   if (!brandSlug) return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);

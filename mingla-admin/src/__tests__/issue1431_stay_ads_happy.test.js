@@ -19,11 +19,16 @@ test("issue #1431 Campaign Builder shows Event, Stay, Brand in exact order and p
   assert.match(step, /row\.cover_media_url[\s\S]*bg-\[var\(--gray-100\)\]/);
 });
 
+// [TEST-MOD-APPROVED #3697] Wave 1 lists Stay via `ad_advertisable_pages`
+// (SQL still reads `ad_public_stay_destinations_view`). Pin the RPC + stayUrl
+// helper instead of a client-side view string in the Admin service.
 test("issue #1431 Stay destination reader and create payload use one canonical public venue shape", () => {
   const service = read("src/services/adDestinationsService.js");
   const builder = read("src/pages/CampaignBuilderPage.jsx");
-  assert.match(service, /ad_public_stay_destinations_view/);
+  const migration = read("../supabase/migrations/20270814003697_issue_3697_wave1_advertisable_pages.sql");
+  assert.match(service, /ad_advertisable_pages/);
   assert.match(service, /\/b\/\$\{brandSlug\}\/v\/\$\{slug\}/);
+  assert.match(migration, /ad_public_stay_destinations_view/);
   assert.match(builder, /dest\.page_type === "brand" \? null : dest\.slug/);
 });
 
