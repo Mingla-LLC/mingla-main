@@ -16,6 +16,7 @@ import {
   decideSpendSync,
   metaSpendDollarsToCents,
   parseMetaInsightsSpend,
+  startDateNotReached,
 } from "../adSpendSync.ts";
 
 Deno.test("D1: Meta+TikTok+Snapchat for 7 days = $525 ad budget (Seth example)", () => {
@@ -114,6 +115,18 @@ Deno.test("spend sync: cumulative spend (not sliding window) drives cap pause", 
   assertEquals(decision.total_spend_cents, 9800);
   assertEquals(decision.pause, "cap_98_percent");
   assertEquals(decision.upserts.length, 1);
+});
+
+Deno.test("launch guard: startDateNotReached", () => {
+  assertEquals(
+    startDateNotReached("2026-10-10T00:00:00Z", "2026-10-09T23:00:00Z"),
+    true,
+  );
+  assertEquals(
+    startDateNotReached("2026-10-10T00:00:00Z", "2026-10-10T00:00:00Z"),
+    false,
+  );
+  assertEquals(startDateNotReached(null, "2026-10-10T00:00:00Z"), false);
 });
 
 Deno.test("spend sync: end date pause when under cap", () => {

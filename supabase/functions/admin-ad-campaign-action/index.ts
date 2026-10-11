@@ -31,7 +31,11 @@ import {
   getAdapter,
 } from "../_shared/adChannel.ts";
 import { shouldPauseForCap } from "../_shared/adMoney.ts";
-import { endDatePassed, sumSpendCents } from "../_shared/adSpendSync.ts";
+import {
+  endDatePassed,
+  startDateNotReached,
+  sumSpendCents,
+} from "../_shared/adSpendSync.ts";
 import { redditLaunchWarning } from "../_shared/reddit.ts";
 import { snapchatLaunchWarning } from "../_shared/snapchat.ts";
 import { tiktokLaunchWarning } from "../_shared/tiktok.ts";
@@ -125,9 +129,19 @@ serve(async (req: Request): Promise<Response> => {
   const adapter = getAdapter(campaign.platform);
   const fromStatus = String(campaign.status ?? "PAUSED");
 
-  // toward #3697 Wave 2: launch must not reactivate a campaign past ends_at
-  // or already at/over the 98% hard-cap (spend feed is source of truth).
+  // toward #3697 Wave 2: launch must not reactivate before starts_at, past
+  // ends_at, or already at/over the 98% hard-cap (spend feed is source of truth).
   if (action === "launch") {
+    const startsAt = typeof campaign.starts_at === "string"
+      ? campaign.starts_at
+      : null;
+    if (startDateNotReached(startsAt)) {
+      return json({
+        error: "launch_blocked",
+        detail: "start_date_not_reached",
+        starts_at: startsAt,
+      }, 409);
+    }
     const endsAt = typeof campaign.ends_at === "string" ? campaign.ends_at : null;
     if (endDatePassed(endsAt)) {
       return json({

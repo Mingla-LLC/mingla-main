@@ -63,12 +63,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      # EXPLICIT registry — the ISSUE-1002 implementor suite (payload destinations[]
-      # + group id, N×M fan-out, single-destination backward compat, launchSummary
-      # multi line, migration shape, source wiring) + the TESTER adversarial suite
-      # (anti-cross-contamination across the N×M matrix, empty/single boundaries,
-      # duplicate-destination idempotency). Pure ESM + fs source assertions; no
-      # node_modules required. Both fail-on-revert of the fan-out fix.
+      # EXPLICIT registry — ISSUE-1002 payload/single-dest suites + Wave 2 (#3697)
+      # adversarial that proves multi-destination fan-out is refused (not N×M).
       - name: Run ISSUE-1002 campaign-builder multi-destination suites
         run: >
           node --test
@@ -86,9 +82,7 @@ jobs:
       - uses: denoland/setup-deno@v1
         with:
           deno-version: "1.46.x"
-      # EXPLICIT registry — the ISSUE-1002 edge source-contract suite (destinations[]
-      # + group-id acceptance via the shared resolvers, 5 picks de-duplicated, all
-      # five ad_campaigns inserts persist dest_group_id).
+      # EXPLICIT registry — Wave 2 create-endpoint refusal of fan-out (#3697/#3707).
       - name: Run ISSUE-1002 admin-ad-create-campaign fan-out contract suite
         run: >
           deno test --allow-read

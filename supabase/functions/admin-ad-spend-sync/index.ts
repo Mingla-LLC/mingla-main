@@ -340,6 +340,44 @@ serve(async (req: Request): Promise<Response> => {
       continue;
     }
 
+    // Fail closed on Meta spend-fetch outage for capped ACTIVE campaigns:
+    // stale ad_spend_daily must not keep delivery alive without a fresh read.
+    if (
+      fetchError &&
+      platform === "meta" &&
+      target.status === "ACTIVE" &&
+      typeof target.cap_cents === "number" &&
+      target.cap_cents > 0
+    ) {
+      const pauseResult = await pauseCampaignForReason(
+        supabase,
+        target,
+        row.connection_id,
+        "spend_fetch_failed",
+        cumulative.cents,
+      );
+      if (!pauseResult.ok) {
+        results.push({
+          campaign_id: target.id,
+          pause_failed: pauseResult.detail,
+          fetch_error: fetchError,
+          total_spend_cents: cumulative.cents,
+          ...(upsertError ? { upsert_error: upsertError } : {}),
+        });
+        await touchSpendSyncWatermark(supabase, target.id);
+        continue;
+      }
+      paused += 1;
+      results.push({
+        campaign_id: target.id,
+        paused: "spend_fetch_failed",
+        fetch_error: fetchError,
+        total_spend_cents: cumulative.cents,
+        ...(upsertError ? { upsert_error: upsertError } : {}),
+      });
+      continue;
+    }
+
     const decision = decideSpendSync({
       campaign: target,
       days,

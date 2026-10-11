@@ -26,7 +26,10 @@ export interface CampaignSpendTarget {
   currency: string | null;
 }
 
-export type PauseReason = "cap_98_percent" | "end_date_passed";
+export type PauseReason =
+  | "cap_98_percent"
+  | "end_date_passed"
+  | "spend_fetch_failed";
 
 export interface SpendSyncDecision {
   upserts: Array<{
@@ -60,6 +63,18 @@ export function endDatePassed(
   const now = Date.parse(nowIso);
   if (!Number.isFinite(end) || !Number.isFinite(now)) return false;
   return now >= end;
+}
+
+/** True when starts_at is set and has not yet been reached. */
+export function startDateNotReached(
+  startsAt: string | null | undefined,
+  nowIso: string = new Date().toISOString(),
+): boolean {
+  if (!startsAt) return false;
+  const start = Date.parse(startsAt);
+  const now = Date.parse(nowIso);
+  if (!Number.isFinite(start) || !Number.isFinite(now)) return false;
+  return now < start;
 }
 
 /**
