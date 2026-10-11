@@ -21,7 +21,7 @@ parentheses for traceability.
 
 ## Shipped
 - 2026-10-11 — Ads can target every public page type from one SQL list (trips → /t/, experiences → /exp/), and the create gate rejects past-start pages (toward #3697, PR #3792)
-- 2026-10-11 — Deleting a Host account now either finishes completely or changes nothing: events with no tickets or RSVPs are taken down with the account, a live or upcoming event with tickets or RSVPs stops the deletion with a clear reason, partner connections end, and the app no longer promises 30 days to recover (toward #3660, PR #TBD)
+- 2026-10-11 — Deleting a Host account now either finishes completely or changes nothing: events with no tickets or RSVPs are taken down with the account, a live or upcoming event with tickets or RSVPs stops the deletion with a clear reason, partner connections end, and the app no longer promises 30 days to recover (toward #3660, PR #3793)
 - 2026-10-11 — Ad clicks can be counted first-party before the cookie banner; Reject stops platform sharing; free tickets/RSVPs are sign-ups not $0 purchases; browsers can no longer write conversion rows (toward #3697, PR #3791)
 - 2026-10-11 — Hosts can invite Followers and Friends of followers when creating an offering (alongside Your Book); flag stays off until ops flip (toward #3682, PR #3790)
 - 2026-10-11 — Who's going defaults to private: Show me as going starts off, friends still see friends, and the guest list says N going · M keep it private (toward #3682, PR #3789)
