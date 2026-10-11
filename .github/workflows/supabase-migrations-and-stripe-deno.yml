@@ -1182,6 +1182,16 @@ jobs:
           # are ignored.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest3_sweep_agreement.pg17.test.sql
+          # Issue #3660 tester2, rework 4 (written by the tester). Earlier
+          # provider targets are handed out only when still safe for this
+          # account today: a brand reassigned (reconnected or not), re-pointed,
+          # reattached, or with its Paystack recipient active again is dropped
+          # on a retry and on a fresh deletion; a co-owner gets nothing;
+          # unverifiable audit entries are never returned. Disputes against the
+          # REAL payout sweep: lost in full does not block, lost in part
+          # blocks for the remainder, open blocks, won blocks until released.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest4.pg17.test.sql
           # Issue #3660 rework — the tester's two reproductions (KD-1 = the kept
           # login un-deleting its own brand, KD-2 = a paid order on a just-ended
           # event with no payout yet). They failed on purpose and were left out
@@ -1751,6 +1761,10 @@ jobs:
             # with no provider call; an unanswered or uncoded-5xx failure never
             # tells the Host that nothing was changed.
             supabase/functions/_shared/__tests__/issue_3660_retry_contract.tester2.retest.test.ts
+            # #3660 tester2, rework 4 — the edge module driven with the answer
+            # the database gives once brands have moved on: only the targets
+            # the database kept reach Stripe and Paystack.
+            supabase/functions/_shared/__tests__/issue_3660_dropped_targets.tester2.retest4.test.ts
             # #3660 — registered by the tester at retest. Both files were reported
             # as registered in this lane by the rework, and neither was: no
             # workflow listed them. The first is the implementor's own guard for
