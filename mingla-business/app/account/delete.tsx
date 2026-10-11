@@ -357,10 +357,7 @@ const Step1Warn: React.FC<Step1WarnProps> = ({
     </View>
     <Text style={styles.warnTitle}>Delete your Mingla Host account?</Text>
     <Text style={styles.warnBody}>
-      Your brands, events, team access and public pages are removed straight
-      away, and your payout bank is disconnected. This can't be undone in the
-      app. If a live or upcoming event has tickets or RSVPs, you'll need to
-      cancel it or let it finish first.
+      {"Your brands, events, team access and public pages are removed straight away, and your payout bank is disconnected. This can't be undone in the app. If a live or upcoming event has tickets or RSVPs, you'll need to cancel it or let it finish first."}
     </Text>
     {provider === "apple" ? (
       <View style={styles.appleNote}>
@@ -509,8 +506,7 @@ const Step2Preview: React.FC<Step2PreviewProps> = ({
       <View style={styles.activeEventsWarn}>
         <Icon name="flag" size={16} color={accent.warm} />
         <Text style={styles.activeEventsWarnText}>
-          We couldn't check your events right now. You can continue; we'll
-          check again before anything is deleted.
+          {"We couldn't check your events right now. You can continue; we'll check again before anything is deleted."}
         </Text>
       </View>
     ) : null}

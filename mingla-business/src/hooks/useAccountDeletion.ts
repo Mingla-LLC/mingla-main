@@ -82,7 +82,7 @@ const toDeletionError = async (error: unknown): Promise<Error> => {
       context,
     );
     return parseDeletionFailure(status, body);
-  } catch (_readError) {
+  } catch {
     return parseDeletionFailure(status, null);
   }
 };
