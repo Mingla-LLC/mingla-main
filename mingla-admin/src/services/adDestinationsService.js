@@ -66,7 +66,7 @@ export async function listAdvertisablePages({
     title: row.title,
     slug: row.entity_slug ?? row.brand_slug,
     brand_slug: row.brand_slug,
-    brand_name: row.title,
+    brand_name: row.brand_name ?? row.title,
     cover_media_url: row.cover_url,
     city: row.city,
     master_start_at: row.starts_at,

@@ -36,7 +36,7 @@ AS $function$
   SELECT replace(replace(replace(coalesce(p_raw, ''), '\', '\\'), '%', '\%'), '_', '\_');
 $function$;
 
-REVOKE ALL ON FUNCTION public.ad_escape_ilike(text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.ad_escape_ilike(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ad_escape_ilike(text) TO authenticated, service_role;
 
 -- ── Canonical public-web origin for ads (matches businessWebOrigin.ts) ──────
@@ -49,8 +49,33 @@ AS $function$
   SELECT 'https://host.usemingla.com'::text;
 $function$;
 
-REVOKE ALL ON FUNCTION public.ad_public_web_origin() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.ad_public_web_origin() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ad_public_web_origin() TO authenticated, service_role;
+
+
+-- ── Live Sites advertisable view (GR-52 + list/create gate) ─────────────────
+CREATE OR REPLACE VIEW public.ad_public_site_destinations_view AS
+SELECT
+  site.id,
+  site.brand_id,
+  b.slug AS brand_slug,
+  b.name AS brand_name,
+  host.hostname
+FROM public.brand_sites site
+JOIN public.brands b ON b.id = site.brand_id
+JOIN public.brand_site_hosts host
+  ON host.site_id = site.id
+ AND host.is_primary IS TRUE
+ AND host.status = 'active'
+JOIN public.brand_site_publications pub
+  ON pub.id = site.active_publication_id
+WHERE b.deleted_at IS NULL
+  AND site.status = 'published'
+  AND coalesce(pub.public_reachable, false) IS TRUE;
+
+ALTER VIEW public.ad_public_site_destinations_view SET (security_invoker = false);
+REVOKE ALL ON public.ad_public_site_destinations_view FROM PUBLIC, anon;
+GRANT SELECT ON public.ad_public_site_destinations_view TO authenticated, service_role;
 
 -- ── Resolve one destination (server gate + shared availability) ─────────────
 -- Returns jsonb:
@@ -85,6 +110,7 @@ BEGIN
     RETURN jsonb_build_object(
       'ok', false,
       'code', 'destination_page_type_invalid',
+      'page_type', p_page_type,
       'availability', 'draft',
       'availability_reason', 'admin.dest.draft'
     );
@@ -95,6 +121,7 @@ BEGIN
     RETURN jsonb_build_object(
       'ok', false,
       'code', 'destination_brand_slug_invalid',
+      'page_type', p_page_type,
       'availability', 'draft',
       'availability_reason', 'admin.dest.draft'
     );
@@ -107,6 +134,7 @@ BEGIN
       RETURN jsonb_build_object(
         'ok', false,
         'code', 'destination_entity_slug_invalid',
+      'page_type', p_page_type,
         'availability', 'draft',
         'availability_reason', 'admin.dest.draft'
       );
@@ -118,6 +146,7 @@ BEGIN
       v.brand_slug,
       v.slug,
       v.title,
+      v.brand_name,
       v.status,
       v.visibility,
       v.event_type,
@@ -158,6 +187,7 @@ BEGIN
         RETURN jsonb_build_object(
           'ok', false,
           'code', 'destination_not_public',
+      'page_type', p_page_type,
           'availability', 'private',
           'availability_reason', 'admin.dest.private'
         );
@@ -165,6 +195,7 @@ BEGIN
       RETURN jsonb_build_object(
         'ok', false,
         'code', 'destination_not_public',
+      'page_type', p_page_type,
         'availability', 'draft',
         'availability_reason', 'admin.dest.draft'
       );
@@ -174,6 +205,7 @@ BEGIN
       RETURN jsonb_build_object(
         'ok', false,
         'code', 'destination_not_public',
+      'page_type', p_page_type,
         'availability', 'private',
         'availability_reason', 'admin.dest.private'
       );
@@ -183,6 +215,7 @@ BEGIN
       RETURN jsonb_build_object(
         'ok', false,
         'code', 'destination_not_public',
+      'page_type', p_page_type,
         'availability', 'ended',
         'availability_reason', 'admin.dest.ended',
         'starts_at', v_row.master_start_at
@@ -193,6 +226,7 @@ BEGIN
       RETURN jsonb_build_object(
         'ok', false,
         'code', 'destination_not_public',
+      'page_type', p_page_type,
         'availability', 'draft',
         'availability_reason', 'admin.dest.draft'
       );
@@ -204,6 +238,7 @@ BEGIN
       RETURN jsonb_build_object(
         'ok', false,
         'code', 'destination_not_public',
+      'page_type', p_page_type,
         'availability', 'ended',
         'availability_reason', 'admin.dest.ended',
         'starts_at', v_starts
@@ -240,6 +275,7 @@ BEGIN
       'event_id', v_row.id,
       'venue_id', NULL,
       'title', v_row.title,
+      'brand_name', v_row.brand_name,
       'starts_at', v_starts,
       'city', v_row.city,
       'cover_url', v_row.cover_media_url,
@@ -255,6 +291,7 @@ BEGIN
       RETURN jsonb_build_object(
         'ok', false,
         'code', 'destination_entity_slug_forbidden',
+      'page_type', p_page_type,
         'availability', 'draft',
         'availability_reason', 'admin.dest.draft'
       );
@@ -268,6 +305,7 @@ BEGIN
       RETURN jsonb_build_object(
         'ok', false,
         'code', 'destination_not_public',
+      'page_type', p_page_type,
         'availability', 'draft',
         'availability_reason', 'admin.dest.draft'
       );
@@ -298,11 +336,13 @@ BEGIN
       RETURN jsonb_build_object(
         'ok', false,
         'code', 'destination_entity_slug_invalid',
+      'page_type', p_page_type,
         'availability', 'draft',
         'availability_reason', 'admin.dest.draft'
       );
     END IF;
-    SELECT s.id, s.brand_id, s.brand_slug, s.slug, s.title, s.city, s.cover_media_url
+    SELECT s.id, s.brand_id, s.brand_slug, s.slug, s.title, s.brand_name,
+           s.city, s.cover_media_url
     INTO v_row
     FROM public.ad_public_stay_destinations_view s
     WHERE s.brand_slug = v_brand_slug
@@ -312,6 +352,7 @@ BEGIN
       RETURN jsonb_build_object(
         'ok', false,
         'code', 'destination_not_public',
+      'page_type', p_page_type,
         'availability', 'draft',
         'availability_reason', 'admin.dest.draft'
       );
@@ -326,6 +367,7 @@ BEGIN
       'event_id', NULL,
       'venue_id', v_row.id,
       'title', v_row.title,
+      'brand_name', v_row.brand_name,
       'starts_at', NULL,
       'city', v_row.city,
       'cover_url', v_row.cover_media_url,
@@ -337,28 +379,35 @@ BEGIN
   END IF;
 
   IF p_page_type = 'reservation' THEN
-    -- Canonical route is /reserve/{brandId}; entity_slug unused; brand_slug resolves brand.
-    IF v_entity <> '' THEN
+    -- Public reservation form lives on the venue page (/b/{brand}/v/{venue});
+    -- /reserve/{brandId} is payment-cancel only. Venue-scoped + reservations_enabled.
+    IF v_entity = '' OR length(v_entity) > 200
+       OR v_entity !~ '^[a-z0-9]+(?:-[a-z0-9]+)*$' THEN
       RETURN jsonb_build_object(
         'ok', false,
-        'code', 'destination_entity_slug_forbidden',
+        'code', 'destination_entity_slug_invalid',
         'availability', 'draft',
-        'availability_reason', 'admin.dest.draft'
+        'availability_reason', 'admin.dest.draft',
+        'page_type', 'reservation'
       );
     END IF;
     SELECT
-      b.id AS brand_id,
-      b.slug AS brand_slug,
-      b.name AS title,
-      b.profile_photo_url AS cover_url
+      s.id,
+      s.brand_id,
+      s.brand_slug,
+      s.slug,
+      s.title,
+      s.brand_name,
+      s.city,
+      s.cover_media_url
     INTO v_row
-    FROM public.brands b
-    WHERE b.slug = v_brand_slug
-      AND b.deleted_at IS NULL
+    FROM public.ad_public_stay_destinations_view s
+    WHERE s.brand_slug = v_brand_slug
+      AND s.slug = v_entity
       AND EXISTS (
         SELECT 1
         FROM public.venue_reservation_settings vrs
-        WHERE vrs.brand_id = b.id
+        WHERE vrs.venue_id = s.id
           AND vrs.reservations_enabled IS TRUE
       )
     LIMIT 1;
@@ -367,23 +416,27 @@ BEGIN
         'ok', false,
         'code', 'destination_not_public',
         'availability', 'draft',
-        'availability_reason', 'admin.dest.draft'
+        'availability_reason', 'admin.dest.draft',
+        'page_type', 'reservation',
+        'brand_slug', v_brand_slug,
+        'entity_slug', v_entity
       );
     END IF;
     RETURN jsonb_build_object(
       'ok', true,
       'page_type', 'reservation',
-      'id', v_row.brand_id,
+      'id', v_row.id,
       'brand_id', v_row.brand_id,
       'brand_slug', v_brand_slug,
-      'entity_slug', NULL,
+      'entity_slug', v_entity,
       'event_id', NULL,
-      'venue_id', NULL,
+      'venue_id', v_row.id,
       'title', v_row.title,
+      'brand_name', v_row.brand_name,
       'starts_at', NULL,
-      'city', NULL,
-      'cover_url', v_row.cover_url,
-      'canonical_url', v_origin || '/reserve/' || v_row.brand_id::text,
+      'city', v_row.city,
+      'cover_url', v_row.cover_media_url,
+      'canonical_url', v_origin || '/b/' || v_brand_slug || '/v/' || v_entity,
       'availability', 'available',
       'availability_reason', NULL,
       'result_kind', 'signups'
@@ -395,6 +448,7 @@ BEGIN
       RETURN jsonb_build_object(
         'ok', false,
         'code', 'destination_entity_slug_forbidden',
+      'page_type', p_page_type,
         'availability', 'draft',
         'availability_reason', 'admin.dest.draft'
       );
@@ -423,6 +477,7 @@ BEGIN
       RETURN jsonb_build_object(
         'ok', false,
         'code', 'destination_not_public',
+      'page_type', p_page_type,
         'availability', 'draft',
         'availability_reason', 'admin.dest.draft'
       );
@@ -455,6 +510,7 @@ BEGIN
       'event_id', NULL,
       'venue_id', NULL,
       'title', v_row.title,
+      'brand_name', v_row.title,
       'starts_at', NULL,
       'city', NULL,
       'cover_url', NULL,
@@ -468,13 +524,14 @@ BEGIN
   RETURN jsonb_build_object(
     'ok', false,
     'code', 'destination_page_type_invalid',
+      'page_type', p_page_type,
     'availability', 'draft',
     'availability_reason', 'admin.dest.draft'
   );
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.ad_destination_resolve(text, text, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.ad_destination_resolve(text, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ad_destination_resolve(text, text, text)
   TO authenticated, service_role;
 
@@ -495,6 +552,7 @@ RETURNS TABLE (
   brand_slug text,
   entity_slug text,
   title text,
+  brand_name text,
   starts_at timestamptz,
   city text,
   cover_url text,
@@ -559,6 +617,7 @@ BEGIN
       e.brand_slug,
       e.slug AS entity_slug,
       e.title,
+      e.brand_name,
       e.master_start_at AS starts_at,
       e.city,
       e.cover_media_url AS cover_url,
@@ -588,6 +647,7 @@ BEGIN
       b.slug,
       NULL::text,
       b.name,
+      b.name,
       NULL::timestamptz,
       NULL::text,
       b.profile_photo_url,
@@ -608,6 +668,7 @@ BEGIN
       s.brand_slug,
       s.slug,
       s.title,
+      s.brand_name,
       NULL::timestamptz,
       s.city,
       s.cover_media_url,
@@ -627,25 +688,28 @@ BEGIN
 
     SELECT
       'reservation',
-      b.id,
-      b.slug,
-      NULL::text,
-      b.name,
+      s.id,
+      s.brand_slug,
+      s.slug,
+      s.title,
+      s.brand_name,
       NULL::timestamptz,
-      NULL::text,
-      b.profile_photo_url,
-      b.id
-    FROM public.brands b
-    WHERE b.deleted_at IS NULL
-      AND (p_brand_id IS NULL OR b.id = p_brand_id)
+      s.city,
+      s.cover_media_url,
+      s.brand_id
+    FROM public.ad_public_stay_destinations_view s
+    WHERE (p_brand_id IS NULL OR s.brand_id = p_brand_id)
       AND EXISTS (
         SELECT 1 FROM public.venue_reservation_settings vrs
-        WHERE vrs.brand_id = b.id AND vrs.reservations_enabled IS TRUE
+        WHERE vrs.venue_id = s.id AND vrs.reservations_enabled IS TRUE
       )
       AND (
         v_like IS NULL
-        OR b.name ILIKE v_like ESCAPE '\'
-        OR b.slug ILIKE v_like ESCAPE '\'
+        OR s.title ILIKE v_like ESCAPE '\'
+        OR s.brand_name ILIKE v_like ESCAPE '\'
+        OR s.slug ILIKE v_like ESCAPE '\'
+        OR coalesce(s.city, '') ILIKE v_like ESCAPE '\'
+        OR s.brand_slug ILIKE v_like ESCAPE '\'
       )
 
     UNION ALL
@@ -653,26 +717,33 @@ BEGIN
     SELECT
       'site',
       site.id,
-      b.slug,
+      site.brand_slug,
       NULL::text,
-      b.name,
+      site.brand_name,
+      site.brand_name,
       NULL::timestamptz,
       NULL::text,
       NULL::text,
       site.brand_id
-    FROM public.brand_sites site
-    JOIN public.brands b ON b.id = site.brand_id
-    WHERE b.deleted_at IS NULL
-      AND (p_brand_id IS NULL OR site.brand_id = p_brand_id)
+    FROM public.ad_public_site_destinations_view site
+    WHERE (p_brand_id IS NULL OR site.brand_id = p_brand_id)
       AND (
         v_like IS NULL
-        OR b.name ILIKE v_like ESCAPE '\'
-        OR b.slug ILIKE v_like ESCAPE '\'
+        OR site.brand_name ILIKE v_like ESCAPE '\'
+        OR site.brand_slug ILIKE v_like ESCAPE '\'
       )
   ),
   resolved AS (
     SELECT
-      c.page_type,
+      c.page_type AS candidate_page_type,
+      c.id AS candidate_id,
+      c.brand_slug AS candidate_brand_slug,
+      c.entity_slug AS candidate_entity_slug,
+      c.title AS candidate_title,
+      c.brand_name AS candidate_brand_name,
+      c.starts_at AS candidate_starts_at,
+      c.city AS candidate_city,
+      c.cover_url AS candidate_cover_url,
       (public.ad_destination_resolve(
         c.page_type,
         c.brand_slug,
@@ -683,25 +754,23 @@ BEGIN
   ),
   filtered AS (
     SELECT
-      (r.j ->> 'page_type')::text AS page_type,
-      (r.j ->> 'id')::uuid AS id,
-      (r.j ->> 'brand_slug')::text AS brand_slug,
-      nullif(r.j ->> 'entity_slug', '')::text AS entity_slug,
-      (r.j ->> 'title')::text AS title,
-      (r.j ->> 'starts_at')::timestamptz AS starts_at,
-      nullif(r.j ->> 'city', '')::text AS city,
-      nullif(r.j ->> 'cover_url', '')::text AS cover_url,
-      nullif(r.j ->> 'canonical_url', '')::text AS canonical_url,
-      (r.j ->> 'availability')::text AS availability,
-      nullif(r.j ->> 'availability_reason', '')::text AS availability_reason,
-      nullif(r.j ->> 'result_kind', '')::text AS result_kind,
-      (r.j ->> 'ok')::boolean AS ok
+      coalesce(nullif(r.j ->> 'page_type', ''), r.candidate_page_type) AS page_type,
+      coalesce((nullif(r.j ->> 'id', ''))::uuid, r.candidate_id) AS id,
+      coalesce(nullif(r.j ->> 'brand_slug', ''), r.candidate_brand_slug) AS brand_slug,
+      coalesce(nullif(r.j ->> 'entity_slug', ''), r.candidate_entity_slug) AS entity_slug,
+      coalesce(nullif(r.j ->> 'title', ''), r.candidate_title) AS title,
+      coalesce(nullif(r.j ->> 'brand_name', ''), r.candidate_brand_name) AS brand_name,
+      coalesce((nullif(r.j ->> 'starts_at', ''))::timestamptz, r.candidate_starts_at) AS starts_at,
+      coalesce(nullif(r.j ->> 'city', ''), r.candidate_city) AS city,
+      coalesce(nullif(r.j ->> 'cover_url', ''), r.candidate_cover_url) AS cover_url,
+      nullif(r.j ->> 'canonical_url', '') AS canonical_url,
+      coalesce(nullif(r.j ->> 'availability', ''), 'draft') AS availability,
+      nullif(r.j ->> 'availability_reason', '') AS availability_reason,
+      nullif(r.j ->> 'result_kind', '') AS result_kind,
+      coalesce((r.j ->> 'ok')::boolean, false) AS ok
     FROM resolved r
-    WHERE r.j ? 'page_type'
-      AND (
-        p_include_unavailable
-        OR (r.j ->> 'ok')::boolean IS TRUE
-      )
+    WHERE p_include_unavailable
+       OR coalesce((r.j ->> 'ok')::boolean, false) IS TRUE
   ),
   counted AS (
     SELECT count(*)::bigint AS n FROM filtered
@@ -712,6 +781,7 @@ BEGIN
     f.brand_slug,
     f.entity_slug,
     f.title,
+    f.brand_name,
     f.starts_at,
     f.city,
     f.cover_url,
@@ -731,8 +801,8 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.ad_advertisable_pages(text, text[], boolean, uuid, integer)
-  FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.ad_advertisable_pages(text, text[], boolean, uuid, integer)
+  FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ad_advertisable_pages(text, text[], boolean, uuid, integer)
   TO authenticated, service_role;
 

@@ -283,8 +283,9 @@ Deno.test("GR-52: brand destinations re-check against business_public_brands_vie
   assertEquals(gone, false);
 });
 
+// [TEST-MOD-APPROVED #3697] Wave 1 makes trip creatable; unknown types stay fail-closed.
 Deno.test("GR-52: unknown/uncreatable page types are NOT public (fail-close)", async () => {
-  for (const pageType of ["trip", "garbage"]) {
+  for (const pageType of ["garbage", "marketing_home"]) {
     const ok = await destinationStillPublicLive(stubDestinationClient({ id: "x" }, []), {
       dest_page_type: pageType,
       dest_brand_slug: "test-brand",
@@ -292,4 +293,19 @@ Deno.test("GR-52: unknown/uncreatable page types are NOT public (fail-close)", a
     });
     assertEquals(ok, false, `${pageType} must fail closed`);
   }
+});
+
+Deno.test("GR-52: trip destinations use business_public_events_view with event_type", async () => {
+  const queries: RecordedQuery[] = [];
+  const ok = await destinationStillPublicLive(
+    stubDestinationClient({ id: "trip-1" }, queries),
+    {
+      dest_page_type: "trip",
+      dest_brand_slug: "test-brand",
+      dest_entity_slug: "lagos-weekend",
+    },
+  );
+  assertEquals(ok, true);
+  assertEquals(queries[0]?.table, "business_public_events_view");
+  assertEquals(queries[0]?.filters?.event_type, "trip");
 });

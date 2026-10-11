@@ -75,10 +75,8 @@ Deno.test("A4-5: trip and experience canonical URLs never use /e/", () => {
     "https://host.usemingla.com/e/acme/house-party",
   );
   assertEquals(
-    canonicalAdDestinationUrl("reservation", "acme", null, {
-      brandId: "11111111-1111-1111-1111-111111111111",
-    }),
-    "https://host.usemingla.com/reserve/11111111-1111-1111-1111-111111111111",
+    canonicalAdDestinationUrl("reservation", "acme", "lagoon-stay"),
+    "https://host.usemingla.com/b/acme/v/lagoon-stay",
   );
 });
 

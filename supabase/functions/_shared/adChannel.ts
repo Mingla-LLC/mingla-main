@@ -117,6 +117,9 @@ export async function destinationStillPublicLive(
   db: DestinationQueryClient,
   dest: DestinationRef,
 ): Promise<boolean> {
+  // toward #3697 Wave 1: keep GR-52 sync aligned with create-time page types.
+  // Event keeps the historical filter shape (no event_type eq) for sync parity;
+  // rsvp/trip/experience pin event_type so a trip slug cannot keep an event ad live.
   if (dest.dest_page_type === "event") {
     if (!dest.dest_entity_slug) return false;
     const { data } = await db
@@ -124,6 +127,22 @@ export async function destinationStillPublicLive(
       .select("id")
       .eq("brand_slug", dest.dest_brand_slug)
       .eq("slug", dest.dest_entity_slug)
+      .in("status", ["scheduled", "live"])
+      .maybeSingle();
+    return Boolean(data);
+  }
+  if (
+    dest.dest_page_type === "rsvp" ||
+    dest.dest_page_type === "trip" ||
+    dest.dest_page_type === "experience"
+  ) {
+    if (!dest.dest_entity_slug) return false;
+    const { data } = await db
+      .from("business_public_events_view")
+      .select("id")
+      .eq("brand_slug", dest.dest_brand_slug)
+      .eq("slug", dest.dest_entity_slug)
+      .eq("event_type", dest.dest_page_type)
       .in("status", ["scheduled", "live"])
       .maybeSingle();
     return Boolean(data);
@@ -136,13 +155,24 @@ export async function destinationStillPublicLive(
       .maybeSingle();
     return Boolean(data);
   }
-  if (dest.dest_page_type === "venue") {
+  if (
+    dest.dest_page_type === "venue" ||
+    dest.dest_page_type === "reservation"
+  ) {
     if (!dest.dest_entity_slug) return false;
     const { data } = await db
       .from("ad_public_stay_destinations_view")
       .select("id")
       .eq("brand_slug", dest.dest_brand_slug)
       .eq("slug", dest.dest_entity_slug)
+      .maybeSingle();
+    return Boolean(data);
+  }
+  if (dest.dest_page_type === "site") {
+    const { data } = await db
+      .from("ad_public_site_destinations_view")
+      .select("id")
+      .eq("brand_slug", dest.dest_brand_slug)
       .maybeSingle();
     return Boolean(data);
   }
