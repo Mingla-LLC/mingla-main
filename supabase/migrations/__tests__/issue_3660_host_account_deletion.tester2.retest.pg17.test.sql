@@ -24,6 +24,16 @@
 --   X  Expired checkouts: one whose payment is still processing blocks; an
 --      abandoned one does not.
 --
+--   M  Restores a proof the rework's fixture edit made vacuous. The tester's
+--      edges suite proved that paid orders on an ENDED and on a CANCELLED
+--      event do not hold a Host; the rework then marked those orders as paid
+--      out, so that suite can no longer tell a rule that ignores a
+--      direct-charge Host from one that blocks them. Here the same two orders
+--      sit on a brand that is NOT on the hold rail, with no payout row at
+--      all: the Host must be deleted and the orders left byte for byte. And
+--      the same Host on the hold rail must be refused, so the first half is
+--      not a rule that never blocks.
+--
 -- Runs as supabase_admin (session_replication_role for the checkout fixture).
 -- No row in auth.users is deleted. Everything is rolled back.
 BEGIN;
@@ -386,6 +396,76 @@ BEGIN
      OR v_result->'stripe_accounts' IS DISTINCT FROM '[]'::jsonb
      OR v_result->'paystack_subaccounts' IS DISTINCT FROM '[]'::jsonb THEN
     RAISE EXCEPTION 't2r 3660 T: an already-deleted account with no audit row must answer deleted with empty lists: %', v_result;
+  END IF;
+
+  RAISE NOTICE 'issue_3660 host account deletion tester2 retest U/I/T/X PASS';
+END;
+$$;
+
+-- M ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_a uuid := gen_random_uuid();
+  v_b uuid := gen_random_uuid();
+  v_e_ended uuid := gen_random_uuid();
+  v_e_cancelled uuid := gen_random_uuid();
+  v_sfx text := replace(gen_random_uuid()::text, '-', '');
+  v_orders_before text;
+  v_orders_after text;
+  v_result jsonb;
+BEGIN
+  INSERT INTO auth.users(id) VALUES (v_a);
+  INSERT INTO public.creator_accounts(id, email) VALUES (v_a, 't2r-m-' || v_sfx || '@example.test');
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency)
+  VALUES (v_b, v_a, 'T2R M', 't2r-m-' || v_sfx, 'USD');
+  INSERT INTO public.events(id, brand_id, created_by, title, slug, status) VALUES
+    (v_e_ended, v_b, v_a, 'T2R M Ended', 't2r-m-end-' || v_sfx, 'ended'),
+    (v_e_cancelled, v_b, v_a, 'T2R M Cancelled', 't2r-m-can-' || v_sfx, 'cancelled');
+  INSERT INTO public.event_dates(event_id, start_at, end_at) VALUES
+    (v_e_ended, now() - interval '6 days', now() - interval '5 days'),
+    (v_e_cancelled, now() + interval '9 days', now() + interval '10 days');
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO public.orders
+    (id, event_id, buyer_email, buyer_name, total_cents, currency, payment_status,
+     source, payment_method, created_at)
+  VALUES
+    (gen_random_uuid(), v_e_ended, 't2r-buyer@example.test', 'T2R Buyer', 2500, 'USD',
+     'paid', 'legacy', 'online_card', now() - interval '7 days'),
+    (gen_random_uuid(), v_e_cancelled, 't2r-buyer@example.test', 'T2R Buyer', 2500, 'USD',
+     'paid', 'legacy', 'online_card', now() - interval '2 days');
+  SET LOCAL session_replication_role = origin;
+  IF EXISTS (SELECT 1 FROM public.brand_payout_releases WHERE brand_id = v_b) THEN
+    RAISE EXCEPTION 't2r 3660 M fixture: a payout row exists';
+  END IF;
+  SELECT md5(string_agg(to_jsonb(o)::text, ',' ORDER BY o.id)) INTO v_orders_before
+  FROM public.orders o WHERE o.event_id IN (v_e_ended, v_e_cancelled);
+
+  PERFORM pg_temp.t2r_claims('service_role', NULL);
+
+  -- On the hold rail (Mingla holds this money): refused, nothing written.
+  BEGIN
+    UPDATE public.brands SET payout_hold_cutover_at = now() - interval '30 days' WHERE id = v_b;
+    v_result := public.biz_delete_host_account(v_a);
+    IF v_result->>'status' IS DISTINCT FROM 'blocked'
+       OR v_result->'blockers'->0->>'code' IS DISTINCT FROM 'money_in_motion' THEN
+      RAISE EXCEPTION 't2r 3660 M: a hold-rail Host with unpaid-out orders must be refused (money_in_motion): %', v_result;
+    END IF;
+    RAISE EXCEPTION 't2r_m_rollback' USING ERRCODE = 'T2RM1';
+  EXCEPTION WHEN SQLSTATE 'T2RM1' THEN
+    NULL;
+  END;
+
+  -- NOT on the hold rail (a direct charge, paid straight to the Host): deleted.
+  v_result := public.biz_delete_host_account(v_a);
+  IF v_result->>'status' IS DISTINCT FROM 'deleted' THEN
+    RAISE EXCEPTION 't2r 3660 M: paid orders on an ended and a cancelled event held a direct-charge Host: %', v_result;
+  END IF;
+  SELECT md5(string_agg(to_jsonb(o)::text, ',' ORDER BY o.id)) INTO v_orders_after
+  FROM public.orders o WHERE o.event_id IN (v_e_ended, v_e_cancelled);
+  IF v_orders_before IS DISTINCT FROM v_orders_after
+     OR EXISTS (SELECT 1 FROM public.events
+                WHERE id IN (v_e_ended, v_e_cancelled) AND deleted_at IS NOT NULL) THEN
+    RAISE EXCEPTION 't2r 3660 M: the deletion modified a finished event or its orders';
   END IF;
 
   RAISE NOTICE 'issue_3660 host account deletion tester2 retest PASS';
