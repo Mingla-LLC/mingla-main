@@ -46,7 +46,7 @@ import { applyChannelSelection, planChannels, splitBudget } from "../lib/adBuild
 import { complianceExclusions } from "../lib/adBuilder/compliance";
 import { validateAudience, DEFAULT_AGE_MAX, DEFAULT_AGE_MIN, DEFAULT_COUNTRIES } from "../lib/adBuilder/audienceRules";
 import { DEFAULT_RADIUS_MI } from "../lib/adBuilder/targeting";
-import { calendarDaysBetween, validateBudget } from "../lib/adBuilder/budgetRules";
+import { allocateLifetimeCents, calendarDaysBetween, validateBudget } from "../lib/adBuilder/budgetRules";
 import { validateCopy } from "../lib/adBuilder/copyRules";
 import { runPolicyPrecheck } from "../lib/adBuilder/policyLinter";
 import { partitionFundedCreative } from "../lib/adBuilder/creativeGate";
@@ -340,11 +340,7 @@ export function CampaignBuilderPage() {
   }, [eligiblePlatforms]);
 
   // Lifetime mode: split the daily equivalent so strategy/weights still apply,
-  // then scale each channel's share back to a lifetime amount at create.
-  const lifetimeDays = useMemo(
-    () => calendarDaysBetween(budget.startsAt, budget.endsAt),
-    [budget.startsAt, budget.endsAt],
-  );
+  // then allocateLifetimeCents conserves the entered total at create.
   const allocations = useMemo(
     // ISSUE-986: split across the PICKED channel set (plannedRows) — never the
     // full eligible set. The picker is the single source of truth for who gets
@@ -666,6 +662,28 @@ export function CampaignBuilderPage() {
       else setSubmitting(false);
       return;
     }
+    if (
+      budget.mode === "lifetime" &&
+      allocations.some((a) => a.platform !== "meta")
+    ) {
+      addToast({
+        variant: "error",
+        title: "Lifetime is Meta-only",
+        message: "Deselect other platforms or switch to Daily before creating.",
+      });
+      if (validateOnly) setValidatingShapes(false);
+      else setSubmitting(false);
+      return;
+    }
+    // Conserve the admin-entered lifetime total (avoid floor(total/days)*days loss).
+    const lifetimeByPlatform = budget.mode === "lifetime"
+      ? new Map(
+        allocateLifetimeCents(allocations, budget.totalLifetimeCents || 0).map((row) => [
+          row.platform,
+          row.amountCents,
+        ]),
+      )
+      : null;
     const multiDest = false;
     const groupId = null;
     const baseName = name || suggestCampaignName({ brandName: firstDestination?.brand_name, title: firstDestination?.title });
@@ -686,6 +704,7 @@ export function CampaignBuilderPage() {
         const meta = { platform, destTitle: dest.title, multiDest };
         if (results[resultKey]?.campaign) continue; // idempotent per session
         if (creativeExcluded.has(platform)) continue; // excluded — build the passing ones
+        const lifetimeAmount = lifetimeByPlatform?.get(platform) ?? null;
         const payload = buildCreatePayload(platform, {
           lane,
           name: perCallName,
@@ -698,11 +717,11 @@ export function CampaignBuilderPage() {
           budget: {
             dailyCentsForChannel: allocation.dailyCents,
             mode: budget.mode === "lifetime" ? "lifetime" : "daily",
-            amountCents: budget.mode === "lifetime" && lifetimeDays
-              ? allocation.dailyCents * lifetimeDays
+            amountCents: budget.mode === "lifetime" && lifetimeAmount != null
+              ? lifetimeAmount
               : allocation.dailyCents,
-            capCents: budget.mode === "lifetime" && lifetimeDays
-              ? allocation.dailyCents * lifetimeDays
+            capCents: budget.mode === "lifetime" && lifetimeAmount != null
+              ? lifetimeAmount
               : (budget.capCents ?? null),
             startsAt: budget.startsAt,
             endsAt: budget.endsAt,

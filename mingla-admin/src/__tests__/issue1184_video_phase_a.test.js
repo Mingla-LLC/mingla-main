@@ -129,7 +129,9 @@ describe("ISSUE-1184 build and review count only prepared destinations × platfo
     assert.deepEqual(result.buildable.sort(), ["meta", "snapchat", "tiktok"]);
   });
 
-  it("two destinations × two READY platforms produces four paused campaigns", () => {
+  // [TEST-MOD-APPROVED #3697] Wave 2 (#3707): one page per campaign — multi-
+  // destination no longer multiplies campaignCount (was destinations × platforms).
+  it("two destinations × two READY platforms produces two paused campaigns (one page each)", () => {
     const summary = buildLaunchSummary({
       channelRows: channels.slice(0, 2),
       allocations: [
@@ -144,9 +146,10 @@ describe("ISSUE-1184 build and review count only prepared destinations × platfo
       preparationByPlatform: rows,
       totalDailyCents: 2000,
     });
-    assert.equal(summary.campaignCount, 4);
-    assert.match(summary.headline, /4 paused video campaigns across 2 platforms/);
-    assert.equal(summary.primaryActionLabel, "Create 4 campaigns (paused)");
+    assert.equal(summary.campaignCount, 2);
+    assert.match(summary.headline, /2 paused video campaigns across 2 platforms/);
+    assert.equal(summary.primaryActionLabel, "Create 2 campaigns (paused)");
+    assert.match(summary.destinationLine, /Pick one page per campaign/);
   });
 });
 

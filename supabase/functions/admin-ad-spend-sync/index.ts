@@ -111,18 +111,26 @@ async function loadCumulativeSpendCents(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   campaignId: string,
-): Promise<number> {
+): Promise<{ ok: true; cents: number } | { ok: false; detail: string }> {
   const { data, error } = await supabase
     .from("ad_spend_daily")
     .select("spend_cents")
     .eq("campaign_id", campaignId);
-  if (error || !Array.isArray(data)) return 0;
-  return sumSpendCents(
-    data.map((row: { spend_cents?: unknown }) => ({
-      spend_date: "1970-01-01",
-      spend_cents: Number(row.spend_cents) || 0,
-    })),
-  );
+  if (error) {
+    return { ok: false, detail: `spend_read_failed: ${error.message}` };
+  }
+  if (!Array.isArray(data)) {
+    return { ok: false, detail: "spend_read_failed: unexpected_payload" };
+  }
+  return {
+    ok: true,
+    cents: sumSpendCents(
+      data.map((row: { spend_cents?: unknown }) => ({
+        spend_date: "1970-01-01",
+        spend_cents: Number(row.spend_cents) || 0,
+      })),
+    ),
+  };
 }
 
 async function touchSpendSyncWatermark(
@@ -146,20 +154,27 @@ async function pauseCampaignForReason(
   totalSpendCents: number,
 ): Promise<{ ok: true } | { ok: false; detail: string }> {
   try {
-    const { data: conn } = await supabase
+    const { data: conn, error: connErr } = await supabase
       .from("ad_connections")
       .select("*")
       .eq("id", connectionId)
       .maybeSingle();
-    if (conn) {
-      const adapter = getAdapter(target.platform);
-      await adapter.setStatus(
-        conn as AdConnectionRow,
-        "campaign",
-        target.external_campaign_id,
-        "PAUSED",
-      );
+    if (connErr) {
+      return {
+        ok: false,
+        detail: `pause_connection_read_failed: ${connErr.message}`,
+      };
     }
+    if (!conn) {
+      return { ok: false, detail: "pause_connection_missing" };
+    }
+    const adapter = getAdapter(target.platform);
+    await adapter.setStatus(
+      conn as AdConnectionRow,
+      "campaign",
+      target.external_campaign_id,
+      "PAUSED",
+    );
     const { error: updErr } = await supabase
       .from("ad_campaigns")
       .update({
@@ -272,6 +287,7 @@ serve(async (req: Request): Promise<Response> => {
 
     let days: SpendDayRow[] = [];
     let fetchError: string | null = null;
+    let upsertError: string | null = null;
     try {
       if (platform === "meta") {
         const { data: conn } = await supabase
@@ -304,18 +320,30 @@ serve(async (req: Request): Promise<Response> => {
         { onConflict: "campaign_id,platform,spend_date" },
       );
       if (upErr) {
-        results.push({ campaign_id: target.id, error: upErr.message });
-        await touchSpendSyncWatermark(supabase, target.id);
-        continue;
+        // Preserve the write error but still evaluate end-date / cap pause.
+        upsertError = upErr.message;
+      } else {
+        upserted += draft.upserts.length;
       }
-      upserted += draft.upserts.length;
     }
 
     const cumulative = await loadCumulativeSpendCents(supabase, target.id);
+    if (!cumulative.ok) {
+      results.push({
+        campaign_id: target.id,
+        error: cumulative.detail,
+        retryable: true,
+        ...(fetchError ? { fetch_error: fetchError } : {}),
+        ...(upsertError ? { upsert_error: upsertError } : {}),
+      });
+      await touchSpendSyncWatermark(supabase, target.id);
+      continue;
+    }
+
     const decision = decideSpendSync({
       campaign: target,
       days,
-      cumulativeSpendCents: cumulative,
+      cumulativeSpendCents: cumulative.cents,
     });
 
     if (decision.pause && target.status === "ACTIVE") {
@@ -332,6 +360,7 @@ serve(async (req: Request): Promise<Response> => {
           pause_failed: pauseResult.detail,
           total_spend_cents: decision.total_spend_cents,
           ...(fetchError ? { fetch_error: fetchError } : {}),
+          ...(upsertError ? { upsert_error: upsertError } : {}),
         });
         await touchSpendSyncWatermark(supabase, target.id);
         continue;
@@ -343,12 +372,14 @@ serve(async (req: Request): Promise<Response> => {
         total_spend_cents: decision.total_spend_cents,
         days: decision.upserts.length,
         ...(fetchError ? { fetch_error: fetchError } : {}),
+        ...(upsertError ? { upsert_error: upsertError } : {}),
       });
-    } else if (fetchError) {
+    } else if (fetchError || upsertError) {
       results.push({
         campaign_id: target.id,
-        error: fetchError,
+        error: upsertError ?? fetchError,
         total_spend_cents: decision.total_spend_cents,
+        ...(fetchError && upsertError ? { fetch_error: fetchError } : {}),
       });
       await touchSpendSyncWatermark(supabase, target.id);
     } else {

@@ -217,7 +217,7 @@ BEGIN
       ('public.brand_regulars_rollup(uuid)'::text, '2395341733d7b8a1cec1120aa193d70f'::text),
       ('public.brand_conversion_rollup(uuid)'::text, 'c57b570636a34b25732bb910f3f4c947'::text),
       -- [TEST-MOD-APPROVED #3697] Wave 2 rollup reads ad_spend_daily; rebank definition+ACL fingerprint.
-      ('public.ad_campaign_conversion_rollup(uuid)'::text, '5bd31aa4cec90517b9ef971566fc96a1'::text),
+      ('public.ad_campaign_conversion_rollup(uuid)'::text, 'f0774bbdbd3e8d44fe66b5843b58f190'::text),
       ('public.venue_intelligence_overview(uuid,uuid)'::text, 'd474d12571f53bd24f5d969c24fae87e'::text)
   ),
   actual AS (

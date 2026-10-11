@@ -105,6 +105,36 @@ export function calendarDaysBetween(startsAt, endsAt) {
 }
 
 /**
+ * Split a lifetime total across daily allocations so the cents sum exactly
+ * to `totalLifetimeCents` (no floor(total/days)*days loss).
+ * @param {Array<{platform: string, dailyCents: number}>} allocations
+ * @param {number} totalLifetimeCents
+ * @returns {Array<{platform: string, dailyCents: number, amountCents: number}>}
+ */
+export function allocateLifetimeCents(allocations = [], totalLifetimeCents = 0) {
+  const total = Math.max(0, Math.floor(Number(totalLifetimeCents) || 0));
+  const rows = Array.isArray(allocations) ? allocations : [];
+  if (rows.length === 0) return [];
+  const dailySum = rows.reduce((s, a) => s + Math.max(0, Math.floor(Number(a.dailyCents) || 0)), 0);
+  if (dailySum <= 0 || total <= 0) {
+    return rows.map((a) => ({
+      platform: a.platform,
+      dailyCents: Math.max(0, Math.floor(Number(a.dailyCents) || 0)),
+      amountCents: 0,
+    }));
+  }
+  let remaining = total;
+  return rows.map((a, i) => {
+    const daily = Math.max(0, Math.floor(Number(a.dailyCents) || 0));
+    const amountCents = i === rows.length - 1
+      ? remaining
+      : Math.floor((total * daily) / dailySum);
+    if (i < rows.length - 1) remaining -= amountCents;
+    return { platform: a.platform, dailyCents: daily, amountCents };
+  });
+}
+
+/**
  * D1 sum across picked platforms (Admin = ad budget, no 15% fee).
  * mode=daily → days=1; mode=lifetime → × schedule days.
  */

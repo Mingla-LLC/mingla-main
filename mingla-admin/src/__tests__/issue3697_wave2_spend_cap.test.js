@@ -8,6 +8,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  allocateLifetimeCents,
   channelFloorCents,
   computeAdminMinimumCents,
   calendarDaysBetween,
@@ -42,6 +43,24 @@ test("calendar days inclusive", () => {
     calendarDaysBetween("2026-10-01T12:00:00Z", "2026-10-07T01:00:00Z"),
     7,
   );
+});
+
+test("allocateLifetimeCents conserves the entered total (no floor/days loss)", () => {
+  const rows = allocateLifetimeCents(
+    [{ platform: "meta", dailyCents: 1428 }],
+    10001,
+  );
+  assert.equal(rows.reduce((s, r) => s + r.amountCents, 0), 10001);
+  assert.equal(rows[0].amountCents, 10001);
+
+  const split = allocateLifetimeCents(
+    [
+      { platform: "meta", dailyCents: 6000 },
+      { platform: "tiktok", dailyCents: 4000 },
+    ],
+    10001,
+  );
+  assert.equal(split.reduce((s, r) => s + r.amountCents, 0), 10001);
 });
 
 test("lifetime payload carries type, cap, schedule", () => {

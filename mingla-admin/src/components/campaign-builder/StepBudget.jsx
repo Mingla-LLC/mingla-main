@@ -6,7 +6,7 @@
  */
 
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertCard } from "../ui/Card";
 import { CurrencyInput } from "../ui/CurrencyInput";
 import { MultiSelect } from "../ui/MultiSelect";
@@ -36,6 +36,19 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
     channelRows,
   });
   const platforms = channelRows.filter((r) => r.eligible).map((r) => r.platform);
+  // Create rejects lifetime for every non-Meta platform — only offer it when
+  // the funded set is Meta-only (or empty before channels resolve).
+  const lifetimeAllowed = platforms.length === 0 ||
+    (platforms.length === 1 && platforms[0] === "meta");
+  useEffect(() => {
+    if (mode === "lifetime" && !lifetimeAllowed) {
+      onBudgetChange({
+        ...budget,
+        mode: "daily",
+        totalDailyCents: budget.totalDailyCents || budget.totalLifetimeCents || 0,
+      });
+    }
+  }, [lifetimeAllowed, mode, budget, onBudgetChange]);
   const days = calendarDaysBetween(budget.startsAt, budget.endsAt);
   // Use each eligible row's live floorCents (Meta's goal-specific connection
   // floor is already on the row) — never recompute Meta as null/0.
@@ -120,14 +133,21 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
               type="button"
               role="radio"
               aria-checked={mode === "lifetime"}
-              onClick={() => set({
-                mode: "lifetime",
-                totalLifetimeCents: budget.totalLifetimeCents || budget.totalDailyCents || 0,
-                capCents: budget.totalLifetimeCents || budget.totalDailyCents || 0,
-              })}
+              disabled={!lifetimeAllowed}
+              title={lifetimeAllowed ? undefined : "Lifetime budget is Meta-only — deselect other platforms first"}
+              onClick={() => {
+                if (!lifetimeAllowed) return;
+                set({
+                  mode: "lifetime",
+                  totalLifetimeCents: budget.totalLifetimeCents || budget.totalDailyCents || 0,
+                  capCents: budget.totalLifetimeCents || budget.totalDailyCents || 0,
+                });
+              }}
               className={[
                 "h-8 px-3 text-xs font-medium rounded-md",
-                mode === "lifetime"
+                !lifetimeAllowed
+                  ? "text-[var(--color-text-tertiary)] opacity-50 cursor-not-allowed"
+                  : mode === "lifetime"
                   ? "bg-[var(--color-brand-500)] text-white"
                   : "text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]",
               ].join(" ")}
@@ -136,8 +156,10 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
             </button>
           </div>
           <p className="text-xs text-[var(--color-text-tertiary)]">
-            The campaign starts paused; spending begins only when you launch it from the
-            campaign page. Hard cap: ${(capCents / 100).toFixed(2)}.
+            {!lifetimeAllowed && mode === "lifetime"
+              ? "Lifetime budget is Meta-only — switch to Daily or fund Meta alone."
+              : "The campaign starts paused; spending begins only when you launch it from the campaign page."}
+            {" "}Hard cap: ${(capCents / 100).toFixed(2)}.
           </p>
         </div>
       </div>
