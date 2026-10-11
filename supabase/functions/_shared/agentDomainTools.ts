@@ -6602,7 +6602,47 @@ const requestAccountDeletion = writeTool(
 
     // Host UI parity: useAccountDeletion always sends side:business. Omitting
     // side defaults delete-user to explorer and can purge the wrong half.
-    return await invokeFn(client, "delete-user", { side: "business" });
+    //
+    // #3660 — invoked directly (not through invokeFn) because a refusal is an
+    // HTTP 409 whose BODY says why. invokeFn keeps only the generic
+    // "non-2xx status code" message, which would leave the operator with no
+    // reason. A refusal means nothing was changed.
+    const { data, error } = await client.functions.invoke("delete-user", {
+      body: { side: "business" },
+    });
+    if (error) {
+      let body: any = null;
+      try {
+        const context = (error as { context?: unknown }).context;
+        if (context && typeof (context as Response).json === "function") {
+          body = await (context as Response).json();
+        }
+      } catch (_parseError) {
+        body = null;
+      }
+      if (body?.code === "account_deletion_blocked") {
+        const codes = Array.isArray(body.blockers)
+          ? body.blockers
+            .map((b: { code?: unknown }) => b?.code)
+            .filter((c: unknown): c is string => typeof c === "string")
+          : [];
+        throw new ToolError(
+          "ACCOUNT_DELETION_BLOCKED",
+          `account_deletion_blocked: ${
+            codes.length ? codes.join(", ") : "unknown"
+          }. Nothing was changed.`,
+        );
+      }
+      throw new ToolError(
+        "EDGE_FAILED",
+        `delete-user: ${
+          body?.code === "account_deletion_failed"
+            ? "account_deletion_failed. Nothing was changed."
+            : error.message
+        }`,
+      );
+    }
+    return data;
   },
   "DELETE",
 );

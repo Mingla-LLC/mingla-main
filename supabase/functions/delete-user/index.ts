@@ -2,11 +2,12 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  type AuthRetainReason,
+  deleteAuthUserIfReady,
   type DeletionSide,
   isRetainReasonJustifiedForSide,
   purgeBusinessSideData,
   purgeExplorerSideData,
+  runBusinessSideDeletion,
   shouldDeleteAuthUser,
 } from "../_shared/accountDeletionSides.ts";
 
@@ -218,48 +219,15 @@ async function clearPhoneForReuse(
   return null;
 }
 
-async function deleteAuthUserIfReady(
-  adminClient: SupabaseClient,
-  userId: string,
-): Promise<{
-  authDeleted: boolean;
-  authRetained: boolean;
-  retainedReason: AuthRetainReason | null;
-}> {
-  const { remove: removeAuth, reason } = await shouldDeleteAuthUser(adminClient, userId);
-  if (!removeAuth) {
-    console.log(
-      `[delete-user] Auth retained for ${userId} — reason=${reason ?? "unattributed"}`,
-    );
-    return { authDeleted: false, authRetained: true, retainedReason: reason };
-  }
-
-  console.log("[delete-user] Deleting auth user (CASCADE handles remaining tables)...");
-  const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(userId);
-  if (deleteAuthError) {
-    console.error("[delete-user] Auth deletion failed:", deleteAuthError);
-    throw new Error("Failed to delete account. Please try again.");
-  }
-
-  const { data: survivingProfile } = await adminClient
-    .from("profiles")
-    .select("id")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (survivingProfile) {
-    const { error: profileError } = await adminClient
-      .from("profiles")
-      .delete()
-      .eq("id", userId);
-    if (profileError) {
-      throw new Error(
-        "Account partially deleted. Please contact support to complete removal.",
-      );
-    }
-  }
-
-  return { authDeleted: true, authRetained: false, retainedReason: null };
+/** #3660 — a structured body the Host app decides on by `code`, never by text. */
+function codedResponse(
+  status: number,
+  body: Record<string, unknown>,
+): Response {
+  return new Response(
+    JSON.stringify(body),
+    { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
 }
 
 serve(async (req) => {
@@ -319,16 +287,26 @@ serve(async (req) => {
       .maybeSingle();
     const userPhone = profileData?.phone ?? null;
 
-    if (userPhone) {
+    const recordTrialPhone = async (): Promise<void> => {
+      if (!userPhone) return;
       const { error: trialHashError } = await adminClient.rpc("record_trial_phone", {
         p_phone: userPhone,
       });
       if (trialHashError) {
         console.warn("[delete-user] Failed to record trial phone hash:", trialHashError.message);
       }
-    }
+    };
+
+    // The login step's two outside dependencies, wired here so the gate that
+    // decides and the call that removes are both visible at the request path.
+    const authStepDeps = {
+      decide: () => shouldDeleteAuthUser(adminClient, userId),
+      deleteUser: () => adminClient.auth.admin.deleteUser(userId),
+    };
 
     if (side === "explorer") {
+      // Explorer order is unchanged: the trial-phone record runs first.
+      await recordTrialPhone();
       await runExplorerPreDeleteBatch(adminClient, userId, userPhone);
       await purgeExplorerSideData(adminClient, userId);
 
@@ -338,6 +316,8 @@ serve(async (req) => {
       const { authDeleted, authRetained, retainedReason } = await deleteAuthUserIfReady(
         adminClient,
         userId,
+        side,
+        authStepDeps,
       );
 
       // #2321 SC-5 — fail closed. Never return a success payload whose message the
@@ -371,40 +351,65 @@ serve(async (req) => {
       );
     }
 
-    // Business-side deletion (#668): Stripe offboard + soft-delete brands/creator row.
-    await purgeBusinessSideData(adminClient, userId);
+    // Business-side deletion (#668, rebuilt by #3660).
+    //
+    // ONE database call decides and writes everything, or refuses and writes
+    // nothing. Only after it has committed do the trial-phone record, Stripe,
+    // Paystack and the login step run, and none of them can turn a finished
+    // deletion into a failure response.
+    const outcome = await runBusinessSideDeletion(adminClient, userId, {
+      purge: () => purgeBusinessSideData(adminClient, userId),
+      recordTrialPhone,
+      ...authStepDeps,
+    });
 
-    const { authDeleted, authRetained, retainedReason } = await deleteAuthUserIfReady(
-      adminClient,
-      userId,
-    );
+    if (outcome.kind === "blocked") {
+      // Deliberately non-2xx: app versions already installed treat any 2xx
+      // without an `error` field as success and would sign the host out.
+      console.log(
+        `[delete-user] side=business deletion blocked for ${userId}: ${
+          outcome.blockers.map((b) => b.code).join(",")
+        }`,
+      );
+      return codedResponse(409, {
+        success: false,
+        error: "account_deletion_blocked",
+        code: "account_deletion_blocked",
+        blockers: outcome.blockers,
+      });
+    }
 
-    // #2321 SC-5 — the mirror of the explorer fail-closed rule.
+    if (outcome.kind === "failed") {
+      return codedResponse(500, {
+        success: false,
+        error: "account_deletion_failed",
+        code: "account_deletion_failed",
+      });
+    }
+
+    const { authDeleted, authRetained, retainedReason } = outcome;
+
+    // #2321 SC-5 mirror, changed by #3660: the Host side is already deleted, so
+    // an unattributable retain reason is logged for support and never answered
+    // with a failure. The response stays 200 with the truth in `authRetained`.
     if (authRetained && !isRetainReasonJustifiedForSide(side, retainedReason)) {
       console.error(
         `[delete-user] side=${side} retained auth with unjustifiable reason=${
           retainedReason ?? "null"
-        } for ${userId}`,
-      );
-      return errorResponse(
-        "Account deletion could not be completed. Please contact support.",
-        500,
+        } for ${userId} (Host side already deleted; responding 200)`,
       );
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        side,
-        authDeleted,
-        authRetained,
-        ...(authRetained ? { retainedReason } : {}),
-        message: authRetained
-          ? "Your business account has been removed. Your explorer login is unchanged."
-          : "Your account has been permanently deleted.",
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return codedResponse(200, {
+      success: true,
+      side,
+      authDeleted,
+      authRetained,
+      ...(authRetained ? { retainedReason } : {}),
+      message: authRetained
+        ? "Your business account has been removed. Your explorer login is unchanged."
+        : "Your account has been permanently deleted.",
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to delete account. Please try again later.";
     console.error("[delete-user] Unhandled error:", err);
