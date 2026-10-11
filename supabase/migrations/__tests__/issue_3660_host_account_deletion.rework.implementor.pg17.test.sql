@@ -4,10 +4,11 @@
 -- report that was fixed in the database (F-1, F-2, F-5, F-7), plus the runtime
 -- evidence for F-6.
 --
---   F-1  A paid, non-zero, not fully refunded order on ANY event of an owned
---        brand blocks (money_in_motion) until an item under a `released`
---        payout release covers it. A free order and a fully refunded order do
---        not block.
+--   F-1  A paid, non-zero, not fully refunded order blocks (money_in_motion)
+--        until a `released` payout item covers it, but ONLY when Mingla holds
+--        that money: brand on the hold rail and the sale after its cutover.
+--        Collected instalments follow the same rule. A direct charge, a free
+--        order and a fully refunded order do not block.
 --   F-2  A signed-in, non-admin user cannot clear brands.deleted_at. The
 --        service role and an admin still can. Soft-DELETING is unaffected.
 --   F-5  A second call on an already-deleted account returns the provider
@@ -93,91 +94,242 @@ END;
 $fn$;
 
 -- ============================================================================
--- F-1 — money the organiser has not been paid yet.
+-- F-1 — money Mingla is HOLDING for the organiser and has not paid out yet.
+--
+-- Second rework (coordinator ruling): an unpaid-out order blocks ONLY when
+-- Mingla holds the money, which is the payout sweep's own two conditions: the
+-- brand is on the hold rail (payout_hold_cutover_at set) and the sale is after
+-- that cutover. A direct charge on a brand that is not on the hold rail never
+-- gets a payout row and must never block, on a past or an upcoming event.
+-- The last block of this group runs the REAL sweep and asserts that it picks
+-- up exactly the orders this rule blocks on.
 -- ============================================================================
 DO $$
 DECLARE
-  v_owner uuid := gen_random_uuid();
+  v_owner uuid := gen_random_uuid();      -- owns the HOLD-RAIL brand
   v_brand uuid := gen_random_uuid();
   v_ended uuid := gen_random_uuid();      -- status scheduled, last date passed
   v_cancelled uuid := gen_random_uuid();  -- status cancelled, future date
   v_draft uuid := gen_random_uuid();      -- draft, no dates
   v_upcoming uuid := gen_random_uuid();   -- scheduled, future date
+  v_owner2 uuid := gen_random_uuid();     -- owns a brand NOT on the hold rail
+  v_brand2 uuid := gen_random_uuid();
+  v_ended2 uuid := gen_random_uuid();
+  v_upcoming2 uuid := gen_random_uuid();
   v_sfx text := replace(gen_random_uuid()::text, '-', '');
+  v_cutover timestamptz := now() - interval '30 days';
   f_order text;
+  f_inst text;
+  f_inst_paid_out text;
+  v_plan_order uuid := gen_random_uuid();
+  v_inst uuid := gen_random_uuid();
+  v_o_after uuid := gen_random_uuid();
+  v_o_before uuid := gen_random_uuid();
+  v_o_direct uuid := gen_random_uuid();
+  v_old_event uuid := gen_random_uuid();
+  v_old_event2 uuid := gen_random_uuid();
+  v_sweep jsonb;
 BEGIN
-  INSERT INTO auth.users(id) VALUES (v_owner);
-  INSERT INTO public.creator_accounts(id, email) VALUES (v_owner, 'i3660r-f1@example.test');
-  INSERT INTO public.brands(id, account_id, name, slug, default_currency)
-  VALUES (v_brand, v_owner, 'I3660R F1', 'i3660r-f1-' || v_sfx, 'USD');
+  INSERT INTO auth.users(id) VALUES (v_owner), (v_owner2);
+  INSERT INTO public.creator_accounts(id, email) VALUES
+    (v_owner, 'i3660r-f1@example.test'), (v_owner2, 'i3660r-f1b@example.test');
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency) VALUES
+    (v_brand, v_owner, 'I3660R F1 Hold', 'i3660r-f1-' || v_sfx, 'USD'),
+    (v_brand2, v_owner2, 'I3660R F1 Direct', 'i3660r-f1d-' || v_sfx, 'USD');
+  -- The hold rail: Mingla collects and pays out later. Brand 2 stays off it.
+  UPDATE public.brands SET payout_hold_cutover_at = v_cutover WHERE id = v_brand;
+  IF NOT EXISTS (SELECT 1 FROM public.brands
+                 WHERE id = v_brand AND payout_hold_cutover_at = v_cutover)
+     OR EXISTS (SELECT 1 FROM public.brands
+                WHERE id = v_brand2 AND payout_hold_cutover_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'issue_3660 rework F-1 fixture: the hold rail is not set up as intended';
+  END IF;
   INSERT INTO public.stripe_connect_accounts(brand_id, stripe_account_id, country, default_currency)
   VALUES (v_brand, 'acct_i3660r_' || left(v_sfx, 10), 'US', 'USD');
   INSERT INTO public.events(id, brand_id, created_by, title, slug, status) VALUES
     (v_ended, v_brand, v_owner, 'I3660R Ended', 'i3660r-end-' || v_sfx, 'scheduled'),
     (v_cancelled, v_brand, v_owner, 'I3660R Cancelled', 'i3660r-can-' || v_sfx, 'cancelled'),
     (v_draft, v_brand, v_owner, 'I3660R Draft', 'i3660r-dra-' || v_sfx, 'draft'),
-    (v_upcoming, v_brand, v_owner, 'I3660R Upcoming', 'i3660r-upc-' || v_sfx, 'scheduled');
+    (v_upcoming, v_brand, v_owner, 'I3660R Upcoming', 'i3660r-upc-' || v_sfx, 'scheduled'),
+    (v_old_event, v_brand, v_owner, 'I3660R Old', 'i3660r-old-' || v_sfx, 'scheduled'),
+    (v_ended2, v_brand2, v_owner2, 'I3660R Direct Ended', 'i3660r-den-' || v_sfx, 'scheduled'),
+    (v_upcoming2, v_brand2, v_owner2, 'I3660R Direct Upcoming', 'i3660r-dup-' || v_sfx, 'scheduled'),
+    (v_old_event2, v_brand2, v_owner2, 'I3660R Direct Old', 'i3660r-dol-' || v_sfx, 'scheduled');
   INSERT INTO public.event_dates(event_id, start_at, end_at) VALUES
     (v_ended, now() - interval '5 hours', now() - interval '1 hour'),
     (v_cancelled, now() + interval '9 days', now() + interval '10 days'),
-    (v_upcoming, now() + interval '5 days', now() + interval '6 days');
+    (v_upcoming, now() + interval '5 days', now() + interval '6 days'),
+    (v_old_event, now() - interval '11 days', now() - interval '10 days'),
+    (v_ended2, now() - interval '5 hours', now() - interval '1 hour'),
+    (v_upcoming2, now() + interval '5 days', now() + interval '6 days'),
+    (v_old_event2, now() - interval '11 days', now() - interval '10 days');
 
   PERFORM set_config('request.jwt.claim.sub', '', true);
   PERFORM set_config('request.jwt.claim.role', 'service_role', true);
   PERFORM set_config('request.jwt.claims', '{"role":"service_role"}', true);
 
-  -- %1$L event, %2$L payment_status, %3$s total, %4$s refunded
+  -- %1$L event, %2$L payment_status, %3$s total, %4$s refunded,
+  -- %5$L how long ago the order was placed, %6$L order id
   f_order := $f$INSERT INTO public.orders
       (id, event_id, buyer_email, buyer_name, total_cents, refunded_amount_cents,
-       currency, payment_status, source)
-    VALUES (gen_random_uuid(), %1$L, 'i3660r-buyer@example.test', 'I3660R Buyer',
-            %3$s, %4$s, 'USD', %2$L, 'legacy')$f$;
+       currency, payment_status, source, created_at)
+    VALUES (%6$L, %1$L, 'i3660r-buyer@example.test', 'I3660R Buyer',
+            %3$s, %4$s, 'USD', %2$L, 'legacy', now() - (%5$L)::interval)$f$;
+  -- %1$L instalment id, %2$L order id, %3$L status,
+  -- %4$s collected_at expression (or NULL)
+  f_inst := $f$INSERT INTO public.order_installments
+      (id, order_id, ordinal, amount_cents, currency, due_at, status,
+       stripe_payment_intent_id, collected_at)
+    VALUES (%1$L, %2$L, 1, 2500, 'USD', now() - interval '3 days', %3$L,
+            'pi_i3660r_' || left(replace(gen_random_uuid()::text, '-', ''), 12), %4$s)$f$;
+  -- %1$L brand, %2$L instalment id: a RELEASED payout covering that instalment.
+  f_inst_paid_out := $f$WITH r AS (
+      INSERT INTO public.brand_payout_releases
+        (id, brand_id, occurrence_key, surface, provider, currency, anchor_end_at,
+         releasable_at, gross_cents, net_release_cents, status)
+      VALUES (gen_random_uuid(), %1$L, 'order_installment:' || %2$L::text,
+              'order_installment', 'stripe', 'usd',
+              date_trunc('second', now()) - interval '2 days',
+              date_trunc('second', now()) - interval '1 day', 2500, 2500, 'released')
+      RETURNING id)
+    INSERT INTO public.payout_release_items
+      (id, release_id, source_type, source_id, gross_cents, refunded_cents,
+       disputed_cents, mingla_fee_cents, partner_share_cents, provider_fee_cents,
+       net_cents, source_finalized_at)
+    SELECT gen_random_uuid(), r.id, 'order_installment', %2$L, 2500, 0, 0, 0, 0, 0,
+           2500, now() FROM r$f$;
 
-  -- Baseline: with no order at all this owner IS deleted.
-  PERFORM pg_temp.i3660r_case('baseline', 'SELECT 1', v_owner, 'deleted');
+  -- Baselines: with no order at all both owners ARE deleted.
+  PERFORM pg_temp.i3660r_case('baseline, hold-rail owner', 'SELECT 1', v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('baseline, direct-charge owner', 'SELECT 1', v_owner2, 'deleted');
 
-  -- The reported defect and its siblings: BLOCKED.
-  PERFORM pg_temp.i3660r_case('paid order, event just ended, no release row',
-    format(f_order, v_ended, 'paid', 5000, 0), v_owner, 'money_in_motion');
-  PERFORM pg_temp.i3660r_case('partly refunded order, ended event, no release row',
-    format(f_order, v_ended, 'partial_refund', 5000, 1000), v_owner, 'money_in_motion');
-  PERFORM pg_temp.i3660r_case('paid order, CANCELLED event, no release row',
-    format(f_order, v_cancelled, 'paid', 5000, 0), v_owner, 'money_in_motion');
-  PERFORM pg_temp.i3660r_case('paid order, DRAFT event, no release row',
-    format(f_order, v_draft, 'paid', 5000, 0), v_owner, 'money_in_motion');
-  PERFORM pg_temp.i3660r_case('paid order, ended event, release still PENDING',
-    format(f_order, v_ended, 'paid', 5000, 0) || ';' ||
+  -- ── Mingla is holding the money: BLOCKED ───────────────────────────────────
+  PERFORM pg_temp.i3660r_case('hold rail, order AFTER cutover, ended event, no release row',
+    format(f_order, v_ended, 'paid', 5000, 0, '2 hours', gen_random_uuid()), v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('hold rail, partly refunded order after cutover, no release row',
+    format(f_order, v_ended, 'partial_refund', 5000, 1000, '2 hours', gen_random_uuid()), v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('hold rail, paid order on a CANCELLED event, no release row',
+    format(f_order, v_cancelled, 'paid', 5000, 0, '2 hours', gen_random_uuid()), v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('hold rail, paid order on a DRAFT event, no release row',
+    format(f_order, v_draft, 'paid', 5000, 0, '2 hours', gen_random_uuid()), v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('hold rail, order after cutover, release still PENDING',
+    format(f_order, v_ended, 'paid', 5000, 0, '2 hours', gen_random_uuid()) || ';' ||
     format('SELECT pg_temp.i3660r_cover(%L, %L, %L)', v_brand, v_ended, 'pending'),
     v_owner, 'money_in_motion');
-  PERFORM pg_temp.i3660r_case('paid order, ended event, release IN FLIGHT',
-    format(f_order, v_ended, 'paid', 5000, 0) || ';' ||
+  PERFORM pg_temp.i3660r_case('hold rail, order after cutover, release IN FLIGHT',
+    format(f_order, v_ended, 'paid', 5000, 0, '2 hours', gen_random_uuid()) || ';' ||
     format('SELECT pg_temp.i3660r_cover(%L, %L, %L)', v_brand, v_ended, 'in_flight'),
     v_owner, 'money_in_motion');
-  -- Two orders, only one of them paid out: the other still blocks.
-  PERFORM pg_temp.i3660r_case('one order released, a second paid after the release',
-    format(f_order, v_ended, 'paid', 5000, 0) || ';' ||
+  PERFORM pg_temp.i3660r_case('hold rail, one order released, a second paid after the release',
+    format(f_order, v_ended, 'paid', 5000, 0, '2 hours', gen_random_uuid()) || ';' ||
     format('SELECT pg_temp.i3660r_cover(%L, %L, %L)', v_brand, v_ended, 'released') || ';' ||
-    format(f_order, v_ended, 'paid', 2500, 0),
+    format(f_order, v_ended, 'paid', 2500, 0, '1 hour', gen_random_uuid()),
+    v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('hold rail, order one second after the cutover',
+    format(f_order, v_ended, 'paid', 5000, 0, '30 days', gen_random_uuid())
+      || '; UPDATE public.orders SET created_at = ' || quote_literal(v_cutover + interval '1 second')
+      || ' WHERE event_id = ' || quote_literal(v_ended),
     v_owner, 'money_in_motion');
   -- An upcoming event's paid order stays reported as a sold ticket.
-  PERFORM pg_temp.i3660r_case('paid order, upcoming event',
-    format(f_order, v_upcoming, 'paid', 5000, 0), v_owner, 'tickets_sold');
+  PERFORM pg_temp.i3660r_case('hold rail, paid order, upcoming event',
+    format(f_order, v_upcoming, 'paid', 5000, 0, '2 hours', gen_random_uuid()), v_owner, 'tickets_sold');
 
-  -- What must NOT block.
-  PERFORM pg_temp.i3660r_case('paid order, ended event, RELEASED',
-    format(f_order, v_ended, 'paid', 5000, 0) || ';' ||
+  -- ── Mingla is NOT holding the money: must not block ────────────────────────
+  PERFORM pg_temp.i3660r_case('hold rail, order BEFORE the cutover, ended event',
+    format(f_order, v_ended, 'paid', 5000, 0, '60 days', gen_random_uuid()), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('hold rail, order exactly AT the cutover (the sweep needs strictly after)',
+    format(f_order, v_ended, 'paid', 5000, 0, '30 days', gen_random_uuid())
+      || '; UPDATE public.orders SET created_at = ' || quote_literal(v_cutover)
+      || ' WHERE event_id = ' || quote_literal(v_ended),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('NOT on the hold rail, paid order on a PAST event',
+    format(f_order, v_ended2, 'paid', 5000, 0, '2 hours', gen_random_uuid()), v_owner2, 'deleted');
+  PERFORM pg_temp.i3660r_case('NOT on the hold rail, partly refunded order on a past event',
+    format(f_order, v_ended2, 'partial_refund', 5000, 1000, '2 hours', gen_random_uuid()), v_owner2, 'deleted');
+  -- ...and on an UPCOMING event it is a sold ticket, never money in motion.
+  PERFORM pg_temp.i3660r_case('NOT on the hold rail, paid order on an UPCOMING event',
+    format(f_order, v_upcoming2, 'paid', 5000, 0, '2 hours', gen_random_uuid()), v_owner2, 'tickets_sold');
+  PERFORM pg_temp.i3660r_case('hold rail, order after cutover, RELEASED',
+    format(f_order, v_ended, 'paid', 5000, 0, '2 hours', gen_random_uuid()) || ';' ||
     format('SELECT pg_temp.i3660r_cover(%L, %L, %L)', v_brand, v_ended, 'released'),
     v_owner, 'deleted');
-  PERFORM pg_temp.i3660r_case('FREE order (paid, 0), ended event',
-    format(f_order, v_ended, 'paid', 0, 0), v_owner, 'deleted');
-  PERFORM pg_temp.i3660r_case('fully REFUNDED order, ended event',
-    format(f_order, v_ended, 'refunded', 5000, 5000), v_owner, 'deleted');
-  PERFORM pg_temp.i3660r_case('cancelled order, ended event',
-    format(f_order, v_ended, 'cancelled', 5000, 0), v_owner, 'deleted');
-  PERFORM pg_temp.i3660r_case('failed order, ended event',
-    format(f_order, v_ended, 'failed', 5000, 0), v_owner, 'deleted');
-  PERFORM pg_temp.i3660r_case('pending order, ended event',
-    format(f_order, v_ended, 'pending', 5000, 0), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('hold rail, FREE order (paid, 0)',
+    format(f_order, v_ended, 'paid', 0, 0, '2 hours', gen_random_uuid()), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('hold rail, fully REFUNDED order',
+    format(f_order, v_ended, 'refunded', 5000, 5000, '2 hours', gen_random_uuid()), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('hold rail, cancelled order',
+    format(f_order, v_ended, 'cancelled', 5000, 0, '2 hours', gen_random_uuid()), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('hold rail, failed order',
+    format(f_order, v_ended, 'failed', 5000, 0, '2 hours', gen_random_uuid()), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('hold rail, pending order on an ended event',
+    format(f_order, v_ended, 'pending', 5000, 0, '2 hours', gen_random_uuid()), v_owner, 'deleted');
+
+  -- ── Instalment plans ───────────────────────────────────────────────────────
+  -- The plan's root order is paid out here in every case, so what decides the
+  -- outcome is the instalment alone.
+  PERFORM pg_temp.i3660r_case('hold rail, COLLECTED instalment after cutover, no released item',
+    format(f_order, v_ended, 'paid', 5000, 0, '2 hours', v_plan_order) || ';' ||
+    format('SELECT pg_temp.i3660r_cover(%L, %L, %L)', v_brand, v_ended, 'released') || ';' ||
+    format(f_inst, v_inst, v_plan_order, 'collected', $q$now() - interval '1 hour'$q$),
+    v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('hold rail, collected instalment, RELEASED item',
+    format(f_order, v_ended, 'paid', 5000, 0, '2 hours', v_plan_order) || ';' ||
+    format('SELECT pg_temp.i3660r_cover(%L, %L, %L)', v_brand, v_ended, 'released') || ';' ||
+    format(f_inst, v_inst, v_plan_order, 'collected', $q$now() - interval '1 hour'$q$) || ';' ||
+    format(f_inst_paid_out, v_brand, v_inst),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('hold rail, instalment collected BEFORE the cutover',
+    format(f_order, v_ended, 'paid', 5000, 0, '60 days', v_plan_order) || ';' ||
+    format(f_inst, v_inst, v_plan_order, 'collected', $q$now() - interval '45 days'$q$),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('hold rail, instalment only SCHEDULED (nothing collected)',
+    format(f_order, v_ended, 'paid', 5000, 0, '2 hours', v_plan_order) || ';' ||
+    format('SELECT pg_temp.i3660r_cover(%L, %L, %L)', v_brand, v_ended, 'released') || ';' ||
+    format(f_inst, v_inst, v_plan_order, 'scheduled', 'NULL'),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('NOT on the hold rail, collected instalment',
+    format(f_order, v_ended2, 'paid', 5000, 0, '2 hours', v_plan_order) || ';' ||
+    format(f_inst, v_inst, v_plan_order, 'collected', $q$now() - interval '1 hour'$q$),
+    v_owner2, 'deleted');
+
+  -- ── The rule and the REAL payout sweep agree ───────────────────────────────
+  -- Three orders, all old enough to be mature for the sweep, each with the fee
+  -- snapshot the sweep requires: hold rail after cutover, hold rail before
+  -- cutover, and a direct charge. The sweep must open a payout item for the
+  -- first one ONLY, and that is the only one the deletion blocks on.
+  BEGIN
+    PERFORM set_config('session_replication_role', 'replica', true);
+    EXECUTE format(f_order, v_old_event, 'paid', 5000, 0, '12 days', v_o_after);
+    EXECUTE format(f_order, v_old_event, 'paid', 5000, 0, '60 days', v_o_before);
+    EXECUTE format(f_order, v_old_event2, 'paid', 5000, 0, '12 days', v_o_direct);
+    INSERT INTO public.payout_source_fee_snapshots
+      (id, source_type, source_id, provider_fee_cents, captured_at)
+    SELECT gen_random_uuid(), 'order', x, 0, now()
+    FROM unnest(ARRAY[v_o_after, v_o_before, v_o_direct]) x;
+    PERFORM set_config('session_replication_role', 'origin', true);
+
+    v_sweep := public.run_payout_release_dark_sweep(now());
+
+    IF NOT EXISTS (SELECT 1 FROM public.payout_release_items
+                   WHERE source_type = 'order' AND source_id = v_o_after) THEN
+      RAISE EXCEPTION 'issue_3660 rework F-1 sweep: the sweep did not open a payout item for a hold-rail order after cutover (%). The mirror is stale; re-read the rule.', v_sweep;
+    END IF;
+    IF EXISTS (SELECT 1 FROM public.payout_release_items
+               WHERE source_type = 'order' AND source_id IN (v_o_before, v_o_direct)) THEN
+      RAISE EXCEPTION 'issue_3660 rework F-1 sweep: the sweep opened a payout item for an order before cutover or off the hold rail. The mirror is stale; re-read the rule.';
+    END IF;
+    -- The swept order is not `released` yet, so its owner is still blocked...
+    IF pg_temp.i3660r_codes(public.biz_delete_host_account(v_owner)) IS DISTINCT FROM 'money_in_motion' THEN
+      RAISE EXCEPTION 'issue_3660 rework F-1 sweep: the owner of a swept, unreleased order was not blocked';
+    END IF;
+    -- ...and the direct-charge owner, whose order the sweep ignored, is not.
+    IF public.biz_delete_host_account(v_owner2)->>'status' IS DISTINCT FROM 'deleted' THEN
+      RAISE EXCEPTION 'issue_3660 rework F-1 sweep: a direct-charge owner the sweep ignores was blocked';
+    END IF;
+    RAISE EXCEPTION 'i3660r_rollback' USING ERRCODE = 'I3661';
+  EXCEPTION WHEN SQLSTATE 'I3661' THEN
+    NULL;
+  END;
 
   RAISE NOTICE 'issue_3660 rework F-1 PASS';
 END;

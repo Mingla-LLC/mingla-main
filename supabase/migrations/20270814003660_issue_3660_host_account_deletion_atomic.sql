@@ -197,27 +197,73 @@ BEGIN
         JOIN public.events e ON e.id = t.event_id
         WHERE e.brand_id = ANY (v_brand_ids)
           AND t.status = 'refund_pending')
-    -- A paid, non-zero, not fully refunded order whose money has not been
-    -- released to the organiser. The release row is created by a sweep that
-    -- runs after the payment, so "no release row yet" is NOT evidence that
-    -- nothing is owed: only an item under a `released` release is. Orders on
-    -- a live or upcoming event are already reported as tickets_sold above, so
-    -- this arm counts the rest (ended, cancelled, draft, taken-down events):
-    -- together the two arms refuse on every such order on ANY event of an
-    -- owned brand. A free order (total 0) and a fully refunded order
-    -- (payment_status refunded) never count.
+    -- Money MINGLA IS HOLDING for the organiser and has not released yet.
+    --
+    -- A payout release row only ever exists for a brand on the hold rail and
+    -- for a sale made after its cutover; a direct charge is paid to the Host's
+    -- own provider account and never gets one. So an order counts here only
+    -- under the same two conditions run_payout_release_dark_sweep uses to
+    -- decide that an order enters the payout ledger
+    -- (20270725003645_issue_3645_installment_cancel_and_ledger.sql, order arm:
+    --    AND o.total_cents>0 AND b.payout_hold_cutover_at IS NOT NULL
+    --    AND o.created_at>b.payout_hold_cutover_at ...
+    --  and attach_payout_release in the same file refuses anything else with
+    --  `IF v_cutover IS NULL OR p_finalized_at <= v_cutover THEN RAISE
+    --  'source_not_after_cutover'`).
+    -- For such an order, "no release row yet" is NOT evidence that nothing is
+    -- owed (the sweep runs after the payment): only an item under a `released`
+    -- release is. A free order (total 0) and a fully refunded order never
+    -- count. A paid order on a brand that is NOT on the hold rail, or placed
+    -- at or before the cutover, never counts here, on a past or an upcoming
+    -- event. Orders on a live or upcoming event are reported as tickets_sold
+    -- above, so this arm looks at every other event.
+    -- (The sweep also skips cancelled events, because their money goes back to
+    -- the buyers; a still-paid order there is a refund in progress, so it is
+    -- deliberately NOT skipped here.)
     + (SELECT count(*) FROM public.orders o
         JOIN public.events e ON e.id = o.event_id
+        JOIN public.brands b ON b.id = e.brand_id
         WHERE e.brand_id = ANY (v_brand_ids)
           AND NOT (e.id = ANY (v_event_ids))
           AND o.payment_status IN ('paid', 'partial_refund')
           AND o.total_cents > 0
+          AND b.payout_hold_cutover_at IS NOT NULL
+          AND o.created_at > b.payout_hold_cutover_at
           AND NOT EXISTS (
             SELECT 1
             FROM public.payout_release_items i
             JOIN public.brand_payout_releases pr ON pr.id = i.release_id
             WHERE i.source_type = 'order'
               AND i.source_id = o.id
+              AND pr.status = 'released'
+          ))
+    -- A COLLECTED instalment of a payment plan, under the same two hold-rail
+    -- conditions the sweep's instalment arm uses (same file:
+    --    AND b.payout_hold_cutover_at IS NOT NULL
+    --    AND oi.collected_at > b.payout_hold_cutover_at).
+    -- Each collected instalment is its own payout item (`order_installment`,
+    -- keyed by the instalment id), separate from the plan's root order, which
+    -- the order arm above treats like any other order. The sweep additionally
+    -- waits for issue_2036_installment_payout_ready(); that switch decides when
+    -- the money is paid out, not whether Mingla is holding it, so it is NOT
+    -- part of this test: a collected instalment on the hold rail blocks until
+    -- a released item covers it.
+    + (SELECT count(*) FROM public.order_installments oi
+        JOIN public.orders o ON o.id = oi.order_id
+        JOIN public.events e ON e.id = o.event_id
+        JOIN public.brands b ON b.id = e.brand_id
+        WHERE e.brand_id = ANY (v_brand_ids)
+          AND NOT (e.id = ANY (v_event_ids))
+          AND oi.status = 'collected'
+          AND oi.amount_cents > 0
+          AND b.payout_hold_cutover_at IS NOT NULL
+          AND oi.collected_at > b.payout_hold_cutover_at
+          AND NOT EXISTS (
+            SELECT 1
+            FROM public.payout_release_items i
+            JOIN public.brand_payout_releases pr ON pr.id = i.release_id
+            WHERE i.source_type = 'order_installment'
+              AND i.source_id = oi.id
               AND pr.status = 'released'
           ))
   )::integer INTO v_count;

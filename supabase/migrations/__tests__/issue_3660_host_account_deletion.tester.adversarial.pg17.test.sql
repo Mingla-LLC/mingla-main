@@ -166,6 +166,12 @@ BEGIN
   INSERT INTO public.stripe_connect_accounts
     (brand_id, stripe_account_id, country, default_currency)
   VALUES (v_brand, 'acct_i3660adv_' || left(v_sfx, 10), 'US', 'USD');
+  -- [TEST-MOD-APPROVED #3660] second rework: an unpaid-out order blocks only
+  -- when Mingla holds the money, so the fixture brand is on the hold rail
+  -- (cutover 30 days ago; every order below is placed after it). The cases that
+  -- are OFF the hold rail are in the rework suite.
+  UPDATE public.brands SET payout_hold_cutover_at = now() - interval '30 days'
+   WHERE id = v_brand;
   INSERT INTO public.events(id, brand_id, created_by, title, slug, status) VALUES
     (v_event, v_brand, v_owner, 'I3660 Adv Upcoming', 'i3660-adv-e-' || v_sfx, 'scheduled'),
     (v_past_event, v_brand, v_owner, 'I3660 Adv Past', 'i3660-adv-p-' || v_sfx, 'scheduled'),

@@ -106,6 +106,14 @@ BEGIN
   INSERT INTO public.creator_accounts(id, email) VALUES (v_a, 't2-3660-kd2@example.test');
   INSERT INTO public.brands(id, account_id, name, slug, default_currency)
   VALUES (v_b, v_a, 'T2 KD2', 't2-3660-kd2-' || v_sfx, 'USD');
+  -- [TEST-MOD-APPROVED #3660] second rework, on the coordinator's ruling (added
+  -- by the implementor; no line of the tester's case is removed or changed).
+  -- A payout row only ever exists for a brand on the hold rail and a sale after
+  -- its cutover; a direct charge is paid straight to the Host and is not money
+  -- Mingla owes. So that this case still describes a Host who IS owed money,
+  -- the brand is put on the hold rail before the order is placed.
+  UPDATE public.brands SET payout_hold_cutover_at = now() - interval '30 days'
+   WHERE id = v_b;
   INSERT INTO public.stripe_connect_accounts(brand_id, stripe_account_id, country, default_currency)
   VALUES (v_b, 'acct_t2kd2_' || left(v_sfx, 10), 'US', 'USD');
   INSERT INTO public.events(id, brand_id, created_by, title, slug, status)

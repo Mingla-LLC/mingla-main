@@ -1161,8 +1161,11 @@ jobs:
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.known_defects.pg17.test.sql
           # Issue #3660 rework — implementor suite, one group per finding fixed
-          # in the database: unpaid-out orders block on any event (free and
-          # refunded do not); a signed-in non-admin cannot clear
+          # in the database: an unpaid-out order or collected instalment blocks
+          # when Mingla holds the money (brand on the hold rail, sale after its
+          # cutover; a direct charge, a free and a refunded order do not), and
+          # the real payout sweep is run to prove the rule mirrors it; a
+          # signed-in non-admin cannot clear
           # brands.deleted_at (admin and service role can); a retry returns the
           # provider targets again and writes nothing; pending invitations and
           # never-accepted partner links on a deleted brand are closed; an
