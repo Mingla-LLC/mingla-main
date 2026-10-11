@@ -1,7 +1,7 @@
 -- #3682 Wave 2.8 — Who's going privacy (design contract surface J).
 -- Per-event "Show me as going" defaults OFF. Friends always see friends'
--- names; everyone else sees only opted-in names, with the rest counted as
--- "+N others keep it private".
+-- names; everyone else sees only opted-in names, with anonymous seats
+-- counted (party/ticket unit) as "M keep it private" inside goingCount.
 
 BEGIN;
 
@@ -300,7 +300,10 @@ BEGIN
        AND r.rn <= v_offset + v_limit + 1
   ), aggregates AS (
     SELECT
-      (SELECT COUNT(*)::integer FROM privacy_final pf WHERE NOT pf.is_named) AS private_others,
+      -- Same unit as goingCount (party size / ticket count), so the sheet can
+      -- say "N going · M keep it private" without mixing row counts into seats.
+      (SELECT COALESCE(SUM(pf.party_size), 0)::integer
+         FROM privacy_final pf WHERE NOT pf.is_named) AS private_others,
       (
         SELECT a.show_me_as_going
           FROM attendance a
@@ -344,7 +347,7 @@ $function$;
 COMMENT ON FUNCTION public.peer_list_event_guests(uuid, integer, integer) IS
   '#871 entitled roster + #3682 Show me as going. Authed attendees only. '
   'Named rows: self, accepted friends, or show_me_as_going. Others anonymous; '
-  'privateOthersCount feeds "+N others keep it private".';
+  'privateOthersCount (party/ticket seats) feeds "M keep it private".';
 
 REVOKE ALL ON FUNCTION public.peer_list_event_guests(uuid, integer, integer)
   FROM PUBLIC, anon;

@@ -15,7 +15,7 @@ const types = read("packages/offering-rendering/socialProofTypes.ts");
 Deno.test("#3682 sheet exposes Show me as going toggle and private-others copy", () => {
   assertStringIncludes(sheet, "issue-3682-show-me-as-going-switch");
   assertStringIncludes(sheet, "Show me as going");
-  assertStringIncludes(sheet, "others keep it private");
+  assertStringIncludes(sheet, "keep it private");
   assertStringIncludes(sheet, "setShowMeAsGoing");
 });
 

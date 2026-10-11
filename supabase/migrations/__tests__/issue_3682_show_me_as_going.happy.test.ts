@@ -48,5 +48,6 @@ Deno.test("#3682 peer_list names self, friends, or opt-in — not profile visibi
     "profile visibility alone must not name guests after #3682",
   );
   assertStringIncludes(migration, "'privateOthersCount'");
+  assertStringIncludes(migration, "SUM(pf.party_size)");
   assertStringIncludes(migration, "'viewerShowMeAsGoing'");
 });

@@ -93,8 +93,9 @@ export type PeerGuestListPage = {
   nextOffset: number | null;
   guests: PeerGuestRow[];
   /**
-   * #3682 — guests who stay anonymous for this viewer (not opted in, not
-   * friends). Sheet copy: "+N others keep it private".
+   * #3682 — party/ticket seats that stay anonymous for this viewer (not
+   * opted in, not friends). Same unit as goingCount. Sheet copy:
+   * "N going · M keep it private" (M is a subset of N, not an addend).
    */
   privateOthersCount?: number;
   /** #3682 — viewer's own Show me as going flag when they have attendance. */

@@ -1069,9 +1069,11 @@ export function EventGuestListSheet({
       </Animated.View>
     ) : null;
 
+  // privateOthersCount is a subset of goingCount (same party/ticket unit), not
+  // an addend — do not prefix with "+" (that reads as going + private).
   const headerSubtitle =
     privateOthersCount > 0
-      ? `${goingCount} going · +${privateOthersCount} others keep it private`
+      ? `${goingCount} going · ${privateOthersCount} keep it private`
       : `${goingCount} going`;
 
   const onToggleShowMeAsGoing = useCallback(
