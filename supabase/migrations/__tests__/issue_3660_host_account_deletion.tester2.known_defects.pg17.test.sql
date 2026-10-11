@@ -125,6 +125,16 @@ BEGIN
   INSERT INTO public.orders
     (id, event_id, buyer_email, buyer_name, total_cents, currency, payment_status, source)
   VALUES (gen_random_uuid(), v_e, 't2-buyer@example.test', 'T2 Buyer', 5000, 'USD', 'paid', 'legacy');
+  -- [TEST-MOD-APPROVED #3660] third rework, on the coordinator's ruling (added by
+  -- the implementor; no line of the tester's case is removed or changed). The
+  -- money rule now mirrors the payout sweep in full, and the sweep only ledgers
+  -- a sale that has a fee snapshot (an online payment); a sale without one is
+  -- cash and is not money Mingla holds. So that this case still describes a
+  -- Host who IS owed money, the order's fee snapshot is recorded here.
+  INSERT INTO public.payout_source_fee_snapshots
+    (id, source_type, source_id, provider_fee_cents, captured_at)
+  SELECT gen_random_uuid(), 'order', x.id, 0, now()
+  FROM public.orders x WHERE x.event_id = v_e;
   SET LOCAL session_replication_role = origin;
 
   IF EXISTS (SELECT 1 FROM public.brand_payout_releases WHERE brand_id = v_b) THEN

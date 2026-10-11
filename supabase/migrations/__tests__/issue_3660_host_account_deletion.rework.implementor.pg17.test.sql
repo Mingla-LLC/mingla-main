@@ -20,6 +20,13 @@
 --        never-accepted partner links on them are closed, in the same
 --        transaction. Accepted rows and other brands are untouched.
 --
+--   RN-1 / RN-2 (third rework)  The money rule mirrors every arm of the payout
+--        sweep, fee snapshot included: a cash sale never blocks; RSVP
+--        contributions, venue deposits and menu orders Mingla holds do. The
+--        real sweep is run and must agree with the rule on the same fixtures.
+--   RN-3 (third rework)  A later deletion returns the provider targets of
+--        earlier deletions of the same account, de-duplicated.
+--
 -- Runs as supabase_admin: money fixtures need session_replication_role =
 -- replica, and F-2 switches to the real `authenticated` role. The replica role
 -- is back to origin before any function or guard under test runs.
@@ -170,11 +177,15 @@ BEGIN
 
   -- %1$L event, %2$L payment_status, %3$s total, %4$s refunded,
   -- %5$L how long ago the order was placed, %6$L order id
+  -- An ONLINE sale: it carries the provider payment reference that earns it a
+  -- fee snapshot. (Cash sales and the other money sources are in the group
+  -- "every arm of the payout sweep" further down.)
   f_order := $f$INSERT INTO public.orders
       (id, event_id, buyer_email, buyer_name, total_cents, refunded_amount_cents,
-       currency, payment_status, source, created_at)
+       currency, payment_status, source, created_at, stripe_payment_intent_id)
     VALUES (%6$L, %1$L, 'i3660r-buyer@example.test', 'I3660R Buyer',
-            %3$s, %4$s, 'USD', %2$L, 'legacy', now() - (%5$L)::interval)$f$;
+            %3$s, %4$s, 'USD', %2$L, 'legacy', now() - (%5$L)::interval,
+            'pi_i3660r_' || left(replace(gen_random_uuid()::text, '-', ''), 16))$f$;
   -- %1$L instalment id, %2$L order id, %3$L status,
   -- %4$s collected_at expression (or NULL)
   f_inst := $f$INSERT INTO public.order_installments
@@ -210,8 +221,11 @@ BEGIN
     format(f_order, v_ended, 'partial_refund', 5000, 1000, '2 hours', gen_random_uuid()), v_owner, 'money_in_motion');
   PERFORM pg_temp.i3660r_case('hold rail, paid order on a CANCELLED event, no release row',
     format(f_order, v_cancelled, 'paid', 5000, 0, '2 hours', gen_random_uuid()), v_owner, 'money_in_motion');
-  PERFORM pg_temp.i3660r_case('hold rail, paid order on a DRAFT event, no release row',
-    format(f_order, v_draft, 'paid', 5000, 0, '2 hours', gen_random_uuid()), v_owner, 'money_in_motion');
+  -- Third rework: an event with NO date can never be ledgered (the sweep's
+  -- occurrence join finds nothing), so an order on a dateless draft is not
+  -- money the sweep would ever pay out and no longer blocks.
+  PERFORM pg_temp.i3660r_case('hold rail, paid order on a DRAFT event with no date',
+    format(f_order, v_draft, 'paid', 5000, 0, '2 hours', gen_random_uuid()), v_owner, 'deleted');
   PERFORM pg_temp.i3660r_case('hold rail, order after cutover, release still PENDING',
     format(f_order, v_ended, 'paid', 5000, 0, '2 hours', gen_random_uuid()) || ';' ||
     format('SELECT pg_temp.i3660r_cover(%L, %L, %L)', v_brand, v_ended, 'pending'),
@@ -808,6 +822,375 @@ BEGIN
   END IF;
 
   RAISE NOTICE 'issue_3660 rework F-6 PASS';
+END;
+$$;
+
+-- ============================================================================
+-- RN-1 / RN-2 — the money rule mirrors EVERY arm of the payout sweep.
+--
+-- money_in_motion blocks exactly when the sweep would treat something as money
+-- Mingla holds for the brand that has not been released. For each arm: one
+-- "the sweep would ledger it, not released -> blocks" and the ways it would
+-- never be ledgered -> does not block. The last block runs the REAL sweep over
+-- one mixed set of fixtures and asserts that the sources it opens a payout
+-- item for are exactly the sources the rule counts.
+-- ============================================================================
+DO $$
+DECLARE
+  v_owner uuid := gen_random_uuid();      -- hold-rail brand
+  v_brand uuid := gen_random_uuid();
+  v_old uuid := gen_random_uuid();        -- ended 10 days ago (mature for the sweep)
+  v_owner2 uuid := gen_random_uuid();     -- brand NOT on the hold rail
+  v_brand2 uuid := gen_random_uuid();
+  v_old2 uuid := gen_random_uuid();
+  v_sfx text := replace(gen_random_uuid()::text, '-', '');
+  v_cutover timestamptz := now() - interval '30 days';
+  f_order text;      -- %1 id, %2 event, %3 source, %4 payment_method, %5 provider ref or NULL, %6 age
+  f_contrib text;    -- %1 id, %2 event, %3 brand, %4 provider ref or NULL, %5 age, %6 status
+  f_deposit text;    -- %1 session id, %2 brand, %3 provider ref or NULL, %4 age, %5 session status
+  f_menu text;       -- %1 id, %2 brand, %3 money_path, %4 provider or NULL, %5 provider ref or NULL, %6 age
+  f_snap text;       -- %1 source_type, %2 source id
+  f_released text;   -- %1 brand, %2 source_type, %3 source id
+  v_id uuid;
+  v_o_led uuid := gen_random_uuid();
+  v_o_cash uuid := gen_random_uuid();
+  v_o_before uuid := gen_random_uuid();
+  v_c_led uuid := gen_random_uuid();
+  v_c_none uuid := gen_random_uuid();
+  v_d_led uuid := gen_random_uuid();
+  v_d_none uuid := gen_random_uuid();
+  v_m_led uuid := gen_random_uuid();
+  v_m_cash uuid := gen_random_uuid();
+  v_swept text;
+  v_ruled text;
+BEGIN
+  INSERT INTO auth.users(id) VALUES (v_owner), (v_owner2);
+  INSERT INTO public.creator_accounts(id, email) VALUES
+    (v_owner, 'i3660r-arms@example.test'), (v_owner2, 'i3660r-arms2@example.test');
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency) VALUES
+    (v_brand, v_owner, 'I3660R Arms Hold', 'i3660r-arms-' || v_sfx, 'USD'),
+    (v_brand2, v_owner2, 'I3660R Arms Direct', 'i3660r-armsd-' || v_sfx, 'USD');
+  UPDATE public.brands SET payout_hold_cutover_at = v_cutover WHERE id = v_brand;
+  INSERT INTO public.events(id, brand_id, created_by, title, slug, status) VALUES
+    (v_old, v_brand, v_owner, 'I3660R Arms Old', 'i3660r-arms-o-' || v_sfx, 'scheduled'),
+    (v_old2, v_brand2, v_owner2, 'I3660R Arms Old Direct', 'i3660r-arms-od-' || v_sfx, 'scheduled');
+  INSERT INTO public.event_dates(event_id, start_at, end_at) VALUES
+    (v_old, now() - interval '11 days', now() - interval '10 days'),
+    (v_old2, now() - interval '11 days', now() - interval '10 days');
+
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', 'service_role', true);
+  PERFORM set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  f_order := $f$INSERT INTO public.orders
+      (id, event_id, buyer_email, buyer_name, total_cents, currency, payment_status,
+       source, payment_method, stripe_payment_intent_id, created_at)
+    VALUES (%1$L, %2$L, 'i3660r-buyer@example.test', 'I3660R Buyer', 5000, 'USD', 'paid',
+            %3$L, %4$L, %5$s, now() - (%6$L)::interval)$f$;
+  f_contrib := $f$INSERT INTO public.event_rsvp_contributions
+      (id, event_id, brand_id, provider, currency, amount_cents, buyer_total_cents,
+       pricing_breakdown, status, paid_at, created_at, stripe_payment_intent_id)
+    VALUES (%1$L, %2$L, %3$L, 'stripe', 'USD', 2500, 2500, '{}'::jsonb, %6$L,
+            now() - (%5$L)::interval, now() - (%5$L)::interval, %4$s)$f$;
+  -- A deposit is a completed reservation checkout session tied to a reservation
+  -- that is long past and completed (so upcoming_reservations is not in play).
+  f_deposit := $f$WITH r AS (
+      INSERT INTO public.reservations
+        (id, brand_id, venue_id, reserved_for, party_size, status, created_at)
+      VALUES (gen_random_uuid(), %2$L, gen_random_uuid(), now() - interval '10 days', 2,
+              'completed', now() - (%4$L)::interval)
+      RETURNING id)
+    INSERT INTO public.reservation_checkout_sessions
+      (id, brand_id, reserved_for, party_size, buyer_name, buyer_email, buyer_phone_e164,
+       amount_cents, currency, created_via, status, reservation_id, stripe_payment_intent_id)
+    SELECT %1$L, %2$L, now() - interval '10 days', 2, 'I3660R Guest',
+           'i3660r-guest@example.test', '+12015550197', 3000, 'USD', 'web', %5$L, r.id, %3$s
+    FROM r$f$;
+  -- Delivered and older than a day, so open_menu_orders is not in play.
+  f_menu := $f$INSERT INTO public.venue_orders
+      (id, session_id, brand_id, venue_id, qr_spot_id, source, money_path, currency,
+       subtotal_cents, effective_take_rate_bps, service_fee_bps, pass_mingla_fee,
+       pass_service_fee, pass_tax, buyer_subtotal_cents, total_cents, idempotency_key,
+       payment_status, fulfillment_status, acknowledged_at, acknowledged_by_user_id,
+       confirmed_at, created_at, provider, stripe_payment_intent_id,
+       buyer_name, buyer_email, buyer_phone_e164)
+    VALUES (%1$L, gen_random_uuid(), %2$L, gen_random_uuid(), gen_random_uuid(), 'guest_qr',
+            %3$L, 'USD', 1000, 0, 0, false, false, false, 1000, 1000,
+            'i3660r-' || gen_random_uuid()::text, 'paid', 'delivered',
+            now() - (%6$L)::interval, gen_random_uuid(), now() - (%6$L)::interval,
+            now() - (%6$L)::interval, %4$s, %5$s,
+            'I3660R Guest', 'i3660r-guest@example.test', '+12015550196')$f$;
+  f_snap := $f$INSERT INTO public.payout_source_fee_snapshots
+      (id, source_type, source_id, provider_fee_cents, captured_at)
+    VALUES (gen_random_uuid(), %1$L, %2$L, 0, now())$f$;
+  f_released := $f$WITH r AS (
+      INSERT INTO public.brand_payout_releases
+        (id, brand_id, occurrence_key, surface, provider, currency, anchor_end_at,
+         releasable_at, gross_cents, net_release_cents, status)
+      VALUES (gen_random_uuid(), %1$L, 'i3660r-' || gen_random_uuid()::text, 'order',
+              'stripe', 'usd', date_trunc('second', now()) - interval '2 days',
+              date_trunc('second', now()) - interval '1 day', 1000, 1000, 'released')
+      RETURNING id)
+    INSERT INTO public.payout_release_items
+      (id, release_id, source_type, source_id, gross_cents, refunded_cents,
+       disputed_cents, mingla_fee_cents, partner_share_cents, provider_fee_cents,
+       net_cents, source_finalized_at)
+    SELECT gen_random_uuid(), r.id, %2$L, %3$L, 1000, 0, 0, 0, 0, 0, 1000, now() FROM r$f$;
+
+  PERFORM pg_temp.i3660r_case('arms baseline', 'SELECT 1', v_owner, 'deleted');
+
+  -- ── ARM 1 — ticket orders ──────────────────────────────────────────────────
+  v_id := gen_random_uuid();
+  PERFORM pg_temp.i3660r_case('order: online sale WITH a fee snapshot',
+    format(f_order, v_id, v_old, 'legacy', 'online_card', 'NULL', '12 days') || ';' || format(f_snap, 'order', v_id),
+    v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('order: online sale, snapshot not captured yet (has a provider reference)',
+    format(f_order, v_id, v_old, 'legacy', 'online_card', quote_literal('pi_i3660r_arm1'), '12 days'),
+    v_owner, 'money_in_motion');
+  -- RN-1: Mingla never held this money.
+  PERFORM pg_temp.i3660r_case('order: CASH door sale (no snapshot, no provider reference)',
+    format(f_order, v_id, v_old, 'door_sale', 'cash', 'NULL', '12 days'), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('order: online sale, RELEASED',
+    format(f_order, v_id, v_old, 'legacy', 'online_card', 'NULL', '12 days') || ';' || format(f_snap, 'order', v_id)
+      || ';' || format(f_released, v_brand, 'order', v_id),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('order: online sale with a snapshot, brand NOT on the hold rail',
+    format(f_order, v_id, v_old2, 'legacy', 'online_card', 'NULL', '12 days') || ';' || format(f_snap, 'order', v_id),
+    v_owner2, 'deleted');
+
+  -- ── ARM 2 — RSVP contributions (RN-2) ──────────────────────────────────────
+  PERFORM pg_temp.i3660r_case('contribution: paid, with a fee snapshot',
+    format(f_contrib, v_id, v_old, v_brand, 'NULL', '12 days', 'paid') || ';' || format(f_snap, 'rsvp_contribution', v_id),
+    v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('contribution: partly refunded, provider reference, no snapshot yet',
+    format(f_contrib, v_id, v_old, v_brand, quote_literal('pi_i3660r_arm2'), '12 days', 'partially_refunded'),
+    v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('contribution: no snapshot and no provider reference',
+    format(f_contrib, v_id, v_old, v_brand, 'NULL', '12 days', 'paid'), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('contribution: paid BEFORE the cutover',
+    format(f_contrib, v_id, v_old, v_brand, 'NULL', '60 days', 'paid') || ';' || format(f_snap, 'rsvp_contribution', v_id),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('contribution: refunded',
+    format(f_contrib, v_id, v_old, v_brand, 'NULL', '12 days', 'refunded') || ';' || format(f_snap, 'rsvp_contribution', v_id),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('contribution: RELEASED',
+    format(f_contrib, v_id, v_old, v_brand, 'NULL', '12 days', 'paid') || ';' || format(f_snap, 'rsvp_contribution', v_id)
+      || ';' || format(f_released, v_brand, 'rsvp_contribution', v_id),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('contribution: brand NOT on the hold rail',
+    format(f_contrib, v_id, v_old2, v_brand2, 'NULL', '12 days', 'paid') || ';' || format(f_snap, 'rsvp_contribution', v_id),
+    v_owner2, 'deleted');
+
+  -- ── ARM 3 — venue reservation deposits ─────────────────────────────────────
+  PERFORM pg_temp.i3660r_case('deposit: completed, with a fee snapshot',
+    format(f_deposit, v_id, v_brand, 'NULL', '12 days', 'completed') || ';' || format(f_snap, 'venue_reservation', v_id),
+    v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('deposit: completed, provider reference, no snapshot yet',
+    format(f_deposit, v_id, v_brand, quote_literal('pi_i3660r_arm3'), '12 days', 'completed'),
+    v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('deposit: no snapshot and no provider reference',
+    format(f_deposit, v_id, v_brand, 'NULL', '12 days', 'completed'), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('deposit: checkout never completed',
+    format(f_deposit, v_id, v_brand, quote_literal('pi_i3660r_arm3'), '12 days', 'failed'), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('deposit: reservation made BEFORE the cutover',
+    format(f_deposit, v_id, v_brand, 'NULL', '60 days', 'completed') || ';' || format(f_snap, 'venue_reservation', v_id),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('deposit: RELEASED',
+    format(f_deposit, v_id, v_brand, 'NULL', '12 days', 'completed') || ';' || format(f_snap, 'venue_reservation', v_id)
+      || ';' || format(f_released, v_brand, 'venue_reservation', v_id),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('deposit: brand NOT on the hold rail',
+    format(f_deposit, v_id, v_brand2, 'NULL', '12 days', 'completed') || ';' || format(f_snap, 'venue_reservation', v_id),
+    v_owner2, 'deleted');
+
+  -- ── ARM 4 — menu orders ────────────────────────────────────────────────────
+  PERFORM pg_temp.i3660r_case('menu order: paid through Mingla, with a fee snapshot',
+    format(f_menu, v_id, v_brand, 'mingla', quote_literal('stripe'), quote_literal('pi_i3660r_arm4'), '12 days')
+      || ';' || format(f_snap, 'venue_menu_order', v_id),
+    v_owner, 'money_in_motion');
+  PERFORM pg_temp.i3660r_case('menu order: the venue took the money (venue_collected)',
+    format(f_menu, v_id, v_brand, 'venue_collected', 'NULL', 'NULL', '12 days'), v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('menu order: placed BEFORE the cutover',
+    format(f_menu, v_id, v_brand, 'mingla', quote_literal('stripe'), quote_literal('pi_i3660r_arm4'), '60 days')
+      || ';' || format(f_snap, 'venue_menu_order', v_id),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('menu order: RELEASED',
+    format(f_menu, v_id, v_brand, 'mingla', quote_literal('stripe'), quote_literal('pi_i3660r_arm4'), '12 days')
+      || ';' || format(f_snap, 'venue_menu_order', v_id) || ';' || format(f_released, v_brand, 'venue_menu_order', v_id),
+    v_owner, 'deleted');
+  PERFORM pg_temp.i3660r_case('menu order: brand NOT on the hold rail',
+    format(f_menu, v_id, v_brand2, 'mingla', quote_literal('stripe'), quote_literal('pi_i3660r_arm4'), '12 days')
+      || ';' || format(f_snap, 'venue_menu_order', v_id),
+    v_owner2, 'deleted');
+
+  -- ── The rule and the REAL sweep agree, over one mixed set ──────────────────
+  -- Four sources the sweep must ledger (each with its fee snapshot and old
+  -- enough to be due) and five it must never ledger. Then the real sweep runs.
+  BEGIN
+    PERFORM set_config('session_replication_role', 'replica', true);
+    EXECUTE format(f_order, v_o_led, v_old, 'legacy', 'online_card', 'NULL', '12 days');
+    EXECUTE format(f_snap, 'order', v_o_led);
+    EXECUTE format(f_order, v_o_cash, v_old, 'door_sale', 'cash', 'NULL', '12 days');
+    EXECUTE format(f_order, v_o_before, v_old, 'legacy', 'online_card', 'NULL', '60 days');
+    EXECUTE format(f_snap, 'order', v_o_before);
+    EXECUTE format(f_contrib, v_c_led, v_old, v_brand, 'NULL', '12 days', 'paid');
+    EXECUTE format(f_snap, 'rsvp_contribution', v_c_led);
+    EXECUTE format(f_contrib, v_c_none, v_old, v_brand, 'NULL', '12 days', 'paid');
+    EXECUTE format(f_deposit, v_d_led, v_brand, 'NULL', '12 days', 'completed');
+    EXECUTE format(f_snap, 'venue_reservation', v_d_led);
+    EXECUTE format(f_deposit, v_d_none, v_brand, 'NULL', '12 days', 'completed');
+    EXECUTE format(f_menu, v_m_led, v_brand, 'mingla', quote_literal('stripe'), quote_literal('pi_i3660r_mix'), '12 days');
+    EXECUTE format(f_snap, 'venue_menu_order', v_m_led);
+    EXECUTE format(f_menu, v_m_cash, v_brand, 'venue_collected', 'NULL', 'NULL', '12 days');
+    PERFORM set_config('session_replication_role', 'origin', true);
+
+    -- What the rule counts BEFORE the sweep has opened anything...
+    SELECT COALESCE(string_agg(h.source_type || ':' || h.source_id::text, ',' ORDER BY h.source_type || ':' || h.source_id::text), '')
+    INTO v_ruled
+    FROM private.host_account_unreleased_held_money(ARRAY[v_brand], ARRAY[]::uuid[]) h;
+
+    PERFORM public.run_payout_release_dark_sweep(now());
+
+    -- ...must be exactly what the sweep then opens a payout item for.
+    SELECT COALESCE(string_agg(i.source_type || ':' || i.source_id::text, ',' ORDER BY i.source_type || ':' || i.source_id::text), '')
+    INTO v_swept
+    FROM public.payout_release_items i
+    JOIN public.brand_payout_releases pr ON pr.id = i.release_id
+    WHERE pr.brand_id = v_brand AND pr.status <> 'released';
+
+    IF v_swept = '' THEN
+      RAISE EXCEPTION 'issue_3660 rework arms: the real sweep opened nothing; the fixtures no longer look like sales to it';
+    END IF;
+    IF v_ruled IS DISTINCT FROM v_swept THEN
+      RAISE EXCEPTION 'issue_3660 rework arms: the rule and the sweep DISAGREE. Rule counts [%]; sweep opened [%]. Mirror the sweep in private.host_account_unreleased_held_money.', v_ruled, v_swept;
+    END IF;
+    IF v_swept IS DISTINCT FROM (
+      SELECT string_agg(x, ',' ORDER BY x) FROM unnest(ARRAY[
+        'order:' || v_o_led::text, 'rsvp_contribution:' || v_c_led::text,
+        'venue_reservation:' || v_d_led::text, 'venue_menu_order:' || v_m_led::text]) x) THEN
+      RAISE EXCEPTION 'issue_3660 rework arms: the sweep did not open exactly the four expected sources: [%]', v_swept;
+    END IF;
+    -- After the sweep the same four are still unreleased, so still counted...
+    IF v_ruled IS DISTINCT FROM (
+      SELECT COALESCE(string_agg(h.source_type || ':' || h.source_id::text, ',' ORDER BY h.source_type || ':' || h.source_id::text), '')
+      FROM private.host_account_unreleased_held_money(ARRAY[v_brand], ARRAY[]::uuid[]) h) THEN
+      RAISE EXCEPTION 'issue_3660 rework arms: opening a payout item changed what the rule counts';
+    END IF;
+    -- ...and the deletion is refused for exactly that reason.
+    IF pg_temp.i3660r_codes(public.biz_delete_host_account(v_owner)) IS DISTINCT FROM 'money_in_motion' THEN
+      RAISE EXCEPTION 'issue_3660 rework arms: a Host with four swept, unreleased sources was not blocked';
+    END IF;
+    -- Once every one of them is released, the same Host is deleted.
+    UPDATE public.brand_payout_releases SET status = 'released', released_at = now()
+     WHERE brand_id = v_brand;
+    IF public.biz_delete_host_account(v_owner)->>'status' IS DISTINCT FROM 'deleted' THEN
+      RAISE EXCEPTION 'issue_3660 rework arms: a Host whose payouts were all released is still blocked';
+    END IF;
+    RAISE EXCEPTION 'i3660r_rollback' USING ERRCODE = 'I3661';
+  EXCEPTION WHEN SQLSTATE 'I3661' THEN
+    NULL;
+  END;
+
+  RAISE NOTICE 'issue_3660 rework RN-1 RN-2 arms PASS';
+END;
+$$;
+
+-- ============================================================================
+-- RN-3 — a later deletion carries the provider targets of an earlier one.
+-- ============================================================================
+DO $$
+DECLARE
+  v_a uuid := gen_random_uuid();
+  v_b1 uuid := gen_random_uuid();
+  v_b2 uuid := gen_random_uuid();
+  v_sfx text := replace(gen_random_uuid()::text, '-', '');
+  v_first jsonb;
+  v_second jsonb;
+  v_third jsonb;
+  v_count integer;
+BEGIN
+  INSERT INTO auth.users(id) VALUES (v_a);
+  INSERT INTO public.creator_accounts(id, email) VALUES (v_a, 'i3660r-rn3@example.test');
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency)
+  VALUES (v_b1, v_a, 'I3660R RN3 One', 'i3660r-rn3a-' || v_sfx, 'USD');
+  UPDATE public.brands SET paystack_subaccount_code = 'ACCT_i3660rn3_' || left(v_sfx, 8) WHERE id = v_b1;
+  INSERT INTO public.stripe_connect_accounts(brand_id, stripe_account_id, country, default_currency)
+  VALUES (v_b1, 'acct_i3660rn3a_' || left(v_sfx, 8), 'US', 'USD');
+
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claim.role', 'service_role', true);
+  PERFORM set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
+  v_first := public.biz_delete_host_account(v_a);          -- commits; response lost
+  IF jsonb_array_length(v_first->'stripe_accounts') <> 1
+     OR jsonb_array_length(v_first->'paystack_subaccounts') <> 1 THEN
+    RAISE EXCEPTION 'issue_3660 rework RN-3 fixture: first deletion returned no targets: %', v_first;
+  END IF;
+
+  -- The Host reopens the app (sign-in recovery clears the marker) and, this
+  -- time, also creates a NEW brand with its own Stripe account before deleting.
+  UPDATE public.creator_accounts SET deleted_at = NULL WHERE id = v_a;
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency)
+  VALUES (v_b2, v_a, 'I3660R RN3 Two', 'i3660r-rn3b-' || v_sfx, 'USD');
+  INSERT INTO public.stripe_connect_accounts(brand_id, stripe_account_id, country, default_currency)
+  VALUES (v_b2, 'acct_i3660rn3b_' || left(v_sfx, 8), 'US', 'USD');
+
+  v_second := public.biz_delete_host_account(v_a);
+  IF v_second->>'status' IS DISTINCT FROM 'deleted'
+     OR (v_second->>'already_deleted')::boolean IS NOT FALSE THEN
+    RAISE EXCEPTION 'issue_3660 rework RN-3: the second deletion did not run as a fresh deletion: %', v_second;
+  END IF;
+  -- Earlier AND new Stripe targets, each exactly once.
+  IF jsonb_array_length(v_second->'stripe_accounts') <> 2
+     OR NOT ((v_second->'stripe_accounts') @> (v_first->'stripe_accounts'))
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_second->'stripe_accounts') x
+                    WHERE x->>'brand_id' = v_b2::text
+                      AND x->>'stripe_account_id' LIKE 'acct_i3660rn3b_%') THEN
+    RAISE EXCEPTION 'issue_3660 rework RN-3: expected the earlier and the new Stripe target, once each: %', v_second->'stripe_accounts';
+  END IF;
+  -- The earlier Paystack target is carried too (its code was already cleared
+  -- from the brand row, so the audit row is the only place it still exists).
+  IF v_second->'paystack_subaccounts' IS DISTINCT FROM v_first->'paystack_subaccounts' THEN
+    RAISE EXCEPTION 'issue_3660 rework RN-3: the earlier Paystack target was lost: first % / second %',
+      v_first->'paystack_subaccounts', v_second->'paystack_subaccounts';
+  END IF;
+  -- Only the NEW brand was deleted this time, and the count says so.
+  IF NOT (v_second->'brand_ids' @> to_jsonb(ARRAY[v_b2]))
+     OR jsonb_array_length(v_second->'brand_ids') <> 1 THEN
+    RAISE EXCEPTION 'issue_3660 rework RN-3: brand_ids wrong on the second deletion: %', v_second;
+  END IF;
+  IF (SELECT (after->>'stripe_accounts_detached')::integer FROM public.audit_log
+      WHERE action = 'host_account.deleted' AND target_id = v_a::text
+      ORDER BY created_at DESC, id DESC LIMIT 1) <> 1 THEN
+    RAISE EXCEPTION 'issue_3660 rework RN-3: the audit row over-counts what THIS run detached';
+  END IF;
+
+  -- A third call (already deleted) still returns the full, de-duplicated set.
+  v_third := public.biz_delete_host_account(v_a);
+  IF (v_third->>'already_deleted')::boolean IS NOT TRUE
+     OR v_third->'stripe_accounts' IS DISTINCT FROM v_second->'stripe_accounts'
+     OR v_third->'paystack_subaccounts' IS DISTINCT FROM v_second->'paystack_subaccounts' THEN
+    RAISE EXCEPTION 'issue_3660 rework RN-3: the retry after the second deletion lost targets: %', v_third;
+  END IF;
+
+  -- Recover and delete once more with nothing new: still the same set, no
+  -- duplicates however many audit rows now hold it.
+  UPDATE public.creator_accounts SET deleted_at = NULL WHERE id = v_a;
+  v_third := public.biz_delete_host_account(v_a);
+  SELECT count(*) INTO v_count FROM public.audit_log
+   WHERE action = 'host_account.deleted' AND target_id = v_a::text;
+  IF v_count <> 3
+     OR v_third->'stripe_accounts' IS DISTINCT FROM v_second->'stripe_accounts'
+     OR v_third->'paystack_subaccounts' IS DISTINCT FROM v_second->'paystack_subaccounts' THEN
+    RAISE EXCEPTION 'issue_3660 rework RN-3: targets were duplicated or lost across three deletions (audit rows %): %', v_count, v_third;
+  END IF;
+
+  -- Another account's audit rows are never mixed in.
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(public.biz_delete_host_account(gen_random_uuid())->'stripe_accounts')) THEN
+    RAISE EXCEPTION 'issue_3660 rework RN-3: an unknown account was given provider targets';
+  END IF;
+
+  RAISE NOTICE 'issue_3660 rework RN-3 PASS';
 END;
 $$;
 

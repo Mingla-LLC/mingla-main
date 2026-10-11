@@ -193,10 +193,17 @@ BEGIN
   PERFORM set_config('request.jwt.claim.role', 'service_role', true);
 
   -- Fixture fragments. %1$L = event id, %2$L = status-ish value(s). -----------
+  -- [TEST-MOD-APPROVED #3660] third rework: every order in this suite is an
+  -- ONLINE sale (it carries a provider payment reference). The money rule now
+  -- mirrors the payout sweep's fee-snapshot condition, under which a sale with
+  -- no provider reference is cash and is never money Mingla holds. Cash sales
+  -- are covered in the rework suite.
   f_order := $f$INSERT INTO public.orders
-      (id, event_id, buyer_email, buyer_name, total_cents, currency, payment_status, source)
+      (id, event_id, buyer_email, buyer_name, total_cents, currency, payment_status, source,
+       stripe_payment_intent_id)
     VALUES (gen_random_uuid(), %1$L, 'i3660-buyer@example.test', 'I3660 Buyer',
-            %3$s, 'USD', %2$L, 'legacy')$f$;
+            %3$s, 'USD', %2$L, 'legacy',
+            'pi_i3660_' || left(replace(gen_random_uuid()::text, '-', ''), 16))$f$;
   f_ticket := $f$INSERT INTO public.tickets
       (id, order_id, ticket_type_id, event_id, qr_code, status, approval_status)
     VALUES (gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), %1$L,

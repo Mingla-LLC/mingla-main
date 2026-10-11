@@ -12,7 +12,7 @@
 -- exception rolls the whole call back. There is no EXCEPTION block anywhere in
 -- these functions, on purpose.
 --
--- It creates three functions for the deletion, plus one narrowly scoped guard
+-- It creates four functions for the deletion, plus one narrowly scoped guard
 -- trigger on public.brands (section 4: a signed-in, non-admin user may not
 -- clear brands.deleted_at, so "deletion is final" is enforced by the database).
 -- No table, column, index, policy, constraint or foreign key changes, and it
@@ -23,6 +23,262 @@
 BEGIN;
 
 CREATE SCHEMA IF NOT EXISTS private;
+
+-- ---------------------------------------------------------------------------
+-- 0. Money Mingla is holding for a brand and has not released yet.
+--
+-- THE PRINCIPLE. A Host deletion is refused (money_in_motion) exactly when the
+-- payout sweep would treat something as money Mingla holds for the brand that
+-- has not been released. So this function has ONE arm per arm of the sweep and
+-- each arm copies that arm's ELIGIBILITY conditions. When the sweep changes,
+-- this is the one place to mirror it.
+--
+-- The sweep, in its latest definitions (identical in production, by md5 of the
+-- function bodies, when this was written):
+--   public.run_payout_release_dark_sweep, public.attach_payout_release
+--     -> supabase/migrations/20270725003645_issue_3645_installment_cancel_and_ledger.sql
+--   public.list_missing_payout_source_fees (which sale gets a fee snapshot)
+--     -> supabase/migrations/20270312001790_issue_1790_venue_order_payout_and_refunds.sql
+--   public.run_stay_payout_release_dark_sweep
+--     -> supabase/migrations/20270131013815_issue_1389_stay_payout_release.sql
+--
+-- What is mirrored from every arm:
+--   * the hold rail: `b.payout_hold_cutover_at IS NOT NULL` and the sale
+--     STRICTLY AFTER that cutover (attach_payout_release refuses the rest:
+--     `IF v_cutover IS NULL OR p_finalized_at <= v_cutover`). A direct charge
+--     is paid to the Host's own provider account and is never ledgered.
+--   * the FEE SNAPSHOT: the sweep inner-joins payout_source_fee_snapshots, so
+--     a sale without one is never ledgered. A snapshot is written for a sale
+--     only if it has a provider reference (list_missing_payout_source_fees:
+--     `WHERE q.provider_reference IS NOT NULL`). "Would be ledgered" is
+--     therefore: has a snapshot, OR has the provider reference that earns it
+--     one. A CASH door sale has neither: Mingla never held that money.
+--   * the arm's own status / amount conditions, and "something is left to pay"
+--     (gross minus refunds > 0; the sweep's `gross-refunded-disputed>0`
+--     without the dispute term, because an open dispute is money in motion).
+--
+-- What is deliberately NOT mirrored, in every arm:
+--   * maturity (`anchor_end_at + 3 days <= p_now`): that is WHEN the sweep
+--     ledgers a sale, not WHETHER. Not being due yet is the case to block.
+--   * `NOT EXISTS (… source_refunds … financial_state<>'reconciled')`: a
+--     refund still being worked is money in motion, not money that is gone.
+--   * "no payout item yet": a source counts until an item under a RELEASED
+--     release covers it; a pending, in-flight or failed release is not paid.
+--
+-- TWO DELIBERATE EXCEPTIONS to "only what the sweep would ledger":
+--   (1) A still-paid order or contribution on a CANCELLED event counts, though
+--       the sweep skips cancelled events (`e.status<>'cancelled'`): that money
+--       goes back to the buyers, and until it has it is an unfinished refund.
+--   (2) A collected instalment counts while
+--       issue_2036_installment_payout_ready() is false, though the sweep waits
+--       for it: that switch decides when instalment money is paid out, not
+--       whether Mingla is holding it.
+--
+-- p_skip_event_ids: the caller's live-or-upcoming events. Sales on those are
+-- reported as tickets_sold, so the event-bound arms leave them out.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION private.host_account_unreleased_held_money(
+  p_brand_ids uuid[],
+  p_skip_event_ids uuid[]
+)
+RETURNS TABLE (source_type text, source_id uuid)
+LANGUAGE sql
+STABLE
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+  -- ARM 1 — ticket orders.
+  -- Mirrors run_payout_release_dark_sweep lines 614-633 (20270725003645):
+  --   JOIN LATERAL public.resolve_payout_live_occurrence(o.event_id,o.event_date_id,o.created_at)
+  --   JOIN public.payout_source_fee_snapshots fs ON fs.source_type='order' AND fs.source_id=o.id
+  --   WHERE o.payment_status IN ('paid','partial_refund')
+  --     AND o.total_cents>0 AND b.payout_hold_cutover_at IS NOT NULL
+  --     AND o.created_at>b.payout_hold_cutover_at AND e.status<>'cancelled'   <- exception (1)
+  -- and list_missing_payout_source_fees lines 622-632 for the provider reference.
+  SELECT 'order'::text, o.id
+  FROM public.orders o
+  JOIN public.events e ON e.id = o.event_id
+  JOIN public.brands b ON b.id = e.brand_id
+  WHERE e.brand_id = ANY (p_brand_ids)
+    AND NOT (e.id = ANY (p_skip_event_ids))
+    AND o.payment_status IN ('paid', 'partial_refund')
+    AND o.total_cents > 0
+    AND o.total_cents - o.refunded_amount_cents > 0
+    AND b.payout_hold_cutover_at IS NOT NULL
+    AND o.created_at > b.payout_hold_cutover_at
+    AND EXISTS (
+      SELECT 1 FROM public.resolve_payout_live_occurrence(
+        o.event_id, o.event_date_id, o.created_at))
+    AND (
+      EXISTS (SELECT 1 FROM public.payout_source_fee_snapshots fs
+              WHERE fs.source_type = 'order' AND fs.source_id = o.id)
+      OR CASE WHEN b.payment_provider = 'paystack' THEN o.stripe_payment_intent_id
+              ELSE COALESCE(o.stripe_charge_id, o.stripe_payment_intent_id) END IS NOT NULL
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.payout_release_items i
+      JOIN public.brand_payout_releases pr ON pr.id = i.release_id
+      WHERE i.source_type = 'order' AND i.source_id = o.id AND pr.status = 'released')
+
+  UNION ALL
+  -- ARM 2 — paid RSVP contributions.
+  -- Mirrors run_payout_release_dark_sweep lines 635-658:
+  --   FROM public.event_rsvp_contributions c JOIN public.events e ON e.id=c.event_id
+  --   JOIN public.brands b ON b.id=c.brand_id
+  --   JOIN LATERAL public.resolve_payout_live_occurrence(c.event_id,NULL,coalesce(c.paid_at,c.created_at))
+  --   JOIN public.payout_source_fee_snapshots fs ON fs.source_type='rsvp_contribution' AND fs.source_id=c.id
+  --   WHERE c.status IN ('paid','partially_refunded') AND b.payout_hold_cutover_at IS NOT NULL
+  --     AND coalesce(c.paid_at,c.created_at)>b.payout_hold_cutover_at AND e.status<>'cancelled'   <- exception (1)
+  -- and list_missing_payout_source_fees lines 634-640.
+  SELECT 'rsvp_contribution'::text, c.id
+  FROM public.event_rsvp_contributions c
+  JOIN public.brands b ON b.id = c.brand_id
+  WHERE c.brand_id = ANY (p_brand_ids)
+    AND NOT (c.event_id = ANY (p_skip_event_ids))
+    AND c.status IN ('paid', 'partially_refunded')
+    AND c.buyer_total_cents - GREATEST(c.refunded_amount_cents, COALESCE((
+          SELECT sum(sr.buyer_refund_processed_cents)::integer
+          FROM public.source_refunds sr
+          WHERE sr.source_type = 'rsvp_contribution' AND sr.source_id = c.id
+            AND sr.buyer_state = 'processed'), 0)) > 0
+    AND b.payout_hold_cutover_at IS NOT NULL
+    AND COALESCE(c.paid_at, c.created_at) > b.payout_hold_cutover_at
+    AND EXISTS (
+      SELECT 1 FROM public.resolve_payout_live_occurrence(
+        c.event_id, NULL, COALESCE(c.paid_at, c.created_at)))
+    AND (
+      EXISTS (SELECT 1 FROM public.payout_source_fee_snapshots fs
+              WHERE fs.source_type = 'rsvp_contribution' AND fs.source_id = c.id)
+      OR CASE WHEN c.provider = 'paystack' THEN c.stripe_payment_intent_id
+              ELSE COALESCE(c.stripe_charge_id, c.stripe_payment_intent_id) END IS NOT NULL
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.payout_release_items i
+      JOIN public.brand_payout_releases pr ON pr.id = i.release_id
+      WHERE i.source_type = 'rsvp_contribution' AND i.source_id = c.id AND pr.status = 'released')
+
+  UNION ALL
+  -- ARM 3 — venue reservation deposits.
+  -- Mirrors run_payout_release_dark_sweep lines 660-679:
+  --   FROM public.reservation_checkout_sessions s
+  --   JOIN public.reservations r ON r.id=s.reservation_id
+  --   JOIN public.brands b ON b.id=s.brand_id
+  --   JOIN public.payout_source_fee_snapshots fs ON fs.source_type='venue_reservation' AND fs.source_id=s.id
+  --   WHERE s.status='completed' AND s.amount_cents>0 AND b.payout_hold_cutover_at IS NOT NULL
+  --     AND r.created_at>b.payout_hold_cutover_at
+  -- and list_missing_payout_source_fees lines 642-650.
+  SELECT 'venue_reservation'::text, s.id
+  FROM public.reservation_checkout_sessions s
+  JOIN public.reservations r ON r.id = s.reservation_id
+  JOIN public.brands b ON b.id = s.brand_id
+  WHERE s.brand_id = ANY (p_brand_ids)
+    AND s.status = 'completed'
+    AND s.amount_cents > 0
+    AND s.amount_cents - COALESCE((
+          SELECT sum(sr.buyer_refund_processed_cents)::integer
+          FROM public.source_refunds sr
+          WHERE sr.source_type = 'venue_reservation' AND sr.source_id = s.id
+            AND sr.buyer_state = 'processed'), 0) > 0
+    AND b.payout_hold_cutover_at IS NOT NULL
+    AND r.created_at > b.payout_hold_cutover_at
+    AND (
+      EXISTS (SELECT 1 FROM public.payout_source_fee_snapshots fs
+              WHERE fs.source_type = 'venue_reservation' AND fs.source_id = s.id)
+      OR CASE WHEN b.payment_provider = 'paystack' THEN s.paystack_reference
+              ELSE s.stripe_payment_intent_id END IS NOT NULL
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.payout_release_items i
+      JOIN public.brand_payout_releases pr ON pr.id = i.release_id
+      WHERE i.source_type = 'venue_reservation' AND i.source_id = s.id AND pr.status = 'released')
+
+  UNION ALL
+  -- ARM 4 — menu orders paid through Mingla.
+  -- Mirrors run_payout_release_dark_sweep lines 681-708:
+  --   FROM public.venue_orders vo JOIN public.brands b ON b.id=vo.brand_id
+  --   JOIN public.payout_source_fee_snapshots fs ON fs.source_type='venue_menu_order' AND fs.source_id=vo.id
+  --   WHERE vo.money_path='mingla'          (venue_collected = the venue took cash)
+  --     AND vo.payment_status IN ('paid','partial_refund')
+  --     AND vo.total_cents>0
+  --     AND vo.confirmed_at IS NOT NULL
+  --     AND b.payout_hold_cutover_at IS NOT NULL
+  --     AND vo.created_at>b.payout_hold_cutover_at
+  -- and list_missing_payout_source_fees lines 654-662.
+  SELECT 'venue_menu_order'::text, vo.id
+  FROM public.venue_orders vo
+  JOIN public.brands b ON b.id = vo.brand_id
+  WHERE vo.brand_id = ANY (p_brand_ids)
+    AND vo.money_path = 'mingla'
+    AND vo.payment_status IN ('paid', 'partial_refund')
+    AND vo.total_cents > 0
+    AND vo.confirmed_at IS NOT NULL
+    AND vo.total_cents - COALESCE((
+          SELECT sum(sr.buyer_refund_processed_cents)::integer
+          FROM public.source_refunds sr
+          WHERE sr.source_type = 'venue_menu_order' AND sr.source_id = vo.id
+            AND sr.buyer_state = 'processed'), 0) > 0
+    AND b.payout_hold_cutover_at IS NOT NULL
+    AND vo.created_at > b.payout_hold_cutover_at
+    AND (
+      EXISTS (SELECT 1 FROM public.payout_source_fee_snapshots fs
+              WHERE fs.source_type = 'venue_menu_order' AND fs.source_id = vo.id)
+      OR CASE WHEN vo.provider = 'paystack' THEN vo.paystack_reference
+              ELSE COALESCE(vo.stripe_charge_id, vo.stripe_payment_intent_id) END IS NOT NULL
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.payout_release_items i
+      JOIN public.brand_payout_releases pr ON pr.id = i.release_id
+      WHERE i.source_type = 'venue_menu_order' AND i.source_id = vo.id AND pr.status = 'released')
+
+  UNION ALL
+  -- ARM 5 — collected instalments of a payment plan (each is its own payout
+  -- item; the plan's root order is ARM 1).
+  -- Mirrors run_payout_release_dark_sweep lines 714-739:
+  --   WHERE public.issue_2036_installment_payout_ready()      <- exception (2): NOT mirrored
+  --     AND oi.status = 'collected'
+  --     AND oi.payout_accounting_state = 'ready'               (set by the fee step, like a snapshot)
+  --     AND oi.collected_at IS NOT NULL
+  --     AND oi.amount_cents > 0
+  --     AND oi.application_fee_amount_cents IS NOT NULL        (set by the same fee step)
+  --     AND b.payout_hold_cutover_at IS NOT NULL
+  --     AND oi.collected_at > b.payout_hold_cutover_at
+  --     AND e.status <> 'cancelled'                            <- exception (1)
+  -- A collected instalment always has a provider payment (table CHECK:
+  -- status 'collected' requires stripe_payment_intent_id), so the two fee-step
+  -- columns are, like a fee snapshot, something it will get; they are not
+  -- required here.
+  SELECT 'order_installment'::text, oi.id
+  FROM public.order_installments oi
+  JOIN public.orders o ON o.id = oi.order_id
+  JOIN public.events e ON e.id = o.event_id
+  JOIN public.brands b ON b.id = e.brand_id
+  WHERE e.brand_id = ANY (p_brand_ids)
+    AND NOT (e.id = ANY (p_skip_event_ids))
+    AND oi.status = 'collected'
+    AND oi.collected_at IS NOT NULL
+    AND oi.amount_cents > 0
+    AND b.payout_hold_cutover_at IS NOT NULL
+    AND oi.collected_at > b.payout_hold_cutover_at
+    AND EXISTS (
+      SELECT 1 FROM public.resolve_payout_live_occurrence(
+        o.event_id, o.event_date_id, oi.collected_at))
+    AND NOT EXISTS (
+      SELECT 1 FROM public.payout_release_items i
+      JOIN public.brand_payout_releases pr ON pr.id = i.release_id
+      WHERE i.source_type = 'order_installment' AND i.source_id = oi.id AND pr.status = 'released')
+
+  -- ARM 6 — stays (run_stay_payout_release_dark_sweep, 20270131013815 lines
+  -- 418-476) has no arm here on purpose. Every stay reservation group that is
+  -- not declined, expired or cancelled already refuses the deletion as
+  -- `upcoming_stays` in the preflight below, and a confirmed, paid stay line
+  -- (what that sweep ledgers) can only belong to such a group. That blocker is
+  -- a superset of this arm, so adding it would change no outcome.
+$function$;
+
+REVOKE ALL ON FUNCTION private.host_account_unreleased_held_money(uuid[], uuid[])
+  FROM PUBLIC, anon, authenticated, service_role;
+
+COMMENT ON FUNCTION private.host_account_unreleased_held_money(uuid[], uuid[]) IS
+  'Issue #3660: money Mingla holds for these brands that the payout sweep would ledger and that no RELEASED payout item covers. One arm per sweep arm; mirror every change to run_payout_release_dark_sweep here.';
 
 -- ---------------------------------------------------------------------------
 -- 1. Preflight: every reason a Host account deletion must be refused.
@@ -197,75 +453,12 @@ BEGIN
         JOIN public.events e ON e.id = t.event_id
         WHERE e.brand_id = ANY (v_brand_ids)
           AND t.status = 'refund_pending')
-    -- Money MINGLA IS HOLDING for the organiser and has not released yet.
-    --
-    -- A payout release row only ever exists for a brand on the hold rail and
-    -- for a sale made after its cutover; a direct charge is paid to the Host's
-    -- own provider account and never gets one. So an order counts here only
-    -- under the same two conditions run_payout_release_dark_sweep uses to
-    -- decide that an order enters the payout ledger
-    -- (20270725003645_issue_3645_installment_cancel_and_ledger.sql, order arm:
-    --    AND o.total_cents>0 AND b.payout_hold_cutover_at IS NOT NULL
-    --    AND o.created_at>b.payout_hold_cutover_at ...
-    --  and attach_payout_release in the same file refuses anything else with
-    --  `IF v_cutover IS NULL OR p_finalized_at <= v_cutover THEN RAISE
-    --  'source_not_after_cutover'`).
-    -- For such an order, "no release row yet" is NOT evidence that nothing is
-    -- owed (the sweep runs after the payment): only an item under a `released`
-    -- release is. A free order (total 0) and a fully refunded order never
-    -- count. A paid order on a brand that is NOT on the hold rail, or placed
-    -- at or before the cutover, never counts here, on a past or an upcoming
-    -- event. Orders on a live or upcoming event are reported as tickets_sold
-    -- above, so this arm looks at every other event.
-    -- (The sweep also skips cancelled events, because their money goes back to
-    -- the buyers; a still-paid order there is a refund in progress, so it is
-    -- deliberately NOT skipped here.)
-    + (SELECT count(*) FROM public.orders o
-        JOIN public.events e ON e.id = o.event_id
-        JOIN public.brands b ON b.id = e.brand_id
-        WHERE e.brand_id = ANY (v_brand_ids)
-          AND NOT (e.id = ANY (v_event_ids))
-          AND o.payment_status IN ('paid', 'partial_refund')
-          AND o.total_cents > 0
-          AND b.payout_hold_cutover_at IS NOT NULL
-          AND o.created_at > b.payout_hold_cutover_at
-          AND NOT EXISTS (
-            SELECT 1
-            FROM public.payout_release_items i
-            JOIN public.brand_payout_releases pr ON pr.id = i.release_id
-            WHERE i.source_type = 'order'
-              AND i.source_id = o.id
-              AND pr.status = 'released'
-          ))
-    -- A COLLECTED instalment of a payment plan, under the same two hold-rail
-    -- conditions the sweep's instalment arm uses (same file:
-    --    AND b.payout_hold_cutover_at IS NOT NULL
-    --    AND oi.collected_at > b.payout_hold_cutover_at).
-    -- Each collected instalment is its own payout item (`order_installment`,
-    -- keyed by the instalment id), separate from the plan's root order, which
-    -- the order arm above treats like any other order. The sweep additionally
-    -- waits for issue_2036_installment_payout_ready(); that switch decides when
-    -- the money is paid out, not whether Mingla is holding it, so it is NOT
-    -- part of this test: a collected instalment on the hold rail blocks until
-    -- a released item covers it.
-    + (SELECT count(*) FROM public.order_installments oi
-        JOIN public.orders o ON o.id = oi.order_id
-        JOIN public.events e ON e.id = o.event_id
-        JOIN public.brands b ON b.id = e.brand_id
-        WHERE e.brand_id = ANY (v_brand_ids)
-          AND NOT (e.id = ANY (v_event_ids))
-          AND oi.status = 'collected'
-          AND oi.amount_cents > 0
-          AND b.payout_hold_cutover_at IS NOT NULL
-          AND oi.collected_at > b.payout_hold_cutover_at
-          AND NOT EXISTS (
-            SELECT 1
-            FROM public.payout_release_items i
-            JOIN public.brand_payout_releases pr ON pr.id = i.release_id
-            WHERE i.source_type = 'order_installment'
-              AND i.source_id = oi.id
-              AND pr.status = 'released'
-          ))
+    -- Money Mingla is holding for the organiser and has not released yet:
+    -- every source the payout sweep would ledger, with no `released` item.
+    -- ONE definition, one arm per sweep arm: see
+    -- private.host_account_unreleased_held_money above.
+    + (SELECT count(*)
+       FROM private.host_account_unreleased_held_money(v_brand_ids, v_event_ids))
   )::integer INTO v_count;
   IF v_count > 0 THEN
     v_blockers := v_blockers || jsonb_build_array(jsonb_build_object(
@@ -321,7 +514,7 @@ DECLARE
   v_pending_partner_links_closed integer := 0;
   v_stripe_accounts jsonb := '[]'::jsonb;
   v_paystack_subaccounts jsonb := '[]'::jsonb;
-  v_prior_before jsonb;
+  v_stripe_detached_now integer := 0;
 BEGIN
   IF auth.role() IS DISTINCT FROM 'service_role' THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
@@ -413,18 +606,34 @@ BEGIN
   --    at the provider; the caller re-runs that step from this answer. Both
   --    provider calls are safe to repeat. audit_log is append-only (its
   --    update/delete trigger), so this source cannot be edited away, and the
-  --    row is found by target, not by user_id, which a removed login nulls.
+  --    rows are found by target, not by user_id, which a removed login nulls.
   IF v_account_deleted_at IS NOT NULL
      AND cardinality(v_brand_ids) = 0
      AND cardinality(v_link_ids) = 0
      AND NOT v_has_foreign_membership THEN
-    SELECT al.before INTO v_prior_before
-    FROM public.audit_log al
-    WHERE al.action = 'host_account.deleted'
-      AND al.target_type = 'creator_account'
-      AND al.target_id = p_user_id::text
-    ORDER BY al.created_at DESC, al.id DESC
-    LIMIT 1;
+    -- Every host_account.deleted row of this account contributes (not just
+    -- the newest: two rows written in one transaction share a created_at, and
+    -- "newest" would then be a coin toss), de-duplicated.
+    SELECT COALESCE(jsonb_agg(t.x ORDER BY t.x->>'brand_id', t.x->>'stripe_account_id'), '[]'::jsonb)
+    INTO v_stripe_accounts
+    FROM (
+      SELECT DISTINCT jsonb_array_elements(al.before->'stripe_accounts') AS x
+      FROM public.audit_log al
+      WHERE al.action = 'host_account.deleted'
+        AND al.target_type = 'creator_account'
+        AND al.target_id = p_user_id::text
+        AND jsonb_typeof(al.before->'stripe_accounts') = 'array'
+    ) t;
+    SELECT COALESCE(jsonb_agg(t.x ORDER BY t.x->>'brand_id', t.x->>'subaccount_code'), '[]'::jsonb)
+    INTO v_paystack_subaccounts
+    FROM (
+      SELECT DISTINCT jsonb_array_elements(al.before->'paystack_subaccounts') AS x
+      FROM public.audit_log al
+      WHERE al.action = 'host_account.deleted'
+        AND al.target_type = 'creator_account'
+        AND al.target_id = p_user_id::text
+        AND jsonb_typeof(al.before->'paystack_subaccounts') = 'array'
+    ) t;
 
     RETURN jsonb_build_object(
       'status', 'deleted',
@@ -433,12 +642,8 @@ BEGIN
       'events_taken_down', 0,
       'memberships_removed', 0,
       'partner_links_ended', 0,
-      'stripe_accounts',
-        CASE WHEN jsonb_typeof(v_prior_before->'stripe_accounts') = 'array'
-             THEN v_prior_before->'stripe_accounts' ELSE '[]'::jsonb END,
-      'paystack_subaccounts',
-        CASE WHEN jsonb_typeof(v_prior_before->'paystack_subaccounts') = 'array'
-             THEN v_prior_before->'paystack_subaccounts' ELSE '[]'::jsonb END
+      'stripe_accounts', v_stripe_accounts,
+      'paystack_subaccounts', v_paystack_subaccounts
     );
   END IF;
 
@@ -529,6 +734,50 @@ BEGIN
      AND pl.cancelled_at IS NULL;
   GET DIAGNOSTICS v_pending_partner_links_closed = ROW_COUNT;
 
+  v_stripe_detached_now := jsonb_array_length(v_stripe_accounts);
+
+  -- 7.4c Provider targets of EARLIER deletions of this same account.
+  --      A deletion can commit and lose its response; if the Host then opens
+  --      the app again, sign-in recovery clears the account marker, and the
+  --      next "delete" arrives here as a fresh deletion with no brands and so
+  --      no provider targets of its own. The Stripe account and Paystack
+  --      subaccount of the first deletion would then never be deactivated.
+  --      So every earlier host_account.deleted audit row for this account
+  --      contributes its targets, merged with this run's and de-duplicated.
+  --      Both provider calls are safe to repeat. The merged lists are what the
+  --      audit row below stores, so the newest row always holds them all.
+  SELECT COALESCE(jsonb_agg(t.x ORDER BY t.x->>'brand_id', t.x->>'stripe_account_id'), '[]'::jsonb)
+  INTO v_stripe_accounts
+  FROM (
+    SELECT DISTINCT x
+    FROM (
+      SELECT jsonb_array_elements(v_stripe_accounts) AS x
+      UNION ALL
+      SELECT jsonb_array_elements(al.before->'stripe_accounts')
+      FROM public.audit_log al
+      WHERE al.action = 'host_account.deleted'
+        AND al.target_type = 'creator_account'
+        AND al.target_id = p_user_id::text
+        AND jsonb_typeof(al.before->'stripe_accounts') = 'array'
+    ) u
+  ) t;
+
+  SELECT COALESCE(jsonb_agg(t.x ORDER BY t.x->>'brand_id', t.x->>'subaccount_code'), '[]'::jsonb)
+  INTO v_paystack_subaccounts
+  FROM (
+    SELECT DISTINCT x
+    FROM (
+      SELECT jsonb_array_elements(v_paystack_subaccounts) AS x
+      UNION ALL
+      SELECT jsonb_array_elements(al.before->'paystack_subaccounts')
+      FROM public.audit_log al
+      WHERE al.action = 'host_account.deleted'
+        AND al.target_type = 'creator_account'
+        AND al.target_id = p_user_id::text
+        AND jsonb_typeof(al.before->'paystack_subaccounts') = 'array'
+    ) u
+  ) t;
+
   -- 7.5a End the user's partner links. This is the first half of the atomic
   --      dual-stamp partner_disconnect_link performs (that function cannot be
   --      called here: it requires a non-null auth.uid()). The second half, the
@@ -598,7 +847,7 @@ BEGIN
       'partner_links_ended', v_partner_links_ended,
       'invitations_revoked', v_invitations_revoked,
       'pending_partner_links_closed', v_pending_partner_links_closed,
-      'stripe_accounts_detached', jsonb_array_length(v_stripe_accounts)
+      'stripe_accounts_detached', v_stripe_detached_now
     )
   );
 
@@ -712,6 +961,11 @@ DO $verify$
 DECLARE
   v_fn regprocedure;
 BEGIN
+  IF to_regprocedure('private.host_account_unreleased_held_money(uuid[], uuid[])') IS NULL
+     OR has_function_privilege('anon', 'private.host_account_unreleased_held_money(uuid[], uuid[])', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'private.host_account_unreleased_held_money(uuid[], uuid[])', 'EXECUTE') THEN
+    RAISE EXCEPTION 'issue_3660 verify: host_account_unreleased_held_money is missing or callable by an API role';
+  END IF;
   IF to_regprocedure('private.host_account_deletion_blockers(uuid, uuid[])') IS NULL
      OR to_regprocedure('public.biz_delete_host_account(uuid)') IS NULL
      OR to_regprocedure('public.biz_my_host_account_deletion_blockers()') IS NULL THEN

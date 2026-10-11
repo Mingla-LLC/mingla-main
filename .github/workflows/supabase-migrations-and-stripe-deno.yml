@@ -1179,10 +1179,12 @@ jobs:
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.known_defects.pg17.test.sql
           # Issue #3660 rework — implementor suite, one group per finding fixed
-          # in the database: an unpaid-out order or collected instalment blocks
-          # when Mingla holds the money (brand on the hold rail, sale after its
-          # cutover; a direct charge, a free and a refunded order do not), and
-          # the real payout sweep is run to prove the rule mirrors it; a
+          # in the database: money Mingla holds blocks, mirrored arm by arm
+          # from the payout sweep (ticket orders, instalments, RSVP
+          # contributions, venue deposits, menu orders; hold rail, cutover and
+          # fee snapshot included, so a cash sale or a direct charge never
+          # blocks), and the real sweep is run to prove the rule agrees with
+          # it; a later deletion carries an earlier one's provider targets; a
           # signed-in non-admin cannot clear
           # brands.deleted_at (admin and service role can); a retry returns the
           # provider targets again and writes nothing; pending invitations and
@@ -1190,6 +1192,13 @@ jobs:
           # expired checkout cannot become an order after the deletion.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3660_host_account_deletion.rework.implementor.pg17.test.sql
+          # Issue #3660 third rework — the tester's three retest reproductions
+          # (RK-1 a cash door sale must not block; RK-2 a paid RSVP contribution
+          # Mingla holds must; RK-3 a deletion after sign-in recovery must still
+          # return the earlier provider targets). They failed on purpose and were
+          # left out of CI until fixed; they pass now.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest_known_defects.pg17.test.sql
           # Issue #3645 — payout maturity is payment + 24h (not event end + 3d);
           # cancel refund runs open in awaiting_review; PR6 charge readiness admits
           # stamped Paystack hold brands without a subaccount.

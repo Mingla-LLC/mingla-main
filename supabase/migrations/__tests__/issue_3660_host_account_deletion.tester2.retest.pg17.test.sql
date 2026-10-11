@@ -433,6 +433,16 @@ BEGIN
      'paid', 'legacy', 'online_card', now() - interval '7 days'),
     (gen_random_uuid(), v_e_cancelled, 't2r-buyer@example.test', 'T2R Buyer', 2500, 'USD',
      'paid', 'legacy', 'online_card', now() - interval '2 days');
+  -- [TEST-MOD-APPROVED #3660] third rework, on the coordinator's ruling (added by
+  -- the implementor; no line of the tester's case is removed or changed). The
+  -- money rule now mirrors the payout sweep in full, and the sweep only ledgers
+  -- a sale that has a fee snapshot (an online payment); a sale without one is
+  -- cash and is not money Mingla holds. So that this case still describes a
+  -- Host who IS owed money, both orders' fee snapshots are recorded here.
+  INSERT INTO public.payout_source_fee_snapshots
+    (id, source_type, source_id, provider_fee_cents, captured_at)
+  SELECT gen_random_uuid(), 'order', x.id, 0, now()
+  FROM public.orders x WHERE x.event_id IN (v_e_ended, v_e_cancelled);
   SET LOCAL session_replication_role = origin;
   IF EXISTS (SELECT 1 FROM public.brand_payout_releases WHERE brand_id = v_b) THEN
     RAISE EXCEPTION 't2r 3660 M fixture: a payout row exists';

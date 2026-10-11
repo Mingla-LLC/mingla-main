@@ -1,4 +1,15 @@
 \set ON_ERROR_STOP on
+-- STATUS (implementor, third rework, #3660): ALL THREE CASES NOW PASS AND THIS
+-- FILE IS REGISTERED IN CI, in the migrations job of the Supabase migrations
+-- workflow. RK-1 and RK-2 were fixed by making the money rule mirror every arm
+-- of the payout sweep, fee snapshot included
+-- (private.host_account_unreleased_held_money); RK-3 by returning the provider
+-- targets of earlier deletions of the same account. No line of the tester's
+-- cases was removed or changed; RK-2's fixture gained one insert, noted in
+-- place. The header underneath is kept as written and describes the state
+-- BEFORE the fixes. The implementor's own guards are in
+-- issue_3660_host_account_deletion.rework.implementor.pg17.test.sql.
+--
 -- Issue #3660 — INDEPENDENT TESTER (tester2) RETEST. KNOWN DEFECTS, NOT
 -- REGISTERED IN CI.
 --
@@ -124,6 +135,16 @@ BEGIN
      pricing_breakdown, status, paid_at, created_at)
   VALUES (gen_random_uuid(), v_e, v_b, 'stripe', 'USD', 2500, 2500, '{}'::jsonb, 'paid',
           now() - interval '2 hours', now() - interval '2 hours');
+  -- [TEST-MOD-APPROVED #3660] third rework, on the coordinator's ruling (added by
+  -- the implementor; no line of the tester's case is removed or changed). The
+  -- money rule now mirrors the payout sweep in full, and the sweep only ledgers
+  -- a sale that has a fee snapshot (an online payment); a sale without one is
+  -- cash and is not money Mingla holds. So that this case still describes a
+  -- Host who IS owed money, the contribution's fee snapshot is recorded here.
+  INSERT INTO public.payout_source_fee_snapshots
+    (id, source_type, source_id, provider_fee_cents, captured_at)
+  SELECT gen_random_uuid(), 'rsvp_contribution', x.id, 0, now()
+  FROM public.event_rsvp_contributions x WHERE x.event_id = v_e;
   SET LOCAL session_replication_role = origin;
 
   PERFORM pg_temp.t2r_service();
