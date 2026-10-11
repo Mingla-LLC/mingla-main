@@ -74,6 +74,7 @@ jobs:
           node --test
           src/__tests__/issue1002_multi_destination.test.js
           src/__tests__/issue1002_multi_destination.tester_adversarial.test.js
+          src/__tests__/issue3697_wave2_spend_cap.test.js
 
   issue-1002-edge-deno-test:
     if: ${{ github.event.pull_request.draft != true }}

@@ -162,7 +162,6 @@ import {
 } from "../_shared/adDestination.ts";
 import {
   type BudgetMode,
-  computeAdMinimum,
   computeCapCents,
   googleTotalDaysOk,
   parseCampaignSchedule,
@@ -487,6 +486,25 @@ serve(async (req: Request): Promise<Response> => {
       message: "A total (lifetime) budget needs an end date.",
     }, 422);
   }
+  // Lifetime is Meta-only until Google/Snap/TikTok/Reddit adapters send a
+  // lifetime provider budget AND the spend feed covers those platforms. A
+  // "$350 total" must never become $350/day with no working cap.
+  if (budgetType === "lifetime" && platform !== "meta") {
+    return json({
+      error: "validation_error",
+      detail: "lifetime_budget_meta_only",
+      message:
+        "Total (lifetime) budgets are Meta-only for now. Use a daily budget on other platforms.",
+    }, 422);
+  }
+  if (budgetType === "lifetime" && schedule.days == null) {
+    return json({
+      error: "validation_error",
+      detail: "lifetime_budget_requires_valid_schedule",
+      message:
+        "A total (lifetime) budget needs a start and end date that cover at least one day.",
+    }, 422);
+  }
   if (platform === "google" && !googleTotalDaysOk(budgetType, schedule.days)) {
     return json({
       error: "validation_error",
@@ -503,27 +521,6 @@ serve(async (req: Request): Promise<Response> => {
     days: schedule.days,
     capCents: typeof budget.cap_cents === "number" ? budget.cap_cents as number : null,
   });
-
-  // D1 platform minimum (#3709) — lifetime totals use the shared table × days.
-  // Daily mode keeps the existing per-platform floor checks in each branch
-  // (Meta connection floors, TikTok/Snap adapter floors); the builder uses the
-  // same computeAdMinimum helper for both modes.
-  if (budgetType === "lifetime") {
-    const minResult = computeAdMinimum({
-      platforms: [platform as Platform],
-      days: schedule.days ?? 1,
-      mode: "lifetime",
-      ownerKind: "mingla",
-    });
-    if ((amountCents as number) < minResult.min_budget_cents) {
-      return json({
-        error: "budget_below_platform_minimum",
-        detail: minResult.message,
-        min_budget_cents: minResult.min_budget_cents,
-        breakdown: minResult.breakdown,
-      }, 422);
-    }
-  }
 
   const wave2MoneyBase: Omit<Wave2MoneyPersist, "brand_id"> = {
     owner_kind: "mingla",
@@ -3555,13 +3552,23 @@ serve(async (req: Request): Promise<Response> => {
     }, 424);
   }
   const floorCents = floors[category];
-  if ((amountCents as number) < floorCents) {
+  // Daily: compare to one day of the connection floor. Lifetime: floor × days
+  // from the resolved schedule (never the $5 hardcoded fallback).
+  const minCents = budgetType === "lifetime"
+    ? floorCents * (schedule.days as number)
+    : floorCents;
+  if ((amountCents as number) < minCents) {
     return json({
-      error: "budget_below_minimum",
-      detail:
-        `Daily budget ${amountCents}¢ is below the ${category} floor ${floorCents}¢ for ${optimizationGoal} (per-category minimum_budgets — PROOF M-P8).`,
+      error: budgetType === "lifetime"
+        ? "budget_below_platform_minimum"
+        : "budget_below_minimum",
+      detail: budgetType === "lifetime"
+        ? `Lifetime budget ${amountCents}¢ is below the ${category} floor ${floorCents}¢/day × ${schedule.days} days (= ${minCents}¢) for ${optimizationGoal}.`
+        : `Daily budget ${amountCents}¢ is below the ${category} floor ${floorCents}¢ for ${optimizationGoal} (per-category minimum_budgets — PROOF M-P8).`,
       floor_cents: floorCents,
+      min_budget_cents: minCents,
       category,
+      days: schedule.days,
     }, 422);
   }
 

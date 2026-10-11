@@ -13,7 +13,6 @@ import { MultiSelect } from "../ui/MultiSelect";
 import {
   PACING_DISCLOSURES,
   calendarDaysBetween,
-  computeAdminMinimumCents,
   learningLimitedWarning,
   validateBudget,
 } from "../../lib/adBuilder/budgetRules";
@@ -37,13 +36,20 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
     channelRows,
   });
   const platforms = channelRows.filter((r) => r.eligible).map((r) => r.platform);
-  const d1 = computeAdminMinimumCents({
-    platforms,
-    mode,
-    startsAt: budget.startsAt,
-    endsAt: budget.endsAt,
-  });
   const days = calendarDaysBetween(budget.startsAt, budget.endsAt);
+  // Use each eligible row's live floorCents (Meta's goal-specific connection
+  // floor is already on the row) — never recompute Meta as null/0.
+  const daysForMin = mode === "lifetime" ? (days ?? 1) : 1;
+  const d1 = {
+    minBudgetCents: platforms.reduce((sum, platform) => {
+      const row = channelRows.find((r) => r.platform === platform);
+      const perDay = typeof row?.floorCents === "number" && row.floorCents > 0
+        ? row.floorCents
+        : 0;
+      return sum + perDay * daysForMin;
+    }, 0),
+    days: daysForMin,
+  };
   const capCents = mode === "lifetime"
     ? amountCents
     : (typeof budget.capCents === "number" && budget.capCents > 0

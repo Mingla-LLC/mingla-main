@@ -46,7 +46,7 @@ import { applyChannelSelection, planChannels, splitBudget } from "../lib/adBuild
 import { complianceExclusions } from "../lib/adBuilder/compliance";
 import { validateAudience, DEFAULT_AGE_MAX, DEFAULT_AGE_MIN, DEFAULT_COUNTRIES } from "../lib/adBuilder/audienceRules";
 import { DEFAULT_RADIUS_MI } from "../lib/adBuilder/targeting";
-import { validateBudget } from "../lib/adBuilder/budgetRules";
+import { calendarDaysBetween, validateBudget } from "../lib/adBuilder/budgetRules";
 import { validateCopy } from "../lib/adBuilder/copyRules";
 import { runPolicyPrecheck } from "../lib/adBuilder/policyLinter";
 import { partitionFundedCreative } from "../lib/adBuilder/creativeGate";
@@ -279,18 +279,28 @@ export function CampaignBuilderPage() {
   // disagree. (Traffic wins over awareness for the two live goals, in any click
   // order — the valid OUTCOME_TRAFFIC / LINK_CLICKS pair.)
   const metaGoal = resolveMetaObjective(goalIds).optimization_goal;
+  // Lifetime: plan floors against the daily equivalent so channel eligibility
+  // matches create-time D1 checks (not a zero daily while the total is large).
+  const planningDailyCents = useMemo(() => {
+    if (budget.mode === "lifetime") {
+      const days = calendarDaysBetween(budget.startsAt, budget.endsAt);
+      if (!days || days < 1) return 0;
+      return Math.floor((budget.totalLifetimeCents || 0) / days);
+    }
+    return budget.totalDailyCents;
+  }, [budget.mode, budget.totalDailyCents, budget.totalLifetimeCents, budget.startsAt, budget.endsAt]);
   const channelRows = useMemo(
     () =>
       planChannels({
         preflightRows: preflightRows ?? [],
         goalIds,
         countries: audience.countries,
-        totalDailyCents: budget.totalDailyCents,
+        totalDailyCents: planningDailyCents,
         allowlist: budget.allowlist,
         connections,
         metaGoal,
       }),
-    [preflightRows, goalIds, audience.countries, budget.totalDailyCents, budget.allowlist, connections, metaGoal],
+    [preflightRows, goalIds, audience.countries, planningDailyCents, budget.allowlist, connections, metaGoal],
   );
   // ── ISSUE-986: the platform picker resolves the channel set ──
   // The candidate set (`channelRows`) is what the picker renders. The COMPLIANCE
@@ -329,12 +339,18 @@ export function CampaignBuilderPage() {
     });
   }, [eligiblePlatforms]);
 
+  // Lifetime mode: split the daily equivalent so strategy/weights still apply,
+  // then scale each channel's share back to a lifetime amount at create.
+  const lifetimeDays = useMemo(
+    () => calendarDaysBetween(budget.startsAt, budget.endsAt),
+    [budget.startsAt, budget.endsAt],
+  );
   const allocations = useMemo(
     // ISSUE-986: split across the PICKED channel set (plannedRows) — never the
     // full eligible set. The picker is the single source of truth for who gets
     // funded; a deselected/compliance-excluded channel is already ineligible here.
-    () => splitBudget({ totalDailyCents: budget.totalDailyCents, channelRows: plannedRows, strategy: budget.strategy }),
-    [budget.totalDailyCents, budget.strategy, plannedRows],
+    () => splitBudget({ totalDailyCents: planningDailyCents, channelRows: plannedRows, strategy: budget.strategy }),
+    [planningDailyCents, budget.strategy, plannedRows],
   );
 
   // ISSUE-980 [Campaign Builder clarity] finding #3: the SAME coherent
@@ -682,11 +698,11 @@ export function CampaignBuilderPage() {
           budget: {
             dailyCentsForChannel: allocation.dailyCents,
             mode: budget.mode === "lifetime" ? "lifetime" : "daily",
-            amountCents: budget.mode === "lifetime"
-              ? Math.floor((budget.totalLifetimeCents || 0) / Math.max(allocations.length, 1))
+            amountCents: budget.mode === "lifetime" && lifetimeDays
+              ? allocation.dailyCents * lifetimeDays
               : allocation.dailyCents,
-            capCents: budget.mode === "lifetime"
-              ? Math.floor((budget.totalLifetimeCents || 0) / Math.max(allocations.length, 1))
+            capCents: budget.mode === "lifetime" && lifetimeDays
+              ? allocation.dailyCents * lifetimeDays
               : (budget.capCents ?? null),
             startsAt: budget.startsAt,
             endsAt: budget.endsAt,

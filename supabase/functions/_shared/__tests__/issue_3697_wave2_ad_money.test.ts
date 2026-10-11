@@ -97,6 +97,25 @@ Deno.test("spend sync: upserts + pause at 98%", () => {
   assertEquals(decision.upserts.length, 2);
 });
 
+Deno.test("spend sync: cumulative spend (not sliding window) drives cap pause", () => {
+  const decision = decideSpendSync({
+    campaign: {
+      id: "c1",
+      platform: "meta",
+      external_campaign_id: "ext",
+      status: "ACTIVE",
+      cap_cents: 10000,
+      ends_at: null,
+      currency: "USD",
+    },
+    days: [{ spend_date: "2026-10-31", spend_cents: 100 }],
+    cumulativeSpendCents: 9800,
+  });
+  assertEquals(decision.total_spend_cents, 9800);
+  assertEquals(decision.pause, "cap_98_percent");
+  assertEquals(decision.upserts.length, 1);
+});
+
 Deno.test("spend sync: end date pause when under cap", () => {
   const decision = decideSpendSync({
     campaign: {
@@ -131,7 +150,9 @@ Deno.test("Meta insights spend dollars → cents", () => {
 });
 
 Deno.test("Meta CBO lifetime uses lifetime_budget not daily_budget", async () => {
-  const { buildMetaCampaignBody, buildMetaAdSetBody } = await import("../meta.ts");
+  const { buildMetaCampaignBody, buildMetaAdSetBody } = await import(
+    "../meta.ts"
+  );
   const campaign = buildMetaCampaignBody({
     name: "c",
     objective: "OUTCOME_TRAFFIC",

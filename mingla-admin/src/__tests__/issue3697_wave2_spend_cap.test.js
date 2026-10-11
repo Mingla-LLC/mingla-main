@@ -124,5 +124,6 @@ test("create endpoint forbids destination_group_id (source)", () => {
   );
   assert.match(create, /multi_destination_fanout_forbidden/);
   assert.match(create, /lifetime_budget_requires_end_date/);
+  assert.match(create, /lifetime_budget_meta_only/);
   assert.match(create, /budget_below_platform_minimum/);
 });

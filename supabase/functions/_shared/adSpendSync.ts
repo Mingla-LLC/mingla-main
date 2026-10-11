@@ -65,10 +65,16 @@ export function endDatePassed(
 /**
  * Build upserts + pause decision for one campaign given fetched daily rows.
  * Does not mutate the DB or call platforms.
+ *
+ * Cap pause uses `cumulativeSpendCents` when provided (full `ad_spend_daily`
+ * total after upsert) so a sliding Meta insights window cannot drop prior spend
+ * below the 98% threshold. Without it, falls back to summing `days`.
  */
 export function decideSpendSync(input: {
   campaign: CampaignSpendTarget;
   days: readonly SpendDayRow[];
+  /** Lifetime spend from ad_spend_daily after upsert (preferred for cap). */
+  cumulativeSpendCents?: number;
   nowIso?: string;
 }): SpendSyncDecision {
   const currency = (input.campaign.currency ?? "USD").toUpperCase();
@@ -86,7 +92,11 @@ export function decideSpendSync(input: {
       clicks: Math.max(0, Math.floor(Number(d.clicks) || 0)),
       currency: (d.currency ?? currency).toUpperCase(),
     }));
-  const total = sumSpendCents(upserts);
+  const windowTotal = sumSpendCents(upserts);
+  const total = typeof input.cumulativeSpendCents === "number" &&
+      Number.isFinite(input.cumulativeSpendCents)
+    ? Math.max(0, Math.floor(input.cumulativeSpendCents))
+    : windowTotal;
   let pause: PauseReason | null = null;
   if (
     input.campaign.status === "ACTIVE" &&

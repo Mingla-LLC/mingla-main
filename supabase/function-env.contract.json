@@ -2341,6 +2341,12 @@
       "required_top_level": [
         "OPENWEATHER_API_KEY"
       ]
+    },
+    "admin-ad-spend-sync": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
     }
   },
   "non_secret_runtime_config": [

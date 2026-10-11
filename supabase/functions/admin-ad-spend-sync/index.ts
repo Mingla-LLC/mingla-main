@@ -28,6 +28,7 @@ import {
   decideSpendSync,
   parseMetaInsightsSpend,
   type SpendDayRow,
+  sumSpendCents,
 } from "../_shared/adSpendSync.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
 
@@ -106,6 +107,103 @@ async function fetchMetaSpendDays(
   return parseMetaInsightsSpend(payload);
 }
 
+async function loadCumulativeSpendCents(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  campaignId: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("ad_spend_daily")
+    .select("spend_cents")
+    .eq("campaign_id", campaignId);
+  if (error || !Array.isArray(data)) return 0;
+  return sumSpendCents(
+    data.map((row: { spend_cents?: unknown }) => ({
+      spend_date: "1970-01-01",
+      spend_cents: Number(row.spend_cents) || 0,
+    })),
+  );
+}
+
+async function touchSpendSyncWatermark(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  campaignId: string,
+): Promise<string | null> {
+  const { error } = await supabase
+    .from("ad_campaigns")
+    .update({ status_synced_at: new Date().toISOString() })
+    .eq("id", campaignId);
+  return error?.message ?? null;
+}
+
+async function pauseCampaignForReason(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  target: CampaignSpendTarget,
+  connectionId: unknown,
+  reason: string,
+  totalSpendCents: number,
+): Promise<{ ok: true } | { ok: false; detail: string }> {
+  try {
+    const { data: conn } = await supabase
+      .from("ad_connections")
+      .select("*")
+      .eq("id", connectionId)
+      .maybeSingle();
+    if (conn) {
+      const adapter = getAdapter(target.platform);
+      await adapter.setStatus(
+        conn as AdConnectionRow,
+        "campaign",
+        target.external_campaign_id,
+        "PAUSED",
+      );
+    }
+    const { error: updErr } = await supabase
+      .from("ad_campaigns")
+      .update({
+        status: "PAUSED",
+        status_synced_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", target.id);
+    if (updErr) {
+      return {
+        ok: false,
+        detail: `pause_status_write_failed: ${updErr.message}`,
+      };
+    }
+    const { error: auditErr } = await supabase.from("ad_status_events").insert({
+      campaign_id: target.id,
+      platform: target.platform,
+      entity: "campaign",
+      action: "pause",
+      actor: null,
+      from_status: "ACTIVE",
+      to_status: "PAUSED",
+      external_ids: { external_campaign_id: target.external_campaign_id },
+      provider_response: {
+        reason,
+        total_spend_cents: totalSpendCents,
+        cap_cents: target.cap_cents,
+      },
+    });
+    if (auditErr) {
+      return {
+        ok: false,
+        detail: `pause_audit_write_failed: ${auditErr.message}`,
+      };
+    }
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -154,6 +252,7 @@ serve(async (req: Request): Promise<Response> => {
     const platform = String(row.platform ?? "");
     if (!isPlatform(platform)) {
       results.push({ campaign_id: row.id, skipped: "platform_invalid" });
+      await touchSpendSyncWatermark(supabase, String(row.id));
       continue;
     }
     const target: CampaignSpendTarget = {
@@ -167,10 +266,12 @@ serve(async (req: Request): Promise<Response> => {
     };
     if (!target.external_campaign_id) {
       results.push({ campaign_id: target.id, skipped: "no_external_id" });
+      await touchSpendSyncWatermark(supabase, target.id);
       continue;
     }
 
     let days: SpendDayRow[] = [];
+    let fetchError: string | null = null;
     try {
       if (platform === "meta") {
         const { data: conn } = await supabase
@@ -186,89 +287,78 @@ serve(async (req: Request): Promise<Response> => {
       }
       // Other platforms: empty days this wave; end-date pause still applies.
     } catch (err) {
-      const detail =
+      fetchError =
         err instanceof AdApiError || err instanceof AdNotConnectedError
           ? err.message
           : err instanceof Error
           ? err.message
           : String(err);
-      results.push({ campaign_id: target.id, error: detail });
-      continue;
+      // End-date enforcement is independent of spend fetch — continue with [].
+      days = [];
     }
 
-    const decision = decideSpendSync({ campaign: target, days });
-    if (decision.upserts.length > 0) {
+    const draft = decideSpendSync({ campaign: target, days });
+    if (draft.upserts.length > 0) {
       const { error: upErr } = await supabase.from("ad_spend_daily").upsert(
-        decision.upserts,
+        draft.upserts,
         { onConflict: "campaign_id,platform,spend_date" },
       );
       if (upErr) {
         results.push({ campaign_id: target.id, error: upErr.message });
+        await touchSpendSyncWatermark(supabase, target.id);
         continue;
       }
-      upserted += decision.upserts.length;
+      upserted += draft.upserts.length;
     }
 
+    const cumulative = await loadCumulativeSpendCents(supabase, target.id);
+    const decision = decideSpendSync({
+      campaign: target,
+      days,
+      cumulativeSpendCents: cumulative,
+    });
+
     if (decision.pause && target.status === "ACTIVE") {
-      try {
-        const { data: conn } = await supabase
-          .from("ad_connections")
-          .select("*")
-          .eq("id", row.connection_id)
-          .maybeSingle();
-        if (conn) {
-          const adapter = getAdapter(platform as Platform);
-          await adapter.setStatus(
-            conn as AdConnectionRow,
-            "campaign",
-            target.external_campaign_id,
-            "PAUSED",
-          );
-        }
-        await supabase
-          .from("ad_campaigns")
-          .update({
-            status: "PAUSED",
-            status_synced_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", target.id);
-        await supabase.from("ad_status_events").insert({
-          campaign_id: target.id,
-          platform: target.platform,
-          entity: "campaign",
-          action: "pause",
-          actor: null,
-          from_status: "ACTIVE",
-          to_status: "PAUSED",
-          external_ids: { external_campaign_id: target.external_campaign_id },
-          provider_response: {
-            reason: decision.pause,
-            total_spend_cents: decision.total_spend_cents,
-            cap_cents: target.cap_cents,
-          },
-        });
-        paused += 1;
+      const pauseResult = await pauseCampaignForReason(
+        supabase,
+        target,
+        row.connection_id,
+        decision.pause,
+        decision.total_spend_cents,
+      );
+      if (!pauseResult.ok) {
         results.push({
           campaign_id: target.id,
-          paused: decision.pause,
+          pause_failed: pauseResult.detail,
           total_spend_cents: decision.total_spend_cents,
-          days: decision.upserts.length,
+          ...(fetchError ? { fetch_error: fetchError } : {}),
         });
-      } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        results.push({
-          campaign_id: target.id,
-          pause_failed: detail,
-          total_spend_cents: decision.total_spend_cents,
-        });
+        await touchSpendSyncWatermark(supabase, target.id);
+        continue;
       }
+      paused += 1;
+      results.push({
+        campaign_id: target.id,
+        paused: decision.pause,
+        total_spend_cents: decision.total_spend_cents,
+        days: decision.upserts.length,
+        ...(fetchError ? { fetch_error: fetchError } : {}),
+      });
+    } else if (fetchError) {
+      results.push({
+        campaign_id: target.id,
+        error: fetchError,
+        total_spend_cents: decision.total_spend_cents,
+      });
+      await touchSpendSyncWatermark(supabase, target.id);
     } else {
       results.push({
         campaign_id: target.id,
         total_spend_cents: decision.total_spend_cents,
         days: decision.upserts.length,
       });
+      // Rotate the 80-row sweep: every attempted row advances the watermark.
+      await touchSpendSyncWatermark(supabase, target.id);
     }
   }
 

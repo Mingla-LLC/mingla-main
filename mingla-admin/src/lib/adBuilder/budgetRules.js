@@ -177,9 +177,11 @@ export function validateBudget({ totalDailyCents, channelRows }) {
   }
   const eligible = channelRows.filter((r) => r.eligible);
   if (eligible.length === 0) {
+    // Ignore $0 / null floors (Google has no money minimum) so the cheapest
+    // positive platform floor drives the message — never "$0.00/day on Google".
     const floors = channelRows
       .map((r) => ({ label: r.label, floorCents: r.floorCents }))
-      .filter((r) => typeof r.floorCents === "number")
+      .filter((r) => typeof r.floorCents === "number" && r.floorCents > 0)
       .sort((a, b) => a.floorCents - b.floorCents);
     if (floors.length > 0 && totalDailyCents < floors[0].floorCents) {
       errors.push(
