@@ -16,6 +16,79 @@ COMMENT ON COLUMN public.event_rsvps.show_me_as_going IS
 COMMENT ON COLUMN public.orders.show_me_as_going IS
   '#3682 — buyer opted to show their name on Who''s going for this paid order. Default off.';
 
+-- Owner-only write guard: host/staff table UPDATE policies must not flip consent.
+CREATE OR REPLACE FUNCTION public.tg_show_me_as_going_owner_only()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $g$
+BEGIN
+  IF OLD.show_me_as_going IS NOT DISTINCT FROM NEW.show_me_as_going THEN
+    RETURN NEW;
+  END IF;
+  IF TG_TABLE_NAME = 'orders'
+     AND auth.uid() IS NOT NULL
+     AND auth.uid() = NEW.buyer_user_id THEN
+    RETURN NEW;
+  END IF;
+  IF TG_TABLE_NAME = 'event_rsvps'
+     AND auth.uid() IS NOT NULL
+     AND auth.uid() = NEW.user_id THEN
+    RETURN NEW;
+  END IF;
+  -- Migrations / CI seeds: privileged role, no JWT.
+  IF auth.uid() IS NULL AND current_user IN ('postgres', 'supabase_admin') THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'show_me_as_going_owner_only' USING ERRCODE = '42501';
+END;
+$g$;
+
+DROP TRIGGER IF EXISTS trg_orders_show_me_as_going_owner_only ON public.orders;
+CREATE TRIGGER trg_orders_show_me_as_going_owner_only
+  BEFORE UPDATE OF show_me_as_going ON public.orders
+  FOR EACH ROW
+  EXECUTE FUNCTION public.tg_show_me_as_going_owner_only();
+
+DROP TRIGGER IF EXISTS trg_event_rsvps_show_me_as_going_owner_only ON public.event_rsvps;
+CREATE TRIGGER trg_event_rsvps_show_me_as_going_owner_only
+  BEFORE UPDATE OF show_me_as_going ON public.event_rsvps
+  FOR EACH ROW
+  EXECUTE FUNCTION public.tg_show_me_as_going_owner_only();
+
+-- Multi-order / claim: inherit any prior opt-in for the same buyer+event.
+CREATE OR REPLACE FUNCTION public.tg_orders_show_me_as_going_propagate()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $p$
+DECLARE
+  v_opted boolean;
+BEGIN
+  IF NEW.buyer_user_id IS NULL OR NEW.event_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE'
+     AND OLD.buyer_user_id IS NOT DISTINCT FROM NEW.buyer_user_id
+     AND OLD.show_me_as_going IS NOT DISTINCT FROM NEW.show_me_as_going THEN
+    RETURN NEW;
+  END IF;
+  SELECT bool_or(o.show_me_as_going) INTO v_opted
+    FROM public.orders o
+   WHERE o.event_id = NEW.event_id
+     AND o.buyer_user_id = NEW.buyer_user_id
+     AND (TG_OP = 'INSERT' OR o.id IS DISTINCT FROM NEW.id);
+  IF COALESCE(v_opted, false) THEN
+    NEW.show_me_as_going := true;
+  END IF;
+  RETURN NEW;
+END;
+$p$;
+
+DROP TRIGGER IF EXISTS trg_orders_show_me_as_going_propagate ON public.orders;
+CREATE TRIGGER trg_orders_show_me_as_going_propagate
+  BEFORE INSERT OR UPDATE OF buyer_user_id ON public.orders
+  FOR EACH ROW
+  EXECUTE FUNCTION public.tg_orders_show_me_as_going_propagate();
+
 -- Setter: authenticated guest flips their own attendance row.
 CREATE OR REPLACE FUNCTION public.biz_set_show_me_as_going(
   p_event_id uuid,
@@ -192,10 +265,16 @@ BEGIN
          (v_event.status = 'live' AND t.status IN ('valid', 'used'))
        )
      GROUP BY o.id, o.buyer_user_id, o.created_at, o.show_me_as_going
+  ), user_opted AS (
+    -- Per-user opt-in across every paid/RSVP attendance row for this event.
+    SELECT a.linked_user_id, bool_or(a.show_me_as_going) AS opted
+      FROM attendance a
+     WHERE a.linked_user_id IS NOT NULL
+     GROUP BY a.linked_user_id
   ), privacy_final AS (
     SELECT a.row_id, a.party_size, a.created_at,
            a.linked_user_id IS NOT NULL AS is_mingla_user,
-           -- #3682 J: named when self, accepted friend, or explicit opt-in.
+           -- #3682 J: named when self, accepted friend, or user-level opt-in.
            a.linked_user_id IS NOT NULL AND (
              a.linked_user_id = v_viewer
              OR EXISTS (
@@ -207,7 +286,7 @@ BEGIN
                     OR (f.friend_user_id = v_viewer AND f.user_id = a.linked_user_id)
                   )
              )
-             OR a.show_me_as_going
+             OR COALESCE(uo.opted, false)
            ) AS is_named,
            CASE WHEN a.linked_user_id IS NOT NULL AND (
                   a.linked_user_id = v_viewer
@@ -220,7 +299,7 @@ BEGIN
                          OR (f.friend_user_id = v_viewer AND f.user_id = a.linked_user_id)
                        )
                   )
-                  OR a.show_me_as_going
+                  OR COALESCE(uo.opted, false)
                 ) THEN p.id END AS profile_id,
            CASE WHEN a.linked_user_id IS NOT NULL AND (
                   a.linked_user_id = v_viewer
@@ -233,7 +312,7 @@ BEGIN
                          OR (f.friend_user_id = v_viewer AND f.user_id = a.linked_user_id)
                        )
                   )
-                  OR a.show_me_as_going
+                  OR COALESCE(uo.opted, false)
                 ) THEN p.display_name END AS display_name,
            CASE WHEN a.linked_user_id IS NOT NULL AND (
                   a.linked_user_id = v_viewer
@@ -246,7 +325,7 @@ BEGIN
                          OR (f.friend_user_id = v_viewer AND f.user_id = a.linked_user_id)
                        )
                   )
-                  OR a.show_me_as_going
+                  OR COALESCE(uo.opted, false)
                 ) THEN p.username END AS username,
            CASE WHEN a.linked_user_id IS NOT NULL AND (
                   a.linked_user_id = v_viewer
@@ -259,7 +338,7 @@ BEGIN
                          OR (f.friend_user_id = v_viewer AND f.user_id = a.linked_user_id)
                        )
                   )
-                  OR a.show_me_as_going
+                  OR COALESCE(uo.opted, false)
                 ) THEN p.avatar_url END AS avatar_url,
            CASE WHEN a.linked_user_id IS NOT NULL AND (
                   a.linked_user_id = v_viewer
@@ -272,9 +351,10 @@ BEGIN
                          OR (f.friend_user_id = v_viewer AND f.user_id = a.linked_user_id)
                        )
                   )
-                  OR a.show_me_as_going
+                  OR COALESCE(uo.opted, false)
                 ) THEN p.location END AS location
       FROM attendance a
+      LEFT JOIN user_opted uo ON uo.linked_user_id = a.linked_user_id
       LEFT JOIN public.profiles p ON p.id = a.linked_user_id
      WHERE a.linked_user_id IS NULL OR (
        NOT public.is_blocked_by(a.linked_user_id, v_viewer)
@@ -305,11 +385,9 @@ BEGIN
       (SELECT COALESCE(SUM(pf.party_size), 0)::integer
          FROM privacy_final pf WHERE NOT pf.is_named) AS private_others,
       (
-        SELECT a.show_me_as_going
+        SELECT bool_or(a.show_me_as_going)
           FROM attendance a
          WHERE a.linked_user_id = v_viewer
-         ORDER BY a.created_at ASC
-         LIMIT 1
       ) AS viewer_show,
       (SELECT COUNT(*)::integer FROM page) AS fetched
   )
