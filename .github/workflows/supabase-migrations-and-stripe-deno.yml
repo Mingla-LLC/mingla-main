@@ -1429,6 +1429,10 @@ jobs:
             # ISSUE-865 WP-B/C — mingla-tester adversarial battery (real timeout
             # path, end-to-end PII hashing on the wire, cross-side dedup contract).
             supabase/functions/_shared/__tests__/issue_865_wp_bc_adversarial.tester.test.ts
+            # toward #3697 Wave 0b — Reject/pending consent blocks CAPI fan-out.
+            supabase/functions/_shared/__tests__/issue_3697_wave0_consent_gate.test.ts
+            # toward #3697 Wave 0d — anon conversion refused on attribution-capture.
+            supabase/functions/attribution-capture/issue_3697_wave0_trusted_conversion.test.ts
             # ISSUE-996 — implementor source guard: A5 keeps its local fetch
             # declaration + fireAdConversion injection (no network execution).
             supabase/functions/_shared/__tests__/issue_996_a5_hermetic_fetch.test.ts

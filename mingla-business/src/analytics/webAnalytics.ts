@@ -34,7 +34,7 @@ export const getFeatureFlagWeb = (
 // confirm pages + the checkout services compile and no-op on iOS/Android. The
 // app deep-link attribution lane (WP-C2) ships separately in a native build.
 export interface CaptureAdClickDest {
-  pageType?: "event" | "trip" | "brand" | "venue";
+  pageType?: "event" | "trip" | "brand" | "venue" | "experience";
   brandSlug?: string | null;
   entitySlug?: string | null;
   eventId?: string | null;

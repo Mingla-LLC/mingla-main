@@ -5,7 +5,8 @@
 //     eventType fires the value'd Purchase branch (Meta 'Purchase' carrying the
 //     fee amount) — what the ads bid toward;
 //   • a FREE RSVP (payment_status 'none', no fee) fires the lead-type branch
-//     (Meta 'Schedule') at £0 — counted as a driven customer, never a Purchase;
+//     (Meta 'CompleteRegistration' — toward #3697 F-4 sign-up) at £0 — never a Purchase;
+// [TEST-MOD-APPROVED #3697] event names: Schedule/SAVE → CompleteRegistration/SIGN_UP
 //   • an EXPLICIT eventType:'reservation' still forces the lead branch even on a
 //     paid row (back-compat with the shipped adversarial A4);
 //   • the click_id threads BOTH ways — inline (free path holds it) and via the
@@ -112,13 +113,13 @@ Deno.test("WP-2 two-tier: a PAID reservation (no explicit eventType) fires Meta 
   const meta = JSON.parse(
     calls.find((c) => c.url.includes("graph.facebook.com"))!.body,
   );
-  assertEquals(meta.data[0].event_name, "Purchase"); // value'd Purchase, NOT 'Schedule'
+  assertEquals(meta.data[0].event_name, "Purchase"); // value'd Purchase, NOT sign-up
   assertEquals(meta.data[0].event_id, RESV_ID);
   assertEquals(meta.data[0].custom_data.value, 25); // 2500c -> 25.00 (paid fee)
 });
 
 // ── TIER 2: FREE RSVP → lead-type at £0 ───────────────────────────────────────
-Deno.test("WP-2 two-tier: a FREE RSVP (payment_status 'none', no fee) fires Meta 'Schedule' at £0 (lead, NOT Purchase)", async () => {
+Deno.test("WP-2 two-tier: a FREE RSVP (payment_status 'none', no fee) fires Meta 'CompleteRegistration' at £0 (sign-up, NOT Purchase)", async () => {
   const { client } = fakeSupabase({
     reservations: {
       id: RESV_ID,
@@ -140,7 +141,7 @@ Deno.test("WP-2 two-tier: a FREE RSVP (payment_status 'none', no fee) fires Meta
   const meta = JSON.parse(
     calls.find((c) => c.url.includes("graph.facebook.com"))!.body,
   );
-  assertEquals(meta.data[0].event_name, "Schedule"); // lead branch
+  assertEquals(meta.data[0].event_name, "CompleteRegistration"); // F-4 sign-up
   assertEquals(meta.data[0].custom_data.value, 0); // £0 — no revenue on a free RSVP
   const tt = JSON.parse(
     calls.find((c) => c.url.includes("business-api.tiktok.com"))!.body,
@@ -175,7 +176,7 @@ Deno.test("WP-2 two-tier: explicit eventType 'reservation' forces the lead branc
   const meta = JSON.parse(
     calls.find((c) => c.url.includes("graph.facebook.com"))!.body,
   );
-  assertEquals(meta.data[0].event_name, "Schedule"); // explicit override respected
+  assertEquals(meta.data[0].event_name, "CompleteRegistration"); // F-4 override
 });
 
 // ── THREADING: inline click_id resolves touch → the conversion row carries it ──

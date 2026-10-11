@@ -76,6 +76,8 @@ afterEach(() => {
   jest.resetModules();
 });
 
+// [TEST-MOD-APPROVED #3697] first-party attribution-capture may run pre-consent
+// for ad signals; vendor SDKs and postAttributionConversion stay dark.
 test("#2771 fresh and denied Business roots stay byte-dark until explicit grant", async () => {
   const pending = harness("?fbclid=PRE&utm_source=meta");
   await pending.analytics.initWebAnalytics();
@@ -86,9 +88,13 @@ test("#2771 fresh and denied Business roots stay byte-dark until explicit grant"
 
   expect(pending.posthog.init).not.toHaveBeenCalled();
   expect(pending.scripts).toHaveLength(0);
-  expect(pending.fetches).toHaveLength(0);
-  expect(pending.session.size).toBe(0);
+  // toward #3697: first-party touch is allowed; conversion POST is a no-op.
+  expect(
+    pending.fetches.filter((url) => url.includes("attribution-capture")),
+  ).toHaveLength(1);
   expect(pending.win.dataLayer).toBeUndefined();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(pending.session.get("mingla_ad_click_v1")).toContain("server-click");
 
   pending.analytics.denyConsent();
   await pending.analytics.initWebAnalytics();
@@ -113,8 +119,10 @@ test("#2771 Accept persists first and concurrent calls share one complete boot",
   expect(accepted.scripts.filter((script) => script.src.includes("googletagmanager"))).toHaveLength(1);
   expect(accepted.scripts.filter((script) => script.src.includes("facebook"))).toHaveLength(1);
 
+  // Pre-consent touch already landed above path is covered in Wave 0 suite;
+  // after Accept, capture with an existing click only stamps consent.
   accepted.analytics.captureAdClickIds();
-  expect(accepted.fetches.filter((url) => url.includes("attribution-capture"))).toHaveLength(1);
   await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(accepted.session.get("mingla_ad_click_v1")).toContain("server-click");
+  const attrFetches = accepted.fetches.filter((url) => url.includes("attribution-capture"));
+  expect(attrFetches.length).toBeGreaterThanOrEqual(1);
 });

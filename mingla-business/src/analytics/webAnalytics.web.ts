@@ -411,13 +411,17 @@ export async function grantConsent(): Promise<void> {
   captureWeb("consent_granted");
   gaEvent("consent_granted");
   captureHostPublicSearchPageView(window.location.pathname);
+  // toward #3697 F-1: stamp Accept on the existing first-party touch only —
+  // do not insert a second touch (first-touch-wins + visit inflation).
+  void postAttributionConsent("granted");
 }
 
-/** Reject handler — keeps both gates closed and persists the choice. */
+/** Reject handler — keeps vendor gates closed; stamps Reject on first-party touch. */
 export function denyConsent(): void {
   writeStoredConsent("denied");
-  // Reject is persistence-only. No vendor object, command, event, or client
-  // attribution path is invoked.
+  // toward #3697 / #3703: stamp Reject; keep click_id for checkout threading so
+  // the server can count locally with shared_with_platforms=false.
+  void postAttributionConsent("rejected");
 }
 
 /** Fire a custom PostHog event + (optionally) a GA4 event. No-op if gated. */
@@ -731,7 +735,9 @@ export function fireAdPurchase(
   props: { value?: number; currency?: string },
 ): void {
   if (readStoredConsent() !== "granted") return;
-  fireAdConversion(eventId, props, true);
+  // toward #3697 F-4: free tickets ($0) must match server sign-up events.
+  const isPaidPurchase = !(typeof props.value === "number" && props.value <= 0);
+  fireAdConversion(eventId, props, isPaidPurchase);
 }
 
 function fireAdConversion(
@@ -743,7 +749,8 @@ function fireAdConversion(
   const value = props.value;
   const currency = props.currency;
   safePixel(() =>
-    window.fbq?.("track", purchase ? "Purchase" : "Schedule", definedProps({ value, currency }), { eventID: eventId })
+    // toward #3697 F-4: free/RSVP = CompleteRegistration (must match server CAPI).
+    window.fbq?.("track", purchase ? "Purchase" : "CompleteRegistration", definedProps({ value, currency }), { eventID: eventId })
   );
   safePixel(() =>
     window.ttq?.track?.(
@@ -753,7 +760,7 @@ function fireAdConversion(
     )
   );
   safePixel(() =>
-    window.snaptr?.("track", purchase ? "PURCHASE" : "SAVE", definedProps({
+    window.snaptr?.("track", purchase ? "PURCHASE" : "SIGN_UP", definedProps({
       price: value,
       currency,
       transaction_id: eventId,
@@ -761,18 +768,15 @@ function fireAdConversion(
     }))
   );
   safePixel(() =>
-    window.rdt?.("track", purchase ? "Purchase" : "Lead", definedProps({ value, currency, conversion_id: eventId }))
+    window.rdt?.("track", purchase ? "Purchase" : "SignUp", definedProps({ value, currency, conversion_id: eventId }))
   );
 }
 
 /**
- * ISSUE-865 PR1 WP-2 — Reservation fire (the LEAD-type twin of fireAdPurchase).
- * The founder-locked two-tier: a FREE RSVP is a lead-type event, NOT a value'd
- * Purchase — Meta 'Schedule' / TikTok 'CompleteRegistration' / Snap 'SAVE' /
- * Reddit 'Lead'. `eventId` MUST be the Mingla reservation id (the shared
- * event_id) so it dedups the exact pair with the server CAPI lead send. Value is
- * optional and defaults to £0 (a free RSVP carries no revenue). No-op pre-consent
- * (consent-gated on adPixelsBootstrapped) / when no pixel loaded; never throws.
+ * ISSUE-865 PR1 WP-2 — Reservation fire (sign-up twin of fireAdPurchase).
+ * toward #3697 F-4: FREE RSVP = CompleteRegistration / SIGN_UP / SignUp — not
+ * a value'd Purchase. `eventId` MUST be the Mingla reservation id so it dedups
+ * the server CAPI pair. Value defaults to £0. No-op pre-consent; never throws.
  */
 export function fireAdReservation(
   eventId: string,
@@ -792,11 +796,11 @@ interface StoredAdClick {
 export function getStoredClickAttribution(): StoredAdClick {
   let clickId: unknown;
   try {
-    if (readStoredConsent() === "granted") {
-      clickId = (JSON.parse(
-        window.sessionStorage.getItem(AD_CLICK_KEY) ?? "{}",
-      ) as { clickId?: unknown }).clickId;
-    }
+    // toward #3697: keep click_id readable after Reject so checkout can thread it
+    // (server then sets shared_with_platforms=false). Vendor pixels stay grant-gated.
+    clickId = (JSON.parse(
+      window.sessionStorage.getItem(AD_CLICK_KEY) ?? "{}",
+    ) as { clickId?: unknown }).clickId;
   } catch {
     // Storage and malformed data remain optional attribution failures.
   }
@@ -804,7 +808,9 @@ export function getStoredClickAttribution(): StoredAdClick {
 }
 
 function storeClickId(clickId: string): void {
-  if (readStoredConsent() !== "granted") return;
+  // toward #3697: persist first-party click_id even pre-consent; Reject does not
+  // clear an already-stored id (checkout still needs it).
+  if (readStoredConsent() === "denied") return;
   try {
     window.sessionStorage.setItem(AD_CLICK_KEY, JSON.stringify({ clickId }));
   } catch {
@@ -827,7 +833,7 @@ function postAttr(
 }
 
 export interface CaptureAdClickDest {
-  pageType?: "event" | "trip" | "brand" | "venue";
+  pageType?: "event" | "trip" | "brand" | "venue" | "experience";
   brandSlug?: string | null;
   entitySlug?: string | null;
   eventId?: string | null;
@@ -839,11 +845,23 @@ export interface CaptureAdClickDest {
  * is stored for checkout threading. First-party measurement: it forwards the
  * click id / UTM ONLY (never email/phone), so no PII leaves the browser (SC-8).
  * Fire-and-forget, timeout-bounded — never delays the landing render.
+ *
+ * toward #3697 / #3699 (TEST-MOD #2771): first-party touch may run before the
+ * cookie banner (consent_state=pending). Reject blocks further capture. Vendor
+ * pixels stay grant-gated.
  */
 export function captureAdClickIds(dest?: CaptureAdClickDest): void {
-  // Issue #2771: a first-party endpoint is still analytics. Explicit grant must
-  // dominate URL/referrer parsing, network, and attribution storage.
-  if (!hasWindow() || readStoredConsent() !== "granted") return;
+  if (!hasWindow() || readStoredConsent() === "denied") return;
+  // toward #3697: if we already have a first-party click, only stamp consent —
+  // never insert a duplicate touch for the same landing.
+  const existing = getStoredClickAttribution().clickId;
+  if (existing !== null) {
+    const consent = readStoredConsent();
+    if (consent === "granted") {
+      void postAttributionConsent("granted", existing);
+    }
+    return;
+  }
   try {
     const params = new URLSearchParams(window.location.search);
     const fbclid = params.get("fbclid");
@@ -884,20 +902,35 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
       : utmSource === "google"
       ? "google"
       : "other";
-    // ISSUE-855 PR-2 — the referrer HOST (host only; strips path/query/fragment,
-    // so no PII leaves the browser). Lets the server classify search / social /
-    // organic / direct beyond ad-vs-organic.
-    const refHost = readReferrerHost();
-    // Record a touch when there is SOMETHING to attribute: an ad signal, a UTM,
-    // OR a referrer host. A truly bare visit (no ad param, no utm, no referrer)
-    // stays a byte-identical no-op.
-    if (
-      external === null && afCId === null && mcId === null &&
-      Object.keys(utm).length === 0 && refHost === null
-    ) {
+    // Pre-consent: only ad / campaign signals (no organic referrer scraping).
+    // After Accept: referrer host may enrich entry_source (ISSUE-855 PR-2).
+    const consent = readStoredConsent();
+    const refHost = consent === "granted" ? readReferrerHost() : null;
+    const hasAdSignal =
+      external !== null || afCId !== null || mcId !== null ||
+      Object.keys(utm).length > 0;
+    if (!hasAdSignal && refHost === null) {
       return;
     }
-    void postAttributionTouch({ network, externalClickId: external, afCId, mcId, utm, dest, referrer: refHost })
+    // Pre-consent bare referrer-only visits stay dark (vendor + first-party).
+    if (consent !== "granted" && !hasAdSignal) {
+      return;
+    }
+    const consentState = consent === "granted"
+      ? "granted"
+      : consent === "denied"
+      ? "rejected"
+      : "pending";
+    void postAttributionTouch({
+      network,
+      externalClickId: external,
+      afCId,
+      mcId,
+      utm,
+      dest,
+      referrer: refHost,
+      consentState,
+    })
       .then((clickId) => {
         // FIRST-TOUCH-WINS: keep the click_id of the FIRST attributable touch this
         // session so a later internal navigation (referrer = a Mingla host →
@@ -938,17 +971,26 @@ interface PostTouchInput {
   dest?: CaptureAdClickDest;
   // ISSUE-855 PR-2 — referrer host only (no PII); forwarded for entry_source.
   referrer?: string | null;
+  consentState?: "pending" | "granted" | "rejected";
 }
 
 /** POST a touch to attribution-capture; returns the server click_id (or null). */
 export async function postAttributionTouch(input: PostTouchInput): Promise<string | null> {
-  if (readStoredConsent() !== "granted") return null;
+  // toward #3697: first-party touch allowed pre-consent; Reject stops it.
+  if (readStoredConsent() === "denied") return null;
   const base = readEnv("EXPO_PUBLIC_SUPABASE_URL");
   const anon = readEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY");
   if (base === undefined || anon === undefined) return null;
   const aborter = new AbortController();
   const timer = setTimeout(() => aborter.abort(), ATTR_TIMEOUT_MS);
   try {
+    const consent = readStoredConsent();
+    const consentState = input.consentState ??
+      (consent === "granted"
+        ? "granted"
+        : consent === "denied"
+        ? "rejected"
+        : "pending");
     const res = await postAttr(
       base,
       anon,
@@ -961,6 +1003,7 @@ export async function postAttributionTouch(input: PostTouchInput): Promise<strin
         af_c_id: input.afCId,
         mc_id: input.mcId ?? null,
         referrer: input.referrer ?? null,
+        consent_state: consentState,
         utm: input.utm,
         dest: input.dest
           ? {
@@ -983,48 +1026,48 @@ export async function postAttributionTouch(input: PostTouchInput): Promise<strin
   }
 }
 
-/**
- * POST a conversion to attribution-capture at checkout success — an early,
- * idempotent record (deduped server-side on event_id). NO email/phone leaves the
- * browser (SC-9); the server fire helper (WP-B) hashes PII from the order and
- * does the authoritative CAPI send. Fire-and-forget — never on the tap→pay path.
- */
-export function postAttributionConversion(input: {
-  eventId: string;
-  valueCents?: number | null;
-  currency?: string | null;
-  eventSourceUrl?: string | null;
-}): void {
-  if (readStoredConsent() !== "granted" || input.eventId.length === 0) return;
+/** toward #3697: stamp Accept/Reject onto the stored first-party click_id. */
+async function postAttributionConsent(
+  consentState: "granted" | "rejected",
+  clickIdOverride?: string | null,
+): Promise<void> {
+  const clickId = clickIdOverride ?? getStoredClickAttribution().clickId;
+  if (clickId === null || clickId === undefined) return;
   const base = readEnv("EXPO_PUBLIC_SUPABASE_URL");
   const anon = readEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY");
   if (base === undefined || anon === undefined) return;
   const aborter = new AbortController();
   const timer = setTimeout(() => aborter.abort(), ATTR_TIMEOUT_MS);
   try {
-    void postAttr(
+    await postAttr(
       base,
       anon,
       {
-        kind: "conversion",
+        kind: "consent",
+        click_id: clickId,
+        consent_state: consentState,
         surface: "web",
         lane: "consumer",
-        event_id: input.eventId,
-        event_type: "purchase",
-        event_name: "Purchase",
-        value_cents: input.valueCents ?? null,
-        currency: input.currency ?? null,
-        click_id: getStoredClickAttribution().clickId,
-        event_source_url: input.eventSourceUrl ?? window.location.href,
       },
       aborter.signal,
-    )
-      .catch(() => {
-        // Fire-and-forget: a failed early record is harmless — the server fire
-        // helper (WP-B) writes the authoritative conversion post-finalize.
-      })
-      .finally(() => clearTimeout(timer));
+    );
   } catch {
+    // Fire-and-forget.
+  } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * toward #3697 Wave 0d / #3702: browser must not write ad_conversions.
+ * Authoritative row + CAPI fan-out live in adConversionFire (post-finalize).
+ * Kept as a no-op so call sites stay compile-stable.
+ */
+export function postAttributionConversion(_input: {
+  eventId: string;
+  valueCents?: number | null;
+  currency?: string | null;
+  eventSourceUrl?: string | null;
+}): void {
+  // Intentionally empty — trusted server path only.
 }
