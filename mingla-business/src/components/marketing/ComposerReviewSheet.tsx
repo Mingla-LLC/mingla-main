@@ -64,6 +64,13 @@ export interface ComposerReviewSheetProps {
   onRetryPreview?: () => void;
   retryDisabled?: boolean;
   staleDetail?: string;
+  /** #3682 Wave 2.7 — remaining monthly allowance line (additive). */
+  allowanceLabel?: string;
+  /**
+   * #3682 Wave 2.7 — 4th blast in a rolling week. When true, the primary CTA
+   * becomes "Send anyway" until acknowledged; "Not now" dismisses via onBack.
+   */
+  weekBlastWarning?: boolean;
 }
 
 export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
@@ -95,8 +102,12 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   onRetryPreview,
   retryDisabled,
   staleDetail,
+  allowanceLabel,
+  weekBlastWarning,
 }) => {
+  const showWeekWarning = weekBlastWarning === true;
   const ctaLabel = isSendNow ? "Send now" : "Schedule";
+  const primaryLabel = showWeekWarning ? "Send anyway" : ctaLabel;
   const handleClose = dismissDisabled ? () => {} : onClose;
   // ORCH-1270 F-1 — always show the SMS timing info note on an SMS Send-now
   // review. Informational (not a warning): it tells the operator that off-hours
@@ -166,9 +177,24 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
               Preview refreshed just now · Valid for 5 minutes
             </Text>
           ) : null}
+          {allowanceLabel !== undefined ? (
+            <Text style={styles.metaText} testID="composer-review-allowance">
+              {allowanceLabel}
+            </Text>
+          ) : null}
           {selectedCount !== undefined ? (
             <Text style={styles.billingNote}>
               Suppressed and unavailable people are skipped automatically. You are charged only for reachable recipients.
+            </Text>
+          ) : null}
+          {showWeekWarning ? (
+            <Text
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+              style={styles.warningText}
+              testID="composer-review-week-warning"
+            >
+              {"You've sent 3 blasts in the last 7 days. Sending again can feel like too much to guests. Send anyway, or not now."}
             </Text>
           ) : null}
           {staleWarning === true ? (
@@ -257,38 +283,50 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
             onPress={onBack}
             disabled={submitting}
             accessibilityRole="button"
-            accessibilityLabel="Back"
+            accessibilityLabel={showWeekWarning ? "Not now" : "Back"}
+            testID={showWeekWarning ? "composer-review-not-now" : undefined}
             style={({ pressed }) => [
               styles.ghostBtn,
               pressed ? styles.ghostBtnPressed : null,
             ]}
           >
-            <Text style={styles.ghostBtnLabel}>Back</Text>
+            <Text style={styles.ghostBtnLabel}>
+              {showWeekWarning ? "Not now" : "Back"}
+            </Text>
           </Pressable>
           <Pressable
             onPress={onConfirm}
             disabled={submitting || disabledReason != null}
             accessibilityRole="button"
             accessibilityLabel={
-              staleWarning
-                ? `Confirm updated ${isSendNow ? "send" : "schedule"}`
-                : ctaLabel
+              showWeekWarning
+                ? "Send anyway"
+                : staleWarning
+                  ? `Confirm updated ${isSendNow ? "send" : "schedule"}`
+                  : primaryLabel
             }
             accessibilityState={{
               disabled: submitting || disabledReason != null,
             }}
+            testID="composer-review-primary"
             style={({ pressed }) => [
               styles.primaryBtn,
-              pressed && !submitting && disabledReason == null ? styles.primaryBtnPressed : null,
-              submitting || disabledReason != null ? styles.primaryBtnDisabled : null,
+              pressed && !submitting && disabledReason == null
+                ? styles.primaryBtnPressed
+                : null,
+              submitting || disabledReason != null
+                ? styles.primaryBtnDisabled
+                : null,
             ]}
           >
             <Text style={styles.primaryBtnLabel}>
               {submitting
                 ? "Working…"
-                : staleWarning
-                  ? `Confirm updated ${isSendNow ? "send" : "schedule"}`
-                  : ctaLabel}
+                : showWeekWarning
+                  ? "Send anyway"
+                  : staleWarning
+                    ? `Confirm updated ${isSendNow ? "send" : "schedule"}`
+                    : primaryLabel}
             </Text>
           </Pressable>
         </View>
@@ -365,6 +403,7 @@ const styles = StyleSheet.create({
   },
   billingNote: { ...typography.bodySm, color: textTokens.secondary, paddingTop: spacing.sm },
   errorText: { ...typography.bodySm, color: "#FFB4AB", fontWeight: "600" },
+  warningText: { ...typography.bodySm, color: "#F6C177", fontWeight: "600" },
   // ORCH-1270 F-1 — neutral SMS-timing INFO note (not a warning). Reuses the
   // plain section container shape + neutral border (no accent, no new tokens)
   // so it reads as a helpful heads-up, not an error.

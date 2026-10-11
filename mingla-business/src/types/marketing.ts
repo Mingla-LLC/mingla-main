@@ -119,6 +119,18 @@ export type SealedMarketingAudienceKind =
   | "brand_followers"
   | "brand_circle_extended";
 
+/** #3682 Wave 2.7 — additive usage snapshot from preview (not in quote hash). */
+export interface MarketingBookAllowance {
+  smsCap: number;
+  smsUsed: number;
+  smsRemaining: number;
+  emailCap: number;
+  emailUsed: number;
+  emailRemaining: number;
+  blastsThisWeek: number;
+  weekWarningAt: number;
+}
+
 export interface MarketingBookQuote {
   quoteVersion: 1;
   quoteHash: string;
@@ -135,6 +147,7 @@ export interface MarketingBookQuote {
   audienceId?: string;
   audienceKind?: SealedMarketingAudienceKind;
   audienceVersion?: number;
+  allowance?: MarketingBookAllowance;
 }
 export type MarketingBookPreviewState =
   | { kind: "idle" }

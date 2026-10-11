@@ -201,7 +201,7 @@ jobs:
             -f supabase/migrations/__tests__/issue_2509_blast_durability.pg17.test.sql
       - run: npm ci
         working-directory: mingla-business
-      - run: npx jest src/components/marketing/__tests__/issue_1995_contact_book_blast.happy.test.tsx --runInBand
+      - run: npx jest src/components/marketing/__tests__/issue_1995_contact_book_blast.happy.test.tsx src/components/marketing/__tests__/issue_3682_blast_caps.happy.test.tsx --runInBand
         working-directory: mingla-business
       - name: "#1778 Business audience picker, review, routes, and action mapping"
         run: >-

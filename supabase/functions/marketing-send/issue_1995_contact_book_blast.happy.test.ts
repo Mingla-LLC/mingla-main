@@ -209,6 +209,10 @@ Deno.test("#1995 RPC failures keep their exact public status envelopes", () => {
     error: "BOOK_BLAST_FORBIDDEN",
     status: 403,
   });
+  assertEquals(bookRpcErrorEnvelope("book_blast_monthly_cap_exceeded"), {
+    error: "BOOK_BLAST_MONTHLY_CAP_EXCEEDED",
+    status: 409,
+  });
 });
 
 Deno.test("#1995 MMS fails before quote", async () => {

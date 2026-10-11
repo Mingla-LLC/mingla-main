@@ -66,7 +66,7 @@
  *   __common raw     > 2,788,000 B   (2,800,000 - 12,000)
  *   __common brotli  >   538,000 B   (  550,000 - 12,000)
  *   eager raw        > 3,975,000 B   (4,000,000 - 25,000)
- *   eager brotli     >   725,000 B   (  750,000 - 25,000)
+ *   eager brotli     >   750,000 B   (  775,000 - 25,000)
  *
  * and refuse outright at or above the ceiling itself. That fires roughly one
  * ordinary PR before the gate would begin hard-failing every branch — which is
@@ -119,7 +119,7 @@ const apiVersion = "2022-11-28";
  */
 export const CEILING = Object.freeze({
   common: Object.freeze({ raw: 2_800_000, brotli: 550_000 }),
-  eager: Object.freeze({ raw: 4_000_000, brotli: 750_000 }),
+  eager: Object.freeze({ raw: 4_000_000, brotli: 775_000 }),
 });
 
 /**

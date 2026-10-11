@@ -65,4 +65,14 @@ describe("#3682 Wave 2.6 — manage follows", () => {
     expect(src).toContain('testID="brands-manage-retry"');
     expect(src).toContain('accessibilityLabel={`More options for ${row.brandName}`}');
   });
+
+  test("Manage sheet exposes Push alongside Email and Text (#3682 Wave 2.7)", () => {
+    const src = read(
+      "src/components/profile/BrandsYouFollowManageSheet.tsx",
+    );
+    expect(src).toContain('["push", "Push", "notifications-outline"]');
+    expect(src).toContain('["email", "Email", "mail-outline"]');
+    expect(src).toContain('["sms", "Text", "chatbubble-outline"]');
+    expect(src).toContain("push, email and text");
+  });
 });
