@@ -17,7 +17,10 @@ COMMENT ON COLUMN public.orders.show_me_as_going IS
   '#3682 — buyer opted to show their name on Who''s going for this paid order. Default off.';
 
 -- Owner-only write guard: host/staff table UPDATE policies must not flip consent.
-CREATE OR REPLACE FUNCTION public.tg_show_me_as_going_owner_only()
+-- Separate functions per table — PL/pgSQL resolves NEW.<col> against the
+-- triggering relation, so a shared body referencing both buyer_user_id and
+-- user_id fails on the other table.
+CREATE OR REPLACE FUNCTION public.tg_orders_show_me_as_going_owner_only()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $g$
@@ -25,17 +28,27 @@ BEGIN
   IF OLD.show_me_as_going IS NOT DISTINCT FROM NEW.show_me_as_going THEN
     RETURN NEW;
   END IF;
-  IF TG_TABLE_NAME = 'orders'
-     AND auth.uid() IS NOT NULL
-     AND auth.uid() = NEW.buyer_user_id THEN
+  IF auth.uid() IS NOT NULL AND auth.uid() = NEW.buyer_user_id THEN
     RETURN NEW;
   END IF;
-  IF TG_TABLE_NAME = 'event_rsvps'
-     AND auth.uid() IS NOT NULL
-     AND auth.uid() = NEW.user_id THEN
+  IF auth.uid() IS NULL AND current_user IN ('postgres', 'supabase_admin') THEN
     RETURN NEW;
   END IF;
-  -- Migrations / CI seeds: privileged role, no JWT.
+  RAISE EXCEPTION 'show_me_as_going_owner_only' USING ERRCODE = '42501';
+END;
+$g$;
+
+CREATE OR REPLACE FUNCTION public.tg_event_rsvps_show_me_as_going_owner_only()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $g$
+BEGIN
+  IF OLD.show_me_as_going IS NOT DISTINCT FROM NEW.show_me_as_going THEN
+    RETURN NEW;
+  END IF;
+  IF auth.uid() IS NOT NULL AND auth.uid() = NEW.user_id THEN
+    RETURN NEW;
+  END IF;
   IF auth.uid() IS NULL AND current_user IN ('postgres', 'supabase_admin') THEN
     RETURN NEW;
   END IF;
@@ -47,14 +60,13 @@ DROP TRIGGER IF EXISTS trg_orders_show_me_as_going_owner_only ON public.orders;
 CREATE TRIGGER trg_orders_show_me_as_going_owner_only
   BEFORE UPDATE OF show_me_as_going ON public.orders
   FOR EACH ROW
-  EXECUTE FUNCTION public.tg_show_me_as_going_owner_only();
+  EXECUTE FUNCTION public.tg_orders_show_me_as_going_owner_only();
 
 DROP TRIGGER IF EXISTS trg_event_rsvps_show_me_as_going_owner_only ON public.event_rsvps;
 CREATE TRIGGER trg_event_rsvps_show_me_as_going_owner_only
   BEFORE UPDATE OF show_me_as_going ON public.event_rsvps
   FOR EACH ROW
-  EXECUTE FUNCTION public.tg_show_me_as_going_owner_only();
-
+  EXECUTE FUNCTION public.tg_event_rsvps_show_me_as_going_owner_only();
 -- Multi-order / claim: inherit any prior opt-in for the same buyer+event.
 CREATE OR REPLACE FUNCTION public.tg_orders_show_me_as_going_propagate()
 RETURNS trigger

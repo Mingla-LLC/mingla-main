@@ -49,7 +49,8 @@ Deno.test("#3682 peer_list names self, friends, or opt-in — not profile visibi
   );
   assertStringIncludes(migration, "'privateOthersCount'");
   assertStringIncludes(migration, "SUM(pf.party_size)");
-  assertStringIncludes(migration, "tg_show_me_as_going_owner_only");
+  assertStringIncludes(migration, "tg_orders_show_me_as_going_owner_only");
+  assertStringIncludes(migration, "tg_event_rsvps_show_me_as_going_owner_only");
   assertStringIncludes(migration, "tg_orders_show_me_as_going_propagate");
   assertStringIncludes(migration, "user_opted");
   assertStringIncludes(migration, "'viewerShowMeAsGoing'");
