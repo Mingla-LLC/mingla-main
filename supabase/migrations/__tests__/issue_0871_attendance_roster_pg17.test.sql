@@ -453,10 +453,13 @@ DECLARE
   named_ids text[];
   private_count integer;
 BEGIN
-  INSERT INTO public.events(id,brand_id,created_by,title,slug,event_type,status,visibility,timezone,theme)
+  -- Same fixture path as the file header: disable triggers so a brand without
+  -- default_currency can still seed a scheduled event (tg_require_event_brand_currency).
+  PERFORM set_config('session_replication_role','replica',true);
+  INSERT INTO public.events(id,brand_id,created_by,title,slug,event_type,status,visibility,timezone,theme,currency)
   VALUES(
     pg_temp.issue871_uuid('privacy-event'),pg_temp.issue871_uuid('brand'),pg_temp.issue871_uuid('creator'),
-    'Issue 871 Privacy','issue-871-privacy','event','scheduled','public','UTC','{}'::jsonb
+    'Issue 871 Privacy','issue-871-privacy','event','scheduled','public','UTC','{}'::jsonb,'USD'
   );
   INSERT INTO public.ticket_types(id,event_id,name,price_cents,currency,quantity_total)
   VALUES(pg_temp.issue871_uuid('privacy-tier'),pg_temp.issue871_uuid('privacy-event'),'General',1000,'USD',10);
@@ -499,6 +502,7 @@ BEGIN
          pg_temp.issue871_uuid('privacy-tier'),pg_temp.issue871_uuid('privacy-event'),
          'privacy-qr-'||seed,'valid','auto'
     FROM (VALUES ('viewer'),('friend'),('optin'),('private')) AS s(seed);
+  PERFORM set_config('session_replication_role','origin',true);
 
   PERFORM set_config('request.jwt.claim.sub',pg_temp.issue871_uuid('privacy-viewer')::text,false);
   page := public.peer_list_event_guests(pg_temp.issue871_uuid('privacy-event'),10,0)::jsonb;
