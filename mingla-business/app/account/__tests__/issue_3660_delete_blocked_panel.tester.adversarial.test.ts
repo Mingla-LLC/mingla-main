@@ -1,6 +1,6 @@
 // @ts-nocheck — Deno-runtime contract test; the app TypeScript project does not
 // include Deno globals. Independent tester guard for issue #3660. It runs in the
-// Stripe Deno lane of .github/workflows/supabase-migrations-and-stripe-deno.yml
+// Stripe Deno lane of the Supabase migrations workflow
 // (the #2321 batch suite for the same route is sealed and takes no new
 // assertions); the default Business Jest config excludes this wrong-runtime file.
 //

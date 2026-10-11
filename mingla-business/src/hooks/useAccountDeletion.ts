@@ -120,12 +120,13 @@ export const useRequestAccountDeletion = (): UseRequestAccountDeletionResult => 
 export const useAccountDeletionBlockers = (
   enabled: boolean,
 ): UseQueryResult<DeletionBlocker[], Error> => {
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const userId = user?.id ?? null;
-  const active = enabled && userId !== null;
+  // The RPC answers for auth.uid() only: wait until the session is attached.
+  const enabledQuery = isAuthReady && enabled && userId !== null;
   return useQuery<DeletionBlocker[], Error>({
     queryKey:
-      active && userId !== null
+      enabledQuery && userId !== null
         ? accountDeletionKeys.blockers(userId)
         : BLOCKERS_DISABLED_KEY,
     queryFn: async (): Promise<DeletionBlocker[]> => {
@@ -135,7 +136,7 @@ export const useAccountDeletionBlockers = (
       if (error) throw new Error(error.message);
       return normalizeDeletionBlockers(data);
     },
-    enabled: active,
+    enabled: enabledQuery,
     staleTime: 0,
     gcTime: 0,
     retry: 1,
