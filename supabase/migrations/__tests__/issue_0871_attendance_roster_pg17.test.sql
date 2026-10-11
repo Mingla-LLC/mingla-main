@@ -88,6 +88,13 @@ SELECT pg_temp.issue871_uuid('ticket-'||n),id,pg_temp.issue871_uuid('tier'),
   pg_temp.issue871_uuid('event'),'qr-'||n,'valid','auto'
 FROM issue871_orders;
 
+-- #3682 — Who's going defaults private. The #871 pagination/avatar proofs below
+-- still need named roster rows with stable profileIds; opt the bulk event in so
+-- those structural assertions remain falsifiable under the new naming predicate.
+UPDATE public.orders
+   SET show_me_as_going = true
+ WHERE event_id = pg_temp.issue871_uuid('event');
+
 -- Dedicated unowned race source with one current exact 32-byte proof.
 INSERT INTO public.orders(id,event_id,buyer_email,buyer_name,total_cents,currency,payment_status,source,
   attendance_claim_token_digest,attendance_claim_token_created_at,attendance_claim_token_generation)
@@ -438,6 +445,154 @@ BEGIN
   END IF;
 END;
 $race$;
+
+-- #3682 — explicit friend / opt-in / private naming on a fresh public event.
+DO $privacy$
+DECLARE
+  page jsonb;
+  named_ids text[];
+  private_count integer;
+BEGIN
+  -- Same fixture path as the file header: disable triggers so a brand without
+  -- default_currency can still seed a scheduled event (tg_require_event_brand_currency).
+  PERFORM set_config('session_replication_role','replica',true);
+  INSERT INTO public.events(id,brand_id,created_by,title,slug,event_type,status,visibility,timezone,theme,currency)
+  VALUES(
+    pg_temp.issue871_uuid('privacy-event'),pg_temp.issue871_uuid('brand'),pg_temp.issue871_uuid('creator'),
+    'Issue 871 Privacy','issue-871-privacy','event','scheduled','public','UTC','{}'::jsonb,'USD'
+  );
+  INSERT INTO public.ticket_types(id,event_id,name,price_cents,currency,quantity_total)
+  VALUES(pg_temp.issue871_uuid('privacy-tier'),pg_temp.issue871_uuid('privacy-event'),'General',1000,'USD',10);
+
+  INSERT INTO auth.users(id) VALUES
+    (pg_temp.issue871_uuid('privacy-viewer')),
+    (pg_temp.issue871_uuid('privacy-friend')),
+    (pg_temp.issue871_uuid('privacy-optin')),
+    (pg_temp.issue871_uuid('privacy-private'));
+  INSERT INTO public.profiles(id,display_name,username,visibility_mode,avatar_url,created_at)
+  VALUES
+    (pg_temp.issue871_uuid('privacy-viewer'),'Viewer','pviewer','public','https://images.example/v.jpg',now()),
+    (pg_temp.issue871_uuid('privacy-friend'),'Friend','pfriend','public','https://images.example/f.jpg',now()),
+    (pg_temp.issue871_uuid('privacy-optin'),'Opt In','poptin','public','https://images.example/o.jpg',now()),
+    (pg_temp.issue871_uuid('privacy-private'),'Private','pprivate','public','https://images.example/p.jpg',now());
+
+  INSERT INTO public.friends(user_id,friend_user_id,status,deleted_at)
+  VALUES(
+    pg_temp.issue871_uuid('privacy-viewer'),
+    pg_temp.issue871_uuid('privacy-friend'),
+    'accepted',
+    NULL
+  );
+
+  INSERT INTO public.orders(
+    id,event_id,buyer_user_id,buyer_email,buyer_name,total_cents,currency,
+    payment_status,source,created_at,show_me_as_going
+  ) VALUES
+    (pg_temp.issue871_uuid('privacy-order-viewer'),pg_temp.issue871_uuid('privacy-event'),
+     pg_temp.issue871_uuid('privacy-viewer'),'viewer@example.test','Viewer',1000,'USD','paid','legacy',now(),false),
+    (pg_temp.issue871_uuid('privacy-order-friend'),pg_temp.issue871_uuid('privacy-event'),
+     pg_temp.issue871_uuid('privacy-friend'),'friend@example.test','Friend',1000,'USD','paid','legacy',now()+interval '1 second',false),
+    (pg_temp.issue871_uuid('privacy-order-optin'),pg_temp.issue871_uuid('privacy-event'),
+     pg_temp.issue871_uuid('privacy-optin'),'optin@example.test','Opt In',1000,'USD','paid','legacy',now()+interval '2 seconds',true),
+    (pg_temp.issue871_uuid('privacy-order-private'),pg_temp.issue871_uuid('privacy-event'),
+     pg_temp.issue871_uuid('privacy-private'),'private@example.test','Private',1000,'USD','paid','legacy',now()+interval '3 seconds',false);
+
+  INSERT INTO public.tickets(id,order_id,ticket_type_id,event_id,qr_code,status,approval_status)
+  SELECT pg_temp.issue871_uuid('privacy-ticket-'||seed),pg_temp.issue871_uuid('privacy-order-'||seed),
+         pg_temp.issue871_uuid('privacy-tier'),pg_temp.issue871_uuid('privacy-event'),
+         'privacy-qr-'||seed,'valid','auto'
+    FROM (VALUES ('viewer'),('friend'),('optin'),('private')) AS s(seed);
+  PERFORM set_config('session_replication_role','origin',true);
+
+  PERFORM set_config('request.jwt.claim.sub',pg_temp.issue871_uuid('privacy-viewer')::text,false);
+  page := public.peer_list_event_guests(pg_temp.issue871_uuid('privacy-event'),10,0)::jsonb;
+  SELECT array_agg(g->>'profileId' ORDER BY g->>'profileId')
+    INTO named_ids
+    FROM jsonb_array_elements(page->'guests') g
+   WHERE COALESCE((g->>'isAnonymous')::boolean,false) = false
+     AND NULLIF(g->>'profileId','') IS NOT NULL;
+  private_count := COALESCE((page->>'privateOthersCount')::integer, -1);
+
+  IF NOT (
+    pg_temp.issue871_uuid('privacy-viewer')::text = ANY(named_ids)
+    AND pg_temp.issue871_uuid('privacy-friend')::text = ANY(named_ids)
+    AND pg_temp.issue871_uuid('privacy-optin')::text = ANY(named_ids)
+  ) THEN
+    RAISE EXCEPTION '#3682 privacy: expected self/friend/opt-in named, got %',named_ids;
+  END IF;
+  IF pg_temp.issue871_uuid('privacy-private')::text = ANY(named_ids) THEN
+    RAISE EXCEPTION '#3682 privacy: default-off guest was named: %',named_ids;
+  END IF;
+  IF private_count <> 1 THEN
+    RAISE EXCEPTION '#3682 privacy: privateOthersCount expected 1, got % in %',private_count,page;
+  END IF;
+
+  -- Non-owner JWT cannot flip consent via direct table UPDATE (host/staff path).
+  PERFORM set_config('request.jwt.claim.sub',pg_temp.issue871_uuid('privacy-friend')::text,false);
+  BEGIN
+    UPDATE public.orders
+       SET show_me_as_going = true
+     WHERE id = pg_temp.issue871_uuid('privacy-order-private');
+    RAISE EXCEPTION '#3682 privacy: non-owner UPDATE of show_me_as_going succeeded';
+  EXCEPTION WHEN insufficient_privilege OR others THEN
+    IF SQLERRM NOT LIKE '%show_me_as_going_owner_only%' THEN RAISE; END IF;
+  END;
+
+  -- Multi-order: user-level opt-in names every attendance row for that buyer.
+  PERFORM set_config('session_replication_role','replica',true);
+  INSERT INTO public.orders(
+    id,event_id,buyer_user_id,buyer_email,buyer_name,total_cents,currency,
+    payment_status,source,created_at,show_me_as_going
+  ) VALUES (
+    pg_temp.issue871_uuid('privacy-order-optin-2'),pg_temp.issue871_uuid('privacy-event'),
+    pg_temp.issue871_uuid('privacy-optin'),'optin2@example.test','Opt In',1000,'USD','paid','legacy',
+    now()+interval '4 seconds',false
+  );
+  INSERT INTO public.tickets(id,order_id,ticket_type_id,event_id,qr_code,status,approval_status)
+  VALUES (
+    pg_temp.issue871_uuid('privacy-ticket-optin-2'),pg_temp.issue871_uuid('privacy-order-optin-2'),
+    pg_temp.issue871_uuid('privacy-tier'),pg_temp.issue871_uuid('privacy-event'),
+    'privacy-qr-optin-2','valid','auto'
+  );
+  -- Claim-like path: unowned order later linked to an opted-in buyer inherits true.
+  INSERT INTO public.orders(
+    id,event_id,buyer_email,buyer_name,total_cents,currency,
+    payment_status,source,created_at,show_me_as_going
+  ) VALUES (
+    pg_temp.issue871_uuid('privacy-order-claim'),pg_temp.issue871_uuid('privacy-event'),
+    'claim@example.test','Claim',1000,'USD','paid','legacy',now()+interval '5 seconds',false
+  );
+  INSERT INTO public.tickets(id,order_id,ticket_type_id,event_id,qr_code,status,approval_status)
+  VALUES (
+    pg_temp.issue871_uuid('privacy-ticket-claim'),pg_temp.issue871_uuid('privacy-order-claim'),
+    pg_temp.issue871_uuid('privacy-tier'),pg_temp.issue871_uuid('privacy-event'),
+    'privacy-qr-claim','valid','auto'
+  );
+  PERFORM set_config('session_replication_role','origin',true);
+  -- JWT as the opted-in buyer (claimant), so inherit runs under a real uid.
+  PERFORM set_config('request.jwt.claim.sub',pg_temp.issue871_uuid('privacy-optin')::text,false);
+  UPDATE public.orders
+     SET buyer_user_id = pg_temp.issue871_uuid('privacy-optin')
+   WHERE id = pg_temp.issue871_uuid('privacy-order-claim');
+  IF NOT EXISTS (
+    SELECT 1 FROM public.orders
+     WHERE id = pg_temp.issue871_uuid('privacy-order-claim')
+       AND show_me_as_going = true
+  ) THEN
+    RAISE EXCEPTION '#3682 privacy: claim/link did not inherit show_me_as_going';
+  END IF;
+
+  PERFORM set_config('request.jwt.claim.sub',pg_temp.issue871_uuid('privacy-viewer')::text,false);
+  page := public.peer_list_event_guests(pg_temp.issue871_uuid('privacy-event'),10,0)::jsonb;
+  IF (SELECT count(*) FROM jsonb_array_elements(page->'guests') g
+       WHERE g->>'profileId' = pg_temp.issue871_uuid('privacy-optin')::text) < 2 THEN
+    RAISE EXCEPTION '#3682 privacy: multi-order opt-in should name both rows: %',page;
+  END IF;
+  IF COALESCE((page->>'viewerShowMeAsGoing')::boolean,true) <> false THEN
+    RAISE EXCEPTION '#3682 privacy: viewerShowMeAsGoing should be false for viewer: %',page;
+  END IF;
+END;
+$privacy$;
 
 -- #3524 — remove the stub this file stood up, so the sibling #3524 suites in
 -- this lane find `auth.identities` absent and build the shape they need. Drops

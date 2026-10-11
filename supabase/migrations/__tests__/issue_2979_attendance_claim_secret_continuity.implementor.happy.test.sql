@@ -334,6 +334,16 @@ BEGIN
     RAISE EXCEPTION 'A14 replay changed owner or proof-consumption truth';
   END IF;
 
+  -- #3682 — Who's going defaults private; A14 proves owner continuity on the
+  -- roster, not privacy naming. Opt both claimed orders in so profileIds stay
+  -- visible for the ownership assertion below.
+  UPDATE public.orders
+     SET show_me_as_going = true
+   WHERE id IN (
+     pg_temp.issue2979_uuid('a14-legacy-order'),
+     pg_temp.issue2979_uuid('a14-governed-order')
+   );
+
   PERFORM set_config(
     'request.jwt.claim.sub',
     pg_temp.issue2979_uuid('a14-legacy-claimant')::text,

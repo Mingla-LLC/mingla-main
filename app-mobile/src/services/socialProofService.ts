@@ -87,3 +87,25 @@ export const fetchPeerGuestList = async (
   // contract (packages/offering-rendering/socialProofTypes.ts) — no mapping.
   return data as PeerGuestListPage;
 };
+
+/** #3682 — flip the viewer's per-event Show me as going flag. */
+export const setShowMeAsGoing = async (
+  eventId: string,
+  show: boolean,
+): Promise<{ eventId: string; showMeAsGoing: boolean }> => {
+  const { data, error } = await supabase.rpc("biz_set_show_me_as_going", {
+    p_event_id: eventId,
+    p_show: show,
+  });
+  if (error !== null) {
+    const message = error.message ?? "set_show_me_as_going_failed";
+    if (message.includes("attendance_required")) {
+      throw new GuestListAttendanceRequiredError(message);
+    }
+    if (message.includes("event_not_available")) {
+      throw new GuestListUnavailableError(message);
+    }
+    throw new Error(message);
+  }
+  return data as { eventId: string; showMeAsGoing: boolean };
+};
