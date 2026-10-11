@@ -213,10 +213,25 @@ function mapResolveFailure(payload: Record<string, unknown>): never {
   throw new AdDestinationError(code, 422, message);
 }
 
+/** True when PostgREST/hermetic mocks report the SQL function is not wired. */
+function isMissingDestinationRpcError(
+  error: { message?: string } | null | undefined,
+): boolean {
+  const msg = (error?.message ?? "").toLowerCase();
+  if (!msg) return false;
+  return (
+    msg.includes("unmocked path") ||
+    msg.includes("could not find the function") ||
+    msg.includes("pgrst202") ||
+    msg.includes("function public.ad_destination_resolve") ||
+    msg.includes("does not exist")
+  );
+}
+
 /**
  * Server gate: prefers SQL `ad_destination_resolve` (shared with the list RPC).
- * Falls back to the legacy view lookups for hermetic Deno tests that only mock
- * `.from()`.
+ * Falls back to the legacy view lookups only when `rpc` is absent or the
+ * function is not deployed/mocked — never after a deliberate `ok: false`.
  */
 export async function resolveAdDestination(
   db: unknown,
@@ -225,50 +240,70 @@ export async function resolveAdDestination(
   const client = db as AdDestinationDb;
   const descriptor = requireDescriptor(input);
 
-  // Prefer SQL resolve when the client exposes a working rpc that returns the
-  // contract shape (`ok` boolean). Hermetic mocks often stub `rpc` without
-  // this function — fall back to the view path so create-campaign suites keep
-  // exercising the same public gates.
-  if (typeof client.rpc === "function") {
-    try {
-      const { data, error } = await client.rpc("ad_destination_resolve", {
-        p_page_type: descriptor.page_type,
-        p_brand_slug: descriptor.brand_slug,
-        p_entity_slug: descriptor.entity_slug ?? null,
-      });
-      if (
-        !error &&
-        data &&
-        typeof data === "object" &&
-        typeof (data as Record<string, unknown>).ok === "boolean"
-      ) {
-        const payload = data as Record<string, unknown>;
-        if (payload.ok !== true) mapResolveFailure(payload);
-        return {
-          page_type: payload.page_type as DestinationPageType,
-          brand_slug: String(payload.brand_slug),
-          entity_slug: payload.entity_slug == null
-            ? null
-            : String(payload.entity_slug),
-          event_id: payload.event_id == null ? null : String(payload.event_id),
-          venue_id: payload.venue_id == null ? null : String(payload.venue_id),
-          canonical_url: String(payload.canonical_url),
-          availability: typeof payload.availability === "string"
-            ? payload.availability
-            : undefined,
-          availability_reason: payload.availability_reason == null
-            ? null
-            : String(payload.availability_reason),
-          result_kind: payload.result_kind == null
-            ? null
-            : String(payload.result_kind),
-        };
-      }
-    } catch {
-      // Fall through to legacy view lookups.
-    }
+  if (typeof client.rpc !== "function") {
+    return resolveAdDestinationLegacy(client, descriptor);
   }
 
+  let data: unknown;
+  let error: { message: string } | null;
+  try {
+    ({ data, error } = await client.rpc("ad_destination_resolve", {
+      p_page_type: descriptor.page_type,
+      p_brand_slug: descriptor.brand_slug,
+      p_entity_slug: descriptor.entity_slug ?? null,
+    }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (isMissingDestinationRpcError({ message })) {
+      return resolveAdDestinationLegacy(client, descriptor);
+    }
+    throw new AdDestinationError(
+      "destination_lookup_failed",
+      503,
+      "The public destination could not be checked.",
+    );
+  }
+
+  if (error) {
+    if (isMissingDestinationRpcError(error)) {
+      return resolveAdDestinationLegacy(client, descriptor);
+    }
+    throw new AdDestinationError(
+      "destination_lookup_failed",
+      503,
+      "The public destination could not be checked.",
+    );
+  }
+
+  if (
+    data &&
+    typeof data === "object" &&
+    typeof (data as Record<string, unknown>).ok === "boolean"
+  ) {
+    const payload = data as Record<string, unknown>;
+    if (payload.ok !== true) mapResolveFailure(payload);
+    return {
+      page_type: payload.page_type as DestinationPageType,
+      brand_slug: String(payload.brand_slug),
+      entity_slug: payload.entity_slug == null
+        ? null
+        : String(payload.entity_slug),
+      event_id: payload.event_id == null ? null : String(payload.event_id),
+      venue_id: payload.venue_id == null ? null : String(payload.venue_id),
+      canonical_url: String(payload.canonical_url),
+      availability: typeof payload.availability === "string"
+        ? payload.availability
+        : undefined,
+      availability_reason: payload.availability_reason == null
+        ? null
+        : String(payload.availability_reason),
+      result_kind: payload.result_kind == null
+        ? null
+        : String(payload.result_kind),
+    };
+  }
+
+  // Empty/non-contract body with no error — hermetic PostgREST often 200s {}.
   return resolveAdDestinationLegacy(client, descriptor);
 }
 
@@ -284,7 +319,9 @@ async function resolveAdDestinationLegacy(
   ) {
     const { data, error } = await client
       .from("business_public_events_view")
-      .select("id,brand_slug,slug,status,event_type,master_start_at")
+      .select(
+        "id,brand_slug,slug,status,event_type,master_start_at,rsvp_discoverable",
+      )
       .eq("brand_slug", descriptor.brand_slug)
       .eq("slug", descriptor.entity_slug as string)
       .eq("event_type", descriptor.page_type)
@@ -302,6 +339,16 @@ async function resolveAdDestinationLegacy(
         "destination_not_public",
         422,
         "That page is not currently public and live.",
+      );
+    }
+    if (
+      descriptor.page_type === "rsvp" &&
+      data.rsvp_discoverable !== true
+    ) {
+      throw new AdDestinationError(
+        "destination_not_public",
+        422,
+        "That page is private.",
       );
     }
     const start = data.master_start_at;
@@ -326,10 +373,7 @@ async function resolveAdDestinationLegacy(
     };
   }
 
-  if (
-    descriptor.page_type === "venue" ||
-    descriptor.page_type === "reservation"
-  ) {
+  if (descriptor.page_type === "venue") {
     const { data, error } = await client
       .from("ad_public_stay_destinations_view")
       .select("id,brand_slug,slug")
@@ -347,19 +391,74 @@ async function resolveAdDestinationLegacy(
       throw new AdDestinationError(
         "destination_not_public",
         422,
-        descriptor.page_type === "reservation"
-          ? "That reservation page is not currently public."
-          : "That Stay is not currently public and reservable.",
+        "That Stay is not currently public and reservable.",
       );
     }
     return {
-      page_type: descriptor.page_type,
+      page_type: "venue",
       brand_slug: descriptor.brand_slug,
       entity_slug: descriptor.entity_slug as string,
       event_id: null,
       venue_id: String(data.id),
       canonical_url: canonicalAdDestinationUrl(
-        descriptor.page_type,
+        "venue",
+        descriptor.brand_slug,
+        descriptor.entity_slug as string,
+      ),
+    };
+  }
+
+  if (descriptor.page_type === "reservation") {
+    const { data, error } = await client
+      .from("ad_public_stay_destinations_view")
+      .select("id,brand_slug,slug")
+      .eq("brand_slug", descriptor.brand_slug)
+      .eq("slug", descriptor.entity_slug as string)
+      .maybeSingle();
+    if (error) {
+      throw new AdDestinationError(
+        "destination_lookup_failed",
+        503,
+        "The public Stay destination could not be checked.",
+      );
+    }
+    if (!data) {
+      throw new AdDestinationError(
+        "destination_not_public",
+        422,
+        "That reservation page is not currently public.",
+      );
+    }
+    const settings = await client
+      .from("venue_reservation_settings")
+      .select("reservations_enabled")
+      .eq("venue_id", String(data.id))
+      .maybeSingle();
+    if (settings.error) {
+      throw new AdDestinationError(
+        "destination_lookup_failed",
+        503,
+        "The public destination could not be checked.",
+      );
+    }
+    const enabled =
+      (settings.data as { reservations_enabled?: unknown } | null)
+        ?.reservations_enabled === true;
+    if (!enabled) {
+      throw new AdDestinationError(
+        "destination_not_public",
+        422,
+        "That reservation page is not currently public.",
+      );
+    }
+    return {
+      page_type: "reservation",
+      brand_slug: descriptor.brand_slug,
+      entity_slug: descriptor.entity_slug as string,
+      event_id: null,
+      venue_id: String(data.id),
+      canonical_url: canonicalAdDestinationUrl(
+        "reservation",
         descriptor.brand_slug,
         descriptor.entity_slug as string,
       ),

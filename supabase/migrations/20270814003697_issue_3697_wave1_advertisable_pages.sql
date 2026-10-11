@@ -74,7 +74,9 @@ WHERE b.deleted_at IS NULL
   AND coalesce(pub.public_reachable, false) IS TRUE;
 
 ALTER VIEW public.ad_public_site_destinations_view SET (security_invoker = false);
-REVOKE ALL ON public.ad_public_site_destinations_view FROM PUBLIC, anon;
+-- Default privileges grant ALL to authenticated; revoke then re-grant SELECT only
+-- (same pattern as #1856 stay view) so D-01 does not flag INSERT/UPDATE/DELETE.
+REVOKE ALL ON public.ad_public_site_destinations_view FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.ad_public_site_destinations_view TO authenticated, service_role;
 
 -- ── Resolve one destination (server gate + shared availability) ─────────────

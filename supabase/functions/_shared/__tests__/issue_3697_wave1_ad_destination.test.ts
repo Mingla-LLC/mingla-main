@@ -166,3 +166,32 @@ Deno.test("Wave 1: rpc path prefers SQL resolve payload", async () => {
   assertEquals(result.canonical_url, "https://host.usemingla.com/t/acme/desert-run");
   assertEquals(result.availability, "available");
 });
+
+Deno.test("Wave 1: SQL ok:false is not swallowed by legacy fallthrough", async () => {
+  const client = {
+    from() {
+      throw new Error("legacy from() must not run after ok:false");
+    },
+    rpc(_fn: string, _args: Record<string, unknown>) {
+      return Promise.resolve({
+        data: {
+          ok: false,
+          code: "destination_not_public",
+          page_type: "rsvp",
+          availability: "private",
+          availability_reason: "admin.dest.private",
+        },
+        error: null,
+      });
+    },
+  };
+  await assertRejects(
+    () =>
+      resolveAdDestination(client, {
+        page_type: "rsvp",
+        brand_slug: "acme",
+        entity_slug: "house-party",
+      }),
+    AdDestinationError,
+  );
+});
