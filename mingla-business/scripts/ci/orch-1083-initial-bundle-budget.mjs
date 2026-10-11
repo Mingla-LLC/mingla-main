@@ -95,7 +95,7 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // normal PR ever meets:
 //   __common  brotli 439,775 → ceiling 550,000   (raised 2026-09-20)
 //   __common  raw    2,341,978 → ceiling 2,800,000 (raised 2026-09-20)
-//   eager     brotli 660,678 → ceiling 750,000   (~14% runway)
+//   eager     brotli 660,678 → ceiling 775,000   (raised 2026-10-11)
 //   eager     raw    3,349,598 → ceiling 4,000,000 (~19% runway)
 //
 // RAISED 2026-09-20 — __common ONLY, from raw 2,600,000 / brotli 500,000 to raw
@@ -106,8 +106,12 @@ const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
 // turned main red and blocked every pull request in every chat, so the ceiling
 // moved rather than the measurement. This buys room; it settles nothing. The
 // trim that brings __common back under the old numbers is tracked on the same
-// issue, and the eager ceilings are deliberately untouched — their runway is
-// still healthy (brotli 712,079 of 750,000, well clear of the 25,000 margin).
+// issue.
+//
+// RAISED 2026-10-11 — eager brotli ONLY, from 750,000 to 775,000. After #3785
+// recorded eager.brotli at 731,271 B, less than one 25,000 B PR allowance
+// remained under 750,000 and #2524 guard 4 reded every PR. Same shape as the
+// 2026-09-20 __common raise: the ceiling moved rather than the measurement.
 //
 // The eager raw ceiling REPLACES the old 9,405,478 B constant, which had been
 // unfailable since route splitting landed. This is a tightening, not a
