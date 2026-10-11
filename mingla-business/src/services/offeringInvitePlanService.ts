@@ -37,6 +37,8 @@ export interface WizardInviteQuote {
 
 export interface WizardInviteSelection {
   includeEveryone: boolean;
+  includeFollowers: boolean;
+  includeFriendsOfFollowers: boolean;
   manualGroupIds: string[];
   personIds: string[];
   excludedPersonIds: string[];

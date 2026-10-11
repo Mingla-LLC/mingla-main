@@ -48,6 +48,9 @@ describe("issue #1780 — wizard invite plan implementation", () => {
 
   test("shared picker covers every approved source and publication trust copy", () => {
     expect(picker).toContain("Everyone in Your Book");
+    // [TEST-MOD-APPROVED #3682] Wave 2.8b adds Followers + Friends of followers sources.
+    expect(picker).toContain("Followers");
+    expect(picker).toContain("Friends of followers");
     expect(picker).toContain("Saved groups");
     expect(picker).toContain("Choose people");
     expect(picker).toContain("Nothing sends yet");

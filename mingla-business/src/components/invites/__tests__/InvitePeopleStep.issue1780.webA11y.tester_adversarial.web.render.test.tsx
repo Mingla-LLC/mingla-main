@@ -155,6 +155,8 @@ describe("issue #1780 tester adversarial — deployed web checkbox semantics", (
         selectedCount={selectedCount as number}
         disabled={false}
         onSelectEveryone={jest.fn()}
+        onSelectFollowers={jest.fn()} // [TEST-MOD-APPROVED #3682]
+        onSelectFriendsOfFollowers={jest.fn()} // [TEST-MOD-APPROVED #3682]
         onSelectGroup={jest.fn()}
         onChoosePeople={jest.fn()}
       />,

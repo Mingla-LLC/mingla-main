@@ -1868,8 +1868,14 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     // block, so the revert-sensitive byte line is the test path itself.
     [liveWorkflow("issue", "873", "guest", "status", "roster", "tests"),
       "          src/services/__tests__/issue_1780_wizard_invites.implementor.test.ts\n"],
+    // [TEST-MOD-APPROVED #3682] Wave 2.8b Followers invite source registration.
+    [liveWorkflow("issue", "873", "guest", "status", "roster", "tests"),
+      "          src/services/__tests__/issue_3682_wizard_invite_followers.implementor.test.ts\n"],
     [liveWorkflow("issue", "873", "guest", "status", "roster", "tests"),
       "          -f supabase/migrations/__tests__/issue_1780_wizard_invite_plan.happy.pg17.test.sql\n"],
+    // [TEST-MOD-APPROVED #3682] Wave 2.8b Followers invite PG17 registration.
+    [liveWorkflow("issue", "873", "guest", "status", "roster", "tests"),
+      "          -f supabase/migrations/__tests__/issue_3682_wizard_invite_followers.happy.pg17.test.sql\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);

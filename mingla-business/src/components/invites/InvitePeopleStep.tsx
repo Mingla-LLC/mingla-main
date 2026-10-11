@@ -220,6 +220,8 @@ export function InvitePeopleStep({
   function explicitSelection(ids: string[]): WizardInviteSelection {
     return {
       includeEveryone: false,
+      includeFollowers: false,
+      includeFriendsOfFollowers: false,
       manualGroupIds: [],
       personIds: sortedUnique(ids),
       excludedPersonIds: [],
@@ -235,6 +237,8 @@ export function InvitePeopleStep({
     if (!plan || isSaving || plan.state === "locked") return false;
     const normalized: WizardInviteSelection = {
       includeEveryone: selection.includeEveryone,
+      includeFollowers: selection.includeFollowers,
+      includeFriendsOfFollowers: selection.includeFriendsOfFollowers,
       manualGroupIds: sortedUnique(selection.manualGroupIds),
       personIds: sortedUnique(selection.personIds),
       excludedPersonIds: sortedUnique(selection.excludedPersonIds),
@@ -386,7 +390,8 @@ export function InvitePeopleStep({
       {showHeader ? <>
         <Text accessibilityRole="header" style={styles.title}>Invite people</Text>
         <Text style={styles.subtitle}>
-          Choose people from Your Book. Nothing sends until this {OFFERING_LABEL[eventType]} is published.
+          Choose people from Your Book, followers, or friends of followers. Nothing sends until this{" "}
+          {OFFERING_LABEL[eventType]} is published.
         </Text>
       </> : null}
       <View style={styles.trustBanner} accessibilityRole="summary">
@@ -402,13 +407,53 @@ export function InvitePeopleStep({
         selectedCount={isDirty ? visibleIds.length : plan.selectedCount}
         disabled={isSaving || plan.state === "locked" || ambiguous}
         onSelectEveryone={() => void persistSelection(
-          { includeEveryone: true, manualGroupIds: [], personIds: [], excludedPersonIds: [] },
+          {
+            includeEveryone: true,
+            includeFollowers: false,
+            includeFriendsOfFollowers: false,
+            manualGroupIds: [],
+            personIds: [],
+            excludedPersonIds: [],
+          },
           null,
           "Unsaved Everyone in Your Book selection",
           false,
         )}
+        onSelectFollowers={() => void persistSelection(
+          {
+            includeEveryone: false,
+            includeFollowers: true,
+            includeFriendsOfFollowers: false,
+            manualGroupIds: [],
+            personIds: [],
+            excludedPersonIds: [],
+          },
+          null,
+          "Unsaved Followers selection",
+          false,
+        )}
+        onSelectFriendsOfFollowers={() => void persistSelection(
+          {
+            includeEveryone: false,
+            includeFollowers: false,
+            includeFriendsOfFollowers: true,
+            manualGroupIds: [],
+            personIds: [],
+            excludedPersonIds: [],
+          },
+          null,
+          "Unsaved Friends of followers selection",
+          false,
+        )}
         onSelectGroup={(groupId, groupName) => void persistSelection(
-          { includeEveryone: false, manualGroupIds: [groupId], personIds: persistedIds, excludedPersonIds: [] },
+          {
+            includeEveryone: false,
+            includeFollowers: false,
+            includeFriendsOfFollowers: false,
+            manualGroupIds: [groupId],
+            personIds: persistedIds,
+            excludedPersonIds: [],
+          },
           null,
           `Unsaved ${groupName} group selection`,
           false,
@@ -462,6 +507,8 @@ export function InviteSourcePicker(props: {
   selectedCount: number;
   disabled: boolean;
   onSelectEveryone: () => void;
+  onSelectFollowers: () => void;
+  onSelectFriendsOfFollowers: () => void;
   onSelectGroup: (groupId: string, groupName: string) => void;
   onChoosePeople: () => void;
 }) {
@@ -475,6 +522,11 @@ export function InviteSourcePicker(props: {
       <SourceRow title="Everyone in Your Book" detail={props.bookCount === null ? "Checking count…" : `${props.bookCount} active people`}
         action="Select all" disabled={props.disabled} onPress={props.onSelectEveryone}
         accessibilityRole="checkbox" accessibilityChecked={selectAllChecked} />
+      <View style={styles.divider} />
+      <SourceRow title="Followers" detail="People who follow this brand"
+        action="Select" disabled={props.disabled} onPress={props.onSelectFollowers} />
+      <SourceRow title="Friends of followers" detail="Friends of people who follow this brand"
+        action="Select" disabled={props.disabled} onPress={props.onSelectFriendsOfFollowers} />
       <View style={styles.divider} />
       <Text style={styles.sourceTitle}>Saved groups</Text>
       {props.groupsPending ? <Text style={styles.muted}>Loading saved groups…</Text> :
