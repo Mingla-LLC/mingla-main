@@ -41,19 +41,32 @@ function storedSiteClickId(): string | null {
 export function captureSiteAdClickIds(brandSlug?: string | null): void {
   if (typeof window === "undefined") return;
   const choice = siteConsentChoice();
+  const existingClickId = storedSiteClickId();
+  // toward #3697: Accept/Reject stamp the stored touch — never a second visit row.
   if (choice === "necessary") {
-    const clickId = storedSiteClickId();
-    if (clickId) {
+    if (existingClickId) {
       void fetch("/api/ad-touch", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           kind: "consent",
-          click_id: clickId,
+          click_id: existingClickId,
           consent_state: "rejected",
         }),
       }).catch(() => undefined);
     }
+    return;
+  }
+  if (choice === "granted" && existingClickId) {
+    void fetch("/api/ad-touch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        kind: "consent",
+        click_id: existingClickId,
+        consent_state: "granted",
+      }),
+    }).catch(() => undefined);
     return;
   }
   try {
@@ -117,17 +130,6 @@ export function captureSiteAdClickIds(brandSlug?: string | null): void {
             AD_CLICK_KEY,
             JSON.stringify({ clickId: data.click_id }),
           );
-        }
-        if (consentState === "granted" && typeof data.click_id === "string") {
-          void fetch("/api/ad-touch", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              kind: "consent",
-              click_id: data.click_id,
-              consent_state: "granted",
-            }),
-          }).catch(() => undefined);
         }
       })
       .catch(() => undefined);

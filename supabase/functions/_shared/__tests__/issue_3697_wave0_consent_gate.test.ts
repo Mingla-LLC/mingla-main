@@ -168,6 +168,10 @@ Deno.test("F-3: pending consent also blocks outbound (Accept required)", async (
   );
   assertEquals(cap.senderCalls.length, 0);
   assertEquals(cap.upsert?.shared_with_platforms, false);
+  // Channel statuses stay pending so a later Accept + redelivery can fan out.
+  const last = cap.updates[cap.updates.length - 1] ?? {};
+  assertEquals(last.meta_capi_status, undefined);
+  assertEquals(last.shared_with_platforms, false);
 });
 
 Deno.test("F-3: granted consent allows fan-out", async () => {

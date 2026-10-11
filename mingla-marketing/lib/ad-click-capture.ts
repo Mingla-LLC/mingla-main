@@ -73,17 +73,28 @@ async function postCapture(body: Record<string, unknown>): Promise<string | null
 export function captureMarketingAdClickIds(): void {
   if (typeof window === 'undefined') return
   const consent = readMarketingConsent()
+  const existingClickId = storedClickId()
+  // toward #3697: Accept/Reject only stamp the stored first-party touch.
   if (consent === 'denied') {
-    const clickId = storedClickId()
-    if (clickId) {
+    if (existingClickId) {
       void postCapture({
         kind: 'consent',
-        click_id: clickId,
+        click_id: existingClickId,
         consent_state: 'rejected',
         surface: 'web',
         lane: 'business',
       })
     }
+    return
+  }
+  if (consent === 'granted' && existingClickId) {
+    void postCapture({
+      kind: 'consent',
+      click_id: existingClickId,
+      consent_state: 'granted',
+      surface: 'web',
+      lane: 'business',
+    })
     return
   }
   try {
@@ -140,15 +151,6 @@ export function captureMarketingAdClickIds(): void {
       dest: { page_type: 'brand' },
     }).then((clickId) => {
       if (clickId && !storedClickId()) storeClickId(clickId)
-      if (consentState === 'granted' && clickId) {
-        void postCapture({
-          kind: 'consent',
-          click_id: clickId,
-          consent_state: 'granted',
-          surface: 'web',
-          lane: 'business',
-        })
-      }
     })
   } catch {
     // Fail-open.

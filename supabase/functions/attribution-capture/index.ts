@@ -335,6 +335,12 @@ export async function handleCapture(
       });
     }
     if (body.kind === "consent") {
+      // toward #3697: same soft per-IP rate limit as anon touch writes.
+      const ip = firstClientIp(req);
+      const ipHash = ip ? await sha256Hex(ip) : null;
+      if (ipHash && rateLimited(ipHash, Date.now())) {
+        return json({ ok: false, rate_limited: true });
+      }
       return await recordConsent(client, body);
     }
     return await recordTouch(client, req, body);

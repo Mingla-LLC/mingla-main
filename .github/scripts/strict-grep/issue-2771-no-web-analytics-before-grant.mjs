@@ -81,14 +81,27 @@ export function evaluateSources(input) {
   if (!requiresGrant(functionBody(business, 'gaEvent'), /window\.gtag/)) {
     errors.push('Business gaEvent must require grant and ready gtag')
   }
+  // Vendor pixel fires stay grant-only.
   for (const name of [
     'fireAdPageView', 'fireAdViewContent', 'fireAdPurchase', 'fireAdReservation',
-    'captureAdClickIds', 'postAttributionTouch', 'postAttributionConversion',
-    'getStoredClickAttribution',
   ]) {
     if (!requiresGrant(functionBody(business, name))) {
       errors.push(`Business ${name} must explicitly require grant`)
     }
+  }
+  // [TEST-MOD-APPROVED #3697] first-party ad touch may run before Accept; Reject
+  // still blocks new capture. Vendor SDKs above remain grant-gated.
+  for (const name of ['captureAdClickIds', 'postAttributionTouch']) {
+    const body = functionBody(business, name)
+    const prefix = body.slice(0, 400)
+    if (!/readStoredConsent\(\)\s*===\s*['"]denied['"]/.test(prefix)) {
+      errors.push(`Business ${name} must block Reject (denied) for first-party attribution`)
+    }
+  }
+  // toward #3697 Wave 0d: browser conversion POST is retired (trusted server path).
+  const conversionBody = functionBody(business, 'postAttributionConversion')
+  if (/postAttr\s*\(|kind:\s*['"]conversion['"]/.test(conversionBody)) {
+    errors.push('Business postAttributionConversion must remain a no-op (trusted server path only)')
   }
 
   if (/import\s+posthog\s+from\s+['"]posthog-js['"]/.test(provider)) {
@@ -137,7 +150,8 @@ function runSelfTest() {
   const cases = [
     ['Business eager SDK', { business: clean.business.replace('import type { CaptureResult, PostHog }', 'import posthog') }],
     ['Business init loses grant', { business: clean.business.replace('if (!hasWindow() || readStoredConsent() !== "granted") return;\n  await ensureGrantedAnalyticsBoot();', 'await ensureGrantedAnalyticsBoot();') }],
-    ['Attribution loses grant', { business: clean.business.replace('if (!hasWindow() || readStoredConsent() !== "granted") return;\n  try {\n    const params', 'if (!hasWindow()) return;\n  try {\n    const params') }],
+    // [TEST-MOD-APPROVED #3697] first-party capture gates on Reject, not grant.
+    ['Attribution loses Reject gate', { business: clean.business.replace('if (!hasWindow() || readStoredConsent() === "denied") return;\n  // toward #3697: if we already have a first-party click, only stamp consent —\n  // never insert a duplicate touch for the same landing.\n  const existing = getStoredClickAttribution().clickId;', 'if (!hasWindow()) return;\n  // toward #3697: if we already have a first-party click, only stamp consent —\n  // never insert a duplicate touch for the same landing.\n  const existing = getStoredClickAttribution().clickId;') }],
     ['Marketing eager SDK', { marketingProvider: clean.marketingProvider.replace("import type { PostHog } from 'posthog-js'", "import posthog from 'posthog-js'") }],
     ['Marketing unconditional children', { marketingProvider: clean.marketingProvider.replace('return enabled ? children : null', 'return children') }],
     ['Marketing eager GA', { marketingLayout: clean.marketingLayout.replace('<PostHogProvider>\n          <GoogleAnalytics gaId={GA4_MEASUREMENT_ID} />\n        </PostHogProvider>', '<PostHogProvider>{null}</PostHogProvider>\n        <GoogleAnalytics gaId={GA4_MEASUREMENT_ID} />') }],

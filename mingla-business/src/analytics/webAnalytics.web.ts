@@ -411,20 +411,17 @@ export async function grantConsent(): Promise<void> {
   captureWeb("consent_granted");
   gaEvent("consent_granted");
   captureHostPublicSearchPageView(window.location.pathname);
-  // toward #3697 F-1: stamp Accept on the first-party touch, then re-run capture
-  // so vendor pixels + a granted-consent touch land after the banner choice.
+  // toward #3697 F-1: stamp Accept on the existing first-party touch only —
+  // do not insert a second touch (first-touch-wins + visit inflation).
   void postAttributionConsent("granted");
-  captureAdClickIds();
 }
 
 /** Reject handler — keeps vendor gates closed; stamps Reject on first-party touch. */
 export function denyConsent(): void {
-  // Read click_id before latched deny (getStoredClickAttribution hides it after).
-  const priorClickId = getStoredClickAttribution().clickId;
   writeStoredConsent("denied");
-  // toward #3697 / #3703: count the click locally with rejected consent; never
-  // open vendor pixels or outbound CAPI (server reads consent_state).
-  void postAttributionConsent("rejected", priorClickId);
+  // toward #3697 / #3703: stamp Reject; keep click_id for checkout threading so
+  // the server can count locally with shared_with_platforms=false.
+  void postAttributionConsent("rejected");
 }
 
 /** Fire a custom PostHog event + (optionally) a GA4 event. No-op if gated. */
@@ -738,7 +735,9 @@ export function fireAdPurchase(
   props: { value?: number; currency?: string },
 ): void {
   if (readStoredConsent() !== "granted") return;
-  fireAdConversion(eventId, props, true);
+  // toward #3697 F-4: free tickets ($0) must match server sign-up events.
+  const isPaidPurchase = !(typeof props.value === "number" && props.value <= 0);
+  fireAdConversion(eventId, props, isPaidPurchase);
 }
 
 function fireAdConversion(
@@ -797,13 +796,11 @@ interface StoredAdClick {
 export function getStoredClickAttribution(): StoredAdClick {
   let clickId: unknown;
   try {
-    // toward #3697: first-party click_id is readable before Accept so checkout
-    // can thread it; Reject still keeps vendor gates closed.
-    if (readStoredConsent() !== "denied") {
-      clickId = (JSON.parse(
-        window.sessionStorage.getItem(AD_CLICK_KEY) ?? "{}",
-      ) as { clickId?: unknown }).clickId;
-    }
+    // toward #3697: keep click_id readable after Reject so checkout can thread it
+    // (server then sets shared_with_platforms=false). Vendor pixels stay grant-gated.
+    clickId = (JSON.parse(
+      window.sessionStorage.getItem(AD_CLICK_KEY) ?? "{}",
+    ) as { clickId?: unknown }).clickId;
   } catch {
     // Storage and malformed data remain optional attribution failures.
   }
@@ -811,7 +808,8 @@ export function getStoredClickAttribution(): StoredAdClick {
 }
 
 function storeClickId(clickId: string): void {
-  // toward #3697: persist first-party click_id even pre-consent (not after Reject).
+  // toward #3697: persist first-party click_id even pre-consent; Reject does not
+  // clear an already-stored id (checkout still needs it).
   if (readStoredConsent() === "denied") return;
   try {
     window.sessionStorage.setItem(AD_CLICK_KEY, JSON.stringify({ clickId }));
@@ -854,6 +852,16 @@ export interface CaptureAdClickDest {
  */
 export function captureAdClickIds(dest?: CaptureAdClickDest): void {
   if (!hasWindow() || readStoredConsent() === "denied") return;
+  // toward #3697: if we already have a first-party click, only stamp consent —
+  // never insert a duplicate touch for the same landing.
+  const existing = getStoredClickAttribution().clickId;
+  if (existing !== null) {
+    const consent = readStoredConsent();
+    if (consent === "granted") {
+      void postAttributionConsent("granted", existing);
+    }
+    return;
+  }
   try {
     const params = new URLSearchParams(window.location.search);
     const fbclid = params.get("fbclid");

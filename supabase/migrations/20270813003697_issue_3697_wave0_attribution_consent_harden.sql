@@ -103,9 +103,10 @@ BEGIN
     $cron$SELECT public.purge_ad_attribution_touches_older_than_90d()$cron$
   );
 EXCEPTION
+  -- Extension absent is already handled above; undefined_table covers hosts
+  -- where cron.job is not yet visible. Any other scheduling error must abort
+  -- so the 90-day retention job cannot silently fail to register.
   WHEN undefined_table THEN
     NULL;
-  WHEN OTHERS THEN
-    RAISE NOTICE 'toward #3697: pg_cron schedule skipped: %', SQLERRM;
 END;
 $$;

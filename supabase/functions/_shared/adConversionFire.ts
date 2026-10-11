@@ -300,6 +300,8 @@ interface TouchContext {
   fbc: string | null; // reconstructed from fbclid + touch time (A2-5)
   /** toward #3697 / #3703: outbound CAPI only when touch consent is granted. */
   consentAllowsShare: boolean;
+  /** pending | granted | rejected | none (no touch / legacy). */
+  consentState: "pending" | "granted" | "rejected" | "none";
 }
 
 function channelEventName(
@@ -526,6 +528,7 @@ async function resolveTouch(
     fbc: null,
     // No touch → no Reject latch; organic conversions may still share.
     consentAllowsShare: true,
+    consentState: "none",
   };
   if (!clickId) return empty;
   const { data: touch } = await supabase
@@ -562,6 +565,10 @@ async function resolveTouch(
     // toward #3697 / #3703: outbound only when granted. Reject and pre-consent
     // pending stay first-party-only (shared_with_platforms=false).
     consentAllowsShare: consentState === "granted",
+    consentState: consentState === "pending" || consentState === "rejected" ||
+        consentState === "granted"
+      ? consentState
+      : "granted",
   };
 }
 
@@ -801,36 +808,42 @@ export async function fireAdConversion(
       }
     }
 
-    // 5. toward #3697 F-3 / #3703: Reject (and pending) → count locally, zero outbound.
+    // 5. toward #3697 F-3 / #3703: no outbound when consent is not granted.
+    // Reject → terminal skipped (never share). Pending → leave channel statuses
+    // pending so a later Accept + webhook redelivery can still fan out.
     if (!shareWithPlatforms) {
-      const skipped: SenderResult[] = (
+      const rejected = touch.consentState === "rejected";
+      const results: SenderResult[] = (
         ["meta", "tiktok", "snap", "reddit", "google"] as Channel[]
       ).map((channel) => ({
         channel,
         status: "skipped" as const,
-        reason: "consent_rejected_or_pending",
+        reason: rejected ? "consent_rejected" : "consent_pending_retryable",
       }));
       const statusUpdate: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
         shared_with_platforms: false,
         provider_response: Object.fromEntries(
-          skipped.map((r) => [r.channel, {
+          results.map((r) => [r.channel, {
             status: r.status,
             reason: r.reason,
             http: null,
           }]),
         ),
       };
-      for (const r of skipped) {
-        if (channelPending[r.channel]) {
-          statusUpdate[STATUS_COL[r.channel]] = "skipped";
+      if (rejected) {
+        for (const r of results) {
+          if (channelPending[r.channel]) {
+            statusUpdate[STATUS_COL[r.channel]] = "skipped";
+          }
         }
       }
+      // pending: do NOT flip *_status off pending — redelivery after Accept can send.
       await supabase.from("ad_conversions").update(statusUpdate).eq(
         "event_id",
         key,
       );
-      return { ok: true, eventId: key, deduped: false, results: skipped };
+      return { ok: true, eventId: key, deduped: false, results };
     }
 
     // 6. Fan out to each channel whose status is still pending (parallel,
