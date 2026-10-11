@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import {
   analyticsAllowed,
+  captureSiteAdClickIds,
   CONSENT_EVENT,
   sendSiteEvent,
   type SiteEventContext,
@@ -24,8 +25,13 @@ function referrerClass(): string {
 
 export function SiteRuntimeClient({ context }: { context: SiteEventContext }) {
   useEffect(() => {
+    // toward #3697: first-party ad click may run before Sites analytics grant.
+    captureSiteAdClickIds();
     let sent = false;
     const emit = () => {
+      if (analyticsAllowed()) {
+        captureSiteAdClickIds();
+      }
       if (sent || !analyticsAllowed()) return;
       sent = true;
       const referrer_class = referrerClass();

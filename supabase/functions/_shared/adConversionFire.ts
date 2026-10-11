@@ -162,20 +162,36 @@ const STATUS_COL: Record<Channel, string> = {
   google: "google_ads_status", // ISSUE-1267
 };
 
-/** Per-channel canonical event name — MUST match the browser pixel's event. */
+/**
+ * Per-channel canonical event name — MUST match the browser pixel's event.
+ * toward #3697 F-4: free tickets/RSVPs are sign-ups (never $0 Purchase);
+ * follows use a separate Lead path when fired.
+ */
 const CHANNEL_EVENT_NAME: Record<
   Channel,
-  { purchase: string; reservation: string }
+  { purchase: string; reservation: string; follow: string }
 > = {
-  meta: { purchase: "Purchase", reservation: "Schedule" },
-  tiktok: { purchase: "CompletePayment", reservation: "CompleteRegistration" },
-  snap: { purchase: "PURCHASE", reservation: "SAVE" },
-  reddit: { purchase: "Purchase", reservation: "Lead" },
+  meta: {
+    purchase: "Purchase",
+    reservation: "CompleteRegistration",
+    follow: "Lead",
+  },
+  tiktok: {
+    purchase: "CompletePayment",
+    reservation: "CompleteRegistration",
+    follow: "Lead",
+  },
+  snap: { purchase: "PURCHASE", reservation: "SIGN_UP", follow: "SIGN_UP" },
+  reddit: { purchase: "Purchase", reservation: "SignUp", follow: "Lead" },
   // ISSUE-1267 — Google keys on the conversion-action RESOURCE, not an event-name
   // string, so this name is cosmetic for the google sender (it ignores eventName);
   // kept for map-shape parity so the fan-out's CHANNEL_EVENT_NAME[channel] lookup
   // never dereferences undefined.
-  google: { purchase: "Purchase", reservation: "Schedule" },
+  google: {
+    purchase: "Purchase",
+    reservation: "SignUp",
+    follow: "Lead",
+  },
 };
 
 // ── Hashing (SC-9) — byte-identical to the WP-A attribution-capture idiom ─────
@@ -282,6 +298,20 @@ interface TouchContext {
   network: string | null; // 'meta' | 'tiktok' | …
   externalClickId: string | null;
   fbc: string | null; // reconstructed from fbclid + touch time (A2-5)
+  /** toward #3697 / #3703: outbound CAPI only when touch consent is granted. */
+  consentAllowsShare: boolean;
+  /** pending | granted | rejected | none (no touch / legacy). */
+  consentState: "pending" | "granted" | "rejected" | "none";
+}
+
+function channelEventName(
+  channel: Channel,
+  eventType: EventType,
+): string {
+  const names = CHANNEL_EVENT_NAME[channel];
+  if (eventType === "reservation") return names.reservation;
+  if (eventType === "lead") return names.follow;
+  return names.purchase;
 }
 
 /** Build fbc from a raw fbclid + observation time (A2-5: fb.1.{tsMs}.{fbclid}). */
@@ -332,13 +362,22 @@ async function resolveOrderContext(
   const email = (row.buyer_email as string | null) ?? null;
   const phone = (row.buyer_phone as string | null) ?? null;
 
+  const valueCents = typeof row.total_cents === "number"
+    ? (row.total_cents as number)
+    : null;
+  // toward #3697 F-4: free tickets are sign-ups — never a $0 Purchase.
+  let eventType: EventType = input.eventType ?? "purchase";
+  if (input.eventType == null && (valueCents ?? 0) <= 0) {
+    eventType = "reservation";
+  }
+
   return {
     eventId: orderId,
-    eventType: input.eventType ?? "purchase",
-    valueCents: typeof row.total_cents === "number"
-      ? (row.total_cents as number)
+    eventType,
+    valueCents: eventType === "purchase" ? valueCents : 0,
+    currency: eventType === "purchase"
+      ? ((row.currency as string | null) ?? null)
       : null,
-    currency: (row.currency as string | null) ?? null,
     hashedEmail: email ? await sha256Hex(normEmail(email)) : null,
     hashedPhone: phone ? await sha256Hex(normPhone(phone)) : null,
     brandId,
@@ -487,12 +526,15 @@ async function resolveTouch(
     network: null,
     externalClickId: null,
     fbc: null,
+    // No touch → no Reject latch; organic conversions may still share.
+    consentAllowsShare: true,
+    consentState: "none",
   };
   if (!clickId) return empty;
   const { data: touch } = await supabase
     .from("ad_attribution_touches")
     .select(
-      "id, connection_id, campaign_id, network, external_click_id, created_at",
+      "id, connection_id, campaign_id, network, external_click_id, created_at, consent_state",
     )
     .eq("click_id", clickId)
     .maybeSingle();
@@ -503,6 +545,10 @@ async function resolveTouch(
   const createdAt = t.created_at
     ? Date.parse(t.created_at as string)
     : Date.now();
+  // Missing column / null → treat as granted (pre-Wave-0 rows).
+  const consentState = typeof t.consent_state === "string"
+    ? t.consent_state
+    : "granted";
   return {
     touchId: (t.id as string | null) ?? null,
     connectionId: (t.connection_id as string | null) ?? null,
@@ -516,6 +562,13 @@ async function resolveTouch(
         isNaN(createdAt) ? Date.now() : createdAt,
       )
       : null,
+    // toward #3697 / #3703: outbound only when granted. Reject and pre-consent
+    // pending stay first-party-only (shared_with_platforms=false).
+    consentAllowsShare: consentState === "granted",
+    consentState: consentState === "pending" || consentState === "rejected" ||
+        consentState === "granted"
+      ? consentState
+      : "granted",
   };
 }
 
@@ -693,13 +746,14 @@ export async function fireAdConversion(
 
     // 3. Resolve the attributed touch (click_id → campaign/connection/fbc).
     const touch = await resolveTouch(supabase, ctx.clickId);
+    const shareWithPlatforms = touch.consentAllowsShare;
 
     // 4. Ensure the ad_conversions row exists (idempotent insert, service-role).
+    // toward #3697 Wave 0d: this is the trusted writer — browser/anon cannot.
     const conversionRow = {
       event_id: key,
       event_type: ctx.eventType,
-      event_name: CHANNEL_EVENT_NAME
-        .meta[ctx.eventType === "reservation" ? "reservation" : "purchase"],
+      event_name: channelEventName("meta", ctx.eventType),
       value_cents: ctx.valueCents,
       currency: ctx.currency,
       surface,
@@ -715,6 +769,7 @@ export async function fireAdConversion(
       event_source_url: ctx.eventSourceUrl,
       hashed_email: ctx.hashedEmail,
       hashed_phone: ctx.hashedPhone,
+      shared_with_platforms: shareWithPlatforms,
     };
     await supabase
       .from("ad_conversions")
@@ -723,30 +778,8 @@ export async function fireAdConversion(
         ignoreDuplicates: true,
       });
 
-    // 4b. ISSUE-855 / #865 UNDERCOUNT REPAIR — COALESCE-backfill the attribution
-    //     columns the browser's EARLY row left NULL.
-    //
-    //     The browser writes an early, idempotent ad_conversions row at
-    //     checkout-success (webAnalytics.web.ts::postAttributionConversion →
-    //     attribution-capture::recordConversion) that ALWAYS carries brand_id /
-    //     order_id / mingla_event_id = NULL (the browser never holds them) and
-    //     only optionally sets value_cents/currency. Because the upsert above is
-    //     ON CONFLICT (event_id) DO NOTHING, when that browser row WINS the race
-    //     the authoritative values resolved here would otherwise stay NULL forever
-    //     — silently UNDERCOUNTING brand_conversion_rollup (WHERE brand_id =
-    //     p_brand_id) and the live "Customers Mingla drove" tile.
-    //
-    //     When a row ALREADY existed at the step-2 read, fill each of the five
-    //     attribution columns — but ONLY where the stored value IS NULL (per-column
-    //     COALESCE decided from the step-2 snapshot) and where THIS fire actually
-    //     resolved a value. This NEVER clobbers an already-set value (e.g. a
-    //     brand_id a prior server fire wrote) and NEVER nulls a value the browser
-    //     already set. The per-channel *_status columns are deliberately EXCLUDED,
-    //     so the redelivery-dedup gate is untouched and NO re-send is triggered
-    //     (a re-delivered webhook whose channels are all settled already returns
-    //     `deduped` at step 2 above and never reaches here). Concurrency-safe: the
-    //     only other writer of these columns for a given event_id is another server
-    //     fire for the SAME order/reservation, which resolves the identical values.
+    // 4b. COALESCE-backfill attribution columns when a prior trusted fire left
+    //     NULLs (legacy early browser rows are no longer written — Wave 0d).
     if (existingRow) {
       const backfill: Record<string, unknown> = {};
       if (existingRow.brand_id == null && ctx.brandId != null) {
@@ -775,7 +808,45 @@ export async function fireAdConversion(
       }
     }
 
-    // 5. Fan out to each channel whose status is still pending (parallel,
+    // 5. toward #3697 F-3 / #3703: no outbound when consent is not granted.
+    // Reject → terminal skipped (never share). Pending → leave channel statuses
+    // pending so a later Accept + webhook redelivery can still fan out.
+    if (!shareWithPlatforms) {
+      const rejected = touch.consentState === "rejected";
+      const results: SenderResult[] = (
+        ["meta", "tiktok", "snap", "reddit", "google"] as Channel[]
+      ).map((channel) => ({
+        channel,
+        status: "skipped" as const,
+        reason: rejected ? "consent_rejected" : "consent_pending_retryable",
+      }));
+      const statusUpdate: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+        shared_with_platforms: false,
+        provider_response: Object.fromEntries(
+          results.map((r) => [r.channel, {
+            status: r.status,
+            reason: r.reason,
+            http: null,
+          }]),
+        ),
+      };
+      if (rejected) {
+        for (const r of results) {
+          if (channelPending[r.channel]) {
+            statusUpdate[STATUS_COL[r.channel]] = "skipped";
+          }
+        }
+      }
+      // pending: do NOT flip *_status off pending — redelivery after Accept can send.
+      await supabase.from("ad_conversions").update(statusUpdate).eq(
+        "event_id",
+        key,
+      );
+      return { ok: true, eventId: key, deduped: false, results };
+    }
+
+    // 6. Fan out to each channel whose status is still pending (parallel,
     //    bounded, fail-open). Non-Meta channels never receive fbc/fbp.
     const eventTimeMs = now();
     const attempts: { channel: Channel; run: Promise<SenderResult> }[] = [];
@@ -792,9 +863,7 @@ export async function fireAdConversion(
       const conn = await resolveSenderConnection(supabase, channel, lane);
       const sendInput: ConversionSendInput = {
         eventId: key,
-        eventName: CHANNEL_EVENT_NAME[channel][
-          ctx.eventType === "reservation" ? "reservation" : "purchase"
-        ],
+        eventName: channelEventName(channel, ctx.eventType),
         valueCents: ctx.valueCents,
         currency: ctx.currency,
         eventSourceUrl: ctx.eventSourceUrl,
@@ -825,9 +894,10 @@ export async function fireAdConversion(
       }
     );
 
-    // 6. Persist per-channel outcomes (never store a token in provider_response).
+    // 7. Persist per-channel outcomes (never store a token in provider_response).
     const statusUpdate: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
+      shared_with_platforms: true,
     };
     const providerResponse: Record<string, unknown> = {};
     for (const r of results) {

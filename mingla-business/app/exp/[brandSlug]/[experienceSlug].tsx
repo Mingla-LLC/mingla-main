@@ -78,7 +78,13 @@ import {
   socialProofKeys,
 } from "../../../src/services/socialProofService";
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
-import { captureWeb } from "../../../src/analytics/webAnalytics";
+// toward #3697 Wave 0a — ad click-id capture on experience landings (web-only).
+import {
+  captureAdClickIds,
+  captureWeb,
+  fireAdPageView,
+  fireAdViewContent,
+} from "../../../src/analytics/webAnalytics";
 import { ExperiencePreview } from "../../../src/components/experience/ExperiencePreview";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
 // §3). LAZY (ORCH-1083 budget): tap-opened, never boot-path — a static import
@@ -183,7 +189,7 @@ export default function PublicExperienceRoute(): React.ReactElement {
   });
 
   // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount.
-  // Web-only (no-op on native).
+  // Web-only (no-op on native). toward #3697: also capture first-party ad clicks.
   const viewFiredRef = useRef<boolean>(false);
   useEffect(() => {
     if (viewFiredRef.current) return;
@@ -193,6 +199,13 @@ export default function PublicExperienceRoute(): React.ReactElement {
       brand_slug: typeof brandSlug === "string" ? brandSlug : null,
       slug: typeof experienceSlug === "string" ? experienceSlug : null,
     });
+    captureAdClickIds({
+      pageType: "experience",
+      brandSlug: typeof brandSlug === "string" ? brandSlug : null,
+      entitySlug: typeof experienceSlug === "string" ? experienceSlug : null,
+    });
+    fireAdPageView();
+    fireAdViewContent();
   }, [brandSlug, experienceSlug]);
 
   const handleClose = useCallback((): void => {

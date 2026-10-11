@@ -2503,7 +2503,7 @@
       },
       "allowed_identifier_references": {
         "getToken": [
-          "supabase/functions/_shared/adConversionFire.ts@23205:deps.getToken:grouped_reference:deps.getToken",
+          "supabase/functions/_shared/adConversionFire.ts@24959:deps.getToken:grouped_reference:deps.getToken",
           "supabase/functions/_shared/metaCapi.ts@2054:getToken:call_argument:resolveRuntimeString:getToken",
           "supabase/functions/_shared/metaCapi.ts@2802:deps.getToken:grouped_reference:deps.getToken",
           "supabase/functions/_shared/metaCapi.ts@4680:getToken:call_argument:metaApiVersion:getToken",

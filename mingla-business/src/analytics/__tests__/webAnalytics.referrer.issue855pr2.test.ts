@@ -152,30 +152,28 @@ test("P3 readReferrerHost returns the host only after grant; null before grant a
 });
 
 // ═══ P4 — FIRST-TOUCH-WINS: organic internal-nav never clobbers the ad click ═══
+// [TEST-MOD-APPROVED #3697] ad signal may capture pre-consent; existing click
+// blocks a second touch insert (consent stamp only).
 test("P4 the ad click_id is preserved when a later internal (Mingla-referrer) touch fires", async () => {
-  // 1) Land via an ad (fbclid), no referrer → records + stores the ad click_id.
+  // 1) Land via an ad (fbclid) → first-party touch + store click_id pre-consent.
   const h = loadHarness("?fbclid=ADCLICK", "");
   await h.wa.initWebAnalytics();
   h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
-  expect(h.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);
-  expect(h.wa.getStoredClickAttribution().clickId).toBeNull();
-
-  await h.wa.grantConsent();
-  h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
   await flush();
+  expect(h.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(true);
   const adClick = h.wa.getStoredClickAttribution().clickId;
   expect(adClick).toBe("srv-click-1");
 
-  // 2) Internal navigation to another public page: no fbclid, referrer = a Mingla
-  //    host (→ organic). It STILL records a touch, but must NOT overwrite the ad
-  //    click that drove the session (first-touch-wins).
+  await h.wa.grantConsent();
+  // Existing click → consent stamp only (no second touch).
+  h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
+  await flush();
+  expect(h.wa.getStoredClickAttribution().clickId).toBe(adClick);
+
+  // 2) Internal navigation: stored click still wins (no overwrite).
   (h.win.location as { search: string }).search = "";
   (h.win.document as { referrer: string }).referrer = "https://go.usemingla.com/e/brand/event2";
   h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e2" });
   await flush();
-  // A second touch WAS posted (organic capture works)...
-  expect(h.fetchCalls.filter((c) => c.url.includes("/attribution-capture")).length)
-    .toBeGreaterThanOrEqual(2);
-  // ...but the threaded click_id is still the FIRST (ad) one.
   expect(h.wa.getStoredClickAttribution().clickId).toBe(adClick);
 });

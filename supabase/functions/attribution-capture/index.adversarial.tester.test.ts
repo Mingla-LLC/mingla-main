@@ -1,4 +1,6 @@
 // ISSUE-865 WP-A — TESTER adversarial suite for attribution-capture.
+// [TEST-MOD-APPROVED #3697] conversion via handleCapture is refused; sanitization
+// assertions move to exported recordConversion (trusted helper).
 //
 // DIFFERENT ANGLE than the implementor's 12 (index.test.ts). The implementor's
 // mock DISCARDS the row handed to the DB; this suite CAPTURES it and asserts the
@@ -21,7 +23,12 @@
 // Runtime (COMMS-0106): exercises the exported handleCapture with an injected
 // capturing mock — no source-grep. Append-only: NEW file, zero existing-test edits.
 import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { handleCapture, sha256Hex, type CaptureDeps } from "./index.ts";
+import {
+  handleCapture,
+  recordConversion,
+  sha256Hex,
+  type CaptureDeps,
+} from "./index.ts";
 
 interface Captured {
   conversion?: Record<string, unknown>;
@@ -72,10 +79,14 @@ function post(body: unknown, headers: Record<string, string> = {}): Request {
   });
 }
 
-// ── T-ADV-1 · value_cents sanitization (fails-on-revert anchor, index.ts:230) ──
+// ── T-ADV-1 · value_cents sanitization (trusted recordConversion helper) ──
 Deno.test("adv: NEGATIVE value_cents is nulled before insert (row still recorded)", async () => {
   const cap: Captured = {};
-  const res = await handleCapture(post({ kind: "conversion", event_id: "adv-neg", value_cents: -5 }), deps(cap));
+  const res = await recordConversion(capturingClient(cap), {
+    kind: "conversion",
+    event_id: "adv-neg",
+    value_cents: -5,
+  });
   assertEquals(res.status, 200);
   assertEquals((await res.json()).ok, true);
   assert(cap.conversion, "a conversion row must have been handed to the DB");
@@ -84,17 +95,23 @@ Deno.test("adv: NEGATIVE value_cents is nulled before insert (row still recorded
 
 Deno.test("adv: valid value_cents passes through unchanged", async () => {
   const cap: Captured = {};
-  await handleCapture(post({ kind: "conversion", event_id: "adv-pos", value_cents: 2500 }), deps(cap));
+  await recordConversion(capturingClient(cap), {
+    kind: "conversion",
+    event_id: "adv-pos",
+    value_cents: 2500,
+  });
   assertEquals(cap.conversion!.value_cents, 2500);
 });
 
-// ── T-ADV-2 · PII is hashed, never raw, never echoed (SC-9, index.ts:219-224) ──
+// ── T-ADV-2 · PII is hashed, never raw, never echoed (SC-9) ──
 Deno.test("adv: email/phone are SHA-256 hashed (normalized), raw never stored/echoed", async () => {
   const cap: Captured = {};
-  const res = await handleCapture(
-    post({ kind: "conversion", event_id: "adv-pii", email: "  Test@Example.COM ", phone: "+1 (555) 000-1234" }),
-    deps(cap),
-  );
+  const res = await recordConversion(capturingClient(cap), {
+    kind: "conversion",
+    event_id: "adv-pii",
+    email: "  Test@Example.COM ",
+    phone: "+1 (555) 000-1234",
+  });
   const row = cap.conversion!;
   assertEquals(row.hashed_email, await sha256Hex("test@example.com")); // trimmed + lowercased
   assertEquals(row.hashed_phone, await sha256Hex("15550001234")); // digits only

@@ -7,7 +7,10 @@
  *        per-channel dedup field + the correct event name — the browser half of
  *        SC-5/SC-15 (fbq eventID='Purchase', ttq event_id='CompletePayment',
  *        snaptr client_dedup_id='PURCHASE', rdt conversion_id='Purchase').
- *   (B2) NO PII EGRESS from the checkout conversion POST — even post-consent, the
+ *   (B2) toward #3697 Wave 0d: postAttributionConversion is a no-op (trusted
+ *       server path only) — still asserts no browser conversion POST / no PII.
+ * [TEST-MOD-APPROVED #3697]
+ *   (B2-legacy) NO PII EGRESS from the checkout conversion POST — even post-consent, the
  *        attribution-capture body carries event_id/value/currency/click_id ONLY;
  *        it NEVER contains an email or phone field (SC-8/SC-9).
  *   (B3) captureAdClickIds forwards click-id + UTM ONLY (no PII) and does NOT
@@ -139,43 +142,43 @@ test("B1 fireAdPurchase fires ALL FOUR pixels with the shared event_id + correct
   expect((rdCall?.[2] as Record<string, unknown>).conversion_id).toBe(ORDER_ID);
 });
 
-// ═══ B2 — checkout conversion POST carries NO email/phone (no PII egress) ═════
-test("B2 postAttributionConversion sends event_id/value/currency/click_id ONLY — never email/phone (SC-8/SC-9)", async () => {
+// ═══ B2 — browser conversion POST retired (trusted server path only) ═════════
+// [TEST-MOD-APPROVED #3697] Wave 0d: no anon conversion write from the browser.
+test("B2 postAttributionConversion is a no-op — never posts conversion or PII", async () => {
   const { wa, fetchCalls } = loadHarness(ALL_PIXELS);
   await wa.initWebAnalytics();
   await wa.grantConsent();
+  const before = fetchCalls.length;
 
   wa.postAttributionConversion({ eventId: ORDER_ID, valueCents: 3500, currency: "GBP" });
 
-  const convCall = fetchCalls.find((c) => c.url.includes("/attribution-capture") && c.body.includes("conversion"));
-  expect(convCall).toBeDefined();
-  const parsed = JSON.parse(convCall!.body);
-  expect(parsed.kind).toBe("conversion");
-  expect(parsed.event_id).toBe(ORDER_ID);
-  expect(parsed.value_cents).toBe(3500);
-  // The hard invariant: no PII field anywhere in the outgoing conversion body.
-  const bodyLower = convCall!.body.toLowerCase();
-  expect(bodyLower).not.toContain("email");
-  expect(bodyLower).not.toContain("phone");
-  expect(bodyLower).not.toContain("buyer_email");
-  expect(parsed.hashed_email).toBeUndefined();
-  expect(parsed.buyer_email).toBeUndefined();
+  expect(fetchCalls.length).toBe(before);
+  expect(
+    fetchCalls.some((c) => c.url.includes("/attribution-capture") && c.body.includes("conversion")),
+  ).toBe(false);
 });
 
 // ═══ B3 — click capture forwards click-id + UTM only; no-op with no ad signal ═
+// [TEST-MOD-APPROVED #3697] pre-consent first-party touch is allowed for ad signals.
 test("B3 captureAdClickIds forwards click-id/UTM only (no PII) and no-ops with no ad signal", async () => {
-  // (a) With an fbclid + utm, pre-consent capture stays entirely dark.
+  // (a) With an fbclid + utm, pre-consent first-party touch is allowed (#3697).
   const withSignal = loadHarness(ALL_PIXELS, "?fbclid=ABC123&utm_source=meta&utm_campaign=summer");
   await withSignal.wa.initWebAnalytics();
   withSignal.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
-  expect(withSignal.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);
-  const preConsentStore = (withSignal.win.sessionStorage as { getItem(k: string): string | null });
-  expect(preConsentStore.getItem("mingla_ad_click_v1")).toBeNull();
+  await new Promise((r) => setTimeout(r, 10));
+  const preTouches = withSignal.fetchCalls.filter((c) =>
+    c.url.includes("/attribution-capture") && c.body.includes('"kind":"touch"')
+  );
+  expect(preTouches).toHaveLength(1);
+  expect(JSON.parse(preTouches[0].body).consent_state).toBe("pending");
 
-  // (b) The same harness sends exactly one touch only after explicit grant.
+  // (b) After grant, an existing click only stamps consent (no second touch).
   await withSignal.wa.grantConsent();
   withSignal.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
-  const touches = withSignal.fetchCalls.filter((c) => c.url.includes("/attribution-capture") && c.body.includes("touch"));
+  await new Promise((r) => setTimeout(r, 10));
+  const touches = withSignal.fetchCalls.filter((c) =>
+    c.url.includes("/attribution-capture") && c.body.includes('"kind":"touch"')
+  );
   expect(touches).toHaveLength(1);
   const touch = touches[0];
   expect(touch).toBeDefined();
