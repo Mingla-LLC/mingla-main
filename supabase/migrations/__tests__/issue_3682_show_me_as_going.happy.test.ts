@@ -42,7 +42,7 @@ Deno.test("#3682 setter RPC is authenticated-only and attendance-gated", () => {
 Deno.test("#3682 peer_list names self, friends, or opt-in — not profile visibility alone", () => {
   assertStringIncludes(migration, "a.linked_user_id = v_viewer");
   assertStringIncludes(migration, "FROM public.friends f");
-  assertStringIncludes(migration, "OR a.show_me_as_going");
+  assertStringIncludes(migration, "OR COALESCE(uo.opted, false)");
   assert(
     !/visibility_mode IN \('public', 'friends'\)/.test(migration),
     "profile visibility alone must not name guests after #3682",
