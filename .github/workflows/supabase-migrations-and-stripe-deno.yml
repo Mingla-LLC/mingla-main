@@ -1433,6 +1433,8 @@ jobs:
             supabase/functions/_shared/__tests__/issue_3697_wave0_consent_gate.test.ts
             # toward #3697 Wave 0d — anon conversion refused on attribution-capture.
             supabase/functions/attribution-capture/issue_3697_wave0_trusted_conversion.test.ts
+            # toward #3697 Wave 1 — destination types, /t/+/exp/ URLs, past-start reject.
+            supabase/functions/_shared/__tests__/issue_3697_wave1_ad_destination.test.ts
             # ISSUE-996 — implementor source guard: A5 keeps its local fetch
             # declaration + fireAdConversion injection (no network execution).
             supabase/functions/_shared/__tests__/issue_996_a5_hermetic_fetch.test.ts

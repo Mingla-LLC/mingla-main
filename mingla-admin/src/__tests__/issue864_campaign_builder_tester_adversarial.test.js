@@ -593,10 +593,23 @@ describe("SC-10 + destination-filter source traps", () => {
     }
   });
 
+  // [TEST-MOD-APPROVED #3697] Wave 1 moved availability into SQL
+  // `ad_advertisable_pages` / `ad_destination_resolve` (status ∈ scheduled|live
+  // and future master_start_at). The Admin reader is an RPC mapper; pin the RPC
+  // + the migration authority instead of client-side PostgREST filters.
   it("the destination reader keeps BOTH load-bearing filters (status ∈ scheduled|live AND future start)", () => {
     const source = read(path.join(ADMIN_SRC, "services/adDestinationsService.js"));
-    assert.ok(/\.in\(\s*["']status["']\s*,\s*\[\s*["']scheduled["']\s*,\s*["']live["']\s*\]\s*\)/.test(source), "ended/cancelled must stay excluded — the view exposes them");
-    assert.ok(/\.gt\(\s*["']master_start_at["']/.test(source), "past events must stay excluded — ads at a past event get rejected as unavailable offers");
+    const migration = read(path.join(REPO_ROOT, "supabase/migrations/20270814003697_issue_3697_wave1_advertisable_pages.sql"));
+    assert.ok(source.includes('rpc("ad_advertisable_pages"'), "Admin list must call the shared advertisable-pages RPC");
+    assert.ok(migration.includes("ad_destination_resolve"), "SQL resolve must remain the availability authority");
+    assert.ok(
+      /status\s+NOT\s+IN\s*\(\s*'scheduled'\s*,\s*'live'\s*\)|status\s+IN\s*\(\s*'scheduled'\s*,\s*'live'\s*\)/.test(migration),
+      "ended/cancelled must stay excluded in SQL resolve",
+    );
+    assert.ok(
+      /v_starts\s*<=\s*now\(\)|master_start_at/.test(migration),
+      "past events must stay excluded — ads at a past event get rejected as unavailable offers",
+    );
   });
 
   it("the campaign-builder CI job is registered and points at the happy suite", () => {

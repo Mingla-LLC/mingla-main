@@ -104,6 +104,10 @@ Deno.test("issue #1431 keeps Event and Brand URL shapes unchanged", async () => 
       id: "event-1",
       brand_slug: "brand",
       slug: "event",
+      // [TEST-MOD-APPROVED #3697] Wave 1 gate filters event_type + status.
+      status: "scheduled",
+      event_type: "event",
+      master_start_at: "2099-01-01T00:00:00.000Z",
     },
     { __table: "business_public_brands_view", id: "brand-1", slug: "brand" },
   ]);

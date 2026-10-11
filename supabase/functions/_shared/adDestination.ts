@@ -1,6 +1,26 @@
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "./businessWebOrigin.ts";
 
-export type DestinationPageType = "event" | "venue" | "brand";
+/** toward #3697 Wave 1 A4 — all Phase-1 advertisable page types (marketing = Wave 4). */
+export type DestinationPageType =
+  | "event"
+  | "rsvp"
+  | "trip"
+  | "experience"
+  | "brand"
+  | "venue"
+  | "reservation"
+  | "site";
+
+export const AD_DESTINATION_PAGE_TYPES: readonly DestinationPageType[] = [
+  "event",
+  "rsvp",
+  "trip",
+  "experience",
+  "brand",
+  "venue",
+  "reservation",
+  "site",
+] as const;
 
 export interface DestinationDescriptor {
   page_type: DestinationPageType;
@@ -15,6 +35,9 @@ export interface ResolvedAdDestination {
   event_id: string | null;
   venue_id: string | null;
   canonical_url: string;
+  availability?: string;
+  availability_reason?: string | null;
+  result_kind?: string | null;
 }
 
 export class AdDestinationError extends Error {
@@ -42,17 +65,31 @@ interface QueryLike {
 
 export interface AdDestinationDb {
   from(table: string): { select(columns: string): QueryLike };
+  rpc?(
+    fn: string,
+    args: Record<string, unknown>,
+  ): Promise<{ data: unknown; error: { message: string } | null }>;
 }
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const DESTINATION_KEYS = new Set(["page_type", "brand_slug", "entity_slug"]);
+const ENTITY_TYPES = new Set<DestinationPageType>([
+  "event",
+  "rsvp",
+  "trip",
+  "experience",
+  "venue",
+  // Reservation ads land on the public venue page that accepts reservations
+  // (`/b/{brand}/v/{venue}`), not `/reserve/{brandId}` (payment-cancel return).
+  "reservation",
+]);
 
 function requireDescriptor(input: unknown): DestinationDescriptor {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new AdDestinationError(
       "destination_page_type_invalid",
       400,
-      "Destination must name an event, Stay, or brand page.",
+      "Destination must name a public page.",
     );
   }
   const raw = input as Record<string, unknown>;
@@ -66,11 +103,14 @@ function requireDescriptor(input: unknown): DestinationDescriptor {
     }
   }
   const pageType = raw.page_type;
-  if (pageType !== "event" && pageType !== "venue" && pageType !== "brand") {
+  if (
+    typeof pageType !== "string" ||
+    !(AD_DESTINATION_PAGE_TYPES as readonly string[]).includes(pageType)
+  ) {
     throw new AdDestinationError(
       "destination_page_type_invalid",
       400,
-      "Destination page_type must be event, venue, or brand.",
+      "Destination page_type must be a supported Ads page type.",
     );
   }
   const brandSlug = typeof raw.brand_slug === "string"
@@ -93,34 +133,31 @@ function requireDescriptor(input: unknown): DestinationDescriptor {
   const entitySlug = typeof raw.entity_slug === "string"
     ? raw.entity_slug.trim()
     : "";
-  if (pageType === "event" || pageType === "venue") {
+  const typed = pageType as DestinationPageType;
+  if (ENTITY_TYPES.has(typed)) {
     if (!entitySlug) {
       throw new AdDestinationError(
         "destination_entity_slug_required",
         400,
-        pageType === "venue"
-          ? "Choose a public Stay destination."
-          : "Choose a public event destination.",
+        "Choose a public page destination.",
       );
     }
     if (entitySlug.length > 200 || !SLUG.test(entitySlug)) {
       throw new AdDestinationError(
         "destination_entity_slug_invalid",
         400,
-        pageType === "venue"
-          ? "The Stay slug is invalid."
-          : "The event slug is invalid.",
+        "The page slug is invalid.",
       );
     }
   } else if (entitySlug) {
     throw new AdDestinationError(
       "destination_entity_slug_forbidden",
       400,
-      "A brand destination must not include an entity slug.",
+      "This destination type must not include an entity slug.",
     );
   }
   return {
-    page_type: pageType,
+    page_type: typed,
     brand_slug: brandSlug,
     ...(entitySlug ? { entity_slug: entitySlug } : {}),
   };
@@ -131,43 +168,208 @@ function businessWebOrigin(): string {
     PRODUCTION_BUSINESS_WEB_ORIGIN;
 }
 
+/** Canonical URL shapes (A4-5): trips `/t/`, experiences `/exp/`, never `/e/`. */
+export function canonicalAdDestinationUrl(
+  pageType: DestinationPageType,
+  brandSlug: string,
+  entitySlug: string | null,
+  opts?: { brandId?: string | null; siteHostname?: string | null },
+): string {
+  const origin = businessWebOrigin();
+  switch (pageType) {
+    case "trip":
+      return `${origin}/t/${brandSlug}/${entitySlug as string}`;
+    case "experience":
+      return `${origin}/exp/${brandSlug}/${entitySlug as string}`;
+    case "event":
+    case "rsvp":
+      return `${origin}/e/${brandSlug}/${entitySlug as string}`;
+    case "venue":
+      return `${origin}/b/${brandSlug}/v/${entitySlug as string}`;
+    case "brand":
+      return `${origin}/b/${brandSlug}`;
+    case "reservation":
+      // Same public venue URL as Stay; result_kind differs (sign-ups).
+      return `${origin}/b/${brandSlug}/v/${entitySlug as string}`;
+    case "site":
+      return `https://${opts?.siteHostname as string}`;
+  }
+}
+
+function mapResolveFailure(payload: Record<string, unknown>): never {
+  const code = typeof payload.code === "string"
+    ? payload.code
+    : "destination_not_public";
+  const availability = typeof payload.availability === "string"
+    ? payload.availability
+    : "";
+  const message = availability === "ended"
+    ? "That page's start is in the past or it has ended."
+    : availability === "private"
+    ? "That page is private."
+    : availability === "not_live"
+    ? "This Site isn't live at its address yet."
+    : "That page is not currently advertisable.";
+  throw new AdDestinationError(code, 422, message);
+}
+
+/** True when PostgREST/hermetic mocks report the SQL function is not wired. */
+function isMissingDestinationRpcError(
+  error: { message?: string } | null | undefined,
+): boolean {
+  const msg = (error?.message ?? "").toLowerCase();
+  if (!msg) return false;
+  return (
+    msg.includes("unmocked path") ||
+    msg.includes("could not find the function") ||
+    msg.includes("pgrst202") ||
+    msg.includes("function public.ad_destination_resolve") ||
+    msg.includes("does not exist")
+  );
+}
+
+/**
+ * Server gate: prefers SQL `ad_destination_resolve` (shared with the list RPC).
+ * Falls back to the legacy view lookups only when `rpc` is absent or the
+ * function is not deployed/mocked — never after a deliberate `ok: false`.
+ */
 export async function resolveAdDestination(
   db: unknown,
   input: unknown,
 ): Promise<ResolvedAdDestination> {
   const client = db as AdDestinationDb;
   const descriptor = requireDescriptor(input);
-  if (descriptor.page_type === "event") {
+
+  if (typeof client.rpc !== "function") {
+    return resolveAdDestinationLegacy(client, descriptor);
+  }
+
+  let data: unknown;
+  let error: { message: string } | null;
+  try {
+    ({ data, error } = await client.rpc("ad_destination_resolve", {
+      p_page_type: descriptor.page_type,
+      p_brand_slug: descriptor.brand_slug,
+      p_entity_slug: descriptor.entity_slug ?? null,
+    }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (isMissingDestinationRpcError({ message })) {
+      return resolveAdDestinationLegacy(client, descriptor);
+    }
+    throw new AdDestinationError(
+      "destination_lookup_failed",
+      503,
+      "The public destination could not be checked.",
+    );
+  }
+
+  if (error) {
+    if (isMissingDestinationRpcError(error)) {
+      return resolveAdDestinationLegacy(client, descriptor);
+    }
+    throw new AdDestinationError(
+      "destination_lookup_failed",
+      503,
+      "The public destination could not be checked.",
+    );
+  }
+
+  if (
+    data &&
+    typeof data === "object" &&
+    typeof (data as Record<string, unknown>).ok === "boolean"
+  ) {
+    const payload = data as Record<string, unknown>;
+    if (payload.ok !== true) mapResolveFailure(payload);
+    return {
+      page_type: payload.page_type as DestinationPageType,
+      brand_slug: String(payload.brand_slug),
+      entity_slug: payload.entity_slug == null
+        ? null
+        : String(payload.entity_slug),
+      event_id: payload.event_id == null ? null : String(payload.event_id),
+      venue_id: payload.venue_id == null ? null : String(payload.venue_id),
+      canonical_url: String(payload.canonical_url),
+      availability: typeof payload.availability === "string"
+        ? payload.availability
+        : undefined,
+      availability_reason: payload.availability_reason == null
+        ? null
+        : String(payload.availability_reason),
+      result_kind: payload.result_kind == null
+        ? null
+        : String(payload.result_kind),
+    };
+  }
+
+  // Empty/non-contract body with no error — hermetic PostgREST often 200s {}.
+  return resolveAdDestinationLegacy(client, descriptor);
+}
+
+async function resolveAdDestinationLegacy(
+  client: AdDestinationDb,
+  descriptor: DestinationDescriptor,
+): Promise<ResolvedAdDestination> {
+  if (
+    descriptor.page_type === "event" ||
+    descriptor.page_type === "rsvp" ||
+    descriptor.page_type === "trip" ||
+    descriptor.page_type === "experience"
+  ) {
     const { data, error } = await client
       .from("business_public_events_view")
-      .select("id,brand_slug,slug,status")
+      .select(
+        "id,brand_slug,slug,status,event_type,master_start_at,rsvp_discoverable",
+      )
       .eq("brand_slug", descriptor.brand_slug)
       .eq("slug", descriptor.entity_slug as string)
+      .eq("event_type", descriptor.page_type)
       .in("status", ["scheduled", "live"])
       .maybeSingle();
     if (error) {
       throw new AdDestinationError(
         "destination_lookup_failed",
         503,
-        "The public event destination could not be checked.",
+        "The public destination could not be checked.",
       );
     }
     if (!data) {
       throw new AdDestinationError(
         "destination_not_public",
         422,
-        "That event is not currently public and live.",
+        "That page is not currently public and live.",
+      );
+    }
+    if (
+      descriptor.page_type === "rsvp" &&
+      data.rsvp_discoverable !== true
+    ) {
+      throw new AdDestinationError(
+        "destination_not_public",
+        422,
+        "That page is private.",
+      );
+    }
+    const start = data.master_start_at;
+    if (typeof start === "string" && Date.parse(start) <= Date.now()) {
+      throw new AdDestinationError(
+        "destination_not_public",
+        422,
+        "That page's start is in the past or it has ended.",
       );
     }
     return {
-      page_type: "event",
+      page_type: descriptor.page_type,
       brand_slug: descriptor.brand_slug,
       entity_slug: descriptor.entity_slug as string,
       event_id: String(data.id),
       venue_id: null,
-      canonical_url:
-        `${businessWebOrigin()}/e/${descriptor.brand_slug}/${descriptor
-          .entity_slug as string}`,
+      canonical_url: canonicalAdDestinationUrl(
+        descriptor.page_type,
+        descriptor.brand_slug,
+        descriptor.entity_slug as string,
+      ),
     };
   }
 
@@ -198,37 +400,142 @@ export async function resolveAdDestination(
       entity_slug: descriptor.entity_slug as string,
       event_id: null,
       venue_id: String(data.id),
-      canonical_url:
-        `${businessWebOrigin()}/b/${descriptor.brand_slug}/v/${descriptor
-          .entity_slug as string}`,
+      canonical_url: canonicalAdDestinationUrl(
+        "venue",
+        descriptor.brand_slug,
+        descriptor.entity_slug as string,
+      ),
     };
   }
 
-  const { data, error } = await client
-    .from("business_public_brands_view")
-    .select("id,slug")
-    .eq("slug", descriptor.brand_slug)
-    .maybeSingle();
-  if (error) {
-    throw new AdDestinationError(
-      "destination_lookup_failed",
-      503,
-      "The public brand destination could not be checked.",
-    );
+  if (descriptor.page_type === "reservation") {
+    const { data, error } = await client
+      .from("ad_public_stay_destinations_view")
+      .select("id,brand_slug,slug")
+      .eq("brand_slug", descriptor.brand_slug)
+      .eq("slug", descriptor.entity_slug as string)
+      .maybeSingle();
+    if (error) {
+      throw new AdDestinationError(
+        "destination_lookup_failed",
+        503,
+        "The public Stay destination could not be checked.",
+      );
+    }
+    if (!data) {
+      throw new AdDestinationError(
+        "destination_not_public",
+        422,
+        "That reservation page is not currently public.",
+      );
+    }
+    const settings = await client
+      .from("venue_reservation_settings")
+      .select("reservations_enabled")
+      .eq("venue_id", String(data.id))
+      .maybeSingle();
+    if (settings.error) {
+      throw new AdDestinationError(
+        "destination_lookup_failed",
+        503,
+        "The public destination could not be checked.",
+      );
+    }
+    const enabled = (settings.data as { reservations_enabled?: unknown } | null)
+      ?.reservations_enabled === true;
+    if (!enabled) {
+      throw new AdDestinationError(
+        "destination_not_public",
+        422,
+        "That reservation page is not currently public.",
+      );
+    }
+    return {
+      page_type: "reservation",
+      brand_slug: descriptor.brand_slug,
+      entity_slug: descriptor.entity_slug as string,
+      event_id: null,
+      venue_id: String(data.id),
+      canonical_url: canonicalAdDestinationUrl(
+        "reservation",
+        descriptor.brand_slug,
+        descriptor.entity_slug as string,
+      ),
+    };
   }
-  if (!data) {
-    throw new AdDestinationError(
-      "destination_not_public",
-      422,
-      "That brand is not currently public.",
-    );
+
+  if (descriptor.page_type === "brand") {
+    const { data, error } = await client
+      .from("business_public_brands_view")
+      .select("id,slug")
+      .eq("slug", descriptor.brand_slug)
+      .maybeSingle();
+    if (error) {
+      throw new AdDestinationError(
+        "destination_lookup_failed",
+        503,
+        "The public brand destination could not be checked.",
+      );
+    }
+    if (!data) {
+      throw new AdDestinationError(
+        "destination_not_public",
+        422,
+        "That brand is not currently public.",
+      );
+    }
+    return {
+      page_type: "brand",
+      brand_slug: descriptor.brand_slug,
+      entity_slug: null,
+      event_id: null,
+      venue_id: null,
+      canonical_url: canonicalAdDestinationUrl(
+        "brand",
+        descriptor.brand_slug,
+        null,
+      ),
+    };
   }
-  return {
-    page_type: "brand",
-    brand_slug: descriptor.brand_slug,
-    entity_slug: null,
-    event_id: null,
-    venue_id: null,
-    canonical_url: `${businessWebOrigin()}/b/${descriptor.brand_slug}`,
-  };
+
+  if (descriptor.page_type === "site") {
+    const { data, error } = await client
+      .from("ad_public_site_destinations_view")
+      .select("id,brand_slug,hostname")
+      .eq("brand_slug", descriptor.brand_slug)
+      .maybeSingle();
+    if (error) {
+      throw new AdDestinationError(
+        "destination_lookup_failed",
+        503,
+        "The public Site destination could not be checked.",
+      );
+    }
+    if (!data || typeof data.hostname !== "string" || !data.hostname) {
+      throw new AdDestinationError(
+        "destination_not_public",
+        422,
+        "This Site isn't live at its address yet.",
+      );
+    }
+    return {
+      page_type: "site",
+      brand_slug: descriptor.brand_slug,
+      entity_slug: null,
+      event_id: null,
+      venue_id: null,
+      canonical_url: canonicalAdDestinationUrl(
+        "site",
+        descriptor.brand_slug,
+        null,
+        { siteHostname: data.hostname },
+      ),
+    };
+  }
+
+  throw new AdDestinationError(
+    "destination_page_type_invalid",
+    400,
+    "Destination page_type must be a supported Ads page type.",
+  );
 }

@@ -80,7 +80,16 @@ interface CaptureBody {
   referrer?: string;
   utm?: Record<string, unknown>;
   dest?: {
-    page_type?: "event" | "trip" | "brand" | "venue" | "experience";
+    // toward #3697 Wave 1 — match ad_campaigns / ad_attribution_touches CHECKs.
+    page_type?:
+      | "event"
+      | "rsvp"
+      | "trip"
+      | "experience"
+      | "brand"
+      | "venue"
+      | "reservation"
+      | "site";
     brand_slug?: string;
     entity_slug?: string;
     event_id?: string;
@@ -219,11 +228,27 @@ async function resolveConnectionId(
  * touch (and, via touch, the conversion) is per-campaign attributable. Best-effort
  * + FAIL-OPEN: any miss/error returns nulls so a touch is NEVER blocked on it.
  */
+const DEST_PAGE_TYPES = [
+  "event",
+  "rsvp",
+  "trip",
+  "experience",
+  "brand",
+  "venue",
+  "reservation",
+  "site",
+] as const;
+type DestPageType = (typeof DEST_PAGE_TYPES)[number];
+
 interface ResolvedCampaign {
   campaignId: string | null;
   brandId: string | null;
   connectionId: string | null;
   platform: Platform | null;
+  destPageType: DestPageType | null;
+  destBrandSlug: string | null;
+  destEntitySlug: string | null;
+  destEventId: string | null;
 }
 
 async function resolveCampaignFromParam(
@@ -235,12 +260,18 @@ async function resolveCampaignFromParam(
     brandId: null,
     connectionId: null,
     platform: null,
+    destPageType: null,
+    destBrandSlug: null,
+    destEntitySlug: null,
+    destEventId: null,
   };
   if (!externalCampaignId) return empty;
   try {
+    const campaignSelect =
+      "id, connection_id, platform, dest_page_type, dest_brand_slug, dest_entity_slug, dest_event_id";
     let { data: campaign, error } = await client
       .from("ad_campaigns")
-      .select("id, connection_id, platform, dest_brand_slug")
+      .select(campaignSelect)
       .eq("external_campaign_id", externalCampaignId)
       .maybeSingle();
     if (
@@ -249,7 +280,7 @@ async function resolveCampaignFromParam(
     ) {
       const byId = await client
         .from("ad_campaigns")
-        .select("id, connection_id, platform, dest_brand_slug")
+        .select(campaignSelect)
         .eq("id", externalCampaignId)
         .maybeSingle();
       campaign = byId.data;
@@ -260,7 +291,10 @@ async function resolveCampaignFromParam(
       id?: string;
       connection_id?: string | null;
       platform?: string | null;
+      dest_page_type?: string | null;
       dest_brand_slug?: string | null;
+      dest_entity_slug?: string | null;
+      dest_event_id?: string | null;
     };
     // Resolve the brand via the campaign's dest_brand_slug (brands.slug is frozen
     // + unique-active). Best-effort — a slug miss just leaves brand_id null.
@@ -286,6 +320,12 @@ async function resolveCampaignFromParam(
       brandId,
       connectionId: (c.connection_id as string | null) ?? null,
       platform: oneOf<Platform>(c.platform, PLATFORMS),
+      destPageType: oneOf<DestPageType>(c.dest_page_type, DEST_PAGE_TYPES),
+      destBrandSlug: slug || null,
+      destEntitySlug: typeof c.dest_entity_slug === "string"
+        ? c.dest_entity_slug
+        : null,
+      destEventId: typeof c.dest_event_id === "string" ? c.dest_event_id : null,
     };
   } catch {
     return empty;
@@ -559,19 +599,19 @@ async function recordTouch(
     lane,
     af_c_id: afCId,
     utm: body.utm && typeof body.utm === "object" ? body.utm : {},
-    dest_page_type: oneOf(
-      body.dest?.page_type,
-      ["event", "trip", "brand", "venue", "experience"] as const,
-    ),
-    dest_brand_slug: typeof body.dest?.brand_slug === "string"
-      ? body.dest.brand_slug
-      : null,
-    dest_entity_slug: typeof body.dest?.entity_slug === "string"
-      ? body.dest.entity_slug
-      : null,
-    dest_event_id: typeof body.dest?.event_id === "string"
-      ? body.dest.event_id
-      : null,
+    // Prefer the campaign's stored destination identity (authoritative) so
+    // landings that still emit event/venue/brand keep the campaign's rsvp /
+    // reservation / site type on the touch row.
+    dest_page_type: campaign.destPageType ??
+      oneOf(body.dest?.page_type, DEST_PAGE_TYPES),
+    dest_brand_slug: campaign.destBrandSlug ??
+      (typeof body.dest?.brand_slug === "string" ? body.dest.brand_slug : null),
+    dest_entity_slug: campaign.destEntitySlug ??
+      (typeof body.dest?.entity_slug === "string"
+        ? body.dest.entity_slug
+        : null),
+    dest_event_id: campaign.destEventId ??
+      (typeof body.dest?.event_id === "string" ? body.dest.event_id : null),
     surface,
     user_id: typeof body.user_id === "string" ? body.user_id : null,
     af_uid: typeof body.af_uid === "string" ? body.af_uid : null,

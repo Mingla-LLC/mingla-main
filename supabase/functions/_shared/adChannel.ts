@@ -34,8 +34,8 @@ import {
   type CreateCampaignInput,
   type CreateCreativeInput,
   type Lane,
-  PLATFORMS,
   type Platform,
+  PLATFORMS,
 } from "./adChannelCore.ts";
 
 // ── Registry (A3 §B getAdapter) ───────────────────────────────────────────────
@@ -61,7 +61,8 @@ export function getAdapter(platform: Platform): ChannelAdapter {
 }
 
 export function isPlatform(value: unknown): value is Platform {
-  return typeof value === "string" && (PLATFORMS as readonly string[]).includes(value);
+  return typeof value === "string" &&
+    (PLATFORMS as readonly string[]).includes(value);
 }
 
 export function isLane(value: unknown): value is Lane {
@@ -97,6 +98,10 @@ interface DestinationSelectChain {
 /** Minimal structural view of the supabase client the checker needs. */
 export interface DestinationQueryClient {
   from(table: string): { select(columns: string): DestinationSelectChain };
+  rpc?(
+    fn: string,
+    args: Record<string, unknown>,
+  ): PromiseLike<{ data: unknown; error: { message: string } | null }>;
 }
 
 export interface DestinationRef {
@@ -105,28 +110,84 @@ export interface DestinationRef {
   dest_entity_slug: string | null;
 }
 
+function rowRecord(data: unknown): Record<string, unknown> | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  return data as Record<string, unknown>;
+}
+
+function startStillFuture(masterStartAt: unknown): boolean {
+  if (typeof masterStartAt !== "string" || !masterStartAt) return true;
+  const ms = Date.parse(masterStartAt);
+  if (Number.isNaN(ms)) return true;
+  return ms > Date.now();
+}
+
 /**
- * Mirrors the create-time destination gate (§4.4b): an event destination must
- * still resolve in business_public_events_view with status scheduled|live
- * (the view also exposes ended/cancelled — paid traffic must never point at
- * one); a Stay venue must still resolve in the flag-gated public Stay ad view;
- * a brand destination must still resolve in business_public_brands_view.
- * Unknown/uncreatable page types are NOT public (fail-close).
+ * Mirrors the create-time destination gate (§4.4b). Prefers SQL
+ * `ad_destination_resolve` when `rpc` is available (same authority as create).
+ * Lookup errors throw so the sync job can fail-open; definitive `ok: false`
+ * returns false. Hermetic stubs without `rpc` use the view path below.
  */
 export async function destinationStillPublicLive(
   db: DestinationQueryClient,
   dest: DestinationRef,
 ): Promise<boolean> {
+  if (typeof db.rpc === "function") {
+    const { data, error } = await db.rpc("ad_destination_resolve", {
+      p_page_type: dest.dest_page_type,
+      p_brand_slug: dest.dest_brand_slug,
+      p_entity_slug: dest.dest_entity_slug,
+    });
+    if (error) {
+      throw new Error(error.message || "destination_lookup_failed");
+    }
+    if (
+      data &&
+      typeof data === "object" &&
+      typeof (data as Record<string, unknown>).ok === "boolean"
+    ) {
+      return (data as Record<string, unknown>).ok === true;
+    }
+    throw new Error("destination_resolve_unexpected");
+  }
+
+  // toward #3697 Wave 1: hermetic view path aligned with create-time checks.
   if (dest.dest_page_type === "event") {
     if (!dest.dest_entity_slug) return false;
     const { data } = await db
       .from("business_public_events_view")
-      .select("id")
+      .select("id,master_start_at")
       .eq("brand_slug", dest.dest_brand_slug)
       .eq("slug", dest.dest_entity_slug)
       .in("status", ["scheduled", "live"])
       .maybeSingle();
-    return Boolean(data);
+    const row = rowRecord(data);
+    if (!row) return false;
+    return startStillFuture(row.master_start_at);
+  }
+  if (
+    dest.dest_page_type === "rsvp" ||
+    dest.dest_page_type === "trip" ||
+    dest.dest_page_type === "experience"
+  ) {
+    if (!dest.dest_entity_slug) return false;
+    const { data } = await db
+      .from("business_public_events_view")
+      .select("id,master_start_at,rsvp_discoverable,event_type")
+      .eq("brand_slug", dest.dest_brand_slug)
+      .eq("slug", dest.dest_entity_slug)
+      .eq("event_type", dest.dest_page_type)
+      .in("status", ["scheduled", "live"])
+      .maybeSingle();
+    const row = rowRecord(data);
+    if (!row) return false;
+    if (
+      dest.dest_page_type === "rsvp" &&
+      row.rsvp_discoverable !== true
+    ) {
+      return false;
+    }
+    return startStillFuture(row.master_start_at);
   }
   if (dest.dest_page_type === "brand") {
     const { data } = await db
@@ -143,6 +204,32 @@ export async function destinationStillPublicLive(
       .select("id")
       .eq("brand_slug", dest.dest_brand_slug)
       .eq("slug", dest.dest_entity_slug)
+      .maybeSingle();
+    return Boolean(data);
+  }
+  if (dest.dest_page_type === "reservation") {
+    if (!dest.dest_entity_slug) return false;
+    const { data } = await db
+      .from("ad_public_stay_destinations_view")
+      .select("id")
+      .eq("brand_slug", dest.dest_brand_slug)
+      .eq("slug", dest.dest_entity_slug)
+      .maybeSingle();
+    const stay = rowRecord(data);
+    if (!stay?.id) return false;
+    const settings = await db
+      .from("venue_reservation_settings")
+      .select("reservations_enabled")
+      .eq("venue_id", String(stay.id))
+      .maybeSingle();
+    const settingsRow = rowRecord(settings.data);
+    return settingsRow?.reservations_enabled === true;
+  }
+  if (dest.dest_page_type === "site") {
+    const { data } = await db
+      .from("ad_public_site_destinations_view")
+      .select("id")
+      .eq("brand_slug", dest.dest_brand_slug)
       .maybeSingle();
     return Boolean(data);
   }
@@ -185,8 +272,9 @@ export interface AtomicCreateFailure {
 export class AtomicCreateError extends Error {
   readonly failure: AtomicCreateFailure;
   constructor(failure: AtomicCreateFailure) {
-    const causeMessage =
-      failure.cause instanceof Error ? failure.cause.message : String(failure.cause);
+    const causeMessage = failure.cause instanceof Error
+      ? failure.cause.message
+      : String(failure.cause);
     super(`atomic create failed at step "${failure.step}": ${causeMessage}`);
     this.name = "AtomicCreateError";
     this.failure = failure;
@@ -265,7 +353,11 @@ export async function createFullCampaignAtomic(
   // 2. Ad set
   let adSetExternalId: string;
   try {
-    const created = await adapter.createAdSet(conn, campaignExternalId, input.adSet);
+    const created = await adapter.createAdSet(
+      conn,
+      campaignExternalId,
+      input.adSet,
+    );
     adSetExternalId = created.externalId;
     partial.external_adset_id = adSetExternalId;
   } catch (cause) {

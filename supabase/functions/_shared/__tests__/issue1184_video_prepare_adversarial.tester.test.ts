@@ -528,9 +528,16 @@ Deno.test("ISSUE-1184 adversarial: destination resolver rejects non-public and a
     "destination_entity_slug_invalid",
     400,
   );
+  // [TEST-MOD-APPROVED #3697] Wave 1 accepts trip; missing entity_slug is required.
   await expect(
     db({}),
     { page_type: "trip", brand_slug: "a" },
+    "destination_entity_slug_required",
+    400,
+  );
+  await expect(
+    db({}),
+    { page_type: "not_a_real_type", brand_slug: "a" },
     "destination_page_type_invalid",
     400,
   );
