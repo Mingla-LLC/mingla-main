@@ -1131,6 +1131,26 @@ jobs:
           # function under test is called, and the suite asserts that it is.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester.adversarial.pg17.test.sql
+          # Issue #3660 — tester2 (written by the tester, not the implementor).
+          # Ownership edges and REAL-role privilege: an owner of two brands
+          # with one blocked changes nothing on either; ended / cancelled
+          # events with paid orders do not block and their order and ticket
+          # rows survive byte for byte; a multi-date event blocks on its last
+          # date; the preview RPC never shows a co-owner or team member another
+          # account's events; anon / authenticated / service_role are checked
+          # through SET ROLE, not a spoofed claim; the partner stamps match the
+          # real partner_disconnect_link column for column.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.edges_and_privilege.pg17.test.sql
+          # Issue #3660 — tester2 REAL concurrency (extra sessions over dblink,
+          # loopback inside the postgres service, password read from this
+          # step's PGPASSWORD). A sale in flight makes the deletion wait and
+          # then refuse; a second deletion of the same account queues and
+          # reports already_deleted; a deletion that fails mid-write leaves
+          # nothing behind. It commits its own fixtures and removes every row,
+          # the dblink extension and its schema before it exits.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.races.pg17.test.sql
           # Issue #3645 — payout maturity is payment + 24h (not event end + 3d);
           # cancel refund runs open in awaiting_review; PR6 charge readiness admits
           # stamped Paystack hold brands without a subaccount.
