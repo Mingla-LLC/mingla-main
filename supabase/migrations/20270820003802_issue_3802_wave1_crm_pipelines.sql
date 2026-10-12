@@ -44,7 +44,9 @@
 --   BEGIN;
 --   DO $$ BEGIN
 --     IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
---       PERFORM cron.unschedule(j.jobid) FROM cron.job j WHERE j.jobname = 'crm_reconcile_live';
+--       IF EXISTS (SELECT 1 FROM cron.job j WHERE j.jobname = 'crm_reconcile_live') THEN
+--         PERFORM cron.unschedule('crm_reconcile_live');
+--       END IF;
 --     END IF;
 --   END $$;
 --   DROP FUNCTION IF EXISTS public.crm_record_restore(uuid);
@@ -536,7 +538,11 @@ CREATE TABLE public.crm_records (
   next_action    text,
   due_on         date,
   brand_id       uuid,                       -- hosts only; validated on write
-  place_pool_id  uuid,                       -- hosts only; validated on write
+  -- A place_pool id. The column is NOT called place_pool_id on purpose: the
+  -- venue-identity tooling inventories every table that has a column of that
+  -- name, and a pipeline link is not part of a venue's identity. The functions
+  -- still call the field place_pool_id.
+  place_id       uuid,                       -- hosts only; validated on write
   beta_lead_id   uuid,                       -- hosts only; set by Add to Hosts
   followers      integer,                    -- creators only
   agreement      text,                       -- creators only
@@ -565,7 +571,7 @@ CREATE TABLE public.crm_records (
   CONSTRAINT crm_records_followers_check CHECK (followers IS NULL OR followers >= 0),
   CONSTRAINT crm_records_text_lengths CHECK (
     char_length(COALESCE(contact,'')) <= 300 AND char_length(COALESCE(next_action,'')) <= 200 AND char_length(COALESCE(rate,'')) <= 120),
-  CONSTRAINT crm_records_host_only CHECK (pipeline = 'hosts' OR (brand_id IS NULL AND place_pool_id IS NULL AND beta_lead_id IS NULL AND went_live_at IS NULL)),
+  CONSTRAINT crm_records_host_only CHECK (pipeline = 'hosts' OR (brand_id IS NULL AND place_id IS NULL AND beta_lead_id IS NULL AND went_live_at IS NULL)),
   CONSTRAINT crm_records_creator_only CHECK (pipeline = 'creators' OR (followers IS NULL AND agreement IS NULL AND rate IS NULL)),
   CONSTRAINT crm_records_deleted_pair CHECK ((deleted_at IS NULL) = (deleted_by IS NULL))
 );
@@ -669,8 +675,8 @@ AS $$
                           FROM public.crm_record_owners o WHERE o.record_id = r.id), '[]'::jsonb),
     'brand_id', r.brand_id,
     'brand_name', (SELECT b.name FROM public.brands b WHERE b.id = r.brand_id AND b.deleted_at IS NULL),
-    'place_pool_id', r.place_pool_id,
-    'place_name', (SELECT p.name FROM public.place_pool p WHERE p.id = r.place_pool_id AND p.deleted_at IS NULL),
+    'place_pool_id', r.place_id,
+    'place_name', (SELECT p.name FROM public.place_pool p WHERE p.id = r.place_id AND p.deleted_at IS NULL),
     'beta_lead_id', r.beta_lead_id, 'followers', r.followers, 'agreement', r.agreement, 'rate', r.rate,
     'went_live_at', r.went_live_at,
     'last_touch_at', (SELECT max(a.occurred_at) FROM public.crm_activity a WHERE a.record_id = r.id AND a.kind = 'touch'),
@@ -894,7 +900,7 @@ BEGIN
   BEGIN
     INSERT INTO public.crm_records (
       pipeline, name, icp, region_id, stage, contact, channel, source, next_action, due_on,
-      brand_id, place_pool_id, followers, agreement, rate, created_by, created_at, updated_by, updated_at)
+      brand_id, place_id, followers, agreement, rate, created_by, created_at, updated_by, updated_at)
     VALUES (
       p_pipeline, v_clean->>'name', v_clean->>'icp', (v_clean->>'region_id')::uuid, v_first,
       v_clean->>'contact', v_clean->>'channel', v_clean->>'source', v_clean->>'next_action',
@@ -1026,7 +1032,7 @@ BEGIN
                                           'is_live', public.crm_brand_is_live(b.id))
                   FROM public.brands b WHERE b.id = v_rec.brand_id AND b.deleted_at IS NULL),
       'place', (SELECT jsonb_build_object('id', p.id, 'name', p.name, 'city', p.city)
-                  FROM public.place_pool p WHERE p.id = v_rec.place_pool_id AND p.deleted_at IS NULL)),
+                  FROM public.place_pool p WHERE p.id = v_rec.place_id AND p.deleted_at IS NULL)),
     'activity', COALESCE((
       SELECT jsonb_agg(public.crm_activity_json(a) ORDER BY a.occurred_at DESC, a.created_at DESC, a.id)
       FROM (SELECT x.* FROM public.crm_activity x
@@ -1228,7 +1234,9 @@ BEGIN
   END IF;
 
   v_clean := public.crm_validate_fields(v_rec.pipeline, p_changes, 'update');
+  -- The field place_pool_id is stored in the column place_id.
   v_cur := to_jsonb(v_rec);
+  v_cur := v_cur || jsonb_build_object('place_pool_id', v_cur->'place_id');
   FOR v_key, v_val IN SELECT e.key, e.value FROM jsonb_each(v_clean) e LOOP
     IF (v_cur->v_key) IS DISTINCT FROM v_val THEN
       v_before := v_before || jsonb_build_object(v_key, v_cur->v_key);
@@ -1251,12 +1259,14 @@ BEGIN
     END IF;
   END IF;
 
-  v_new := jsonb_populate_record(v_rec, v_after);
+  v_new := jsonb_populate_record(v_rec, v_after || CASE
+    WHEN v_after ? 'place_pool_id' THEN jsonb_build_object('place_id', v_after->'place_pool_id')
+    ELSE '{}'::jsonb END);
   BEGIN
     UPDATE public.crm_records
        SET name = v_new.name, icp = v_new.icp, region_id = v_new.region_id, contact = v_new.contact,
            channel = v_new.channel, source = v_new.source, next_action = v_new.next_action,
-           due_on = v_new.due_on, brand_id = v_new.brand_id, place_pool_id = v_new.place_pool_id,
+           due_on = v_new.due_on, brand_id = v_new.brand_id, place_id = v_new.place_id,
            followers = v_new.followers, agreement = v_new.agreement, rate = v_new.rate,
            updated_by = v.actor_email, updated_at = clock_timestamp()
      WHERE id = v_rec.id;
@@ -1700,22 +1710,14 @@ GRANT EXECUTE ON FUNCTION public.admin_beta_leads_list() TO authenticated;
 --
 -- Job name crm_reconcile_live; it calls exactly
 --   SELECT public.crm_reconcile_live()
--- Idempotent: an existing job of that name is replaced. With no records the
+-- Idempotent: scheduling a name that already exists replaces that job (one
+-- job per name), so applying this twice leaves one job. With no records the
 -- call changes nothing and returns 0. Skipped where pg_cron is absent.
 -- ---------------------------------------------------------------------------
 DO $$
-DECLARE
-  v_job_id bigint;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
     RETURN;
-  END IF;
-  SELECT j.jobid INTO v_job_id
-  FROM cron.job j
-  WHERE j.jobname = 'crm_reconcile_live'
-  LIMIT 1;
-  IF v_job_id IS NOT NULL THEN
-    PERFORM cron.unschedule(v_job_id);
   END IF;
   PERFORM cron.schedule(
     'crm_reconcile_live',
@@ -1782,8 +1784,8 @@ DECLARE
   v_n     integer;
   v_stage text;
 BEGIN
-  -- 9.1 functions: PUBLIC and anon hold nothing; authenticated can execute
-  -- exactly the client ones; service_role can execute all of them.
+  -- 9.1 functions: PUBLIC and anon hold nothing; the signed-in role holds
+  -- exactly the client ones; the trusted server role holds all of them.
   FOREACH v_fn IN ARRAY c_client || c_internal LOOP
     IF has_function_privilege('anon', v_fn, 'EXECUTE') THEN
       RAISE EXCEPTION 'issue 3802 wave 1 self-check: anon can execute %', v_fn;

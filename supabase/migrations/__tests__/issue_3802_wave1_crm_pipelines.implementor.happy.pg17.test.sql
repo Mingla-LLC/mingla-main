@@ -176,6 +176,26 @@ exception when others then
 end;
 $fn$;
 
+-- A JSON answer as JSON; a captured error becomes an empty object, so the
+-- checks that follow are recorded as failed instead of stopping the suite.
+create function pg_temp.t3802w_jb(p text) returns jsonb
+language plpgsql as $fn$
+begin
+  return coalesce(p::jsonb, '{}'::jsonb);
+exception when others then
+  return '{}'::jsonb;
+end;
+$fn$;
+
+create function pg_temp.t3802w_uuid(p text) returns uuid
+language plpgsql as $fn$
+begin
+  return p::uuid;
+exception when others then
+  return null;
+end;
+$fn$;
+
 create function pg_temp.t3802w_id(p_k text) returns text
 language sql as $fn$ select v from t3802w_ids where k = p_k $fn$;
 
@@ -286,7 +306,7 @@ begin
     pg_temp.t3802w_get(r, 'record', 'owners'), '["issue3802w-owner@test.local"]');
   perform pg_temp.t3802w_check('W1-1', 'a new record gets a created log line',
     (select kind || '/' || actor_email || '/' || coalesce(via, '<person>') || '/' || body
-       from public.crm_activity where record_id = pg_temp.t3802w_id('base')::uuid),
+       from public.crm_activity where record_id = pg_temp.t3802w_uuid(pg_temp.t3802w_id('base'))),
     'created/issue3802w-owner@test.local/<person>/Added to the pipeline.');
 
   -- Allowed callers. Each function is called with a request that is valid
@@ -382,36 +402,36 @@ begin
   perform pg_temp.t3802w_check('W1-1', 'config: an owner can delete',
     pg_temp.t3802w_get(pg_temp.t3802w_as('owner', $q$select public.crm_config()::text$q$), 'me', 'can_delete'), 'true');
   perform pg_temp.t3802w_check('W1-1', 'config: host stages in order',
-    (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(r::jsonb #> '{pipelines,hosts,stages}') with ordinality x(s, o)),
+    (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) #> '{pipelines,hosts,stages}') with ordinality x(s, o)),
     'prospect,contacted,replied,meeting,onboarded,live,lost');
   perform pg_temp.t3802w_check('W1-1', 'config: creator stages in order',
-    (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(r::jsonb #> '{pipelines,creators,stages}') with ordinality x(s, o)),
+    (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) #> '{pipelines,creators,stages}') with ordinality x(s, o)),
     'identified,contacted,replied,negotiating,booked,posted,passed');
   perform pg_temp.t3802w_check('W1-1', 'config: Live is automatic and Lost is terminal',
-    (r::jsonb #>> '{pipelines,hosts,stages,5,auto}') || '/' || (r::jsonb #>> '{pipelines,hosts,stages,6,terminal}'), 'true/true');
+    (pg_temp.t3802w_jb(r) #>> '{pipelines,hosts,stages,5,auto}') || '/' || (pg_temp.t3802w_jb(r) #>> '{pipelines,hosts,stages,6,terminal}'), 'true/true');
   perform pg_temp.t3802w_check('W1-1', 'config: host ICPs',
-    (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(r::jsonb #> '{pipelines,hosts,icps}') with ordinality x(s, o)),
+    (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) #> '{pipelines,hosts,icps}') with ordinality x(s, o)),
     'restaurant_bar,venue_gallery,event_organizer,community_host,trip_stay_host,partner_org');
   perform pg_temp.t3802w_check('W1-1', 'config: creator ICPs and reached stages',
-    (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(r::jsonb #> '{pipelines,creators,icps}') with ordinality x(s, o))
-      || '|' || (r::jsonb #>> '{pipelines,creators,reached_stages}') || '|' || (r::jsonb #>> '{pipelines,hosts,reached_stages}'),
+    (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) #> '{pipelines,creators,icps}') with ordinality x(s, o))
+      || '|' || (pg_temp.t3802w_jb(r) #>> '{pipelines,creators,reached_stages}') || '|' || (pg_temp.t3802w_jb(r) #>> '{pipelines,hosts,reached_stages}'),
     'ambassador,ugc_one_off|["booked", "posted"]|["onboarded", "live"]');
   perform pg_temp.t3802w_check('W1-1', 'config: pick-lists',
-    (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(r::jsonb -> 'channels') with ordinality x(s, o))
-      || '|' || (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(r::jsonb -> 'sources') with ordinality x(s, o))
-      || '|' || (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(r::jsonb -> 'reply_classes') with ordinality x(s, o))
-      || '|' || (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(r::jsonb -> 'agreements') with ordinality x(s, o)),
+    (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'channels') with ordinality x(s, o))
+      || '|' || (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'sources') with ordinality x(s, o))
+      || '|' || (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'reply_classes') with ordinality x(s, o))
+      || '|' || (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'agreements') with ordinality x(s, o)),
     'email,whatsapp,instagram_dm,tiktok_dm,phone,in_person|place_pool,instagram,tiktok,referral,event,inbound|interested,question,not_now,wrong_contact|none,sent,signed');
   perform pg_temp.t3802w_check('W1-1', 'config: regions list live cities first',
     (select string_agg((s->>'name') || '=' || (s->>'is_live'), ',' order by o)
-       from jsonb_array_elements(r::jsonb -> 'regions') with ordinality x(s, o)
+       from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'regions') with ordinality x(s, o)
       where s->>'name' like 'Issue3802w %'),
     'Issue3802w Lagos=true,Issue3802w Chicago=false');
   perform pg_temp.t3802w_check('W1-1', 'config: region keys',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(r::jsonb #> '{regions,0}') k), 'country_code,id,is_live,name');
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(r) #> '{regions,0}') k), 'country_code,id,is_live,name');
   perform pg_temp.t3802w_check('W1-1', 'config: team is everyone who is not revoked',
     (select string_agg((s->>'email') || '=' || (s->>'role') || '/' || (s->>'status'), ',' order by s->>'email')
-       from jsonb_array_elements(r::jsonb -> 'team') s where s->>'email' like '%issue3802w%'),
+       from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'team') s where s->>'email' like '%issue3802w%'),
     'issue3802w-admin@test.local=admin/active,issue3802w-growth@test.local=growth/active,issue3802w-invited@test.local=growth/invited,issue3802w-owner@test.local=owner/active,issue3802w-partner@test.local=partner/active,tunde.a@issue3802w.test.local=growth/active');
   perform pg_temp.t3802w_check('W1-1', 'config: bulk limit', pg_temp.t3802w_get(r, 'limits', 'bulk_max'), '50');
   perform pg_temp.t3802w_check('W1-1', 'display names',
@@ -422,10 +442,10 @@ begin
   perform pg_temp.t3802w_like('W1-1', 'list: unknown pipeline',
     pg_temp.t3802w_as('growth', $q$select public.crm_records_list('venues')::text$q$), 'ERR:22023:invalid_pipeline:%');
   perform pg_temp.t3802w_check('W1-1', 'list: shape',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_as('partner', $q$select public.crm_records_list('hosts')::text$q$)::jsonb) k),
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(pg_temp.t3802w_as('partner', $q$select public.crm_records_list('hosts')::text$q$))) k),
     'pipeline,records,truncated');
   perform pg_temp.t3802w_check('W1-1', 'record: exactly the documented keys',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_as('partner', format($q$select public.crm_record_get(%L)::text$q$, pg_temp.t3802w_id('base')))::jsonb -> 'record') k),
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(pg_temp.t3802w_as('partner', format($q$select public.crm_record_get(%L)::text$q$, pg_temp.t3802w_id('base')))) -> 'record') k),
     'agreement,beta_lead_id,brand_id,brand_name,channel,contact,created_at,created_by,due_on,followers,icp,id,last_touch_at,name,next_action,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,went_live_at');
 end;
 $w1$;
@@ -543,7 +563,7 @@ begin
   perform pg_temp.t3802w_check('W1-4', 'rename into a taken name is refused', r,
     'ERR:22023:duplicate_name: "Palm Court Kitchen" is already in Hosts. Open it instead.');
   perform pg_temp.t3802w_check('W1-4', 'the refused rename changed nothing',
-    (select name from public.crm_records where id = pg_temp.t3802w_id('sunset')::uuid), 'Sunset Bar');
+    (select name from public.crm_records where id = pg_temp.t3802w_uuid(pg_temp.t3802w_id('sunset'))), 'Sunset Bar');
   -- Re-spelling your own name is not a duplicate.
   r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, '{"name": "  Sunset   BAR "}'::jsonb)::text$q$, pg_temp.t3802w_id('sunset')));
   perform pg_temp.t3802w_check('W1-4', 're-spelling the same name is allowed and tidied',
@@ -558,7 +578,7 @@ begin
   perform pg_temp.t3802w_check('W1-4', 'restore into a taken name is refused', r,
     'ERR:22023:duplicate_name: "sunset bar" is already in Hosts. Open it instead.');
   perform pg_temp.t3802w_check('W1-4', 'the refused restore left it deleted',
-    (select (deleted_at is not null)::text from public.crm_records where id = pg_temp.t3802w_id('sunset')::uuid), 'true');
+    (select (deleted_at is not null)::text from public.crm_records where id = pg_temp.t3802w_uuid(pg_temp.t3802w_id('sunset'))), 'true');
 
   -- The check a form runs while someone types.
   r := pg_temp.t3802w_as('growth', $q$select public.crm_duplicate_check('hosts', '  palm COURT kitchen')::text$q$);
@@ -598,7 +618,7 @@ begin
   r2 := pg_temp.t3802w_as('growth', $q$select public.crm_record_create('hosts', '{"name": "Replay Venue", "icp": "restaurant_bar"}'::jsonb, 'w15-create-0001')::text$q$);
   perform pg_temp.t3802w_check('W1-5', 'replayed create is marked', pg_temp.t3802w_get(r2, 'replayed'), 'true');
   perform pg_temp.t3802w_check('W1-5', 'replayed create returns the first answer',
-    (r2::jsonb - 'replayed')::text, r1::jsonb::text);
+    (pg_temp.t3802w_jb(r2) - 'replayed')::text, pg_temp.t3802w_jb(r1)::text);
   -- A replay with different words still answers with the first result.
   r2 := pg_temp.t3802w_as('growth', $q$select public.crm_record_create('creators', '{"name": "Something Else"}'::jsonb, 'w15-create-0001')::text$q$);
   perform pg_temp.t3802w_check('W1-5', 'a replay never runs a second request',
@@ -618,9 +638,9 @@ begin
   v_audit := pg_temp.t3802w_audit();
   r2 := pg_temp.t3802w_as('growth', format($q$select public.crm_record_log(%L, '{"kind": "note", "body": "Called, no answer."}'::jsonb, 'w15-log-0001')::text$q$, pg_temp.t3802w_id('replay')));
   perform pg_temp.t3802w_check('W1-5', 'replayed log entry is marked and identical',
-    pg_temp.t3802w_get(r2, 'replayed') || '/' || ((r2::jsonb - 'replayed') = r1::jsonb)::text, 'true/true');
+    pg_temp.t3802w_get(r2, 'replayed') || '/' || ((pg_temp.t3802w_jb(r2) - 'replayed') = pg_temp.t3802w_jb(r1))::text, 'true/true');
   perform pg_temp.t3802w_check('W1-5', 'the log has one such line',
-    (select count(*)::text from public.crm_activity where record_id = pg_temp.t3802w_id('replay')::uuid and kind = 'note'), '1');
+    (select count(*)::text from public.crm_activity where record_id = pg_temp.t3802w_uuid(pg_temp.t3802w_id('replay')) and kind = 'note'), '1');
   perform pg_temp.t3802w_check('W1-5', 'the replayed log entry wrote nothing', pg_temp.t3802w_snapshot(), v_before);
   perform pg_temp.t3802w_check('W1-5', 'the replayed log entry wrote no audit row', pg_temp.t3802w_audit()::text, v_audit::text);
 
@@ -684,23 +704,23 @@ begin
 
   r := pg_temp.t3802w_as('partner', format($q$select public.crm_records_bulk_create('hosts', %L::jsonb, 'w16-bulk-0001')::text$q$, v_items::text));
   perform pg_temp.t3802w_check('W1-6', '50 items: 45 created, 3 skipped, 2 invalid',
-    jsonb_array_length(r::jsonb -> 'created') || '/' || jsonb_array_length(r::jsonb -> 'skipped') || '/' || jsonb_array_length(r::jsonb -> 'invalid'),
+    jsonb_array_length(pg_temp.t3802w_jb(r) -> 'created') || '/' || jsonb_array_length(pg_temp.t3802w_jb(r) -> 'skipped') || '/' || jsonb_array_length(pg_temp.t3802w_jb(r) -> 'invalid'),
     '45/3/2');
   perform pg_temp.t3802w_check('W1-6', '45 records were written', (select (count(*) - v_n)::text from public.crm_records), '45');
   perform pg_temp.t3802w_check('W1-6', 'skipped items say which and why',
     (select string_agg((s->>'index') || ':' || (s->>'reason') || ':' || (s #>> '{existing,name}'), ',' order by (s->>'index')::int)
-       from jsonb_array_elements(r::jsonb -> 'skipped') s),
+       from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'skipped') s),
     '45:duplicate:Palm Court Kitchen,46:duplicate:Palm Court Kitchen,47:duplicate:Bulk Host 01');
   perform pg_temp.t3802w_check('W1-6', 'invalid items say which and why',
     (select string_agg((s->>'index') || ':' || split_part(s->>'error', ':', 1), ',' order by (s->>'index')::int)
-       from jsonb_array_elements(r::jsonb -> 'invalid') s),
+       from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'invalid') s),
     '48:invalid_name,49:invalid_icp');
   perform pg_temp.t3802w_check('W1-6', 'an invalid item explains itself',
-    r::jsonb #>> '{invalid,1,error}',
+    pg_temp.t3802w_jb(r) #>> '{invalid,1,error}',
     'invalid_icp: ambassador is not an ICP for hosts. Use one of: restaurant_bar, venue_gallery, event_organizer, community_host, trip_stay_host, partner_org.');
   perform pg_temp.t3802w_check('W1-6', 'created items keep their position and are owned by the sender',
-    (r::jsonb #>> '{created,0,index}') || '/' || (r::jsonb #>> '{created,44,index}') || '/' || (r::jsonb #>> '{created,44,record,name}')
-      || '/' || (r::jsonb #>> '{created,44,record,owners}') || '/' || (r::jsonb #>> '{created,44,record,icp}'),
+    (pg_temp.t3802w_jb(r) #>> '{created,0,index}') || '/' || (pg_temp.t3802w_jb(r) #>> '{created,44,index}') || '/' || (pg_temp.t3802w_jb(r) #>> '{created,44,record,name}')
+      || '/' || (pg_temp.t3802w_jb(r) #>> '{created,44,record,owners}') || '/' || (pg_temp.t3802w_jb(r) #>> '{created,44,record,icp}'),
     '0/44/Bulk Host 45/["issue3802w-partner@test.local"]/venue_gallery');
   perform pg_temp.t3802w_check('W1-10', 'bulk: one summary audit row plus one per record',
     (pg_temp.t3802w_audit() - v_audit)::text, '46');
@@ -714,7 +734,7 @@ begin
   v_audit := pg_temp.t3802w_audit();
   r2 := pg_temp.t3802w_as('partner', format($q$select public.crm_records_bulk_create('hosts', %L::jsonb, 'w16-bulk-0001')::text$q$, v_items::text));
   perform pg_temp.t3802w_check('W1-6', 'a repeated bulk request returns the first answer',
-    pg_temp.t3802w_get(r2, 'replayed') || '/' || ((r2::jsonb - 'replayed') = r::jsonb)::text, 'true/true');
+    pg_temp.t3802w_get(r2, 'replayed') || '/' || ((pg_temp.t3802w_jb(r2) - 'replayed') = pg_temp.t3802w_jb(r))::text, 'true/true');
   perform pg_temp.t3802w_check('W1-6', 'a repeated bulk request wrote nothing', pg_temp.t3802w_snapshot(), v_before);
   perform pg_temp.t3802w_check('W1-10', 'a repeated bulk request wrote no audit row', pg_temp.t3802w_audit()::text, v_audit::text);
 
@@ -734,8 +754,8 @@ begin
   -- One item that is not an object does not stop the others.
   r := pg_temp.t3802w_as('partner', $q$select public.crm_records_bulk_create('creators', '[{"name": "@bulkone"}, "just text", {"name": "@bulktwo", "stage": "booked"}]'::jsonb, 'w16-bulk-0006')::text$q$);
   perform pg_temp.t3802w_check('W1-6', 'a bad item never stops the rest',
-    jsonb_array_length(r::jsonb -> 'created') || '/' || jsonb_array_length(r::jsonb -> 'invalid') || '/'
-      || split_part(r::jsonb #>> '{invalid,0,error}', ':', 1) || '/' || split_part(r::jsonb #>> '{invalid,1,error}', ':', 1),
+    jsonb_array_length(pg_temp.t3802w_jb(r) -> 'created') || '/' || jsonb_array_length(pg_temp.t3802w_jb(r) -> 'invalid') || '/'
+      || split_part(pg_temp.t3802w_jb(r) #>> '{invalid,0,error}', ':', 1) || '/' || split_part(pg_temp.t3802w_jb(r) #>> '{invalid,1,error}', ':', 1),
     '1/2/invalid_fields/unknown_field');
 end;
 $w6$;
@@ -809,6 +829,18 @@ begin
        from public.admin_audit_log where action = 'crm.record_update' and target_id = pg_temp.t3802w_id('full')
        order by created_at desc limit 1),
     '{"icp": "event_organizer", "due_on": "2026-10-31", "channel": "whatsapp", "contact": "Ada · ada@example.com"} -> {"icp": "partner_org", "due_on": "2026-11-05", "channel": null, "contact": null} by issue3802w-partner@test.local');
+  r := pg_temp.t3802w_as('partner', format($q$select public.crm_record_update(%L, '{"place_pool_id": null}'::jsonb)::text$q$, pg_temp.t3802w_id('full')));
+  perform pg_temp.t3802w_check('W1-4', 'update removes the place link',
+    pg_temp.t3802w_get(r, 'changed') || '/' || coalesce(pg_temp.t3802w_get(r, 'record', 'place_pool_id'), '<none>') || '/' || coalesce(pg_temp.t3802w_get(r, 'record', 'place_name'), '<none>'),
+    'true/<none>/<none>');
+  r := pg_temp.t3802w_as('partner', format($q$select public.crm_record_update(%L, '{"place_pool_id": "38020000-0000-4000-c500-000000000001"}'::jsonb)::text$q$, pg_temp.t3802w_id('full')));
+  perform pg_temp.t3802w_check('W1-4', 'update sets the place link, and says so in the audit row',
+    pg_temp.t3802w_get(r, 'record', 'place_pool_id') || '/' || pg_temp.t3802w_get(r, 'record', 'place_name') || '/'
+      || (select (metadata->'before')::text || ' -> ' || (metadata->'after')::text from public.admin_audit_log
+           where action = 'crm.record_update' and target_id = pg_temp.t3802w_id('full') order by created_at desc limit 1),
+    '38020000-0000-4000-c500-000000000001/Issue3802w Palm Place/{"place_pool_id": null} -> {"place_pool_id": "38020000-0000-4000-c500-000000000001"}');
+  r := pg_temp.t3802w_as('partner', format($q$select public.crm_record_update(%L, '{"place_pool_id": "38020000-0000-4000-c500-000000000001"}'::jsonb)::text$q$, pg_temp.t3802w_id('full')));
+  perform pg_temp.t3802w_check('W1-4', 'the same place link again changes nothing', pg_temp.t3802w_get(r, 'changed'), 'false');
   perform pg_temp.t3802w_check('W1-4', 'update refuses stage',
     pg_temp.t3802w_as('partner', format($q$select public.crm_record_update(%L, '{"stage": "live"}'::jsonb)::text$q$, pg_temp.t3802w_id('full'))),
     'ERR:22023:unknown_field: "stage" cannot be changed here. Use crm_record_move_stage for stage and crm_record_set_owners for owners.');
@@ -880,20 +912,20 @@ begin
   perform pg_temp.t3802w_like('W1-7', 'Lost with a 301-character reason is refused',
     pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'lost', repeat('x', 301))::text$q$, v_id)), 'ERR:22023:reason_required:%');
   perform pg_temp.t3802w_check('W1-7', 'still in Prospect after every refusal',
-    (select stage || '/' || coalesce(stage_reason, '<none>') from public.crm_records where id = v_id::uuid), 'prospect/<none>');
+    (select stage || '/' || coalesce(stage_reason, '<none>') from public.crm_records where id = pg_temp.t3802w_uuid(v_id)), 'prospect/<none>');
 
   r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'meeting', 'not a terminal stage')::text$q$, v_id));
   perform pg_temp.t3802w_check('W1-7', 'a normal move stores no reason',
     pg_temp.t3802w_get(r, 'record', 'stage') || '/' || coalesce(pg_temp.t3802w_get(r, 'record', 'stage_reason'), '<none>'), 'meeting/<none>');
   perform pg_temp.t3802w_check('W1-7', 'the move is logged with both stages',
     (select from_stage || '>' || to_stage || '/' || actor_email || '/' || coalesce(body, '<none>')
-       from public.crm_activity where id = pg_temp.t3802w_get(r, 'activity_id')::uuid),
+       from public.crm_activity where id = pg_temp.t3802w_uuid(pg_temp.t3802w_get(r, 'activity_id'))),
     'prospect>meeting/issue3802w-growth@test.local/<none>');
   r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'lost', '  Closed for the season  ')::text$q$, v_id));
   perform pg_temp.t3802w_check('W1-7', 'Lost with a reason stores it',
     pg_temp.t3802w_get(r, 'record', 'stage') || '/' || pg_temp.t3802w_get(r, 'record', 'stage_reason'), 'lost/Closed for the season');
   perform pg_temp.t3802w_check('W1-7', 'and logs it',
-    (select from_stage || '>' || to_stage || '/' || body from public.crm_activity where id = pg_temp.t3802w_get(r, 'activity_id')::uuid),
+    (select from_stage || '>' || to_stage || '/' || body from public.crm_activity where id = pg_temp.t3802w_uuid(pg_temp.t3802w_get(r, 'activity_id'))),
     'meeting>lost/Closed for the season');
   r := pg_temp.t3802w_as('partner', format($q$select public.crm_record_move_stage(%L, 'contacted')::text$q$, v_id));
   perform pg_temp.t3802w_check('W1-7', 'moving out of Lost clears the reason',
@@ -969,8 +1001,8 @@ begin
     pg_temp.t3802w_get(r, 'moved_to') || '/' || pg_temp.t3802w_get(r, 'record', 'stage') || '/' || pg_temp.t3802w_get(r, 'record', 'brand_name'),
     'onboarded/onboarded/Issue3802w Quiet Brand');
   perform pg_temp.t3802w_check('W1-8', 'with a system log line',
-    (select coalesce(actor_email, '<system>') || '/' || via || '/' || from_stage || '>' || to_stage || '/' || body
-       from public.crm_activity where record_id = v_q::uuid and kind = 'stage_move'),
+    (select string_agg(coalesce(actor_email, '<system>') || '/' || via || '/' || from_stage || '>' || to_stage || '/' || body, ' ;; ' order by created_at)
+       from public.crm_activity where record_id = pg_temp.t3802w_uuid(v_q) and kind = 'stage_move'),
     '<system>/system/prospect>onboarded/Linked to Issue3802w Quiet Brand. Stage moved to Onboarded.');
   perform pg_temp.t3802w_check('W1-10', 'the link wrote one audit row, with the move noted',
     (pg_temp.t3802w_audit() - v_audit)::text || '/' || (select metadata->>'moved_to' from public.admin_audit_log
@@ -993,10 +1025,10 @@ begin
   perform pg_temp.t3802w_check('W1-8', 'the scheduled run promotes the host once',
     pg_temp.t3802w_as('postgres', $q$select public.crm_reconcile_live()::text$q$), '1');
   perform pg_temp.t3802w_check('W1-8', 'the host is Live, with the time it went live',
-    (select stage || '/' || (went_live_at is not null)::text || '/' || updated_by from public.crm_records where id = v_q::uuid), 'live/true/system');
+    (select stage || '/' || (went_live_at is not null)::text || '/' || updated_by from public.crm_records where id = pg_temp.t3802w_uuid(v_q)), 'live/true/system');
   perform pg_temp.t3802w_check('W1-8', 'with one system log line for Live',
     (select count(*)::text || '/' || max(coalesce(actor_email, '<system>') || '/' || via || '/' || from_stage || '>' || to_stage || '/' || body)
-       from public.crm_activity where record_id = v_q::uuid and to_stage = 'live'),
+       from public.crm_activity where record_id = pg_temp.t3802w_uuid(v_q) and to_stage = 'live'),
     '1/<system>/system/onboarded>live/First listing went live. Stage moved to Live automatically.');
   perform pg_temp.t3802w_check('W1-10', 'and one audit row by the system',
     (pg_temp.t3802w_audit() - v_audit)::text || '/' || (select admin_email || '/' || (metadata->>'from') || '>' || (metadata->>'to') || '/' || (actor_uid is null)::text
@@ -1024,7 +1056,7 @@ begin
   delete from public.events where id = '38020000-0000-4000-c400-000000000002';
   set local session_replication_role = origin;
   perform pg_temp.t3802w_check('W1-8', 'a host is not demoted when the listing ends',
-    pg_temp.t3802w_as('postgres', $q$select public.crm_reconcile_live()::text$q$) || '/' || (select stage from public.crm_records where id = v_q::uuid), '0/live');
+    pg_temp.t3802w_as('postgres', $q$select public.crm_reconcile_live()::text$q$) || '/' || (select stage from public.crm_records where id = pg_temp.t3802w_uuid(v_q)), '0/live');
   r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'lost', 'Stopped hosting')::text$q$, v_q));
   perform pg_temp.t3802w_check('W1-7', 'a Live host can be marked Lost', pg_temp.t3802w_get(r, 'record', 'stage'), 'lost');
 
@@ -1034,7 +1066,7 @@ begin
   perform pg_temp.t3802w_check('W1-8', 'a host added with a live brand goes to Live at once',
     pg_temp.t3802w_get(r, 'moved_to') || '/' || pg_temp.t3802w_get(r, 'record', 'stage'), 'live/live');
   perform pg_temp.t3802w_check('W1-8', 'through Onboarded, both by the system',
-    (select string_agg(from_stage || '>' || to_stage || ':' || via, ',' order by created_at) from public.crm_activity where record_id = v_l::uuid and kind = 'stage_move'),
+    (select string_agg(from_stage || '>' || to_stage || ':' || via, ',' order by created_at) from public.crm_activity where record_id = pg_temp.t3802w_uuid(v_l) and kind = 'stage_move'),
     'prospect>onboarded:system,onboarded>live:system');
   perform pg_temp.t3802w_check('W1-8', 'a verified venue counts as a listing',
     pg_temp.t3802w_get(pg_temp.t3802w_make('venue', 'partner', 'hosts', '{"name": "Venue Host", "brand_id": "38020000-0000-4000-c100-000000000006"}'), 'record', 'stage'), 'live');
@@ -1051,7 +1083,7 @@ begin
   v_un := pg_temp.t3802w_id('unlinked');
   perform pg_temp.t3802w_check('W1-8', 'a full run leaves Lost and unlinked hosts alone',
     pg_temp.t3802w_as('postgres', $q$select public.crm_reconcile_live()::text$q$) || '/'
-      || (select stage from public.crm_records where id = v_lost::uuid) || '/' || (select stage from public.crm_records where id = v_un::uuid),
+      || (select stage from public.crm_records where id = pg_temp.t3802w_uuid(v_lost)) || '/' || (select stage from public.crm_records where id = pg_temp.t3802w_uuid(v_un)),
     '0/lost/prospect');
   -- A host past Onboarded keeps its stage when a quiet brand is linked.
   r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'meeting')::text$q$, v_un));
@@ -1065,9 +1097,9 @@ begin
   -- A deleted host is never promoted.
   r := pg_temp.t3802w_make('delhost', 'growth', 'hosts', '{"name": "Deleted Linked Host"}');
   r := pg_temp.t3802w_as('owner', format($q$select public.crm_record_delete(%L)::text$q$, pg_temp.t3802w_id('delhost')));
-  update public.crm_records set brand_id = '38020000-0000-4000-c100-000000000001' where id = pg_temp.t3802w_id('delhost')::uuid;
+  update public.crm_records set brand_id = '38020000-0000-4000-c100-000000000001' where id = pg_temp.t3802w_uuid(pg_temp.t3802w_id('delhost'));
   perform pg_temp.t3802w_check('W1-8', 'a deleted host is never promoted',
-    pg_temp.t3802w_as('postgres', $q$select public.crm_reconcile_live()::text$q$) || '/' || (select stage from public.crm_records where id = pg_temp.t3802w_id('delhost')::uuid),
+    pg_temp.t3802w_as('postgres', $q$select public.crm_reconcile_live()::text$q$) || '/' || (select stage from public.crm_records where id = pg_temp.t3802w_uuid(pg_temp.t3802w_id('delhost'))),
     '0/prospect');
 
   -- The scheduled run also clears request keys older than 30 days.
@@ -1114,10 +1146,10 @@ begin
   perform pg_temp.t3802w_check('W1-10', 'refused deletes wrote no audit row', pg_temp.t3802w_audit()::text, v_audit::text);
 
   r := pg_temp.t3802w_as('admin', format($q$select public.crm_record_delete(%L)::text$q$, v_id));
-  perform pg_temp.t3802w_check('W1-9', 'an admin deletes', r::jsonb::text,
+  perform pg_temp.t3802w_check('W1-9', 'an admin deletes', pg_temp.t3802w_jb(r)::text,
     format('{"id": "%s", "name": "Delete Me Host", "changed": true, "pipeline": "hosts"}', v_id));
   perform pg_temp.t3802w_check('W1-9', 'the row is kept, marked deleted by them',
-    (select deleted_by || '/' || (deleted_at is not null)::text from public.crm_records where id = v_id::uuid), 'issue3802w-admin@test.local/true');
+    (select deleted_by || '/' || (deleted_at is not null)::text from public.crm_records where id = pg_temp.t3802w_uuid(v_id)), 'issue3802w-admin@test.local/true');
   perform pg_temp.t3802w_check('W1-10', 'delete wrote one audit row with name and pipeline',
     (pg_temp.t3802w_audit() - v_audit)::text || '/' || (select admin_email || '/' || (metadata->>'name') || '/' || (metadata->>'pipeline')
        from public.admin_audit_log where action = 'crm.record_delete' and target_id = v_id), '1/issue3802w-admin@test.local/Delete Me Host/hosts');
@@ -1127,7 +1159,7 @@ begin
 
   -- A deleted record is gone from every read and every write.
   perform pg_temp.t3802w_check('W1-9', 'gone from the list',
-    (select count(*)::text from jsonb_array_elements(pg_temp.t3802w_as('growth', $q$select public.crm_records_list('hosts')::text$q$)::jsonb -> 'records') x where x->>'id' = v_id), '0');
+    (select count(*)::text from jsonb_array_elements(pg_temp.t3802w_jb(pg_temp.t3802w_as('growth', $q$select public.crm_records_list('hosts')::text$q$)) -> 'records') x where x->>'id' = v_id), '0');
   perform pg_temp.t3802w_like('W1-9', 'gone from get',
     pg_temp.t3802w_as('owner', format($q$select public.crm_record_get(%L)::text$q$, v_id)), 'ERR:P0002:not_found:%');
   perform pg_temp.t3802w_check('W1-9', 'gone from the duplicate check',
@@ -1151,7 +1183,7 @@ begin
     (pg_temp.t3802w_audit() - v_audit)::text || '/' || (select admin_email from public.admin_audit_log where action = 'crm.record_restore' and target_id = v_id),
     '2/issue3802w-owner@test.local');
   perform pg_temp.t3802w_check('W1-9', 'and it is back in the list',
-    (select count(*)::text from jsonb_array_elements(pg_temp.t3802w_as('growth', $q$select public.crm_records_list('hosts')::text$q$)::jsonb -> 'records') x where x->>'id' = v_id), '1');
+    (select count(*)::text from jsonb_array_elements(pg_temp.t3802w_jb(pg_temp.t3802w_as('growth', $q$select public.crm_records_list('hosts')::text$q$)) -> 'records') x where x->>'id' = v_id), '1');
 end;
 $w9$;
 
@@ -1199,7 +1231,7 @@ begin
   end loop;
 
   perform pg_temp.t3802w_check('W1-10', 'what was said is in the log',
-    (select count(*)::text from public.crm_activity where record_id = v_id::uuid and body like '%W1-10-PRIVATE-WORDS%'), '2');
+    (select count(*)::text from public.crm_activity where record_id = pg_temp.t3802w_uuid(v_id) and body like '%W1-10-PRIVATE-WORDS%'), '2');
   perform pg_temp.t3802w_check('W1-10', 'and never in the audit log',
     (select count(*)::text from public.admin_audit_log where metadata::text like '%W1-10-PRIVATE-%' or coalesce(reason, '') like '%W1-10-PRIVATE-%'), '0');
   perform pg_temp.t3802w_check('W1-10', 'the touch audit row carries kind, channel and direction only',
@@ -1235,11 +1267,11 @@ begin
   r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_log(%L, '{"kind": "touch", "channel": "instagram_dm", "direction": "inbound", "message_ref": "https://example.com/dm/42", "reply_class": "interested", "occurred_at": "2026-10-01T09:30:00Z"}'::jsonb, 'w111-log-0002')::text$q$, v_id));
   perform pg_temp.t3802w_check('W1-11', 'an inbound touch keeps each value in its own column',
     (select concat_ws('|', kind, channel, direction, message_ref, reply_class, coalesce(body, '<none>'), occurred_at at time zone 'UTC')
-       from public.crm_activity where id = pg_temp.t3802w_get(r, 'activity', 'id')::uuid),
+       from public.crm_activity where id = pg_temp.t3802w_uuid(pg_temp.t3802w_get(r, 'activity', 'id'))),
     'touch|instagram_dm|inbound|https://example.com/dm/42|interested|<none>|2026-10-01 09:30:00');
   perform pg_temp.t3802w_check('W1-11', 'the record counts its touches and knows the latest',
     pg_temp.t3802w_get(r, 'record', 'touch_count') || '/' || (pg_temp.t3802w_get(r, 'record', 'last_touch_at') is not null)::text, '2/true');
-  select count(*) into v_n from public.crm_activity where record_id = v_id::uuid;
+  select count(*) into v_n from public.crm_activity where record_id = pg_temp.t3802w_uuid(v_id);
 
   for f in
     select * from (values
@@ -1273,7 +1305,7 @@ begin
     pg_temp.t3802w_as('growth', format($q$select public.crm_record_log(%L, %L::jsonb, 'w111-long-0001')::text$q$, v_id,
       json_build_object('kind', 'note', 'body', repeat('x', 4001))::text)), 'ERR:22023:invalid_body:%');
   perform pg_temp.t3802w_check('W1-11', 'no refused entry was written',
-    (select count(*)::text from public.crm_activity where record_id = v_id::uuid), v_n::text);
+    (select count(*)::text from public.crm_activity where record_id = pg_temp.t3802w_uuid(v_id)), v_n::text);
   perform pg_temp.t3802w_check('W1-11', 'no refused entry kept its request key',
     (select count(*)::text from public.crm_request_keys where request_key like 'w111-%' and request_key not in ('w111-log-0001', 'w111-log-0002')), '0');
   r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_log(%L, %L::jsonb, 'w111-soon-0001')::text$q$, v_id,
@@ -1297,13 +1329,13 @@ begin
   -- The record view lists the log newest first.
   r := pg_temp.t3802w_as('partner', format($q$select public.crm_record_get(%L)::text$q$, v_id));
   perform pg_temp.t3802w_check('W1-11', 'record view: log entry keys',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(r::jsonb #> '{activity,0}') k),
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(r) #> '{activity,0}') k),
     'actor_email,actor_name,body,channel,direction,from_stage,id,kind,message_ref,occurred_at,reply_class,to_stage,via');
   perform pg_temp.t3802w_check('W1-11', 'record view: newest first, the dated reply last but one',
-    (select string_agg(coalesce(a->>'body', a->>'reply_class'), ' < ' order by o) from jsonb_array_elements(r::jsonb -> 'activity') with ordinality x(a, o)),
+    (select string_agg(coalesce(a->>'body', a->>'reply_class'), ' < ' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'activity') with ordinality x(a, o)),
     'clock skew < Sent the intro. < Added to the pipeline. < interested');
   perform pg_temp.t3802w_check('W1-11', 'record view: top-level keys',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(r::jsonb) k), 'activity,links,record,undoable_activity_id');
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(r)) k), 'activity,links,record,undoable_activity_id');
 end;
 $w11$;
 
@@ -1332,15 +1364,15 @@ begin
     'ERR:22023:undo_expired: That move can no longer be undone. Move the card back by hand.');
   perform pg_temp.t3802w_like('W1-13', 'not even the owner',
     pg_temp.t3802w_as('owner', format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act)), 'ERR:22023:undo_expired:%');
-  perform pg_temp.t3802w_check('W1-13', 'still Contacted', (select stage from public.crm_records where id = v_id::uuid), 'contacted');
+  perform pg_temp.t3802w_check('W1-13', 'still Contacted', (select stage from public.crm_records where id = pg_temp.t3802w_uuid(v_id)), 'contacted');
 
   v_audit := pg_temp.t3802w_audit();
-  select count(*) into v_n from public.crm_activity where record_id = v_id::uuid;
+  select count(*) into v_n from public.crm_activity where record_id = pg_temp.t3802w_uuid(v_id);
   r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act));
   perform pg_temp.t3802w_check('W1-13', 'the mover undoes it',
     pg_temp.t3802w_get(r, 'changed') || '/' || pg_temp.t3802w_get(r, 'record', 'stage'), 'true/prospect');
   perform pg_temp.t3802w_check('W1-13', 'the log line is gone',
-    (select count(*)::text from public.crm_activity where record_id = v_id::uuid) || '/' || (select count(*)::text from public.crm_activity where id = v_act::uuid),
+    (select count(*)::text from public.crm_activity where record_id = pg_temp.t3802w_uuid(v_id)) || '/' || (select count(*)::text from public.crm_activity where id = pg_temp.t3802w_uuid(v_act)),
     (v_n - 1)::text || '/0');
   perform pg_temp.t3802w_check('W1-10', 'undo wrote one audit row',
     (pg_temp.t3802w_audit() - v_audit)::text || '/' || (select admin_email || '/' || (metadata #>> '{before,stage}') || '>' || (metadata #>> '{after,stage}')
@@ -1361,17 +1393,17 @@ begin
   r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'meeting')::text$q$, v_id));
   v_act := pg_temp.t3802w_get(r, 'activity_id');
   -- (Every line of this card is aged together, so the move stays the newest.)
-  update public.crm_activity set created_at = created_at - interval '61 seconds' where record_id = v_id::uuid;
+  update public.crm_activity set created_at = created_at - interval '61 seconds' where record_id = pg_temp.t3802w_uuid(v_id);
   perform pg_temp.t3802w_like('W1-13', 'not after a minute',
     pg_temp.t3802w_as('growth', format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act)), 'ERR:22023:undo_expired:%');
-  update public.crm_activity set created_at = created_at + interval '10 seconds' where record_id = v_id::uuid;
+  update public.crm_activity set created_at = created_at + interval '10 seconds' where record_id = pg_temp.t3802w_uuid(v_id);
   -- (51 seconds old now: still inside the window; the next case reuses it.)
 
   -- After the stage changed underneath it.
-  update public.crm_records set stage = 'onboarded' where id = v_id::uuid;
+  update public.crm_records set stage = 'onboarded' where id = pg_temp.t3802w_uuid(v_id);
   perform pg_temp.t3802w_like('W1-13', 'not when the card has moved since',
     pg_temp.t3802w_as('growth', format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act)), 'ERR:22023:undo_expired:%');
-  update public.crm_records set stage = 'meeting' where id = v_id::uuid;
+  update public.crm_records set stage = 'meeting' where id = pg_temp.t3802w_uuid(v_id);
   perform pg_temp.t3802w_check('W1-13', 'inside the minute, with the stage as it was, it works',
     pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act)), 'record', 'stage'), 'replied');
 
@@ -1389,7 +1421,7 @@ begin
   -- Only stage moves can be undone, and only a person's.
   perform pg_temp.t3802w_like('W1-13', 'a note is not a move',
     pg_temp.t3802w_as('partner', format($q$select public.crm_record_undo_stage_move(%L)::text$q$,
-      (select id from public.crm_activity where record_id = v_id::uuid and kind = 'note' limit 1))), 'ERR:22023:undo_expired:%');
+      (select id from public.crm_activity where record_id = pg_temp.t3802w_uuid(v_id) and kind = 'note' limit 1))), 'ERR:22023:undo_expired:%');
   perform pg_temp.t3802w_like('W1-13', 'a system move cannot be undone by anyone',
     pg_temp.t3802w_as('owner', format($q$select public.crm_record_undo_stage_move(%L)::text$q$,
       (select id from public.crm_activity where via = 'system' and to_stage = 'live' order by created_at desc limit 1))), 'ERR:22023:undo_expired:%');
@@ -1407,35 +1439,35 @@ declare
 begin
   r := pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', 'issue3802w live')::text$q$);
   perform pg_temp.t3802w_check('W1-14', 'brand rows carry exactly the named keys',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(r::jsonb #> '{results,0}') k), 'city,id,is_live,name,slug');
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(r) #> '{results,0}') k), 'city,id,is_live,name,slug');
   perform pg_temp.t3802w_check('W1-14', 'a brand row',
-    (r::jsonb #> '{results,0}')::text,
+    (pg_temp.t3802w_jb(r) #> '{results,0}')::text,
     '{"id": "38020000-0000-4000-c100-000000000001", "city": "Lagos", "name": "Issue3802w Live Brand", "slug": "issue3802w-live-brand", "is_live": true}');
   r := pg_temp.t3802w_as('growth', $q$select public.crm_link_search('place', 'issue3802w')::text$q$);
   perform pg_temp.t3802w_check('W1-14', 'place rows carry exactly the named keys, active places only',
-    (r::jsonb -> 'results')::text, '[{"id": "38020000-0000-4000-c500-000000000001", "city": "Lagos", "name": "Issue3802w Palm Place"}]');
+    (pg_temp.t3802w_jb(r) -> 'results')::text, '[{"id": "38020000-0000-4000-c500-000000000001", "city": "Lagos", "name": "Issue3802w Palm Place"}]');
   perform pg_temp.t3802w_check('W1-14', 'a deleted brand is never offered',
-    jsonb_array_length(pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', 'Issue3802w Gone')::text$q$)::jsonb -> 'results')::text, '0');
+    jsonb_array_length(pg_temp.t3802w_jb(pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', 'Issue3802w Gone')::text$q$)) -> 'results')::text, '0');
 
   -- % and _ mean themselves.
   r := pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', '100% Fun')::text$q$);
   perform pg_temp.t3802w_check('W1-14', '% is searched for as typed',
-    (select string_agg(x->>'name', ',') from jsonb_array_elements(r::jsonb -> 'results') x), 'Issue3802w 100% Fun_Co');
+    (select string_agg(x->>'name', ',') from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'results') x), 'Issue3802w 100% Fun_Co');
   r := pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', 'Fun_Co')::text$q$);
   perform pg_temp.t3802w_check('W1-14', '_ is searched for as typed',
-    (select string_agg(x->>'name', ',') from jsonb_array_elements(r::jsonb -> 'results') x), 'Issue3802w 100% Fun_Co');
+    (select string_agg(x->>'name', ',') from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'results') x), 'Issue3802w 100% Fun_Co');
   perform pg_temp.t3802w_check('W1-14', 'a search of only wildcards finds nothing',
-    jsonb_array_length(pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', '%%')::text$q$)::jsonb -> 'results')::text
-      || '/' || jsonb_array_length(pg_temp.t3802w_as('growth', $q$select public.crm_link_search('place', '__')::text$q$)::jsonb -> 'results')::text,
+    jsonb_array_length(pg_temp.t3802w_jb(pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', '%%')::text$q$)) -> 'results')::text
+      || '/' || jsonb_array_length(pg_temp.t3802w_jb(pg_temp.t3802w_as('growth', $q$select public.crm_link_search('place', '__')::text$q$)) -> 'results')::text,
     '0/0');
   perform pg_temp.t3802w_check('W1-14', 'a backslash is searched for as typed',
-    jsonb_array_length(pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', 'Fun\Co')::text$q$)::jsonb -> 'results')::text
-      || '/' || jsonb_array_length(pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', '100\')::text$q$)::jsonb -> 'results')::text,
+    jsonb_array_length(pg_temp.t3802w_jb(pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', 'Fun\Co')::text$q$)) -> 'results')::text
+      || '/' || jsonb_array_length(pg_temp.t3802w_jb(pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', '100\')::text$q$)) -> 'results')::text,
     '0/0');
   perform pg_temp.t3802w_check('W1-14', 'one letter finds nothing',
     pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', ' i ')::text$q$), '{"kind": "brand", "results": []}');
   perform pg_temp.t3802w_check('W1-14', 'at most ten',
-    jsonb_array_length(pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', 'Issue3802w Limit Brand')::text$q$)::jsonb -> 'results')::text, '10');
+    jsonb_array_length(pg_temp.t3802w_jb(pg_temp.t3802w_as('growth', $q$select public.crm_link_search('brand', 'Issue3802w Limit Brand')::text$q$)) -> 'results')::text, '10');
   perform pg_temp.t3802w_like('W1-14', 'only brands and places can be searched',
     pg_temp.t3802w_as('growth', $q$select public.crm_link_search('users', 'seth')::text$q$), 'ERR:22023:invalid_kind:%');
 end;
@@ -1565,6 +1597,12 @@ begin
     (select count(*)::text from pg_constraint c
       where c.contype = 'f'
         and (c.conrelid::regclass::text like 'crm\_%') <> (c.confrelid::regclass::text like 'crm\_%')), '0');
+  -- Other work inventories every table that has a column with one of these
+  -- names; a pipeline link must not enter that inventory.
+  perform pg_temp.t3802w_check('W1-12', 'no pipeline column uses a name the venue-identity inventory keys on',
+    (select count(*)::text from pg_attribute a join pg_class c on c.oid = a.attrelid
+      where c.relnamespace = 'public'::regnamespace and c.relname like 'crm\_%' and a.attnum > 0 and not a.attisdropped
+        and a.attname in ('venue_id', 'serving_venue_id', 'duplicate_of_venue_id', 'place_pool_id')), '0');
   perform pg_temp.t3802w_check('W1-12', 'the two unique rules exist',
     (select string_agg(c.relname || ':' || pg_get_expr(i.indpred, i.indrelid), ' | ' order by c.relname)
        from pg_index i join pg_class c on c.oid = i.indexrelid
