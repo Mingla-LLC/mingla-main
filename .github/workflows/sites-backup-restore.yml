@@ -100,6 +100,7 @@ jobs:
           scripts/sites/__tests__/issue_2830_retention_response_contract.test.mjs
           scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.tester.adversarial.test.mjs
           scripts/sites/__tests__/issue_2830_ops_alert_reaches_a_person.test.mjs
+          scripts/sites/__tests__/issue_2830_evidence_based_freshness.test.mjs
 
   backup_restore:
     name: "Private backup and isolated restore"
@@ -110,6 +111,15 @@ jobs:
     outputs:
       recovery_deactivate: ${{ steps.classify.outputs.deactivate }}
       recovery_failure_code: ${{ steps.classify.outputs.code }}
+      # [WORKFLOW-MOD-APPROVED #2830] The instants Core accepted, for the
+      # evidence ledger (`publish_evidence`). Timestamps only. They are set by
+      # the restore and evidence steps the moment each succeeds, so they leave
+      # this job even if something after them fails.
+      evidence_object_manifest_at: ${{ steps.evidence.outputs.evidence_object_manifest_at }}
+      evidence_entitlement_at: ${{ steps.evidence.outputs.evidence_entitlement_at }}
+      evidence_database_backup_at: ${{ steps.evidence.outputs.evidence_database_backup_at }}
+      evidence_accepted_at: ${{ steps.evidence.outputs.evidence_accepted_at }}
+      evidence_restore_drill_at: ${{ steps.restore.outputs.evidence_restore_drill_at }}
     # #3606 — the hourly watchdog cron must never take a snapshot. Exclusion, not
     # inclusion: an expression that stops matching runs the backup anyway.
     if: >-
@@ -221,6 +231,7 @@ jobs:
           echo "verified_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
 
       - name: Restore latest bundle into isolated PostgreSQL 17
+        id: restore
         env:
           SITES_BACKUP_BUNDLE_PATH: ${{ runner.temp }}/sites-backup/private-readback.msbk
           SITES_BACKUP_RESTORE_RESULT_PATH: ${{ runner.temp }}/sites-backup/restore-result.json
@@ -234,6 +245,7 @@ jobs:
         run: node scripts/sites/restore-sites-cms.mjs
 
       - name: Commit readiness only after private readback and restore
+        id: evidence
         env:
           SITES_BACKUP_RESULT_PATH: ${{ runner.temp }}/sites-backup/result.json
           SITES_BACKUP_RESTORE_RESULT_PATH: ${{ runner.temp }}/sites-backup/restore-result.json
@@ -554,9 +566,17 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
+      # [WORKFLOW-MOD-APPROVED #2830] The watchdog now reads the evidence
+      # ledger first, asks the public site directly, and emails a person once a
+      # day per verdict as well as commenting. It still holds no production
+      # credential: the mail key and the recipient (a secret, never a literal)
+      # are the only additions.
       - name: Report remaining recovery headroom and page on lateness
         env:
           GH_TOKEN: ${{ github.token }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MINGLA_SITES_OPS_ALERT_TO: ${{ secrets.MINGLA_SITES_OPS_ALERT_TO }}
+          MINGLA_MAIN_RED_ALERT_TO: ${{ vars.MINGLA_MAIN_RED_ALERT_TO }}
         run: node scripts/sites/check-recovery-freshness.mjs
 
   ops_page:
@@ -621,3 +641,46 @@ jobs:
           SITES_RUN_RETENTION_CODE: ${{ needs.retention.outputs.retention_code }}
           SITES_RUN_FAILURE_CODE: ${{ needs.backup_restore.outputs.recovery_failure_code }}
         run: node scripts/sites/notify-sites-ops.mjs run
+
+  publish_evidence:
+    name: "Publish the recovery evidence ledger"
+    needs: [backup_restore]
+    # [WORKFLOW-MOD-APPROVED #2830] The freshness watchdog used to judge a
+    # backup by the colour of the backup job. For four days in October 2026 that
+    # job was red over a clean-up step while Core held fresh, verified evidence
+    # from every run, and the watchdog reported that no backup had succeeded.
+    #
+    # This job writes the receipt down instead: one comment on #2830, edited in
+    # place, carrying the instants Core accepted. The watchdog reads that. It is
+    # keyed on the EVIDENCE OUTPUT, not on the backup job's result, on purpose:
+    # evidence that Core accepted is published even if a later step in that job
+    # failed, because the public site is being served on it either way.
+    #
+    # No environment and no production secret: its only inputs are timestamps.
+    # Same exclusions as every job that follows a production backup.
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.schedule != '37 * * * *' &&
+      github.event.inputs.mode != 'freshness-check' &&
+      needs.backup_restore.outputs.evidence_object_manifest_at != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Write the accepted evidence instants to the ledger comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_OBJECT_MANIFEST_AT: ${{ needs.backup_restore.outputs.evidence_object_manifest_at }}
+          EVIDENCE_ENTITLEMENT_AT: ${{ needs.backup_restore.outputs.evidence_entitlement_at }}
+          EVIDENCE_DATABASE_BACKUP_AT: ${{ needs.backup_restore.outputs.evidence_database_backup_at }}
+          EVIDENCE_ACCEPTED_AT: ${{ needs.backup_restore.outputs.evidence_accepted_at }}
+          EVIDENCE_RESTORE_DRILL_AT: ${{ needs.backup_restore.outputs.evidence_restore_drill_at }}
+        run: node scripts/sites/publish-recovery-evidence.mjs

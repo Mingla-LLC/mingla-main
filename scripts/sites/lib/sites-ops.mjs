@@ -954,6 +954,35 @@ export function recordRecoveryFailureClassification(code, env = process.env) {
   return verdict;
 }
 
+/**
+ * Issue #2830 — hands the evidence instants Core accepted to the workflow, as
+ * step outputs, so the run can publish them where the freshness watchdog reads
+ * them. TIMESTAMPS ONLY: every name must be `evidence_…_at` and every value
+ * must parse as an instant, or nothing at all is written.
+ *
+ * This runs AFTER the evidence is already committed in Core, so it must never
+ * throw: failing here would fail a backup that succeeded. A ledger that is not
+ * refreshed is noticed by the watchdog as ageing evidence, which is loud.
+ * Returns whether the outputs were written.
+ */
+export function appendEvidenceOutputs(env, values) {
+  const path = env?.GITHUB_OUTPUT;
+  if (typeof path !== "string" || path.length === 0) return false;
+  const lines = [];
+  for (const [name, value] of Object.entries(values ?? {})) {
+    const instant = typeof value === "string" ? Date.parse(value) : Number.NaN;
+    if (!/^evidence_[a-z_]{1,40}_at$/.test(name) || !Number.isFinite(instant)) return false;
+    lines.push(`${name}=${new Date(instant).toISOString()}`);
+  }
+  if (lines.length === 0) return false;
+  try {
+    appendFileSync(path, `${lines.join("\n")}\n`);
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 export function safeCliFailure(error) {
   const code = error instanceof SitesOpsError ? error.code : "UNEXPECTED_FAILURE";
   process.stderr.write(`SITES_OPS_ERROR code=${code}\n`);

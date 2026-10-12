@@ -24,11 +24,32 @@
  * Deliberately production-credential-free: it reads the repository's own Actions
  * history with `GITHUB_TOKEN`, so it can run on a tight schedule without ever
  * touching the Sites CMS database, the private Blob store, or the signing keys.
+ *
+ * Issue #2830 — THE WATCHDOG JUDGES THE BACKUP BY ITS EVIDENCE.
+ *
+ * Measuring a job's colour is measuring a proxy. From 2026-10-07 a clean-up
+ * step at the end of the backup job failed on every run, so the job was red,
+ * and this watchdog reported `NO_SUCCESSFUL_BACKUP_IN_SCANNED_WINDOW` for four
+ * days while Core held fresh, verified evidence from every one of those runs.
+ * The same proxy fails the other way too: nothing here ever looked at the
+ * public site, so a pilot that had been deactivated and then forgotten, with
+ * perfectly fresh evidence behind it, read as healthy.
+ *
+ * Three inputs now, in this order:
+ *   1. THE LEDGER (primary). After Core accepts and reads back the readiness
+ *      evidence, the backup run publishes the accepted timestamps as ONE issue
+ *      comment, edited in place. That receipt is the evidence. It carries
+ *      timestamps and nothing else, and needs no credential to read.
+ *   2. THE JOB CONCLUSION (secondary). Still read, always printed, and it
+ *      decides the verdict only when no ledger exists yet.
+ *   3. THE PUBLIC HOST (ground truth). One unauthenticated GET. Fresh evidence
+ *      with a site that is not serving is its own alerting verdict.
  */
 
 import { fileURLToPath } from "node:url";
 
 import { fail, safeCliFailure } from "./lib/sites-ops.mjs";
+import { notifySitesOps, safeCode } from "./notify-sites-ops.mjs";
 
 /**
  * MUST equal the `interval` the runtime resolver
@@ -71,6 +92,8 @@ export const VERDICT_LATE = "SITES_RECOVERY_FRESHNESS_LATE";
 export const VERDICT_EXPIRED = "SITES_RECOVERY_FRESHNESS_EXPIRED";
 export const VERDICT_NO_SUCCESS = "SITES_RECOVERY_NO_SUCCESS_IN_WINDOW";
 export const VERDICT_UNPROVEN = "SITES_RECOVERY_FRESHNESS_UNPROVEN";
+/** #2830 — evidence is inside its budget and the public site is not serving. */
+export const VERDICT_HOST_DOWN = "SITES_PILOT_HOST_DOWN_EVIDENCE_FRESH";
 
 /** Verdicts that mean "the public site is at risk and somebody must be told". */
 const ALERTING_VERDICTS = Object.freeze([
@@ -78,7 +101,36 @@ const ALERTING_VERDICTS = Object.freeze([
   VERDICT_EXPIRED,
   VERDICT_NO_SUCCESS,
   VERDICT_UNPROVEN,
+  VERDICT_HOST_DOWN,
 ]);
+
+/** First line of the one comment that carries the accepted evidence. */
+export const LEDGER_MARKER = "SITES_RECOVERY_EVIDENCE_LEDGER v1";
+/**
+ * Only a ledger written by the workflow's own token is evidence. The
+ * repository is public and anyone can comment on the issue, so a ledger from
+ * any other author is not a ledger at all: it is ignored and counted, it can
+ * never refill the budget, and it cannot be used to set the alarm off either.
+ */
+export const LEDGER_AUTHOR = "github-actions[bot]";
+/** The ledger is edited in place twice a day, so this window always holds it. */
+export const LEDGER_WINDOW_HOURS = 72;
+export const LEDGER_TIMESTAMP_FIELDS = Object.freeze([
+  "evidence_object_manifest_at",
+  "evidence_entitlement_at",
+  "evidence_database_backup_at",
+  "evidence_accepted_at",
+  "evidence_restore_drill_at",
+]);
+/** MUST equal the resolver's restore-drill interval, for the reason above. */
+export const RESTORE_DRILL_BUDGET_DAYS = 100;
+export const RESTORE_DRILL_WARN_DAYS = 93;
+
+/** The pilot's public address. A constant: this probe takes no configuration. */
+export const PILOT_PUBLIC_URL = "https://gogi.sites.usemingla.com/";
+export const HOST_PROBE_GAP_MS = 10_000;
+const HOST_PROBE_TIMEOUT_MS = 15_000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function isAlertingVerdict(code) {
   return ALERTING_VERDICTS.includes(code);
@@ -248,7 +300,169 @@ export function formatVerdictLine(verdict) {
     `headroom_hours=${verdict.headroom_hours ?? "unknown"}`,
     `budget_hours=${verdict.budget_hours}`,
     `reason=${verdict.reason}`,
+    // #2830 — additive, and only when known, so a verdict built before these
+    // existed still prints the line it always did.
+    ...(verdict.source ? [`source=${verdict.source}`] : []),
+    ...(verdict.secondary_job_success_at !== undefined
+      ? [`secondary_job_success_at=${verdict.secondary_job_success_at ?? "none"}`]
+      : []),
+    ...(verdict.ledger_ignored ? [`ledger_ignored=${verdict.ledger_ignored}`] : []),
+    ...(verdict.public_host_status ? [`public_host_status=${verdict.public_host_status}`] : []),
   ].join(" ");
+}
+
+// ---------------------------------------------------------------------------
+// #2830 — the evidence ledger
+// ---------------------------------------------------------------------------
+
+/** The ledger comment body. `publish-recovery-evidence.mjs` writes exactly this. */
+export function formatLedger(fields) {
+  return [
+    LEDGER_MARKER,
+    ...LEDGER_TIMESTAMP_FIELDS.map((name) => `${name}=${fields[name]}`),
+    `run_id=${fields.run_id}`,
+    `head_sha=${fields.head_sha}`,
+  ].join("\n");
+}
+
+/**
+ * Strict read. Exactly the marker line, then exactly the seven known keys, each
+ * once, each in its own shape. Returns `{ fields }` or `{ unproven }`; a ledger
+ * that is nearly right is not evidence.
+ */
+export function parseLedger(body) {
+  if (typeof body !== "string") return { unproven: "LEDGER_BODY_NOT_TEXT" };
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  while (lines.length && lines.at(-1) === "") lines.pop();
+  if (lines[0] !== LEDGER_MARKER) return { unproven: "LEDGER_MARKER_MISSING" };
+  const expected = [...LEDGER_TIMESTAMP_FIELDS, "run_id", "head_sha"];
+  if (lines.length !== expected.length + 1) return { unproven: "LEDGER_SHAPE_INVALID" };
+  const fields = {};
+  for (const line of lines.slice(1)) {
+    const at = line.indexOf("=");
+    const name = at > 0 ? line.slice(0, at) : "";
+    if (!expected.includes(name) || Object.hasOwn(fields, name)) {
+      return { unproven: "LEDGER_SHAPE_INVALID" };
+    }
+    fields[name] = line.slice(at + 1);
+  }
+  for (const name of LEDGER_TIMESTAMP_FIELDS) {
+    if (parseInstant(fields[name]) === null) return { unproven: "LEDGER_FIELD_UNREADABLE" };
+  }
+  if (!/^[1-9]\d{0,19}$/.test(fields.run_id) || !/^[0-9a-f]{40}$/.test(fields.head_sha)) {
+    return { unproven: "LEDGER_FIELD_UNREADABLE" };
+  }
+  return { fields };
+}
+
+/**
+ * The newest ledger the workflow itself wrote, from a page of issue comments.
+ * `{ ledger: null }` means none exists; `{ unproven }` means one exists and
+ * cannot be read. `ignored` counts comments that carry the marker and were not
+ * written by the workflow.
+ */
+export function selectLedger(comments) {
+  if (!Array.isArray(comments)) return { unproven: "LEDGER_COMMENTS_NOT_A_LIST" };
+  let newest = null;
+  let ignored = 0;
+  for (const comment of comments) {
+    if (typeof comment?.body !== "string" || !comment.body.startsWith(LEDGER_MARKER)) continue;
+    if (comment?.user?.login !== LEDGER_AUTHOR) {
+      ignored += 1;
+      continue;
+    }
+    const updated = parseInstant(comment.updated_at);
+    if (updated === null) return { unproven: "LEDGER_UPDATED_AT_UNREADABLE", ignored };
+    if (newest === null || updated > newest.updated) newest = { comment, updated };
+  }
+  if (newest === null) return { ledger: null, ignored };
+  const parsed = parseLedger(newest.comment.body);
+  if (parsed.unproven) return { unproven: parsed.unproven, ignored };
+  return { ledger: { ...parsed.fields, comment_id: newest.comment.id }, ignored };
+}
+
+/**
+ * The verdict for a readable ledger.
+ *
+ * `evidence_at` is the EARLIER of the two instants the resolver measures
+ * against its 26-hour budget (the object manifest and the entitlement stamp),
+ * because the site goes dark when the first of them ages out, not the last.
+ * The restore drill has its own, much longer, budget.
+ */
+export function evaluateLedgerFreshness(ledger, { now = new Date() } = {}) {
+  const nowMs = now instanceof Date ? now.getTime() : Number.NaN;
+  const stamps = LEDGER_TIMESTAMP_FIELDS.map((name) => parseInstant(ledger?.[name]));
+  if (!Number.isFinite(nowMs) || stamps.some((value) => value === null)) {
+    return evaluateRecoveryFreshnessUnproven("LEDGER_FIELD_UNREADABLE");
+  }
+  // A stamp from the future is a clock or data fault. Refusing it here covers
+  // all five fields, not only the two that decide the budget.
+  if (stamps.some((value) => value > nowMs + CLOCK_SKEW_MS)) {
+    return evaluateRecoveryFreshnessUnproven("LEDGER_TIMESTAMP_IN_THE_FUTURE");
+  }
+  const evidenceMs = Math.min(
+    parseInstant(ledger.evidence_object_manifest_at),
+    parseInstant(ledger.evidence_entitlement_at),
+  );
+  const verdict = evaluateRecoveryFreshness({
+    lastSuccessAt: new Date(evidenceMs).toISOString(),
+    now,
+  });
+  const drillDays = (nowMs - parseInstant(ledger.evidence_restore_drill_at)) / DAY_MS;
+  if (drillDays >= RESTORE_DRILL_BUDGET_DAYS && verdict.code !== VERDICT_EXPIRED) {
+    return { ...verdict, ok: false, code: VERDICT_EXPIRED, reason: "RESTORE_DRILL_EXPIRED" };
+  }
+  if (drillDays > RESTORE_DRILL_WARN_DAYS && verdict.code === VERDICT_OK) {
+    return { ...verdict, ok: false, code: VERDICT_LATE, reason: "RESTORE_DRILL_NEARLY_EXPIRED" };
+  }
+  return verdict;
+}
+
+// ---------------------------------------------------------------------------
+// #2830 — the public host, asked directly
+// ---------------------------------------------------------------------------
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Is the pilot's public address answering 200? No credential, no redirect
+ * following, at most two requests.
+ *
+ * `down` is true only when BOTH attempts returned a readable status that was
+ * not 200. A request that could not be made at all says nothing about the site
+ * (it says something about this runner's network), so it is reported as
+ * `unreadable` and never pages; that is also why an unreadable first attempt is
+ * not retried.
+ */
+export async function probePublicHost({
+  fetchImpl = fetch,
+  url = PILOT_PUBLIC_URL,
+  delay = wait,
+  gapMs = HOST_PROBE_GAP_MS,
+} = {}) {
+  const once = async () => {
+    try {
+      const response = await fetchImpl(url, {
+        method: "GET",
+        redirect: "manual",
+        cache: "no-store",
+        signal: AbortSignal.timeout(HOST_PROBE_TIMEOUT_MS),
+      });
+      return Number.isInteger(response?.status) ? response.status : null;
+    } catch {
+      return null;
+    }
+  };
+  const first = await once();
+  if (first === null) return { status: "unreadable", down: false };
+  if (first === 200) return { status: "200", down: false };
+  await delay(gapMs);
+  const second = await once();
+  if (second === null) return { status: "unreadable", down: false };
+  if (second === 200) return { status: "200", down: false };
+  return { status: String(second), down: true };
 }
 
 /**
@@ -261,6 +475,21 @@ export function alertMarker(verdict) {
 }
 
 export function alertBody(verdict, runUrl) {
+  if (verdict.code === VERDICT_HOST_DOWN) {
+    // #2830 — a different fault with a different fix: another backup run will
+    // not bring back a site that was deactivated.
+    return [
+      alertMarker(verdict),
+      "",
+      formatVerdictLine(verdict),
+      "",
+      "The pilot host is not answering 200 although its recovery evidence is inside the freshness budget. The usual cause is a pilot that was deactivated after an earlier failure and never switched back on: nothing re-activates it automatically.",
+      "",
+      "Recover by following \"Re-activating the pilot after a deactivation\" in `docs/runbooks/MINGLA_SITES_PILOT.md`. Dispatching another backup does not help.",
+      "",
+      `Watchdog run: ${runUrl}`,
+    ].join("\n");
+  }
   return [
     alertMarker(verdict),
     "",
@@ -270,7 +499,10 @@ export function alertBody(verdict, runUrl) {
       ? "The public Sites runtime resolver no longer has recovery evidence inside its freshness budget. Every page on the pilot host is 404 until a successful backup run lands."
       : "The public Sites runtime resolver gates every page request on recovery evidence that is close to expiring. A successful backup run must land before the headroom above reaches zero, or the pilot host starts returning 404 on every route.",
     "",
-    `Recover by dispatching the backup workflow: \`gh workflow run ${DEFAULT_WORKFLOW_FILE}\`. Its restore runs into an ephemeral PostgreSQL service container and does not touch production data. The run must SUCCEED — a failed run triggers signed pilot deactivation.`,
+    // #2830 — this used to end "a failed run triggers signed pilot
+    // deactivation", which stopped being true at #3628 and was never what a
+    // person at 3am needed to hear. It now says which failures do.
+    `Recover by dispatching the backup workflow: \`gh workflow run ${DEFAULT_WORKFLOW_FILE}\`. Its restore runs into an ephemeral PostgreSQL service container and does not touch production data. The run must SUCCEED. A failed run triggers signed pilot deactivation only when it proves the database backup is missing, stale, unretained or disabled, or when it fails without saying why; a failure it can name as anything else (a storage or network fault, a failed clean-up) leaves the site up on the evidence it already has.`,
     "",
     `Watchdog run: ${runUrl}`,
   ].join("\n");
@@ -302,23 +534,11 @@ async function readJson(fetchImpl, url, token, code) {
 }
 
 /**
- * Reads bounded Actions history and returns the pure verdict.
- * Every network or shape failure lands on UNPROVEN, which alerts.
+ * The secondary indicator: the newest successful completion of the backup JOB,
+ * from bounded Actions history. Returns `{ lastSuccessAt }` or `{ unproven }`,
+ * and throws (through `fail`) when the API cannot be read.
  */
-export async function checkRecoveryFreshness({
-  env = process.env,
-  fetchImpl = fetch,
-  now = new Date(),
-} = {}) {
-  const apiUrl = (env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "");
-  const repository = env.GITHUB_REPOSITORY;
-  const token = env.GH_TOKEN || env.GITHUB_TOKEN;
-  const workflowFile = env.SITES_BACKUP_WORKFLOW_FILE || DEFAULT_WORKFLOW_FILE;
-  if (typeof repository !== "string" || !/^[^/\s]+\/[^/\s]+$/.test(repository)) {
-    fail("GITHUB_REPOSITORY_INVALID");
-  }
-  if (typeof token !== "string" || token.length < 8) fail("GITHUB_TOKEN_MISSING");
-
+async function scanBackupJobConclusion({ fetchImpl, apiUrl, repository, token, workflowFile }) {
   const runsPayload = await readJson(
     fetchImpl,
     `${apiUrl}/repos/${repository}/actions/workflows/${encodeURIComponent(workflowFile)}` +
@@ -329,9 +549,7 @@ export async function checkRecoveryFreshness({
   const runs = Array.isArray(runsPayload?.workflow_runs)
     ? runsPayload.workflow_runs.slice(0, MAX_RUNS_SCANNED)
     : null;
-  if (runs === null) {
-    return evaluateRecoveryFreshnessUnproven("RUNS_RESPONSE_SHAPE_INVALID");
-  }
+  if (runs === null) return { unproven: "RUNS_RESPONSE_SHAPE_INVALID" };
 
   const jobsByRunId = new Map();
   for (const run of runs) {
@@ -344,16 +562,87 @@ export async function checkRecoveryFreshness({
     );
     jobsByRunId.set(run.id, Array.isArray(payload?.jobs) ? payload.jobs : null);
     const partial = selectLatestBackupCompletion(runs, jobsByRunId);
-    if (partial.unproven) return evaluateRecoveryFreshnessUnproven(partial.unproven);
     // Stop as soon as the newest success is known; older runs cannot beat it.
-    if (partial.lastSuccessAt) {
-      return evaluateRecoveryFreshness({ lastSuccessAt: partial.lastSuccessAt, now });
-    }
+    if (partial.unproven || partial.lastSuccessAt) return partial;
+  }
+  return selectLatestBackupCompletion(runs, jobsByRunId);
+}
+
+/** The ledger, read from the issue. Throws (through `fail`) when unreadable. */
+async function readLedger({ fetchImpl, apiUrl, repository, token, issue, now }) {
+  const since = new Date(now.getTime() - LEDGER_WINDOW_HOURS * HOUR_MS).toISOString();
+  const comments = await readJson(
+    fetchImpl,
+    `${apiUrl}/repos/${repository}/issues/${issue}/comments` +
+      `?per_page=100&since=${encodeURIComponent(since)}`,
+    token,
+    "LEDGER_COMMENTS_READ_FAILED",
+  );
+  return selectLedger(comments);
+}
+
+/**
+ * Reads the evidence ledger, then bounded Actions history, and returns the
+ * pure verdict. Every network or shape failure lands on UNPROVEN, which alerts.
+ *
+ * #2830 — the ledger decides whenever one exists. The job conclusion is still
+ * read and always reported as `secondary_job_success_at`, and it decides only
+ * when no ledger exists (the first run after this shipped, or a repository that
+ * has never published one), marked `source=job_conclusion`. A ledger that
+ * exists and cannot be read is UNPROVEN: it is never quietly replaced by the
+ * job's colour, because "the receipt is unreadable" is itself the news.
+ */
+export async function checkRecoveryFreshness({
+  env = process.env,
+  fetchImpl = fetch,
+  now = new Date(),
+} = {}) {
+  const apiUrl = (env.GITHUB_API_URL || "https://api.github.com").replace(/\/+$/, "");
+  const repository = env.GITHUB_REPOSITORY;
+  const token = env.GH_TOKEN || env.GITHUB_TOKEN;
+  const workflowFile = env.SITES_BACKUP_WORKFLOW_FILE || DEFAULT_WORKFLOW_FILE;
+  const issue = env.SITES_RECOVERY_ALERT_ISSUE || DEFAULT_ALERT_ISSUE;
+  if (typeof repository !== "string" || !/^[^/\s]+\/[^/\s]+$/.test(repository)) {
+    fail("GITHUB_REPOSITORY_INVALID");
+  }
+  if (typeof token !== "string" || token.length < 8) fail("GITHUB_TOKEN_MISSING");
+  if (!/^[1-9]\d*$/.test(String(issue))) fail("ALERT_ISSUE_INVALID");
+  const github = { fetchImpl, apiUrl, repository, token };
+
+  const selected = await readLedger({ ...github, issue, now });
+  const ignored = selected.ignored ? { ledger_ignored: selected.ignored } : {};
+  if (selected.unproven) {
+    return { ...evaluateRecoveryFreshnessUnproven(selected.unproven), source: "ledger", ...ignored };
   }
 
-  const selected = selectLatestBackupCompletion(runs, jobsByRunId);
-  if (selected.unproven) return evaluateRecoveryFreshnessUnproven(selected.unproven);
-  return evaluateRecoveryFreshness({ lastSuccessAt: selected.lastSuccessAt, now });
+  if (selected.ledger) {
+    // The secondary indicator must never be able to change, or lose, a verdict
+    // the receipt already decided.
+    let secondary;
+    try {
+      const scan = await scanBackupJobConclusion({ ...github, workflowFile });
+      secondary = scan.unproven ? "unreadable" : scan.lastSuccessAt;
+    } catch {
+      secondary = "unreadable";
+    }
+    return {
+      ...evaluateLedgerFreshness(selected.ledger, { now }),
+      source: "ledger",
+      secondary_job_success_at: secondary,
+      ...ignored,
+    };
+  }
+
+  const scan = await scanBackupJobConclusion({ ...github, workflowFile });
+  if (scan.unproven) {
+    return { ...evaluateRecoveryFreshnessUnproven(scan.unproven), source: "job_conclusion", ...ignored };
+  }
+  return {
+    ...evaluateRecoveryFreshness({ lastSuccessAt: scan.lastSuccessAt, now }),
+    source: "job_conclusion",
+    secondary_job_success_at: scan.lastSuccessAt,
+    ...ignored,
+  };
 }
 
 function evaluateRecoveryFreshnessUnproven(reason) {
@@ -418,15 +707,22 @@ export async function postAlertOnce(verdict, {
   return { posted: true, reason: "REPORTED", marker };
 }
 
-export async function runRecoveryFreshnessWatchdog({
+/**
+ * The verdict, printed. Never throws: a watchdog that cannot read its evidence
+ * has NOT proved health, so an unreachable or malformed API becomes an alerting
+ * verdict rather than an exception that only shows up as a red square.
+ *
+ * #2830 — when the evidence is inside its budget, the public host is asked
+ * directly. Evidence that is fresh behind a site that is not serving is the
+ * exact four-day state of October 2026, and nothing reported it.
+ */
+export async function resolveWatchdogVerdict({
   env = process.env,
   fetchImpl = fetch,
   now = new Date(),
   stdout = process.stdout,
+  probe = probePublicHost,
 } = {}) {
-  // A watchdog that cannot read its evidence has NOT proved health, so an
-  // unreachable or malformed Actions API becomes an alerting verdict rather than
-  // an exception that only shows up as a red square nobody reads.
   let verdict;
   try {
     verdict = await checkRecoveryFreshness({ env, fetchImpl, now });
@@ -435,9 +731,37 @@ export async function runRecoveryFreshnessWatchdog({
       error?.code || error?.message || "FRESHNESS_READ_FAILED",
     );
   }
+  if (verdict.code === VERDICT_OK || verdict.code === VERDICT_LATE) {
+    let host;
+    try {
+      host = await probe({ fetchImpl });
+    } catch {
+      host = { status: "unreadable", down: false };
+    }
+    verdict = { ...verdict, public_host_status: host.status };
+    if (host.down) {
+      verdict = {
+        ...verdict,
+        ok: false,
+        code: VERDICT_HOST_DOWN,
+        reason: "PUBLIC_HOST_NOT_SERVING",
+      };
+    }
+  }
   // Always audible, healthy or not: a watchdog whose only output is an exit code
   // reads the same as a watchdog that never ran.
   stdout.write(`${formatVerdictLine(verdict)}\n`);
+  return verdict;
+}
+
+export async function runRecoveryFreshnessWatchdog({
+  env = process.env,
+  fetchImpl = fetch,
+  now = new Date(),
+  stdout = process.stdout,
+  probe = probePublicHost,
+} = {}) {
+  const verdict = await resolveWatchdogVerdict({ env, fetchImpl, now, stdout, probe });
   if (!isAlertingVerdict(verdict.code)) return { verdict, alert: null };
   const alert = await postAlertOnce(verdict, { env, fetchImpl, now });
   stdout.write(
@@ -446,10 +770,78 @@ export async function runRecoveryFreshnessWatchdog({
   return { verdict, alert };
 }
 
+/** Which page an alerting verdict calls for. The email is deduped per UTC day. */
+export function pageForVerdict(verdict) {
+  const headroomHours = verdict.headroom_hours;
+  if (verdict.code === VERDICT_HOST_DOWN) {
+    return {
+      kind: "PILOT_HOST_DOWN_EVIDENCE_FRESH",
+      code: VERDICT_HOST_DOWN,
+      outcome: `PILOT_NOT_SERVING status=${safeCode(`HTTP_${verdict.public_host_status}`, "HTTP_UNKNOWN")}`,
+      headroomHours,
+    };
+  }
+  if (verdict.code === VERDICT_LATE) {
+    return {
+      kind: "EVIDENCE_AGEING",
+      code: safeCode(verdict.reason, VERDICT_LATE),
+      outcome: "PILOT_UP recovery_evidence_ageing",
+      headroomHours,
+    };
+  }
+  if (verdict.code === VERDICT_EXPIRED) {
+    return {
+      kind: "EVIDENCE_EXPIRED",
+      code: safeCode(verdict.reason, VERDICT_EXPIRED),
+      outcome: "PILOT_NOT_SERVING recovery_evidence_expired",
+      headroomHours,
+    };
+  }
+  return {
+    kind: "EVIDENCE_UNPROVEN",
+    code: safeCode(verdict.reason, "FRESHNESS_READ_FAILED"),
+    outcome: "PILOT_STATE_NOT_PROVEN",
+    headroomHours: null,
+  };
+}
+
+/**
+ * What the hourly job runs: the verdict, the per-generation issue comment, and
+ * the email.
+ *
+ * #2830 — the comment and the email are independent. The comment used to be the
+ * only alarm, and if it could not be posted the run threw and nothing else
+ * happened. Now a comment that cannot be posted is reported and the email is
+ * still attempted, because the email is the one that reaches a person.
+ */
+export async function runWatchdogAndPage({
+  env = process.env,
+  fetchImpl = fetch,
+  now = new Date(),
+  stdout = process.stdout,
+  probe = probePublicHost,
+  notify = notifySitesOps,
+} = {}) {
+  const verdict = await resolveWatchdogVerdict({ env, fetchImpl, now, stdout, probe });
+  if (!isAlertingVerdict(verdict.code)) return { verdict, alert: null, page: null, exitCode: 0 };
+  let alert;
+  try {
+    alert = await postAlertOnce(verdict, { env, fetchImpl, now });
+  } catch (error) {
+    alert = { posted: false, reason: safeCode(error?.code, "ALERT_COMMENT_FAILED") };
+  }
+  stdout.write(
+    `SITES_RECOVERY_ALERT_DELIVERY posted=${alert.posted} reason=${alert.reason}\n`,
+  );
+  const page = await notify(pageForVerdict(verdict), { env, fetchImpl, now, stdout });
+  // An alerting verdict is a red run whatever the delivery did.
+  return { verdict, alert, page, exitCode: 1 };
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  runRecoveryFreshnessWatchdog()
-    .then(({ verdict }) => {
-      if (isAlertingVerdict(verdict.code)) process.exitCode = 1;
+  runWatchdogAndPage()
+    .then(({ exitCode }) => {
+      process.exitCode = exitCode;
     })
     .catch((error) => {
       safeCliFailure(error);

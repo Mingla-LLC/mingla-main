@@ -12,6 +12,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  appendEvidenceOutputs,
   callCore,
   coreConfigFromEnv,
   decryptBundle,
@@ -229,6 +230,10 @@ export async function runRestore({
     process.stdout.write(
       `SITES_RESTORE_OK tenants=${counts.tenants} documents=${counts.documents} objects=${extracted.objects.length}\n`,
     );
+    // #2830 — the restore-drill instant Core accepted, for the evidence ledger.
+    if (appendEvidenceOutputs(env, { evidence_restore_drill_at: verifiedAt })) {
+      process.stdout.write("SITES_RESTORE_EVIDENCE_OUTPUTS_OK\n");
+    }
     return result;
   } finally {
     rmSync(temporary, { recursive: true, force: true });

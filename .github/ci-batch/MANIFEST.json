@@ -22911,6 +22911,7 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/sites-backup-restore.yml",
       "referenceFiles": [
+        "scripts/sites/__tests__/issue_2830_evidence_based_freshness.test.mjs",
         "scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.test.mjs",
         "scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.tester.adversarial.test.mjs",
         "scripts/sites/__tests__/issue_2830_ops_alert_reaches_a_person.test.mjs",

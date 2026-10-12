@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import {
   DEACTIVATING_RECOVERY_CODES,
   SITES_BUCKETS,
+  appendEvidenceOutputs,
   callCore,
   coreConfigFromEnv,
   encryptBundle,
@@ -696,6 +697,15 @@ export async function recordBackupEvidence({
     )
   ) fail("CORE_READINESS_READBACK_MISMATCH");
   process.stdout.write("SITES_BACKUP_EVIDENCE_OK\n");
+  // #2830 — the receipt, for the freshness watchdog. Core has accepted the
+  // evidence and its read-back matched, so these four instants are what the
+  // public resolver is now measuring. Timestamps only; never throws.
+  if (appendEvidenceOutputs(env, {
+    evidence_object_manifest_at: result.object_manifest_verified_at,
+    evidence_entitlement_at: now.toISOString(),
+    evidence_database_backup_at: result.database_backup_verified_at,
+    evidence_accepted_at: readiness.accepted_at,
+  })) process.stdout.write("SITES_BACKUP_EVIDENCE_OUTPUTS_OK\n");
   return readiness;
 }
 

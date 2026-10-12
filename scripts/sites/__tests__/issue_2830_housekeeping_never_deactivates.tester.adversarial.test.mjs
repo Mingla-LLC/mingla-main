@@ -403,6 +403,8 @@ test("#2830 tester: the reader sees the six jobs and their real conditions", () 
     // #2830 slice 2 (additions only): the paging job, appended after every job
     // this suite reasons about, so the order above is unchanged.
     "ops_page",
+    // …and the evidence ledger publisher, appended after it.
+    "publish_evidence",
   ]);
   assert.deepEqual(WORKFLOW.jobs.deactivate.needs, ["contracts", "backup_restore"]);
   assert.deepEqual(WORKFLOW.jobs.alert.needs, ["contracts", "backup_restore", "deactivate"]);
@@ -832,6 +834,9 @@ test("#2830 tester: end to end — real CLI failure, real outcome step, real gra
       recovery_freshness: "skipped",
       // #2830 slice 2 (additions only): a failed sweep is also emailed.
       ops_page: "success",
+      // No evidence instant is modelled here, so the ledger job has nothing to
+      // publish and stays out of the way.
+      publish_evidence: "skipped",
     }, event.label);
     assert.equal(runConclusion(result), "success", `${event.label}: the run is green`);
   }

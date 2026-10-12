@@ -216,8 +216,11 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
     // [#2830 slice 2] The paging suite reads the same workflow to pin that a
     // paging job runs the notifier with the recipient threaded as a secret and
     // that the housekeeping alert is in exclusion polarity, so it is a consumer
-    // too. `…ops_alert…` sorts after both `…housekeeping…` files.
+    // too. `…ops_alert…` sorts after both `…housekeeping…` files. The evidence
+    // suite reads it to pin that the ledger job keys on the evidence output and
+    // holds no secret; `…evidence…` sorts before `…housekeeping…`.
     referenceFiles: Object.freeze([
+      "scripts/sites/__tests__/issue_2830_evidence_based_freshness.test.mjs",
       "scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.test.mjs",
       "scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.tester.adversarial.test.mjs",
       "scripts/sites/__tests__/issue_2830_ops_alert_reaches_a_person.test.mjs",
