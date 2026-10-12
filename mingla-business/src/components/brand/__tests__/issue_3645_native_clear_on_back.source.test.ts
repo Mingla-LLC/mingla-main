@@ -48,11 +48,15 @@ describe("#3645 — native: back from the Nigeria form clears the rail, failures
     expect(start).toBeGreaterThanOrEqual(0);
     const region = CODE.slice(start, CODE.indexOf("return (", start));
     expect(region).toMatch(/clearPaystackProvider\.mutate\(\s*brand\.id/);
-    const onSuccess = region.indexOf("onSuccess");
+    // Rework 2: the clear is awaited as a promise (pending/callbacks owned by
+    // the screen), so success is the `.then` and failure the `.catch`.
+    const onSuccess = region.indexOf(".then(");
     const leaveForm = region.indexOf("setPaystackSelected(false)");
+    const onFailure = region.indexOf(".catch(");
     expect(onSuccess).toBeGreaterThanOrEqual(0);
     expect(leaveForm).toBeGreaterThan(onSuccess);
-    expect(region).toMatch(/onError:[\s\S]*setErrorMessage\(/);
+    expect(onFailure).toBeGreaterThan(leaveForm);
+    expect(region.slice(onFailure)).toMatch(/setErrorMessage\(/);
   });
 
   it("renders the stored switch error above the Nigeria bank form", () => {

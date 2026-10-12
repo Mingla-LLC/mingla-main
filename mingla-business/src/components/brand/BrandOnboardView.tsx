@@ -46,7 +46,7 @@
  * Per J-A10 spec §3.6 + B2a SPEC §4.5.1.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Linking,
@@ -136,6 +136,8 @@ import { describePayoutCountrySwitchFailure } from "../../utils/payoutCountrySwi
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
+// orch-strict-grep-allow stripe-country-out-of-scope — Nigeria is the Paystack rail, deliberately outside the Stripe allowlist.
+const NIGERIA_COUNTRY = "NG" as const;
 // META-ORCH-1076 — Nigeria is a Paystack (not Stripe) payout region, surfaced as
 // an extra picker option. orch-strict-grep-allow stripe-country-out-of-scope —
 // NG routes to Paystack, never the Stripe allowlist.
@@ -272,10 +274,26 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // V3 multi-country: brand admin picks country before onboarding starts.
   // #948 W2 — seed from the normalized brand country when Stripe supports it.
   // Missing/unsupported data preserves the existing GB fallback.
-  const [selectedCountry, setSelectedCountry] = useState<string>(
-    brandRail.countryCode,
-  );
+  // #3645 — "on the Nigerian rail" is the SAVED brand, not its address.
+  const brandOnNigeriaRail = brand?.paymentProvider === "paystack";
+  // The brand row's own card-rail status (derived from the brands.stripe_*
+  // cache). Anything but "not_connected" — onboarding, restricted, active —
+  // means a card-rail account exists.
+  const brandRowHasCardAccount =
+    brand !== null && (brand.stripeStatus ?? "not_connected") !== "not_connected";
+  // A brand with a card-rail account and a Nigerian address stays on its
+  // card-rail screen: seed the default card country, never Nigeria.
+  const seedCountry =
+    brandRail.provider === "paystack" &&
+      !brandOnNigeriaRail &&
+      brandRowHasCardAccount
+      ? DEFAULT_COUNTRY
+      : brandRail.countryCode;
+  const [selectedCountry, setSelectedCountry] = useState<string>(seedCountry);
   const [countryTouched, setCountryTouched] = useState(false);
+  // Synchronous twin of `countryTouched`: a seeding effect replayed with a
+  // stale closure (StrictMode) must not overwrite a pick made in the same pass.
+  const countryTouchedRef = useRef(false);
   // V3 ToS gate: must pass before Stripe onboarding can start (per I-PROPOSED-U).
   // Gate component checks brand_team_members.mingla_tos_accepted_at and either
   // (a) auto-fires onPassed if already accepted, or (b) renders a sheet that
@@ -289,11 +307,25 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // form offers "Choose a different country" to return here.
   // #3645 — ALSO invoke select_provider on NG pick so payout_hold_cutover_at is
   // stamped without requiring bank details (charge-ready sell-before-bank).
-  const [paystackSelected, setPaystackSelected] = useState(
-    brandRail.provider === "paystack",
+  // The Nigeria bank form shows only for a brand that IS on the Nigerian rail
+  // (or once a pick / the automatic switch below has asked for it). A Nigerian
+  // ADDRESS alone no longer drops the organiser on the form as if switched.
+  const [paystackSelected, setPaystackSelected] = useState(brandOnNigeriaRail);
+  // Pending is owned here and both switches go through `mutateAsync`: a
+  // mutation fired from an effect loses its per-call callbacks and its
+  // observer's `isPending` under StrictMode's effect replay, which would
+  // strand the "Updating your payout country…" spinner.
+  const selectMutateAsync = useSelectPaystackProvider().mutateAsync;
+  const clearMutateAsync = useClearPaystackProvider().mutateAsync;
+  const selectPaystackProvider = useMemo(
+    () => ({ mutate: (brandId: string): Promise<void> => selectMutateAsync(brandId) }),
+    [selectMutateAsync],
   );
-  const selectPaystackProvider = useSelectPaystackProvider();
-  const clearPaystackProvider = useClearPaystackProvider();
+  const clearPaystackProvider = useMemo(
+    () => ({ mutate: (brandId: string): Promise<void> => clearMutateAsync(brandId) }),
+    [clearMutateAsync],
+  );
+  const [selectPending, setSelectPending] = useState(false);
   // `isPending` is one render behind; this ref is set the moment a switch is
   // sent so a second pick in the same tick is ignored.
   const railSwitchInFlightRef = useRef(false);
@@ -310,6 +342,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const [reopenPickerOnReturn, setReopenPickerOnReturn] = useState(false);
   const handleCountryChange = useCallback((countryCode: string): void => {
     setReopenPickerOnReturn(false);
+    countryTouchedRef.current = true;
     setCountryTouched(true);
     // orch-strict-grep-allow stripe-country-out-of-scope — NG routes to the
     // Paystack rail, never Stripe; it is intentionally not in the Stripe allowlist.
@@ -320,19 +353,18 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       setSelectFailure(null);
       if (brand?.id) {
         railSwitchInFlightRef.current = true;
-        selectPaystackProvider.mutate(brand.id, {
-          onError: (err: Error) => {
+        setSelectPending(true);
+        selectPaystackProvider.mutate(brand.id)
+          .then(() => setErrorMessage(null))
+          .catch((err: unknown) => {
             const failure = describePayoutCountrySwitchFailure(err);
             setErrorMessage(failure.message);
             setSelectFailure(failure);
-          },
-          onSuccess: () => {
-            setErrorMessage(null);
-          },
-          onSettled: () => {
+          })
+          .finally(() => {
             railSwitchInFlightRef.current = false;
-          },
-        });
+            setSelectPending(false);
+          });
       }
       return;
     }
@@ -342,25 +374,26 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
 
   const savedStripeCountry = statusQuery.data?.country ?? null;
 
-  // #3645 — the screen opened on the Nigeria form because the brand's ADDRESS
-  // says Nigeria, but the saved brand is not on the Nigerian rail yet. Showing
-  // the bank form sent no switch, so the brand could not sell before adding a
-  // bank. Perform the same switch a manual pick does, once. (This screen's
-  // route is already behind the payments-permission gate.)
+  // #3645 — the brand's ADDRESS says Nigeria but the saved brand is not on the
+  // Nigerian rail yet. Perform the same switch a manual pick does, once — but
+  // ONLY when the brand is positively known to have no card-rail account: the
+  // brand row says not connected AND the status query has been fetched
+  // successfully and reports no account. While that query is loading or has
+  // errored nothing is switched, so opening this screen can never move a
+  // brand that takes card payments onto the Nigerian rail and naira. (This
+  // screen's route is already behind the payments-permission gate.)
+  const statusKnownNoCardAccount =
+    statusQuery.isFetched &&
+    !statusQuery.isError &&
+    (statusQuery.data?.stripe_account_id ?? null) === null &&
+    (statusQuery.data?.status ?? "not_connected") === "not_connected";
   const needsAutoSwitch =
     brand !== null &&
-    paystackSelected &&
     !countryTouched &&
-    brand.paymentProvider !== "paystack" &&
-    (statusQuery.data?.stripe_account_id ?? null) === null;
-  const handleCountryChangeRef = useRef(handleCountryChange);
-  handleCountryChangeRef.current = handleCountryChange;
-  useEffect(() => {
-    if (!needsAutoSwitch || autoSwitchFiredRef.current) return;
-    autoSwitchFiredRef.current = true;
-    handleCountryChangeRef.current("NG");
-  }, [needsAutoSwitch]);
-  const awaitingAutoSwitch = needsAutoSwitch && !autoSwitchFiredRef.current;
+    brandRail.provider === "paystack" &&
+    !brandOnNigeriaRail &&
+    !brandRowHasCardAccount &&
+    statusKnownNoCardAccount;
   const countryPickerLocked = isStripeCountryPickerLocked({
     stripeAccountId: statusQuery.data?.stripe_account_id ?? null,
     status: statusQuery.data?.status ?? brand?.stripeStatus ?? null,
@@ -381,20 +414,32 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     errorMessage?.includes("create a new brand") === true;
 
   useEffect(() => {
-    if (countryTouched || savedStripeCountry === null) return;
+    if (countryTouched || countryTouchedRef.current) return;
+    if (savedStripeCountry === null) return;
     setSelectedCountry(savedStripeCountry);
   }, [countryTouched, savedStripeCountry]);
 
   useEffect(() => {
-    if (countryTouched || savedStripeCountry !== null) return;
-    setSelectedCountry(brandRail.countryCode);
-    setPaystackSelected(brandRail.provider === "paystack");
+    if (countryTouched || countryTouchedRef.current) return;
+    if (savedStripeCountry !== null) return;
+    setSelectedCountry(seedCountry);
+    setPaystackSelected(brandOnNigeriaRail);
   }, [
-    brandRail.countryCode,
-    brandRail.provider,
+    brandOnNigeriaRail,
+    seedCountry,
     countryTouched,
     savedStripeCountry,
   ]);
+
+  // Declared AFTER the seeding effects on purpose: effects run in order, and
+  // the seed above would otherwise overwrite this pick in the same pass.
+  const handleCountryChangeRef = useRef(handleCountryChange);
+  handleCountryChangeRef.current = handleCountryChange;
+  useEffect(() => {
+    if (!needsAutoSwitch || autoSwitchFiredRef.current) return;
+    autoSwitchFiredRef.current = true;
+    handleCountryChangeRef.current(NIGERIA_COUNTRY);
+  }, [needsAutoSwitch]);
 
   const applyOnboardingOutcome = useCallback(
     (outcome: StripeOnboardingOutcome): void => {
@@ -776,31 +821,28 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     // is shown while Back still works.
     const backToPicker = onCancel;
     const chooseDifferentCountry = (): void => {
-      if (clearPaystackProvider.isPending || railSwitchInFlightRef.current) {
-        return;
-      }
+      if (railSwitchInFlightRef.current) return;
       setErrorMessage(null);
       railSwitchInFlightRef.current = true;
-      clearPaystackProvider.mutate(brand.id, {
-        onSuccess: () => {
+      clearPaystackProvider.mutate(brand.id)
+        .then(() => {
+          countryTouchedRef.current = true;
           setCountryTouched(true);
           setReopenPickerOnReturn(true);
           setSelectFailure(null);
           setPaystackSelected(false);
           setSelectedCountry(DEFAULT_COUNTRY);
-        },
-        onError: (err: Error) => {
+        })
+        .catch((err: unknown) => {
           setErrorMessage(describePayoutCountrySwitchFailure(err).message);
-        },
-        onSettled: () => {
+        })
+        .finally(() => {
           railSwitchInFlightRef.current = false;
-        },
-      });
+        });
     };
     // A clear in flight keeps the form mounted (typed bank details survive a
     // failed clear); only the switch TO Nigeria withholds it.
-    const railSwitchPending =
-      selectPaystackProvider.isPending || awaitingAutoSwitch;
+    const railSwitchPending = selectPending;
     return (
       <View style={styles.host}>
         {renderTopBar({ onBack: backToPicker, backLabel: "Back" })}
@@ -1041,19 +1083,35 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
             </View>
 
             <View style={styles.actionsCol}>
-              <Button
-                label="Set up payments"
-                onPress={handleStart}
-                variant="primary"
-                size="lg"
-                fullWidth
-                disabled={!tosPassed}
-                accessibilityLabel={
-                  tosPassed
-                    ? "Start Stripe Connect onboarding"
-                    : "Accept Mingla terms first to start Stripe onboarding"
-                }
-              />
+              {selectedCountry === NIGERIA_COUNTRY ? (
+                // #3645 — Nigeria is showing in the country row but the brand
+                // has not been switched (its card-rail status is not known
+                // yet). The card-rail setup must never start for Nigeria;
+                // confirming goes through the same path as picking it.
+                <Button
+                  label="Continue with Nigeria"
+                  onPress={(): void => handleCountryChange(NIGERIA_COUNTRY)}
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  accessibilityLabel="Continue with Nigeria as your payout country"
+                  testID="onboard-confirm-nigeria"
+                />
+              ) : (
+                <Button
+                  label="Set up payments"
+                  onPress={handleStart}
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  disabled={!tosPassed}
+                  accessibilityLabel={
+                    tosPassed
+                      ? "Start Stripe Connect onboarding"
+                      : "Accept Mingla terms first to start Stripe onboarding"
+                  }
+                />
+              )}
             </View>
 
             <View style={styles.poweredByRow}>

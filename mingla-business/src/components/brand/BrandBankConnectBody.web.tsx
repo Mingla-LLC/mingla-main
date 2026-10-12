@@ -83,6 +83,8 @@ const PAYSTACK_PICKER_OPTIONS = [
     sublabel: "Bank transfer via Paystack",
   },
 ] as const;
+// The one payout country this screen offers beyond the card rail.
+const NIGERIA_COUNTRY = PAYSTACK_PICKER_OPTIONS[0].code;
 
 function firstParam(value: string | string[] | undefined): string | null {
   const first = Array.isArray(value) ? value[0] : value;
@@ -204,29 +206,56 @@ export default function BrandBankConnectBody(): React.ReactElement {
 
   const brandOnNigeriaRail =
     brand?.paymentProvider?.trim().toLowerCase() === "paystack";
-  // #3645 — the screen resolves to Nigeria (from the brand's address) but the
-  // saved brand is not on the Nigerian rail yet. Showing the bank form here
-  // sent no switch at all, so the brand could not sell before adding a bank.
-  // Only the brand's account owner may change payouts, so only they trigger
-  // the automatic switch; anyone else keeps the screen as it was.
+  // #3645 — the screen resolves to Nigeria (from the brand's address, or a
+  // `?provider=` hint) but the saved brand is not on the Nigerian rail.
+  const resolvesToNigeriaUnswitched =
+    brand !== null &&
+    canonicalRail.provider === "paystack" &&
+    !brandOnNigeriaRail;
+  // The brand row's own card-rail status (`Brand.stripeStatus`, derived by
+  // useBrand from the brands.stripe_* cache). Anything but "not_connected" —
+  // onboarding, restricted, active — means a card-rail account exists. This
+  // screen has no status query, so the brand row is the only evidence.
+  const brandHasCardRailAccount =
+    brand !== null &&
+    (brand.stripeStatus ?? "not_connected") !== "not_connected";
+  // Switch automatically ONLY for the brand's account owner (the only person
+  // who may change payouts) and ONLY when the brand has no card-rail account:
+  // opening payout setup must never move a brand that takes card payments
+  // onto the Nigerian rail and naira.
   const needsAutoSwitch =
+    resolvesToNigeriaUnswitched &&
     brand !== null &&
     user !== null &&
-    canonicalRail.provider === "paystack" &&
-    !brandOnNigeriaRail &&
+    !brandHasCardRailAccount &&
     typeof brand.accountId === "string" &&
     brand.accountId === user.id;
 
   useEffect(() => {
     if (brand === null || countryTouchedRef.current) return;
+    if (resolvesToNigeriaUnswitched) {
+      // Never the bank form before a switch. A brand with a card-rail account
+      // lands on its card-rail screen; anyone else sees Nigeria in the country
+      // row and either the automatic switch or an explicit confirm.
+      setSelectedCountry(
+        brandHasCardRailAccount
+          ? resolveBankConnectRail({
+            countryCode: null,
+            paymentProvider: "stripe",
+          }).countryCode
+          : canonicalRail.countryCode,
+      );
+      setSelectedProvider("stripe");
+      return;
+    }
     setSelectedCountry(canonicalRail.countryCode);
-    // The bank form waits for the automatic switch to succeed.
-    setSelectedProvider(needsAutoSwitch ? "stripe" : canonicalRail.provider);
+    setSelectedProvider(canonicalRail.provider);
   }, [
     brand,
+    brandHasCardRailAccount,
     canonicalRail.countryCode,
     canonicalRail.provider,
-    needsAutoSwitch,
+    resolvesToNigeriaUnswitched,
   ]);
 
   const handleBack = useCallback((): void => {
@@ -593,6 +622,19 @@ export default function BrandBankConnectBody(): React.ReactElement {
               mode="create"
               onConnected={handlePaystackConnected}
               onCancel={(): void => handleCountryChange("GB")}
+            />
+          ) : selectedCountry === NIGERIA_COUNTRY ? (
+            // Nigeria is showing in the country row but the brand has not been
+            // switched. The card-rail setup must never start for Nigeria;
+            // confirming goes through the same path as picking it.
+            <Button
+              label="Continue with Nigeria"
+              onPress={(): void => handleCountryChange(NIGERIA_COUNTRY)}
+              variant="primary"
+              size="lg"
+              fullWidth
+              accessibilityLabel="Continue with Nigeria as your payout country"
+              testID="bank-connect-confirm-nigeria"
             />
           ) : (
             <>
