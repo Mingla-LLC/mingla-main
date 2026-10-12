@@ -1474,6 +1474,585 @@ begin
 end;
 $t$;
 
+-- ===========================================================================
+-- RETEST additions (XA-16..XA-21). Added after the pipeline rules were
+-- tightened; nothing above this line was changed for them.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- XA-16 — a host is in Live only while its linked brand has a public listing,
+-- on every write that touches the stage or the link.
+-- ---------------------------------------------------------------------------
+do $t$
+declare
+  b record;
+  v_id uuid;
+  v_got jsonb;
+  v_txt text;
+  v_act text;
+  v_snap text;
+  v_audit int;
+  v_first timestamptz;
+begin
+  -- Listings with "discover" visibility, and one public listing whose
+  -- ordinary reads are being withheld.
+  perform set_config('session_replication_role', 'replica', true);
+  insert into x_brands values
+    ('disc_scheduled', '38021111-0000-4000-b000-0000000000d1', true,  false),
+    ('disc_live',      '38021111-0000-4000-b000-0000000000d2', true,  false),
+    ('disc_draft',     '38021111-0000-4000-b000-0000000000d3', false, false),
+    ('disc_ended',     '38021111-0000-4000-b000-0000000000d4', false, false),
+    ('disc_cancelled', '38021111-0000-4000-b000-0000000000d5', false, false),
+    ('disc_deleted',   '38021111-0000-4000-b000-0000000000d6', false, false),
+    ('pub_withheld',   '38021111-0000-4000-b000-0000000000d7', false, false);
+  insert into public.brands (id, account_id, name, slug, city)
+  select id, '38021111-0000-4000-b900-000000000001', 'Issue3802x Brand ' || k, 'issue3802x-' || replace(k, '_', '-'), 'Lagos'
+    from x_brands where k like 'disc\_%' or k = 'pub_withheld';
+  insert into public.events (brand_id, title, slug, visibility, status, deleted_at)
+  select x.id, 'Issue3802x ' || x.k, 'issue3802x-ev-' || replace(x.k, '_', '-'), v.vis, v.st, v.del
+    from x_brands x join (values
+      ('disc_scheduled', 'discover', 'scheduled', null::timestamptz),
+      ('disc_live',      'discover', 'live',      null),
+      ('disc_draft',     'discover', 'draft',     null),
+      ('disc_ended',     'discover', 'ended',     null),
+      ('disc_cancelled', 'discover', 'cancelled', null),
+      ('disc_deleted',   'discover', 'scheduled', now()),
+      ('pub_withheld',   'public',   'scheduled', null)) as v(k, vis, st, del) on v.k = x.k;
+  insert into public.event_private_media_transition_jobs
+    (transition_id, event_id, direction, target_visibility, state, expected_event_updated_at, source_fingerprint, ordinary_read_blocked_at)
+  select gen_random_uuid(), e.id, 'enter_private', 'private', 'preparing', now(), repeat('a', 64), now()
+    from public.events e where e.brand_id = pg_temp.x_brand('pub_withheld')::uuid;
+  perform set_config('session_replication_role', 'origin', true);
+  -- Earlier sections moved two fixtures; put the two this section relies on back.
+  perform set_config('session_replication_role', 'replica', true);
+  update public.events set status = 'scheduled', visibility = 'public' where brand_id = pg_temp.x_brand('pub_scheduled')::uuid;
+  update public.events set visibility = 'private' where brand_id = pg_temp.x_brand('private')::uuid;
+  perform set_config('session_replication_role', 'origin', true);
+
+  for b in select * from x_brands where k like 'disc\_%' or k = 'pub_withheld' order by k loop
+    perform pg_temp.x_eq('XA-16', 'rule for a brand whose listing is: ' || b.k, public.crm_brand_is_live(b.id)::text, b.live::text);
+    perform pg_temp.x_eq('XA-16', 'a new host linked to [' || b.k || '] lands in',
+      pg_temp.x_as('partner', format($$select public.crm_record_create('hosts', %L, %L)->'record'->>'stage'$$,
+        jsonb_build_object('name', 'Issue3802x Disc ' || b.k, 'brand_id', b.id)::text, 'xdisc-' || rpad(replace(b.k, '_', '-'), 14, '0'))),
+      case when b.live then 'live' else 'onboarded' end);
+  end loop;
+  perform pg_temp.x_eq('XA-16', 'a signed-out visitor cannot read the withheld public listing either',
+    pg_temp.x_as('anon', format('select exists (select 1 from public.events_public_view e where e.brand_id = %L)::text', pg_temp.x_brand('pub_withheld'))), 'false');
+  perform pg_temp.x_eq('XA-16', 'the scheduled run promotes none of the hosts just linked to a listing that is not public',
+    pg_temp.x_as('cron', $$select count(*)::text from public.crm_records r where r.name like 'Issue3802x Disc %' and r.stage = 'onboarded'
+                             and public.crm_reconcile_live(r.id) > 0$$), '0');
+
+  -- A Live host whose link is changed: Live only where the new brand has a
+  -- public listing, Onboarded otherwise, with one system line saying so.
+  for b in select * from x_brands where k <> 'brand_deleted' order by k loop
+    v_id := pg_temp.x_seed('relink', 'hosts', 'Issue3802x Relink ' || b.k, 'prospect');
+    perform pg_temp.x_as('growth', format($$select public.crm_record_update(%L, %L)::text$$, v_id,
+      jsonb_build_object('brand_id', pg_temp.x_brand('venue'))::text));
+    select went_live_at into v_first from public.crm_records where id = v_id and stage = 'live';
+    v_audit := pg_temp.x_audit();
+    v_got := pg_temp.x_as('partner', format($$select public.crm_record_update(%L, %L)::text$$, v_id,
+      jsonb_build_object('brand_id', b.id)::text))::jsonb;
+    perform pg_temp.x_eq('XA-16', 'a Live host re-linked to [' || b.k || '] is then in',
+      (v_got->'record'->>'stage') || '/' || coalesce(v_got->>'moved_to', '<none>'),
+      case when b.k = 'venue' then 'live/<none>' when b.live then 'live/<none>' else 'onboarded/onboarded' end);
+    perform pg_temp.x_eq('XA-16', '[' || b.k || '] the stored stage agrees, and the first went-live time is kept',
+      (select stage || '/' || (went_live_at = v_first)::text from public.crm_records where id = v_id),
+      case when b.live then 'live/true' else 'onboarded/true' end);
+    perform pg_temp.x_eq('XA-16', '[' || b.k || '] system lines back out of Live',
+      (select count(*)::text from public.crm_activity where record_id = v_id and from_stage = 'live' and to_stage = 'onboarded'
+          and actor_email is null and via = 'system'), case when b.live then '0' else '1' end);
+    if b.k <> 'venue' then
+      perform pg_temp.x_eq('XA-16', '[' || b.k || '] the edit is one audit row under the person',
+        (pg_temp.x_audit() - v_audit)::text || ':' || (select admin_email from public.admin_audit_log where action like 'crm.%' order by created_at desc, id desc limit 1),
+        '1:issue3802x-partner@test.local');
+    end if;
+    perform pg_temp.x_ok('XA-16', '[' || b.k || '] never Live without a linked brand that has a public listing',
+      (select r.stage <> 'live' or public.crm_brand_is_live(r.brand_id) from public.crm_records r where r.id = v_id));
+  end loop;
+
+  -- Clearing the link, by every spelling of "nothing".
+  foreach v_txt in array array['{"brand_id":null}', '{"brand_id":""}', '{"brand_id":"   "}'] loop
+    v_id := pg_temp.x_seed('unlink', 'hosts', 'Issue3802x Unlink ' || md5(v_txt), 'prospect');
+    perform pg_temp.x_as('growth', format($$select public.crm_record_update(%L, %L)::text$$, v_id, jsonb_build_object('brand_id', pg_temp.x_brand('pub_live'))::text));
+    perform pg_temp.x_eq('XA-16', 'clearing the link of a Live host with ' || v_txt,
+      pg_temp.x_as('growth', format($$select (r->'record'->>'stage') || '/' || (r->>'moved_to') || '/' || coalesce(r->'record'->>'brand_id', '<none>')
+                                        from public.crm_record_update(%L, %L) r$$, v_id, v_txt)), 'onboarded/onboarded/<none>');
+  end loop;
+  v_snap := pg_temp.x_snap();
+  perform pg_temp.x_like('XA-16', 'a Live host cannot be pointed at a deleted brand',
+    pg_temp.x_as('growth', format($$select public.crm_record_update(%L, %L)::text$$, pg_temp.x_id('relink'),
+      jsonb_build_object('brand_id', pg_temp.x_brand('brand_deleted'))::text)), 'ERR:22023:invalid_brand:%');
+  perform pg_temp.x_eq('XA-16', 'and nothing changed', pg_temp.x_snap(), v_snap);
+
+  -- Edits that do not touch the link never move a Live host, even after its
+  -- listing has gone away; nor does sending the same link again.
+  v_id := pg_temp.x_seed('lapse', 'hosts', 'Issue3802x Lapse', 'prospect');
+  perform pg_temp.x_as('growth', format($$select public.crm_record_update(%L, %L)::text$$, v_id, jsonb_build_object('brand_id', pg_temp.x_brand('disc_live'))::text));
+  perform set_config('session_replication_role', 'replica', true);
+  update public.events set status = 'ended' where brand_id = pg_temp.x_brand('disc_live')::uuid;
+  perform set_config('session_replication_role', 'origin', true);
+  perform pg_temp.x_eq('XA-16', 'the listing is gone now', public.crm_brand_is_live(pg_temp.x_brand('disc_live')::uuid)::text, 'false');
+  perform pg_temp.x_eq('XA-16', 'an unrelated edit leaves the host in Live',
+    pg_temp.x_as('partner', format($$select public.crm_record_update(%L, '{"contact":"Ada","next_action":"call"}')->'record'->>'stage'$$, v_id)), 'live');
+  perform pg_temp.x_eq('XA-16', 'sending the same link again changes nothing',
+    pg_temp.x_as('partner', format($$select (r->>'changed') || '/' || (r->'record'->>'stage') from public.crm_record_update(%L, %L) r$$, v_id,
+      jsonb_build_object('brand_id', pg_temp.x_brand('disc_live'))::text)), 'false/live');
+  perform pg_temp.x_eq('XA-16', 'the scheduled run does not take Live away', 
+    pg_temp.x_as('cron', 'select public.crm_reconcile_live()::text') || '/' || (select stage from public.crm_records where id = v_id), '0/live');
+  -- ...but an undo is a write that puts it back into Live, so the rule is
+  -- checked at that moment.
+  v_act := pg_temp.x_as('growth', format($$select public.crm_record_move_stage(%L, 'lost', 'closed')->>'activity_id'$$, v_id));
+  v_snap := pg_temp.x_snap();
+  v_audit := pg_temp.x_audit();
+  perform pg_temp.x_like('XA-16', 'undo back into Live is refused once the listing is gone',
+    pg_temp.x_as('growth', format('select public.crm_record_undo_stage_move(%L)::text', v_act)), 'ERR:22023:undo_not_live:%');
+  perform pg_temp.x_eq('XA-16', 'the refused undo changed nothing and wrote no audit row',
+    (pg_temp.x_snap() = v_snap)::text || '/' || (pg_temp.x_audit() - v_audit)::text, 'true/0');
+
+  -- Undo back into Live, link by link.
+  v_id := pg_temp.x_seed('undo_link', 'hosts', 'Issue3802x Undo Link', 'prospect');
+  perform pg_temp.x_as('growth', format($$select public.crm_record_update(%L, %L)::text$$, v_id, jsonb_build_object('brand_id', pg_temp.x_brand('pub_live'))::text));
+  v_act := pg_temp.x_as('growth', format($$select public.crm_record_move_stage(%L, 'lost', 'closed')->>'activity_id'$$, v_id));
+  perform pg_temp.x_eq('XA-16', 'clearing the link of a Lost host leaves it Lost',
+    pg_temp.x_as('growth', format($$select (r->'record'->>'stage') || '/' || coalesce(r->>'moved_to', '<none>') from public.crm_record_update(%L, '{"brand_id":null}') r$$, v_id)), 'lost/<none>');
+  perform pg_temp.x_like('XA-16', 'undo into Live with no linked brand is refused',
+    pg_temp.x_as('growth', format('select public.crm_record_undo_stage_move(%L)::text', v_act)), 'ERR:22023:undo_not_live:%');
+  perform pg_temp.x_as('growth', format($$select public.crm_record_update(%L, %L)::text$$, v_id, jsonb_build_object('brand_id', pg_temp.x_brand('none'))::text));
+  perform pg_temp.x_like('XA-16', 'undo into Live with a brand that has no listing is refused',
+    pg_temp.x_as('growth', format('select public.crm_record_undo_stage_move(%L)::text', v_act)), 'ERR:22023:undo_not_live:%');
+  perform pg_temp.x_as('growth', format($$select public.crm_record_update(%L, %L)::text$$, v_id, jsonb_build_object('brand_id', pg_temp.x_brand('private'))::text));
+  perform pg_temp.x_like('XA-16', 'undo into Live with a brand whose listing is private is refused',
+    pg_temp.x_as('growth', format('select public.crm_record_undo_stage_move(%L)::text', v_act)), 'ERR:22023:undo_not_live:%');
+  perform pg_temp.x_eq('XA-16', 'it is still Lost with its reason',
+    (select stage || ':' || stage_reason from public.crm_records where id = v_id), 'lost:closed');
+  perform pg_temp.x_as('growth', format($$select public.crm_record_update(%L, %L)::text$$, v_id, jsonb_build_object('brand_id', pg_temp.x_brand('disc_scheduled'))::text));
+  perform pg_temp.x_eq('XA-16', 'undo into Live works once the linked brand has a public listing',
+    pg_temp.x_as('growth', format($$select public.crm_record_undo_stage_move(%L)->'record'->>'stage'$$, v_act)), 'live');
+
+  -- After every route above: the rule holds for every host a function wrote,
+  -- except where only the listing changed afterwards.
+  perform pg_temp.x_eq('XA-16', 'no host is in Live without a linked brand',
+    (select count(*)::text from public.crm_records where stage = 'live' and brand_id is null), '0');
+  -- (disc_live lapsed above; the "private" brand's listing was public for a
+  -- while in XA-10 and its host was promoted then.)
+  perform pg_temp.x_eq('XA-16', 'every Live host with no public listing is one whose listing lapsed in this suite',
+    (select coalesce(string_agg(distinct x.k, ',' order by x.k), '<none>') from public.crm_records r join x_brands x on x.id = r.brand_id
+      where r.stage = 'live' and r.deleted_at is null and not public.crm_brand_is_live(r.brand_id)), 'disc_live,private');
+end;
+$t$;
+
+-- ---------------------------------------------------------------------------
+-- XA-17 — a creator is at Booked or later only with a signed agreement, by
+-- every route: a move from any stage (skips included), an edit, an undo, an
+-- add, a bulk add.
+-- ---------------------------------------------------------------------------
+do $t$
+declare
+  c_stages constant text[] := array['identified','contacted','replied','negotiating','booked','posted','passed'];
+  v_from text;
+  v_to text;
+  v_agree text;
+  v_who text;
+  v_id uuid;
+  v_got text;
+  v_want text;
+  v_act text;
+  v_n int := 0;
+  v_snap text;
+  v_audit int;
+  v_stage text;
+begin
+  -- Moves into Booked and into Posted, from every stage, with every agreement.
+  foreach v_from in array c_stages loop
+    foreach v_to in array array['booked', 'posted'] loop
+      foreach v_agree in array array['<none>', 'none', 'sent', 'signed'] loop
+        v_n := v_n + 1;
+        v_who := (array['growth','partner','admin','owner'])[1 + v_n % 4];
+        v_id := pg_temp.x_seed('agr', 'creators', '@issue3802x_agr_' || v_n, v_from, null, nullif(v_agree, '<none>'));
+        v_snap := pg_temp.x_snap();
+        v_got := pg_temp.x_as(v_who, format('select public.crm_record_move_stage(%L, %L)::text', v_id, v_to));
+        v_want := case when v_from = v_to then 'same' when v_agree = 'signed' then 'ok' else 'agreement_required' end;
+        perform pg_temp.x_eq('XA-17', format('%s -> %s with agreement [%s] as %s', v_from, v_to, v_agree, v_who),
+          case when v_got like 'ERR:22023:agreement_required:%' then 'agreement_required'
+               when v_got like 'ERR:%' then left(v_got, 60)
+               when (v_got::jsonb->>'changed') = 'true' then 'ok' else 'same' end
+            || '/' || (select stage from public.crm_records where id = v_id),
+          v_want || '/' || case when v_want = 'ok' then v_to else v_from end);
+        if v_want <> 'ok' then
+          perform pg_temp.x_eq('XA-17', format('%s -> %s [%s] wrote nothing', v_from, v_to, v_agree), pg_temp.x_snap(), v_snap);
+        end if;
+        delete from public.crm_records where id = v_id;
+      end loop;
+    end loop;
+  end loop;
+  perform pg_temp.x_eq('XA-17', 'move cases walked', v_n::text, '56');
+
+  -- While there, the agreement cannot become anything but signed; before and
+  -- after (Passed) it can.
+  foreach v_stage in array c_stages loop
+    v_id := pg_temp.x_seed('agr_edit', 'creators', '@issue3802x_agr_edit_' || v_stage, v_stage, null, 'signed');
+    foreach v_agree in array array['"none"', '"sent"', 'null', '""', '"  "'] loop
+      v_snap := pg_temp.x_snap();
+      v_got := pg_temp.x_as('partner', format($$select public.crm_record_update(%L, %L)->'record'->>'stage'$$, v_id, '{"agreement":' || v_agree || '}'));
+      if v_stage in ('booked', 'posted') then
+        perform pg_temp.x_like('XA-17', format('at %s the agreement cannot become %s', v_stage, v_agree), v_got, 'ERR:22023:agreement_required:%');
+        perform pg_temp.x_eq('XA-17', format('at %s, %s wrote nothing', v_stage, v_agree), pg_temp.x_snap(), v_snap);
+      else
+        perform pg_temp.x_eq('XA-17', format('at %s the agreement can become %s', v_stage, v_agree), v_got, v_stage);
+        update public.crm_records set agreement = 'signed' where id = v_id;
+      end if;
+    end loop;
+    perform pg_temp.x_eq('XA-17', format('at %s other fields are still editable', v_stage),
+      pg_temp.x_as('partner', format($$select (r->>'changed') || '/' || (r->'record'->>'agreement') from public.crm_record_update(%L, '{"rate":"200 per post","followers":900,"agreement":"signed"}') r$$, v_id)),
+      'true/signed');
+  end loop;
+
+  -- Undo back into Booked or Posted needs it at that moment.
+  foreach v_stage in array array['booked', 'posted'] loop
+    v_id := pg_temp.x_seed('agr_undo', 'creators', '@issue3802x_agr_undo_' || v_stage, v_stage, null, 'signed');
+    v_act := pg_temp.x_as('growth', format($$select public.crm_record_move_stage(%L, 'negotiating')->>'activity_id'$$, v_id));
+    perform pg_temp.x_as('growth', format($$select public.crm_record_update(%L, '{"agreement":"sent"}')::text$$, v_id));
+    v_snap := pg_temp.x_snap();
+    v_audit := pg_temp.x_audit();
+    perform pg_temp.x_like('XA-17', 'undo back into ' || v_stage || ' without a signed agreement is refused',
+      pg_temp.x_as('growth', format('select public.crm_record_undo_stage_move(%L)::text', v_act)), 'ERR:22023:agreement_required:%');
+    perform pg_temp.x_eq('XA-17', 'the refused undo into ' || v_stage || ' changed nothing',
+      (pg_temp.x_snap() = v_snap)::text || '/' || (pg_temp.x_audit() - v_audit)::text, 'true/0');
+    perform pg_temp.x_as('growth', format($$select public.crm_record_update(%L, '{"agreement":"signed"}')::text$$, v_id));
+    perform pg_temp.x_eq('XA-17', 'with it signed again the undo into ' || v_stage || ' works',
+      pg_temp.x_as('growth', format($$select public.crm_record_undo_stage_move(%L)->'record'->>'stage'$$, v_act)), v_stage);
+
+    -- Out to Passed, unsign there (allowed), undo: refused.
+    v_act := pg_temp.x_as('growth', format($$select public.crm_record_move_stage(%L, 'passed', 'went quiet')->>'activity_id'$$, v_id));
+    perform pg_temp.x_eq('XA-17', 'in Passed the agreement may be cleared',
+      pg_temp.x_as('growth', format($$select coalesce(public.crm_record_update(%L, '{"agreement":null}')->'record'->>'agreement', '<none>')$$, v_id)), '<none>');
+    perform pg_temp.x_like('XA-17', 'undo from Passed back into ' || v_stage || ' without it is refused',
+      pg_temp.x_as('growth', format('select public.crm_record_undo_stage_move(%L)::text', v_act)), 'ERR:22023:agreement_required:%');
+    perform pg_temp.x_eq('XA-17', 'it stays in Passed with its reason',
+      (select stage || ':' || stage_reason from public.crm_records where id = v_id), 'passed:went quiet');
+  end loop;
+
+  -- An add never starts there, whatever is sent.
+  perform pg_temp.x_eq('XA-17', 'a new creator with a signed agreement starts in the first stage',
+    pg_temp.x_as('growth', $$select public.crm_record_create('creators', '{"name":"@issue3802x_agr_new","agreement":"signed"}', 'xagr-new-0001')->'record'->>'stage'$$), 'identified');
+  perform pg_temp.x_eq('XA-17', 'bulk-added creators with a signed agreement start in the first stage',
+    pg_temp.x_as('growth', $$select string_agg(distinct e->'record'->>'stage', ',') from jsonb_array_elements(public.crm_records_bulk_create('creators',
+      '[{"name":"@issue3802x_agr_b1","agreement":"signed"},{"name":"@issue3802x_agr_b2","agreement":"signed","followers":10}]', 'xagr-new-0002')->'created') e$$), 'identified');
+  perform pg_temp.x_like('XA-17', 'an add cannot name the stage',
+    pg_temp.x_as('growth', $$select public.crm_record_create('creators', '{"name":"@issue3802x_agr_x","agreement":"signed","stage":"posted"}', 'xagr-new-0003')::text$$), 'ERR:22023:unknown_field:%');
+
+  perform pg_temp.x_eq('XA-17', 'no creator a function wrote sits at Booked or Posted without a signed agreement',
+    (select count(*)::text from public.crm_records where pipeline = 'creators' and stage in ('booked', 'posted') and agreement is distinct from 'signed'), '0');
+end;
+$t$;
+
+-- ---------------------------------------------------------------------------
+-- XA-18 — names. What this suite holds the functions to:
+--   * letters and digits of any script, and emoji (alone too), are names;
+--   * every kind of blank space is one space, and the ends are trimmed;
+--   * characters that only steer direction or cannot be seen are removed, so
+--     they never make a second record or an empty-looking card;
+--   * a name with nothing visible left is refused in plain words.
+-- ---------------------------------------------------------------------------
+do $t$
+declare
+  r record;
+  v_got text;
+  v_id text;
+  v_snap text;
+begin
+  -- Refused, each with the function's own message (never a table error).
+  v_snap := pg_temp.x_snap();
+  for r in select * from (values
+      ('empty', ''), ('spaces', '    '), ('tab and newline', E'\t\n\r'),
+      ('no-break space', U&'\00A0'), ('wide space', U&'\3000'), ('thin spaces', U&'\2009\200A\2003'),
+      ('zero-width space', U&'\200B'), ('zero-width joiners', U&'\200D\200C'), ('word joiner', U&'\2060'),
+      ('byte-order mark', U&'\FEFF'), ('soft hyphen', U&'\00AD'), ('direction marks', U&'\200E\200F'),
+      ('direction overrides', U&'\202A\202B\202C\202D\202E'), ('direction isolates', U&'\2066\2067\2068\2069'),
+      ('variation marks', U&'\FE0F\FE0E'), ('blank filler', U&'\3164'), ('line separators', U&'\2028\2029'),
+      ('a mix of all of them', U&'\00A0\200B \FEFF\202E\3000\200D\FE0F\00AD')) as t(label, name) loop
+    perform pg_temp.x_like('XA-18', 'add refuses a name that is only: ' || r.label,
+      pg_temp.x_as('growth', format($$select public.crm_record_create('hosts', %L, %L)::text$$,
+        jsonb_build_object('name', r.name)::text, 'xname-r-' || md5(r.label))), 'ERR:22023:invalid_name:%');
+    perform pg_temp.x_like('XA-18', 'rename refuses a name that is only: ' || r.label,
+      pg_temp.x_as('growth', format($$select public.crm_record_update(%L, %L)::text$$, pg_temp.x_id('gate'),
+        jsonb_build_object('name', r.name)::text)), 'ERR:22023:invalid_name:%');
+  end loop;
+  perform pg_temp.x_eq('XA-18', 'no refused name wrote anything', pg_temp.x_snap(), v_snap);
+  perform pg_temp.x_like('XA-18', 'a bulk item with an unseen name is listed as invalid, in plain words',
+    pg_temp.x_as('growth', format($$select public.crm_records_bulk_create('hosts', %L, 'xname-bulk-001')->'invalid'->0->>'error'$$,
+      jsonb_build_array(jsonb_build_object('name', U&'\200B\00A0'))::text)), 'invalid_name:%');
+
+  -- Allowed, and stored clean.
+  for r in select * from (values
+      ('emoji alone',            U&'\+01F525',                                 U&'\+01F525'),
+      ('an emoji family',        U&'\+01F468\200D\+01F469\200D\+01F467',       U&'\+01F468\200D\+01F469\200D\+01F467'),
+      ('Arabic',                 U&'\0645\0637\0639\0645 \0627\0644\0646\062E\0644\0629', U&'\0645\0637\0639\0645 \0627\0644\0646\062E\0644\0629'),
+      ('Yoruba with tone marks', U&'Il\00E9 \1ECCj\00E0',                      U&'Il\00E9 \1ECCj\00E0'),
+      ('Japanese',               U&'\30AB\30D5\30A7',                          U&'\30AB\30D5\30A7'),
+      ('mixed-width spaces',     U&'\3000Wide\2003\00A0Space\2009Bar\3000',    'Wide Space Bar'),
+      ('direction override',     U&'\202EIssue3802x Flip\202C Name\200F',      'Issue3802x Flip Name'),
+      ('zero-width inside',      U&'Issue3802x Zero\200BWidth\FEFF Name',      'Issue3802x ZeroWidth Name'),
+      ('soft hyphen inside',     U&'Issue3802x Soft\00ADHyphen',               'Issue3802x SoftHyphen'),
+      ('control characters',     E'Issue3802x \x01Ctrl\x1F Name',              'Issue3802x Ctrl Name'),
+      ('line breaks',            E'Issue3802x\nTwo\r\nLines',                  'Issue3802x Two Lines')) as t(label, name, stored) loop
+    v_got := pg_temp.x_as('partner', format($$select public.crm_record_create('hosts', %L, %L)->'record'->>'name'$$,
+      jsonb_build_object('name', r.name)::text, 'xname-a-' || md5(r.label)));
+    perform pg_temp.x_eq('XA-18', 'allowed and stored clean: ' || r.label, v_got, r.stored);
+  end loop;
+
+  -- The same name with unseen characters, other spaces or direction marks is
+  -- the same record, on every path that compares names.
+  for r in select * from (values
+      ('plain',                      'issue3802x flip name'),
+      ('with direction marks',       U&'\200FIssue3802x\202E Flip Name'),
+      ('with zero-width characters', U&'I\200Bssue3802x F\200Dlip N\FEFFame'),
+      ('with wide spaces',           U&'Issue3802x\3000Flip\00A0\2003Name'),
+      ('with a soft hyphen',         U&'Issue3802x Fl\00ADip Name')) as t(label, name) loop
+    perform pg_temp.x_eq('XA-18', 'add finds the existing record: ' || r.label,
+      pg_temp.x_as('growth', format($$select (r->>'status') || ':' || (r->'existing'->>'name') from public.crm_record_create('hosts', %L, %L) r$$,
+        jsonb_build_object('name', r.name)::text, 'xname-d-' || md5(r.label))), 'duplicate:Issue3802x Flip Name');
+    perform pg_temp.x_eq('XA-18', 'the duplicate check finds it too: ' || r.label,
+      pg_temp.x_as('growth', format($$select public.crm_duplicate_check('hosts', %L)->'exact'->>'name'$$, r.name)), 'Issue3802x Flip Name');
+    perform pg_temp.x_like('XA-18', 'rename into it is refused: ' || r.label,
+      pg_temp.x_as('growth', format($$select public.crm_record_update(%L, %L)::text$$, pg_temp.x_id('gate'),
+        jsonb_build_object('name', r.name)::text)), 'ERR:22023:duplicate_name:%');
+  end loop;
+  perform pg_temp.x_eq('XA-18', 'an emoji with and without its variation mark is one record',
+    pg_temp.x_as('growth', format($$select public.crm_record_create('hosts', %L, 'xname-e-000001')->>'status'$$, jsonb_build_object('name', U&'\2764\FE0F')::text))
+    || '/' || pg_temp.x_as('growth', format($$select public.crm_record_create('hosts', %L, 'xname-e-000002')->>'status'$$, jsonb_build_object('name', U&'\2764')::text)),
+    'created/duplicate');
+
+  -- Length is counted after cleaning.
+  perform pg_temp.x_eq('XA-18', '160 visible characters padded with unseen ones is accepted',
+    pg_temp.x_as('growth', format($$select char_length(public.crm_record_create('hosts', %L, 'xname-l-000001')->'record'->>'name')::text$$,
+      jsonb_build_object('name', U&'\200B\00A0' || 'Issue3802x ' || repeat('n', 149) || U&'\3000\FEFF')::text)), '160');
+  perform pg_temp.x_like('XA-18', '161 visible characters is refused',
+    pg_temp.x_as('growth', format($$select public.crm_record_create('hosts', %L, 'xname-l-000002')::text$$,
+      jsonb_build_object('name', 'Issue3802x ' || repeat('m', 150))::text)), 'ERR:22023:invalid_name:%');
+
+  -- Other text fields get the same cleaning; an unseen-only value is "not sent".
+  v_id := pg_temp.x_as('growth', format($$select public.crm_record_create('hosts', %L, 'xname-f-000001')->'record'->>'id'$$,
+    jsonb_build_object('name', 'Issue3802x Field Clean', 'contact', U&'\202EAda\200B  \3000Obi\00A0', 'next_action', U&'\200B\FEFF')::text));
+  perform pg_temp.x_eq('XA-18', 'contact is stored clean, and an unseen-only next action is empty',
+    (select contact || '/' || coalesce(next_action, '<none>') from public.crm_records where id = v_id::uuid), 'Ada Obi/<none>');
+  perform pg_temp.x_eq('XA-18', 'every stored name in this suite is trimmed and has no unseen character',
+    (select count(*)::text from public.crm_records where name <> btrim(name) or name ~ '[​‎‏‪-‮⁠-⁯﻿ ­　]' or name ~ '\s{2,}'), '0');
+end;
+$t$;
+
+-- ---------------------------------------------------------------------------
+-- XA-19 — the time a log entry happened, and the reason of a move, are
+-- checked in plain words.
+-- ---------------------------------------------------------------------------
+do $t$
+declare
+  r record;
+  v_id text := pg_temp.x_id('gate');
+  v_got text;
+  v_snap text;
+  v_n int := 0;
+begin
+  v_snap := pg_temp.x_snap();
+  for r in select * from (values
+      ('-infinity'), ('infinity'), ('epoch'), ('1999-12-31T23:59:59Z'), ('2019-12-31T23:59:59Z'), ('2019-12-31T23:59:59.999999+00'),
+      ('2020-01-01T00:00:00+14'), ('0001-01-01T00:00:00Z'), ('4713-01-01 BC'), ('tomorrow'), ('2999-01-01T00:00:00Z'),
+      ('not a time'), ('2026-02-30T10:00:00Z'), ('allballs'), ('1e10'), ('{}')) as t(v) loop
+    v_n := v_n + 1;
+    perform pg_temp.x_like('XA-19', 'a log entry refuses the time [' || r.v || ']',
+      pg_temp.x_as('growth', format($$select public.crm_record_log(%L, %L, %L)::text$$, v_id,
+        jsonb_build_object('kind', 'note', 'body', 'x', 'occurred_at', r.v)::text, 'xtime-r-' || lpad(v_n::text, 4, '0'))), 'ERR:22023:invalid_occurred_at:%');
+  end loop;
+  perform pg_temp.x_like('XA-19', 'six minutes ahead is refused',
+    pg_temp.x_as('growth', format($$select public.crm_record_log(%L, %L, 'xtime-r-ahead6')::text$$, v_id,
+      jsonb_build_object('kind', 'touch', 'channel', 'phone', 'direction', 'outbound', 'occurred_at', (clock_timestamp() + interval '6 minutes'))::text)), 'ERR:22023:invalid_occurred_at:%');
+  perform pg_temp.x_eq('XA-19', 'no refused time wrote anything', pg_temp.x_snap(), v_snap);
+  perform pg_temp.x_eq('XA-19', 'the first moment of 2020 (UTC) is accepted',
+    pg_temp.x_as('growth', format($$select ((public.crm_record_log(%L, '{"kind":"note","body":"x","occurred_at":"2020-01-01T00:00:00Z"}', 'xtime-a-000001')->'activity'->>'occurred_at')::timestamptz = '2020-01-01T00:00:00Z')::text$$, v_id)), 'true');
+  perform pg_temp.x_eq('XA-19', 'the same moment written in another zone is accepted',
+    pg_temp.x_as('growth', format($$select ((public.crm_record_log(%L, '{"kind":"note","body":"x","occurred_at":"2020-01-01T01:00:00+01:00"}', 'xtime-a-000002')->'activity'->>'occurred_at')::timestamptz = '2020-01-01T00:00:00Z')::text$$, v_id)), 'true');
+  perform pg_temp.x_ok('XA-19', 'four minutes ahead is accepted',
+    pg_temp.x_as('growth', format($$select public.crm_record_log(%L, %L, 'xtime-a-000003')::text$$, v_id,
+      jsonb_build_object('kind', 'note', 'body', 'x', 'occurred_at', (clock_timestamp() + interval '4 minutes'))::text)) like '{%');
+  perform pg_temp.x_eq('XA-19', 'no stored log time is outside the window',
+    (select count(*)::text from public.crm_activity where occurred_at < '2020-01-01T00:00:00Z' or occurred_at > clock_timestamp() + interval '5 minutes' or not isfinite(occurred_at)), '0');
+
+  -- A note of unseen characters only is no note; a note keeps its line breaks.
+  perform pg_temp.x_like('XA-19', 'a note with nothing visible is refused',
+    pg_temp.x_as('growth', format($$select public.crm_record_log(%L, %L, 'xnote-r-000001')::text$$, v_id,
+      jsonb_build_object('kind', 'note', 'body', U&'\200B\00A0\FEFF  \3000')::text)), 'ERR:22023:invalid_body:%');
+  perform pg_temp.x_eq('XA-19', 'a note keeps its line breaks and loses its unseen characters',
+    pg_temp.x_as('growth', format($$select public.crm_record_log(%L, %L, 'xnote-a-000001')->'activity'->>'body'$$, v_id,
+      jsonb_build_object('kind', 'note', 'body', E'  Line one​\nLine two 　')::text)), E'Line one\nLine two');
+
+  -- The reason of a move to Lost or Passed.
+  v_id := pg_temp.x_seed('reason', 'hosts', 'Issue3802x Reason Card', 'prospect')::text;
+  v_snap := pg_temp.x_snap();
+  for r in select * from (values
+      ('nothing', null), ('empty', ''), ('spaces', '   '), ('no-break spaces', U&'\00A0\00A0'), ('zero-width only', U&'\200B\FEFF\200D'),
+      ('direction marks only', U&'\202E\202C'), ('301 characters', repeat('r', 301)), ('301 after trimming', '  ' || repeat('r', 301) || '  ')) as t(label, v) loop
+    perform pg_temp.x_like('XA-19', 'Lost refuses a reason that is: ' || r.label,
+      pg_temp.x_as('partner', format('select public.crm_record_move_stage(%L, %L, %s)::text', v_id, 'lost', coalesce(quote_literal(r.v), 'null'))), 'ERR:22023:reason_required:%');
+  end loop;
+  perform pg_temp.x_eq('XA-19', 'no refused reason wrote anything', pg_temp.x_snap(), v_snap);
+  perform pg_temp.x_eq('XA-19', 'a reason is stored clean',
+    pg_temp.x_as('partner', format('select public.crm_record_move_stage(%L, %L, %L)->%L->>%L', v_id, 'lost', U&'\00A0 Closed\200B  for\3000good \202E', 'record', 'stage_reason')), 'Closed for good');
+  perform pg_temp.x_eq('XA-19', '300 characters padded with unseen ones is accepted',
+    pg_temp.x_as('partner', format('select char_length(public.crm_record_move_stage(%L, %L, %L)->%L->>%L)::text',
+      pg_temp.x_seed('reason2', 'creators', '@issue3802x_reason', 'identified'), 'passed', U&'\200B ' || repeat('r', 300) || U&'\00A0', 'record', 'stage_reason')), '300');
+  perform pg_temp.x_eq('XA-19', 'a reason sent with a move to an ordinary stage is not kept',
+    pg_temp.x_as('partner', format($$select coalesce(public.crm_record_move_stage(%L, 'contacted', 'ignored words')->'record'->>'stage_reason', '<none>')$$,
+      pg_temp.x_seed('reason3', 'hosts', 'Issue3802x Reason Three', 'prospect'))), '<none>');
+end;
+$t$;
+
+-- ---------------------------------------------------------------------------
+-- XA-20 — bulk add when something goes wrong.
+-- ---------------------------------------------------------------------------
+create function pg_temp.x_fault() returns trigger language plpgsql as $fn$
+begin
+  if new.name like 'Issue3802x Fault%' then
+    raise exception 'issue3802x injected fault';
+  end if;
+  return new;
+end;
+$fn$;
+
+do $t$
+declare
+  v_items text;
+  v_got text;
+  v_snap text;
+  v_audit int;
+begin
+  -- Items a caller got wrong are listed one by one; the good ones are added.
+  v_got := pg_temp.x_as('partner', $$select public.crm_records_bulk_create('hosts', (
+    '[1, null, "a", [], {}, {"name":null}, {"name":{"a":1}}, {"name":"Issue3802x Odd","due_on":"9999-99-99"}, {"name":"Issue3802x Odd","followers":1},
+      {"name":"Issue3802x Odd","brand_id":"zz"}, {"name":"Issue3802x Odd","owners":[1,[2],{"a":1},null]}, {"name":"Issue3802x Odd","region_id":123},
+      {"name":"Issue3802x Odd","due_on":"0000-01-01"}, {"name":"Issue3802x Odd","icp":["restaurant_bar"]}, {"name":"Issue3802x Odd","channel":"fax"},
+      {"name":"Issue3802x Odd","contact":"' || repeat('c', 301) || '"}, {"name":"Issue3802x Odd Good","due_on":"2026-10-31","contact":"x"}]')::jsonb, 'xfault-odd-01')::text$$);
+  perform pg_temp.x_ok('XA-20', 'odd items do not stop the request', v_got like '{%', v_got);
+  if v_got not like '{%' then v_got := '{"created":[],"skipped":[],"invalid":[]}'; end if;
+  perform pg_temp.x_eq('XA-20', 'odd items: created/skipped/invalid',
+    jsonb_array_length(v_got::jsonb->'created') || '/' || jsonb_array_length(v_got::jsonb->'skipped') || '/' || jsonb_array_length(v_got::jsonb->'invalid'), '1/0/16');
+  perform pg_temp.x_eq('XA-20', 'every reason is one of the functions'' own messages',
+    (select count(*)::text from jsonb_array_elements(v_got::jsonb->'invalid') e where (e->>'error') !~ '^[a-z_]+: \S'), '0');
+  perform pg_temp.x_eq('XA-20', 'no reason mentions a table or a constraint',
+    (select count(*)::text from jsonb_array_elements(v_got::jsonb->'invalid') e where (e->>'error') ~* 'relation|constraint|violates|crm_records|syntax|sqlstate'), '0');
+
+  -- A fault that is not the caller's: the whole request stops, nothing is
+  -- saved, nothing is kept under the key, and the same request works later.
+  create trigger x3802_fault before insert on public.crm_records for each row execute function pg_temp.x_fault();
+  select jsonb_agg(jsonb_build_object('name', n))::text into v_items
+    from unnest(array['Issue3802x Before Fault One', 'Issue3802x Before Fault Two', 'Issue3802x Fault Here', 'Issue3802x After Fault']) n;
+  v_snap := pg_temp.x_snap();
+  v_audit := pg_temp.x_audit();
+  set local client_min_messages = error;
+  v_got := pg_temp.x_as('growth', format($$select public.crm_records_bulk_create('hosts', %L, 'xfault-key-01')::text$$, v_items));
+  perform pg_temp.x_like('XA-20', 'a fault inside the list stops the request with a retry answer', v_got, 'ERR:40001:try_again:%');
+  perform pg_temp.x_ok('XA-20', 'the answer says nothing about what went wrong inside', v_got !~* 'injected|trigger|relation|crm_records', v_got);
+  perform pg_temp.x_eq('XA-20', 'nothing was saved, not even the items before the fault', pg_temp.x_snap(), v_snap);
+  perform pg_temp.x_eq('XA-20', 'no audit row was written', pg_temp.x_audit()::text, v_audit::text);
+  perform pg_temp.x_eq('XA-20', 'the request key was not kept',
+    (select count(*)::text from public.crm_request_keys where request_key = 'xfault-key-01'), '0');
+  v_got := pg_temp.x_as('growth', format($$select public.crm_records_bulk_create('hosts', %L, 'xfault-key-01')::text$$, v_items));
+  perform pg_temp.x_like('XA-20', 'while the fault lasts, the same request gets the same retry answer', v_got, 'ERR:40001:try_again:%');
+  perform pg_temp.x_like('XA-20', 'a single add that hits the fault is not reported as the caller''s mistake',
+    pg_temp.x_as('growth', $$select public.crm_record_create('hosts', '{"name":"Issue3802x Fault Single"}', 'xfault-key-02')::text$$), 'ERR:P0001:%');
+  reset client_min_messages;
+  drop trigger x3802_fault on public.crm_records;
+  v_got := pg_temp.x_as('growth', format($$select public.crm_records_bulk_create('hosts', %L, 'xfault-key-01')::text$$, v_items));
+  perform pg_temp.x_eq('XA-20', 'once the fault is gone the same request, same key, adds all four',
+    jsonb_array_length(v_got::jsonb->'created') || '/' || (v_got::jsonb ? 'replayed')::text, '4/false');
+  perform pg_temp.x_eq('XA-20', 'and a further repeat is a repeat',
+    pg_temp.x_as('growth', format($$select public.crm_records_bulk_create('hosts', %L, 'xfault-key-01')->>'replayed'$$, v_items)), 'true');
+  perform pg_temp.x_eq('XA-20', 'four records, once',
+    (select count(*)::text from public.crm_records where name like 'Issue3802x %Fault%'), '4');
+end;
+$t$;
+
+-- ---------------------------------------------------------------------------
+-- XA-21 — the scheduled run when one host cannot be promoted.
+-- ---------------------------------------------------------------------------
+create function pg_temp.x_fault_live() returns trigger language plpgsql as $fn$
+begin
+  if new.name like 'Issue3802x Stuck%' and new.stage = 'live' then
+    raise exception 'issue3802x injected fault';
+  end if;
+  return new;
+end;
+$fn$;
+
+do $t$
+declare
+  v_before int;
+  v_audit int;
+  v_got text;
+  v_id uuid;
+begin
+  -- A clean run first: nothing left to promote, and no failure row.
+  perform pg_temp.x_as('cron', 'select public.crm_reconcile_live()::text');
+  perform pg_temp.x_eq('XA-21', 'a clean run records no failure',
+    (select count(*)::text from public.admin_audit_log where action = 'crm.reconcile_failed'), '0');
+
+  perform pg_temp.x_seed('stuck1', 'hosts', 'Issue3802x Stuck One', 'onboarded', pg_temp.x_brand('venue')::uuid);
+  perform pg_temp.x_seed('stuck2', 'hosts', 'Issue3802x Stuck Two', 'meeting',   pg_temp.x_brand('pub_live')::uuid);
+  perform pg_temp.x_seed('fine1',  'hosts', 'Issue3802x Fine One',  'onboarded', pg_temp.x_brand('venue')::uuid);
+  perform pg_temp.x_seed('fine2',  'hosts', 'Issue3802x Fine Two',  'replied',   pg_temp.x_brand('disc_scheduled')::uuid);
+  perform pg_temp.x_seed('fine3',  'hosts', 'Issue3802x Fine Three','onboarded', pg_temp.x_brand('pub_rsvp')::uuid);
+  create trigger x3802_fault_live before update on public.crm_records for each row execute function pg_temp.x_fault_live();
+  v_audit := pg_temp.x_audit();
+  set local client_min_messages = error;
+  v_got := pg_temp.x_as('cron', 'select public.crm_reconcile_live()::text');
+  perform pg_temp.x_eq('XA-21', 'the run finishes and answers with the number it promoted', v_got, '3');
+  perform pg_temp.x_eq('XA-21', 'the three healthy hosts are Live',
+    (select string_agg(stage, ',' order by name) from public.crm_records where name like 'Issue3802x Fine %'), 'live,live,live');
+  perform pg_temp.x_eq('XA-21', 'the two that failed are exactly where they were, with no half-written line',
+    (select string_agg(r.stage || ':' || (r.went_live_at is null)::text || ':' || (select count(*) from public.crm_activity a where a.record_id = r.id), ',' order by r.name)
+       from public.crm_records r where r.name like 'Issue3802x Stuck %'), 'onboarded:true:0,meeting:true:0');
+  perform pg_temp.x_eq('XA-21', 'one failure row, by the system, with both counts',
+    (select string_agg(admin_email || '|' || coalesce(actor_uid::text, '<none>') || '|' || target_type || '|' || (metadata->>'failed') || '|' || (metadata->>'promoted'), ';')
+       from public.admin_audit_log where action = 'crm.reconcile_failed'), 'system|<none>|crm_pipeline|2|3');
+  perform pg_temp.x_eq('XA-21', 'audit rows for that run: three promotions and the one failure row', (pg_temp.x_audit() - v_audit)::text, '4');
+  perform pg_temp.x_eq('XA-21', 'the failure row carries no host name and no error text',
+    (select count(*)::text from public.admin_audit_log where action = 'crm.reconcile_failed' and metadata::text ~* 'stuck|injected|fault'), '0');
+
+  -- A person linking a brand while promotion fails: the link is saved, the
+  -- host waits in Onboarded, and the person is not shown an error.
+  v_id := pg_temp.x_seed('stuck3', 'hosts', 'Issue3802x Stuck Three', 'contacted');
+  v_got := pg_temp.x_as('partner', format($$select (r->'record'->>'stage') || '/' || (r->>'moved_to') from public.crm_record_update(%L, %L) r$$, v_id,
+    jsonb_build_object('brand_id', pg_temp.x_brand('venue'))::text));
+  perform pg_temp.x_eq('XA-21', 'linking still works while promotion fails', v_got, 'onboarded/onboarded');
+
+  -- The next runs: still failing, then healthy.
+  perform pg_temp.x_eq('XA-21', 'the next run tries again and promotes nothing new', pg_temp.x_as('cron', 'select public.crm_reconcile_live()::text'), '0');
+  select count(*) into v_before from public.admin_audit_log where action = 'crm.reconcile_failed';
+  reset client_min_messages;
+  drop trigger x3802_fault_live on public.crm_records;
+  perform pg_temp.x_eq('XA-21', 'once the fault is gone the skipped hosts are promoted', pg_temp.x_as('cron', 'select public.crm_reconcile_live()::text'), '3');
+  perform pg_temp.x_eq('XA-21', 'and that healthy run adds no failure row',
+    (select count(*)::text from public.admin_audit_log where action = 'crm.reconcile_failed'), v_before::text);
+  perform pg_temp.x_eq('XA-21', 'all of them are Live, each with one system line into Live',
+    (select count(*)::text from public.crm_records r where (r.name like 'Issue3802x Stuck %' or r.name like 'Issue3802x Fine %') and r.stage = 'live'
+        and (select count(*) from public.crm_activity a where a.record_id = r.id and a.to_stage = 'live' and a.via = 'system') = 1), '6');
+  perform pg_temp.x_like('XA-21', 'no client can read or start any of this',
+    pg_temp.x_as('owner', 'select public.crm_reconcile_live()::text'), 'ERR:42501:permission denied%');
+end;
+$t$;
+
+do $n$
+declare
+  v_n int;
+  v_g int;
+begin
+  select count(*), count(distinct test) into v_n, v_g from x_results where test in ('XA-16','XA-17','XA-18','XA-19','XA-20','XA-21');
+  if v_g < 6 or v_n < 400 then
+    perform pg_temp.x_ok('XA-21', 'the retest groups all ran', false, v_n || ' checks in ' || v_g || ' groups');
+  end if;
+  raise notice 'ISSUE-3802 WAVE1 TESTER retest groups XA-16..XA-21: % checks ran (verdict below covers them)', v_n;
+end;
+$n$;
+
 -- Verdict for part 1.
 do $v$
 declare
@@ -1746,6 +2325,54 @@ begin
   perform t3802x_race.rec('C-8 the restore is refused as a duplicate name', p.r1 = 'created' and p.r2 like 'ERR:%duplicate_name%', p.r1 || '/' || p.r2);
   perform t3802x_race.rec('C-8 one live record with that name; the old one is still deleted',
     (select count(*) filter (where deleted_at is null) = 1 and count(*) = 2 from public.crm_records where name_key = 'issue3802xracerestore'), null);
+
+  -- RETEST additions (C-9..C-11): the rules that were tightened, under a race.
+  perform t3802x_race.rec('C-9..C-11 fixtures', t3802x_race.solo(0, $q$with ins as (
+    insert into public.crm_records (id, pipeline, name, stage, brand_id, agreement, went_live_at, created_by, updated_by) values
+      ('38021111-0000-4000-c910-000000000009', 'hosts',    'Issue3802x Race Unlink',  'onboarded', null, null, null, 'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local'),
+      ('38021111-0000-4000-c910-00000000000a', 'hosts',    'Issue3802x Race Undo Live', 'live', '38021111-0000-4000-c800-000000000001', null, now(), 'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local'),
+      ('38021111-0000-4000-c910-00000000000b', 'creators', 'Issue3802x Race Creator', 'booked', null, 'signed', null, 'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local')
+    returning 1) select count(*)::text from ins$q$) = '3', null);
+
+  -- C-9: the run promotes a host while a person is clearing its brand link.
+  perform t3802x_race.solo(0, $q$update public.crm_records set brand_id = '38021111-0000-4000-c800-000000000001'
+    where id = '38021111-0000-4000-c910-000000000009' returning 'linked'$q$);
+  select * into p from t3802x_race.pair(
+    0, $q$select public.crm_reconcile_live('38021111-0000-4000-c910-000000000009')::text$q$,
+    2, $q$select (r->'record'->>'stage') || '/' || coalesce(r->>'moved_to', '<none>') from public.crm_record_update('38021111-0000-4000-c910-000000000009', '{"brand_id":null}') r$q$);
+  perform t3802x_race.rec('C-9 the person waited for the run', p.waited, p.r2);
+  perform t3802x_race.rec('C-9 the host is not left in Live without a brand',
+    p.r1 = '1' and p.r2 = 'onboarded/onboarded'
+      and (select stage = 'onboarded' and brand_id is null from public.crm_records where id = '38021111-0000-4000-c910-000000000009'), p.r1 || '/' || p.r2);
+  perform t3802x_race.rec('C-9 the log shows into Live and back out, both by the system',
+    (select string_agg(from_stage || '>' || to_stage || ':' || coalesce(via, '-'), ',' order by created_at) from public.crm_activity
+      where record_id = '38021111-0000-4000-c910-000000000009') = 'onboarded>live:system,live>onboarded:system', null);
+
+  -- C-10: an undo back into Live arrives while someone clears the brand link.
+  v_act := t3802x_race.solo(1, $q$select public.crm_record_move_stage('38021111-0000-4000-c910-00000000000a', 'lost', 'closed')->>'activity_id'$q$);
+  select * into p from t3802x_race.pair(
+    2, $q$select public.crm_record_update('38021111-0000-4000-c910-00000000000a', '{"brand_id":null}')->'record'->>'stage'$q$,
+    1, format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act));
+  perform t3802x_race.rec('C-10 the undo waited for the link change', p.waited, p.r2);
+  perform t3802x_race.rec('C-10 the undo is refused and the host stays Lost with no brand',
+    p.r1 = 'lost' and p.r2 like 'ERR:%undo_not_live%'
+      and (select stage = 'lost' and brand_id is null and stage_reason = 'closed' from public.crm_records where id = '38021111-0000-4000-c910-00000000000a'), p.r1 || '/' || p.r2);
+
+  -- C-11: an undo back into Booked arrives while someone unsigns the agreement.
+  v_act := t3802x_race.solo(1, $q$select public.crm_record_move_stage('38021111-0000-4000-c910-00000000000b', 'negotiating')->>'activity_id'$q$);
+  select * into p from t3802x_race.pair(
+    2, $q$select public.crm_record_update('38021111-0000-4000-c910-00000000000b', '{"agreement":"sent"}')->'record'->>'agreement'$q$,
+    1, format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act));
+  perform t3802x_race.rec('C-11 the undo waited for the edit', p.waited, p.r2);
+  perform t3802x_race.rec('C-11 the undo is refused and the creator stays in Negotiating',
+    p.r1 = 'sent' and p.r2 like 'ERR:%agreement_required%'
+      and (select stage = 'negotiating' and agreement = 'sent' from public.crm_records where id = '38021111-0000-4000-c910-00000000000b'), p.r1 || '/' || p.r2);
+  perform t3802x_race.rec('after the races: no Live host without a brand, no Booked or Posted creator without a signed agreement',
+    not exists (select 1 from public.crm_records where (stage = 'live' and brand_id is null)
+                   or (pipeline = 'creators' and stage in ('booked', 'posted') and agreement is distinct from 'signed')), null);
+  if (select count(*) from t3802x_race.results) < 33 then
+    perform t3802x_race.rec('all eleven races ran', false, (select count(*)::text from t3802x_race.results));
+  end if;
 
   -- After every race: never two live records with one name.
   perform t3802x_race.rec('no pipeline holds two live records with one name',
