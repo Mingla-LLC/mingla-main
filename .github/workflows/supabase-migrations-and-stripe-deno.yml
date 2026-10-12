@@ -194,6 +194,7 @@ on:
       # Deno suite reads the two invite functions; all live OUTSIDE the paths
       # above, so they are listed EXPLICITLY in BOTH filters.
       - "mingla-admin/src/__tests__/issue3802_wave0_roles.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave0_roles.tester.adversarial.test.js"
       - "mingla-admin/src/App.jsx"
       - "mingla-admin/src/context/AuthContext.jsx"
       - "mingla-admin/src/lib/access.js"
@@ -364,6 +365,7 @@ on:
       # Deno suite reads the two invite functions; all live OUTSIDE the paths
       # above, so they are listed EXPLICITLY in BOTH filters.
       - "mingla-admin/src/__tests__/issue3802_wave0_roles.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave0_roles.tester.adversarial.test.js"
       - "mingla-admin/src/App.jsx"
       - "mingla-admin/src/context/AuthContext.jsx"
       - "mingla-admin/src/lib/access.js"
@@ -473,6 +475,9 @@ jobs:
       - name: "Issue #3802 — roles in Mingla Admin: what each role may open, and the invite flow"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave0_roles.implementor.happy.test.js
+      - name: "Issue #3802 — roles in Mingla Admin: independent tester adversarial proof"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave0_roles.tester.adversarial.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
@@ -1004,6 +1009,13 @@ jobs:
           # reasons as the two suites above.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave0_invite_binding.implementor.happy.pg17.test.sql
+
+          # Issue #3802 (Wave 0) — independent tester proof for the invitations, a
+          # different angle: the secret never leaves the database, the binding is
+          # to one account, state precedence at the boundaries, the client can
+          # never peek or redeem, already_active is fully transactional.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave0_invite_binding.tester.adversarial.pg17.test.sql
 
           # Issue #2725 Amendment 8 — executable hard-cap proof on the fully
           # replayed PG17 schema. All funding lanes share one serialized $1.00
