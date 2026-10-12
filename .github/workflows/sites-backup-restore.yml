@@ -337,6 +337,19 @@ jobs:
     # the failure was positively classified as a non-readiness fault. This still
     # includes a skipped backup_restore job caused by a contract failure.
     #
+    # [WORKFLOW-MOD-APPROVED #2830] Decision D2 (Seth, 2026-10-12) REVERSES the
+    # last sentence above, which was a deliberate #2893 choice. A red contract
+    # test is a fact about the code on `main`, not a fact about whether the site
+    # can be recovered: the backup did not fail, it never ran. Deactivating on
+    # it took a live site down for a unit-test failure. Now a FAILED contracts
+    # job holds the pilot up and pages (`alert` and `ops_page` both still run),
+    # and the resolver's own 26-hour budget takes the site down by itself if
+    # nobody acts and the evidence really does age out.
+    #
+    # EXCLUSION polarity, as everywhere in this file: only the literal
+    # 'failure' holds. A contracts job that was cancelled, or any result nobody
+    # listed, still deactivates exactly as before.
+    #
     # #3606 — the watchdog cron deliberately skips backup_restore, which would
     # otherwise read as "did not finish successfully" and deactivate the pilot
     # every hour. Only that exact routing is excused; every other skip still
@@ -370,6 +383,7 @@ jobs:
       github.ref == 'refs/heads/main' &&
       github.event.schedule != '37 * * * *' &&
       github.event.inputs.mode != 'freshness-check' &&
+      needs.contracts.result != 'failure' &&
       needs.backup_restore.result != 'success' &&
       needs.backup_restore.outputs.recovery_deactivate != 'false'
     runs-on: ubuntu-latest
@@ -418,6 +432,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FAILURE_CODE: ${{ needs.backup_restore.outputs.recovery_failure_code }}
           DEACTIVATE: ${{ needs.backup_restore.outputs.recovery_deactivate }}
+          CONTRACTS_RESULT: ${{ needs.contracts.result }}
         shell: bash
         run: |
           set -euo pipefail
@@ -427,6 +442,13 @@ jobs:
             outcome="PILOT_HELD_UP recovery_evidence_ageing"
           else
             outcome="PILOT_DEACTIVATED"
+          fi
+          # #2830 decision D2 — a failed contract job no longer deactivates, so
+          # this line must not say it did. The backup never ran: there is no
+          # classification, and the code names the real cause instead.
+          if [ "${CONTRACTS_RESULT:-}" = "failure" ]; then
+            code="SITES_CONTRACTS_FAILED"
+            outcome="PILOT_HELD_UP recovery_evidence_ageing"
           fi
           # #2893 pins `error_code=...` immediately followed by `run_url=`;
           # #3628's fields are additive and go after it, so that contract holds.

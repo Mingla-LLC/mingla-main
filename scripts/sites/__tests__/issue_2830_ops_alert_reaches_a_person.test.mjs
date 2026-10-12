@@ -601,6 +601,77 @@ test("#2830 T-7.1 the paging job runs for every failure the run can have, and ne
 });
 
 // ---------------------------------------------------------------------------
+// Decision D2 — a red contract test holds the pilot up and pages
+// ---------------------------------------------------------------------------
+
+test("#2830 D2 a failed contracts job no longer deactivates; every other unproven failure still does", () => {
+  const condition = jobIf("deactivate");
+  const on = (needs) => evaluate(condition, { github: BACKUP_RUN, needs });
+  // The reversed case: contracts red, so the backup never ran.
+  assert.equal(on({ contracts: need("failure"), backup_restore: need("skipped") }), false);
+  // Unchanged, and the reason the clause is in exclusion polarity.
+  assert.equal(on({ contracts: need("cancelled"), backup_restore: need("skipped") }), true);
+  assert.equal(on({ contracts: need("something-new"), backup_restore: need("skipped") }), true);
+  assert.equal(on({ contracts: need("success"), backup_restore: need("failure") }), true);
+  assert.equal(on({ contracts: need("success"), backup_restore: need("failure", { recovery_deactivate: "true" }) }), true);
+  assert.equal(on({ contracts: need("success"), backup_restore: need("cancelled") }), true);
+  assert.equal(on({ contracts: need("success"), backup_restore: need("failure", { recovery_deactivate: "false" }) }), false);
+  assert.equal(on({ contracts: need("success"), backup_restore: need("success") }), false);
+  assert.ok(condition.includes("needs.contracts.result != 'failure'"));
+  assert.equal(/needs\.contracts\.result == 'success'/.test(condition), false, "exclusion, not inclusion");
+  // Held is not silent: both alert jobs run for it.
+  const failed = { contracts: need("failure"), backup_restore: need("skipped"), deactivate: need("skipped"), retention: need("skipped") };
+  assert.equal(evaluate(jobIf("alert"), { github: BACKUP_RUN, needs: failed }), true);
+  assert.equal(evaluate(jobIf("ops_page"), { github: BACKUP_RUN, needs: failed }), true);
+});
+
+test("#2830 D2 the issue comment says HELD and names the contracts, never DEACTIVATED", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { chmodSync, mkdtempSync, readFileSync: read, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const block = jobBlock("alert");
+  const lines = block.split("\n");
+  const at = lines.findIndex((line) => /^ {8}run: \|$/.test(line));
+  assert.ok(at >= 0, "the alert step carries a block run script");
+  const script = lines.slice(at + 1).map((line) => line.replace(/^ {10}/, "")).join("\n");
+  const comment = (env) => {
+    const dir = mkdtempSync(join(tmpdir(), "sites-2830-d2-"));
+    writeFileSync(join(dir, "gh"), `#!/bin/bash\nprintf '%s\\n' "$@" > "${dir}/args"\n`);
+    chmodSync(join(dir, "gh"), 0o755);
+    const result = spawnSync("bash", ["-c", script], {
+      encoding: "utf8",
+      env: {
+        PATH: `${dir}:${process.env.PATH}`,
+        GITHUB_SERVER_URL: "https://github.example",
+        GITHUB_REPOSITORY: "owner/repo",
+        GITHUB_RUN_ID: "42",
+        ...env,
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    return read(join(dir, "args"), "utf8").split("\n").find((arg) => arg.startsWith("body=")).slice(5);
+  };
+  const prefix = "SITES_BACKUP_ALERT error_code=SITES_BACKUP_OR_RESTORE_FAILED run_url=https://github.example/owner/repo/actions/runs/42";
+  assert.equal(
+    comment({ CONTRACTS_RESULT: "failure", FAILURE_CODE: "", DEACTIVATE: "" }),
+    `${prefix} failure_code=SITES_CONTRACTS_FAILED outcome=PILOT_HELD_UP recovery_evidence_ageing`,
+  );
+  // Everything else reads as it did.
+  assert.equal(
+    comment({ CONTRACTS_RESULT: "success", FAILURE_CODE: "DATABASE_BACKUP_STALE", DEACTIVATE: "true" }),
+    `${prefix} failure_code=DATABASE_BACKUP_STALE outcome=PILOT_DEACTIVATED`,
+  );
+  assert.equal(
+    comment({ CONTRACTS_RESULT: "success", FAILURE_CODE: "S3_OBJECT_READ_FAILED", DEACTIVATE: "false" }),
+    `${prefix} failure_code=S3_OBJECT_READ_FAILED outcome=PILOT_HELD_UP recovery_evidence_ageing`,
+  );
+  assert.equal(
+    comment({ CONTRACTS_RESULT: "cancelled", FAILURE_CODE: "", DEACTIVATE: "" }),
+    `${prefix} failure_code=UNCLASSIFIED outcome=PILOT_DEACTIVATED`,
+  );
+});
+
+// ---------------------------------------------------------------------------
 // The runbook — tester findings F-2 and F-3 on the re-activation section
 // ---------------------------------------------------------------------------
 

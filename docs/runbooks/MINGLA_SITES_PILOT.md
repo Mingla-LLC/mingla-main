@@ -169,7 +169,9 @@ failure there raises a `SITES_HOUSEKEEPING_ALERT` comment on the issue and one
 email a day, and nothing else (#2830). A private-storage transport fault, a
 read-back digest mismatch and an unusable bundle result do not deactivate
 either: each leaves the site up on the evidence it already has and is reported
-as held.
+as held. A failing contract test in the backup workflow does not deactivate
+either (decision D2, 2026-10-12): the backup never ran, so the site is held and
+the failure is reported with the code `SITES_CONTRACTS_FAILED`.
 
 Who: whoever holds the Core service-role key. Today that is Seth's side only.
 

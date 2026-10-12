@@ -360,7 +360,12 @@ function violations(workflow) {
                 if (backupResult === "success" && r.deactivate !== "skipped") say("P1 pilot deactivated although the backup job succeeded");
                 // P2 — A REAL RECOVERY FAILURE STILL DEACTIVATES. Only the
                 // literal 'false' holds the site up.
-                if (backupResult !== "success" && classify !== "false" && r.deactivate === "skipped") say("P2 unproven-safe backup failure did not deactivate");
+                // #2830 decision D2 (Seth, 2026-10-12): a FAILED contracts job
+                // is excepted, and only that literal result. The backup did not
+                // fail, it never ran; that row is held and reported instead.
+                if (backupResult !== "success" && classify !== "false" && contracts !== "failure" && r.deactivate === "skipped") say("P2 unproven-safe backup failure did not deactivate");
+                if (contracts === "failure" && r.deactivate !== "skipped") say("P2 a red contract test deactivated the pilot (D2)");
+                if (contracts === "failure" && (r.alert === "skipped" || r.ops_page === "skipped")) say("P2 a red contract test was held and nobody was told (D2)");
                 if (backupResult !== "success" && r.backup_restore !== "skipped" && classify === "false" && r.deactivate !== "skipped") say("P2 a positively classified non-readiness failure deactivated (#3628)");
                 // P3 — the sweep only ever follows a verified backup.
                 if ((r.retention !== "skipped") !== (backupResult === "success")) say("P3 sweep did not track a verified backup");

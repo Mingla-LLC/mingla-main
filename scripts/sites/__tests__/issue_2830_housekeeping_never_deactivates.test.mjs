@@ -660,12 +660,23 @@ test("#2830 SC-2.4 a runner that died before classifying still deactivates", () 
   }
 });
 
-test("#2830 a failed contract run still deactivates (unchanged; decision D2 is not taken here)", () => {
+test("#2830 decision D2: a failed contract run holds the pilot up and pages (was: deactivates)", () => {
+  // Slice 1 pinned the opposite here and said so in its name. Seth took
+  // decision D2 on 2026-10-12: a red unit test is not a recovery fact.
   const { results } = simulate(jobs, scheduledBackup, (name) =>
     name === "contracts" ? { result: "failure" } : {});
   assert.equal(results.backup_restore.result, "skipped");
-  assert.equal(results.deactivate.result, "success");
+  assert.equal(results.deactivate.result, "skipped", "a red contract test must not take the site down");
+  assert.equal(results.alert.result, "success", "and it is still reported on the issue");
+  assert.equal(results.ops_page.result, "success", "and emailed");
   assert.equal(results.retention.result, "skipped");
+  // Exclusion polarity: only the literal 'failure' holds. A cancelled
+  // contracts job still deactivates, exactly as before.
+  const cancelled = simulate(jobs, scheduledBackup, (name) =>
+    name === "contracts" ? { result: "cancelled" } : {});
+  assert.equal(cancelled.results.backup_restore.result, "skipped");
+  assert.equal(cancelled.results.deactivate.result, "success");
+  assert.ok(jobs.get("deactivate").condition.includes("needs.contracts.result != 'failure'"));
 });
 
 test("#2830 a classified non-readiness backup failure still holds the pilot up (#3628 unchanged)", () => {
