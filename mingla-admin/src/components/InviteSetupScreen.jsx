@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { validatePassword } from "../lib/authHelpers";
+import { ROLE_LABELS } from "../lib/access";
 import {
   ShieldCheck,
   Lock,
@@ -177,7 +178,7 @@ function PasswordStrength({ password }) {
 }
 
 export function InviteSetupScreen() {
-  const { inviteSetup, completeInviteSetup, signOut } = useAuth();
+  const { inviteSetup, access, completeInviteSetup, signOut } = useAuth();
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -188,6 +189,7 @@ export function InviteSetupScreen() {
   const [loading, setLoading] = useState(false);
 
   const email = inviteSetup?.user?.email || "";
+  const roleLabel = access ? ROLE_LABELS[access.role] : "";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -320,7 +322,9 @@ export function InviteSetupScreen() {
               <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.text }}>Welcome to Mingla!</span>
             </div>
             <p style={{ fontSize: 12, color: COLORS.textSecondary, margin: 0, textAlign: "center" }}>
-              You've been invited as an admin. Set your password to get started.
+              {roleLabel
+                ? `You've been invited to Mingla Admin as ${roleLabel}. Set your password to get started.`
+                : "You've been invited to Mingla Admin. Set your password to get started."}
             </p>
           </div>
 
@@ -485,6 +489,10 @@ export function InviteSetupScreen() {
                 Cancel
               </button>
             </div>
+
+            <p style={{ fontSize: 11, color: COLORS.textMuted, textAlign: "center", margin: "12px 0 0" }}>
+              This set-up page stays open for 24 hours.
+            </p>
           </form>
         </div>
 
