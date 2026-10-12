@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-11 — A failed clean-up sweep after the Sites backup can no longer take the live pilot site down or turn main red: the sweep runs as its own job after the backup is verified, a failure posts an alert on the issue instead, and the runbook now says how to bring the site back after a deactivation (toward #2830, PR #TBD)
 - 2026-10-11 — Ad campaigns get a hard spend cap, start/end dates, brand_id, an hourly spend feed that pauses at 98%, and platform D1 minimums — multi-page create no longer multiplies the budget silently (toward #3697, PR #3794)
 - 2026-10-11 — Ads can target every public page type from one SQL list (trips → /t/, experiences → /exp/), and the create gate rejects past-start pages (toward #3697, PR #3792)
 - 2026-10-11 — Ad clicks can be counted first-party before the cookie banner; Reject stops platform sharing; free tickets/RSVPs are sign-ups not $0 purchases; browsers can no longer write conversion rows (toward #3697, PR #3791)

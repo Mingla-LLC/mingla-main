@@ -421,6 +421,13 @@
 - **Regression:** Synthetic key fixtures prove schema/unknown/duplicate/rotation rejection without secret evidence. Retention decision tests prove protected/newest/recovery windows; public consent, signed handoff, one-consume attribution, backup-age, and safe-log guards fail closed.
 - **Established:** DRAFT at issue #2830 IMPLEMENT on 2026-08-30; live secret set, counterpart distribution, pilot enablement, and production evidence remain separately unauthorized.
 
+### I-PROPOSED-2830-ONLY-PROVEN-RECOVERY-RISK-DEACTIVATES (DRAFT)
+
+- **Rule:** In the Sites backup-and-restore workflow, nothing runs after the readiness evidence commit inside the backup job except the step that classifies a failure. Housekeeping (the tenant retention sweep) runs in its own job, after the backup job has concluded successfully, and can neither fail that job, reach the deactivation gate, nor turn the run red; its failure is reported by a separate alert job. Every Sites operations entrypoint that can fail writes a classification of its own failure. Only the five `DATABASE_BACKUP_*` readiness codes, or an absent or unreadable classification, deactivate the pilot.
+- **Enforcement:** `scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.test.mjs` and `scripts/sites/__tests__/issue_2830_retention_response_contract.test.mjs`, both in the `Sites recovery contracts` job. The first parses the workflow (job graph, last step of the backup job, step-level `continue-on-error`, the deactivation gate naming no retention output), runs the workflow's own inline classify and outcome scripts against files written by the real retention CLI, and evaluates the `needs:`/`if:` graph for the sweep-fails, five-codes, absent-classification and watchdog-cron cases.
+- **Regression:** T-2.1 and T-2.2 (retention as its own job; `run-sites-retention.mjs` always writes `deactivating:false`), SC-2.4 (the five codes and an absent classification still deactivate), T-6.4 (the runner accepts the legacy and the version-2 sweep response and nothing else). Each fails with its change reverted.
+- **Established:** DRAFT at issue #2830 slice 1 IMPLEMENT on 2026-10-11. Not yet complete: the private-Blob transport and the inline digest and bundle steps still exit without a classification (SPEC S-1, S-2, test T-2.3), which is slice 2. Flip to ACTIVE in the pull request that lands T-2.3, after one scheduled run on `main` has shown the `retention` job running as its own job.
+
 ## ACTIVE — issue #2799 (web privacy proof runs on production artifacts)
 
 ### I-2799-WEB-PRIVACY-PROOF-PRODUCTION-ARTIFACTS (ACTIVE)
