@@ -118,6 +118,7 @@ module.exports = {
     // ======================================================================
     "buttonAccentContrast\\.orch1162\\.test\\.ts$", // DENO test (Deno.test + https://deno.land/std import) — runs under Deno, never jest
     "issue_2321_business_retained_copy\\.tester\\.adversarial\\.test\\.ts$", // DENO test — runs in ci-batch:issue-2321-account-deletion-tests (the batched suite that replaced the retired wrapper at #2439 Phase 3C cutover), never jest
+    "issue_3660_delete_blocked_panel\\.tester\\.adversarial\\.test\\.ts$", // DENO test — runs in the Stripe Deno lane of the Supabase migrations workflow (the #2321 batch suite for the same route is sealed), never jest
     "issue_1984_ari_analytics_response_card\\.deno\\.test\\.ts$", // DENO test — Stripe/Ari Deno lane; never jest
     "meta_orch_0952_carousel_adversarial\\.test\\.ts$", // PLAYWRIGHT spec — runs under playwright.config.ts (`npm run test:browser`), never jest
     "meta_orch_0952_carousel_browser\\.test\\.ts$", // PLAYWRIGHT spec — runs under playwright.config.ts (`npm run test:browser`), never jest

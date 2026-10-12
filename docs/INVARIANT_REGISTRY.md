@@ -1,5 +1,23 @@
 # Invariant Registry
 
+## DRAFT — issue #3660 (Host account deletion completes or changes nothing)
+
+### I-PROPOSED-3660-HOST-DELETION-IS-ONE-TRANSACTION (DRAFT)
+
+- **Rule:** Every database write of a Host account deletion happens inside `public.biz_delete_host_account`, in one transaction: a refusal returns before any write, and any error rolls the whole call back. `purgeBusinessSideData` makes one RPC call and no table write. No provider call (Stripe, Paystack), trial-phone record or login deletion happens before that call returns `deleted`. After it returns `deleted`, `delete-user` answers 2xx whatever the later steps do. A refusal is HTTP 409 with `code = "account_deletion_blocked"`; a failed call is HTTP 500 with `code = "account_deletion_failed"`; in both, nothing was changed.
+- **Scope:** `supabase/functions/_shared/accountDeletionSides.ts`, `supabase/functions/delete-user/index.ts` (business side), migration `20270816003660_issue_3660_host_account_deletion_atomic.sql`. `issue_2063_guard_brand_soft_delete` and `tg_brand_team_members_removal_guard` are not edited and not bypassed: the function satisfies them (it takes zero-sale upcoming events down before the brand, and ends the user's partner links before their team rows).
+- **Enforcement:** Deno `issue_3660_host_account_deletion.implementor.happy.test.ts` and `issue_3660_auth_step_after_purge.tester.adversarial.test.ts` (both execute the real module against a recording client) in the Stripe Deno lane of the Supabase migrations workflow; pg17 `issue_3660_host_account_deletion.tester.adversarial.pg17.test.sql` (blocked writes nothing; a forced write failure raises and leaves every row as it was) in the migrations job of the same workflow.
+- **Regression test:** the Deno happy suite fails if any of the three table writes returns to `purgeBusinessSideData` or if a provider is called before the RPC or on a blocked result.
+- **Status:** DRAFT until this PR merges, the migration is applied under the reviewed lane, and one real Host deletion and one real refusal are observed in production and recorded on #3660.
+
+### I-PROPOSED-3660-DELETED-HOST-ACCOUNT-OWNS-NO-LIVE-BRAND (DRAFT)
+
+- **Rule:** A Host deletion that `public.biz_delete_host_account` reports as `deleted` leaves no brand with that `account_id` live, in the same transaction that stamps `creator_accounts.deleted_at`. Afterwards a signed-in, non-admin user cannot make one live again: clearing `brands.deleted_at` is refused for the `authenticated` and `anon` roles unless `is_admin_user()` (trigger `issue_3660_guard_brand_undelete`). The service role and an admin can still restore a brand.
+- **What this does NOT claim:** it is not true that only that function can set `creator_accounts.deleted_at`. The column is still writable by its own user through row level security (sign-in recovery clears it through that same policy), so a hand-made API call with the user's own token can set it on an account that still owns a live brand. No Mingla app sends that write, and no database guard was added for it in this change. The rule above is about what the deletion function and the un-delete guard enforce, nothing wider.
+- **Scope:** `public.creator_accounts`, `public.brands`. Clearing the account marker (sign-in to Host again) is allowed and yields an empty Host account; it never brings a brand back.
+- **Enforcement:** pg17 `issue_3660_host_account_deletion.implementor.happy.pg17.test.sql` (SC-2, SC-15), `issue_3660_host_account_deletion.rework.implementor.pg17.test.sql` (F-2: owner, brand admin, admin, service role) and the tester's `…tester2.known_defects.pg17.test.sql` (KD-1), all in the migrations job. After deploy, this read-only query lists accounts in the half-deleted state and its result is recorded on #3660: `SELECT ca.id FROM public.creator_accounts ca WHERE ca.deleted_at IS NOT NULL AND EXISTS (SELECT 1 FROM public.brands b WHERE b.account_id = ca.id AND b.deleted_at IS NULL);`
+- **Status:** DRAFT. One production row (the host of brand `64c788b0-…`) is in the half-deleted state today, from before this change; the migration writes no data and takes no action on it. Stays DRAFT until Seth has decided that row's outcome and the query above returns nothing.
+
 ## DRAFT — issue #3655 (venue save/leave is predictable)
 
 ### I-PROPOSED-3655-VENUE-LEAVE-THREE-WAY (DRAFT)

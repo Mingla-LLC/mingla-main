@@ -37,7 +37,7 @@ const RETAINED_KEYS = ["retained_title", "retained_body", "retained_sub"];
 const SUCCESS_KEYS = ["success_title", "success_body", "success_sub"];
 
 const BUSINESS_RETAINED_HEADLINE = "Business Account Deleted";
-const BUSINESS_NON_RETAINED_HEADLINE = "Account scheduled for deletion";
+const BUSINESS_NON_RETAINED_HEADLINE = "Account and login deleted";
 
 /** Strip block and line comments so a commented-out fix can never satisfy an assertion. */
 function stripComments(source) {
