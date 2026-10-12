@@ -9748,7 +9748,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-3645-one-offering-currency-source.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "batch:E",
       "invocation": "node",
       "modes": ["self-test", "plain"],
       "selfTest": "wired",
@@ -9757,7 +9757,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-3645-one-offering-currency-source.implementor.test.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "batch:E",
       "invocation": "node --test",
       "modes": ["plain"],
       "selfTest": "none",
@@ -9766,7 +9766,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-3645-offering-currency-bank-parity.implementor.test.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "batch:E",
       "invocation": "node --test",
       "modes": ["plain"],
       "selfTest": "none",
