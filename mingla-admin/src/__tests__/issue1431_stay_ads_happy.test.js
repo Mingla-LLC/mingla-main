@@ -10,13 +10,13 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../..");
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
-// [TEST-MOD-APPROVED #3697] Wave 2 single-select replaces multi-select append
-// (`[...selected, row]`). Tabs stay Event → Stay → Brand; toggle replaces.
+// [TEST-MOD-APPROVED #3697] Wave 3 picker uses listAdvertisablePages (Stay is
+// still the venue tab). Tabs keep Event → Stay → Brand first; single-select.
 test("issue #1431 Campaign Builder shows Event, Stay, Brand in exact order and single-selects", () => {
   const step = read("src/components/campaign-builder/StepDestination.jsx");
   assert.ok(step.indexOf('id: "event"') < step.indexOf('id: "venue"'));
   assert.ok(step.indexOf('id: "venue"') < step.indexOf('id: "brand"'));
-  assert.match(step, /listStayDestinations/);
+  assert.match(step, /listAdvertisablePages/);
   assert.match(step, /onDestinationsChange\(isSelected \? \[\] : \[row\]\)/);
   assert.doesNotMatch(step, /\[\.\.\.selected, row\]/);
   assert.match(step, /row\.cover_media_url[\s\S]*bg-\[var\(--gray-100\)\]/);

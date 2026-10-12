@@ -11516,7 +11516,7 @@
       "providerWorkflow": ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0008b3ed17a723f8539ce82f55ece38cbaa4803075c4f94d9cd18d1ce99b0b07",
+        "sourceSha256": "326bf62824784889cb47daacc17eda1cce8815233f0d3b2019b30ce0d24d54c8",
         "triggers": [
           "pull_request",
           "push"

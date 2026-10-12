@@ -9,6 +9,10 @@ import { fileURLToPath } from "node:url";
 
 import { buildLaunchSummary } from "../lib/adBuilder/launchSummary.js";
 import {
+  budgetPayloadFromState,
+  resolvePlanCurrency,
+} from "../lib/adBuilder/payload.js";
+import {
   canLaunchCampaign,
   canPauseCampaign,
   formatCampaignMoney,
@@ -28,6 +32,11 @@ test("spendCapProgress: 98% pause threshold matches server", () => {
   const at = spendCapProgress({ spendCents: 9800, capCents: 10000 });
   assert.equal(at.atPauseThreshold, true);
   assert.equal(at.pctLabel, "98%");
+  const over = spendCapProgress({ spendCents: 15000, capCents: 10000 });
+  assert.equal(over.pctLabel, "150%");
+  assert.equal(over.ratio, 1.5);
+  assert.equal(over.barRatio, 1);
+  assert.equal(over.atPauseThreshold, true);
   const missing = spendCapProgress({ spendCents: null, capCents: 10000 });
   assert.equal(missing.pctLabel, "—");
   assert.equal(missing.ratio, null);
@@ -119,5 +128,31 @@ test("CampaignsPage spend-vs-cap + currency-honest money", () => {
   assert.match(src, /formatCampaignMoney/);
   assert.match(src, /canPauseCampaign/);
   assert.match(src, /Spend vs hard cap/);
+  assert.match(src, /Meta-only/);
+  assert.match(src, /roiLoading \? null/);
   assert.doesNotMatch(src, /function centsToUsd/);
+});
+
+test("plan currency comes from ad_connections and rides the create budget", () => {
+  assert.deepEqual(
+    resolvePlanCurrency({ meta: { currency: "gbp" } }, ["meta", "tiktok"]),
+    { currency: "GBP", mixed: false },
+  );
+  assert.equal(
+    resolvePlanCurrency(
+      { meta: { currency: "USD" }, tiktok: { currency: "GBP" } },
+      ["meta", "tiktok"],
+    ).mixed,
+    true,
+  );
+  const { budget } = budgetPayloadFromState({
+    mode: "daily",
+    dailyCentsForChannel: 5000,
+    currency: "GBP",
+  });
+  assert.equal(budget.currency, "GBP");
+  const builder = fs.readFileSync(path.join(ADMIN, "pages/CampaignBuilderPage.jsx"), "utf8");
+  assert.match(builder, /resolvePlanCurrency/);
+  assert.match(builder, /currency: planCurrency\.currency/);
+  assert.doesNotMatch(builder, /currency: "USD"/);
 });

@@ -50,7 +50,7 @@ import { allocateLifetimeCents, calendarDaysBetween, validateBudget } from "../l
 import { validateCopy } from "../lib/adBuilder/copyRules";
 import { runPolicyPrecheck } from "../lib/adBuilder/policyLinter";
 import { partitionFundedCreative } from "../lib/adBuilder/creativeGate";
-import { buildCreatePayload, suggestCampaignName } from "../lib/adBuilder/payload";
+import { buildCreatePayload, resolvePlanCurrency, suggestCampaignName } from "../lib/adBuilder/payload";
 import { buildLaunchSummary } from "../lib/adBuilder/launchSummary";
 import {
   PREPARATION_ORDER,
@@ -269,7 +269,7 @@ export function CampaignBuilderPage() {
     // Connection rows carry Meta's per-category floors (extra.minimum_budgets).
     (async () => {
       const loaded = {};
-      for (const platform of ["meta", "google"]) {
+      for (const platform of ["meta", "google", "tiktok", "snapchat", "reddit"]) {
         const { data } = await getConnection(platform, "consumer");
         if (data) loaded[platform] = data;
       }
@@ -341,6 +341,12 @@ export function CampaignBuilderPage() {
   const effectivePlatforms = useMemo(
     () => plannedRows.filter((r) => r.eligible).map((r) => r.platform),
     [plannedRows],
+  );
+
+  // toward #3697 Wave 3 — money currency from ad_connections (not hardcoded USD).
+  const planCurrency = useMemo(
+    () => resolvePlanCurrency(connections, effectivePlatforms),
+    [connections, effectivePlatforms],
   );
 
   const togglePlatform = useCallback((platform) => {
@@ -740,6 +746,7 @@ export function CampaignBuilderPage() {
               : (budget.capCents ?? null),
             startsAt: budget.startsAt,
             endsAt: budget.endsAt,
+            currency: planCurrency.currency,
           },
           creative: {
             // ISSUE-995: kind drives the payload media descriptor — video rides
@@ -855,7 +862,7 @@ export function CampaignBuilderPage() {
       : budget.capCents,
     startsAt: budget.startsAt,
     endsAt: budget.endsAt,
-    currency: "USD",
+    currency: planCurrency.currency,
   });
 
   const stepId = STEPS[activeIndex].id;

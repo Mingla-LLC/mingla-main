@@ -35,6 +35,7 @@ export function spendCapProgress({ spendCents = null, capCents = null } = {}) {
   if (!Number.isFinite(cap) || cap <= 0) {
     return {
       ratio: null,
+      barRatio: null,
       pctLabel: "—",
       atPauseThreshold: false,
       spendLabelNeedsCap: false,
@@ -43,16 +44,19 @@ export function spendCapProgress({ spendCents = null, capCents = null } = {}) {
   if (!Number.isFinite(spend) || spend < 0) {
     return {
       ratio: null,
+      barRatio: null,
       pctLabel: "—",
       atPauseThreshold: false,
       spendLabelNeedsCap: true,
     };
   }
-  const ratio = Math.min(spend / cap, 1);
-  const atPauseThreshold = spend / cap >= HARD_CAP_PAUSE_RATIO;
+  // Raw ratio for honesty (overspend can exceed 100%); bar stays capped at 1.
+  const rawRatio = spend / cap;
+  const atPauseThreshold = rawRatio >= HARD_CAP_PAUSE_RATIO;
   return {
-    ratio,
-    pctLabel: `${Math.round(ratio * 100)}%`,
+    ratio: rawRatio,
+    barRatio: Math.min(rawRatio, 1),
+    pctLabel: `${Math.round(rawRatio * 100)}%`,
     atPauseThreshold,
     spendLabelNeedsCap: true,
   };

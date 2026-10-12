@@ -246,7 +246,7 @@ export function CampaignsPage() {
     <div className="space-y-6">
       <SectionCard
         title="Campaigns"
-        subtitle="Everything is created paused — launching is the explicit act that starts spend. Hard caps pause at 98%."
+        subtitle="Everything is created paused — launching is the explicit act that starts spend. Meta hard caps pause at 98% via the hourly spend feed; other platforms follow end-date rules until their spend adapters land."
         action={
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" icon={RefreshCw} loading={rowBusy.all === "sync"} onClick={() => handleSync()}>
@@ -463,20 +463,25 @@ export function CampaignsPage() {
         const selectedCampaign = (campaigns ?? []).find((c) => c.id === selectedId) ?? detail;
         const currency = selectedCampaign?.currency ?? "USD";
         const capCents = selectedCampaign?.cap_cents ?? null;
-        const progress = spendCapProgress({
-          spendCents: roi?.spendCents ?? null,
-          capCents,
-        });
+        const platform = selectedCampaign?.platform ?? detail?.platform;
+        const isMeta = platform === "meta";
+        // While ROI reloads, ignore the previous campaign's spend (stale %).
+        const spendCents = roiLoading ? null : (roi?.spendCents ?? null);
+        const progress = spendCapProgress({ spendCents, capCents });
         return (
           <SectionCard
             title="Spend vs hard cap"
-            subtitle="Hourly spend feed writes real totals. The server pauses at 98% of the hard cap."
+            subtitle={
+              isMeta
+                ? "Hourly Meta spend feed writes real totals. The server pauses Meta at 98% of the hard cap."
+                : "Hard cap is stored for this campaign. Live 98% auto-pause via spend feed is Meta-only for now; other platforms follow end-date rules until their adapters land."
+            }
           >
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="border border-[var(--gray-200)] rounded-lg p-3">
                 <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Spend</div>
                 <div className="text-xl font-semibold">
-                  {roi?.spendCents == null ? "—" : formatCampaignMoney(currency, roi.spendCents)}
+                  {spendCents == null ? "—" : formatCampaignMoney(currency, spendCents)}
                 </div>
               </div>
               <div className="border border-[var(--gray-200)] rounded-lg p-3">
@@ -499,20 +504,20 @@ export function CampaignsPage() {
                 </div>
               </div>
             </div>
-            {typeof progress.ratio === "number" && (
+            {typeof progress.barRatio === "number" && (
               <div className="mt-3 h-2 rounded-full bg-[var(--gray-100)] overflow-hidden">
                 <div
                   className={[
                     "h-full rounded-full transition-all",
                     progress.atPauseThreshold ? "bg-[var(--color-warning-600)]" : "bg-[var(--color-brand-500)]",
                   ].join(" ")}
-                  style={{ width: `${Math.round(progress.ratio * 100)}%` }}
+                  style={{ width: `${Math.round(progress.barRatio * 100)}%` }}
                 />
               </div>
             )}
-            {progress.atPauseThreshold && (
+            {isMeta && progress.atPauseThreshold && (
               <p className="mt-2 text-xs text-[var(--color-warning-700)]">
-                At or past 98% of the hard cap — launch/spend sync will keep this paused.
+                At or past 98% of the hard cap — Meta launch/spend sync will keep this paused.
               </p>
             )}
           </SectionCard>

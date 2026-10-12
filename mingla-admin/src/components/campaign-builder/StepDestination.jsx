@@ -2,9 +2,11 @@
  * ISSUE-864 WP4 + toward #3697 Wave 3 (#3700) — destination picker.
  * Lists via `listAdvertisablePages` (SQL `ad_advertisable_pages`) so Admin
  * matches the create-campaign gate. Single select per campaign (#3707).
+ *
+ * Tab order keeps Event → Stay → Brand first (#1431), then the Wave 1 types.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
 import { AlertCard } from "../ui/Card";
 import { SearchInput } from "../ui/SearchInput";
@@ -15,11 +17,11 @@ import { listAdvertisablePages } from "../../services/adDestinationsService";
 const TABS = [
   { id: "all", label: "All" },
   { id: "event", label: "Events" },
+  { id: "venue", label: "Stays" },
+  { id: "brand", label: "Brands" },
   { id: "rsvp", label: "RSVPs" },
   { id: "trip", label: "Trips" },
   { id: "experience", label: "Experiences" },
-  { id: "brand", label: "Brands" },
-  { id: "venue", label: "Stays" },
   { id: "reservation", label: "Reservations" },
   { id: "site", label: "Sites" },
 ];
@@ -38,7 +40,10 @@ function isAvailable(row) {
 }
 
 export function StepDestination({ destinations, onDestinationsChange }) {
-  const selected = Array.isArray(destinations) ? destinations : [];
+  const selected = useMemo(
+    () => (Array.isArray(destinations) ? destinations : []),
+    [destinations],
+  );
   const selectedType = selected[0]?.page_type;
   const [tab, setTab] = useState(
     selectedType && PAGE_TYPE_LABEL[selectedType] ? selectedType : "all",
@@ -79,10 +84,6 @@ export function StepDestination({ destinations, onDestinationsChange }) {
     return () => clearTimeout(t);
   }, [load, search]);
 
-  useEffect(() => {
-    setPage(0);
-  }, [tab, search, includeUnavailable]);
-
   // toward #3697 Wave 2 (#3707): single select — tap again to clear, tap another to replace.
   const toggle = useCallback(
     (row) => {
@@ -115,7 +116,10 @@ export function StepDestination({ destinations, onDestinationsChange }) {
               type="button"
               role="radio"
               aria-checked={tab === t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => {
+                setTab(t.id);
+                setPage(0);
+              }}
               className={[
                 "h-8 px-2.5 text-xs font-medium rounded-md transition-colors",
                 tab === t.id
@@ -128,13 +132,23 @@ export function StepDestination({ destinations, onDestinationsChange }) {
           ))}
         </div>
         <div className="flex-1 min-w-48">
-          <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search pages…" />
+          <SearchInput
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(0);
+            }}
+            placeholder="Search pages…"
+          />
         </div>
         <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)] cursor-pointer select-none">
           <input
             type="checkbox"
             checked={includeUnavailable}
-            onChange={(e) => setIncludeUnavailable(e.target.checked)}
+            onChange={(e) => {
+              setIncludeUnavailable(e.target.checked);
+              setPage(0);
+            }}
             className="rounded border-[var(--gray-300)]"
           />
           Show unavailable
