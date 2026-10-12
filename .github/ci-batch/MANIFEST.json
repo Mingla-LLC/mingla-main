@@ -22913,6 +22913,7 @@
       "referenceFiles": [
         "scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.test.mjs",
         "scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.tester.adversarial.test.mjs",
+        "scripts/sites/__tests__/issue_2830_ops_alert_reaches_a_person.test.mjs",
         "scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs",
         "scripts/sites/__tests__/issue_3606_recovery_freshness.implementor.test.mjs",
         "scripts/sites/__tests__/issue_3606_recovery_freshness.tester.adversarial.test.mjs",

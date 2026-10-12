@@ -212,9 +212,15 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
     // evaluate the whole job-graph cross-product and to run the two new jobs'
     // inline scripts against hostile input, so it is a consumer on the same
     // terms. `….test.mjs` sorts before `….tester.adversarial.test.mjs`.
+    //
+    // [#2830 slice 2] The paging suite reads the same workflow to pin that a
+    // paging job runs the notifier with the recipient threaded as a secret and
+    // that the housekeeping alert is in exclusion polarity, so it is a consumer
+    // too. `…ops_alert…` sorts after both `…housekeeping…` files.
     referenceFiles: Object.freeze([
       "scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.test.mjs",
       "scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.tester.adversarial.test.mjs",
+      "scripts/sites/__tests__/issue_2830_ops_alert_reaches_a_person.test.mjs",
       "scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs",
       "scripts/sites/__tests__/issue_3606_recovery_freshness.implementor.test.mjs",
       "scripts/sites/__tests__/issue_3606_recovery_freshness.tester.adversarial.test.mjs",

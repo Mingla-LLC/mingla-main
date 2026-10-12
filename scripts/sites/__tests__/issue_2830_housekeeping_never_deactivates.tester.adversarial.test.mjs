@@ -400,6 +400,9 @@ test("#2830 tester: the reader sees the six jobs and their real conditions", () 
   assert.deepEqual(WORKFLOW.order, [
     "contracts", "backup_restore", "deactivate", "alert",
     "retention", "housekeeping_alert", "recovery_freshness",
+    // #2830 slice 2 (additions only): the paging job, appended after every job
+    // this suite reasons about, so the order above is unchanged.
+    "ops_page",
   ]);
   assert.deepEqual(WORKFLOW.jobs.deactivate.needs, ["contracts", "backup_restore"]);
   assert.deepEqual(WORKFLOW.jobs.alert.needs, ["contracts", "backup_restore", "deactivate"]);
@@ -827,6 +830,8 @@ test("#2830 tester: end to end — real CLI failure, real outcome step, real gra
       retention: "success",
       housekeeping_alert: "success",
       recovery_freshness: "skipped",
+      // #2830 slice 2 (additions only): a failed sweep is also emailed.
+      ops_page: "success",
     }, event.label);
     assert.equal(runConclusion(result), "success", `${event.label}: the run is green`);
   }

@@ -99,6 +99,7 @@ jobs:
           scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.test.mjs
           scripts/sites/__tests__/issue_2830_retention_response_contract.test.mjs
           scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.tester.adversarial.test.mjs
+          scripts/sites/__tests__/issue_2830_ops_alert_reaches_a_person.test.mjs
 
   backup_restore:
     name: "Private backup and isolated restore"
@@ -479,15 +480,28 @@ jobs:
     # job stopped by `timeout-minutes` reports as one of the middle two, so both
     # are named. `skipped` is deliberately absent: retention is skipped whenever
     # the backup did not succeed, and that case belongs to `alert`.
+    #
+    # [WORKFLOW-MOD-APPROVED #2830] Slice 2 turns this gate to EXCLUSION
+    # polarity, the rule every other gate in this file already follows. As first
+    # written it listed the three ways housekeeping can fail, so a `retention`
+    # job that succeeded WITHOUT a readable outcome (unset, `cancelled`,
+    # `skipped`) matched none of them and nothing was said. Now only a job that
+    # positively reports `retention_outcome == 'success'` stays quiet, and a
+    # state nobody listed alerts instead of passing in silence. The three
+    # original clauses are kept: each is implied by the two new ones, and they
+    # say in words which failures this was built for.
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
       github.ref == 'refs/heads/main' &&
       github.event.schedule != '37 * * * *' &&
       github.event.inputs.mode != 'freshness-check' &&
+      needs.retention.result != 'skipped' &&
       (needs.retention.outputs.retention_outcome == 'failure' ||
       needs.retention.result == 'failure' ||
-      needs.retention.result == 'cancelled')
+      needs.retention.result == 'cancelled' ||
+      needs.retention.result != 'success' ||
+      needs.retention.outputs.retention_outcome != 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -544,3 +558,66 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/sites/check-recovery-freshness.mjs
+
+  ops_page:
+    name: "Email a person about a Sites operations failure"
+    needs: [contracts, backup_restore, deactivate, retention]
+    # [WORKFLOW-MOD-APPROVED #2830] From 2026-10-07 the two alert jobs above
+    # said the pilot was off the air fourteen times, as comments on an issue,
+    # and nobody read one. A comment is a record; this job is the page. It sends
+    # ONE email per failure kind and code per UTC day through the Resend key the
+    # red-main alert already uses, and writes the marker comment that makes the
+    # next run that day stay quiet.
+    #
+    # It is its own job on purpose. `alert` and `housekeeping_alert` are pinned
+    # byte for byte by their contract tests and hold no secret; this job holds
+    # exactly one repository secret (the mail key), no environment and no
+    # production credential, and nothing else in the run depends on it.
+    #
+    # EXCLUSION polarity, like every gate here: it stays quiet only when the
+    # contracts and the backup succeeded, no deactivation was attempted or it
+    # succeeded, and the sweep positively reported success. Anything else,
+    # including a state nobody listed, pages. Same watchdog-cron and
+    # freshness-check exclusions as the jobs it reports on; the hourly watchdog
+    # pages for itself.
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.schedule != '37 * * * *' &&
+      github.event.inputs.mode != 'freshness-check' &&
+      (needs.contracts.result != 'success' ||
+      needs.backup_restore.result != 'success' ||
+      (needs.deactivate.result != 'success' && needs.deactivate.result != 'skipped') ||
+      (needs.retention.result != 'skipped' &&
+      (needs.retention.result != 'success' ||
+      needs.retention.outputs.retention_outcome != 'success')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      # The recipient is a SECRET, not a variable: this repository is public and
+      # an address must never reach a log, a comment or a test. The notifier
+      # prints neither it nor the provider's answer. The older red-main
+      # recipient is the fallback so a page still goes somewhere before the
+      # Sites inbox is set.
+      - name: Email the Sites operations inbox once per failure per day
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MINGLA_SITES_OPS_ALERT_TO: ${{ secrets.MINGLA_SITES_OPS_ALERT_TO }}
+          MINGLA_MAIN_RED_ALERT_TO: ${{ vars.MINGLA_MAIN_RED_ALERT_TO }}
+          SITES_RUN_CONTRACTS_RESULT: ${{ needs.contracts.result }}
+          SITES_RUN_BACKUP_RESULT: ${{ needs.backup_restore.result }}
+          SITES_RUN_DEACTIVATE_RESULT: ${{ needs.deactivate.result }}
+          SITES_RUN_RETENTION_RESULT: ${{ needs.retention.result }}
+          SITES_RUN_RETENTION_OUTCOME: ${{ needs.retention.outputs.retention_outcome }}
+          SITES_RUN_RETENTION_CODE: ${{ needs.retention.outputs.retention_code }}
+          SITES_RUN_FAILURE_CODE: ${{ needs.backup_restore.outputs.recovery_failure_code }}
+        run: node scripts/sites/notify-sites-ops.mjs run
