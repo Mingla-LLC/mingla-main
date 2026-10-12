@@ -31,18 +31,26 @@ on:
     branches: [main]
     paths:
       - "mingla-admin/src/**"
+      - "mingla-marketing/lib/ad-marketing-routes.ts"
       - "supabase/functions/admin-ad-create-campaign/**"
+      - "supabase/functions/_shared/adDestination.ts"
       - "supabase/functions/_shared/__tests__/issue1002_multi_destination_fanout.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3697_wave4_marketing_dest.test.ts"
       - "supabase/migrations/20270107001002_issue_1002_ad_campaign_destinations.sql"
+      - "supabase/migrations/20270818003697_issue_3697_wave4_marketing_destinations.sql"
       - ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml"
   pull_request:
     # issue #2881 — ready_for_review is required wherever the draft gate is set.
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "mingla-admin/src/**"
+      - "mingla-marketing/lib/ad-marketing-routes.ts"
       - "supabase/functions/admin-ad-create-campaign/**"
+      - "supabase/functions/_shared/adDestination.ts"
       - "supabase/functions/_shared/__tests__/issue1002_multi_destination_fanout.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3697_wave4_marketing_dest.test.ts"
       - "supabase/migrations/20270107001002_issue_1002_ad_campaign_destinations.sql"
+      - "supabase/migrations/20270818003697_issue_3697_wave4_marketing_destinations.sql"
       - ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml"
 
 concurrency:

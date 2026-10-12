@@ -862,7 +862,10 @@ serve(async (req: Request): Promise<Response> => {
 
         // (7) Persist ONE campaign+ad_set+ad row set — objective DEMAND_GEN, PAUSED.
         const moneyGV: Wave2MoneyPersist = {
-          brand_id: await resolveBrandIdForSlug(supabase, brandSlugGV),
+          // toward #3697 Wave 4 — marketing never binds a Host brands row.
+          brand_id: pageTypeGV === "marketing"
+            ? null
+            : await resolveBrandIdForSlug(supabase, brandSlugGV),
           ...wave2MoneyBase,
         };
         const { data: campaignRowGV, error: campaignErrGV } = await supabase
@@ -1341,7 +1344,9 @@ serve(async (req: Request): Promise<Response> => {
 
       // (6) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
       const moneyG: Wave2MoneyPersist = {
-        brand_id: await resolveBrandIdForSlug(supabase, brandSlugG),
+        brand_id: pageTypeG === "marketing"
+          ? null
+          : await resolveBrandIdForSlug(supabase, brandSlugG),
         ...wave2MoneyBase,
       };
       const { data: campaignRowG, error: campaignErrG } = await supabase
@@ -1997,7 +2002,9 @@ serve(async (req: Request): Promise<Response> => {
 
       // (7) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
       const moneyS: Wave2MoneyPersist = {
-        brand_id: await resolveBrandIdForSlug(supabase, brandSlugS),
+        brand_id: pageTypeS === "marketing"
+          ? null
+          : await resolveBrandIdForSlug(supabase, brandSlugS),
         ...wave2MoneyBase,
       };
       const { data: campaignRowS, error: campaignErrS } = await supabase
@@ -2716,7 +2723,9 @@ serve(async (req: Request): Promise<Response> => {
 
       // (9) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
       const moneyT: Wave2MoneyPersist = {
-        brand_id: await resolveBrandIdForSlug(supabase, brandSlugT),
+        brand_id: pageTypeT === "marketing"
+          ? null
+          : await resolveBrandIdForSlug(supabase, brandSlugT),
         ...wave2MoneyBase,
       };
       const { data: campaignRowT, error: campaignErrT } = await supabase
@@ -3194,7 +3203,9 @@ serve(async (req: Request): Promise<Response> => {
 
       // (6) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
       const moneyR: Wave2MoneyPersist = {
-        brand_id: await resolveBrandIdForSlug(supabase, brandSlugR),
+        brand_id: pageTypeR === "marketing"
+          ? null
+          : await resolveBrandIdForSlug(supabase, brandSlugR),
         ...wave2MoneyBase,
       };
       const { data: campaignRowR, error: campaignErrR } = await supabase
@@ -3754,7 +3765,9 @@ serve(async (req: Request): Promise<Response> => {
 
     // ── Persist ONE campaign+ad_set+ad row set (only now that all IDs exist). ──
     const metaMoney: Wave2MoneyPersist = {
-      brand_id: await resolveBrandIdForSlug(supabase, brandSlug),
+      brand_id: pageType === "marketing"
+        ? null
+        : await resolveBrandIdForSlug(supabase, brandSlug),
       ...wave2MoneyBase,
     };
     const { data: campaignRow, error: campaignInsertError } = await supabase

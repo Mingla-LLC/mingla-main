@@ -27,7 +27,11 @@ export const AD_DESTINATION_PAGE_TYPES: readonly DestinationPageType[] = [
 /** Canonical marketing origin — mirrors mingla-marketing/lib/site.ts SITE_ORIGIN. */
 export const MARKETING_WEB_ORIGIN = "https://usemingla.com";
 
-/** Sentinel brand_slug for Mingla-owned marketing pages (not a Host brand). */
+/**
+ * Sentinel brand_slug for Mingla-owned marketing pages (not a Host brand).
+ * Create/persist must keep brand_id NULL for marketing — never resolve this
+ * slug through brands (hosts can own a colliding slug).
+ */
 export const MARKETING_BRAND_SLUG = "mingla";
 
 /**

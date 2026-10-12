@@ -152,6 +152,22 @@ Deno.test("Wave 4: CaptureBody.dest.page_type union declares marketing", async (
   );
 });
 
+Deno.test("Wave 4: create-campaign never resolves brand_id for marketing", async () => {
+  const src = await Deno.readTextFile(
+    new URL(
+      "../../admin-ad-create-campaign/index.ts",
+      import.meta.url,
+    ),
+  );
+  assertEquals(src.includes('pageType === "marketing"\n        ? null'), true);
+  assertEquals(src.includes('pageTypeGV === "marketing"\n            ? null'), true);
+  // Must not call resolveBrandIdForSlug on the marketing-only path without the null guard.
+  const marketingMoneyBlocks = src.match(
+    /brand_id: pageType[A-Z]* === "marketing"\s*\n\s*\? null\s*\n\s*: await resolveBrandIdForSlug/g,
+  );
+  assertEquals((marketingMoneyBlocks?.length ?? 0) >= 6, true);
+});
+
 Deno.test("Wave 4: adChannel MARKETING_ENTITY_SLUGS matches MARKETING_ROUTES", async () => {
   const channel = await Deno.readTextFile(
     new URL("../adChannel.ts", import.meta.url),
