@@ -98,6 +98,7 @@ jobs:
           scripts/sites/__tests__/issue_3628_deactivation_gate.test.mjs
           scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.test.mjs
           scripts/sites/__tests__/issue_2830_retention_response_contract.test.mjs
+          scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.tester.adversarial.test.mjs
 
   backup_restore:
     name: "Private backup and isolated restore"

@@ -207,8 +207,14 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
     // evidence commit, so it names the workflow and discovery derives it as a
     // consumer too. `issue_2830_…` sorts before `issue_2893_…`. Its sibling
     // response-contract suite does not name the workflow and is not listed.
+    //
+    // [#2830 tester] The tester's adversarial suite reads the same workflow to
+    // evaluate the whole job-graph cross-product and to run the two new jobs'
+    // inline scripts against hostile input, so it is a consumer on the same
+    // terms. `….test.mjs` sorts before `….tester.adversarial.test.mjs`.
     referenceFiles: Object.freeze([
       "scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.test.mjs",
+      "scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.tester.adversarial.test.mjs",
       "scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs",
       "scripts/sites/__tests__/issue_3606_recovery_freshness.implementor.test.mjs",
       "scripts/sites/__tests__/issue_3606_recovery_freshness.tester.adversarial.test.mjs",
