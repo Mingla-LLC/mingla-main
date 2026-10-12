@@ -343,8 +343,8 @@ GRANT EXECUTE ON FUNCTION public.crm_stage_def(text, text) TO service_role;
 -- A listing whose visibility is `discover` counts too (decision on #3802): a
 -- brand's own site and its share pages present such a listing to anyone, the
 -- same as a public one. No public view carries those rows, so that one leg
--- reads events with the public view's own conditions (not deleted, scheduled
--- or live, not withheld by the ordinary-read block).
+-- reads events with the same conditions the brand site's listing projection
+-- uses (brand_site_commercial_projection): not deleted, scheduled or live.
 CREATE FUNCTION public.crm_brand_is_live(p_brand_id uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -356,8 +356,7 @@ AS $$
                    WHERE d.brand_id = p_brand_id
                      AND d.deleted_at IS NULL
                      AND d.visibility = 'discover'
-                     AND d.status IN ('scheduled', 'live')
-                     AND NOT public.issue_1931_event_ordinary_read_blocked(d.id))
+                     AND d.status IN ('scheduled', 'live'))
        OR EXISTS (SELECT 1 FROM public.claimed_venues_public_view v WHERE v.id = p_brand_id)
        OR EXISTS (SELECT 1 FROM public.ad_public_stay_destinations_view s WHERE s.brand_id = p_brand_id)
      )
