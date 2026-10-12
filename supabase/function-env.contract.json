@@ -805,7 +805,10 @@
         "STRIPE_PUBLISHABLE_KEY"
       ],
       "required_bundle_fields": {},
-      "required_top_level": []
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
     },
     "discover-cards": {
       "migration_fallback_top_level": [],

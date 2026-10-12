@@ -25,6 +25,8 @@
  */
 
 import React from "react";
+// [TEST-MOD-APPROVED #3660] Types only, added by the implementor for the CI typecheck delta: no assertion, selector or fixture changed.
+// @ts-expect-error react-test-renderer ships without declarations in this workspace.
 import TestRenderer, { act } from "react-test-renderer";
 
 import {
@@ -160,13 +162,22 @@ jest.mock("../../../src/components/ui/Toast", () => {
 // eslint-disable-next-line import/first
 import DeleteAccountRoute from "../delete";
 
-type Tree = TestRenderer.ReactTestRenderer;
+// Local shapes for the two renderer types this file uses (the package has no
+// declarations to import them from).
+type TestInstance = {
+  type: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  props: Record<string, any>;
+  find: (predicate: (node: TestInstance) => boolean) => TestInstance;
+  findAll: (predicate: (node: TestInstance) => boolean) => TestInstance[];
+};
+type Tree = { root: TestInstance; toJSON: () => unknown };
 
-const buttons = (tree: Tree): TestRenderer.ReactTestInstance[] =>
-  tree.root.findAll((n) => (n.type as unknown) === "mock-button");
+const buttons = (tree: Tree): TestInstance[] =>
+  tree.root.findAll((n: TestInstance) => (n.type as unknown) === "mock-button");
 const labels = (tree: Tree): string[] =>
   buttons(tree).map((b) => String(b.props.label));
-const button = (tree: Tree, label: string): TestRenderer.ReactTestInstance => {
+const button = (tree: Tree, label: string): TestInstance => {
   const found = buttons(tree).filter((b) => b.props.label === label);
   if (found.length !== 1) {
     throw new Error(
@@ -183,7 +194,7 @@ const press = async (tree: Tree, label: string): Promise<void> => {
 };
 const text = (tree: Tree): string => JSON.stringify(tree.toJSON());
 const toast = (tree: Tree): { visible: boolean; message: string } => {
-  const t = tree.root.find((n) => (n.type as unknown) === "mock-toast");
+  const t = tree.root.find((n: TestInstance) => (n.type as unknown) === "mock-toast");
   return { visible: Boolean(t.props.visible), message: String(t.props.message) };
 };
 const mount = async (): Promise<Tree> => {
@@ -196,7 +207,7 @@ const mount = async (): Promise<Tree> => {
 };
 const typeEmail = async (tree: Tree, value: string): Promise<void> => {
   const input = tree.root.find(
-    (n) => typeof n.props.onChangeText === "function" && n.props.placeholder !== undefined,
+    (n: TestInstance) => typeof n.props.onChangeText === "function" && n.props.placeholder !== undefined,
   );
   await act(async () => {
     (input.props.onChangeText as (v: string) => void)(value);
@@ -311,7 +322,7 @@ describe("#3660 tester2 · the Host delete route, mounted", () => {
     }
     // The panel is announced.
     expect(
-      tree.root.findAll((n) => n.props.accessibilityRole === "alert" || n.props.role === "alert")
+      tree.root.findAll((n: TestInstance) => n.props.accessibilityRole === "alert" || n.props.role === "alert")
         .length,
     ).toBeGreaterThan(0);
 
