@@ -378,7 +378,7 @@ function FocusInput({ icon: Icon, type = "text", id, rightElement, style: extraS
 
 // ── Main Login Screen ──────────────────────────────────────────
 export function LoginScreen() {
-  const { verifyPassword, sendOtp, verifyOtp, verifyInviteOtp } = useAuth();
+  const { verifyPassword, sendOtp, verifyOtp, authNotice, clearAuthNotice } = useAuth();
 
   const [step, setStep] = useState("password");
   const [email, setEmail] = useState("");
@@ -390,12 +390,15 @@ export function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [lockoutMsg, setLockoutMsg] = useState("");
   const [transitioning, setTransitioning] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteOtp, setInviteOtp] = useState("");
   const stepTimerRef = useRef(null);
 
   // Clean up step transition timer on unmount
   useEffect(() => () => clearTimeout(stepTimerRef.current), []);
+
+  // Issue #3802 — a message left by the app when it signed somebody out on its
+  // own (for example "Your invite is waiting..."). Shown in the error slot
+  // below until the next sign-in attempt, then cleared so it does not come back.
+  const shownError = error || authNotice;
 
   const goToStep = (nextStep) => {
     setTransitioning(true);
@@ -409,6 +412,7 @@ export function LoginScreen() {
   const handlePasswordSubmit = async (e) => {
       e.preventDefault();
       setError("");
+      if (authNotice) clearAuthNotice();
       setPasswordIssues([]);
       setLockoutMsg("");
 
@@ -418,8 +422,8 @@ export function LoginScreen() {
       const trimmedEmail = email.trim().toLowerCase();
       if (!trimmedEmail || !password) { setError("Please enter both email and password."); return; }
 
-      // Email authorization is checked dynamically by AuthContext.verifyPassword
-      // (checks both hardcoded ALLOWED_ADMIN_EMAILS and admin_users table).
+      // Whether this email is on the team is checked by AuthContext.verifyPassword
+      // (read from the server once the password has been verified).
 
       const { valid, failures } = validatePassword(password);
       if (!valid) { setPasswordIssues(failures); return; }
@@ -466,29 +470,6 @@ export function LoginScreen() {
   };
 
   const handleBackToPassword = () => { goToStep("password"); setOtpCode(""); setError(""); setLockoutMsg(""); };
-
-  // ── Invite OTP ────────────────────────────────────────────
-  const handleInviteSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-
-    const trimmedEmail = inviteEmail.trim().toLowerCase();
-    const code = inviteOtp.trim();
-    if (!trimmedEmail) { setError("Please enter your email."); return; }
-    if (!code || code.length !== 6) { setError("Please enter the 6-digit code from your invite email."); return; }
-
-    setLoading(true);
-    try {
-      await verifyInviteOtp(trimmedEmail, code);
-      // onAuthStateChange will detect the invited user and show InviteSetupScreen
-    } catch (err) {
-      setError(err.message || "Invalid or expired code. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleBackFromInvite = () => { goToStep("password"); setInviteEmail(""); setInviteOtp(""); setError(""); };
 
   const handleResendCode = async () => {
     setError("");
@@ -587,9 +568,9 @@ export function LoginScreen() {
             </AlertBlock>
           )}
 
-          {error && !lockoutMsg && (
+          {shownError && !lockoutMsg && (
             <AlertBlock>
-              <p style={{ fontSize: 12, color: COLORS.errorText, margin: 0 }}>{error}</p>
+              <p style={{ fontSize: 12, color: COLORS.errorText, margin: 0 }}>{shownError}</p>
             </AlertBlock>
           )}
 
@@ -719,28 +700,10 @@ export function LoginScreen() {
                   {loading ? "Verifying..." : "Continue with Verification"}
                 </button>
 
-                {/* Invite link */}
-                <div style={{ textAlign: "center", marginTop: 14 }}>
-                  <button
-                    type="button"
-                    onClick={() => { goToStep("invite"); setError(""); setPasswordIssues([]); setLockoutMsg(""); }}
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: COLORS.brandOrange,
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: 0,
-                      fontFamily: "inherit",
-                      transition: "color 0.15s",
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = "#d6691f")}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = COLORS.brandOrange)}
-                  >
-                    I have an invite code
-                  </button>
-                </div>
+                {/* Issue #3802 — invitations arrive as a link, not a code. */}
+                <p style={{ textAlign: "center", marginTop: 14, marginBottom: 0, fontSize: 12, color: COLORS.textSecondary }}>
+                  Been invited? Open the link in your invite email.
+                </p>
               </form>
             )}
 
@@ -850,106 +813,6 @@ export function LoginScreen() {
                     onMouseLeave={(e) => (e.currentTarget.style.color = COLORS.brandOrange)}
                   >
                     Resend code
-                  </button>
-                </div>
-              </form>
-            )}
-            {/* ── Invite OTP Form ── */}
-            {step === "invite" && (
-              <form onSubmit={handleInviteSubmit} style={{ animation: "loginFadeIn 300ms ease-out" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    textAlign: "center",
-                    gap: 4,
-                    padding: "12px 16px",
-                    borderRadius: 8,
-                    backgroundColor: COLORS.warmGlow,
-                    border: "1px solid rgba(235,120,37,0.12)",
-                    marginBottom: 16,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <Mail style={{ width: 14, height: 14, color: COLORS.brandOrange, flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: COLORS.text }}>Invited Admin Setup</span>
-                  </div>
-                  <p style={{ fontSize: 11, color: COLORS.textSecondary, margin: 0 }}>
-                    Enter your email and the 6-digit code from your invite email
-                  </p>
-                </div>
-
-                {/* Email */}
-                <div style={{ marginBottom: 14 }}>
-                  <label htmlFor="invite-email" style={labelStyle}>Email</label>
-                  <FocusInput
-                    id="invite-email"
-                    type="email"
-                    icon={Mail}
-                    placeholder="you@usemingla.com"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    autoComplete="email"
-                    autoFocus
-                  />
-                </div>
-
-                {/* OTP */}
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ ...labelStyle, textAlign: "center", marginBottom: 8 }}>Invite code</label>
-                  <OtpInput value={inviteOtp} onChange={setInviteOtp} disabled={loading} />
-                </div>
-
-                {/* Submit */}
-                <button
-                  type="submit"
-                  disabled={loading || inviteOtp.length !== 6}
-                  style={{
-                    ...btnStyle,
-                    opacity: loading || inviteOtp.length !== 6 ? 0.5 : 1,
-                    cursor: loading || inviteOtp.length !== 6 ? "not-allowed" : "pointer",
-                    marginBottom: 14,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!loading && inviteOtp.length === 6) {
-                      e.currentTarget.style.transform = "translateY(-1px)";
-                      e.currentTarget.style.boxShadow = "0 4px 16px rgba(235,120,37,0.35)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                >
-                  {loading ? <Loader2 style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} /> : <LogIn style={{ width: 16, height: 16 }} />}
-                  {loading ? "Verifying..." : "Verify Invite Code"}
-                </button>
-
-                {/* Back */}
-                <div style={{ textAlign: "center" }}>
-                  <button
-                    type="button"
-                    onClick={handleBackFromInvite}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: COLORS.textSecondary,
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      padding: 0,
-                      transition: "color 0.15s",
-                      fontFamily: "inherit",
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.color = COLORS.text)}
-                    onMouseLeave={(e) => (e.currentTarget.style.color = COLORS.textSecondary)}
-                  >
-                    <ArrowLeft style={{ width: 12, height: 12 }} />
-                    Back to login
                   </button>
                 </div>
               </form>

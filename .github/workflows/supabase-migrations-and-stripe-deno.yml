@@ -189,6 +189,27 @@ on:
       - "mingla-admin/src/pages/BusinessMoneyLedgerPage.jsx"
       - "mingla-admin/src/services/adminMoneyService.js"
       - "mingla-admin/src/services/identityWriteService.js"
+      # Issue #3802 — roles in Mingla Admin and one-time team invitations. The
+      # admin suite (node:test step below) reads these admin sources and the
+      # Deno suite reads the two invite functions; all live OUTSIDE the paths
+      # above, so they are listed EXPLICITLY in BOTH filters.
+      - "mingla-admin/src/__tests__/issue3802_wave0_roles.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave0_roles.tester.adversarial.test.js"
+      - "mingla-admin/src/App.jsx"
+      - "mingla-admin/src/context/AuthContext.jsx"
+      - "mingla-admin/src/lib/access.js"
+      - "mingla-admin/src/lib/inviteLink.js"
+      - "mingla-admin/src/lib/constants.js"
+      - "mingla-admin/src/lib/auditLog.js"
+      - "mingla-admin/src/pages/AdminPage.jsx"
+      - "mingla-admin/src/pages/RoleHomePage.jsx"
+      - "mingla-admin/src/components/CommandPalette.jsx"
+      - "mingla-admin/src/components/LoginScreen.jsx"
+      - "mingla-admin/src/components/InviteAcceptScreen.jsx"
+      - "mingla-admin/src/components/InviteSetupScreen.jsx"
+      - "mingla-admin/src/components/layout/**"
+      - "supabase/functions/admin-team-invite/**"
+      - "supabase/functions/admin-team-accept-invite/**"
       # #3645 PR11c — Organiser Terms accept edge + Deno suite. Listed in BOTH
       # path filters so a handler/test-only edit still runs the Stripe Deno lane
       # (registering the file in DENO_TEST_FILES alone is not enough).
@@ -339,6 +360,27 @@ on:
       - "mingla-admin/src/pages/BusinessMoneyLedgerPage.jsx"
       - "mingla-admin/src/services/adminMoneyService.js"
       - "mingla-admin/src/services/identityWriteService.js"
+      # Issue #3802 — roles in Mingla Admin and one-time team invitations. The
+      # admin suite (node:test step below) reads these admin sources and the
+      # Deno suite reads the two invite functions; all live OUTSIDE the paths
+      # above, so they are listed EXPLICITLY in BOTH filters.
+      - "mingla-admin/src/__tests__/issue3802_wave0_roles.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave0_roles.tester.adversarial.test.js"
+      - "mingla-admin/src/App.jsx"
+      - "mingla-admin/src/context/AuthContext.jsx"
+      - "mingla-admin/src/lib/access.js"
+      - "mingla-admin/src/lib/inviteLink.js"
+      - "mingla-admin/src/lib/constants.js"
+      - "mingla-admin/src/lib/auditLog.js"
+      - "mingla-admin/src/pages/AdminPage.jsx"
+      - "mingla-admin/src/pages/RoleHomePage.jsx"
+      - "mingla-admin/src/components/CommandPalette.jsx"
+      - "mingla-admin/src/components/LoginScreen.jsx"
+      - "mingla-admin/src/components/InviteAcceptScreen.jsx"
+      - "mingla-admin/src/components/InviteSetupScreen.jsx"
+      - "mingla-admin/src/components/layout/**"
+      - "supabase/functions/admin-team-invite/**"
+      - "supabase/functions/admin-team-accept-invite/**"
       # #3645 PR11c — Organiser Terms accept edge + Deno suite (both filters).
       - "supabase/functions/brand-mingla-tos-accept/**"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
@@ -430,6 +472,12 @@ jobs:
       - name: "Issue #3645 — Admin payout pause/resume + debt view wiring pin"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3645_admin_payout_pause_and_debt.test.js
+      - name: "Issue #3802 — roles in Mingla Admin: what each role may open, and the invite flow"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave0_roles.implementor.happy.test.js
+      - name: "Issue #3802 — roles in Mingla Admin: independent tester adversarial proof"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave0_roles.tester.adversarial.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
@@ -951,6 +999,23 @@ jobs:
           # and because the overlapping-session part opens loopback sessions.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave0_team_roles.tester.adversarial.pg17.test.sql
+          # Issue #3802 (Wave 0) — one-time team invitations on the same schema.
+          # An invited person who has not opened their invitation stays invited;
+          # an invitation opens once, in time, for one account, and activates
+          # only the role it was sent for; every membership change ends the
+          # previous invitation; one row per address however it is spelled; and
+          # two sessions writing one person into both tables queue up (real
+          # second and third sessions). Runs as `supabase_admin` for the same
+          # reasons as the two suites above.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave0_invite_binding.implementor.happy.pg17.test.sql
+
+          # Issue #3802 (Wave 0) — independent tester proof for the invitations, a
+          # different angle: the secret never leaves the database, the binding is
+          # to one account, state precedence at the boundaries, the client can
+          # never peek or redeem, already_active is fully transactional.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave0_invite_binding.tester.adversarial.pg17.test.sql
 
           # Issue #2725 Amendment 8 — executable hard-cap proof on the fully
           # replayed PG17 schema. All funding lanes share one serialized $1.00
@@ -1597,6 +1662,9 @@ jobs:
             supabase/functions/_shared/__tests__/issue_3697_wave2_ad_money.test.ts
             # toward #3697 Wave 4 — marketing destinations B1.
             supabase/functions/_shared/__tests__/issue_3697_wave4_marketing_dest.test.ts
+            # toward #3802 — team invitation helpers + source contracts on the
+            # two invite functions (hermetic: no network, no database).
+            supabase/functions/_shared/__tests__/adminTeamInvite.issue3802.test.ts
             # ISSUE-996 — implementor source guard: A5 keeps its local fetch
             # declaration + fireAdConversion injection (no network execution).
             supabase/functions/_shared/__tests__/issue_996_a5_hermetic_fetch.test.ts
