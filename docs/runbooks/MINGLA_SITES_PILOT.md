@@ -154,6 +154,73 @@ selects an exact retained source and creates a new immutable publication or an
 audited pointer repair; it never mutates a historical row or performs a
 destructive database rollback.
 
+## Re-activating the pilot after a deactivation
+
+A deactivation switches the pilot off and returns its host to `pending`. Nothing
+re-activates it automatically: the next green backup run does not, and no
+scheduled job holds the credentials that activation needs. Until someone runs
+the command below, the public host answers 404 on every route.
+
+What deactivates the pilot: a backup run that proves a readiness violation (the
+five `DATABASE_BACKUP_*` codes), or a backup job that fails without saying why.
+What does not: a failure of the tenant retention sweep. That sweep is
+housekeeping, runs in its own job after the backup evidence is committed, and a
+failure there raises a `SITES_HOUSEKEEPING_ALERT` comment on the issue and
+nothing else (#2830).
+
+Who: whoever holds the Core service-role key. Today that is Seth's side only.
+
+Preconditions, all three required (activation refuses otherwise):
+
+1. Backup evidence is under 26 hours old.
+2. The restore drill is under 100 days old.
+3. The pilot host is `pending`, which is the state a deactivation leaves it in.
+
+Steps:
+
+1. Confirm the cause of the deactivation is fixed, then take one fresh backup
+   and wait for it to go green:
+
+   ```
+   gh workflow run "Mingla Sites · Backup and restore" -f mode=backup
+   ```
+
+   The `Private backup and isolated restore` job must conclude success and its
+   log must contain `SITES_BACKUP_EVIDENCE_OK`.
+2. Within 26 hours of that run, from a checkout of `main`, with
+   `SITES_PILOT_SITE_ID`, `SITES_CORE_BASE_URL`, `SITES_CORE_SERVICE_ROLE_KEY`
+   and `SITES_CANDIDATE_PROBE_SECRET` set in the environment (never on the
+   command line, never pasted anywhere):
+
+   ```
+   node scripts/sites/activate-gogi-pilot.mjs
+   ```
+
+   What the script checks before it activates, in order, stopping at the
+   first failure with nothing activated:
+
+   - the pilot binding is re-configured for the Gogi brand and reads back
+     `configured` with the pilot still disabled;
+   - the site is `published`, and its active publication is also its last
+     successful publication;
+   - that publication is `published`, is Restaurant Website v1 (artifact
+     schema 1, renderer version 1), carries a valid artifact digest, and its
+     artifact key is the one derived from the site, publication and digest;
+   - a signed candidate probe of that exact publication on the pilot host
+     passes, and the host readiness it records reads back `verified`.
+
+   Core then applies the three preconditions above itself, plus a host probe
+   no older than 15 minutes, which the probe in the same run satisfies.
+
+   After activating, the script reads back the service configuration, the host
+   row (`active`, primary) and a live request to the public host (HTTP 200,
+   HTML, no infrastructure names in the page). If any read-back fails it
+   deactivates again by itself and exits non-zero.
+3. Expect exactly one success line:
+   `SITES_GOGI_ACTIVATED site=<site id> publication=<publication id>`.
+4. Confirm `https://gogi.sites.usemingla.com/` returns HTTP 200.
+5. Paste the success line on the issue. Do not paste any of the four values.
+
 ## Ownership
 
 Sites application owns service and publication behavior. Platform owns project,
