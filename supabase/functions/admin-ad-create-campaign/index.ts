@@ -570,7 +570,7 @@ serve(async (req: Request): Promise<Response> => {
       //      derivation, and geo all need them (mirror the SEARCH branch).
       const destinationGV = pickCallDestination(body);
       const pageTypeGV = destinationGV.page_type ?? "";
-      const brandSlugGV = typeof destinationGV.brand_slug === "string"
+      let brandSlugGV = typeof destinationGV.brand_slug === "string"
         ? destinationGV.brand_slug.trim()
         : "";
       const entitySlugGV = typeof destinationGV.entity_slug === "string"
@@ -579,6 +579,8 @@ serve(async (req: Request): Promise<Response> => {
       if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site", "marketing"].includes(pageTypeGV)) {
         return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
       }
+      // toward #3697 Wave 4 — marketing implies sentinel brand when omitted.
+      if (pageTypeGV === "marketing" && !brandSlugGV) brandSlugGV = "mingla";
       if (!brandSlugGV) {
         return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
       }
@@ -1143,7 +1145,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const destinationG = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
     const pageTypeG = destinationG.page_type ?? "";
-    const brandSlugG = typeof destinationG.brand_slug === "string"
+    let brandSlugG = typeof destinationG.brand_slug === "string"
       ? destinationG.brand_slug.trim()
       : "";
     const entitySlugG = typeof destinationG.entity_slug === "string"
@@ -1152,6 +1154,7 @@ serve(async (req: Request): Promise<Response> => {
     if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site", "marketing"].includes(pageTypeG)) {
       return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
     }
+    if (pageTypeG === "marketing" && !brandSlugG) brandSlugG = "mingla";
     if (!brandSlugG) {
       return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
     }
@@ -1671,7 +1674,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const destinationS = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
     const pageTypeS = destinationS.page_type ?? "";
-    const brandSlugS = typeof destinationS.brand_slug === "string"
+    let brandSlugS = typeof destinationS.brand_slug === "string"
       ? destinationS.brand_slug.trim()
       : "";
     const entitySlugS = typeof destinationS.entity_slug === "string"
@@ -1680,6 +1683,7 @@ serve(async (req: Request): Promise<Response> => {
     if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site", "marketing"].includes(pageTypeS)) {
       return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
     }
+    if (pageTypeS === "marketing" && !brandSlugS) brandSlugS = "mingla";
     if (!brandSlugS) {
       return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
     }
@@ -2340,7 +2344,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const destinationT = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
     const pageTypeT = destinationT.page_type ?? "";
-    const brandSlugT = typeof destinationT.brand_slug === "string"
+    let brandSlugT = typeof destinationT.brand_slug === "string"
       ? destinationT.brand_slug.trim()
       : "";
     const entitySlugT = typeof destinationT.entity_slug === "string"
@@ -2349,6 +2353,7 @@ serve(async (req: Request): Promise<Response> => {
     if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site", "marketing"].includes(pageTypeT)) {
       return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
     }
+    if (pageTypeT === "marketing" && !brandSlugT) brandSlugT = "mingla";
     if (!brandSlugT) {
       return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
     }
@@ -2926,7 +2931,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const destinationR = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
     const pageTypeR = destinationR.page_type ?? "";
-    const brandSlugR = typeof destinationR.brand_slug === "string"
+    let brandSlugR = typeof destinationR.brand_slug === "string"
       ? destinationR.brand_slug.trim()
       : "";
     const entitySlugR = typeof destinationR.entity_slug === "string"
@@ -2935,6 +2940,7 @@ serve(async (req: Request): Promise<Response> => {
     if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site", "marketing"].includes(pageTypeR)) {
       return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
     }
+    if (pageTypeR === "marketing" && !brandSlugR) brandSlugR = "mingla";
     if (!brandSlugR) {
       return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
     }
@@ -3399,11 +3405,13 @@ serve(async (req: Request): Promise<Response> => {
 
   const destination = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
   const pageType = destination.page_type ?? "";
-  const brandSlug = typeof destination.brand_slug === "string" ? destination.brand_slug.trim() : "";
+  let brandSlug = typeof destination.brand_slug === "string" ? destination.brand_slug.trim() : "";
   const entitySlug = typeof destination.entity_slug === "string" ? destination.entity_slug.trim() : "";
   if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site", "marketing"].includes(pageType)) {
     return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
   }
+  // toward #3697 Wave 4 — marketing implies sentinel brand when omitted.
+  if (pageType === "marketing" && !brandSlug) brandSlug = "mingla";
   if (!brandSlug) return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
 
   const creative = (body.creative ?? {}) as Record<string, unknown>;

@@ -151,3 +151,18 @@ Deno.test("Wave 4: CaptureBody.dest.page_type union declares marketing", async (
     true,
   );
 });
+
+Deno.test("Wave 4: adChannel MARKETING_ENTITY_SLUGS matches MARKETING_ROUTES", async () => {
+  const channel = await Deno.readTextFile(
+    new URL("../adChannel.ts", import.meta.url),
+  );
+  const setBlock = channel.match(
+    /MARKETING_ENTITY_SLUGS = new Set\(\[([\s\S]*?)\]\)/,
+  );
+  assertEquals(setBlock != null, true);
+  const channelSlugs = [...setBlock![1].matchAll(/"([a-z0-9-]+)"/g)].map((m) =>
+    m[1]
+  ).sort();
+  const routeSlugs = MARKETING_ROUTES.map((r) => r.slug).slice().sort();
+  assertEquals(channelSlugs, routeSlugs);
+});
