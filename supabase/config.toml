@@ -573,6 +573,16 @@ verify_jwt = true
 [functions.admin-ad-campaign-sync]
 verify_jwt = true
 
+# Issue #3802 — the owner sends a team invitation. Signed-in callers only; the
+# database decides who may invite.
+[functions.admin-team-invite]
+verify_jwt = true
+
+# Issue #3802 — an invited person opens their one-time invite link before they
+# have signed in; the function checks the link itself.
+[functions.admin-team-accept-invite]
+verify_jwt = false
+
 # toward #3697 Wave 2 — hourly spend feed + 98% hard-cap pause. Cron posts with
 # the service-role Bearer (verify_jwt=false); the function also accepts an
 # active admin JWT for manual refresh. In-code gate is mandatory either way.
