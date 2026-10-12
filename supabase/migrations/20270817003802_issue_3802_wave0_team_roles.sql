@@ -87,14 +87,24 @@ COMMENT ON TABLE public.admin_team_members IS
 -- mailbox for the NEW roles; the full-admin branch of admin_team_role()
 -- deliberately does not use it, so existing admins see zero change.
 -- ---------------------------------------------------------------------------
+--
+-- plpgsql rather than a plain SQL body on purpose: a SQL-language body is
+-- resolved when the function is created, and the bare database image the
+-- migration chain is replayed on in CI ships an auth.users without
+-- email_confirmed_at (the hosted auth service adds it). plpgsql resolves the
+-- column on first call, so this file applies on both. Same query either way.
 CREATE FUNCTION public.admin_team_caller_email() RETURNS text
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
-  SELECT lower(btrim(u.email))
-  FROM auth.users u
-  WHERE u.id = auth.uid()
-    AND u.email IS NOT NULL
-    AND u.email_confirmed_at IS NOT NULL
+BEGIN
+  RETURN (
+    SELECT lower(btrim(u.email))
+    FROM auth.users u
+    WHERE u.id = auth.uid()
+      AND u.email IS NOT NULL
+      AND u.email_confirmed_at IS NOT NULL
+  );
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.admin_team_caller_email() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_team_caller_email() TO service_role;
