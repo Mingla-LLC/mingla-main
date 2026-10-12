@@ -6,6 +6,10 @@
 'use client'
 
 import { readMarketingConsent } from '@/components/marketing/posthog-provider'
+import {
+  MARKETING_BRAND_SLUG,
+  marketingSlugFromPathname,
+} from '@/lib/ad-marketing-routes'
 
 const AD_CLICK_KEY = 'mingla_ad_click_v1'
 const ATTR_TIMEOUT_MS = 2500
@@ -138,6 +142,7 @@ export function captureMarketingAdClickIds(): void {
               ? 'google'
               : 'other'
     const consentState = consent === 'granted' ? 'granted' : 'pending'
+    const marketingSlug = marketingSlugFromPathname(window.location.pathname)
     void postCapture({
       kind: 'touch',
       surface: 'web',
@@ -148,7 +153,16 @@ export function captureMarketingAdClickIds(): void {
       af_c_id: afCId,
       utm,
       consent_state: consentState,
-      dest: { page_type: 'brand' },
+      // toward #3697 Wave 4 — real marketing dest when path is allowlisted.
+      ...(marketingSlug
+        ? {
+            dest: {
+              page_type: 'marketing' as const,
+              brand_slug: MARKETING_BRAND_SLUG,
+              entity_slug: marketingSlug,
+            },
+          }
+        : {}),
     }).then((clickId) => {
       if (clickId && !storedClickId()) storeClickId(clickId)
     })
