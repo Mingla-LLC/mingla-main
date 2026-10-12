@@ -127,6 +127,13 @@ import {
   brandPaymentOnboardingRoute,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
+// issue #3801 — `supabase.rpc()` rejects with a PostgREST PLAIN OBJECT, and
+// tripsService re-throws it verbatim. Reading the caught value as "its
+// message if it is an Error, otherwise its string form" produced the literal
+// text "[object Object]", so no guard reason could ever match. This reader
+// (issue #3047) handles an Error, a plain object and a string, and never
+// yields that.
+import { readRpcFailureMessage } from "../../services/rsvpRpcFailure";
 import {
   offeringNeedsStripeToPublish,
   tripDraftIsPaid,
@@ -232,6 +239,14 @@ const STEP_SUBTITLES: Record<StepIndex, string> = {
 // DESIGN_ORCH-0880 §3.1. Step 6 NEW (per-tier traveler intake schema
 // builder + live preview); Review moved to Step 7.
 const STEP_COUNT = 8;
+
+// issue #3801 — what the organiser is told, ON THE STEP WHERE IT HAPPENED, when
+// a save fails for a reason we have no mapped copy for. A raw server code, a
+// constraint name or developer wording is never shown.
+const TRIP_STEP_SAVE_FAILED_MESSAGE =
+  "We couldn't save this step. Check your connection and try again.";
+const TRIP_DISCARD_FAILED_MESSAGE =
+  "We couldn't discard this trip. Check your connection and try again.";
 
 const STEPPER_STEPS: StepperStep[] = [
   { id: "step-1", label: STEP_TITLES[1] },
@@ -1118,7 +1133,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       // locked copy + the payments-onboard route (mirroring
       // handleConfirmPublish); only unrecognized errors keep the connection
       // toast.
-      const autosaveErrCode = e instanceof Error ? e.message : String(e ?? "");
+      const autosaveErrCode = readRpcFailureMessage(e);
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(autosaveErrCode);
       if (guardCopy !== null && guardCopy.action === "payment_onboarding") {
         setPublishError({
@@ -1129,6 +1144,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
         return;
       }
+      // issue #3801 — say so ON THIS STEP. The banner below only renders on
+      // Review, so without the toast a failed save here showed nothing.
+      showToast(guardCopy?.body ?? TRIP_STEP_SAVE_FAILED_MESSAGE);
       setPublishError({
         code: "autosave_failed",
         message: "Couldn't save your changes. Check your connection and try again.",
@@ -1138,27 +1156,34 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
-  }, [autosaveCurrentStep, step, router, trip.brandId, inviteEnabled, inviteNavigation]);
+  }, [autosaveCurrentStep, step, router, trip.brandId, inviteEnabled, inviteNavigation, showToast]);
 
-  // ORCH-0876 — Back now autosaves before stepping back, mirroring
-  // event wizard semantics so unsaved Step N edits aren't lost when the
-  // operator returns to Step N-1. Autosave failure stays on the current
-  // step with the persistent autosave-error banner; user can retry.
+  // ORCH-0876 — Back autosaves before stepping back, mirroring event wizard
+  // semantics so unsaved Step N edits aren't lost when the operator returns
+  // to Step N-1.
+  // issue #3801 — a failed save no longer traps the organiser on the step.
+  // Back says the save failed (toast, on this step) and then goes back anyway:
+  // the edits stay in the wizard's own draft state and the header keeps
+  // showing "Unsaved changes" until a later save lands. The one exception is
+  // unchanged: a money-setup guard still routes to payments onboarding.
   const handleStepBack = useCallback(async (): Promise<void> => {
     if (step <= 1) return;
     if (step === 7 && inviteNavigation?.phase !== "ready") return;
-    try {
-      await autosaveCurrentStep();
+    const goBack = (): void => {
       setStep((s) => {
         if (s === 8 && !inviteEnabled) return 6;
         return s > 1 ? ((s - 1) as StepIndex) : s;
       });
+    };
+    try {
+      await autosaveCurrentStep();
+      goBack();
       setPublishError(null);
     } catch (e) {
       // issue #1014 (rework F-1) — same money-setup guard mapping as
       // handleNext's catch: locked copy + payments-onboard route first;
       // only unrecognized errors keep the connection toast.
-      const autosaveErrCode = e instanceof Error ? e.message : String(e ?? "");
+      const autosaveErrCode = readRpcFailureMessage(e);
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(autosaveErrCode);
       if (guardCopy !== null && guardCopy.action === "payment_onboarding") {
         setPublishError({
@@ -1169,6 +1194,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
         return;
       }
+      showToast(guardCopy?.body ?? TRIP_STEP_SAVE_FAILED_MESSAGE);
+      goBack();
       setPublishError({
         code: "autosave_failed",
         message:
@@ -1179,7 +1206,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
-  }, [autosaveCurrentStep, step, router, trip.brandId, inviteEnabled, inviteNavigation?.phase]);
+  }, [autosaveCurrentStep, step, router, trip.brandId, inviteEnabled, inviteNavigation?.phase, showToast]);
 
   // ----- ORCH-0874 handleClose (chrome X) — branches on isCreateMode + pristine -----
   const handleClose = useCallback((): void => {
@@ -1262,9 +1289,14 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       setDiscardDialogVisible(false);
       onExit();
     } catch (e) {
-      const message =
-        e instanceof Error ? e.message : "Couldn't discard. Try again.";
-      setDiscardError(message);
+      // issue #3801 — the thrown value is developer wording (an Error) or a
+      // PostgREST plain object; neither is shown. The reason is kept for the
+      // console and the organiser gets one plain sentence.
+      console.error(
+        "[TripCreatorWizard] discard failed:",
+        readRpcFailureMessage(e) || "unknown",
+      );
+      setDiscardError(TRIP_DISCARD_FAILED_MESSAGE);
     } finally {
       setIsDiscarding(false);
     }
