@@ -38,9 +38,11 @@ import {
   Megaphone,
   Wrench,
   RotateCcw,
+  Home,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { NAV_GROUPS } from "../../lib/constants";
+import { ROLE_LABELS, visibleNavGroups } from "../../lib/access";
 // ISSUE-1001 — wordmark imported from the canonical master package
 // (packages/brand-assets); the admin-local copy is deleted.
 import minglaLogo from "../../../../packages/brand-assets/mingla-wordmark.png";
@@ -76,6 +78,9 @@ const ICON_MAP = {
   // ISSUE-3534 — Refund operations nav. Without this entry the RotateCcw icon
   // silently falls back to LayoutDashboard (the documented ICON_MAP footgun).
   RotateCcw,
+  // Issue #3802 — Home nav item of the two non-admin team roles. Without this
+  // entry the Home icon silently falls back to LayoutDashboard.
+  Home,
 };
 
 export function Sidebar({
@@ -86,10 +91,12 @@ export function Sidebar({
   mobileOpen,
   onMobileClose,
 }) {
-  const { session, signOut } = useAuth();
+  const { session, access, signOut } = useAuth();
+  // Issue #3802 — the menu holds only what this person may open.
+  const groups = visibleNavGroups(NAV_GROUPS, access);
   const [collapsedGroups, setCollapsedGroups] = useState(() => {
     const initial = {};
-    NAV_GROUPS.forEach((g) => {
+    visibleNavGroups(NAV_GROUPS, access).forEach((g) => {
       if (g.collapsible) initial[g.label] = true;
     });
     return initial;
@@ -171,7 +178,7 @@ export function Sidebar({
       {/* Navigation */}
       <nav className="flex-1 py-3 px-2 overflow-y-auto" role="navigation" aria-label="Main navigation">
         <div className="flex flex-col gap-0.5" role="list">
-          {NAV_GROUPS.map((group, gi) => {
+          {groups.map((group, gi) => {
             const isGroupCollapsed = group.collapsible && collapsedGroups[group.label];
 
             return (
@@ -211,6 +218,9 @@ export function Sidebar({
         {!collapsed && session?.user && (
           <div className="px-2 mb-2">
             <p className="text-xs text-[var(--gray-500)] truncate">{session.user.email}</p>
+            {access && (
+              <p className="text-xs text-[var(--gray-500)] truncate">{ROLE_LABELS[access.role]}</p>
+            )}
           </div>
         )}
         <button

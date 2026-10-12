@@ -64,4 +64,12 @@ export const ACTION_LABELS = {
   "claim.approve": "Approved venue claim",
   "claim.reject": "Rejected venue claim",
   "claim.need_more_info": "Requested more info on venue claim",
+  // Issue #3802 — team changes. These rows are written by the server.
+  "team.invite": "Invited a teammate",
+  "team.invite_resend": "Resent an invite",
+  "team.role_change": "Changed a teammate's role",
+  "team.remove": "Removed a teammate's access",
+  "team.restore": "Restored a teammate's access",
+  "team.activate": "Accepted an invite",
+  "team.status_change": "Changed a teammate's status",
 };
