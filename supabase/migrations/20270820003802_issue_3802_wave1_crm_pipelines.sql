@@ -427,9 +427,9 @@ CREATE FUNCTION public.crm_validate_fields(p_pipeline text, p_fields jsonb, p_mo
 LANGUAGE plpgsql STABLE SET search_path = ''
 AS $$
 DECLARE
-  c_hidden  constant text := '[\u0001-\u0008\u000E-\u001F\u007F-\u0084\u0086-\u009F­͏؜ᅟᅠ឴឵᠋-᠏​‎‏‪-‮⁠-⁯ㅤ﻿ﾠ￹-￻]';
-  c_space   constant text := '[\s\u0085   -     　]';
-  c_shaping constant text := '[‌‍︀-️]';
+  c_hidden  constant text := '[\u0001-\u0008\u000E-\u001F\u007F-\u0084\u0086-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B\u200E\u200F\u202A-\u202E\u2060-\u206F\u3164\uFEFF\uFFA0\uFFF9-\uFFFB]';
+  c_space   constant text := '[\s\u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]';
+  c_shaping constant text := '[\u200C\u200D\uFE00-\uFE0F]';
   -- A logged time must be a real moment in this window (both ends included).
   c_earliest constant timestamptz := '2020-01-01 00:00:00+00';
   c_ahead    constant interval := interval '5 minutes';

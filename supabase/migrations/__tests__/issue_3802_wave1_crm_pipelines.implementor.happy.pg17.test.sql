@@ -2107,6 +2107,14 @@ begin
   end;
   perform pg_temp.t3802w_check('W1-19', 'underneath, the table itself refuses a name with nothing visible', r, 'refused by the table');
 
+  -- The two functions that name those characters spell each one out as a code
+  -- point; none is typed into the source, where nobody could see or review it.
+  perform pg_temp.t3802w_check('W1-19', 'the functions that list unseen characters contain none themselves',
+    (select string_agg(p.proname || ':' || (octet_length(p.prosrc) = char_length(p.prosrc)
+                                            and translate(p.prosrc, chr(10) || chr(9), '') !~ '[[:cntrl:]]')::text, ' ' order by p.proname)
+       from pg_proc p where p.oid in ('public.crm_validate_fields(text,jsonb,text)'::regprocedure, 'public.crm_name_key(text)'::regprocedure)),
+    'crm_name_key:true crm_validate_fields:true');
+
   -- W1-20: names with nothing visible in them.
   v_snap := pg_temp.t3802w_snapshot();
   v_n := 0;
