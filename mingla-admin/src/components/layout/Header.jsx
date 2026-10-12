@@ -2,11 +2,12 @@ import { Menu, Moon, Sun } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { Breadcrumbs } from "../ui/Breadcrumbs";
 
-export function Header({ title, onMobileMenuOpen, onNavigate }) {
+export function Header({ title, onMobileMenuOpen, onNavigate, homeId }) {
   const { theme, toggleTheme } = useTheme();
 
   const breadcrumbItems = [
-    { label: "Admin", onClick: () => onNavigate?.("overview") },
+    // Issue #3802 — the root goes to this person's own home page.
+    { label: "Admin", onClick: () => { if (homeId) onNavigate?.(homeId); } },
     { label: title },
   ];
 

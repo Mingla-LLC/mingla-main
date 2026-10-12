@@ -331,8 +331,8 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // Proof this replacement BITES rather than merely counting higher: remove the
   // new function's contract entry and the deepEqual above fails with
   // `contract:function_set_mismatch` before this line is ever reached.
-  // Census after #3697 Wave 2 spend-sync function.
-  assert.equal(Object.keys(contract.functions).length, 241);
+  // Census after #3802 Wave 0: admin-team-invite and admin-team-accept-invite.
+  assert.equal(Object.keys(contract.functions).length, 243);
   assert.equal(manifest.secrets.length, 88);
 });
 

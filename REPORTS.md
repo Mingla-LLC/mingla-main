@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-12 — Mingla Admin now loads each person's role: the owner invites people and sets roles on a new Team and roles page, invitations arrive as a one-time link that expires, the menu, search and addresses show only what a role allows, and Sales and marketing and Founding partner sign in to their own home page (toward #3802, PR #3807)
 - 2026-10-12 — Groundwork for team roles in Mingla Admin: four roles exist on the server (Owner, Admin, Sales and marketing, Founding partner), role changes are owner-only and enforced in the database, and the two new roles get none of the existing admin access (toward #3802, PR #3804)
 - 2026-10-12 — Host web: picking Nigeria for payouts now switches the brand so it can sell before a bank is added, and says so if the switch fails; an event that cannot be published or unpublished now says why instead of a generic error; and a first-time organiser's brand setup no longer stops after the first step (toward #3645, PR #3805)
 - 2026-10-11 — A failed clean-up sweep after the Sites backup can no longer take the live pilot site down or turn main red: the sweep runs as its own job after the backup is verified, a failure posts an alert on the issue instead, and the runbook now says how to bring the site back after a deactivation (toward #2830, PR #3797)

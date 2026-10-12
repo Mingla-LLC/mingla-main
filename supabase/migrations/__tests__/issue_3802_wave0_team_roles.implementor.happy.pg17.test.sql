@@ -33,6 +33,53 @@ begin;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 
+-- Issue #3802 amendment 1: activation now needs the invitation to have been opened. This harness opens it the moment a row becomes invited, so the assertions below keep testing membership mechanics.
+-- (The invitation mechanics themselves are proven by
+-- issue_3802_wave0_invite_binding.implementor.happy.pg17.test.sql.)
+create function pg_temp.t3802_open_invite() returns trigger
+language plpgsql security definer set search_path = '' as $fn$
+declare
+  v_email text := lower(btrim(NEW.email));
+  v_uid uuid;
+begin
+  if NEW.status = 'invited' then
+    select u.id into v_uid from auth.users u where lower(btrim(u.email)) = v_email order by u.id limit 1;
+    if v_uid is not null then
+      insert into public.admin_team_invites as i
+        (email, role, token_hash, issued_by, expires_at, redeemed_at, redeemed_user_id)
+      values (v_email,
+              case when TG_TABLE_NAME = 'admin_users' then 'admin' else NEW.role end,
+              encode(sha256(convert_to('harness:' || v_email, 'UTF8')), 'hex'),
+              'harness', now() + interval '7 days', now(), v_uid)
+      on conflict (email) do update
+         set role = excluded.role, token_hash = excluded.token_hash, issued_by = excluded.issued_by,
+             issued_at = now(), expires_at = excluded.expires_at,
+             redeemed_at = excluded.redeemed_at, redeemed_user_id = excluded.redeemed_user_id;
+    end if;
+  end if;
+  return null;
+end;
+$fn$;
+create trigger zz_t3802_open_invite_full after insert or update on public.admin_users
+  for each row execute function pg_temp.t3802_open_invite();
+create trigger zz_t3802_open_invite_team after insert or update on public.admin_team_members
+  for each row execute function pg_temp.t3802_open_invite();
+-- Rows that were already invited before the harness was attached.
+insert into public.admin_team_invites (email, role, token_hash, issued_by, expires_at, redeemed_at, redeemed_user_id)
+select x.email, x.role, encode(sha256(convert_to('harness:' || x.email, 'UTF8')), 'hex'),
+       'harness', now() + interval '7 days', now(), x.uid
+  from (
+    select lower(btrim(a.email)) as email, 'admin'::text as role,
+           (select u.id from auth.users u where lower(btrim(u.email)) = lower(btrim(a.email)) order by u.id limit 1) as uid
+      from public.admin_users a where a.status = 'invited'
+    union all
+    select t.email, t.role,
+           (select u.id from auth.users u where lower(btrim(u.email)) = t.email order by u.id limit 1)
+      from public.admin_team_members t where t.status = 'invited'
+  ) x
+ where x.uid is not null
+on conflict (email) do nothing;
+
 create temp table t3802_people (who text primary key, id uuid not null, email text not null) on commit drop;
 insert into t3802_people (who, id, email) values
   ('owner',    '38020000-0000-4000-8000-000000000001', 'issue3802-owner@test.local'),
