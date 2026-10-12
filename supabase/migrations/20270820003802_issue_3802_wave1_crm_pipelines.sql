@@ -13,6 +13,21 @@
 --   * Live is never set by a person: public.crm_reconcile_live() promotes a
 --     host when its linked brand has a public listing. It runs on brand link
 --     and every 10 minutes from pg_cron.
+--   * A host is in Live only while it is linked to a brand that has a public
+--     listing, checked on every write that touches the stage or the brand
+--     link: changing or clearing the link of a Live host moves it back to
+--     Onboarded unless the new brand has a public listing, and an undo cannot
+--     put a host back into Live unless the rule holds at that moment. A
+--     listing that goes away later, with the link unchanged, does not move a
+--     Live host (Live is a milestone; only a person marking it Lost ends it).
+--   * A public listing is: a scheduled or live event, trip, experience or
+--     RSVP page whose visibility is public or discover; a verified venue; a
+--     bookable stay.
+--   * Every value a caller sends is normalised and checked in ONE place,
+--     public.crm_validate_fields(): invisible characters are removed, every
+--     kind of blank space is trimmed, and a refusal is always one of these
+--     functions' own plain-words messages. The table constraints repeat the
+--     rules as a backstop and are never the message a caller sees.
 --   * The agent connector (a later wave) calls these same functions. The one
 --     seam it replaces is public.crm_ctx().
 --
@@ -189,14 +204,21 @@ GRANT EXECUTE ON FUNCTION public.crm_ctx() TO service_role;
 COMMENT ON FUNCTION public.crm_ctx() IS
   'Issue #3802. Resolves (actor, via) and refuses anyone without the crm area. Wave 4 replaces this one function to resolve an agent key. No caller passes via: a browser cannot claim to be an agent.';
 
--- One name, one key: case, spacing and punctuation do not make a new record.
+-- One name, one key: case, spacing, punctuation and characters nobody can
+-- see do not make a new record. Every kind of blank space and every invisible
+-- or control character is dropped first; '' means the name has nothing
+-- visible in it, and such a name is refused (crm_validate_fields, and the
+-- crm_records_name_check backstop).
 CREATE FUNCTION public.crm_name_key(p_name text) RETURNS text
 LANGUAGE sql IMMUTABLE STRICT SET search_path = ''
 AS $$
   SELECT CASE
-    WHEN regexp_replace(lower(p_name), '[^[:alnum:]]+', '', 'g') = '' THEN lower(btrim(p_name))
-    ELSE regexp_replace(lower(p_name), '[^[:alnum:]]+', '', 'g')
+    WHEN regexp_replace(v.seen, '[^[:alnum:]]+', '', 'g') = '' THEN v.seen
+    ELSE regexp_replace(v.seen, '[^[:alnum:]]+', '', 'g')
   END
+  FROM (SELECT lower(regexp_replace(p_name,
+          '[\s\u0001-\u001F\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF9-\uFFFB]+',
+          '', 'g')) AS seen) v
 $$;
 REVOKE EXECUTE ON FUNCTION public.crm_name_key(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_name_key(text) TO service_role;
@@ -317,6 +339,12 @@ GRANT EXECUTE ON FUNCTION public.crm_stage_def(text, text) TO service_role;
 -- referenced, not copied, so the meaning of "public" stays in one place:
 -- a scheduled or live public event, trip, experience or RSVP page; a verified
 -- venue; a bookable stay.
+--
+-- A listing whose visibility is `discover` counts too (decision on #3802): a
+-- brand's own site and its share pages present such a listing to anyone, the
+-- same as a public one. No public view carries those rows, so that one leg
+-- reads events with the public view's own conditions (not deleted, scheduled
+-- or live, not withheld by the ordinary-read block).
 CREATE FUNCTION public.crm_brand_is_live(p_brand_id uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -324,6 +352,12 @@ AS $$
      AND EXISTS (SELECT 1 FROM public.brands b WHERE b.id = p_brand_id AND b.deleted_at IS NULL)
      AND (
           EXISTS (SELECT 1 FROM public.events_public_view e WHERE e.brand_id = p_brand_id)
+       OR EXISTS (SELECT 1 FROM public.events d
+                   WHERE d.brand_id = p_brand_id
+                     AND d.deleted_at IS NULL
+                     AND d.visibility = 'discover'
+                     AND d.status IN ('scheduled', 'live')
+                     AND NOT public.issue_1931_event_ordinary_read_blocked(d.id))
        OR EXISTS (SELECT 1 FROM public.claimed_venues_public_view v WHERE v.id = p_brand_id)
        OR EXISTS (SELECT 1 FROM public.ad_public_stay_destinations_view s WHERE s.brand_id = p_brand_id)
      )
@@ -368,17 +402,40 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.crm_clean_owners(jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_clean_owners(jsonb) TO service_role;
 
--- Field validation shared by create, bulk create and update. Returns the
--- cleaned values (only the keys that were sent; JSON null = cleared) or
--- raises. Every message names the valid values.
+-- The ONE place a caller's values are normalised and checked. Used by create,
+-- bulk create and update (the fields of a record), by a stage move (the
+-- reason) and by the log (a note or a touch). Returns the cleaned values
+-- (only the keys that were sent; JSON null = cleared) or raises one of these
+-- functions' own messages (22023), each naming the valid values. No caller
+-- reaches a table constraint: the constraints repeat these rules as a
+-- backstop only.
+--
+-- p_mode: 'create' | 'update' (record fields), 'reason' (the one key
+-- stage_reason, required, for a move into Lost or Passed), 'log' (one entry).
+--
+-- Text is normalised before any rule is applied:
+--   * control characters and characters nobody can see (zero-width space,
+--     direction marks, word joiner, byte-order mark, soft hyphen, blank
+--     fillers) are removed;
+--   * every kind of blank space, including the non-breaking and wide ones,
+--     counts as a space: runs become one space and the ends are trimmed (a
+--     note's text keeps its line breaks; only its ends are trimmed);
+--   * a value with nothing visible left counts as not sent.
+-- The joiners and variation marks that shape emoji and some scripts are kept
+-- inside a value, but a value made only of them is nothing visible.
 CREATE FUNCTION public.crm_validate_fields(p_pipeline text, p_fields jsonb, p_mode text) RETURNS jsonb
 LANGUAGE plpgsql STABLE SET search_path = ''
 AS $$
 DECLARE
+  c_hidden  constant text := '[\u0001-\u0008\u000E-\u001F\u007F-\u0084\u0086-\u009F­͏؜ᅟᅠ឴឵᠋-᠏​‎‏‪-‮⁠-⁯ㅤ﻿ﾠ￹-￻]';
+  c_space   constant text := '[\s\u0085   -     　]';
+  c_shaping constant text := '[‌‍︀-️]';
+  -- A logged time must be a real moment in this window (both ends included).
+  c_earliest constant timestamptz := '2020-01-01 00:00:00+00';
+  c_ahead    constant interval := interval '5 minutes';
   v_def     jsonb := public.crm_pipeline_def(p_pipeline);
   v_vocab   jsonb := public.crm_vocab();
-  v_allowed text[] := ARRAY['name','icp','region_id','contact','channel','source','next_action',
-                            'due_on','brand_id','place_pool_id','followers','agreement','rate'];
+  v_allowed text[];
   v_out     jsonb := '{}'::jsonb;
   v_key     text;
   v_val     jsonb;
@@ -387,15 +444,29 @@ DECLARE
   v_list    text;
   v_uuid    uuid;
   v_date    date;
+  v_when    timestamptz;
   v_max     integer;
 BEGIN
+  IF p_mode IS NULL OR p_mode NOT IN ('create', 'update', 'reason', 'log') THEN
+    RAISE EXCEPTION 'invalid_mode: crm_validate_fields takes create, update, reason or log.' USING ERRCODE = '22023';
+  END IF;
   IF v_def IS NULL THEN
     RAISE EXCEPTION 'invalid_pipeline: Use hosts or creators.' USING ERRCODE = '22023';
   END IF;
   IF p_fields IS NULL OR jsonb_typeof(p_fields) <> 'object' THEN
+    IF p_mode = 'log' THEN
+      RAISE EXCEPTION 'invalid_entry: Send the entry as one JSON object, for example {"kind": "note", "body": "Called, no answer."}.'
+        USING ERRCODE = '22023';
+    END IF;
     RAISE EXCEPTION 'invalid_fields: Send the fields as one JSON object, for example {"name": "Palm Court Kitchen"}.'
       USING ERRCODE = '22023';
   END IF;
+  v_allowed := CASE p_mode
+    WHEN 'reason' THEN ARRAY['stage_reason']
+    WHEN 'log'    THEN ARRAY['kind','body','channel','direction','message_ref','reply_class','occurred_at']
+    ELSE ARRAY['name','icp','region_id','contact','channel','source','next_action',
+               'due_on','brand_id','place_pool_id','followers','agreement','rate']
+  END;
   IF p_mode = 'create' THEN
     v_allowed := v_allowed || ARRAY['owners'];
   END IF;
@@ -405,6 +476,11 @@ BEGIN
       IF p_mode = 'update' THEN
         RAISE EXCEPTION '%', format('unknown_field: "%s" cannot be changed here. Use crm_record_move_stage for stage and crm_record_set_owners for owners.', v_key)
           USING ERRCODE = '22023';
+      ELSIF p_mode = 'log' THEN
+        RAISE EXCEPTION '%', format('unknown_field: "%s" is not part of a log entry. Use any of: kind, body, channel, direction, message_ref, reply_class, occurred_at.', v_key)
+          USING ERRCODE = '22023';
+      ELSIF p_mode = 'reason' THEN
+        RAISE EXCEPTION '%', format('unknown_field: "%s" is not part of a stage move.', v_key) USING ERRCODE = '22023';
       END IF;
       RAISE EXCEPTION '%', format('unknown_field: "%s" is not a field of a new record. A new record always starts in the first stage. Use any of: %s.', v_key, array_to_string(v_allowed, ', '))
         USING ERRCODE = '22023';
@@ -415,13 +491,15 @@ BEGIN
       CONTINUE;
     END IF;
 
-    IF p_pipeline <> 'hosts' AND v_key IN ('brand_id','place_pool_id') THEN
-      RAISE EXCEPTION '%', format('field_not_for_pipeline: "%s" only applies to Hosts. Leave it out for a creator.', v_key)
-        USING ERRCODE = '22023';
-    END IF;
-    IF p_pipeline <> 'creators' AND v_key IN ('followers','agreement','rate') THEN
-      RAISE EXCEPTION '%', format('field_not_for_pipeline: "%s" only applies to Creators. Leave it out for a host.', v_key)
-        USING ERRCODE = '22023';
+    IF p_mode IN ('create', 'update') THEN
+      IF p_pipeline <> 'hosts' AND v_key IN ('brand_id','place_pool_id') THEN
+        RAISE EXCEPTION '%', format('field_not_for_pipeline: "%s" only applies to Hosts. Leave it out for a creator.', v_key)
+          USING ERRCODE = '22023';
+      END IF;
+      IF p_pipeline <> 'creators' AND v_key IN ('followers','agreement','rate') THEN
+        RAISE EXCEPTION '%', format('field_not_for_pipeline: "%s" only applies to Creators. Leave it out for a host.', v_key)
+          USING ERRCODE = '22023';
+      END IF;
     END IF;
 
     v_type := jsonb_typeof(v_val);
@@ -429,11 +507,34 @@ BEGIN
       RAISE EXCEPTION '%', format('invalid_value: "%s" takes one value, not a list or an object.', v_key)
         USING ERRCODE = '22023';
     END IF;
-    v_txt := CASE WHEN v_type = 'null' THEN NULL ELSE NULLIF(btrim(v_val #>> '{}'), '') END;
 
-    IF v_key = 'name' THEN
-      v_txt := regexp_replace(COALESCE(v_txt, ''), '\s+', ' ', 'g');
-      IF char_length(v_txt) NOT BETWEEN 1 AND 160 THEN
+    -- Normalise (see the comment above this function).
+    v_txt := CASE WHEN v_type = 'null' THEN NULL
+                  ELSE regexp_replace(v_val #>> '{}', c_hidden, '', 'g') END;
+    IF v_key = 'body' THEN
+      v_txt := regexp_replace(v_txt, '^' || c_space || '+|' || c_space || '+$', '', 'g');
+    ELSE
+      v_txt := btrim(regexp_replace(v_txt, c_space || '+', ' ', 'g'));
+    END IF;
+    IF v_txt IS NOT NULL AND regexp_replace(v_txt, c_shaping || '+', '', 'g') = '' THEN
+      v_txt := NULL;
+    END IF;
+
+    IF p_mode = 'reason' THEN
+      IF v_txt IS NULL THEN
+        RAISE EXCEPTION 'reason_required: Add one line saying why, so the next person knows.' USING ERRCODE = '22023';
+      END IF;
+      IF char_length(v_txt) > 300 THEN
+        RAISE EXCEPTION 'reason_required: Keep the reason to one line of 300 characters or fewer.' USING ERRCODE = '22023';
+      END IF;
+      v_out := v_out || jsonb_build_object('stage_reason', v_txt);
+
+    ELSIF p_mode = 'log' THEN
+      -- Cleaned here; the rules that span several keys follow the loop.
+      v_out := v_out || jsonb_build_object(v_key, v_txt);
+
+    ELSIF v_key = 'name' THEN
+      IF v_txt IS NULL OR char_length(v_txt) > 160 OR public.crm_name_key(v_txt) = '' THEN
         RAISE EXCEPTION 'invalid_name: Add a name between 1 and 160 characters.' USING ERRCODE = '22023';
       END IF;
       v_out := v_out || jsonb_build_object('name', v_txt);
@@ -514,6 +615,72 @@ BEGIN
   IF p_mode = 'create' AND NOT (v_out ? 'name') THEN
     RAISE EXCEPTION 'invalid_name: Add a name between 1 and 160 characters.' USING ERRCODE = '22023';
   END IF;
+  IF p_mode = 'reason' AND NOT (v_out ? 'stage_reason') THEN
+    RAISE EXCEPTION 'reason_required: Add one line saying why, so the next person knows.' USING ERRCODE = '22023';
+  END IF;
+
+  IF p_mode = 'log' THEN
+    IF (v_out->>'kind') IS NULL OR (v_out->>'kind') NOT IN ('note', 'touch') THEN
+      RAISE EXCEPTION 'invalid_kind: A log entry is a note or a touch. Send kind as note or touch.' USING ERRCODE = '22023';
+    END IF;
+    IF char_length(COALESCE(v_out->>'body', '')) > 4000 THEN
+      RAISE EXCEPTION 'invalid_body: Keep the text to 4000 characters or fewer.' USING ERRCODE = '22023';
+    END IF;
+
+    IF (v_out->>'kind') = 'note' THEN
+      IF (v_out->>'body') IS NULL THEN
+        RAISE EXCEPTION 'invalid_body: Write what happened first.' USING ERRCODE = '22023';
+      END IF;
+      IF (v_out->>'channel') IS NOT NULL OR (v_out->>'direction') IS NOT NULL
+         OR (v_out->>'message_ref') IS NOT NULL OR (v_out->>'reply_class') IS NOT NULL THEN
+        RAISE EXCEPTION 'field_not_for_kind: channel, direction, message_ref and reply_class only apply to a touch. Send kind as touch, or leave them out.'
+          USING ERRCODE = '22023';
+      END IF;
+    ELSE
+      IF (v_out->>'channel') IS NULL OR NOT EXISTS (
+           SELECT 1 FROM jsonb_array_elements(v_vocab->'channels') i WHERE i->>'id' = (v_out->>'channel')) THEN
+        SELECT string_agg(i->>'id', ', ') INTO v_list FROM jsonb_array_elements(v_vocab->'channels') i;
+        RAISE EXCEPTION '%', format('invalid_channel: A touch needs a channel. Use one of: %s.', v_list) USING ERRCODE = '22023';
+      END IF;
+      IF (v_out->>'direction') IS NULL OR (v_out->>'direction') NOT IN ('outbound', 'inbound') THEN
+        RAISE EXCEPTION 'invalid_direction: A touch needs a direction. Use outbound (you reached out) or inbound (they replied).'
+          USING ERRCODE = '22023';
+      END IF;
+      IF (v_out->>'reply_class') IS NOT NULL AND (v_out->>'direction') <> 'inbound' THEN
+        RAISE EXCEPTION 'invalid_reply_class: A reply classification only applies to a message they sent you.' USING ERRCODE = '22023';
+      END IF;
+      IF (v_out->>'reply_class') IS NOT NULL AND NOT EXISTS (
+           SELECT 1 FROM jsonb_array_elements(v_vocab->'reply_classes') i WHERE i->>'id' = (v_out->>'reply_class')) THEN
+        SELECT string_agg(i->>'id', ', ') INTO v_list FROM jsonb_array_elements(v_vocab->'reply_classes') i;
+        RAISE EXCEPTION '%', format('invalid_reply_class: %s is not a reply classification. Use one of: %s.', v_out->>'reply_class', v_list)
+          USING ERRCODE = '22023';
+      END IF;
+      IF char_length(COALESCE(v_out->>'message_ref', '')) > 500 THEN
+        RAISE EXCEPTION 'invalid_message_ref: Keep the message link or id to 500 characters or fewer.' USING ERRCODE = '22023';
+      END IF;
+    END IF;
+
+    -- When it happened: a real moment, on or after 1 January 2020 (UTC) and
+    -- no more than 5 minutes ahead of the server clock (room for a device
+    -- whose clock runs fast). "infinity" and "-infinity" are not moments.
+    IF (v_out->>'occurred_at') IS NOT NULL THEN
+      BEGIN
+        v_when := (v_out->>'occurred_at')::timestamptz;
+      EXCEPTION WHEN others THEN
+        RAISE EXCEPTION 'invalid_occurred_at: Send the time as an ISO timestamp, for example 2026-10-12T15:30:00Z.' USING ERRCODE = '22023';
+      END;
+      IF NOT isfinite(v_when) THEN
+        RAISE EXCEPTION 'invalid_occurred_at: Send the time as an ISO timestamp, for example 2026-10-12T15:30:00Z.' USING ERRCODE = '22023';
+      END IF;
+      IF v_when > clock_timestamp() + c_ahead THEN
+        RAISE EXCEPTION 'invalid_occurred_at: That time is in the future. Log it once it has happened.' USING ERRCODE = '22023';
+      END IF;
+      IF v_when < c_earliest THEN
+        RAISE EXCEPTION 'invalid_occurred_at: That time is too far back. Send a time on or after 1 January 2020.' USING ERRCODE = '22023';
+      END IF;
+      v_out := v_out || jsonb_build_object('occurred_at', v_when);
+    END IF;
+  END IF;
   RETURN v_out;
 END;
 $$;
@@ -555,7 +722,8 @@ CREATE TABLE public.crm_records (
   deleted_at     timestamptz,
   deleted_by     text,
   CONSTRAINT crm_records_pipeline_check CHECK (pipeline IN ('hosts','creators')),
-  CONSTRAINT crm_records_name_check CHECK (name = btrim(name) AND char_length(name) BETWEEN 1 AND 160),
+  CONSTRAINT crm_records_name_check CHECK (name = btrim(name) AND char_length(name) BETWEEN 1 AND 160
+                                           AND public.crm_name_key(name) <> ''),
   CONSTRAINT crm_records_stage_check CHECK (
     (pipeline = 'hosts'    AND stage IN ('prospect','contacted','replied','meeting','onboarded','live','lost')) OR
     (pipeline = 'creators' AND stage IN ('identified','contacted','replied','negotiating','booked','posted','passed'))),
@@ -783,42 +951,71 @@ GRANT EXECUTE ON FUNCTION public.crm_undoable_activity(uuid, text) TO service_ro
 
 -- The ONLY function that promotes a host to Live. Never called with a stage
 -- by a person: it promotes a host whose linked brand has a public listing.
--- A Lost host is never promoted; a host is never demoted here.
+-- A Lost host is never promoted; a host is never demoted here (a listing that
+-- goes away later does not move a Live host; see crm_apply_brand_link for a
+-- changed or cleared link).
+--
+-- Each host is handled on its own: if one cannot be promoted (any error), it
+-- is skipped with a warning in the server log and the run carries on with the
+-- rest. The result stays the number promoted; a run that skipped any host
+-- also writes ONE audit row (crm.reconcile_failed) carrying how many were
+-- skipped and how many were promoted, so a failure is never silent. The next
+-- run tries the skipped hosts again.
 -- With no argument (the scheduled call) it also purges old request keys.
 CREATE FUNCTION public.crm_reconcile_live(p_record_id uuid DEFAULT NULL) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
 DECLARE
-  r     public.crm_records;
-  v_n   integer := 0;
-  v_now timestamptz;
-  v_act uuid;
+  c        record;
+  r        public.crm_records;
+  v_n      integer := 0;
+  v_failed integer := 0;
+  v_now    timestamptz;
+  v_act    uuid;
 BEGIN
-  FOR r IN
-    SELECT c.*
-    FROM public.crm_records c
-    WHERE c.pipeline = 'hosts'
-      AND c.deleted_at IS NULL
-      AND c.brand_id IS NOT NULL
-      AND c.stage NOT IN ('live', 'lost')
-      AND (p_record_id IS NULL OR c.id = p_record_id)
-      AND public.crm_brand_is_live(c.brand_id)
-    ORDER BY c.id
-    FOR UPDATE OF c
+  FOR c IN
+    SELECT x.id, x.brand_id
+    FROM public.crm_records x
+    WHERE x.pipeline = 'hosts'
+      AND x.deleted_at IS NULL
+      AND x.brand_id IS NOT NULL
+      AND x.stage NOT IN ('live', 'lost')
+      AND (p_record_id IS NULL OR x.id = p_record_id)
+    ORDER BY x.id
   LOOP
-    v_now := clock_timestamp();
-    UPDATE public.crm_records
-       SET stage = 'live', went_live_at = COALESCE(went_live_at, v_now),
-           updated_by = 'system', updated_at = v_now
-     WHERE id = r.id;
-    INSERT INTO public.crm_activity (record_id, kind, actor_email, via, body, from_stage, to_stage, occurred_at, created_at)
-    VALUES (r.id, 'stage_move', NULL, 'system',
-            'First listing went live. Stage moved to Live automatically.', r.stage, 'live', v_now, v_now)
-    RETURNING id INTO v_act;
-    PERFORM public.crm_audit('system', 'crm.stage_auto_live', 'crm_record', r.id::text,
-      jsonb_build_object('from', r.stage, 'to', 'live', 'brand_id', r.brand_id, 'activity_id', v_act));
-    v_n := v_n + 1;
+    BEGIN
+      IF public.crm_brand_is_live(c.brand_id) THEN
+        -- Lock the one host, then look again: it may have moved, been
+        -- unlinked or been deleted since the list above was read.
+        SELECT * INTO r FROM public.crm_records k WHERE k.id = c.id FOR UPDATE;
+        IF FOUND AND r.deleted_at IS NULL AND r.stage NOT IN ('live', 'lost')
+           AND public.crm_brand_is_live(r.brand_id) THEN
+          v_now := clock_timestamp();
+          UPDATE public.crm_records
+             SET stage = 'live', went_live_at = COALESCE(went_live_at, v_now),
+                 updated_by = 'system', updated_at = v_now
+           WHERE id = r.id;
+          INSERT INTO public.crm_activity (record_id, kind, actor_email, via, body, from_stage, to_stage, occurred_at, created_at)
+          VALUES (r.id, 'stage_move', NULL, 'system',
+                  'First listing went live. Stage moved to Live automatically.', r.stage, 'live', v_now, v_now)
+          RETURNING id INTO v_act;
+          PERFORM public.crm_audit('system', 'crm.stage_auto_live', 'crm_record', r.id::text,
+            jsonb_build_object('from', r.stage, 'to', 'live', 'brand_id', r.brand_id, 'activity_id', v_act));
+          v_n := v_n + 1;
+        END IF;
+      END IF;
+    EXCEPTION WHEN others THEN
+      -- Everything this host's block did is undone; the others are untouched.
+      v_failed := v_failed + 1;
+      RAISE WARNING 'crm_reconcile_live: host % was skipped and will be tried again on the next run (% %)',
+        c.id, SQLSTATE, SQLERRM;
+    END;
   END LOOP;
+
+  IF v_failed > 0 THEN
+    PERFORM public.crm_audit('system', 'crm.reconcile_failed', 'crm_pipeline', 'hosts',
+      jsonb_build_object('failed', v_failed, 'promoted', v_n));
+  END IF;
 
   IF p_record_id IS NULL THEN
     DELETE FROM public.crm_request_keys k WHERE k.created_at < clock_timestamp() - interval '30 days';
@@ -829,11 +1026,22 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.crm_reconcile_live(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_reconcile_live(uuid) TO service_role;
 COMMENT ON FUNCTION public.crm_reconcile_live(uuid) IS
-  'Issue #3802. The ONLY function that promotes a host to Live, from the linked brand''s public listing. Runs on brand link and every 10 minutes (pg_cron job crm_reconcile_live). Never demotes; never promotes a Lost host. The scheduled call also purges request keys older than 30 days.';
+  'Issue #3802. The ONLY function that promotes a host to Live, from the linked brand''s public listing. Runs on brand link and every 10 minutes (pg_cron job crm_reconcile_live). Never demotes; never promotes a Lost host. Each host is handled on its own: one that fails is skipped with a warning, the rest of the run completes, and the run writes one crm.reconcile_failed audit row with the number skipped. The scheduled call also purges request keys older than 30 days.';
 
--- After a host is linked to a brand: Onboarded (when it sat before
--- Onboarded), then Live when the brand already has a public listing.
--- Returns 'onboarded', 'live' or NULL.
+-- Settles a host's stage after ANY change to its brand link (set, changed or
+-- cleared). The rule it keeps: a host is in Live only while it is linked to a
+-- brand that has a public listing.
+--   * A Live host whose link now points at no brand, or at a brand with no
+--     public listing, moves back to Onboarded, with a system log line saying
+--     why. (Onboarded is the furthest stage a person can set by hand; the
+--     time it first went Live is kept as history.) A Live host re-linked to
+--     another brand that has a public listing stays Live.
+--   * A newly linked host that sat before Onboarded moves to Onboarded, then
+--     to Live when the brand already has a public listing.
+--   * A Lost host is never moved here.
+-- Not called when a listing merely goes away with the link unchanged: Live is
+-- a milestone and stays until a person marks the host Lost.
+-- Returns 'onboarded', 'live' or NULL (nothing moved).
 CREATE FUNCTION public.crm_apply_brand_link(p_id uuid) RETURNS text
 LANGUAGE plpgsql VOLATILE SET search_path = ''
 AS $$
@@ -844,12 +1052,28 @@ DECLARE
   v_now   timestamptz := clock_timestamp();
 BEGIN
   SELECT * INTO r FROM public.crm_records c WHERE c.id = p_id AND c.deleted_at IS NULL FOR UPDATE;
-  IF NOT FOUND OR r.pipeline <> 'hosts' OR r.brand_id IS NULL THEN
+  IF NOT FOUND OR r.pipeline <> 'hosts' THEN
+    RETURN NULL;
+  END IF;
+  SELECT b.name INTO v_brand FROM public.brands b WHERE b.id = r.brand_id;
+
+  IF r.stage = 'live' AND NOT public.crm_brand_is_live(r.brand_id) THEN
+    UPDATE public.crm_records SET stage = 'onboarded', updated_at = v_now WHERE id = r.id;
+    INSERT INTO public.crm_activity (record_id, kind, actor_email, via, body, from_stage, to_stage, occurred_at, created_at)
+    VALUES (r.id, 'stage_move', NULL, 'system',
+            CASE WHEN r.brand_id IS NULL
+                 THEN 'Brand link removed. Stage moved back to Onboarded.'
+                 ELSE 'Linked to ' || COALESCE(v_brand, 'a Mingla brand') || ', which has no public listing yet. Stage moved back to Onboarded.'
+            END,
+            'live', 'onboarded', v_now, v_now);
+    RETURN 'onboarded';
+  END IF;
+
+  IF r.brand_id IS NULL THEN
     RETURN NULL;
   END IF;
   IF (public.crm_stage_def('hosts', r.stage)->>'pos')::integer
        < (public.crm_stage_def('hosts', 'onboarded')->>'pos')::integer THEN
-    SELECT b.name INTO v_brand FROM public.brands b WHERE b.id = r.brand_id;
     UPDATE public.crm_records SET stage = 'onboarded', updated_at = v_now WHERE id = r.id;
     INSERT INTO public.crm_activity (record_id, kind, actor_email, via, body, from_stage, to_stage, occurred_at, created_at)
     VALUES (r.id, 'stage_move', NULL, 'system',
@@ -914,7 +1138,8 @@ BEGIN
     SELECT * INTO v_existing FROM public.crm_records c
      WHERE c.pipeline = p_pipeline AND c.name_key = v_key AND c.deleted_at IS NULL;
     IF NOT FOUND THEN
-      RAISE;
+      RAISE EXCEPTION 'try_again: Another change to the same record happened at the same moment, so nothing was saved. Send the same request again.'
+        USING ERRCODE = '40001';
     END IF;
     RETURN jsonb_build_object('status', 'duplicate', 'existing', public.crm_record_lite_json(v_existing));
   END;
@@ -944,7 +1169,9 @@ GRANT EXECUTE ON FUNCTION public.crm_record_create_core(text, jsonb, text, text)
 -- 6. Client functions. authenticated may call each; each gates FIRST.
 --
 -- Errors start with a token and then say what to do, in plain words:
---   forbidden (42501) · not_found (P0002) · everything else (22023).
+--   forbidden (42501) · not_found (P0002) · try_again (40001: nothing was
+--   saved, send the same request again) · everything else (22023: change
+--   what was sent).
 -- A record is "live" here when deleted_at IS NULL; nothing below sees or
 -- returns a deleted record except crm_record_restore.
 -- ---------------------------------------------------------------------------
@@ -1146,7 +1373,11 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.crm_record_create(text, jsonb, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_record_create(text, jsonb, text) TO authenticated, service_role;
 
--- Add up to 50 records in one request. One bad item never stops the rest.
+-- Add up to 50 records in one request. One bad item never stops the rest:
+-- an item whose values are refused (22023) is listed under "invalid" with the
+-- reason. Anything else is a fault on the server, not in the item: the whole
+-- call stops with try_again, nothing is saved and nothing is kept under the
+-- request key, so sending the same request again is safe.
 CREATE FUNCTION public.crm_records_bulk_create(p_pipeline text, p_items jsonb, p_request_key text) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -1187,11 +1418,16 @@ BEGIN
           'name', CASE WHEN jsonb_typeof(v_item) = 'object' THEN v_item->>'name' ELSE NULL END,
           'reason', 'duplicate', 'existing', v_one->'existing'));
       END IF;
-    EXCEPTION WHEN others THEN
-      v_invalid := v_invalid || jsonb_build_array(jsonb_build_object(
-        'index', v_idx,
-        'name', CASE WHEN jsonb_typeof(v_item) = 'object' THEN v_item->>'name' ELSE NULL END,
-        'error', SQLERRM));
+    EXCEPTION
+      WHEN invalid_parameter_value THEN
+        v_invalid := v_invalid || jsonb_build_array(jsonb_build_object(
+          'index', v_idx,
+          'name', CASE WHEN jsonb_typeof(v_item) = 'object' THEN v_item->>'name' ELSE NULL END,
+          'error', SQLERRM));
+      WHEN others THEN
+        RAISE WARNING 'crm_records_bulk_create: item % stopped the request (% %)', v_idx, SQLSTATE, SQLERRM;
+        RAISE EXCEPTION '%', format('try_again: Something went wrong on our side at item %s of the list, so nothing was saved. Send the same request again.', v_idx + 1)
+          USING ERRCODE = '40001';
     END;
     v_idx := v_idx + 1;
   END LOOP;
@@ -1210,6 +1446,11 @@ REVOKE EXECUTE ON FUNCTION public.crm_records_bulk_create(text, jsonb, text) FRO
 GRANT EXECUTE ON FUNCTION public.crm_records_bulk_create(text, jsonb, text) TO authenticated, service_role;
 
 -- Change fields of one record (never stage, never owners).
+--   * A creator in Booked or Posted keeps a signed agreement: changing the
+--     agreement to anything else there is refused (agreement_required).
+--   * Any change to a host's brand link (set, changed or cleared) settles the
+--     stage through crm_apply_brand_link, so a host is never left in Live
+--     without a linked brand that has a public listing.
 CREATE FUNCTION public.crm_record_update(p_id uuid, p_changes jsonb) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -1248,6 +1489,13 @@ BEGIN
     RETURN jsonb_build_object('record', public.crm_record_json(v_rec), 'changed', false, 'moved_to', NULL);
   END IF;
 
+  IF v_rec.pipeline = 'creators' AND v_rec.stage IN ('booked', 'posted')
+     AND v_after ? 'agreement' AND (v_after->>'agreement') IS DISTINCT FROM 'signed' THEN
+    RAISE EXCEPTION '%', format('agreement_required: This creator is in %s, which keeps a signed agreement. Move the card back to Negotiating before changing the agreement.',
+                                public.crm_stage_def('creators', v_rec.stage)->>'label')
+      USING ERRCODE = '22023';
+  END IF;
+
   v_label := public.crm_pipeline_def(v_rec.pipeline)->>'label';
   IF v_after ? 'name' AND public.crm_name_key(v_after->>'name') <> v_rec.name_key THEN
     SELECT * INTO v_other FROM public.crm_records c
@@ -1275,7 +1523,7 @@ BEGIN
       USING ERRCODE = '22023';
   END;
 
-  IF v_rec.pipeline = 'hosts' AND v_after ? 'brand_id' AND v_new.brand_id IS NOT NULL THEN
+  IF v_rec.pipeline = 'hosts' AND v_after ? 'brand_id' THEN
     v_moved := public.crm_apply_brand_link(v_rec.id);
   END IF;
 
@@ -1299,7 +1547,7 @@ DECLARE
   v        record;
   v_rec    public.crm_records;
   v_to     jsonb;
-  v_reason text := NULLIF(btrim(COALESCE(p_reason, '')), '');
+  v_reason text;
   v_list   text;
   v_act    uuid;
   v_now    timestamptz := clock_timestamp();
@@ -1328,15 +1576,13 @@ BEGIN
     RAISE EXCEPTION 'stage_is_live: This host has a public listing, so it stays in Live. Mark it as lost if the relationship ended.'
       USING ERRCODE = '22023';
   END IF;
-  IF COALESCE((v_to->>'terminal')::boolean, false) AND (v_reason IS NULL OR char_length(v_reason) > 300) THEN
-    RAISE EXCEPTION 'reason_required: Add one line saying why, so the next person knows.' USING ERRCODE = '22023';
+  -- Lost and Passed need a reason; it is normalised and checked by the shared
+  -- helper. Any other stage keeps no reason, whatever was sent.
+  IF COALESCE((v_to->>'terminal')::boolean, false) THEN
+    v_reason := public.crm_validate_fields(v_rec.pipeline, jsonb_build_object('stage_reason', p_reason), 'reason')->>'stage_reason';
   END IF;
   IF v_rec.pipeline = 'creators' AND p_to = 'booked' AND v_rec.agreement IS DISTINCT FROM 'signed' THEN
     RAISE EXCEPTION 'agreement_required: Mark the agreement as signed before moving to Booked.' USING ERRCODE = '22023';
-  END IF;
-
-  IF NOT COALESCE((v_to->>'terminal')::boolean, false) THEN
-    v_reason := NULL;
   END IF;
 
   UPDATE public.crm_records
@@ -1360,6 +1606,10 @@ GRANT EXECUTE ON FUNCTION public.crm_record_move_stage(uuid, text, text) TO auth
 
 -- Undo your own move, for a minute, while nothing else has happened to the
 -- card. The only function that deletes an activity row.
+-- An undo puts the card back into a stage, so that stage's rule must hold at
+-- this moment: a host goes back into Live only if it is still linked to a
+-- brand with a public listing (otherwise undo_not_live, nothing changes), and
+-- a creator goes back into Booked only with a signed agreement.
 CREATE FUNCTION public.crm_record_undo_stage_move(p_activity_id uuid) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -1389,6 +1639,15 @@ BEGIN
   v_reason := NULLIF(btrim(COALESCE(v_before->>'stage_reason', '')), '');
   IF v_act.from_stage IN ('lost', 'passed') AND v_reason IS NULL THEN
     RAISE EXCEPTION 'undo_expired: That move can no longer be undone. Move the card back by hand.' USING ERRCODE = '22023';
+  END IF;
+
+  IF v_rec.pipeline = 'hosts' AND v_act.from_stage = 'live' AND NOT public.crm_brand_is_live(v_rec.brand_id) THEN
+    RAISE EXCEPTION 'undo_not_live: This host is no longer linked to a brand with a public listing, so it cannot go back to Live. Move the card to Onboarded by hand; Live sets itself once the linked brand has a public listing.'
+      USING ERRCODE = '22023';
+  END IF;
+  IF v_rec.pipeline = 'creators' AND v_act.from_stage = 'booked' AND v_rec.agreement IS DISTINCT FROM 'signed' THEN
+    RAISE EXCEPTION 'agreement_required: The agreement is no longer marked as signed, so this card cannot go back to Booked. Mark the agreement as signed, then move the card by hand.'
+      USING ERRCODE = '22023';
   END IF;
 
   UPDATE public.crm_records
@@ -1453,7 +1712,9 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.crm_record_set_owners(uuid, text[]) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_record_set_owners(uuid, text[]) TO authenticated, service_role;
 
--- Add a note or a touch to a card's log.
+-- Add a note or a touch to a card's log. The time it happened must be a real
+-- moment on or after 1 January 2020 and no more than 5 minutes ahead of the
+-- server clock.
 CREATE FUNCTION public.crm_record_log(p_id uuid, p_entry jsonb, p_request_key text) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -1462,8 +1723,7 @@ DECLARE
   v_res       jsonb;
   v_rec       public.crm_records;
   v_act       public.crm_activity;
-  v_voc       jsonb := public.crm_vocab();
-  v_key       text;
+  v_clean     jsonb;
   v_kind      text;
   v_body      text;
   v_channel   text;
@@ -1471,7 +1731,6 @@ DECLARE
   v_ref       text;
   v_class     text;
   v_when      timestamptz;
-  v_list      text;
   v_now       timestamptz := clock_timestamp();
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
@@ -1484,78 +1743,16 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'not_found: That record is no longer here. It may have been deleted.' USING ERRCODE = 'P0002';
   END IF;
-  IF p_entry IS NULL OR jsonb_typeof(p_entry) <> 'object' THEN
-    RAISE EXCEPTION 'invalid_entry: Send the entry as one JSON object, for example {"kind": "note", "body": "Called, no answer."}.'
-      USING ERRCODE = '22023';
-  END IF;
-  FOR v_key IN SELECT k FROM jsonb_object_keys(p_entry) AS k ORDER BY k LOOP
-    IF v_key NOT IN ('kind', 'body', 'channel', 'direction', 'message_ref', 'reply_class', 'occurred_at') THEN
-      RAISE EXCEPTION '%', format('unknown_field: "%s" is not part of a log entry. Use any of: kind, body, channel, direction, message_ref, reply_class, occurred_at.', v_key)
-        USING ERRCODE = '22023';
-    END IF;
-    IF jsonb_typeof(p_entry->v_key) IN ('array', 'object') THEN
-      RAISE EXCEPTION '%', format('invalid_value: "%s" takes one value, not a list or an object.', v_key)
-        USING ERRCODE = '22023';
-    END IF;
-  END LOOP;
-
-  v_kind      := NULLIF(btrim(COALESCE(p_entry->>'kind', '')), '');
-  v_body      := NULLIF(btrim(COALESCE(p_entry->>'body', '')), '');
-  v_channel   := NULLIF(btrim(COALESCE(p_entry->>'channel', '')), '');
-  v_direction := NULLIF(btrim(COALESCE(p_entry->>'direction', '')), '');
-  v_ref       := NULLIF(btrim(COALESCE(p_entry->>'message_ref', '')), '');
-  v_class     := NULLIF(btrim(COALESCE(p_entry->>'reply_class', '')), '');
-
-  IF v_kind IS NULL OR v_kind NOT IN ('note', 'touch') THEN
-    RAISE EXCEPTION 'invalid_kind: A log entry is a note or a touch. Send kind as note or touch.' USING ERRCODE = '22023';
-  END IF;
-  IF char_length(COALESCE(v_body, '')) > 4000 THEN
-    RAISE EXCEPTION 'invalid_body: Keep the text to 4000 characters or fewer.' USING ERRCODE = '22023';
-  END IF;
-
-  IF v_kind = 'note' THEN
-    IF v_body IS NULL THEN
-      RAISE EXCEPTION 'invalid_body: Write what happened first.' USING ERRCODE = '22023';
-    END IF;
-    IF v_channel IS NOT NULL OR v_direction IS NOT NULL OR v_ref IS NOT NULL OR v_class IS NOT NULL THEN
-      RAISE EXCEPTION 'field_not_for_kind: channel, direction, message_ref and reply_class only apply to a touch. Send kind as touch, or leave them out.'
-        USING ERRCODE = '22023';
-    END IF;
-  ELSE
-    IF v_channel IS NULL OR NOT EXISTS (
-         SELECT 1 FROM jsonb_array_elements(v_voc->'channels') i WHERE i->>'id' = v_channel) THEN
-      SELECT string_agg(i->>'id', ', ') INTO v_list FROM jsonb_array_elements(v_voc->'channels') i;
-      RAISE EXCEPTION '%', format('invalid_channel: A touch needs a channel. Use one of: %s.', v_list) USING ERRCODE = '22023';
-    END IF;
-    IF v_direction IS NULL OR v_direction NOT IN ('outbound', 'inbound') THEN
-      RAISE EXCEPTION 'invalid_direction: A touch needs a direction. Use outbound (you reached out) or inbound (they replied).'
-        USING ERRCODE = '22023';
-    END IF;
-    IF v_class IS NOT NULL AND v_direction <> 'inbound' THEN
-      RAISE EXCEPTION 'invalid_reply_class: A reply classification only applies to a message they sent you.' USING ERRCODE = '22023';
-    END IF;
-    IF v_class IS NOT NULL AND NOT EXISTS (
-         SELECT 1 FROM jsonb_array_elements(v_voc->'reply_classes') i WHERE i->>'id' = v_class) THEN
-      SELECT string_agg(i->>'id', ', ') INTO v_list FROM jsonb_array_elements(v_voc->'reply_classes') i;
-      RAISE EXCEPTION '%', format('invalid_reply_class: %s is not a reply classification. Use one of: %s.', v_class, v_list)
-        USING ERRCODE = '22023';
-    END IF;
-    IF char_length(COALESCE(v_ref, '')) > 500 THEN
-      RAISE EXCEPTION 'invalid_message_ref: Keep the message link or id to 500 characters or fewer.' USING ERRCODE = '22023';
-    END IF;
-  END IF;
-
-  v_when := v_now;
-  IF NULLIF(btrim(COALESCE(p_entry->>'occurred_at', '')), '') IS NOT NULL THEN
-    BEGIN
-      v_when := (p_entry->>'occurred_at')::timestamptz;
-    EXCEPTION WHEN others THEN
-      RAISE EXCEPTION 'invalid_occurred_at: Send the time as an ISO timestamp, for example 2026-10-12T15:30:00Z.' USING ERRCODE = '22023';
-    END;
-    IF v_when > v_now + interval '5 minutes' THEN
-      RAISE EXCEPTION 'invalid_occurred_at: That time is in the future. Log it once it has happened.' USING ERRCODE = '22023';
-    END IF;
-  END IF;
+  -- Normalised and checked in the shared helper (kind, text, channel,
+  -- direction, reply classification, message reference, and the time window).
+  v_clean     := public.crm_validate_fields(v_rec.pipeline, p_entry, 'log');
+  v_kind      := v_clean->>'kind';
+  v_body      := v_clean->>'body';
+  v_channel   := v_clean->>'channel';
+  v_direction := v_clean->>'direction';
+  v_ref       := v_clean->>'message_ref';
+  v_class     := v_clean->>'reply_class';
+  v_when      := COALESCE((v_clean->>'occurred_at')::timestamptz, v_now);
 
   INSERT INTO public.crm_activity (record_id, kind, actor_email, via, body, channel, direction,
                                    message_ref, reply_class, occurred_at, created_at)

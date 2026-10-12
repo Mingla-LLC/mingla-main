@@ -21,6 +21,16 @@
 --   W1-13  undo: own move, most recent entry, under a minute, stage unchanged
 --   W1-14  link search returns only the named keys; % and _ are literal
 --   W1-15  the migration's self-check aborts on a wrong grant
+--   W1-16  a host is in Live only while linked to a brand with a public
+--          listing: a changed or cleared link settles the stage
+--   W1-17  an undo back into Live or Booked needs that stage's rule to hold
+--   W1-18  a creator in Booked or Posted keeps a signed agreement
+--   W1-19  a refusal is always one of the functions' own messages
+--   W1-20  a name needs something visible; stored names are trimmed
+--   W1-21  a logged time is a real moment inside a fixed window
+--   W1-22  a listing with discover visibility is a public listing
+--   W1-23  bulk add tells a refused item from a server fault; the scheduled
+--          run carries on past a host it cannot promote
 --   Part 2 two overlapping creates of one name -> one record; two overlapping
 --          moves of one card -> both answered, two log rows (real sessions)
 --
@@ -1714,6 +1724,625 @@ begin
   perform pg_temp.t3802w_check('W1-15', 'every mistake was undone: the self-check passes again', v_got, 'passed');
 end;
 $w15$;
+
+-- ---------------------------------------------------------------------------
+-- W1-16 .. W1-23 — the rules added after the first tester pass.
+--
+--   W1-16  a host is in Live only while linked to a brand with a public
+--          listing: a changed or cleared link settles the stage
+--   W1-17  an undo cannot put a host back into Live unless that rule holds,
+--          nor a creator back into Booked without a signed agreement
+--   W1-18  a creator in Booked or Posted keeps a signed agreement
+--   W1-19  a refusal is always one of the functions' own messages; a table
+--          constraint is never what the caller sees
+--   W1-20  a name needs something visible; stored names are trimmed; the
+--          duplicate key ignores what nobody can see
+--   W1-21  a logged time is a real moment inside a fixed window
+--   W1-22  a listing with discover visibility is a public listing
+--   W1-23  bulk add tells a refused item from a fault on the server; the
+--          scheduled run carries on past a host it cannot promote
+--
+-- Extra listings for these sections (same fixture switch as above).
+-- ---------------------------------------------------------------------------
+set local session_replication_role = replica;
+insert into public.brands (id, account_id, name, slug, city) values
+  ('38020000-0000-4000-c120-000000000001', '38020000-0000-4000-c300-000000000001', 'Issue3802w Steady Brand',   'issue3802w-steady',   'Lagos'),
+  ('38020000-0000-4000-c120-000000000002', '38020000-0000-4000-c300-000000000001', 'Issue3802w Other Brand',    'issue3802w-other',    'Lagos'),
+  ('38020000-0000-4000-c120-000000000003', '38020000-0000-4000-c300-000000000001', 'Issue3802w Fading Brand',   'issue3802w-fading',   'Lagos'),
+  ('38020000-0000-4000-c120-000000000004', '38020000-0000-4000-c300-000000000001', 'Issue3802w Bare Brand',     'issue3802w-bare',     'Lagos'),
+  ('38020000-0000-4000-c120-000000000011', '38020000-0000-4000-c300-000000000001', 'Issue3802w Discover Brand', 'issue3802w-discover', 'Lagos'),
+  ('38020000-0000-4000-c120-000000000012', '38020000-0000-4000-c300-000000000001', 'Issue3802w Draft Brand',    'issue3802w-draftd',   'Lagos'),
+  ('38020000-0000-4000-c120-000000000013', '38020000-0000-4000-c300-000000000001', 'Issue3802w Ended Brand',    'issue3802w-endedd',   'Lagos'),
+  ('38020000-0000-4000-c120-000000000014', '38020000-0000-4000-c300-000000000001', 'Issue3802w Removed Brand',  'issue3802w-removedd', 'Lagos'),
+  ('38020000-0000-4000-c120-000000000015', '38020000-0000-4000-c300-000000000001', 'Issue3802w Hidden Brand',   'issue3802w-hiddend',  'Lagos'),
+  ('38020000-0000-4000-c120-000000000016', '38020000-0000-4000-c300-000000000001', 'Issue3802w Private Brand',  'issue3802w-privated', 'Lagos'),
+  ('38020000-0000-4000-c120-000000000021', '38020000-0000-4000-c300-000000000001', 'Issue3802w Run Brand A',    'issue3802w-run-a',    'Lagos'),
+  ('38020000-0000-4000-c120-000000000022', '38020000-0000-4000-c300-000000000001', 'Issue3802w Run Brand B',    'issue3802w-run-b',    'Lagos'),
+  ('38020000-0000-4000-c120-000000000023', '38020000-0000-4000-c300-000000000001', 'Issue3802w Run Brand C',    'issue3802w-run-c',    'Lagos');
+insert into public.events (id, brand_id, title, slug, visibility, status, deleted_at) values
+  ('38020000-0000-4000-c420-000000000001', '38020000-0000-4000-c120-000000000001', 'Issue3802w steady night',  'issue3802w-steady-night',  'public',   'scheduled', null),
+  ('38020000-0000-4000-c420-000000000002', '38020000-0000-4000-c120-000000000002', 'Issue3802w other night',   'issue3802w-other-night',   'public',   'live',      null),
+  ('38020000-0000-4000-c420-000000000003', '38020000-0000-4000-c120-000000000003', 'Issue3802w fading night',  'issue3802w-fading-night',  'public',   'scheduled', null),
+  ('38020000-0000-4000-c420-000000000011', '38020000-0000-4000-c120-000000000011', 'Issue3802w discover one',  'issue3802w-discover-one',  'discover', 'scheduled', null),
+  ('38020000-0000-4000-c420-000000000012', '38020000-0000-4000-c120-000000000012', 'Issue3802w discover two',  'issue3802w-discover-two',  'discover', 'draft',     null),
+  ('38020000-0000-4000-c420-000000000013', '38020000-0000-4000-c120-000000000013', 'Issue3802w discover tri',  'issue3802w-discover-tri',  'discover', 'ended',     null),
+  ('38020000-0000-4000-c420-000000000014', '38020000-0000-4000-c120-000000000014', 'Issue3802w discover four', 'issue3802w-discover-four', 'discover', 'live',      now()),
+  ('38020000-0000-4000-c420-000000000015', '38020000-0000-4000-c120-000000000015', 'Issue3802w hidden one',    'issue3802w-hidden-one',    'hidden',   'scheduled', null),
+  ('38020000-0000-4000-c420-000000000016', '38020000-0000-4000-c120-000000000016', 'Issue3802w private one',   'issue3802w-private-one',   'private',  'scheduled', null);
+set local session_replication_role = origin;
+
+-- Hosts in Live whose linked brand has no public listing, other than the ones
+-- named (a listing that went away later, with the link unchanged).
+create function pg_temp.t3802w_live_without_listing(variadic p_except uuid[]) returns text
+language sql as $fn$
+  select count(*)::text from public.crm_records r
+   where r.pipeline = 'hosts' and r.stage = 'live' and r.deleted_at is null
+     and not public.crm_brand_is_live(r.brand_id)
+     and not (r.id = any (p_except))
+     and r.name like 'W1-1%'
+$fn$;
+
+-- ---------------------------------------------------------------------------
+-- W1-16 — Live holds only while the link points at a brand with a public
+-- listing.
+-- ---------------------------------------------------------------------------
+do $w16$
+declare
+  c_steady constant text := '38020000-0000-4000-c120-000000000001';
+  c_other  constant text := '38020000-0000-4000-c120-000000000002';
+  c_fading constant text := '38020000-0000-4000-c120-000000000003';
+  c_bare   constant text := '38020000-0000-4000-c120-000000000004';
+  r text;
+  v_id text;
+  v_sticky text;
+  v_lost text;
+  v_audit int;
+  v_went timestamptz;
+begin
+  r := pg_temp.t3802w_make('w16', 'growth', 'hosts', json_build_object('name', 'W1-16 Linked Host', 'brand_id', c_steady)::text);
+  v_id := pg_temp.t3802w_id('w16');
+  perform pg_temp.t3802w_check('W1-16', 'a host added with a brand that has a listing starts in Live',
+    pg_temp.t3802w_get(r, 'record', 'stage') || '/' || pg_temp.t3802w_get(r, 'moved_to'), 'live/live');
+  select went_live_at into v_went from public.crm_records where id = pg_temp.t3802w_uuid(v_id);
+
+  -- The link is changed to a brand with no listing.
+  v_audit := pg_temp.t3802w_audit();
+  r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_id, json_build_object('brand_id', c_bare)::text));
+  perform pg_temp.t3802w_check('W1-16', 'changing the link to a brand with no listing moves the host back to Onboarded',
+    pg_temp.t3802w_get(r, 'moved_to') || '/' || pg_temp.t3802w_get(r, 'record', 'stage') || '/' || pg_temp.t3802w_get(r, 'record', 'brand_name'),
+    'onboarded/onboarded/Issue3802w Bare Brand');
+  perform pg_temp.t3802w_check('W1-16', 'with a system log line saying why',
+    (select coalesce(actor_email, '<system>') || '/' || via || '/' || from_stage || '>' || to_stage || '/' || body
+       from public.crm_activity where record_id = pg_temp.t3802w_uuid(v_id) and kind = 'stage_move' order by created_at desc, id desc limit 1),
+    '<system>/system/live>onboarded/Linked to Issue3802w Bare Brand, which has no public listing yet. Stage moved back to Onboarded.');
+  perform pg_temp.t3802w_check('W1-16', 'one audit row, with the move noted',
+    (pg_temp.t3802w_audit() - v_audit)::text || '/' || (select metadata->>'moved_to' from public.admin_audit_log
+       where action = 'crm.record_update' and target_id = v_id order by created_at desc limit 1), '1/onboarded');
+  perform pg_temp.t3802w_check('W1-16', 'the time it first went Live is kept',
+    (select (went_live_at = v_went)::text from public.crm_records where id = pg_temp.t3802w_uuid(v_id)), 'true');
+
+  -- Back to a brand with a listing: Live sets itself again.
+  r := pg_temp.t3802w_as('partner', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_id, json_build_object('brand_id', c_steady)::text));
+  perform pg_temp.t3802w_check('W1-16', 'linking a brand with a listing again sets Live again',
+    pg_temp.t3802w_get(r, 'moved_to') || '/' || pg_temp.t3802w_get(r, 'record', 'stage'), 'live/live');
+  perform pg_temp.t3802w_check('W1-16', 'and the first Live time is still the first one',
+    (select (went_live_at = v_went)::text from public.crm_records where id = pg_temp.t3802w_uuid(v_id)), 'true');
+
+  -- Live host re-linked to another brand that also has a listing: stays Live.
+  r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_id, json_build_object('brand_id', c_other)::text));
+  perform pg_temp.t3802w_check('W1-16', 'a Live host re-linked to another brand with a listing stays Live',
+    coalesce(pg_temp.t3802w_get(r, 'moved_to'), '<none>') || '/' || pg_temp.t3802w_get(r, 'record', 'stage') || '/' || pg_temp.t3802w_get(r, 'record', 'brand_name'),
+    '<none>/live/Issue3802w Other Brand');
+
+  -- The link is cleared.
+  r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, '{"brand_id": null}'::jsonb)::text$q$, v_id));
+  perform pg_temp.t3802w_check('W1-16', 'clearing the link of a Live host moves it back to Onboarded',
+    pg_temp.t3802w_get(r, 'moved_to') || '/' || pg_temp.t3802w_get(r, 'record', 'stage') || '/' || coalesce(pg_temp.t3802w_get(r, 'record', 'brand_id'), '<none>'),
+    'onboarded/onboarded/<none>');
+  perform pg_temp.t3802w_check('W1-16', 'with its own log line',
+    (select body from public.crm_activity where record_id = pg_temp.t3802w_uuid(v_id) and kind = 'stage_move' order by created_at desc, id desc limit 1),
+    'Brand link removed. Stage moved back to Onboarded.');
+  perform pg_temp.t3802w_check('W1-16', 'clearing the link of a host that is not Live moves nothing',
+    coalesce(pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_id, json_build_object('brand_id', c_bare)::text)), 'moved_to'), '<none>')
+      || '/' || coalesce(pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, '{"brand_id": null}'::jsonb)::text$q$, v_id)), 'moved_to'), '<none>')
+      || '/' || (select stage from public.crm_records where id = pg_temp.t3802w_uuid(v_id)),
+    '<none>/<none>/onboarded');
+
+  -- A Lost host is never moved by a link change.
+  r := pg_temp.t3802w_make('w16lost', 'growth', 'hosts', json_build_object('name', 'W1-16 Lost Host', 'brand_id', c_steady)::text);
+  v_lost := pg_temp.t3802w_id('w16lost');
+  perform pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'lost', 'Closed for good')::text$q$, v_lost));
+  perform pg_temp.t3802w_check('W1-16', 'a Lost host stays Lost when its link is changed or cleared',
+    coalesce(pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_lost, json_build_object('brand_id', c_bare)::text)), 'record', 'stage'), '?')
+      || '/' || coalesce(pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_lost, json_build_object('brand_id', c_other)::text)), 'record', 'stage'), '?')
+      || '/' || coalesce(pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, '{"brand_id": null}'::jsonb)::text$q$, v_lost)), 'record', 'stage'), '?'),
+    'lost/lost/lost');
+
+  -- A listing that goes away later, link unchanged: Live stays.
+  r := pg_temp.t3802w_make('w16sticky', 'growth', 'hosts', json_build_object('name', 'W1-16 Sticky Host', 'brand_id', c_fading)::text);
+  v_sticky := pg_temp.t3802w_id('w16sticky');
+  set local session_replication_role = replica;
+  update public.events set deleted_at = now() where id = '38020000-0000-4000-c420-000000000003';
+  set local session_replication_role = origin;
+  perform pg_temp.t3802w_check('W1-16', 'the brand no longer has a public listing',
+    public.crm_brand_is_live(c_fading::uuid)::text, 'false');
+  perform pg_temp.t3802w_check('W1-16', 'a listing that goes away later does not move a Live host: the run promotes nothing',
+    pg_temp.t3802w_as('postgres', $q$select public.crm_reconcile_live()::text$q$), '0');
+  perform pg_temp.t3802w_check('W1-16', 'and leaves the host in Live',
+    (select stage from public.crm_records where id = pg_temp.t3802w_uuid(v_sticky)), 'live');
+  perform pg_temp.t3802w_check('W1-16', 'nor does a change to another field',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, '{"contact": "Ada, front desk"}'::jsonb)::text$q$, v_sticky)), 'record', 'stage'), 'live');
+  perform pg_temp.t3802w_check('W1-16', 'nor sending the same link again',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_sticky, json_build_object('brand_id', c_fading)::text)), 'record', 'stage'), 'live');
+
+  perform pg_temp.t3802w_check('W1-16', 'no other host is in Live without a linked brand that has a listing',
+    pg_temp.t3802w_live_without_listing(pg_temp.t3802w_uuid(v_sticky)), '0');
+end;
+$w16$;
+
+-- ---------------------------------------------------------------------------
+-- W1-17 — an undo puts a card back into a stage, so that stage's rule must
+-- hold at that moment.
+-- ---------------------------------------------------------------------------
+do $w17$
+declare
+  c_steady constant text := '38020000-0000-4000-c120-000000000001';
+  c_bare   constant text := '38020000-0000-4000-c120-000000000004';
+  r text;
+  v_id text;
+  v_act text;
+  v_snap text;
+begin
+  r := pg_temp.t3802w_make('w17', 'growth', 'hosts', json_build_object('name', 'W1-17 Undo Host', 'brand_id', c_steady)::text);
+  v_id := pg_temp.t3802w_id('w17');
+  r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'lost', 'Marked by mistake')::text$q$, v_id));
+  v_act := pg_temp.t3802w_get(r, 'activity_id');
+  perform pg_temp.t3802w_check('W1-17', 'a Live host was marked Lost', pg_temp.t3802w_get(r, 'record', 'stage'), 'lost');
+
+  -- The link is cleared, then the move is undone inside the minute.
+  perform pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, '{"brand_id": null}'::jsonb)::text$q$, v_id));
+  v_snap := pg_temp.t3802w_snapshot();
+  perform pg_temp.t3802w_like('W1-17', 'an undo cannot put a host with no linked brand back into Live',
+    pg_temp.t3802w_as('growth', format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act)), 'ERR:22023:undo_not_live:%');
+  perform pg_temp.t3802w_check('W1-17', 'the refused undo changed nothing', pg_temp.t3802w_snapshot(), v_snap);
+
+  perform pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_id, json_build_object('brand_id', c_bare)::text));
+  perform pg_temp.t3802w_like('W1-17', 'nor a host linked to a brand with no listing',
+    pg_temp.t3802w_as('growth', format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act)), 'ERR:22023:undo_not_live:%');
+  perform pg_temp.t3802w_check('W1-17', 'the host is still Lost, with its reason',
+    (select stage || '/' || stage_reason from public.crm_records where id = pg_temp.t3802w_uuid(v_id)), 'lost/Marked by mistake');
+
+  -- With the rule holding again, the same undo works.
+  perform pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_id, json_build_object('brand_id', c_steady)::text));
+  perform pg_temp.t3802w_check('W1-17', 'a Lost host is not promoted by the link alone',
+    (select stage from public.crm_records where id = pg_temp.t3802w_uuid(v_id)), 'lost');
+  perform pg_temp.t3802w_check('W1-17', 'once the host is linked to a brand with a listing, the undo puts it back into Live',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act)), 'record', 'stage'), 'live');
+  perform pg_temp.t3802w_check('W1-17', 'no host is in Live without a linked brand that has a listing',
+    pg_temp.t3802w_live_without_listing(pg_temp.t3802w_uuid(pg_temp.t3802w_id('w16sticky'))), '0');
+
+  -- A creator goes back into Booked only with a signed agreement.
+  r := pg_temp.t3802w_make('w17c', 'growth', 'creators', '{"name": "W1-17 Undo Creator", "agreement": "signed"}');
+  v_id := pg_temp.t3802w_id('w17c');
+  perform pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'booked')::text$q$, v_id));
+  r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'passed', 'Went with another app')::text$q$, v_id));
+  v_act := pg_temp.t3802w_get(r, 'activity_id');
+  perform pg_temp.t3802w_check('W1-17', 'a Passed creator may have its agreement changed',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, '{"agreement": "none"}'::jsonb)::text$q$, v_id)), 'record', 'agreement'), 'none');
+  perform pg_temp.t3802w_like('W1-17', 'an undo cannot put a creator back into Booked without a signed agreement',
+    pg_temp.t3802w_as('growth', format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act)), 'ERR:22023:agreement_required:%');
+  perform pg_temp.t3802w_check('W1-17', 'the creator is still Passed',
+    (select stage from public.crm_records where id = pg_temp.t3802w_uuid(v_id)), 'passed');
+  perform pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, '{"agreement": "signed"}'::jsonb)::text$q$, v_id));
+  perform pg_temp.t3802w_check('W1-17', 'with the agreement signed again, the undo works',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act)), 'record', 'stage'), 'booked');
+end;
+$w17$;
+
+-- ---------------------------------------------------------------------------
+-- W1-18 — a creator in Booked or Posted keeps a signed agreement.
+-- ---------------------------------------------------------------------------
+do $w18$
+declare
+  r text;
+  v_id text;
+  v_stage text;
+  v_to text;
+  v_snap text;
+  v_audit int;
+begin
+  r := pg_temp.t3802w_make('w18', 'growth', 'creators', '{"name": "W1-18 Booked Creator", "agreement": "signed", "rate": "200 per post"}');
+  v_id := pg_temp.t3802w_id('w18');
+  foreach v_stage in array array['booked', 'posted'] loop
+    perform pg_temp.t3802w_check('W1-18', 'the creator moved to ' || v_stage,
+      pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, %L)::text$q$, v_id, v_stage)), 'record', 'stage'), v_stage);
+    v_snap := pg_temp.t3802w_snapshot();
+    v_audit := pg_temp.t3802w_audit();
+    foreach v_to in array array['"none"', '"sent"', 'null', '""'] loop
+      perform pg_temp.t3802w_like('W1-18', format('in %s the agreement cannot be changed to %s', v_stage, v_to),
+        pg_temp.t3802w_as('partner', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_id, '{"agreement": ' || v_to || '}')),
+        'ERR:22023:agreement_required:%');
+    end loop;
+    perform pg_temp.t3802w_like('W1-18', format('in %s the refusal covers a change sent along with other fields', v_stage),
+      pg_temp.t3802w_as('partner', format($q$select public.crm_record_update(%L, '{"agreement": "none", "rate": "300 per post"}'::jsonb)::text$q$, v_id)),
+      'ERR:22023:agreement_required:%');
+    perform pg_temp.t3802w_check('W1-18', format('in %s the refusals changed nothing and wrote no audit row', v_stage),
+      pg_temp.t3802w_snapshot() || '/' || (pg_temp.t3802w_audit() - v_audit)::text, v_snap || '/0');
+    perform pg_temp.t3802w_check('W1-18', format('in %s sending signed again is not a change', v_stage),
+      pg_temp.t3802w_get(pg_temp.t3802w_as('partner', format($q$select public.crm_record_update(%L, '{"agreement": "signed"}'::jsonb)::text$q$, v_id)), 'changed'), 'false');
+  end loop;
+  perform pg_temp.t3802w_check('W1-18', 'other fields of a Posted creator can still be changed',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('partner', format($q$select public.crm_record_update(%L, '{"rate": "300 per post"}'::jsonb)::text$q$, v_id)), 'record', 'rate'), '300 per post');
+  perform pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'negotiating')::text$q$, v_id));
+  perform pg_temp.t3802w_check('W1-18', 'back in Negotiating the agreement can be changed',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('partner', format($q$select public.crm_record_update(%L, '{"agreement": "none"}'::jsonb)::text$q$, v_id)), 'record', 'agreement'), 'none');
+  perform pg_temp.t3802w_check('W1-18', 'no creator is in Booked without a signed agreement',
+    (select count(*)::text from public.crm_records where pipeline = 'creators' and stage = 'booked' and deleted_at is null
+        and agreement is distinct from 'signed' and name like 'W1-1%'), '0');
+end;
+$w18$;
+
+-- ---------------------------------------------------------------------------
+-- W1-19 — a refusal is always one of the functions' own messages.
+-- W1-20 — a name needs something visible; stored names are trimmed; the
+--         duplicate key ignores what nobody can see.
+-- ---------------------------------------------------------------------------
+do $w19$
+declare
+  -- Values with nothing visible in them, each built from code points.
+  c_blank constant text[] := array[
+    chr(160),                                  -- non-breaking space
+    chr(160) || ' ' || chr(160),
+    chr(9) || chr(10) || chr(13),              -- tab, line feed, carriage return
+    chr(8195) || chr(12288) || chr(8239),      -- em space, ideographic space, narrow no-break space
+    chr(8232) || chr(8233) || chr(133)         -- line and paragraph separators, next line
+  ];
+  c_unseen constant text[] := array[
+    chr(8203),                                 -- zero-width space
+    chr(8204), chr(8205),                      -- zero-width non-joiner and joiner
+    chr(65279),                                -- byte-order mark
+    chr(8288),                                 -- word joiner
+    chr(173),                                  -- soft hyphen
+    chr(8206) || chr(8207) || chr(8238),       -- direction marks and an override
+    chr(4447) || chr(12644) || chr(65440),     -- blank fillers
+    chr(1) || chr(27) || chr(127),             -- control characters
+    chr(65039),                                -- a variation mark on its own
+    ' ' || chr(8203) || chr(160) || chr(8205) || chr(9)
+  ];
+  v text;
+  r text;
+  v_id text;
+  v_host text;
+  v_snap text;
+  v_n int := 0;
+  v_calls text[];
+  v_call text;
+begin
+  r := pg_temp.t3802w_make('w19', 'growth', 'hosts', '{"name": "W1-19 Plain Host"}');
+  v_host := pg_temp.t3802w_id('w19');
+
+  -- W1-19: blank-space names end in the name message, on every path.
+  v_snap := pg_temp.t3802w_snapshot();
+  foreach v in array c_blank loop
+    v_n := v_n + 1;
+    perform pg_temp.t3802w_like('W1-19', format('add: a name of only blank space (%s) gets the name message', v_n),
+      pg_temp.t3802w_as('growth', format($q$select public.crm_record_create('hosts', %L::jsonb, %L)::text$q$, json_build_object('name', v)::text, 'w19-blank-' || v_n)),
+      'ERR:22023:invalid_name:%');
+    perform pg_temp.t3802w_like('W1-19', format('edit: a name of only blank space (%s) gets the name message', v_n),
+      pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_host, json_build_object('name', v)::text)),
+      'ERR:22023:invalid_name:%');
+    perform pg_temp.t3802w_like('W1-19', format('mark as lost: a reason of only blank space (%s) gets the reason message', v_n),
+      pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'lost', %L)::text$q$, v_host, v)),
+      'ERR:22023:reason_required:%');
+    perform pg_temp.t3802w_like('W1-19', format('note: text of only blank space (%s) gets the text message', v_n),
+      pg_temp.t3802w_as('growth', format($q$select public.crm_record_log(%L, %L::jsonb, %L)::text$q$, v_host, json_build_object('kind', 'note', 'body', v)::text, 'w19-note-' || v_n)),
+      'ERR:22023:invalid_body:%');
+  end loop;
+  perform pg_temp.t3802w_like('W1-19', 'a reason longer than 300 characters gets the reason message',
+    pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'lost', %L)::text$q$, v_host, repeat('r', 301))),
+    'ERR:22023:reason_required:%300 characters%');
+  perform pg_temp.t3802w_like('W1-19', 'so does one that is too long once its blank ends are trimmed',
+    pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'lost', %L)::text$q$, v_host, chr(160) || repeat('é', 301) || chr(8195))),
+    'ERR:22023:reason_required:%300 characters%');
+  perform pg_temp.t3802w_check('W1-19', 'none of those refusals changed anything', pg_temp.t3802w_snapshot(), v_snap);
+
+  -- What is kept is the trimmed value.
+  perform pg_temp.t3802w_check('W1-19', 'a reason is stored trimmed, with one space between words',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'lost', %L)::text$q$, v_host,
+      chr(160) || chr(9) || 'Closed' || chr(8203) || chr(160) || chr(8195) || 'for the season ' || chr(12288))), 'record', 'stage_reason'),
+    'Closed for the season');
+  perform pg_temp.t3802w_check('W1-19', 'a reason of exactly 300 characters inside blank ends is accepted whole',
+    char_length(pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'lost', %L)::text$q$,
+      pg_temp.t3802w_get(pg_temp.t3802w_make('w19b', 'growth', 'hosts', '{"name": "W1-19 Second Host"}'), 'record', 'id'),
+      chr(160) || repeat('é', 300) || chr(160))), 'record', 'stage_reason'))::text, '300');
+  perform pg_temp.t3802w_check('W1-19', 'a contact of only blank space is stored as empty',
+    coalesce(pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_host,
+      json_build_object('contact', chr(160) || chr(8203))::text)), 'record', 'contact'), '<empty>'), '<empty>');
+  perform pg_temp.t3802w_check('W1-19', 'a note keeps its line breaks and loses only its blank ends',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_log(%L, %L::jsonb, 'w19-note-lines')::text$q$, v_host,
+      json_build_object('kind', 'note', 'body', chr(160) || E'\n Line one\nLine two' || chr(8203) || E' \n' || chr(8195))::text)), 'activity', 'body'),
+    E'Line one\nLine two');
+
+  -- Whatever is sent, the answer is a result or one of the functions' own
+  -- refusals; a constraint or any other raw database error never comes back.
+  v_calls := array[
+    format($q$select public.crm_record_create('hosts', %L::jsonb, 'w19-sweep-01')::text$q$, json_build_object('name', repeat(chr(160), 200))::text),
+    format($q$select public.crm_record_create('hosts', %L::jsonb, 'w19-sweep-02')::text$q$, json_build_object('name', 'W1-19 x' || repeat(chr(8203), 400))::text),
+    format($q$select public.crm_record_create('hosts', %L::jsonb, 'w19-sweep-03')::text$q$, json_build_object('name', repeat('n', 160) || chr(160) || 'n')::text),
+    format($q$select public.crm_record_create('creators', %L::jsonb, 'w19-sweep-04')::text$q$, json_build_object('name', 'W1-19 Sweep Creator', 'rate', repeat(chr(8195), 121), 'followers', '  12 ')::text),
+    format($q$select public.crm_record_create('creators', %L::jsonb, 'w19-sweep-05')::text$q$, json_build_object('name', 'W1-19 Sweep Creator 2', 'rate', repeat('r', 121))::text),
+    format($q$select public.crm_record_create('hosts', %L::jsonb, 'w19-sweep-06')::text$q$, json_build_object('name', 'W1-19 Sweep Host', 'contact', repeat('c', 300) || chr(160), 'next_action', repeat(chr(160), 201), 'due_on', chr(160) || '2026-10-31')::text),
+    format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_host, json_build_object('name', chr(8203) || chr(160))::text),
+    format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_host, json_build_object('contact', repeat('c', 301))::text),
+    format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_host, json_build_object('icp', chr(160), 'channel', chr(8203), 'source', chr(9))::text),
+    format($q$select public.crm_record_move_stage(%L, 'contacted', %L)::text$q$, v_host, repeat('r', 5000)),
+    format($q$select public.crm_record_move_stage(%L, 'lost', %L)::text$q$, v_host, repeat(chr(8203), 301)),
+    format($q$select public.crm_record_move_stage(%L, 'lost', %L)::text$q$, v_host, repeat('r', 300) || chr(8205)),
+    format($q$select public.crm_record_log(%L, %L::jsonb, 'w19-sweep-13')::text$q$, v_host, json_build_object('kind', chr(160) || 'note', 'body', repeat('b', 4001))::text),
+    format($q$select public.crm_record_log(%L, %L::jsonb, 'w19-sweep-14')::text$q$, v_host, json_build_object('kind', 'touch', 'channel', 'email', 'direction', 'inbound', 'message_ref', repeat('m', 501))::text),
+    format($q$select public.crm_record_log(%L, %L::jsonb, 'w19-sweep-15')::text$q$, v_host, json_build_object('kind', 'touch', 'channel', ' email' || chr(160), 'direction', chr(8203) || 'outbound', 'body', chr(8203))::text),
+    format($q$select public.crm_record_log(%L, %L::jsonb, 'w19-sweep-16')::text$q$, v_host, json_build_object('kind', 'note', 'body', 'x', 'occurred_at', 'infinity')::text),
+    format($q$select public.crm_record_log(%L, %L::jsonb, 'w19-sweep-17')::text$q$, v_host, json_build_object('kind', 'note', 'body', 'x', 'occurred_at', '-infinity')::text),
+    format($q$select public.crm_record_log(%L, %L::jsonb, 'w19-sweep-18')::text$q$, v_host, json_build_object('kind', 'note', 'body', 'x', 'occurred_at', 12345)::text),
+    format($q$select public.crm_records_bulk_create('hosts', %L::jsonb, 'w19-sweep-19')::text$q$, json_build_array(json_build_object('name', chr(160)), json_build_object('name', chr(8203)), 7, null, json_build_object('name', repeat('n', 161)))::text),
+    format($q$select public.crm_record_set_owners(%L, %L::text[])::text$q$, v_host, array[chr(160), null, '']),
+    format($q$select public.crm_duplicate_check('hosts', %L)::text$q$, chr(8203) || chr(160))
+  ];
+  v_n := 0;
+  foreach v_call in array v_calls loop
+    v_n := v_n + 1;
+    r := pg_temp.t3802w_as('growth', v_call);
+    perform pg_temp.t3802w_check('W1-19', format('odd input %s is answered or refused in plain words, never with a raw database error', v_n),
+      case when r like 'ERR:%' and r not like 'ERR:22023:%' then left(r, 120) else 'plain' end, 'plain');
+  end loop;
+
+  -- The table rule is still there underneath, as a backstop for anything that
+  -- skips the functions.
+  begin
+    insert into public.crm_records (pipeline, name, stage, created_by, updated_by)
+    values ('hosts', chr(8203) || chr(8205), 'prospect', 'system', 'system');
+    r := 'accepted';
+  exception when check_violation then
+    r := 'refused by the table';
+  end;
+  perform pg_temp.t3802w_check('W1-19', 'underneath, the table itself refuses a name with nothing visible', r, 'refused by the table');
+
+  -- W1-20: names with nothing visible in them.
+  v_snap := pg_temp.t3802w_snapshot();
+  v_n := 0;
+  foreach v in array c_unseen loop
+    v_n := v_n + 1;
+    perform pg_temp.t3802w_like('W1-20', format('add: a name with nothing visible in it (%s) is refused', v_n),
+      pg_temp.t3802w_as('growth', format($q$select public.crm_record_create('creators', %L::jsonb, %L)::text$q$, json_build_object('name', v)::text, 'w20-unseen-' || v_n)),
+      'ERR:22023:invalid_name:%');
+    perform pg_temp.t3802w_like('W1-20', format('edit: a name with nothing visible in it (%s) is refused', v_n),
+      pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, v_host, json_build_object('name', v)::text)),
+      'ERR:22023:invalid_name:%');
+    perform pg_temp.t3802w_check('W1-20', format('the name key of nothing visible (%s) is empty', v_n), public.crm_name_key(v), '');
+    perform pg_temp.t3802w_like('W1-20', format('mark as lost: a reason with nothing visible in it (%s) is refused', v_n),
+      pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'lost', %L)::text$q$, pg_temp.t3802w_id('w16'), v)),
+      'ERR:22023:reason_required:%');
+  end loop;
+  r := pg_temp.t3802w_as('growth', format($q$select public.crm_records_bulk_create('creators', %L::jsonb, 'w20-bulk-unseen')::text$q$,
+         (select json_agg(json_build_object('name', u)) from unnest(c_unseen) u)::text));
+  perform pg_temp.t3802w_check('W1-20', 'bulk add lists every such name as invalid and adds none',
+    jsonb_array_length(pg_temp.t3802w_jb(r)->'created')::text || '/' || jsonb_array_length(pg_temp.t3802w_jb(r)->'invalid')::text
+      || '/' || (select bool_and(i->>'error' like 'invalid_name:%')::text from jsonb_array_elements(pg_temp.t3802w_jb(r)->'invalid') i),
+    '0/' || cardinality(c_unseen)::text || '/true');
+  perform pg_temp.t3802w_check('W1-20', 'none of those refusals added a record',
+    (select count(*)::text from public.crm_records where pipeline = 'creators' and public.crm_name_key(name) = ''), '0');
+
+  -- Stored names are trimmed; unseen characters are dropped.
+  r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_create('creators', %L::jsonb, 'w20-trimmed-1')::text$q$,
+         json_build_object('name', chr(160) || chr(8203) || ' W1-20' || chr(8195) || chr(9) || 'Zed' || chr(8203) || chr(160) || chr(160) || 'Café ' || chr(65279) || chr(12288))::text));
+  v_id := pg_temp.t3802w_get(r, 'record', 'id');
+  perform pg_temp.t3802w_check('W1-20', 'a name is stored trimmed, with one space between words and nothing unseen in it',
+    pg_temp.t3802w_get(r, 'record', 'name'), 'W1-20 Zed Café');
+  perform pg_temp.t3802w_check('W1-20', 'a name that is only long because of blank ends is accepted',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_create('creators', %L::jsonb, 'w20-trimmed-2')::text$q$,
+      json_build_object('name', repeat(chr(160), 40) || 'W1-20 ' || repeat('n', 154) || repeat(chr(8203), 40))::text)), 'status'), 'created');
+  perform pg_temp.t3802w_check('W1-20', 'a name keeps the joiners that shape an emoji',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_create('creators', %L::jsonb, 'w20-trimmed-3')::text$q$,
+      json_build_object('name', 'W1-20 Fam ' || chr(128104) || chr(8205) || chr(128105) || chr(8205) || chr(128103))::text)), 'record', 'name'),
+    'W1-20 Fam ' || chr(128104) || chr(8205) || chr(128105) || chr(8205) || chr(128103));
+
+  -- The duplicate key uses the same normalisation.
+  foreach v in array array[
+    'W1-20' || chr(8203) || ' Zed' || chr(8203) || ' Café',
+    chr(65279) || 'w1-20 zed' || chr(160) || 'CAFÉ' || chr(8205),
+    'W1-20' || chr(8195) || 'Z' || chr(173) || 'ed' || chr(12288) || 'Café',
+    'W' || chr(8288) || '1-20-Zed-Café' || chr(8206)
+  ] loop
+    perform pg_temp.t3802w_check('W1-20', 'the same name with unseen characters or other blank space is the same record',
+      pg_temp.t3802w_get(pg_temp.t3802w_as('partner', format($q$select public.crm_record_create('creators', %L::jsonb, %L)::text$q$,
+        json_build_object('name', v)::text, 'w20-dup-' || md5(v))), 'status')
+        || '/' || pg_temp.t3802w_get(pg_temp.t3802w_as('partner', format($q$select public.crm_duplicate_check('creators', %L)::text$q$, v)), 'exact', 'id'),
+      'duplicate/' || v_id);
+  end loop;
+  perform pg_temp.t3802w_like('W1-20', 'and an edit cannot take that name by adding unseen characters',
+    pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, %L::jsonb)::text$q$, pg_temp.t3802w_id('w18'),
+      json_build_object('name', 'W1-20 Zed' || chr(8203) || ' Café' || chr(160))::text)),
+    'ERR:22023:duplicate_name:%');
+  perform pg_temp.t3802w_check('W1-20', 'names with no letters or digits are still told apart, and blank space in them does not matter',
+    public.crm_name_key('@ @') || '/' || public.crm_name_key(chr(160) || '@' || chr(8203) || '@') || '/' || (public.crm_name_key('@@') <> public.crm_name_key('@!'))::text,
+    '@@/@@/true');
+end;
+$w19$;
+
+-- ---------------------------------------------------------------------------
+-- W1-21 — a logged time is a real moment, on or after 1 January 2020 and no
+-- more than 5 minutes ahead.
+-- ---------------------------------------------------------------------------
+do $w21$
+declare
+  v_host text := pg_temp.t3802w_id('w19');
+  v text;
+  r text;
+  v_n int := 0;
+  v_snap text := pg_temp.t3802w_snapshot();
+begin
+  foreach v in array array[
+    '-infinity', 'infinity', ' -Infinity ', '2019-12-31T23:59:59.999999Z', '1999-06-01T12:00:00Z', '0001-01-01T00:00:00Z',
+    '4713-01-01T00:00:00Z BC', '2020-01-01T00:59:59+01:00', '9999-12-31T23:59:59Z', '294276-01-01T00:00:00Z',
+    (now() + interval '6 minutes')::text, (now() + interval '1 day')::text, 'epoch', 'yesterday at noon', '2026-13-45'
+  ] loop
+    v_n := v_n + 1;
+    perform pg_temp.t3802w_like('W1-21', format('a time outside the window or not a time (%s) is refused', v),
+      pg_temp.t3802w_as('growth', format($q$select public.crm_record_log(%L, %L::jsonb, %L)::text$q$, v_host,
+        json_build_object('kind', 'touch', 'channel', 'phone', 'direction', 'outbound', 'occurred_at', v)::text, 'w21-bad-' || lpad(v_n::text, 3, '0'))),
+      'ERR:22023:invalid_occurred_at:%');
+  end loop;
+  perform pg_temp.t3802w_check('W1-21', 'none of those refusals changed anything', pg_temp.t3802w_snapshot(), v_snap);
+  perform pg_temp.t3802w_check('W1-21', 'no log line sits outside the window',
+    (select count(*)::text from public.crm_activity
+      where not isfinite(occurred_at) or occurred_at < '2020-01-01 00:00:00+00' or occurred_at > clock_timestamp() + interval '5 minutes'), '0');
+
+  v_n := 0;
+  foreach v in array array[
+    '2020-01-01T00:00:00Z', '2020-01-01T01:00:00+01:00', '2024-02-29T08:30:00-05:00',
+    (now() - interval '1 day')::text, (now() + interval '4 minutes')::text
+  ] loop
+    v_n := v_n + 1;
+    r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_log(%L, %L::jsonb, %L)::text$q$, v_host,
+           json_build_object('kind', 'touch', 'channel', 'phone', 'direction', 'outbound', 'occurred_at', v)::text, 'w21-good-' || lpad(v_n::text, 3, '0')));
+    perform pg_temp.t3802w_check('W1-21', format('a time inside the window (%s) is kept exactly', v),
+      (pg_temp.t3802w_get(r, 'activity', 'occurred_at')::timestamptz = v::timestamptz)::text, 'true');
+  end loop;
+  perform pg_temp.t3802w_check('W1-21', 'with no time sent, the entry is stamped now',
+    (pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_log(%L, '{"kind": "note", "body": "Rang twice"}'::jsonb, 'w21-now-001')::text$q$, v_host)),
+       'activity', 'occurred_at')::timestamptz between now() - interval '1 minute' and clock_timestamp() + interval '1 minute')::text, 'true');
+end;
+$w21$;
+
+-- ---------------------------------------------------------------------------
+-- W1-22 — a listing with discover visibility is a public listing.
+-- ---------------------------------------------------------------------------
+do $w22$
+declare
+  b record;
+  r text;
+begin
+  for b in
+    select * from (values
+      ('38020000-0000-4000-c120-000000000011', 'a scheduled listing with discover visibility',         true),
+      ('38020000-0000-4000-c120-000000000012', 'a draft with discover visibility',                      false),
+      ('38020000-0000-4000-c120-000000000013', 'an ended listing with discover visibility',             false),
+      ('38020000-0000-4000-c120-000000000014', 'a removed listing with discover visibility',            false),
+      ('38020000-0000-4000-c120-000000000015', 'a scheduled listing with hidden (unlisted) visibility', false),
+      ('38020000-0000-4000-c120-000000000016', 'a scheduled listing with private visibility',           false),
+      ('38020000-0000-4000-c120-000000000004', 'no listing at all',                                     false)
+    ) as v(id, label, want)
+  loop
+    perform pg_temp.t3802w_check('W1-22', 'is a brand with ' || b.label || ' a brand with a public listing',
+      public.crm_brand_is_live(b.id::uuid)::text, b.want::text);
+    r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_create('hosts', %L::jsonb, %L)::text$q$,
+           json_build_object('name', 'W1-22 Host ' || right(b.id, 2), 'brand_id', b.id)::text, 'w22-host-' || right(b.id, 4)));
+    perform pg_temp.t3802w_check('W1-22', 'a host linked to a brand with ' || b.label || ' lands in',
+      pg_temp.t3802w_get(r, 'record', 'stage'), case when b.want then 'live' else 'onboarded' end);
+  end loop;
+  perform pg_temp.t3802w_check('W1-22', 'the scheduled run agrees: nothing more to promote',
+    pg_temp.t3802w_as('postgres', $q$select public.crm_reconcile_live()::text$q$), '0');
+  perform pg_temp.t3802w_check('W1-22', 'the record view shows the linked brand has a listing',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('partner', format($q$select public.crm_record_get(%L)::text$q$,
+      (select id from public.crm_records where name = 'W1-22 Host 11'))), 'links', 'brand', 'is_live'), 'true');
+end;
+$w22$;
+
+-- ---------------------------------------------------------------------------
+-- W1-23 — a fault on the server is never recorded as a caller's mistake, and
+-- one host that cannot be promoted does not stop the run. The fault is
+-- planted with a trigger that exists only inside this block.
+-- ---------------------------------------------------------------------------
+create function pg_temp.t3802w_fault() returns trigger
+language plpgsql as $fn$
+begin
+  if new.name = current_setting('t3802w.fault_name', true)
+     and (tg_op = 'INSERT' or new.stage = 'live') then
+    raise exception 'issue3802w planted fault' using errcode = '55000';
+  end if;
+  return new;
+end;
+$fn$;
+
+do $w23$
+declare
+  c_items constant text := '[{"name": "W1-23 Bulk One"}, {"name": "W1-23 Bulk Two"}, {"name": ""}, {"name": "W1-23 Bulk Three"}]';
+  r text;
+  v_audit int;
+  v_snap text;
+  v_a text;
+  v_b text;
+  v_c text;
+begin
+  create trigger t3802w_fault before insert or update on public.crm_records
+    for each row execute function pg_temp.t3802w_fault();
+
+  -- Bulk add: a refused item is "invalid"; a fault stops the call.
+  perform set_config('t3802w.fault_name', 'W1-23 Bulk Two', true);
+  v_snap := pg_temp.t3802w_snapshot();
+  v_audit := pg_temp.t3802w_audit();
+  r := pg_temp.t3802w_as('growth', format($q$select public.crm_records_bulk_create('hosts', %L::jsonb, 'w23-bulk-0001')::text$q$, c_items));
+  perform pg_temp.t3802w_like('W1-23', 'a fault on the server stops bulk add with a plain try-again message', r, 'ERR:40001:try_again:%nothing was saved%');
+  perform pg_temp.t3802w_check('W1-23', 'the message does not carry the database error', (r not like '%planted fault%' and r not like '%55000%')::text, 'true');
+  perform pg_temp.t3802w_check('W1-23', 'nothing was saved, nothing was kept under the request key, and no audit row was written',
+    pg_temp.t3802w_snapshot() || '/' || (pg_temp.t3802w_audit() - v_audit)::text
+      || '/' || (select count(*)::text from public.crm_request_keys where request_key = 'w23-bulk-0001'), v_snap || '/0/0');
+
+  -- The fault is gone: the SAME request, with the same key, now goes through.
+  perform set_config('t3802w.fault_name', '', true);
+  r := pg_temp.t3802w_as('growth', format($q$select public.crm_records_bulk_create('hosts', %L::jsonb, 'w23-bulk-0001')::text$q$, c_items));
+  perform pg_temp.t3802w_check('W1-23', 'sent again with the same key, the request is carried out for real',
+    jsonb_array_length(pg_temp.t3802w_jb(r)->'created')::text || '/' || jsonb_array_length(pg_temp.t3802w_jb(r)->'invalid')::text
+      || '/' || coalesce(pg_temp.t3802w_jb(r)->>'replayed', 'not a replay'), '3/1/not a replay');
+  perform pg_temp.t3802w_like('W1-23', 'the refused item is listed as invalid, with the reason',
+    pg_temp.t3802w_jb(r)->'invalid'->0->>'error', 'invalid_name:%');
+  perform pg_temp.t3802w_check('W1-23', 'and a third send is a replay of that answer',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_records_bulk_create('hosts', %L::jsonb, 'w23-bulk-0001')::text$q$, c_items)), 'replayed'), 'true');
+
+  -- The scheduled run: three hosts are ready for Live; one cannot be saved.
+  v_a := pg_temp.t3802w_get(pg_temp.t3802w_make('w23a', 'growth', 'hosts', '{"name": "W1-23 Run A", "brand_id": "38020000-0000-4000-c120-000000000021"}'), 'record', 'id');
+  v_b := pg_temp.t3802w_get(pg_temp.t3802w_make('w23b', 'growth', 'hosts', '{"name": "W1-23 Run B", "brand_id": "38020000-0000-4000-c120-000000000022"}'), 'record', 'id');
+  v_c := pg_temp.t3802w_get(pg_temp.t3802w_make('w23c', 'growth', 'hosts', '{"name": "W1-23 Run C", "brand_id": "38020000-0000-4000-c120-000000000023"}'), 'record', 'id');
+  set local session_replication_role = replica;
+  insert into public.events (id, brand_id, title, slug, visibility, status) values
+    ('38020000-0000-4000-c420-000000000021', '38020000-0000-4000-c120-000000000021', 'Issue3802w run a', 'issue3802w-run-a-night', 'public', 'scheduled'),
+    ('38020000-0000-4000-c420-000000000022', '38020000-0000-4000-c120-000000000022', 'Issue3802w run b', 'issue3802w-run-b-night', 'public', 'scheduled'),
+    ('38020000-0000-4000-c420-000000000023', '38020000-0000-4000-c120-000000000023', 'Issue3802w run c', 'issue3802w-run-c-night', 'public', 'scheduled');
+  set local session_replication_role = origin;
+  perform pg_temp.t3802w_check('W1-23', 'three hosts are waiting for the run',
+    (select string_agg(stage, '/' order by name) from public.crm_records where name like 'W1-23 Run %'), 'onboarded/onboarded/onboarded');
+
+  perform set_config('t3802w.fault_name', 'W1-23 Run B', true);
+  v_audit := pg_temp.t3802w_audit();
+  perform pg_temp.t3802w_check('W1-23', 'the run promotes the two hosts it can and reports them',
+    pg_temp.t3802w_as('postgres', $q$select public.crm_reconcile_live()::text$q$), '2');
+  perform pg_temp.t3802w_check('W1-23', 'the host it could not promote is left exactly as it was',
+    (select string_agg(stage, '/' order by name) from public.crm_records where name like 'W1-23 Run %')
+      || ' ' || (select count(*)::text from public.crm_activity where record_id = pg_temp.t3802w_uuid(v_b) and to_stage = 'live'),
+    'live/onboarded/live 0');
+  perform pg_temp.t3802w_check('W1-23', 'the run recorded how many it skipped and how many it promoted',
+    (select count(*)::text || '/' || max(admin_email) || '/' || max(metadata->>'failed') || '/' || max(metadata->>'promoted')
+       from public.admin_audit_log where action = 'crm.reconcile_failed'), '1/system/1/2');
+  perform pg_temp.t3802w_check('W1-23', 'audit rows for that run: one per promoted host and one for the skipped count',
+    (pg_temp.t3802w_audit() - v_audit)::text, '3');
+
+  -- A run for that one host fails the same quiet way and the link is untouched.
+  perform pg_temp.t3802w_check('W1-23', 'a run for the one host promotes nothing and still answers',
+    pg_temp.t3802w_as('postgres', format($q$select public.crm_reconcile_live(%L)::text$q$, v_b)), '0');
+
+  -- The fault is gone: the next run picks the host up.
+  perform set_config('t3802w.fault_name', '', true);
+  v_audit := pg_temp.t3802w_audit();
+  perform pg_temp.t3802w_check('W1-23', 'the next run promotes the host that was skipped',
+    pg_temp.t3802w_as('postgres', $q$select public.crm_reconcile_live()::text$q$), '1');
+  perform pg_temp.t3802w_check('W1-23', 'and that host is now Live',
+    (select stage from public.crm_records where id = pg_temp.t3802w_uuid(v_b)), 'live');
+  perform pg_temp.t3802w_check('W1-23', 'a clean run records no skipped count',
+    (pg_temp.t3802w_audit() - v_audit)::text || '/' || (select count(*)::text from public.admin_audit_log where action = 'crm.reconcile_failed'), '1/2');
+
+  drop trigger t3802w_fault on public.crm_records;
+end;
+$w23$;
 
 -- ---------------------------------------------------------------------------
 -- Verdict (part 1). Every failed check is listed; one or more fails the suite.
