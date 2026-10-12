@@ -111,6 +111,17 @@ begin
 end;
 $fn$;
 
+-- Canonical text of a JSON value; a non-JSON value (a captured error) is
+-- returned as it is, so a refusal is recorded as a failed check, not a crash.
+create function pg_temp.t3802_j(p text) returns text
+language plpgsql as $fn$
+begin
+  return p::jsonb::text;
+exception when others then
+  return p;
+end;
+$fn$;
+
 create function pg_temp.t3802_team_snapshot() returns text
 language sql as $fn$
   select coalesce((select jsonb_agg(to_jsonb(a) order by a.email) from public.admin_users a), '[]'::jsonb)::text
@@ -144,8 +155,8 @@ begin
   -- T-3 while invited: role shown, no areas.
   r := pg_temp.t3802_as('growth', $q$select public.admin_team_my_access()::text$q$);
   perform pg_temp.t3802_check('T-3', 'invited growth access',
-    r::jsonb::text,
-    '{"email":"issue3802-growth@test.local","role":"growth","status":"invited","areas":[]}'::jsonb::text);
+    pg_temp.t3802_j(r),
+    pg_temp.t3802_j('{"email":"issue3802-growth@test.local","role":"growth","status":"invited","areas":[]}'));
   perform pg_temp.t3802_check('T-1', 'invited growth has no active role',
     pg_temp.t3802_as('growth', $q$select public.admin_team_role()$q$), null);
 
@@ -207,23 +218,23 @@ begin
   perform pg_temp.t3802_check('T-3', 'no caller identity -> no access', v_access, '<none>');
 
   perform pg_temp.t3802_check('T-3', 'owner access',
-    pg_temp.t3802_as('owner', $q$select public.admin_team_my_access()::text$q$)::jsonb::text,
-    '{"email":"issue3802-owner@test.local","role":"owner","status":"active","areas":["admin_console","team_manage"]}'::jsonb::text);
+    pg_temp.t3802_j(pg_temp.t3802_as('owner', $q$select public.admin_team_my_access()::text$q$)),
+    pg_temp.t3802_j('{"email":"issue3802-owner@test.local","role":"owner","status":"active","areas":["admin_console","team_manage"]}'));
   perform pg_temp.t3802_check('T-3', 'admin access',
-    pg_temp.t3802_as('admin', $q$select public.admin_team_my_access()::text$q$)::jsonb::text,
-    '{"email":"issue3802-admin@test.local","role":"admin","status":"active","areas":["admin_console"]}'::jsonb::text);
+    pg_temp.t3802_j(pg_temp.t3802_as('admin', $q$select public.admin_team_my_access()::text$q$)),
+    pg_temp.t3802_j('{"email":"issue3802-admin@test.local","role":"admin","status":"active","areas":["admin_console"]}'));
   perform pg_temp.t3802_check('T-3', 'growth access',
-    pg_temp.t3802_as('growth', $q$select public.admin_team_my_access()::text$q$)::jsonb::text,
-    '{"email":"issue3802-growth@test.local","role":"growth","status":"active","areas":["role_home"]}'::jsonb::text);
+    pg_temp.t3802_j(pg_temp.t3802_as('growth', $q$select public.admin_team_my_access()::text$q$)),
+    pg_temp.t3802_j('{"email":"issue3802-growth@test.local","role":"growth","status":"active","areas":["role_home"]}'));
   perform pg_temp.t3802_check('T-3', 'partner access',
-    pg_temp.t3802_as('partner', $q$select public.admin_team_my_access()::text$q$)::jsonb::text,
-    '{"email":"issue3802-partner@test.local","role":"partner","status":"active","areas":["role_home"]}'::jsonb::text);
+    pg_temp.t3802_j(pg_temp.t3802_as('partner', $q$select public.admin_team_my_access()::text$q$)),
+    pg_temp.t3802_j('{"email":"issue3802-partner@test.local","role":"partner","status":"active","areas":["role_home"]}'));
   perform pg_temp.t3802_check('T-3', 'invitee access (invited, no areas)',
-    pg_temp.t3802_as('invitee', $q$select public.admin_team_my_access()::text$q$)::jsonb::text,
-    '{"email":"issue3802-invitee@test.local","role":"partner","status":"invited","areas":[]}'::jsonb::text);
+    pg_temp.t3802_j(pg_temp.t3802_as('invitee', $q$select public.admin_team_my_access()::text$q$)),
+    pg_temp.t3802_j('{"email":"issue3802-invitee@test.local","role":"partner","status":"invited","areas":[]}'));
   perform pg_temp.t3802_check('T-3', 'invited full admin access (invited, no areas)',
-    pg_temp.t3802_as('legacy', $q$select public.admin_team_my_access()::text$q$)::jsonb::text,
-    '{"email":"issue3802-legacy@test.local","role":"admin","status":"invited","areas":[]}'::jsonb::text);
+    pg_temp.t3802_j(pg_temp.t3802_as('legacy', $q$select public.admin_team_my_access()::text$q$)),
+    pg_temp.t3802_j('{"email":"issue3802-legacy@test.local","role":"admin","status":"invited","areas":[]}'));
   perform pg_temp.t3802_check('T-3', 'consumer access is null',
     pg_temp.t3802_as('consumer', $q$select public.admin_team_my_access()::text$q$), null);
   perform pg_temp.t3802_like('T-3', 'anon access call refused',
@@ -422,8 +433,8 @@ begin
     pg_temp.t3802_as('anon', $q$select public.admin_team_activate_self()::text$q$), 'ERR:42501:%');
 
   r := pg_temp.t3802_as('invitee', $q$select public.admin_team_activate_self()::text$q$);
-  perform pg_temp.t3802_check('T-9', 'invitee activation result', r::jsonb::text,
-    '{"email":"issue3802-invitee@test.local","role":"partner","status":"active","areas":["role_home"]}'::jsonb::text);
+  perform pg_temp.t3802_check('T-9', 'invitee activation result', pg_temp.t3802_j(r),
+    pg_temp.t3802_j('{"email":"issue3802-invitee@test.local","role":"partner","status":"active","areas":["role_home"]}'));
   perform pg_temp.t3802_check('T-9', 'invitee row is active with the invited role',
     (select role || '/' || status || '/' || (accepted_at is not null)::text
        from public.admin_team_members where email = 'issue3802-invitee@test.local'),
@@ -438,7 +449,7 @@ begin
 
   v_before := pg_temp.t3802_team_snapshot();
   perform pg_temp.t3802_check('T-9', 'second activation returns the same access',
-    pg_temp.t3802_as('invitee', $q$select public.admin_team_activate_self()::text$q$)::jsonb::text, r::jsonb::text);
+    pg_temp.t3802_j(pg_temp.t3802_as('invitee', $q$select public.admin_team_activate_self()::text$q$)), pg_temp.t3802_j(r));
   perform pg_temp.t3802_check('T-9', 'second activation changes nothing',
     (pg_temp.t3802_team_snapshot() = v_before)::text, 'true');
   perform pg_temp.t3802_check('T-11', 'second activation wrote no audit row', pg_temp.t3802_audit_count(), (v_audit + 1)::text);
@@ -455,8 +466,8 @@ declare
 begin
   -- Invite a full admin through the product path; they activate.
   r := pg_temp.t3802_as('owner', $q$select public.admin_team_set_member('Issue3802-NewAdmin@test.local', 'admin', 'invited')::text$q$);
-  perform pg_temp.t3802_check('T-4', 'owner invites an admin', r::jsonb::text,
-    '{"email":"issue3802-newadmin@test.local","role":"admin","status":"invited","changed":true,"previous":null}'::jsonb::text);
+  perform pg_temp.t3802_check('T-4', 'owner invites an admin', pg_temp.t3802_j(r),
+    pg_temp.t3802_j('{"email":"issue3802-newadmin@test.local","role":"admin","status":"invited","changed":true,"previous":null}'));
   perform pg_temp.t3802_check('T-1', 'invited admin is not yet an admin',
     pg_temp.t3802_as('newadmin', $q$select public.is_admin_user()::text$q$), 'false');
   perform pg_temp.t3802_check('T-4', 'invited admin activates',
@@ -480,8 +491,8 @@ begin
     'ERR:22023:never_activated');
   -- Remove the pending invite, then try to "undo to active": still never activated.
   r := pg_temp.t3802_as('owner', $q$select public.admin_team_set_member('issue3802-mover@test.local', 'growth', 'revoked')::text$q$);
-  perform pg_temp.t3802_check('T-4', 'owner removes a pending invite', r::jsonb::text,
-    '{"email":"issue3802-mover@test.local","role":"growth","status":"revoked","changed":true,"previous":{"role":"growth","status":"invited"}}'::jsonb::text);
+  perform pg_temp.t3802_check('T-4', 'owner removes a pending invite', pg_temp.t3802_j(r),
+    pg_temp.t3802_j('{"email":"issue3802-mover@test.local","role":"growth","status":"revoked","changed":true,"previous":{"role":"growth","status":"invited"}}'));
   perform pg_temp.t3802_check('T-4', 'undo-to-active for a never-activated person is refused',
     pg_temp.t3802_as('owner', $q$select public.admin_team_set_member('issue3802-mover@test.local', 'growth', 'active')::text$q$),
     'ERR:22023:never_activated');
@@ -505,8 +516,8 @@ begin
 
   -- growth -> admin
   r := pg_temp.t3802_as('owner', $q$select public.admin_team_set_member('issue3802-mover@test.local', 'admin', 'active')::text$q$);
-  perform pg_temp.t3802_check('T-4', 'growth -> admin', r::jsonb::text,
-    '{"email":"issue3802-mover@test.local","role":"admin","status":"active","changed":true,"previous":{"role":"growth","status":"active"}}'::jsonb::text);
+  perform pg_temp.t3802_check('T-4', 'growth -> admin', pg_temp.t3802_j(r),
+    pg_temp.t3802_j('{"email":"issue3802-mover@test.local","role":"admin","status":"active","changed":true,"previous":{"role":"growth","status":"active"}}'));
   perform pg_temp.t3802_check('T-4', 'after growth -> admin they are a full admin',
     pg_temp.t3802_as('mover', $q$select public.is_admin_user()::text || '/' || public.admin_team_role()$q$), 'true/admin');
   perform pg_temp.t3802_check('T-10', 'after growth -> admin the non-admin row is revoked',
@@ -530,8 +541,8 @@ begin
 
   -- remove
   r := pg_temp.t3802_as('owner', $q$select public.admin_team_set_member('issue3802-mover@test.local', 'partner', 'revoked')::text$q$);
-  perform pg_temp.t3802_check('T-4', 'remove access', r::jsonb::text,
-    '{"email":"issue3802-mover@test.local","role":"partner","status":"revoked","changed":true,"previous":{"role":"partner","status":"active"}}'::jsonb::text);
+  perform pg_temp.t3802_check('T-4', 'remove access', pg_temp.t3802_j(r),
+    pg_temp.t3802_j('{"email":"issue3802-mover@test.local","role":"partner","status":"revoked","changed":true,"previous":{"role":"partner","status":"active"}}'));
   perform pg_temp.t3802_check('T-4', 'removed person has no role and no access',
     coalesce(pg_temp.t3802_as('mover', $q$select coalesce(public.admin_team_role(), '<none>') || '/' || coalesce(public.admin_team_my_access()::text, '<none>')$q$), '<null>'),
     '<none>/<none>');
@@ -573,7 +584,8 @@ $t4$;
 -- T-10 — one live membership per email across both tables, for every writer.
 -- ---------------------------------------------------------------------------
 insert into public.admin_users (email, role, status)
-  values ('issue3802-growth@test.local', 'admin', 'revoked');
+  values ('issue3802-growth@test.local', 'admin', 'revoked')
+  on conflict (email) do nothing;
 
 do $t10$
 begin
