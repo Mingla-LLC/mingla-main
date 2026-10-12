@@ -10670,8 +10670,6 @@ All four #2796 rules were established ACTIVE after independent web, iOS AX5, and
 - **Test:** `supabase/migrations/__tests__/issue_3801_trip_draft_dates_single_owner.implementor.happy.pg17.test.sql`, registered in the `migrations` job of `.github/workflows/supabase-migrations-and-stripe-deno.yml`. It patches a draft only the way `tripsService.ts` does and publishes it (A), publishes a draft in the pre-fix shape (B), and walks heal, change, explicit-group-wins, hands-off, unreadable, out-of-order and cleared (C). Fails on revert of either function independently.
 - **Established:** DRAFT at #3801. Flips ACTIVE once the migration is applied to production and a trip saved in the Host wizard is seen to publish; record that check on the issue.
 
-### I-PROPOSED-3802-FULL-ADMIN-TABLE-HOLDS-ONLY-OWNER-AND-ADMIN (DRAFT)
-
 ### I-PROPOSED-3802-FULL-ADMIN-TABLE-HOLDS-ONLY-OWNER-AND-ADMIN (ACTIVE)
 
 - **Rule:** `admin_users` holds only `owner` and `admin` and is the only table `is_admin_user()` reads. Every other team role lives in `admin_team_members`, whose role CHECK excludes `owner` and `admin`. One email is non-revoked in at most one of the two tables. `admin_team_can('admin_console')` equals `is_admin_user()` for every caller, and no role other than owner and admin is ever given the `admin_console` area. New work that a non-admin role may use gates on `admin_team_can('<area>')`; owner/admin-only objects keep using `is_admin_user()`.
