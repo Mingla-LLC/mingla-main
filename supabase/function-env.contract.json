@@ -231,6 +231,20 @@
         "BUSINESS_WEB_ORIGIN"
       ]
     },
+    "admin-team-accept-invite": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-team-invite": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "RESEND_API_KEY"
+      ]
+    },
     "admin-write-primitive": {
       "migration_fallback_top_level": [],
       "optional_top_level": [],

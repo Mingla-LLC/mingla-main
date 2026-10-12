@@ -2,9 +2,15 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Search, FileText, User, MapPin, Settings } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { NAV_ITEMS } from "../lib/constants";
+import { useAuth } from "../context/AuthContext";
+import { AREA, TEAM_NAV_GROUP, canOpenPage } from "../lib/access";
 import { escapeLike } from "../lib/formatters";
 
 export function CommandPalette({ open, onClose, onNavigate }) {
+  // Issue #3802 — the palette offers only what this person may open, and looks
+  // up people and places only for the full admin console.
+  const { access } = useAuth();
+  const isAdminConsole = !!access && access.status === "active" && access.areas.includes(AREA.ADMIN_CONSOLE);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [dbResults, setDbResults] = useState({ users: [], places: [] });
@@ -25,6 +31,7 @@ export function CommandPalette({ open, onClose, onNavigate }) {
   // Debounced DB search
   useEffect(() => {
     if (!open) return;
+    if (!isAdminConsole) return;
     clearTimeout(debounceRef.current);
     let cancelled = false;
 
@@ -54,18 +61,20 @@ export function CommandPalette({ open, onClose, onNavigate }) {
     }, 300);
 
     return () => { clearTimeout(debounceRef.current); cancelled = true; };
-  }, [query, open]);
+  }, [query, open, isAdminConsole]);
 
   // Client-side page filter (instant)
   const pageResults = useMemo(() => {
-    if (!query) return NAV_ITEMS.slice(0, 5);
+    const pages = [...TEAM_NAV_GROUP.items, ...NAV_ITEMS].filter((p) => canOpenPage(access, p.id));
+    if (!query) return pages.slice(0, 5);
     const lower = query.toLowerCase();
-    return NAV_ITEMS.filter((p) => p.label.toLowerCase().includes(lower)).slice(0, 5);
-  }, [query]);
+    return pages.filter((p) => p.label.toLowerCase().includes(lower)).slice(0, 5);
+  }, [query, access]);
 
   // Config filter (client-side, simple)
   const configResults = useMemo(() => {
     if (!query || query.length < 2) return [];
+    if (!canOpenPage(access, "settings")) return [];
     const lower = query.toLowerCase();
     const items = [
       { label: "Feature Flags", tab: "settings" },
@@ -74,7 +83,7 @@ export function CommandPalette({ open, onClose, onNavigate }) {
       { label: "Theme", tab: "settings" },
     ];
     return items.filter((i) => i.label.toLowerCase().includes(lower));
-  }, [query]);
+  }, [query, access]);
 
   // Flat result list for keyboard navigation
   const allResults = useMemo(() => {
@@ -165,7 +174,7 @@ export function CommandPalette({ open, onClose, onNavigate }) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search pages, users, places..."
+            placeholder={isAdminConsole ? "Search pages, users, places..." : "Search pages..."}
             className="flex-1 bg-transparent text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] text-base outline-none"
           />
           <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-[var(--color-text-muted)] bg-[var(--gray-100)] rounded border border-[var(--gray-200)]">
