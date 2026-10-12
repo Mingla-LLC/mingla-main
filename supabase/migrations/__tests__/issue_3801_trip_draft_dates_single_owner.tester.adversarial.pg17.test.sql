@@ -737,7 +737,7 @@ END $$;
 --    over fixtures in every shape it must leave alone. A copy pasted into this
 --    file would test the copy.
 -- ---------------------------------------------------------------------------
-\set issue_3801_backfill `sed -n '/^DO \$backfill\$$/,/^\$backfill\$;$/p' "$(git rev-parse --show-toplevel)/supabase/migrations/20270817003801_issue_3801_trip_draft_dates_single_owner.sql"`
+\set issue_3801_backfill `sed -n '/^DO \$backfill\$$/,/^\$backfill\$;$/p' "$(git rev-parse --show-toplevel)/supabase/migrations/20270818003801_issue_3801_trip_draft_dates_single_owner.sql"`
 
 CREATE FUNCTION pg_temp.must(p_ok boolean, p_message text) RETURNS void
 LANGUAGE plpgsql AS $$
