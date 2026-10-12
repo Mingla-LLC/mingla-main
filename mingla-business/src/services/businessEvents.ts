@@ -47,6 +47,7 @@ import { setOfferingRefundPolicy } from "./refundPolicyWrites";
 import { parseOfferingRefundPolicy } from "@mingla/offering-rendering/offeringRefundPolicy";
 import { OfferingRefundTermsError } from "../utils/refundPolicyTerms";
 import { coverBasePayload } from "../utils/draftCoverBase";
+import { RsvpRpcError } from "./rsvpRpcFailure";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -1088,7 +1089,12 @@ export const publishBusinessEventDraft = async (
     },
   );
 
-  if (error !== null) throw error;
+  // #3645 — a PostgREST failure is a PLAIN OBJECT. Thrown verbatim, the
+  // wizard's `error instanceof Error` reader turned every publish refusal into
+  // "[object Object]", so no guard reason (stripe_charges_disabled,
+  // event_currency_required, offering_date_past, city_required, …) could ever
+  // match. Re-throw as a real Error with the message byte-identical.
+  if (error !== null) throw new RsvpRpcError(error, "publish_failed");
   const response = data as PublishRpcResponse | null;
   if (response === null) {
     throw new Error("Publish did not return a durable event.");
@@ -1211,7 +1217,12 @@ const callEventDraftLifecycleRpc = async (
   operation: "Unpublish" | "Duplicate",
 ): Promise<EventDraftLifecycleResult> => {
   const { data, error } = await supabase.rpc(rpc, { p_event_id: eventId });
-  if (error !== null) throw error;
+  // #3645 — same plain-object trap as publish: thrown verbatim, the callers'
+  // `error instanceof Error` check hid `event_unpublish_has_commitments`, so
+  // the "cancel it instead" copy was unreachable.
+  if (error !== null) {
+    throw new RsvpRpcError(error, `${operation.toLowerCase()}_failed`);
+  }
   return requireEventDraftLifecycleResult(data, operation);
 };
 
