@@ -600,6 +600,70 @@ test("#2830 T-7.1 the paging job runs for every failure the run can have, and ne
   assert.equal(classifyRunForPage(flat(clean)), null);
 });
 
+// ---------------------------------------------------------------------------
+// The runbook — tester findings F-2 and F-3 on the re-activation section
+// ---------------------------------------------------------------------------
+
+const RUNBOOK = readFileSync(join(REPO, "docs/runbooks/MINGLA_SITES_PILOT.md"), "utf8");
+const ACTIVATION_SCRIPT = readFileSync(join(REPO, "scripts/sites/activate-gogi-pilot.mjs"), "utf8");
+
+function runbookSection(title) {
+  const at = RUNBOOK.indexOf(`\n## ${title}\n`);
+  assert.ok(at >= 0, `the runbook has the section "${title}"`);
+  const rest = RUNBOOK.slice(at + 1);
+  const end = rest.indexOf("\n## ", 1);
+  return (end === -1 ? rest : rest.slice(0, end));
+}
+
+test("#2830 F-2 the runbook no longer asks for a line that carries one of the four values", () => {
+  const section = runbookSection("Re-activating the pilot after a deactivation").replace(/\s+/g, " ");
+  assert.equal(/Paste the success line on the issue/.test(section), false,
+    "the success line contains the site id, which must not be pasted");
+  assert.ok(section.includes("Do not paste the success line whole."));
+  assert.ok(section.includes("It carries the site id, which is one of the four values"));
+});
+
+test("#2830 F-3 the runbook states what activation really requires and how it fails", () => {
+  const section = runbookSection("Re-activating the pilot after a deactivation");
+  const flat = section.replace(/\s+/g, " ");
+  for (const phrase of [
+    "the backup entitlement stamp, the object manifest, and the database backup",
+    "Backup retention on record is at least 7 days.",
+    "Running the command against a pilot that is already active is harmless",
+    "any failure triggers a compensating deactivation, including a refused or lost activation call",
+    "the code reported is `PILOT_DEACTIVATION_FAILED` and the original cause is not printed",
+    '`{"ok":false,"error":"<CODE>"}`',
+    "decodes to exactly 32 bytes",
+    "at least 80 characters with no whitespace",
+    "Last used: 2026-10-12.",
+  ]) assert.ok(flat.includes(phrase), `runbook states: ${phrase}`);
+  assert.equal(/Within 26 hours of that run/.test(flat), false, "the generous wording is gone");
+  // Every code the runbook explains is a code the script can actually print,
+  // and every failure code the script names is explained.
+  const documented = new Set([...section.matchAll(/`((?:PILOT|CANDIDATE|HOST|CORE|INVALID)_[A-Z_]+)`/g)].map((match) => match[1]));
+  const emitted = new Set([...ACTIVATION_SCRIPT.matchAll(/"((?:PILOT|CANDIDATE|HOST|CORE|INVALID)_[A-Z_]+)"/g)].map((match) => match[1]));
+  for (const code of documented) assert.ok(emitted.has(code), `${code} is in the runbook but not in the script`);
+  for (const code of emitted) assert.ok(documented.has(code), `${code} is in the script but not in the runbook`);
+  // What the script enforces on its inputs, read from the script.
+  assert.match(ACTIVATION_SCRIPT, /serviceKey\.length < 80 \|\| \/\\s\/\.test\(serviceKey\)/);
+  assert.match(ACTIVATION_SCRIPT, /candidateSecret\.byteLength !== 32/);
+});
+
+test("#2830 the runbook tells the reader what each page means, by name only", () => {
+  const section = runbookSection("Sites operations alerts");
+  for (const kind of SITES_OPS_PAGE_KINDS.filter((name) => !name.startsWith("CMS_"))) {
+    assert.ok(section.includes(`\`${kind}\``), `runbook explains ${kind}`);
+  }
+  for (const name of ["MINGLA_SITES_OPS_ALERT_TO", "MINGLA_MAIN_RED_ALERT_TO", "RESEND_API_KEY"]) {
+    assert.ok(section.includes(`\`${name}\``), `runbook names ${name}`);
+  }
+  assert.ok(section.includes("SITES_OPS_PAGE_DELIVERY_FAILED"));
+  assert.ok(section.includes("SITES_RECOVERY_EVIDENCE_LEDGER v1"));
+  assert.ok(section.includes("OPERATIONS (not blocking,"));
+  // Names only: no address anywhere in the runbook.
+  assert.equal(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/.test(RUNBOOK), false);
+});
+
 test("#2830 T-7.1 the contract lane runs this suite", () => {
   assert.match(jobBlock("contracts"), /issue_2830_ops_alert_reaches_a_person\.test\.mjs/);
 });
