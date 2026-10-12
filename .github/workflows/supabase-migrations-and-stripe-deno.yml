@@ -1031,6 +1031,19 @@ jobs:
           # the migration file).
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave1_crm_pipelines.implementor.happy.pg17.test.sql
+          # Issue #3802 (Wave 1) — independent tester proof, a different angle:
+          # the full grantee list of every new table and function; callers
+          # whose session and account disagree, or whose access ends in the
+          # middle of a transaction; every direct statement ending in
+          # "permission denied" rather than "zero rows"; request keys across
+          # people and functions; the whole stage table against an
+          # independent rule list; every kind of listing that is and is not
+          # public, compared with what a signed-out visitor can read; the
+          # scheduled run with no signed-in caller; and eight races in real
+          # separate sessions. Runs as `supabase_admin` from the repository
+          # root for the same reasons as the suite above.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave1_crm_pipelines.tester.adversarial.pg17.test.sql
 
           # Issue #2725 Amendment 8 — executable hard-cap proof on the fully
           # replayed PG17 schema. All funding lanes share one serialized $1.00
