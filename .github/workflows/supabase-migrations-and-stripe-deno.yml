@@ -495,6 +495,17 @@ jobs:
           # unregistered .test.sql is a check that carries no information.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3801_trip_draft_dates_single_owner.implementor.happy.pg17.test.sql
+          # Issue #3801 — independent tester. States the rule once ("the theme
+          # holds a publishable pair <=> exactly one master row carries the
+          # same two instants") and attacks it: one date key per patch, every
+          # spelling of empty, hostile values (each must be refused as
+          # `trip_dates_invalid` with nothing changed, or obey the rule), a
+          # stale revision, an operation-id replay, another account, a
+          # published trip, publish with a master row that differs from the
+          # theme, and the backfill re-run from the migration's own text over
+          # fixtures it must leave alone.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3801_trip_draft_dates_single_owner.tester.adversarial.pg17.test.sql
           # Issue #1977 — canonical RSVP draft/guest/contribution owners and
           # the Ari receipt seam. Behavioural against the applied schema.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
