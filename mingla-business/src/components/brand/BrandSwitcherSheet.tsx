@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -50,8 +50,23 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
     brandList.isTrueEmpty ? "create" : "switch",
   );
 
+  // #3645 — the mode is decided when the sheet OPENS (and by the two explicit
+  // controls below), not on every brand-list change. Creating the first brand
+  // makes the list non-empty optimistically; re-deriving the mode from the list
+  // flipped the sheet to "Switch brand" and unmounted BrandCreationFlow after
+  // step 1, so Place, Look, Payouts and the first-offering tiles never showed.
+  // The one list-driven move that stays is switch → create when the list
+  // resolves truly empty after opening (it was still loading at open); that
+  // direction can never unmount a creation flow in progress.
+  const wasVisibleRef = useRef(false);
   useEffect(() => {
-    if (visible) setMode(brandList.isTrueEmpty ? "create" : "switch");
+    const opening = visible && !wasVisibleRef.current;
+    wasVisibleRef.current = visible;
+    if (opening) {
+      setMode(brandList.isTrueEmpty ? "create" : "switch");
+      return;
+    }
+    if (visible && brandList.isTrueEmpty) setMode("create");
   }, [brandList.isTrueEmpty, visible]);
 
   const handlePick = useCallback(
