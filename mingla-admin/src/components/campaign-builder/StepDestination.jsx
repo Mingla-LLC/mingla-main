@@ -7,12 +7,9 @@
  * server-side and rides only in Google's tracking template (PROOF D-P1: the
  * OneLink serves crawlers an app-install interstitial).
  *
- * ISSUE-1002 [multi-destination fan-out] — Wave 4 of #977. The picker is now a
- * CHECKBOX MULTI-SELECT (mirroring the Goal step's goalIds pattern): the operator
- * can select ANY MIX of event pages + the brand page. Selections PERSIST across
- * the Event/Brand tabs (the tab only filters what's shown — it never clears the
- * set). The wizard then fans out one ad per (selected destination × platform).
- * A single selection behaves exactly as before.
+ * toward #3697 Wave 2 (#3707 / A3-11): SINGLE select per campaign. Multi-select
+ * used to fan out N campaigns each carrying the full channel budget (silent
+ * multiply). For another page, Duplicate on Review (Wave 3) — never multi-pick.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -72,18 +69,12 @@ export function StepDestination({ destinations, onDestinationsChange }) {
     return () => clearTimeout(t);
   }, [load, search]);
 
-  // ISSUE-1002: toggle a row in/out of the selection set (the goalIds idiom).
-  // Selections from BOTH tabs accumulate — switching tabs never clears the set,
-  // so "2 event pages + the brand page" is one continuous selection.
+  // toward #3697 Wave 2 (#3707): single select — tap again to clear, tap another to replace.
   const toggle = useCallback(
     (row) => {
       const key = destKey(row);
       const isSelected = selected.some((d) => destKey(d) === key);
-      onDestinationsChange(
-        isSelected
-          ? selected.filter((d) => destKey(d) !== key)
-          : [...selected, row],
-      );
+      onDestinationsChange(isSelected ? [] : [row]);
     },
     [selected, onDestinationsChange],
   );
@@ -93,9 +84,9 @@ export function StepDestination({ destinations, onDestinationsChange }) {
       <div>
         <h2 className="text-lg font-semibold">Where are we sending people?</h2>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Pick one or more — every selected page gets its own ad on every channel. Live public
-          pages only; each platform reviews the destination and rejects broken, private or past
-          pages.
+          Pick one page for this campaign. Live public pages only; each platform reviews the
+          destination and rejects broken, private or past pages. For another page, create a
+          separate campaign with its own budget.
         </p>
       </div>
 

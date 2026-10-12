@@ -266,11 +266,13 @@ describe("channel plan — budget floor dollar boundaries", () => {
     assert.equal(validateBudget({ totalDailyCents: 500, channelRows: rows }).length, 0);
   });
 
-  it("$4.99 with Google present → Google-only (Google has NO invented floor — A4.0(4)); truth pinned", () => {
+  // [TEST-MOD-APPROVED #3697] Wave 2 D1: Google floor is $0 (not null); Reddit $5.
+  // $4.99 still clears Google-only; Meta stays excluded by its $5 floor.
+  it("$4.99 with Google present → Google-only (Google $0 money floor — D1); truth pinned", () => {
     const rows = frame(499, ["meta", "google"]);
     assert.deepEqual(rows.filter((r) => r.eligible).map((r) => r.platform), ["google"]);
-    assert.equal(channelFloorCents("google", {}), null, "never invent a Google floor");
-    assert.equal(channelFloorCents("reddit", {}), null, "never invent a Reddit floor");
+    assert.equal(channelFloorCents("google", {}), 0, "Google has no money minimum (D1)");
+    assert.equal(channelFloorCents("reddit", {}), 500, "Reddit D1 floor is $5/day");
   });
 
   it("split conserves ODD cent totals exactly (no cent minted or lost)", () => {

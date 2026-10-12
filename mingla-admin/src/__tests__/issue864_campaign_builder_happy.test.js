@@ -293,10 +293,12 @@ describe("budget rules", () => {
     assert.equal(metaFloorCents({ extra: {} }, "LINK_CLICKS"), null, "no floors stored → null (server 424s, never a hardcoded table)");
   });
 
-  it("per-channel floors: TikTok $20/day; Reddit has NO invented floor", () => {
-    assert.equal(channelFloorCents("tiktok", {}), 2000);
-    assert.equal(channelFloorCents("reddit", {}), null, "the OpenAPI encodes none — let the API 400");
-    assert.equal(channelFloorCents("google", {}), null);
+  // [TEST-MOD-APPROVED #3697] Wave 2 D1 (Ads Design Contract v1.3): TikTok $50,
+  // Reddit $5, Google $0 money floor (3-day total rule stays separate).
+  it("per-channel floors: TikTok $50/day; Reddit $5; Google $0", () => {
+    assert.equal(channelFloorCents("tiktok", {}), 5000);
+    assert.equal(channelFloorCents("reddit", {}), 500);
+    assert.equal(channelFloorCents("google", {}), 0);
     assert.equal(channelFloorCents("meta", { connection: metaConn, metaGoal: "LINK_CLICKS" }), 500);
   });
 

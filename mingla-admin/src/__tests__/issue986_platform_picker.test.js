@@ -83,7 +83,9 @@ describe("ISSUE-986 — all 5 platforms are candidates; every eligible one is se
 });
 
 describe("ISSUE-986 — selecting a subset builds ONLY those platforms", () => {
-  const rows = planChannels({ ...base, totalDailyCents: 4000 });
+  // [TEST-MOD-APPROVED #3697] Wave 2 D1: TikTok floor $50 — budget must clear it
+  // so unpicked platforms are tagged deselected (not floor-ineligible).
+  const rows = planChannels({ ...base, totalDailyCents: 10000 });
 
   it("picking [meta, google] leaves only meta+google eligible; the split funds only them", () => {
     const planned = applyChannelSelection({ channelRows: rows, selectedPlatforms: ["meta", "google"] });
@@ -96,7 +98,7 @@ describe("ISSUE-986 — selecting a subset builds ONLY those platforms", () => {
       assert.equal(row.deselected, true, `${p} is tagged deselected`);
       assert.ok(/not selected/i.test(row.excludedReason), `${p} shows the not-selected reason`);
     }
-    const funded = fundedPlatforms(planned, { totalDailyCents: 4000, strategy: "auto" });
+    const funded = fundedPlatforms(planned, { totalDailyCents: 10000, strategy: "auto" });
     assert.deepEqual(funded, ["google", "meta"], "the create loop funds ONLY the picked platforms");
   });
 
@@ -160,7 +162,8 @@ describe("ISSUE-986 — deselecting Meta REDIRECTS the budget to the picked plat
 });
 
 describe("ISSUE-986 — a special ad category excludes/warns the 4 platforms that can't declare it", () => {
-  const rows = planChannels({ ...base, totalDailyCents: 4000 });
+  // [TEST-MOD-APPROVED #3697] Wave 2 D1: ≥ TikTok $50 so all five start eligible.
+  const rows = planChannels({ ...base, totalDailyCents: 10000 });
   const eligiblePlatforms = rows.filter((r) => r.eligible).map((r) => r.platform);
 
   it("only Meta can declare a special ad category", () => {
@@ -232,7 +235,11 @@ describe("ISSUE-986 — component wiring (fails-on-revert source assertions)", (
     const src = read(path.join(ADMIN_SRC, "pages/CampaignBuilderPage.jsx"));
     assert.ok(src.includes("selectedPlatforms"), "the wizard holds the picked set in state");
     assert.ok(src.includes("applyChannelSelection("), "selection is folded into the channel rows");
-    assert.ok(src.includes("splitBudget({ totalDailyCents: budget.totalDailyCents, channelRows: plannedRows"), "the split runs across the picked (planned) rows, not the full eligible set");
+    // [TEST-MOD-APPROVED #3697] Wave 2 lifetime planning uses planningDailyCents.
+    assert.ok(
+      src.includes("splitBudget({ totalDailyCents: planningDailyCents, channelRows: plannedRows"),
+      "the split runs across the picked (planned) rows, not the full eligible set",
+    );
     assert.ok(src.includes("complianceExclusions("), "the compliance guard is wired into the plan");
     assert.ok(src.includes("channelRows={plannedRows}"), "downstream steps consume the picked (planned) rows");
   });

@@ -30,6 +30,12 @@ import {
   type AdConnectionRow,
   getAdapter,
 } from "../_shared/adChannel.ts";
+import { shouldPauseForCap } from "../_shared/adMoney.ts";
+import {
+  endDatePassed,
+  startDateNotReached,
+  sumSpendCents,
+} from "../_shared/adSpendSync.ts";
 import { redditLaunchWarning } from "../_shared/reddit.ts";
 import { snapchatLaunchWarning } from "../_shared/snapchat.ts";
 import { tiktokLaunchWarning } from "../_shared/tiktok.ts";
@@ -122,6 +128,57 @@ serve(async (req: Request): Promise<Response> => {
 
   const adapter = getAdapter(campaign.platform);
   const fromStatus = String(campaign.status ?? "PAUSED");
+
+  // toward #3697 Wave 2: launch must not reactivate before starts_at, past
+  // ends_at, or already at/over the 98% hard-cap (spend feed is source of truth).
+  if (action === "launch") {
+    const startsAt = typeof campaign.starts_at === "string"
+      ? campaign.starts_at
+      : null;
+    if (startDateNotReached(startsAt)) {
+      return json({
+        error: "launch_blocked",
+        detail: "start_date_not_reached",
+        starts_at: startsAt,
+      }, 409);
+    }
+    const endsAt = typeof campaign.ends_at === "string" ? campaign.ends_at : null;
+    if (endDatePassed(endsAt)) {
+      return json({
+        error: "launch_blocked",
+        detail: "end_date_passed",
+        ends_at: endsAt,
+      }, 409);
+    }
+    const capCents = typeof campaign.cap_cents === "number" ? campaign.cap_cents : null;
+    if (capCents != null && capCents > 0) {
+      const { data: spendRows, error: spendErr } = await supabase
+        .from("ad_spend_daily")
+        .select("spend_cents")
+        .eq("campaign_id", campaign.id);
+      if (spendErr) {
+        return json({
+          error: "launch_blocked",
+          detail: "spend_read_failed",
+          message: spendErr.message,
+        }, 503);
+      }
+      const totalSpend = sumSpendCents(
+        (spendRows ?? []).map((row: { spend_cents?: unknown }) => ({
+          spend_date: "1970-01-01",
+          spend_cents: Number(row.spend_cents) || 0,
+        })),
+      );
+      if (shouldPauseForCap(totalSpend, capCents)) {
+        return json({
+          error: "launch_blocked",
+          detail: "hard_cap_reached",
+          total_spend_cents: totalSpend,
+          cap_cents: capCents,
+        }, 409);
+      }
+    }
+  }
 
   try {
     if (action === "launch") {

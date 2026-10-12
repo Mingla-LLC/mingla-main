@@ -317,6 +317,10 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // invite OneLink attach). Census pin only — meaning still lives in
   // auditFunctionSecretContract().
   //
+  // [TEST-MOD-APPROVED #3697] 240 -> 241: Wave 2 adds `admin-ad-spend-sync`
+  // (hourly spend feed + hard-cap pause). Census pin only — meaning still
+  // lives in auditFunctionSecretContract().
+  //
   // Note for #3528: this line is a COUNT, and a count signals "something
   // changed", not "something is wrong". The assertion that carries the meaning
   // is the `deepEqual(auditFunctionSecretContract(), [])` above it, which is
@@ -327,8 +331,8 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // Proof this replacement BITES rather than merely counting higher: remove the
   // new function's contract entry and the deepEqual above fails with
   // `contract:function_set_mismatch` before this line is ever reached.
-  // Census after Wave 2.5 edge trio (request/confirm/resolve).
-  assert.equal(Object.keys(contract.functions).length, 240);
+  // Census after #3697 Wave 2 spend-sync function.
+  assert.equal(Object.keys(contract.functions).length, 241);
   assert.equal(manifest.secrets.length, 88);
 });
 

@@ -231,7 +231,9 @@ describe("ISSUE-1002 · fan-out is N destinations × M platforms (one ad each, o
 describe("ISSUE-1002 · launchSummary renders the multi-destination line", () => {
   const base = { channelRows: [], allocations: [], goalIds: [], creative: null, totalDailyCents: 0 };
 
-  it("N>1 destinations → a 'N destinations — …' line naming each", () => {
+  // [TEST-MOD-APPROVED #3697] Wave 2 kills silent multi-dest budget multiply:
+  // N>1 is blocked copy, not a "N destinations — …" fan-out line.
+  it("N>1 destinations → blocked one-page message (Wave 2 supersedes multi-dest line)", () => {
     const summary = buildLaunchSummary({
       ...base,
       destinations: [
@@ -239,9 +241,8 @@ describe("ISSUE-1002 · launchSummary renders the multi-destination line", () =>
         { title: "Sunday Jazz", dest_url: "https://host.usemingla.com/e/smokerhythm/sunday-jazz" },
       ],
     });
-    assert.match(summary.destinationLine, /2 destinations/);
-    assert.match(summary.destinationLine, /Friday Live/);
-    assert.match(summary.destinationLine, /Sunday Jazz/);
+    assert.match(String(summary.destinationLine), /one page|Multi-select/i);
+    assert.doesNotMatch(String(summary.destinationLine), /2 destinations/);
   });
 
   it("a single destination (via destinations[] OR legacy destination) renders '{title} — {url}' — backward compat", () => {

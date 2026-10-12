@@ -136,9 +136,14 @@ export const MAX_BUDGET_CENTS = Math.floor(Number.MAX_SAFE_INTEGER / 10_000);
  * THE single cents→platform-unit conversion (A4.a). Mandatory unit tests:
  * $5.00 (500¢) → 5,000,000 micro and $20.00 (2,000¢) → 20,000,000 micro.
  */
-export function centsToPlatformBudget(platform: Platform, cents: number): number {
+export function centsToPlatformBudget(
+  platform: Platform,
+  cents: number,
+): number {
   if (!Number.isInteger(cents) || cents <= 0) {
-    throw new Error(`centsToPlatformBudget: cents must be a positive integer; got ${cents}`);
+    throw new Error(
+      `centsToPlatformBudget: cents must be a positive integer; got ${cents}`,
+    );
   }
   if (cents > MAX_BUDGET_CENTS) {
     throw new Error(
@@ -156,7 +161,9 @@ export function centsToPlatformBudget(platform: Platform, cents: number): number
       return cents * 10_000;
     default: {
       const never: never = platform;
-      throw new Error(`centsToPlatformBudget: unknown platform ${String(never)}`);
+      throw new Error(
+        `centsToPlatformBudget: unknown platform ${String(never)}`,
+      );
     }
   }
 }
@@ -217,7 +224,9 @@ export const REDDIT_CTA_MAP: Record<MinglaOffering, string> = {
 };
 
 /** Google RSA has no CTA field (blueprint §1.6) — google is deliberately absent. */
-export const PLATFORM_CTA_MAPS: Partial<Record<Platform, Record<MinglaOffering, string>>> = {
+export const PLATFORM_CTA_MAPS: Partial<
+  Record<Platform, Record<MinglaOffering, string>>
+> = {
   meta: META_CTA_MAP,
   tiktok: TIKTOK_CTA_MAP,
   snapchat: SNAPCHAT_CTA_MAP,
@@ -298,7 +307,10 @@ export const META_OBJECTIVE_GOAL_MATRIX: Record<string, readonly string[]> = {
   ],
 };
 
-export function isMetaGoalValidForObjective(objective: string, goal: string): boolean {
+export function isMetaGoalValidForObjective(
+  objective: string,
+  goal: string,
+): boolean {
   const goals = META_OBJECTIVE_GOAL_MATRIX[objective];
   if (!goals) return false;
   return goals.includes(goal);
@@ -317,7 +329,11 @@ export const META_PIXEL_GATED_GOALS: readonly string[] = [
 // .minimum_budgets. This maps an optimization_goal to its floor CATEGORY
 // (LINK_CLICKS is high-frequency ⇒ $5/day floor, not $1 — PROOF M-P8).
 
-export type MetaBudgetCategory = "imp" | "video_views" | "high_freq" | "low_freq";
+export type MetaBudgetCategory =
+  | "imp"
+  | "video_views"
+  | "high_freq"
+  | "low_freq";
 
 export function metaBudgetCategoryForGoal(goal: string): MetaBudgetCategory {
   switch (goal) {
@@ -351,8 +367,13 @@ export function metaBudgetCategoryForGoal(goal: string): MetaBudgetCategory {
 export interface CreateCampaignInput {
   name: string;
   objective: string;
-  /** Minor units (cents). Present ⇒ CBO (budget on the campaign). */
+  /** Minor units (cents). Present ⇒ CBO daily (budget on the campaign). */
   dailyBudgetCents?: number;
+  /**
+   * toward #3697 Wave 2 — CBO lifetime budget in minor units. Mutually
+   * exclusive with dailyBudgetCents at the Meta wire boundary.
+   */
+  lifetimeBudgetCents?: number;
   /**
    * QA P1-1 (subcode 1815857, proven live): Meta REQUIRES an explicit bid
    * strategy or the ad-set create dies with "Bid amount required". Adapters
@@ -371,6 +392,12 @@ export interface CreateAdSetInput {
   billingEvent: string;
   /** Minor units (cents). Only in ABO (campaign has no CBO budget). */
   budgetCents?: number;
+  /** toward #3697 Wave 2 — ABO lifetime budget (Meta lifetime_budget). */
+  lifetimeBudgetCents?: number;
+  /** toward #3697 Wave 2 — Meta end_time (required with lifetime budgets). */
+  endTime?: string;
+  /** toward #3697 Wave 2 — Meta start_time. */
+  startTime?: string;
   targeting: Record<string, unknown>;
   validateOnly?: boolean;
 }
@@ -443,7 +470,9 @@ export interface ChannelAdapter {
   createCreative?(
     conn: AdConnectionRow,
     input: CreateCreativeInput,
-  ): Promise<{ externalCreativeId?: string; postId?: string; profileId?: string }>;
+  ): Promise<
+    { externalCreativeId?: string; postId?: string; profileId?: string }
+  >;
 
   createAd(
     conn: AdConnectionRow,
@@ -487,7 +516,10 @@ export interface ChannelAdapter {
    * needs it). meta → DELETE /{campaign_id} (cascades the ad set); reddit →
    * PATCH configured_status:"DELETED" (no DELETE verb exists — R-5).
    */
-  rollbackCampaign?(conn: AdConnectionRow, campaignExternalId: string): Promise<void>;
+  rollbackCampaign?(
+    conn: AdConnectionRow,
+    campaignExternalId: string,
+  ): Promise<void>;
 
   /**
    * QA P2-5 (proven live): a platform creative can be an ACCOUNT-level object
@@ -496,7 +528,10 @@ export interface ChannelAdapter {
    * platforms whose creative is campaign-scoped or inline (TikTok) omit it;
    * when absent/failing, the residue id is surfaced for the audit row.
    */
-  rollbackCreative?(conn: AdConnectionRow, creativeExternalId: string): Promise<void>;
+  rollbackCreative?(
+    conn: AdConnectionRow,
+    creativeExternalId: string,
+  ): Promise<void>;
 }
 
 /** Opaque per-platform authed client (Meta: token + resolved env config). */

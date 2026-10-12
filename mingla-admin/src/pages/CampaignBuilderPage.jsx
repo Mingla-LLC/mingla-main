@@ -46,7 +46,7 @@ import { applyChannelSelection, planChannels, splitBudget } from "../lib/adBuild
 import { complianceExclusions } from "../lib/adBuilder/compliance";
 import { validateAudience, DEFAULT_AGE_MAX, DEFAULT_AGE_MIN, DEFAULT_COUNTRIES } from "../lib/adBuilder/audienceRules";
 import { DEFAULT_RADIUS_MI } from "../lib/adBuilder/targeting";
-import { validateBudget } from "../lib/adBuilder/budgetRules";
+import { allocateLifetimeCents, calendarDaysBetween, validateBudget } from "../lib/adBuilder/budgetRules";
 import { validateCopy } from "../lib/adBuilder/copyRules";
 import { runPolicyPrecheck } from "../lib/adBuilder/policyLinter";
 import { partitionFundedCreative } from "../lib/adBuilder/creativeGate";
@@ -119,7 +119,18 @@ export function CampaignBuilderPage() {
     ageMax: DEFAULT_AGE_MAX,
     gender: "all",
   });
-  const [budget, setBudget] = useState({ totalDailyCents: 0, strategy: "auto", allowlist: null });
+  const [budget, setBudget] = useState({
+    mode: "daily",
+    totalDailyCents: 0,
+    totalLifetimeCents: 0,
+    startsAt: null,
+    endsAt: null,
+    startsAtLocal: "",
+    endsAtLocal: "",
+    capCents: null,
+    strategy: "auto",
+    allowlist: null,
+  });
   const [creative, setCreative] = useState({
     // ISSUE-995 [Campaign Builder creative] Wave 3 — media kind. "image" keeps
     // the existing byte-upload flow; "video" references an already-hosted asset
@@ -203,11 +214,6 @@ export function CampaignBuilderPage() {
   // across retries so every (platform × destination) row shares it. Only attached
   // when there is more than one destination — a single-destination build carries
   // no group (NULL), keeping that path byte-identical.
-  const destGroupIdRef = useRef(null);
-  const destGroupId = () => {
-    if (!destGroupIdRef.current) destGroupIdRef.current = crypto.randomUUID();
-    return destGroupIdRef.current;
-  };
 
   const dirty = Boolean(
     destinations.length > 0 || creative.publicUrl || copy.primary || budget.totalDailyCents > 0,
@@ -273,18 +279,28 @@ export function CampaignBuilderPage() {
   // disagree. (Traffic wins over awareness for the two live goals, in any click
   // order — the valid OUTCOME_TRAFFIC / LINK_CLICKS pair.)
   const metaGoal = resolveMetaObjective(goalIds).optimization_goal;
+  // Lifetime: plan floors against the daily equivalent so channel eligibility
+  // matches create-time D1 checks (not a zero daily while the total is large).
+  const planningDailyCents = useMemo(() => {
+    if (budget.mode === "lifetime") {
+      const days = calendarDaysBetween(budget.startsAt, budget.endsAt);
+      if (!days || days < 1) return 0;
+      return Math.floor((budget.totalLifetimeCents || 0) / days);
+    }
+    return budget.totalDailyCents;
+  }, [budget.mode, budget.totalDailyCents, budget.totalLifetimeCents, budget.startsAt, budget.endsAt]);
   const channelRows = useMemo(
     () =>
       planChannels({
         preflightRows: preflightRows ?? [],
         goalIds,
         countries: audience.countries,
-        totalDailyCents: budget.totalDailyCents,
+        totalDailyCents: planningDailyCents,
         allowlist: budget.allowlist,
         connections,
         metaGoal,
       }),
-    [preflightRows, goalIds, audience.countries, budget.totalDailyCents, budget.allowlist, connections, metaGoal],
+    [preflightRows, goalIds, audience.countries, planningDailyCents, budget.allowlist, connections, metaGoal],
   );
   // ── ISSUE-986: the platform picker resolves the channel set ──
   // The candidate set (`channelRows`) is what the picker renders. The COMPLIANCE
@@ -323,12 +339,14 @@ export function CampaignBuilderPage() {
     });
   }, [eligiblePlatforms]);
 
+  // Lifetime mode: split the daily equivalent so strategy/weights still apply,
+  // then allocateLifetimeCents conserves the entered total at create.
   const allocations = useMemo(
     // ISSUE-986: split across the PICKED channel set (plannedRows) — never the
     // full eligible set. The picker is the single source of truth for who gets
     // funded; a deselected/compliance-excluded channel is already ineligible here.
-    () => splitBudget({ totalDailyCents: budget.totalDailyCents, channelRows: plannedRows, strategy: budget.strategy }),
-    [budget.totalDailyCents, budget.strategy, plannedRows],
+    () => splitBudget({ totalDailyCents: planningDailyCents, channelRows: plannedRows, strategy: budget.strategy }),
+    [planningDailyCents, budget.strategy, plannedRows],
   );
 
   // ISSUE-980 [Campaign Builder clarity] finding #3: the SAME coherent
@@ -522,12 +540,16 @@ export function CampaignBuilderPage() {
       case "goal":
         return goalIds.length > 0;
       case "destination":
-        return destinations.length > 0;
+        return destinations.length === 1;
       case "audience":
         return validateAudience(audience).length === 0;
-      case "budget":
-        return validateBudget({ totalDailyCents: budget.totalDailyCents, channelRows }).length === 0 &&
+      case "budget": {
+        const mode = budget.mode === "lifetime" ? "lifetime" : "daily";
+        const amount = mode === "lifetime" ? budget.totalLifetimeCents : budget.totalDailyCents;
+        if (mode === "lifetime" && !budget.endsAt) return false;
+        return validateBudget({ totalDailyCents: amount || 0, channelRows }).length === 0 &&
           allocations.length > 0;
+      }
       case "creative": {
         // ISSUE-995: a video creative must be RECORDED (its bytes live off-
         // client, so the library row id is the only way to reference it);
@@ -619,8 +641,51 @@ export function CampaignBuilderPage() {
     // out to one ad per (destination × platform), each with its own landing URL
     // and pid attribution. A single-destination selection runs exactly one
     // destination iteration, keyed by bare platform → byte-identical to before.
-    const multiDest = destinations.length > 1;
-    const groupId = multiDest ? destGroupId() : null;
+    // toward #3697 Wave 2 (#3707): one destination per create — never silent budget multiply.
+    if (destinations.length > 1) {
+      addToast({
+        variant: "error",
+        title: "One page per campaign",
+        message: "Pick a single destination. Create a separate campaign for another page.",
+      });
+      if (validateOnly) setValidatingShapes(false);
+      else setSubmitting(false);
+      return;
+    }
+    if (budget.mode === "lifetime" && !budget.endsAt) {
+      addToast({
+        variant: "error",
+        title: "End date required",
+        message: "A total (lifetime) budget needs an end date.",
+      });
+      if (validateOnly) setValidatingShapes(false);
+      else setSubmitting(false);
+      return;
+    }
+    if (
+      budget.mode === "lifetime" &&
+      allocations.some((a) => a.platform !== "meta")
+    ) {
+      addToast({
+        variant: "error",
+        title: "Lifetime is Meta-only",
+        message: "Deselect other platforms or switch to Daily before creating.",
+      });
+      if (validateOnly) setValidatingShapes(false);
+      else setSubmitting(false);
+      return;
+    }
+    // Conserve the admin-entered lifetime total (avoid floor(total/days)*days loss).
+    const lifetimeByPlatform = budget.mode === "lifetime"
+      ? new Map(
+        allocateLifetimeCents(allocations, budget.totalLifetimeCents || 0).map((row) => [
+          row.platform,
+          row.amountCents,
+        ]),
+      )
+      : null;
+    const multiDest = false;
+    const groupId = null;
     const baseName = name || suggestCampaignName({ brandName: firstDestination?.brand_name, title: firstDestination?.title });
     for (const dest of destinations) {
       const destSlot = `${dest.page_type}:${dest.id}`;
@@ -639,6 +704,7 @@ export function CampaignBuilderPage() {
         const meta = { platform, destTitle: dest.title, multiDest };
         if (results[resultKey]?.campaign) continue; // idempotent per session
         if (creativeExcluded.has(platform)) continue; // excluded — build the passing ones
+        const lifetimeAmount = lifetimeByPlatform?.get(platform) ?? null;
         const payload = buildCreatePayload(platform, {
           lane,
           name: perCallName,
@@ -648,7 +714,18 @@ export function CampaignBuilderPage() {
           // and payload.js emits the destinations[] array + destination_group_id.
           destinationGroupId: groupId,
           audience,
-          budget: { dailyCentsForChannel: allocation.dailyCents },
+          budget: {
+            dailyCentsForChannel: allocation.dailyCents,
+            mode: budget.mode === "lifetime" ? "lifetime" : "daily",
+            amountCents: budget.mode === "lifetime" && lifetimeAmount != null
+              ? lifetimeAmount
+              : allocation.dailyCents,
+            capCents: budget.mode === "lifetime" && lifetimeAmount != null
+              ? lifetimeAmount
+              : (budget.capCents ?? null),
+            startsAt: budget.startsAt,
+            endsAt: budget.endsAt,
+          },
           creative: {
             // ISSUE-995: kind drives the payload media descriptor — video rides
             // on the library ref (creative_library_id), image on the inline URL.

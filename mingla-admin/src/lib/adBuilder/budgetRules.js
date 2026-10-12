@@ -50,25 +50,25 @@ export function metaFloorCents(connection, goal) {
 }
 
 /**
- * Per-channel floor in cents (blueprint §1.4 floor table):
+ * Per-channel floor in cents (Ads Design Contract v1.3 D1 / #3709):
  *  - Meta: per-CATEGORY from the connection row (never hardcoded).
- *  - TikTok: $20/day per ad group (confirmed verbatim).
- *  - Snapchat: $5/day squad ($20/day campaign — we build one squad).
- *  - Google: NO hard API floor; practical $5–10/day → floor null, viability 500¢.
- *  - Reddit: NO floor in the OpenAPI — never invent one; let the API 400.
+ *  - TikTok: $50/day campaign floor (one ad group per host campaign).
+ *  - Snapchat: $20/day campaign floor (squad min $5; campaign binds).
+ *  - Reddit: $5/day.
+ *  - Google: $0 money floor (3-day total-budget rule is separate).
  */
 export function channelFloorCents(platform, { connection = null, metaGoal = "LINK_CLICKS" } = {}) {
   switch (platform) {
     case "meta":
       return metaFloorCents(connection, metaGoal);
     case "tiktok":
-      return 2000;
+      return 5000;
     case "snapchat":
-      return 500;
+      return 2000;
     case "google":
-      return null; // no hard API floor — practical guidance only
+      return 0;
     case "reddit":
-      return null; // the OpenAPI encodes none — do not hardcode $5/day
+      return 500;
     default:
       return null;
   }
@@ -76,11 +76,86 @@ export function channelFloorCents(platform, { connection = null, metaGoal = "LIN
 
 export function floorLabel(platform, floorCents) {
   if (typeof floorCents === "number") {
+    if (floorCents === 0 && platform === "google") {
+      return "no money minimum (total budgets need ≥3 days)";
+    }
     return `$${(floorCents / 100).toFixed(2)}/day`;
   }
-  if (platform === "google") return "no hard minimum (practical $5–10/day)";
-  if (platform === "reddit") return "no published minimum";
+  if (platform === "google") return "no money minimum (total budgets need ≥3 days)";
   return "unknown until connected";
+}
+
+/** Inclusive calendar days between ISO datetimes (UTC date parts); null if incomplete. */
+export function calendarDaysBetween(startsAt, endsAt) {
+  if (!startsAt || !endsAt) return null;
+  const start = Date.parse(startsAt);
+  const end = Date.parse(endsAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+  const startDay = Date.UTC(
+    new Date(start).getUTCFullYear(),
+    new Date(start).getUTCMonth(),
+    new Date(start).getUTCDate(),
+  );
+  const endDay = Date.UTC(
+    new Date(end).getUTCFullYear(),
+    new Date(end).getUTCMonth(),
+    new Date(end).getUTCDate(),
+  );
+  return Math.floor((endDay - startDay) / 86_400_000) + 1;
+}
+
+/**
+ * Split a lifetime total across daily allocations so the cents sum exactly
+ * to `totalLifetimeCents` (no floor(total/days)*days loss).
+ * @param {Array<{platform: string, dailyCents: number}>} allocations
+ * @param {number} totalLifetimeCents
+ * @returns {Array<{platform: string, dailyCents: number, amountCents: number}>}
+ */
+export function allocateLifetimeCents(allocations = [], totalLifetimeCents = 0) {
+  const total = Math.max(0, Math.floor(Number(totalLifetimeCents) || 0));
+  const rows = Array.isArray(allocations) ? allocations : [];
+  if (rows.length === 0) return [];
+  const dailySum = rows.reduce((s, a) => s + Math.max(0, Math.floor(Number(a.dailyCents) || 0)), 0);
+  if (dailySum <= 0 || total <= 0) {
+    return rows.map((a) => ({
+      platform: a.platform,
+      dailyCents: Math.max(0, Math.floor(Number(a.dailyCents) || 0)),
+      amountCents: 0,
+    }));
+  }
+  let remaining = total;
+  return rows.map((a, i) => {
+    const daily = Math.max(0, Math.floor(Number(a.dailyCents) || 0));
+    const amountCents = i === rows.length - 1
+      ? remaining
+      : Math.floor((total * daily) / dailySum);
+    if (i < rows.length - 1) remaining -= amountCents;
+    return { platform: a.platform, dailyCents: daily, amountCents };
+  });
+}
+
+/**
+ * D1 sum across picked platforms (Admin = ad budget, no 15% fee).
+ * mode=daily → days=1; mode=lifetime → × schedule days.
+ */
+export function computeAdminMinimumCents({
+  platforms = [],
+  mode = "daily",
+  startsAt = null,
+  endsAt = null,
+  connection = null,
+  metaGoal = "LINK_CLICKS",
+} = {}) {
+  const days = mode === "lifetime" ? (calendarDaysBetween(startsAt, endsAt) ?? 1) : 1;
+  let total = 0;
+  const breakdown = [];
+  for (const platform of platforms) {
+    const perDay = channelFloorCents(platform, { connection, metaGoal }) ?? 0;
+    const subtotal = perDay * days;
+    breakdown.push({ platform, perDayCents: perDay, days, subtotalCents: subtotal });
+    total += subtotal;
+  }
+  return { minBudgetCents: total, days, breakdown };
 }
 
 // ── Pacing truths (A4.e — honest badges, exact figures) ──────────────────────
@@ -132,9 +207,11 @@ export function validateBudget({ totalDailyCents, channelRows }) {
   }
   const eligible = channelRows.filter((r) => r.eligible);
   if (eligible.length === 0) {
+    // Ignore $0 / null floors (Google has no money minimum) so the cheapest
+    // positive platform floor drives the message — never "$0.00/day on Google".
     const floors = channelRows
       .map((r) => ({ label: r.label, floorCents: r.floorCents }))
-      .filter((r) => typeof r.floorCents === "number")
+      .filter((r) => typeof r.floorCents === "number" && r.floorCents > 0)
       .sort((a, b) => a.floorCents - b.floorCents);
     if (floors.length > 0 && totalDailyCents < floors[0].floorCents) {
       errors.push(
