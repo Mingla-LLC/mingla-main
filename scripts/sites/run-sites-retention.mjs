@@ -79,6 +79,8 @@ export function retentionEnvelope(env, {
 }
 
 export const RETENTION_STUCK_HOURS = 72;
+/** Under the retention job's 10-minute limit, so a hung sweep still reports. */
+export const RETENTION_REQUEST_TIMEOUT_MS = 8 * 60 * 1000;
 const REPORT_KEYS = [
   "attempted", "failed", "failure_classes", "oldest_overdue_hours",
   "scanned_jobs", "scanned_media", "stages", "truncated", "verdict", "version",
@@ -170,6 +172,11 @@ export async function runSitesRetention({
     body,
     cache: "no-store",
     redirect: "error",
+    // #2830 (tester finding F-5) — a CMS that accepts the request and never
+    // answers used to end as the job's own 10-minute kill, reported only as
+    // "the retention job did not report". Stopping here first means the sweep
+    // fails as a sweep, with a code, inside the job's time limit.
+    signal: AbortSignal.timeout(RETENTION_REQUEST_TIMEOUT_MS),
   });
   const value = await response.json().catch(() => null);
   const data = value?.data;
@@ -214,7 +221,10 @@ export async function runSitesRetention({
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   runSitesRetention().catch((error) => {
-    const code = error?.code || error?.message || "RETENTION_SWEEP_FAILED";
+    // #2830 (tester finding F-7) — the same vetted code on both lines. This
+    // line used to print `error.code || error.message` as given, which is free
+    // text for anything this script did not raise itself.
+    const code = retentionFailureCode(error);
     process.stderr.write(`${JSON.stringify({ ok: false, error: code })}\n`);
     // #2830 — this entrypoint used to exit 1 having written no classification,
     // and "no classification" is read as "deactivate the pilot". From

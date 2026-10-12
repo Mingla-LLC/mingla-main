@@ -1150,3 +1150,54 @@ test("#2830 F-8 only a code-shaped value leaves the classify step, and the verdi
     assert.equal(runInlineStep(classifyStep, { SITES_RECOVERY_CLASSIFICATION_PATH: path }).outputs.code, code);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Tester findings F-5 and F-7 (slice 2) — the retention runner cannot hang
+// past its job, and prints only a vetted code
+// ---------------------------------------------------------------------------
+
+import {
+  RETENTION_REQUEST_TIMEOUT_MS as RETENTION_REQUEST_TIMEOUT_MS_2830,
+  runSitesRetention as runSitesRetention2830,
+} from "../run-sites-retention.mjs";
+
+test("#2830 F-7 the retention runner prints one vetted code, never the error as given", () => {
+  const freeText = "connect ECONNREFUSED 10.0.0.7:443 token=abc";
+  const thrown = runRetentionCli({ fetchMode: "throw", body: freeText });
+  assert.equal(thrown.status, 1);
+  assert.equal(
+    thrown.stderr,
+    '{"ok":false,"error":"RETENTION_SWEEP_FAILED"}\nSITES_RETENTION_FAILED code=RETENTION_SWEEP_FAILED\n',
+  );
+  assert.equal(thrown.stderr.includes("ECONNREFUSED"), false);
+  // A code the script raised itself still comes through on both lines.
+  const own = runRetentionCli({ origin: "https://evil.invalid" });
+  assert.equal(
+    own.stderr,
+    '{"ok":false,"error":"CMS_ORIGIN_MISMATCH"}\nSITES_RETENTION_FAILED code=CMS_ORIGIN_MISMATCH\n',
+  );
+});
+
+test("#2830 F-5 the sweep request carries a time limit shorter than the job's", async () => {
+  const retention = jobs.get("retention");
+  const jobMinutes = Number(/^ {4}timeout-minutes: (\d+)$/m.exec(retention.head)[1]);
+  assert.ok(RETENTION_REQUEST_TIMEOUT_MS_2830 < jobMinutes * 60 * 1000,
+    "a hung sweep must fail as a sweep before the job is killed");
+  assert.ok(RETENTION_REQUEST_TIMEOUT_MS_2830 >= 5 * 60 * 1000, "and a slow, healthy sweep is not cut short");
+  const env = {
+    SITES_PILOT_SITE_ID: SITE_ID,
+    SITES_CMS_ORIGIN: "https://studio.sites.usemingla.com",
+    MINGLA_CORE_TO_CMS_CURRENT_KID: "core-key-v1",
+    MINGLA_CORE_TO_CMS_CURRENT_KEY_B64: Buffer.alloc(32, 4).toString("base64"),
+  };
+  let seen;
+  await assert.rejects(() => runSitesRetention2830({
+    env,
+    fetchImpl: async (_url, init) => {
+      seen = init;
+      throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    },
+  }), { name: "TimeoutError" });
+  assert.ok(seen.signal instanceof AbortSignal, "the request is abortable");
+  assert.equal(seen.signal.aborted, false);
+});
