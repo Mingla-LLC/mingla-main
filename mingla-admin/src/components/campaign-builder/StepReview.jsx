@@ -79,6 +79,15 @@ export function StepReview({
         <p><span className="font-semibold">Destination</span> — {summary.destinationLine}</p>
         <p><span className="font-semibold">Creative</span> — {summary.creativeLine}</p>
         <p><span className="font-semibold">Copy</span> — {summary.copyLine}</p>
+        {summary.budgetLine && (
+          <p><span className="font-semibold">Budget</span> — {summary.budgetLine}</p>
+        )}
+        {summary.hardCapLine && (
+          <p><span className="font-semibold">Hard cap</span> — {summary.hardCapLine}</p>
+        )}
+        {summary.scheduleLine && (
+          <p><span className="font-semibold">Schedule</span> — {summary.scheduleLine}</p>
+        )}
       </div>
 
       {summary.warnings.map((warning) => (

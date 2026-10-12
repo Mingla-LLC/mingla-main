@@ -63,14 +63,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      # EXPLICIT registry — ISSUE-1002 payload/single-dest suites + Wave 2 (#3697)
-      # adversarial that proves multi-destination fan-out is refused (not N×M).
+      # EXPLICIT registry — ISSUE-1002 payload/single-dest suites + Wave 2/3 (#3697)
+      # (fan-out refusal + Admin console picker/spend/flag honesty).
       - name: Run ISSUE-1002 campaign-builder multi-destination suites
         run: >
           node --test
           src/__tests__/issue1002_multi_destination.test.js
           src/__tests__/issue1002_multi_destination.tester_adversarial.test.js
           src/__tests__/issue3697_wave2_spend_cap.test.js
+          src/__tests__/issue3697_wave3_ads_console.test.js
 
   issue-1002-edge-deno-test:
     if: ${{ github.event.pull_request.draft != true }}

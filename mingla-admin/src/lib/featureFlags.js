@@ -1,10 +1,12 @@
 import { supabase } from './supabase';
 
 // ORCH-0553: added 'enable_refresh_tab' — gates Refresh tab + (on AIValidation) extracted Seeding tab.
+// toward #3697 Wave 3: enable_ads_console gates Campaign Builder + Campaigns (Ad Engine stays for connections).
 const KNOWN_FLAGS = [
   'enable_rules_filter_tab',
   'enable_refresh_tab',
   'enable_app_download_readiness',
+  'enable_ads_console',
 ];
 
 let cache = null;
@@ -28,18 +30,24 @@ export async function loadFeatureFlags() {
       cache = Object.fromEntries(
         KNOWN_FLAGS.map((k) => {
           const v = flags[k];
-          return [
-            k,
-            k === 'enable_app_download_readiness'
-              ? v === true
-              : v === true || v === 'true' || v === '"true"',
-          ];
+          // Readiness: strict true (fail closed). Ads console: missing key → ON so
+          // Growth stays usable before the Wave 3 seed migration is applied.
+          if (k === 'enable_app_download_readiness') {
+            return [k, v === true];
+          }
+          if (k === 'enable_ads_console') {
+            return [k, v === undefined || v === null ? true : v === true];
+          }
+          return [k, v === true || v === 'true' || v === '"true"'];
         })
       );
       return cache;
     } catch (err) {
-      console.warn('[featureFlags] read failed, defaulting all flags to false:', err.message);
-      cache = Object.fromEntries(KNOWN_FLAGS.map((k) => [k, false]));
+      console.warn('[featureFlags] read failed, defaulting flags off (ads console stays on):', err.message);
+      // Ads console fails open so Growth stays usable if the RPC blips.
+      cache = Object.fromEntries(
+        KNOWN_FLAGS.map((k) => [k, k === 'enable_ads_console']),
+      );
       return cache;
     } finally {
       inflight = null;

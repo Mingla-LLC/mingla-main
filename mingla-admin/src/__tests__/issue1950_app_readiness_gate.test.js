@@ -103,6 +103,7 @@ test("#1950 flag-ON ephemeral interceptor admits only readiness reads, checks, a
         "enable_rules_filter_tab",
         "enable_refresh_tab",
         "enable_app_download_readiness",
+        "enable_ads_console",
       ],
     },
   });

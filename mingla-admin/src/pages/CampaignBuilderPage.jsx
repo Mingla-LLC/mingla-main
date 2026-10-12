@@ -50,13 +50,15 @@ import { allocateLifetimeCents, calendarDaysBetween, validateBudget } from "../l
 import { validateCopy } from "../lib/adBuilder/copyRules";
 import { runPolicyPrecheck } from "../lib/adBuilder/policyLinter";
 import { partitionFundedCreative } from "../lib/adBuilder/creativeGate";
-import { buildCreatePayload, suggestCampaignName } from "../lib/adBuilder/payload";
+import { buildCreatePayload, resolvePlanCurrency, suggestCampaignName } from "../lib/adBuilder/payload";
 import { buildLaunchSummary } from "../lib/adBuilder/launchSummary";
 import {
   PREPARATION_ORDER,
   retryDelayMs,
 } from "../lib/adBuilder/preparationState";
 import { areAllExpectedCreatePairsSuccessful } from "../lib/adBuilder/createProgress";
+import { loadFeatureFlags } from "../lib/featureFlags";
+import { AlertCard } from "../components/ui/Card";
 
 const STEPS = [
   { id: "lane", label: "Lane" },
@@ -80,6 +82,19 @@ function stepIndexFromHash() {
 
 export function CampaignBuilderPage() {
   const { addToast } = useToast();
+  // toward #3697 Wave 3 — console flag (missing key defaults ON in featureFlags).
+  const [adsConsoleEnabled, setAdsConsoleEnabled] = useState(true);
+  const [adsConsoleReady, setAdsConsoleReady] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    loadFeatureFlags().then((flags) => {
+      if (!mounted) return;
+      setAdsConsoleEnabled(flags.enable_ads_console !== false);
+      setAdsConsoleReady(true);
+    });
+    return () => { mounted = false; };
+  }, []);
 
   // ── Wizard navigation ──
   const [activeIndex, setActiveIndex] = useState(0);
@@ -254,7 +269,7 @@ export function CampaignBuilderPage() {
     // Connection rows carry Meta's per-category floors (extra.minimum_budgets).
     (async () => {
       const loaded = {};
-      for (const platform of ["meta", "google"]) {
+      for (const platform of ["meta", "google", "tiktok", "snapchat", "reddit"]) {
         const { data } = await getConnection(platform, "consumer");
         if (data) loaded[platform] = data;
       }
@@ -326,6 +341,12 @@ export function CampaignBuilderPage() {
   const effectivePlatforms = useMemo(
     () => plannedRows.filter((r) => r.eligible).map((r) => r.platform),
     [plannedRows],
+  );
+
+  // toward #3697 Wave 3 — money currency from ad_connections (not hardcoded USD).
+  const planCurrency = useMemo(
+    () => resolvePlanCurrency(connections, effectivePlatforms),
+    [connections, effectivePlatforms],
   );
 
   const togglePlatform = useCallback((platform) => {
@@ -725,6 +746,7 @@ export function CampaignBuilderPage() {
               : (budget.capCents ?? null),
             startsAt: budget.startsAt,
             endsAt: budget.endsAt,
+            currency: planCurrency.currency,
           },
           creative: {
             // ISSUE-995: kind drives the payload media descriptor — video rides
@@ -829,8 +851,18 @@ export function CampaignBuilderPage() {
         policyFindings: personalAttributes.length + (dating ? 1 : 0) + (alcohol ? 1 : 0),
       };
     })(),
-    totalDailyCents: budget.totalDailyCents,
+    totalDailyCents: budget.mode === "lifetime"
+      ? (budget.totalLifetimeCents ?? budget.totalDailyCents)
+      : budget.totalDailyCents,
     preparationByPlatform: preparationRows,
+    // toward #3697 Wave 3 — Review mirrors server hard-cap / schedule.
+    budgetMode: budget.mode,
+    capCents: budget.mode === "lifetime"
+      ? (budget.totalLifetimeCents ?? budget.capCents)
+      : budget.capCents,
+    startsAt: budget.startsAt,
+    endsAt: budget.endsAt,
+    currency: planCurrency.currency,
   });
 
   const stepId = STEPS[activeIndex].id;
@@ -845,6 +877,16 @@ export function CampaignBuilderPage() {
     }
     goTo(activeIndex - 1);
   };
+
+  if (adsConsoleReady && !adsConsoleEnabled) {
+    return (
+      <AlertCard variant="info" title="Ads console is off">
+        Campaign Builder is gated by <code className="text-xs">enable_ads_console</code>.
+        Turn it on in admin_config, or use{" "}
+        <a className="underline" href="#/ad-engine">Ad Engine</a> for connections.
+      </AlertCard>
+    );
+  }
 
   return (
     <div className="space-y-4">
