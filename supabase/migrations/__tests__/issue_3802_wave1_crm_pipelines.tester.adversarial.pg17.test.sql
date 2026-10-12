@@ -2367,11 +2367,29 @@ begin
   perform t3802x_race.rec('C-11 the undo is refused and the creator stays in Negotiating',
     p.r1 = 'sent' and p.r2 like 'ERR:%agreement_required%'
       and (select stage = 'negotiating' and agreement = 'sent' from public.crm_records where id = '38021111-0000-4000-c910-00000000000b'), p.r1 || '/' || p.r2);
+  -- C-12: a person clears the brand link just as the run has picked the host.
+  -- (Linked only now, so the real scheduled run cannot get there first.)
+  perform t3802x_race.rec('C-12 fixture', t3802x_race.solo(0, $q$insert into public.crm_records (id, pipeline, name, stage, brand_id, created_by, updated_by)
+    values ('38021111-0000-4000-c910-00000000000c', 'hosts', 'Issue3802x Race Picked', 'onboarded', '38021111-0000-4000-c800-000000000001',
+            'issue3802x-race-1@test.local', 'issue3802x-race-1@test.local') returning 'added'$q$) = 'added', null);
+  select * into p from t3802x_race.pair(
+    2, $q$select (r->'record'->>'stage') || '/' || coalesce(r->'record'->>'brand_id', '<none>') from public.crm_record_update('38021111-0000-4000-c910-00000000000c', '{"brand_id":null}') r$q$,
+    0, $q$select public.crm_reconcile_live('38021111-0000-4000-c910-00000000000c')::text$q$);
+  perform t3802x_race.rec('C-12 the run waited for the person', p.waited, p.r2);
+  perform t3802x_race.rec('C-12 the run looks again and promotes nothing',
+    p.r1 = 'onboarded/<none>' and p.r2 = '0'
+      and (select stage = 'onboarded' and brand_id is null and went_live_at is null from public.crm_records where id = '38021111-0000-4000-c910-00000000000c')
+      and not exists (select 1 from public.admin_audit_log where target_id = '38021111-0000-4000-c910-00000000000c' and action = 'crm.stage_auto_live'),
+    p.r1 || '/' || p.r2);
+
   perform t3802x_race.rec('after the races: no Live host without a brand, no Booked or Posted creator without a signed agreement',
     not exists (select 1 from public.crm_records where (stage = 'live' and brand_id is null)
                    or (pipeline = 'creators' and stage in ('booked', 'posted') and agreement is distinct from 'signed')), null);
   if (select count(*) from t3802x_race.results) < 33 then
     perform t3802x_race.rec('all eleven races ran', false, (select count(*)::text from t3802x_race.results));
+  end if;
+  if (select count(*) from t3802x_race.results) < 36 then
+    perform t3802x_race.rec('the twelfth race ran too', false, (select count(*)::text from t3802x_race.results));
   end if;
 
   -- After every race: never two live records with one name.
