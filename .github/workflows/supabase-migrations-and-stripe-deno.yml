@@ -930,6 +930,28 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2724_non_admin_approval_blocked.tester.adversarial.pg17.test.sql
 
+          # Issue #3802 (Wave 0) — team roles on the fully replayed PG17 schema.
+          # Each of the four roles resolves to its own role; the two new roles
+          # get exactly what an ordinary signed-in account gets from the existing
+          # admin tables and functions; role changes are owner-only and enforced
+          # in the database; one email holds at most one live membership; and
+          # the set of functions that write team membership is pinned by name.
+          # Runs as `supabase_admin` (same password): this image's auth.users
+          # has no email_confirmed_at, and only the owning side can add it. The
+          # suite adds it inside its own transaction and rolls it back.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave0_team_roles.implementor.happy.pg17.test.sql
+          # Issue #3802 (Wave 0) — independent tester proof, a different angle:
+          # the catalog shape of the new objects, every direct statement a
+          # client could send at either membership table (the owner included),
+          # email spelling, whose invitation it is, an exhaustive walk of every
+          # sequence of up to three team requests with invariants checked after
+          # each step, and two overlapping requests in separate sessions.
+          # Runs as `supabase_admin` for the same reason as the suite above,
+          # and because the overlapping-session part opens loopback sessions.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave0_team_roles.tester.adversarial.pg17.test.sql
+
           # Issue #2725 Amendment 8 — executable hard-cap proof on the fully
           # replayed PG17 schema. All funding lanes share one serialized $1.00
           # venue/ISO-week boundary; the 21st 50,000-microusd reservation is
