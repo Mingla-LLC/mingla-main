@@ -153,6 +153,12 @@ const LazyTurnoutIntelProvider = createDeferredTurnoutIntelProvider(
 export interface ExperienceCreatorWizardProps {
   brandId: string;
   onComplete: (newExperienceId: string) => void;
+  /**
+   * issue #3237 — fired just before `onComplete`, and only when the experience
+   * was actually PUBLISHED (never for a draft save or a live edit), so the
+   * route can confirm the publish on the manage screen.
+   */
+  onPublished?: (experienceId: string) => void;
   onCancel?: () => void;
   /** Optional AI-proposal / draft prefill (Layer 6 "Set up & publish"). */
   prefill?: { title?: string; description?: string; wholePriceMajor?: string };
@@ -305,6 +311,7 @@ export const ExperienceCreatorWizard: React.FC<
 > = ({
   brandId,
   onComplete,
+  onPublished,
   onCancel,
   prefill,
   existingExperienceId,
@@ -1058,6 +1065,8 @@ export const ExperienceCreatorWizard: React.FC<
             action_state: "succeeded",
             content_kind: "experience",
           });
+          // issue #3237 — tell the route this was a real publish.
+          onPublished?.(savedId);
         }
         onComplete(savedId);
       } catch (e) {
@@ -1085,6 +1094,7 @@ export const ExperienceCreatorWizard: React.FC<
       intents,
       isFree,
       onComplete,
+      onPublished,
       pricingValid,
       refundValid,
       resolvedTotalMajor,
