@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-12 — A CI check that had been failing since 6 October for any change to the event builder is repaired: its replay of the publish database functions now ends with the newest one (the Organiser Terms publish rule), so those pull requests can go green again; no app or database change (toward #3645, PR #TBD)
 - 2026-10-12 — Mingla Admin now loads each person's role: the owner invites people and sets roles on a new Team and roles page, invitations arrive as a one-time link that expires, the menu, search and addresses show only what a role allows, and Sales and marketing and Founding partner sign in to their own home page (toward #3802, PR #3807)
 - 2026-10-12 — Groundwork for team roles in Mingla Admin: four roles exist on the server (Owner, Admin, Sales and marketing, Founding partner), role changes are owner-only and enforced in the database, and the two new roles get none of the existing admin access (toward #3802, PR #3804)
 - 2026-10-11 — A failed clean-up sweep after the Sites backup can no longer take the live pilot site down or turn main red: the sweep runs as its own job after the backup is verified, a failure posts an alert on the issue instead, and the runbook now says how to bring the site back after a deactivation (toward #2830, PR #3797)
