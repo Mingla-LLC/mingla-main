@@ -1725,9 +1725,13 @@ create table t3802w_race.results (seq serial primary key, label text, ok boolean
 -- admins: that role needs no confirmed-mailbox column, which this image lacks
 -- outside part 1.
 begin;
-set local session_replication_role = replica;
+delete from public.crm_activity where actor_email like 'issue3802w-race-%'
+   or record_id in (select id from public.crm_records where created_by like 'issue3802w-race-%');
+delete from public.crm_record_owners where owner_email like 'issue3802w-race-%'
+   or record_id in (select id from public.crm_records where created_by like 'issue3802w-race-%');
 delete from public.crm_records where created_by like 'issue3802w-race-%';
 delete from public.crm_request_keys where actor_email like 'issue3802w-race-%';
+set local session_replication_role = replica;
 delete from public.admin_audit_log where admin_email like 'issue3802w-race-%';
 delete from public.admin_users where lower(btrim(email)) like 'issue3802w-race-%';
 delete from auth.users where email like 'issue3802w-race-%';
@@ -1870,9 +1874,13 @@ select count(*) as t3802w_race_total,
 
 -- Remove the committed rows, whatever the verdict.
 begin;
-set local session_replication_role = replica;
+delete from public.crm_activity where actor_email like 'issue3802w-race-%'
+   or record_id in (select id from public.crm_records where created_by like 'issue3802w-race-%');
+delete from public.crm_record_owners where owner_email like 'issue3802w-race-%'
+   or record_id in (select id from public.crm_records where created_by like 'issue3802w-race-%');
 delete from public.crm_records where created_by like 'issue3802w-race-%';
 delete from public.crm_request_keys where actor_email like 'issue3802w-race-%';
+set local session_replication_role = replica;
 delete from public.admin_audit_log where admin_email like 'issue3802w-race-%';
 delete from public.admin_users where lower(btrim(email)) like 'issue3802w-race-%';
 delete from auth.users where email like 'issue3802w-race-%';
