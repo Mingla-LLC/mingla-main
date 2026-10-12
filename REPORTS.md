@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-12 — Groundwork for the team's Hosts and Creators pipelines: records, owners and a structured activity log now live on the server, every change is checked against the person's role, recorded, and safe to repeat, and Live sets itself from the host's public listing; the Beta leads reader is now limited to full admins (toward #3802, PR #3811)
 - 2026-10-12 — Ads can send people to Mingla marketing pages on usemingla.com (Host home, downloads, tools) from the Admin picker, with first-party click capture on those landings (toward #3697, PR #3809)
 - 2026-10-12 — Mingla Admin now loads each person's role: the owner invites people and sets roles on a new Team and roles page, invitations arrive as a one-time link that expires, the menu, search and addresses show only what a role allows, and Sales and marketing and Founding partner sign in to their own home page (toward #3802, PR #3807)
 - 2026-10-12 — Groundwork for team roles in Mingla Admin: four roles exist on the server (Owner, Admin, Sales and marketing, Founding partner), role changes are owner-only and enforced in the database, and the two new roles get none of the existing admin access (toward #3802, PR #3804)

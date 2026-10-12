@@ -1039,6 +1039,34 @@ jobs:
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave0_invite_binding.tester.adversarial.pg17.test.sql
 
+          # Issue #3802 (Wave 1) — Hosts and Creators pipelines on the same
+          # schema. Every pipeline function is called as each kind of caller
+          # (the four team roles are let in, everyone else is refused); every
+          # direct statement a client could send at the four tables is refused;
+          # one name is one record however it is spelled; a repeated request
+          # changes nothing; Live sets itself from the linked brand's public
+          # listing and a person can never set it; delete is for owner and
+          # admin; every write adds one audit row; and the migration's own
+          # self-check is run against deliberate mistakes. Part 2 opens real
+          # second and third sessions. Runs as `supabase_admin` for the same
+          # reasons as the Wave 0 suites, from the repository root (it reads
+          # the migration file).
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave1_crm_pipelines.implementor.happy.pg17.test.sql
+          # Issue #3802 (Wave 1) — independent tester proof, a different angle:
+          # the full grantee list of every new table and function; callers
+          # whose session and account disagree, or whose access ends in the
+          # middle of a transaction; every direct statement ending in
+          # "permission denied" rather than "zero rows"; request keys across
+          # people and functions; the whole stage table against an
+          # independent rule list; every kind of listing that is and is not
+          # public, compared with what a signed-out visitor can read; the
+          # scheduled run with no signed-in caller; and eight races in real
+          # separate sessions. Runs as `supabase_admin` from the repository
+          # root for the same reasons as the suite above.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave1_crm_pipelines.tester.adversarial.pg17.test.sql
+
           # Issue #2725 Amendment 8 — executable hard-cap proof on the fully
           # replayed PG17 schema. All funding lanes share one serialized $1.00
           # venue/ISO-week boundary; the 21st 50,000-microusd reservation is

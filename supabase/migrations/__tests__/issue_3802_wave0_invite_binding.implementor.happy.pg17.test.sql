@@ -299,7 +299,7 @@ begin
     pg_temp.t3802b_as('g', $q$select public.admin_team_my_access()->>'status'$q$), 'invited');
   r := pg_temp.t3802b_as('g', $q$select public.admin_team_activate_self()::text$q$);
   perform pg_temp.t3802b_check('B-2', 'growth activates', r::jsonb::text,
-    '{"role": "growth", "areas": ["role_home"], "email": "issue3802b-g@test.local", "status": "active"}');
+    '{"role": "growth", "areas": ["role_home", "crm", "beta_leads"], "email": "issue3802b-g@test.local", "status": "active"}');
   perform pg_temp.t3802b_check('B-2', 'the invitation is gone', pg_temp.t3802b_state('g'), 'none');
   perform pg_temp.t3802b_check('B-2', 'the used link no longer exists', pg_temp.t3802b_peek('g1'), 'invalid');
   perform pg_temp.t3802b_check('B-2', 'one audit row, in their own name',
@@ -774,7 +774,7 @@ begin
     (select string_agg(n.nspname || '.' || p.proname, ',' order by n.nspname, p.proname)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where p.prokind in ('f', 'p') and n.nspname !~ '^pg_temp' and p.prosrc ~* 'admin_team_members'),
-    'public.admin_team_activate_self,public.admin_team_guard_exclusive,public.admin_team_list,public.admin_team_my_access,public.admin_team_role,public.admin_team_set_member');
+    'public.admin_team_activate_self,public.admin_team_directory,public.admin_team_guard_exclusive,public.admin_team_list,public.admin_team_my_access,public.admin_team_role,public.admin_team_set_member');
   perform pg_temp.t3802b_check('B-13', 'triggers on the two membership tables',
     (select string_agg(t.tgrelid::regclass::text || '.' || t.tgname || '/' || t.tgenabled::text, ',' order by t.tgname)
        from pg_trigger t
