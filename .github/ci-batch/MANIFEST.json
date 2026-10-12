@@ -19332,7 +19332,7 @@
       "providerWorkflow": ".github/workflows/issue-2333-online-event-publish.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b212574f86d9fc2813f2ebc8f41fb058e554e53fefe436ade9ebf52715eb2cbd",
+        "sourceSha256": "dcec98fee0033aaa44f7e5f5c62aa99c6ef5eba45ae7adf2fb5f393acca5a7e5",
         "triggers": [
           "pull_request",
           "push",
