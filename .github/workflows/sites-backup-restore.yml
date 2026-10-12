@@ -468,13 +468,25 @@ jobs:
     # #2830 — a housekeeping failure no longer deactivates the pilot or reds the
     # run, so it has to be said out loud here instead. Same exclusions as the
     # jobs above; this one holds no environment and no production secret.
+    #
+    # Two ways to get here. The sweep ran and failed: the `retention` job
+    # succeeded and published `retention_outcome=failure`. Or the `retention`
+    # job itself never reached its report step (checkout or Node set-up failed,
+    # the job hit its time limit, the run was cancelled under it): then there is
+    # no output at all, and only the job's own result says anything.
+    # `needs.<job>.result` is one of success, failure, cancelled or skipped; a
+    # job stopped by `timeout-minutes` reports as one of the middle two, so both
+    # are named. `skipped` is deliberately absent: retention is skipped whenever
+    # the backup did not succeed, and that case belongs to `alert`.
     if: >-
       always() &&
       github.event_name != 'pull_request' &&
       github.ref == 'refs/heads/main' &&
       github.event.schedule != '37 * * * *' &&
       github.event.inputs.mode != 'freshness-check' &&
-      needs.retention.outputs.retention_outcome == 'failure'
+      (needs.retention.outputs.retention_outcome == 'failure' ||
+      needs.retention.result == 'failure' ||
+      needs.retention.result == 'cancelled')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -484,12 +496,19 @@ jobs:
       - name: Comment the housekeeping failure and run URL on #2830
         env:
           GH_TOKEN: ${{ github.token }}
+          RETENTION_OUTCOME: ${{ needs.retention.outputs.retention_outcome }}
           RETENTION_CODE: ${{ needs.retention.outputs.retention_code }}
         shell: bash
         run: |
           set -euo pipefail
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          code="${RETENTION_CODE:-RETENTION_UNCLASSIFIED}"
+          if [ "${RETENTION_OUTCOME:-}" = "failure" ]; then
+            code="${RETENTION_CODE:-RETENTION_UNCLASSIFIED}"
+          else
+            # The retention job stopped before it could report. A fixed literal:
+            # nothing that job may have half-written is trusted here.
+            code="RETENTION_JOB_DID_NOT_REPORT"
+          fi
           # The backup and restore in this same run succeeded, which is the only
           # reason this job can run at all: the public site is unaffected.
           body="SITES_HOUSEKEEPING_ALERT kind=RETENTION_FAILED code=${code} outcome=PILOT_UNAFFECTED recovery_evidence_fresh run_url=${run_url}"

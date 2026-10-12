@@ -34,7 +34,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -701,6 +701,124 @@ test("#2830 the watchdog cron, a freshness dispatch and a pull request start no 
   assert.equal(manual.results.retention.result, "success");
 });
 
+// ---------------------------------------------------------------------------
+// The retention job that never reports. If checkout or Node set-up fails, or
+// the job hits its time limit, there is no `retention_outcome` at all. Keyed on
+// the output alone, the alert would stay silent: the pilot safe, the clean-up
+// not running, and nobody told.
+// ---------------------------------------------------------------------------
+
+/** The bash a step runs under `run: |`, dedented. */
+function inlineBashScript(step) {
+  const lines = step.text.split("\n");
+  const at = lines.findIndex((line) => /^ {8}run: \|$/.test(line));
+  assert.ok(at >= 0, `step ${step.name} carries a block run script`);
+  return lines.slice(at + 1).map((line) => line.replace(/^ {10}/, "")).join("\n");
+}
+
+/** Runs the alert step's own bash with a stub `gh` that records its arguments. */
+function runAlertStep(env) {
+  const alert = jobs.get("housekeeping_alert");
+  assert.equal(alert.steps.length, 1);
+  const dir = mkdtempSync(join(tmpdir(), "sites-2830-alert-"));
+  const recorded = join(dir, "gh-args");
+  const stub = join(dir, "gh");
+  writeFileSync(stub, `#!/bin/bash\nprintf '%s\\n' "$@" > "${recorded}"\n`);
+  chmodSync(stub, 0o755);
+  const result = spawnSync("bash", ["-c", inlineBashScript(alert.steps[0])], {
+    encoding: "utf8",
+    env: {
+      PATH: `${dir}:${process.env.PATH}`,
+      GITHUB_SERVER_URL: "https://github.example",
+      GITHUB_REPOSITORY: "owner/repo",
+      GITHUB_RUN_ID: "42",
+      ...env,
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const args = readFileSync(recorded, "utf8").trimEnd().split("\n");
+  return { args, body: args.find((arg) => arg.startsWith("body="))?.slice("body=".length) };
+}
+
+test("#2830 a retention job that fails before reporting still raises the alert, and never deactivates", () => {
+  // Checkout or Node set-up failed, or the job was killed at its time limit:
+  // the job result is `failure` and it published nothing.
+  const { results, conclusion } = simulate(jobs, scheduledBackup, (name) =>
+    name === "retention" ? { result: "failure", outputs: {} } : {});
+  assert.equal(results.backup_restore.result, "success");
+  assert.equal(results.retention.result, "failure");
+  assert.deepEqual(results.retention.outputs, {});
+  assert.equal(results.housekeeping_alert.result, "success",
+    "a retention job that died without reporting must still be announced");
+  assert.equal(results.deactivate.result, "skipped", "the pilot must not be deactivated");
+  assert.equal(results.alert.result, "skipped", "this is not a backup failure");
+  // The run IS red here, honestly: a job failed. What matters is that the
+  // backup job is green (the watchdog reads that) and the site stays up.
+  assert.equal(conclusion, "failure");
+});
+
+test("#2830 a cancelled or timed-out retention job raises the alert too", () => {
+  // `needs.<job>.result` has four values: success, failure, cancelled,
+  // skipped. There is no `timed_out`; a job stopped by `timeout-minutes`
+  // surfaces as failure or cancelled, so both are covered.
+  const { results } = simulate(jobs, scheduledBackup, (name) =>
+    name === "retention" ? { result: "cancelled", outputs: {} } : {});
+  assert.equal(results.housekeeping_alert.result, "success");
+  assert.equal(results.deactivate.result, "skipped");
+  assert.equal(results.alert.result, "skipped");
+  const condition = jobs.get("housekeeping_alert").condition;
+  assert.equal(/timed_out/.test(condition), false,
+    "`timed_out` is not a value of needs.<job>.result; naming it would be a clause that can never match");
+});
+
+test("#2830 a retention job that succeeds with a clean sweep raises nothing", () => {
+  const { results, conclusion } = simulate(jobs, scheduledBackup, (name) =>
+    name === "retention"
+      ? { result: "success", outputs: { retention_outcome: "success", retention_code: "RETENTION_UNCLASSIFIED" } }
+      : {});
+  assert.equal(results.housekeeping_alert.result, "skipped");
+  assert.equal(results.deactivate.result, "skipped");
+  assert.equal(conclusion, "success");
+});
+
+test("#2830 a skipped retention job is not a housekeeping failure", () => {
+  // Retention is skipped whenever the backup did not succeed. That is the
+  // backup `alert` job's story, and a second comment would only blur it.
+  const { results } = simulate(jobs, scheduledBackup, (name) =>
+    name === "backup_restore"
+      ? { result: "failure", outputs: { recovery_deactivate: "false", recovery_failure_code: "S3_OBJECT_READ_FAILED" } }
+      : {});
+  assert.equal(results.retention.result, "skipped");
+  assert.equal(results.housekeeping_alert.result, "skipped");
+  assert.equal(results.alert.result, "success");
+});
+
+test("#2830 the alert step names a fixed code when the retention job did not report", () => {
+  const silent = runAlertStep({ RETENTION_OUTCOME: "", RETENTION_CODE: "" });
+  assert.deepEqual(silent.args.slice(0, 4), [
+    "api", "--method", "POST", "repos/owner/repo/issues/2830/comments",
+  ]);
+  assert.equal(
+    silent.body,
+    "SITES_HOUSEKEEPING_ALERT kind=RETENTION_FAILED code=RETENTION_JOB_DID_NOT_REPORT outcome=PILOT_UNAFFECTED recovery_evidence_fresh run_url=https://github.example/owner/repo/actions/runs/42",
+  );
+  assert.match("RETENTION_JOB_DID_NOT_REPORT", /^[A-Z][A-Z0-9_]{2,95}$/);
+  // A code left behind by a job that did not report a failed sweep is not used.
+  assert.match(
+    runAlertStep({ RETENTION_OUTCOME: "", RETENTION_CODE: "RETENTION_SWEEP_FAILED" }).body,
+    / code=RETENTION_JOB_DID_NOT_REPORT /,
+  );
+  // The ordinary path is unchanged: a reported failed sweep carries its code.
+  assert.equal(
+    runAlertStep({ RETENTION_OUTCOME: "failure", RETENTION_CODE: "RETENTION_SWEEP_FAILED" }).body,
+    "SITES_HOUSEKEEPING_ALERT kind=RETENTION_FAILED code=RETENTION_SWEEP_FAILED outcome=PILOT_UNAFFECTED recovery_evidence_fresh run_url=https://github.example/owner/repo/actions/runs/42",
+  );
+  assert.match(
+    runAlertStep({ RETENTION_OUTCOME: "failure", RETENTION_CODE: "" }).body,
+    / code=RETENTION_UNCLASSIFIED /,
+  );
+});
+
 test("#2830 the expression model agrees with the conditions it was written for", () => {
   // Guards the model itself: a wrong evaluator would make every graph test
   // above vacuous.
@@ -745,6 +863,35 @@ test("#2830 T-8.1 the runbook documents re-activation after a deactivation", () 
   assert.match(section, /SITES_BACKUP_EVIDENCE_OK/);
   // Which failures deactivate, and that retention is not one of them.
   assert.match(section, /SITES_HOUSEKEEPING_ALERT/);
+});
+
+test("#2830 T-8.1 the runbook says who runs it and what is checked before activating", () => {
+  const at = RUNBOOK.indexOf("\n## Re-activating the pilot after a deactivation\n");
+  const rest = RUNBOOK.slice(at + 1);
+  const end = rest.indexOf("\n## ", 1);
+  const section = (end === -1 ? rest : rest.slice(0, end)).replace(/\s+/g, " ");
+  assert.match(section, /Who: whoever holds the Core service-role key\./);
+  for (const phrase of [
+    "What the script checks before it activates",
+    "reads back `configured` with the pilot still disabled",
+    "active publication is also its last successful publication",
+    "carries a valid artifact digest",
+    "signed candidate probe of that exact publication",
+    "reads back `verified`",
+    "host probe no older than 15 minutes",
+    "deactivates again by itself",
+  ]) assert.ok(section.includes(phrase), `runbook states: ${phrase}`);
+  // Names only. No value, and no assignment form that invites pasting one.
+  assert.equal(/SITES_[A-Z_]+=|eyJ[A-Za-z0-9_-]{10,}/.test(section), false);
+  // Each stated check corresponds to a guard in the script.
+  const script = readFileSync(join(REPO, "scripts/sites/activate-gogi-pilot.mjs"), "utf8");
+  for (const guard of [
+    "PILOT_CONFIGURATION_READBACK_MISMATCH",
+    "PILOT_SITE_NOT_PUBLISHED",
+    "PILOT_PUBLICATION_INVALID",
+    "HOST_READINESS_READBACK_MISMATCH",
+    "PILOT_COMMITTED_READBACK_FAILED",
+  ]) assert.ok(script.includes(guard), `${guard} is still a guard in the activation script`);
 });
 
 test("#2830 T-8.1 the runbook's variable names and success line match the activation script", () => {

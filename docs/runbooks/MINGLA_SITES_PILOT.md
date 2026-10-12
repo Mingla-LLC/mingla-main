@@ -196,9 +196,26 @@ Steps:
    node scripts/sites/activate-gogi-pilot.mjs
    ```
 
-   The script re-binds the pilot, probes the candidate render, records host
-   readiness, activates, then reads back the configuration, the host row and a
-   live request. If any read-back fails it deactivates again by itself.
+   What the script checks before it activates, in order, stopping at the
+   first failure with nothing activated:
+
+   - the pilot binding is re-configured for the Gogi brand and reads back
+     `configured` with the pilot still disabled;
+   - the site is `published`, and its active publication is also its last
+     successful publication;
+   - that publication is `published`, is Restaurant Website v1 (artifact
+     schema 1, renderer version 1), carries a valid artifact digest, and its
+     artifact key is the one derived from the site, publication and digest;
+   - a signed candidate probe of that exact publication on the pilot host
+     passes, and the host readiness it records reads back `verified`.
+
+   Core then applies the three preconditions above itself, plus a host probe
+   no older than 15 minutes, which the probe in the same run satisfies.
+
+   After activating, the script reads back the service configuration, the host
+   row (`active`, primary) and a live request to the public host (HTTP 200,
+   HTML, no infrastructure names in the page). If any read-back fails it
+   deactivates again by itself and exits non-zero.
 3. Expect exactly one success line:
    `SITES_GOGI_ACTIVATED site=<site id> publication=<publication id>`.
 4. Confirm `https://gogi.sites.usemingla.com/` returns HTTP 200.
