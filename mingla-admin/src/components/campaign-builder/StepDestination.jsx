@@ -24,6 +24,8 @@ const TABS = [
   { id: "experience", label: "Experiences" },
   { id: "reservation", label: "Reservations" },
   { id: "site", label: "Sites" },
+  // toward #3697 Wave 4 — usemingla.com landings (after Host page types; #1431 order preserved).
+  { id: "marketing", label: "Marketing" },
 ];
 
 const PAGE_TYPE_LABEL = Object.fromEntries(

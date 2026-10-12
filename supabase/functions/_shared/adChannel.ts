@@ -45,6 +45,10 @@ import { googleAdapter } from "./google.ts";
 import { redditAdapter } from "./reddit.ts";
 import { snapchatAdapter } from "./snapchat.ts";
 import { tiktokAdapter } from "./tiktok.ts";
+import {
+  MARKETING_BRAND_SLUG,
+  marketingRouteBySlug,
+} from "./adDestination.ts";
 
 const ADAPTER_REGISTRY: Record<Platform, ChannelAdapter> = {
   meta: metaAdapter,
@@ -232,6 +236,16 @@ export async function destinationStillPublicLive(
       .eq("brand_slug", dest.dest_brand_slug)
       .maybeSingle();
     return Boolean(data);
+  }
+  // toward #3697 Wave 4 — static marketing allowlist (no DB entity row).
+  if (dest.dest_page_type === "marketing") {
+    if (
+      dest.dest_brand_slug &&
+      dest.dest_brand_slug.toLowerCase() !== MARKETING_BRAND_SLUG
+    ) {
+      return false;
+    }
+    return marketingRouteBySlug(dest.dest_entity_slug) != null;
   }
   // Unknown/uncreatable page types remain fail-closed.
   return false;

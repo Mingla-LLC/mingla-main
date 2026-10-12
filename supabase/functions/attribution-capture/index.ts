@@ -237,6 +237,7 @@ const DEST_PAGE_TYPES = [
   "venue",
   "reservation",
   "site",
+  "marketing",
 ] as const;
 type DestPageType = (typeof DEST_PAGE_TYPES)[number];
 

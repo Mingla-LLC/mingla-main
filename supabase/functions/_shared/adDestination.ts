@@ -1,6 +1,6 @@
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "./businessWebOrigin.ts";
 
-/** toward #3697 Wave 1 A4 — all Phase-1 advertisable page types (marketing = Wave 4). */
+/** toward #3697 Wave 1 A4 + Wave 4 B1 marketing (usemingla.com). */
 export type DestinationPageType =
   | "event"
   | "rsvp"
@@ -9,7 +9,8 @@ export type DestinationPageType =
   | "brand"
   | "venue"
   | "reservation"
-  | "site";
+  | "site"
+  | "marketing";
 
 export const AD_DESTINATION_PAGE_TYPES: readonly DestinationPageType[] = [
   "event",
@@ -20,7 +21,106 @@ export const AD_DESTINATION_PAGE_TYPES: readonly DestinationPageType[] = [
   "venue",
   "reservation",
   "site",
+  "marketing",
 ] as const;
+
+/** Canonical marketing origin — mirrors mingla-marketing/lib/site.ts SITE_ORIGIN. */
+export const MARKETING_WEB_ORIGIN = "https://usemingla.com";
+
+/** Sentinel brand_slug for Mingla-owned marketing pages (not a Host brand). */
+export const MARKETING_BRAND_SLUG = "mingla";
+
+/**
+ * Static allowlist of advertisable marketing landings (Phase 2 B1).
+ * Slug is the Ads entity_slug; path is under MARKETING_WEB_ORIGIN.
+ */
+export const MARKETING_ROUTES: readonly {
+  slug: string;
+  path: string;
+  title: string;
+  result_kind: "clicks" | "installs";
+  id: string;
+}[] = [
+  {
+    slug: "explorer",
+    path: "/",
+    title: "Mingla Explorer home",
+    result_kind: "installs",
+    id: "36970000-0004-4000-8000-000000000001",
+  },
+  {
+    slug: "host",
+    path: "/host",
+    title: "Mingla Host home",
+    result_kind: "installs",
+    id: "36970000-0004-4000-8000-000000000002",
+  },
+  {
+    slug: "download",
+    path: "/download",
+    title: "Explorer app download",
+    result_kind: "installs",
+    id: "36970000-0004-4000-8000-000000000003",
+  },
+  {
+    slug: "host-download",
+    path: "/host/download",
+    title: "Host app download",
+    result_kind: "installs",
+    id: "36970000-0004-4000-8000-000000000004",
+  },
+  {
+    slug: "tools",
+    path: "/tools",
+    title: "Free Host tools",
+    result_kind: "clicks",
+    id: "36970000-0004-4000-8000-000000000005",
+  },
+  {
+    slug: "tools-events",
+    path: "/tools/events",
+    title: "Event turnout tool",
+    result_kind: "clicks",
+    id: "36970000-0004-4000-8000-000000000006",
+  },
+  {
+    slug: "tools-venues",
+    path: "/tools/venues",
+    title: "Venue grader tool",
+    result_kind: "clicks",
+    id: "36970000-0004-4000-8000-000000000007",
+  },
+  {
+    slug: "tools-trips",
+    path: "/tools/trips",
+    title: "Trip quote tool",
+    result_kind: "clicks",
+    id: "36970000-0004-4000-8000-000000000008",
+  },
+  {
+    slug: "tools-pricing",
+    path: "/tools/pricing",
+    title: "Pricing audit tool",
+    result_kind: "clicks",
+    id: "36970000-0004-4000-8000-000000000009",
+  },
+] as const;
+
+export function marketingRouteBySlug(slug: string | null | undefined) {
+  if (!slug) return null;
+  const key = slug.trim().toLowerCase();
+  return MARKETING_ROUTES.find((r) => r.slug === key) ?? null;
+}
+
+/** Map a browser pathname on usemingla.com to an allowlisted marketing slug. */
+export function marketingSlugFromPathname(pathname: string | null | undefined): string | null {
+  if (!pathname) return null;
+  let path = pathname.trim();
+  if (!path.startsWith("/")) path = `/${path}`;
+  path = path.replace(/\/+$/, "") || "/";
+  const hit = MARKETING_ROUTES.find((r) => r.path === path);
+  return hit?.slug ?? null;
+}
 
 export interface DestinationDescriptor {
   page_type: DestinationPageType;
@@ -82,6 +182,8 @@ const ENTITY_TYPES = new Set<DestinationPageType>([
   // Reservation ads land on the public venue page that accepts reservations
   // (`/b/{brand}/v/{venue}`), not `/reserve/{brandId}` (payment-cancel return).
   "reservation",
+  // toward #3697 Wave 4 — entity_slug is the marketing route key.
+  "marketing",
 ]);
 
 function requireDescriptor(input: unknown): DestinationDescriptor {
@@ -113,6 +215,38 @@ function requireDescriptor(input: unknown): DestinationDescriptor {
       "Destination page_type must be a supported Ads page type.",
     );
   }
+  const typed = pageType as DestinationPageType;
+  const entitySlug = typeof raw.entity_slug === "string"
+    ? raw.entity_slug.trim()
+    : "";
+
+  // Marketing: brand_slug is the Mingla sentinel; entity_slug selects the route.
+  if (typed === "marketing") {
+    const brandSlugRaw = typeof raw.brand_slug === "string"
+      ? raw.brand_slug.trim().toLowerCase()
+      : "";
+    const brandSlug = brandSlugRaw || MARKETING_BRAND_SLUG;
+    if (brandSlug !== MARKETING_BRAND_SLUG) {
+      throw new AdDestinationError(
+        "destination_brand_slug_invalid",
+        400,
+        "Marketing destinations use the mingla brand sentinel.",
+      );
+    }
+    if (!entitySlug || !marketingRouteBySlug(entitySlug)) {
+      throw new AdDestinationError(
+        "destination_entity_slug_invalid",
+        400,
+        "Choose an allowlisted marketing landing page.",
+      );
+    }
+    return {
+      page_type: "marketing",
+      brand_slug: MARKETING_BRAND_SLUG,
+      entity_slug: entitySlug.toLowerCase(),
+    };
+  }
+
   const brandSlug = typeof raw.brand_slug === "string"
     ? raw.brand_slug.trim()
     : "";
@@ -130,10 +264,6 @@ function requireDescriptor(input: unknown): DestinationDescriptor {
       "The brand slug is invalid.",
     );
   }
-  const entitySlug = typeof raw.entity_slug === "string"
-    ? raw.entity_slug.trim()
-    : "";
-  const typed = pageType as DestinationPageType;
   if (ENTITY_TYPES.has(typed)) {
     if (!entitySlug) {
       throw new AdDestinationError(
@@ -193,7 +323,48 @@ export function canonicalAdDestinationUrl(
       return `${origin}/b/${brandSlug}/v/${entitySlug as string}`;
     case "site":
       return `https://${opts?.siteHostname as string}`;
+    case "marketing": {
+      const route = marketingRouteBySlug(entitySlug);
+      if (!route) {
+        throw new AdDestinationError(
+          "destination_entity_slug_invalid",
+          400,
+          "Choose an allowlisted marketing landing page.",
+        );
+      }
+      return route.path === "/"
+        ? `${MARKETING_WEB_ORIGIN}/`
+        : `${MARKETING_WEB_ORIGIN}${route.path}`;
+    }
   }
+}
+
+function resolveMarketingDestination(
+  descriptor: DestinationDescriptor,
+): ResolvedAdDestination {
+  const route = marketingRouteBySlug(descriptor.entity_slug);
+  if (!route) {
+    throw new AdDestinationError(
+      "destination_not_public",
+      422,
+      "That marketing page is not advertisable.",
+    );
+  }
+  return {
+    page_type: "marketing",
+    brand_slug: MARKETING_BRAND_SLUG,
+    entity_slug: route.slug,
+    event_id: null,
+    venue_id: null,
+    canonical_url: canonicalAdDestinationUrl(
+      "marketing",
+      MARKETING_BRAND_SLUG,
+      route.slug,
+    ),
+    availability: "available",
+    availability_reason: null,
+    result_kind: route.result_kind,
+  };
 }
 
 function mapResolveFailure(payload: Record<string, unknown>): never {
@@ -239,6 +410,11 @@ export async function resolveAdDestination(
 ): Promise<ResolvedAdDestination> {
   const client = db as AdDestinationDb;
   const descriptor = requireDescriptor(input);
+
+  // toward #3697 Wave 4 — marketing is a static allowlist (no DB entity row).
+  if (descriptor.page_type === "marketing") {
+    return resolveMarketingDestination(descriptor);
+  }
 
   if (typeof client.rpc !== "function") {
     return resolveAdDestinationLegacy(client, descriptor);

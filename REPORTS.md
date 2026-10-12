@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-12 — Ads can send people to Mingla marketing pages on usemingla.com (Host home, downloads, tools) from the Admin picker, with first-party click capture on those landings (toward #3697, PR #TBD)
 - 2026-10-12 — Groundwork for team roles in Mingla Admin: four roles exist on the server (Owner, Admin, Sales and marketing, Founding partner), role changes are owner-only and enforced in the database, and the two new roles get none of the existing admin access (toward #3802, PR #3804)
 - 2026-10-11 — A failed clean-up sweep after the Sites backup can no longer take the live pilot site down or turn main red: the sweep runs as its own job after the backup is verified, a failure posts an alert on the issue instead, and the runbook now says how to bring the site back after a deactivation (toward #2830, PR #3797)
 - 2026-10-11 — Mingla Sites: the media column whose absence has failed every nightly backup since 2026-10-07 now has a migration, plus a test that stops an upload-table column shipping without one; it takes effect when the migration is applied to the Studio database (toward #2830, PR #3796)
