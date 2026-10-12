@@ -484,6 +484,17 @@ jobs:
           # the trigger's column scope and its BEFORE-trigger firing order.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1971_trip_order_guard_blast_radius.tester.adversarial.pg17.test.sql
+          # Issue #3801 — no trip could be published: the wizard saves its dates
+          # inside `event.business_trip`, and publish read them from a master
+          # event_dates row nothing wrote. The #1971 suite above stayed green
+          # through that because it dates its draft with an explicit
+          # `event_dates` group, which no shipped client sends. This suite
+          # patches ONLY the way tripsService.ts does, then publishes; it also
+          # publishes a draft in the pre-fix shape (theme dates, no master row).
+          # Registered here, in the already-registered migrations provider: an
+          # unregistered .test.sql is a check that carries no information.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3801_trip_draft_dates_single_owner.implementor.happy.pg17.test.sql
           # Issue #1977 — canonical RSVP draft/guest/contribution owners and
           # the Ari receipt seam. Behavioural against the applied schema.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
