@@ -196,14 +196,6 @@ jobs:
           # Replay it last so the exact definition and ACL comparison stays valid.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
             -f supabase/migrations/20270708003439_draft_autosave_keeps_pin_and_applied_cover.sql
-          # Issue #3645 (#3749) re-emits `business_publish_event_draft` once more
-          # (Organiser Terms 1.0 on paid publish) and owns its final definition on
-          # a full replay, so it ends the re-apply set. It was not added here when
-          # it merged, and this step has been red since for every change that
-          # triggers the lane; found on #3805. The held production apply of that
-          # migration is unrelated: this step replays the repository chain.
-          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
-            -f supabase/migrations/20270731003645_issue_3645_organiser_terms_paid_publish_rpc.sql
           after="$(snapshot)"
           test "$before" = "$after"
           echo "OK — replay is definition- and grant-equivalent."
