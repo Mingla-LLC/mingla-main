@@ -1,15 +1,7 @@
 /**
- * ISSUE-864 WP4 — Step: Destination (SPEC §2.3 + A4.0(3) destination policy
- * v1, blueprint §1.2). Searchable card grid of LIVE PUBLIC pages only
- * (public + status ∈ {scheduled, live} + future start). The ad-visible link
- * is the CANONICAL public-web URL (PUBLIC_WEB_ORIGIN — the server-of-record
- * host, QA P1-1) on ALL channels — the OneLink is built
- * server-side and rides only in Google's tracking template (PROOF D-P1: the
- * OneLink serves crawlers an app-install interstitial).
- *
- * toward #3697 Wave 2 (#3707 / A3-11): SINGLE select per campaign. Multi-select
- * used to fan out N campaigns each carrying the full channel budget (silent
- * multiply). For another page, Duplicate on Review (Wave 3) — never multi-pick.
+ * ISSUE-864 WP4 + toward #3697 Wave 3 (#3700) — destination picker.
+ * Lists via `listAdvertisablePages` (SQL `ad_advertisable_pages`) so Admin
+ * matches the create-campaign gate. Single select per campaign (#3707).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -18,32 +10,45 @@ import { AlertCard } from "../ui/Card";
 import { SearchInput } from "../ui/SearchInput";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
-import {
-  listBrandDestinations,
-  listEventDestinations,
-  listStayDestinations,
-} from "../../services/adDestinationsService";
+import { listAdvertisablePages } from "../../services/adDestinationsService";
 
 const TABS = [
-  { id: "event", label: "Event pages" },
-  { id: "venue", label: "Stay pages" },
-  { id: "brand", label: "Brand pages" },
+  { id: "all", label: "All" },
+  { id: "event", label: "Events" },
+  { id: "rsvp", label: "RSVPs" },
+  { id: "trip", label: "Trips" },
+  { id: "experience", label: "Experiences" },
+  { id: "brand", label: "Brands" },
+  { id: "venue", label: "Stays" },
+  { id: "reservation", label: "Reservations" },
+  { id: "site", label: "Sites" },
 ];
+
+const PAGE_TYPE_LABEL = Object.fromEntries(
+  TABS.filter((t) => t.id !== "all").map((t) => [t.id, t.label]),
+);
 
 /** Stable identity for a destination row across tab reloads (page_type + id). */
 function destKey(row) {
   return `${row.page_type}:${row.id}`;
 }
 
+function isAvailable(row) {
+  return row.availability == null || row.availability === "available";
+}
+
 export function StepDestination({ destinations, onDestinationsChange }) {
   const selected = Array.isArray(destinations) ? destinations : [];
+  const selectedType = selected[0]?.page_type;
   const [tab, setTab] = useState(
-    ["event", "venue", "brand"].includes(selected[0]?.page_type)
-      ? selected[0].page_type
-      : "event",
+    selectedType && PAGE_TYPE_LABEL[selectedType] ? selectedType : "all",
   );
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [includeUnavailable, setIncludeUnavailable] = useState(false);
   const [rows, setRows] = useState(null);
+  const [total, setTotal] = useState(0);
+  const [pageSize, setPageSize] = useState(24);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -51,27 +56,37 @@ export function StepDestination({ destinations, onDestinationsChange }) {
     setLoading(true);
     setError(null);
     try {
-      const result = tab === "event"
-        ? await listEventDestinations({ search })
-        : tab === "venue"
-          ? await listStayDestinations({ search })
-          : await listBrandDestinations({ search });
+      const types = tab === "all" ? null : [tab];
+      const result = await listAdvertisablePages({
+        search,
+        page,
+        types,
+        includeUnavailable,
+      });
       setRows(result.rows);
+      setTotal(result.total ?? result.rows.length);
+      setPageSize(result.pageSize ?? 24);
     } catch (err) {
       setError(err.message);
       setRows(null);
+      setTotal(0);
     }
     setLoading(false);
-  }, [tab, search]);
+  }, [tab, search, page, includeUnavailable]);
 
   useEffect(() => {
     const t = setTimeout(load, search ? 250 : 0);
     return () => clearTimeout(t);
   }, [load, search]);
 
+  useEffect(() => {
+    setPage(0);
+  }, [tab, search, includeUnavailable]);
+
   // toward #3697 Wave 2 (#3707): single select — tap again to clear, tap another to replace.
   const toggle = useCallback(
     (row) => {
+      if (!isAvailable(row)) return;
       const key = destKey(row);
       const isSelected = selected.some((d) => destKey(d) === key);
       onDestinationsChange(isSelected ? [] : [row]);
@@ -79,19 +94,21 @@ export function StepDestination({ destinations, onDestinationsChange }) {
     [selected, onDestinationsChange],
   );
 
+  const maxPage = pageSize > 0 ? Math.max(0, Math.ceil(total / pageSize) - 1) : 0;
+
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold">Where are we sending people?</h2>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Pick one page for this campaign. Live public pages only; each platform reviews the
-          destination and rejects broken, private or past pages. For another page, create a
-          separate campaign with its own budget.
+          Pick one page for this campaign. Every public page type is listed from the same
+          source the server uses. Unavailable pages stay visible when you ask, but cannot be
+          selected. For another page, create a separate campaign with its own budget.
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div role="radiogroup" aria-label="Destination type" className="inline-flex rounded-lg border border-[var(--gray-300)] p-0.5">
+        <div role="radiogroup" aria-label="Destination type" className="inline-flex flex-wrap rounded-lg border border-[var(--gray-300)] p-0.5 gap-0.5">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -100,7 +117,7 @@ export function StepDestination({ destinations, onDestinationsChange }) {
               aria-checked={tab === t.id}
               onClick={() => setTab(t.id)}
               className={[
-                "h-8 px-3 text-xs font-medium rounded-md transition-colors",
+                "h-8 px-2.5 text-xs font-medium rounded-md transition-colors",
                 tab === t.id
                   ? "bg-[var(--color-brand-500)] text-white"
                   : "text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]",
@@ -113,6 +130,15 @@ export function StepDestination({ destinations, onDestinationsChange }) {
         <div className="flex-1 min-w-48">
           <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search pages…" />
         </div>
+        <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)] cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={includeUnavailable}
+            onChange={(e) => setIncludeUnavailable(e.target.checked)}
+            className="rounded border-[var(--gray-300)]"
+          />
+          Show unavailable
+        </label>
       </div>
 
       {loading && (
@@ -132,14 +158,17 @@ export function StepDestination({ destinations, onDestinationsChange }) {
       )}
 
       {!loading && !error && rows && rows.length === 0 && (
-        <AlertCard variant="info" title="No live pages match">
-          Nothing public and eligible matches that search. Publish the page first, or clear the search.
+        <AlertCard variant="info" title="No pages match">
+          Nothing matches that search
+          {includeUnavailable ? "" : " among available pages"}
+          . Try another type, clear the search, or show unavailable pages.
         </AlertCard>
       )}
 
       {!loading && !error && rows && rows.length > 0 && (
         <div role="group" aria-label="Destination pages" className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {rows.map((row) => {
+            const available = isAvailable(row);
             const isSelected = selected.some((d) => destKey(d) === destKey(row));
             return (
               <button
@@ -147,13 +176,17 @@ export function StepDestination({ destinations, onDestinationsChange }) {
                 type="button"
                 role="checkbox"
                 aria-checked={isSelected}
+                aria-disabled={!available}
+                disabled={!available}
                 onClick={() => toggle(row)}
                 className={[
-                  "relative text-left rounded-xl border overflow-hidden transition-all duration-150 cursor-pointer",
+                  "relative text-left rounded-xl border overflow-hidden transition-all duration-150",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
-                  isSelected
-                    ? "border-[var(--color-brand-500)] ring-2 ring-[var(--color-brand-500)]"
-                    : "border-[var(--gray-200)] hover:border-[var(--gray-300)]",
+                  !available
+                    ? "opacity-55 cursor-not-allowed border-[var(--gray-200)]"
+                    : isSelected
+                      ? "border-[var(--color-brand-500)] ring-2 ring-[var(--color-brand-500)] cursor-pointer"
+                      : "border-[var(--gray-200)] hover:border-[var(--gray-300)] cursor-pointer",
                 ].join(" ")}
               >
                 {isSelected && (
@@ -172,12 +205,15 @@ export function StepDestination({ destinations, onDestinationsChange }) {
                 <div className="p-2.5">
                   <p className="text-xs font-semibold truncate">{row.title}</p>
                   <p className="text-[10px] text-[var(--color-text-secondary)] truncate">
-                    {row.brand_name}
+                    {PAGE_TYPE_LABEL[row.page_type] ?? row.page_type}
+                    {row.brand_name ? ` · ${row.brand_name}` : ""}
                     {row.city ? ` · ${row.city}` : ""}
                     {row.master_start_at ? ` · ${new Date(row.master_start_at).toLocaleDateString()}` : ""}
                   </p>
-                  {row.status && (
-                    <p className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">{row.status}</p>
+                  {!available && (
+                    <p className="text-[10px] text-[var(--color-warning-700)] mt-0.5">
+                      Unavailable{row.availability_reason ? ` — ${row.availability_reason}` : ""}
+                    </p>
                   )}
                 </div>
               </button>
@@ -186,13 +222,25 @@ export function StepDestination({ destinations, onDestinationsChange }) {
         </div>
       )}
 
+      {!loading && !error && total > pageSize && (
+        <div className="flex items-center justify-between gap-2 text-xs text-[var(--color-text-secondary)]">
+          <span>
+            Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, total)} of {total}
+          </span>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" disabled={page <= 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+              Previous
+            </Button>
+            <Button size="sm" variant="secondary" disabled={page >= maxPage} onClick={() => setPage((p) => Math.min(maxPage, p + 1))}>
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
       {selected.length > 0 && (
         <div className="p-3 rounded-lg border border-[var(--gray-200)] text-xs space-y-2">
-          <p className="font-semibold">
-            {selected.length === 1
-              ? "1 destination selected"
-              : `${selected.length} destinations selected — one ad each, per channel`}
-          </p>
+          <p className="font-semibold">1 destination selected</p>
           <ul className="space-y-1">
             {selected.map((d) => (
               <li key={destKey(d)} className="flex items-start justify-between gap-2">
@@ -211,9 +259,8 @@ export function StepDestination({ destinations, onDestinationsChange }) {
             ))}
           </ul>
           <p className="text-[var(--color-text-secondary)]">
-            Every channel's ad points at these public pages. The app-or-web smart link is built
-            server-side and used only inside Google's tracking template — crawlers see an
-            app-store interstitial on the smart link, which platforms police as cloaking.
+            Every channel&apos;s ad points at this public page. The app-or-web smart link is built
+            server-side and used only inside Google&apos;s tracking template.
           </p>
         </div>
       )}

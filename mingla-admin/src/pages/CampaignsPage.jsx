@@ -35,13 +35,14 @@ import { launchConfirmCopy } from "../lib/adBuilder/budgetRules";
 import { PLATFORM_LABELS } from "../lib/adBuilder/channelPlan";
 // ISSUE-865 PR1 WP-4 — pure ROI math (ROAS/cost-per-result only from REAL spend).
 import { toCampaignRoiView } from "../lib/adRoi";
-
-function centsToUsd(cents) {
-  if (typeof cents !== "number" && typeof cents !== "string") return "—";
-  const n = Number(cents);
-  if (!Number.isFinite(n)) return "—";
-  return `$${(n / 100).toFixed(2)}`;
-}
+import {
+  canLaunchCampaign,
+  canPauseCampaign,
+  formatCampaignMoney,
+  scheduleWindowLabel,
+  spendCapProgress,
+} from "../lib/adSpendCap";
+import { loadFeatureFlags } from "../lib/featureFlags";
 
 function formatMinor(currency, minor) {
   const value = Number(minor);
@@ -75,6 +76,8 @@ function campaignIdFromHash() {
 
 export function CampaignsPage() {
   const { addToast } = useToast();
+  const [adsConsoleEnabled, setAdsConsoleEnabled] = useState(true);
+  const [adsConsoleReady, setAdsConsoleReady] = useState(false);
   const [campaigns, setCampaigns] = useState(null);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
@@ -121,6 +124,16 @@ export function CampaignsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    let mounted = true;
+    loadFeatureFlags().then((flags) => {
+      if (!mounted) return;
+      setAdsConsoleEnabled(flags.enable_ads_console !== false);
+      setAdsConsoleReady(true);
+    });
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     const onHashChange = () => setSelectedId(campaignIdFromHash());
@@ -219,11 +232,21 @@ export function CampaignsPage() {
     setRowBusy((prev) => ({ ...prev, [campaignId ?? "all"]: null }));
   };
 
+  if (adsConsoleReady && !adsConsoleEnabled) {
+    return (
+      <AlertCard variant="info" title="Ads console is off">
+        Campaigns is gated by <code className="text-xs">enable_ads_console</code>.
+        Turn it on in admin_config, or use{" "}
+        <a className="underline" href="#/ad-engine">Ad Engine</a> for connections.
+      </AlertCard>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <SectionCard
         title="Campaigns"
-        subtitle="Everything is created paused — launching is the explicit act that starts spend."
+        subtitle="Everything is created paused — launching is the explicit act that starts spend. Hard caps pause at 98%."
         action={
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" icon={RefreshCw} loading={rowBusy.all === "sync"} onClick={() => handleSync()}>
@@ -263,11 +286,20 @@ export function CampaignsPage() {
                   </button>
                   <div className="text-xs text-[var(--color-text-secondary)]">
                     {PLATFORM_LABELS[campaign.platform] ?? campaign.platform} · {campaign.objective} ·{" "}
-                    {centsToUsd(campaign.daily_budget_cents)}/day ·{" "}
+                    {formatCampaignMoney(campaign.currency, campaign.daily_budget_cents)}/day
+                    {campaign.cap_cents != null && (
+                      <> · cap {formatCampaignMoney(campaign.currency, campaign.cap_cents)}</>
+                    )}
+                    {" · "}
                     <a className="underline inline-flex items-center gap-1" href={campaign.dest_url} target="_blank" rel="noreferrer">
                       destination <ExternalLink size={10} />
                     </a>
                   </div>
+                  {scheduleWindowLabel({ startsAt: campaign.starts_at, endsAt: campaign.ends_at }) && (
+                    <div className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">
+                      {scheduleWindowLabel({ startsAt: campaign.starts_at, endsAt: campaign.ends_at })}
+                    </div>
+                  )}
                   {rowWarning[campaign.id] && (
                     <div className="text-xs text-[var(--color-warning-700)] mt-1">{rowWarning[campaign.id]}</div>
                   )}
@@ -277,11 +309,12 @@ export function CampaignsPage() {
                 <Badge variant={DELIVERY_BADGE_VARIANTS[campaign.delivery_status] ?? "info"}>
                   {campaign.delivery_status ?? "unknown"}
                 </Badge>
-                {campaign.status === "PAUSED" ? (
+                {canLaunchCampaign(campaign.status) && (
                   <Button size="sm" icon={Rocket} loading={rowBusy[campaign.id] === "launch"} onClick={() => setLaunchTarget(campaign)}>
                     Launch
                   </Button>
-                ) : (
+                )}
+                {canPauseCampaign(campaign.status) && (
                   <Button size="sm" variant="secondary" icon={Pause} loading={rowBusy[campaign.id] === "pause"} onClick={() => handleAction(campaign, "pause")}>
                     Pause
                   </Button>
@@ -425,6 +458,67 @@ export function CampaignsPage() {
         </SectionCard>
       )}
 
+      {/* toward #3697 Wave 3 — spend vs hard cap (real spend from rollup; never fabricate). */}
+      {selectedId && (() => {
+        const selectedCampaign = (campaigns ?? []).find((c) => c.id === selectedId) ?? detail;
+        const currency = selectedCampaign?.currency ?? "USD";
+        const capCents = selectedCampaign?.cap_cents ?? null;
+        const progress = spendCapProgress({
+          spendCents: roi?.spendCents ?? null,
+          capCents,
+        });
+        return (
+          <SectionCard
+            title="Spend vs hard cap"
+            subtitle="Hourly spend feed writes real totals. The server pauses at 98% of the hard cap."
+          >
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="border border-[var(--gray-200)] rounded-lg p-3">
+                <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Spend</div>
+                <div className="text-xl font-semibold">
+                  {roi?.spendCents == null ? "—" : formatCampaignMoney(currency, roi.spendCents)}
+                </div>
+              </div>
+              <div className="border border-[var(--gray-200)] rounded-lg p-3">
+                <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Hard cap</div>
+                <div className="text-xl font-semibold">
+                  {capCents == null ? "—" : formatCampaignMoney(currency, capCents)}
+                </div>
+              </div>
+              <div className="border border-[var(--gray-200)] rounded-lg p-3">
+                <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Used</div>
+                <div className="text-xl font-semibold">{progress.pctLabel}</div>
+              </div>
+              <div className="border border-[var(--gray-200)] rounded-lg p-3">
+                <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Schedule</div>
+                <div className="text-sm font-medium">
+                  {scheduleWindowLabel({
+                    startsAt: selectedCampaign?.starts_at,
+                    endsAt: selectedCampaign?.ends_at,
+                  }) ?? "—"}
+                </div>
+              </div>
+            </div>
+            {typeof progress.ratio === "number" && (
+              <div className="mt-3 h-2 rounded-full bg-[var(--gray-100)] overflow-hidden">
+                <div
+                  className={[
+                    "h-full rounded-full transition-all",
+                    progress.atPauseThreshold ? "bg-[var(--color-warning-600)]" : "bg-[var(--color-brand-500)]",
+                  ].join(" ")}
+                  style={{ width: `${Math.round(progress.ratio * 100)}%` }}
+                />
+              </div>
+            )}
+            {progress.atPauseThreshold && (
+              <p className="mt-2 text-xs text-[var(--color-warning-700)]">
+                At or past 98% of the hard cap — launch/spend sync will keep this paused.
+              </p>
+            )}
+          </SectionCard>
+        );
+      })()}
+
       {/* ISSUE-865 PR1 WP-4 — Conversions & ROI (below Ad sets & ads). Reads the
           per-campaign ad_campaign_conversion_rollup RPC. Spend/ROAS are shown ONLY
           when a real spend figure exists (spend_cents) — never fabricated. */}
@@ -439,7 +533,7 @@ export function CampaignsPage() {
             </div>
           ) : !roi || !roi.hasData ? (
             <div className="text-[var(--color-text-secondary)] text-sm">
-              No attributed conversions yet. When someone clicks this campaign's ad and
+              No attributed conversions yet. When someone clicks this campaign&apos;s ad and
               purchases or RSVPs on Mingla, the conversion is measured and shows up here.
             </div>
           ) : (
@@ -456,7 +550,13 @@ export function CampaignsPage() {
                 <div className="border border-[var(--gray-200)] rounded-lg p-3">
                   <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Spend</div>
                   <div className="text-xl font-semibold">
-                    {roi.spendCents === null ? "—" : centsToUsd(roi.spendCents)}
+                    {roi.spendCents === null
+                      ? "—"
+                      : formatCampaignMoney(
+                        (campaigns ?? []).find((c) => c.id === selectedId)?.currency
+                          ?? detail?.currency,
+                        roi.spendCents,
+                      )}
                   </div>
                 </div>
                 <div className="border border-[var(--gray-200)] rounded-lg p-3">
@@ -469,7 +569,7 @@ export function CampaignsPage() {
 
               {roi.spendCents === null && (
                 <div className="text-[var(--color-text-tertiary)] text-xs">
-                  Connect platform spend reporting to see ROAS and cost per result.
+                  Spend appears after the hourly feed writes the first ad_spend_daily row.
                 </div>
               )}
 
