@@ -39,7 +39,10 @@ function previewRequest({
     destination: {
       page_type: destination.page_type,
       brand_slug: destination.brand_slug,
-      ...(destination.page_type === "event" ? { entity_slug: destination.slug } : {}),
+      // toward #3697 Wave 4 — entity slug for every entity-backed type (not brand/site).
+      ...(destination.page_type === "brand" || destination.page_type === "site"
+        ? {}
+        : { entity_slug: destination.slug }),
     },
     preview_input: {
       primary_text: primary || "Discover this Mingla experience",
