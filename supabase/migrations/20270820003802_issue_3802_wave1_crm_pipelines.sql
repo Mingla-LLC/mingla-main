@@ -601,13 +601,17 @@ CREATE TABLE public.crm_activity (
   occurred_at  timestamptz NOT NULL DEFAULT now(),
   created_at   timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT crm_activity_kind_check CHECK (kind IN ('created','note','stage_move','touch')),
-  CONSTRAINT crm_activity_actor_check CHECK (actor_email IS NOT NULL OR via = 'system'),
+  -- COALESCE and the IS NOT NULL tests below matter: a CHECK passes on NULL, so
+  -- without them a line with no author, or a touch with no direction, would be
+  -- accepted from a writer that skips the functions.
+  CONSTRAINT crm_activity_actor_check CHECK (actor_email IS NOT NULL OR COALESCE(via = 'system', false)),
   CONSTRAINT crm_activity_via_check CHECK (via IS NULL OR via ~ '^[a-z0-9_-]{1,40}$'),
   CONSTRAINT crm_activity_body_check CHECK (char_length(COALESCE(body,'')) <= 4000),
   CONSTRAINT crm_activity_note_check CHECK (kind <> 'note' OR char_length(btrim(COALESCE(body,''))) >= 1),
   CONSTRAINT crm_activity_move_check CHECK ((kind = 'stage_move') = (from_stage IS NOT NULL AND to_stage IS NOT NULL)),
   CONSTRAINT crm_activity_touch_check CHECK (
-    (kind = 'touch' AND channel IN ('email','whatsapp','instagram_dm','tiktok_dm','phone','in_person')
+    (kind = 'touch' AND channel IS NOT NULL AND direction IS NOT NULL
+                    AND channel IN ('email','whatsapp','instagram_dm','tiktok_dm','phone','in_person')
                     AND direction IN ('outbound','inbound')) OR
     (kind <> 'touch' AND channel IS NULL AND direction IS NULL AND message_ref IS NULL AND reply_class IS NULL)),
   CONSTRAINT crm_activity_reply_check CHECK (reply_class IS NULL OR
@@ -705,9 +709,9 @@ CREATE FUNCTION public.crm_audit(p_actor text, p_action text, p_target_type text
 RETURNS void
 LANGUAGE sql VOLATILE SET search_path = ''
 AS $$
-  INSERT INTO public.admin_audit_log (admin_email, action, target_type, target_id, metadata, actor_uid)
+  INSERT INTO public.admin_audit_log (admin_email, action, target_type, target_id, metadata, actor_uid, created_at)
   VALUES (p_actor, p_action, p_target_type, p_target_id, COALESCE(p_metadata, '{}'::jsonb),
-          CASE WHEN p_actor = 'system' THEN NULL ELSE auth.uid() END)
+          CASE WHEN p_actor = 'system' THEN NULL ELSE auth.uid() END, clock_timestamp())
 $$;
 REVOKE EXECUTE ON FUNCTION public.crm_audit(text, text, text, text, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_audit(text, text, text, text, jsonb) TO service_role;
