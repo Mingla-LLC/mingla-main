@@ -1,19 +1,24 @@
 /**
  * #3645 — an event publish (or unpublish) refusal must keep its reason.
  *
- * `supabase.rpc()` fails with a PLAIN OBJECT `{ message, code, details, hint }`,
- * not an `Error`. `publishBusinessEventDraft` used to `throw error` verbatim and
- * the wizard read it as `error instanceof Error ? error.message : String(error)`
- * — the literal "[object Object]" — so none of the mapped guards
- * (stripe_charges_disabled, event_currency_required, offering_date_past,
- * city_required) could ever fire, and every refusal showed generic copy. The
- * unpublish path hid `event_unpublish_has_commitments` the same way.
+ * `supabase.rpc()` fails with a PLAIN OBJECT `{ message, code, details, hint }`
+ * and businessEvents rejects with that object verbatim (pinned by
+ * where_step_pin_survives_autosave_echo.test.ts, so the service shape stays).
+ * The READERS were the bug: `error instanceof Error ? error.message :
+ * String(error)` yields the literal "[object Object]", so none of the mapped
+ * publish guards (stripe_charges_disabled, event_currency_required,
+ * offering_date_past, city_required) could fire, and the unpublish callers
+ * could never see `event_unpublish_has_commitments`.
+ *
+ * Every test drives the REAL service with a mocked rpc, then feeds the real
+ * rejection to the reader the screen uses.
  *
  * FAILS ON REVERT:
- *  - restore `if (error !== null) throw error;` in publishBusinessEventDraft
- *    → the "legacy reader" tests see "[object Object]" and no guard copy;
- *  - restore it in callEventDraftLifecycleRpc → the unpublish test fails;
- *  - restore the wizard's `String(error)` reader → the wizard source pin fails.
+ *  - restore the wizard's `String(error)` reader → the wizard source pin fails;
+ *  - restore the inline `instanceof Error` reader in either unpublish caller →
+ *    that caller's source pin fails;
+ *  - make eventUnpublishFailureCopy read `instanceof Error` only → the
+ *    behavioural unpublish test fails.
  *
  *   cd mingla-business && npx jest \
  *     src/services/__tests__/issue_3645_publish_refusal_reason.happy.test.ts --runInBand
@@ -42,6 +47,11 @@ import {
 } from "../businessEvents";
 import { readRpcFailureMessage } from "../rsvpRpcFailure";
 import type { DraftEvent } from "../../store/draftEventStore";
+import {
+  EVENT_UNPUBLISH_FAILED_COPY,
+  EVENT_UNPUBLISH_HAS_COMMITMENTS_COPY,
+  eventUnpublishFailureCopy,
+} from "../../utils/eventUnpublishFailureCopy";
 import { resolveProviderNeutralPaidPublishGuardCopy } from "../../utils/paidPublishGuards";
 
 /** The bare object PostgREST hands back for a `RAISE EXCEPTION '<code>'`. */
@@ -52,11 +62,7 @@ const postgrestRefusal = (message: string): Record<string, unknown> => ({
   hint: null,
 });
 
-/**
- * The reader every pre-#3645 consumer used (EventCreatorWizard publish, the
- * event dashboard and Hub unpublish handlers). The service must hand it a real
- * Error so this still-shipped shape reads the true code.
- */
+/** The reader every pre-#3645 consumer used. */
 const legacyReader = (error: unknown): string =>
   error instanceof Error ? error.message : String(error ?? "");
 
@@ -149,6 +155,9 @@ const captureRejection = async (run: () => Promise<unknown>): Promise<unknown> =
   throw new Error("expected the call to reject");
 };
 
+const source = (...segments: string[]): string =>
+  readFileSync(path.join(__dirname, "..", "..", "..", ...segments), "utf8");
+
 describe("#3645 — event publish refusals keep their reason", () => {
   beforeEach(() => {
     rpcMock.mockReset();
@@ -168,37 +177,19 @@ describe("#3645 — event publish refusals keep their reason", () => {
         publishBusinessEventDraft(baseDraft()),
       );
 
-      expect(thrown).toBeInstanceOf(Error);
-      expect(legacyReader(thrown)).toBe(code);
-      expect(legacyReader(thrown)).not.toContain("[object Object]");
-      const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(
-        legacyReader(thrown),
-      );
-      expect(guardCopy).not.toBeNull();
-      expect(guardCopy?.action).toBe(action);
+      // The old reader: no guard can match what the service really rejects with.
+      expect(legacyReader(thrown)).toBe("[object Object]");
+      expect(resolveProviderNeutralPaidPublishGuardCopy(legacyReader(thrown))).toBeNull();
+      // The reader the wizard uses now.
+      expect(readRpcFailureMessage(thrown)).toBe(code);
+      expect(
+        resolveProviderNeutralPaidPublishGuardCopy(readRpcFailureMessage(thrown))?.action,
+      ).toBe(action);
     },
   );
 
-  test("the wizard's reader maps a bare PostgREST object without the service's help", () => {
-    const bare = postgrestRefusal("stripe_charges_disabled");
-    // What the wizard did before: no guard can match this.
-    expect(resolveProviderNeutralPaidPublishGuardCopy(legacyReader(bare))).toBeNull();
-    // What it does now.
-    expect(
-      resolveProviderNeutralPaidPublishGuardCopy(readRpcFailureMessage(bare))?.action,
-    ).toBe("payment_onboarding");
-    expect(
-      resolveProviderNeutralPaidPublishGuardCopy(
-        readRpcFailureMessage(postgrestRefusal("city_required")),
-      )?.action,
-    ).toBe("edit_where");
-  });
-
   test("EventCreatorWizard's publish catch reads the failure with readRpcFailureMessage", () => {
-    const wizard = readFileSync(
-      path.join(__dirname, "..", "..", "components", "event", "EventCreatorWizard.tsx"),
-      "utf8",
-    );
+    const wizard = source("src", "components", "event", "EventCreatorWizard.tsx");
     const start = wizard.indexOf("const slug = await onPublishDraft(");
     expect(start).toBeGreaterThanOrEqual(0);
     const guardCall = wizard.indexOf(
@@ -211,7 +202,7 @@ describe("#3645 — event publish refusals keep their reason", () => {
     expect(region).not.toMatch(/const code = error instanceof Error/);
   });
 
-  test("an unpublish refused for buyer activity reaches the 'cancel it instead' branch", async () => {
+  test("an unpublish refused for buyer activity produces the 'cancel it instead' copy", async () => {
     rpcMock.mockResolvedValueOnce({
       data: null,
       error: postgrestRefusal("event_unpublish_has_commitments"),
@@ -221,20 +212,36 @@ describe("#3645 — event publish refusals keep their reason", () => {
       unpublishBusinessEventToDraft("00000000-0000-4000-8000-000000000001"),
     );
 
-    expect(thrown).toBeInstanceOf(Error);
-    // The exact check both unpublish callers make.
-    const code = thrown instanceof Error ? thrown.message : "unpublish_failed";
-    expect(code.includes("event_unpublish_has_commitments")).toBe(true);
+    // What both callers did before: the branch was unreachable.
+    const legacyCode = thrown instanceof Error ? thrown.message : "unpublish_failed";
+    expect(legacyCode.includes("event_unpublish_has_commitments")).toBe(false);
+
+    expect(eventUnpublishFailureCopy(thrown)).toBe(EVENT_UNPUBLISH_HAS_COMMITMENTS_COPY);
+    expect(EVENT_UNPUBLISH_HAS_COMMITMENTS_COPY).toContain("Cancel it instead");
   });
 
-  test("a refusal with no readable message still rejects with a real Error", async () => {
-    rpcMock.mockResolvedValueOnce({ data: null, error: { code: "PGRST301" } });
-
-    const thrown = await captureRejection(() =>
-      publishBusinessEventDraft(baseDraft()),
+  test("any other unpublish failure keeps the retry copy, for both error shapes", () => {
+    expect(eventUnpublishFailureCopy(postgrestRefusal("connection reset"))).toBe(
+      EVENT_UNPUBLISH_FAILED_COPY,
     );
+    expect(eventUnpublishFailureCopy(new Error("network"))).toBe(
+      EVENT_UNPUBLISH_FAILED_COPY,
+    );
+    expect(
+      eventUnpublishFailureCopy(new Error("event_unpublish_has_commitments")),
+    ).toBe(EVENT_UNPUBLISH_HAS_COMMITMENTS_COPY);
+    expect(eventUnpublishFailureCopy(undefined)).toBe(EVENT_UNPUBLISH_FAILED_COPY);
+  });
 
-    expect(thrown).toBeInstanceOf(Error);
-    expect(legacyReader(thrown)).toBe("publish_failed");
+  test.each([
+    ["app", "event", "[id]", "index.tsx"],
+    ["app", "(tabs)", "hub", "events.tsx"],
+  ])("the unpublish caller %s/%s/%s/%s uses the shared reader", (...segments) => {
+    const file = source(...segments);
+    const call = file.indexOf("await unpublishBusinessEventToDraft(");
+    expect(call).toBeGreaterThanOrEqual(0);
+    const region = file.slice(call, call + 700);
+    expect(region).toContain("eventUnpublishFailureCopy(error)");
+    expect(region).not.toMatch(/error instanceof Error \? error\.message/);
   });
 });
