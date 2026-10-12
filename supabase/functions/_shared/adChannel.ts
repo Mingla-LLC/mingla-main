@@ -46,6 +46,20 @@ import { redditAdapter } from "./reddit.ts";
 import { snapchatAdapter } from "./snapchat.ts";
 import { tiktokAdapter } from "./tiktok.ts";
 
+/** Keep in lockstep with adDestination.ts MARKETING_ROUTES (no import — secret-contract graph). */
+const MARKETING_BRAND_SLUG = "mingla";
+const MARKETING_ENTITY_SLUGS = new Set([
+  "explorer",
+  "host",
+  "download",
+  "host-download",
+  "tools",
+  "tools-events",
+  "tools-venues",
+  "tools-trips",
+  "tools-pricing",
+]);
+
 const ADAPTER_REGISTRY: Record<Platform, ChannelAdapter> = {
   meta: metaAdapter,
   tiktok: tiktokAdapter, // WP7 (#863) — live adapter (fail-close until TIKTOK_* secrets are set)
@@ -232,6 +246,17 @@ export async function destinationStillPublicLive(
       .eq("brand_slug", dest.dest_brand_slug)
       .maybeSingle();
     return Boolean(data);
+  }
+  // toward #3697 Wave 4 — static marketing allowlist (no DB entity row).
+  if (dest.dest_page_type === "marketing") {
+    if (
+      dest.dest_brand_slug &&
+      dest.dest_brand_slug.toLowerCase() !== MARKETING_BRAND_SLUG
+    ) {
+      return false;
+    }
+    const slug = (dest.dest_entity_slug ?? "").trim().toLowerCase();
+    return MARKETING_ENTITY_SLUGS.has(slug);
   }
   // Unknown/uncreatable page types remain fail-closed.
   return false;

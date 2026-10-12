@@ -11516,7 +11516,7 @@
       "providerWorkflow": ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "326bf62824784889cb47daacc17eda1cce8815233f0d3b2019b30ce0d24d54c8",
+        "sourceSha256": "ff310ffc4919b3a641510cec98fce1b0eb47ccf61d53562b7174e8343389303d",
         "triggers": [
           "pull_request",
           "push"
@@ -11524,9 +11524,13 @@
         "pathScope": [
           ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml",
           "mingla-admin/src/**",
+          "mingla-marketing/lib/ad-marketing-routes.ts",
           "supabase/functions/_shared/__tests__/issue1002_multi_destination_fanout.test.ts",
+          "supabase/functions/_shared/__tests__/issue_3697_wave4_marketing_dest.test.ts",
+          "supabase/functions/_shared/adDestination.ts",
           "supabase/functions/admin-ad-create-campaign/**",
-          "supabase/migrations/20270107001002_issue_1002_ad_campaign_destinations.sql"
+          "supabase/migrations/20270107001002_issue_1002_ad_campaign_destinations.sql",
+          "supabase/migrations/20270818003697_issue_3697_wave4_marketing_destinations.sql"
         ],
         "jobKeys": [
           "issue-1002-admin-node-test",
