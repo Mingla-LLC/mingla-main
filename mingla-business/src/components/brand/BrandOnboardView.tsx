@@ -126,7 +126,13 @@ import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
 import { useSwitchAccount } from "../../hooks/useSwitchAccount";
 // #3645 — NG country pick must stamp hold cutover via select_provider without
 // waiting for bank details (sell-before-bank).
+// Two imports from one module on purpose: the first line is pinned verbatim by
+// issue_3645_ng_select_provider.source.test.ts (append-only suite).
+/* eslint-disable import/no-duplicates */
 import { useSelectPaystackProvider } from "../../hooks/useBrandPaystack";
+import { useClearPaystackProvider } from "../../hooks/useBrandPaystack";
+/* eslint-enable import/no-duplicates */
+import { payoutCountrySwitchErrorCopy } from "../../utils/payoutCountrySwitchCopy";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
@@ -287,6 +293,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     brandRail.provider === "paystack",
   );
   const selectPaystackProvider = useSelectPaystackProvider();
+  const clearPaystackProvider = useClearPaystackProvider();
   // When the user returns from the Nigeria bank form, re-open the country sheet
   // so they can immediately re-pick (rather than landing on the closed picker).
   const [reopenPickerOnReturn, setReopenPickerOnReturn] = useState(false);
@@ -297,14 +304,11 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     // Paystack rail, never Stripe; it is intentionally not in the Stripe allowlist.
     if (countryCode === "NG") {
       setPaystackSelected(true);
+      setErrorMessage(null);
       if (brand?.id) {
         selectPaystackProvider.mutate(brand.id, {
           onError: (err: Error) => {
-            setErrorMessage(
-              err.message.trim().length > 0
-                ? err.message
-                : "Could not switch to Paystack. Try again.",
-            );
+            setErrorMessage(payoutCountrySwitchErrorCopy(err));
           },
           onSuccess: () => {
             setErrorMessage(null);
@@ -725,11 +729,23 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // #3645 PR11c — Organiser Terms gate lives inside BrandPaystackOnboardView
   // (shared with Payments + web bank-connect).
   if (brand !== null && paystackSelected) {
+    // #3645 — leaving the Nigeria form reverses the pick (clear_provider) so
+    // the brand is not left on the Nigerian rail by accident. The picker only
+    // comes back once the server has confirmed; a failure stays here, visible.
     const backToPicker = (): void => {
-      setCountryTouched(true);
-      setReopenPickerOnReturn(true);
-      setPaystackSelected(false);
-      setSelectedCountry(DEFAULT_COUNTRY);
+      if (clearPaystackProvider.isPending) return;
+      setErrorMessage(null);
+      clearPaystackProvider.mutate(brand.id, {
+        onSuccess: () => {
+          setCountryTouched(true);
+          setReopenPickerOnReturn(true);
+          setPaystackSelected(false);
+          setSelectedCountry(DEFAULT_COUNTRY);
+        },
+        onError: (err: Error) => {
+          setErrorMessage(payoutCountrySwitchErrorCopy(err));
+        },
+      });
     };
     return (
       <View style={styles.host}>
@@ -765,6 +781,15 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {errorMessage !== null ? (
+            <View
+              style={styles.railSwitchError}
+              accessibilityRole="alert"
+              testID="onboard-rail-switch-error"
+            >
+              <Text style={styles.railSwitchErrorText}>{errorMessage}</Text>
+            </View>
+          ) : null}
           <BrandPaystackOnboardView
             brandId={brand.id}
             brandName={brand.displayName}
@@ -1394,6 +1419,22 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     color: textTokens.tertiary,
+    textAlign: "center",
+  },
+
+  // #3645 — failed payout-country switch, shown above the Nigeria bank form.
+  railSwitchError: {
+    borderWidth: 1,
+    borderColor: semantic.error,
+    backgroundColor: semantic.errorTint,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  railSwitchErrorText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.primary,
     textAlign: "center",
   },
 

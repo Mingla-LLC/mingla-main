@@ -55,6 +55,10 @@ import {
 } from "../../hooks/useMinglaToSAcceptance";
 import { brandStripeStatusKeys } from "../../hooks/useBrandStripeStatus";
 import { useBrand } from "../../hooks/useBrands";
+import {
+  useClearPaystackProvider,
+  useSelectPaystackProvider,
+} from "../../hooks/useBrandPaystack";
 import { brandKeys } from "../../hooks/brandKeys";
 import {
   startBrandStripeOnboarding,
@@ -68,6 +72,7 @@ import {
   type BankConnectProvider,
 } from "../../utils/bankConnectRail";
 import { isInviteFunnelValue } from "../../utils/inviteFunnelSignal";
+import { payoutCountrySwitchErrorCopy } from "../../utils/payoutCountrySwitchCopy";
 
 const TERMS_URL = ORGANISER_TERMS_URL;
 const PAYSTACK_PICKER_OPTIONS = [
@@ -154,6 +159,26 @@ export default function BrandBankConnectBody(): React.ReactElement {
   const [selectedProvider, setSelectedProvider] =
     useState<BankConnectProvider>("stripe");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // #3645 — picking Nigeria must put the brand on the Nigerian payout rail
+  // straight away (edge `select_provider`), exactly as the native screen does,
+  // so it can sell before a bank exists. Leaving Nigeria reverses it
+  // (`clear_provider`) so a brand is never left on that rail by accident.
+  const selectNigeriaRail = useSelectPaystackProvider();
+  const clearNigeriaRail = useClearPaystackProvider();
+  const railSwitchPending =
+    selectNigeriaRail.isPending || clearNigeriaRail.isPending;
+  const [railSwitchError, setRailSwitchError] = useState<{
+    message: string;
+    countryCode: string;
+  } | null>(null);
+  // Once the organiser picks a country the brand row stops re-seeding the
+  // picker: the switch itself refetches the brand, and that refetch must not
+  // overwrite the country they just chose.
+  const countryTouchedRef = useRef(false);
+  // What this screen last asked the server for. null = nothing asked yet, so
+  // the brand row is the truth. A FAILED switch to Nigeria still counts as
+  // "ng": the server may have moved the brand before failing.
+  const requestedRailRef = useRef<"ng" | "not-ng" | null>(null);
   // #948 W4 — the two Skip choices stay hidden until "Skip for now" is pressed,
   // so the primary "Add bank details" CTA keeps bank-first emphasis.
   const [skipChoicesOpen, setSkipChoicesOpen] = useState(false);
@@ -168,7 +193,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
   );
 
   useEffect(() => {
-    if (brand === null) return;
+    if (brand === null || countryTouchedRef.current) return;
     setSelectedCountry(canonicalRail.countryCode);
     setSelectedProvider(canonicalRail.provider);
   }, [
@@ -210,17 +235,61 @@ export default function BrandBankConnectBody(): React.ReactElement {
   }, []);
 
   const handleCountryChange = useCallback((countryCode: string): void => {
+    if (brand === null || railSwitchPending) return;
     // orch-strict-grep-allow stripe-country-out-of-scope — Nigeria uses Paystack and is deliberately outside the Stripe allowlist.
+    const wantsNigeria = countryCode.trim().toUpperCase() === "NG";
     const next = resolveBankConnectRail({
       countryCode,
-      paymentProvider: countryCode.trim().toUpperCase() === "NG"
-        ? "paystack"
-        : "stripe",
+      paymentProvider: wantsNigeria ? "paystack" : "stripe",
     });
+    countryTouchedRef.current = true;
     setSelectedCountry(next.countryCode);
-    setSelectedProvider(next.provider);
     setSubmitError(null);
-  }, []);
+    setRailSwitchError(null);
+
+    if (wantsNigeria) {
+      requestedRailRef.current = "ng";
+      selectNigeriaRail.mutate(brand.id, {
+        // The bank form only appears once the brand really is on the rail.
+        onSuccess: () => setSelectedProvider("paystack"),
+        onError: (error: Error) => {
+          setSelectedProvider("stripe");
+          setRailSwitchError({
+            message: payoutCountrySwitchErrorCopy(error),
+            countryCode: next.countryCode,
+          });
+        },
+      });
+      return;
+    }
+
+    const onNigeriaRail =
+      requestedRailRef.current === null
+        ? brand.paymentProvider === "paystack" || selectedProvider === "paystack"
+        : requestedRailRef.current === "ng";
+    if (!onNigeriaRail) {
+      setSelectedProvider(next.provider);
+      return;
+    }
+    clearNigeriaRail.mutate(brand.id, {
+      onSuccess: () => {
+        requestedRailRef.current = "not-ng";
+        setSelectedProvider("stripe");
+      },
+      onError: (error: Error) => {
+        setRailSwitchError({
+          message: payoutCountrySwitchErrorCopy(error),
+          countryCode: next.countryCode,
+        });
+      },
+    });
+  }, [
+    brand,
+    clearNigeriaRail,
+    railSwitchPending,
+    selectNigeriaRail,
+    selectedProvider,
+  ]);
 
   const handlePaystackConnected = useCallback((): void => {
     if (brandId === null) return;
@@ -419,9 +488,43 @@ export default function BrandBankConnectBody(): React.ReactElement {
             onChange={handleCountryChange}
             extraOptions={PAYSTACK_PICKER_OPTIONS}
             presentation="payout-confirm"
+            disabled={railSwitchPending}
           />
 
-          {selectedProvider === "paystack" ? (
+          {railSwitchPending ? (
+            <View
+              style={styles.railSwitching}
+              accessibilityRole="progressbar"
+              accessibilityLabel="Updating your payout country"
+              testID="bank-connect-rail-switching"
+            >
+              <Spinner size={36} color={accent.warm} />
+              <Text style={styles.stateBody}>
+                Updating your payout country…
+              </Text>
+            </View>
+          ) : railSwitchError !== null ? (
+            <>
+              <View
+                style={styles.errorCard}
+                accessibilityRole="alert"
+                testID="bank-connect-rail-error"
+              >
+                <Text style={styles.errorText}>{railSwitchError.message}</Text>
+              </View>
+              <Button
+                label="Try again"
+                onPress={(): void =>
+                  handleCountryChange(railSwitchError.countryCode)
+                }
+                variant="secondary"
+                size="lg"
+                fullWidth
+                accessibilityLabel="Try updating your payout country again"
+                testID="bank-connect-rail-retry"
+              />
+            </>
+          ) : selectedProvider === "paystack" ? (
             <BrandPaystackOnboardView
               brandId={brand.id}
               brandName={brand.displayName}
@@ -639,6 +742,11 @@ const styles = StyleSheet.create({
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.primary,
     textAlign: "center",
+  },
+  railSwitching: {
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
   },
   legalPressable: {
     minHeight: 44,
