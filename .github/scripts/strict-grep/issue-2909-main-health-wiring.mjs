@@ -26,6 +26,8 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { OPERATIONS_WORKFLOW_NAMES } from "../../../scripts/ci/main-health.mjs";
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
 const WORKFLOW_DIR = path.join(REPO_ROOT, ".github", "workflows");
@@ -58,6 +60,16 @@ export const REQUIRED_ALERT_ENV = Object.freeze([
   "MINGLA_SELF_ACTOR",
   "MINGLA_SELF_URL",
 ]);
+
+// #2830 — the price of leaving a workflow out of the `main` verdict. A workflow
+// the adjudicator excludes no longer turns the pre-merge check red and no
+// longer triggers the red-main email, so unless it pages a person BY ITSELF its
+// failures reach nobody: the #2909 defect, reintroduced by an allowlist. This
+// gate therefore refuses an excluded name unless exactly one workflow carries
+// it and that workflow runs the operations notifier, armed.
+export const OPERATIONS_NOTIFIER = "scripts/sites/notify-sites-ops.mjs";
+export const OPERATIONS_NOTIFIER_RUN = `node ${OPERATIONS_NOTIFIER}`;
+export const OPERATIONS_RECIPIENT_ENV = "MINGLA_SITES_OPS_ALERT_TO";
 
 const RUBY_PARSE = String.raw`
 require "yaml"
@@ -116,7 +128,7 @@ function hostByName(documents, displayName, errors) {
   return matches[0][1];
 }
 
-export function auditWiring(sources) {
+export function auditWiring(sources, { operationsNames = OPERATIONS_WORKFLOW_NAMES } = {}) {
   const errors = [];
   const documents = parseWorkflows(sources);
   for (const [file, document] of Object.entries(documents)) {
@@ -207,6 +219,46 @@ export function auditWiring(sources) {
       }
       if (!String(env.MINGLA_SELF_CONCLUSION ?? "").includes("needs.*.result")) {
         errors.push(`${ALERT_JOB}: MINGLA_SELF_CONCLUSION must be derived from needs.*.result — the host's own run is still in progress here and the API cannot yet see the failure being reported`);
+      }
+    }
+  }
+
+  // ---- #2830: an excluded operations workflow must page by itself ----------
+  if (!Array.isArray(operationsNames) || new Set(operationsNames).size !== operationsNames.length) {
+    errors.push("the operations exclusion list must be a list of distinct display names");
+  }
+  for (const name of Array.isArray(operationsNames) ? operationsNames : []) {
+    if (name === PREGATE_HOST_NAME || name === ALERT_HOST_NAME) {
+      errors.push(`"${name}" hosts the main-health check itself and can never be excluded from it`);
+      continue;
+    }
+    const host = hostByName(documents, name, errors);
+    if (!host) continue;
+    // The job(s) that run the notifier DIRECTLY. A script that merely imports
+    // it does not count: the page must not depend on some other verdict having
+    // been reached first.
+    const paging = Object.entries(host.jobs ?? {}).filter(([, job]) =>
+      runs(job).some((command) => command.startsWith(OPERATIONS_NOTIFIER_RUN)));
+    if (paging.length === 0) {
+      errors.push(`${name}: excluded from the main verdict but never runs ${OPERATIONS_NOTIFIER}; its failures would reach nobody`);
+      continue;
+    }
+    for (const [key, job] of paging) {
+      if (!String(job.if ?? "").includes("always()")) {
+        errors.push(`${name}: paging job "${key}" must carry always() — without it a failed job it needs skips the page for exactly the run that failed`);
+      }
+      if (job.permissions?.issues !== "write") {
+        errors.push(`${name}: paging job "${key}" needs issues: write — that is what makes a failed send loud and a sent page deduplicated`);
+      }
+      const step = (job.steps ?? []).find((candidate) =>
+        String(candidate?.run ?? "").trim().startsWith(OPERATIONS_NOTIFIER_RUN));
+      const env = step?.env ?? {};
+      if (!String(env.RESEND_API_KEY ?? "").includes("secrets.RESEND_API_KEY")) {
+        errors.push(`${name}: paging job "${key}" must thread RESEND_API_KEY; without it the page is silently unsendable`);
+      }
+      // A SECRET, never a variable or a literal: the repository is public.
+      if (!String(env[OPERATIONS_RECIPIENT_ENV] ?? "").includes(`secrets.${OPERATIONS_RECIPIENT_ENV}`)) {
+        errors.push(`${name}: paging job "${key}" must thread ${OPERATIONS_RECIPIENT_ENV} from a secret`);
       }
     }
   }
@@ -316,6 +368,96 @@ export function runSelfTest() {
   for (const [label, mutated, diagnostic] of mutants) {
     expectFailure(label, mutated, diagnostic);
     assertions += 1;
+  }
+
+  // ---- #2830: exclusion from the main verdict is only safe if it pages ------
+  assert.ok(OPERATIONS_WORKFLOW_NAMES.length >= 1, "at least one operations workflow is excluded");
+  assertions += 1;
+  const expectOperationsFailure = (label, mutatedSources, diagnostic, options) => {
+    const errors = auditWiring(mutatedSources, options);
+    assert.ok(
+      errors.some((error) => error.includes(diagnostic)),
+      `${label}: expected ${diagnostic}; got ${errors.join(" | ") || "(no errors)"}`,
+    );
+    assertions += 1;
+  };
+  expectOperationsFailure(
+    "an excluded name that no workflow carries",
+    sources,
+    'exactly one workflow must be named "No Such Operations Workflow"',
+    { operationsNames: [...OPERATIONS_WORKFLOW_NAMES, "No Such Operations Workflow"] },
+  );
+  expectOperationsFailure(
+    "the main-health host excludes itself",
+    sources,
+    "can never be excluded from it",
+    { operationsNames: [PREGATE_HOST_NAME] },
+  );
+  // Any ordinary workflow will do: none of them runs the notifier.
+  const ordinary = Object.values(parseWorkflows(sources))
+    .map((document) => document?.name)
+    .find((name) => typeof name === "string" && name !== PREGATE_HOST_NAME &&
+      name !== ALERT_HOST_NAME && !OPERATIONS_WORKFLOW_NAMES.includes(name) &&
+      Object.values(parseWorkflows(sources)).filter((document) => document?.name === name).length === 1);
+  assert.ok(ordinary, "fixture needs one uniquely named ordinary workflow");
+  expectOperationsFailure(
+    "a code-health workflow is excluded without being taught to page",
+    sources,
+    `${ordinary}: excluded from the main verdict but never runs ${OPERATIONS_NOTIFIER}`,
+    { operationsNames: [ordinary] },
+  );
+  expectOperationsFailure(
+    "the same name is listed twice",
+    sources,
+    "distinct display names",
+    { operationsNames: [OPERATIONS_WORKFLOW_NAMES[0], OPERATIONS_WORKFLOW_NAMES[0]] },
+  );
+  for (const name of OPERATIONS_WORKFLOW_NAMES) {
+    expectOperationsFailure(
+      `${name}: the notifier call is removed`,
+      withJob(sources, name, (s) => s.replaceAll(OPERATIONS_NOTIFIER_RUN, "echo skipped")),
+      `never runs ${OPERATIONS_NOTIFIER}`,
+    );
+    expectOperationsFailure(
+      `${name}: the notifier is only imported by another script`,
+      withJob(sources, name, (s) => s.replaceAll(`${OPERATIONS_NOTIFIER_RUN} run`, "node scripts/sites/check-recovery-freshness.mjs")),
+      `never runs ${OPERATIONS_NOTIFIER}`,
+    );
+    expectOperationsFailure(
+      `${name}: the workflow is renamed out from under the exclusion`,
+      withJob(sources, name, (s) => s.replace(`name: "${name}"`, `name: "${name} (renamed)"`)),
+      `exactly one workflow must be named "${name}"`,
+    );
+    expectOperationsFailure(
+      `${name}: the mail key is unthreaded`,
+      withJob(sources, name, (s) => s.replace(/^ +RESEND_API_KEY: .*\n/gm, "")),
+      "must thread RESEND_API_KEY",
+    );
+    expectOperationsFailure(
+      `${name}: the recipient becomes a plain variable`,
+      withJob(sources, name, (s) => s.replaceAll(`secrets.${OPERATIONS_RECIPIENT_ENV}`, `vars.${OPERATIONS_RECIPIENT_ENV}`)),
+      `must thread ${OPERATIONS_RECIPIENT_ENV} from a secret`,
+    );
+    expectOperationsFailure(
+      `${name}: the paging job loses always()`,
+      withJob(sources, name, (s) => {
+        const at = s.indexOf(OPERATIONS_NOTIFIER_RUN);
+        const jobAt = s.lastIndexOf("\n    if: >-\n      always() &&\n", at);
+        assert.ok(at > 0 && jobAt > 0, "fixture must contain the paging job's condition");
+        return s.slice(0, jobAt) + "\n    if: >-\n" + s.slice(jobAt + "\n    if: >-\n      always() &&\n".length);
+      }),
+      "must carry always()",
+    );
+    expectOperationsFailure(
+      `${name}: the paging job loses its issue write`,
+      withJob(sources, name, (s) => {
+        const at = s.indexOf(OPERATIONS_NOTIFIER_RUN);
+        const permissionAt = s.lastIndexOf("      issues: write\n", at);
+        assert.ok(at > 0 && permissionAt > 0, "fixture must contain the paging job's permissions");
+        return s.slice(0, permissionAt) + s.slice(permissionAt + "      issues: write\n".length);
+      }),
+      "needs issues: write",
+    );
   }
   return assertions;
 }

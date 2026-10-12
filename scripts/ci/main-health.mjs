@@ -92,6 +92,40 @@ export const DEFAULT_REPOSITORY = "Mingla-LLC/mingla-main";
 export const DEFAULT_BRANCH = "main";
 
 /**
+ * Issue #2830 — OPERATIONS WORKFLOWS ARE NOT CODE HEALTH.
+ *
+ * The pre-merge check answers one question: is it safe to merge code onto this
+ * branch? A production operation's result is not a property of any commit. From
+ * 2026-10-07 the Sites backup workflow was red on `main` for four days over a
+ * fault in production, so this check went red for every pull request in the
+ * repository, including the one carrying the repair. And no pull request can
+ * ever prove it fixes such a red, because the production job never runs on a
+ * pull request: #3458's "this PR's own run of that workflow is green" route
+ * cannot apply to this class at all.
+ *
+ * So a workflow named here is left out of the `main` verdict. That is only
+ * safe under one condition, and it is enforced, not hoped for:
+ *
+ *   AN EXCLUDED WORKFLOW MUST PAGE BY ITSELF.
+ *
+ * The class-A wiring gate (issue-2909) fails unless every name below resolves
+ * to exactly one workflow and that workflow runs the Sites operations notifier,
+ * which emails a person directly. Exclusion without that would be the #2909
+ * defect again: a failure that reaches nobody.
+ *
+ * Exclusion is never silent here either: every excluded red is printed, by
+ * both commands, on a line starting `OPERATIONS (not blocking, paged
+ * separately)`.
+ *
+ * DISPLAY NAMES ONLY. See the naming constraint in the header: this file may
+ * never contain a workflow filename.
+ */
+export const OPERATIONS_WORKFLOW_NAMES = Object.freeze([
+  "Mingla Sites · Backup and restore",
+]);
+const OPERATIONS = new Set(OPERATIONS_WORKFLOW_NAMES);
+
+/**
  * Collapse a newest-first run list to the newest COMPLETED run per workflow.
  * The API returns newest-first; this does not rely on that and sorts by
  * `run_started_at`/`created_at` descending itself, because an ordering
@@ -143,9 +177,10 @@ export function newestPendingPerWorkflow(runs) {
 export function evaluateHealth(runs) {
   const latest = latestCompletedPerWorkflow(runs);
   const pending = newestPendingPerWorkflow(runs);
-  const red = latest
-    .filter((run) => RED.has(run.conclusion))
-    .map((run) => ({
+  // #2830 — the SAME collapse for both lists: newest completed run per
+  // workflow, red by the same conclusions. Only which list an entry lands in
+  // differs, and `healthy` reads the code-health list alone.
+  const describe = (run) => ({
       workflow: run.name ?? "(unnamed workflow)",
       conclusion: run.conclusion,
       // #3078 — WHICH TRIGGER produced this verdict. Load-bearing for the
@@ -159,13 +194,27 @@ export function evaluateHealth(runs) {
       startedAt: run.run_started_at ?? run.created_at ?? "",
       url: run.html_url ?? "",
       pendingSha: String(pending.get(run.workflow_id ?? run.name)?.head_sha ?? "").slice(0, 9),
-    }))
-    .sort((left, right) => left.workflow.localeCompare(right.workflow));
+  });
+  const byWorkflow = (left, right) => left.workflow.localeCompare(right.workflow);
+  const failing = latest.filter((run) => RED.has(run.conclusion));
+  const red = failing.filter((run) => !OPERATIONS.has(run.name)).map(describe).sort(byWorkflow);
+  const operationsRed = failing.filter((run) => OPERATIONS.has(run.name)).map(describe).sort(byWorkflow);
   return {
     healthy: red.length === 0,
     evaluatedWorkflows: latest.length,
     red,
+    operationsRed,
   };
+}
+
+/**
+ * One line per excluded red, for both commands. Exclusion is never silent: a
+ * reader of the pre-merge check or of the red-`main` email always sees that an
+ * operations workflow is failing and that it is being paged elsewhere.
+ */
+export function renderOperationsLines(health) {
+  return (health.operationsRed ?? []).map((entry) =>
+    `OPERATIONS (not blocking, paged separately): ${entry.workflow} — ${entry.conclusion} ${entry.url}`);
 }
 
 function api(path, { token, method = "GET", body } = {}) {
@@ -311,8 +360,12 @@ export function selfRunFromEnv(env = process.env) {
 }
 
 export function renderReport(health, { repository, branch }) {
+  const operations = renderOperationsLines(health);
   if (health.healthy) {
-    return `${branch} is GREEN — ${health.evaluatedWorkflows} completed workflow(s) evaluated on ${repository}.`;
+    return [
+      `${branch} is GREEN — ${health.evaluatedWorkflows} completed workflow(s) evaluated on ${repository}.`,
+      ...operations,
+    ].join("\n");
   }
   const lines = [
     `${branch} is RED on ${repository}: ${health.red.length} failing workflow(s) of ${health.evaluatedWorkflows} evaluated.`,
@@ -335,6 +388,7 @@ export function renderReport(health, { repository, branch }) {
       lines.push(`    (a newer run of this workflow, at ${entry.pendingSha}, has not finished yet)`);
     }
   }
+  if (operations.length) lines.push("", ...operations);
   return lines.join("\n");
 }
 
@@ -704,6 +758,82 @@ export async function runSelfTest() {
   const accepted = await sendAlert({}, { apiKey: "k", fetchImpl: async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ id: "re_xyz" }) }) });
   assertOk(accepted.status === 200 && accepted.id === "re_xyz", "a 2xx must surface the provider's message id");
   assertions += 2;
+
+  // ---- #2830: operations workflows are reported, never blocking, never hidden
+  const OPS = OPERATIONS_WORKFLOW_NAMES[0];
+  assertOk(OPERATIONS_WORKFLOW_NAMES.length >= 1 && typeof OPS === "string" && OPS.length > 0, "at least one operations workflow is named");
+  assertOk(
+    OPERATIONS_WORKFLOW_NAMES.every((name) => !/\.ya?ml\b/.test(name)),
+    "operations workflows are named by display name, never by filename",
+  );
+  const opsRun = (over) => run({ workflow_id: 900, name: OPS, event: "schedule", html_url: "https://example.invalid/ops", ...over });
+
+  // The 2026-10-07 shape: the operations workflow red, every code check green.
+  const opsOnly = evaluateHealth([
+    opsRun({ conclusion: "failure" }),
+    run({ workflow_id: 901, name: "Alpha", conclusion: "success" }),
+  ]);
+  assertOk(opsOnly.healthy, "an operations-only red must not block a merge");
+  assertOk(opsOnly.red.length === 0 && opsOnly.operationsRed.length === 1, "it is counted as an operations red, not a code red");
+  assertOk(opsOnly.evaluatedWorkflows === 2, "an excluded workflow is still evaluated, so the denominator stays honest");
+  const opsOnlyReport = renderReport(opsOnly, { repository: "r", branch: "main" });
+  assertOk(opsOnlyReport.includes("GREEN"), "the branch reads green");
+  assertOk(
+    opsOnlyReport.includes(`OPERATIONS (not blocking, paged separately): ${OPS} — failure https://example.invalid/ops`),
+    "an excluded red must be PRINTED: exclusion is never silent",
+  );
+  assertions += 5;
+
+  // An operations red can never hide a code red, nor be dropped beside one.
+  const both = evaluateHealth([
+    opsRun({ conclusion: "failure" }),
+    run({ workflow_id: 902, name: "Bravo", conclusion: "failure" }),
+  ]);
+  assertOk(!both.healthy && both.red.length === 1 && both.red[0].workflow === "Bravo", "a code red beside an operations red is still red");
+  const bothReport = renderReport(both, { repository: "r", branch: "main" });
+  assertOk(bothReport.includes("RED") && bothReport.includes("Bravo"), "the code red is reported");
+  assertOk(bothReport.includes("OPERATIONS (not blocking, paged separately)"), "and so is the operations red beside it");
+  assertOk(!bothReport.includes("2 failing workflow(s)"), "the operations red is not counted as a failing code check");
+  assertions += 4;
+
+  // Every red conclusion is excluded the same way, and a green one prints nothing.
+  for (const conclusion of RED_CONCLUSIONS) {
+    const verdict = evaluateHealth([opsRun({ conclusion })]);
+    assertOk(verdict.healthy && verdict.operationsRed.length === 1, `an operations ${conclusion} is reported and not blocking`);
+    assertions += 1;
+  }
+  const opsGreen = evaluateHealth([opsRun({ conclusion: "success" })]);
+  assertOk(opsGreen.operationsRed.length === 0 && renderOperationsLines(opsGreen).length === 0, "a green operations workflow prints nothing");
+  assertions += 1;
+
+  // Only an EXACT display name is excluded. A workflow that merely resembles
+  // one stays a code check: a typo must fail towards blocking, not towards silence.
+  for (const name of [`${OPS} `, OPS.toLowerCase(), `${OPS} (copy)`, "Backup and restore"]) {
+    assertOk(!evaluateHealth([run({ workflow_id: 903, name, conclusion: "failure" })]).healthy, `"${name}" is not excluded`);
+    assertions += 1;
+  }
+
+  // The red-main email is not sent for an operations-only red (that page
+  // belongs to the Sites notifier), and IS sent, naming both, for a code red.
+  const sendOps = recorder({ status: 200, id: "re_ops" });
+  const escOps = recorder(undefined);
+  const opsDelivery = await deliverAlert(opsOnly, { env: CONFIGURED, send: sendOps.fn, escalateWith: escOps.fn, logger: quiet });
+  assertOk(opsDelivery.outcome === ALERT_OUTCOMES.NOTHING_TO_SEND && sendOps.calls.length === 0, "an operations-only red sends no red-main email");
+  assertOk(opsDelivery.exitCode === 0 && escOps.calls.length === 0, "and is not an alert failure");
+  const sendBoth = recorder({ status: 200, id: "re_both" });
+  await deliverAlert(both, { env: CONFIGURED, send: sendBoth.fn, escalateWith: escOps.fn, logger: quiet });
+  assertOk(sendBoth.calls.length === 1, "a code red beside it still sends");
+  assertOk(sendBoth.calls[0][0].text.includes("OPERATIONS (not blocking, paged separately)"), "and the email mentions the operations red");
+  assertOk(sendBoth.calls[0][0].subject.includes("1 check(s) failing"), "the subject counts code checks only");
+  assertions += 5;
+
+  // The asking run's own failure still supersedes, for an ordinary host.
+  const selfBesideOps = evaluateHealth(withSelfRun(
+    [opsRun({ conclusion: "failure" }), run({ workflow_id: 9, name: "Host", conclusion: "success" })],
+    { workflow: "Host", conclusion: "failure", sha: "ffffffffffff", title: "t", actor: "merger", url: "u" },
+  ));
+  assertOk(!selfBesideOps.healthy && selfBesideOps.operationsRed.length === 1, "self-run supersession is unaffected by an operations red");
+  assertions += 1;
 
   return assertions;
 }
