@@ -401,13 +401,16 @@ describe("#3645 web rework 2 — a brand with a card-rail account is never switc
     expect(count(tree, "paystack-view")).toBe(1);
   });
 
-  test("C5 (documents today's behaviour, unchanged by this PR): a MANUAL Nigeria pick by a card-rail brand still sends the switch", async () => {
+  // Rework 3: this used to document that a MANUAL Nigeria pick by a card-rail
+  // brand sent the switch. That was the regression; it now sends nothing. The
+  // full proof is issue_3645_web_card_rail_locked.implementor.test.tsx.
+  test("C5: a MANUAL Nigeria pick by a card-rail brand sends nothing", async () => {
     brandSeed = nigerianAddress({ countryCode: null, stripeStatus: "active" });
     tree = await mountBody();
     expect(mockInvoke).not.toHaveBeenCalled();
 
     await pickCountry(tree, "NG");
 
-    expect(requestsFor("select_provider")).toHaveLength(1);
+    expect(mockInvoke).not.toHaveBeenCalled();
   });
 });

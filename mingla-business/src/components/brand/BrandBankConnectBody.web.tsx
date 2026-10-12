@@ -83,6 +83,10 @@ const PAYSTACK_PICKER_OPTIONS = [
     sublabel: "Bank transfer via Paystack",
   },
 ] as const;
+const NO_EXTRA_OPTIONS = [] as const;
+// Shown under the country row when Nigeria is withheld (see railSwitchLocked).
+const PAYMENT_ACCOUNT_LOCKED_COPY =
+  "This brand already has a payment account. Contact support to change country.";
 // The one payout country this screen offers beyond the card rail.
 const NIGERIA_COUNTRY = PAYSTACK_PICKER_OPTIONS[0].code;
 
@@ -219,6 +223,23 @@ export default function BrandBankConnectBody(): React.ReactElement {
   const brandHasCardRailAccount =
     brand !== null &&
     (brand.stripeStatus ?? "not_connected") !== "not_connected";
+  // The FIRST brand row this mount resolved decides, once, whether this visit
+  // may switch rails at all. A row that later flips from a card-rail status
+  // to "not_connected" while the screen is open must not start a switch
+  // mid-visit. (Assigned during render on purpose: the value is needed by the
+  // very render that first sees the brand, and it never changes afterwards.)
+  const sawCardRailAccountRef = useRef<boolean | null>(null);
+  if (brand !== null && sawCardRailAccountRef.current === null) {
+    sawCardRailAccountRef.current = brandHasCardRailAccount;
+  }
+  // A brand with a card-rail account cannot change rails from this screen:
+  // one tap on Nigeria used to move it to the Nigerian rail and naira, and
+  // tapping back left it with no currency. Nigeria is not offered to it and a
+  // Nigeria pick sends nothing. (A brand ALREADY on the Nigerian rail is not
+  // affected.)
+  const railSwitchLocked =
+    !brandOnNigeriaRail &&
+    (brandHasCardRailAccount || sawCardRailAccountRef.current === true);
   // Switch automatically ONLY for the brand's account owner (the only person
   // who may change payouts) and ONLY when the brand has no card-rail account:
   // opening payout setup must never move a brand that takes card payments
@@ -227,7 +248,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
     resolvesToNigeriaUnswitched &&
     brand !== null &&
     user !== null &&
-    !brandHasCardRailAccount &&
+    !railSwitchLocked &&
     typeof brand.accountId === "string" &&
     brand.accountId === user.id;
 
@@ -238,7 +259,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
       // lands on its card-rail screen; anyone else sees Nigeria in the country
       // row and either the automatic switch or an explicit confirm.
       setSelectedCountry(
-        brandHasCardRailAccount
+        railSwitchLocked
           ? resolveBankConnectRail({
             countryCode: null,
             paymentProvider: "stripe",
@@ -252,9 +273,9 @@ export default function BrandBankConnectBody(): React.ReactElement {
     setSelectedProvider(canonicalRail.provider);
   }, [
     brand,
-    brandHasCardRailAccount,
     canonicalRail.countryCode,
     canonicalRail.provider,
+    railSwitchLocked,
     resolvesToNigeriaUnswitched,
   ]);
 
@@ -296,6 +317,8 @@ export default function BrandBankConnectBody(): React.ReactElement {
     }
     // orch-strict-grep-allow stripe-country-out-of-scope — Nigeria uses Paystack and is deliberately outside the Stripe allowlist.
     const wantsNigeria = countryCode.trim().toUpperCase() === "NG";
+    // Belt for the picker not offering Nigeria: nothing is sent, nothing moves.
+    if (wantsNigeria && railSwitchLocked) return;
     const next = resolveBankConnectRail({
       countryCode,
       paymentProvider: wantsNigeria ? "paystack" : "stripe",
@@ -357,6 +380,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
     brand,
     clearNigeriaRail,
     railMutationPending,
+    railSwitchLocked,
     selectNigeriaRail,
     selectedProvider,
   ]);
@@ -575,7 +599,8 @@ export default function BrandBankConnectBody(): React.ReactElement {
           <BrandStripeCountryPicker
             value={selectedCountry}
             onChange={handleCountryChange}
-            extraOptions={PAYSTACK_PICKER_OPTIONS}
+            extraOptions={railSwitchLocked ? NO_EXTRA_OPTIONS : PAYSTACK_PICKER_OPTIONS}
+            helperText={railSwitchLocked ? PAYMENT_ACCOUNT_LOCKED_COPY : null}
             presentation="payout-confirm"
             disabled={railSwitchPending}
           />
