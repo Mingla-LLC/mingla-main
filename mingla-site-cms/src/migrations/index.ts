@@ -7,6 +7,7 @@ import * as migration_20260909_030000_issue_3149_block_eyebrow from './20260909_
 import * as migration_20260909_180000_issue_3149_wave3_blocks from './20260909_180000_issue_3149_wave3_blocks';
 import * as migration_20260910_090000_issue_3149_reservations_role_enum from './20260910_090000_issue_3149_reservations_role_enum';
 import * as migration_20260910_100000_issue_3149_wave4_blocks from './20260910_100000_issue_3149_wave4_blocks';
+import * as migration_20261012_012655_issue_2830_cloud_storage_object_key from './20261012_012655_issue_2830_cloud_storage_object_key';
 export const migrations = [
   {
     up: migration_20260830_122002_issue_2830_sites_foundation.up,
@@ -52,5 +53,10 @@ export const migrations = [
     up: migration_20260910_100000_issue_3149_wave4_blocks.up,
     down: migration_20260910_100000_issue_3149_wave4_blocks.down,
     name: '20260910_100000_issue_3149_wave4_blocks',
+  },
+  {
+    up: migration_20261012_012655_issue_2830_cloud_storage_object_key.up,
+    down: migration_20261012_012655_issue_2830_cloud_storage_object_key.down,
+    name: '20261012_012655_issue_2830_cloud_storage_object_key',
   },
 ];
