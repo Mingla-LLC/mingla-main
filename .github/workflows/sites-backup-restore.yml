@@ -28,6 +28,24 @@ name: "Mingla Sites · Backup and restore"
 # disabling it. `issue_3606_recovery_freshness.*.test.mjs` pins the cron literal
 # and every exclusion to the same string, so changing one without the other is
 # a red contract run, not a live surprise.
+#
+# [WORKFLOW-MOD-APPROVED #2830] Retention is housekeeping, not recovery.
+#
+# The signed tenant retention sweep used to be the LAST STEP of the backup job,
+# after the readiness evidence had already been committed. From 2026-10-07 the
+# sweep failed on every run (the CMS read a column its database did not have).
+# That failed the backup job, the failing script wrote no classification, "no
+# classification" reads as "deactivate", and the live pilot was signed off the
+# air for four days while a verified backup existed the whole time. The run was
+# red on `main` and the watchdog reported that no backup had succeeded.
+#
+# The sweep now runs in its own `retention` job, AFTER the backup job has
+# concluded. Rule from now on: no step may follow the evidence commit inside
+# `backup_restore` except the classify step. `deactivate` reads only
+# `needs.backup_restore`, so a retention failure cannot reach it, and the
+# `retention` job itself concludes success so the run's colour means exactly
+# one thing: recovery evidence was refreshed. A failed sweep is reported by
+# `housekeeping_alert` instead.
 on:
   schedule:
     - cron: "23 7 * * *"
@@ -78,6 +96,8 @@ jobs:
           scripts/sites/__tests__/issue_3606_recovery_freshness.implementor.test.mjs
           scripts/sites/__tests__/issue_3606_recovery_freshness.tester.adversarial.test.mjs
           scripts/sites/__tests__/issue_3628_deactivation_gate.test.mjs
+          scripts/sites/__tests__/issue_2830_housekeeping_never_deactivates.test.mjs
+          scripts/sites/__tests__/issue_2830_retention_response_contract.test.mjs
 
   backup_restore:
     name: "Private backup and isolated restore"
@@ -224,13 +244,10 @@ jobs:
           MINGLA_CMS_TO_CORE_CURRENT_KEY_B64: ${{ secrets.MINGLA_CMS_TO_CORE_CURRENT_KEY_B64 }}
         run: node scripts/sites/backup-sites-cms.mjs record-evidence
 
-      - name: Run signed tenant-scoped retention after the verified snapshot
-        env:
-          SITES_PILOT_SITE_ID: ${{ vars.SITES_PILOT_SITE_ID }}
-          SITES_CMS_ORIGIN: https://studio.sites.usemingla.com
-          MINGLA_CORE_TO_CMS_CURRENT_KID: ${{ vars.MINGLA_CORE_TO_CMS_CURRENT_KID }}
-          MINGLA_CORE_TO_CMS_CURRENT_KEY_B64: ${{ secrets.MINGLA_CORE_TO_CMS_CURRENT_KEY_B64 }}
-        run: node scripts/sites/run-sites-retention.mjs
+      # #2830 — NOTHING MAY FOLLOW THE EVIDENCE COMMIT ABOVE except the classify
+      # step below. 2026-10-07: a clean-up step sat here, failed, and took the
+      # live pilot down for four days with a verified backup in hand. Anything
+      # that is not recovery belongs in its own job (see `retention`).
 
       # #3628 — publish the failure classification. Runs ONLY on failure, and
       # emits `deactivate=false` only when a step positively classified its own
@@ -368,6 +385,114 @@ jobs:
           # #2893 pins `error_code=...` immediately followed by `run_url=`;
           # #3628's fields are additive and go after it, so that contract holds.
           body="SITES_BACKUP_ALERT error_code=SITES_BACKUP_OR_RESTORE_FAILED run_url=${run_url} failure_code=${code} outcome=${outcome}"
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/2830/comments" \
+            -f body="$body" >/dev/null
+
+  retention:
+    name: "Tenant retention sweep (housekeeping)"
+    needs: [backup_restore]
+    # #2830 — housekeeping, deliberately outside the backup job. It only ever
+    # runs on a snapshot that was just verified, exactly as before, and carries
+    # the same exclusions as every other job with a production side effect.
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.schedule != '37 * * * *' &&
+      github.event.inputs.mode != 'freshness-check' &&
+      needs.backup_restore.result == 'success'
+    outputs:
+      retention_outcome: ${{ steps.report.outputs.retention_outcome }}
+      retention_code: ${{ steps.report.outputs.retention_code }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: mingla-sites-production
+    env:
+      SITES_RECOVERY_CLASSIFICATION_PATH: ${{ github.workspace }}/sites-retention-classification.json
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      # Step-level `continue-on-error`: the step's `outcome` records the real
+      # result while the JOB still concludes success. A failed sweep must not
+      # red the run, because the run's colour is what the freshness watchdog
+      # and the `main` health check read as "the backup worked".
+      - name: Run signed tenant-scoped retention after the verified snapshot
+        id: sweep
+        continue-on-error: true
+        env:
+          SITES_PILOT_SITE_ID: ${{ vars.SITES_PILOT_SITE_ID }}
+          SITES_CMS_ORIGIN: https://studio.sites.usemingla.com
+          MINGLA_CORE_TO_CMS_CURRENT_KID: ${{ vars.MINGLA_CORE_TO_CMS_CURRENT_KID }}
+          MINGLA_CORE_TO_CMS_CURRENT_KEY_B64: ${{ secrets.MINGLA_CORE_TO_CMS_CURRENT_KEY_B64 }}
+        run: node scripts/sites/run-sites-retention.mjs
+
+      # A failed sweep that is not reported is the same silence that hid this
+      # for four days, so the outcome leaves the job as an output and
+      # `housekeeping_alert` acts on it.
+      - name: Publish the sweep outcome for the housekeeping alert
+        id: report
+        env:
+          SWEEP_OUTCOME: ${{ steps.sweep.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+          const out = process.env.GITHUB_OUTPUT;
+          const path = process.env.SITES_RECOVERY_CLASSIFICATION_PATH;
+          const outcome = ["success", "failure", "cancelled", "skipped"]
+            .includes(process.env.SWEEP_OUTCOME) ? process.env.SWEEP_OUTCOME : "failure";
+          let code = "RETENTION_UNCLASSIFIED";
+          try {
+            const raw = JSON.parse(readFileSync(path, "utf8"));
+            if (typeof raw?.code === "string" && /^[A-Z][A-Z0-9_]{2,95}$/.test(raw.code)) {
+              code = raw.code;
+            }
+          } catch {
+            // Absent or unreadable: the sweep succeeded, or died before it
+            // could say why. Either way the code stays RETENTION_UNCLASSIFIED.
+          }
+          appendFileSync(out, `retention_outcome=${outcome}\nretention_code=${code}\n`);
+          process.stdout.write(
+            `SITES_RETENTION_OUTCOME outcome=${outcome} code=${code}\n`,
+          );
+          NODE
+
+  housekeeping_alert:
+    name: "Housekeeping failure alert"
+    needs: [backup_restore, retention]
+    # #2830 — a housekeeping failure no longer deactivates the pilot or reds the
+    # run, so it has to be said out loud here instead. Same exclusions as the
+    # jobs above; this one holds no environment and no production secret.
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.schedule != '37 * * * *' &&
+      github.event.inputs.mode != 'freshness-check' &&
+      needs.retention.outputs.retention_outcome == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Comment the housekeeping failure and run URL on #2830
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RETENTION_CODE: ${{ needs.retention.outputs.retention_code }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          code="${RETENTION_CODE:-RETENTION_UNCLASSIFIED}"
+          # The backup and restore in this same run succeeded, which is the only
+          # reason this job can run at all: the public site is unaffected.
+          body="SITES_HOUSEKEEPING_ALERT kind=RETENTION_FAILED code=${code} outcome=PILOT_UNAFFECTED recovery_evidence_fresh run_url=${run_url}"
           gh api --method POST \
             "repos/${GITHUB_REPOSITORY}/issues/2830/comments" \
             -f body="$body" >/dev/null

@@ -154,6 +154,56 @@ selects an exact retained source and creates a new immutable publication or an
 audited pointer repair; it never mutates a historical row or performs a
 destructive database rollback.
 
+## Re-activating the pilot after a deactivation
+
+A deactivation switches the pilot off and returns its host to `pending`. Nothing
+re-activates it automatically: the next green backup run does not, and no
+scheduled job holds the credentials that activation needs. Until someone runs
+the command below, the public host answers 404 on every route.
+
+What deactivates the pilot: a backup run that proves a readiness violation (the
+five `DATABASE_BACKUP_*` codes), or a backup job that fails without saying why.
+What does not: a failure of the tenant retention sweep. That sweep is
+housekeeping, runs in its own job after the backup evidence is committed, and a
+failure there raises a `SITES_HOUSEKEEPING_ALERT` comment on the issue and
+nothing else (#2830).
+
+Who: whoever holds the Core service-role key. Today that is Seth's side only.
+
+Preconditions, all three required (activation refuses otherwise):
+
+1. Backup evidence is under 26 hours old.
+2. The restore drill is under 100 days old.
+3. The pilot host is `pending`, which is the state a deactivation leaves it in.
+
+Steps:
+
+1. Confirm the cause of the deactivation is fixed, then take one fresh backup
+   and wait for it to go green:
+
+   ```
+   gh workflow run "Mingla Sites · Backup and restore" -f mode=backup
+   ```
+
+   The `Private backup and isolated restore` job must conclude success and its
+   log must contain `SITES_BACKUP_EVIDENCE_OK`.
+2. Within 26 hours of that run, from a checkout of `main`, with
+   `SITES_PILOT_SITE_ID`, `SITES_CORE_BASE_URL`, `SITES_CORE_SERVICE_ROLE_KEY`
+   and `SITES_CANDIDATE_PROBE_SECRET` set in the environment (never on the
+   command line, never pasted anywhere):
+
+   ```
+   node scripts/sites/activate-gogi-pilot.mjs
+   ```
+
+   The script re-binds the pilot, probes the candidate render, records host
+   readiness, activates, then reads back the configuration, the host row and a
+   live request. If any read-back fails it deactivates again by itself.
+3. Expect exactly one success line:
+   `SITES_GOGI_ACTIVATED site=<site id> publication=<publication id>`.
+4. Confirm `https://gogi.sites.usemingla.com/` returns HTTP 200.
+5. Paste the success line on the issue. Do not paste any of the four values.
+
 ## Ownership
 
 Sites application owns service and publication behavior. Platform owns project,
