@@ -197,16 +197,13 @@ export const NAV_GROUPS = [
       { id: "refund-operations",         label: "Refund operations",  icon: "RotateCcw" },
     ],
   },
-  // ISSUE-862 WP1: "Growth" nav group — the Full Rooms Ad Engine (5-channel,
-  // Meta first). The Megaphone icon MUST be registered in Sidebar.jsx ICON_MAP
-  // or the nav item silently falls back to LayoutDashboard (documented footgun).
+  // ISSUE-862 WP1 + toward #3697 Wave 3: Growth = Ads console hub (connections),
+  // Campaign Builder, Campaigns. Megaphone/Rocket/ClipboardList MUST stay in
+  // Sidebar.jsx ICON_MAP or the nav item silently falls back to LayoutDashboard.
   {
     label: "Growth",
     items: [
-      { id: "ad-engine",                 label: "Ad Engine",          icon: "Megaphone" },
-      // ISSUE-864 WP4 — the builder wizard + the campaign surface (launch/
-      // pause/review live on Campaigns, never in the builder). Rocket +
-      // ClipboardList are already registered in Sidebar.jsx ICON_MAP.
+      { id: "ad-engine",                 label: "Ads console",        icon: "Megaphone" },
       { id: "campaign-builder",          label: "Campaign Builder",   icon: "Rocket" },
       { id: "campaigns",                 label: "Campaigns",          icon: "ClipboardList" },
     ],

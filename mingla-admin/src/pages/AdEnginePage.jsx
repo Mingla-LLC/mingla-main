@@ -315,6 +315,27 @@ export function AdEnginePage() {
 
   return (
     <div className="space-y-6">
+      {/* toward #3697 Wave 3 — Ads console hub: connections stay here; create/launch live on Builder + Campaigns. */}
+      <section aria-labelledby="ads-console-heading" className="space-y-3">
+        <div>
+          <h1 id="ads-console-heading" className="text-xl font-semibold flex items-center gap-2">
+            <Megaphone size={22} aria-hidden="true" /> Ads console
+          </h1>
+          <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+            Connect platforms and check channel health here. Build campaigns in the wizard;
+            launch, pause, and watch spend vs hard cap on Campaigns.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" icon={Rocket} onClick={() => { window.location.hash = "#/campaign-builder"; }}>
+            Campaign Builder
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => { window.location.hash = "#/campaigns"; }}>
+            Open Campaigns
+          </Button>
+        </div>
+      </section>
+
       {/* ── ISSUE-978 [Ad Connections panel] — all 5 platforms, one-click
           Connect/Reconnect, staleness surfacing. Additive: the Meta-specific
           card below (billing floors, IG link, etc.) is unchanged and still
@@ -335,7 +356,10 @@ export function AdEnginePage() {
 
       <section aria-labelledby="web-traffic-campaigns-heading" className="space-y-1">
         <h2 id="web-traffic-campaigns-heading" className="text-lg font-semibold">Web traffic campaigns</h2>
-        <p className="text-sm text-[var(--color-text-secondary)]">Create and manage ads that send people to Mingla public web pages.</p>
+        <p className="text-sm text-[var(--color-text-secondary)]">
+          Create and manage ads that send people to Mingla public web pages. Prefer Campaign Builder
+          for multi-platform creates with hard caps; this Meta quick form stays for connection debugging.
+        </p>
       </section>
 
       {/* ── SC-1…SC-4: Meta connection detail (floors, billing, IG link) ── */}

@@ -21,6 +21,7 @@ parentheses for traceability.
 
 ## Shipped
 - 2026-10-11 — Mingla Sites: the media column whose absence has failed every nightly backup since 2026-10-07 now has a migration, plus a test that stops an upload-table column shipping without one; it takes effect when the migration is applied to the Studio database (toward #2830, PR #3796)
+- 2026-10-11 — Admin Ads console lists every public page type, shows spend vs hard cap in the campaign currency, fixes Settings feature-flag columns, and gates the builder behind enable_ads_console (toward #3697, PR #3795)
 - 2026-10-11 — Ad campaigns get a hard spend cap, start/end dates, brand_id, an hourly spend feed that pauses at 98%, and platform D1 minimums — multi-page create no longer multiplies the budget silently (toward #3697, PR #3794)
 - 2026-10-11 — Ads can target every public page type from one SQL list (trips → /t/, experiences → /exp/), and the create gate rejects past-start pages (toward #3697, PR #3792)
 - 2026-10-11 — Ad clicks can be counted first-party before the cookie banner; Reject stops platform sharing; free tickets/RSVPs are sign-ups not $0 purchases; browsers can no longer write conversion rows (toward #3697, PR #3791)
