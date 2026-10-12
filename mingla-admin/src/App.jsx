@@ -1,13 +1,21 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "./context/AuthContext";
 import { LoginScreen } from "./components/LoginScreen";
 import { InviteSetupScreen } from "./components/InviteSetupScreen";
+import { InviteAcceptScreen } from "./components/InviteAcceptScreen";
 import { AppShell } from "./components/layout/AppShell";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastContainer } from "./components/ui/Toast";
 import { PageLoader } from "./components/ui/Spinner";
 import { CommandPalette } from "./components/CommandPalette";
+import { Button } from "./components/ui/Button";
+import { useToast } from "./context/ToastContext";
+import { NAV_ITEMS } from "./lib/constants";
+import { pageTitle, resolveRoute } from "./lib/access";
+import { INVITE_ROUTE, parseInviteHash } from "./lib/inviteLink";
+// Issue #3802 — the home page of the two non-admin team roles (#/home).
+import { RoleHomePage } from "./pages/RoleHomePage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { AdminPage } from "./pages/AdminPage";
 import { PlacePoolManagementPage } from "./pages/PlacePoolManagementPage";
@@ -64,6 +72,7 @@ import { RefundOperationsPage } from "./pages/RefundOperationsPage";
 // ORCH-0640 ch08: AIValidationPage + CardPoolManagementPage DELETED.
 
 const PAGES = {
+  home: RoleHomePage,
   overview: OverviewPage,
   users: UserManagementPage,
   subscriptions: SubscriptionManagementPage,
@@ -113,9 +122,87 @@ const PAGES = {
   "refund-operations": RefundOperationsPage,
 };
 
+// Issue #3802 — every page id the app knows. Which of them a person may open
+// is decided by resolveRoute() from the access the server returned.
+const PAGE_IDS = Object.keys(PAGES);
+
+// The page id the address names, exactly as written (first path segment only).
+function requestedPageId() {
+  return window.location.hash.replace("#/", "").split("?")[0].split("/")[0];
+}
+
+// An address that names no page reads as the dashboard, as it always has.
+// Whether the person may open that page is NOT decided here: resolveRoute()
+// decides what is actually shown.
 function getTabFromHash() {
-  const hash = window.location.hash.replace("#/", "").split("?")[0];
+  const hash = requestedPageId();
   return PAGES[hash] ? hash : "overview";
+}
+
+// Did the address name a real page? Only then is a refusal worth a message.
+function addressNamesPage() {
+  return Object.hasOwn(PAGES, requestedPageId());
+}
+
+// Issue #3802 — shown when someone is signed in but the app could not find out
+// what they may open. Never the dashboard, never a blank page.
+function AccessErrorScreen({ onRetry, onSignOut }) {
+  const [retrying, setRetrying] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [stillFailing, setStillFailing] = useState(false);
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    setStillFailing(false);
+    try {
+      await onRetry();
+    } catch (err) {
+      console.error("Access retry failed:", err?.message || err);
+    } finally {
+      // Still on this screen after the attempt means it failed again.
+      setRetrying(false);
+      setStillFailing(true);
+    }
+  };
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await onSignOut();
+    } catch (err) {
+      console.error("Sign out failed:", err?.message || err);
+      setSigningOut(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6 bg-[--color-background-secondary]">
+      <div
+        role="alert"
+        className="w-full max-w-[420px] rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-6 shadow-[var(--shadow-md)]"
+      >
+        <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">
+          Couldn&apos;t load your access
+        </h1>
+        <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+          We couldn&apos;t confirm what you can open. Your sign-in is fine.
+        </p>
+        {stillFailing && !retrying && (
+          <p className="mt-2 text-sm text-[var(--color-text-secondary)]" aria-live="polite">
+            That didn&apos;t work either. Check your connection and try again.
+          </p>
+        )}
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Button variant="primary" loading={retrying} disabled={signingOut} onClick={handleRetry}>
+            Try again
+          </Button>
+          <Button variant="secondary" loading={signingOut} disabled={retrying} onClick={handleSignOut}>
+            Sign out
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const pageTransition = {
@@ -126,28 +213,79 @@ const pageTransition = {
 };
 
 export default function App() {
-  const { session, loading, inviteSetup } = useAuth();
-  const [activeTab, setActiveTab] = useState(getTabFromHash);
+  const { session, loading, inviteSetup, access, accessError, retryAccess, signOut } = useAuth();
+  const { addToast } = useToast();
+  // The page the address asks for, whether the address really named a page,
+  // and a counter that moves on every navigation (so asking for the same
+  // refused page twice is two events).
+  const [nav, setNav] = useState(() => ({
+    requested: getTabFromHash(),
+    named: addressNamesPage(),
+    seq: 0,
+  }));
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  // Issue #3802 — the secret of a one-time invite link, when the app was opened
+  // from one. It lives only in this component's state.
+  const [inviteToken, setInviteToken] = useState(() => parseInviteHash(window.location.hash));
+
+  // Take the secret out of the address bar and the history entry straight away.
+  useEffect(() => {
+    if (parseInviteHash(window.location.hash)) {
+      window.history.replaceState(null, "", "#/" + INVITE_ROUTE);
+    }
+  }, []);
 
   // Hash → state sync (one-directional: hashchange sets activeTab)
   useEffect(() => {
-    const onHashChange = () => setActiveTab(getTabFromHash());
+    const onHashChange = () => {
+      // An invite link pasted into a tab that is already open.
+      const pasted = parseInviteHash(window.location.hash);
+      if (pasted) {
+        window.history.replaceState(null, "", "#/" + INVITE_ROUTE);
+        setInviteToken(pasted);
+      }
+      setNav((prev) => ({
+        requested: getTabFromHash(),
+        named: addressNamesPage(),
+        seq: prev.seq + 1,
+      }));
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  // Set initial hash if none exists (no history entry)
+  // Issue #3802 — the page to show is chosen from what this person may open,
+  // never from the address alone. A page they may not open is never mounted.
+  const signedIn = !!session && !!access;
+  const route = signedIn
+    ? resolveRoute(nav.requested, access, PAGE_IDS)
+    : { pageId: null, denied: false, requestedId: nav.requested };
+
+  // Keep the address honest: when the page shown differs from the one asked
+  // for (no address, unknown address, or one outside this person's access),
+  // rewrite the address without adding a history entry, and say so when the
+  // address named a real page that was refused.
+  const lastToldRef = useRef(-1);
   useEffect(() => {
-    if (!window.location.hash) {
-      window.history.replaceState(null, "", "#/overview");
+    if (!signedIn || inviteToken || !route.pageId) return;
+    if (route.denied && nav.named && lastToldRef.current !== nav.seq) {
+      lastToldRef.current = nav.seq;
+      addToast({
+        variant: "warning",
+        title: "That page isn't part of your access",
+        description: `You're on ${pageTitle(route.pageId, access, NAV_ITEMS)} instead.`,
+      });
     }
-  }, []);
+    if (requestedPageId() !== route.pageId) {
+      window.history.replaceState(null, "", "#/" + route.pageId);
+    }
+  }, [signedIn, inviteToken, route.pageId, route.denied, nav.named, nav.seq, access, addToast]);
 
   // State → hash sync (activeTab change writes hash)
   const handleTabChange = useCallback((tabId) => {
     window.location.hash = `#/${tabId}`;
-    // hashchange event fires → setActiveTab runs — no direct setState needed
+    // hashchange event fires → the handler above records it — no direct setState needed
   }, []);
 
   // Cmd+K / Ctrl+K to open command palette
@@ -174,18 +312,35 @@ export default function App() {
     return <InviteSetupScreen />;
   }
 
+  // An invite link was opened: this screen comes first whether or not somebody
+  // is signed in on this browser.
+  if (inviteToken) {
+    return <InviteAcceptScreen token={inviteToken} onDone={() => setInviteToken(null)} />;
+  }
+
+  if (accessError) {
+    return <AccessErrorScreen onRetry={retryAccess} onSignOut={signOut} />;
+  }
+
   if (!session) {
     return <LoginScreen />;
   }
 
-  const ActivePage = PAGES[activeTab] || OverviewPage;
+  // Signed in, but the server gave this person nothing they can open.
+  if (!route.pageId) {
+    return <AccessErrorScreen onRetry={retryAccess} onSignOut={signOut} />;
+  }
+
+  // Chosen from route.pageId, not from the address: a refused page's component
+  // is never mounted, not even for one frame.
+  const ActivePage = PAGES[route.pageId];
 
   return (
     <>
-      <AppShell activeTab={activeTab} onTabChange={handleTabChange}>
+      <AppShell activeTab={route.pageId} onTabChange={handleTabChange}>
         <AnimatePresence mode="wait">
           <motion.div
-            key={activeTab}
+            key={route.pageId}
             initial={pageTransition.initial}
             animate={pageTransition.animate}
             exit={pageTransition.exit}

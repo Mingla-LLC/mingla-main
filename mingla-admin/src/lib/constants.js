@@ -1,11 +1,3 @@
-/**
- * Only these emails can access the admin dashboard.
- * Add new admins here. Everything else is rejected at the login screen.
- */
-export const ALLOWED_ADMIN_EMAILS = [
-  "seth@usemingla.com",
-];
-
 // ORCH-0640 ch08: TABLES allow-list scrubbed.
 //   Removed: card_pool, card_pool_stops, saves, experiences, saved_experiences,
 //            ai_validation_jobs, ai_validation_results, ai_validation_batches.
@@ -125,7 +117,7 @@ export const NAV_GROUPS = [
     items: [
       { id: "overview",                  label: "Dashboard",          icon: "LayoutDashboard" },
       { id: "subscriptions",             label: "Subscriptions",      icon: "CreditCard" },
-      { id: "admin",                     label: "Admin Users",        icon: "Shield" },
+      { id: "admin",                     label: "Team and roles",     icon: "Shield" },
       { id: "placepool",                 label: "Place Pool",         icon: "Globe" },
       // ORCH-1027: operator switch to declare cities live for consumer onboarding
       // (the ORCH-1028 location gate). Sits next to Place Pool — the consumer-facing
