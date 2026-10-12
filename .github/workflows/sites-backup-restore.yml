@@ -188,10 +188,30 @@ jobs:
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
-          import { appendFileSync, readFileSync } from "node:fs";
-          const value = JSON.parse(readFileSync(process.env.SITES_BACKUP_RESULT_PATH, "utf8"));
-          if (!/^mingla-sites-[0-9a-f-]{36}-[0-9TZ]+-[0-9a-f]{64}\.msbk$/.test(value.bundle_name)) process.exit(1);
-          if (!/^[0-9a-f]{64}$/.test(value.bundle_sha256)) process.exit(1);
+          import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+          // [WORKFLOW-MOD-APPROVED #2830] (S-2) This step used to `exit 1` with
+          // no classification, which the deactivation gate reads as
+          // "deactivate". A result file this step cannot use means NEW evidence
+          // was not recorded; it proves nothing about the evidence already
+          // held, so it must not take the site down. A fixed literal code, and
+          // `deactivating: false`. If the classification itself cannot be
+          // written the step still fails with none, which stays fail-closed.
+          const refuse = (code) => {
+            process.stderr.write(`SITES_OPS_ERROR code=${code}\n`);
+            writeFileSync(
+              process.env.SITES_RECOVERY_CLASSIFICATION_PATH,
+              `${JSON.stringify({ code, deactivating: false })}\n`,
+            );
+            process.exit(1);
+          };
+          let value;
+          try {
+            value = JSON.parse(readFileSync(process.env.SITES_BACKUP_RESULT_PATH, "utf8"));
+          } catch {
+            refuse("BACKUP_RESULT_UNREADABLE");
+          }
+          if (!/^mingla-sites-[0-9a-f-]{36}-[0-9TZ]+-[0-9a-f]{64}\.msbk$/.test(value?.bundle_name)) refuse("BACKUP_BUNDLE_COORDINATES_INVALID");
+          if (!/^[0-9a-f]{64}$/.test(value?.bundle_sha256)) refuse("BACKUP_BUNDLE_COORDINATES_INVALID");
           appendFileSync(process.env.GITHUB_OUTPUT, `name=${value.bundle_name}\nsha256=${value.bundle_sha256}\n`);
           NODE
 
@@ -226,6 +246,13 @@ jobs:
           actual_sha256="$(sha256sum "$readback" | cut -d ' ' -f 1)"
           if [ "$actual_sha256" != "$EXPECTED_SHA256" ]; then
             echo "SITES_BLOB_ERROR code=PRIVATE_READBACK_DIGEST_MISMATCH" >&2
+            # [WORKFLOW-MOD-APPROVED #2830] (S-2) A mismatch means the bundle
+            # just uploaded cannot be trusted, so NEW evidence is not recorded.
+            # The evidence already held is untouched and still ageing, and the
+            # alert says so. Without this line the step left no classification
+            # and a transport fault deactivated the live site.
+            printf '%s\n' '{"code":"PRIVATE_READBACK_DIGEST_MISMATCH","deactivating":false}' \
+              > "$SITES_RECOVERY_CLASSIFICATION_PATH"
             exit 1
           fi
           echo "verified_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
@@ -285,7 +312,12 @@ jobs:
           try {
             const raw = JSON.parse(readFileSync(path, "utf8"));
             if (typeof raw?.code === "string" && typeof raw?.deactivating === "boolean") {
-              code = raw.code;
+              // #2830 (tester finding F-8) — the code is printed, published as
+              // a job output and pasted into an issue comment and an email
+              // subject, so only a code-shaped value leaves this step. The
+              // VERDICT is unaffected: a file with a strange code still
+              // deactivates or holds exactly as it said.
+              code = /^[A-Z][A-Z0-9_]{2,95}$/.test(raw.code) ? raw.code : "UNCLASSIFIED";
               deactivate = raw.deactivating ? "true" : "false";
             }
           } catch {

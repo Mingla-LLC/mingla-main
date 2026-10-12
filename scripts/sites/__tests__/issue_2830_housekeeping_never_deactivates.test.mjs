@@ -904,3 +904,249 @@ test("#2830 T-8.1 the runbook's variable names and success line match the activa
   ]) assert.ok(script.includes(`"${name}"`), `${name} is read by the activation script`);
   assert.match(script, /SITES_GOGI_ACTIVATED site=\$\{config\.siteId\} publication=\$\{publication\.id\}/);
 });
+
+// ---------------------------------------------------------------------------
+// T-2.3 (slice 2) — every other way the backup job can fail says what it was
+//
+// Retention was one instance of a class: a step that exits non-zero having
+// written no classification, which the gate reads as "deactivate". Three more
+// were found (SPEC S-1, S-2) and are closed here: the private-Blob transport,
+// the inline read-back digest check and the inline bundle-coordinates step. A
+// fault in any of them means NEW evidence was not recorded. It proves nothing
+// about the evidence already held, so it must not take the live site down.
+//
+// Appended to this suite, additions only. The import below is hoisted like any
+// other; it sits here so no existing line of this file changes.
+// ---------------------------------------------------------------------------
+
+import { classifyRecoveryFailure as classifyRecoveryFailure2830 } from "../lib/sites-ops.mjs";
+import { classifyBlobHttpStatus as classifyBlobHttpStatus2830 } from "../vercel-blob-http-transport.mjs";
+
+const BLOB_CLI = join(REPO, "scripts/sites/vercel-blob-http-transport.mjs");
+const BUNDLE_NAME_2830 = `mingla-sites-${SITE_ID}-20261012T072300Z-${"a".repeat(64)}.msbk`;
+const VALID_BLOB_TOKEN = `vercel_blob_rw_${"S".repeat(16)}_${"t".repeat(24)}`;
+
+/** The classify step, then the job graph, for a backup job that failed leaving `path`. */
+function gateFor(path) {
+  const { outputs } = runInlineStep(classifyStep, { SITES_RECOVERY_CLASSIFICATION_PATH: path });
+  const { results } = simulate(jobs, scheduledBackup, (name) =>
+    name === "backup_restore"
+      ? { result: "failure", outputs: { recovery_deactivate: outputs.deactivate, recovery_failure_code: outputs.code } }
+      : {});
+  return { outputs, results };
+}
+
+function assertHeldUp(path, code, label) {
+  assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), { code, deactivating: false }, label);
+  const { outputs, results } = gateFor(path);
+  assert.deepEqual(outputs, { deactivate: "false", code }, label);
+  assert.equal(results.deactivate.result, "skipped", `${label}: the pilot must stay up`);
+  assert.equal(results.alert.result, "success", `${label}: and it is still reported`);
+  assert.equal(results.retention.result, "skipped", `${label}: no sweep without a verified snapshot`);
+}
+
+function runBlobCli(args, env = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "sites-2830-blob-"));
+  const classificationPath = join(dir, "classification.json");
+  const result = spawnSync(process.execPath, [BLOB_CLI, ...args], {
+    encoding: "utf8",
+    env: { PATH: process.env.PATH, SITES_RECOVERY_CLASSIFICATION_PATH: classificationPath, ...env },
+  });
+  return { ...result, dir, classificationPath };
+}
+
+test("#2830 T-2.3 the five readiness codes classify true, and nothing else does", () => {
+  for (const code of READINESS_VIOLATIONS) {
+    assert.deepEqual(classifyRecoveryFailure2830(code), { code, deactivating: true });
+  }
+  assert.equal(DEACTIVATING_RECOVERY_CODES.size, 5, "slice 2 adds no deactivating code");
+  for (const code of [
+    "PRIVATE_READBACK_DIGEST_MISMATCH", "BACKUP_RESULT_UNREADABLE", "BACKUP_BUNDLE_COORDINATES_INVALID",
+    "PRIVATE_NETWORK_FAILED", "PRIVATE_UNEXPECTED_FAILURE",
+  ]) assert.equal(classifyRecoveryFailure2830(code).deactivating, false, code);
+});
+
+test("#2830 T-2.3 (S-1) a failing private-Blob transport classifies itself as non-deactivating", () => {
+  const pathname = `recovery/sites/${BUNDLE_NAME_2830}`;
+  const cases = [
+    // No credential: refused before any network call.
+    ["PRIVATE_CREDENTIAL_MISSING", ["put", "/nonexistent/bundle", pathname, "/nonexistent/meta"], {}],
+    // A path that is not an immutable bundle path.
+    ["PRIVATE_PATH_REJECTED", ["get", "recovery/sites/../../etc/passwd", "/nonexistent/out", "/nonexistent/meta"], { BLOB_READ_WRITE_TOKEN: VALID_BLOB_TOKEN }],
+    // The bundle to upload is not there.
+    ["PRIVATE_INPUT_UNREADABLE", ["put", "/nonexistent/bundle", pathname, "/nonexistent/meta"], { BLOB_READ_WRITE_TOKEN: VALID_BLOB_TOKEN }],
+    // Read-back with no upload record to read back against.
+    ["PRIVATE_UPLOAD_METADATA_MISSING", ["get", pathname, "/nonexistent/out", "/nonexistent/meta"], { BLOB_READ_WRITE_TOKEN: VALID_BLOB_TOKEN }],
+    ["PRIVATE_OPERATION_INVALID", ["delete", pathname], { BLOB_READ_WRITE_TOKEN: VALID_BLOB_TOKEN }],
+  ];
+  for (const [code, args, env] of cases) {
+    const run = runBlobCli(args, env);
+    assert.equal(run.status, 1, code);
+    assert.equal(run.stderr.trim(), `SITES_BLOB_ERROR code=${code}`, "the log line is unchanged");
+    assert.ok(!run.stderr.includes(VALID_BLOB_TOKEN) && !run.stdout.includes(VALID_BLOB_TOKEN));
+    assertHeldUp(run.classificationPath, code, code);
+  }
+});
+
+test("#2830 T-2.3 (S-1) no status the Blob provider can answer with is a readiness violation", () => {
+  const codes = new Set();
+  for (let status = 100; status <= 599; status += 1) codes.add(classifyBlobHttpStatus2830(status));
+  assert.ok(codes.size >= 8, "the whole status table was walked");
+  for (const code of codes) {
+    assert.match(code, /^PRIVATE_[A-Z_]+$/);
+    assert.equal(classifyRecoveryFailure2830(code).deactivating, false, code);
+  }
+  // Outside the backup job the transport stays a plain CLI: no file, no throw.
+  const dir = mkdtempSync(join(tmpdir(), "sites-2830-blob-noenv-"));
+  const run = spawnSync(process.execPath, [BLOB_CLI, "put", "x", "y", "z"], {
+    encoding: "utf8",
+    env: { PATH: process.env.PATH },
+    cwd: dir,
+  });
+  assert.equal(run.status, 1);
+  assert.equal(run.stderr.trim(), "SITES_BLOB_ERROR code=PRIVATE_CREDENTIAL_MISSING");
+});
+
+/** The read-back step's own bash, with `node` and `sha256sum` replaced by stubs. */
+function runReadbackStep({ actual, expected }) {
+  const step = backup.steps.find((candidate) => candidate.id === "readback");
+  assert.ok(step, "the read-back step exists");
+  const dir = mkdtempSync(join(tmpdir(), "sites-2830-readback-"));
+  const stubs = join(dir, "bin");
+  spawnSync("mkdir", ["-p", stubs, join(dir, "sites-backup")]);
+  // The transport itself "succeeds": this test is about what follows it.
+  writeFileSync(join(stubs, "node"), "#!/bin/bash\nexit 0\n");
+  writeFileSync(join(stubs, "sha256sum"), `#!/bin/bash\nprintf '%s  %s\\n' "${actual}" "$1"\n`);
+  chmodSync(join(stubs, "node"), 0o755);
+  chmodSync(join(stubs, "sha256sum"), 0o755);
+  const classificationPath = join(dir, "classification.json");
+  const outputPath = join(dir, "github-output");
+  writeFileSync(outputPath, "");
+  const result = spawnSync("bash", ["-c", inlineBashScript(step)], {
+    encoding: "utf8",
+    env: {
+      PATH: `${stubs}:${process.env.PATH}`,
+      RUNNER_TEMP: dir,
+      BUNDLE_NAME: BUNDLE_NAME_2830,
+      EXPECTED_SHA256: expected,
+      GITHUB_OUTPUT: outputPath,
+      SITES_RECOVERY_CLASSIFICATION_PATH: classificationPath,
+    },
+  });
+  return { ...result, classificationPath, output: readFileSync(outputPath, "utf8") };
+}
+
+test("#2830 T-2.3 (S-2) a read-back digest mismatch is classified, and holds the pilot up", () => {
+  const mismatch = runReadbackStep({ actual: "1".repeat(64), expected: "2".repeat(64) });
+  assert.equal(mismatch.status, 1, "a mismatch still fails the step: no evidence is recorded");
+  assert.match(mismatch.stderr, /^SITES_BLOB_ERROR code=PRIVATE_READBACK_DIGEST_MISMATCH$/m);
+  assert.equal(mismatch.output, "", "no verified_at is published for a bundle that did not verify");
+  assertHeldUp(mismatch.classificationPath, "PRIVATE_READBACK_DIGEST_MISMATCH", "digest mismatch");
+
+  const match = runReadbackStep({ actual: "3".repeat(64), expected: "3".repeat(64) });
+  assert.equal(match.status, 0, match.stderr);
+  assert.equal(existsSync(match.classificationPath), false, "a verified read-back writes no classification");
+  assert.match(match.output, /^verified_at=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\n$/);
+});
+
+function runBundleStep(resultFile) {
+  const step = backup.steps.find((candidate) => candidate.id === "bundle");
+  assert.ok(step, "the bundle step exists");
+  const dir = mkdtempSync(join(tmpdir(), "sites-2830-bundle-"));
+  const resultPath = join(dir, "result.json");
+  if (resultFile !== undefined) writeFileSync(resultPath, resultFile);
+  const classificationPath = join(dir, "classification.json");
+  const outputPath = join(dir, "github-output");
+  writeFileSync(outputPath, "");
+  const result = spawnSync(process.execPath, ["--input-type=module"], {
+    input: inlineNodeScript(step),
+    encoding: "utf8",
+    env: {
+      PATH: process.env.PATH,
+      SITES_BACKUP_RESULT_PATH: resultPath,
+      GITHUB_OUTPUT: outputPath,
+      SITES_RECOVERY_CLASSIFICATION_PATH: classificationPath,
+    },
+  });
+  return { ...result, classificationPath, output: readFileSync(outputPath, "utf8") };
+}
+
+test("#2830 T-2.3 (S-2) a bundle result the step cannot use is classified, and holds the pilot up", () => {
+  const sha = "b".repeat(64);
+  const cases = [
+    ["BACKUP_RESULT_UNREADABLE", undefined],
+    ["BACKUP_RESULT_UNREADABLE", "{"],
+    ["BACKUP_BUNDLE_COORDINATES_INVALID", "null"],
+    ["BACKUP_BUNDLE_COORDINATES_INVALID", JSON.stringify({ bundle_name: "../../etc/passwd", bundle_sha256: sha })],
+    ["BACKUP_BUNDLE_COORDINATES_INVALID", JSON.stringify({ bundle_name: `${BUNDLE_NAME_2830}\nname=evil`, bundle_sha256: sha })],
+    ["BACKUP_BUNDLE_COORDINATES_INVALID", JSON.stringify({ bundle_name: BUNDLE_NAME_2830, bundle_sha256: "short" })],
+    ["BACKUP_BUNDLE_COORDINATES_INVALID", JSON.stringify({ bundle_name: BUNDLE_NAME_2830 })],
+  ];
+  for (const [code, file] of cases) {
+    const run = runBundleStep(file);
+    const label = `${code} <- ${String(file).slice(0, 40)}`;
+    assert.equal(run.status, 1, label);
+    assert.equal(run.output, "", `${label}: no coordinates are published`);
+    assert.equal(run.stderr.trim(), `SITES_OPS_ERROR code=${code}`, label);
+    assertHeldUp(run.classificationPath, code, label);
+  }
+  const good = runBundleStep(JSON.stringify({ bundle_name: BUNDLE_NAME_2830, bundle_sha256: sha }));
+  assert.equal(good.status, 0, good.stderr);
+  assert.equal(good.output, `name=${BUNDLE_NAME_2830}\nsha256=${sha}\n`);
+  assert.equal(existsSync(good.classificationPath), false);
+});
+
+test("#2830 T-2.3 every step of the backup job that can fail leaves a classification", () => {
+  // The rule the invariant states. A step is either a pinned action, a shell
+  // step that cannot fail on data (the client symlinks), an inline step that
+  // writes the classification itself, or a node entrypoint that does.
+  const selfClassifying = new Map([
+    ["scripts/sites/backup-sites-cms.mjs", /\.catch\(safeCliFailure\)/],
+    ["scripts/sites/restore-sites-cms.mjs", /\.catch\(safeCliFailure\)/],
+    ["scripts/sites/vercel-blob-http-transport.mjs", /recordRecoveryFailureClassification\(code\)/],
+  ]);
+  const seen = new Set();
+  for (const step of backup.steps) {
+    if (step.id === "classify" || /^ {6}- uses: /m.test(step.text)) continue;
+    const entrypoints = [...step.text.matchAll(/node (scripts\/sites\/[a-z0-9-]+\.mjs)/g)].map((match) => match[1]);
+    for (const entrypoint of entrypoints) {
+      assert.ok(selfClassifying.has(entrypoint), `${entrypoint} is a known self-classifying entrypoint`);
+      assert.match(readFileSync(join(REPO, entrypoint), "utf8"), selfClassifying.get(entrypoint), entrypoint);
+      seen.add(entrypoint);
+    }
+    const inlineExit = /exit 1|process\.exit\(1\)/.test(step.text);
+    if (inlineExit) {
+      assert.match(step.text, /SITES_RECOVERY_CLASSIFICATION_PATH/,
+        `step "${step.name}" exits non-zero inline and must write its classification first`);
+    }
+    assert.ok(
+      entrypoints.length > 0 || inlineExit || step.name === "Expose pinned PostgreSQL 17 clients",
+      `step "${step.name}" is accounted for`,
+    );
+  }
+  assert.deepEqual([...seen].sort(), [...selfClassifying.keys()].sort());
+  assert.match(backup.head, /SITES_RECOVERY_CLASSIFICATION_PATH: \$\{\{ github\.workspace \}\}\/sites-recovery-classification\.json/);
+});
+
+test("#2830 F-8 only a code-shaped value leaves the classify step, and the verdict is untouched", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sites-2830-f8-"));
+  const path = join(dir, "classification.json");
+  for (const hostile of ["x", "lower_case", "A B", "OK\ndeactivate=false", "::set-output name=x::y", "$(id)", "A".repeat(200)]) {
+    for (const deactivating of [true, false]) {
+      writeFileSync(path, JSON.stringify({ code: hostile, deactivating }));
+      const { outputs, stdout } = runInlineStep(classifyStep, { SITES_RECOVERY_CLASSIFICATION_PATH: path });
+      assert.deepEqual(
+        outputs,
+        { deactivate: String(deactivating), code: "UNCLASSIFIED" },
+        `${JSON.stringify(hostile)} deactivating=${deactivating}`,
+      );
+      assert.equal(stdout, `SITES_RECOVERY_CLASSIFICATION code=UNCLASSIFIED deactivate=${deactivating}\n`);
+    }
+  }
+  // Every real code still passes through unchanged.
+  for (const code of [...READINESS_VIOLATIONS, "S3_OBJECT_READ_FAILED", "PRIVATE_READBACK_DIGEST_MISMATCH", "UNEXPECTED_FAILURE"]) {
+    const verdict = classifyRecoveryFailure2830(code);
+    writeFileSync(path, JSON.stringify(verdict));
+    assert.equal(runInlineStep(classifyStep, { SITES_RECOVERY_CLASSIFICATION_PATH: path }).outputs.code, code);
+  }
+});

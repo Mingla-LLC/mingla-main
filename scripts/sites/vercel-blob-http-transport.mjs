@@ -15,6 +15,8 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
+import { recordRecoveryFailureClassification } from "./lib/sites-ops.mjs";
+
 const BUNDLE_PATHNAME =
   /^recovery\/sites\/mingla-sites-[0-9a-f-]{36}-[0-9TZ]+-[0-9a-f]{64}\.msbk$/;
 const API_ORIGIN = "https://vercel.com";
@@ -185,6 +187,16 @@ function safeFailure(error) {
     ? error.code
     : "PRIVATE_UNEXPECTED_FAILURE";
   process.stderr.write(`SITES_BLOB_ERROR code=${code}\n`);
+  // #2830 (S-1) — this entrypoint used to exit 1 having written no
+  // classification, and the deactivation gate reads "no classification" as
+  // "deactivate". A bad minute between the runner and the private Blob store
+  // would therefore have taken the live pilot down: the same class as the
+  // 2026-09-28 object-read incident (#3628). Every code this transport can
+  // produce is a `PRIVATE_*` transport or provider fault, none of them is in
+  // the deactivating set, so the file says `deactivating: false`: new evidence
+  // was not recorded, the evidence already held is still valid and still
+  // ageing, and the resolver's own 26-hour budget still protects the site.
+  recordRecoveryFailureClassification(code);
   process.exitCode = 1;
 }
 
