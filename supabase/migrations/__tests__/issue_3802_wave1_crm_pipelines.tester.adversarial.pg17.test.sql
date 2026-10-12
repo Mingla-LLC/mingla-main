@@ -877,7 +877,7 @@ language sql as $fn$
     when p_to = 'live' then 'stage_sets_itself'
     when p_from = 'live' and p_to <> 'lost' then 'stage_is_live'
     when p_to in ('lost', 'passed') and (nullif(btrim(coalesce(p_reason, '')), '') is null or char_length(btrim(p_reason)) > 300) then 'reason_required'
-    when p_pipeline = 'creators' and p_to = 'booked' and p_agreement is distinct from 'signed' then 'agreement_required'
+    when p_pipeline = 'creators' and p_to in ('booked', 'posted') and p_agreement is distinct from 'signed' then 'agreement_required'
     else 'ok'
   end
 $fn$;

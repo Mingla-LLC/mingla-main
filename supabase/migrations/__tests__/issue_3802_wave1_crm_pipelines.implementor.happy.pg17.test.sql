@@ -31,6 +31,8 @@
 --   W1-22  a listing with discover visibility is a public listing
 --   W1-23  bulk add tells a refused item from a server fault; the scheduled
 --          run carries on past a host it cannot promote
+--   W1-24  a creator is at Booked or later only with a signed agreement, by
+--          every route
 --   Part 2 two overlapping creates of one name -> one record; two overlapping
 --          moves of one card -> both answered, two log rows (real sessions)
 --
@@ -2351,6 +2353,86 @@ begin
   drop trigger t3802w_fault on public.crm_records;
 end;
 $w23$;
+
+-- ---------------------------------------------------------------------------
+-- W1-24 — one rule for a creator at Booked or later: the agreement is marked
+-- signed, whichever stage the card comes from and whichever route it takes
+-- (a move, a skip over Booked, an undo, an add).
+-- ---------------------------------------------------------------------------
+do $w24$
+declare
+  v_from text;
+  v_to text;
+  v_agree text;
+  v_n int := 0;
+  v_id text;
+  r text;
+  v_act text;
+  v_snap text;
+  v_audit int;
+begin
+  foreach v_from in array array['identified', 'contacted', 'replied', 'negotiating', 'passed'] loop
+    foreach v_agree in array array['<not set>', 'none', 'sent'] loop
+      v_n := v_n + 1;
+      r := pg_temp.t3802w_make('w24-' || v_n, 'growth', 'creators',
+             (jsonb_build_object('name', 'W1-24 Creator ' || v_n)
+                || case when v_agree = '<not set>' then '{}'::jsonb else jsonb_build_object('agreement', v_agree) end)::text);
+      v_id := pg_temp.t3802w_id('w24-' || v_n);
+      if v_from <> 'identified' then
+        perform pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, %L, %L)::text$q$, v_id, v_from, 'Not this season'));
+      end if;
+      v_snap := pg_temp.t3802w_snapshot();
+      v_audit := pg_temp.t3802w_audit();
+      foreach v_to in array array['booked', 'posted'] loop
+        perform pg_temp.t3802w_like('W1-24', format('from %s with the agreement %s, a move to %s is refused', v_from, v_agree, v_to),
+          pg_temp.t3802w_as((array['growth', 'partner', 'admin', 'owner'])[1 + v_n % 4],
+            format($q$select public.crm_record_move_stage(%L, %L)::text$q$, v_id, v_to)),
+          'ERR:22023:agreement_required:%' || initcap(v_to) || '%');
+      end loop;
+      perform pg_temp.t3802w_check('W1-24', format('from %s with the agreement %s, the refusals changed nothing', v_from, v_agree),
+        pg_temp.t3802w_snapshot() || '/' || (pg_temp.t3802w_audit() - v_audit)::text, v_snap || '/0');
+
+      -- With the agreement signed, the same card goes straight to Posted.
+      perform pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, '{"agreement": "signed"}'::jsonb)::text$q$, v_id));
+      perform pg_temp.t3802w_check('W1-24', format('from %s, once the agreement is signed the card can go straight to Posted', v_from),
+        pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'posted')::text$q$, v_id)), 'record', 'stage'), 'posted');
+    end loop;
+  end loop;
+
+  -- Undo back into Posted needs it too.
+  v_id := pg_temp.t3802w_id('w24-1');
+  r := pg_temp.t3802w_as('growth', format($q$select public.crm_record_move_stage(%L, 'passed', 'Stopped posting')::text$q$, v_id));
+  v_act := pg_temp.t3802w_get(r, 'activity_id');
+  perform pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, '{"agreement": "sent"}'::jsonb)::text$q$, v_id));
+  v_snap := pg_temp.t3802w_snapshot();
+  perform pg_temp.t3802w_like('W1-24', 'an undo cannot put a creator back into Posted without a signed agreement',
+    pg_temp.t3802w_as('growth', format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act)), 'ERR:22023:agreement_required:%Posted%');
+  perform pg_temp.t3802w_check('W1-24', 'the refused undo changed nothing', pg_temp.t3802w_snapshot(), v_snap);
+  perform pg_temp.t3802w_as('growth', format($q$select public.crm_record_update(%L, '{"agreement": "signed"}'::jsonb)::text$q$, v_id));
+  perform pg_temp.t3802w_check('W1-24', 'with the agreement signed again, the undo puts the card back into Posted',
+    pg_temp.t3802w_get(pg_temp.t3802w_as('growth', format($q$select public.crm_record_undo_stage_move(%L)::text$q$, v_act)), 'record', 'stage'), 'posted');
+
+  -- Adding never places a card at Booked or later, one at a time or in bulk.
+  perform pg_temp.t3802w_like('W1-24', 'an add cannot name a stage',
+    pg_temp.t3802w_as('growth', $q$select public.crm_record_create('creators', '{"name": "W1-24 Staged", "stage": "posted"}'::jsonb, 'w24-add-stage')::text$q$),
+    'ERR:22023:unknown_field:%');
+  r := pg_temp.t3802w_as('growth', $q$select public.crm_records_bulk_create('creators',
+         '[{"name": "W1-24 Bulk A", "agreement": "none"}, {"name": "W1-24 Bulk B", "agreement": "signed"}, {"name": "W1-24 Bulk C", "stage": "posted"}, {"name": "W1-24 Bulk D", "stage": "booked", "agreement": "signed"}]'::jsonb,
+         'w24-bulk-0001')::text$q$);
+  perform pg_temp.t3802w_check('W1-24', 'bulk add starts every card in the first stage and refuses an item that names a stage',
+    (select string_agg(c->'record'->>'stage', '/' order by c->'record'->>'name') from jsonb_array_elements(pg_temp.t3802w_jb(r)->'created') c)
+      || ' ' || jsonb_array_length(pg_temp.t3802w_jb(r)->'invalid')::text
+      || ' ' || (select bool_and(i->>'error' like 'unknown_field:%')::text from jsonb_array_elements(pg_temp.t3802w_jb(r)->'invalid') i),
+    'identified/identified 2 true');
+
+  perform pg_temp.t3802w_check('W1-24', 'no creator is at Booked or later without a signed agreement',
+    (select count(*)::text from public.crm_records where pipeline = 'creators' and stage in ('booked', 'posted') and deleted_at is null
+        and agreement is distinct from 'signed' and name like 'W1-%'), '0');
+  perform pg_temp.t3802w_check('W1-24', 'and the cards that got there all carry one',
+    (select count(*)::text from public.crm_records where pipeline = 'creators' and stage = 'posted' and deleted_at is null
+        and agreement = 'signed' and name like 'W1-24 Creator %'), '15');
+end;
+$w24$;
 
 -- ---------------------------------------------------------------------------
 -- Verdict (part 1). Every failed check is listed; one or more fails the suite.

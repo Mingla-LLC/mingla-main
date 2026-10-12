@@ -20,6 +20,10 @@
 --     put a host back into Live unless the rule holds at that moment. A
 --     listing that goes away later, with the link unchanged, does not move a
 --     Live host (Live is a milestone; only a person marking it Lost ends it).
+--   * A creator is at Booked or later (Booked, Posted) only with the
+--     agreement marked signed, by every route: a move from any stage, an
+--     edit of the agreement, and an undo. New records, bulk add included,
+--     always start in the first stage.
 --   * A public listing is: a scheduled or live event, trip, experience or
 --     RSVP page whose visibility is public or discover; a verified venue; a
 --     bookable stay.
@@ -1445,8 +1449,9 @@ REVOKE EXECUTE ON FUNCTION public.crm_records_bulk_create(text, jsonb, text) FRO
 GRANT EXECUTE ON FUNCTION public.crm_records_bulk_create(text, jsonb, text) TO authenticated, service_role;
 
 -- Change fields of one record (never stage, never owners).
---   * A creator in Booked or Posted keeps a signed agreement: changing the
---     agreement to anything else there is refused (agreement_required).
+--   * A creator at Booked or later (Booked, Posted) keeps a signed
+--     agreement: changing the agreement to anything else there is refused
+--     (agreement_required). Same rule as crm_record_move_stage.
 --   * Any change to a host's brand link (set, changed or cleared) settles the
 --     stage through crm_apply_brand_link, so a host is never left in Live
 --     without a linked brand that has a public listing.
@@ -1488,7 +1493,9 @@ BEGIN
     RETURN jsonb_build_object('record', public.crm_record_json(v_rec), 'changed', false, 'moved_to', NULL);
   END IF;
 
-  IF v_rec.pipeline = 'creators' AND v_rec.stage IN ('booked', 'posted')
+  IF v_rec.pipeline = 'creators'
+     AND (public.crm_stage_def('creators', v_rec.stage)->>'pos')::integer >= (public.crm_stage_def('creators', 'booked')->>'pos')::integer
+     AND NOT COALESCE((public.crm_stage_def('creators', v_rec.stage)->>'terminal')::boolean, false)
      AND v_after ? 'agreement' AND (v_after->>'agreement') IS DISTINCT FROM 'signed' THEN
     RAISE EXCEPTION '%', format('agreement_required: This creator is in %s, which keeps a signed agreement. Move the card back to Negotiating before changing the agreement.',
                                 public.crm_stage_def('creators', v_rec.stage)->>'label')
@@ -1538,7 +1545,8 @@ REVOKE EXECUTE ON FUNCTION public.crm_record_update(uuid, jsonb) FROM PUBLIC, an
 GRANT EXECUTE ON FUNCTION public.crm_record_update(uuid, jsonb) TO authenticated, service_role;
 
 -- Move a card. Live sets itself; a Live host only moves to Lost; Lost and
--- Passed need a reason; a creator needs a signed agreement before Booked.
+-- Passed need a reason; a creator needs a signed agreement before Booked or
+-- any later stage (Posted), whichever stage it comes from.
 CREATE FUNCTION public.crm_record_move_stage(p_id uuid, p_to text, p_reason text DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -1580,8 +1588,16 @@ BEGIN
   IF COALESCE((v_to->>'terminal')::boolean, false) THEN
     v_reason := public.crm_validate_fields(v_rec.pipeline, jsonb_build_object('stage_reason', p_reason), 'reason')->>'stage_reason';
   END IF;
-  IF v_rec.pipeline = 'creators' AND p_to = 'booked' AND v_rec.agreement IS DISTINCT FROM 'signed' THEN
-    RAISE EXCEPTION 'agreement_required: Mark the agreement as signed before moving to Booked.' USING ERRCODE = '22023';
+  -- ONE rule for a creator at Booked or later (every stage from Booked on
+  -- that is not the closing stage Passed): the agreement is marked signed.
+  -- The same test guards the edit (crm_record_update) and the undo
+  -- (crm_record_undo_stage_move), so no route skips it.
+  IF v_rec.pipeline = 'creators'
+     AND (v_to->>'pos')::integer >= (public.crm_stage_def('creators', 'booked')->>'pos')::integer
+     AND NOT COALESCE((v_to->>'terminal')::boolean, false)
+     AND v_rec.agreement IS DISTINCT FROM 'signed' THEN
+    RAISE EXCEPTION '%', format('agreement_required: Mark the agreement as signed before moving to %s.', v_to->>'label')
+      USING ERRCODE = '22023';
   END IF;
 
   UPDATE public.crm_records
@@ -1608,7 +1624,7 @@ GRANT EXECUTE ON FUNCTION public.crm_record_move_stage(uuid, text, text) TO auth
 -- An undo puts the card back into a stage, so that stage's rule must hold at
 -- this moment: a host goes back into Live only if it is still linked to a
 -- brand with a public listing (otherwise undo_not_live, nothing changes), and
--- a creator goes back into Booked only with a signed agreement.
+-- a creator goes back into Booked or Posted only with a signed agreement.
 CREATE FUNCTION public.crm_record_undo_stage_move(p_activity_id uuid) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -1644,8 +1660,12 @@ BEGIN
     RAISE EXCEPTION 'undo_not_live: This host is no longer linked to a brand with a public listing, so it cannot go back to Live. Move the card to Onboarded by hand; Live sets itself once the linked brand has a public listing.'
       USING ERRCODE = '22023';
   END IF;
-  IF v_rec.pipeline = 'creators' AND v_act.from_stage = 'booked' AND v_rec.agreement IS DISTINCT FROM 'signed' THEN
-    RAISE EXCEPTION 'agreement_required: The agreement is no longer marked as signed, so this card cannot go back to Booked. Mark the agreement as signed, then move the card by hand.'
+  IF v_rec.pipeline = 'creators'
+     AND (public.crm_stage_def('creators', v_act.from_stage)->>'pos')::integer >= (public.crm_stage_def('creators', 'booked')->>'pos')::integer
+     AND NOT COALESCE((public.crm_stage_def('creators', v_act.from_stage)->>'terminal')::boolean, false)
+     AND v_rec.agreement IS DISTINCT FROM 'signed' THEN
+    RAISE EXCEPTION '%', format('agreement_required: The agreement is not marked as signed, so this card cannot go back to %s. Mark the agreement as signed, then move the card by hand.',
+                                public.crm_stage_def('creators', v_act.from_stage)->>'label')
       USING ERRCODE = '22023';
   END IF;
 
