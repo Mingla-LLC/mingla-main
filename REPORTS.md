@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-12 — Host web: picking Nigeria for payouts now switches the brand so it can sell before a bank is added, and says so if the switch fails; an event that cannot be published or unpublished now says why instead of a generic error; and a first-time organiser's brand setup no longer stops after the first step (toward #3645, PR #TBD)
 - 2026-10-11 — A failed clean-up sweep after the Sites backup can no longer take the live pilot site down or turn main red: the sweep runs as its own job after the backup is verified, a failure posts an alert on the issue instead, and the runbook now says how to bring the site back after a deactivation (toward #2830, PR #3797)
 - 2026-10-11 — Mingla Sites: the media column whose absence has failed every nightly backup since 2026-10-07 now has a migration, plus a test that stops an upload-table column shipping without one; it takes effect when the migration is applied to the Studio database (toward #2830, PR #3796)
 - 2026-10-11 — Admin Ads console lists every public page type, shows spend vs hard cap in the campaign currency, fixes Settings feature-flag columns, and gates the builder behind enable_ads_console (toward #3697, PR #3795)
