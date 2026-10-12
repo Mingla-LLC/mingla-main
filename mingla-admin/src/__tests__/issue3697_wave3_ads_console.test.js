@@ -96,7 +96,17 @@ test("StepDestination uses listAdvertisablePages (all page types) — #3700", ()
   assert.doesNotMatch(src, /listEventDestinations/);
   assert.doesNotMatch(src, /listBrandDestinations/);
   assert.doesNotMatch(src, /listStayDestinations/);
-  for (const t of ["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site"]) {
+  for (const t of [
+    "event",
+    "rsvp",
+    "trip",
+    "experience",
+    "brand",
+    "venue",
+    "reservation",
+    "site",
+    "marketing",
+  ]) {
     assert.match(src, new RegExp(`id: "${t}"`));
   }
   assert.match(src, /includeUnavailable/);

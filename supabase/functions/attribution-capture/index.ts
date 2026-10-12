@@ -89,7 +89,8 @@ interface CaptureBody {
       | "brand"
       | "venue"
       | "reservation"
-      | "site";
+      | "site"
+      | "marketing";
     brand_slug?: string;
     entity_slug?: string;
     event_id?: string;
@@ -237,6 +238,7 @@ const DEST_PAGE_TYPES = [
   "venue",
   "reservation",
   "site",
+  "marketing",
 ] as const;
 type DestPageType = (typeof DEST_PAGE_TYPES)[number];
 
