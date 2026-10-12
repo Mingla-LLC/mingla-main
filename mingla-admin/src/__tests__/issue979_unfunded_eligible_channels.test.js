@@ -38,8 +38,9 @@ const base = {
 
 describe("ISSUE-979 Bug 4 — eligible-but-$0 channels are surfaced with a reason", () => {
   it("a small total funds only Meta; the other eligible channels are reported, not silent", () => {
-    // $7/day: TikTok ($20 floor) is EXCLUDED by planChannels; meta/snap/google/
-    // reddit are eligible, but auto can only fund Meta → the rest get $0.
+    // [TEST-MOD-APPROVED #3697] Wave 2 D1: TikTok $50 / Snap $20 — at $7/day both
+    // are floor-ineligible. Meta/google/reddit stay eligible; auto funds Meta only
+    // → google+reddit are the eligible-but-$0 set (snapchat is not eligible).
     const rows = planChannels({ ...base, totalDailyCents: 700 });
     const allocations = splitBudget({ totalDailyCents: 700, channelRows: rows, strategy: "auto" });
     assert.equal(allocations.length, 1);
@@ -47,7 +48,7 @@ describe("ISSUE-979 Bug 4 — eligible-but-$0 channels are surfaced with a reaso
 
     const unfunded = unfundedEligibleChannels({ channelRows: rows, allocations, totalDailyCents: 700, strategy: "auto" });
     const platforms = unfunded.map((u) => u.platform).sort();
-    assert.deepEqual(platforms, ["google", "reddit", "snapchat"], "every eligible-but-$0 channel is reported");
+    assert.deepEqual(platforms, ["google", "reddit"], "every eligible-but-$0 channel is reported");
     for (const u of unfunded) {
       assert.ok(u.reason.includes("$0/day"), `${u.platform} reason must state it gets $0/day`);
       assert.ok(u.reason.includes(u.label), `${u.platform} reason names the channel`);

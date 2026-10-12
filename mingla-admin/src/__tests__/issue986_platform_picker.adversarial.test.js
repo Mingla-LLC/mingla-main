@@ -204,7 +204,9 @@ describe("ISSUE-986 ADVERSARIAL — B: eligibility safety cannot be forced via t
 });
 
 describe("ISSUE-986 ADVERSARIAL — C: compliance exclusion round-trips, resists repeated re-selection, and is structurally the ONLY guard", () => {
-  const rows = planChannels({ ...base, totalDailyCents: 4000 });
+  // [TEST-MOD-APPROVED #3697] Wave 2 D1: TikTok floor is $50/day — Suite C needs
+  // every platform eligible so compliance ON/OFF is not masked by the floor gate.
+  const rows = planChannels({ ...base, totalDailyCents: 10000 });
   const eligiblePlatforms = rows.filter((r) => r.eligible).map((r) => r.platform);
 
   it("clearing the special ad category RESTORES the 4 excluded platforms using the SAME selectedPlatforms array — the exclusion is a live recomputation, not a sticky mutation", () => {
@@ -280,7 +282,9 @@ describe("ISSUE-986 ADVERSARIAL — C: compliance exclusion round-trips, resists
 
 describe("ISSUE-986 ADVERSARIAL — D: degenerate select-NONE never crashes, never proceeds, never double-warns; rapid toggling is deterministic", () => {
   it("selecting NONE is honest (all deselected), splitBudget/unfundedEligibleChannels don't crash, and a deselected channel is NEVER also reported as a Bug-4 '$0-funded eligible' channel", () => {
-    const rows = planChannels({ ...base, totalDailyCents: 3000 });
+    // [TEST-MOD-APPROVED #3697] Wave 2 D1: budget ≥ TikTok $50 floor so every
+    // platform starts eligible; select-NONE must tag deselected (not floor).
+    const rows = planChannels({ ...base, totalDailyCents: 10000 });
     const planned = applyChannelSelection({ channelRows: rows, selectedPlatforms: [] });
 
     assert.ok(planned.every((r) => r.eligible === false), "every candidate is ineligible once nothing is picked");
@@ -288,13 +292,13 @@ describe("ISSUE-986 ADVERSARIAL — D: degenerate select-NONE never crashes, nev
 
     let allocations;
     assert.doesNotThrow(() => {
-      allocations = splitBudget({ channelRows: planned, totalDailyCents: 3000, strategy: "auto" });
+      allocations = splitBudget({ channelRows: planned, totalDailyCents: 10000, strategy: "auto" });
     });
     assert.deepEqual(allocations, [], "no crash, no fallback funding — zero platforms picked means zero funded");
 
     let unfunded;
     assert.doesNotThrow(() => {
-      unfunded = unfundedEligibleChannels({ channelRows: planned, allocations, totalDailyCents: 3000 });
+      unfunded = unfundedEligibleChannels({ channelRows: planned, allocations, totalDailyCents: 10000 });
     });
     assert.deepEqual(unfunded, [], "a deselected channel must NEVER also show up as an ISSUE-979 Bug-4 '$0-funded eligible' warning — that would be a contradictory double-warning (eligible=false already explains the $0)");
 
@@ -343,7 +347,8 @@ describe("ISSUE-986 ADVERSARIAL — D: degenerate select-NONE never crashes, nev
     assert.ok(!finalA.includes("meta"), "meta is deselected after the rapid sequence");
 
     // Feed the post-toggle state through the real pipeline — no crash, matches.
-    const rows = planChannels({ ...base, totalDailyCents: 3000 });
+    // [TEST-MOD-APPROVED #3697] Wave 2 D1: ≥ TikTok $50 floor so all four remain eligible.
+    const rows = planChannels({ ...base, totalDailyCents: 10000 });
     const planned = applyChannelSelection({ channelRows: rows, selectedPlatforms: finalA });
     assert.deepEqual(
       planned.filter((r) => r.eligible).map((r) => r.platform).sort(),

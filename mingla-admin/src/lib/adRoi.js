@@ -2,10 +2,10 @@
  * ISSUE-865 PR1 WP-4 — pure ROI math for the campaign "Conversions & ROI" panel.
  *
  * NO fabrication (the dashboard constitution): ROAS and cost-per-result are
- * derived ONLY from a REAL spend figure. There is no in-DB actual-spend source
- * yet (platform insights land with #863), so the rollup returns spend_cents:null
- * and these helpers return null for the spend-dependent metrics — the panel then
- * shows an honest "—" / "connect spend reporting" instead of a made-up number.
+ * derived ONLY from a REAL spend figure. toward #3697 Wave 2: spend_cents comes
+ * from ad_spend_daily via ad_campaign_conversion_rollup (NULL until the hourly
+ * feed writes a row). These helpers return null for spend-dependent metrics
+ * when spend is unknown — the panel shows "—" never a made-up number.
  *
  * Framework-free (no React) so it is unit-tested with node:test — the house admin
  * test idiom (pure-logic modules + fs source assertions).

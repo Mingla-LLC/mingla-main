@@ -23,12 +23,12 @@
 
 import {
   AdApiError,
-  AdNotConnectedError,
   type AdConnectionRow,
+  AdNotConnectedError,
   type AdvertiserStatus,
   type AuthedClient,
-  type ChannelAdapter,
   centsToPlatformBudget,
+  type ChannelAdapter,
   type CreateAdInput,
   type CreateAdSetInput,
   type CreateCampaignInput,
@@ -83,24 +83,32 @@ export interface MetaEnvConfig {
  * required IDs are unset — a business connect must NOT silently verify consumer
  * IDs. The IG user id (ISSUE-939) is OPTIONAL: unset/empty → null (Facebook-only).
  */
-export function resolveMetaEnvConfig(lane: MetaLane = "consumer"): MetaEnvConfig {
-  const adAccountId = (Deno.env.get(laneEnvName("META_AD_ACCOUNT_ID", lane)) ?? "").trim();
+export function resolveMetaEnvConfig(
+  lane: MetaLane = "consumer",
+): MetaEnvConfig {
+  const adAccountId =
+    (Deno.env.get(laneEnvName("META_AD_ACCOUNT_ID", lane)) ?? "").trim();
   const pageId = (Deno.env.get(laneEnvName("META_PAGE_ID", lane)) ?? "").trim();
   if (!adAccountId) throw new AdNotConnectedError("meta", "meta_not_connected");
   if (!pageId) throw new AdNotConnectedError("meta", "meta_not_connected");
   return {
     apiVersion: (resolveRuntimeString("meta_api_version", "META_API_VERSION") ??
       META_DEFAULT_API_VERSION).trim(),
-    graphBase: (Deno.env.get("META_GRAPH_BASE") ?? META_DEFAULT_GRAPH_BASE).trim(),
+    graphBase: (Deno.env.get("META_GRAPH_BASE") ?? META_DEFAULT_GRAPH_BASE)
+      .trim(),
     adAccountId,
-    businessId: (Deno.env.get(laneEnvName("META_BUSINESS_ID", lane)) ?? "").trim() || null,
+    businessId:
+      (Deno.env.get(laneEnvName("META_BUSINESS_ID", lane)) ?? "").trim() ||
+      null,
     pageId,
     // ISSUE-939: lane-correct IG identity (consumer META_IG_USER_ID / business
     // META_MINGLABIZ_IG_USER_ID). OPTIONAL — unset/empty resolves to null so the
     // creative omits instagram_user_id and stays Facebook-only. The business
     // lane has no IG configured yet, so it naturally resolves to null.
-    igUserId: (Deno.env.get(laneEnvName("META_IG_USER_ID", lane)) ?? "").trim() || null,
-    datasetId: (Deno.env.get(laneEnvName("META_DATASET_ID", lane)) ?? "").trim() || null,
+    igUserId:
+      (Deno.env.get(laneEnvName("META_IG_USER_ID", lane)) ?? "").trim() || null,
+    datasetId:
+      (Deno.env.get(laneEnvName("META_DATASET_ID", lane)) ?? "").trim() || null,
   };
 }
 
@@ -119,7 +127,8 @@ export function resolveMetaToken(
   conn?: Pick<AdConnectionRow, "token_env_var"> | null,
   lane: MetaLane = "consumer",
 ): string {
-  const envVarName = (conn?.token_env_var ?? metaDefaultTokenEnvVar(lane)).trim() ||
+  const envVarName =
+    (conn?.token_env_var ?? metaDefaultTokenEnvVar(lane)).trim() ||
     metaDefaultTokenEnvVar(lane);
   const value = Deno.env.get(envVarName);
   if (!value || value.trim().length === 0) {
@@ -163,7 +172,8 @@ export function scrubMetaTokens(text: string): string {
 
 /** Client-safe error shape. The raw token is NEVER present in Graph error bodies we surface. */
 export function normalizeMetaError(payload: unknown): NormalizedMetaError {
-  const err = (payload as { error?: Record<string, unknown> } | null)?.error ?? {};
+  const err = (payload as { error?: Record<string, unknown> } | null)?.error ??
+    {};
   const message = typeof err.error_user_msg === "string" && err.error_user_msg
     ? String(err.error_user_msg)
     : typeof err.message === "string"
@@ -290,7 +300,10 @@ export async function metaSearch(
 
 /** Tolerant parser over an adgeolocation payload → MetaGeoResult[]. */
 export function parseMetaGeoResults(payload: unknown): MetaGeoResult[] {
-  const data = ((payload as { data?: unknown })?.data ?? []) as Record<string, unknown>[];
+  const data = ((payload as { data?: unknown })?.data ?? []) as Record<
+    string,
+    unknown
+  >[];
   if (!Array.isArray(data)) return [];
   const out: MetaGeoResult[] = [];
   for (const entry of data) {
@@ -307,7 +320,9 @@ export function parseMetaGeoResults(payload: unknown): MetaGeoResult[] {
       name,
       type: typeof entry.type === "string" ? entry.type : "city",
       region: typeof entry.region === "string" ? entry.region : null,
-      country_code: typeof entry.country_code === "string" ? entry.country_code : null,
+      country_code: typeof entry.country_code === "string"
+        ? entry.country_code
+        : null,
       supports_region: entry.supports_region === true,
     });
   }
@@ -315,8 +330,13 @@ export function parseMetaGeoResults(payload: unknown): MetaGeoResult[] {
 }
 
 /** Tolerant parser over an adinterest payload → MetaInterestResult[]. */
-export function parseMetaInterestResults(payload: unknown): MetaInterestResult[] {
-  const data = ((payload as { data?: unknown })?.data ?? []) as Record<string, unknown>[];
+export function parseMetaInterestResults(
+  payload: unknown,
+): MetaInterestResult[] {
+  const data = ((payload as { data?: unknown })?.data ?? []) as Record<
+    string,
+    unknown
+  >[];
   if (!Array.isArray(data)) return [];
   const out: MetaInterestResult[] = [];
   for (const entry of data) {
@@ -347,7 +367,9 @@ export function parseMetaInterestResults(payload: unknown): MetaInterestResult[]
  * default. Non-numeric/absent keys are dropped (never fabricated).
  */
 export const META_DEFAULT_CITY_RADIUS_MILE = 10;
-export function normalizeMetaCities(cities: unknown): { key: string; radius: number; distance_unit: string }[] {
+export function normalizeMetaCities(
+  cities: unknown,
+): { key: string; radius: number; distance_unit: string }[] {
   if (!Array.isArray(cities)) return [];
   const out: { key: string; radius: number; distance_unit: string }[] = [];
   for (const raw of cities) {
@@ -361,7 +383,9 @@ export function normalizeMetaCities(cities: unknown): { key: string; radius: num
     if (!key) continue;
     const unit = c.distance_unit === "kilometer" ? "kilometer" : "mile";
     const max = unit === "mile" ? 50 : 80;
-    const r = typeof c.radius === "number" && Number.isFinite(c.radius) ? c.radius : META_DEFAULT_CITY_RADIUS_MILE;
+    const r = typeof c.radius === "number" && Number.isFinite(c.radius)
+      ? c.radius
+      : META_DEFAULT_CITY_RADIUS_MILE;
     const radius = Math.min(max, Math.max(1, Math.round(r)));
     out.push({ key, radius, distance_unit: unit });
   }
@@ -395,7 +419,14 @@ export function buildMetaInterestFlexibleSpec(
 ): { interests: { id: string }[] }[] | null {
   if (!Array.isArray(interestIds)) return null;
   const interests = interestIds
-    .map((id) => (typeof id === "string" ? id.trim() : typeof id === "number" ? String(id) : ""))
+    .map((
+      id,
+    ) => (typeof id === "string"
+      ? id.trim()
+      : typeof id === "number"
+      ? String(id)
+      : "")
+    )
     .filter((id) => id.length > 0)
     .map((id) => ({ id }));
   return interests.length > 0 ? [{ interests }] : null;
@@ -415,8 +446,12 @@ export type SpecialAdCategoriesValidation =
   | { ok: true; categories: string[] }
   | { ok: false; detail: string; message: string };
 
-export function validateSpecialAdCategories(input: unknown): SpecialAdCategoriesValidation {
-  if (input === undefined || input === null) return { ok: true, categories: [] };
+export function validateSpecialAdCategories(
+  input: unknown,
+): SpecialAdCategoriesValidation {
+  if (input === undefined || input === null) {
+    return { ok: true, categories: [] };
+  }
   if (!Array.isArray(input) || input.some((c) => typeof c !== "string")) {
     return {
       ok: false,
@@ -433,13 +468,17 @@ export function validateSpecialAdCategories(input: unknown): SpecialAdCategories
         "CREDIT was retired by Meta on 2025-01-14 — use FINANCIAL_PRODUCTS_SERVICES instead.",
     };
   }
-  const unknown = categories.filter((c) => !META_SPECIAL_AD_CATEGORIES.includes(c));
+  const unknown = categories.filter((c) =>
+    !META_SPECIAL_AD_CATEGORIES.includes(c)
+  );
   if (unknown.length > 0) {
     return {
       ok: false,
       detail: "special_ad_categories_unknown",
       message: `Unknown special_ad_categories: ${unknown.join(", ")}. ` +
-        `Valid: ${META_SPECIAL_AD_CATEGORIES.join(" | ")} (there is no ONLINE_GAMBLING_AND_GAMING).`,
+        `Valid: ${
+          META_SPECIAL_AD_CATEGORIES.join(" | ")
+        } (there is no ONLINE_GAMBLING_AND_GAMING).`,
     };
   }
   return { ok: true, categories: categories.filter((c) => c !== "NONE") };
@@ -478,8 +517,14 @@ export const META_URL_TAGS =
 /** §4.4b default bid strategy — the only value WP1 accepts (cap strategies need bid_amount). */
 export const META_DEFAULT_BID_STRATEGY = "LOWEST_COST_WITHOUT_CAP";
 
-export function buildMetaCampaignBody(input: CreateCampaignInput): Record<string, unknown> {
-  const isCbo = typeof input.dailyBudgetCents === "number" && input.dailyBudgetCents > 0;
+export function buildMetaCampaignBody(
+  input: CreateCampaignInput,
+): Record<string, unknown> {
+  const isLifetimeCbo = typeof input.lifetimeBudgetCents === "number" &&
+    input.lifetimeBudgetCents > 0;
+  const isDailyCbo = !isLifetimeCbo &&
+    typeof input.dailyBudgetCents === "number" &&
+    input.dailyBudgetCents > 0;
   const body: Record<string, unknown> = {
     name: input.name,
     objective: input.objective,
@@ -494,9 +539,18 @@ export function buildMetaCampaignBody(input: CreateCampaignInput): Record<string
     // GR-11: PAUSED explicitly at every level on every channel — never a default.
     status: "PAUSED",
   };
-  if (isCbo) {
+  if (isLifetimeCbo) {
+    // toward #3697 Wave 2 — CBO lifetime hard cap on the campaign.
+    body.lifetime_budget = centsToPlatformBudget(
+      "meta",
+      input.lifetimeBudgetCents as number,
+    );
+  } else if (isDailyCbo) {
     // CBO — budget lives on the campaign, integer cents (Meta identity unit).
-    body.daily_budget = centsToPlatformBudget("meta", input.dailyBudgetCents as number);
+    body.daily_budget = centsToPlatformBudget(
+      "meta",
+      input.dailyBudgetCents as number,
+    );
   } else {
     // M-13 (PROOF M-P5): v25 campaign create REQUIRES is_adset_budget_sharing_enabled
     // when not using CBO — send explicit false unless CBO.
@@ -527,9 +581,23 @@ export function buildMetaAdSetBody(
     targeting,
     status: "PAUSED", // GR-11
   };
-  if (typeof input.budgetCents === "number" && input.budgetCents > 0) {
+  if (
+    typeof input.lifetimeBudgetCents === "number" &&
+    input.lifetimeBudgetCents > 0
+  ) {
+    body.lifetime_budget = centsToPlatformBudget(
+      "meta",
+      input.lifetimeBudgetCents,
+    );
+  } else if (typeof input.budgetCents === "number" && input.budgetCents > 0) {
     // ABO only — with CBO the budget lives on the campaign and this is rejected.
     body.daily_budget = centsToPlatformBudget("meta", input.budgetCents);
+  }
+  if (typeof input.startTime === "string" && input.startTime) {
+    body.start_time = input.startTime;
+  }
+  if (typeof input.endTime === "string" && input.endTime) {
+    body.end_time = input.endTime;
   }
   if (input.validateOnly) body.execution_options = ["validate_only"];
   return body;
@@ -565,7 +633,9 @@ export function buildMetaCreativeBody(
     // POST /act_{id}/advideos + poll video_status === 'ready'.
     objectStorySpec.video_data = {
       video_id: input.videoId,
-      ...(input.videoThumbnailImageHash ? { image_hash: input.videoThumbnailImageHash } : {}),
+      ...(input.videoThumbnailImageHash
+        ? { image_hash: input.videoThumbnailImageHash }
+        : {}),
       title: input.headline ?? "",
       message: input.message,
       link_description: input.description ?? "",
@@ -585,7 +655,9 @@ export function buildMetaCreativeBody(
   }
 
   const body: Record<string, unknown> = {
-    name: input.adName ? `${input.adName} — creative` : `${input.campaignName ?? "ad"} — creative`,
+    name: input.adName
+      ? `${input.adName} — creative`
+      : `${input.campaignName ?? "ad"} — creative`,
     object_story_spec: objectStorySpec,
     // A4.g url_tags UTM template.
     url_tags: META_URL_TAGS,
@@ -649,13 +721,16 @@ export interface MetaAccountSnapshot {
   timezone: string | null;
 }
 
-export async function metaFetchAccount(client: MetaClient): Promise<MetaAccountSnapshot> {
+export async function metaFetchAccount(
+  client: MetaClient,
+): Promise<MetaAccountSnapshot> {
   const payload = await metaGraph(
     client,
     "GET",
     `act_${client.config.adAccountId}`,
     {
-      fields: "id,name,currency,account_status,min_daily_budget,funding_source,timezone_name",
+      fields:
+        "id,name,currency,account_status,min_daily_budget,funding_source,timezone_name",
     },
   );
   return {
@@ -667,7 +742,9 @@ export async function metaFetchAccount(client: MetaClient): Promise<MetaAccountS
     minDailyBudgetCents: typeof payload.min_daily_budget === "number"
       ? payload.min_daily_budget
       : null,
-    timezone: typeof payload.timezone_name === "string" ? payload.timezone_name : null,
+    timezone: typeof payload.timezone_name === "string"
+      ? payload.timezone_name
+      : null,
   };
 }
 
@@ -727,7 +804,14 @@ export async function metaValidateOnlyCreativeProbe(
 export async function metaValidateOnlyCreativeProbeForIdentity(
   client: MetaClient,
   identity: { pageId: string; instagramUserId: string | null },
-): Promise<{ appLive: boolean; ok: boolean; detail: string | null; createdObject: boolean }> {
+): Promise<
+  {
+    appLive: boolean;
+    ok: boolean;
+    detail: string | null;
+    createdObject: boolean;
+  }
+> {
   const body = buildMetaCreativeBody(identity.pageId, {
     destUrl: "https://usemingla.com",
     message: "connect-probe (validate-only; never created)",
@@ -735,17 +819,45 @@ export async function metaValidateOnlyCreativeProbeForIdentity(
     validateOnly: true,
   }, identity.instagramUserId);
   try {
-    const payload = await metaGraph(client, "POST", `act_${client.config.adAccountId}/adcreatives`, body);
-    const createdObject = typeof payload.id === "string" && payload.id.length > 0;
-    return { appLive: true, ok: !createdObject, detail: createdObject ? "validate_only_returned_object" : null, createdObject };
+    const payload = await metaGraph(
+      client,
+      "POST",
+      `act_${client.config.adAccountId}/adcreatives`,
+      body,
+    );
+    const createdObject = typeof payload.id === "string" &&
+      payload.id.length > 0;
+    return {
+      appLive: true,
+      ok: !createdObject,
+      detail: createdObject ? "validate_only_returned_object" : null,
+      createdObject,
+    };
   } catch (err) {
     if (err instanceof AdApiError) {
-      const numericCode = typeof err.code === "number" ? err.code : Number(err.code);
-      const numericSub = typeof err.subcode === "number" ? err.subcode : Number(err.subcode);
-      if (numericCode === META_ERROR_APP_NOT_LIVE || numericSub === META_ERROR_APP_NOT_LIVE) {
-        return { appLive: false, ok: false, detail: err.message, createdObject: false };
+      const numericCode = typeof err.code === "number"
+        ? err.code
+        : Number(err.code);
+      const numericSub = typeof err.subcode === "number"
+        ? err.subcode
+        : Number(err.subcode);
+      if (
+        numericCode === META_ERROR_APP_NOT_LIVE ||
+        numericSub === META_ERROR_APP_NOT_LIVE
+      ) {
+        return {
+          appLive: false,
+          ok: false,
+          detail: err.message,
+          createdObject: false,
+        };
       }
-      return { appLive: true, ok: false, detail: err.message, createdObject: false };
+      return {
+        appLive: true,
+        ok: false,
+        detail: err.message,
+        createdObject: false,
+      };
     }
     throw err;
   }
@@ -765,21 +877,28 @@ export async function metaFetchMinimumBudgets(
     `act_${client.config.adAccountId}/minimum_budgets`,
     {},
   );
-  const rows = Array.isArray(payload.data) ? payload.data as Record<string, unknown>[] : [];
-  const row = (currency ? rows.find((r) => r.currency === currency) : rows[0]) ?? rows[0];
+  const rows = Array.isArray(payload.data)
+    ? payload.data as Record<string, unknown>[]
+    : [];
+  const row =
+    (currency ? rows.find((r) => r.currency === currency) : rows[0]) ?? rows[0];
   if (!row) return null;
   const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
   const imp = num(row.min_daily_budget_imp);
   const video = num(row.min_daily_budget_video_views);
   const high = num(row.min_daily_budget_high_freq);
   const low = num(row.min_daily_budget_low_freq);
-  if (imp === null || video === null || high === null || low === null) return null;
+  if (imp === null || video === null || high === null || low === null) {
+    return null;
+  }
   return { imp, video_views: video, high_freq: high, low_freq: low };
 }
 
 /** Epoch-0/null last_fired_time ⇒ the pixel has never fired (A4.e.5, PROOF M-P7). */
 export function metaPixelHasSignal(lastFiredTime: unknown): boolean {
-  if (typeof lastFiredTime !== "string" || lastFiredTime.trim() === "") return false;
+  if (typeof lastFiredTime !== "string" || lastFiredTime.trim() === "") {
+    return false;
+  }
   const parsed = Date.parse(lastFiredTime);
   if (Number.isNaN(parsed)) return false;
   // Epoch-0 renders as 1969/1970 depending on timezone — anything before
@@ -790,7 +909,9 @@ export function metaPixelHasSignal(lastFiredTime: unknown): boolean {
 export async function metaFetchPixelLastFired(
   client: MetaClient,
 ): Promise<{ lastFiredTime: string | null; hasSignal: boolean }> {
-  if (!client.config.datasetId) return { lastFiredTime: null, hasSignal: false };
+  if (!client.config.datasetId) {
+    return { lastFiredTime: null, hasSignal: false };
+  }
   const payload = await metaGraph(client, "GET", client.config.datasetId, {
     fields: "last_fired_time",
   });
@@ -801,7 +922,9 @@ export async function metaFetchPixelLastFired(
 }
 
 /** A4.e.7 (PROOF M-P10): resolve the Page-linked IG business account (absent today → Facebook-only). */
-export async function metaFetchIgBusinessAccount(client: MetaClient): Promise<string | null> {
+export async function metaFetchIgBusinessAccount(
+  client: MetaClient,
+): Promise<string | null> {
   return metaFetchIgBusinessAccountForIdentity(client, client.config.pageId);
 }
 
@@ -812,7 +935,9 @@ export async function metaFetchIgBusinessAccountForIdentity(
   const payload = await metaGraph(client, "GET", pageId, {
     fields: "instagram_business_account",
   });
-  const ig = payload.instagram_business_account as Record<string, unknown> | undefined;
+  const ig = payload.instagram_business_account as
+    | Record<string, unknown>
+    | undefined;
   return ig && typeof ig.id === "string" ? ig.id : null;
 }
 
@@ -850,9 +975,12 @@ export function buildMetaReviewDetail(input: {
     });
   }
   if (feedback) {
-    if (feedback.global !== undefined) detail.ad_review_feedback_global = feedback.global;
+    if (feedback.global !== undefined) {
+      detail.ad_review_feedback_global = feedback.global;
+    }
     if (feedback.placement_specific !== undefined) {
-      detail.ad_review_feedback_placement_specific = feedback.placement_specific;
+      detail.ad_review_feedback_placement_specific =
+        feedback.placement_specific;
     }
   }
   delete detail.recommendations;
@@ -898,7 +1026,11 @@ export const metaAdapter: ChannelAdapter = {
 
   createCreative: async (conn, input) => {
     const client = resolveMetaClient(conn);
-    const body = buildMetaCreativeBody(client.config.pageId, input, client.config.igUserId);
+    const body = buildMetaCreativeBody(
+      client.config.pageId,
+      input,
+      client.config.igUserId,
+    );
     const payload = await metaGraph(
       client,
       "POST",
@@ -911,7 +1043,12 @@ export const metaAdapter: ChannelAdapter = {
   createAd: async (conn, adSetExternalId, input) => {
     const client = resolveMetaClient(conn);
     const body = buildMetaAdBody(adSetExternalId, input);
-    const payload = await metaGraph(client, "POST", `act_${client.config.adAccountId}/ads`, body);
+    const payload = await metaGraph(
+      client,
+      "POST",
+      `act_${client.config.adAccountId}/ads`,
+      body,
+    );
     return { externalId: String(payload.id ?? ""), reviewStatus: null };
   },
 
@@ -930,9 +1067,12 @@ export const metaAdapter: ChannelAdapter = {
       effectiveStatus: typeof payload.effective_status === "string"
         ? payload.effective_status
         : null,
-      issuesInfo: Array.isArray(payload.issues_info) ? payload.issues_info : null,
-      adReviewFeedback: (payload.ad_review_feedback as Record<string, unknown> | undefined) ??
-        null,
+      issuesInfo: Array.isArray(payload.issues_info)
+        ? payload.issues_info
+        : null,
+      adReviewFeedback:
+        (payload.ad_review_feedback as Record<string, unknown> | undefined) ??
+          null,
     };
   },
 
@@ -941,7 +1081,8 @@ export const metaAdapter: ChannelAdapter = {
       throw new AdApiError({
         platform: "meta",
         code: "unsupported_level",
-        message: "Meta budgets live on the campaign (CBO) or ad set (ABO) — never the ad.",
+        message:
+          "Meta budgets live on the campaign (CBO) or ad set (ABO) — never the ad.",
       });
     }
     const client = resolveMetaClient(conn);

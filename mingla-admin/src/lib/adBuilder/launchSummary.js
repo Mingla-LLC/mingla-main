@@ -116,7 +116,12 @@ export function buildLaunchSummary(input) {
     ? `Checked: ${copyCheck.policyFindings} policy warning(s) — reviewed, warn-only.`
     : "Checked: no personal-attribute risk, no editorial flags";
 
-  const campaignCount = channelLines.length * destList.length;
+  // toward #3697 Wave 2 (#3707): one page per campaign — never multiply budgets silently.
+  const destCount = Math.min(destList.length, 1);
+  const campaignCount = channelLines.length * destCount;
+  const multiDestBlocked = destList.length > 1
+    ? "Pick one page per campaign. Multi-select used to multiply spend silently."
+    : null;
   return {
     campaignCount,
     headline: creative?.kind === "video"
@@ -131,7 +136,7 @@ export function buildLaunchSummary(input) {
       ? "No destination picked."
       : destList.length === 1
       ? `${destList[0].title} — ${destList[0].dest_url}`
-      : `${destList.length} destinations — ${destList.map((d) => d.title).join(", ")}`,
+      : multiDestBlocked,
     creativeLine: creative
       ? `1 ${creative.kind ?? "image"}${creative.width ? ` (${creative.width}×${creative.height})` : ""} — ${creative.name ?? "unnamed"}`
       : "No creative attached.",

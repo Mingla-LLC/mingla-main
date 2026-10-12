@@ -121,9 +121,13 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // Wave 2.6 channel prefs write via `biz_brand_follow_set_channel_v1` RPC
   // (no client upsert) — census unchanged at 92.
   //
+  // [TEST-MOD-APPROVED #3697] Wave 2 `admin-ad-spend-sync` upserts
+  // `ad_spend_daily` on `(campaign_id,platform,spend_date)` — new arbiter;
+  // census +1 (93).
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 92);
+  assert.equal(sites.length, 93);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&
@@ -135,6 +139,13 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);
   assert.equal(sites.some((site) => site.table === "brand_follows"), true);
+  assert.equal(
+    sites.some((site) =>
+      site.table === "ad_spend_daily" &&
+      site.columns.join(",") === "campaign_id,platform,spend_date"
+    ),
+    true,
+  );
   assert.equal(
     sites.some((site) =>
       site.table === "tool_competitor_observations" &&
