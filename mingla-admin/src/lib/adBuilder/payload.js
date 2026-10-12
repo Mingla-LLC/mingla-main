@@ -57,10 +57,40 @@ export function budgetPayloadFromState(budget) {
   } else if (mode === "lifetime") {
     body.cap_cents = amount;
   }
+  // toward #3697 Wave 3 — persist the ad-account currency (not a hardcoded USD).
+  const currency = typeof budget?.currency === "string" ? budget.currency.trim().toUpperCase() : "";
+  if (/^[A-Z]{3}$/.test(currency)) {
+    body.currency = currency;
+  }
   const schedule = {};
   if (budget?.startsAt) schedule.starts_at = budget.startsAt;
   if (budget?.endsAt) schedule.ends_at = budget.endsAt;
   return { budget: body, ...(Object.keys(schedule).length ? { schedule } : {}) };
+}
+
+/**
+ * Resolve the wizard's money currency from loaded ad_connections.
+ * Prefers Meta when present; surfaces mixed when funded platforms disagree.
+ * @param {Record<string, { currency?: string|null }|null|undefined>} connections
+ * @param {string[]} platforms
+ */
+export function resolvePlanCurrency(connections = {}, platforms = []) {
+  const codes = [];
+  for (const platform of platforms) {
+    const raw = connections?.[platform]?.currency;
+    if (typeof raw === "string" && /^[A-Z]{3}$/i.test(raw.trim())) {
+      codes.push(raw.trim().toUpperCase());
+    }
+  }
+  const unique = [...new Set(codes)];
+  if (unique.length === 0) return { currency: "USD", mixed: false };
+  if (platforms.includes("meta") && connections?.meta?.currency) {
+    const meta = String(connections.meta.currency).trim().toUpperCase();
+    if (/^[A-Z]{3}$/.test(meta)) {
+      return { currency: meta, mixed: unique.length > 1 };
+    }
+  }
+  return { currency: unique[0], mixed: unique.length > 1 };
 }
 
 /** Spec §4.4: auto-suggested campaign name — "{brand} — {title} — {YYYY-MM-DD}", editable. */

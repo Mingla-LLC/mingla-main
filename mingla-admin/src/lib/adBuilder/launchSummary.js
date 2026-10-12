@@ -41,6 +41,11 @@ export function buildLaunchSummary(input) {
     copyCheck = { policyFindings: 0, copyHardBlocks: 0 },
     totalDailyCents = 0,
     preparationByPlatform = {},
+    budgetMode = "daily",
+    capCents = null,
+    startsAt = null,
+    endsAt = null,
+    currency = "USD",
   } = input;
 
   // ISSUE-1002 [multi-destination fan-out] — the effective destination list. The
@@ -122,11 +127,33 @@ export function buildLaunchSummary(input) {
   const multiDestBlocked = destList.length > 1
     ? "Pick one page per campaign. Multi-select used to multiply spend silently."
     : null;
+
+  // toward #3697 Wave 3 — Review shows the same hard-cap / schedule truths the server enforces.
+  const cap = typeof capCents === "number" && Number.isFinite(capCents) ? capCents : null;
+  const moneyLabel = (cents) => {
+    const code = typeof currency === "string" && /^[A-Z]{3}$/.test(currency) ? currency : "USD";
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: code }).format(cents / 100);
+    } catch {
+      return dollars(cents);
+    }
+  };
+  const scheduleBits = [];
+  if (startsAt) scheduleBits.push(`starts ${new Date(startsAt).toLocaleString()}`);
+  if (endsAt) scheduleBits.push(`ends ${new Date(endsAt).toLocaleString()}`);
+  const scheduleLine = scheduleBits.length > 0 ? scheduleBits.join(" · ") : null;
+  const hardCapLine = cap != null
+    ? `Hard cap ${moneyLabel(cap)} — pauses at 98% of cap (server-enforced)`
+    : null;
+  const budgetLine = budgetMode === "lifetime"
+    ? `Lifetime budget · ${moneyLabel(totalDailyCents > 0 && cap != null ? cap : totalDailyCents)}`
+    : `${moneyLabel(totalDailyCents)}/day total`;
+
   return {
     campaignCount,
     headline: creative?.kind === "video"
       ? `Ready to create ${campaignCount} paused video campaign${campaignCount === 1 ? "" : "s"} across ${channelLines.length} platform${channelLines.length === 1 ? "" : "s"}`
-      : `Ready to create across ${channelLines.length} channel${channelLines.length === 1 ? "" : "s"} · ${dollars(totalDailyCents)}/day total`,
+      : `Ready to create across ${channelLines.length} channel${channelLines.length === 1 ? "" : "s"} · ${budgetMode === "lifetime" ? "lifetime" : `${dollars(totalDailyCents)}/day`} total`,
     primaryActionLabel: creative?.kind === "video"
       ? `Create ${campaignCount} campaign${campaignCount === 1 ? "" : "s"} (paused)`
       : "Create campaign (paused)",
@@ -141,6 +168,9 @@ export function buildLaunchSummary(input) {
       ? `1 ${creative.kind ?? "image"}${creative.width ? ` (${creative.width}×${creative.height})` : ""} — ${creative.name ?? "unnamed"}`
       : "No creative attached.",
     copyLine,
+    budgetLine,
+    hardCapLine,
+    scheduleLine,
     warnings,
   };
 }

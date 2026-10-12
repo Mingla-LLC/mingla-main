@@ -83,11 +83,20 @@ function FeatureFlagsView() {
   const [historyModal, setHistoryModal] = useState(null);
   const [historyData, setHistoryData] = useState([]);
 
+  // toward #3697 Wave 3 (#3706): table columns are flag_key / is_enabled (not key / enabled).
   const fetchFlags = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase.from("feature_flags").select("*").order("key");
+    const { data, error } = await supabase.from("feature_flags").select("*").order("flag_key");
     if (!mountedRef.current) return;
-    if (!error) setFlags(data || []);
+    if (!error) {
+      setFlags(
+        (data || []).map((row) => ({
+          ...row,
+          key: row.flag_key,
+          enabled: !!row.is_enabled,
+        })),
+      );
+    }
     setLoading(false);
   }, []);
 
@@ -98,7 +107,11 @@ function FeatureFlagsView() {
   const handleCreate = async () => {
     const key = toSnakeCase(newFlag.key);
     if (!key) { addToast("Key is required", "error"); return; }
-    const { error } = await supabase.from("feature_flags").insert({ key, description: newFlag.description, enabled: newFlag.enabled });
+    const { error } = await supabase.from("feature_flags").insert({
+      flag_key: key,
+      description: newFlag.description,
+      is_enabled: newFlag.enabled,
+    });
     if (error) { addToast(error.message, "error"); return; }
     addToast("Flag created", "success");
     logAdminAction("config.create", "flag", key, { key });
@@ -108,7 +121,10 @@ function FeatureFlagsView() {
   };
 
   const handleToggle = async (flag) => {
-    const { error } = await supabase.from("feature_flags").update({ enabled: !flag.enabled }).eq("id", flag.id);
+    const { error } = await supabase
+      .from("feature_flags")
+      .update({ is_enabled: !flag.enabled })
+      .eq("id", flag.id);
     if (error) { addToast(error.message, "error"); return; }
     logAdminAction("config.update", "flag", flag.key, { key: flag.key, old_value: flag.enabled, new_value: !flag.enabled });
     fetchFlags();
@@ -124,7 +140,10 @@ function FeatureFlagsView() {
   };
 
   const handleSaveEdit = async () => {
-    const { error } = await supabase.from("feature_flags").update({ description: editing.description, enabled: editing.enabled }).eq("id", editing.id);
+    const { error } = await supabase
+      .from("feature_flags")
+      .update({ description: editing.description, is_enabled: editing.enabled })
+      .eq("id", editing.id);
     if (error) { addToast(error.message, "error"); return; }
     addToast("Flag updated", "success");
     logAdminAction("config.update", "flag", editing.key, { key: editing.key, fields_changed: ["description", "enabled"] });
