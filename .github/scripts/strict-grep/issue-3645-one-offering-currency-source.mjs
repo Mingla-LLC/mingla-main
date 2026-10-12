@@ -23,7 +23,24 @@
 //   R2  no migration at or after the anchor may add a CHECK that names a
 //       currency column and lists currency codes inline;
 //   R3  the helper's latest definition reads supported_brand_currencies and
-//       carries no list of its own.
+//       carries no list of its own;
+//   R4  EVERY other function created in a migration at or after the anchor,
+//       whatever its name or schema, must not contain an inline currency list.
+//       The invariant is about offering functions in general, and a new one
+//       (a future stay or trip publish function) with a pasted list is exactly
+//       the drift this exists to stop. R4 judges every definition in scope, not
+//       only the latest, the same forward-only scope R2 uses.
+//
+// EXEMPTION (R4 only). A body that lists currency codes for a reason other
+// than deciding which currencies are allowed (a currency-to-region map, a
+// minor-unit table) carries this comment INSIDE the function body:
+//
+//   -- orch-strict-grep-allow offering-currency-list: <why this is not an allow-list>
+//
+// The reason is required; a marker without one is a failure. Every exemption
+// honoured is printed with its reason. The marker is ignored for the three
+// named offering functions, for the helper and for CHECK constraints: those
+// may never carry a list.
 //
 // It fails CLOSED and is AUDIBLE: a missing anchor, a function with no
 // definition, or a body it cannot delimit is a failure, and every object it
@@ -46,6 +63,29 @@ export const OFFERING_FUNCTIONS = [
 export const HELPER = "is_supported_offering_currency";
 export const SOURCE_TABLE = "supported_brand_currencies";
 export const REFUSAL = "event_currency_unsupported";
+export const ALLOW_MARKER = "orch-strict-grep-allow offering-currency-list";
+
+// Private-use sentinels that carry an exemption marker's reason through
+// comment stripping. They cannot occur in a migration's own text.
+const ALLOW_OPEN = "\uE000";
+const ALLOW_CLOSE = "\uE001";
+const ALLOW_SENTINEL = /\uE000([^\uE001]*)\uE001/g;
+const ALLOW_IN_COMMENT = /orch-strict-grep-allow\s+offering-currency-list(?:\s*[:—–-]+\s*([^\n]*))?/;
+
+function markerSentinel(commentText) {
+  const match = ALLOW_IN_COMMENT.exec(commentText);
+  if (!match) return "";
+  return `${ALLOW_OPEN}${(match[1] ?? "").replace(/\*\/\s*$/, "").trim()}${ALLOW_CLOSE}`;
+}
+
+/** The reasons of every exemption marker left in `marked` text. */
+export function exemptionReasons(marked) {
+  return [...marked.matchAll(ALLOW_SENTINEL)].map((match) => match[1]);
+}
+
+function withoutSentinels(marked) {
+  return marked.replace(ALLOW_SENTINEL, " ");
+}
 
 const TAG = "issue-3645-one-offering-currency-source";
 
@@ -55,7 +95,7 @@ const TAG = "issue-3645-one-offering-currency-source";
  * not mistaken for a comment. Dollar-quoted bodies are scanned as code on
  * purpose: comments inside a function body must be stripped too.
  */
-export function stripSqlComments(sql) {
+export function stripSqlComments(sql, { keepMarkers = false } = {}) {
   let out = "";
   let i = 0;
   const n = sql.length;
@@ -74,10 +114,13 @@ export function stripSqlComments(sql) {
       continue;
     }
     if (ch === "-" && next === "-") {
+      const from = i;
       while (i < n && sql[i] !== "\n") i += 1;
+      if (keepMarkers) out += markerSentinel(sql.slice(from, i));
       continue;
     }
     if (ch === "/" && next === "*") {
+      const from = i;
       let depth = 1;
       i += 2;
       while (i < n && depth > 0) {
@@ -86,6 +129,7 @@ export function stripSqlComments(sql) {
         i += 1;
       }
       out += " ";
+      if (keepMarkers) out += markerSentinel(sql.slice(from, i));
       continue;
     }
     out += ch;
@@ -191,7 +235,7 @@ export function extractFunctions(stripped) {
       const bodyEnd = stripped.indexOf(tag[1], bodyStart);
       if (bodyEnd !== -1) body = stripped.slice(bodyStart, bodyEnd);
     }
-    found.push({ schema, name, body, order: begin });
+    found.push({ schema, name, body, statement: header, order: begin });
   });
   return found;
 }
@@ -221,7 +265,12 @@ export function evaluate(files) {
       log.push(`  skipped (no 14-digit version): ${file.name}`);
       continue;
     }
-    versioned.push({ ...file, version, stripped: stripSqlComments(file.sql) });
+    versioned.push({
+      ...file,
+      version,
+      stripped: stripSqlComments(file.sql),
+      marked: stripSqlComments(file.sql, { keepMarkers: true }),
+    });
   }
   versioned.sort((a, b) => (a.version === b.version ? a.name.localeCompare(b.name) : a.version < b.version ? -1 : 1));
 
@@ -324,6 +373,60 @@ export function evaluate(files) {
     }
   }
 
+  // R4 — every other function created at or after the anchor.
+  log.push("R4 every other function created in migrations at or after the anchor:");
+  const exemptions = [];
+  let r4Judged = 0;
+  for (const file of versioned.filter((entry) => entry.version >= RATCHET_VERSION)) {
+    const functions = extractFunctions(file.marked);
+    if (functions.length === 0) {
+      log.push(`  ${file.name}: no function definitions`);
+      continue;
+    }
+    for (const fn of functions) {
+      const label = `${fn.schema}.${fn.name} @ ${file.name}`;
+      if (fn.schema === "public" && wanted.has(fn.name)) {
+        log.push(`  ${label}: judged by ${fn.name === HELPER ? "R3" : "R1"} instead`);
+        continue;
+      }
+      r4Judged += 1;
+      // A body this gate cannot delimit is judged as its whole statement, so
+      // an unusual quoting style can never hide a list.
+      const scope = fn.body ?? fn.statement;
+      const reasons = exemptionReasons(scope);
+      const reason = inlineCurrencyListReason(withoutSentinels(scope));
+      const shape = fn.body == null ? " (body not dollar-quoted, whole statement judged)" : "";
+      if (reasons.some((text) => text === "")) {
+        failures.push(
+          `R4: ${label} carries "${ALLOW_MARKER}" without a reason. Write why the list is not an allow-list after a colon.`,
+        );
+        log.push(`  ${label}: EXEMPTION MARKER WITHOUT A REASON${shape}`);
+        continue;
+      }
+      if (!reason) {
+        log.push(
+          `  ${label}: OK, no inline list${shape}` +
+            (reasons.length > 0 ? " (carries an exemption marker it does not need)" : ""),
+        );
+        continue;
+      }
+      if (reasons.length > 0) {
+        exemptions.push({ label, reason, why: reasons.join(" | ") });
+        log.push(`  ${label}: EXEMPTED${shape} — list found (${reason}); reason given: ${reasons.join(" | ")}`);
+        continue;
+      }
+      log.push(`  ${label}: VIOLATION${shape}`);
+      failures.push(
+        `R4: ${label} carries an inline currency list: ${reason}. ` +
+          `Ask public.${HELPER}(code) instead; public.${SOURCE_TABLE} owns the list. ` +
+          `If the list is not an allow-list (a currency-to-region map, for example), put ` +
+          `"-- ${ALLOW_MARKER}: <reason>" inside the function body.`,
+      );
+    }
+  }
+  log.push(`R4 totals: ${r4Judged} function definition(s) judged, ${exemptions.length} exemption(s) honoured`);
+  for (const exemption of exemptions) log.push(`  exemption honoured: ${exemption.label} — ${exemption.why}`);
+
   // R2 — CHECK constraints added at or after the anchor.
   log.push("R2 CHECK constraints in migrations at or after the anchor:");
   const judged = versioned.filter((file) => file.version >= RATCHET_VERSION);
@@ -347,7 +450,7 @@ export function evaluate(files) {
     log.push(`  ${file.name}: ${checks.length} CHECK expression(s) inspected, ${bad} violation(s)`);
   }
 
-  return { failures, log };
+  return { failures, log, exemptions };
 }
 
 export function readMigrations(dir) {
@@ -488,15 +591,76 @@ export const SELF_TEST_CASES = [
     ],
     pass: false,
   },
+  {
+    label: "R4: a NEW offering function (not one of the three) with a pasted list",
+    files: [...today(), later(fn("biz_publish_stay", LIST_BLOCK))],
+    pass: false,
+  },
+  {
+    label: "R4: a new function in another schema, unqualified body tag, IN list",
+    files: [...today(), later(fn("pick_rail", "\n  IF v_currency IN ('GBP','USD') THEN NULL; END IF;", { tag: "$$", qualifier: "private." }))],
+    pass: false,
+  },
+  {
+    label: "R4: a new offering function that asks the helper",
+    files: [...today(), later(fn("biz_publish_stay", HELPER_BLOCK))],
+    pass: true,
+  },
+  {
+    label: "R4: a currency-to-region map exempted by a marker with a reason",
+    files: [
+      ...today(),
+      later(fn("currency_region", "\n  -- orch-strict-grep-allow offering-currency-list: maps a currency to a region, admits nothing\n  IF v_currency IN ('GBP','EUR') THEN NULL; END IF;")),
+    ],
+    pass: true,
+    exemptions: 1,
+  },
+  {
+    label: "R4: an exemption marker with no reason is refused",
+    files: [
+      ...today(),
+      later(fn("currency_region", "\n  -- orch-strict-grep-allow offering-currency-list\n  IF v_currency IN ('GBP','EUR') THEN NULL; END IF;")),
+    ],
+    pass: false,
+  },
+  {
+    label: "R4: a marker outside the function body exempts nothing",
+    files: [
+      ...today(),
+      later("-- orch-strict-grep-allow offering-currency-list: not inside the body\n" + fn("biz_publish_stay", LIST_BLOCK)),
+    ],
+    pass: false,
+  },
+  {
+    label: "R1 ignores the marker: a named offering function cannot exempt its list",
+    files: [
+      ...today(),
+      later(fn("biz_publish_experience", `\n  -- orch-strict-grep-allow offering-currency-list: trying it on${LIST_BLOCK}`)),
+    ],
+    pass: false,
+  },
+  {
+    label: "R4: the same new function BEFORE the anchor is not judged",
+    files: [...today(), later(fn("biz_publish_stay", LIST_BLOCK), "20270818009999_before_anchor.sql")],
+    pass: true,
+  },
+  {
+    label: "R4: a body that is not dollar-quoted is judged as a whole statement",
+    files: [
+      ...today(),
+      later("CREATE FUNCTION public.pick(c text) RETURNS boolean LANGUAGE sql RETURN c = ANY (ARRAY['GBP','USD']);"),
+    ],
+    pass: false,
+  },
   { label: "no migrations at all", files: [], pass: false },
 ];
 
 function runSelfTest() {
   let wrong = 0;
   for (const testCase of SELF_TEST_CASES) {
-    const { failures } = evaluate(testCase.files);
+    const { failures, exemptions = [] } = evaluate(testCase.files);
     const passed = failures.length === 0;
-    const ok = passed === testCase.pass;
+    const ok = passed === testCase.pass && (testCase.exemptions ?? 0) === exemptions.length;
     if (!ok) wrong += 1;
     console.log(
       `  ${ok ? "ok  " : "WRONG"} expected ${testCase.pass ? "PASS" : "FAIL"}, got ${passed ? "PASS" : "FAIL"}: ${testCase.label}` +

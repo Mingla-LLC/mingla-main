@@ -38,6 +38,13 @@
 
 BEGIN;
 
+-- Step 2 takes brief strong locks on public.events (SHARE ROW EXCLUSIVE to add
+-- the foreign key, ACCESS EXCLUSIVE to drop the CHECK). A lock request that has
+-- to wait behind a long-running reader makes every later query on events queue
+-- behind it. Give up after five seconds instead: the whole migration rolls
+-- back, nothing is half-applied, and it can simply be run again.
+SET LOCAL lock_timeout = '5s';
+
 -- ---------------------------------------------------------------------------
 -- 1. The helper.
 --

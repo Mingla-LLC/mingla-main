@@ -218,3 +218,123 @@ test("evaluate() reports every definition it read, so a silent skip is visible",
     assert.ok(log.some((line) => line.includes(`${name} @ 20270505001973_old.sql`)), `${name} missing from the log`);
   }
 });
+
+// ── R4: every function created at or after the anchor, whatever its name ────
+// The invariant is about offering functions in general. Naming three of them
+// left a gap: a NEW function with a pasted list passed. These run the real
+// gate on disk fixtures, like the tests above.
+
+test("R4: a NEW offering function (not one of the three) with a pasted list fails and is named", (t) => {
+  const dir = makeDir({
+    ...baseFixture(),
+    "20270820000003_new_stay_publish.sql": offeringFunction("biz_publish_stay", LIST_BLOCK),
+  });
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const { code, out } = runGate(dir);
+  assert.equal(code, 1, out);
+  assert.match(out, /R4: public\.biz_publish_stay @ 20270820000003_new_stay_publish\.sql carries an inline currency list/);
+  assert.match(out, /public\.biz_publish_stay @ 20270820000003_new_stay_publish\.sql: VIOLATION/);
+});
+
+test("R4: a NEW offering function that asks the helper passes and is reported as judged", (t) => {
+  const dir = makeDir({
+    ...baseFixture(),
+    "20270820000003_new_stay_publish.sql": offeringFunction("biz_publish_stay", HELPER_BLOCK),
+  });
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const { code, out } = runGate(dir);
+  assert.equal(code, 0, out);
+  assert.match(out, /public\.biz_publish_stay @ 20270820000003_new_stay_publish\.sql: OK, no inline list/);
+  assert.match(out, /R4 totals: 1 function definition\(s\) judged, 0 exemption\(s\) honoured/);
+});
+
+test("R4: a body exempted by the marker passes, and the exemption is printed with its reason", (t) => {
+  const dir = makeDir({
+    ...baseFixture(),
+    "20270820000004_currency_region_map.sql": offeringFunction(
+      "currency_region",
+      "\n  -- orch-strict-grep-allow offering-currency-list: maps a currency to a payout region, admits nothing\n" +
+        "  IF v_currency IN ('GBP', 'EUR') THEN RETURN jsonb_build_object('region', 'europe'); END IF;",
+    ),
+  });
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const { code, out } = runGate(dir);
+  assert.equal(code, 0, out);
+  assert.match(out, /public\.currency_region @ 20270820000004_currency_region_map\.sql: EXEMPTED/);
+  assert.match(
+    out,
+    /exemption honoured: public\.currency_region @ 20270820000004_currency_region_map\.sql — maps a currency to a payout region, admits nothing/,
+  );
+  assert.match(out, /R4 totals: 1 function definition\(s\) judged, 1 exemption\(s\) honoured/);
+});
+
+test("R4: the marker needs a reason, must sit inside the body, and never excuses a named offering function", (t) => {
+  const bare = makeDir({
+    ...baseFixture(),
+    "20270820000004_no_reason.sql": offeringFunction(
+      "currency_region",
+      "\n  -- orch-strict-grep-allow offering-currency-list\n  IF v_currency IN ('GBP', 'EUR') THEN NULL; END IF;",
+    ),
+  });
+  const outside = makeDir({
+    ...baseFixture(),
+    "20270820000004_marker_outside.sql":
+      "-- orch-strict-grep-allow offering-currency-list: written above the function, not in it\n" +
+      offeringFunction("biz_publish_stay", LIST_BLOCK),
+  });
+  const named = makeDir({
+    ...baseFixture(),
+    "20270820000004_named_with_marker.sql": offeringFunction(
+      "biz_create_experience",
+      `\n  -- orch-strict-grep-allow offering-currency-list: trying to excuse an offering function${LIST_BLOCK}`,
+    ),
+  });
+  t.after(() => {
+    for (const dir of [bare, outside, named]) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const noReason = runGate(bare);
+  assert.equal(noReason.code, 1, noReason.out);
+  assert.match(noReason.out, /without a reason/);
+
+  const markerOutside = runGate(outside);
+  assert.equal(markerOutside.code, 1, markerOutside.out);
+  assert.match(markerOutside.out, /R4: public\.biz_publish_stay @ 20270820000004_marker_outside\.sql/);
+
+  const namedFunction = runGate(named);
+  assert.equal(namedFunction.code, 1, namedFunction.out);
+  assert.match(namedFunction.out, /R1: public\.biz_create_experience in 20270820000004_named_with_marker\.sql/);
+});
+
+test("R4 is forward-only: the same new function in a migration before the anchor is not judged", (t) => {
+  const dir = makeDir({
+    ...baseFixture(),
+    "20270818009999_before_anchor.sql": offeringFunction("biz_publish_stay", LIST_BLOCK),
+  });
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const { code, out } = runGate(dir);
+  assert.equal(code, 0, out);
+  assert.doesNotMatch(out, /biz_publish_stay/);
+});
+
+test("R4 on the real tree: passes today with no exemption, and a new function with a list turns it red", (t) => {
+  const today = runGate(REAL_MIGRATIONS);
+  assert.equal(today.code, 0, today.out);
+  assert.match(today.out, /R4 totals: \d+ function definition\(s\) judged, 0 exemption\(s\) honoured/);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "issue-3645-currency-gate-r4-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  for (const entry of fs.readdirSync(REAL_MIGRATIONS, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith(".sql")) {
+      fs.copyFileSync(path.join(REAL_MIGRATIONS, entry.name), path.join(dir, entry.name));
+    }
+  }
+  fs.writeFileSync(path.join(dir, "20991231000001_new_stay_publish.sql"), offeringFunction("biz_publish_stay", LIST_BLOCK));
+  const after = runGate(dir);
+  assert.equal(after.code, 1, after.out);
+  assert.match(after.out, /R4: public\.biz_publish_stay @ 20991231000001_new_stay_publish\.sql/);
+});
