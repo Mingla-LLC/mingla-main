@@ -57,6 +57,18 @@ on:
       # Issue #1537 — the delivery ledger's only live reader; its provider->tile
       # test runs in the notification Deno job below.
       - "supabase/functions/api-health-probe/**"
+      # Issue #3660 — Host account deletion. The SQL suites ride on
+      # `supabase/migrations/**` and the shared module on `_shared/**`, but the
+      # edge function, the Host delete screen and its hook live outside both, so
+      # a change to only one of them would otherwise never re-run the Deno and
+      # Jest suites that guard them. Listed in BOTH filters.
+      - "supabase/functions/delete-user/**"
+      - "mingla-business/app/account/**"
+      - "mingla-business/app/(tabs)/account.tsx"
+      - "mingla-business/src/hooks/useAccountDeletion.ts"
+      - "mingla-business/src/utils/accountDeletionErrors.ts"
+      - "mingla-business/src/utils/__tests__/accountDeletionErrors.issue3660.implementor.happy.test.ts"
+      - "mingla-business/jest.issue3660.tester2.web.render.cjs"
       # Issue #2218 — the Nigerian operator-embargo defer + the delivery-truth
       # sweep. Listed EXPLICITLY, not left to ride on `_shared/**`: a later
       # change touching only one of these directories must still run the #2218
@@ -219,6 +231,18 @@ on:
       # Issue #1537 — the delivery ledger's only live reader; its provider->tile
       # test runs in the notification Deno job below.
       - "supabase/functions/api-health-probe/**"
+      # Issue #3660 — Host account deletion. The SQL suites ride on
+      # `supabase/migrations/**` and the shared module on `_shared/**`, but the
+      # edge function, the Host delete screen and its hook live outside both, so
+      # a change to only one of them would otherwise never re-run the Deno and
+      # Jest suites that guard them. Listed in BOTH filters.
+      - "supabase/functions/delete-user/**"
+      - "mingla-business/app/account/**"
+      - "mingla-business/app/(tabs)/account.tsx"
+      - "mingla-business/src/hooks/useAccountDeletion.ts"
+      - "mingla-business/src/utils/accountDeletionErrors.ts"
+      - "mingla-business/src/utils/__tests__/accountDeletionErrors.issue3660.implementor.happy.test.ts"
+      - "mingla-business/jest.issue3660.tester2.web.render.cjs"
       # Issue #2218 — the Nigerian operator-embargo defer + the delivery-truth
       # sweep. Listed EXPLICITLY, not left to ride on `_shared/**`: a later
       # change touching only one of these directories must still run the #2218
@@ -1091,6 +1115,118 @@ jobs:
             -f supabase/migrations/__tests__/issue_3660_snapshot_cleanup.implementor.happy.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3660_snapshot_cleanup.tester.adversarial.pg17.test.sql
+          # Issue #3660 — Host account deletion is ONE transaction
+          # (biz_delete_host_account): a zero-sale owner is deleted with their
+          # upcoming events taken down, bank rows detached, other teams left and
+          # partner links ended; a second call is idempotent; anon and
+          # authenticated cannot run it.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.implementor.happy.pg17.test.sql
+          # Issue #3660 — INDEPENDENT TESTER axis. Every blocker code blocks
+          # alone and writes nothing; every "does not count" case still deletes;
+          # a forced failure on a write step raises and leaves every row as it
+          # was; the brand soft-delete guard and the team-removal guard still
+          # refuse everybody else. Runs as `supabase_admin` (same password) for
+          # ONE reason: its fixtures for tables with deep foreign-key graphs are
+          # inserted under session_replication_role = replica, which `postgres`
+          # may not set on this image. The role is back to `origin` before the
+          # function under test is called, and the suite asserts that it is.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester.adversarial.pg17.test.sql
+          # Issue #3660 — tester2 (written by the tester, not the implementor).
+          # Ownership edges and REAL-role privilege: an owner of two brands
+          # with one blocked changes nothing on either; ended / cancelled
+          # events with paid orders do not block and their order and ticket
+          # rows survive byte for byte; a multi-date event blocks on its last
+          # date; the preview RPC never shows a co-owner or team member another
+          # account's events; anon / authenticated / service_role are checked
+          # through SET ROLE, not a spoofed claim; the partner stamps match the
+          # real partner_disconnect_link column for column.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.edges_and_privilege.pg17.test.sql
+          # Issue #3660 — tester2 REAL concurrency (extra sessions over dblink,
+          # loopback inside the postgres service, password read from this
+          # step's PGPASSWORD). A sale in flight makes the deletion wait and
+          # then refuse; a second deletion of the same account queues and
+          # reports already_deleted; a deletion that fails mid-write leaves
+          # nothing behind. It commits its own fixtures and removes every row,
+          # the dblink extension and its schema before it exits.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.races.pg17.test.sql
+          # Issue #3660 tester2 RETEST (written by the tester after the rework).
+          # Through real roles: every route for a signed-in user to clear
+          # brands.deleted_at is refused while an admin and the service role
+          # can still restore and a live brand is still editable; a revoked
+          # invitation cannot be accepted through the real accept function; a
+          # retry returns the first call's provider targets and writes
+          # nothing; an account with no audit row retries to empty lists; an
+          # expired checkout blocks only while its payment is processing.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest.pg17.test.sql
+          # Issue #3660 tester2 RETEST, REAL concurrency (dblink, loopback).
+          # The rework's invitation revoke takes its locks in the opposite
+          # order to an invitation acceptance. Two sessions are driven into
+          # that cycle on purpose; the only endings allowed are "deletion
+          # complete, acceptance refused" or "deletion failed as a whole,
+          # nothing changed". It commits its own fixtures and removes them.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest_races.pg17.test.sql
+          # Issue #3660 tester2 FINAL RETEST (written by the tester after rework 3).
+          # 21 fixtures of the tester's own, across ticket orders, RSVP
+          # contributions, venue deposits, menu orders and instalments, are put
+          # to the money rule and then to the REAL payout sweep run sixty days
+          # ahead. Each must land in its class: both block-and-ledger (and stop
+          # blocking once released), neither, or rule-only for the documented
+          # reasons. Then: provider targets carried across several deletions of
+          # one account come back once each, and malformed earlier audit rows
+          # are ignored.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest3_sweep_agreement.pg17.test.sql
+          # Issue #3660 tester2, rework 4 (written by the tester). Earlier
+          # provider targets are handed out only when still safe for this
+          # account today: a brand reassigned (reconnected or not), re-pointed,
+          # reattached, or with its Paystack recipient active again is dropped
+          # on a retry and on a fresh deletion; a co-owner gets nothing;
+          # unverifiable audit entries are never returned. Disputes against the
+          # REAL payout sweep: lost in full does not block, lost in part
+          # blocks for the remainder, open blocks, won blocks until released.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest4.pg17.test.sql
+          # Issue #3660 rework — the tester's two reproductions (KD-1 = the kept
+          # login un-deleting its own brand, KD-2 = a paid order on a just-ended
+          # event with no payout yet). They failed on purpose and were left out
+          # of CI until their defects were fixed; they pass now and guard the
+          # fixes from the tester's side.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.known_defects.pg17.test.sql
+          # Issue #3660 rework — implementor suite, one group per finding fixed
+          # in the database: money Mingla holds blocks, mirrored arm by arm
+          # from the payout sweep (ticket orders, instalments, RSVP
+          # contributions, venue deposits, menu orders; hold rail, cutover and
+          # fee snapshot included, so a cash sale or a direct charge never
+          # blocks), and the real sweep is run to prove the rule agrees with
+          # it; a later deletion carries an earlier one's provider targets; a
+          # signed-in non-admin cannot clear
+          # brands.deleted_at (admin and service role can); a retry returns the
+          # provider targets again and writes nothing; pending invitations and
+          # never-accepted partner links on a deleted brand are closed; an
+          # expired checkout cannot become an order after the deletion.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.rework.implementor.pg17.test.sql
+          # Issue #3660 third rework — the tester's three retest reproductions
+          # (RK-1 a cash door sale must not block; RK-2 a paid RSVP contribution
+          # Mingla holds must; RK-3 a deletion after sign-in recovery must still
+          # return the earlier provider targets). They failed on purpose and were
+          # left out of CI until fixed; they pass now.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest_known_defects.pg17.test.sql
+          # Issue #3660 fourth rework — the tester's two final-retest
+          # reproductions (FK-1 a deletion must never return a payout account
+          # that now belongs to another owner; FK-2 a chargeback lost in full
+          # is not held money). They failed on purpose and were left out of CI
+          # until fixed; they pass now.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3660_host_account_deletion.tester2.retest3_known_defects.pg17.test.sql
           # Issue #3645 — payout maturity is payment + 24h (not event end + 3d);
           # cancel refund runs open in awaiting_review; PR6 charge readiness admits
           # stamped Paystack hold brands without a subaccount.
@@ -1603,6 +1739,49 @@ jobs:
             # existing Stripe Deno lane (I-2148-CI-TOPOLOGY-BOUNDED — no new
             # issue-3645 workflow).
             supabase/functions/brand-mingla-tos-accept/index.test.ts
+            # #3660 — Host account deletion. One RPC and no table write; a
+            # blocked or failed deletion calls no provider, no trial-phone record
+            # and no login step; Stripe and Paystack run once each and only after
+            # the commit; a login-step failure after the commit is a kept login,
+            # never a failure response; a brand owner's login is never removed.
+            # Registered HERE in the existing Stripe Deno lane: the
+            # ci-batch:issue-2321-account-deletion-tests suite that covers the
+            # same sources is sealed (#2439) and cannot take new assertions, and
+            # a new issue-*.yml workflow is banned (I-2148-CI-TOPOLOGY-BOUNDED).
+            supabase/functions/_shared/__tests__/issue_3660_host_account_deletion.implementor.happy.test.ts
+            supabase/functions/_shared/__tests__/issue_3660_auth_step_after_purge.tester.adversarial.test.ts
+            # #3660 tester2 (written by the tester, not the implementor) — the
+            # WIRE between the layers: the JSON the database function returned
+            # on a real database goes through the real edge module, the 409
+            # delete-user builds, a real Response and the Host app's real
+            # parser; every blocker code has its own words; malformed refusal
+            # bodies never crash and never read as success; a retry after a
+            # lost response ends done and calls no provider twice.
+            supabase/functions/_shared/__tests__/issue_3660_wire_contract.tester2.adversarial.test.ts
+            # #3660 tester2 RETEST — the retry contract after the rework: the
+            # retry answer the database really gives (with provider targets)
+            # re-runs Stripe and Paystack; a provider saying "already gone" is
+            # still done; an account deleted by an earlier build retries to done
+            # with no provider call; an unanswered or uncoded-5xx failure never
+            # tells the Host that nothing was changed.
+            supabase/functions/_shared/__tests__/issue_3660_retry_contract.tester2.retest.test.ts
+            # #3660 tester2, rework 4 — the edge module driven with the answer
+            # the database gives once brands have moved on: only the targets
+            # the database kept reach Stripe and Paystack.
+            supabase/functions/_shared/__tests__/issue_3660_dropped_targets.tester2.retest4.test.ts
+            # #3660 — registered by the tester at retest. Both files were reported
+            # as registered in this lane by the rework, and neither was: no
+            # workflow listed them. The first is the implementor's own guard for
+            # the edge-module half of the rework (the explorer side answers as
+            # before when the profile probe fails after the login is gone; a
+            # retry whose answer carries provider targets re-runs them). The
+            # second is the tester's reproduction of that explorer-side finding,
+            # which passes now that it is fixed.
+            supabase/functions/_shared/__tests__/issue_3660_rework.implementor.test.ts
+            supabase/functions/_shared/__tests__/issue_3660_explorer_profile_probe_parity.tester2.known_defect.test.ts
+            # #3660 — the Host delete ROUTE: no recovery promise left on any
+            # screen, and a refusal reaches the blocked panel instead of a toast.
+            mingla-business/app/account/__tests__/issue_3660_delete_blocked_panel.tester.adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
@@ -2204,6 +2383,26 @@ jobs:
           npx jest
           src/components/partner/__tests__/orch_1331_partner_paystack_ui.test.ts
           --runInBand
+      # Issue #3660 — how the Host app reads a refused or failed account
+      # deletion (409 blocked vs anything else, decided on `code`) and the exact
+      # words for each blocker. Registered here so it is not left to whichever
+      # lane happens to run the whole Jest suite.
+      - name: "Issue #3660 — Host account deletion client contract"
+        run: >
+          npx jest
+          src/utils/__tests__/accountDeletionErrors.issue3660.implementor.happy.test.ts
+          --runInBand
+      # Issue #3660 tester2 (written by the tester, not the implementor) — the
+      # Host delete route MOUNTED through react-native-web and driven through
+      # its real state machine: Checking… is disabled while the server answers;
+      # the blocked panel replaces Continue (no path on to the confirm step);
+      # an unknown blocker code renders the generic line; a 409 after confirm
+      # goes to the panel with no toast; a failure keeps the Host on the
+      # confirm step with the honest toast; no screen promises a recovery.
+      # The default jest config ignores `*.render.test.tsx`, so it has its own
+      # config. Not a device proof: pixels and real taps are still owed.
+      - name: "Issue #3660 tester2 — Host delete route, mounted render-proof"
+        run: npx jest --config jest.issue3660.tester2.web.render.cjs --runInBand --ci
 
   issue-865-attribution-jest:
     if: ${{ github.event.pull_request.draft != true }}
