@@ -89,7 +89,8 @@ interface CaptureBody {
       | "brand"
       | "venue"
       | "reservation"
-      | "site";
+      | "site"
+      | "marketing";
     brand_slug?: string;
     entity_slug?: string;
     event_id?: string;

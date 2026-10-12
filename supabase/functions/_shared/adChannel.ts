@@ -45,10 +45,20 @@ import { googleAdapter } from "./google.ts";
 import { redditAdapter } from "./reddit.ts";
 import { snapchatAdapter } from "./snapchat.ts";
 import { tiktokAdapter } from "./tiktok.ts";
-import {
-  MARKETING_BRAND_SLUG,
-  marketingRouteBySlug,
-} from "./adDestination.ts";
+
+/** Keep in lockstep with adDestination.ts MARKETING_ROUTES (no import — secret-contract graph). */
+const MARKETING_BRAND_SLUG = "mingla";
+const MARKETING_ENTITY_SLUGS = new Set([
+  "explorer",
+  "host",
+  "download",
+  "host-download",
+  "tools",
+  "tools-events",
+  "tools-venues",
+  "tools-trips",
+  "tools-pricing",
+]);
 
 const ADAPTER_REGISTRY: Record<Platform, ChannelAdapter> = {
   meta: metaAdapter,
@@ -245,7 +255,8 @@ export async function destinationStillPublicLive(
     ) {
       return false;
     }
-    return marketingRouteBySlug(dest.dest_entity_slug) != null;
+    const slug = (dest.dest_entity_slug ?? "").trim().toLowerCase();
+    return MARKETING_ENTITY_SLUGS.has(slug);
   }
   // Unknown/uncreatable page types remain fail-closed.
   return false;

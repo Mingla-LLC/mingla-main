@@ -113,7 +113,9 @@ export function marketingRouteBySlug(slug: string | null | undefined) {
 }
 
 /** Map a browser pathname on usemingla.com to an allowlisted marketing slug. */
-export function marketingSlugFromPathname(pathname: string | null | undefined): string | null {
+export function marketingSlugFromPathname(
+  pathname: string | null | undefined,
+): string | null {
   if (!pathname) return null;
   let path = pathname.trim();
   if (!path.startsWith("/")) path = `/${path}`;

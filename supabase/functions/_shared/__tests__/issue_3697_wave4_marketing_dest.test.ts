@@ -138,3 +138,16 @@ Deno.test("Wave 4: create-campaign allowlist includes marketing", async () => {
   }
   assertEquals(count, 6);
 });
+
+Deno.test("Wave 4: CaptureBody.dest.page_type union declares marketing", async () => {
+  const src = await Deno.readTextFile(
+    new URL(
+      "../../attribution-capture/index.ts",
+      import.meta.url,
+    ),
+  );
+  assertEquals(
+    /page_type\?:\s*\n(?:\s*\|\s*"[a-z]+"\s*\n)*\s*\|\s*"marketing"/.test(src),
+    true,
+  );
+});
