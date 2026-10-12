@@ -132,7 +132,7 @@ import { useSwitchAccount } from "../../hooks/useSwitchAccount";
 import { useSelectPaystackProvider } from "../../hooks/useBrandPaystack";
 import { useClearPaystackProvider } from "../../hooks/useBrandPaystack";
 /* eslint-enable import/no-duplicates */
-import { payoutCountrySwitchErrorCopy } from "../../utils/payoutCountrySwitchCopy";
+import { describePayoutCountrySwitchFailure } from "../../utils/payoutCountrySwitchCopy";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
@@ -294,6 +294,17 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   );
   const selectPaystackProvider = useSelectPaystackProvider();
   const clearPaystackProvider = useClearPaystackProvider();
+  // `isPending` is one render behind; this ref is set the moment a switch is
+  // sent so a second pick in the same tick is ignored.
+  const railSwitchInFlightRef = useRef(false);
+  // Set when the switch to Nigeria failed: the bank form is withheld and
+  // `retryable` decides whether "Try again" is offered.
+  const [selectFailure, setSelectFailure] = useState<{
+    retryable: boolean;
+  } | null>(null);
+  // The automatic switch for a brand whose address already says Nigeria runs
+  // at most once per mount.
+  const autoSwitchFiredRef = useRef(false);
   // When the user returns from the Nigeria bank form, re-open the country sheet
   // so they can immediately re-pick (rather than landing on the closed picker).
   const [reopenPickerOnReturn, setReopenPickerOnReturn] = useState(false);
@@ -303,15 +314,23 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     // orch-strict-grep-allow stripe-country-out-of-scope — NG routes to the
     // Paystack rail, never Stripe; it is intentionally not in the Stripe allowlist.
     if (countryCode === "NG") {
+      if (railSwitchInFlightRef.current) return;
       setPaystackSelected(true);
       setErrorMessage(null);
+      setSelectFailure(null);
       if (brand?.id) {
+        railSwitchInFlightRef.current = true;
         selectPaystackProvider.mutate(brand.id, {
           onError: (err: Error) => {
-            setErrorMessage(payoutCountrySwitchErrorCopy(err));
+            const failure = describePayoutCountrySwitchFailure(err);
+            setErrorMessage(failure.message);
+            setSelectFailure(failure);
           },
           onSuccess: () => {
             setErrorMessage(null);
+          },
+          onSettled: () => {
+            railSwitchInFlightRef.current = false;
           },
         });
       }
@@ -322,6 +341,26 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   }, [brand?.id, selectPaystackProvider]);
 
   const savedStripeCountry = statusQuery.data?.country ?? null;
+
+  // #3645 — the screen opened on the Nigeria form because the brand's ADDRESS
+  // says Nigeria, but the saved brand is not on the Nigerian rail yet. Showing
+  // the bank form sent no switch, so the brand could not sell before adding a
+  // bank. Perform the same switch a manual pick does, once. (This screen's
+  // route is already behind the payments-permission gate.)
+  const needsAutoSwitch =
+    brand !== null &&
+    paystackSelected &&
+    !countryTouched &&
+    brand.paymentProvider !== "paystack" &&
+    (statusQuery.data?.stripe_account_id ?? null) === null;
+  const handleCountryChangeRef = useRef(handleCountryChange);
+  handleCountryChangeRef.current = handleCountryChange;
+  useEffect(() => {
+    if (!needsAutoSwitch || autoSwitchFiredRef.current) return;
+    autoSwitchFiredRef.current = true;
+    handleCountryChangeRef.current("NG");
+  }, [needsAutoSwitch]);
+  const awaitingAutoSwitch = needsAutoSwitch && !autoSwitchFiredRef.current;
   const countryPickerLocked = isStripeCountryPickerLocked({
     stripeAccountId: statusQuery.data?.stripe_account_id ?? null,
     status: statusQuery.data?.status ?? brand?.stripeStatus ?? null,
@@ -729,24 +768,39 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // #3645 PR11c — Organiser Terms gate lives inside BrandPaystackOnboardView
   // (shared with Payments + web bank-connect).
   if (brand !== null && paystackSelected) {
-    // #3645 — leaving the Nigeria form reverses the pick (clear_provider) so
-    // the brand is not left on the Nigerian rail by accident. The picker only
-    // comes back once the server has confirmed; a failure stays here, visible.
-    const backToPicker = (): void => {
-      if (clearPaystackProvider.isPending) return;
+    // #3645 — the top-bar Back LEAVES the screen and sends nothing: leaving is
+    // not un-choosing Nigeria and must never undo sell-before-bank. (The name
+    // is pinned by paystackOnboardBodyScrolls.971.source.test.ts.) ONLY the
+    // explicit "Choose a different country" reverses the pick (clear_provider);
+    // the picker comes back once the server has confirmed, and a failed clear
+    // is shown while Back still works.
+    const backToPicker = onCancel;
+    const chooseDifferentCountry = (): void => {
+      if (clearPaystackProvider.isPending || railSwitchInFlightRef.current) {
+        return;
+      }
       setErrorMessage(null);
+      railSwitchInFlightRef.current = true;
       clearPaystackProvider.mutate(brand.id, {
         onSuccess: () => {
           setCountryTouched(true);
           setReopenPickerOnReturn(true);
+          setSelectFailure(null);
           setPaystackSelected(false);
           setSelectedCountry(DEFAULT_COUNTRY);
         },
         onError: (err: Error) => {
-          setErrorMessage(payoutCountrySwitchErrorCopy(err));
+          setErrorMessage(describePayoutCountrySwitchFailure(err).message);
+        },
+        onSettled: () => {
+          railSwitchInFlightRef.current = false;
         },
       });
     };
+    // A clear in flight keeps the form mounted (typed bank details survive a
+    // failed clear); only the switch TO Nigeria withholds it.
+    const railSwitchPending =
+      selectPaystackProvider.isPending || awaitingAutoSwitch;
     return (
       <View style={styles.host}>
         {renderTopBar({ onBack: backToPicker, backLabel: "Back" })}
@@ -781,7 +835,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {errorMessage !== null ? (
+          {errorMessage !== null && !railSwitchPending ? (
             <View
               style={styles.railSwitchError}
               accessibilityRole="alert"
@@ -790,13 +844,48 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <Text style={styles.railSwitchErrorText}>{errorMessage}</Text>
             </View>
           ) : null}
-          <BrandPaystackOnboardView
-            brandId={brand.id}
-            brandName={brand.displayName}
-            mode="create"
-            onConnected={onAfterDone}
-            onCancel={backToPicker}
-          />
+          {railSwitchPending ? (
+            <View
+              style={styles.stateBlock}
+              accessibilityRole="progressbar"
+              accessibilityLabel="Updating your payout country"
+              testID="onboard-rail-switching"
+            >
+              <Spinner size={48} color={accent.warm} />
+              <Text style={styles.stateSub}>Updating your payout country…</Text>
+            </View>
+          ) : selectFailure !== null ? (
+            <View style={styles.actionsCol}>
+              {selectFailure.retryable ? (
+                <Button
+                  label="Try again"
+                  onPress={(): void => handleCountryChange("NG")}
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  accessibilityLabel="Try updating your payout country again"
+                  testID="onboard-rail-retry"
+                />
+              ) : null}
+              <Button
+                label="Choose a different country"
+                onPress={chooseDifferentCountry}
+                variant="secondary"
+                size="lg"
+                fullWidth
+                accessibilityLabel="Choose a different payout country"
+                testID="onboard-rail-choose-country"
+              />
+            </View>
+          ) : (
+            <BrandPaystackOnboardView
+              brandId={brand.id}
+              brandName={brand.displayName}
+              mode="create"
+              onConnected={onAfterDone}
+              onCancel={chooseDifferentCountry}
+            />
+          )}
         </ScrollView>
       </View>
     );

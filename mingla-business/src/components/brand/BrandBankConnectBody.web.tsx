@@ -72,7 +72,7 @@ import {
   type BankConnectProvider,
 } from "../../utils/bankConnectRail";
 import { isInviteFunnelValue } from "../../utils/inviteFunnelSignal";
-import { payoutCountrySwitchErrorCopy } from "../../utils/payoutCountrySwitchCopy";
+import { describePayoutCountrySwitchFailure } from "../../utils/payoutCountrySwitchCopy";
 
 const TERMS_URL = ORGANISER_TERMS_URL;
 const PAYSTACK_PICKER_OPTIONS = [
@@ -165,12 +165,22 @@ export default function BrandBankConnectBody(): React.ReactElement {
   // (`clear_provider`) so a brand is never left on that rail by accident.
   const selectNigeriaRail = useSelectPaystackProvider();
   const clearNigeriaRail = useClearPaystackProvider();
-  const railSwitchPending =
-    selectNigeriaRail.isPending || clearNigeriaRail.isPending;
+  // Pending is owned HERE, not read off the mutation observers: under
+  // StrictMode's effect replay an observer detaches from a mutation fired in
+  // an effect, so its `isPending` and per-call callbacks never settle.
+  const [railMutationPending, setRailMutationPending] = useState(false);
   const [railSwitchError, setRailSwitchError] = useState<{
     message: string;
     countryCode: string;
+    retryable: boolean;
   } | null>(null);
+  // `isPending` is one render behind: two picks in the same tick both saw it
+  // false and both fired. This ref is set the moment a switch is sent.
+  const railSwitchInFlightRef = useRef(false);
+  // The automatic switch for a brand whose address already says Nigeria runs
+  // at most once per mount (StrictMode, re-renders and the brand refetch after
+  // success must not repeat it).
+  const autoSwitchFiredRef = useRef(false);
   // Once the organiser picks a country the brand row stops re-seeding the
   // picker: the switch itself refetches the brand, and that refetch must not
   // overwrite the country they just chose.
@@ -192,14 +202,31 @@ export default function BrandBankConnectBody(): React.ReactElement {
     [brand?.countryCode, brand?.paymentProvider, providerHint],
   );
 
+  const brandOnNigeriaRail =
+    brand?.paymentProvider?.trim().toLowerCase() === "paystack";
+  // #3645 — the screen resolves to Nigeria (from the brand's address) but the
+  // saved brand is not on the Nigerian rail yet. Showing the bank form here
+  // sent no switch at all, so the brand could not sell before adding a bank.
+  // Only the brand's account owner may change payouts, so only they trigger
+  // the automatic switch; anyone else keeps the screen as it was.
+  const needsAutoSwitch =
+    brand !== null &&
+    user !== null &&
+    canonicalRail.provider === "paystack" &&
+    !brandOnNigeriaRail &&
+    typeof brand.accountId === "string" &&
+    brand.accountId === user.id;
+
   useEffect(() => {
     if (brand === null || countryTouchedRef.current) return;
     setSelectedCountry(canonicalRail.countryCode);
-    setSelectedProvider(canonicalRail.provider);
+    // The bank form waits for the automatic switch to succeed.
+    setSelectedProvider(needsAutoSwitch ? "stripe" : canonicalRail.provider);
   }, [
     brand,
     canonicalRail.countryCode,
     canonicalRail.provider,
+    needsAutoSwitch,
   ]);
 
   const handleBack = useCallback((): void => {
@@ -235,7 +262,9 @@ export default function BrandBankConnectBody(): React.ReactElement {
   }, []);
 
   const handleCountryChange = useCallback((countryCode: string): void => {
-    if (brand === null || railSwitchPending) return;
+    if (brand === null || railMutationPending || railSwitchInFlightRef.current) {
+      return;
+    }
     // orch-strict-grep-allow stripe-country-out-of-scope — Nigeria uses Paystack and is deliberately outside the Stripe allowlist.
     const wantsNigeria = countryCode.trim().toUpperCase() === "NG";
     const next = resolveBankConnectRail({
@@ -249,17 +278,23 @@ export default function BrandBankConnectBody(): React.ReactElement {
 
     if (wantsNigeria) {
       requestedRailRef.current = "ng";
-      selectNigeriaRail.mutate(brand.id, {
+      railSwitchInFlightRef.current = true;
+      setRailMutationPending(true);
+      selectNigeriaRail
+        .mutateAsync(brand.id)
         // The bank form only appears once the brand really is on the rail.
-        onSuccess: () => setSelectedProvider("paystack"),
-        onError: (error: Error) => {
+        .then(() => setSelectedProvider("paystack"))
+        .catch((error: unknown) => {
           setSelectedProvider("stripe");
           setRailSwitchError({
-            message: payoutCountrySwitchErrorCopy(error),
+            ...describePayoutCountrySwitchFailure(error),
             countryCode: next.countryCode,
           });
-        },
-      });
+        })
+        .finally(() => {
+          railSwitchInFlightRef.current = false;
+          setRailMutationPending(false);
+        });
       return;
     }
 
@@ -271,25 +306,50 @@ export default function BrandBankConnectBody(): React.ReactElement {
       setSelectedProvider(next.provider);
       return;
     }
-    clearNigeriaRail.mutate(brand.id, {
-      onSuccess: () => {
+    railSwitchInFlightRef.current = true;
+    setRailMutationPending(true);
+    clearNigeriaRail
+      .mutateAsync(brand.id)
+      .then(() => {
         requestedRailRef.current = "not-ng";
         setSelectedProvider("stripe");
-      },
-      onError: (error: Error) => {
+      })
+      .catch((error: unknown) => {
         setRailSwitchError({
-          message: payoutCountrySwitchErrorCopy(error),
+          ...describePayoutCountrySwitchFailure(error),
           countryCode: next.countryCode,
         });
-      },
-    });
+      })
+      .finally(() => {
+        railSwitchInFlightRef.current = false;
+        setRailMutationPending(false);
+      });
   }, [
     brand,
     clearNigeriaRail,
-    railSwitchPending,
+    railMutationPending,
     selectNigeriaRail,
     selectedProvider,
   ]);
+
+  // Same code path as a manual Nigeria pick, fired once.
+  const handleCountryChangeRef = useRef(handleCountryChange);
+  handleCountryChangeRef.current = handleCountryChange;
+  useEffect(() => {
+    if (
+      !needsAutoSwitch ||
+      autoSwitchFiredRef.current ||
+      countryTouchedRef.current
+    ) {
+      return;
+    }
+    autoSwitchFiredRef.current = true;
+    handleCountryChangeRef.current("NG");
+  }, [needsAutoSwitch]);
+  // Pending from first paint: the effect above has not run yet on the very
+  // first render, and neither rail's form may show before the switch settles.
+  const awaitingAutoSwitch = needsAutoSwitch && !autoSwitchFiredRef.current;
+  const railSwitchPending = railMutationPending || awaitingAutoSwitch;
 
   const handlePaystackConnected = useCallback((): void => {
     if (brandId === null) return;
@@ -512,17 +572,19 @@ export default function BrandBankConnectBody(): React.ReactElement {
               >
                 <Text style={styles.errorText}>{railSwitchError.message}</Text>
               </View>
-              <Button
-                label="Try again"
-                onPress={(): void =>
-                  handleCountryChange(railSwitchError.countryCode)
-                }
-                variant="secondary"
-                size="lg"
-                fullWidth
-                accessibilityLabel="Try updating your payout country again"
-                testID="bank-connect-rail-retry"
-              />
+              {railSwitchError.retryable ? (
+                <Button
+                  label="Try again"
+                  onPress={(): void =>
+                    handleCountryChange(railSwitchError.countryCode)
+                  }
+                  variant="secondary"
+                  size="lg"
+                  fullWidth
+                  accessibilityLabel="Try updating your payout country again"
+                  testID="bank-connect-rail-retry"
+                />
+              ) : null}
             </>
           ) : selectedProvider === "paystack" ? (
             <BrandPaystackOnboardView

@@ -33,8 +33,18 @@ const SRC = readFileSync(
 const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 describe("#3645 — native: back from the Nigeria form clears the rail, failures show", () => {
-  it("backToPicker calls clear_provider and only returns to the picker on success", () => {
-    const start = CODE.indexOf("const backToPicker");
+  // Rework (PR #3805 P1-1): the handler that clears is the form's explicit
+  // "Choose a different country" (`chooseDifferentCountry`). The top-bar Back
+  // (`backToPicker`, a name pinned by the #971 suite) now only leaves.
+  it("the top-bar Back is the screen's own exit and sends nothing", () => {
+    expect(CODE).toMatch(/const backToPicker = onCancel;/);
+    expect(CODE).toMatch(
+      /renderTopBar\(\{\s*onBack:\s*backToPicker,\s*backLabel:\s*"Back"\s*\}\)/,
+    );
+  });
+
+  it("choosing a different country calls clear_provider and only returns to the picker on success", () => {
+    const start = CODE.indexOf("const chooseDifferentCountry");
     expect(start).toBeGreaterThanOrEqual(0);
     const region = CODE.slice(start, CODE.indexOf("return (", start));
     expect(region).toMatch(/clearPaystackProvider\.mutate\(\s*brand\.id/);
@@ -56,10 +66,19 @@ describe("#3645 — native: back from the Nigeria form clears the rail, failures
     expect(region).toContain("{errorMessage}");
   });
 
+  it("only the bank form's cancel and the explicit button clear; Back never does", () => {
+    const uses = CODE.match(/chooseDifferentCountry/g) ?? [];
+    // declaration + the failed-switch button + the form's onCancel
+    expect(uses).toHaveLength(3);
+    expect(CODE).toMatch(/onCancel=\{chooseDifferentCountry\}/);
+    expect(CODE).not.toMatch(/onBack:\s*chooseDifferentCountry/);
+    expect((CODE.match(/clearPaystackProvider\.mutate\(/g) ?? [])).toHaveLength(1);
+  });
+
   it("the Nigeria pick stores provider-neutral copy, not the raw service error", () => {
     const start = CODE.indexOf("const handleCountryChange");
     const region = CODE.slice(start, start + 900);
-    expect(region).toContain("payoutCountrySwitchErrorCopy(err)");
+    expect(region).toContain("describePayoutCountrySwitchFailure(err)");
     expect(region).not.toContain("err.message");
   });
 
