@@ -707,6 +707,22 @@ jobs:
           # update, while one the host then sets free does publish.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.tester.adversarial.pg17.test.sql
+          # Issue #3645 — tester RETEST of the rework. Two writes: NGN to none
+          # to USD clears event, RSVP and trip prices and names NGN in the
+          # notice, while drafts priced during the gap with no currency keep
+          # every number; a first currency keeps prices; none to the same
+          # currency changes nothing and uses up what was remembered; "none"
+          # written twice loses nothing; two brands interleaved never share a
+          # remembered currency; the Stripe account mirror counts as a writer;
+          # the remembered currency is refused to anon and signed-in hosts for
+          # every verb. A cleared trip package: the old number is refused as
+          # the signed-in host in every shape it can arrive (with the marker,
+          # with no metadata, price alone, odd marker, a new package), nothing
+          # is left behind, a correct re-price and an explicit free pass, and
+          # ordinary ticket and never-cleared package price changes are
+          # untouched.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.tester.retest.pg17.test.sql
           # Issue #1977 — canonical RSVP draft/guest/contribution owners and
           # the Ari receipt seam. Behavioural against the applied schema.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
