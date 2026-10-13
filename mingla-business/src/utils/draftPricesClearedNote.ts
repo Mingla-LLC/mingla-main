@@ -24,11 +24,52 @@ const emit = (): void => {
   listeners.forEach((listener) => listener());
 };
 
-/** Anything that is not `{ to: "<currency>" }` is no note. */
+const isPositiveAmount = (value: unknown): boolean =>
+  typeof value === "number" && Number.isFinite(value) && value > 0;
+
+/**
+ * THE definition of "the row carries prices": the draft JSON a server row
+ * arrived with holds a paid ticket price, or a chip-in amount. Whatever the row
+ * holds is in the row's own currency.
+ */
+export const themeCarriesPrices = (theme: unknown): boolean => {
+  if (typeof theme !== "object" || theme === null) return false;
+  const businessDraft = (theme as { business_draft?: unknown }).business_draft;
+  if (typeof businessDraft !== "object" || businessDraft === null) return false;
+  const draft = businessDraft as {
+    tickets?: unknown;
+    rsvpContributionSuggestedCents?: unknown;
+    rsvpContributionMinCents?: unknown;
+  };
+  if (
+    isPositiveAmount(draft.rsvpContributionSuggestedCents) ||
+    isPositiveAmount(draft.rsvpContributionMinCents)
+  ) {
+    return true;
+  }
+  if (!Array.isArray(draft.tickets)) return false;
+  return draft.tickets.some((ticket: unknown) => {
+    if (typeof ticket !== "object" || ticket === null) return false;
+    const t = ticket as { isFree?: unknown; priceGbp?: unknown };
+    return t.isFree !== true && isPositiveAmount(t.priceGbp);
+  });
+};
+
+/**
+ * Anything that is not `{ to: "<currency>" }` is no note.
+ *
+ * A note that arrives BESIDE prices is STALE and is no note either. The note
+ * says "this draft's prices were cleared"; a row that carries prices has had
+ * them entered again since, by a writer that did not resolve the note (an
+ * older app build, another caller of the RSVP draft owner, which merges the
+ * draft JSON). Acting on such a note cleared those new amounts on a device
+ * that still held the old ones.
+ */
 export const pricesClearedNoteFromTheme = (theme: unknown): PricesClearedNote | null => {
   if (typeof theme !== "object" || theme === null) return null;
   const businessDraft = (theme as { business_draft?: unknown }).business_draft;
   if (typeof businessDraft !== "object" || businessDraft === null) return null;
+  if (themeCarriesPrices(theme)) return null;
   const raw = (businessDraft as { pricesClearedForCurrencyChange?: unknown })
     .pricesClearedForCurrencyChange;
   if (typeof raw !== "object" || raw === null) return null;

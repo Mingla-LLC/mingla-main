@@ -11,8 +11,9 @@
  */
 
 import {
+  DRAFT_CURRENCY_BRAND_HAS_NONE_CODE,
   DRAFT_CURRENCY_CHECKOUT_IN_PROGRESS_CODE,
-  DRAFT_CURRENCY_CHECKOUT_IN_PROGRESS_COPY,
+  draftCurrencyRefusalCopy,
 } from "../../utils/draftCurrencyPublishRefusal";
 import {
   TRIP_PRICE_REENTRY_MESSAGE,
@@ -231,15 +232,17 @@ export function mapPublishErrorToState(
         pointsToStep: 2,
       };
     // Issue #3645 — a package price cleared by a brand currency change has not
-    // been entered again (server trigger, migration 20270829003645).
     // Issue #3645 — the server would not bring this trip in step with its
-    // brand's currency: a buyer still has a checkout open, or a sale exists.
+    // brand's currency (a checkout or sale exists, or the brand has no currency).
     case DRAFT_CURRENCY_CHECKOUT_IN_PROGRESS_CODE:
+    case DRAFT_CURRENCY_BRAND_HAS_NONE_CODE:
       return {
         code,
-        message: DRAFT_CURRENCY_CHECKOUT_IN_PROGRESS_COPY.replace("This event", "This trip"),
+        message: (draftCurrencyRefusalCopy(rawMessage) ?? "").replace("This event", "This trip"),
         pointsToStep: 5,
       };
+    // Issue #3645 — a package price cleared by a brand currency change has not
+    // been entered again (server trigger, migration 20270829003645).
     case TRIP_PRICE_REENTRY_REQUIRED_CODE:
       return {
         code,

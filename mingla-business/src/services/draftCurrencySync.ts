@@ -9,8 +9,8 @@
  */
 import { supabase } from "./supabase";
 import {
-  DRAFT_CURRENCY_CHECKOUT_IN_PROGRESS_CODE,
   PRICE_REENTRY_REQUIRED_CODE,
+  draftCurrencySyncOutcomeCode,
 } from "../utils/draftCurrencyPublishRefusal";
 
 const failureMessage = (error: unknown): string => {
@@ -22,9 +22,6 @@ const failureMessage = (error: unknown): string => {
   }
   return "";
 };
-
-/** Outcomes after which the draft is in its brand's currency. */
-const IN_STEP_OUTCOMES = new Set(["moved_prices_cleared", "moved", "in_step"]);
 
 export const syncDraftCurrency = async (eventId: string): Promise<string> => {
   const { data, error } = await supabase.rpc("biz_sync_draft_currency", {
@@ -40,8 +37,9 @@ export const syncDraftCurrency = async (eventId: string): Promise<string> => {
  * the server to bring the draft in step, let the caller re-read it
  * (`onSynced`), and re-throw:
  *   - the original refusal when the draft was moved (the host now sees empty
- *     price fields and is told to enter prices again);
- *   - `draft_currency_checkout_in_progress` when it could not be moved.
+ *     price fields and is told to enter prices again) or is no longer a draft;
+ *   - `draft_currency_checkout_in_progress` when a checkout or a sale stops
+ *     it, `draft_currency_brand_has_none` when the brand has no currency.
  * A failure of the sync itself is logged and the original refusal stands.
  */
 export const publishWithDraftCurrencySync = async <T>(
@@ -71,7 +69,10 @@ export const publishWithDraftCurrencySync = async <T>(
         message: failureMessage(readError),
       });
     }
-    if (IN_STEP_OUTCOMES.has(outcome)) throw refusal;
-    throw new Error(DRAFT_CURRENCY_CHECKOUT_IN_PROGRESS_CODE);
+    // The answer decides the words (utils/draftCurrencyPublishRefusal). When
+    // there is nothing new to say, the original refusal stands.
+    const code = draftCurrencySyncOutcomeCode(outcome);
+    if (code === null) throw refusal;
+    throw new Error(code);
   }
 };

@@ -178,10 +178,11 @@ export const useDraftFollowsBrandCurrency = ({
 
     // INVARIANT (issue #3645): this device clears its own prices ONLY when the
     // server row it read carries the cleared state (the note), never because
-    // two currencies differ. A copy in another currency than a row the server
-    // did not clear is a copy of a draft someone has since re-priced: the
-    // server's copy replaces it. Nothing is cleared, nothing is saved, and
-    // the host is told nothing, because nothing of theirs was removed.
+    // two currencies differ. A copy priced in another currency than a row the
+    // server did not clear is a copy of a draft someone has since re-priced:
+    // the server's currency and prices replace this device's. Nothing is
+    // cleared and the host is told nothing. Whatever else the host typed here
+    // and has not saved (title, dates, ...) is kept, and is then saved.
     // (A copy that holds no price has nothing to clear; it takes the server's
     // currency through the ordinary path below.)
     if (
@@ -195,6 +196,9 @@ export const useDraftFollowsBrandCurrency = ({
       if (reconcilingRef.current.has(key)) return;
       reconcilingRef.current.add(key);
       void adoptServerDraftAfterSync(draft.id)
+        .then((owedSave) => {
+          if (owedSave !== null) onSave(owedSave);
+        })
         .catch((error: unknown) => {
           console.warn("[useDraftFollowsBrandCurrency] could not read the server's copy of the draft", {
             draftId: draft.id,

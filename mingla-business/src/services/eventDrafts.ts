@@ -89,6 +89,22 @@ export class ServerDraftLifecycleError extends Error {
 // wizard's monotonic ref — adopts the server's revision, and the NEXT edit
 // saves. It is a reconcile, never a force-write: if another device really did
 // move ahead, its content is what lands in the store.
+/**
+ * Issue #3645 — this device's copy of a draft is priced in another currency
+ * than the server row, the server did not clear it, and the server's copy
+ * could not be read. Nothing was written. Unlike a revision conflict this is a
+ * real save failure and is shown as one.
+ */
+export class DraftCurrencyCopyUnreadableError extends Error {
+  readonly draftId: string;
+
+  constructor(draftId: string) {
+    super("draft_currency_copy_unreadable");
+    this.name = "DraftCurrencyCopyUnreadableError";
+    this.draftId = draftId;
+  }
+}
+
 export class DraftRevisionConflictError extends Error {
   draftId: string;
   serverDraft: DraftEvent | null;
@@ -496,9 +512,18 @@ export const autosaveServerDraft = async (
     let serverDraft: DraftEvent | null = null;
     try {
       serverDraft = await fetchDraftById(draft.id);
-    } catch {
-      serverDraft = null;
+    } catch (readError) {
+      // The server's copy could not be read, so there is nothing to adopt and
+      // nothing may be written. This is NOT a quiet resync: it is a failed
+      // save, and it must look like one (the usual save-failed state), so the
+      // host knows their edit is not stored. The next edit tries again.
+      console.warn("[autosaveServerDraft] could not read the server's copy of a draft in another currency", {
+        draftId: draft.id,
+        message: readError instanceof Error ? readError.message : String(readError),
+      });
+      throw new DraftCurrencyCopyUnreadableError(draft.id);
     }
+    if (serverDraft === null) throw new DraftCurrencyCopyUnreadableError(draft.id);
     throw new DraftRevisionConflictError(draft.id, serverDraft);
   }
   const effectiveCurrency =

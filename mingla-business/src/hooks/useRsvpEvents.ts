@@ -36,7 +36,10 @@ export function usePublishRsvpDraft() {
       publishWithDraftCurrencySync(
         draft.id,
         () => publishRsvpDraft(draft, clientRevision ?? draft.clientRevision ?? null, invites),
-        () => adoptServerDraftAfterSync(draft.id),
+        // The host's other unsaved edits are kept; their next edit saves them.
+        async () => {
+          await adoptServerDraftAfterSync(draft.id);
+        },
       ),
     onSuccess: () => {
       captureHostSearchOutcome("listing_published", {

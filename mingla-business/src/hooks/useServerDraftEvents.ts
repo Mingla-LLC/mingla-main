@@ -17,6 +17,7 @@ import {
   isServerDraftLifecycleError,
 } from "../services/eventDrafts";
 import { fetchDraftBrandCurrency } from "../services/draftCurrencyTruth";
+import { replaceLocalDraftWithServer } from "../services/draftServerReconcile";
 import { setDraftServerCurrency } from "../utils/draftServerCurrency";
 import {
   useDraftEventStore,
@@ -381,7 +382,22 @@ export const useServerDraftAutosave = (
       if (isDraftRevisionConflictError(error)) {
         const serverDraft = error.serverDraft;
         if (serverDraft !== null) {
-          upsertServerDraft(serverDraft);
+          const inAnotherCurrency =
+            (serverDraft.currency ?? null) !== (draft.currency ?? null) &&
+            (serverDraft.currency ?? null) !== null &&
+            (draft.currency ?? null) !== null;
+          if (inAnotherCurrency) {
+            // #3645 — this device's copy is priced in a currency the server
+            // row is not in. An ordinary upsert is refused when this device
+            // holds the higher revision (unsaved offline edits), and every
+            // later save would then write nothing for the rest of the visit.
+            // The server's currency and prices are put in place by force; the
+            // host's other unsaved edits are kept and saved now.
+            const owedSave = replaceLocalDraftWithServer(serverDraft);
+            if (owedSave !== null) mutation.mutate(owedSave);
+          } else {
+            upsertServerDraft(serverDraft);
+          }
           // #3645 — the server's copy is the newest word on this draft's
           // currency; the adopt-on-open hook acts on it.
           setDraftServerCurrency(serverDraft.id, serverDraft.currency);

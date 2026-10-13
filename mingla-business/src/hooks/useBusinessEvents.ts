@@ -244,7 +244,10 @@ export const usePublishBusinessEventDraft = (): {
       return publishWithDraftCurrencySync(
         draft.id,
         () => publishBusinessEventDraft(draft, draft.clientRevision ?? 0, invites),
-        () => adoptServerDraftAfterSync(draft.id),
+        // The host's other unsaved edits are kept; their next edit saves them.
+        async () => {
+          await adoptServerDraftAfterSync(draft.id);
+        },
       );
     },
     onSuccess: (published, { draft }) => {
