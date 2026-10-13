@@ -142,7 +142,7 @@ describe("#3802 M-1: one name, one key (the server suite's inputs, H-3)", () => 
   });
   it("the characters nobody can see are written as code points, never typed into the source", () => {
     const model = read("lib/crmModel.js");
-    const classes = model.match(/const NAME_KEY_(DROPPED|MARKS) =\s*\/\[[^\n]*\]\+\/gu;/g) || [];
+    const classes = model.match(/const NAME_KEY_(DROPPED|MARKS) =\s*\/[^\n]*\+\/gu;/g) || [];
     assert.equal(classes.length, 2);
     for (const c of classes) assert.ok(/^[\x20-\x7e\n]*$/.test(c), "a name key class holds a character that is not plain ASCII");
     assert.match(model, /name\.normalize\("NFKC"\)\.toLowerCase\(\)\.normalize\("NFKC"\)\.replace\(NAME_KEY_DROPPED, ""\)/);
@@ -507,11 +507,11 @@ describe("#3802 M-10: the five re-test items", () => {
     assert.equal((DRAWER.match(/onClick=\{sendAll\}/g) || []).length, 2);
   });
   it("(b) a toast button pressed from the keyboard hands focus to the open card", () => {
-    assert.match(TOAST, /function focusReturn\(toastEl\)/);
+    assert.match(TOAST, /function focusReturn\(toastEl, elsewhere\)/);
     assert.match(TOAST, /const inside = !!toastEl && toastEl\.contains\(document\.activeElement\);/);
     assert.match(TOAST, /const panels = document\.querySelectorAll\(DIALOG_PANEL\);/);
-    assert.match(TOAST, /const restoreFocus = focusReturn\(rootRef\.current\);\s*onDismiss\(toast\.id\);\s*toast\.action\.onClick\?\.\(\);\s*restoreFocus\(\);/);
-    assert.match(TOAST, /const restoreFocus = focusReturn\(rootRef\.current\);\s*onDismiss\(toast\.id\);\s*restoreFocus\(\);/);
+    assert.match(TOAST, /const restoreFocus = focusReturn\(rootRef\.current, toast\.action\.focusAfter\);\s*onDismiss\(toast\.id\);\s*toast\.action\.onClick\?\.\(\);\s*restoreFocus\(\);/);
+    assert.match(TOAST, /const restoreFocus = focusReturn\(rootRef\.current, toast\.action\?\.focusAfter\);\s*onDismiss\(toast\.id\);\s*restoreFocus\(\);/);
     assert.match(TOAST, /const DIALOG_PANEL = '\[role="dialog"\]\[aria-modal="true"\]';/);
   });
   it("(c) on a phone only the newest toast is shown in full, with one row for the rest", () => {
@@ -554,18 +554,20 @@ describe("#3802 M-11: the three smoke-test items", () => {
     assert.match(BOARD, /dropped\.current = true;/);
   });
   it("a card panel is drawn outside the page's own box, so its first paint is full height", () => {
-    assert.match(PAGE, /import \{ createPortal \} from "react-dom";/);
-    assert.match(PAGE, /\{ready && openId && createPortal\(\s*<RecordDrawer/);
-    assert.match(PAGE, /\{ready && state\.card === NEW_CARD && !holding && createPortal\(\s*<Drawer open/);
-    assert.equal((PAGE.match(/,\s*document\.body\s*\)\}/g) || []).length, 2);
+    // Both card panels go through the one layer component, which draws at the
+    // top of the page (see the rework suite for the stacking order).
+    const LAYER = read("components/crm/CrmLayer.jsx");
+    assert.match(LAYER, /typeof document === "undefined" \? box : createPortal\(box, document\.body\)/);
+    assert.match(PAGE, /<PipelineOverlays\s+card=\{\s*ready && state\.card === NEW_CARD && !holding \? \(\s*<Drawer open/);
+    assert.match(PAGE, /\) : ready && openId \? \(\s*<RecordDrawer/);
+    assert.ok(!/createPortal/.test(PAGE), "the page draws an overlay outside the layer component");
   });
   it("with a card open on a wide screen the toasts sit beside it; on a phone they stay above its footer", () => {
     assert.match(TOAST, /const SIDE_PANEL = `aside\$\{DIALOG_PANEL\}`;/);
-    assert.match(TOAST, /const besidePanel = usePanelWidth\(toasts\.length > 0\);/);
+    assert.match(TOAST, /const \{ beside: besidePanel, fill \} = useStackPlace\(toasts\.length > 0\);/);
     assert.match(TOAST, /window\.matchMedia\("\(min-width: 640px\)"\)\.matches/);
-    assert.match(TOAST, /const w = panel && wide \? panel\.offsetWidth : 0;/);
-    assert.match(TOAST, /setWidth\(w > 0 && window\.innerWidth - w >= ROOM_BESIDE_PANEL \? w : 0\);/);
-    assert.match(TOAST, /besidePanel > 0\s*\? \{ zIndex: "var\(--z-toast\)", bottom: "1\.5rem", right: `calc\(\$\{besidePanel\}px \+ 1\.5rem\)` \}\s*: \{ zIndex: "var\(--z-toast\)", bottom: "calc\(1\.5rem \+ var\(--toast-lift, 0px\)\)" \}/);
+    assert.match(TOAST, /const next = stackPlace\(window\.innerWidth, panel \? panel\.offsetWidth : 0, wide\);/);
+    assert.match(TOAST, /besidePanel > 0\s*\? \{ zIndex: "var\(--z-toast\)", bottom: "1\.5rem", left: `\$\{EDGE_GAP\}px`, right: `\$\{besidePanel \+ PANEL_GAP\}px` \}\s*: \{ zIndex: "var\(--z-toast\)", bottom: "calc\(1\.5rem \+ var\(--toast-lift, 0px\)\)" \}/);
     assert.match(read("components/ui/Drawer.jsx"), /<aside\s+ref=\{panelRef\}\s+tabIndex=\{-1\}\s+role="dialog"\s+aria-modal="true"/);
   });
 });
