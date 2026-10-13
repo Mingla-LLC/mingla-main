@@ -47,13 +47,7 @@ export const AD_CREDIT_TOP_UP_LIMITS_CENTS: Readonly<
 
 export type AdCreditCurrency = keyof typeof AD_CREDIT_TOP_UP_LIMITS_CENTS;
 
-export type AdCreditEntryKind =
-  | "top_up"
-  | "withdraw"
-  | "campaign_hold"
-  | "campaign_release"
-  | "campaign_spend"
-  | "unspend_return";
+export type AdCreditEntryKind = "top_up" | "withdraw" | "unspend_return";
 
 /** Credit that lands in the wallet after the 15% fee is taken at top-up. */
 export function creditCentsFromPay(payCents: number): number {
@@ -68,12 +62,100 @@ export function feeCentsFromPay(payCents: number): number {
 }
 
 /**
- * Card/bank refund when withdrawing unused credit: unused credit + its fee.
- * Inverse of credit = floor(pay × 0.85) → refund = ceil(credit / 0.85).
+ * Estimate-only inverse (single aggregate). Live withdraw uses FIFO lots via
+ * `allocateWithdrawFromLots` so floor rounding on each top-up is preserved.
  */
 export function refundCentsFromCredit(creditCents: number): number {
   if (!Number.isInteger(creditCents) || creditCents <= 0) return 0;
   return Math.ceil(creditCents / (1 - HOST_FEE_RATIO));
+}
+
+/** Remaining refundable slice of one top-up (matches `ad_credit_lots`). */
+export interface AdCreditLotRemaining {
+  id: string;
+  credit_remaining_cents: number;
+  pay_remaining_cents: number;
+  fee_remaining_cents: number;
+}
+
+export interface AdCreditLotAllocation {
+  lot_id: string;
+  credit_cents: number;
+  pay_cents: number;
+  fee_cents: number;
+}
+
+/**
+ * FIFO withdraw against top-up lots. Full lot drain returns exact remaining
+ * pay/fee; partial drain scales pay by credit share (floor) and clamps fee.
+ */
+export function allocateWithdrawFromLots(
+  lots: readonly AdCreditLotRemaining[],
+  creditCents: number,
+): {
+  ok: true;
+  allocations: AdCreditLotAllocation[];
+  refund_cents: number;
+  fee_returned_cents: number;
+} | {
+  ok: false;
+  error: string;
+  detail: string;
+} {
+  if (!Number.isInteger(creditCents) || creditCents <= 0) {
+    return { ok: false, error: "validation_error", detail: "credit_cents_invalid" };
+  }
+  let need = creditCents;
+  const allocations: AdCreditLotAllocation[] = [];
+  let refund = 0;
+  let feeReturned = 0;
+  for (const lot of lots) {
+    if (need <= 0) break;
+    if (
+      !Number.isInteger(lot.credit_remaining_cents) ||
+      lot.credit_remaining_cents <= 0
+    ) {
+      continue;
+    }
+    const take = Math.min(lot.credit_remaining_cents, need);
+    let payTake: number;
+    let feeTake: number;
+    if (take === lot.credit_remaining_cents) {
+      payTake = lot.pay_remaining_cents;
+      feeTake = lot.fee_remaining_cents;
+    } else {
+      payTake = Math.floor(
+        (lot.pay_remaining_cents * take) / lot.credit_remaining_cents,
+      );
+      feeTake = payTake - take;
+      if (feeTake < 0) {
+        feeTake = 0;
+        payTake = take;
+      }
+      if (feeTake > lot.fee_remaining_cents) {
+        feeTake = lot.fee_remaining_cents;
+        payTake = take + feeTake;
+      }
+    }
+    allocations.push({
+      lot_id: lot.id,
+      credit_cents: take,
+      pay_cents: payTake,
+      fee_cents: feeTake,
+    });
+    refund += payTake;
+    feeReturned += feeTake;
+    need -= take;
+  }
+  if (need > 0) {
+    return { ok: false, error: "insufficient_credit", detail: "lots_exhausted" };
+  }
+  return {
+    ok: true,
+    allocations,
+    refund_cents: refund,
+    fee_returned_cents: feeReturned,
+  };
 }
 
 export function quoteTopUp(payCents: number, currency: string): {

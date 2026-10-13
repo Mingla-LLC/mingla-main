@@ -6,11 +6,11 @@
  * function records the wallet after a successful charge and when withdrawing.
  *
  * Actions:
- *   quote_top_up    — fee split + min/max (no auth brand required)
- *   quote_withdraw  — refund = unused credit + its fee
+ *   quote_top_up    — fee split + min/max (auth required; no brand gate)
+ *   quote_withdraw  — estimate only; live refund uses FIFO lots at apply
  *   apply_top_up    — after payment succeeds (payment_ref required)
- *   apply_withdraw  — debit wallet; returns refund_cents for provider refund
- *   get_wallet      — balance + recent ledger (brand member)
+ *   apply_withdraw  — debit wallet via FIFO lots; returns refund_cents
+ *   get_wallet      — balance + recent ledger (payment view authority)
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
@@ -34,9 +34,6 @@ const corsHeaders = {
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** event_manager+ may manage Ads credit for the brand. */
-const RANK_EVENT_MANAGER = 40;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -81,7 +78,10 @@ serve(async (req: Request): Promise<Response> => {
       : NaN;
     const quoted = quoteWithdraw(creditCents);
     if (!quoted.ok) return json({ error: quoted.error, detail: quoted.detail }, 400);
-    return json(quoted);
+    return json({
+      ...quoted,
+      note: "estimate_only_fifo_lots_apply_at_withdraw",
+    });
   }
 
   const brandId = typeof body.brand_id === "string" ? body.brand_id : "";
@@ -89,20 +89,19 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "validation_error", detail: "brand_id_invalid_uuid" }, 400);
   }
 
-  const { data: callerRank, error: rankErr } = await supabase.rpc(
-    "biz_brand_effective_rank",
-    { p_brand_id: brandId, p_user_id: user.id },
-  );
-  if (rankErr) {
-    console.error("[ad-credit] rank lookup failed:", rankErr.message);
-    return json({ error: "internal_error" }, 500);
-  }
-  const rank = typeof callerRank === "number" ? callerRank : 0;
-  if (rank < RANK_EVENT_MANAGER) {
-    return json({ error: "forbidden", detail: "permission_denied" }, 403);
-  }
-
   if (action === "get_wallet") {
+    const { data: canView, error: viewErr } = await supabase.rpc(
+      "biz_can_view_payments_for_brand",
+      { p_brand_id: brandId, p_user_id: user.id },
+    );
+    if (viewErr) {
+      console.error("[ad-credit] view auth failed:", viewErr.message);
+      return json({ error: "internal_error" }, 500);
+    }
+    if (canView !== true) {
+      return json({ error: "forbidden", detail: "permission_denied" }, 403);
+    }
+
     const { data: wallet } = await supabase
       .from("ad_credit_wallets")
       .select("brand_id, currency, balance_cents, updated_at")
@@ -125,6 +124,19 @@ serve(async (req: Request): Promise<Response> => {
       },
       history: history ?? [],
     });
+  }
+
+  // Mutating actions: owner / brand_admin / finance_manager (not event_manager).
+  const { data: canManage, error: manageErr } = await supabase.rpc(
+    "biz_can_manage_payments_for_brand",
+    { p_brand_id: brandId, p_user_id: user.id },
+  );
+  if (manageErr) {
+    console.error("[ad-credit] manage auth failed:", manageErr.message);
+    return json({ error: "internal_error" }, 500);
+  }
+  if (canManage !== true) {
+    return json({ error: "forbidden", detail: "permission_denied" }, 403);
   }
 
   if (action === "apply_top_up") {
@@ -191,15 +203,16 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: "insufficient_credit", detail: "balance_too_low" }, 409);
     }
 
+    // refund_cents/fee overwritten inside ad_credit_apply from FIFO lots.
     const { data, error } = await supabase.rpc("ad_credit_apply", {
       p_brand_id: brandId,
       p_entry_kind: "withdraw",
       p_amount_cents: quoted.credit_cents,
       p_currency: currency,
       p_idempotency_key: idempotencyKey,
-      p_fee_cents: quoted.fee_returned_cents,
+      p_fee_cents: 0,
       p_pay_cents: null,
-      p_refund_cents: quoted.refund_cents,
+      p_refund_cents: null,
       p_campaign_id: null,
       p_external_ref: null,
       p_actor_id: user.id,
@@ -216,12 +229,14 @@ serve(async (req: Request): Promise<Response> => {
       }
       return json({ error: "apply_failed", detail: msg }, 409);
     }
+    const result = data && typeof data === "object"
+      ? data as Record<string, unknown>
+      : {};
     return json({
       ok: true,
-      quote: quoted,
-      result: data,
-      // Wave 7 / payment adapter executes Stripe card refund or Paystack payout.
-      provider_refund_cents: quoted.refund_cents,
+      estimate: quoted,
+      result,
+      provider_refund_cents: result.refund_cents ?? null,
     });
   }
 
