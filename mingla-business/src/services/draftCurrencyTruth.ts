@@ -25,6 +25,7 @@ interface DraftCurrencyRow {
 const readDraftCurrencyRow = async (
   draftId: string,
 ): Promise<DraftCurrencyRow | null> => {
+  // orch-strict-grep-allow events-type-filter — issue #3645: draft currency read is scoped via .in("event_type", ["event","rsvp"]); event_type IS filtered (event+rsvp), not unfiltered.
   const { data, error } = await supabase
     .from("events")
     .select("currency,brand:brands(default_currency)")
