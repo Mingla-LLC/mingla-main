@@ -1,10 +1,12 @@
 /**
- * host-ad-campaign — toward #3697 Wave 7c / Wave 8.
+ * host-ad-campaign — toward #3697 Wave 7c / Wave 8 / Wave 9.
  *
  * Host-owned ad campaigns (owner_kind=host): list / create / launch / pause /
  * end / cancel. Launch debits Ads credit (campaign_spend). Cancel only before
  * any platform spend (full credit return); End after spend. Wave 8: every
- * launch attempt emails admins. Provider adapter create/sync remains deferred.
+ * launch attempt emails admins. Wave 9: Meta business-lane create via
+ * createFullCampaignAtomic + READY image creative; launch/pause call Meta
+ * setStatus (credit compensate if activate fails).
  *
  * Actions: list | get | create | launch | pause | end | cancel
  */
@@ -13,6 +15,20 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  AdApiError,
+  AdNotConnectedError,
+  type AdConnectionRow,
+  AtomicCreateError,
+  createFullCampaignAtomic,
+  getAdapter,
+} from "../_shared/adChannel.ts";
+import {
+  buildHostMetaAtomicInput,
+  hostDefaultCountriesForCurrency,
+  isSyntheticHostExternalId,
+  setCampaignTreeStatus,
+} from "../_shared/adCampaignProviderSync.ts";
 import {
   AdDestinationError,
   resolveAdDestination,
@@ -37,6 +53,90 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+/** Loose service-role client — supabase-js generics fight Deno check across edges. */
+// deno-lint-ignore no-explicit-any
+type AdminClient = any;
+
+async function loadProviderTree(
+  supabase: AdminClient,
+  campaignId: string,
+  _externalCampaignId: string,
+): Promise<{
+  adSetExternalIds: string[];
+  adExternalIds: string[];
+  adSetIds: string[];
+}> {
+  const { data: adSets } = await supabase
+    .from("ad_sets")
+    .select("id, external_adset_id")
+    .eq("campaign_id", campaignId);
+  const rows = (adSets ?? []) as Array<{
+    id: unknown;
+    external_adset_id: unknown;
+  }>;
+  const adSetIds = rows.map((s) => String(s.id));
+  const adSetExternalIds = rows
+    .map((s) => s.external_adset_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  const { data: ads } = adSetIds.length > 0
+    ? await supabase
+      .from("ads")
+      .select("external_ad_id")
+      .in("ad_set_id", adSetIds)
+    : { data: [] };
+  const adExternalIds = ((ads ?? []) as Array<{ external_ad_id: unknown }>)
+    .map((a) => a.external_ad_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  return { adSetExternalIds, adExternalIds, adSetIds };
+}
+
+async function pauseProviderBestEffort(
+  supabase: AdminClient,
+  camp: {
+    id: string;
+    platform: string;
+    connection_id: string | null;
+    external_campaign_id: string | null;
+  },
+): Promise<void> {
+  if (camp.platform !== "meta") return;
+  if (isSyntheticHostExternalId(camp.external_campaign_id)) return;
+  if (!camp.connection_id || !camp.external_campaign_id) return;
+  const { data: conn } = await supabase
+    .from("ad_connections")
+    .select("*")
+    .eq("id", camp.connection_id)
+    .maybeSingle();
+  const row = conn as {
+    connected?: boolean;
+    status?: string;
+  } | null;
+  if (!row || !row.connected || row.status !== "connected") return;
+  try {
+    const adapter = getAdapter("meta");
+    const tree = await loadProviderTree(
+      supabase,
+      camp.id,
+      camp.external_campaign_id,
+    );
+    await setCampaignTreeStatus(
+      adapter,
+      conn as AdConnectionRow,
+      {
+        externalCampaignId: camp.external_campaign_id,
+        adSetExternalIds: tree.adSetExternalIds,
+        adExternalIds: tree.adExternalIds,
+      },
+      "PAUSED",
+    );
+  } catch (err) {
+    console.error(
+      "[host-ad-campaign] provider pause best-effort failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -173,6 +273,9 @@ serve(async (req: Request): Promise<Response> => {
     const primaryText = typeof body.primary_text === "string"
       ? body.primary_text.trim()
       : "";
+    const creativeLibraryId = typeof body.creative_library_id === "string"
+      ? body.creative_library_id.trim()
+      : "";
     const startsAt = typeof body.starts_at === "string" ? body.starts_at : null;
     const endsAt = typeof body.ends_at === "string" ? body.ends_at : null;
     const idem = typeof body.idempotency_key === "string"
@@ -195,6 +298,25 @@ serve(async (req: Request): Promise<Response> => {
       return json({
         error: "validation_error",
         detail: "idempotency_key_required",
+      }, 400);
+    }
+    // Wave 9: Host provider create is Meta + READY image only.
+    if (platform !== "meta") {
+      return json({
+        error: "validation_error",
+        detail: "platform_unsupported",
+      }, 422);
+    }
+    if (!UUID_REGEX.test(creativeLibraryId)) {
+      return json({
+        error: "validation_error",
+        detail: "creative_library_id_required",
+      }, 400);
+    }
+    if (primaryText.length < 1) {
+      return json({
+        error: "validation_error",
+        detail: "primary_text_required",
       }, 400);
     }
 
@@ -231,8 +353,8 @@ serve(async (req: Request): Promise<Response> => {
 
     const { data: conn } = await supabase
       .from("ad_connections")
-      .select("id, platform, connected, status")
-      .eq("platform", platform)
+      .select("*")
+      .eq("platform", "meta")
       .eq("lane", "business")
       .eq("connected", true)
       .eq("status", "connected")
@@ -243,17 +365,15 @@ serve(async (req: Request): Promise<Response> => {
         detail: "ad_connection_required",
       }, 409);
     }
+    const connection = conn as unknown as AdConnectionRow;
 
-    const brandCompact = brandId.replace(/-/g, "").slice(0, 12);
-    const externalCampaignId = `host_${brandCompact}_${
-      idem.replace(/[^a-zA-Z0-9]/g, "").slice(0, 40)
-    }`
-      .slice(0, 100);
+    // Idempotency: replay by request_id on this connection (real Meta create).
     const { data: existing } = await supabase
       .from("ad_campaigns")
-      .select("id, status, name, brand_id")
-      .eq("platform", platform)
-      .eq("external_campaign_id", externalCampaignId)
+      .select("id, status, name, brand_id, external_campaign_id")
+      .eq("connection_id", connection.id)
+      .eq("request_id", idem.slice(0, 120))
+      .eq("owner_kind", "host")
       .maybeSingle();
     if (existing?.id) {
       if (existing.brand_id !== brandId) {
@@ -267,18 +387,118 @@ serve(async (req: Request): Promise<Response> => {
         campaign: existing,
         campaign_id: existing.id,
         replayed: true,
+        provider_sync: "synced",
       });
     }
 
+    // READY image creative only (business lane, matching content hash).
+    const { data: libCreative } = await supabase
+      .from("ad_creatives")
+      .select("id, kind, status, content_hash")
+      .eq("id", creativeLibraryId)
+      .maybeSingle();
+    if (
+      !libCreative ||
+      libCreative.kind !== "image" ||
+      libCreative.status !== "active" ||
+      !libCreative.content_hash
+    ) {
+      return json({
+        error: "validation_error",
+        detail: "creative_not_ready",
+      }, 422);
+    }
+    const { data: readyRef } = await supabase
+      .from("ad_creative_platform_refs")
+      .select("external_ref")
+      .eq("creative_id", creativeLibraryId)
+      .eq("platform", "meta")
+      .eq("lane", "business")
+      .eq("external_account_id", connection.external_account_id)
+      .eq("external_kind", "image")
+      .eq("content_hash", libCreative.content_hash)
+      .eq("status", "ready")
+      .maybeSingle();
+    if (!readyRef?.external_ref) {
+      return json({
+        error: "validation_error",
+        detail: "creative_not_ready",
+      }, 422);
+    }
+
+    const countries = hostDefaultCountriesForCurrency(currency);
     const destUrl = resolved.canonical_url;
-    const { data: created, error } = await supabase
+    const atomicInput = buildHostMetaAtomicInput({
+      name,
+      destUrl,
+      message: primaryText,
+      imageHash: String(readyRef.external_ref),
+      budgetCents,
+      countries,
+      startsAt,
+      endsAt,
+    });
+
+    const adapter = getAdapter("meta");
+    let created;
+    try {
+      created = await createFullCampaignAtomic(adapter, connection, atomicInput);
+    } catch (err) {
+      if (err instanceof AdNotConnectedError) {
+        return json({ error: "meta_not_connected", detail: err.detail }, 424);
+      }
+      if (err instanceof AtomicCreateError) {
+        console.error(
+          "[host-ad-campaign] atomic create failed:",
+          err.message,
+          err.failure,
+        );
+        return json({
+          error: "provider_create_failed",
+          detail: err.message.slice(0, 500),
+          step: err.failure.step,
+        }, 502);
+      }
+      if (err instanceof AdApiError) {
+        return json({
+          error: "provider_create_failed",
+          detail: err.message.slice(0, 500),
+        }, 502);
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[host-ad-campaign] create unexpected:", detail);
+      return json({ error: "internal_error" }, 500);
+    }
+
+    let deliveryStatus: string | null = null;
+    try {
+      const status = await adapter.getStatus(
+        connection,
+        "campaign",
+        created.externalCampaignId,
+      );
+      deliveryStatus = status.effectiveStatus;
+    } catch {
+      deliveryStatus = null;
+    }
+
+    const targeting = {
+      ...atomicInput.adSet.targeting,
+      primary_text: primaryText,
+      plan_source: "host_ari",
+      provider_sync: "synced",
+      creative_library_id: creativeLibraryId,
+      countries,
+    };
+
+    const { data: campaignRow, error: campaignInsertError } = await supabase
       .from("ad_campaigns")
       .insert({
-        connection_id: conn.id,
+        connection_id: connection.id,
         name,
-        platform,
+        platform: "meta",
         status: "PAUSED",
-        objective: platform === "meta" ? "OUTCOME_TRAFFIC" : "TRAFFIC",
+        objective: "OUTCOME_TRAFFIC",
         daily_budget_cents: budgetCents,
         lifetime_budget_cents: null,
         cap_cents: budgetCents,
@@ -294,24 +514,90 @@ serve(async (req: Request): Promise<Response> => {
         ends_at: endsAt,
         created_by: user.id,
         request_id: idem.slice(0, 120),
-        external_campaign_id: externalCampaignId,
-        targeting: {
-          primary_text: primaryText,
-          plan_source: "host_ari",
-          provider_sync: "pending",
-        },
+        external_campaign_id: created.externalCampaignId,
+        delivery_status: deliveryStatus,
+        status_synced_at: new Date().toISOString(),
+        targeting,
       })
-      .select("id, status, name")
+      .select("id, status, name, external_campaign_id")
       .single();
-    if (error) {
-      console.error("[host-ad-campaign] create failed:", error.message);
-      return json({ error: "apply_failed", detail: error.message }, 502);
+    if (campaignInsertError || !campaignRow) {
+      // Compensate: roll back Meta tree so we do not orphan spendable objects.
+      try {
+        if (adapter.rollbackCreative && created.externalCreativeId) {
+          await adapter.rollbackCreative(
+            connection,
+            created.externalCreativeId,
+          );
+        }
+        if (adapter.rollbackCampaign) {
+          await adapter.rollbackCampaign(
+            connection,
+            created.externalCampaignId,
+          );
+        }
+      } catch (rbErr) {
+        console.error(
+          "[host-ad-campaign] post-persist rollback failed:",
+          rbErr instanceof Error ? rbErr.message : String(rbErr),
+          created,
+        );
+      }
+      console.error(
+        "[host-ad-campaign] persist campaign failed:",
+        campaignInsertError?.message,
+      );
+      return json({
+        error: "apply_failed",
+        detail: campaignInsertError?.message ?? "campaign_persist_failed",
+      }, 502);
     }
+
+    const { data: adSetRow, error: adSetErr } = await supabase
+      .from("ad_sets")
+      .insert({
+        campaign_id: campaignRow.id,
+        external_adset_id: created.externalAdSetId,
+        name: atomicInput.adSet.name,
+        targeting: atomicInput.adSet.targeting,
+        budget_cents: null,
+        optimization_goal: "LINK_CLICKS",
+        billing_event: "IMPRESSIONS",
+        status: "PAUSED",
+        schedule_start_at: startsAt,
+        schedule_end_at: endsAt,
+      })
+      .select("id")
+      .single();
+    if (adSetErr || !adSetRow) {
+      console.error("[host-ad-campaign] persist ad_set failed:", adSetErr?.message);
+      return json({
+        error: "apply_failed",
+        detail: adSetErr?.message ?? "ad_set_persist_failed",
+      }, 502);
+    }
+
+    const { error: adErr } = await supabase.from("ads").insert({
+      ad_set_id: adSetRow.id,
+      external_ad_id: created.externalAdId,
+      external_creative_id: created.externalCreativeId,
+      creative_id: creativeLibraryId,
+      name: atomicInput.ad.name,
+      status: "PAUSED",
+      review_status: created.reviewStatus,
+    });
+    if (adErr) {
+      console.error("[host-ad-campaign] persist ad failed:", adErr.message);
+      return json({ error: "apply_failed", detail: adErr.message }, 502);
+    }
+
     return json({
       ok: true,
-      campaign: created,
-      campaign_id: created.id,
+      campaign: campaignRow,
+      campaign_id: campaignRow.id,
       replayed: false,
+      provider_sync: "synced",
+      external_campaign_id: created.externalCampaignId,
     });
   }
 
@@ -334,7 +620,7 @@ serve(async (req: Request): Promise<Response> => {
     const { data: camp, error: campErr } = await supabase
       .from("ad_campaigns")
       .select(
-        "id, status, brand_id, owner_kind, cap_cents, currency, daily_budget_cents, name, platform",
+        "id, status, brand_id, owner_kind, cap_cents, currency, daily_budget_cents, name, platform, connection_id, external_campaign_id, targeting",
       )
       .eq("id", campaignId)
       .eq("brand_id", brandId)
@@ -421,6 +707,16 @@ serve(async (req: Request): Promise<Response> => {
         }
         creditReturned = cap;
       }
+      await pauseProviderBestEffort(supabase, {
+        id: camp.id,
+        platform: String(camp.platform ?? ""),
+        connection_id: typeof camp.connection_id === "string"
+          ? camp.connection_id
+          : null,
+        external_campaign_id: typeof camp.external_campaign_id === "string"
+          ? camp.external_campaign_id
+          : null,
+      });
       const { data: deleted, error } = await supabase
         .from("ad_campaigns")
         .update({ status: "DELETED" })
@@ -466,9 +762,55 @@ serve(async (req: Request): Promise<Response> => {
           detail: "campaign_not_pausable",
         }, 409);
       }
+      if (camp.platform !== "meta") {
+        return json({
+          error: "validation_error",
+          detail: "platform_unsupported",
+        }, 422);
+      }
+      if (isSyntheticHostExternalId(camp.external_campaign_id)) {
+        return json({
+          error: "validation_error",
+          detail: "provider_not_synced",
+        }, 409);
+      }
+      const { data: conn } = await supabase
+        .from("ad_connections")
+        .select("*")
+        .eq("id", camp.connection_id)
+        .maybeSingle();
+      if (!conn || !conn.connected || conn.status !== "connected") {
+        return json({ error: "meta_not_connected" }, 424);
+      }
+      const tree = await loadProviderTree(
+        supabase,
+        campaignId,
+        String(camp.external_campaign_id),
+      );
+      try {
+        await setCampaignTreeStatus(
+          getAdapter("meta"),
+          conn as unknown as AdConnectionRow,
+          {
+            externalCampaignId: String(camp.external_campaign_id),
+            adSetExternalIds: tree.adSetExternalIds,
+            adExternalIds: tree.adExternalIds,
+          },
+          "PAUSED",
+        );
+      } catch (err) {
+        if (err instanceof AdNotConnectedError) {
+          return json({ error: "meta_not_connected", detail: err.detail }, 424);
+        }
+        const detail = err instanceof Error ? err.message : String(err);
+        return json({ error: "provider_pause_failed", detail: detail.slice(0, 500) }, 502);
+      }
       const { data: paused, error } = await supabase
         .from("ad_campaigns")
-        .update({ status: "PAUSED" })
+        .update({
+          status: "PAUSED",
+          status_synced_at: new Date().toISOString(),
+        })
         .eq("id", campaignId)
         .eq("status", "ACTIVE")
         .select("id")
@@ -482,7 +824,12 @@ serve(async (req: Request): Promise<Response> => {
           detail: "campaign_pause_conflict",
         }, 409);
       }
-      return json({ ok: true, campaign_id: campaignId, status: "PAUSED" });
+      return json({
+        ok: true,
+        campaign_id: campaignId,
+        status: "PAUSED",
+        provider_sync: "synced",
+      });
     }
 
     if (action === "end") {
@@ -522,6 +869,16 @@ serve(async (req: Request): Promise<Response> => {
       }
       // Pause first so spend feed cannot keep growing while we reconcile.
       if (status === "ACTIVE") {
+        await pauseProviderBestEffort(supabase, {
+          id: camp.id,
+          platform: String(camp.platform ?? ""),
+          connection_id: typeof camp.connection_id === "string"
+            ? camp.connection_id
+            : null,
+          external_campaign_id: typeof camp.external_campaign_id === "string"
+            ? camp.external_campaign_id
+            : null,
+        });
         const { error: pauseErr } = await supabase
           .from("ad_campaigns")
           .update({ status: "PAUSED" })
@@ -604,7 +961,7 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    // launch — claim PAUSED→ACTIVE under a row filter, debit once per campaign.
+    // launch — debit credit, activate on Meta, then claim PAUSED→ACTIVE.
     const launchAlertBase = {
       source: "host" as const,
       campaignId,
@@ -625,6 +982,7 @@ serve(async (req: Request): Promise<Response> => {
         campaign_id: campaignId,
         status: "ACTIVE",
         replayed: true,
+        provider_sync: "synced",
       });
     }
     if (String(camp.status).toUpperCase() !== "PAUSED") {
@@ -639,6 +997,30 @@ serve(async (req: Request): Promise<Response> => {
         detail: "campaign_not_launchable",
       }, 409);
     }
+    if (camp.platform !== "meta") {
+      await notifyAdLaunchAttempt({
+        ...launchAlertBase,
+        outcome: "rejected",
+        detail: "platform_unsupported",
+        idempotencyKey: `ads_launch:host:${campaignId}:platform`,
+      });
+      return json({
+        error: "validation_error",
+        detail: "platform_unsupported",
+      }, 422);
+    }
+    if (isSyntheticHostExternalId(camp.external_campaign_id)) {
+      await notifyAdLaunchAttempt({
+        ...launchAlertBase,
+        outcome: "rejected",
+        detail: "provider_not_synced",
+        idempotencyKey: `ads_launch:host:${campaignId}:not_synced`,
+      });
+      return json({
+        error: "validation_error",
+        detail: "provider_not_synced",
+      }, 409);
+    }
     const debit = Number(camp.cap_cents ?? camp.daily_budget_cents ?? 0);
     if (!Number.isFinite(debit) || debit <= 0) {
       await notifyAdLaunchAttempt({
@@ -649,6 +1031,22 @@ serve(async (req: Request): Promise<Response> => {
       });
       return json({ error: "validation_error", detail: "budget_invalid" }, 400);
     }
+
+    const { data: conn } = await supabase
+      .from("ad_connections")
+      .select("*")
+      .eq("id", camp.connection_id)
+      .maybeSingle();
+    if (!conn || !conn.connected || conn.status !== "connected") {
+      await notifyAdLaunchAttempt({
+        ...launchAlertBase,
+        outcome: "rejected",
+        detail: "meta_not_connected",
+        idempotencyKey: `ads_launch:host:${campaignId}:not_connected`,
+      });
+      return json({ error: "meta_not_connected" }, 424);
+    }
+
     // Campaign-scoped debit key so concurrent client keys cannot double-charge.
     const { error: debitErr } = await supabase.rpc("ad_credit_apply", {
       p_brand_id: brandId,
@@ -665,7 +1063,7 @@ serve(async (req: Request): Promise<Response> => {
       p_metadata: {
         source: "host-ad-campaign",
         action: "launch",
-        provider_sync: "pending",
+        provider_sync: "synced",
         client_idempotency_key: idem.length >= 8 ? idem : null,
       },
     });
@@ -691,9 +1089,71 @@ serve(async (req: Request): Promise<Response> => {
       });
       return json({ error: "apply_failed", detail: msg }, 409);
     }
+
+    const tree = await loadProviderTree(
+      supabase,
+      campaignId,
+      String(camp.external_campaign_id),
+    );
+    try {
+      await setCampaignTreeStatus(
+        getAdapter("meta"),
+        conn as unknown as AdConnectionRow,
+        {
+          externalCampaignId: String(camp.external_campaign_id),
+          adSetExternalIds: tree.adSetExternalIds,
+          adExternalIds: tree.adExternalIds,
+        },
+        "ACTIVE",
+      );
+    } catch (err) {
+      // Compensate: return the debit so activate failure does not keep credit.
+      const { error: compensateErr } = await supabase.rpc("ad_credit_apply", {
+        p_brand_id: brandId,
+        p_entry_kind: "unspend_return",
+        p_amount_cents: debit,
+        p_currency: camp.currency,
+        p_idempotency_key: `launch_activate_fail_return:host:${campaignId}`,
+        p_fee_cents: 0,
+        p_pay_cents: null,
+        p_refund_cents: null,
+        p_campaign_id: campaignId,
+        p_external_ref: null,
+        p_actor_id: user.id,
+        p_metadata: {
+          source: "host-ad-campaign",
+          action: "launch_activate_compensate",
+        },
+      });
+      if (compensateErr) {
+        console.error(
+          "[host-ad-campaign] launch compensate failed:",
+          compensateErr.message,
+        );
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      await notifyAdLaunchAttempt({
+        ...launchAlertBase,
+        outcome: "failed",
+        detail: `provider_activate_failed:${detail}`.slice(0, 500),
+        idempotencyKey: `ads_launch:host:${campaignId}:activate_failed`,
+      });
+      if (err instanceof AdNotConnectedError) {
+        return json({ error: "meta_not_connected", detail: err.detail }, 424);
+      }
+      return json({
+        error: "provider_activate_failed",
+        detail: detail.slice(0, 500),
+        credit_compensated: !compensateErr,
+      }, 502);
+    }
+
     const { data: claimed, error } = await supabase
       .from("ad_campaigns")
-      .update({ status: "ACTIVE" })
+      .update({
+        status: "ACTIVE",
+        status_synced_at: new Date().toISOString(),
+      })
       .eq("id", campaignId)
       .eq("status", "PAUSED")
       .select("id")
@@ -721,12 +1181,23 @@ serve(async (req: Request): Promise<Response> => {
         status: "ACTIVE",
         replayed: true,
         debited_cents: debit,
+        provider_sync: "synced",
       });
+    }
+    if (tree.adSetIds.length > 0) {
+      await supabase.from("ad_sets").update({ status: "ACTIVE" }).in(
+        "id",
+        tree.adSetIds,
+      );
+      await supabase.from("ads").update({ status: "ACTIVE" }).in(
+        "ad_set_id",
+        tree.adSetIds,
+      );
     }
     await notifyAdLaunchAttempt({
       ...launchAlertBase,
       outcome: "accepted",
-      detail: `debited_cents=${debit}`,
+      detail: `debited_cents=${debit};provider=meta`,
       idempotencyKey: `ads_launch:host:${campaignId}:accepted`,
     });
     return json({
@@ -734,7 +1205,7 @@ serve(async (req: Request): Promise<Response> => {
       campaign_id: campaignId,
       status: "ACTIVE",
       debited_cents: debit,
-      provider_sync: "pending",
+      provider_sync: "synced",
     });
   }
 
