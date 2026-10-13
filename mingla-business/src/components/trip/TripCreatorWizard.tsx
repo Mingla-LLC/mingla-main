@@ -593,13 +593,38 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   }, []);
 
   // Issue #3645 — the brand's currency changed and the server cleared this
-  // draft's package prices. Say so once when the draft opens; the pricing step
-  // names the new currency and marks each package.
-  const priceReentryNoticeShownRef = useRef<boolean>(false);
+  // draft's package prices. This runs when the draft opens AND every time the
+  // trip is read again, because the pricing form is seeded once: a form left
+  // open across the change would otherwise keep showing, and then save, the
+  // old number under the new currency. Each newly cleared package is emptied
+  // in the form and marked "no price yet", the currency shown follows the
+  // server, and the host is told. A package the host has already been told
+  // about is left alone, so a price typed since is never wiped.
+  const acknowledgedClearedTierIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (priceReentryNoticeShownRef.current) return;
-    if (!trip.pricingTiers.some(tierPriceWasCleared)) return;
-    priceReentryNoticeShownRef.current = true;
+    const serverCurrency = trip.pricingTiers[0]?.currency ?? "";
+    if (serverCurrency.length > 0) {
+      setStep4Draft((s) => (s.currency === serverCurrency ? s : { ...s, currency: serverCurrency }));
+    }
+    const clearedIds = trip.pricingTiers
+      .filter(tierPriceWasCleared)
+      .map((tier) => tier.ticketTypeId);
+    const acknowledged = acknowledgedClearedTierIdsRef.current;
+    // A package that has a price again can be cleared again later.
+    for (const id of Array.from(acknowledged)) {
+      if (!clearedIds.includes(id)) acknowledged.delete(id);
+    }
+    const newlyCleared = clearedIds.filter((id) => !acknowledged.has(id));
+    if (newlyCleared.length === 0) return;
+    for (const id of newlyCleared) acknowledged.add(id);
+    setStep4Draft((s) => ({
+      ...s,
+      packages: s.packages.map((p) =>
+        p.ticketTypeId !== null && newlyCleared.includes(p.ticketTypeId)
+          ? { ...p, priceMajor: "", priceNeedsReentry: true }
+          : p,
+      ),
+    }));
     showToast("Your brand's currency changed. Enter your package prices again.");
   }, [trip.pricingTiers, showToast]);
   const dismissToast = useCallback((): void => {
@@ -1203,6 +1228,14 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       // handleConfirmPublish); only unrecognized errors keep the connection
       // toast.
       const autosaveErrCode = readRpcFailureMessage(e);
+      // Issue #3645 — a package price cleared by a brand currency change was
+      // about to be saved with the OLD number (this form was open across the
+      // change). The save was refused; the trip is re-read and the package
+      // re-opens empty. Say why, in plain words, and stay on the step.
+      if (autosaveErrCode === "price_reentry_required") {
+        showToast("Your brand's currency changed. Enter this package's price again.");
+        return;
+      }
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(autosaveErrCode);
       if (guardCopy !== null && guardCopy.action === "payment_onboarding") {
         // #3645 — no detour to bank setup on a save (see above handleNext).
@@ -1255,6 +1288,13 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       // handleNext's catch: locked copy + payments-onboard route first;
       // only unrecognized errors keep the connection toast.
       const autosaveErrCode = readRpcFailureMessage(e);
+      // Issue #3645 — same refusal on the way Back: say why, then go back as
+      // every failed save does (issue #3801).
+      if (autosaveErrCode === "price_reentry_required") {
+        showToast("Your brand's currency changed. Enter this package's price again.");
+        goBack();
+        return;
+      }
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(autosaveErrCode);
       if (guardCopy !== null && guardCopy.action === "payment_onboarding") {
         // #3645 — Back is never a detour to bank setup either.

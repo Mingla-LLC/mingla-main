@@ -27,6 +27,11 @@ export const TRIP_PRICE_REENTRY_MESSAGE =
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** True when tier_metadata carries the server's marker (an object). */
+export const tierMetadataHasPriceClearedMarker = (
+  tierMetadata: Record<string, unknown> | null | undefined,
+): boolean => isRecord(tierMetadata) && isRecord(tierMetadata[TRIP_PRICE_CLEARED_KEY]);
+
 /** True while the package's price was cleared and has not been entered again. */
 export const tierNeedsPriceReentry = (tier: {
   tierMetadata: Record<string, unknown> | null | undefined;

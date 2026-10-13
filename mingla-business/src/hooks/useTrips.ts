@@ -288,6 +288,12 @@ export const useUpdateTripPricing = (): UseMutationResult<
         message: error.message,
         eventId,
       });
+      // Issue #3645 — the save was refused because the server cleared this
+      // package's price (the brand's currency changed). Read the trip again so
+      // the open pricing form re-seeds that package as "no price yet".
+      if (error.message === "price_reentry_required") {
+        queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
+      }
     },
   });
 };
