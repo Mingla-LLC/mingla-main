@@ -1,10 +1,10 @@
 /**
  * SupportThreadCore — META-ORCH-1104 Phase 1 (business requester).
  *
- * The shared, platform-agnostic support chat thread. Reuses the existing
- * conversation-id-driven chat substrate UNCHANGED — `listMessages` +
- * `postPlannerMessage` from `groupChatService`, and the web-safe
- * `conversation:{id}` realtime channel (pure Supabase JS SDK — works identically
+ * The shared, platform-agnostic support chat thread. Reads reuse
+ * `listMessages` from `groupChatService`; sends go through `support-send`
+ * (#3720 — timestamps, audit, push). Realtime uses the web-safe
+ * `conversation:{id}` channel (pure Supabase JS SDK — works identically
  * on native + web, SPEC §2.10). The ONLY native-only primitive — the keyboard
  * wrapper — is injected via the `KeyboardWrap` prop so THIS file never imports
  * `react-native-keyboard-controller` (I-1104-NO-KBC-ON-WEB).
@@ -37,13 +37,14 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
+import { SUPPORT_HOST_FACING_AGENT } from "../../constants/supportHostFacing";
 import {
   getOwnSupportTicket,
+  sendSupportMessage,
   type SupportTicket,
 } from "../../services/supportService";
 import {
   listMessages,
-  postPlannerMessage,
   type EventGroupMessage,
 } from "../../services/groupChatService";
 import { Button } from "../ui/Button";
@@ -160,11 +161,11 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
 
   const handleSend = useCallback(async (): Promise<void> => {
     const content = composer.trim();
-    if (content.length === 0 || conversationId === null) return;
+    if (content.length === 0 || ticket === null) return;
     setSending(true);
     try {
-      const result = await postPlannerMessage(conversationId, content, null);
-      if (result.error !== null) throw new Error(result.error);
+      // #3720: support-send owns insert + last_message_at + audit + push.
+      await sendSupportMessage(ticket.id, content);
       setComposer("");
       await refresh();
     } catch (err) {
@@ -176,7 +177,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
     } finally {
       setSending(false);
     }
-  }, [composer, conversationId, refresh]);
+  }, [composer, ticket, refresh]);
 
   return (
     <SafeScreen style={styles.screen}>
@@ -194,7 +195,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
             {ticket?.subject ?? "Support"}
           </Text>
           <Text style={styles.subtitle} numberOfLines={1}>
-            Mingla support · we reply here
+            {SUPPORT_HOST_FACING_AGENT} · we reply here
           </Text>
         </View>
         <View style={styles.iconButton} />
@@ -247,6 +248,11 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
                       mine ? styles.messageRowMine : styles.messageRowOther,
                     ]}
                   >
+                    {!mine ? (
+                      <Text style={styles.agentLabel}>
+                        {SUPPORT_HOST_FACING_AGENT}
+                      </Text>
+                    ) : null}
                     {hasContent ? (
                       <Text
                         style={[
@@ -378,6 +384,12 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     backgroundColor: glass.tint.profileBase,
     borderColor: glass.border.profileBase,
+  },
+  agentLabel: {
+    marginBottom: spacing.xs,
+    fontSize: 12,
+    fontWeight: "600",
+    color: accent.warm,
   },
   messageText: {
     color: textTokens.primary,

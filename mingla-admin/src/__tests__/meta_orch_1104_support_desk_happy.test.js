@@ -71,14 +71,21 @@ describe("META-ORCH-1104 Phase 2 — Support desk + segmentation (happy path)", 
     assert.match(page, /\.order\("last_message_at",\s*\{\s*ascending:\s*false\s*\}\)/);
   });
 
+  // [TEST-MOD-APPROVED #3720] reply is only via support-send with content
+  // (was: direct messages.insert + notifyOnly, which never pushed the host).
   it("SupportDeskPage wires claim / reply / set-status / set-priority + agents grant", () => {
     const page = read("src/pages/SupportDeskPage.jsx");
     // edge-fn lifecycle calls
     assert.match(page, /support-claim/);
     assert.match(page, /support-set-status/);
     assert.match(page, /support-grant-staff/);
-    // reply is a direct message insert (RLS path)
-    assert.match(page, /from\("messages"\)\s*\.insert/s);
+    // #3720: reply goes through support-send with the message body
+    assert.match(page, /support-send/);
+    assert.match(page, /content:\s*body/);
+    // Only comments may mention the retired notifyOnly path.
+    const replyMatch = page.match(/const handleReply[\s\S]*?\}, \[/);
+    assert.ok(replyMatch, "handleReply must exist");
+    assert.equal(replyMatch[0].includes("notifyOnly"), false, "handleReply must not use notifyOnly");
     // priority + status selects
     assert.match(page, /handleSetStatus/);
     assert.match(page, /handleSetPriority/);

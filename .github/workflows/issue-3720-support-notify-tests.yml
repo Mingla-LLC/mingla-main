@@ -1,0 +1,62 @@
+# #3720 Phase 0 Slice A — support notify path (new-ticket server push, reply via
+# support-send, Veronica host-facing label, Help Centre row).
+name: issue-3720-support-notify-tests
+
+on:
+  pull_request:
+    paths:
+      - "mingla-business/src/services/supportService.ts"
+      - "mingla-business/src/hooks/useSupportTickets.ts"
+      - "mingla-business/src/components/support/SupportThreadCore.tsx"
+      - "mingla-business/app/account/support.tsx"
+      - "mingla-business/src/constants/supportHostFacing.ts"
+      - "mingla-business/src/services/__tests__/issue_3720_support_send_path*.ts"
+      - "mingla-business/src/services/__tests__/supportService.test.ts"
+      - "mingla-admin/src/pages/SupportDeskPage.jsx"
+      - "mingla-admin/src/__tests__/meta_orch_1104_support_desk_*.js"
+      - "mingla-admin/src/__tests__/issue_3720_support_reply_path.implementor.happy.test.js"
+      - "supabase/functions/notify-support/**"
+      - "supabase/functions/_shared/supportHostFacing.ts"
+      - "supabase/functions/_shared/__tests__/issue_3720_support_veronica_title.test.ts"
+      - "supabase/migrations/20270829003720_issue_3720_support_new_ticket_notify.sql"
+      - ".github/workflows/issue-3720-support-notify-tests.yml"
+
+jobs:
+  host-and-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - name: Admin Support desk + #3720 reply path
+        working-directory: mingla-admin
+        run: |
+          node --test \
+            src/__tests__/meta_orch_1104_support_desk_happy.test.js \
+            src/__tests__/meta_orch_1104_support_desk_adversarial.test.js \
+            src/__tests__/issue_3720_support_reply_path.implementor.happy.test.js
+      - name: Install Host deps
+        working-directory: mingla-business
+        run: npm ci
+      - name: Host support send / Veronica / Help Centre
+        working-directory: mingla-business
+        run: |
+          npx jest --runInBand \
+            src/services/__tests__/supportService.test.ts \
+            src/services/__tests__/issue_3720_support_send_path.implementor.test.ts \
+            src/services/__tests__/issue_3720_support_send_path.tester.adversarial.test.ts
+
+  deno-veronica:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.1.4
+      - name: Veronica push-title contract
+        run: |
+          deno test --allow-read \
+            supabase/functions/_shared/__tests__/issue_3720_support_veronica_title.test.ts
