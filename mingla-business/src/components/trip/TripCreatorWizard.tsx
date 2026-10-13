@@ -234,7 +234,7 @@ const STEP_TITLES: Record<StepIndex, string> = {
 };
 
 const STEP_SUBTITLES: Record<StepIndex, string> = {
-  1: "Title, dates, destination, capacity",
+  1: "Title, dates and destination",
   2: "Day-by-day itinerary",
   3: "What's included and excluded",
   4: "Pricing and payment plan",
@@ -294,7 +294,6 @@ export function tripToStep1Draft(trip: Trip): Step1Draft {
     // predate it, so seed null (the coordinate itself is already present).
     destinationCoordinatePrecision: null,
     departureCoordinatePrecision: null,
-    capacity: trip.businessTrip.capacity,
     // ORCH-0876 — cover media seeded from current trip row.
     coverMediaUrl: trip.coverMediaUrl,
     coverMediaType:
@@ -375,6 +374,74 @@ export function tripToStep4Draft(trip: Trip): Step4Draft {
   };
 }
 
+/**
+ * Issue #3801 — a trip's capacity is the SUM of its packages' spots. Mirrors
+ * `sumTripPackageSpots` (services/tripPackages), which owns the same rule for
+ * persisted rows; restated here over the draft shape because this file is
+ * mounted by compiled-boundary suites that reject any new import.
+ * `null` when there is no package or any package has no spots set — never a
+ * partial number (Constitution rule 9).
+ */
+export function draftPackagesTotalSpots(
+  packages: ReadonlyArray<Pick<Step4Package, "capacity">>,
+): number | null {
+  if (packages.length === 0) return null;
+  let total = 0;
+  for (const pkg of packages) {
+    if (pkg.capacity === null || !Number.isFinite(pkg.capacity)) return null;
+    total += Math.max(0, pkg.capacity);
+  }
+  return total;
+}
+
+/**
+ * Issue #3801 — does this itinerary day hold anything the host put there?
+ * The auto-seeded shell is `Day N` with no description and no media; a day the
+ * host added by hand starts with an empty title. Anything else is content.
+ */
+export function tripDayHasHostContent(day: TripDayDraft): boolean {
+  const title = day.title.trim();
+  if (title.length > 0 && title !== `Day ${day.ordinal}`) return true;
+  if (day.narrative.trim().length > 0) return true;
+  return (day.media ?? []).length > 0;
+}
+
+/**
+ * Issue #3801 — fit the itinerary to the day count the dates imply.
+ *
+ * Growing appends empty `Day N` shells. Shrinking drops trailing days ONLY when
+ * none of them holds host content; otherwise the itinerary is returned
+ * untouched together with the days that are at risk, and the caller must ask.
+ * A date change used to slice the list silently, and the next itinerary save
+ * (delete-then-insert on the server) made the loss permanent.
+ */
+export function fitItineraryToDayCount(
+  current: TripDayDraft[],
+  dayCount: number,
+): { days: TripDayDraft[]; atRisk: TripDayDraft[] } {
+  if (current.length === dayCount) return { days: current, atRisk: [] };
+  if (current.length < dayCount) {
+    const next = [...current];
+    for (let i = current.length; i < dayCount; i += 1) {
+      next.push({ ordinal: i + 1, title: `Day ${i + 1}`, narrative: "", media: [] });
+    }
+    return { days: next, atRisk: [] };
+  }
+  const atRisk = current.slice(dayCount).filter(tripDayHasHostContent);
+  if (atRisk.length > 0) return { days: current, atRisk };
+  return { days: current.slice(0, dayCount), atRisk: [] };
+}
+
+/** Issue #3801 — plain copy for the "this removes a day you wrote" question. */
+export function describeItineraryDaysAtRisk(atRisk: TripDayDraft[]): string {
+  const ordinals = atRisk.map((d) => String(d.ordinal));
+  if (ordinals.length === 1) {
+    return `Shortening this trip removes Day ${ordinals[0]} and what you wrote for it.`;
+  }
+  const list = `${ordinals.slice(0, -1).join(", ")} and ${ordinals[ordinals.length - 1]}`;
+  return `Shortening this trip removes Days ${list} and what you wrote for them.`;
+}
+
 // META-ORCH-1174 Leg B2 — canonical signature of the authored package set for
 // pristine / dirty comparison (ignores the client-only `key`).
 function step4PackagesSignature(packages: Step4Package[]): string {
@@ -430,7 +497,6 @@ export function isTripWizardPristine(
     step1Draft.destinationLocationText !== initStep1.destinationLocationText ||
     step1Draft.destinationLat !== initStep1.destinationLat ||
     step1Draft.destinationLng !== initStep1.destinationLng ||
-    step1Draft.capacity !== initStep1.capacity ||
     // ORCH-0876 — cover fields part of Step 1 draft now.
     step1Draft.coverMediaUrl !== initStep1.coverMediaUrl ||
     step1Draft.coverMediaType !== initStep1.coverMediaType ||
@@ -754,23 +820,38 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     intakeSeededRef.current = true;
   }, [intakeSchemasQuery.data]);
 
-  // META-ORCH-1174 Leg B2 — capacity is now PER-PACKAGE (DEC-D), authored in
-  // Step 4 and persisted to each package's ticket_types.quantity_total. The old
-  // Step1→Step4 single-capacity mirror is retired. Step 1's trip-level capacity
-  // draft field seeds a package's spots only when that package has none yet
-  // (e.g. the primary package on a brand-new draft).
-  useEffect(() => {
-    if (step1Draft.capacity === null) return;
-    setStep4Draft((s) => {
-      const primary = s.packages[0];
-      if (primary === undefined || primary.capacity !== null) return s;
-      const nextPackages = [...s.packages];
-      nextPackages[0] = { ...primary, capacity: step1Draft.capacity };
-      return { ...s, packages: nextPackages };
-    });
-  }, [step1Draft.capacity]);
+  // META-ORCH-1174 Leg B2 — capacity is PER-PACKAGE (DEC-D), authored in
+  // Step 4 and persisted to each package's ticket_types.quantity_total.
+  // Issue #3801 — Step 1 no longer has a trip-level capacity field (it was
+  // never saved), so nothing seeds a package's spots from it. The trip total
+  // is derived: the sum of the packages' spots.
 
-  // ORCH-0859 REWORK 3: auto-seed days from Step 1 date range (unchanged).
+  // Issue #3801 — what the itinerary-fit effect below needs without re-running
+  // on every keystroke in a day: the live itinerary, the live dates, and the
+  // last dates the itinerary was fitted to (what "Keep dates" restores).
+  const daysDraftRef = useRef<TripDayDraft[]>(daysDraft);
+  daysDraftRef.current = daysDraft;
+  const step1DraftDatesRef = useRef<{ startAt: string | null; endAt: string | null }>({
+    startAt: step1Draft.startAt,
+    endAt: step1Draft.endAt,
+  });
+  step1DraftDatesRef.current = {
+    startAt: step1Draft.startAt,
+    endAt: step1Draft.endAt,
+  };
+  const acceptedDatesRef = useRef<{ startAt: string | null; endAt: string | null }>({
+    startAt: step1Draft.startAt,
+    endAt: step1Draft.endAt,
+  });
+  const itineraryFittedOnceRef = useRef<boolean>(false);
+  const [pendingDayTrim, setPendingDayTrim] = useState<{
+    atRisk: TripDayDraft[];
+    dayCount: number;
+    previousStartAt: string | null;
+    previousEndAt: string | null;
+  } | null>(null);
+
+  // ORCH-0859 REWORK 3: auto-seed days from Step 1 date range.
   useEffect(() => {
     const startIso = step1Draft.startAt;
     const endIso = step1Draft.endAt;
@@ -784,23 +865,42 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       1,
       Math.floor((endMs - startMs) / MS_PER_DAY) + 1,
     );
-    setDaysDraft((current) => {
-      if (current.length === dayCount) return current;
-      if (current.length < dayCount) {
-        const next = [...current];
-        for (let i = current.length; i < dayCount; i += 1) {
-          next.push({
-            ordinal: i + 1,
-            title: `Day ${i + 1}`,
-            narrative: "",
-            media: [],
-          });
-        }
-        return next;
+    // Issue #3801 — never drop a day that holds host content without asking.
+    const fitted = fitItineraryToDayCount(daysDraftRef.current, dayCount);
+    const isFirstFit = !itineraryFittedOnceRef.current;
+    itineraryFittedOnceRef.current = true;
+    if (fitted.atRisk.length > 0) {
+      // On open there is no date change to undo, so nothing is asked and
+      // nothing is removed. After a date change, ask; declining puts the
+      // previous dates back.
+      if (!isFirstFit) {
+        setPendingDayTrim({
+          atRisk: fitted.atRisk,
+          dayCount,
+          previousStartAt: acceptedDatesRef.current.startAt,
+          previousEndAt: acceptedDatesRef.current.endAt,
+        });
       }
-      return current.slice(0, dayCount);
-    });
+      return;
+    }
+    acceptedDatesRef.current = { startAt: startIso, endAt: endIso };
+    if (fitted.days !== daysDraftRef.current) setDaysDraft(fitted.days);
   }, [step1Draft.startAt, step1Draft.endAt]);
+
+  const handleKeepDatesAfterTrimQuestion = useCallback((): void => {
+    if (pendingDayTrim === null) return;
+    const { previousStartAt, previousEndAt } = pendingDayTrim;
+    setPendingDayTrim(null);
+    setStep1Draft((s) => ({ ...s, startAt: previousStartAt, endAt: previousEndAt }));
+  }, [pendingDayTrim]);
+
+  const handleConfirmDayTrim = useCallback((): void => {
+    if (pendingDayTrim === null) return;
+    const { dayCount } = pendingDayTrim;
+    setPendingDayTrim(null);
+    acceptedDatesRef.current = { ...step1DraftDatesRef.current };
+    setDaysDraft((current) => current.slice(0, dayCount));
+  }, [pendingDayTrim]);
 
   // Build a current Trip view for Step 5 preview (merges in-flight draft).
   const previewTrip: Trip = useMemo(
@@ -818,7 +918,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         departureLocationText: step1Draft.departureLocationText,
         departureLat: step1Draft.departureLat,
         departureLng: step1Draft.departureLng,
-        capacity: step1Draft.capacity,
+        // Issue #3801 — derived from the packages on screen, never authored.
+        capacity: draftPackagesTotalSpots(step4Draft.packages),
       },
       days: daysDraft.map((d, i) => ({
         id: `preview-day-${i}`,
@@ -1465,7 +1566,6 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                 step1Draft.destinationCoordinatePrecision ?? null,
               departureCoordinatePrecision:
                 step1Draft.departureCoordinatePrecision ?? null,
-              capacity: step1Draft.capacity,
             },
           },
           timezone: trip.timezone,
@@ -1563,9 +1663,12 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     let datesLabel = "";
     if (start !== null) {
       try {
+        // Issue #3801 — trip dates are calendar dates stored at UTC; read
+        // them at UTC so the day never shifts with the device's timezone.
         const fmt = new Intl.DateTimeFormat(undefined, {
           month: "short",
           day: "numeric",
+          timeZone: "UTC",
         });
         datesLabel = `${fmt.format(new Date(start))}${
           end !== null ? `–${fmt.format(new Date(end))}` : ""
@@ -2008,6 +2111,27 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         errorMessage={discardError}
         destructive
         testID="trip-wizard-discard-dialog"
+      />
+
+      {/* Issue #3801 — a date change that would remove a day the host wrote. */}
+      <ConfirmDialog
+        visible={pendingDayTrim !== null}
+        onClose={handleKeepDatesAfterTrimQuestion}
+        onConfirm={handleConfirmDayTrim}
+        title="Remove part of your itinerary?"
+        description={
+          pendingDayTrim !== null
+            ? describeItineraryDaysAtRisk(pendingDayTrim.atRisk)
+            : ""
+        }
+        confirmLabel={
+          pendingDayTrim !== null && pendingDayTrim.atRisk.length > 1
+            ? "Remove days"
+            : "Remove day"
+        }
+        cancelLabel="Keep dates"
+        destructive
+        testID="trip-wizard-day-trim-dialog"
       />
 
       <InvitePlanSummaryBridge

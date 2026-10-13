@@ -1,6 +1,6 @@
 /**
  * TripCreatorStep1Basics — Step 1 of TripCreatorWizard. Captures title +
- * dates + destination (Google Places autocomplete) + capacity into
+ * dates + destination (Google Places autocomplete) into
  * events.title + events.theme.business_trip.
  *
  * Tr2 (ORCH-0859). Per SPEC §4.8 Step 1.
@@ -85,7 +85,6 @@ export interface Step1Draft {
   // theme.business_trip.{departure,destination}CoordinatePrecision at publish.
   destinationCoordinatePrecision?: "exact" | "approximate" | null;
   departureCoordinatePrecision?: "exact" | "approximate" | null;
-  capacity: number | null;
   /**
    * ORCH-0876 — cover media for the trip (mirror of the events table
    * cover_media_* column family). Wired through CoverPicker at the bottom
@@ -772,24 +771,9 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         />
       </View>
 
-      {/* Capacity */}
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>Capacity (max travelers)</Text>
-        <TextInput
-          value={draft.capacity === null ? "" : String(draft.capacity)}
-          onChangeText={(v) => {
-            const n = parseInt(v.replace(/[^0-9]/g, ""), 10);
-            onChange({ capacity: Number.isFinite(n) && n > 0 ? n : null });
-          }}
-          placeholder="12"
-          placeholderTextColor={textTokens.tertiary}
-          keyboardType="number-pad"
-          editable={!disabled}
-          accessibilityLabel="Trip capacity"
-          style={styles.textInput}
-          testID="trip-step1-capacity"
-        />
-      </View>
+      {/* Issue #3801 — there is no trip-level capacity field. Spots are set
+          per package on the Pricing step; the trip total is their sum. The
+          field that used to sit here was never saved. */}
 
       {/* Cover (ORCH-0989 — unified CoverPickerSheet; gallery-first tabs +
           video now ENABLED on trips. Step 1 persists url + type via
