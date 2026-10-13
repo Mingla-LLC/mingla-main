@@ -109,6 +109,9 @@ async function readPublicTrip(packages: readonly PackageFixture[]): Promise<Publ
     if (name === "pg_public_trip_by_slug") return { data: rpcPayload(packages), error: null };
     throw new Error(`unexpected reader ${name}`);
   });
+  // Not a render: `useQuery` is replaced above, so the hook only builds and
+  // returns its query options.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const options = usePublicTripBySlug("sunrise", "coast") as unknown as {
     queryFn: () => Promise<PublicTripPayload | null>;
   };
