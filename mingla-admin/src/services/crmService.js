@@ -93,10 +93,20 @@ export function updateRecord(id, changes) {
   return call(() => supabase.rpc("crm_record_update", { p_id: id, p_changes: changes }));
 }
 
-/** Returns { record, changed, activity_id }. */
-export function moveStage(id, toStage, reason = null) {
+/**
+ * Returns { record, changed, activity_id }. `expectedFrom` is the stage the
+ * card was in when the person chose to move it: the server refuses the move
+ * (stage_changed) if the card has moved since, so two people can never move
+ * one card to different stages at once. It is sent on every move.
+ */
+export function moveStage(id, toStage, reason = null, expectedFrom = null) {
   return call(() =>
-    supabase.rpc("crm_record_move_stage", { p_id: id, p_to: toStage, p_reason: reason })
+    supabase.rpc("crm_record_move_stage", {
+      p_id: id,
+      p_to: toStage,
+      p_reason: reason,
+      p_expected_from: expectedFrom,
+    })
   );
 }
 
@@ -131,4 +141,43 @@ export function deleteRecord(id) {
 /** Owner and admin only. The Undo after a delete. */
 export function restoreRecord(id) {
   return call(() => supabase.rpc("crm_record_restore", { p_id: id }));
+}
+
+// ── Homes, targets and Beta leads (issue #3802, Wave 1) ────────────────────
+
+/** The numbers on a role home. `today` is the viewer's own day, YYYY-MM-DD. */
+export function fetchHomeSummary(today) {
+  return call(() => supabase.rpc("crm_home_summary", { p_today: today || null }));
+}
+
+/** The team dashboard. Owner and admin only (the server refuses everyone else). */
+export function fetchTeamSummary(today) {
+  return call(() => supabase.rpc("crm_team_summary", { p_today: today || null }));
+}
+
+/**
+ * Set, change or remove (monthlyTarget = null) one monthly host target.
+ * Owner and admin only. Returns { changed, previous, target }.
+ */
+export function setTarget(regionId, icp, monthlyTarget) {
+  return call(() =>
+    supabase.rpc("crm_target_set", {
+      p_region_id: regionId,
+      p_icp: icp,
+      p_monthly_target: monthlyTarget ?? null,
+    })
+  );
+}
+
+/** Returns { leads, total, new_count, truncated }. */
+export function listBetaLeads() {
+  return call(() => supabase.rpc("crm_beta_leads_list"));
+}
+
+/**
+ * Add one beta lead to Hosts. Safe to repeat: a lead becomes at most one
+ * host. Returns { status: created | exists | linked | duplicate, record, ... }.
+ */
+export function betaLeadToHost(leadId) {
+  return call(() => supabase.rpc("crm_beta_lead_to_host", { p_lead_id: leadId }));
 }

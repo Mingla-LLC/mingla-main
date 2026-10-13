@@ -8,19 +8,28 @@
 // every kind of blank space and every invisible or control character.
 // Written as code points on purpose: several of these characters are
 // invisible, and two of them end a line in JavaScript source.
-// (The control and combining characters in the class are the point of it.)
+// (The control and combining characters in the classes are the point of them.)
 /* eslint-disable no-control-regex, no-misleading-character-class */
 const NAME_KEY_DROPPED =
-  /[\s\u0001-\u001F\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF9-\uFFFB]+/g;
+  /[\s\u0001-\u001F\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF9-\uFFFB\u{110BD}\u{110CD}\u{13430}-\u{1343F}\u{1BCA0}-\u{1BCA3}\u{1D173}-\u{1D17A}\u{E0000}-\u{E0FFF}]+/gu;
+// Combining marks. A name made only of these (and of dropped characters) has
+// nothing visible in it. They are removed for that test only, never from the
+// key of a name that has other characters.
+const NAME_KEY_MARKS = /[\u0300-\u036F\u0483-\u0489\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F]+/gu;
 /* eslint-enable no-control-regex, no-misleading-character-class */
 
 /**
- * One name, one key: case, spacing, punctuation and a leading @ do not make a
- * new record. Same rule as the server's crm_name_key().
+ * One name, one key: case, spacing, punctuation, a leading @, full-width or
+ * plain letters, ligatures and composed or decomposed accents do not make a
+ * new record. "" means the name has nothing visible in it. Same rule as the
+ * server's crm_name_key(): fold to the compatibility form (NFKC), lower-case,
+ * fold again, drop what nobody can see, then keep letters and digits (or, for
+ * a name with none, what is left).
  */
 export function nameKey(name) {
   if (typeof name !== "string") return "";
-  const seen = name.replace(NAME_KEY_DROPPED, "").toLowerCase();
+  const seen = name.normalize("NFKC").toLowerCase().normalize("NFKC").replace(NAME_KEY_DROPPED, "");
+  if (seen.replace(NAME_KEY_MARKS, "") === "") return "";
   const key = seen.replace(/[^\p{L}\p{N}]+/gu, "");
   return key === "" ? seen : key;
 }
@@ -328,6 +337,8 @@ const SERVER_WORDS = new Set([
   "invalid_followers",
   "invalid_message_ref",
   "too_many_owners",
+  "stage_changed",
+  "lead_name_unusable",
 ]);
 
 // Tokens whose server message is written for a caller of the function (it
@@ -369,6 +380,7 @@ const OWN_WORDS = {
   invalid_rate: "Keep the rate to 120 characters or fewer.",
   invalid_owners: STALE,
   unknown_owner: "One of those people is no longer on the team. Reload the page and pick again.",
+  invalid_target: "A monthly target is a whole number from 1 to 1000.",
 };
 
 const FORBIDDEN_DEFAULT = "Your account can't use Hosts and Creators. Ask the owner to give you team access.";
@@ -387,6 +399,10 @@ const WORDS_WHEN_SERVER_SENT_NONE = {
   invalid_followers: "Followers must be a whole number, 0 or more.",
   invalid_message_ref: "Keep the message link or id to 500 characters or fewer.",
   too_many_owners: "A card can have at most 10 owners.",
+  stage_changed:
+    "Someone moved this card while you were looking at it, so nothing was moved. The board is up to date now: move it again if you still want to.",
+  lead_name_unusable:
+    "This lead's business name can't be used as a host name. Add the host by hand from Hosts.",
 };
 
 /** A sentence, not a bare word or a token: at least two words. */
@@ -542,6 +558,14 @@ export function shouldHoldCard(shownCard, urlCard, dirtyCard) {
 /** How often the board refreshes by itself while the page is visible. */
 export const BOARD_REFRESH_MS = 30_000;
 
+/**
+ * One sentence from its parts, joined with single spaces. A part that is
+ * empty (a log line with no time, say) leaves no gap before the full stop.
+ */
+function sentence(...parts) {
+  return `${parts.filter((p) => typeof p === "string" && p !== "").join(" ")}.`;
+}
+
 function lastMoveInto(activity, stageId) {
   return (Array.isArray(activity) ? activity : []).find((a) => a.kind === "stage_move" && a.to_stage === stageId) || null;
 }
@@ -556,7 +580,7 @@ export function freshnessVerdict(def, shown, fresh, toStageId, activity, now = D
   if (!shown || !fresh || fresh.stage === shown.stage) return { kind: "go" };
   const entry = lastMoveInto(activity, fresh.stage);
   const who = entry ? (entry.actor_email ? activityActor(entry) : "") : "";
-  const when = entry ? relativeTime(entry.occurred_at, now) : "";
+  const when = entry && entry.occurred_at ? relativeTime(entry.occurred_at, now) : "";
   const here = stageLabel(def, fresh.stage);
   const name = fresh.name || shown.name;
   if (fresh.stage === toStageId) {
@@ -564,17 +588,17 @@ export function freshnessVerdict(def, shown, fresh, toStageId, activity, now = D
       kind: "already",
       title: `${name} is already in ${here}`,
       description: who
-        ? `${who} moved it there ${when}. Nothing else was changed.`
+        ? `${sentence(who, "moved it there", when)} Nothing else was changed.`
         : entry
-          ? `It moved there by itself ${when}. Nothing else was changed.`
+          ? `${sentence("It moved there by itself", when)} Nothing else was changed.`
           : "Someone else moved it there first. Nothing else was changed.",
     };
   }
   const from = stageLabel(def, shown.stage);
   const how = who
-    ? `${who} moved it from ${from} to ${here} ${when}.`
+    ? sentence(`${who} moved it from ${from} to ${here}`, when)
     : entry
-      ? `It moved from ${from} to ${here} by itself ${when}.`
+      ? sentence(`It moved from ${from} to ${here} by itself`, when)
       : `It is in ${here} now, not ${from}.`;
   return {
     kind: "moved",
@@ -649,4 +673,160 @@ export function safeHttpUrl(value) {
   if (typeof value !== "string") return "";
   const v = value.trim();
   return /^https?:\/\/[^\s]+$/i.test(v) ? v : "";
+}
+
+// ── Homes, targets and Beta leads (issue #3802, Wave 1) ────────────────────
+//
+// Pure helpers for the role homes, the Team dashboard and the Beta leads
+// page. Every number they are given was counted by the server; nothing here
+// invents one.
+
+function count(v) {
+  return Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : 0;
+}
+
+/** { overdue, today, total } for one pipeline's due block (missing = zeros). */
+export function dueTotals(due) {
+  const overdue = count(due?.overdue);
+  const today = count(due?.today);
+  return { overdue, today, total: overdue + today };
+}
+
+/** The colour of a "done / target" pill: reached, started, or not started. */
+export function targetPill(done, target) {
+  const d = count(done);
+  const t = count(target);
+  if (t > 0 && d >= t) return "success";
+  if (d > 0) return "warning";
+  return "default";
+}
+
+/**
+ * One row per stage for the "by stage" bars: [{ id, label, count, width }].
+ * `width` is a percentage of the largest count; a stage with nobody in it is
+ * a zero-width bar, never a made-up minimum.
+ */
+export function funnelRows(stages) {
+  const rows = (Array.isArray(stages) ? stages : []).map((s) => ({
+    id: String(s?.id ?? ""),
+    label: String(s?.label ?? s?.id ?? ""),
+    count: count(s?.count),
+  }));
+  const max = rows.reduce((m, r) => Math.max(m, r.count), 0);
+  return rows.map((r) => ({ ...r, width: max > 0 ? Math.round((r.count / max) * 1000) / 10 : 0 }));
+}
+
+/** The control a beta lead's row shows: "open" once a host exists, else "add". */
+export function betaLeadButton(lead) {
+  return lead?.host && typeof lead.host.id === "string" && lead.host.id !== "" ? "open" : "add";
+}
+
+const BETA_TYPE_LABELS = {
+  restaurant: "Restaurant",
+  cafe_bar: "Caf\u00E9 / Bar",
+  club_nightlife: "Club / Nightlife",
+  event_organiser: "Event organiser",
+  experience_tour: "Experience / Tour",
+  venue_space: "Venue / Space",
+  other: "Other",
+};
+
+/** A beta lead type as the lead saw it on the form. */
+export function betaTypeLabel(type) {
+  return Object.hasOwn(BETA_TYPE_LABELS, type) ? BETA_TYPE_LABELS[type] : String(type ?? "");
+}
+
+/** The small line under "Add to Hosts": what will be carried over. */
+export function betaSuggestionLine(lead) {
+  const s = lead?.suggested || {};
+  const icp = s.icp_note === "set" && s.icp_label ? `As ${s.icp_label}` : "ICP to pick on the card";
+  const region = s.region_note === "set" && s.region_name ? s.region_name : "Region to pick on the card";
+  return `${icp} ${String.fromCharCode(183)} ${region}`;
+}
+
+export const BETA_CONVERT_STATUSES = ["created", "exists", "linked", "duplicate"];
+
+/**
+ * The toast for the server's answer to "Add to Hosts":
+ * { variant, title, description }. `fallbackName` is the lead's business name,
+ * used only if the answer carries no record name.
+ */
+export function betaConvertMessage(result, fallbackName = "") {
+  const name = result?.record?.name || fallbackName || "This lead";
+  const status = result?.status;
+  if (status === "exists") {
+    return { variant: "info", title: `${name} is already in Hosts`, description: "Someone added it first." };
+  }
+  if (status === "linked") {
+    return { variant: "info", title: `${name} was already in Hosts`, description: "This lead is now linked to it." };
+  }
+  if (status === "duplicate") {
+    return {
+      variant: "info",
+      title: `${name} is already in Hosts`,
+      description: "A host with this name exists. Open it instead.",
+    };
+  }
+  if (status !== "created") {
+    return { variant: "error", title: "That didn't go through. Try again.", description: "" };
+  }
+  const city = typeof result.city === "string" ? result.city : "";
+  const notes = [];
+  if (result.icp_note === "several") notes.push("They chose several types, so pick the ICP on the card.");
+  else if (result.icp_note !== "set") notes.push("Their type has no matching ICP, so pick one on the card.");
+  if (result.region_note === "ambiguous") {
+    notes.push(`More than one Launch City is called '${city}'. Pick the region on the card.`);
+  } else if (result.region_note !== "set") {
+    notes.push(`'${city}' isn't a Launch City, so the region is empty. Pick one on the card.`);
+  }
+  return {
+    variant: "success",
+    title: `${name} added to Hosts`,
+    description: notes.length === 0 ? "ICP and region carried over. You are the owner." : notes.join(" "),
+  };
+}
+
+/**
+ * "This week by person" rows, in the order the server sent them:
+ * [{ email, name, role, former, touches, stageMoves, added, overdue, dueToday }].
+ * Two people whose addresses give the same first name are told apart by their
+ * full address.
+ */
+export function weekRows(byPerson) {
+  const list = (Array.isArray(byPerson) ? byPerson : []).filter((p) => p && typeof p.email === "string" && p.email !== "");
+  const team = list.map((p) => ({ email: p.email, display_name: p.display_name }));
+  return list.map((p) => ({
+    email: p.email,
+    name: ownerLabel(p.email, team),
+    role: typeof p.role === "string" ? p.role : "",
+    former: p.status === "former",
+    invited: p.status === "invited",
+    touches: count(p.touches),
+    stageMoves: count(p.stage_moves),
+    added: count(p.added),
+    overdue: count(p.overdue),
+    dueToday: count(p.due_today),
+  }));
+}
+
+/** True when nobody logged anything this week. */
+export function weekIsEmpty(rows) {
+  return (Array.isArray(rows) ? rows : []).every((r) => r.touches + r.stageMoves + r.added === 0);
+}
+
+/** "Monday 12 October" for the viewer's own day (YYYY-MM-DD). */
+export function longDate(today) {
+  if (typeof today !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return "";
+  const [y, m, d] = today.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+}
+
+/** A whole number from 1 to 1000, or null when what was typed is not one. */
+export function parseTarget(typed) {
+  const text = String(typed ?? "").trim();
+  if (!/^\d{1,4}$/.test(text)) return null;
+  const n = Number(text);
+  return n >= 1 && n <= 1000 ? n : null;
 }

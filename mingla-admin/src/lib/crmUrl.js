@@ -102,3 +102,55 @@ export function cleanCrmState(state, { icpIds = [], regionSlugs = [] } = {}) {
 export function sameCrmState(a, b) {
   return buildCrmSearch(a) === buildCrmSearch(b);
 }
+
+// ── Homes, the Team dashboard and Beta leads (issue #3802, Wave 1) ─────────
+//
+// The same rules as above: whatever is in the address is untrusted, a value
+// that is not plainly well-formed is dropped, and defaults are left out.
+
+/** The Hosts board cut down to one target: an ICP and a region. */
+export function targetSliceHash(icp, regionSlug) {
+  return buildCrmHash("hosts", { icp, region: regionSlug });
+}
+
+const EMAIL = /^[^\s@?&#=]{1,64}@[^\s@?&#=]{1,190}$/;
+
+/** #/team-dashboard?person=<teammate email>: whose due cards are listed. */
+export function parseTeamSearch(search) {
+  const state = { person: "" };
+  let params;
+  try {
+    params = new URLSearchParams(typeof search === "string" ? search : "");
+  } catch {
+    return state;
+  }
+  const person = params.get("person");
+  if (typeof person === "string" && EMAIL.test(person)) state.person = person.toLowerCase();
+  return state;
+}
+
+export function buildTeamSearch(state) {
+  const params = new URLSearchParams();
+  const person = typeof state?.person === "string" ? state.person : "";
+  if (person && EMAIL.test(person)) params.set("person", person.toLowerCase());
+  return params.toString();
+}
+
+export const BETA_SHOWS = ["all", "new"];
+
+/** #/beta-leads?show=new: every lead, or only the ones not in Hosts yet. */
+export function parseBetaSearch(search) {
+  const state = { show: "all" };
+  let params;
+  try {
+    params = new URLSearchParams(typeof search === "string" ? search : "");
+  } catch {
+    return state;
+  }
+  if (params.get("show") === "new") state.show = "new";
+  return state;
+}
+
+export function buildBetaSearch(state) {
+  return state?.show === "new" ? "show=new" : "";
+}
