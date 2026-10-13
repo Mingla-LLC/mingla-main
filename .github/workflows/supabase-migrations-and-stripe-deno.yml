@@ -1188,6 +1188,20 @@ jobs:
           # root, like the suites above.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave1_homes_targets_beta.tester.adversarial.pg17.test.sql
+          # Issue #3802 (Wave 4) — personal agent keys and the gateway, on the
+          # same schema. A key is shown once and stored as a digest; one active
+          # key per person per agent; every read tool as each role; a key that
+          # cannot be used gives one answer whatever the cause; "via" comes
+          # only from the gateway, for this person, in this transaction, and
+          # a browser session cannot set it; removing a person ends their keys
+          # and a role change keeps them; the request limits; the filtered
+          # reader; a caller cannot name a person or a tool off the list; and
+          # the migration's self-check against deliberate mistakes. Part 2
+          # opens real sessions. Runs as `supabase_admin` from the repository
+          # root, like the suites above (it reads two migration files, and
+          # adds the sign-in columns this image lacks, removing them again).
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave4_agent_keys_gateway.implementor.happy.pg17.test.sql
 
           # toward #3697 Wave 6 — Ads credit FIFO withdraw, idempotency, immutability.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
