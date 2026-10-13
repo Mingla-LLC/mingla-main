@@ -25,5 +25,13 @@ export const brandPhoneE164 = (
   return E164_RE.test(compact) ? compact : null;
 };
 
+/**
+ * The number to dial for a saved contact phone: canonical E.164 when the value
+ * carries its country, otherwise the saved value untouched. This is the part
+ * after the scheme, for callers that write the link out themselves.
+ */
+export const brandPhoneDialNumber = (phone: string): string =>
+  brandPhoneE164(phone) ?? phone;
+
 export const brandPhoneTelHref = (phone: string): string =>
-  `tel:${brandPhoneE164(phone) ?? phone}`;
+  `tel:${brandPhoneDialNumber(phone)}`;

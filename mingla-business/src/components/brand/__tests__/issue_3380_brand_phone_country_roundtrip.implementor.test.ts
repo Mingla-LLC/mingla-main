@@ -274,7 +274,7 @@ describe("issue #3380 — brand phone keeps its country", () => {
     expect(editor).not.toContain('draft.contact?.phoneCountryIso ?? draft.countryCode ?? "GB"');
     expect(profile).toContain("url: brandPhoneTelHref(brand.contact.phone)");
     expect(profile).not.toContain("url: `tel:${brand.contact.phone}`");
-    expect(publicPage).toContain("onExternal(brandPhoneTelHref(phone))");
+    expect(publicPage).toContain("onExternal(`tel:${brandPhoneDialNumber(phone)}`)");
     expect(publicPage).not.toContain("onExternal(`tel:${phone}`)");
   });
 });

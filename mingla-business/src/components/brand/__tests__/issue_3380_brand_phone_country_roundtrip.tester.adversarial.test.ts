@@ -429,7 +429,7 @@ describe("issue #3380 tester — the public tel: link", () => {
   test("no phone, no link: both surfaces only build the link when a number exists", () => {
     const publicPage = source("../packages/brand-rendering/PublicBrandPage.tsx");
     expect(publicPage).toMatch(
-      /\{phone !== undefined \? \(\s*<Pressable\s*onPress=\{\(\) => onExternal\(brandPhoneTelHref\(phone\)\)\}/,
+      /\{phone !== undefined \? \(\s*<Pressable\s*onPress=\{\(\) => onExternal\(`tel:\$\{brandPhoneDialNumber\(phone\)\}`\)\}/,
     );
     expect(publicPage).not.toContain("`tel:${phone}`");
 

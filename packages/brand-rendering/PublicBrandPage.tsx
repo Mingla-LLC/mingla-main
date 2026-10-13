@@ -93,7 +93,7 @@ import { spacing } from "./designTokens";
 // runner. Deep-import only; deliberately NOT re-exported from index.ts, for the
 // same partial-mock reason documented above for `hexToRgba`.
 import { solveSocialRow } from "./socialRowSizing";
-import { brandPhoneTelHref } from "./brandPhoneHref";
+import { brandPhoneDialNumber } from "./brandPhoneHref";
 // META-ORCH-1255(R2) — the DISPLAY-ONLY menu renderer lives in its own module
 // so the venue public page can share it WITHOUT dragging this whole file into
 // the eager __common chunk (ORCH-1083 bundle budget). Composition unchanged.
@@ -2307,7 +2307,7 @@ const AboutTab: React.FC<{
           ) : null}
           {phone !== undefined ? (
             <Pressable
-              onPress={() => onExternal(brandPhoneTelHref(phone))}
+              onPress={() => onExternal(`tel:${brandPhoneDialNumber(phone)}`)}
               accessibilityRole="link"
               accessibilityLabel={`Call ${phone}`}
               style={[styles.contactRow, surface.card]}
