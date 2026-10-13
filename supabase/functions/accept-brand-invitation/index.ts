@@ -17,7 +17,7 @@
 //           new_owner_account_id }
 //   → 400 { error:'validation' }
 //   → 401 { error:'unauthenticated' }
-//   → 403 { error:'invite_email_mismatch' }
+//   → 403 { error:'invite_email_mismatch', invited_email? } (token path names it)
 //   → 404 { error:'invite_not_found' }
 //   → 409 { error:'invite_currency_mismatch', reason, brand_currency, partner_currencies }
 //   → 410 { error:'invite_already_used' | 'invite_expired' | 'invite_revoked' }
@@ -356,6 +356,31 @@ export async function handler(req: Request): Promise<Response> {
           );
           return json(
             { error: mapped.error, partner_gate: partnerGate },
+            mapped.status,
+          );
+        }
+        if (mapped.error === "invite_email_mismatch" && hasToken) {
+          // #3259 — name the invited address so the wrong-account screen can
+          // say which account to switch to. Token path ONLY: the caller holds
+          // the secret link, and knowing the address does not let them accept
+          // (they must still sign in as it). The tokenless { invitationId }
+          // path answers before the RPC and never discloses it. Best-effort.
+          let invitedEmail: string | null = null;
+          try {
+            const { data: invitedRow } = await service
+              .from("brand_invitations")
+              .select("email")
+              .eq("token_hash", tokenHash)
+              .maybeSingle();
+            const email = (invitedRow as { email?: unknown } | null)?.email;
+            if (typeof email === "string" && email.trim().length > 0) {
+              invitedEmail = email.trim().toLowerCase();
+            }
+          } catch {
+            // The 403 stands without the address.
+          }
+          return json(
+            { error: mapped.error, invited_email: invitedEmail },
             mapped.status,
           );
         }

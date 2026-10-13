@@ -17,10 +17,11 @@
  * action runtime-testable in isolation (interactive-elements-must-fire rule)
  * without mounting the whole expo-router + auth + query route.
  *
- * LIMITATION (ORCH-1404 OQ-1): only the SIGNED-IN email is shown. The web 403
- * body is `{ error: "invite_email_mismatch" }` and carries NO invited address —
- * the edge fn deliberately does not leak it to a token holder. Showing the
- * invited email would require an out-of-scope edge-fn change.
+ * BOTH ADDRESSES (#3259): when the accept 403 names the invited address
+ * (`invited_email`, token path only), the screen shows it beside the signed-in
+ * one so the invitee knows which account to switch to. When the server does not
+ * name it, the original copy with only the signed-in email is kept — the
+ * invited address is never guessed.
  */
 
 import React from "react";
@@ -41,6 +42,8 @@ import {
 export interface WrongAccountRecoveryProps {
   /** The email of the account currently signed in, or null when unknown. */
   signedInEmail: string | null;
+  /** The email the invitation was sent to, or null when the server did not say. */
+  invitedEmail?: string | null;
   /** Signs the current user out and resumes the invite as a different account. */
   onSwitchAccount: () => void | Promise<void>;
   /** Secondary action — leave the flow. */
@@ -49,6 +52,7 @@ export interface WrongAccountRecoveryProps {
 
 export function WrongAccountRecovery({
   signedInEmail,
+  invitedEmail = null,
   onSwitchAccount,
   onGoHome,
 }: WrongAccountRecoveryProps): React.ReactElement {
@@ -75,13 +79,41 @@ export function WrongAccountRecovery({
     >
       <View style={styles.card}>
         <Text style={styles.title}>Wrong account</Text>
-        <Text style={styles.copy}>
-          This invitation was sent to a different email. Sign in with the email
-          that received the invite.
-        </Text>
-        {signedInEmail !== null ? (
-          <Text style={styles.context}>You're signed in as {signedInEmail}.</Text>
-        ) : null}
+        {invitedEmail !== null ? (
+          <>
+            <Text style={styles.copy}>
+              This invitation was sent to a different email than the one
+              you're signed in with.
+            </Text>
+            <View style={styles.rows}>
+              <View style={styles.row}>
+                <Text style={styles.rowLabel}>Invited</Text>
+                <Text style={styles.rowValue}>{invitedEmail}</Text>
+              </View>
+              {signedInEmail !== null ? (
+                <View style={[styles.row, styles.rowDivided]}>
+                  <Text style={styles.rowLabel}>Signed in as</Text>
+                  <Text style={styles.rowValue}>{signedInEmail}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.copy}>
+              Sign in with {invitedEmail} to accept it.
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.copy}>
+              This invitation was sent to a different email. Sign in with the
+              email that received the invite.
+            </Text>
+            {signedInEmail !== null ? (
+              <Text style={styles.context}>
+                You're signed in as {signedInEmail}.
+              </Text>
+            ) : null}
+          </>
+        )}
       </View>
     </InviteScreenShell>
   );
@@ -112,6 +144,33 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: textTokens.secondary,
     lineHeight: 22,
+  },
+  rows: {
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    borderRadius: radiusTokens.md,
+  },
+  row: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    gap: 2,
+  },
+  rowDivided: {
+    borderTopWidth: 1,
+    borderTopColor: glass.border.profileBase,
+  },
+  rowLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: textTokens.secondary,
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+  },
+  rowValue: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: textTokens.primary,
+    lineHeight: 21,
   },
   context: {
     fontSize: 14,

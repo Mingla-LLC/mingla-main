@@ -98,6 +98,8 @@ Deno.test("#3259 the proper codes are unchanged, whatever the message", () => {
 // answers the accept RPC exactly as production did on 2026-10-13.
 async function acceptWithRpcError(
   rpcError: { code: string; message: string },
+  // What the brand_invitations email lookup answers; undefined = it fails.
+  invitedEmailReply?: { email: string } | null,
 ): Promise<Response> {
   const userId = "00000000-3259-4000-8000-000000000001";
   const realFetch = globalThis.fetch;
@@ -130,6 +132,11 @@ async function acceptWithRpcError(
       url.includes("/rest/v1/rpc/accept_invite_and_transfer_brand_ownership")
     ) {
       return reply({ ...rpcError, details: null, hint: null }, 400);
+    }
+    if (url.includes("/rest/v1/brand_invitations")) {
+      return invitedEmailReply === undefined
+        ? reply({ message: "lookup failed in test" }, 500)
+        : reply(invitedEmailReply, 200);
     }
     return reply({ message: `unexpected request in test: ${url}` }, 599);
   }) as typeof fetch;
@@ -183,4 +190,37 @@ Deno.test("#3259 handler: an unrelated P0001 raise answers 500 server, not not-f
   });
   assertEquals(res.status, 500);
   assertEquals((await res.json()).error, "server");
+});
+
+Deno.test("#3259 handler: the mismatch 403 names the invited email for a token holder", async () => {
+  const res = await acceptWithRpcError(
+    { code: "P0004", message: "invite_email_mismatch" },
+    { email: " Owner@Brand.test " },
+  );
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), {
+    error: "invite_email_mismatch",
+    invited_email: "owner@brand.test",
+  });
+});
+
+Deno.test("#3259 handler: a failed invited-email lookup still answers 403, with no address", async () => {
+  const res = await acceptWithRpcError({
+    code: "P0004",
+    message: "invite_email_mismatch",
+  });
+  assertEquals(res.status, 403);
+  assertEquals(await res.json(), {
+    error: "invite_email_mismatch",
+    invited_email: null,
+  });
+});
+
+Deno.test("#3259 handler: no other refusal discloses the invited email", async () => {
+  const res = await acceptWithRpcError(
+    { code: "P0003", message: "invite_expired" },
+    { email: "owner@brand.test" },
+  );
+  assertEquals(res.status, 410);
+  assertEquals(await res.json(), { error: "invite_expired" });
 });

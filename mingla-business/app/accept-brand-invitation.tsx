@@ -91,7 +91,7 @@ import {
 type Phase =
   | { kind: "loading" }
   | { kind: "success"; result: AcceptBrandInvitationResult }
-  | { kind: "error"; code: string; status: number };
+  | { kind: "error"; code: string; status: number; invitedEmail?: string | null };
 
 export default function AcceptBrandInvitationRoute(): React.ReactElement {
   const router = useRouter();
@@ -133,7 +133,12 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
         setPhase({ kind: "success", result });
       } catch (err) {
         if (err instanceof BrandInvitationServiceError) {
-          setPhase({ kind: "error", code: err.code, status: err.status });
+          setPhase({
+            kind: "error",
+            code: err.code,
+            status: err.status,
+            invitedEmail: err.invitedEmail,
+          });
         } else {
           setPhase({ kind: "error", code: "server", status: 500 });
         }
@@ -247,6 +252,7 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
       return (
         <WrongAccountRecovery
           signedInEmail={user?.email ?? null}
+          invitedEmail={phase.invitedEmail ?? null}
           onSwitchAccount={handleSwitchAccount}
           onGoHome={handleGoHome}
         />
