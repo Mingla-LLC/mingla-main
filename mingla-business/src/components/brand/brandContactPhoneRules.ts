@@ -1,7 +1,8 @@
 /**
  * Issue #3380 — the rules behind the brand contact phone field, kept out of
  * the component so every branch is provable without rendering. The only state
- * is the in-memory "country last picked for this number" hint further down.
+ * is the in-memory "country last picked for this number" hint, held in
+ * `utils/brandPhoneSessionCountries.ts` so sign-out can empty it.
  *
  * `brands.contact_phone` used to hold only the digits typed in the box. The
  * country the host picked was never saved, so every re-open showed the default
@@ -31,6 +32,11 @@ import {
 import { brandPhoneE164 } from "@mingla/brand-rendering/brandPhoneHref";
 
 import type { BrandContact } from "../../types/brand";
+import {
+  clearBrandPhoneSessionCountries,
+  getBrandPhoneSessionCountry,
+  setBrandPhoneSessionCountry,
+} from "../../utils/brandPhoneSessionCountries";
 import { phoneCountryIsoFromPlaceCountry } from "../../utils/phoneCountryIsoFromPlaceCountry";
 
 /** The two facts this file needs about a picker country. */
@@ -43,6 +49,32 @@ export type BrandPhoneDirectory = readonly BrandPhoneCountry[];
 
 /** The flag the phone field has always fallen back to when nothing is known. */
 export const BRAND_PHONE_FALLBACK_COUNTRY_ISO = "GB";
+
+/**
+ * Where the country on the phone field came from (issue #3380 rework 2).
+ *
+ *   - `stored`   read out of a saved E.164 number;
+ *   - `brand`    the brand's own country;
+ *   - `picked`   the host picked it in the country list during this edit;
+ *   - `fallback` none of those: nobody chose it.
+ *
+ * A number typed without a "+" is only ever composed under a country the host
+ * can be said to have chosen. Under `fallback` it is refused, never stamped
+ * with a default dial code: no rule can tell `4155550123` (United States) from
+ * a UK, Ghanaian or Kenyan number by its digits.
+ */
+export type BrandPhoneCountrySource = "stored" | "brand" | "picked" | "fallback";
+
+/** What the field says when a number is typed and no country was chosen. */
+export const BRAND_PHONE_CHOOSE_COUNTRY_MESSAGE =
+  "Choose the country for this number.";
+
+/** What the country chip says while nobody has chosen a country. */
+export const BRAND_PHONE_CHOOSE_COUNTRY_LABEL = "Choose country";
+
+/** Added to the wrong-country refusal for the UK ranges it cannot tell apart. */
+export const BRAND_PHONE_UK_PLUS_ADVICE =
+  "If it is a UK number, type it starting with +44.";
 
 /**
  * The saved value as canonical E.164, or null when it is not one (a legacy
@@ -85,29 +117,27 @@ export function brandOwnPhoneCountry(
  * pretends otherwise. The number that is saved and dialled is identical
  * whichever country the chip shows.
  */
-const SESSION_COUNTRY_LIMIT = 50;
-const sessionCountryByNumber = new Map<string, string>();
-
 /** Remember the country a number was just saved under (successful saves only). */
 export function rememberBrandPhoneSavedCountry(
   saved: Extract<BrandPhoneSaveResult, { ok: true }>,
 ): void {
   const e164 = storedBrandPhoneE164(saved.phone);
   if (e164 === null || saved.phoneCountryIso === undefined) return;
-  sessionCountryByNumber.delete(e164);
-  sessionCountryByNumber.set(e164, saved.phoneCountryIso.toUpperCase());
-  if (sessionCountryByNumber.size > SESSION_COUNTRY_LIMIT) {
-    const oldest = sessionCountryByNumber.keys().next();
-    if (oldest.done !== true) sessionCountryByNumber.delete(oldest.value);
-  }
+  setBrandPhoneSessionCountry(e164, saved.phoneCountryIso);
 }
+
+/**
+ * Forget every remembered country. Sign-out calls the same function through
+ * `clearAllStores`, so one account's picks never open under the next one.
+ */
+export const clearBrandPhoneSavedCountries = clearBrandPhoneSessionCountries;
 
 /** The country last picked for this number in this run of the app, if any. */
 export function brandPhoneSessionCountryIso(
   stored: string | null | undefined,
 ): string | null {
   const e164 = storedBrandPhoneE164(stored);
-  return e164 === null ? null : sessionCountryByNumber.get(e164) ?? null;
+  return e164 === null ? null : getBrandPhoneSessionCountry(e164);
 }
 
 /**
@@ -216,6 +246,30 @@ export function brandPhoneForEdit(
   };
 }
 
+/**
+ * Where the country `brandPhoneForEdit` opens the chip on came from. Never
+ * `picked`: that only happens when the host uses the country list.
+ */
+export function brandPhoneCountrySourceForEdit(
+  stored: string | null | undefined,
+  brandCountryCode: string | null | undefined,
+  directory: BrandPhoneDirectory,
+  sessionCountryIso: string | null | undefined = brandPhoneSessionCountryIso(
+    stored,
+  ),
+): Exclude<BrandPhoneCountrySource, "picked"> {
+  const fromNumber = brandPhoneCountryFromStored(
+    stored,
+    brandCountryCode,
+    directory,
+    sessionCountryIso,
+  );
+  if (fromNumber !== null) return "stored";
+  return brandOwnPhoneCountry(brandCountryCode, directory) !== null
+    ? "brand"
+    : "fallback";
+}
+
 export type BrandPhoneSaveResult =
   | {
       ok: true;
@@ -237,7 +291,16 @@ export type BrandPhoneSaveResult =
 export function brandPhoneForSave(input: {
   stored: string | null | undefined;
   brandCountryCode: string | null | undefined;
-  edit: { text: string; countryIso: string } | null;
+  edit: {
+    text: string;
+    countryIso: string;
+    /**
+     * Where `countryIso` came from. Left out, it is read as `picked` (what
+     * every caller meant before the source was tracked). The editor always
+     * passes it.
+     */
+    countrySource?: BrandPhoneCountrySource;
+  } | null;
   directory: BrandPhoneDirectory;
 }): BrandPhoneSaveResult {
   const { stored, brandCountryCode, edit, directory } = input;
@@ -310,6 +373,18 @@ export function brandPhoneForSave(input: {
   // ranges that collide with Nigerian mobile prefixes (070 personal numbers,
   // 0808 freephone, 09 premium rate) are refused here; a host who really has
   // one types it with "+44".
+  //
+  // issue #3380 rework 2 — and a number typed without a "+" (or the "00"
+  // international prefix) under a country NOBODY chose is refused outright.
+  // The probe below only recognises Nigerian mobiles; a US, Ghanaian, Kenyan
+  // or Irish number under the default flag would otherwise be saved as +44.
+  // A picked country is never second-guessed into another one: the outcome is
+  // a refusal with advice, or a save under the country the host picked.
+  const compact = text.replace(/[\s().-]/g, "");
+  const namesOwnCountry = compact.startsWith("+") || /^00[1-9]/.test(compact);
+  if ((edit.countrySource ?? "picked") === "fallback" && !namesOwnCountry) {
+    return { ok: false, message: BRAND_PHONE_CHOOSE_COUNTRY_MESSAGE };
+  }
   if (!text.startsWith("+")) {
     const national = text.replace(/\D/g, "").replace(/^0+/, "");
     const ukFreephone = country.dialCode === "+44" && national.startsWith("800");
@@ -321,7 +396,16 @@ export function brandPhoneForSave(input: {
           mode: "mobile",
         });
     if (probe !== null && !probe.ok && probe.problem === "wrong_country") {
-      return { ok: false, message: probe.message };
+      // 070 personal, 0808 freephone and 09 premium-rate numbers are real UK
+      // ranges the probe reads as Nigerian. Say how to save one.
+      const maybeUk =
+        country.dialCode === "+44" && /^(70|808|9)/.test(national);
+      return {
+        ok: false,
+        message: maybeUk
+          ? `${probe.message} ${BRAND_PHONE_UK_PLUS_ADVICE}`
+          : probe.message,
+      };
     }
   }
   const e164 = composePhoneE164(country.dialCode, text);

@@ -55,10 +55,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // #3191/#3208 — the contact-email rule and its copy have one owner.
 import { validateBrandContactEmail } from "../../utils/brandContactEmail";
 import {
+  BRAND_PHONE_CHOOSE_COUNTRY_LABEL,
   brandContactWithSavedPhone,
+  brandPhoneCountrySourceForEdit,
   brandPhoneForEdit,
   brandPhoneForSave,
   rememberBrandPhoneSavedCountry,
+  type BrandPhoneCountrySource,
 } from "./brandContactPhoneRules";
 
 import {
@@ -380,9 +383,14 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   // the country, both read back out of the saved number. `phoneEdit` stays null
   // until the host touches the box or the chip, so a number they never touched
   // is never a reason to refuse a save.
+  //
+  // issue #3380 rework 2 — `countrySource` says where the chip's country came
+  // from. A number typed without a "+" is only composed under a country the
+  // host can be said to have chosen; under `fallback` Save asks for one.
   const [phoneEdit, setPhoneEdit] = useState<{
     text: string;
     countryIso: string;
+    countrySource: BrandPhoneCountrySource;
   } | null>(null);
   const [contactPhoneError, setContactPhoneError] = useState<string | null>(
     null,
@@ -390,7 +398,14 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   const savedPhone = draft?.contact?.phone;
   const brandCountryCode = draft?.countryCode;
   const openedPhone = useMemo(
-    () => brandPhoneForEdit(savedPhone, brandCountryCode, PHONE_COUNTRIES),
+    () => ({
+      ...brandPhoneForEdit(savedPhone, brandCountryCode, PHONE_COUNTRIES),
+      countrySource: brandPhoneCountrySourceForEdit(
+        savedPhone,
+        brandCountryCode,
+        PHONE_COUNTRIES,
+      ),
+    }),
     [savedPhone, brandCountryCode],
   );
   const [discardDialogVisible, setDiscardDialogVisible] = useState<boolean>(false);
@@ -407,7 +422,11 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     if (
       phoneEdit !== null &&
       (phoneEdit.text.trim() !== openedPhone.localText ||
-        phoneEdit.countryIso !== openedPhone.countryIso)
+        phoneEdit.countryIso !== openedPhone.countryIso ||
+        // Choosing the country the chip already defaulted to is still a
+        // choice: it lets a number saved without a country be saved with one.
+        (openedPhone.countrySource === "fallback" &&
+          phoneEdit.countrySource === "picked"))
     ) {
       return true;
     }
@@ -898,6 +917,8 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
                 setPhoneEdit({
                   text: v,
                   countryIso: phoneEdit?.countryIso ?? openedPhone.countryIso,
+                  countrySource:
+                    phoneEdit?.countrySource ?? openedPhone.countrySource,
                 });
                 if (contactPhoneError !== null) setContactPhoneError(null);
               }}
@@ -909,9 +930,17 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
                 setPhoneEdit({
                   text: phoneEdit?.text ?? openedPhone.localText,
                   countryIso: country.iso,
+                  countrySource: "picked",
                 });
                 if (contactPhoneError !== null) setContactPhoneError(null);
               }}
+              // issue #3380 rework 2 — no flag until somebody chose a country.
+              countryPlaceholder={
+                (phoneEdit?.countrySource ?? openedPhone.countrySource) ===
+                "fallback"
+                  ? BRAND_PHONE_CHOOSE_COUNTRY_LABEL
+                  : undefined
+              }
               placeholder="Phone number"
               accessibilityLabel="Contact phone"
               error={contactPhoneError}
