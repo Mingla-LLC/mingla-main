@@ -352,7 +352,7 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
   it("Sales and marketing and Founding partner open exactly home, hosts and creators", () => {
     for (const a of [growth, partner]) {
       const open = PAGE_IDS.filter((id) => canOpenPage(a, id));
-      assert.deepEqual(open.sort(), ["beta-leads", "creators", "home", "hosts"], a.role);
+      assert.deepEqual(open.sort(), ["agent", "beta-leads", "creators", "home", "hosts"], a.role);
     }
   });
   it("a page nobody listed is still closed to them", () => {
