@@ -851,7 +851,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     previousEndAt: string | null;
   } | null>(null);
 
-  // ORCH-0859 REWORK 3: auto-seed days from Step 1 date range.
+  // ORCH-0859 REWORK 3: auto-seed days from Step 1 date range (unchanged).
+  // Issue #3801 — the range-to-day-count guards and the grow / trim shapes
+  // below are the original ones; what changed is that a trim which would
+  // remove a day holding host content is asked about first.
   useEffect(() => {
     const startIso = step1Draft.startAt;
     const endIso = step1Draft.endAt;
@@ -866,16 +869,16 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       Math.floor((endMs - startMs) / MS_PER_DAY) + 1,
     );
     // Issue #3801 — never drop a day that holds host content without asking.
-    const fitted = fitItineraryToDayCount(daysDraftRef.current, dayCount);
+    const { atRisk } = fitItineraryToDayCount(daysDraftRef.current, dayCount);
     const isFirstFit = !itineraryFittedOnceRef.current;
     itineraryFittedOnceRef.current = true;
-    if (fitted.atRisk.length > 0) {
+    if (atRisk.length > 0) {
       // On open there is no date change to undo, so nothing is asked and
       // nothing is removed. After a date change, ask; declining puts the
       // previous dates back.
       if (!isFirstFit) {
         setPendingDayTrim({
-          atRisk: fitted.atRisk,
+          atRisk,
           dayCount,
           previousStartAt: acceptedDatesRef.current.startAt,
           previousEndAt: acceptedDatesRef.current.endAt,
@@ -884,7 +887,23 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       return;
     }
     acceptedDatesRef.current = { startAt: startIso, endAt: endIso };
-    if (fitted.days !== daysDraftRef.current) setDaysDraft(fitted.days);
+    setDaysDraft((current) => {
+      if (current.length === dayCount) return current;
+      if (current.length < dayCount) {
+        const next = [...current];
+        for (let i = current.length; i < dayCount; i += 1) {
+          next.push({
+            ordinal: i + 1,
+            title: `Day ${i + 1}`,
+            narrative: "",
+            media: [],
+          });
+        }
+        return next;
+      }
+      // Only reached when no trailing day holds host content (checked above).
+      return current.slice(0, dayCount);
+    });
   }, [step1Draft.startAt, step1Draft.endAt]);
 
   const handleKeepDatesAfterTrimQuestion = useCallback((): void => {

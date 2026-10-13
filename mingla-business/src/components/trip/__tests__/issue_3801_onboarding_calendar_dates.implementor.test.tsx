@@ -1,5 +1,5 @@
 /**
- * @jest-environment ./jest.issue3801.timezone-env.cjs
+ * @jest-environment ./__tests__/support/issue3801TimeZoneEnvironment.cjs
  *
  * Issue #3801 — a trip's start, end and fixed balance date read the SAME
  * calendar day in every timezone, on web and in the native picker.
@@ -68,7 +68,7 @@ const START = "2026-11-12T00:00:00.000Z";
 const END = "2026-11-16T23:59:59.000Z";
 const BALANCE = "2026-10-29";
 
-// Supplied by jest.issue3801.timezone-env.cjs, which also restores the
+// Supplied by __tests__/support/issue3801TimeZoneEnvironment.cjs, which also restores the
 // original zone when this file finishes.
 const setZone = (zone: string): void => {
   (

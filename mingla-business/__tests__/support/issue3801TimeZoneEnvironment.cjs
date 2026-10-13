@@ -12,7 +12,7 @@
  * original zone back when the file finishes, so other suites in the same
  * worker are unaffected. Opt in per file with a docblock:
  *
- *   @jest-environment ./jest.issue3801.timezone-env.cjs
+ *   @jest-environment ./__tests__/support/issue3801TimeZoneEnvironment.cjs
  */
 
 const { TestEnvironment: NodeEnvironment } = require("jest-environment-node");

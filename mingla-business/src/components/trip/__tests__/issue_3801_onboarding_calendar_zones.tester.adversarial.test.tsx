@@ -1,5 +1,5 @@
 /**
- * @jest-environment ./jest.issue3801.timezone-env.cjs
+ * @jest-environment ./__tests__/support/issue3801TimeZoneEnvironment.cjs
  *
  * Issue #3801 — TESTER adversarial: calendar dates at the edges of the map, on
  * daylight-saving days, and the opposite mistake (a real moment read at UTC).
