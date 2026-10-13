@@ -58,6 +58,7 @@ import {
   brandContactWithSavedPhone,
   brandPhoneForEdit,
   brandPhoneForSave,
+  rememberBrandPhoneSavedCountry,
 } from "./brandContactPhoneRules";
 
 import {
@@ -496,6 +497,9 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
       await onSave(draftToSave);
       // The saved number is now the one on screen; the box goes back to
       // "untouched" so the form is clean until the next edit.
+      // Remember the country it was saved under, so a shared dial code (+1,
+      // +7) re-opens under the country the host picked, not the first match.
+      if (phoneEdit !== null) rememberBrandPhoneSavedCountry(phoneToSave);
       setDraft(draftToSave);
       setPhoneEdit(null);
       fireToast("Saved");

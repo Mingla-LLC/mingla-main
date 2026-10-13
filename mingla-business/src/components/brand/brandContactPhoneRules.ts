@@ -1,6 +1,7 @@
 /**
- * Issue #3380 — the rules behind the brand contact phone field, kept pure so
- * every branch is provable without rendering.
+ * Issue #3380 — the rules behind the brand contact phone field, kept out of
+ * the component so every branch is provable without rendering. The only state
+ * is the in-memory "country last picked for this number" hint further down.
  *
  * `brands.contact_phone` used to hold only the digits typed in the box. The
  * country the host picked was never saved, so every re-open showed the default
@@ -71,12 +72,58 @@ export function brandOwnPhoneCountry(
 }
 
 /**
+ * The country the host last picked for a number, kept for THIS run of the app
+ * only (issue #3380 rework).
+ *
+ * WHY IT IS ONLY A HINT. `+14165550123` is the same string whether the host
+ * picked Canada, the United States, Puerto Rico or the Dominican Republic:
+ * a bare shared dial code (+1, +7, +44) does not say which of its countries
+ * was chosen, and `brands` has no column that could. So after a full restart,
+ * on another device, or for another team member, a shared-code number on a
+ * brand with no country opens under the first country of that code again.
+ * Keeping the picked country for good needs a database column; nothing here
+ * pretends otherwise. The number that is saved and dialled is identical
+ * whichever country the chip shows.
+ */
+const SESSION_COUNTRY_LIMIT = 50;
+const sessionCountryByNumber = new Map<string, string>();
+
+/** Remember the country a number was just saved under (successful saves only). */
+export function rememberBrandPhoneSavedCountry(
+  saved: Extract<BrandPhoneSaveResult, { ok: true }>,
+): void {
+  const e164 = storedBrandPhoneE164(saved.phone);
+  if (e164 === null || saved.phoneCountryIso === undefined) return;
+  sessionCountryByNumber.delete(e164);
+  sessionCountryByNumber.set(e164, saved.phoneCountryIso.toUpperCase());
+  if (sessionCountryByNumber.size > SESSION_COUNTRY_LIMIT) {
+    const oldest = sessionCountryByNumber.keys().next();
+    if (oldest.done !== true) sessionCountryByNumber.delete(oldest.value);
+  }
+}
+
+/** The country last picked for this number in this run of the app, if any. */
+export function brandPhoneSessionCountryIso(
+  stored: string | null | undefined,
+): string | null {
+  const e164 = storedBrandPhoneE164(stored);
+  return e164 === null ? null : sessionCountryByNumber.get(e164) ?? null;
+}
+
+/**
  * Which country a saved E.164 number belongs to.
  *
- *   1. the brand's own country, when the number starts with its dial code
- *      (so a Canadian brand's +1 number opens under Canada, not the US);
- *   2. the country the shared phone rules name for it;
- *   3. the longest dial code in the directory that the number starts with.
+ * The LONGEST dial code the number starts with decides first, so `+1242…` is
+ * the Bahamas on any brand, never the United States. When several countries
+ * share that longest code (+1 US/Canada, +7 Russia/Kazakhstan, +44 UK/Jersey)
+ * the number itself cannot decide, so in order:
+ *
+ *   1. the brand's own country;
+ *   2. the country the host last picked for this number in this run of the
+ *      app (`sessionCountryIso`; see `rememberBrandPhoneSavedCountry` for why
+ *      that is a hint and not a saved fact);
+ *   3. the country the shared phone rules name for it;
+ *   4. the first of them in the directory.
  *
  * Null for anything that is not E.164 — a legacy number has no country.
  */
@@ -84,27 +131,43 @@ export function brandPhoneCountryFromStored(
   stored: string | null | undefined,
   brandCountryCode: string | null | undefined,
   directory: BrandPhoneDirectory,
+  sessionCountryIso: string | null | undefined = brandPhoneSessionCountryIso(
+    stored,
+  ),
 ): BrandPhoneCountry | null {
   const e164 = storedBrandPhoneE164(stored);
   if (e164 === null) return null;
 
-  const own = brandOwnPhoneCountry(brandCountryCode, directory);
-  if (own !== null && e164.startsWith(own.dialCode)) return own;
+  let longest = 0;
+  for (const country of directory) {
+    if (!e164.startsWith(country.dialCode)) continue;
+    if (country.dialCode.length > longest) longest = country.dialCode.length;
+  }
+  if (longest === 0) return null;
+  const candidates = directory.filter(
+    (country) =>
+      country.dialCode.length === longest && e164.startsWith(country.dialCode),
+  );
+  if (candidates.length === 1) return candidates[0];
+  const among = (
+    country: BrandPhoneCountry | null,
+  ): BrandPhoneCountry | null =>
+    country !== null && candidates.some((entry) => entry.iso === country.iso)
+      ? country
+      : null;
+
+  const own = among(brandOwnPhoneCountry(brandCountryCode, directory));
+  if (own !== null) return own;
+
+  const picked = among(countryForIso(sessionCountryIso, directory));
+  if (picked !== null) return picked;
 
   const parsed = parsePhoneEntry(e164, { mode: "any" });
   if (parsed.ok && parsed.countryIso !== null) {
-    const named = countryForIso(parsed.countryIso, directory);
-    if (named !== null && e164.startsWith(named.dialCode)) return named;
+    const named = among(countryForIso(parsed.countryIso, directory));
+    if (named !== null) return named;
   }
-
-  let best: BrandPhoneCountry | null = null;
-  for (const country of directory) {
-    if (!e164.startsWith(country.dialCode)) continue;
-    if (best === null || country.dialCode.length > best.dialCode.length) {
-      best = country;
-    }
-  }
-  return best;
+  return candidates[0];
 }
 
 export interface BrandPhoneForEdit {
@@ -127,12 +190,16 @@ export function brandPhoneForEdit(
   stored: string | null | undefined,
   brandCountryCode: string | null | undefined,
   directory: BrandPhoneDirectory,
+  sessionCountryIso: string | null | undefined = brandPhoneSessionCountryIso(
+    stored,
+  ),
 ): BrandPhoneForEdit {
   const e164 = storedBrandPhoneE164(stored);
   const fromNumber = brandPhoneCountryFromStored(
     stored,
     brandCountryCode,
     directory,
+    sessionCountryIso,
   );
   if (e164 !== null && fromNumber !== null) {
     return {
@@ -230,6 +297,32 @@ export function brandPhoneForSave(input: {
   const country = countryForIso(edit.countryIso, directory);
   if (country === null) {
     return { ok: false, message: "Choose the country for this phone number." };
+  }
+  // issue #3380 rework — a number typed WITHOUT a "+" is judged against the
+  // country on the chip before anything is composed. Digits that read as
+  // another country's mobile (a Nigerian 0803… under the default +44 flag) are
+  // refused with the message that names that country, never saved behind the
+  // wrong code where the public page would dial a stranger. A typed "+" names
+  // its own country and skips this.
+  //
+  // UK 0800 freephone is let through: the probe cannot tell it from a foreign
+  // mobile by shape, but no Nigerian mobile range starts 0800. The other UK
+  // ranges that collide with Nigerian mobile prefixes (070 personal numbers,
+  // 0808 freephone, 09 premium rate) are refused here; a host who really has
+  // one types it with "+44".
+  if (!text.startsWith("+")) {
+    const national = text.replace(/\D/g, "").replace(/^0+/, "");
+    const ukFreephone = country.dialCode === "+44" && national.startsWith("800");
+    const probe = ukFreephone
+      ? null
+      : parsePhoneEntry(text, {
+          countryIso: country.iso,
+          dialCode: country.dialCode,
+          mode: "mobile",
+        });
+    if (probe !== null && !probe.ok && probe.problem === "wrong_country") {
+      return { ok: false, message: probe.message };
+    }
   }
   const e164 = composePhoneE164(country.dialCode, text);
   if (e164 === null) {
