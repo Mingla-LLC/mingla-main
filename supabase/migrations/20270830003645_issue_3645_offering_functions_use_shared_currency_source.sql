@@ -4,7 +4,7 @@
 -- offering may use and public.is_supported_offering_currency(text) is the one
 -- question (20270819003645). Three functions still carried a hand-written copy
 -- of the list. The two experience functions held 19 codes with no naira, so a
--- naira experience was refused, and admitted four codes the events foreign key
+-- naira experience was refused, and admitted five codes the events foreign key
 -- then rejected with a raw constraint error.
 --
 -- WHAT THIS FILE DOES. It re-emits three functions and nothing else:

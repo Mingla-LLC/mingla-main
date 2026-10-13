@@ -7,7 +7,7 @@
 --   B. a currency the list does not hold is refused with
 --      event_currency_unsupported by all three functions, on a draft save and
 --      on a publish, and never reaches a raw constraint error. That includes
---      the four codes the old experience bodies admitted and the events table
+--      the five codes the old experience bodies admitted and the events table
 --      then rejected.
 --   C. the answer follows the TABLE: a currency switched off there is refused
 --      at once, and a lower-case listed code is accepted.
