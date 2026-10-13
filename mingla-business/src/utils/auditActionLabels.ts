@@ -147,6 +147,8 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "partner_paystack.recipient_detached",
   "paystack.partner_split_reversal_owed",
   "paystack.webhook_unhandled_refund_state",
+  // toward #3697 Wave 7c — Ads credit NGN top-up apply failed (retryable).
+  "paystack.ad_credit_apply_failed",
   // #1173 [Stripe payout-hold schedule flip] — payout-schedule (daily → manual
   // hold) lifecycle audit slugs. onboard_* emitted by brand-stripe-onboard at
   // onboarding (flip succeeded / flip failed / stamp failed then rolled back);
@@ -313,6 +315,13 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
       return {
         title: "Paystack refund not final yet",
         detail: "A refund webhook arrived in a non-final state (pending, processing, or failed); only refund.processed moves the ledger.",
+        category: "ops",
+        iconHint: "flag",
+      };
+    case "paystack.ad_credit_apply_failed":
+      return {
+        title: "Ads credit top-up not applied",
+        detail: "Paystack confirmed an NGN Ads credit charge, but crediting the wallet failed; the webhook will retry.",
         category: "ops",
         iconHint: "flag",
       };

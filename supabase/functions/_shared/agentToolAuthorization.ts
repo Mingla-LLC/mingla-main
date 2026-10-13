@@ -145,6 +145,12 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   schedule_campaign: role("marketing_manager", "campaign"),
   send_campaign_now: role("marketing_manager", "campaign"),
   cancel_campaign: role("marketing_manager", "campaign"),
+  // toward #3697 Wave 7c — Host Ads (finance manage floor; edge re-checks).
+  propose_ad_plan: role("finance_manager", "brand"),
+  approve_ad_plan: role("finance_manager", "brand"),
+  pause_ad_campaign: role("finance_manager", "brand"),
+  end_ad_campaign: role("finance_manager", "brand"),
+  get_ad_campaign_report: role("finance_manager", "brand"),
   run_growth_tool: role("marketing_manager", "brand"),
   get_growth_tool_report: role("marketing_manager", "brand"),
   get_payout_status: role("finance_manager", "brand"),

@@ -3129,6 +3129,201 @@ const cancelCampaign = writeTool(
   },
 );
 
+// toward #3697 Wave 7c — Host Ads plan/approve/run (distinct from Blast marketing_campaigns).
+const proposeAdPlan = writeTool(
+  "propose_ad_plan",
+  "Propose a Host Ads plan (typed destination, one platform, budget, schedule, primary copy). Does not create or spend. Distinct from draft_campaign (Blast email/SMS).",
+  {
+    brand_id: UUID,
+    name: STR,
+    dest_page_type: { type: "string" },
+    dest_brand_slug: STR,
+    dest_entity_slug: { type: "string" },
+    platform: { type: "string" },
+    budget_cents: { type: "integer", minimum: 100 },
+    currency: { type: "string", minLength: 3, maxLength: 3 },
+    starts_at: { type: "string" },
+    ends_at: { type: "string" },
+    primary_text: { type: "string" },
+  },
+  [
+    "brand_id",
+    "name",
+    "dest_page_type",
+    "dest_brand_slug",
+    "budget_cents",
+    "currency",
+    "platform",
+  ],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    const platform = typeof args.platform === "string" && args.platform.trim()
+      ? args.platform.trim().toLowerCase()
+      : "";
+    if (!platform) {
+      throw new ToolError("INVALID_ARGS", "platform is required");
+    }
+    const currency = typeof args.currency === "string"
+      ? args.currency.trim().toUpperCase()
+      : "";
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
+    }
+    const budgetCents = Number(args.budget_cents);
+    if (!Number.isFinite(budgetCents) || budgetCents < 100) {
+      throw new ToolError("INVALID_ARGS", "budget_cents must be ≥ 100");
+    }
+    return {
+      plan: {
+        brand_id: args.brand_id,
+        name: String(args.name),
+        dest_page_type: String(args.dest_page_type),
+        dest_brand_slug: String(args.dest_brand_slug),
+        dest_entity_slug: typeof args.dest_entity_slug === "string"
+          ? args.dest_entity_slug
+          : null,
+        platform,
+        budget_cents: budgetCents,
+        currency,
+        starts_at: typeof args.starts_at === "string" ? args.starts_at : null,
+        ends_at: typeof args.ends_at === "string" ? args.ends_at : null,
+        primary_text: typeof args.primary_text === "string"
+          ? args.primary_text
+          : "",
+      },
+      next_step:
+        "Call approve_ad_plan with the same fields (confirm LAUNCH) to create and launch with Ads credit.",
+    };
+  },
+);
+
+const approveAdPlan = writeTool(
+  "approve_ad_plan",
+  "Create a Host ad campaign (owner_kind=host) then launch it by debiting Ads credit. Type LAUNCH to confirm. Distinct from send_campaign_now.",
+  {
+    brand_id: UUID,
+    name: STR,
+    dest_page_type: { type: "string" },
+    dest_brand_slug: STR,
+    dest_entity_slug: { type: "string" },
+    platform: { type: "string" },
+    budget_cents: { type: "integer", minimum: 100 },
+    currency: { type: "string", minLength: 3, maxLength: 3 },
+    starts_at: { type: "string" },
+    ends_at: { type: "string" },
+    primary_text: { type: "string" },
+  },
+  [
+    "brand_id",
+    "name",
+    "dest_page_type",
+    "dest_brand_slug",
+    "budget_cents",
+    "currency",
+    "platform",
+  ],
+  async (args, client, userId, context) => {
+    await requireBrand(args, client, userId);
+    const operationId = requireAgentOperationId(context);
+    const platform = String(args.platform).trim().toLowerCase();
+    const currency = String(args.currency).trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
+    }
+    const created = await invokeFn(client, "host-ad-campaign", {
+      action: "create",
+      brand_id: args.brand_id,
+      name: args.name,
+      dest_page_type: args.dest_page_type,
+      dest_brand_slug: args.dest_brand_slug,
+      dest_entity_slug: typeof args.dest_entity_slug === "string"
+        ? args.dest_entity_slug
+        : null,
+      platform,
+      budget_cents: Number(args.budget_cents),
+      currency,
+      starts_at: typeof args.starts_at === "string" ? args.starts_at : null,
+      ends_at: typeof args.ends_at === "string" ? args.ends_at : null,
+      primary_text: typeof args.primary_text === "string"
+        ? args.primary_text
+        : "",
+      idempotency_key: `ari_create_${operationId}`,
+    }) as { campaign_id?: string; campaign?: { id?: string } };
+    const campaignId = created.campaign_id ?? created.campaign?.id;
+    if (!campaignId || !isUuid(campaignId)) {
+      throw new ToolError(
+        "RPC_FAILED",
+        "host-ad-campaign create returned no id",
+      );
+    }
+    const launched = await invokeFn(client, "host-ad-campaign", {
+      action: "launch",
+      brand_id: args.brand_id,
+      campaign_id: campaignId,
+      idempotency_key: `ari_launch_${operationId}`,
+    });
+    return { campaign_id: campaignId, created, launched };
+  },
+  "LAUNCH",
+);
+
+const pauseAdCampaign = writeTool(
+  "pause_ad_campaign",
+  "Pause a Host-owned ad campaign (owner_kind=host). Distinct from cancel_campaign (Blast).",
+  { brand_id: UUID, campaign_id: UUID },
+  ["brand_id", "campaign_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
+    return await invokeFn(client, "host-ad-campaign", {
+      action: "pause",
+      brand_id: args.brand_id,
+      campaign_id: args.campaign_id,
+    });
+  },
+);
+
+const endAdCampaign = writeTool(
+  "end_ad_campaign",
+  "End a Host ad campaign and return unspent Ads credit. Type END to confirm.",
+  { brand_id: UUID, campaign_id: UUID },
+  ["brand_id", "campaign_id"],
+  async (args, client, userId, context) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
+    const operationId = requireAgentOperationId(context);
+    return await invokeFn(client, "host-ad-campaign", {
+      action: "end",
+      brand_id: args.brand_id,
+      campaign_id: args.campaign_id,
+      idempotency_key: `ari_end_${operationId}`,
+    });
+  },
+  "END",
+);
+
+const getAdCampaignReport = writeTool(
+  "get_ad_campaign_report",
+  "Read a Host ad campaign (status, budget, spend). Distinct from get_campaign_report (Blast).",
+  { brand_id: UUID, campaign_id: UUID },
+  ["brand_id", "campaign_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
+    return await invokeFn(client, "host-ad-campaign", {
+      action: "get",
+      brand_id: args.brand_id,
+      campaign_id: args.campaign_id,
+    });
+  },
+);
+
 /** #1980 — same channel_payload shape as draft_campaign / Host compose. */
 function buildCampaignChannelPayload(
   channel: "email" | "sms",
@@ -6863,6 +7058,11 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   scheduleCampaign,
   sendCampaignNow,
   cancelCampaign,
+  proposeAdPlan,
+  approveAdPlan,
+  pauseAdCampaign,
+  endAdCampaign,
+  getAdCampaignReport,
   runGrowthTool,
   getGrowthToolReport,
   getPayoutStatus,
@@ -6929,6 +7129,9 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "list_brand_team",
   "list_event_orders",
   "get_campaign_report",
+  // toward #3697 Wave 7c — Host Ads plan propose + report (no spend).
+  "propose_ad_plan",
+  "get_ad_campaign_report",
   // #1980 — Growth Tool report read (growth-tools-report app lane).
   "get_growth_tool_report",
   "get_operator_snapshot",
@@ -6951,6 +7154,9 @@ export const MONEY_CONFIRM_TOOLS = new Set<string>([
   "refund_rsvp_contribution",
   "send_campaign_now",
   "delete_campaign_draft",
+  // toward #3697 Wave 7c — Host Ads launch/end debit or return credit.
+  "approve_ad_plan",
+  "end_ad_campaign",
   "disconnect_partner",
   "refund_order",
   "cancel_order",

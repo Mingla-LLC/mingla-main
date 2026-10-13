@@ -137,6 +137,11 @@ ari.support.read_reply
 ari.analytics.orders_reconciliation
 ari.venue.organic_insights
 ari.marketing.campaign_reports
+ari.ads.propose_ad_plan
+ari.ads.approve_ad_plan
+ari.ads.pause_ad_campaign
+ari.ads.end_ad_campaign
+ari.ads.get_ad_campaign_report
 ari.brand.audit_log
 ari.brand.discovery_currency
 ari.event.door_sale
