@@ -685,6 +685,14 @@ jobs:
           # experience draft and a once-published draft are untouched.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.implementor.happy.pg17.test.sql
+          # Issue #3645 rework — a currency change made in TWO writes (the
+          # payout-country picker clears the currency, then sets the new one)
+          # clears prices like a direct change; a brand that never had a
+          # currency keeps typed prices; coming back to the same currency
+          # changes nothing; a row already moved whose JSON copy was not is
+          # aligned and cleared; the remembered currency is not a client surface.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency_rework.implementor.happy.pg17.test.sql
           # Issue #3645 — tester adversarial proof for the same change. Prices
           # survive on a draft with a checkout session, an order, a chip-in or
           # a door sale, on a published or deleted event, on another brand, on

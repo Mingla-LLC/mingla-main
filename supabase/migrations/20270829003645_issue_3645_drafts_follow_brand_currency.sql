@@ -10,17 +10,19 @@
 -- WHAT THIS DOES. Two triggers, no function re-emitted.
 --
 --   1. `issue_3645_drafts_follow_brand_currency`, AFTER UPDATE OF
---      default_currency ON public.brands. For each of that brand's drafts that
---      was never published, is not deleted and has no sale or payment in flight
---      of any kind:
---        * the brand had NO currency before (first payout country, first bank):
---          the draft is only STAMPED. Prices typed while the screen said
---          "Currency not set" are kept, because they were typed for this
---          currency.
---        * the brand HAD a currency and it changed: the draft is stamped AND
---          its prices are CLEARED, so the host enters new ones (Seth's ruling,
---          #3645, 2026-10-13). A number is never carried across currencies.
---      A brand whose currency becomes NULL changes nothing.
+--      default_currency ON public.brands. When the brand gets a currency, for
+--      each of its drafts that was never published, is not deleted and has no
+--      sale or payment in flight of any kind:
+--        * the draft is always STAMPED with the brand's currency, in every
+--          copy (row, draft JSON, ticket rows);
+--        * its prices are CLEARED when the brand had a real currency before
+--          AND the draft holds a copy of another currency (Seth's ruling,
+--          #3645, 2026-10-13). A number is never carried across currencies;
+--        * otherwise its prices are KEPT: a draft with no currency of its own
+--          (typed while the screen said "Currency not set"), or any draft of a
+--          brand that never had a currency.
+--      When the brand LOSES its currency nothing is moved; the outgoing
+--      currency is only remembered (see "TWO WRITES" below).
 --
 --   2. `issue_3645_refuse_publish_with_cleared_prices`, BEFORE UPDATE OF status
 --      ON public.events. A trip whose package price was cleared in (1) and has
@@ -51,6 +53,28 @@
 --     the fields are empty. It is a notice, not a lock: an event draft save
 --     replaces the JSON.
 --
+-- TWO WRITES, ONE CHANGE. The payout-country picker leaves Nigeria in two
+-- writes: the provider is cleared (default_currency becomes NULL), then the
+-- new currency is set. The Stripe account mirror can null it too. Judged one
+-- write at a time, the second looks like a brand's FIRST currency and naira
+-- prices would be kept as dollars. So "the brand had a real currency before"
+-- is not read from OLD alone: when a brand's currency goes to NULL, the
+-- outgoing one is kept in `public.brand_cleared_currency` (one row per brand,
+-- no client access), and the next write that sets a currency reads it back and
+-- deletes it. NGN -> NULL -> USD therefore clears prices exactly like
+-- NGN -> USD; NGN -> NULL -> NGN finds nothing out of step and changes nothing.
+--
+-- WHY NOT DECIDE FROM THE DRAFT'S OWN CURRENCY ALONE. Checked on the replayed
+-- schema: today's owners leave a draft created on a brand with no currency
+-- with NO currency of its own (events.currency NULL, draft JSON currency null,
+-- a trip's package currency NULL, and a priced trip package is refused with
+-- `event_currency_required`). But older builds stamped a placeholder (USD) on
+-- trip and experience drafts of such brands, and a placeholder is not a
+-- currency the host priced in: those drafts must keep their numbers when the
+-- brand picks its first currency. Only the brand knows whether it ever had a
+-- real one. And the memory cannot live on the drafts: a brand losing its
+-- currency must not touch a draft at all.
+--
 -- WHAT IS LEFT ALONE.
 --   * Published events, drafts with any order, ticket, checkout session, door
 --     sale or chip-in, and events unpublished after a sale (published_at set).
@@ -59,8 +83,11 @@
 --     validate against their own inline currency list (no NGN). The #3645
 --     owner chat is fixing that; this trigger must not fight it.
 --   * Payment plans: they are percentages of the package price, not amounts.
---   * Existing rows. No backfill: production had zero drafts out of step with
---     their brand when this was written.
+--   * Existing rows. No backfill. Production when this was written: no draft
+--     in a currency other than its brand's; one draft with no currency on an
+--     NGN brand, with nothing priced (the client stamps it on its next save).
+--   * A brand that lost its currency BEFORE this migration has no remembered
+--     currency, so its next currency is treated as a first one (stamp, keep).
 --
 -- WHY IT DOES NOT FIGHT THE OTHER CURRENCY TRIGGERS.
 --   * `tg_enforce_event_ticket_currency` raises when a ticket's currency
@@ -87,6 +114,19 @@ BEGIN;
 -- ---------------------------------------------------------------------------
 -- 1. Drafts follow the brand.
 -- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.brand_cleared_currency (
+  brand_id uuid PRIMARY KEY REFERENCES public.brands(id) ON DELETE CASCADE,
+  currency character(3) NOT NULL,
+  cleared_at timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE public.brand_cleared_currency IS
+  'Issue #3645: the currency a brand had when its default_currency was last set to NULL, kept until the brand next gets a currency. Lets a currency change made in two writes (X to NULL, NULL to Y) clear draft prices like a direct X to Y. Written and read only by the trigger function issue_3645_drafts_follow_brand_currency(); no client access.';
+
+ALTER TABLE public.brand_cleared_currency ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.brand_cleared_currency FROM PUBLIC;
+REVOKE ALL ON TABLE public.brand_cleared_currency FROM anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.issue_3645_drafts_follow_brand_currency()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -96,6 +136,7 @@ AS $function$
 DECLARE
   v_new char(3);
   v_old char(3);
+  v_prev char(3);
   v_wipe boolean;
   v_marker jsonb;
   v_event record;
@@ -108,19 +149,53 @@ BEGIN
   v_new := upper(NULLIF(btrim(COALESCE(NEW.default_currency::text, '')), ''))::char(3);
   v_old := upper(NULLIF(btrim(COALESCE(OLD.default_currency::text, '')), ''))::char(3);
 
-  -- A brand that loses its currency, or whose currency did not really change,
-  -- moves nothing.
-  IF v_new IS NULL OR v_new IS NOT DISTINCT FROM v_old THEN
+  IF v_new IS NOT DISTINCT FROM v_old THEN
     RETURN NULL;
   END IF;
 
-  -- First currency: stamp only. Changed currency: stamp and clear prices.
-  v_wipe := v_old IS NOT NULL;
-  v_marker := jsonb_build_object('from', v_old::text, 'to', v_new::text);
+  -- The brand loses its currency: no draft is touched. Remember what it had,
+  -- so the write that follows is not mistaken for a first currency.
+  IF v_new IS NULL THEN
+    INSERT INTO public.brand_cleared_currency AS m (brand_id, currency, cleared_at)
+    VALUES (NEW.id, v_old, now())
+    ON CONFLICT (brand_id) DO UPDATE
+      SET currency = EXCLUDED.currency, cleared_at = EXCLUDED.cleared_at;
+    RETURN NULL;
+  END IF;
+
+  -- The currency the brand really had before this one: the one being replaced,
+  -- or the one it had before it was cleared. NULL = it never had one.
+  IF v_old IS NOT NULL THEN
+    v_prev := v_old;
+  ELSE
+    SELECT m.currency INTO v_prev
+      FROM public.brand_cleared_currency m
+     WHERE m.brand_id = NEW.id;
+  END IF;
+  DELETE FROM public.brand_cleared_currency m WHERE m.brand_id = NEW.id;
 
   FOR v_event IN
     SELECT e.id, e.event_type, e.currency, e.theme,
-           e.rsvp_contribution_suggested_cents, e.rsvp_contribution_min_cents
+           e.rsvp_contribution_suggested_cents, e.rsvp_contribution_min_cents,
+           -- Does the draft hold a copy of ANOTHER currency, anywhere?
+           ( (e.currency IS NOT NULL AND e.currency <> v_new)
+             OR (jsonb_typeof(e.theme#>'{business_draft,currency}') = 'string'
+                 AND NULLIF(btrim(e.theme#>>'{business_draft,currency}'), '') IS NOT NULL
+                 AND upper(btrim(e.theme#>>'{business_draft,currency}')) <> v_new::text)
+             OR EXISTS (
+                  SELECT 1
+                    FROM jsonb_array_elements(
+                           CASE WHEN jsonb_typeof(e.theme#>'{business_draft,tickets}') = 'array'
+                                THEN e.theme#>'{business_draft,tickets}' ELSE '[]'::jsonb END) AS jt(value)
+                   WHERE jsonb_typeof(jt.value) = 'object'
+                     AND jsonb_typeof(jt.value->'currency') = 'string'
+                     AND NULLIF(btrim(jt.value->>'currency'), '') IS NOT NULL
+                     AND upper(btrim(jt.value->>'currency')) <> v_new::text)
+             OR EXISTS (
+                  SELECT 1 FROM public.ticket_types tt
+                   WHERE tt.event_id = e.id AND tt.deleted_at IS NULL
+                     AND tt.currency IS NOT NULL AND tt.currency <> v_new)
+           ) AS holds_other_currency
       FROM public.events e
      WHERE e.brand_id = NEW.id
        AND e.status = 'draft'
@@ -128,7 +203,6 @@ BEGIN
        AND e.deleted_at IS NULL
        -- Experiences are deliberately skipped; see the header.
        AND e.event_type IN ('event', 'rsvp', 'trip')
-       AND e.currency IS DISTINCT FROM v_new
        -- Nothing sold and no money in flight, in any state.
        AND NOT EXISTS (SELECT 1 FROM public.orders o WHERE o.event_id = e.id)
        AND NOT EXISTS (SELECT 1 FROM public.tickets t WHERE t.event_id = e.id)
@@ -138,7 +212,20 @@ BEGIN
      ORDER BY e.id
        FOR UPDATE OF e
   LOOP
+    -- Already in step in every copy: nothing to do. (A row already in the new
+    -- currency whose JSON or ticket copies are not is still handled below.)
+    CONTINUE WHEN v_event.currency IS NOT DISTINCT FROM v_new
+              AND NOT v_event.holds_other_currency
+              AND (jsonb_typeof(v_event.theme#>'{business_draft}') IS DISTINCT FROM 'object'
+                   OR upper(btrim(COALESCE(v_event.theme#>>'{business_draft,currency}', ''))) = v_new::text);
+
     BEGIN
+      -- Clear only when the brand had a real currency and this draft holds a
+      -- copy of another one. Otherwise stamp and keep what was typed.
+      v_wipe := v_prev IS NOT NULL AND v_event.holds_other_currency;
+      v_marker := jsonb_build_object(
+        'from', COALESCE(v_event.currency::text, v_prev::text), 'to', v_new::text);
+
       v_theme := COALESCE(v_event.theme, '{}'::jsonb);
       v_draft := v_theme->'business_draft';
       v_cleared := false;
@@ -147,8 +234,8 @@ BEGIN
         v_draft := jsonb_set(v_draft, '{currency}', to_jsonb(v_new::text), true);
 
         -- Event tickets. A ticket that is not free and carries a price has the
-        -- price cleared (changed currency only). A ticket's own currency copy,
-        -- where it has one, follows in both cases.
+        -- price cleared (when clearing). A ticket's own currency copy, where
+        -- it has one, follows in both cases.
         IF jsonb_typeof(v_draft->'tickets') = 'array' THEN
           SELECT
             COALESCE(jsonb_agg(
@@ -188,7 +275,7 @@ BEGIN
           v_cleared := v_cleared OR v_ticket_cleared;
         END IF;
 
-        -- RSVP chip-in amounts in the draft JSON (changed currency only).
+        -- RSVP chip-in amounts in the draft JSON (when clearing).
         IF v_wipe AND (
              jsonb_typeof(v_draft->'rsvpContributionSuggestedCents') IN ('number', 'string')
           OR jsonb_typeof(v_draft->'rsvpContributionMinCents') IN ('number', 'string')
@@ -269,14 +356,13 @@ REVOKE ALL ON FUNCTION public.issue_3645_drafts_follow_brand_currency() FROM PUB
 REVOKE ALL ON FUNCTION public.issue_3645_drafts_follow_brand_currency() FROM anon, authenticated;
 
 COMMENT ON FUNCTION public.issue_3645_drafts_follow_brand_currency() IS
-  'Issue #3645: AFTER UPDATE OF default_currency ON brands. Never-published, nothing-sold event / RSVP / trip drafts follow the brand''s currency. First currency (NULL to X) stamps only; a changed currency (X to Y) stamps and clears prices. Trip packages cleared this way carry tier_metadata.price_cleared_for_currency_change and keep is_free = false. Experiences are skipped. Never reads auth.uid(); a draft that cannot be moved is logged as a WARNING and never blocks the brand update.';
+  'Issue #3645: AFTER UPDATE OF default_currency ON brands. Never-published, nothing-sold event / RSVP / trip drafts follow the brand''s currency in every copy. Prices are cleared when the brand had a real currency before (the one replaced, or the one remembered in brand_cleared_currency when it was cleared in an earlier write) and the draft holds a copy of another currency; otherwise they are kept. Trip packages cleared this way carry tier_metadata.price_cleared_for_currency_change and keep is_free = false. Experiences are skipped. Never reads auth.uid(); a draft that cannot be moved is logged as a WARNING and never blocks the brand update.';
 
 DROP TRIGGER IF EXISTS issue_3645_drafts_follow_brand_currency ON public.brands;
 CREATE TRIGGER issue_3645_drafts_follow_brand_currency
   AFTER UPDATE OF default_currency ON public.brands
   FOR EACH ROW
-  WHEN (OLD.default_currency IS DISTINCT FROM NEW.default_currency
-        AND NEW.default_currency IS NOT NULL)
+  WHEN (OLD.default_currency IS DISTINCT FROM NEW.default_currency)
   EXECUTE FUNCTION public.issue_3645_drafts_follow_brand_currency();
 
 -- ---------------------------------------------------------------------------
@@ -356,6 +442,16 @@ BEGIN
   END IF;
   IF pg_catalog.strpos(v_src, 'price_cleared_for_currency_change') = 0 THEN
     RAISE EXCEPTION 'issue_3645_verify: a cleared trip package would be indistinguishable from a free one';
+  END IF;
+  IF pg_catalog.strpos(v_src, 'brand_cleared_currency') = 0 THEN
+    RAISE EXCEPTION 'issue_3645_verify: a currency change made in two writes (X to NULL, NULL to Y) would keep the old numbers';
+  END IF;
+  IF NOT (SELECT c.relrowsecurity FROM pg_catalog.pg_class AS c
+           WHERE c.oid = 'public.brand_cleared_currency'::pg_catalog.regclass)
+     OR pg_catalog.has_table_privilege('anon', 'public.brand_cleared_currency', 'SELECT')
+     OR pg_catalog.has_table_privilege('authenticated', 'public.brand_cleared_currency', 'SELECT')
+     OR pg_catalog.has_table_privilege('authenticated', 'public.brand_cleared_currency', 'INSERT, UPDATE, DELETE') THEN
+    RAISE EXCEPTION 'issue_3645_verify: brand_cleared_currency is reachable by a client role';
   END IF;
   IF pg_catalog.has_function_privilege('anon', 'public.issue_3645_drafts_follow_brand_currency()', 'EXECUTE')
      OR pg_catalog.has_function_privilege('authenticated', 'public.issue_3645_drafts_follow_brand_currency()', 'EXECUTE')
