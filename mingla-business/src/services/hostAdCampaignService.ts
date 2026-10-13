@@ -123,3 +123,17 @@ export async function endHostAdCampaign(input: {
     idempotency_key: input.idempotencyKey,
   });
 }
+
+/** Cancel only before any platform spend (full credit return when launched). */
+export async function cancelHostAdCampaign(input: {
+  brandId: string;
+  campaignId: string;
+  idempotencyKey: string;
+}): Promise<{ ok: true; status: string; credit_returned_cents?: number }> {
+  return invokeHostAd({
+    action: "cancel",
+    brand_id: input.brandId,
+    campaign_id: input.campaignId,
+    idempotency_key: input.idempotencyKey,
+  });
+}

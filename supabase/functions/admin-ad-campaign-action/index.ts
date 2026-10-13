@@ -30,6 +30,7 @@ import {
   type AdConnectionRow,
   getAdapter,
 } from "../_shared/adChannel.ts";
+import { notifyAdLaunchAttempt } from "../_shared/adLaunchAttemptOpsAlert.ts";
 import { isLaunchConfirmPhrase } from "../_shared/adLaunchConfirm.ts";
 import { shouldPauseForCap } from "../_shared/adMoney.ts";
 import {
@@ -105,12 +106,34 @@ serve(async (req: Request): Promise<Response> => {
   const confirmPhrase = body.confirm_phrase;
   const launchReason = typeof body.reason === "string" ? body.reason.trim() : "";
   if (action === "launch" && !isLaunchConfirmPhrase(confirmPhrase)) {
+    await notifyAdLaunchAttempt({
+      source: "admin",
+      outcome: "rejected",
+      campaignId,
+      brandId: null,
+      platform: null,
+      name: null,
+      actorId: user.id,
+      detail: "confirm_phrase_must_be_LAUNCH",
+      idempotencyKey: `ads_launch:admin:${campaignId}:confirm_phrase`,
+    });
     return json({
       error: "launch_confirm_required",
       detail: "confirm_phrase_must_be_LAUNCH",
     }, 400);
   }
   if (action === "launch" && launchReason.length === 0) {
+    await notifyAdLaunchAttempt({
+      source: "admin",
+      outcome: "rejected",
+      campaignId,
+      brandId: null,
+      platform: null,
+      name: null,
+      actorId: user.id,
+      detail: "reason_required",
+      idempotencyKey: `ads_launch:admin:${campaignId}:reason_required`,
+    });
     return json({
       error: "launch_confirm_required",
       detail: "reason_required",
@@ -125,12 +148,30 @@ serve(async (req: Request): Promise<Response> => {
     .maybeSingle();
   if (!campaign) return json({ error: "not_found", detail: "campaign_not_found" }, 404);
 
+  const adminLaunchAlertBase = {
+    source: "admin" as const,
+    campaignId: String(campaign.id),
+    brandId: typeof campaign.brand_id === "string" ? campaign.brand_id : null,
+    platform: typeof campaign.platform === "string" ? campaign.platform : null,
+    name: typeof campaign.name === "string" ? campaign.name : null,
+    actorId: user.id,
+    reason: launchReason.length > 0 ? launchReason : null,
+  };
+
   const { data: conn } = await supabase
     .from("ad_connections")
     .select("*")
     .eq("id", campaign.connection_id)
     .maybeSingle();
   if (!conn || !conn.connected || conn.status !== "connected") {
+    if (action === "launch") {
+      await notifyAdLaunchAttempt({
+        ...adminLaunchAlertBase,
+        outcome: "rejected",
+        detail: `${campaign.platform}_not_connected`,
+        idempotencyKey: `ads_launch:admin:${campaignId}:not_connected`,
+      });
+    }
     return json({ error: `${campaign.platform}_not_connected` }, 424);
   }
   const connection = conn as unknown as AdConnectionRow;
@@ -154,6 +195,12 @@ serve(async (req: Request): Promise<Response> => {
       ? campaign.starts_at
       : null;
     if (startDateNotReached(startsAt)) {
+      await notifyAdLaunchAttempt({
+        ...adminLaunchAlertBase,
+        outcome: "rejected",
+        detail: "start_date_not_reached",
+        idempotencyKey: `ads_launch:admin:${campaignId}:start_date`,
+      });
       return json({
         error: "launch_blocked",
         detail: "start_date_not_reached",
@@ -162,6 +209,12 @@ serve(async (req: Request): Promise<Response> => {
     }
     const endsAt = typeof campaign.ends_at === "string" ? campaign.ends_at : null;
     if (endDatePassed(endsAt)) {
+      await notifyAdLaunchAttempt({
+        ...adminLaunchAlertBase,
+        outcome: "rejected",
+        detail: "end_date_passed",
+        idempotencyKey: `ads_launch:admin:${campaignId}:end_date`,
+      });
       return json({
         error: "launch_blocked",
         detail: "end_date_passed",
@@ -175,6 +228,12 @@ serve(async (req: Request): Promise<Response> => {
         .select("spend_cents")
         .eq("campaign_id", campaign.id);
       if (spendErr) {
+        await notifyAdLaunchAttempt({
+          ...adminLaunchAlertBase,
+          outcome: "failed",
+          detail: "spend_read_failed",
+          idempotencyKey: `ads_launch:admin:${campaignId}:spend_read`,
+        });
         return json({
           error: "launch_blocked",
           detail: "spend_read_failed",
@@ -188,6 +247,12 @@ serve(async (req: Request): Promise<Response> => {
         })),
       );
       if (shouldPauseForCap(totalSpend, capCents)) {
+        await notifyAdLaunchAttempt({
+          ...adminLaunchAlertBase,
+          outcome: "rejected",
+          detail: "hard_cap_reached",
+          idempotencyKey: `ads_launch:admin:${campaignId}:hard_cap`,
+        });
         return json({
           error: "launch_blocked",
           detail: "hard_cap_reached",
@@ -318,8 +383,29 @@ serve(async (req: Request): Promise<Response> => {
           : "Check Meta Ads Manager for review detail.");
     }
 
+    if (action === "launch") {
+      await notifyAdLaunchAttempt({
+        ...adminLaunchAlertBase,
+        outcome: "accepted",
+        detail: warning ?? "launched",
+        idempotencyKey: `ads_launch:admin:${campaignId}:accepted`,
+      });
+    }
     return json({ campaign: updated ?? campaign, ...(warning ? { warning } : {}) });
   } catch (err) {
+    if (action === "launch") {
+      const failDetail = err instanceof AdApiError
+        ? `${campaign.platform}_action_failed`
+        : err instanceof Error
+        ? err.message
+        : String(err);
+      await notifyAdLaunchAttempt({
+        ...adminLaunchAlertBase,
+        outcome: "failed",
+        detail: failDetail.slice(0, 500),
+        idempotencyKey: `ads_launch:admin:${campaignId}:failed`,
+      });
+    }
     if (err instanceof AdNotConnectedError) {
       return json({ error: `${campaign.platform}_not_connected` }, 424);
     }
