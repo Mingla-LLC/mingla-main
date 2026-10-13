@@ -91,7 +91,10 @@ import {
   type FieldDiff,
   type TicketDiff,
 } from "../../utils/liveEventAdapter";
-import { validateLiveEventFieldUpdate } from "../../utils/publishedEventEditGuards";
+import {
+  NO_BUYERS_EDIT_REASON,
+  validateLiveEventFieldUpdate,
+} from "../../utils/publishedEventEditGuards";
 import {
   describeUnmappedEditGuard,
   resolvePaidPublishGuardCopy,
@@ -354,7 +357,27 @@ export interface EditPublishedScreenProps {
    * byte-identical behavior. See SPEC §12.
    */
   rsvpMode?: boolean;
+  /**
+   * issue #3827 — how many buyers this event has, read by the route with
+   * `useEventBuyerCount`. `0` (a KNOWN zero) makes the edit reason optional and
+   * drops the buyer-notification copy. `null` / omitted means "not known" —
+   * still loading, failed, or the server function is not applied yet — and
+   * keeps the reason mandatory. The RSVP route does not pass it.
+   */
+  buyerCount?: number | null;
+  /**
+   * issue #3827 — called when the server refuses a save that carried NO reason
+   * (`invalid_edit_reason`): a buyer arrived after `buyerCount` was read. The
+   * route refetches the count, which turns the reason mandatory in the Review
+   * changes sheet that this screen keeps open.
+   */
+  onReasonRefused?: () => void;
 }
+
+// issue #3827 — shown when a blank reason is refused because a buyer arrived
+// while the editor was open. Nothing was saved, so it says nothing was.
+const REASON_NEEDED_AFTER_BUYER_COPY =
+  "Someone has just bought a ticket. Add a reason so we can tell your buyers what changed.";
 
 interface ToastState {
   visible: boolean;
@@ -411,6 +434,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   liveEvent,
   disableLocalSaveReason,
   rsvpMode = false,
+  buyerCount = null,
+  onReasonRefused,
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -658,6 +683,16 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     () => editableDraftToPatch(liveEvent, editState),
     [liveEvent, editState],
   );
+  // issue #3827 — a reason is owed to buyers. Only a KNOWN zero (`buyerCount`
+  // prop) relaxes it; RSVP edits never do, their owner always requires one.
+  // The visibility and refund-terms legs of a save still refuse a blank reason
+  // on the server, so a save that includes either keeps the reason mandatory:
+  // otherwise that leg would fail on a reason the sheet said was optional.
+  const reasonOptional =
+    !rsvpMode &&
+    buyerCount === 0 &&
+    currentPatch.visibility === undefined &&
+    currentPatch.refundPolicy === undefined;
   // ORCH-0824 hotfix: allow Save through when the disable gate is set
   // AND the patch contains ONLY server-editable fields (cover media OR
   // ORCH-0824 taxonomy/city). Pre-ORCH-0824 this only allowed cover-only
@@ -1138,6 +1173,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         patch,
         soldCountCtx,
         reason,
+        // issue #3827 — optional only for a KNOWN zero-buyer event and only
+        // when every leg of this save accepts a blank reason.
+        !reasonOptional,
       );
       if (!validation.ok) {
         setSubmitting(false);
@@ -1300,6 +1338,17 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
               ? patch.locationGeo
               : (liveEvent.locationGeo ?? null),
           locationText: patch.address !== undefined ? patch.address : null,
+          // issue #3827 — a re-picked pin carries its precision. It was never
+          // sent, so the server stored "unknown" for every pin moved here. Only
+          // with a changed pin: an untouched pin sends none and keeps its own.
+          ...(patch.locationGeo !== undefined
+            ? {
+                coordinatePrecision:
+                  patch.locationGeo === null
+                    ? null
+                    : (editState.coordinatePrecision ?? null),
+              }
+            : {}),
         };
       }
 
@@ -1402,13 +1451,28 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         invalidateServerEventCaches();
       } catch (error) {
         setSubmitting(false);
-        setModal((prev) => ({ ...prev, visible: false }));
         if (error instanceof EventCoverMediaError) {
+          setModal((prev) => ({ ...prev, visible: false }));
           showToast("Cover upload failed. Try again.");
           return;
         }
         const code =
           error instanceof Error ? error.message : "live_event_update_failed";
+        // issue #3827 — a blank reason was refused: a buyer arrived after the
+        // count was read. Nothing was saved. Review changes stays OPEN, the
+        // route refetches the count (which makes the reason mandatory and
+        // brings the buyer copy back), and the host is told what to do. This
+        // used to close the sheet on a "contact support" toast, and the same
+        // blank save then failed again.
+        if (
+          validation.trimmedReason.length === 0 &&
+          code.includes("invalid_edit_reason")
+        ) {
+          onReasonRefused?.();
+          showToast(REASON_NEEDED_AFTER_BUYER_COPY);
+          return;
+        }
+        setModal((prev) => ({ ...prev, visible: false }));
         const guardCopy = resolvePaidPublishGuardCopy(code);
         if (guardCopy !== null) {
           showToast(guardCopy.body);
@@ -1513,7 +1577,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         liveEvent.id,
         patch,
         soldCountCtx,
-        validation.trimmedReason,
+        // issue #3827 — the server has already saved. The local mirror keeps
+        // its own reason check, so a blank reason is logged in the words the
+        // server recorded instead of being refused after the fact.
+        validation.trimmedReason.length > 0
+          ? validation.trimmedReason
+          : NO_BUYERS_EDIT_REASON,
       );
       setSubmitting(false);
       setModal((prev) => ({ ...prev, visible: false }));
@@ -1559,6 +1628,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       disableLocalSaveReason,
       invalidateServerEventCaches,
       rsvpMode,
+      reasonOptional,
+      onReasonRefused,
     ],
   );
 
@@ -1915,6 +1986,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         onClose={handleModalClose}
         onConfirm={handleConfirmSave}
         submitting={submitting}
+        // issue #3827 — a known zero drops the buyer-notification copy and
+        // makes the reason optional. `undefined` (RSVP) and `null` (unknown, or
+        // a save with a leg that still requires a reason) change nothing.
+        buyerCount={
+          rsvpMode ? undefined : reasonOptional ? 0 : buyerCount === 0 ? null : buyerCount
+        }
       />
 
       {/* #1035 — Theme picker sheet, hoisted OUT of the memoized

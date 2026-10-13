@@ -77,6 +77,16 @@ export interface ChangeSummaryModalProps {
   onConfirm: (reason: string) => void;
   /** Disables both buttons during the parent's async commit. */
   submitting?: boolean;
+  /**
+   * issue #3827 — how many buyers the event has, when that is KNOWN.
+   *   - `undefined` / `null` (trip editors, RSVP, still loading, unknown):
+   *     nothing changes — the reason is required and the buyer copy shows.
+   *   - `0`: nobody is there to notify, so the NOTIFIES BUYERS tag and the
+   *     email/SMS footer are not shown (the edit-history copy is), and the
+   *     reason is optional: Save is enabled when it is blank or 10..200 long.
+   *   - one or more: nothing changes.
+   */
+  buyerCount?: number | null;
 }
 
 export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
@@ -92,8 +102,11 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
   onClose,
   onConfirm,
   submitting = false,
+  buyerCount,
 }) => {
   const [reason, setReason] = useState<string>("");
+  // issue #3827 — only a KNOWN zero relaxes anything.
+  const noBuyers = buyerCount === 0;
 
   // Reset reason whenever modal becomes visible (defensive — same modal
   // instance reused across edits in EditPublishedScreen).
@@ -105,7 +118,8 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
 
   const trimmedLen = reason.trim().length;
   const reasonValid =
-    trimmedLen >= REASON_MIN && trimmedLen <= REASON_MAX;
+    (trimmedLen >= REASON_MIN && trimmedLen <= REASON_MAX) ||
+    (noBuyers && trimmedLen === 0);
 
   const handleConfirm = useCallback((): void => {
     if (submitting || !reasonValid) return;
@@ -118,7 +132,9 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
   }, [submitting, onClose]);
 
   const footerCopy = ((): string => {
-    if (severity === "additive") {
+    // issue #3827 — with no buyers a material change notifies nobody either,
+    // so it gets the same truthful line as an additive one.
+    if (severity === "additive" || (noBuyers && severity === "material")) {
       return `Changes will be logged in your ${entityLabel}'s edit history. No buyer notification.`;
     }
     if (severity === "material") {
@@ -128,6 +144,8 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
     }
     return "";
   })();
+  // issue #3827 — the footer is styled for what it SAYS, not for the severity.
+  const footerIsMaterial = severity === "material" && !noBuyers;
 
   return (
     <Sheet visible={visible} onClose={handleClose} snapPoint="full">
@@ -176,7 +194,7 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
                     <View style={styles.diffContent}>
                       <View style={styles.diffHeaderRow}>
                         <Text style={styles.fieldLabel}>{diff.fieldLabel}</Text>
-                        {isMaterial ? (
+                        {isMaterial && !noBuyers ? (
                           <Text style={styles.severityTag}>NOTIFIES BUYERS</Text>
                         ) : null}
                       </View>
@@ -226,9 +244,13 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
 
           {/* Required reason input */}
           <View style={styles.reasonSection}>
-            <Text style={styles.reasonLabel}>
-              Why are you making this change? <Text style={styles.required}>*</Text>
-            </Text>
+            {noBuyers ? (
+              <Text style={styles.reasonLabel}>Reason (optional)</Text>
+            ) : (
+              <Text style={styles.reasonLabel}>
+                Why are you making this change? <Text style={styles.required}>*</Text>
+              </Text>
+            )}
             <View
               style={[
                 styles.reasonInputWrap,
@@ -257,9 +279,11 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
                     : null,
                 ]}
               >
-                {trimmedLen < REASON_MIN
-                  ? `Min ${REASON_MIN} characters`
-                  : "Looks good"}
+                {noBuyers && trimmedLen === 0
+                  ? `Optional. Min ${REASON_MIN} characters if you add one`
+                  : trimmedLen < REASON_MIN
+                    ? `Min ${REASON_MIN} characters`
+                    : "Looks good"}
               </Text>
               <Text style={styles.reasonCount}>
                 {trimmedLen} / {REASON_MAX}
@@ -272,17 +296,15 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
             <View
               style={[
                 styles.footerNote,
-                severity === "material"
+                footerIsMaterial
                   ? styles.footerNoteMaterial
                   : styles.footerNoteSafe,
               ]}
             >
               <Icon
-                name={severity === "material" ? "flag" : "bell"}
+                name={footerIsMaterial ? "flag" : "bell"}
                 size={14}
-                color={
-                  severity === "material" ? accent.warm : textTokens.tertiary
-                }
+                color={footerIsMaterial ? accent.warm : textTokens.tertiary}
               />
               <Text style={styles.footerCopy}>{footerCopy}</Text>
             </View>
