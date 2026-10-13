@@ -26,8 +26,8 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { mapAdCreditQuoteError } from "../../services/adCreditQuoteErrors";
 import {
-  AdCreditAppError,
   quoteAdCreditTopUp,
   quoteAdCreditWithdraw,
   type AdCreditTopUpQuote,
@@ -37,35 +37,6 @@ import { formatCurrency, minorFromMajor } from "../../utils/currency";
 import { Button } from "../ui/Button";
 
 export type AdCreditQuoteMode = "top_up" | "withdraw";
-
-/** Map edge machine details to host-facing copy (never show raw tokens). */
-export function mapAdCreditQuoteError(err: unknown): string {
-  if (!(err instanceof AdCreditAppError)) {
-    return "Could not quote. Try again.";
-  }
-  const detail = (err.detail ?? err.message ?? "").trim();
-  switch (detail) {
-    case "pay_below_minimum":
-      return "That amount is below the minimum top-up for this currency.";
-    case "pay_above_maximum":
-      return "That amount is above the maximum top-up for this currency.";
-    case "currency_unsupported":
-      return "This currency is not supported for Ads credit yet.";
-    case "credit_below_minimum":
-    case "credit_invalid":
-      return "Enter a valid credit amount to withdraw.";
-    case "balance_too_low":
-      return "That is more than your available credit.";
-    default:
-      if (err.code === "forbidden") {
-        return "You need finance permission to add or withdraw credit.";
-      }
-      if (err.code === "unauthorized") {
-        return "Sign in again to continue.";
-      }
-      return "Could not quote. Try again.";
-  }
-}
 
 export interface AdCreditQuoteSheetProps {
   visible: boolean;

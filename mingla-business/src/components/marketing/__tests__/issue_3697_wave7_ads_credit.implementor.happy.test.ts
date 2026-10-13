@@ -1,14 +1,16 @@
 /**
  * toward #3697 Wave 7 — Blast → Ads registration + quote/error behavior.
  *
- * Source contracts + pure mapper tests (RTL is not a default dep here).
+ * Source contracts only (no RN component imports — Button → reanimated breaks Jest).
+ * Behavioral invoke + error-mapper coverage lives in
+ * src/services/__tests__/adCreditService.issue3697.wave7.happy.test.ts.
  */
 
 import fs from "node:fs";
 import path from "node:path";
 
 import { AdCreditAppError } from "../../../services/adCreditService";
-import { mapAdCreditQuoteError } from "../AdCreditQuoteSheet";
+import { mapAdCreditQuoteError } from "../../../services/adCreditQuoteErrors";
 
 // __tests__ → marketing → components → src → mingla-business
 const root = path.resolve(__dirname, "../../../..");
@@ -65,9 +67,10 @@ describe("issue #3697 Wave 7 Ads credit Host surface", () => {
 
   it("quote sheet clears prior quotes when the amount changes", () => {
     const sheet = read("src/components/marketing/AdCreditQuoteSheet.tsx");
-    expect(sheet).toContain("Editing the amount invalidates any prior Preview quote");
+    expect(sheet).toContain("Editing the amount (or switching mode) invalidates any prior Preview quote");
     expect(sheet).toContain("setTopUp(null)");
-    expect(sheet).toContain("[majorText]");
+    expect(sheet).toContain("[majorText, mode]");
+    expect(sheet).toContain("mapAdCreditQuoteError");
   });
 });
 

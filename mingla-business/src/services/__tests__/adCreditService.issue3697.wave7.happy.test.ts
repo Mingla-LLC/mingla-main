@@ -22,13 +22,13 @@ jest.mock("../supabase", () => ({
   },
 }));
 
+import { mapAdCreditQuoteError } from "../adCreditQuoteErrors";
 import {
   AdCreditAppError,
   getAdCreditWallet,
   quoteAdCreditTopUp,
   quoteAdCreditWithdraw,
 } from "../adCreditService";
-import { mapAdCreditQuoteError } from "../../components/marketing/AdCreditQuoteSheet";
 
 const ok = (data: unknown): { data: unknown; error: null } => ({
   data,
