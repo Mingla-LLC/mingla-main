@@ -53,8 +53,10 @@ import {
 } from "../../utils/draftPricesClearedNote";
 import {
   TRIP_PRICE_CLEARED_KEY,
+  TRIP_PRICE_REENTRY_REQUIRED_CODE,
   tierMetadataHasPriceClearedMarker,
 } from "../../utils/tripPriceReentry";
+import { readRpcFailureMessage } from "../rsvpRpcFailure";
 
 const ticket = (patch: Partial<TicketStub>): TicketStub =>
   ({
@@ -509,6 +511,36 @@ describe("#3645 rework: a trip pricing form left open across the change cannot s
     );
     expect(s.sent()?.price_cents).toBe(9500000);
     expect(s.sent()?.tier_metadata).toEqual({});
+  });
+
+  test("the DATABASE's refusal reaches the wizard as the same code the step already puts into words", async () => {
+    // The package was cleared between this save's read and its write, so the
+    // client check saw no marker; the commit-time rule refuses instead.
+    server({ tierMetadata: { description: "Shared room" }, priceCents: 45000 });
+    mockRpc.mockImplementation(() =>
+      Promise.resolve({
+        data: null,
+        // The shape PostgREST gives a raised exception (not an Error instance).
+        error: {
+          message: "price_reentry_required",
+          code: "P0001",
+          details: null,
+          hint: null,
+        } as unknown as Error,
+      }),
+    );
+    let caught: unknown = null;
+    try {
+      await updateTripPricing(
+        "trip-1",
+        { ticketTypeId: TIER, tierName: "Standard", priceCents: 45000, capacity: 12 },
+        options,
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(readRpcFailureMessage(caught)).toBe(TRIP_PRICE_REENTRY_REQUIRED_CODE);
+    expect(TRIP_PRICE_REENTRY_REQUIRED_CODE).toBe("price_reentry_required");
   });
 
   test("the wizard re-seeds a cleared package when the trip is read again, with no new import", () => {

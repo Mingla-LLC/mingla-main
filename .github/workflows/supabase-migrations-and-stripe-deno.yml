@@ -690,7 +690,10 @@ jobs:
           # clears prices like a direct change; a brand that never had a
           # currency keeps typed prices; coming back to the same currency
           # changes nothing; a row already moved whose JSON copy was not is
-          # aligned and cleared; the remembered currency is not a client surface.
+          # aligned and cleared; the remembered currency is not a client surface;
+          # a cleared trip package cannot be saved with a price it did not get
+          # after the clear (stale form, older build, direct write all refused
+          # at commit; the clear, free-after-clear and a correct re-price pass).
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency_rework.implementor.happy.pg17.test.sql
           # Issue #3645 — tester adversarial proof for the same change. Prices

@@ -7,7 +7,7 @@
 -- `tg_require_event_brand_currency` stamped the brand's NEW currency onto the
 -- OLD numbers: a 50 pound ticket went on sale as a 50 naira ticket.
 --
--- WHAT THIS DOES. Two triggers, no function re-emitted.
+-- WHAT THIS DOES. Three triggers and one small table, no function re-emitted.
 --
 --   1. `issue_3645_drafts_follow_brand_currency`, AFTER UPDATE OF
 --      default_currency ON public.brands. When the brand gets a currency, for
@@ -28,6 +28,14 @@
 --      ON public.events. A trip whose package price was cleared in (1) and has
 --      not been entered again cannot leave draft: `price_reentry_required`.
 --
+--   3. `issue_3645_refuse_price_on_cleared_package`, a deferred constraint
+--      trigger on public.trip_pricing_tiers and public.ticket_types. At
+--      commit, a package that still carries the marker from (1) and has a
+--      price above 0 is refused: `price_reentry_required`. That is a pricing
+--      form left open across the change, or an older app build, sending the
+--      OLD number back. Such a build cannot re-price a cleared package; the
+--      host does it on Host web. See section 3 below for why it is deferred.
+--
 -- HOW "NO PRICE YET" IS REPRESENTED, per draft kind.
 --   * Event tickets live only in `theme.business_draft.tickets[]` until
 --     Publish. `priceGbp: null` with `isFree: false` is the wizard's own "no
@@ -46,8 +54,9 @@
 --     and keeps `is_free = false`. Every shipped client merges into
 --     tier_metadata and preserves keys it does not know (tripsService
 --     `updateTripPricing`), so the marker survives a save from an old app
---     build. Trigger (2) refuses Publish while a marked package still costs 0.
---     Once the package has a price above zero the marker means nothing.
+--     build. Trigger (2) refuses Publish while a marked package still costs 0,
+--     and trigger (3) refuses a marked package with a price above 0, so the
+--     marker and a price never coexist.
 --   * The draft JSON gets `pricesClearedForCurrencyChange: {from, to}` when a
 --     ticket price or chip-in amount was cleared, so the wizard can say why
 --     the fields are empty. It is a notice, not a lock: an event draft save
@@ -86,8 +95,9 @@
 --   * Existing rows. No backfill. Production when this was written: no draft
 --     in a currency other than its brand's; one draft with no currency on an
 --     NGN brand, with nothing priced (the client stamps it on its next save).
---   * A brand that lost its currency BEFORE this migration has no remembered
---     currency, so its next currency is treated as a first one (stamp, keep).
+--   * LIMIT of the remembered currency: a brand that lost its currency BEFORE
+--     this migration has nothing remembered, so its next currency is treated
+--     as a first one (stamp, keep).
 --
 -- WHY IT DOES NOT FIGHT THE OTHER CURRENCY TRIGGERS.
 --   * `tg_enforce_event_ticket_currency` raises when a ticket's currency
@@ -315,25 +325,26 @@ BEGIN
        WHERE e.id = v_event.id;
 
       IF v_wipe THEN
-        -- Trip packages: mark the package BEFORE its price goes to 0, so 0 can
-        -- never be read as "the host chose free".
+        -- Trip packages: the price goes to 0 and the package is marked in ONE
+        -- statement, so 0 can never be read as "the host chose free" and a
+        -- marked package never holds a price, whatever the constraint mode.
+        -- is_free is deliberately NOT touched: it was false and stays false.
+        WITH cleared AS (
+          UPDATE public.ticket_types tt
+             SET currency = v_new,
+                 price_cents = 0
+           WHERE tt.event_id = v_event.id
+             AND tt.deleted_at IS NULL
+             AND tt.price_cents > 0
+          RETURNING tt.id
+        )
         UPDATE public.trip_pricing_tiers tpt
            SET tier_metadata = jsonb_set(
                  COALESCE(tpt.tier_metadata, '{}'::jsonb),
                  '{price_cleared_for_currency_change}', v_marker, true)
-          FROM public.ticket_types tt
+          FROM cleared c
          WHERE tpt.event_id = v_event.id
-           AND tt.id = tpt.ticket_type_id
-           AND tt.deleted_at IS NULL
-           AND tt.price_cents > 0;
-
-        -- is_free is deliberately NOT touched: it was false and stays false.
-        UPDATE public.ticket_types tt
-           SET currency = v_new,
-               price_cents = 0
-         WHERE tt.event_id = v_event.id
-           AND tt.deleted_at IS NULL
-           AND tt.price_cents > 0;
+           AND tpt.ticket_type_id = c.id;
       END IF;
 
       UPDATE public.ticket_types tt
@@ -405,6 +416,84 @@ CREATE TRIGGER issue_3645_refuse_publish_with_cleared_prices
   FOR EACH ROW
   WHEN (OLD.status = 'draft' AND NEW.status IN ('scheduled', 'live'))
   EXECUTE FUNCTION public.issue_3645_refuse_publish_with_cleared_prices();
+
+-- ---------------------------------------------------------------------------
+-- 3. A cleared trip package cannot be saved with a price it did not get after
+--    the clear.
+--
+-- A pricing form left open across the currency change, or an app build older
+-- than this change, still holds the OLD number. It reads the package's
+-- metadata (marker included) and sends both back: the old number would be
+-- stored under the new currency and, having a price, would publish. A correct
+-- client leaves the marker out when the host types a price. So a package that
+-- still carries the marker AND has a price above 0 is refused:
+-- `price_reentry_required`.
+--
+-- DEFERRED, checked when the transaction commits, not on each statement. The
+-- draft owner writes the price first and the metadata second; judged between
+-- the two, a correct re-price would look wrong. At commit only the end state
+-- counts. Nothing in the chain switches this to immediate: the draft owner
+-- `biz_apply_trip_draft_graph` and its callers never run SET CONSTRAINTS (the
+-- only use in the chain names `stay_offering_media_sort_unique`), and the
+-- wipe in (1) is a single statement that passes in either mode.
+--
+-- (2) and (3) agree: with the marker a package can only cost 0, and at 0 it
+-- cannot be published. To publish, the host types a price (the marker goes)
+-- or says free (the marker goes).
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.issue_3645_refuse_price_on_cleared_package()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_ticket_type_id uuid;
+BEGIN
+  IF TG_TABLE_NAME = 'ticket_types' THEN
+    v_ticket_type_id := NEW.id;
+  ELSE
+    v_ticket_type_id := NEW.ticket_type_id;
+  END IF;
+
+  -- The rows as they stand NOW (commit time), not as this write left them.
+  IF EXISTS (
+    SELECT 1
+      FROM public.trip_pricing_tiers tpt
+      JOIN public.ticket_types tt ON tt.id = tpt.ticket_type_id
+     WHERE tt.id = v_ticket_type_id
+       AND tt.deleted_at IS NULL
+       AND tt.price_cents > 0
+       AND tpt.tier_metadata ? 'price_cleared_for_currency_change'
+  ) THEN
+    RAISE EXCEPTION 'price_reentry_required'
+      USING ERRCODE = 'P0001',
+            HINT = 'The brand''s currency changed and this package''s price was cleared. The price sent was not entered after the clear. Enter the price again.';
+  END IF;
+  RETURN NULL;
+END
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_3645_refuse_price_on_cleared_package() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.issue_3645_refuse_price_on_cleared_package() FROM anon, authenticated;
+
+COMMENT ON FUNCTION public.issue_3645_refuse_price_on_cleared_package() IS
+  'Issue #3645: deferred constraint trigger on trip_pricing_tiers (tier_metadata) and ticket_types (price_cents). At commit, a trip package that still carries tier_metadata.price_cleared_for_currency_change and has a price above 0 is refused with price_reentry_required, so a stale pricing form or an older app build cannot store the old number under the brand''s new currency.';
+
+DROP TRIGGER IF EXISTS issue_3645_refuse_price_on_cleared_package ON public.trip_pricing_tiers;
+CREATE CONSTRAINT TRIGGER issue_3645_refuse_price_on_cleared_package
+  AFTER INSERT OR UPDATE OF tier_metadata ON public.trip_pricing_tiers
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW
+  EXECUTE FUNCTION public.issue_3645_refuse_price_on_cleared_package();
+
+DROP TRIGGER IF EXISTS issue_3645_refuse_price_on_cleared_package ON public.ticket_types;
+CREATE CONSTRAINT TRIGGER issue_3645_refuse_price_on_cleared_package
+  AFTER UPDATE OF price_cents ON public.ticket_types
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW
+  WHEN (NEW.price_cents > 0)
+  EXECUTE FUNCTION public.issue_3645_refuse_price_on_cleared_package();
 
 -- Fail the migration, not a later bank connection, if this is not what was meant.
 DO $verify$
@@ -479,6 +568,34 @@ BEGIN
   IF v_def IS NULL
      OR pg_catalog.strpos(v_def, 'BEFORE UPDATE OF status') = 0 THEN
     RAISE EXCEPTION 'issue_3645_verify: the publish refusal trigger is missing or mis-shaped: %', v_def;
+  END IF;
+
+  -- (3) the stale-price refusal: on both tables, deferred to commit.
+  IF (SELECT pg_catalog.count(*)
+        FROM pg_catalog.pg_trigger AS t
+       WHERE t.tgname = 'issue_3645_refuse_price_on_cleared_package'
+         AND t.tgrelid IN ('public.trip_pricing_tiers'::pg_catalog.regclass,
+                           'public.ticket_types'::pg_catalog.regclass)
+         AND t.tgconstraint <> 0
+         AND t.tgdeferrable
+         AND t.tginitdeferred) <> 2 THEN
+    RAISE EXCEPTION 'issue_3645_verify: the cleared-package price refusal is missing, or is not a deferred constraint trigger on both tables (an immediate one refuses a correct re-price)';
+  END IF;
+  IF pg_catalog.has_function_privilege('anon', 'public.issue_3645_refuse_price_on_cleared_package()', 'EXECUTE')
+     OR pg_catalog.has_function_privilege('authenticated', 'public.issue_3645_refuse_price_on_cleared_package()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'issue_3645_verify: a client role can execute the cleared-package price refusal';
+  END IF;
+  -- The draft owner must not force constraints to immediate: it writes the
+  -- price before the metadata, and a correct re-price would be refused.
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_proc AS p
+      JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public'
+       AND p.proname IN ('biz_apply_trip_draft_graph', 'biz_publish_trip_command',
+                         'business_publish_trip_draft', 'biz_create_trip_draft')
+       AND p.prosrc ~* 'set\s+constraints'
+  ) THEN
+    RAISE EXCEPTION 'issue_3645_verify: a trip draft function runs SET CONSTRAINTS; the deferred cleared-package refusal would judge a half-written package';
   END IF;
 
   -- The two triggers this one must not fight are still what the header says.

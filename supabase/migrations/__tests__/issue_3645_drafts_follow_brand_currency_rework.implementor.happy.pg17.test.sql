@@ -21,6 +21,11 @@
 --   R5  A row already in the new currency whose JSON copy is not: the copies
 --       are aligned and the old-currency price is cleared.
 --   R6  No client role can read or write the remembered currency.
+--   R7  A cleared trip package cannot be saved with a price it did not get
+--       after the clear: a form left open across the change, an older build
+--       that sends no metadata, and a direct price write are all refused with
+--       `price_reentry_required` at commit; the clear itself, free-after-clear
+--       and a correct re-price are accepted.
 --
 -- NULL-safety: comparisons whose left side can be NULL use IS DISTINCT FROM.
 
@@ -412,5 +417,134 @@ BEGIN
   END IF;
 END
 $private$;
+
+-- ─── R7 a cleared package cannot be saved with a price it did not get after
+--        the clear ─────────────────────────────────────────────────────────
+-- Trip a was cleared in R1 (NGN -> NULL -> USD). The refusal is a DEFERRED
+-- constraint: it is judged when the transaction commits. This suite runs in
+-- one transaction, so each case asks for the judgement itself with
+-- SET CONSTRAINTS ALL IMMEDIATE, exactly where a real save would commit.
+DO $stale_price$
+DECLARE
+  v_trip uuid;
+  t record;
+  v_meta jsonb;
+  v_refused boolean;
+  v_count integer;
+BEGIN
+  SELECT id INTO v_trip FROM r3645_ids WHERE name = 'trip_a';
+  SELECT tt.* INTO t FROM public.ticket_types tt
+   WHERE tt.event_id = v_trip AND tt.name = 'Standard' AND tt.deleted_at IS NULL;
+  SELECT tpt.tier_metadata INTO v_meta FROM public.trip_pricing_tiers tpt WHERE tpt.ticket_type_id = t.id;
+  IF t.price_cents IS DISTINCT FROM 0 OR NOT (v_meta ? 'price_cleared_for_currency_change') THEN
+    RAISE EXCEPTION 'R7-00 fixture: trip a is not a cleared, marked package (% %)', t.price_cents, v_meta;
+  END IF;
+
+  -- R7-01 the clear itself (marker + price 0) is acceptable at commit.
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+
+  -- R7-02 A FORM LEFT OPEN ACROSS THE CHANGE: the old number, with the
+  -- metadata it read (marker included), the way tripsService sends it.
+  v_refused := false;
+  BEGIN
+    PERFORM public.biz_apply_trip_draft_graph(
+      v_trip,
+      jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object(
+        'ticket_type_id', t.id, 'tier_name', 'Standard', 'price_cents', 45000,
+        'capacity', 12, 'tier_metadata', v_meta))),
+      pg_temp.rev(v_trip), '36450830-0000-4000-8000-0000000007a1');
+    SET CONSTRAINTS ALL IMMEDIATE;
+  EXCEPTION WHEN sqlstate 'P0001' THEN
+    IF SQLERRM <> 'price_reentry_required' THEN
+      RAISE EXCEPTION 'R7-02 the stale save was refused with %, expected price_reentry_required', SQLERRM;
+    END IF;
+    v_refused := true;
+  END;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF NOT v_refused THEN
+    RAISE EXCEPTION 'R7-02 a form left open across the change saved the OLD number under the new currency';
+  END IF;
+  SELECT count(*) INTO v_count
+    FROM public.ticket_types tt JOIN public.trip_pricing_tiers tpt ON tpt.ticket_type_id = tt.id
+   WHERE tt.id = t.id AND tt.price_cents = 0 AND tt.currency = 'USD'
+     AND tpt.tier_metadata ? 'price_cleared_for_currency_change';
+  IF v_count <> 1 THEN
+    RAISE EXCEPTION 'R7-03 a refused stale save left something behind (the package is no longer cleared and marked)';
+  END IF;
+
+  -- R7-04 AN OLDER BUILD that sends no metadata at all: the stored marker
+  -- stays, so its old number is refused too.
+  v_refused := false;
+  BEGIN
+    PERFORM public.biz_apply_trip_draft_graph(
+      v_trip,
+      jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object(
+        'ticket_type_id', t.id, 'tier_name', 'Standard', 'price_cents', 45000, 'capacity', 12))),
+      pg_temp.rev(v_trip), '36450830-0000-4000-8000-0000000007a2');
+    SET CONSTRAINTS ALL IMMEDIATE;
+  EXCEPTION WHEN sqlstate 'P0001' THEN
+    v_refused := SQLERRM = 'price_reentry_required';
+  END;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF NOT v_refused THEN
+    RAISE EXCEPTION 'R7-04 a save with no metadata put the old number on a cleared package';
+  END IF;
+
+  -- R7-05 a price written straight onto the package row is refused as well.
+  v_refused := false;
+  BEGIN
+    UPDATE public.ticket_types SET price_cents = 45000 WHERE id = t.id;
+    SET CONSTRAINTS ALL IMMEDIATE;
+  EXCEPTION WHEN sqlstate 'P0001' THEN
+    v_refused := SQLERRM = 'price_reentry_required';
+  END;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF NOT v_refused THEN
+    RAISE EXCEPTION 'R7-05 a direct price write put a number on a cleared, marked package';
+  END IF;
+
+  -- R7-06 FREE AFTER THE CLEAR (marker left out, price 0) is accepted.
+  PERFORM public.biz_apply_trip_draft_graph(
+    v_trip,
+    jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object(
+      'ticket_type_id', t.id, 'tier_name', 'Standard', 'price_cents', 0,
+      'capacity', 12, 'tier_metadata', v_meta - 'price_cleared_for_currency_change'))),
+    pg_temp.rev(v_trip), '36450830-0000-4000-8000-0000000007a3');
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+
+  -- Put the server's marker back, as a second currency change would.
+  UPDATE public.trip_pricing_tiers SET tier_metadata = v_meta WHERE ticket_type_id = t.id;
+
+  -- R7-07 A CORRECT RE-PRICE (marker left out, a new price) is accepted, even
+  -- though the draft owner writes the price before the metadata.
+  PERFORM public.biz_apply_trip_draft_graph(
+    v_trip,
+    jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object(
+      'ticket_type_id', t.id, 'tier_name', 'Standard', 'price_cents', 60000,
+      'capacity', 12, 'tier_metadata', v_meta - 'price_cleared_for_currency_change'))),
+    pg_temp.rev(v_trip), '36450830-0000-4000-8000-0000000007a4');
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  SELECT count(*) INTO v_count
+    FROM public.ticket_types tt JOIN public.trip_pricing_tiers tpt ON tpt.ticket_type_id = tt.id
+   WHERE tt.id = t.id AND tt.price_cents = 60000 AND tt.is_free = false AND tt.currency = 'USD'
+     AND NOT (tpt.tier_metadata ? 'price_cleared_for_currency_change')
+     AND tpt.tier_metadata->>'description' = 'Shared room';
+  IF v_count <> 1 THEN
+    RAISE EXCEPTION 'R7-07 a correct re-price was not stored as a plain priced USD package';
+  END IF;
+
+  -- R7-08 the refusal is deferred on both tables; an immediate one would have
+  -- refused R7-07.
+  SELECT count(*) INTO v_count FROM pg_trigger tg
+   WHERE tg.tgname = 'issue_3645_refuse_price_on_cleared_package'
+     AND tg.tgconstraint <> 0 AND tg.tgdeferrable AND tg.tginitdeferred;
+  IF v_count <> 2 THEN
+    RAISE EXCEPTION 'R7-08 the cleared-package refusal is not a deferred constraint trigger on both tables (% found)', v_count;
+  END IF;
+END
+$stale_price$;
 
 ROLLBACK;
