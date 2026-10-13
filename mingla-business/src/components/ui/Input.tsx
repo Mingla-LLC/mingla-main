@@ -413,6 +413,13 @@ export interface InputProps
   defaultCountryIso?: string;
   /** Fires when the user picks a different country. Phone variant only. */
   onCountryChange?: (country: PhoneCountry) => void;
+  /**
+   * Phone variant only. While set, the chip shows this text ("Choose
+   * country") instead of a flag and no row in the list is marked selected:
+   * the field has no country anyone chose. The caller clears it once
+   * `onCountryChange` has fired. Left out, the chip is unchanged.
+   */
+  countryPlaceholder?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -507,6 +514,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
     renderErrorMessage = true,
     defaultCountryIso,
     onCountryChange,
+    countryPlaceholder,
     onFocus,
     onBlur,
     accessibilityHint,
@@ -543,6 +551,10 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
 
   const behaviour = VARIANT_BEHAVIOUR[variant];
   const isPhone = variant === "phone";
+  const countryUnchosen =
+    isPhone &&
+    typeof countryPlaceholder === "string" &&
+    countryPlaceholder.length > 0;
   const isPassword = variant === "password";
   const secureTextEntry = isPassword && !secureRevealed;
 
@@ -636,10 +648,20 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             onPress={handleOpenPicker}
             disabled={disabled}
             accessibilityRole="button"
-            accessibilityLabel={`Country: ${country.name}, ${country.dialCode}. Tap to change.`}
+            accessibilityLabel={
+              countryUnchosen
+                ? `${countryPlaceholder}. No country chosen yet. Tap to choose.`
+                : `Country: ${country.name}, ${country.dialCode}. Tap to change.`
+            }
             style={styles.countryChip}
           >
-            <Text style={styles.countryFlag}>{country.flag}</Text>
+            {countryUnchosen ? (
+              <Text style={styles.countryPlaceholder} numberOfLines={1}>
+                {countryPlaceholder}
+              </Text>
+            ) : (
+              <Text style={styles.countryFlag}>{country.flag}</Text>
+            )}
             <Icon name="chevD" size={14} color={textTokens.tertiary} />
           </Pressable>
         ) : null}
@@ -772,7 +794,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
                 <Text style={styles.pickerEmpty}>No matches</Text>
               ) : null}
               {filteredCountries.map((c) => {
-                const isSelected = c.iso === country.iso;
+                const isSelected = !countryUnchosen && c.iso === country.iso;
                 return (
                   <Pressable
                     key={c.iso}
@@ -866,6 +888,10 @@ const styles = StyleSheet.create({
   },
   countryFlag: {
     fontSize: 18,
+  },
+  countryPlaceholder: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
   },
   pickerColumn: {
     // Explicit flex-column wrapper inside the Sheet — gives the ScrollView

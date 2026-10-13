@@ -571,7 +571,9 @@ const LegacyTripPreview: React.FC<{
     theme !== undefined ? createThemePalette(theme).accent : accent.warm;
   const includedItems = trip.inclusions.filter((i) => i.kind === "included");
   const excludedItems = trip.inclusions.filter((i) => i.kind === "excluded");
-  const tier = trip.pricingTiers[0];
+  // Issue #3801 — every package the host authored, in authored order. This
+  // layout used to read `pricingTiers[0]` and so showed one package of three.
+  const tiers = trip.pricingTiers;
   // ORCH-1138 [trip-page-redesign] — same "City, Country" standardization on the
   // wizard Step-5 review meta-rows (same data, same "addresses too long"
   // complaint). This LEGACY layout is a vertical icon meta-row list (NOT the
@@ -794,11 +796,19 @@ const LegacyTripPreview: React.FC<{
           </View>
         ) : null}
 
-        {tier !== undefined ? (
+        {tiers.length > 0 ? (
           <View style={styles.legacyPricingCard}>
-            <View>
-              <Text style={styles.legacyPricingTierName}>{tier.tierName}</Text>
-              <Text style={styles.legacyPricingPrice}>{formatPrice(tier)}</Text>
+            <View style={styles.legacyPricingList} testID="trip-preview-packages">
+              {tiers.map((tier) => (
+                <View
+                  key={tier.id}
+                  style={styles.legacyPricingRow}
+                  testID={`trip-preview-package-${tier.ticketTypeId}`}
+                >
+                  <Text style={styles.legacyPricingTierName}>{tier.tierName}</Text>
+                  <Text style={styles.legacyPricingPrice}>{formatPrice(tier)}</Text>
+                </View>
+              ))}
             </View>
             {showCta && onReserveTap !== undefined ? (
               <Pressable
@@ -1206,6 +1216,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
+  },
+  legacyPricingList: {
+    flex: 1,
+    gap: spacing.md,
+  },
+  legacyPricingRow: {
+    minWidth: 0,
   },
   legacyPricingTierName: {
     fontSize: typography.bodySm.fontSize,

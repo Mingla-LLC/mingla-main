@@ -144,8 +144,65 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
 
 // ---- deepEqual private helper ---------------------------------------
 
-const deepEqual = (a: unknown, b: unknown): boolean =>
-  JSON.stringify(a) === JSON.stringify(b);
+// issue #3827 — this used to be `JSON.stringify(a) === JSON.stringify(b)`,
+// which is sensitive to KEY ORDER. The loaded LiveEvent is built from the
+// server row and the edited copy by the wizard steps, and the two do not
+// always build an object's keys in the same order: an untouched recurrence
+// rule, date list, ticket, photo, pricing switch or theme then read as
+// "changed", put a phantom row in Review changes and sent a write that moved
+// nothing. The compare is now structural. It keeps JSON's meaning everywhere
+// else, so nothing that was equal before is unequal now:
+//   - object keys are compared as a set; a key holding `undefined` is absent;
+//   - ARRAY ORDER STAYS SIGNIFICANT (reordering tickets or dates is a change);
+//   - inside an array `undefined` reads as `null`, as JSON writes it;
+//   - a top-level `undefined` equals only `undefined`.
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const deepEqualJsonValue = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+      return false;
+    }
+    for (let index = 0; index < a.length; index += 1) {
+      if (!deepEqualJsonValue(a[index] ?? null, b[index] ?? null)) return false;
+    }
+    return true;
+  }
+  if (isPlainRecord(a) && isPlainRecord(b)) {
+    const aKeys = Object.keys(a).filter((key) => a[key] !== undefined);
+    const bKeys = Object.keys(b).filter((key) => b[key] !== undefined);
+    if (aKeys.length !== bKeys.length) return false;
+    for (const key of aKeys) {
+      if (b[key] === undefined) return false;
+      if (!deepEqualJsonValue(a[key], b[key])) return false;
+    }
+    return true;
+  }
+  // Anything else (a number against a string, NaN, a Date) keeps the old
+  // answer exactly: equal when JSON writes the two the same way.
+  return JSON.stringify(a) === JSON.stringify(b);
+};
+
+const deepEqual = (a: unknown, b: unknown): boolean => {
+  if (a === undefined || b === undefined) return a === b;
+  return deepEqualJsonValue(a, b);
+};
+
+// issue #3827 — a pin is its two numbers. Comparing the objects made
+// `{lng, lat}` differ from `{lat, lng}`, so every save of an event with a pin
+// carried a "changed" location and the server treated it as a new coordinate.
+// Null-safe, the same test serverDraftEventMapper's RSVP diff uses.
+const sameGeoPoint = (
+  a: { lat: number; lng: number } | null | undefined,
+  b: { lat: number; lng: number } | null | undefined,
+): boolean => {
+  const left = a ?? null;
+  const right = b ?? null;
+  if (left === null || right === null) return left === right;
+  return left.lat === right.lat && left.lng === right.lng;
+};
 
 // ---- Field metadata --------------------------------------------------
 
@@ -443,8 +500,8 @@ export const editableDraftToPatch = (
   if (origCity !== edited.city) {
     patch.city = edited.city;
   }
-  const origLocationGeo = original.locationGeo ?? null;
-  if (!deepEqual(origLocationGeo, edited.locationGeo)) {
+  // issue #3827 — compared by lat and lng, not by object shape.
+  if (!sameGeoPoint(original.locationGeo, edited.locationGeo)) {
     patch.locationGeo = edited.locationGeo;
   }
   // ORCH-1006 — diff the pricing switches (who covers VAT/Mingla fee/service

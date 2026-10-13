@@ -205,6 +205,17 @@ jobs:
           # database: the held production apply of that migration is unrelated.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
             -f supabase/migrations/20270731003645_issue_3645_organiser_terms_paid_publish_rpc.sql
+          # Issue #3827 re-emits `business_patch_event_taxonomy` (a live edit keeps
+          # an event's location label and its structured location as one value) and
+          # owns its final definition on a full replay, so the re-apply set must
+          # end with it: re-applying #2333's 20270427002334 alone rewinds that
+          # function to the body that drops the venue. The same migration is also
+          # the latest owner of `business_update_live_event`,
+          # `business_update_live_event_atomic` and `biz_update_live_rsvp`; those
+          # three are not in the snapshot above, so this entry is here for the
+          # taxonomy function only.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270828003827_issue_3827_live_edit_location_one_owner.sql
           after="$(snapshot)"
           test "$before" = "$after"
           echo "OK — replay is definition- and grant-equivalent."

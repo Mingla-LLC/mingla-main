@@ -17,17 +17,29 @@ export type LiveEventFieldValidationResult =
       details?: string;
     };
 
+/**
+ * issue #3827 — what the server records as the reason when an event with no
+ * buyers is edited without one (`business_resolve_edit_reason`). The local edit
+ * log is written with the same words so the two histories read alike.
+ */
+export const NO_BUYERS_EDIT_REASON = "No buyers at time of edit; no reason given";
+
 export const validateLiveEventFieldUpdate = (
   event: LiveEvent | null,
   patch: Partial<EditableLiveEventFields>,
   context: SoldCountContext,
   reason: string,
+  // issue #3827 — a reason is owed to buyers. `false` only when the event is
+  // KNOWN to have none: a blank reason then passes with `trimmedReason: ""`. A
+  // reason the host did type is still held to 10..200 characters either way.
+  reasonRequired: boolean = true,
 ): LiveEventFieldValidationResult => {
   const trimmedReason = reason.trim();
   if (trimmedReason.length === 0) {
-    return { ok: false, reason: "missing_edit_reason" };
-  }
-  if (trimmedReason.length < 10 || trimmedReason.length > 200) {
+    if (reasonRequired) {
+      return { ok: false, reason: "missing_edit_reason" };
+    }
+  } else if (trimmedReason.length < 10 || trimmedReason.length > 200) {
     return { ok: false, reason: "invalid_edit_reason" };
   }
   if (event === null) {

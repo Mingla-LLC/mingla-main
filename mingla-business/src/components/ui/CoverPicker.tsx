@@ -101,6 +101,7 @@ import {
   resolveRawClipUploadUri,
   type VideoTrimFinishPayload,
 } from "./coverPickerVideoTrimUpload";
+import { resolveRawCoverClipDurationMs } from "../../utils/eventCoverMediaRules";
 import {
   searchGiphyEventCovers,
   type GiphyCoverSearchResult,
@@ -1339,6 +1340,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           return;
         }
       }
+      // issue #3040 — the browser has no trimmer, so a web clip a few frames
+      // over 15 s (15.015 s is 450 frames at 29.97 fps) is declared as exactly
+      // 15 s instead of being refused. Native clips are returned unchanged.
+      const rawClipDurationMs = resolveRawCoverClipDurationMs(
+        sourceDurationMs,
+        Platform.OS === "web",
+      );
       const uploadFile =
         trimResult !== null
           ? await buildTrimmedVideoUploadFile({
@@ -1349,10 +1357,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             })
           : {
               bytes: asset.fileSize ?? 0,
-              durationMs: normalizePickerDurationMs(asset.duration),
+              durationMs: rawClipDurationMs,
               fileName: asset.fileName,
               mimeType: asset.mimeType ?? "video/mp4",
-              trimEndMs: normalizePickerDurationMs(asset.duration),
+              trimEndMs: rawClipDurationMs,
               trimStartMs: 0,
               // ORCH-1303: on web `asset.uri` is a browser blob: object URL that
               // is fetch-able as-is; normalizeLocalFileUri would prefix `file://`

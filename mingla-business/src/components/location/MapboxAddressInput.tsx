@@ -100,6 +100,22 @@ export const useAddressSearchProximity = (
     : proximityResolver?.resolveHostAddressProximity(memory, sources);
 };
 
+// ── Issue #3827 — Host address fields ask for 10 suggestions ───────────────
+// The shared field and the Explorer app ask for 5. For a Host that cut real
+// answers off: with a far-away rank point "Lagos, Nigeria" is the 7th result,
+// so it never showed. 10 is the most the search provider returns, the
+// `mapbox-geocode` function already clamps to it, and billing is per search
+// session, not per row. The request still carries no `types` / `country`
+// filter (INV-3 / ORCH-1079).
+export const HOST_ADDRESS_SUGGEST_LIMIT = 10;
+
+// Ten rows are roughly twice the height of five, and the Host list had no
+// height bound of its own (only the keyboard-aware cap on native). This bounds
+// the list to about five and a half rows, the size it was with 5 results; the
+// rest scroll inside it, and the half row shows there is more. On native the
+// keyboard-aware cap still shrinks it further when the keyboard is up.
+export const HOST_ADDRESS_DROPDOWN_MAX_HEIGHT = 320;
+
 // Business token bundle — reproduces the pre-extraction dark-glass StyleSheet.
 const BUSINESS_TOKENS: LocationInputTokens = {
   field: {
@@ -128,7 +144,7 @@ const BUSINESS_TOKENS: LocationInputTokens = {
     bg: glass.tint.profileBase,
     border: glass.border.profileBase,
     radius: radiusTokens.md,
-    maxHeight: 9999, // business dropdown was unbounded
+    maxHeight: HOST_ADDRESS_DROPDOWN_MAX_HEIGHT,
     hasShadow: false,
   },
   row: {
@@ -231,6 +247,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       selectedLabel={selectedLabel}
       onChangeSelected={onChangeSelected}
       proximity={proximity ?? resolvedProximity}
+      suggestLimit={HOST_ADDRESS_SUGGEST_LIMIT}
     />
   );
 };

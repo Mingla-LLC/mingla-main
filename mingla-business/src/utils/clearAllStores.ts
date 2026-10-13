@@ -31,6 +31,7 @@ import { useLiveSectionCollapseStore } from "../store/liveSectionCollapseStore";
 import { useTodoToggleCollapseStore } from "../store/todoToggleCollapseStore";
 import { useAriConversationSelectionStore } from "../store/ariConversationSelectionStore";
 import { useBusinessRecentStore } from "../store/businessRecentStore";
+import { clearBrandPhoneSessionCountries } from "./brandPhoneSessionCountries";
 
 export const clearAllStores = (): void => {
   useCurrentBrandStore.getState().reset();
@@ -49,4 +50,5 @@ export const clearAllStores = (): void => {
   useTodoToggleCollapseStore.getState().reset(); // NEW #882 — Constitution #6 (todo-toggle position)
   useAriConversationSelectionStore.getState().reset(); // #1985 — account+brand Ari pointer must not survive sign-out
   useBusinessRecentStore.getState().reset(); // #2794 — account+brand Recent pointer queue must not survive sign-out
+  clearBrandPhoneSessionCountries(); // #3380 — the remembered phone-country picks are per account
 };

@@ -491,6 +491,15 @@ const locationTextForDraft = (draft: DraftEvent): string | null => {
   return parts.length > 0 ? parts.join(" · ") : null;
 };
 
+// issue #3827 — the halves `locationTextForDraft` composes, sent beside the
+// label so the server stores the same two values it derives the label from.
+const locationHalvesForDraft = (
+  draft: DraftEvent,
+): { venueName: string | null; address: string | null } => ({
+  venueName: draft.venueName ?? null,
+  address: draft.address ?? null,
+});
+
 /**
  * ORCH-1172 — the `biz_update_live_rsvp` p_payload shape.
  *
@@ -507,6 +516,13 @@ export interface RsvpUpdatePayload {
   title: string;
   description: string | null;
   location_text: string | null;
+  // issue #3827 — the two structured halves behind `location_text`. A published
+  // RSVP stores them at theme.business_event.location, which the editor and the
+  // public page read FIRST; biz_update_live_rsvp used to receive the label
+  // only, so an edited venue or address came straight back as the old one.
+  // With this key the server writes both halves and derives the label from
+  // them. A server that predates the key ignores it.
+  location: { venueName: string | null; address: string | null };
   online_url: string | null;
   cover_media_url: string | null;
   cover_media_poster_url: string | null;
@@ -572,6 +588,7 @@ export const buildRsvpUpdatePayload = (
   title: draft.name.trim(),
   description: draft.description.trim().length > 0 ? draft.description : null,
   location_text: locationTextForDraft(draft),
+  location: locationHalvesForDraft(draft),
   online_url: draft.onlineUrl,
   cover_media_url: draft.coverMediaUrl,
   cover_media_poster_url:
@@ -629,6 +646,7 @@ export const buildRsvpUpdatePayloadDiff = (
     description:
       edited.description.trim().length > 0 ? edited.description : null,
     location_text: locationTextForDraft(edited),
+    location: locationHalvesForDraft(edited),
     online_url: edited.onlineUrl,
     cover_media_url: edited.coverMediaUrl,
     cover_media_poster_url:

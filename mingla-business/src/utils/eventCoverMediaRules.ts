@@ -2,6 +2,36 @@ import type { EventCoverMediaType } from "../store/draftEventStore";
 
 export const EVENT_COVER_MAX_BYTES = 30 * 1024 * 1024;
 export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 15_000;
+// issue #3040 — how far above the 15-second ceiling a WEB source clip may run
+// and still be accepted. A phone "15 second" clip is 450 frames at 29.97 fps,
+// which is 15.015 s, so a strict ceiling refuses every one of them, and the
+// browser has no trimmer to send the host to. Within this tolerance the web
+// picker declares the clip as exactly the ceiling; the server, the edge
+// functions and the database keep their strict 15000 ms rule and never see a
+// larger number. Native is unaffected: an over-ceiling clip goes to the trimmer.
+export const EVENT_COVER_WEB_SOURCE_DURATION_TOLERANCE_MS = 500;
+
+/**
+ * The duration a RAW (untrimmed) picked clip is declared with.
+ * Web only: a source above the ceiling by no more than the tolerance is clamped
+ * to the ceiling. Everything else is returned untouched, so a longer web clip
+ * and every native clip are still judged against the strict ceiling.
+ */
+export const resolveRawCoverClipDurationMs = (
+  sourceDurationMs: number,
+  isWeb: boolean,
+): number => {
+  if (
+    isWeb &&
+    sourceDurationMs > EVENT_COVER_MAX_VIDEO_DURATION_MS &&
+    sourceDurationMs <=
+      EVENT_COVER_MAX_VIDEO_DURATION_MS +
+        EVENT_COVER_WEB_SOURCE_DURATION_TOLERANCE_MS
+  ) {
+    return EVENT_COVER_MAX_VIDEO_DURATION_MS;
+  }
+  return sourceDurationMs;
+};
 export const EVENT_COVER_UPLOAD_LIMIT_COPY =
   "Upload a JPEG, PNG, WebP, or GIF up to 30 MB.";
 

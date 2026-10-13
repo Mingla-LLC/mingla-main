@@ -3,8 +3,12 @@
  * shape in `currentBrandStore`, and back for Supabase insert/update payloads.
  *
  * Limitations (until schema or product changes):
- * - `Brand.contact.phoneCountryIso` is **not** stored on `brands`; it is lost on
- *   save unless you add a column or JSON convention later.
+ * - Issue #3380 — `brands.contact_phone` holds the number as E.164
+ *   (`+2348031234567`). There is no separate country column: the country is
+ *   part of the number and the editor reads it back out
+ *   (`components/brand/brandContactPhoneRules.ts`). Rows saved before that are
+ *   bare national digits; they pass through here untouched in both directions,
+ *   because nothing in this file knows a country to add (Constitution rule 9).
  * - `Brand.stats` and `Brand.currentLiveEvent` are **not** columns; pass them
  *   via `mapBrandRowToUi` options (from events/orders queries or defaults).
  * - UI `BrandRole` is only `owner` | `admin`; server has more roles — use
@@ -24,6 +28,21 @@ import type {
   VenueCategory,
 } from "../types/brand";
 import { deriveBrandStripeStatus } from "../utils/deriveBrandStripeStatus";
+import { brandPhoneE164 } from "@mingla/brand-rendering/brandPhoneHref";
+
+/**
+ * Issue #3380 — the one shape `brands.contact_phone` is written in, on create
+ * and on edit alike: canonical E.164 when the value is one (stray spaces and
+ * punctuation removed), otherwise the trimmed value as given, or null.
+ */
+export const brandContactPhoneForStorage = (
+  phone: string | null | undefined,
+): string | null => {
+  if (typeof phone !== "string") return null;
+  const trimmed = phone.trim();
+  if (trimmed.length === 0) return null;
+  return brandPhoneE164(trimmed) ?? trimmed;
+};
 
 /** Snapshot of `public.brands` columns needed for mapping (B1 + Cycle 17e-A). */
 export interface BrandRow {
@@ -289,7 +308,9 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     contact: hasContact
       ? {
           email: row.contact_email?.trim() || undefined,
-          phone: row.contact_phone?.trim() || undefined,
+          // issue #3380 — E.164 when saved with its country; a legacy row
+          // is handed on exactly as stored.
+          phone: brandContactPhoneForStorage(row.contact_phone) ?? undefined,
         }
       : undefined,
     links,
@@ -355,7 +376,7 @@ export function mapUiToBrandInsert(input: MapUiToBrandInsertInput): BrandTableIn
     description: joinBrandDescription(brand.tagline, brand.bio),
     profile_photo_url: brand.photo?.trim() || null,
     contact_email: brand.contact?.email?.trim() || null,
-    contact_phone: brand.contact?.phone?.trim() || null,
+    contact_phone: brandContactPhoneForStorage(brand.contact?.phone),
     social_links: linksToSocialJson(brand.links),
     custom_links: brand.links?.custom?.length ? brand.links.custom : [],
     tax_settings: {},
@@ -444,7 +465,7 @@ export function mapUiToBrandUpdatePatch(
   }
   if (patch.contact !== undefined) {
     out.contact_email = patch.contact?.email?.trim() || null;
-    out.contact_phone = patch.contact?.phone?.trim() || null;
+    out.contact_phone = brandContactPhoneForStorage(patch.contact?.phone);
   }
   if (patch.links !== undefined) {
     out.social_links = linksToSocialJson(patch.links);

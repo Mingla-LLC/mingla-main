@@ -108,6 +108,11 @@ import type {
 } from "../../../src/services/publicExperienceService";
 // #3372 — naira shows "₦", not "NGN", on the public experience page (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+// #3645 — the headline price never rounds a .50 price up past the charge.
+import {
+  priceDecimals,
+  priceFallbackDecimals,
+} from "@mingla/offering-rendering/priceDecimals";
 
 function allDatesPast(isos: string[], nowMs: number = Date.now()): boolean {
   const valid = isos
@@ -754,12 +759,12 @@ function formatExpPrice(priceCents: number, currency: string): string {
       new Intl.NumberFormat(undefined, {
         style: "currency",
         currency: currency || "USD",
-        maximumFractionDigits: 0,
+        ...priceDecimals(priceCents / 100),
       }).format(priceCents / 100),
       currency,
     );
   } catch {
-    return `${(priceCents / 100).toFixed(0)} ${currency}`;
+    return `${(priceCents / 100).toFixed(priceFallbackDecimals(priceCents / 100))} ${currency}`;
   }
 }
 

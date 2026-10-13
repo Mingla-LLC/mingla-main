@@ -13,6 +13,8 @@
 // shared sub-predicates exported here.
 
 import { withCurrencyGlyph } from "./currencyGlyph";
+// #3645 — a price never shows a single decimal digit (one shared rule).
+import { priceDecimals } from "./priceDecimals";
 import type { PublicEventProps, PublicTicketProps } from "./types";
 
 /** A single ticket's per-tier sale-state sub-predicates (shared with the row). */
@@ -139,8 +141,7 @@ const formatPrice = (
       new Intl.NumberFormat("en-US", {
         style: "currency",
         currency,
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
+        ...priceDecimals(price),
       }).format(price),
       currency,
     );

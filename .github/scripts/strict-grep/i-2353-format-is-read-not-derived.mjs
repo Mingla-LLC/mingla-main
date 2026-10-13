@@ -76,6 +76,12 @@
  *       #2353 migration. PostgreSQL keeps the last definition applied, so a
  *       later migration re-creating any of them silently reinstates the defect
  *       with every test still green until a hybrid event exists.
+ *       issue #3827 — a later migration MAY be the last writer when it is
+ *       REGISTERED in `SUCCESSORS` below AND carries every #2353 hunk for
+ *       that function (the three-valued projection, the persist, the
+ *       namespace-creating merge) with the same normaliser. Registration alone
+ *       is not enough: a registered successor that drops a hunk fails, and an
+ *       unregistered later writer fails exactly as before.
  *   A6. ONE CANONICAL-MEMBERSHIP TEST, AND ONE CHARACTER SET. Every
  *       `IN ('in_person','online','hybrid')` in the #2353 migration is
  *       normalised with `lower(btrim(…))`, there are at least nine of them
@@ -163,6 +169,70 @@ const CORRECTED_FUNCTIONS = [
   "business_update_live_event",
   "ari_execute_event_operation",
 ];
+
+// issue #3827 — REGISTERED SUCCESSORS (rule A5). A function #2353 corrects may
+// be re-created by a LATER migration only if that migration is named here and
+// its text carries every hunk listed for the function. This is an allowlist of
+// FILES, not a waiver of the rule: the carried hunks are re-checked on the
+// successor on every run, so the correction can be extended but never dropped.
+// Add an entry only in the same change as the migration it names.
+const S3A_PROJECTION_RE =
+  /lower\(btrim\(p_patch->>'format',\s*E'[^']*'\|\|chr\(160\)\)\)\s+IN\s*\(\s*'online'\s*,\s*'hybrid'\s*\)/i;
+const S3B_NAMESPACE_RE =
+  /COALESCE\(theme,'\{\}'::jsonb\)\s*\|\|\s*jsonb_build_object\(\s*'business_event'/i;
+const S3B_PERSIST_RE =
+  /jsonb_build_object\('format',lower\(btrim\(p_patch->>'format',\s*E'[^']*'\|\|chr\(160\)\)\)\)/i;
+const ISSUE_3827 =
+  "supabase/migrations/20270828003827_issue_3827_live_edit_location_one_owner.sql";
+const SUCCESSORS = {
+  business_update_live_event: [
+    {
+      file: ISSUE_3827,
+      carries: [
+        { id: "S3(a) three-valued is_online projection", re: S3A_PROJECTION_RE },
+        { id: "S3(b) namespace-creating merge", re: S3B_NAMESPACE_RE },
+        { id: "S3(b) format persist", re: S3B_PERSIST_RE },
+      ],
+    },
+  ],
+};
+
+/**
+ * The set of second arguments passed to every `lower(btrim(…))` in `sql`
+ * (comments already stripped). A one-argument call is reported by name.
+ */
+export function btrimCharacterSets(sql) {
+  const sets = new Set();
+  for (const m of sql.matchAll(/\blower\s*\(\s*btrim\s*\(/gi)) {
+    let k = m.index + m[0].length;
+    let depth = 1;
+    let comma = -1;
+    while (depth > 0 && k < sql.length) {
+      const c = sql[k];
+      if (c === "(") depth++;
+      else if (c === ")") depth--;
+      else if (c === "," && depth === 1 && comma === -1) comma = k;
+      k++;
+    }
+    sets.add(comma === -1 ? "<one-argument btrim>" : norm(sql.slice(comma + 1, k - 1)));
+  }
+  return sets;
+}
+
+/**
+ * The text of ONE function's definition inside a migration: from its
+ * `CREATE OR REPLACE FUNCTION public.<fn>(` to the next function definition or
+ * the end of the file. A successor is judged on the function it is registered
+ * for, not on whatever else shares its migration.
+ */
+export function functionDefinition(sql, fn) {
+  const start = new RegExp(
+    `CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+public\\.${fn}\\s*\\(`, "i").exec(sql);
+  if (start === null) return "";
+  const rest = sql.slice(start.index + start[0].length);
+  const next = /CREATE\s+OR\s+REPLACE\s+FUNCTION\b/i.exec(rest);
+  return sql.slice(start.index, start.index + start[0].length + (next === null ? rest.length : next.index));
+}
 
 // FROZEN ALLOWLIST. Each entry is {file, shape, snippet}, where `snippet` is
 // the whitespace-normalised occurrence text. These are the pre-existing sites
@@ -397,20 +467,7 @@ export function checkFormatTruth(files, failures) {
   // matching paren and read the second argument. One-argument btrim strips
   // ASCII space only, and two sites trimming different sets is the #2333 P2-1
   // normalisation gap re-created inside a single file.
-  const trimSets = new Set();
-  for (const m of fix.matchAll(/\blower\s*\(\s*btrim\s*\(/gi)) {
-    let k = m.index + m[0].length;
-    let depth = 1;
-    let comma = -1;
-    while (depth > 0 && k < fix.length) {
-      const c = fix[k];
-      if (c === "(") depth++;
-      else if (c === ")") depth--;
-      else if (c === "," && depth === 1 && comma === -1) comma = k;
-      k++;
-    }
-    trimSets.add(comma === -1 ? "<one-argument btrim>" : norm(fix.slice(comma + 1, k - 1)));
-  }
+  const trimSets = btrimCharacterSets(fix);
   if (trimSets.has("<one-argument btrim>")) {
     failures.push(
       `${FIX}: a one-argument \`btrim(text)\` survives. It strips ASCII SPACE ONLY — measured on ` +
@@ -538,14 +595,55 @@ export function checkFormatTruth(files, failures) {
       failures.push(`${MIGRATIONS_DIR}: no migration creates public.${fn} (#2353).`);
       continue;
     }
-    const last = creators[creators.length - 1];
-    if (last !== FIX) {
-      failures.push(
-        `${last}: is the LAST migration to CREATE OR REPLACE public.${fn} (prefix ` +
-        `${prefixOf(last)} > ${fixPrefix}). PostgreSQL keeps the last definition applied, so ` +
-        `#2353's correction is overwritten at apply time and every test stays green until a ` +
-        `hybrid event exists. Carry #2353's hunks into that migration, or move it earlier (#2353).`,
-      );
+    // issue #3827 — every writer AFTER #2353 must be a registered successor
+    // that still carries #2353's hunks for this function. `last` is one of them
+    // by construction, so an unregistered last writer fails exactly as before.
+    const registered = SUCCESSORS[fn] ?? [];
+    const later = creators.filter((rel) => prefixOf(rel).localeCompare(fixPrefix) > 0);
+    if (!creators.includes(FIX)) {
+      failures.push(`${FIX}: no longer creates public.${fn} (#2353).`);
+    }
+    for (const rel of later) {
+      const successor = registered.find((entry) => entry.file === rel);
+      if (successor === undefined) {
+        failures.push(
+          `${rel}: is the LAST migration to CREATE OR REPLACE public.${fn} (prefix ` +
+          `${prefixOf(rel)} > ${fixPrefix}). PostgreSQL keeps the last definition applied, so ` +
+          `#2353's correction is overwritten at apply time and every test stays green until a ` +
+          `hybrid event exists. Carry #2353's hunks into that migration, or move it earlier (#2353).`,
+        );
+        continue;
+      }
+      const successorSql = functionDefinition(stripSqlComments(files[rel]), fn);
+      for (const { id, re } of successor.carries) {
+        if (!re.test(successorSql)) {
+          failures.push(
+            `${rel}: is a registered successor for public.${fn} but does NOT carry #2353's ` +
+            `${id}. It is the definition PostgreSQL keeps, so a dropped hunk is the original ` +
+            `defect back in production with this gate's registration as its cover (#2353, #3827).`,
+          );
+        }
+      }
+      // Compared with whitespace removed: `a||b` and `a || b` are one set.
+      const tight = (t) => t.replace(/\s+/g, "");
+      const fixSets = new Set([...trimSets].map(tight));
+      const successorSets = btrimCharacterSets(successorSql);
+      for (const set of successorSets) {
+        if (!fixSets.has(tight(set))) {
+          failures.push(
+            `${rel}: a registered successor for public.${fn} normalises with \`${set}\`, which is ` +
+            `not the character set #2353 uses (${[...trimSets].map((t) => `\`${t}\``).join(", ")}). ` +
+            `The read site and the write site would disagree about the same stored string ` +
+            `(#2353, #3827).`,
+          );
+        }
+      }
+      if (successorSets.size === 0) {
+        failures.push(
+          `${rel}: a registered successor for public.${fn} has no \`lower(btrim(…))\` at all — ` +
+          `the format value is no longer normalised before the membership test (#2353, #3827).`,
+        );
+      }
     }
   }
 
@@ -976,6 +1074,52 @@ if (process.argv.includes("--self-test")) {
       "CREATE OR REPLACE FUNCTION public.business_update_live_event(a uuid,b jsonb,c text,d integer) AS $fn$ BEGIN NULL; END; $fn$;",
   }, /LAST migration to CREATE OR REPLACE/);
 
+  // 6b — issue #3827: a REGISTERED successor that carries every #2353 hunk
+  // for the function is allowed to be the last writer…
+  const SUCCESSOR_GOOD = [
+    "CREATE OR REPLACE FUNCTION public.business_update_live_event(a uuid,b jsonb,c text,d integer)",
+    "AS $fn$ BEGIN",
+    "  UPDATE public.events SET",
+    S3A_GOOD,
+    "    theme=jsonb_set(",
+    S3B_GOOD,
+    "        '{business_event,clientRevision}',to_jsonb(d),true),",
+    "    updated_at=now() WHERE id=a;",
+    "END; $fn$;",
+  ].join("\n");
+  const withSuccessor = (sql) => ({ ...good, [ISSUE_3827]: sql });
+  const successorBaseline = run(withSuccessor(SUCCESSOR_GOOD));
+  if (successorBaseline.length !== 0) {
+    selfFailures.push("a registered successor carrying every #2353 hunk was wrongly flagged: " +
+      JSON.stringify(successorBaseline));
+  }
+  // …and is refused the moment it drops one, each hunk on its own.
+  const successorSwap = (from, to) => {
+    if (!SUCCESSOR_GOOD.includes(from)) throw new Error("self-test fixture drift: " + from.slice(0, 60));
+    return withSuccessor(SUCCESSOR_GOOD.replace(from, to));
+  };
+  expect("a registered successor that dropped the three-valued projection",
+    successorSwap(S3A_GOOD, "    is_online=is_online,"),
+    /registered successor for public\.business_update_live_event but does NOT carry #2353's S3\(a\)/);
+  expect("a registered successor that dropped the format persist",
+    successorSwap(
+      "|| jsonb_build_object('format',lower(btrim(p_patch->>'format', E' \\t\\n\\r\\f\\v'||chr(160)))))",
+      "|| jsonb_build_object('other',lower(btrim(p_patch->>'other', E' \\t\\n\\r\\f\\v'||chr(160)))))"),
+    /does NOT carry #2353's S3\(b\) format persist/);
+  expect("a registered successor that went back to jsonb_set on a missing namespace",
+    successorSwap("THEN COALESCE(theme,'{}'::jsonb) || jsonb_build_object(", "THEN jsonb_build_object("),
+    /does NOT carry #2353's S3\(b\) namespace-creating merge/);
+  expect("a registered successor normalising with a different character set",
+    successorSwap(
+      "THEN lower(btrim(p_patch->>'format', E' \\t\\n\\r\\f\\v'||chr(160))) IN ('online','hybrid')",
+      "THEN lower(btrim(p_patch->>'format', E' \\t'||chr(160))) IN ('online','hybrid')"),
+    /not the character set #2353 uses/);
+  // The registration is for ONE function in ONE file: the same file re-creating
+  // a different corrected function is still an unregistered last writer.
+  expect("a registered successor re-creating a function it is not registered for", withSuccessor(
+    SUCCESSOR_GOOD + "\nCREATE OR REPLACE FUNCTION public.ari_execute_event_operation(a uuid, b text, c jsonb) AS $fn$ BEGIN NULL; END; $fn$;"),
+    /LAST migration to CREATE OR REPLACE public\.ari_execute_event_operation/);
+
   // 7 — the grant removed, one leaf at a time.
   expect("business_patch_event_when's grant removed",
     swap("  public.business_patch_event_when(uuid,jsonb,text,integer),\n", ""),
@@ -1047,7 +1191,7 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "#2353 format-is-read-not-derived self-test PASS (37 cases: the compliant fixture; the S2\n" +
+    "#2353 format-is-read-not-derived self-test PASS (43 cases: the compliant fixture; the S2\n" +
       "  read, the S3(a) projection, the S3(b) persist, the S3(b) namespace creation and one of\n" +
       "  the four Ari reads each reverted INDEPENDENTLY and each caught by its OWN rule; S4(c)\n" +
       "  put back on key presence (the P1 the tester proved); the normaliser stripped from one\n" +
@@ -1060,7 +1204,10 @@ if (process.argv.includes("--self-test")) {
       "  parenthesised CASE behind 'format', a parenthesised CASE assigned to is_online, the\n" +
       "  defect with no CASE at all, a CASE laundered through a variable, the simple-CASE form,\n" +
       "  and a double-quoted key; a later migration re-creating a corrected function\n" +
-      "  (last-writer-wins); each grant removed on its own; anon re-granted; the [TRANSITIONAL]\n" +
+      "  (last-writer-wins); #3827's registered successor accepted while it carries every\n" +
+      "  #2353 hunk and refused when it drops the projection, the persist, the namespace merge\n" +
+      "  or the normaliser, or re-creates a function it is not registered for;\n" +
+      "  each grant removed on its own; anon re-granted; the [TRANSITIONAL]\n" +
       "  tag and the EXIT CONDITION each removed alone; the apply-order guard deleted, moved\n" +
       "  below the GRANT, and downgraded off to_regprocedure; the migration deleted; a fully\n" +
       "  commented-out migration; prose about the banned shape; the frozen migration edited; and\n" +
@@ -1094,7 +1241,8 @@ if (failures.length > 0) {
 console.log(
   "#2353 PASS — no new is_online-keyed format derivation in any formulation the detectors cover;\n" +
     "the four #2089 sites are the frozen allowlist and are still where they were; #2353 is the\n" +
-    "LAST writer of all three corrected functions and does NOT re-create the publish-visibility\n" +
+    "LAST writer of all three corrected functions, or is followed only by a registered successor\n" +
+    "that still carries its hunks (#3827), and does NOT re-create the publish-visibility\n" +
     "guard; the stored-first read, the three-valued projection, the namespace-creating PERSIST\n" +
     "and all four Ari reads are present; every canonical-membership test is normalised with\n" +
     "lower(btrim(..., E' \\t\\n\\r\\f\\v'||chr(160))) and S4(c) enters on it rather than on key presence; the [TRANSITIONAL]\n" +
