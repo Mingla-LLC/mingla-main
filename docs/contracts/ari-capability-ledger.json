@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-09-11T00:00:00Z",
-    "registered_tool_count": 128,
-    "capability_count": 140,
+    "registered_tool_count": 133,
+    "capability_count": 145,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 127,
+      "registered_unverified": 132,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -2428,6 +2428,241 @@
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.ads.propose_ad_plan",
+      "domain": "ads",
+      "outcome": "Propose a Host Ads plan (no spend)",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "PR-3825"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/(tabs)/marketing/ads/index.tsx",
+          "mingla-business/app/(tabs)/marketing/ads/[id].tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const proposeAdPlan"
+          }
+        ]
+      },
+      "ari_tool": "propose_ad_plan",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:propose_ad_plan toward #3697 Wave 7c"
+        }
+      ],
+      "owning_issues": [
+        3697,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime parity proof"
+      ],
+      "confidence": "medium",
+      "verified_at": "2026-10-13"
+    },
+    {
+      "id": "ari.ads.approve_ad_plan",
+      "domain": "ads",
+      "outcome": "Create and launch a Host ad with Ads credit",
+      "safety": "money",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "type_to_confirm",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "PR-3825"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/(tabs)/marketing/ads/index.tsx",
+          "mingla-business/app/(tabs)/marketing/ads/[id].tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const approveAdPlan"
+          }
+        ]
+      },
+      "ari_tool": "approve_ad_plan",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:approve_ad_plan toward #3697 Wave 7c"
+        }
+      ],
+      "owning_issues": [
+        3697,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime parity proof"
+      ],
+      "confidence": "medium",
+      "verified_at": "2026-10-13"
+    },
+    {
+      "id": "ari.ads.pause_ad_campaign",
+      "domain": "ads",
+      "outcome": "Pause a Host-owned ad campaign",
+      "safety": "write",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "PR-3825"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/(tabs)/marketing/ads/index.tsx",
+          "mingla-business/app/(tabs)/marketing/ads/[id].tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const pauseAdCampaign"
+          }
+        ]
+      },
+      "ari_tool": "pause_ad_campaign",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:pause_ad_campaign toward #3697 Wave 7c"
+        }
+      ],
+      "owning_issues": [
+        3697,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime parity proof"
+      ],
+      "confidence": "medium",
+      "verified_at": "2026-10-13"
+    },
+    {
+      "id": "ari.ads.end_ad_campaign",
+      "domain": "ads",
+      "outcome": "End a Host ad and return unspent Ads credit",
+      "safety": "money",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "type_to_confirm",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "PR-3825"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/(tabs)/marketing/ads/index.tsx",
+          "mingla-business/app/(tabs)/marketing/ads/[id].tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const endAdCampaign"
+          }
+        ]
+      },
+      "ari_tool": "end_ad_campaign",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:end_ad_campaign toward #3697 Wave 7c"
+        }
+      ],
+      "owning_issues": [
+        3697,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime parity proof"
+      ],
+      "confidence": "medium",
+      "verified_at": "2026-10-13"
+    },
+    {
+      "id": "ari.ads.get_ad_campaign_report",
+      "domain": "ads",
+      "outcome": "Read Host ad status and spend",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "PR-3825"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/(tabs)/marketing/ads/index.tsx",
+          "mingla-business/app/(tabs)/marketing/ads/[id].tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getAdCampaignReport"
+          }
+        ]
+      },
+      "ari_tool": "get_ad_campaign_report",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:get_ad_campaign_report toward #3697 Wave 7c"
+        }
+      ],
+      "owning_issues": [
+        3697,
+        2000
+      ],
+      "blockers": [
+        "No exact-revision runtime parity proof"
+      ],
+      "confidence": "medium",
+      "verified_at": "2026-10-13"
     },
     {
       "id": "ari.marketing.update_draft",

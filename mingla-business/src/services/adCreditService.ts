@@ -81,6 +81,8 @@ export type AdCreditStartTopUpRedirect = {
   url: string;
   checkout_session_id: string;
   payment_intent_id: string | null;
+  /** Present for NGN Paystack top-ups (`mingla_adc_…`). */
+  paystack_reference?: string;
   quote: AdCreditTopUpQuote;
 };
 
@@ -188,6 +190,7 @@ export async function applyAdCreditTopUp(input: {
   currency: string;
   paymentRef?: string;
   checkoutSessionId?: string;
+  paystackReference?: string;
   idempotencyKey?: string;
 }): Promise<AdCreditApplyTopUpResult> {
   return invokeAdCredit<AdCreditApplyTopUpResult>({
@@ -199,8 +202,31 @@ export async function applyAdCreditTopUp(input: {
     ...(input.checkoutSessionId
       ? { checkout_session_id: input.checkoutSessionId }
       : {}),
+    ...(input.paystackReference
+      ? { paystack_reference: input.paystackReference }
+      : {}),
     ...(input.idempotencyKey
       ? { idempotency_key: input.idempotencyKey }
       : {}),
+  });
+}
+
+export type AdCreditApplyWithdrawResult = {
+  ok: true;
+  estimate: AdCreditWithdrawQuote;
+  result: unknown;
+  provider_refund_cents: number | null;
+};
+
+export async function applyAdCreditWithdraw(input: {
+  brandId: string;
+  creditCents: number;
+  idempotencyKey: string;
+}): Promise<AdCreditApplyWithdrawResult> {
+  return invokeAdCredit<AdCreditApplyWithdrawResult>({
+    action: "apply_withdraw",
+    brand_id: input.brandId,
+    credit_cents: input.creditCents,
+    idempotency_key: input.idempotencyKey,
   });
 }

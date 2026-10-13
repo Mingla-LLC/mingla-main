@@ -41,6 +41,11 @@ import {
   isInstallmentPaymentIntentEvent,
 } from "./installmentWebhookHandlers.ts";
 import { handleChargeDispute } from "./stripeDisputeHandlers.ts";
+import {
+  applyAdCreditTopUpFromPaymentIntent,
+  applyAdCreditWithdrawFromStripeRefund,
+  isAdCreditTopUpStripeObject,
+} from "./adCreditWebhook.ts";
 // ORCH-1054 — partner splits + Stripe Transfer pipeline.
 // charge.succeeded → create partner Transfer; charge.refunded + charge.dispute.*
 // → reverse partner Transfer; account.updated → populate partner
@@ -923,6 +928,18 @@ async function handleRefundEvent(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(metadata.mingla_refund_id)
     ? metadata.mingla_refund_id
     : null;
+
+  // toward #3697 Wave 7c — platform Ads-credit withdraw refunds (no Connect order).
+  {
+    const adCredit = await applyAdCreditWithdrawFromStripeRefund(supabase, {
+      id: refundId,
+      status: refundStatus,
+      amount: amountCents,
+      payment_intent: paymentIntentId,
+      metadata,
+    });
+    if (adCredit.handled) return adCredit.brandId;
+  }
 
   // #1221 typed Venue/RSVP refunds are resolved by immutable operation metadata
   // before every legacy order fallback. Provider evidence must match exactly.
@@ -2074,6 +2091,31 @@ export async function routeStripeEvent(
         }
         break;
       }
+      // toward #3697 Wave 7c — platform Ads credit top-up (before ticket fallthrough).
+      {
+        const piObj = event.data?.object as {
+          metadata?: Record<string, string> | null;
+          id?: string;
+          status?: string;
+          amount?: number;
+          currency?: string;
+        } | undefined;
+        if (piObj && isAdCreditTopUpStripeObject(piObj)) {
+          if (event.type === "payment_intent.succeeded") {
+            const applied = await applyAdCreditTopUpFromPaymentIntent(
+              supabase,
+              piObj,
+            );
+            if (!applied.applied) {
+              throw new Error(
+                `ad_credit_top_up_apply_failed:${applied.detail ?? "unknown"}`,
+              );
+            }
+            brandId = applied.brandId;
+          }
+          break;
+        }
+      }
       // ORCH-0869 [Tr3 Installment Payments]: discriminate by metadata.
       // Installment PIs (created by process-scheduled-installments cron) carry
       // `mingla_installment_id` in metadata. Route to installment handlers
@@ -2107,6 +2149,14 @@ export async function routeStripeEvent(
       // the race, the second is a no-op early return inside the RPC).
       if (isVenueOrderStripeEvent(event)) {
         brandId = await handleVenueOrderStripeEvent(supabase, event);
+        break;
+      }
+      // toward #3697 Wave 7c — Ads credit Checkout: do NOT credit here.
+      // checkout.session.completed is not proof the PI succeeded (async methods).
+      // Credit applies only on payment_intent.succeeded (above) or client apply.
+      if (isAdCreditTopUpStripeObject(event.data?.object as {
+        metadata?: Record<string, string> | null;
+      } | undefined)) {
         break;
       }
       brandId = await handleCheckoutSessionCompleted(supabase, event);
