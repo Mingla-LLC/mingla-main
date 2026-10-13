@@ -138,3 +138,31 @@ Deno.test("#3645: the event function asks for terms after it decides the publish
   assert(/IF COALESCE\(v_money_bearing, false\) THEN\s+PERFORM public\.biz_require_current_organiser_terms\(v_event\.brand_id\);/.test(body));
   assert(/IF NOT COALESCE\(v_money_bearing, false\) THEN\s+PERFORM set_config\('mingla\.publish_free_only', 'on', true\);/.test(body));
 });
+
+// The file re-emits three functions and nothing else. An earlier draft carried
+// a fourth, public.biz_publish_stay, copied along by accident from the file it
+// was cut from: identical today, but a silent rewind of whatever a later
+// migration made of that function. This counts every function the file creates.
+Deno.test("#3645: migration 20270830003645 creates exactly the three offering functions", async () => {
+  const sql = await Deno.readTextFile(
+    new URL(
+      "20270830003645_issue_3645_offering_functions_use_shared_currency_source.sql",
+      migrationsDir,
+    ),
+  );
+  const withoutComments = sql.split("\n").map((line) => line.replace(/--.*$/, "")).join("\n");
+  const created = [
+    ...withoutComments.matchAll(
+      /\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)\s+([A-Za-z_"][\w".]*)\s*\(/gi,
+    ),
+  ].map((match) => match[1].replaceAll('"', "").toLowerCase());
+  assertEquals(
+    [...created].sort(),
+    OFFERING_FUNCTIONS.map((name) => `public.${name}`).sort(),
+  );
+  // And it changes nothing else: no trigger, table, grant or drop.
+  for (const statement of ["CREATE TRIGGER", "CREATE TABLE", "ALTER TABLE", "DROP ", "GRANT ", "REVOKE "]) {
+    assert(!withoutComments.toUpperCase().includes(statement), `unexpected ${statement.trim()} in the migration`);
+  }
+});
+
