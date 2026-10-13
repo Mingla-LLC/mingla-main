@@ -2,13 +2,69 @@
 // paste, for Claude Code or Codex, on macOS / Linux or Windows.
 //
 // The recommended lines keep the key in an environment variable, so the line
-// that names the connector never holds the key. The simpler way is one paste
-// and says plainly where the key ends up.
-import { Tabs } from "../ui/Tabs";
+// that names the connector never holds the key. The simpler way is one paste.
+// Under every line the page says where the key ends up and how to take it
+// out again. Lines that were not run on that kind of computer say so.
+import { useRef } from "react";
 import { AlertCard } from "../ui/Card";
 import { Segmented } from "../crm/fields";
 import { CopyBlock } from "./CopyBlock";
 import { AGENTS, OS_OPTIONS, connectLines } from "../../lib/agentConnect";
+
+/** Summary of a disclosure: a full 44px target, at every width. */
+export const DISCLOSURE_CLASS = [
+  "flex min-h-11 cursor-pointer items-center text-[13px] font-semibold text-[var(--color-text-primary)]",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]",
+].join(" ");
+
+/** The two agent tabs: 44px tall, arrow keys move between them. */
+function AgentTabs({ agentId, onAgent }) {
+  const refs = useRef({});
+  const onKeyDown = (event) => {
+    const at = AGENTS.findIndex((a) => a.id === agentId);
+    let next = -1;
+    if (event.key === "ArrowRight") next = (at + 1) % AGENTS.length;
+    else if (event.key === "ArrowLeft") next = (at - 1 + AGENTS.length) % AGENTS.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = AGENTS.length - 1;
+    if (next < 0) return;
+    event.preventDefault();
+    onAgent(AGENTS[next].id);
+    refs.current[AGENTS[next].id]?.focus();
+  };
+  return (
+    <div role="tablist" aria-label="Your agent" className="flex min-w-0 border-b border-[var(--gray-200)]">
+      {AGENTS.map((a) => {
+        const active = a.id === agentId;
+        return (
+          <button
+            key={a.id}
+            ref={(el) => {
+              refs.current[a.id] = el;
+            }}
+            type="button"
+            role="tab"
+            id={`agent-tab-${a.id}`}
+            aria-selected={active}
+            aria-controls={`agent-tabpanel-${a.id}`}
+            tabIndex={active ? 0 : -1}
+            onClick={() => onAgent(a.id)}
+            onKeyDown={onKeyDown}
+            className={[
+              "-mb-px min-h-11 border-b-2 px-4 text-sm font-medium transition-colors duration-150",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-brand-500)]",
+              active
+                ? "border-[var(--color-brand-500)] text-[var(--color-brand-500)]"
+                : "border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]",
+            ].join(" ")}
+          >
+            {a.product}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function AgentConnectSteps({ agentId, onAgent, os, onOs, endpoint, freshKey, hasKey }) {
   const lines = connectLines({ agent: agentId, os, endpoint, key: freshKey });
@@ -16,20 +72,22 @@ export function AgentConnectSteps({ agentId, onAgent, os, onOs, endpoint, freshK
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <Tabs
-        tabs={AGENTS.map((a) => ({ id: a.id, label: a.product }))}
-        activeTab={agentId}
-        onChange={onAgent}
-      />
-      <div role="tabpanel" id={`tabpanel-${agentId}`} aria-labelledby={`tab-${agentId}`} className="flex min-w-0 flex-col gap-4">
+      <AgentTabs agentId={agentId} onAgent={onAgent} />
+      <div role="tabpanel" id={`agent-tabpanel-${agentId}`} aria-labelledby={`agent-tab-${agentId}`} className="flex min-w-0 flex-col gap-4">
         <Segmented label="Your computer" options={OS_OPTIONS} value={os} onChange={onOs} />
 
         {!lines ? (
           <AlertCard variant="error" title="The connector's address isn't set up">
-            This copy of Mingla Admin doesn't know its server address, so the lines can't be built. Tell an admin.
+            This copy of Mingla Admin doesn&apos;t know its server address, so the lines can&apos;t be built. Tell an admin.
           </AlertCard>
         ) : (
           <>
+            {lines.untested && (
+              <AlertCard variant="warning" title="Not tested on Windows">
+                We have not run these lines on a Windows computer. They follow the documented forms. If one is refused, use
+                the simpler way at the bottom and tell an admin what happened.
+              </AlertCard>
+            )}
             {!hasKey && (
               <AlertCard variant="info">
                 Create your {agent.label} key in step 1 first. The lines below are filled in with it while it is on screen.
@@ -37,7 +95,7 @@ export function AgentConnectSteps({ agentId, onAgent, os, onOs, endpoint, freshK
             )}
             {hasKey && !freshKey && (
               <AlertCard variant="info">
-                Your key was shown once and isn't kept here, so the lines show {"<your key>"} where it goes. Lost it? Replace
+                Your key was shown once and isn&apos;t kept here, so the lines show {"<your key>"} where it goes. Lost it? Replace
                 the key in step 1.
               </AlertCard>
             )}
@@ -46,8 +104,8 @@ export function AgentConnectSteps({ agentId, onAgent, os, onOs, endpoint, freshK
                 key={`${agentId}-${os}-${line.id}`}
                 label={line.label}
                 text={line.text}
-                copyLabel={line.id === "add" && agentId === "codex" ? "Copy lines" : "Copy line"}
-                note={line.hasKey ? "This line holds your key. Paste it in your own terminal only." : "This line holds no key."}
+                copyLabel={line.text.includes("\n") ? "Copy lines" : "Copy line"}
+                note={line.where}
               />
             ))}
             <ul className="list-disc space-y-1 pl-5 text-[13px] text-[var(--color-text-secondary)]">
@@ -55,17 +113,15 @@ export function AgentConnectSteps({ agentId, onAgent, os, onOs, endpoint, freshK
                 <li key={n}>{n}</li>
               ))}
             </ul>
-            <details className="min-w-0 rounded-lg border border-[var(--gray-200)] p-3">
-              <summary className="cursor-pointer text-[13px] font-semibold text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]">
-                Simpler
-              </summary>
-              <div className="mt-3">
+            <details className="min-w-0 rounded-lg border border-[var(--gray-200)] px-3">
+              <summary className={DISCLOSURE_CLASS}>Simpler</summary>
+              <div className="pb-3">
                 <CopyBlock
                   key={`${agentId}-${os}-simple`}
                   label={lines.simpler.label}
                   text={lines.simpler.text}
-                  copyLabel={agentId === "codex" ? "Copy lines" : "Copy line"}
-                  note="This holds your key. Anything that can read that file can read the key."
+                  copyLabel={lines.simpler.text.includes("\n") ? "Copy lines" : "Copy line"}
+                  note={lines.simpler.where}
                 />
               </div>
             </details>

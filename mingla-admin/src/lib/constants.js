@@ -225,3 +225,46 @@ export const NAV_GROUPS = [
 
 // Backward-compatible flat list (used by AppShell.currentTitle)
 export const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
+
+export const STATUS_COLORS = {
+  pending: "warning",
+  reviewed: "info",
+  resolved: "success",
+  dismissed: "default",
+};
+
+// ORCH-0640 ch08: TABLE_CATEGORIES rescoped.
+export const TABLE_CATEGORIES = [
+  {
+    label: "Users & Profiles",
+    tables: ["profiles", "preferences", "notification_preferences", "saved_card", "saved_people"],
+  },
+  {
+    label: "Places & Serving",
+    tables: ["place_pool", "place_scores", "signal_definitions", "signal_definition_versions", "curated_teaser_cache"],
+  },
+  {
+    label: "Engagement",
+    tables: ["engagement_metrics", "user_interactions", "user_sessions", "user_activity", "place_reviews"],
+  },
+  {
+    label: "Rules Engine",
+    tables: ["rule_sets", "rule_set_versions", "rule_entries", "rules_versions", "rules_runs", "rules_run_results"],
+  },
+  {
+    label: "Social & Messaging",
+    tables: ["friends", "friend_requests", "friend_links", "messages", "conversations", "conversation_participants", "blocked_users"],
+  },
+  {
+    label: "Collaboration & Boards",
+    tables: ["collaboration_sessions", "session_participants", "boards", "board_cards", "board_votes", "board_messages", "board_card_messages", "board_card_rsvps", "board_saved_cards", "board_user_swipe_states"],
+  },
+  {
+    label: "Calendar & Safety",
+    tables: ["calendar_entries", "experience_feedback", "scheduled_activities", "user_reports", "app_feedback", "activity_history", "admin_email_log"],
+  },
+  {
+    label: "Caches & Admin",
+    tables: ["discover_daily_cache", "google_places_cache", "ticketmaster_events_cache", "admin_backfill_log", "admin_config", "admin_audit_log", "email_templates"],
+  },
+];

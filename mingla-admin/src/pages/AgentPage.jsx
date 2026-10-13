@@ -40,9 +40,17 @@ import {
   agentLabel,
   agentLoadErrorWords,
   agentStatus,
+  REPLACED_ELSEWHERE_WORDS,
+  browserTimeZone,
+  createOutcome,
   lastStoppedKey,
   overviewRows,
+  shownKeyVerdict,
 } from "../lib/agentConnect";
+
+/** How long a create waits for its answer before the page stops waiting. */
+const CREATE_WAIT_MS = 20_000;
+
 
 const ENDPOINT = agentEndpoint(import.meta.env.VITE_SUPABASE_URL);
 
@@ -77,10 +85,19 @@ export function AgentPage() {
   const { keys, idleDays, guide, overview, isOwner, loading, error, refetch } = useAgentKeys();
 
   // The key just created, per agent. In memory only; never stored, never
-  // logged. Leaving the page drops it.
+  // logged, never sent to another tab. Leaving the page drops it.
   const [fresh, setFresh] = useState({});
+  // Which key that is, per agent: { keyId, listed }. An id is not a secret;
+  // it lets the page notice when the key on screen has been ended elsewhere.
+  const [shownIds, setShownIds] = useState({});
   const [busy, setBusy] = useState({});
   const [problem, setProblem] = useState({});
+  // A plain sentence that stays on the card (a key hidden because it was
+  // replaced elsewhere; a key that was made but could not be shown).
+  const [notice, setNotice] = useState({});
+  // The agents whose new key could not be shown: the button says "Replace again".
+  const [unseen, setUnseen] = useState({});
+  const keysRef = useRef(keys);
   const [busyKeyId, setBusyKeyId] = useState(null);
   const [tab, setTab] = useState("claude");
   const [os, setOs] = useState(() =>
@@ -100,6 +117,29 @@ export function AgentPage() {
     setBusy(busyRef.current);
   };
 
+  useEffect(() => {
+    keysRef.current = keys;
+  }, [keys]);
+
+  // A key shown here stays only while it is still this person's active key
+  // for that agent. Replaced or disconnected anywhere (another tab, another
+  // computer, the owner), it is hidden at the next read and the card says so.
+  // The page reads again whenever its window or tab is looked at again, when
+  // the browser comes back online, and every 30 seconds while it is visible.
+  useEffect(() => {
+    if (loading || error) return;
+    for (const a of AGENTS) {
+      const verdict = shownKeyVerdict(keys, shownIds[a.id]);
+      if (verdict === "listed") {
+        setShownIds((m) => (m[a.id] ? { ...m, [a.id]: { ...m[a.id], listed: true } } : m));
+      } else if (verdict === "hide") {
+        setFresh((f) => ({ ...f, [a.id]: null }));
+        setShownIds((m) => ({ ...m, [a.id]: null }));
+        setNotice((n) => ({ ...n, [a.id]: REPLACED_ELSEWHERE_WORDS }));
+      }
+    }
+  }, [keys, shownIds, loading, error]);
+
   const create = useCallback(
     async (agentId) => {
       // A second press while the first is on its way sends nothing.
@@ -109,13 +149,24 @@ export function AgentPage() {
         addToast({ variant: "warning", title: "You're offline", description: "No key was created. Try again once you're back." });
         return;
       }
+      // The key this person had for the agent before asking (or none).
+      const before = activeKey(keysRef.current, agentId)?.key_id || null;
       mark(agentId, true);
       setProblem((p) => ({ ...p, [agentId]: "" }));
+      setNotice((n) => ({ ...n, [agentId]: "" }));
+      let timer;
       try {
-        const made = await createKey(agentId);
+        const made = await Promise.race([
+          createKey(agentId, browserTimeZone()),
+          new Promise((_, reject) => {
+            timer = setTimeout(() => reject({ token: "network", message: "" }), CREATE_WAIT_MS);
+          }),
+        ]);
         if (!mountedRef.current) return;
         if (typeof made?.key !== "string" || made.key === "") throw new Error("no key in the answer");
         setFresh((f) => ({ ...f, [agentId]: made.key }));
+        setShownIds((m) => ({ ...m, [agentId]: { keyId: made.key_id, listed: false } }));
+        setUnseen((u) => ({ ...u, [agentId]: false }));
         setTab(agentId);
         addToast({
           variant: "success",
@@ -129,9 +180,19 @@ export function AgentPage() {
         if (!mountedRef.current) return;
         console.error("[agent] create failed:", err?.token || err?.name || "error");
         const words = agentErrorWords(err);
-        setProblem((p) => ({ ...p, [agentId]: `No key was created. ${words}` }));
-        addToast({ variant: "error", title: `Couldn't create your ${label} key`, description: words });
+        // No answer is not the same as "nothing happened": the server may
+        // have made the key (ending the old one) before the answer was lost.
+        // Read what it holds now, and say that.
+        const now = await refetch({ quiet: true });
+        if (!mountedRef.current) return;
+        const after = Array.isArray(now) ? activeKey(now, agentId)?.key_id || null : undefined;
+        const outcome = createOutcome({ before, after, label, words });
+        setProblem((p) => ({ ...p, [agentId]: outcome.problem }));
+        setNotice((n) => ({ ...n, [agentId]: outcome.notice }));
+        setUnseen((u) => ({ ...u, [agentId]: outcome.replaceAgain }));
+        addToast({ variant: outcome.toastVariant, title: outcome.toastTitle, description: outcome.toastWords });
       } finally {
+        clearTimeout(timer);
         if (mountedRef.current) mark(agentId, false);
       }
     },
@@ -152,6 +213,9 @@ export function AgentPage() {
         await revokeKey(keyId);
         if (!mountedRef.current) return;
         setFresh((f) => ({ ...f, [agentId]: null }));
+        setShownIds((m) => ({ ...m, [agentId]: null }));
+        setNotice((n) => ({ ...n, [agentId]: "" }));
+        setUnseen((u) => ({ ...u, [agentId]: false }));
         addToast({
           variant: "success",
           title: `${label} is disconnected`,
@@ -201,6 +265,14 @@ export function AgentPage() {
   const done = useCallback((agentId) => {
     setFresh((f) => ({ ...f, [agentId]: null }));
   }, []);
+  // Done also forgets which key was on screen: nothing is left to hide.
+  const doneAndForget = useCallback(
+    (agentId) => {
+      done(agentId);
+      setShownIds((m) => ({ ...m, [agentId]: null }));
+    },
+    [done]
+  );
 
   const abilities = useMemo(() => abilitiesFor(access?.role), [access?.role]);
   const teamRows = useMemo(() => overviewRows(overview), [overview]);
@@ -263,9 +335,11 @@ export function AgentPage() {
                   busy={!!busy[a.id]}
                   offline={!online}
                   problem={problem[a.id] || ""}
+                  notice={notice[a.id] || ""}
+                  replaceAgain={!!unseen[a.id]}
                   onCreate={create}
                   onRevoke={revoke}
-                  onDone={done}
+                  onDone={doneAndForget}
                 />
               ))}
             </div>

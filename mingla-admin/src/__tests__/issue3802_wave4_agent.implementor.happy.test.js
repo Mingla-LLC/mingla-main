@@ -11,6 +11,8 @@
 //   A-6  the owner's view never carries a key
 //   A-7  source contracts: one service file per kind of server function, a
 //        key is never stored or logged, every button has an answer
+//   A-8  rework: the truth after a lost answer, a key ended elsewhere, the
+//        person's own date, where a key ends up, touch targets, focus
 //
 // Run: node --test src/__tests__/issue3802_wave4_agent.implementor.happy.test.js
 // (from mingla-admin). Hermetic: no network, no browser.
@@ -18,6 +20,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { PAGE_AREA_OVERRIDES, areaForPage, canOpenPage, pageTitle, resolveRoute, visibleNavGroups } from "../lib/access.js";
 import { NAV_GROUPS, NAV_ITEMS } from "../lib/constants.js";
@@ -27,6 +30,7 @@ import {
   AGENT_GUARDRAILS,
   AGENT_NOT_YET,
   KEY_PLACEHOLDER,
+  REPLACED_ELSEWHERE_WORDS,
   abilitiesFor,
   activeKey,
   agentEndpoint,
@@ -34,13 +38,19 @@ import {
   agentLoadErrorWords,
   agentStatus,
   agoWords,
+  browserTimeZone,
   clientName,
   connectLines,
+  createOutcome,
   isAgentKey,
   lastStoppedKey,
   overviewRows,
+  shownKeyVerdict,
   stoppedWords,
+  zoneWords,
 } from "../lib/agentConnect.js";
+import { STATUS_COLORS, TABLE_CATEGORIES } from "../lib/constants.js";
+import { localToday } from "../lib/crmModel.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "..");
@@ -149,14 +159,16 @@ describe("#3802 A-2: the lines to paste", () => {
     assert.equal(l.simpler.text, `[mcp_servers.mingla]\nurl = "${ENDPOINT}"\nhttp_headers = { "Authorization" = "Bearer ${KEY_X}" }`);
     assert.match(l.simpler.label, /The key is stored in that file\.$/);
   });
-  it("Windows: setx, a new terminal, and a way out if the line is refused", () => {
+  it("Windows: setx, a Command Prompt line that names the variable, and a plain statement that it was not tested", () => {
     const c = connectLines({ agent: "claude", os: "windows", endpoint: ENDPOINT, key: KEY_C });
     assert.equal(c.steps[0].text, `setx MINGLA_CLAUDE_KEY "${KEY_C}"`);
-    assert.match(c.steps[1].label, /^2\. Open a new terminal window/);
-    assert.ok(c.notes.includes("If the second line is refused, use the simpler line below."));
+    assert.match(c.steps[1].label, /^2\. In a new Command Prompt window \(cmd, not PowerShell\)/);
+    assert.equal(c.untested, true);
+    assert.ok(c.notes.some((n) => n.startsWith("These Windows lines were not run on Windows here.")));
     const x = connectLines({ agent: "codex", os: "windows", endpoint: ENDPOINT, key: KEY_X });
     assert.equal(x.steps[0].text, `setx MINGLA_CODEX_KEY "${KEY_X}"`);
     assert.equal(x.steps[1].label, "2. Add these lines to %USERPROFILE%\\.codex\\config.toml");
+    assert.equal(x.untested, true);
   });
   it("for every agent and computer: the key is only in the lines that say they hold it", () => {
     for (const agent of AGENTS) {
@@ -397,7 +409,7 @@ describe("#3802 A-7: source contracts", () => {
     // The key lives in one piece of page state and is dropped on Done and on Disconnect.
     assert.ok(PAGE.includes("const [fresh, setFresh] = useState({});"));
     assert.ok(/const done = useCallback\(\(agentId\) => \{\s*setFresh\(\(f\) => \(\{ \.\.\.f, \[agentId\]: null \}\)\);/.test(PAGE));
-    assert.equal((PAGE.match(/setFresh\(/g) || []).length, 3, "set on create, cleared on Done and on Disconnect");
+    assert.equal((PAGE.match(/setFresh\(/g) || []).length, 4, "set on create; cleared on Done, on Disconnect, and when the key was ended elsewhere");
     assert.equal(/\bfresh/.test(HOOK) || /\bfresh/.test(SERVICE), false, "the hook and the service never hold a key");
     // It is shown through the copy box only, as text.
     assert.equal(/dangerouslySetInnerHTML/.test(ALL_AGENT_SRC.map(([, s]) => s).join("")), false);
@@ -435,14 +447,14 @@ describe("#3802 A-7: source contracts", () => {
       assert.ok(body, `${fn} was found`);
       assert.ok(/if \(!online\) \{\s*addToast\(\{ variant: "warning", title: "You're offline"/.test(body[1]), `${fn} answers offline`);
       assert.ok(/addToast\(\{\s*variant: "success"/.test(body[1]), `${fn} answers on success`);
-      assert.ok(/catch \(err\) \{[\s\S]*addToast\(\{ variant: "error"/.test(body[1]), `${fn} answers on failure`);
+      assert.ok(/catch \(err\) \{[\s\S]*addToast\(\{ variant: (?:"error"|outcome\.toastVariant)/.test(body[1]), `${fn} answers on failure`);
       assert.ok(/agentErrorWords\(err\)/.test(body[1]), `${fn} uses plain words`);
     }
     // A second press while the first is on its way sends nothing.
     assert.equal((PAGE.match(/if \(busyRef\.current\[agentId\]\) return;/g) || []).length, 2, "create and disconnect each ignore a second press");
     assert.ok(PAGE.includes("if (busyKeyId) return;"));
     // A failure also stays on the card, not only in a message that disappears.
-    assert.ok(PAGE.includes("setProblem((p) => ({ ...p, [agentId]: `No key was created. ${words}` }));"));
+    assert.ok(PAGE.includes("setProblem((p) => ({ ...p, [agentId]: outcome.problem }));"));
     const card = PARTS.find(([f]) => f === "AgentKeyCard.jsx")[1];
     assert.ok(card.includes('<p role="alert"'));
     // Offline: the three actions are disabled and say why.
@@ -472,7 +484,225 @@ describe("#3802 A-7: source contracts", () => {
     assert.ok(HOOK.includes("export const AGENT_REFRESH_MS = 30_000;"));
     assert.ok(HOOK.includes("const keyFor = (email) => `agent:keys:${email || \"\"}`;"));
     assert.ok(HOOK.includes("const current = state.key === key;"));
-    assert.ok(/if \(quiet\) return;\s*setState\(\{ key, data: null, error, loaded: true \}\);/.test(HOOK), "a quiet refresh that fails keeps what is on screen");
+    assert.ok(/if \(quiet\) return null;\s*setState\(\{ key, data: null, error, loaded: true \}\);/.test(HOOK), "a quiet refresh that fails keeps what is on screen");
     assert.ok(HOOK.includes('window.addEventListener("online", onOnline);'));
+  });
+});
+
+describe("#3802 A-8: what the page says after a create or replace that did not answer", () => {
+  const words = "You seem to be offline, so that didn't go through. Check your connection and try again.";
+  it("the old key was replaced before the answer was lost: the page says the old key no longer works, and offers Replace again", () => {
+    const o = createOutcome({ before: "key-1", after: "key-2", label: "Claude", words });
+    assert.equal(o.kind, "unseen");
+    assert.equal(o.notice, "Your Claude key was replaced, but the new key couldn't be shown. The old key no longer works. Replace it again to get a key you can copy.");
+    assert.equal(o.problem, "");
+    assert.equal(o.replaceAgain, true);
+    assert.equal(o.toastVariant, "warning");
+    assert.equal(o.toastTitle, "Your old Claude key no longer works");
+    assert.equal(/No key was created/.test(JSON.stringify(o)), false, "it never says nothing happened");
+  });
+  it("a first key was made but could not be shown", () => {
+    const o = createOutcome({ before: null, after: "key-1", label: "Codex", words });
+    assert.equal(o.kind, "unseen");
+    assert.equal(o.notice, "A Codex key was created, but it couldn't be shown. Replace it to get a key you can copy.");
+    assert.equal(o.replaceAgain, true);
+  });
+  it("nothing was made: it says so, and that the key the person has still works", () => {
+    const kept = createOutcome({ before: "key-1", after: "key-1", label: "Claude", words });
+    assert.equal(kept.kind, "unchanged");
+    assert.equal(kept.problem, `No key was created, and the key you have still works. ${words}`);
+    assert.equal(kept.replaceAgain, false);
+    const none = createOutcome({ before: null, after: null, label: "Claude", words });
+    assert.equal(none.problem, `No key was created. ${words}`);
+    assert.equal(createOutcome({ before: undefined, after: null, label: "Claude", words }).kind, "unchanged");
+  });
+  it("the keys could not be read either: it never claims nothing happened", () => {
+    const had = createOutcome({ before: "key-1", after: undefined, label: "Claude", words });
+    assert.equal(had.kind, "unknown");
+    assert.match(had.problem, /^We couldn't tell whether your Claude key was replaced\. If it was, the key you have no longer works\./);
+    const hadNone = createOutcome({ before: null, after: undefined, label: "Claude", words });
+    assert.match(hadNone.problem, /^We couldn't tell whether a Claude key was created\./);
+    for (const o of [had, hadNone]) assert.equal(/No key was created/.test(o.problem + o.toastWords + o.toastTitle), false);
+  });
+  it("every outcome is plain words with a next step, never a code", () => {
+    for (const before of [null, "a"]) {
+      for (const after of [undefined, null, "a", "b"]) {
+        const o = createOutcome({ before, after, label: "Claude", words });
+        const said = [o.problem, o.notice, o.toastTitle, o.toastWords].filter(Boolean).join(" ");
+        assert.equal(/_|undefined|null|\bNaN\b/.test(said), false, said);
+        assert.ok(o.problem !== "" || o.notice !== "", "something stays on the card, not only in a message that disappears");
+      }
+    }
+  });
+  it("the page reads the keys again after any failed create, waits a bounded time for an answer, and shows what it found", () => {
+    const body = /const create = useCallback\(\s*async \(agentId\) => \{([\s\S]*?)\n {4}\},\n {4}\[/.exec(PAGE)[1];
+    assert.ok(body.includes("const before = activeKey(keysRef.current, agentId)?.key_id || null;"), "it remembers the key the person had before asking");
+    assert.ok(/catch \(err\) \{[\s\S]*const now = await refetch\(\{ quiet: true \}\);[\s\S]*const after = Array\.isArray\(now\) \? activeKey\(now, agentId\)\?\.key_id \|\| null : undefined;[\s\S]*createOutcome\(\{ before, after, label, words \}\)/.test(body));
+    assert.ok(body.includes("setNotice((n) => ({ ...n, [agentId]: outcome.notice }));") && body.includes("setUnseen((u) => ({ ...u, [agentId]: outcome.replaceAgain }));"));
+    assert.ok(/Promise\.race\(\[\s*createKey\(agentId, browserTimeZone\(\)\),/.test(body), "a create that never answers does not leave the button waiting for ever");
+    assert.ok(PAGE.includes("const CREATE_WAIT_MS = 20_000;") && body.includes("clearTimeout(timer);"));
+    assert.equal(/No key was created/.test(body.replace(/"No key was created\. Try again once you're back\."/, "")), false, "the page itself never decides that nothing was made");
+    // The hook hands back what it read, or null when it could not read.
+    assert.ok(HOOK.includes("return Array.isArray(data?.mine?.keys) ? data.mine.keys : [];"));
+    assert.ok(/if \(quiet\) return null;/.test(HOOK));
+    const card = PARTS.find(([f]) => f === "AgentKeyCard.jsx")[1];
+    assert.ok(card.includes('{replaceAgain ? "Replace again" : "Replace key"}'));
+    assert.ok(/\{notice && \(\s*<p role="status"/.test(card));
+  });
+});
+
+describe("#3802 A-8: a key that was ended somewhere else does not stay on screen", () => {
+  const active = { key_id: "k2", agent: "claude", revoked_at: null };
+  const ended = { key_id: "k1", agent: "claude", revoked_at: "2026-10-14T10:00:00Z" };
+  it("the key shown stays while the server lists it as active, and goes when it is turned off or gone", () => {
+    assert.equal(shownKeyVerdict([active], { keyId: "k2", listed: false }), "listed");
+    assert.equal(shownKeyVerdict([active], { keyId: "k2", listed: true }), "keep");
+    // The read after a create has not landed yet: the old list does not hide the new key.
+    assert.equal(shownKeyVerdict([{ ...ended, revoked_at: null }], { keyId: "k2", listed: false }), "wait");
+    assert.equal(shownKeyVerdict([], { keyId: "k2", listed: false }), "wait");
+    // Replaced in another tab: this tab's key is listed as turned off.
+    assert.equal(shownKeyVerdict([active, ended], { keyId: "k1", listed: true }), "hide");
+    assert.equal(shownKeyVerdict([active, ended], { keyId: "k1", listed: false }), "hide");
+    // Disconnected and no longer among the recent ones.
+    assert.equal(shownKeyVerdict([], { keyId: "k1", listed: true }), "hide");
+    assert.equal(shownKeyVerdict([active], { keyId: "k1", listed: true }), "hide");
+    for (const none of [null, undefined, {}, { keyId: "" }]) assert.equal(shownKeyVerdict([active], none), "keep");
+    assert.equal(shownKeyVerdict("nope", { keyId: "k1", listed: true }), "hide");
+  });
+  it("the page hides it, says why, and learns of the change whenever the tab is looked at again", () => {
+    assert.ok(/verdict === "hide"\) \{\s*setFresh\(\(f\) => \(\{ \.\.\.f, \[a\.id\]: null \}\)\);\s*setShownIds\(\(m\) => \(\{ \.\.\.m, \[a\.id\]: null \}\)\);\s*setNotice\(\(n\) => \(\{ \.\.\.n, \[a\.id\]: REPLACED_ELSEWHERE_WORDS \}\)\);/.test(PAGE));
+    assert.equal(REPLACED_ELSEWHERE_WORDS, "This key was replaced or disconnected somewhere else, so it no longer works and is hidden here.");
+    assert.ok(PAGE.includes("setShownIds((m) => ({ ...m, [agentId]: { keyId: made.key_id, listed: false } }));"));
+    assert.ok(HOOK.includes('document.addEventListener("visibilitychange", onFocus);') && HOOK.includes('window.addEventListener("focus", onFocus);'));
+    // Only an id is remembered beside the key, and nothing is sent to another tab or kept in storage.
+    const all = ALL_AGENT_SRC.map(([, src]) => stripComments(src)).join("\n");
+    assert.equal(/BroadcastChannel|postMessage|localStorage|sessionStorage|indexedDB|addEventListener\("storage"/.test(all), false);
+    assert.equal(/setShownIds\([^;]*made\.key\b/.test(PAGE), false, "the id map never holds the key");
+  });
+});
+
+describe("#3802 A-8: an agent's today is the date on this screen", () => {
+  it("the browser's zone is sent when a key is made", () => {
+    const zone = browserTimeZone();
+    assert.ok(zone === null || /^[A-Za-z0-9_+/-]{1,64}$/.test(zone));
+    assert.ok(SERVICE.includes('supabase.rpc("team_agent_key_create", { p_agent: agent, p_time_zone: timeZone })'));
+    assert.ok(PAGE.includes("createKey(agentId, browserTimeZone())"));
+    const real = Intl.DateTimeFormat;
+    try {
+      Intl.DateTimeFormat = () => ({ resolvedOptions: () => ({ timeZone: "America/Los_Angeles" }) });
+      assert.equal(browserTimeZone(), "America/Los_Angeles");
+      for (const bad of [undefined, "", "America/New York", "x".repeat(65), "a;b", 7]) {
+        Intl.DateTimeFormat = () => ({ resolvedOptions: () => ({ timeZone: bad }) });
+        assert.equal(browserTimeZone(), null, String(bad));
+      }
+      Intl.DateTimeFormat = () => {
+        throw new Error("no zones here");
+      };
+      assert.equal(browserTimeZone(), null);
+    } finally {
+      Intl.DateTimeFormat = real;
+    }
+  });
+  it("the card says which zone the agent's dates follow, or that none is recorded", () => {
+    assert.equal(zoneWords({ time_zone: "America/New_York" }), 'Your agent\'s "today" follows America/New York, the time zone this key was made in.');
+    assert.match(zoneWords({ time_zone: null }), /^No time zone is recorded for this key, so your agent's "today" is the date in UTC\. Replace the key from this browser to set it\.$/);
+    assert.match(zoneWords({}), /^No time zone is recorded/);
+    assert.equal(zoneWords(null), "");
+    const card = PARTS.find(([f]) => f === "AgentKeyCard.jsx")[1];
+    assert.equal((card.match(/zoneWords\(activeKey\)/g) || []).length, 2, "said with the key on screen and without");
+  });
+  it("around midnight in two US zones, the screen's date and the zone's date are the same date", () => {
+    // The home screen sends localToday(); the server works an agent's date
+    // out as the date in the key's zone. Same moments, same answers.
+    const zoneDate = (zone, at) => new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
+    const cases = [
+      ["America/New_York", "2026-10-14T03:30:00Z", "2026-10-13"],
+      ["America/New_York", "2026-10-14T04:30:00Z", "2026-10-14"],
+      ["America/Los_Angeles", "2026-10-14T06:30:00Z", "2026-10-13"],
+      ["America/Los_Angeles", "2026-10-14T07:30:00Z", "2026-10-14"],
+    ];
+    const saved = process.env.TZ;
+    try {
+      for (const [zone, at, want] of cases) {
+        process.env.TZ = zone;
+        assert.equal(localToday(new Date(at)), want, `${zone} ${at}: the screen`);
+        assert.equal(zoneDate(zone, new Date(at)), want, `${zone} ${at}: the zone`);
+      }
+      // At 23:30 in New York the date in UTC is already tomorrow: that is the gap this closes.
+      process.env.TZ = "America/New_York";
+      assert.equal(localToday(new Date("2026-10-14T03:30:00Z")), "2026-10-13");
+      assert.equal(new Date("2026-10-14T03:30:00Z").toISOString().slice(0, 10), "2026-10-14");
+    } finally {
+      if (saved === undefined) delete process.env.TZ;
+      else process.env.TZ = saved;
+    }
+  });
+});
+
+describe("#3802 A-8: where a key ends up, lines that were not tested, touch targets, focus", () => {
+  it("every line says where the key ends up and how to take it out, and nothing claims a file an agent cannot read", () => {
+    for (const agent of AGENTS) {
+      for (const os of ["mac", "windows"]) {
+        const l = connectLines({ agent: agent.id, os, endpoint: ENDPOINT, key: agent.id === "claude" ? KEY_C : KEY_X });
+        for (const line of [...l.steps, l.simpler]) {
+          assert.ok(typeof line.where === "string" && line.where.length > 30, `${agent.id} ${os} ${line.id}`);
+          assert.match(line.where, /To remove/, `${agent.id} ${os} ${line.id} says how to remove it`);
+          assert.equal(line.where.includes("mgla_"), false);
+          if (line.hasKey) assert.match(line.where, /readable by any program you run/, `${agent.id} ${os} ${line.id} is honest about who can read it`);
+          else assert.match(line.where, /hold(s)? no key/);
+        }
+      }
+    }
+    const mac = connectLines({ agent: "claude", os: "mac", endpoint: ENDPOINT, key: KEY_C });
+    assert.equal(mac.steps[0].label, "1. Save the key in your shell profile");
+    assert.match(mac.steps[0].where, /^The key ends up as one line in ~\/\.zshrc on this computer/);
+    assert.match(mac.simpler.where, /\(\.claude\.json\)/);
+    const shown = ALL_AGENT_SRC.map(([, src]) => stripComments(src)).join("\n");
+    assert.equal(/not in a file an agent can read back|file an agent can read/.test(shown), false);
+    const steps = PARTS.find(([f]) => f === "AgentConnectSteps.jsx")[1];
+    assert.ok(steps.includes("note={line.where}") && steps.includes("note={lines.simpler.where}"));
+  });
+  it("lines that were not run on Windows say so, on the page and in the notes", () => {
+    for (const agent of AGENTS) {
+      assert.equal(connectLines({ agent: agent.id, os: "mac", endpoint: ENDPOINT, key: null }).untested, false);
+      const w = connectLines({ agent: agent.id, os: "windows", endpoint: ENDPOINT, key: null });
+      assert.equal(w.untested, true);
+      assert.ok(w.notes.includes("These Windows lines were not run on Windows here. They follow the documented forms; if one is refused, use the simpler way below and tell an admin."));
+    }
+    const steps = PARTS.find(([f]) => f === "AgentConnectSteps.jsx")[1];
+    assert.ok(/\{lines\.untested && \(\s*<AlertCard variant="warning" title="Not tested on Windows">/.test(steps));
+    // Command Prompt has no single quotes: the JSON is one double-quoted value that still names the variable only.
+    const c = connectLines({ agent: "claude", os: "windows", endpoint: ENDPOINT, key: KEY_C }).steps[1];
+    assert.equal(c.text, `claude mcp add-json --scope user mingla "{\\"type\\":\\"http\\",\\"url\\":\\"${ENDPOINT}\\",\\"headers\\":{\\"Authorization\\":\\"Bearer \${MINGLA_CLAUDE_KEY}\\"}}"`);
+    assert.equal(c.text.includes("'"), false);
+    assert.deepEqual(JSON.parse(c.text.match(/"(\{.*\})"$/)[1].replace(/\\"/g, '"')), { type: "http", url: ENDPOINT, headers: { Authorization: "Bearer ${MINGLA_CLAUDE_KEY}" } });
+  });
+  it("tabs and disclosures on this page are 44px targets, and the shared tab strip is not used here", () => {
+    const steps = PARTS.find(([f]) => f === "AgentConnectSteps.jsx")[1];
+    const card = PARTS.find(([f]) => f === "AgentKeyCard.jsx")[1];
+    assert.equal(/ui\/Tabs/.test(steps + card + PAGE), false);
+    assert.ok(/role="tab"[\s\S]{0,400}min-h-11/.test(steps), "each tab is at least 44px tall");
+    assert.ok(/export const DISCLOSURE_CLASS = \[\s*"flex min-h-11 /.test(steps));
+    assert.equal((steps.match(/<summary className=\{DISCLOSURE_CLASS\}>/g) || []).length, 1);
+    assert.equal((card.match(/<summary className=\{DISCLOSURE_CLASS\}>/g) || []).length, 1);
+    assert.equal(/<summary className="/.test(steps + card), false, "no disclosure with its own, smaller, class");
+    // The tabs keep the keyboard: arrows, Home and End, one tab stop.
+    for (const k of ["ArrowRight", "ArrowLeft", "Home", "End"]) assert.ok(steps.includes(`"${k}"`), k);
+    assert.ok(steps.includes("tabIndex={active ? 0 : -1}") && steps.includes('role="tablist"') && steps.includes("aria-controls={`agent-tabpanel-${a.id}`}"));
+    assert.ok(steps.includes('role="tabpanel" id={`agent-tabpanel-${agentId}`} aria-labelledby={`agent-tab-${agentId}`}'));
+  });
+  it("in the owner's list, Keep and Escape put focus back on the button that asked", () => {
+    const team = PARTS.find(([f]) => f === "AgentTeamList.jsx")[1];
+    assert.ok(/\} else if \(returnTo\.current\) \{\s*askRefs\.current\[returnTo\.current\]\?\.focus\(\);\s*returnTo\.current = null;/.test(team));
+    assert.ok(/const keep = \(keyId\) => \{\s*returnTo\.current = keyId;\s*setAsking\(null\);/.test(team));
+    assert.ok(/if \(e\.key === "Escape"\) \{\s*e\.stopPropagation\(\);\s*keep\(a\.keyId\);/.test(team));
+    assert.ok(team.includes("onClick={() => keep(a.keyId)}"));
+    assert.ok(/ref=\{\(el\) => \{\s*askRefs\.current\[a\.keyId\] = el;/.test(team));
+    assert.equal(/setAsking\(null\)/.test(team.replace(/const keep = [\s\S]*?\};/, "").replace(/setAsking\(null\);\s*onDisconnect/, "")), false, "no way to close the question that leaves focus nowhere");
+  });
+  it("the two lists this work does not own are still exported", () => {
+    assert.deepEqual(STATUS_COLORS, { pending: "warning", reviewed: "info", resolved: "success", dismissed: "default" });
+    assert.equal(TABLE_CATEGORIES.length, 8);
+    assert.equal(TABLE_CATEGORIES[0].label, "Users & Profiles");
   });
 });

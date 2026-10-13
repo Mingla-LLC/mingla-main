@@ -9,9 +9,22 @@ import { ROLE_LABELS } from "../../lib/access";
 export function AgentTeamList({ rows, busyKeyId, offline, onDisconnect }) {
   const [asking, setAsking] = useState(null); // a key id
   const keepRef = useRef(null);
+  // The Disconnect button of each key, so focus can go back to the one that
+  // asked when its question closes (Keep or Escape).
+  const askRefs = useRef({});
+  const returnTo = useRef(null);
   useEffect(() => {
-    if (asking) keepRef.current?.focus();
+    if (asking) {
+      keepRef.current?.focus();
+    } else if (returnTo.current) {
+      askRefs.current[returnTo.current]?.focus();
+      returnTo.current = null;
+    }
   }, [asking]);
+  const keep = (keyId) => {
+    returnTo.current = keyId;
+    setAsking(null);
+  };
 
   if (rows.length === 0) {
     return <p className="text-[13px] text-[var(--color-text-secondary)]">Nobody is on the team yet. Invite people from Team and roles.</p>;
@@ -37,7 +50,10 @@ export function AgentTeamList({ rows, busyKeyId, offline, onDisconnect }) {
                   role="group"
                   aria-label={`Disconnect ${row.name}'s ${a.label}?`}
                   onKeyDown={(e) => {
-                    if (e.key === "Escape") setAsking(null);
+                    if (e.key === "Escape") {
+                      e.stopPropagation();
+                      keep(a.keyId);
+                    }
                   }}
                   className="flex min-w-0 flex-col gap-2 rounded-lg bg-[var(--color-warning-50)] p-3"
                 >
@@ -57,7 +73,7 @@ export function AgentTeamList({ rows, busyKeyId, offline, onDisconnect }) {
                     >
                       Disconnect
                     </Button>
-                    <Button ref={keepRef} type="button" variant="secondary" onClick={() => setAsking(null)} className="max-sm:h-11">
+                    <Button ref={keepRef} type="button" variant="secondary" onClick={() => keep(a.keyId)} className="max-sm:h-11">
                       Keep
                     </Button>
                   </div>
@@ -68,6 +84,9 @@ export function AgentTeamList({ rows, busyKeyId, offline, onDisconnect }) {
                     {a.label} · {a.line}
                   </Badge>
                   <Button
+                    ref={(el) => {
+                      askRefs.current[a.keyId] = el;
+                    }}
                     type="button"
                     variant="ghost"
                     size="sm"

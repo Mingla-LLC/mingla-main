@@ -48,15 +48,40 @@ export function agentEndpoint(supabaseUrl) {
 }
 
 /**
+ * The time zone of this browser as an IANA name ("America/New_York"), or
+ * null when the browser will not say. Sent when a key is made, so the
+ * agent's "today" is the date on this person's screen.
+ */
+export function browserTimeZone() {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof zone === "string" && /^[A-Za-z0-9_+/-]{1,64}$/.test(zone) ? zone : null;
+  } catch {
+    return null;
+  }
+}
+
+/** What the card says about the dates an agent with this key will use. */
+export function zoneWords(key) {
+  if (!key) return "";
+  return typeof key.time_zone === "string" && key.time_zone
+    ? `Your agent's "today" follows ${key.time_zone.replace(/_/g, " ")}, the time zone this key was made in.`
+    : `No time zone is recorded for this key, so your agent's "today" is the date in UTC. Replace the key from this browser to set it.`;
+}
+
+/**
  * The lines to paste, for one agent on one kind of computer.
  *
- * Returns { steps, simpler, notes } or null when there is no address.
- *   steps    the recommended way: the key lives in an environment variable,
- *            and the connector line holds only the variable's name
- *   simpler  one paste; the key is stored in the agent's own settings file
- *   notes    plain sentences shown under the lines
- * Each line is { id, label, text, hasKey }. `hasKey` says the line carries
- * the key itself (so the page can say "this line holds your key").
+ * Returns { steps, simpler, notes, untested } or null when there is no
+ * address.
+ *   steps     the recommended way: the key lives in an environment variable,
+ *             and the connector line holds only the variable's name
+ *   simpler   one paste; the key is stored in the agent's own settings file
+ *   notes     plain sentences shown under the lines
+ *   untested  true when these lines were not run on that kind of computer
+ * Each line is { id, label, text, hasKey, where }. `hasKey` says the line
+ * carries the key itself; `where` says, in plain words, where the key ends
+ * up after the line runs and how to take it out again.
  * `key` is the key while it is on screen; anything else shows a placeholder.
  */
 export function connectLines({ agent, os, endpoint, key }) {
@@ -65,36 +90,51 @@ export function connectLines({ agent, os, endpoint, key }) {
   const k = isAgentKey(key) ? key : KEY_PLACEHOLDER;
   const windows = os === "windows";
   const keep = windows
-    ? { id: "keep", label: "1. Keep the key on your computer, not in a file an agent can read back", text: `setx ${def.envVar} "${k}"`, hasKey: true }
+    ? {
+      id: "keep",
+      label: "1. Save the key as a variable for your Windows account",
+      text: `setx ${def.envVar} "${k}"`,
+      hasKey: true,
+      where: `The key is saved in your Windows account's environment variables, readable by any program you run. To remove it: reg delete HKCU\\Environment /v ${def.envVar} /f`,
+    }
     : {
       id: "keep",
-      label: "1. Keep the key in your shell, not in a file an agent can read back",
+      label: "1. Save the key in your shell profile",
       text: `echo 'export ${def.envVar}="${k}"' >> ~/.zshrc && source ~/.zshrc`,
       hasKey: true,
+      where: "The key ends up as one line in ~/.zshrc on this computer, readable by any program you run, and outside your project folders. To remove it, delete that line.",
     };
+  const untestedNote = "These Windows lines were not run on Windows here. They follow the documented forms; if one is refused, use the simpler way below and tell an admin.";
 
   if (def.id === "claude") {
     const json = JSON.stringify({ type: "http", url: endpoint, headers: { Authorization: `Bearer \${${def.envVar}}` } });
     return {
+      untested: windows,
       steps: [
         keep,
         {
           id: "add",
-          label: windows ? "2. Open a new terminal window, then add Mingla to Claude Code" : "2. Add Mingla to Claude Code, for every project",
-          text: `claude mcp add-json --scope user mingla '${json}'`,
+          label: windows
+            ? "2. In a new Command Prompt window (cmd, not PowerShell), add Mingla to Claude Code"
+            : "2. Add Mingla to Claude Code, for every project",
+          // Command Prompt has no single quotes: the JSON goes in double
+          // quotes with its own quotes escaped. It names the variable only.
+          text: windows
+            ? `claude mcp add-json --scope user mingla "${json.replace(/"/g, '\\"')}"`
+            : `claude mcp add-json --scope user mingla '${json}'`,
           hasKey: false,
+          where: "This line names the variable and holds no key. To remove Mingla from Claude Code: claude mcp remove mingla --scope user",
         },
       ],
       simpler: {
         id: "simple",
-        label: "One paste. The key is stored in Claude Code's own settings file on this computer.",
+        label: "One paste, in any terminal. The key is stored in Claude Code's own settings file.",
         text: `claude mcp add --transport http --scope user mingla ${endpoint} --header "Authorization: Bearer ${k}"`,
         hasKey: true,
+        where: "The key ends up in Claude Code's settings file in your home folder (.claude.json), readable by any program you run. To remove it: claude mcp remove mingla --scope user",
       },
       notes: [
-        windows
-          ? "If the second line is refused, use the simpler line below."
-          : "On Linux with bash, write ~/.bashrc in place of ~/.zshrc.",
+        windows ? untestedNote : "On Linux with bash, write ~/.bashrc in place of ~/.zshrc.",
         "Using the Code tab of the Claude desktop app? An app opened from the Dock or the Start menu may not see the variable. Use the simpler line.",
         "Then check it: run claude mcp list. Mingla should say Connected.",
       ],
@@ -103,6 +143,7 @@ export function connectLines({ agent, os, endpoint, key }) {
 
   const file = windows ? "%USERPROFILE%\\.codex\\config.toml" : "~/.codex/config.toml";
   return {
+    untested: windows,
     steps: [
       keep,
       {
@@ -110,6 +151,7 @@ export function connectLines({ agent, os, endpoint, key }) {
         label: `2. Add these lines to ${file}`,
         text: `[mcp_servers.mingla]\nurl = "${endpoint}"\nbearer_token_env_var = "${def.envVar}"`,
         hasKey: false,
+        where: "These lines name the variable and hold no key. To remove Mingla from Codex, delete them.",
       },
     ],
     simpler: {
@@ -117,11 +159,12 @@ export function connectLines({ agent, os, endpoint, key }) {
       label: `Add these lines to ${file} instead. The key is stored in that file.`,
       text: `[mcp_servers.mingla]\nurl = "${endpoint}"\nhttp_headers = { "Authorization" = "Bearer ${k}" }`,
       hasKey: true,
+      where: "The key ends up in that file, readable by any program you run. To remove it, delete these lines.",
     },
     notes: [
       "The Codex command line, its editor extension and the desktop app all read that one file.",
       "The desktop app opened from the Dock or the Start menu may not see the variable. Use the simpler lines for it.",
-      windows ? "Open a new terminal window after the first line, then start Codex again." : "On Linux with bash, write ~/.bashrc in place of ~/.zshrc. Then start Codex again.",
+      windows ? untestedNote : "On Linux with bash, write ~/.bashrc in place of ~/.zshrc. Then start Codex again.",
     ],
   };
 }
@@ -216,6 +259,82 @@ export function stoppedWords(key, idleDays = 90, now = Date.now()) {
       return `This key was turned off${on}.`;
   }
 }
+
+// ── After a create or replace that did not answer ──────────────────────────
+
+/**
+ * What to say when a create or replace failed or never answered. No answer
+ * is not the same as "nothing happened": the server may have made the new
+ * key (ending the old one) before the answer was lost, so the page reads the
+ * person's keys again and this decides from what it found.
+ *   before  the id of the active key for that agent before asking, or null
+ *   after   the id now, null for none, undefined when it could not be read
+ *   words   the plain words for the error itself
+ * Returns { kind, problem, notice, toastVariant, toastTitle, toastWords, replaceAgain }.
+ *   kind "unchanged"  nothing was made; the key the person has still works
+ *   kind "unseen"     a key was made but could not be shown (the old one,
+ *                     if any, no longer works); replacing again is safe
+ *   kind "unknown"    the keys could not be read either: never claim that
+ *                     nothing happened
+ */
+export function createOutcome({ before = null, after, label = "agent", words = "" }) {
+  if (after === undefined) {
+    return {
+      kind: "unknown",
+      problem: before
+        ? `We couldn't tell whether your ${label} key was replaced. If it was, the key you have no longer works. Check your connection, then replace the key again.`
+        : `We couldn't tell whether a ${label} key was created. Check your connection, then try again.`,
+      notice: "",
+      toastVariant: "error",
+      toastTitle: `Couldn't confirm your ${label} key`,
+      toastWords: "Check your connection and look at this card again.",
+      replaceAgain: false,
+    };
+  }
+  if ((after || null) !== (before || null)) {
+    return {
+      kind: "unseen",
+      problem: "",
+      notice: before
+        ? `Your ${label} key was replaced, but the new key couldn't be shown. The old key no longer works. Replace it again to get a key you can copy.`
+        : `A ${label} key was created, but it couldn't be shown. Replace it to get a key you can copy.`,
+      toastVariant: "warning",
+      toastTitle: before ? `Your old ${label} key no longer works` : `Your ${label} key couldn't be shown`,
+      toastWords: "A new key was made but couldn't be shown. Replace it again to get one you can copy.",
+      replaceAgain: true,
+    };
+  }
+  return {
+    kind: "unchanged",
+    problem: `No key was created${before ? ", and the key you have still works" : ""}. ${words}`.trim(),
+    notice: "",
+    toastVariant: "error",
+    toastTitle: `Couldn't create your ${label} key`,
+    toastWords: words,
+    replaceAgain: false,
+  };
+}
+
+/**
+ * Whether the key on screen may stay there, given the keys the server now
+ * lists. `shown` is { keyId, listed }: `listed` is true once the server has
+ * listed that key as active.
+ *   "keep"    listed as active before and still is
+ *   "listed"  active, and this is the first read that says so
+ *   "wait"    not listed yet (the read after a create has not landed)
+ *   "hide"    turned off, or gone after having been listed: it no longer
+ *             works, so it must not stay on screen as if it did
+ */
+export function shownKeyVerdict(keys, shown) {
+  if (!shown || !shown.keyId) return "keep";
+  const row = (Array.isArray(keys) ? keys : []).find((k) => k && k.key_id === shown.keyId);
+  if (row && !row.revoked_at) return shown.listed ? "keep" : "listed";
+  if (!row && !shown.listed) return "wait";
+  return "hide";
+}
+
+export const REPLACED_ELSEWHERE_WORDS =
+  "This key was replaced or disconnected somewhere else, so it no longer works and is hidden here.";
 
 // ── What it can do ──────────────────────────────────────────────────────────
 

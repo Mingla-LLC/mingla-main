@@ -9,7 +9,8 @@ import { KeyRound } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { CopyBlock } from "./CopyBlock";
-import { NOT_WORKING_CHECKS, agentStatus, stoppedWords } from "../../lib/agentConnect";
+import { NOT_WORKING_CHECKS, agentStatus, stoppedWords, zoneWords } from "../../lib/agentConnect";
+import { DISCLOSURE_CLASS } from "./AgentConnectSteps";
 
 export function AgentKeyCard({
   agent,
@@ -20,6 +21,8 @@ export function AgentKeyCard({
   busy,
   offline,
   problem,
+  notice,
+  replaceAgain,
   onCreate,
   onRevoke,
   onDone,
@@ -105,12 +108,16 @@ export function AgentKeyCard({
               Done hides the key. The lines in step 2 are filled in with it until then.
             </p>
           </div>
+          <p className="text-xs text-[var(--color-text-secondary)]">{zoneWords(activeKey)}</p>
         </div>
       ) : activeKey ? (
-        <p className="break-words text-[13px] text-[var(--color-text-secondary)]">
-          Key <span className="font-mono text-[var(--color-text-primary)]">{activeKey.key_prefix}…</span> The rest was shown once
-          and is not kept anywhere. Lost it? Replace the key.
-        </p>
+        <>
+          <p className="break-words text-[13px] text-[var(--color-text-secondary)]">
+            Key <span className="font-mono text-[var(--color-text-primary)]">{activeKey.key_prefix}…</span>{" "}
+            The rest was shown once and is not kept anywhere. Lost it? Replace the key.
+          </p>
+          <p className="text-xs text-[var(--color-text-secondary)]">{zoneWords(activeKey)}</p>
+        </>
       ) : (
         <p className="text-[13px] text-[var(--color-text-secondary)]">
           One key for {agent.label}. It carries your role and nothing more.
@@ -118,6 +125,11 @@ export function AgentKeyCard({
         </p>
       )}
 
+      {notice && (
+        <p role="status" className="rounded-lg bg-[var(--color-warning-50)] p-3 text-[13px] text-[var(--color-warning-700)]">
+          {notice}
+        </p>
+      )}
       {problem && (
         <p role="alert" className="text-[13px] text-[var(--color-error-700)]">
           {problem}
@@ -145,7 +157,7 @@ export function AgentKeyCard({
           {activeKey ? (
             <>
               <Button ref={mainRef} type="button" variant="secondary" loading={busy} disabled={offline} title={offlineTitle} onClick={() => setAsking("replace")} className="max-sm:h-11">
-                Replace key
+                {replaceAgain ? "Replace again" : "Replace key"}
               </Button>
               <Button type="button" variant="ghost" disabled={busy || offline} title={offlineTitle} onClick={() => setAsking("disconnect")} className="max-sm:h-11">
                 Disconnect
@@ -161,10 +173,8 @@ export function AgentKeyCard({
 
       {activeKey && !freshKey && status.state === "unused" && (
         <details className="text-[13px] text-[var(--color-text-secondary)]">
-          <summary className="cursor-pointer font-medium text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]">
-            Not working?
-          </summary>
-          <ul className="mt-2 list-disc space-y-1 pl-5">
+          <summary className={DISCLOSURE_CLASS}>Not working?</summary>
+          <ul className="list-disc space-y-1 pl-5">
             {NOT_WORKING_CHECKS.map((line) => (
               <li key={line}>{line}</li>
             ))}

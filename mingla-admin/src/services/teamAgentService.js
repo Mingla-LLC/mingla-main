@@ -54,11 +54,15 @@ export function listMyKeys() {
 
 /**
  * Create (or replace) this person's key for "claude" or "codex".
- * Returns { key, key_id, agent, key_prefix, created_at, replaced }. `key` is
- * in this answer once and can never be fetched again.
+ * `timeZone` is this browser's zone name, so the agent's "today" is the date
+ * on this person's screen; null when the browser will not say.
+ * Returns { key, key_id, agent, key_prefix, created_at, replaced, time_zone }.
+ * `key` is in this answer once and can never be fetched again: if the answer
+ * is lost on its way here, the key is gone, and the caller must read the
+ * person's keys again to learn whether the old one was replaced.
  */
-export function createKey(agent) {
-  return call(() => supabase.rpc("team_agent_key_create", { p_agent: agent }));
+export function createKey(agent, timeZone = null) {
+  return call(() => supabase.rpc("team_agent_key_create", { p_agent: agent, p_time_zone: timeZone }));
 }
 
 /** Turn a key off at once. Returns { key_id, agent, owner_email, revoked_at, changed }. */

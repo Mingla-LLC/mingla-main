@@ -28,6 +28,7 @@ async function loadAll(isOwner) {
 
 /**
  * Returns { keys, idleDays, guide, overview, loading, error, refetch }.
+ * `refetch()` resolves to the keys as just read, or null when the read failed.
  * Loads on mount; refreshes quietly when the window is focused again, when
  * the browser comes back online, and every 30 seconds while the page is
  * visible and online. A quiet refresh that fails keeps what is on screen.
@@ -51,18 +52,24 @@ export function useAgentKeys() {
       const mine = ++seq.current;
       try {
         const data = await loadAll(isOwner);
-        if (!mounted.current || mine !== seq.current) return;
+        if (!mounted.current || mine !== seq.current) return null;
         setState({ key, data, error: null, loaded: true });
+        return Array.isArray(data?.mine?.keys) ? data.mine.keys : [];
       } catch (error) {
-        if (!mounted.current || mine !== seq.current) return;
-        if (quiet) return;
+        if (!mounted.current || mine !== seq.current) return null;
+        if (quiet) return null;
         setState({ key, data: null, error, loaded: true });
+        return null;
       }
     },
     [key, isOwner]
   );
 
-  /** Read again. Not quiet (Try again): the page shows its loading state first. */
+  /**
+   * Read again. Not quiet (Try again): the page shows its loading state
+   * first. Resolves to the person's keys as the server now lists them, or to
+   * null when they could not be read (the page then knows it does not know).
+   */
   const refetch = useCallback(
     ({ quiet = false } = {}) => {
       if (!quiet) setState({ key, data: null, error: null, loaded: false });
