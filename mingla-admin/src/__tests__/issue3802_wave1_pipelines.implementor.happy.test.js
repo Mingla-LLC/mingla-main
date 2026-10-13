@@ -352,7 +352,7 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
   it("Sales and marketing and Founding partner open exactly home, hosts and creators", () => {
     for (const a of [growth, partner]) {
       const open = PAGE_IDS.filter((id) => canOpenPage(a, id));
-      assert.deepEqual(open.sort(), ["creators", "home", "hosts"], a.role);
+      assert.deepEqual(open.sort(), ["beta-leads", "creators", "home", "hosts"], a.role);
     }
   });
   it("a page nobody listed is still closed to them", () => {
@@ -387,25 +387,26 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
     assert.deepEqual(resolveRoute("hosts", { ...growth, areas: ["role_home"] }, PAGE_IDS), { pageId: "home", denied: true, requestedId: "hosts" });
     assert.deepEqual(resolveRoute("hosts", growth, PAGE_IDS), { pageId: "hosts", denied: false, requestedId: "hosts" });
   });
-  it("this pull request does not open Beta leads or change where anyone lands", () => {
-    assert.equal(Object.hasOwn(PAGE_AREA_OVERRIDES, "beta-leads"), false);
-    assert.equal(canOpenPage(growth, "beta-leads"), false);
-    assert.deepEqual(Object.keys(PAGE_AREA_OVERRIDES).sort(), ["admin", "creators", "home", "hosts"]);
+  it("Beta leads opens to the whole team through its own area, and nobody lands anywhere new", () => {
+    assert.equal(Object.hasOwn(PAGE_AREA_OVERRIDES, "beta-leads"), true);
+    assert.equal(PAGE_AREA_OVERRIDES["beta-leads"], "beta_leads");
+    assert.equal(canOpenPage(growth, "beta-leads"), true);
+    assert.deepEqual(Object.keys(PAGE_AREA_OVERRIDES).sort(), ["admin", "beta-leads", "creators", "home", "hosts"]);
   });
 });
 
 describe("#3802 P-7: the menu each role sees", () => {
   const ids = (a) => visibleNavGroups(NAV_GROUPS, a).flatMap((g) => g.items).map((i) => i.id);
   it("Sales and marketing and Founding partner see Home, Hosts and Creators", () => {
-    assert.deepEqual(ids(growth), ["home", "hosts", "creators"]);
-    assert.deepEqual(ids(partner), ["home", "hosts", "creators"]);
+    assert.deepEqual(ids(growth), ["home", "beta-leads", "hosts", "creators"]);
+    assert.deepEqual(ids(partner), ["home", "beta-leads", "hosts", "creators"]);
   });
   it("owner and admin see the Team group last, after everything they had", () => {
     for (const a of [owner, admin]) {
       const groups = visibleNavGroups(NAV_GROUPS, a);
       const last = groups[groups.length - 1];
       assert.equal(last.label, "Team");
-      assert.deepEqual(last.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["hosts:Hosts:Store", "creators:Creators:Sparkles"]);
+      assert.deepEqual(last.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["team-dashboard:Team dashboard:BarChart3", "hosts:Hosts:Store", "creators:Creators:Sparkles"]);
     }
     assert.ok(ids(owner).includes("admin"));
     assert.ok(!ids(admin).includes("admin"));
@@ -424,11 +425,14 @@ describe("#3802 P-8: source contracts", () => {
     const callers = files.filter((f) => /rpc\(\s*["'`]crm_/.test(fs.readFileSync(f, "utf8")));
     assert.deepEqual(callers.map((f) => path.relative(SRC, f)), [path.join("services", "crmService.js")]);
   });
-  it("crmService.js calls exactly thirteen of the fourteen client functions (never bulk add)", () => {
+  it("crmService.js calls exactly eighteen of the nineteen client functions (never bulk add)", () => {
     const called = [...SERVICE.matchAll(/rpc\(\s*"(crm_[a-z_]+)"/g)].map((m) => m[1]).sort();
     assert.deepEqual(called, [
+      "crm_beta_lead_to_host",
+      "crm_beta_leads_list",
       "crm_config",
       "crm_duplicate_check",
+      "crm_home_summary",
       "crm_link_search",
       "crm_record_create",
       "crm_record_delete",
@@ -440,6 +444,8 @@ describe("#3802 P-8: source contracts", () => {
       "crm_record_undo_stage_move",
       "crm_record_update",
       "crm_records_list",
+      "crm_target_set",
+      "crm_team_summary",
     ]);
     // Bulk add is for the agent connector (a later wave); the screen never calls it.
     assert.ok(!SERVICE.includes("crm_records_bulk_create"));
