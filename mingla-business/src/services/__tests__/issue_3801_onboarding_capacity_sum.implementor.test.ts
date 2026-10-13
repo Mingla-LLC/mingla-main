@@ -29,7 +29,6 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 type Rows = Record<string, unknown>[] | Record<string, unknown> | null;
 const tables: Record<string, Rows> = {};
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const rpcMock = jest.fn() as any;
 
 /** A chainable PostgREST builder that resolves to the table's canned rows. */

@@ -1,3 +1,4 @@
+/* eslint-disable import/first */
 /**
  * Issue #3801 — saving the FIRST Traveler info question on web no longer
  * crashes the trip editor.
