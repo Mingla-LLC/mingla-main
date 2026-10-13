@@ -17,6 +17,7 @@ import {
   isServerDraftLifecycleError,
 } from "../services/eventDrafts";
 import { fetchDraftBrandCurrency } from "../services/draftCurrencyTruth";
+import { setDraftServerCurrency } from "../utils/draftServerCurrency";
 import {
   useDraftEventStore,
   type DraftEvent,
@@ -305,6 +306,14 @@ const readFreshBrandCurrency = async (draftId: string): Promise<string | null> =
   }
 };
 
+const rememberSavedDraftCurrency = (saved: DraftEvent): void => {
+  setDraftServerCurrency(saved.id, saved.currency);
+  const reused = freshBrandCurrencyByDraft.get(saved.id);
+  if (reused !== undefined && reused.currency !== (saved.currency ?? null)) {
+    freshBrandCurrencyByDraft.delete(saved.id);
+  }
+};
+
 export interface ServerDraftAutosaveOptions {
   /**
    * Issue #3645 — the currency of the brand the wizard is editing for, as this
@@ -329,16 +338,21 @@ export const useServerDraftAutosave = (
   const mutation = useMutation<DraftEvent, Error, DraftEvent>({
     mutationFn: async (draft) => {
       requireBusinessAuthReady(authStatus, session);
-      // Issue #3645 — ask the SERVER what the brand's currency is now, and
-      // save in that. The brand list cached on this device is not believed:
-      // it can be older than the draft row. If the server cannot say, the
-      // save follows the server ROW's currency instead; the cached value is
-      // the last resort, for a row that has none.
-      return autosaveServerDraft(draft, {
+      // Issue #3645 — the save follows the server ROW it reads. The brand's
+      // currency (asked of the server, reused for a few seconds) only stamps a
+      // row that has none, and the value cached on this device is the last
+      // resort after that. A brand list held here is never believed over the
+      // server.
+      const saved = await autosaveServerDraft(draft, {
         brandCurrency: await readFreshBrandCurrency(draft.id),
         serverRowWins: true,
         cachedBrandCurrency: brandCurrencyRef?.current ?? null,
       });
+      // The save's result is the freshest server truth there is: it becomes
+      // what every reader believes about this draft's currency, and a reused
+      // brand answer that disagrees with it is thrown away.
+      rememberSavedDraftCurrency(saved);
+      return saved;
     },
     onSuccess: (draft) => {
       const accepted = upsertServerDraft(draft);

@@ -58,14 +58,15 @@ export const fetchDraftBrandCurrency = async (
 };
 
 /**
- * The currency this draft should be in: the brand's when it has one (after
- * migration 20270829003645 the two agree for a draft with nothing sold),
- * otherwise the row's. Null = the server holds none.
+ * The currency this draft is in on the server: the draft ROW's own currency
+ * (the brand trigger of migration 20270829003645 keeps it in step with the
+ * brand for a draft with nothing sold), or the brand's when the row has none
+ * yet. Null = the server holds none.
  */
 export const fetchDraftCurrencyTruth = async (
   draftId: string,
 ): Promise<string | null> => {
   const row = await readDraftCurrencyRow(draftId);
   if (row === null) return null;
-  return row.brandCurrency ?? row.rowCurrency;
+  return row.rowCurrency ?? row.brandCurrency ?? null;
 };

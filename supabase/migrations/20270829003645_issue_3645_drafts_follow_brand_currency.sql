@@ -51,7 +51,12 @@
 --     so a cleared package also gets a marker in its own
 --     `trip_pricing_tiers.tier_metadata`:
 --         "price_cleared_for_currency_change": {"from": "GBP", "to": "NGN"}
---     and keeps `is_free = false`. Every shipped client merges into
+--     and the clear itself leaves `is_free` as it was (false). `is_free` is
+--     NOT what marks the package: the draft owner recomputes it as
+--     "price = 0" on every save, so a later save of a still-empty price flips
+--     it to true. The MARKER is the only thing that says "no price yet", and
+--     Publish is refused on the marker, whatever `is_free` says. Every shipped
+--     client merges into
 --     tier_metadata and preserves keys it does not know (tripsService
 --     `updateTripPricing`), so the marker survives a save from an old app
 --     build. Trigger (2) refuses Publish while a marked package still costs 0,
@@ -328,7 +333,8 @@ BEGIN
         -- Trip packages: the price goes to 0 and the package is marked in ONE
         -- statement, so 0 can never be read as "the host chose free" and a
         -- marked package never holds a price, whatever the constraint mode.
-        -- is_free is deliberately NOT touched: it was false and stays false.
+        -- is_free is not touched here. It is not relied on either: the draft
+        -- owner recomputes it on every save. The marker is what counts.
         WITH cleared AS (
           UPDATE public.ticket_types tt
              SET currency = v_new,
@@ -367,7 +373,7 @@ REVOKE ALL ON FUNCTION public.issue_3645_drafts_follow_brand_currency() FROM PUB
 REVOKE ALL ON FUNCTION public.issue_3645_drafts_follow_brand_currency() FROM anon, authenticated;
 
 COMMENT ON FUNCTION public.issue_3645_drafts_follow_brand_currency() IS
-  'Issue #3645: AFTER UPDATE OF default_currency ON brands. Never-published, nothing-sold event / RSVP / trip drafts follow the brand''s currency in every copy. Prices are cleared when the brand had a real currency before (the one replaced, or the one remembered in brand_cleared_currency when it was cleared in an earlier write) and the draft holds a copy of another currency; otherwise they are kept. Trip packages cleared this way carry tier_metadata.price_cleared_for_currency_change and keep is_free = false. Experiences are skipped. Never reads auth.uid(); a draft that cannot be moved is logged as a WARNING and never blocks the brand update.';
+  'Issue #3645: AFTER UPDATE OF default_currency ON brands. Never-published, nothing-sold event / RSVP / trip drafts follow the brand''s currency in every copy. Prices are cleared when the brand had a real currency before (the one replaced, or the one remembered in brand_cleared_currency when it was cleared in an earlier write) and the draft holds a copy of another currency; otherwise they are kept. Trip packages cleared this way carry tier_metadata.price_cleared_for_currency_change, which (not is_free) is what marks them as having no price yet. Experiences are skipped. Never reads auth.uid(); a draft that cannot be moved is logged as a WARNING and never blocks the brand update.';
 
 DROP TRIGGER IF EXISTS issue_3645_drafts_follow_brand_currency ON public.brands;
 CREATE TRIGGER issue_3645_drafts_follow_brand_currency
@@ -441,6 +447,14 @@ CREATE TRIGGER issue_3645_refuse_publish_with_cleared_prices
 -- cannot be published. To publish, the host types a price (the marker goes)
 -- or says free (the marker goes).
 -- ---------------------------------------------------------------------------
+-- The commit-time check below looks a package up by its ticket type on every
+-- ticket price update. trip_pricing_tiers had indexes on (event_id) and
+-- (event_id, ticket_type_id) only, neither usable for that lookup. A plain
+-- CREATE INDEX (it runs inside this transaction, so not CONCURRENTLY) is
+-- acceptable here: the table held 17 rows in production when this was written.
+CREATE INDEX IF NOT EXISTS idx_trip_pricing_tiers_ticket_type
+  ON public.trip_pricing_tiers (ticket_type_id);
+
 CREATE OR REPLACE FUNCTION public.issue_3645_refuse_price_on_cleared_package()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -454,6 +468,34 @@ BEGIN
     v_ticket_type_id := NEW.id;
   ELSE
     v_ticket_type_id := NEW.ticket_type_id;
+  END IF;
+
+  -- A save that REPLACED a marked package's metadata with something that is
+  -- not an object at all (`"tier_metadata": null`) and left a price on it. No
+  -- correct client sends that: it always sends an object. It is the marker
+  -- being thrown away with the old number, so it is refused like the marker
+  -- being sent back.
+  --
+  -- An EMPTY object cannot be told apart here and is NOT refused: a correct
+  -- re-price of a package with no description and no payment plan sends
+  -- exactly `{}` (the metadata it read, minus the marker). Telling the two
+  -- apart needs the client to say it knew about the clear, which is a change
+  -- to what the draft owner accepts, not something this trigger can see.
+  -- (Nested on purpose: OLD has no tier_metadata on ticket_types, and no OLD
+  -- at all on an insert; plpgsql resolves every field an expression names.)
+  IF TG_TABLE_NAME = 'trip_pricing_tiers' AND TG_OP = 'UPDATE' THEN
+    IF OLD.tier_metadata ? 'price_cleared_for_currency_change'
+       AND jsonb_typeof(NEW.tier_metadata) IS DISTINCT FROM 'object'
+       AND EXISTS (
+         SELECT 1 FROM public.ticket_types tt
+          WHERE tt.id = v_ticket_type_id
+            AND tt.deleted_at IS NULL
+            AND tt.price_cents > 0
+       ) THEN
+      RAISE EXCEPTION 'price_reentry_required'
+        USING ERRCODE = 'P0001',
+              HINT = 'The brand''s currency changed and this package''s price was cleared. The price sent was not entered after the clear. Enter the price again.';
+    END IF;
   END IF;
 
   -- The rows as they stand NOW (commit time), not as this write left them.
@@ -580,6 +622,17 @@ BEGIN
          AND t.tgdeferrable
          AND t.tginitdeferred) <> 2 THEN
     RAISE EXCEPTION 'issue_3645_verify: the cleared-package price refusal is missing, or is not a deferred constraint trigger on both tables (an immediate one refuses a correct re-price)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_catalog.pg_index AS i
+      JOIN pg_catalog.pg_attribute AS a
+        ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0]
+     WHERE i.indrelid = 'public.trip_pricing_tiers'::pg_catalog.regclass
+       AND a.attname = 'ticket_type_id'
+       AND i.indisvalid
+  ) THEN
+    RAISE EXCEPTION 'issue_3645_verify: no index on trip_pricing_tiers leads with ticket_type_id; the commit-time check would scan the table on every ticket price update';
   END IF;
   IF pg_catalog.has_function_privilege('anon', 'public.issue_3645_refuse_price_on_cleared_package()', 'EXECUTE')
      OR pg_catalog.has_function_privilege('authenticated', 'public.issue_3645_refuse_price_on_cleared_package()', 'EXECUTE') THEN

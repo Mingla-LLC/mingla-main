@@ -536,6 +536,47 @@ BEGIN
     RAISE EXCEPTION 'R7-07 a correct re-price was not stored as a plain priced USD package';
   END IF;
 
+  -- R7-09 the marker thrown away with the old number: a marked package whose
+  -- metadata is replaced by JSON null, with a price, is refused too.
+  UPDATE public.ticket_types SET price_cents = 0 WHERE id = t.id;
+  UPDATE public.trip_pricing_tiers SET tier_metadata = v_meta WHERE ticket_type_id = t.id;
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_refused := false;
+  BEGIN
+    PERFORM public.biz_apply_trip_draft_graph(
+      v_trip,
+      jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object(
+        'ticket_type_id', t.id, 'tier_name', 'Standard', 'price_cents', 45000,
+        'capacity', 12, 'tier_metadata', NULL))),
+      pg_temp.rev(v_trip), '36450830-0000-4000-8000-0000000007a5');
+    SET CONSTRAINTS ALL IMMEDIATE;
+  EXCEPTION WHEN sqlstate 'P0001' THEN
+    v_refused := SQLERRM = 'price_reentry_required';
+  END;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF NOT v_refused THEN
+    RAISE EXCEPTION 'R7-09 a save that replaced the marked metadata with null kept the OLD number';
+  END IF;
+  SELECT count(*) INTO v_count
+    FROM public.ticket_types tt JOIN public.trip_pricing_tiers tpt ON tpt.ticket_type_id = tt.id
+   WHERE tt.id = t.id AND tt.price_cents = 0
+     AND tpt.tier_metadata ? 'price_cleared_for_currency_change';
+  IF v_count <> 1 THEN
+    RAISE EXCEPTION 'R7-10 a refused null-metadata save left something behind';
+  END IF;
+
+  -- R7-11 the commit-time check can find a package by its ticket type without
+  -- scanning the table.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_index i
+      JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0]
+     WHERE i.indrelid = 'public.trip_pricing_tiers'::regclass
+       AND a.attname = 'ticket_type_id' AND i.indisvalid
+  ) THEN
+    RAISE EXCEPTION 'R7-11 no index on trip_pricing_tiers leads with ticket_type_id';
+  END IF;
+
   -- R7-08 the refusal is deferred on both tables; an immediate one would have
   -- refused R7-07.
   SELECT count(*) INTO v_count FROM pg_trigger tg

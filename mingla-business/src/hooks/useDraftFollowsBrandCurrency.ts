@@ -21,7 +21,7 @@
  * A draft with no currency yet is left alone here: the save stamps it and its
  * typed prices stay, with no notice.
  */
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import { fetchDraftCurrencyTruth } from "../services/draftCurrencyTruth";
 import { useDraftEventStore, type DraftEvent } from "../store/draftEventStore";
@@ -31,8 +31,14 @@ import {
 } from "../utils/draftFollowsBrandCurrency";
 import { currencyCodeOrNull } from "../utils/currency";
 import {
+  getDraftServerCurrency,
+  setDraftServerCurrency,
+  subscribeDraftServerCurrency,
+} from "../utils/draftServerCurrency";
+import {
   clearPricesClearedNote,
   getPricesClearedNote,
+  isPricesClearedNoteFromThisDevice,
   subscribePricesClearedNotes,
   type PricesClearedNote,
 } from "../utils/draftPricesClearedNote";
@@ -98,24 +104,22 @@ export const useDraftFollowsBrandCurrency = ({
   const noticedDraftIdsRef = useRef<Set<string>>(new Set());
   const draftId = draft?.id ?? null;
 
-  // What the SERVER says this draft's currency should be, asked once per
-  // draft when it opens. Never the brand list cached on this device: that
-  // list can be older than the draft, and trusting it let a second device
-  // clear a correctly re-priced draft. A draft that only exists on this
-  // device (d_*) has no server row to ask about; its first save is checked
-  // against the server instead. Until the answer arrives, and if it cannot be
-  // had, nothing is adopted here.
-  const [serverTruth, setServerTruth] = useState<{
-    draftId: string;
-    currency: string | null;
-  } | null>(null);
+  // What the SERVER says this draft's currency is. There is ONE owner of
+  // that answer (utils/draftServerCurrency): this hook asks once when the
+  // draft opens and writes the answer there; every draft save writes its
+  // result there too, and it is always the newest answer that is believed.
+  // So after a save has moved the draft, this hook can never move it back on
+  // the strength of what it was told when the screen opened. A draft that
+  // only exists on this device (d_*) has no server row to ask about. Until an
+  // answer exists, and if none can be had, nothing is adopted here.
   useEffect(() => {
     if (draftId === null || draftId.startsWith("d_")) return undefined;
     let live = true;
+    const askedAt = Date.now();
     const ask = async (): Promise<void> => {
       try {
         const currency = await fetchDraftCurrencyTruth(draftId);
-        if (live) setServerTruth({ draftId, currency });
+        if (live) setDraftServerCurrency(draftId, currency, askedAt);
       } catch (error) {
         console.warn("[useDraftFollowsBrandCurrency] could not read the draft's currency", {
           draftId,
@@ -129,9 +133,11 @@ export const useDraftFollowsBrandCurrency = ({
     };
   }, [draftId]);
   const serverCurrency =
-    serverTruth !== null && serverTruth.draftId === draftId
-      ? serverTruth.currency
-      : null;
+    useSyncExternalStore(
+      subscribeDraftServerCurrency,
+      () => (draftId === null ? null : getDraftServerCurrency(draftId) ?? null),
+      () => null,
+    ) ?? null;
 
   const serverNote = useSyncExternalStore(
     subscribePricesClearedNotes,
@@ -144,15 +150,23 @@ export const useDraftFollowsBrandCurrency = ({
     if (draft === null) return;
     const plan = planDraftCurrencyFollow(draft, serverCurrency, serverNote);
     if (plan === null) return;
+    // A note this device made itself (its own save cleared the prices) only
+    // has to be shown: the server holds nothing to resolve. A save is owed
+    // only when the draft itself changes here, or the SERVER's note has to be
+    // written back as resolved. This is what lets the saves come to rest.
+    const noteNeedsNoSave = isPricesClearedNoteFromThisDevice(draft.id);
+    const changesDraft = Object.keys(plan.patch).length > 0;
     clearPricesClearedNote(draft.id);
-    // Same shape as a wizard edit: a new revision, marked dirty, then saved.
-    // The wizard keeps its own counter at or above the draft's, so its next
-    // edit follows on from this one.
-    const nextRevision = (draft.clientRevision ?? 0) + 1;
-    markDraftDirty(draft.id, nextRevision);
-    updateDraft(draft.id, { ...plan.patch, clientRevision: nextRevision });
-    const fresh = useDraftEventStore.getState().getDraft(draft.id);
-    onSave(fresh ?? { ...draft, ...plan.patch, clientRevision: nextRevision });
+    if (changesDraft || !noteNeedsNoSave) {
+      // Same shape as a wizard edit: a new revision, marked dirty, then saved.
+      // The wizard keeps its own counter at or above the draft's, so its next
+      // edit follows on from this one.
+      const nextRevision = (draft.clientRevision ?? 0) + 1;
+      markDraftDirty(draft.id, nextRevision);
+      updateDraft(draft.id, { ...plan.patch, clientRevision: nextRevision });
+      const fresh = useDraftEventStore.getState().getDraft(draft.id);
+      onSave(fresh ?? { ...draft, ...plan.patch, clientRevision: nextRevision });
+    }
     if (plan.notice !== null && !noticedDraftIdsRef.current.has(draft.id)) {
       noticedDraftIdsRef.current.add(draft.id);
       onNotice(plan.notice);

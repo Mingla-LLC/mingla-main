@@ -444,11 +444,12 @@ export interface AutosaveServerDraftOptions {
    */
   brandCurrency?: string | null;
   /**
-   * Issue #3645 — set by the wizard's save path. When the brand's fresh
-   * currency is not known, the SERVER ROW's currency is used ahead of this
-   * device's copy, so a stale copy can never write an old currency over a
-   * newer row. Off (the default) keeps the order every other caller has
-   * always had: this draft, the server row, the brand.
+   * Issue #3645 — set by the wizard's save path. The SERVER ROW's currency,
+   * read by this save, outranks everything: this device's copy, the brand
+   * currency passed (it may be a few seconds old) and the cached one. A save
+   * therefore never writes a currency different from the row it just read,
+   * unless that row has none. Off (the default) keeps the order every other
+   * caller has always had.
    */
   serverRowWins?: boolean;
   /**
@@ -464,16 +465,19 @@ export const autosaveServerDraft = async (
   options: AutosaveServerDraftOptions = {},
 ): Promise<DraftEvent> => {
   const existing = await fetchExistingDraftSaveContext(draft.id);
-  // Issue #3645 — the currency this draft must follow, most trusted first:
-  // the brand's fresh currency; then (wizard saves only) the row the server
-  // holds right now, read a moment ago; then, if that row has none, the
-  // brand currency cached on this device. Null = nothing to follow, and the
-  // usual order (this draft, the server row, the brand) decides.
+  // Issue #3645 — the currency this draft must follow. For a wizard save
+  // (`serverRowWins`) the ROW the server holds right now, read a moment ago,
+  // is the owner: a save never sends a currency different from that row. Only
+  // a row with no currency takes the brand's (as the hook read it, possibly a
+  // few seconds old), and failing that the one cached on this device. Other
+  // callers follow the brand currency they pass. Null = nothing to follow, and
+  // the usual order (this draft, the server row, the brand) decides.
   const followCurrency =
-    nullableCurrency(options.brandCurrency) ??
-    (options.serverRowWins === true
-      ? existing.currency ?? nullableCurrency(options.cachedBrandCurrency)
-      : null);
+    options.serverRowWins === true
+      ? existing.currency ??
+        nullableCurrency(options.brandCurrency) ??
+        nullableCurrency(options.cachedBrandCurrency)
+      : nullableCurrency(options.brandCurrency);
   const effectiveCurrency =
     followCurrency ?? (await resolveDraftCurrencyForSave(draft, existing.currency));
   const brandCurrency = followCurrency;

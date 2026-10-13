@@ -17,6 +17,7 @@ export interface PricesClearedNote {
 }
 
 const notes = new Map<string, PricesClearedNote>();
+const madeByThisDevice = new Set<string>();
 const listeners = new Set<() => void>();
 
 const emit = (): void => {
@@ -45,13 +46,15 @@ export const recordPricesClearedNote = (draftId: string, theme: unknown): void =
   const note = pricesClearedNoteFromTheme(theme);
   const had = notes.get(draftId) ?? null;
   if (note === null) {
-    if (had === null) return;
+    // A row without a note does not erase a note this device made itself.
+    if (had === null || madeByThisDevice.has(draftId)) return;
     notes.delete(draftId);
     emit();
     return;
   }
   if (had !== null && had.to === note.to && had.from === note.from) return;
   notes.set(draftId, note);
+  madeByThisDevice.delete(draftId);
   emit();
 };
 
@@ -61,13 +64,23 @@ export const recordPricesClearedNote = (draftId: string, theme: unknown): void =
  */
 export const setPricesClearedNote = (draftId: string, note: PricesClearedNote): void => {
   notes.set(draftId, note);
+  madeByThisDevice.add(draftId);
   emit();
 };
+
+/**
+ * True when the note waiting for this draft was produced by a save on THIS
+ * device, not read from the server. Such a note only has to be shown: the
+ * server holds nothing to resolve, so no further save is owed for it.
+ */
+export const isPricesClearedNoteFromThisDevice = (draftId: string): boolean =>
+  madeByThisDevice.has(draftId);
 
 export const getPricesClearedNote = (draftId: string): PricesClearedNote | null =>
   notes.get(draftId) ?? null;
 
 export const clearPricesClearedNote = (draftId: string): void => {
+  madeByThisDevice.delete(draftId);
   if (notes.delete(draftId)) emit();
 };
 
@@ -81,5 +94,6 @@ export const subscribePricesClearedNotes = (listener: () => void): (() => void) 
 /** Test seam. */
 export const resetPricesClearedNotesForTest = (): void => {
   notes.clear();
+  madeByThisDevice.clear();
   listeners.clear();
 };
