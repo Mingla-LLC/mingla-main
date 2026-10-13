@@ -511,3 +511,343 @@ describe("#3802 A-8: what the new screens keep and leave behind", () => {
     assert.match(PAGE, /matchMedia\?\.\("\(hover: hover\) and \(pointer: fine\)"\)/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Retest of the boards rework (appended; nothing above this line was changed).
+//
+//   B-1  the card's save line under seeded random state: "Saved" is never
+//        shown while anything is unsent, typed or in flight, and Try again
+//        covers every unsent field exactly once
+//   B-2  the page holds a card only for that card's own unsent edits
+//   B-3  a stale card: every pair of stages gives the right verdict, and odd
+//        history never produces a broken sentence or lets the move through
+//   B-4  whatever arrives beside a token, the screen shows a sentence
+//   B-5  the quiet refresh: its pace, and the three things that stop it
+//   B-6  what the retest attacked at runtime, pinned in source: one press at a
+//        time per card, nothing moved on a stale verdict, toasts that take no
+//        taps, and exactly two places that can say "weren't saved"
+//
+// Fails-on-revert is recorded on the issue for B-1 (Saved decided before the
+// unsent check), B-3 (the same-move case waved through), B-4 (any text accepted
+// as a sentence) and B-6 (the card not marked busy during the freshness read).
+
+import {
+  BOARD_REFRESH_MS,
+  editsToSend,
+  fieldLabel,
+  freshnessVerdict,
+  hasUnsavedEdits,
+  loadErrorWords,
+  normalizeTyped,
+  saveLine,
+  shouldHoldCard,
+  TEXT_FIELDS,
+  unsentEdits,
+} from "../lib/crmModel.js";
+
+const ALL_FIELDS = ["name", "icp", "region_id", "owners", "contact", "channel", "source", "next_action", "due_on", "brand_id", "place_pool_id", "followers", "agreement", "rate"];
+const SAVED_RECORD = { id: "r1", name: "Palm Court Kitchen", contact: "Ngozi", next_action: "Send deck", rate: null, followers: 12000, icp: "restaurant_bar" };
+
+describe("#3802 B-1: the save line under random state", () => {
+  it("3,000 seeded states: Saved or idle only when there is nothing to send and nothing in flight", () => {
+    const next = rng(38021);
+    const pick = (list) => list[Math.floor(next() * list.length)];
+    const typedValues = ["", " ", "Ngozi", " Ngozi ", "Send deck", "new text", "12000", "12k", "Palm  Court   Kitchen", "x"];
+    for (let i = 0; i < 3000; i++) {
+      const drafts = {};
+      const unsent = {};
+      for (let j = Math.floor(next() * 4); j > 0; j--) drafts[pick(ALL_FIELDS)] = pick(typedValues);
+      for (let j = Math.floor(next() * 4); j > 0; j--) unsent[pick(ALL_FIELDS)] = { value: pick(typedValues), message: "x", local: next() < 0.2 };
+      const saving = next() < 0.25 ? 1 + Math.floor(next() * 3) : 0;
+      const savedAt = next() < 0.6 ? "3:42 pm" : "";
+      const state = { saving, drafts, record: SAVED_RECORD, unsent, savedAt };
+      const line = saveLine(state);
+      const toSend = editsToSend(drafts, SAVED_RECORD, unsent);
+      const where = JSON.stringify(state);
+
+      if (line.kind === "saved" || line.kind === "idle") {
+        assert.equal(saving, 0, where);
+        assert.equal(toSend.length, 0, `"${line.kind}" with something still to send: ${where}`);
+        assert.equal(hasUnsavedEdits(state), false, where);
+      } else {
+        assert.equal(hasUnsavedEdits(state), true, where);
+      }
+      if (Object.keys(unsent).length > 0 && saving === 0) assert.equal(line.kind, "unsent", where);
+      if (line.kind === "saved") assert.equal(savedAt, "3:42 pm");
+
+      // Try again sends every failed field, once each, never a field twice.
+      const keys = toSend.map((e) => e.key);
+      assert.equal(new Set(keys).size, keys.length, `a field would be sent twice: ${where}`);
+      for (const key of Object.keys(unsent)) assert.ok(keys.includes(key), `${key} failed but would not be re-sent: ${where}`);
+      if (line.kind === "unsent") assert.deepEqual([...line.keys].sort(), Object.keys(unsent).sort(), where);
+    }
+  });
+
+  it("typed text that only differs by outer spacing is not an edit; a real difference always is", () => {
+    for (const key of TEXT_FIELDS) {
+      const saved = { id: "r", [key]: key === "followers" ? 12000 : "Same text" };
+      const same = key === "followers" ? " 12000 " : "  Same text  ";
+      assert.deepEqual(editsToSend({ [key]: same }, saved, {}), [], key);
+      assert.equal(editsToSend({ [key]: "different" }, saved, {}).length, 1, key);
+      assert.equal(saveLine({ drafts: { [key]: "different" }, record: saved, savedAt: "1:00 pm" }).kind, "pending", key);
+    }
+    assert.equal(normalizeTyped("name", "  Palm \t Court\n Kitchen "), "Palm Court Kitchen");
+    assert.equal(normalizeTyped("contact", "  two  spaces kept  "), "two  spaces kept");
+    assert.equal(normalizeTyped("contact", null), "");
+  });
+
+  it("junk state never throws and is never called saved by accident", () => {
+    for (const junk of [null, undefined, 0, "x", [], { constructor: { value: "x" } }, { __proto__: { contact: { value: "x" } } }]) {
+      assert.doesNotThrow(() => saveLine({ unsent: junk, drafts: junk, record: junk }));
+      assert.doesNotThrow(() => editsToSend(junk, junk, junk));
+      assert.deepEqual(unsentEdits(junk), []);
+    }
+    assert.equal(saveLine().kind, "idle");
+    assert.equal(saveLine({ saving: 1, savedAt: "1:00 pm" }).kind, "saving");
+    // An inherited key is not a failed field; an own one is.
+    assert.deepEqual(unsentEdits(Object.create({ contact: { value: "x" } })), []);
+    assert.equal(unsentEdits({ contact: { value: "x" } }).length, 1);
+  });
+
+  it("every field has a plain name, and an unknown one never shows its key", () => {
+    for (const key of ALL_FIELDS) {
+      const label = fieldLabel(key, "hosts");
+      assert.ok(/^[A-Z][A-Za-z ]+$/.test(label), `${key} -> ${label}`);
+      assert.ok(!label.includes("_"), label);
+    }
+    for (const key of ["constructor", "__proto__", "p_changes", "", undefined]) assert.equal(fieldLabel(key, "hosts"), "A field");
+    assert.equal(fieldLabel("contact", "creators"), "Handle and reach");
+  });
+});
+
+describe("#3802 B-2: a card is held only for its own unsent edits", () => {
+  it("the whole truth table", () => {
+    const ids = ["", "a", "b", "new"];
+    for (const shown of ids) {
+      for (const url of ids) {
+        for (const dirty of ids) {
+          const held = shouldHoldCard(shown, url, dirty);
+          const expected = shown !== "" && shown !== url && dirty === shown;
+          assert.equal(held, expected, `shown=${shown} url=${url} dirty=${dirty}`);
+        }
+      }
+    }
+    for (const junk of [null, undefined, 0, false]) assert.equal(shouldHoldCard(junk, "a", junk), false);
+  });
+});
+
+describe("#3802 B-3: a card that moved behind an old board", () => {
+  const stages = HOSTS.stages.map((s) => s.id);
+  const histories = [
+    undefined,
+    null,
+    [],
+    "not a list",
+    [{}],
+    [{ kind: "note", to_stage: "meeting" }],
+    [{ kind: "stage_move" }],
+    [{ kind: "stage_move", to_stage: "meeting", actor_email: "bisi@test.local", actor_name: "Bisi", occurred_at: new Date().toISOString() }],
+    [{ kind: "stage_move", to_stage: "meeting", actor_email: "", occurred_at: "not a date" }],
+    [{ kind: "stage_move", to_stage: "meeting", actor_email: "x@test.local", actor_name: null, occurred_at: null }],
+  ];
+
+  it("every pair of stages: go only when nothing changed, already only for the same move, moved otherwise", () => {
+    for (const shownStage of stages) {
+      for (const freshStage of stages) {
+        for (const to of stages) {
+          for (const activity of histories) {
+            let verdict;
+            assert.doesNotThrow(() => {
+              verdict = freshnessVerdict(HOSTS, { id: "1", name: "Zo", stage: shownStage }, { id: "1", name: "Zo", stage: freshStage }, to, activity);
+            });
+            const expected = freshStage === shownStage ? "go" : freshStage === to ? "already" : "moved";
+            assert.equal(verdict.kind, expected, `${shownStage} / ${freshStage} / ${to}`);
+            if (expected === "go") continue;
+            const words = `${verdict.title} ${verdict.description}`;
+            assert.ok(verdict.title.includes("Zo"), words);
+            assert.ok(!/undefined|null|NaN|Invalid Date|\[object|@test\.local/.test(words), words);
+            // (An entry whose time cannot be read leaves a stray space before the full
+            // stop. The server always sends a time, so that case is reported on the
+            // issue as a low finding and not asserted here.)
+            const timed = !Array.isArray(activity) || activity.every((a) => !a.to_stage || Number.isFinite(Date.parse(a.occurred_at)));
+            if (timed) assert.ok(!/\s{2,}|\s\./.test(verdict.description), `broken spacing: "${verdict.description}"`);
+            if (expected === "moved") assert.match(verdict.description, /Your move was not made\./);
+            else assert.match(verdict.description, /Nothing else was changed\.$/);
+          }
+        }
+      }
+    }
+  });
+
+  it("names the person and the time when the history has them, and never invents a person", () => {
+    const now = Date.parse("2026-10-12T12:00:00Z");
+    const moved = freshnessVerdict(
+      HOSTS,
+      { name: "Unowned Lounge", stage: "prospect" },
+      { name: "Unowned Lounge", stage: "meeting" },
+      "contacted",
+      [{ kind: "stage_move", to_stage: "meeting", actor_email: "bisi@test.local", actor_name: "Bisi", occurred_at: "2026-10-12T11:55:00Z" }],
+      now
+    );
+    assert.equal(moved.title, "Unowned Lounge is no longer in Prospect");
+    assert.match(moved.description, /^Bisi moved it from Prospect to Meeting 5m ago\./);
+    const system = freshnessVerdict(HOSTS, { name: "A", stage: "onboarded" }, { name: "A", stage: "live" }, "lost", [{ kind: "stage_move", to_stage: "live", actor_email: null, occurred_at: "2026-10-12T11:00:00Z" }], now);
+    assert.match(system.description, /by itself 1h ago\./);
+    const unknown = freshnessVerdict(HOSTS, { name: "A", stage: "prospect" }, { name: "A", stage: "meeting" }, "contacted", [], now);
+    assert.match(unknown.description, /^It is in Meeting now, not Prospect\./);
+    assert.ok(!/moved it/.test(unknown.description));
+  });
+
+  it("a missing card on either side is not a reason to stop, and never throws", () => {
+    for (const [shown, fresh] of [[null, null], [null, { stage: "meeting" }], [{ stage: "prospect" }, null], [undefined, undefined]]) {
+      assert.equal(freshnessVerdict(HOSTS, shown, fresh, "contacted", []).kind, "go");
+    }
+    assert.doesNotThrow(() => freshnessVerdict(null, { name: "A", stage: "x" }, { name: "A", stage: "y" }, "z", null));
+  });
+});
+
+describe("#3802 B-4: whatever arrives beside a token, the screen shows a sentence", () => {
+  const tokens = [...new Set(REFUSALS.map((r) => r.token)), "forbidden", "network", "signed_out", "not_ready", "unknown", "never_seen_before"];
+  const notSentences = (token) => ["", " ", token, `${token}:`, "forbidden", "x", "ERROR", "a_b_c", "22023", "null", "undefined"];
+
+  it("a bare word, a code or the token itself is never shown", () => {
+    for (const token of tokens) {
+      for (const message of notSentences(token)) {
+        for (const words of [errorCopy(token, message), errorWords({ token, message }), loadErrorWords({ token, message })]) {
+          assert.equal(typeof words, "string");
+          assert.ok(words.trim().split(/\s+/).length >= 3, `${token} + ${JSON.stringify(message)} -> "${words}"`);
+          assert.notEqual(words.trim(), message.trim() || "\u0000");
+          assert.ok(!/^[a-z_]+$/.test(words.trim()), `${token} -> "${words}"`);
+          assert.ok(!CALLER_WORDS.test(words), `${token} -> "${words}"`);
+        }
+      }
+    }
+  });
+
+  it("the path the screen really takes: the service's error object, then the words", () => {
+    const service = read("services/crmService.js");
+    assert.match(service, /super\(typeof message === "string" \? message : ""\);/);
+    assert.ok(!/super\(message \|\| token\)/.test(service));
+    // The same object shape, built here, for the three bare refusals seen at runtime.
+    for (const raw of [
+      { code: "42501", message: "permission denied for table crm_records" },
+      { code: "42501", message: "forbidden" },
+      { code: "42501", message: "" },
+    ]) {
+      const parsed = parseServerError(raw);
+      const asService = { token: parsed.token, message: typeof parsed.message === "string" ? parsed.message : "" };
+      const words = errorWords(asService);
+      assert.match(words, /Ask the owner/, JSON.stringify(raw));
+      assert.ok(!/permission denied|^forbidden$/.test(words));
+    }
+  });
+
+  it("something that failed to load never says it failed to save", () => {
+    for (const err of [{ token: "unknown", message: "" }, { token: "network", message: "" }, { token: "try_again", message: "" }, new TypeError("Failed to fetch"), { code: "XX000", message: "boom" }, null, undefined, "x"]) {
+      const words = loadErrorWords(err);
+      assert.ok(!/save|saved/i.test(words), words);
+      assert.ok(words.split(/\s+/).length >= 4, words);
+    }
+    assert.match(loadErrorWords({ token: "signed_out", message: "" }), /sign-in/i);
+    assert.match(loadErrorWords({ token: "forbidden", message: "" }), /Ask the owner/);
+  });
+});
+
+const PAGE_NOW = read("pages/PipelinePage.jsx");
+const HOOK_NOW = read("hooks/useCrmPipeline.js");
+const DRAWER_NOW = read("components/crm/RecordDrawer.jsx");
+const SHELL_NOW = read("components/ui/Drawer.jsx");
+const TOAST_NOW = read("components/ui/Toast.jsx");
+const BOARD_NOW = read("components/crm/PipelineBoard.jsx");
+
+describe("#3802 B-5: the quiet refresh", () => {
+  it("is slow enough not to hammer the server and fast enough to matter", () => {
+    assert.ok(BOARD_REFRESH_MS >= 15_000 && BOARD_REFRESH_MS <= 60_000, String(BOARD_REFRESH_MS));
+  });
+
+  it("is skipped while paused, hidden or offline, and is always a quiet one", () => {
+    const start = HOOK_NOW.indexOf("const timer = setInterval(");
+    const timer = HOOK_NOW.slice(start, HOOK_NOW.indexOf("return () => clearInterval(timer);", start));
+    assert.ok(start > 0 && timer.length > 50);
+    assert.match(timer, /if \(pausedRef\.current\) return;/);
+    assert.match(timer, /if \(document\.visibilityState !== "visible"\) return;/);
+    assert.match(timer, /if \(navigator\.onLine === false\) return;/);
+    assert.match(timer, /refetch\(\{ quiet: true \}\);/);
+    assert.match(timer, /\}, BOARD_REFRESH_MS\);/);
+    assert.ok(!/refetch\(\)/.test(timer), "the timer must never show the loading state");
+  });
+
+  it("is paused by unsent edits on a card and by the open Lost or Passed question", () => {
+    assert.match(PAGE_NOW, /useCrmPipeline\(pipeline, \{ enabled: !!def, paused: !!dirtyCard \|\| !!reasonFor \}\)/);
+  });
+
+  it("a quiet refresh never replaces the list while a card is mid-save, and never clears it on failure", () => {
+    assert.match(HOOK_NOW, /if \(quiet && pendingRef\.current\.size > 0\) return;/);
+    assert.match(HOOK_NOW, /\/\/ A failed background refresh keeps what is on screen\.\s+if \(quiet\) return;/);
+  });
+});
+
+describe("#3802 B-6: what the retest attacked at runtime, pinned", () => {
+  const move = PAGE_NOW.slice(PAGE_NOW.indexOf("const requestMove = useCallback("), PAGE_NOW.indexOf("// A failed move to Lost or Passed keeps the question open"));
+
+  it("one press at a time per card: the card is busy from before the read until after it", () => {
+    assert.ok(move.length > 400);
+    const busyOn = move.indexOf("pipe.setBusy(shown.id, true);");
+    const read1 = move.indexOf("fresh = await pipe.checkFresh(shown.id);");
+    const busyOff = move.indexOf("pipe.setBusy(shown.id, false);");
+    assert.ok(busyOn > 0 && read1 > busyOn, "the card must be marked busy before the server is asked");
+    assert.match(move.slice(read1, busyOff), /finally \{\s*$/m);
+    const card = read("components/crm/RecordCard.jsx");
+    assert.match(card, /disabled=\{disabled \|\| pending\}/);
+    assert.match(card, /const draggable = canDrag && !disabled && !pending;/);
+  });
+
+  it("nothing is sent on a stale verdict, and the verdict is judged on the server's copy", () => {
+    const verdictAt = move.indexOf("const verdict = freshnessVerdict(def, shown, record, to, fresh.activity);");
+    const stopAt = move.indexOf('if (verdict.kind !== "go") {');
+    const sendAt = move.indexOf("performMove(record, to);");
+    assert.ok(verdictAt > 0 && stopAt > verdictAt && sendAt > stopAt);
+    assert.match(move.slice(stopAt, sendAt), /addToast\([\s\S]*?\);\s*return;/);
+    assert.match(move, /const record = fresh\.record;\s*pipe\.applyRecord\(record\);/);
+    // The rules (Live, agreement, reason) are then applied to the server's copy, not the old one.
+    assert.match(move, /const block = moveBlocker\(def, record, to\);/);
+    assert.match(move, /setReasonFor\(\{ record, to \}\);/);
+  });
+
+  it("offline and a failed read move nothing", () => {
+    assert.ok(move.indexOf("if (!online) {") < move.indexOf("pipe.setBusy(shown.id, true);"));
+    const failed = move.slice(move.indexOf("} catch (err) {"), move.indexOf("} finally {"));
+    assert.match(failed, /return;\s*$/);
+    assert.ok(!/performMove/.test(failed));
+  });
+
+  it("toasts take no taps meant for the page and sit on a solid surface", () => {
+    assert.match(TOAST_NOW, /data-toast-region=""\s+className="pointer-events-none fixed/);
+    assert.match(TOAST_NOW, /bottom: "calc\(1\.5rem \+ var\(--toast-lift, 0px\)\)"/);
+    assert.match(TOAST_NOW, /className="pointer-events-auto [^"]*bg-\[var\(--color-background-primary\)\]/);
+    assert.match(TOAST_NOW, /aria-label="Dismiss"/);
+    // The lift is taken away again when the card closes, so other pages are unaffected.
+    assert.match(SHELL_NOW, /root\.style\.setProperty\("--toast-lift", `\$\{h\}px`\);/);
+    assert.match(SHELL_NOW, /root\.style\.removeProperty\("--toast-lift"\);/);
+  });
+
+  it("exactly two places can say a card's changes weren't saved, and a discarded card says nothing", () => {
+    const code = stripComments(DRAWER_NOW);
+    const calls = code.match(/keepForLater\(/g) || [];
+    assert.equal(calls.length, 2, "one in the failed save of a card that left the screen, one when the card leaves with text unsent");
+    const leaving = code.slice(code.indexOf("setTimeout(() => {", code.indexOf("onDirtyChange?.(recordId, false);")));
+    assert.match(leaving, /if \(mounted\.current\) return;/);
+    assert.match(leaving, /if \(discarded \|\| !rec\) return;/);
+    assert.match(code, /const closeWithoutSaving = \(\) => \{\s*live\.current\.discarded = true;\s*leftUnsent\.delete\(recordId\);/);
+    // What is kept is the typed text only, in memory only.
+    assert.ok(!/localStorage|sessionStorage/.test(code));
+  });
+
+  it("a column that refuses the card is never a drop target, and the board stops scrolling when the drag ends", () => {
+    const over = BOARD_NOW.slice(BOARD_NOW.indexOf("if (refusal(stage.id)) {"), BOARD_NOW.indexOf('e.dataTransfer.dropEffect = "move";'));
+    assert.match(over, /e\.dataTransfer\.dropEffect = "none";\s*return;/);
+    assert.ok(over.indexOf("return;") < over.indexOf("e.preventDefault();"));
+    assert.match(BOARD_NOW, /const endDrag = \(\) => \{\s*stopScrolling\(\);/);
+    assert.match(BOARD_NOW, /useEffect\(\(\) => stopScrolling, \[\]\);/);
+  });
+});
