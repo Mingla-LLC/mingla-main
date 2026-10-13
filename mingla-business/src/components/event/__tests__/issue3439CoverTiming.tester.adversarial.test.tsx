@@ -60,6 +60,8 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (name.endsWith("/brandPayout")) return { payoutGateStatus: () => "ready" };
     if (name.endsWith("/chipInPayoutReadiness")) return { isChipInPayoutReady: () => true };
     if (name.endsWith("/paidPublishGuards") || name.endsWith("/rsvpRpcFailure")) return {};
+    // #3645 — pure, so it is supplied REAL: the order of "save, then publish".
+    if (name.endsWith("/rsvpPublishWithoutChipIns")) return jest.requireActual("../../../utils/rsvpPublishWithoutChipIns");
     // [TEST-MOD-APPROVED #3645] Organiser Terms publish door — settled accepted so
     // cover-timing assertions stay on cover alone (same pattern as invite stubs).
     if (name.endsWith("/useOrganiserTermsPublishGate")) {

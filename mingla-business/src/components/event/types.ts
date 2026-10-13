@@ -143,6 +143,13 @@ export interface StepBodyProps {
    */
   chipInPayoutReady?: boolean;
   /**
+   * #3645 — set by the RSVP DRAFT wizard only. When present, the chip-in
+   * "connect your bank" callout says the draft saves either way and gains a
+   * "Connect bank" button that calls this. The published-RSVP edit screen does
+   * not pass it and keeps the original callout.
+   */
+  onConnectChipInBank?: () => void;
+  /**
    * #3645 — the brand this draft belongs to, for the inline "choose your payout
    * country" prompt shown when money is entered on a brand with no currency.
    * Optional and undefined-safe: steps that do not price anything ignore it.

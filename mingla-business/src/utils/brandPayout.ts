@@ -48,6 +48,19 @@ export function isBrandChargeReady(
   return brand.stripeStatus === "active";
 }
 
+/**
+ * #3645 — true for a brand on the Nigerian rail that can already take paid
+ * sales but has no bank yet: it sells now and its money waits. Used to pick
+ * truthful copy; a card-rail brand, and a Nigerian brand that already has a
+ * bank, are both false.
+ */
+export function brandSellsBeforeBank(
+  brand: PayoutBrand | null | undefined,
+): boolean {
+  if (!brand || brand.paymentProvider !== "paystack") return false;
+  return isBrandChargeReady(brand) && !isBrandPayoutReady(brand);
+}
+
 /** Can receive organiser payouts (bank / recipient connected). */
 export function isBrandPayoutReady(
   brand: PayoutBrand | null | undefined,

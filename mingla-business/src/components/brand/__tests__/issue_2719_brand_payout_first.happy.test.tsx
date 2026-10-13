@@ -361,7 +361,9 @@ describe("#2719 payout-first brand creation happy path", () => {
     const notConnectedReadiness: Record<OfferingKind, string> = {
       event: "A free event can be published now. Connect a bank only for paid tickets.",
       trip: "A free trip can be published now. Connect a bank only for paid packages.",
-      experience: "A free experience can be published now. Connect a bank only for paid bookings.",
+      // [TEST-MOD-APPROVED #3645] Approved copy change: a free experience
+      // cannot be published until the brand has a payout country.
+      experience: "Free experiences need a payout country first; no bank needed.",
       rsvp: "A free RSVP can be published now. Connect a bank only for optional chip-ins.",
       venue: "A free venue listing can be published now. Connect a bank only for paid orders or reservations.",
     };

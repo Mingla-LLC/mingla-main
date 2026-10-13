@@ -77,6 +77,10 @@ import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 // triggered by the first dirty autosave, not on route mount. Pure helper.
 import { isDraftDirty } from "../../../src/utils/draftDirtyCheck";
 import { brandPaymentOnboardingRoute } from "../../../src/utils/paidPublishGuards";
+import {
+  buildBankSetupReturnPath,
+  withBankSetupReturn,
+} from "../../../src/utils/bankSetupReturn";
 import { formatEventLiveToast } from "../../../src/utils/eventPublishCopy";
 import { markJustPublished } from "../../../src/utils/justPublishedSignal";
 
@@ -538,10 +542,23 @@ export default function EventEditRoute(): React.ReactElement {
     router.push(`/event/${draft.id}/preview` as never);
   }, [draft, router]);
 
+  // #3645 — bank setup returns the host to this event, on the step they left.
+  // "Connect bank" only exists on the final (Preview) step, which is also the
+  // furthest step the draft has reached, so the draft's own record of that is
+  // the step to come back to.
   const handleOpenPaymentOnboarding = React.useCallback((): void => {
     if (draft === null) return;
-    router.push(brandPaymentOnboardingRoute(draft.brandId) as never);
-  }, [draft, router]);
+    router.push(
+      withBankSetupReturn(
+        brandPaymentOnboardingRoute(draft.brandId),
+        buildBankSetupReturnPath({
+          kind: "event",
+          id: draft.id,
+          step: draft.lastStepReached ?? initialStep ?? null,
+        }),
+      ) as never,
+    );
+  }, [draft, initialStep, router]);
 
   const handleDiscardDraft = React.useCallback(
     async (draftToDiscard: DraftEvent): Promise<void> => {

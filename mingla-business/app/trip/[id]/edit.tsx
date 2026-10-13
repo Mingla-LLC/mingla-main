@@ -51,8 +51,18 @@ import { markJustPublished } from "../../../src/utils/justPublishedSignal";
 
 export default function TripEditRoute(): React.ReactElement {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    step?: string | string[];
+  }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
+  // #3645 — `?step=N` reopens the wizard on the step the host left for bank
+  // setup. The wizard validates the number; anything else starts at step 1.
+  const stepParam = Array.isArray(params.step) ? params.step[0] : params.step;
+  const initialStep =
+    typeof stepParam === "string" && /^[0-9]{1,2}$/.test(stepParam)
+      ? Number(stepParam)
+      : undefined;
 
   // ORCH-0893 [Eager server-draft on creator entry — replace with client-id + lazy autosave]:
   // when the dynamic segment is a client-only `d_<ts36>` id minted by
@@ -287,6 +297,7 @@ export default function TripEditRoute(): React.ReactElement {
         payoutsEnabled: currentBrand.payoutsEnabled ?? null,
       }}
       isCreateMode={isCreateMode}
+      initialStep={initialStep}
       onDiscardTrip={async () => {
         await softDeleteMutation.mutateAsync({
           eventId: trip.id,

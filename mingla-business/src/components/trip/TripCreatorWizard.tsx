@@ -138,10 +138,12 @@ import {
   offeringNeedsStripeToPublish,
   tripDraftIsPaid,
 } from "../offering/publishStripeReadiness";
+import { useOrganiserTermsPublishGate } from "../../hooks/useOrganiserTermsPublishGate";
 import {
-  ORGANISER_TERMS_PUBLISH_RETRY_TOAST,
-  useOrganiserTermsPublishGate,
-} from "../../hooks/useOrganiserTermsPublishGate";
+  buildBankSetupReturnPath,
+  resolveTripWizardInitialStep,
+  withBankSetupReturn,
+} from "../../utils/bankSetupReturn";
 import { payoutGateStatus, isBrandPayoutReady } from "../../utils/brandPayout";
 import { useBrandPaystackStatus } from "../../hooks/useBrandPaystack";
 // ORCH-0880 [Tr5 Traveler Intake Forms] — NEW Step 6 component (intake
@@ -209,9 +211,16 @@ export interface TripCreatorWizardProps {
   onPublished: (published: Trip) => void;
   /** Fires when operator taps Close / back-out from step 1. */
   onExit: () => void;
+  /**
+   * #3645 — the step to open on (the route's `?step=`), used when the host
+   * comes back from bank setup after a full page load. Anything that is not a
+   * step the wizard can open cold is ignored and the wizard starts at step 1.
+   */
+  initialStep?: number;
 }
 
 type StepIndex = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
 
 const STEP_TITLES: Record<StepIndex, string> = {
   1: "Basics",
@@ -501,6 +510,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   onDiscardTrip,
   onPublished,
   onExit,
+  initialStep,
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -511,7 +521,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     blockPaidPublishUntilAccepted,
     gateElement: organiserTermsGateElement,
   } = useOrganiserTermsPublishGate(trip.brandId);
-  const [step, setStep] = useState<StepIndex>(1);
+  const [step, setStep] = useState<StepIndex>(() =>
+    resolveTripWizardInitialStep(initialStep),
+  );
   const [step1Draft, setStep1Draft] = useState<Step1Draft>(tripToStep1Draft(trip));
   const [daysDraft, setDaysDraft] = useState<TripDayDraft[]>(tripToDaysDraft(trip));
   const [inclusionsDraft, setInclusionsDraft] = useState<InclusionDraft[]>(
@@ -641,9 +653,23 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   const [showStep1AddressErrors, setShowStep1AddressErrors] =
     useState<boolean>(false);
 
+  // #3645 — "Connect bank" carries where the host is, so bank setup brings
+  // them straight back to this trip on this step (web and native).
+  const bankSetupRoute = useMemo(
+    () =>
+      withBankSetupReturn(
+        brandPaymentOnboardingRoute(trip.brandId),
+        buildBankSetupReturnPath({ kind: "trip", id: trip.id, step }),
+      ),
+    [trip.brandId, trip.id, step],
+  );
   const handleConnectStripe = useCallback((): void => {
-    router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
-  }, [router, trip.brandId]);
+    router.push(bankSetupRoute as never);
+  }, [router, bankSetupRoute]);
+
+  // #3645 — the Organiser Terms sheet resumes the publish it interrupted. The
+  // ref always holds the LATEST handlePublishTap.
+  const resumePublishRef = useRef<() => void>(() => undefined);
 
   // ORCH-0892-B v2: keyboard listener + keyboardVisible/keyboardHeight state
   // DELETED. KAS via SmartScrollView handles focused-input scroll. dock-hide
@@ -1113,6 +1139,12 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   ]);
 
   // ----- Navigation -----
+  // #3645 — a step save never sends the host to bank setup any more. A priced
+  // package saves as a draft (the server stopped refusing it) and the stop is
+  // at Publish, where the Review card offers "Connect bank" and brings them
+  // straight back. A money-setup guard can still land in the catches below for
+  // a brand with no payout country: it is said on the step, where the pricing
+  // step's own prompt lets them choose one, and nothing navigates.
   const handleNext = useCallback(async (): Promise<void> => {
     if (step === 7) {
       if (inviteNavigation?.phase === "error") inviteNavigation.retry();
@@ -1136,12 +1168,13 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       const autosaveErrCode = readRpcFailureMessage(e);
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(autosaveErrCode);
       if (guardCopy !== null && guardCopy.action === "payment_onboarding") {
+        // #3645 — no detour to bank setup on a save (see above handleNext).
+        showToast(guardCopy.body);
         setPublishError({
           code: guardCopy.reason,
           message: guardCopy.body,
           pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
         });
-        router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
         return;
       }
       // issue #3801 — say so ON THIS STEP. The banner below only renders on
@@ -1156,7 +1189,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
-  }, [autosaveCurrentStep, step, router, trip.brandId, inviteEnabled, inviteNavigation, showToast]);
+  }, [autosaveCurrentStep, step, inviteEnabled, inviteNavigation, showToast]);
 
   // ORCH-0876 — Back autosaves before stepping back, mirroring event wizard
   // semantics so unsaved Step N edits aren't lost when the operator returns
@@ -1165,7 +1198,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   // Back says the save failed (toast, on this step) and then goes back anyway:
   // the edits stay in the wizard's own draft state and the header keeps
   // showing "Unsaved changes" until a later save lands. The one exception is
-  // unchanged: a money-setup guard still routes to payments onboarding.
+  // gone since #3645: a money-setup guard no longer routes to payments
+  // onboarding on a save; it toasts and goes back like any other failure.
   const handleStepBack = useCallback(async (): Promise<void> => {
     if (step <= 1) return;
     if (step === 7 && inviteNavigation?.phase !== "ready") return;
@@ -1186,12 +1220,14 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       const autosaveErrCode = readRpcFailureMessage(e);
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(autosaveErrCode);
       if (guardCopy !== null && guardCopy.action === "payment_onboarding") {
+        // #3645 — Back is never a detour to bank setup either.
+        showToast(guardCopy.body);
+        goBack();
         setPublishError({
           code: guardCopy.reason,
           message: guardCopy.body,
           pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
         });
-        router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
         return;
       }
       showToast(guardCopy?.body ?? TRIP_STEP_SAVE_FAILED_MESSAGE);
@@ -1206,7 +1242,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
-  }, [autosaveCurrentStep, step, router, trip.brandId, inviteEnabled, inviteNavigation?.phase, showToast]);
+  }, [autosaveCurrentStep, step, inviteEnabled, inviteNavigation?.phase, showToast]);
 
   // ----- ORCH-0874 handleClose (chrome X) — branches on isCreateMode + pristine -----
   const handleClose = useCallback((): void => {
@@ -1331,8 +1367,11 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       return;
     }
     // #3645 PR11c — paid trips require current Organiser Terms acceptance.
-    if (blockPaidPublishUntilAccepted(tripDraftIsPaid(step4Draft))) {
-      showToast(ORGANISER_TERMS_PUBLISH_RETRY_TOAST);
+    if (
+      blockPaidPublishUntilAccepted(tripDraftIsPaid(step4Draft), () =>
+        resumePublishRef.current(),
+      )
+    ) {
       return;
     }
     // META-ORCH-1174 Leg B2 — every package must be valid before publish.
@@ -1380,6 +1419,12 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       packagesValidation, showToast, inviteSummary,
     inviteEnabled, inviteRollbackReady, inviteFlag.data, step4Draft,
     blockPaidPublishUntilAccepted]);
+
+  useEffect(() => {
+    resumePublishRef.current = (): void => {
+      void handlePublishTap();
+    };
+  }, [handlePublishTap]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     setPublishError(null);
@@ -1448,10 +1493,10 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       // the operator to the brand's Stripe Connect onboarding to finish setup.
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(err.message);
       if (guardCopy?.action === "payment_onboarding") {
-        router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
+        router.push(bankSetupRoute as never);
       }
     }
-  }, [publishMutation, router, step1Draft, step5Draft, trip.id, trip.brandId, trip.timezone, onPublished, showToast, invitePlan]);
+  }, [publishMutation, router, step1Draft, step5Draft, trip.id, trip.brandId, trip.timezone, onPublished, showToast, invitePlan, bankSetupRoute]);
 
   // Suppress autosave-error toast surfacing via setPublishError; show via
   // the persistent banner in Step 5. Show toast for discard errors only.
@@ -1761,6 +1806,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               draft={step4Draft}
               onChange={(patch) => setStep4Draft((s) => ({ ...s, ...patch }))}
               disabled={submitting}
+              // #3645 — paid (or on a payment plan) and no bank yet: the
+              // pricing step says the draft still saves.
+              needsBankToPublish={tripNeedsStripe || tripNeedsBankForInstallments}
             />
           ) : null}
           {/* ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — NEW Step 5
@@ -1823,7 +1871,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               trip={previewTrip}
               brand={brand}
               publishError={publishError}
-              needsStripe={tripNeedsStripe}
+              // #3645 — a payment plan is treated like a priced trip: the
+              // same card, the same way back.
+              needsStripe={tripNeedsStripe || tripNeedsBankForInstallments}
               onConnectStripe={handleConnectStripe}
               themeOverrides={step1Draft.themeOverrides}
               onThemeChange={handleReviewThemeChange}

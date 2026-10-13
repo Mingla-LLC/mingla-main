@@ -204,8 +204,10 @@ export default function TripDashboardRoute(): React.ReactElement {
   const [cancelSubmitting, setCancelSubmitting] = useState<boolean>(false);
   const softDeleteMutation = useSoftDeleteTrip();
   // issue #3237 — true once, straight after this trip was published.
+  // #3645 — and no longer once it is returned to draft or cancelled.
   const publishedArrival = useJustPublishedArrival(
     typeof eventId === "string" ? eventId : null,
+    tripQuery.data?.status,
   );
 
   const moneyData = useMemo(() => {
@@ -434,7 +436,11 @@ export default function TripDashboardRoute(): React.ReactElement {
     status: trip.status,
     brandSlug: trip.brandSlug,
   });
-  const handleShareOpen = (): void => setShareModalVisible(true);
+  const handleShareOpen = (): void => {
+    // #3645 — publishing never opens the share sheet by itself.
+    if (publishedArrival.isArrivalPress()) return;
+    setShareModalVisible(true);
+  };
   const handleViewPublic = (): void => {
     if (canOpenPublic) {
       router.push(`/t/${trip.brandSlug}/${trip.slug}` as never);
