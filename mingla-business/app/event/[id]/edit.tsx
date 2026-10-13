@@ -42,7 +42,10 @@ import {
   EditPublishedScreen,
   type EditPublishedScreenProps,
 } from "../../../src/components/event/EditPublishedScreen";
-import { useEventBuyerCount } from "../../../src/hooks/useEventBuyerCount";
+import {
+  eventBuyerCountKeys,
+  useEventBuyerCount,
+} from "../../../src/hooks/useEventBuyerCount";
 import { useBrandList } from "../../../src/store/currentBrandStore";
 import {
   useDraftById,
@@ -101,9 +104,26 @@ const MISSING_DRAFT_TIMEOUT_MS = 6000;
 // published event is on screen, and the editor itself stays free of the read.
 // `null` (loading, failed, or the server function not applied yet) keeps the
 // edit reason mandatory.
+//
+// A buyer can arrive after that read. The server then refuses a save with no
+// reason, the editor reports it through `onReasonRefused`, and the count is
+// invalidated here (by its key factory) so the fresh answer makes the reason
+// mandatory in the Review changes sheet the editor keeps open.
 function EditPublishedEventWithBuyerCount(
-  props: Omit<EditPublishedScreenProps, "buyerCount" | "rsvpMode">,
+  routeProps: Omit<
+    EditPublishedScreenProps,
+    "buyerCount" | "rsvpMode" | "onReasonRefused"
+  >,
 ): React.ReactElement {
+  const queryClient = useQueryClient();
+  const serverEventId = routeProps.liveEvent.serverEventId;
+  const onReasonRefused = React.useCallback((): void => {
+    if (serverEventId === null) return;
+    void queryClient.invalidateQueries({
+      queryKey: eventBuyerCountKeys.detail(serverEventId),
+    });
+  }, [queryClient, serverEventId]);
+  const props = { ...routeProps, onReasonRefused };
   const buyerCount = useEventBuyerCount(props.liveEvent.serverEventId);
   return <EditPublishedScreen {...props} buyerCount={buyerCount} />;
 }

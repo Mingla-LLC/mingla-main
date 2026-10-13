@@ -368,9 +368,15 @@ BEGIN
   -- ORCH-0824 hotfix-5: accept + write location_text (formatted address
   -- from Google Places). When null, leave the existing value unchanged.
   v_location_text := NULLIF(btrim(COALESCE(p_location_text, '')), '');
-  IF v_location_text IS NULL THEN
+  -- issue #3827 — "blank" has ONE definition, the label composer's: nothing
+  -- left once spaces, tabs, line breaks and no-break spaces are stripped from
+  -- both ends. The NULL test this replaces only knew ordinary spaces, so an
+  -- address of a single tab or no-break space counted as an address and then
+  -- CLEARED the stored one (the composer, correctly, saw nothing in it).
+  -- This argument cannot say "clear": blank means "no address sent".
+  IF public.business_event_location_label(NULL, v_location_text) IS NULL THEN
     v_location_text := v_event.location_text;
-    v_theme := v_event.theme;   -- issue #3827: NULL leaves both copies untouched
+    v_theme := v_event.theme;   -- issue #3827: blank leaves both copies untouched
   ELSE
     -- issue #3827 — p_location_text is the STRUCTURED ADDRESS, not the label.
     -- It used to be written straight into location_text, which dropped the
@@ -1102,8 +1108,9 @@ BEGIN
   IF pg_catalog.strpos(v_src, 'business_event_theme_with_location') = 0
      OR pg_catalog.strpos(v_src, 'business_event_location_label') = 0
      OR pg_catalog.strpos(v_src, 'theme = v_theme') = 0
+     OR pg_catalog.strpos(v_src, 'business_event_location_label(NULL, v_location_text) IS NULL') = 0
      OR pg_catalog.strpos(v_src, 'v_event.location_geo ~= v_location_geo') = 0 THEN
-    RAISE EXCEPTION 'issue_3827_verify: business_patch_event_taxonomy does not derive the label or keep the precision of an unmoved pin';
+    RAISE EXCEPTION 'issue_3827_verify: business_patch_event_taxonomy does not derive the label, treat a blank address as unchanged, or keep the precision of an unmoved pin';
   END IF;
 
   -- business_update_live_event: derived label, direct hide-address child, and

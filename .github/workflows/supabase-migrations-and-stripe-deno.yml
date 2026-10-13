@@ -697,6 +697,13 @@ jobs:
           # still demand a reason.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3827_live_edit_location_one_owner.tester.adversarial.pg17.test.sql
+          # Issue #3827 — a BLANK address means "no address sent", whatever kind
+          # of blank it is. An address of a single tab or no-break space used to
+          # count as an address and then clear the stored one; it now leaves the
+          # address, the venue and the label as stored, exactly as an address of
+          # ordinary spaces always did. A real address keeps its storage rule.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3827_live_edit_blank_address.implementor.happy.pg17.test.sql
           # Issue #1977 — canonical RSVP draft/guest/contribution owners and
           # the Ari receipt seam. Behavioural against the applied schema.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \

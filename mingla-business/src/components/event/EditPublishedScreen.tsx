@@ -365,7 +365,19 @@ export interface EditPublishedScreenProps {
    * keeps the reason mandatory. The RSVP route does not pass it.
    */
   buyerCount?: number | null;
+  /**
+   * issue #3827 — called when the server refuses a save that carried NO reason
+   * (`invalid_edit_reason`): a buyer arrived after `buyerCount` was read. The
+   * route refetches the count, which turns the reason mandatory in the Review
+   * changes sheet that this screen keeps open.
+   */
+  onReasonRefused?: () => void;
 }
+
+// issue #3827 — shown when a blank reason is refused because a buyer arrived
+// while the editor was open. Nothing was saved, so it says nothing was.
+const REASON_NEEDED_AFTER_BUYER_COPY =
+  "Someone has just bought a ticket. Add a reason so we can tell your buyers what changed.";
 
 interface ToastState {
   visible: boolean;
@@ -423,6 +435,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   disableLocalSaveReason,
   rsvpMode = false,
   buyerCount = null,
+  onReasonRefused,
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -1438,13 +1451,28 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         invalidateServerEventCaches();
       } catch (error) {
         setSubmitting(false);
-        setModal((prev) => ({ ...prev, visible: false }));
         if (error instanceof EventCoverMediaError) {
+          setModal((prev) => ({ ...prev, visible: false }));
           showToast("Cover upload failed. Try again.");
           return;
         }
         const code =
           error instanceof Error ? error.message : "live_event_update_failed";
+        // issue #3827 — a blank reason was refused: a buyer arrived after the
+        // count was read. Nothing was saved. Review changes stays OPEN, the
+        // route refetches the count (which makes the reason mandatory and
+        // brings the buyer copy back), and the host is told what to do. This
+        // used to close the sheet on a "contact support" toast, and the same
+        // blank save then failed again.
+        if (
+          validation.trimmedReason.length === 0 &&
+          code.includes("invalid_edit_reason")
+        ) {
+          onReasonRefused?.();
+          showToast(REASON_NEEDED_AFTER_BUYER_COPY);
+          return;
+        }
+        setModal((prev) => ({ ...prev, visible: false }));
         const guardCopy = resolvePaidPublishGuardCopy(code);
         if (guardCopy !== null) {
           showToast(guardCopy.body);
@@ -1601,6 +1629,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       invalidateServerEventCaches,
       rsvpMode,
       reasonOptional,
+      onReasonRefused,
     ],
   );
 
