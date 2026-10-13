@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-13 — Hosts can Cancel an ad before any spend (full credit back) or End it after spend — never both on one card — filter Ads by Live/Paused/Ended, and every Host or Admin launch attempt emails the ops inbox — web `[deploy]` (toward #3697, PR #3834)
 - 2026-10-13 — Editing a published event's address or venue now sticks: the new address shows in the editor, on the public page and in the venue line instead of snapping back to the old one, a re-picked map pin keeps its precision, and switching "hide address until ticket" off really shows the address; Review changes no longer lists changes the host did not make, and when nobody has bought or RSVP'd yet it stops promising to notify buyers and no longer demands a reason. The address and hide-address fixes take effect for every app version when the migration is applied; the rest ships with the Host web release (toward #3827, PR #3832)
 - 2026-10-13 — Hosts can withdraw unused Ads credit to the original card or Paystack charge, top up in Naira, run Host-owned ads from Blast (list, detail, pause/end) with live cards on Home, and ask Ari to propose and launch a plan that spends Ads credit — web `[deploy]` (toward #3697, PR #3825)
 - 2026-10-13 — Hosts can add Ads credit with a card (USD/GBP): Confirm and pay after the fee preview, Stripe charges Mingla's platform account, and credit lands only after the payment is verified (toward #3697, PR #3824)

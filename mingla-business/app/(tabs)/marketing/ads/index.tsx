@@ -1,5 +1,6 @@
 /**
- * toward #3697 Wave 7 / 7b / 7c — Blast → Ads (credit + host campaigns).
+ * toward #3697 Wave 7 / 7b / 7c / 8 — Blast → Ads (credit + host campaigns +
+ * status filters).
  */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -53,6 +54,19 @@ function statusLabel(status: string): string {
   return status;
 }
 
+type CampaignFilter = "all" | "live" | "paused" | "ended";
+
+function campaignMatchesFilter(
+  status: string,
+  filter: CampaignFilter,
+): boolean {
+  if (filter === "all") return true;
+  const s = status.toUpperCase();
+  if (filter === "live") return s === "ACTIVE";
+  if (filter === "paused") return s === "PAUSED";
+  return s === "ARCHIVED" || s === "DELETED";
+}
+
 export default function MarketingAdsRoute(): React.ReactElement {
   const brand = useCurrentBrand();
   const brandId = brand?.id ?? null;
@@ -61,6 +75,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const manage = useCanManageBrandPayments(brandId);
   const [sheetMode, setSheetMode] = useState<AdCreditQuoteMode | null>(null);
   const [returnNotice, setReturnNotice] = useState<string | null>(null);
+  const [campaignFilter, setCampaignFilter] = useState<CampaignFilter>("all");
   const params = useLocalSearchParams<{
     ad_credit_top_up?: string | string[];
     session_id?: string | string[];
@@ -232,6 +247,9 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const currency = wallet?.currency ?? "USD";
   const balanceCents = wallet?.balance_cents ?? 0;
   const campaigns = campaignsQuery.campaigns;
+  const filteredCampaigns = campaigns.filter((c) =>
+    campaignMatchesFilter(c.status, campaignFilter)
+  );
 
   return (
     <View style={styles.host} testID="ads-credit-screen">
@@ -281,6 +299,38 @@ export default function MarketingAdsRoute(): React.ReactElement {
         </GlassCard>
 
         <Text style={styles.sectionTitle}>Your ads</Text>
+        <View style={styles.filterRow} testID="ads-campaign-filters">
+          {(
+            [
+              ["all", "All"],
+              ["live", "Live"],
+              ["paused", "Paused"],
+              ["ended", "Ended"],
+            ] as const
+          ).map(([key, label]) => {
+            const selected = campaignFilter === key;
+            return (
+              <Pressable
+                key={key}
+                style={[styles.filterChip, selected && styles.filterChipOn]}
+                onPress={() => setCampaignFilter(key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`Filter ads: ${label}`}
+                testID={`ads-filter-${key}`}
+              >
+                <Text
+                  style={[
+                    styles.filterChipLabel,
+                    selected && styles.filterChipLabelOn,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
         <GlassCard variant="base" padding={0}>
           {campaigns.length === 0 ? (
             <View style={styles.emptyHistory} testID="ads-campaigns-empty">
@@ -288,8 +338,14 @@ export default function MarketingAdsRoute(): React.ReactElement {
                 No Host ads yet. Ask Ari to propose a plan, or add credit first.
               </Text>
             </View>
+          ) : filteredCampaigns.length === 0 ? (
+            <View style={styles.emptyHistory} testID="ads-campaigns-filter-empty">
+              <Text style={styles.emptyHistoryText}>
+                No ads in this filter.
+              </Text>
+            </View>
           ) : (
-            campaigns.map((c) => (
+            filteredCampaigns.map((c) => (
               <Pressable
                 key={c.id}
                 style={styles.campaignRow}
@@ -413,6 +469,31 @@ const styles = StyleSheet.create({
     ...typography.h3,
     color: textTokens.primary,
     marginTop: spacing.sm,
+  },
+  filterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
+  filterChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+    backgroundColor: glass.tint.chrome.idle,
+  },
+  filterChipOn: {
+    borderColor: textTokens.primary,
+    backgroundColor: glass.tint.chrome.pressed,
+  },
+  filterChipLabel: {
+    ...typography.caption,
+    color: textTokens.secondary,
+  },
+  filterChipLabelOn: {
+    color: textTokens.primary,
+    fontWeight: "600",
   },
   emptyHistory: {
     padding: spacing.lg,
