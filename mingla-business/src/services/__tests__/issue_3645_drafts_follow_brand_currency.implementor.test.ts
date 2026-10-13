@@ -244,7 +244,9 @@ describe("#3645 a draft saves in its brand's currency", () => {
     expect(free.id).toBe("t_free");
     expect(free.isFree).toBe(true);
     expect(free.priceGbp).toBeNull();
-    // The wizard already holds the brand: no extra read of the brands table.
+    // The save makes one read of its own, the draft row. (The brand's fresh
+    // currency is read by the autosave hook before the save; see the rework
+    // suite.)
     expect(tablesRead).toEqual(["events"]);
   });
 
@@ -556,8 +558,10 @@ describe("#3645 every wizard save carries the brand's currency", () => {
     const hook = code(path.join("src", "hooks", "useServerDraftEvents.ts"));
     const calls = hook.match(/autosaveServerDraft\s*\([^;]*\);/g) ?? [];
     expect(calls).toHaveLength(1);
+    // Rework: the brand's currency is asked of the server; the value this
+    // device holds rides along only as the last resort.
     expect((calls[0] ?? "").replace(/\s+/g, "")).toBe(
-      "autosaveServerDraft(draft,{brandCurrency:brandCurrencyRef?.current??null,});",
+      "autosaveServerDraft(draft,{brandCurrency:awaitreadFreshBrandCurrency(draft.id),serverRowWins:true,cachedBrandCurrency:brandCurrencyRef?.current??null,});",
     );
     const otherCallers = allProduct.filter(
       (rel) =>
@@ -575,7 +579,7 @@ describe("#3645 every wizard save carries the brand's currency", () => {
     ]) {
       const text = code(rel).replace(/\s+/g, "");
       expect(text).toContain(
-        "useDraftFollowsBrandCurrency({draft:isEditPublished?null:draft,brandCurrency:isEditPublished?null:brand?.defaultCurrency??null,onSave:handleAutosaveDraft,onNotice:showPricesClearedNotice,});",
+        "useDraftFollowsBrandCurrency({draft:isEditPublished?null:draft,onSave:handleAutosaveDraft,onNotice:showPricesClearedNotice,});",
       );
       // The notice is shown by a Toast rendered BESIDE the wizard; without it
       // the route's message would be set and never seen.
