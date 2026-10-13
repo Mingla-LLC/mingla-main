@@ -28,6 +28,10 @@
  *      absent for an offset, an empty or null fixed date, and after a quantity
  *      multiplier.
  *   6. Malformed stored values never invent a day.
+ *   7. THE SCREEN. The REAL `InstallmentScheduleDisplay` component is mounted
+ *      in each edge zone and the due dates a buyer reads off it are checked:
+ *      the fixed date is the stored day everywhere, the offset due is the
+ *      viewer's own day.
  *
  * Timezones are switched through the environment named above. Assigning
  * `process.env.TZ` inside a test changes nothing, so each block first proves
@@ -506,5 +510,136 @@ describe("#3801 tester — a malformed stored value is 'no date', in every zone"
       "2028-02-29T23:59:59.000Z",
     );
     expect(calendarDate.inputValueToCalendarIso("2027-02-29", true)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. the screen: the REAL schedule component, mounted in each zone
+// ---------------------------------------------------------------------------
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+type RenderedNode = string | { children?: RenderedNode[] | null } | RenderedNode[] | null;
+interface MountedTree {
+  toJSON: () => RenderedNode;
+  unmount: () => void;
+}
+// CI installs the renderer but not a separate @types package.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const TestRenderer = require("react-test-renderer") as {
+  create: (node: React.ReactElement) => MountedTree;
+  act: (fn: () => Promise<void> | void) => Promise<void>;
+};
+
+/** The REAL component, compiled from its source behind the same boundary as above. */
+function realScheduleDisplay(): React.ComponentType<Record<string, unknown>> {
+  const boundary: Record<string, () => unknown> = {
+    react: () => React,
+    "react-native": () => jest.requireActual("react-native"),
+    designSystem: () => designSystem,
+    // REAL: the helper under test.
+    calendarDate: () => calendarDate,
+    GlassCard: () => ({ GlassCard: leaf("GlassCardProbe") }),
+    installmentReassurance: () => ({ installmentReassuranceText: () => "" }),
+    currencyGlyph: () => ({ withCurrencyGlyph: (value: string) => value }),
+  };
+  const output = ts.transpileModule(
+    fs.readFileSync(path.join(TRIP_DIR, "InstallmentScheduleDisplay.tsx"), "utf8"),
+    {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        jsx: ts.JsxEmit.React,
+        target: ts.ScriptTarget.ES2020,
+        esModuleInterop: true,
+      },
+    },
+  ).outputText;
+  const boundaryRequire = (specifier: string): unknown => {
+    const supply = boundary[specifier] ?? boundary[specifier.split("/").pop() as string];
+    if (supply !== undefined) return supply();
+    throw new Error(`Unclassified InstallmentScheduleDisplay boundary: ${specifier}`);
+  };
+  const module = {
+    exports: {} as {
+      InstallmentScheduleDisplay?: React.ComponentType<Record<string, unknown>>;
+    },
+  };
+  new Function("require", "module", "exports", output)(boundaryRequire, module, module.exports);
+  expect(typeof module.exports.InstallmentScheduleDisplay).toBe("function");
+  return module.exports.InstallmentScheduleDisplay as React.ComponentType<Record<string, unknown>>;
+}
+
+/** Every piece of text on the mounted tree, in reading order. */
+const textsOf = (node: RenderedNode): string[] => {
+  if (node === null) return [];
+  if (typeof node === "string") return [node];
+  if (Array.isArray(node)) return node.flatMap(textsOf);
+  return (node.children ?? []).flatMap(textsOf);
+};
+
+/** Mount the schedule in `zone` and return the text a buyer reads. */
+async function mountedScheduleTexts(zone: string, schedule: unknown): Promise<string[]> {
+  setZone(zone);
+  const Display = realScheduleDisplay();
+  let tree: MountedTree | null = null;
+  await TestRenderer.act(async () => {
+    tree = TestRenderer.create(
+      React.createElement(Display, { schedule, variant: "buyer", isProjection: true }),
+    );
+  });
+  const mounted = tree as unknown as MountedTree;
+  const texts = textsOf(mounted.toJSON());
+  await TestRenderer.act(async () => {
+    mounted.unmount();
+  });
+  return texts;
+}
+
+describe("#3801 tester — the mounted schedule shows the right day in every zone", () => {
+  // Booked 23:30 UTC on 13 October: instalment 1 is a moment 30 days later,
+  // instalment 2 is the fixed calendar date 29 October.
+  const schedule = projectInstallmentSchedule(
+    tierWith([
+      { ordinal: 1, pct: 40, days_after_booking: 30 },
+      { ordinal: 2, pct: 40, fixed_date: BALANCE },
+    ]),
+    BOOKED_AT,
+  );
+  const OFFSET_DUE = "2026-11-12T23:30:00.000Z";
+  const FIXED_DUE = "2026-10-29T00:00:00.000Z";
+
+  test.each(EDGE_ZONES)("%s", async (zone) => {
+    const texts = await mountedScheduleTexts(zone, schedule);
+    // Rows read: Deposit today, instalment 1, instalment 2, Total.
+    expect(texts[0]).toBe("Deposit today");
+    expect(texts).toContain("Total");
+    // The offset due is the viewer's own day; the fixed date is the stored day.
+    expect(texts).toContain(localLong(OFFSET_DUE));
+    expect(texts).toContain(utcLong(FIXED_DUE));
+    const fixedLabel = texts.find((t) => t === utcLong(FIXED_DUE)) as string;
+    expect(fixedLabel).toMatch(/29/);
+    expect(fixedLabel).toMatch(/Oct/);
+    // Exactly one date per instalment: the fixed date is not also shown local.
+    if (localLong(FIXED_DUE) !== utcLong(FIXED_DUE)) {
+      expect(texts).not.toContain(localLong(FIXED_DUE));
+    }
+    if (localLong(OFFSET_DUE) !== utcLong(OFFSET_DUE)) {
+      expect(texts).not.toContain(utcLong(OFFSET_DUE));
+    }
+  });
+
+  test("the two readings really differ at the edges, so the checks above cannot pass by accident", async () => {
+    // West of the line the fixed date would read the 28th if read locally.
+    const west = await mountedScheduleTexts("Pacific/Pago_Pago", schedule);
+    expect(localLong(FIXED_DUE)).not.toBe(utcLong(FIXED_DUE));
+    expect(west.filter((t) => /28/.test(t) && /Oct/.test(t))).toEqual([]);
+    // East of the line the offset due is already the 13th.
+    const east = await mountedScheduleTexts("Pacific/Kiritimati", schedule);
+    expect(localLong(OFFSET_DUE)).not.toBe(utcLong(OFFSET_DUE));
+    expect(east.filter((t) => /13/.test(t) && /Nov/.test(t))).toHaveLength(1);
+  });
+
+  test("no plan, nothing mounted", async () => {
+    expect(await mountedScheduleTexts("Africa/Lagos", null)).toEqual([]);
   });
 });

@@ -23,6 +23,11 @@
  *   5. In the source, the editable capacity input exists only on the
  *      single-package branch, and nothing else writes `capacity` into the
  *      edit state.
+ *   6. THE WIRE. The patch the editor builds is handed to the REAL
+ *      `updateLiveTripFields` service and the request that reaches the server
+ *      (the `biz_update_trip_live_command` arguments) is inspected: no capacity
+ *      anywhere in it for a multi-package trip, exactly the typed number for a
+ *      single-package one.
  *
  * Fails on revert (verified, see the tester report on the issue): seed the
  * edited package from `trip.businessTrip.capacity` again and test 2 goes red;
@@ -37,6 +42,27 @@ import ts from "typescript";
 import { describe, expect, jest, test } from "@jest/globals";
 
 import * as designSystem from "../../../constants/designSystem";
+import { updateLiveTripFields } from "../../../services/tripsService";
+
+// The network boundary only. The service that builds the request is REAL.
+const rpcCalls: { name: string; args: Record<string, unknown> }[] = [];
+jest.mock("../../../services/supabase", () => ({
+  supabase: {
+    rpc: (name: string, args: Record<string, unknown>) => {
+      rpcCalls.push({ name, args });
+      return Promise.resolve({
+        data: {
+          ok: true,
+          edit_log_entry_id: "log-3801",
+          severity: "additive",
+          changed_keys: Object.keys((args.p_patch ?? {}) as Record<string, unknown>),
+          affected_order_count: 0,
+        },
+        error: null,
+      });
+    },
+  },
+}));
 
 const TRIP_DIR = path.resolve(__dirname, "..");
 const SOURCE = fs.readFileSync(path.join(TRIP_DIR, "EditPublishedTripScreen.tsx"), "utf8");
@@ -322,5 +348,71 @@ describe("#3801 tester — the screen itself offers no way to edit the total", (
     const { single, multi } = capacityBranch();
     expect(single.replace(/\s+/g, " ")).toContain(writers[0]);
     expect(multi.replace(/\s+/g, " ")).not.toContain(writers[0]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. the wire: what Save actually sends to the server
+// ---------------------------------------------------------------------------
+
+describe("#3801 tester — the request that reaches the server carries no summed capacity", () => {
+  const { tripToLocalEditState, buildLiveTripPatch } = loadPrivates();
+  const REVISION = "2026-10-12T22:28:41.000Z";
+
+  /** Every `capacity` key anywhere inside a value, with the path that led to it. */
+  const capacityPaths = (value: unknown, at = "p_patch"): string[] => {
+    if (value === null || typeof value !== "object") return [];
+    const found: string[] = [];
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      const here = `${at}.${key}`;
+      if (key === RETIRED_THEME_CAPACITY_KEY) found.push(`${here}=${String(child)}`);
+      found.push(...capacityPaths(child, here));
+    }
+    return found;
+  };
+
+  /** Open the editor state, apply an edit, and Save through the real service. */
+  const save = async (
+    trip: Record<string, unknown>,
+    edit: Partial<EditState>,
+  ): Promise<Record<string, unknown>> => {
+    rpcCalls.length = 0;
+    const state = { ...tripToLocalEditState(trip), ...edit } as EditState;
+    const { patch } = buildLiveTripPatch(trip, state);
+    const result = await updateLiveTripFields(EVENT_ID, patch as never, "Tester save", {
+      operationId: "38010000-0000-4000-8000-00000000aaaa",
+      expectedUpdatedAt: REVISION,
+    });
+    expect(result.ok).toBe(true);
+    expect(rpcCalls).toHaveLength(1);
+    expect(rpcCalls[0].name).toBe("biz_update_trip_live_command");
+    expect(rpcCalls[0].args.p_event_id).toBe(EVENT_ID);
+    expect(rpcCalls[0].args.p_expected_updated_at).toBe(REVISION);
+    return rpcCalls[0].args.p_patch as Record<string, unknown>;
+  };
+
+  test("Shared 8 / Private 2 / Couple 1, title edited: the request has the title and no capacity at all", async () => {
+    const sent = await save(tripWith(THREE, 11), { title: "Lagos long weekend, extended" });
+    expect(sent.title).toBe("Lagos long weekend, extended");
+    expect(capacityPaths(sent)).toEqual([]);
+    // The total (11) is not smuggled in under any other name either.
+    expect(JSON.stringify(sent)).not.toMatch(/\b11\b/);
+  });
+
+  test("multi-package, a date edited: only the date travels", async () => {
+    const sent = await save(tripWith(THREE, 11), { startAt: "2026-11-13T00:00:00.000Z" });
+    expect(sent).toEqual({ theme: { business_trip: { startAt: "2026-11-13T00:00:00.000Z" } } });
+    expect(capacityPaths(sent)).toEqual([]);
+  });
+
+  test("single package edited to 10: the request carries exactly 10, once", async () => {
+    const sent = await save(tripWith([pricingTier("tier-1", "tt-shared", "Shared", 8)], 8), {
+      capacity: 10,
+    });
+    // The path is assembled from the key name: the trip canonical-column gate
+    // forbids spelling the retired path in source (see RETIRED_THEME_CAPACITY_KEY).
+    expect(capacityPaths(sent)).toEqual([
+      `p_patch.theme.business_trip.${RETIRED_THEME_CAPACITY_KEY}=10`,
+    ]);
   });
 });
