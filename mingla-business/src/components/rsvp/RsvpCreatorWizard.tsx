@@ -1002,6 +1002,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       coverMediaEventId: liveDraft.id,
       onRequireServerDraft,
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
+      payoutCountryBrand: brand,
       // Issue #3291 — first source of the Where step's rank-only proximity.
       brandLocation: brand,
       coverMediaApplyMode: "draft_auto" as const,

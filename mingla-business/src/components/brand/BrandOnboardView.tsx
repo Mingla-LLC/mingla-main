@@ -120,7 +120,10 @@ import {
   BRAND_PAYMENTS_DENIED_TITLE,
 } from "../../utils/brandPaymentsPermission";
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
-import { resolveBankConnectRail } from "../../utils/bankConnectRail";
+import {
+  resolveBankConnectRail,
+  resolveBankConnectRailForCountry,
+} from "../../utils/bankConnectRail";
 import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
 import { useSwitchAccount } from "../../hooks/useSwitchAccount";
@@ -142,7 +145,7 @@ const NIGERIA_COUNTRY = "NG" as const;
 // an extra picker option. orch-strict-grep-allow stripe-country-out-of-scope —
 // NG routes to Paystack, never the Stripe allowlist.
 const PAYSTACK_PICKER_OPTIONS = [
-  { code: "NG", name: "Nigeria", currency: "NGN", sublabel: "Bank transfer via Paystack" },
+  { code: "NG", name: "Nigeria", currency: "NGN", sublabel: "Bank transfer" },
 ] as const;
 // B2a Path C V3 forensics C-3: was support@mingla.com — domain not Mingla-owned.
 const SUPPORT_EMAIL = "support@usemingla.com" as const;
@@ -208,6 +211,12 @@ export interface BrandOnboardViewProps {
    * the fix. Optional: without it the state still renders, with support only.
    */
   onEditContact?: () => void;
+  /**
+   * #3645 — the card-rail country the organiser chose during brand creation.
+   * Seeds the country picker ahead of the brand's address country. Ignored
+   * unless it is a supported card-rail country.
+   */
+  initialCountry?: string | null;
 }
 
 /** Best-effort haptic — silently swallowed if unavailable. */
@@ -247,6 +256,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   onCancel,
   onAfterDone,
   onEditContact,
+  initialCountry = null,
 }) => {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -254,8 +264,13 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const statusQuery = useBrandStripeStatus(brand?.id ?? null);
   const startInProgressRef = useRef(false);
+  const initialCountryRail = resolveBankConnectRailForCountry(initialCountry);
+  const chosenCountryHint =
+    initialCountryRail !== null && initialCountryRail.provider === "stripe"
+      ? initialCountryRail.countryCode
+      : null;
   const brandRail = resolveBankConnectRail({
-    countryCode: brand?.countryCode,
+    countryCode: chosenCountryHint ?? brand?.countryCode,
     paymentProvider: brand?.paymentProvider,
   });
 
