@@ -20,26 +20,37 @@ import { brandKeys } from "./brandKeys";
 import { brandPaystackKeys } from "./useBrandPaystack";
 import { brandStripeStatusKeys } from "./useBrandStripeStatus";
 
+/**
+ * One builder per cache entry a creator's "can this brand take payments" answer
+ * reads. They are built one at a time so that a key module that is absent (a
+ * render suite that partially mocks a hook module) costs that one entry, not
+ * the whole refresh.
+ */
+const brandPaymentStateKeyBuilders: readonly ((
+  brandId: string,
+) => readonly unknown[])[] = [
+  // Trip and experience creators read the single brand.
+  (brandId) => brandKeys.detail(brandId),
+  // Event and RSVP routes resolve their brand from the account's brand LIST.
+  () => brandKeys.lists(),
+  (brandId) => brandStripeStatusKeys.detail(brandId),
+  (brandId) => brandPaystackKeys.status(brandId),
+];
+
 /** Every cache entry a creator's "can this brand take payments" answer reads. */
 export const brandPaymentStateQueryKeys = (
   brandId: string,
-): readonly (readonly unknown[])[] => [
-  // Trip and experience creators read the single brand.
-  brandKeys.detail(brandId),
-  // Event and RSVP routes resolve their brand from the account's brand LIST.
-  brandKeys.lists(),
-  brandStripeStatusKeys.detail(brandId),
-  brandPaystackKeys.status(brandId),
-];
+): readonly (readonly unknown[])[] =>
+  brandPaymentStateKeyBuilders.map((build) => build(brandId));
 
 export function refreshBrandPaymentState(
   queryClient: Pick<QueryClient, "invalidateQueries">,
   brandId: string | null | undefined,
 ): void {
   if (typeof brandId !== "string" || brandId.length === 0) return;
-  for (const queryKey of brandPaymentStateQueryKeys(brandId)) {
+  for (const build of brandPaymentStateKeyBuilders) {
     try {
-      void queryClient.invalidateQueries({ queryKey });
+      void queryClient.invalidateQueries({ queryKey: build(brandId) });
     } catch {
       // Leaving a screen must never fail because a cache refresh did.
     }
