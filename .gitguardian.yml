@@ -33,6 +33,21 @@ secret:
     - name: "AppsFlyer client dev key public fallback (app-mobile build config)"
       match: "W29Z6cqfWKvML3FdQAX27E"
 
+    # toward #3697 Wave 6 — deterministic PG17 fixture UUIDs. GitGuardian's
+    # Generic High Entropy detector flagged one of these in PR #3814 as if it
+    # were a live secret; they are issue-scoped test ids only (same class as
+    # Wave 1's 38020000-0000-4000-c000-… fixtures). Tip of the branch now uses
+    # the Wave 1 style; these matches keep the earlier commit from red-failing
+    # the PR scan of full history.
+    - name: "Issue 3697 Wave 6 PG17 fixture UUID (owner account)"
+      match: "00000000-3697-4000-8000-000000000001"
+    - name: "Issue 3697 Wave 6 PG17 fixture UUID (owner brand)"
+      match: "00000000-3697-4000-8000-000000000010"
+    - name: "Issue 3697 Wave 6 PG17 fixture UUID (adversarial account)"
+      match: "00000000-3697-4000-8000-000000000101"
+    - name: "Issue 3697 Wave 6 PG17 fixture UUID (adversarial brand)"
+      match: "00000000-3697-4000-8000-000000000110"
+
   ignored-paths:
     # GitHub Actions service-container Postgres credentials. These are
     # ephemeral CI-runner-only credentials for a localhost service container
