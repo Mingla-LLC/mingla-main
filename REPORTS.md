@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-12 — Someone who opens a brand invitation while signed in with a different email now sees the "Wrong account" screen, which names the invited email and the signed-in email and offers a way to switch accounts, instead of "Invitation not found"; the invitation itself was always valid (toward #3259, PR #3817)
 - 2026-10-12 — Host Ads credit now has a wallet and ledger: top-ups take Mingla's 15% fee into spendable credit (min $25 / £20 / ₦25,000), and withdrawing unused credit refunds that credit plus its fee (toward #3697, PR #3814)
 - 2026-10-12 — Admin campaign Launch now requires typing LAUNCH plus a reason; the server rejects launch without that challenge so spend cannot start on a one-click (toward #3697, PR #3813)
 - 2026-10-12 — Mingla Admin has Hosts and Creators boards for the whole team: drag a card, use its arrow or the stage menu, filter by ICP, region or Mine, edit a card that saves as you type, and get warned about duplicates while adding; every view, filter and open card has its own link (toward #3802, PR #3816)
