@@ -90,6 +90,8 @@ import { routeForEventRowDefensive } from "../../../src/utils/routeForEventRow";
 // 8pm EDT on its start day. The wrapper lives in `./eventCardStatus.ts` so
 // the regression test can import it without pulling this screen's JSX.
 import { deriveCardStatus } from "./eventCardStatus";
+import { useHostAdCampaigns } from "../../../src/hooks/marketing/useHostAdCampaigns";
+import { formatCurrency } from "../../../src/utils/currency";
 
 const LazyEventManageMenu = React.lazy(async () => {
   const mod = await import("../../../src/components/event/EventManageMenu");
@@ -192,6 +194,9 @@ export default function EventsTab(): React.ReactElement {
   // empty state must be UNIVERSAL — "Nothing created yet" + "Create your first
   // offering" → the shared offering chooser — not event-biased. When the brand
   // HAS other offerings (just no events), keep the event-specific copy.
+  // toward #3697 Wave 7c — live Host ads cards under the Hub events list.
+  const hostAds = useHostAdCampaigns(currentBrand?.id ?? null);
+
   const offeringCounts = useBrandOfferingCounts(currentBrand?.id ?? null);
   const hasNoOfferingsAtAll =
     offeringCounts.data !== undefined &&
@@ -699,6 +704,38 @@ export default function EventsTab(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {hostAds.liveCampaigns.length > 0 ? (
+          <View style={styles.liveAdsBlock} testID="hub-live-ads">
+            <Text style={styles.liveAdsTitle}>Live ads</Text>
+            {hostAds.liveCampaigns.map((ad) => (
+              <Pressable
+                key={ad.id}
+                style={styles.liveAdCard}
+                onPress={() =>
+                  router.push(`/(tabs)/marketing/ads/${ad.id}` as never)
+                }
+                accessibilityRole="button"
+                accessibilityLabel={`Live ad ${ad.name}`}
+                testID={`hub-live-ad-${ad.id}`}
+              >
+                <View style={styles.liveAdPulse} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.liveAdName}>{ad.name}</Text>
+                  <Text style={styles.liveAdMeta}>
+                    {ad.platform} ·{" "}
+                    {formatCurrency(
+                      Number(ad.cap_cents ?? ad.daily_budget_cents ?? 0),
+                      ad.currency ?? "USD",
+                      true,
+                    )}
+                  </Text>
+                </View>
+                <Text style={styles.liveAdPill}>Live</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
         {/* List */}
         {filteredItems.length === 0 ? (
           filter === "all" && hasNoOfferingsAtAll ? (
@@ -989,6 +1026,43 @@ const styles = StyleSheet.create({
     // paddingBottom is set inline on the ScrollView with insets.bottom + 120
     // to clear the floating BottomNav (64px nav + ~16-32px margin + safe-area).
     gap: spacing.md,
+  },
+  liveAdsBlock: {
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  liveAdsTitle: {
+    ...typography.h3,
+    color: textTokens.primary,
+  },
+  liveAdCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radiusTokens.lg,
+    backgroundColor: glass.tint.chrome.idle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+  },
+  liveAdPulse: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: semantic.success,
+  },
+  liveAdName: {
+    ...typography.bodyMd,
+    color: textTokens.primary,
+  },
+  liveAdMeta: {
+    ...typography.caption,
+    color: textTokens.secondary,
+    marginTop: 2,
+  },
+  liveAdPill: {
+    ...typography.caption,
+    color: textTokens.primary,
   },
   headerTitle: {
     fontSize: typography.h1.fontSize,

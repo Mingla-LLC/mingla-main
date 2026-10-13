@@ -32,11 +32,14 @@ export function useAdCreditTopUpPay(): (
   const { initPaymentSheet, presentPaymentSheet } = useStripePaymentSheet();
 
   return async (start: AdCreditStartTopUpResult): Promise<AdCreditTopUpPayOutcome> => {
+    // NGN Paystack (and web Checkout replay) open an external authorization URL.
     if (start.kind === "requires_checkout_redirect") {
-      return {
-        outcome: "failed",
-        message: "Unexpected Checkout redirect on native.",
-      };
+      const { Linking } = await import("react-native");
+      const opened = await Linking.openURL(start.url);
+      if (!opened) {
+        return { outcome: "failed", message: "Could not open checkout." };
+      }
+      return { outcome: "redirected" };
     }
 
     const publishableKey = resolvePublishableKey();

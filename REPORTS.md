@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-13 — Hosts can withdraw unused Ads credit to the original card or Paystack charge, top up in Naira, run Host-owned ads from Blast (list, detail, pause/end) with live cards on Home, and ask Ari to propose and launch a plan that spends Ads credit — web `[deploy]` (toward #3697, PR #TBD)
 - 2026-10-13 — Hosts can add Ads credit with a card (USD/GBP): Confirm and pay after the fee preview, Stripe charges Mingla's platform account, and credit lands only after the payment is verified (toward #3697, PR #3824)
 - 2026-10-12 — Host Blast now has an Ads tab: see Ads credit balance and history, preview fee-inclusive top-up and withdraw quotes, and open Ads from the brand page (toward #3697, PR #3815)
 - 2026-10-13 — Mingla Admin homes are real: Sales and marketing see what is due today, Founding partners see hosts and creators by stage, owners and admins get a Team dashboard and set monthly host targets; Beta leads opens to the whole team with one "Add to Hosts" button; an invite to an address that cannot be used is refused when it is sent; two people can no longer move the same card to different stages at once (toward #3802, PR #3821)

@@ -121,6 +121,11 @@ function humanizeToolName(toolName: string): string {
     case "cancel_event": return "Cancel event";
     case "discard_event_draft": return "Discard draft";
     case "send_campaign_now": return "Send campaign";
+    case "propose_ad_plan": return "Propose ad plan";
+    case "approve_ad_plan": return "Launch Host ad";
+    case "pause_ad_campaign": return "Pause Host ad";
+    case "end_ad_campaign": return "End Host ad";
+    case "get_ad_campaign_report": return "Ad campaign report";
     case "refund_order": return "Refund order";
     case "cancel_order": return "Cancel free order";
     case "cancel_trip_booking": return "Cancel trip booking";
@@ -152,6 +157,8 @@ export const MONEY_CONFIRM_TOOLS: Record<string, string> = {
   discard_event_draft: "DISCARD",
   refund_rsvp_contribution: "REFUND",
   send_campaign_now: "SEND",
+  approve_ad_plan: "LAUNCH",
+  end_ad_campaign: "END",
   disconnect_partner: "DISCONNECT",
   refund_order: "REFUND",
   cancel_order: "CANCEL",

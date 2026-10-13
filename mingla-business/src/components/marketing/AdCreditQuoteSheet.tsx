@@ -30,6 +30,7 @@ import { useAdCreditTopUpPay } from "../../payments/useAdCreditTopUpPay";
 import { mapAdCreditQuoteError } from "../../services/adCreditQuoteErrors";
 import {
   applyAdCreditTopUp,
+  applyAdCreditWithdraw,
   quoteAdCreditTopUp,
   quoteAdCreditWithdraw,
   startAdCreditTopUp,
@@ -78,8 +79,9 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [topUp, setTopUp] = useState<AdCreditTopUpQuote | null>(null);
   const [withdraw, setWithdraw] = useState<AdCreditWithdrawQuote | null>(null);
-  // Stable per Confirm attempt so start_top_up retries do not mint a second PI.
+  // Stable per Confirm attempt so start_top_up / apply_withdraw retries stay idempotent.
   const topUpIdemRef = useRef<string>("");
+  const withdrawIdemRef = useRef<string>("");
 
   useEffect(() => {
     if (!visible) {
@@ -89,6 +91,7 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
       setWithdraw(null);
       setBusy(false);
       topUpIdemRef.current = "";
+      withdrawIdemRef.current = "";
     }
   }, [visible]);
 
@@ -98,6 +101,7 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
     setWithdraw(null);
     setError(null);
     topUpIdemRef.current = "";
+    withdrawIdemRef.current = "";
   }, [majorText, mode]);
 
   useEffect(() => {
@@ -108,6 +112,15 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
       topUpIdemRef.current = "";
     }
   }, [topUp]);
+
+  useEffect(() => {
+    if (withdraw !== null && withdrawIdemRef.current.length === 0) {
+      withdrawIdemRef.current = randomId();
+    }
+    if (withdraw === null) {
+      withdrawIdemRef.current = "";
+    }
+  }, [withdraw]);
 
   const runQuote = useCallback(async () => {
     setError(null);
@@ -189,15 +202,41 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
     }
   }, [brandId, onClose, onTopUpApplied, presentPay, topUp]);
 
+  const runConfirmWithdraw = useCallback(async () => {
+    if (withdraw === null) return;
+    setError(null);
+    setBusy(true);
+    try {
+      if (withdrawIdemRef.current.length === 0) {
+        withdrawIdemRef.current = randomId();
+      }
+      await applyAdCreditWithdraw({
+        brandId,
+        creditCents: withdraw.credit_cents,
+        idempotencyKey: withdrawIdemRef.current,
+      });
+      withdrawIdemRef.current = "";
+      onTopUpApplied?.();
+      onClose();
+    } catch (e) {
+      setError(mapAdCreditQuoteError(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [brandId, onClose, onTopUpApplied, withdraw]);
+
   const title = mode === "top_up" ? "Add Ads credit" : "Withdraw credit";
   const hint = mode === "top_up"
-    ? "Mingla keeps 15% as the service fee; the rest becomes spendable Ads credit. Card top-up: USD / GBP (min $25 / £20). Naira ships next."
-    : "Unused credit is refunded with its fee (FIFO). Card refund runs when the payment adapter ships.";
+    ? "Mingla keeps 15% as the service fee; the rest becomes spendable Ads credit. Card: USD / GBP; Naira via Paystack."
+    : "Unused credit is refunded with its fee (FIFO) to the original card or Paystack charge.";
 
-  const stripeTopUpReady =
+  const topUpPayReady =
     mode === "top_up" &&
     topUp !== null &&
-    (topUp.currency === "USD" || topUp.currency === "GBP");
+    (topUp.currency === "USD" ||
+      topUp.currency === "GBP" ||
+      topUp.currency === "NGN");
+  const withdrawReady = mode === "withdraw" && withdraw !== null;
 
   return (
     <Modal
@@ -252,8 +291,7 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
               {formatCurrency(withdraw.refund_cents, currency, true)}
             </Text>
             <Text style={styles.quoteNote}>
-              Estimate only — live withdraw uses FIFO lots; card refund follows
-              the payment adapter.
+              Confirm refunds to the original top-up payment(s) via FIFO lots.
             </Text>
           </View>
         ) : null}
@@ -266,7 +304,7 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
             disabled={busy || !canManage}
             testID="ad-credit-quote-preview"
           />
-          {stripeTopUpReady && canManage ? (
+          {topUpPayReady && canManage ? (
             <Button
               label={busy ? "Paying…" : "Confirm and pay"}
               onPress={() => {
@@ -276,17 +314,19 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
               testID="ad-credit-quote-confirm-pay"
             />
           ) : null}
+          {withdrawReady && canManage ? (
+            <Button
+              label={busy ? "Refunding…" : "Confirm withdraw"}
+              onPress={() => {
+                void runConfirmWithdraw();
+              }}
+              disabled={busy}
+              testID="ad-credit-quote-confirm-withdraw"
+            />
+          ) : null}
           {!canManage ? (
             <Text style={styles.denied}>
               Finance permission is required to add or withdraw credit.
-            </Text>
-          ) : mode === "withdraw" ? (
-            <Text style={styles.coming}>
-              Withdraw card refund ships next — preview stays honest until then.
-            </Text>
-          ) : topUp !== null && !stripeTopUpReady ? (
-            <Text style={styles.coming}>
-              Card top-up for this currency ships next (USD / GBP available now).
             </Text>
           ) : null}
           <Pressable onPress={onClose} hitSlop={8} style={styles.closeLink}>

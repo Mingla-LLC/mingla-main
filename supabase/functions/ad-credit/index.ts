@@ -1,9 +1,10 @@
 /**
- * ad-credit — toward #3697 Wave 6 / Wave 7b.
+ * ad-credit — toward #3697 Wave 6 / 7b / 7c.
  *
  * Host Ads credit quotes + ledger applies. Wave 7b: platform Stripe top-up
- * (`start_top_up`) and PaymentIntent verify before `apply_top_up`. Withdraw
- * card refund + Paystack/NGN stay with the caller follow-up.
+ * (`start_top_up`) and PaymentIntent verify before `apply_top_up`. Wave 7c:
+ * NGN Paystack top-up, platform Stripe/Paystack withdraw refunds (FIFO lots),
+ * webhook apply via adCreditWebhook.
  *
  * Actions:
  *   quote_top_up    — fee split + min/max (auth required; no brand gate)
@@ -24,6 +25,8 @@ import {
 } from "../_shared/adMoney.ts";
 import {
   adCreditTopUpMetadata,
+  buildAdCreditPaystackReference,
+  isAdCreditPaystackTopUpCurrency,
   isAdCreditStripeTopUpCurrency,
   verifyAdCreditTopUpPaymentIntent,
 } from "../_shared/adCreditStripe.ts";
@@ -31,7 +34,15 @@ import {
   PRODUCTION_BUSINESS_WEB_ORIGIN,
   resolveBusinessWebOrigin,
 } from "../_shared/businessWebOrigin.ts";
-import { stripeTicketCheckout } from "../_shared/stripe.ts";
+import {
+  paystackInitializeTransaction,
+  paystackVerifyTransaction,
+} from "../_shared/paystack.ts";
+import { createPaystackRefund } from "../_shared/paystackRefunds.ts";
+import {
+  stripeTicketCheckout,
+  stripeTicketRefund,
+} from "../_shared/stripe.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -231,7 +242,9 @@ serve(async (req: Request): Promise<Response> => {
 
     const quoted = quoteTopUp(payCents, currency);
     if (!quoted.ok) return json({ error: quoted.error, detail: quoted.detail }, 400);
-    if (!isAdCreditStripeTopUpCurrency(quoted.currency)) {
+    const stripeOk = isAdCreditStripeTopUpCurrency(quoted.currency);
+    const paystackOk = isAdCreditPaystackTopUpCurrency(quoted.currency);
+    if (!stripeOk && !paystackOk) {
       return json({
         error: "validation_error",
         detail: "currency_unsupported",
@@ -244,11 +257,56 @@ serve(async (req: Request): Promise<Response> => {
       currency: quoted.currency,
       actorId: user.id,
     });
-    const stripe = stripeTicketCheckout();
     const createIdem =
       `ad_credit_top_up:${brandId}:${quoted.pay_cents}:${quoted.currency}:${clientIdem}`
         .slice(0, 240);
 
+    // Wave 7c — NGN via Paystack (host→Mingla; no subaccount split).
+    if (paystackOk) {
+      if (returnUrl.length === 0 || !buildAdCreditCheckoutReturnUrls(returnUrl)) {
+        return json({
+          error: "validation_error",
+          detail: "return_url_invalid",
+        }, 400);
+      }
+      const email = typeof user.email === "string" && user.email.includes("@")
+        ? user.email
+        : `ads-credit+${brandId.slice(0, 8)}@usemingla.com`;
+      const reference = buildAdCreditPaystackReference({
+        brandId,
+        clientIdem,
+      });
+      try {
+        const init = await paystackInitializeTransaction({
+          email,
+          amountSubunits: quoted.pay_cents,
+          currency: "NGN",
+          reference,
+          callbackUrl: returnUrl,
+          metadata: {
+            ...meta,
+            mingla_idempotency_key: clientIdem,
+          },
+        });
+        return json({
+          ok: true,
+          kind: "requires_checkout_redirect",
+          url: init.authorization_url,
+          checkout_session_id: init.reference,
+          payment_intent_id: null,
+          paystack_reference: init.reference,
+          quote: quoted,
+        });
+      } catch (e) {
+        console.error("[ad-credit] start_top_up paystack failed:", e);
+        return json({
+          error: "apply_failed",
+          detail: "paystack_start_failed",
+        }, 502);
+      }
+    }
+
+    const stripe = stripeTicketCheckout();
     try {
       if (returnUrl.length > 0) {
         const urls = buildAdCreditCheckoutReturnUrls(returnUrl);
@@ -342,65 +400,113 @@ serve(async (req: Request): Promise<Response> => {
     const checkoutSessionId = typeof body.checkout_session_id === "string"
       ? body.checkout_session_id.trim()
       : "";
+    const paystackReference = typeof body.paystack_reference === "string"
+      ? body.paystack_reference.trim()
+      : "";
     const idempotencyKey = typeof body.idempotency_key === "string"
       ? body.idempotency_key.trim()
       : "";
-    if (!paymentRef && !checkoutSessionId) {
+    if (!paymentRef && !checkoutSessionId && !paystackReference) {
       return json({ error: "validation_error", detail: "payment_ref_required" }, 400);
     }
 
-    // Reuses TICKET_CHECKOUT RAK — platform retrieve (no stripeAccount).
-    const stripe = stripeTicketCheckout();
     let quoted;
     try {
-      if (!paymentRef && checkoutSessionId) {
-        // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
-        const session = await stripe.checkout.sessions.retrieve(
-          checkoutSessionId,
-        ); // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve
-        const piField = session.payment_intent;
-        paymentRef = typeof piField === "string"
-          ? piField
-          : (piField && typeof piField === "object" && "id" in piField
-            ? String((piField as { id: string }).id)
-            : "");
-        if (!paymentRef) {
+      // Paystack NGN: verify transaction by reference.
+      if (paystackReference || paymentRef.startsWith("mingla_adc_")) {
+        const ref = paystackReference || paymentRef;
+        const verified = await paystackVerifyTransaction(ref);
+        const status = String(verified.status ?? "");
+        if (status !== "success") {
           return json({
             error: "validation_error",
-            detail: "payment_not_found",
+            detail: "payment_not_succeeded",
           }, 400);
         }
-      }
+        const amount = typeof verified.amount === "number" ? verified.amount : NaN;
+        const cur = typeof verified.currency === "string"
+          ? verified.currency.toUpperCase()
+          : "NGN";
+        payCents = amount;
+        currency = cur;
+        paymentRef = ref;
+        quoted = quoteTopUp(payCents, currency);
+        if (!quoted.ok) {
+          return json({ error: quoted.error, detail: quoted.detail }, 400);
+        }
+        if (!isAdCreditPaystackTopUpCurrency(quoted.currency)) {
+          return json({
+            error: "validation_error",
+            detail: "currency_unsupported",
+          }, 400);
+        }
+        const metaRaw = verified.metadata;
+        const meta = metaRaw && typeof metaRaw === "object"
+          ? metaRaw as Record<string, unknown>
+          : {};
+        if (String(meta.mingla_purpose ?? "") !== "ad_credit_top_up") {
+          return json({
+            error: "validation_error",
+            detail: "payment_purpose_mismatch",
+          }, 400);
+        }
+        if (String(meta.brand_id ?? "") !== brandId) {
+          return json({
+            error: "validation_error",
+            detail: "payment_brand_mismatch",
+          }, 400);
+        }
+      } else {
+        // Reuses TICKET_CHECKOUT RAK — platform retrieve (no stripeAccount).
+        const stripe = stripeTicketCheckout();
+        if (!paymentRef && checkoutSessionId) {
+          // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+          const session = await stripe.checkout.sessions.retrieve(
+            checkoutSessionId,
+          ); // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve
+          const piField = session.payment_intent;
+          paymentRef = typeof piField === "string"
+            ? piField
+            : (piField && typeof piField === "object" && "id" in piField
+              ? String((piField as { id: string }).id)
+              : "");
+          if (!paymentRef) {
+            return json({
+              error: "validation_error",
+              detail: "payment_not_found",
+            }, 400);
+          }
+        }
 
-      // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
-      const pi = await stripe.paymentIntents.retrieve(paymentRef); // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve
-      // Checkout return may omit pay_cents — PI amount/currency are authority.
-      if (checkoutSessionId || !Number.isFinite(payCents) || payCents <= 0) {
-        payCents = typeof pi.amount === "number" ? pi.amount : NaN;
-        currency = typeof pi.currency === "string"
-          ? pi.currency.toUpperCase()
-          : currency;
-      }
-      quoted = quoteTopUp(payCents, currency);
-      if (!quoted.ok) {
-        return json({ error: quoted.error, detail: quoted.detail }, 400);
-      }
-      if (!isAdCreditStripeTopUpCurrency(quoted.currency)) {
-        return json({
-          error: "validation_error",
-          detail: "currency_unsupported",
-        }, 400);
-      }
-      const verified = verifyAdCreditTopUpPaymentIntent(pi, {
-        brandId,
-        payCents: quoted.pay_cents,
-        currency: quoted.currency,
-      });
-      if (!verified.ok) {
-        return json({
-          error: "validation_error",
-          detail: verified.detail,
-        }, 400);
+        // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+        const pi = await stripe.paymentIntents.retrieve(paymentRef); // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve
+        if (checkoutSessionId || !Number.isFinite(payCents) || payCents <= 0) {
+          payCents = typeof pi.amount === "number" ? pi.amount : NaN;
+          currency = typeof pi.currency === "string"
+            ? pi.currency.toUpperCase()
+            : currency;
+        }
+        quoted = quoteTopUp(payCents, currency);
+        if (!quoted.ok) {
+          return json({ error: quoted.error, detail: quoted.detail }, 400);
+        }
+        if (!isAdCreditStripeTopUpCurrency(quoted.currency)) {
+          return json({
+            error: "validation_error",
+            detail: "currency_unsupported",
+          }, 400);
+        }
+        const verified = verifyAdCreditTopUpPaymentIntent(pi, {
+          brandId,
+          payCents: quoted.pay_cents,
+          currency: quoted.currency,
+        });
+        if (!verified.ok) {
+          return json({
+            error: "validation_error",
+            detail: verified.detail,
+          }, 400);
+        }
       }
     } catch (e) {
       console.error("[ad-credit] apply_top_up verify failed:", e);
@@ -459,7 +565,7 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: "insufficient_credit", detail: "balance_too_low" }, 409);
     }
 
-    // refund_cents/fee overwritten inside ad_credit_apply from FIFO lots.
+    // Debit + pending provider_refunds (FIFO lot takes). Edge issues refunds.
     const { data, error } = await supabase.rpc("ad_credit_apply", {
       p_brand_id: brandId,
       p_entry_kind: "withdraw",
@@ -475,7 +581,6 @@ serve(async (req: Request): Promise<Response> => {
       p_metadata: {
         source: "ad-credit",
         action: "apply_withdraw",
-        provider_refund: "caller_owns",
       },
     });
     if (error) {
@@ -483,11 +588,107 @@ serve(async (req: Request): Promise<Response> => {
       if (msg.includes("ad_credit_insufficient")) {
         return json({ error: "insufficient_credit", detail: "balance_too_low" }, 409);
       }
+      if (msg.includes("ad_credit_lot_missing_payment_ref")) {
+        return json({
+          error: "apply_failed",
+          detail: "withdraw_missing_payment_ref",
+        }, 409);
+      }
+      if (msg.includes("ad_credit_lot_payment_ref_unsupported")) {
+        return json({
+          error: "apply_failed",
+          detail: "withdraw_payment_ref_unsupported",
+        }, 409);
+      }
       return json({ error: "apply_failed", detail: msg }, 409);
     }
     const result = data && typeof data === "object"
       ? data as Record<string, unknown>
       : {};
+    const refunds = Array.isArray(result.provider_refunds)
+      ? result.provider_refunds as Array<Record<string, unknown>>
+      : [];
+
+    // Platform Stripe refunds (no stripeAccount) — same Mingla platform charge
+    // as Wave 7b top-up. Reuses TICKET_REFUND RAK for refunds:write.
+    const stripe = stripeTicketRefund();
+    let refundFailures = 0;
+    for (const row of refunds) {
+      const status = String(row.status ?? "");
+      if (status === "succeeded") continue;
+      const id = String(row.id ?? "");
+      const provider = String(row.provider ?? "");
+      const paymentRef = String(row.payment_ref ?? "");
+      const payTake = Number(row.pay_take_cents);
+      const rowIdem = String(row.idempotency_key ?? "");
+      if (!id || !paymentRef || !Number.isFinite(payTake) || payTake <= 0) {
+        refundFailures += 1;
+        continue;
+      }
+      try {
+        if (provider === "stripe") {
+          const refund = await stripe.refunds.create(
+            {
+              payment_intent: paymentRef,
+              amount: payTake,
+              metadata: {
+                mingla_purpose: "ad_credit_withdraw",
+                brand_id: brandId,
+              },
+            },
+            { idempotencyKey: rowIdem },
+          );
+          await supabase.rpc("ad_credit_mark_provider_refund", {
+            p_id: id,
+            p_status: "succeeded",
+            p_provider_refund_id: refund.id,
+            p_error_detail: null,
+          });
+        } else if (provider === "paystack") {
+          const refund = await createPaystackRefund({
+            transaction: paymentRef,
+            amountSubunits: payTake,
+            currency: "NGN",
+            merchantNote: rowIdem.slice(0, 100),
+          });
+          await supabase.rpc("ad_credit_mark_provider_refund", {
+            p_id: id,
+            p_status: "succeeded",
+            p_provider_refund_id: refund.id,
+            p_error_detail: null,
+          });
+        } else {
+          refundFailures += 1;
+          await supabase.rpc("ad_credit_mark_provider_refund", {
+            p_id: id,
+            p_status: "failed",
+            p_provider_refund_id: null,
+            p_error_detail: "provider_unsupported",
+          });
+        }
+      } catch (e) {
+        refundFailures += 1;
+        console.error("[ad-credit] provider refund failed:", e);
+        await supabase.rpc("ad_credit_mark_provider_refund", {
+          p_id: id,
+          p_status: "failed",
+          p_provider_refund_id: null,
+          p_error_detail: e instanceof Error ? e.message : "refund_failed",
+        });
+      }
+    }
+
+    if (refundFailures > 0) {
+      return json({
+        ok: false,
+        error: "apply_failed",
+        detail: "provider_refund_partial",
+        estimate: quoted,
+        result,
+        provider_refund_cents: result.refund_cents ?? null,
+      }, 502);
+    }
+
     return json({
       ok: true,
       estimate: quoted,

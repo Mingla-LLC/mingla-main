@@ -41,6 +41,10 @@ import {
   isInstallmentPaymentIntentEvent,
 } from "./installmentWebhookHandlers.ts";
 import { handleChargeDispute } from "./stripeDisputeHandlers.ts";
+import {
+  applyAdCreditTopUpFromPaymentIntent,
+  isAdCreditTopUpStripeObject,
+} from "./adCreditWebhook.ts";
 // ORCH-1054 — partner splits + Stripe Transfer pipeline.
 // charge.succeeded → create partner Transfer; charge.refunded + charge.dispute.*
 // → reverse partner Transfer; account.updated → populate partner
@@ -2074,6 +2078,26 @@ export async function routeStripeEvent(
         }
         break;
       }
+      // toward #3697 Wave 7c — platform Ads credit top-up (before ticket fallthrough).
+      {
+        const piObj = event.data?.object as {
+          metadata?: Record<string, string> | null;
+          id?: string;
+          status?: string;
+          amount?: number;
+          currency?: string;
+        } | undefined;
+        if (isAdCreditTopUpStripeObject(piObj)) {
+          if (event.type === "payment_intent.succeeded") {
+            const applied = await applyAdCreditTopUpFromPaymentIntent(
+              supabase,
+              piObj,
+            );
+            brandId = applied.brandId;
+          }
+          break;
+        }
+      }
       // ORCH-0869 [Tr3 Installment Payments]: discriminate by metadata.
       // Installment PIs (created by process-scheduled-installments cron) carry
       // `mingla_installment_id` in metadata. Route to installment handlers
@@ -2108,6 +2132,31 @@ export async function routeStripeEvent(
       if (isVenueOrderStripeEvent(event)) {
         brandId = await handleVenueOrderStripeEvent(supabase, event);
         break;
+      }
+      // toward #3697 Wave 7c — Ads credit Checkout Session (metadata on session).
+      {
+        const sess = event.data?.object as {
+          metadata?: Record<string, string> | null;
+          payment_intent?: string | { id?: string } | null;
+          amount_total?: number | null;
+          currency?: string | null;
+        } | undefined;
+        if (isAdCreditTopUpStripeObject(sess)) {
+          const piId = typeof sess?.payment_intent === "string"
+            ? sess.payment_intent
+            : sess?.payment_intent?.id ?? null;
+          if (piId) {
+            const applied = await applyAdCreditTopUpFromPaymentIntent(supabase, {
+              id: piId,
+              status: "succeeded",
+              amount: sess?.amount_total ?? undefined,
+              currency: sess?.currency ?? undefined,
+              metadata: sess?.metadata ?? null,
+            });
+            brandId = applied.brandId;
+          }
+          break;
+        }
       }
       brandId = await handleCheckoutSessionCompleted(supabase, event);
       break;
