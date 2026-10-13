@@ -29,6 +29,9 @@ import { useMemo } from "react";
 import type { CtaState } from "./offeringCta";
 // #3372 — naira shows "₦", not "NGN", whatever the engine or locale (#3341 rule).
 import { withCurrencyGlyph } from "./currencyGlyph";
+// #3645 — a price never shows a single decimal digit, and the headline never
+// rounds a .50 price up past the charge (one shared rule).
+import { priceDecimals, priceFallbackDecimals } from "./priceDecimals";
 import {
   clampTripTierQuantity,
   tripAnyLineOnPlan,
@@ -170,12 +173,12 @@ function formatTripPrice(priceCents: number, currency: string): string {
       new Intl.NumberFormat(undefined, {
         style: "currency",
         currency: currency || "USD",
-        maximumFractionDigits: 0,
+        ...priceDecimals(priceCents / 100),
       }).format(priceCents / 100),
       currency,
     );
   } catch {
-    return `${(priceCents / 100).toFixed(0)} ${currency}`;
+    return `${(priceCents / 100).toFixed(priceFallbackDecimals(priceCents / 100))} ${currency}`;
   }
 }
 

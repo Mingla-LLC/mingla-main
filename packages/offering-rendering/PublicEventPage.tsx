@@ -55,6 +55,8 @@ import { resolveTheme } from "./themeResolver";
 // #3372 — naira ticket prices show "₦", not "NGN" (#3341 rule). This legacy page
 // still renders a password-protected event's tickets once the password is entered.
 import { withCurrencyGlyph } from "./currencyGlyph";
+// #3645 — a price never shows a single decimal digit (one shared rule).
+import { priceDecimals } from "./priceDecimals";
 // ORCH-1117 — the single buy/unavailable gate logic. PublicTicketRow reuses the
 // shared per-tier sub-predicates so the inline row and the host floating bar
 // can never disagree about sold-out / sale-ended / door-only.
@@ -195,8 +197,7 @@ const formatTicketPrice = (
       new Intl.NumberFormat("en-US", {
         style: "currency",
         currency,
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
+        ...priceDecimals(price),
       }).format(price),
       currency,
     );

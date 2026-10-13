@@ -105,6 +105,11 @@ import { collapseTripPlanChoice } from "../../../src/components/trip/tripCartPla
 import { recordShareDestination } from "../../../src/analytics/shareDestination";
 // #3372 — naira shows "₦", not "NGN", on the public trip page (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+// #3645 — the headline price never rounds a .50 price up past the charge.
+import {
+  priceDecimals,
+  priceFallbackDecimals,
+} from "@mingla/offering-rendering/priceDecimals";
 // issue #3284 — the refund ladder's chunk starts with this page's data fetch.
 import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
 
@@ -783,12 +788,12 @@ function formatTripPrice(priceCents: number, currency: string): string {
       new Intl.NumberFormat(undefined, {
         style: "currency",
         currency: currency || "USD",
-        maximumFractionDigits: 0,
+        ...priceDecimals(priceCents / 100),
       }).format(priceCents / 100),
       currency,
     );
   } catch {
-    return `${(priceCents / 100).toFixed(0)} ${currency}`;
+    return `${(priceCents / 100).toFixed(priceFallbackDecimals(priceCents / 100))} ${currency}`;
   }
 }
 
