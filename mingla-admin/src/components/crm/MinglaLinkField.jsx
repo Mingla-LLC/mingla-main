@@ -3,7 +3,7 @@ import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
 import { CONTROL_CLASS, LABEL_CLASS, Segmented } from "./fields";
-import { errorWords } from "../../lib/crmModel";
+import { loadErrorWords } from "../../lib/crmModel";
 import { linkSearch } from "../../services/crmService";
 
 const KINDS = [
@@ -38,7 +38,7 @@ export function MinglaLinkField({ record, links, disabled = false, saving = fals
           if (live) setAnswer({ key: askKey, results: Array.isArray(data?.results) ? data.results : [], error: "" });
         },
         (err) => {
-          if (live) setAnswer({ key: askKey, results: [], error: errorWords(err) });
+          if (live) setAnswer({ key: askKey, results: [], error: loadErrorWords(err) });
         }
       );
     }, 300);

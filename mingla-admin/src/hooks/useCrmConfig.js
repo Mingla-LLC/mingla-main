@@ -8,7 +8,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { fetchConfig } from "../services/crmService";
 
-/** One key per entity; nothing else names these caches. */
+/**
+ * One key per entity; nothing else names these caches. `config` keys the
+ * shared configuration cache below; `records` keys the list a pipeline page
+ * holds (hooks/useCrmPipeline.js), so one person's list is never shown to the
+ * next person who signs in on the same browser.
+ */
 export const crmKeys = {
   config: (email) => `crm:config:${email || ""}`,
   records: (email, pipeline) => `crm:records:${email || ""}:${pipeline}`,

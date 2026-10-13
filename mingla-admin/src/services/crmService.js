@@ -15,7 +15,10 @@ import { parseServerError } from "../lib/crmModel";
 
 export class CrmError extends Error {
   constructor({ token, message, detail }) {
-    super(message || token);
+    // The message is the server's own sentence or nothing. It is NEVER the
+    // token: a token is not something to show a person (lib/crmModel.js turns
+    // it into words).
+    super(typeof message === "string" ? message : "");
     this.name = "CrmError";
     this.token = token;
     this.detail = detail || "";

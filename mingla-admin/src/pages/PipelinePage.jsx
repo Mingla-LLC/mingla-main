@@ -20,11 +20,14 @@ import {
   NO_REGION,
   errorWords,
   filterRecords,
+  freshnessVerdict,
   hasActiveFilters,
+  loadErrorWords,
   localToday,
   moveBlocker,
   regionBySlug,
   regionSlug,
+  shouldHoldCard,
   stageDef,
   stageLabel,
 } from "../lib/crmModel";
@@ -59,7 +62,19 @@ function PipelinePage({ pipeline, onTabChange }) {
   const cfg = useCrmConfig();
   const config = cfg.config;
   const def = config?.pipelines?.[pipeline] || null;
-  const pipe = useCrmPipeline(pipeline, { enabled: !!def });
+  // The card whose edits have not all reached the server yet ("" = none), and
+  // the Lost/Passed question that is open. Both pause the quiet refresh.
+  const [dirtyCard, setDirtyCard] = useState("");
+  const [reasonFor, setReasonFor] = useState(null); // { record, to }
+  const [reasonBusy, setReasonBusy] = useState(false);
+  const [reasonError, setReasonError] = useState("");
+  const pipe = useCrmPipeline(pipeline, { enabled: !!def, paused: !!dirtyCard || !!reasonFor });
+  const handleDirtyChange = useCallback((id, dirty) => {
+    setDirtyCard((prev) => (dirty ? id : prev === id ? "" : prev));
+  }, []);
+  // What the open card can be asked before it is let go (RecordDrawer fills it).
+  const guardRef = useRef(null);
+  const addButtonRef = useRef(null);
   const me = config?.me?.email || "";
   const canDelete = !!config?.me?.can_delete;
   const today = localToday();
@@ -105,17 +120,31 @@ function PipelinePage({ pipeline, onTabChange }) {
   // ── Open card ───────────────────────────────────────────────────────────
   const [focus, setFocus] = useState(null); // { id, field }
   const [activityTick, setActivityTick] = useState(0);
+  // True while the open card has its own history entry (it was opened by a
+  // click on this page). Closing then goes BACK to the entry before it, so the
+  // Back button never reopens a card that was closed with X.
+  const cardEntryPushed = useRef(false);
   const openCard = useCallback(
     (id, { field = null, replace = false } = {}) => {
       setFocus(field ? { id, field } : null);
+      if (!replace && !stateRef.current.card) cardEntryPushed.current = true;
       patch({ card: id }, { replace });
     },
     [patch]
   );
   const closeCard = useCallback(() => {
     setFocus(null);
-    patch({ card: "" });
+    if (!stateRef.current.card) return;
+    if (cardEntryPushed.current) {
+      cardEntryPushed.current = false;
+      window.history.back();
+    } else {
+      patch({ card: "" }, { replace: true });
+    }
   }, [patch]);
+  useEffect(() => {
+    if (!state.card) cardEntryPushed.current = false;
+  }, [state.card]);
   const openRecord = useCallback((record) => openCard(record.id), [openCard]);
 
   // ── Moving a card ───────────────────────────────────────────────────────
@@ -133,8 +162,9 @@ function PipelinePage({ pipeline, onTabChange }) {
     [removeToast]
   );
 
-  const [reasonFor, setReasonFor] = useState(null); // { record, to }
-  const [reasonBusy, setReasonBusy] = useState(false);
+  // Where a failed move reports to. Normally a toast; while the Lost/Passed
+  // question is open it reports there instead, so the typed reason is kept.
+  const moveErrorSink = useRef(null);
 
   const undoMove = useCallback(
     async (activityId) => {
@@ -156,6 +186,15 @@ function PipelinePage({ pipeline, onTabChange }) {
       try {
         const res = await pipe.moveStage(record, to, reason);
         setActivityTick((n) => n + 1);
+        // The server says the card was already there: someone made the same
+        // move at the same moment. Say so, so this press is not silent.
+        if (!res.changed) {
+          addToast({
+            variant: "info",
+            title: `${record.name} is already in ${stageLabel(def, to)}`,
+            description: "Someone else made the same move first. Nothing else was changed.",
+          });
+        }
         if (!res.changed) return true;
         const toastId = addToast({
           variant: "success",
@@ -166,8 +205,12 @@ function PipelinePage({ pipeline, onTabChange }) {
         undoToast.current = { toastId, recordId: record.id };
         return true;
       } catch (err) {
-        addToast({ variant: "error", title: `${record.name} didn't move`, description: errorWords(err) });
         if (err?.token === "not_found") pipe.dropRecord(record.id);
+        if (moveErrorSink.current && err?.token !== "not_found") {
+          moveErrorSink.current(errorWords(err));
+          return false;
+        }
+        addToast({ variant: "error", title: `${record.name} didn't move`, description: errorWords(err) });
         if (err?.token === "agreement_required") openCard(record.id, { field: "agreement" });
         return false;
       }
@@ -176,10 +219,37 @@ function PipelinePage({ pipeline, onTabChange }) {
   );
 
   const requestMove = useCallback(
-    (record, to) => {
-      if (!def) return;
+    async (shown, to) => {
+      if (!def || !shown || shown.stage === to) return;
       if (!online) {
         addToast({ variant: "warning", title: "You're offline", description: "The card stays where it is. Try again once you're back." });
+        return;
+      }
+      // The board may be old: ask the server where the card is NOW before
+      // moving it, so a card a colleague already moved is never moved again
+      // from where it used to be. (The server's move function has no "only if
+      // it is still in stage X" option, so this check is made here.)
+      pipe.setBusy(shown.id, true);
+      let fresh;
+      try {
+        fresh = await pipe.checkFresh(shown.id);
+      } catch (err) {
+        if (err?.token === "not_found") {
+          pipe.dropRecord(shown.id);
+          addToast({ variant: "warning", title: `${shown.name} is no longer here`, description: "It was deleted. The board is up to date now." });
+        } else {
+          addToast({ variant: "error", title: `${shown.name} didn't move`, description: loadErrorWords(err) });
+        }
+        return;
+      } finally {
+        pipe.setBusy(shown.id, false);
+      }
+      const record = fresh.record;
+      pipe.applyRecord(record);
+      const verdict = freshnessVerdict(def, shown, record, to, fresh.activity);
+      if (verdict.kind !== "go") {
+        setActivityTick((n) => n + 1);
+        addToast({ variant: verdict.kind === "already" ? "info" : "warning", title: verdict.title, description: verdict.description });
         return;
       }
       const block = moveBlocker(def, record, to);
@@ -192,20 +262,30 @@ function PipelinePage({ pipeline, onTabChange }) {
       }
       if (stageDef(def, to)?.terminal) {
         // Lost and Passed need a reason: ask BEFORE anything moves.
+        setReasonError("");
         setReasonFor({ record, to });
         return;
       }
       performMove(record, to);
     },
-    [def, online, addToast, openCard, performMove]
+    [def, online, pipe, addToast, openCard, performMove]
   );
 
+  // A failed move to Lost or Passed keeps the question open, with the reason
+  // that was typed and the reason it failed.
   const confirmReason = async (reason) => {
     if (!reasonFor) return;
     setReasonBusy(true);
-    await performMove(reasonFor.record, reasonFor.to, reason);
+    setReasonError("");
+    let failure = "";
+    moveErrorSink.current = (words) => {
+      failure = words;
+    };
+    const ok = await performMove(reasonFor.record, reasonFor.to, reason);
+    moveErrorSink.current = null;
     setReasonBusy(false);
-    setReasonFor(null);
+    if (ok || !failure) setReasonFor(null);
+    else setReasonError(failure);
   };
 
   // ── Add, delete ─────────────────────────────────────────────────────────
@@ -218,7 +298,13 @@ function PipelinePage({ pipeline, onTabChange }) {
         addToast({ variant: "error", title: `${record.name} wasn't deleted`, description: errorWords(err) });
         return false;
       }
-      if (stateRef.current.card === record.id) closeCard();
+      if (stateRef.current.card === record.id) {
+        // Nothing typed on a deleted card is worth keeping it open for.
+        if (guardRef.current?.id === record.id) guardRef.current.discard();
+        closeCard();
+        // The card that had focus is gone: put focus somewhere real.
+        setTimeout(() => addButtonRef.current?.focus(), 120);
+      }
       addToast({
         variant: "success",
         title: `${record.name} deleted`,
@@ -286,7 +372,29 @@ function PipelinePage({ pipeline, onTabChange }) {
   const loadError = cfg.error || pipe.error;
   const loading = !loadError && (cfg.loading || pipe.loading);
   const ready = !loading && !loadError && !!def;
-  const openId = state.card && state.card !== NEW_CARD ? state.card : "";
+  // The card on screen. Normally the one the address names; but a card whose
+  // edits are not all saved is HELD on screen when the address lets go of it
+  // (Close, Escape, Back), its edits are sent, and it only then closes. If
+  // they cannot be sent it stays open and says so.
+  const urlCard = state.card && state.card !== NEW_CARD ? state.card : "";
+  const [shownCard, setShownCard] = useState(urlCard);
+  const holding = shouldHoldCard(shownCard, urlCard, dirtyCard);
+  if (shownCard !== urlCard && !holding) setShownCard(urlCard);
+  const openId = holding ? shownCard : urlCard;
+  useEffect(() => {
+    if (!holding) return undefined;
+    let live = true;
+    const guard = guardRef.current;
+    Promise.resolve(guard ? guard.flush() : true).then((ok) => {
+      if (!live || ok) return;
+      // Not saved: the card stays, so the address names it again.
+      cardEntryPushed.current = false;
+      setSearch(buildCrmSearch({ ...stateRef.current, card: shownCard }), { replace: true });
+    });
+    return () => {
+      live = false;
+    };
+  }, [holding, shownCard, setSearch]);
   const openRecordInList = openId ? pipe.records.find((r) => r.id === openId) || null : null;
   const addDisabled = !ready || !online;
 
@@ -295,8 +403,8 @@ function PipelinePage({ pipeline, onTabChange }) {
     else pipe.refetch();
   };
   const clearFilters = () => patch({ q: "", icp: "", region: "", mine: false }, { replace: true });
-  const addButton = (variant = "primary", size = "md") => (
-    <Button variant={variant} size={size} icon={Plus} disabled={addDisabled} onClick={() => openCard(NEW_CARD)}>
+  const addButton = (variant = "primary", size = "md", ref = null) => (
+    <Button ref={ref} variant={variant} size={size} icon={Plus} disabled={addDisabled} onClick={() => openCard(NEW_CARD)}>
       Add {singular}
     </Button>
   );
@@ -311,7 +419,7 @@ function PipelinePage({ pipeline, onTabChange }) {
             Click a card to see and edit everything about it.
           </p>
         </div>
-        {addButton()}
+        {addButton("primary", "md", addButtonRef)}
       </div>
 
       {!online && (
@@ -328,7 +436,7 @@ function PipelinePage({ pipeline, onTabChange }) {
             </Button>
           }
         >
-          {errorWords(loadError)}
+          {loadErrorWords(loadError)}
         </AlertCard>
       ) : (
         <>
@@ -416,7 +524,7 @@ function PipelinePage({ pipeline, onTabChange }) {
         </>
       )}
 
-      {ready && state.card === NEW_CARD && (
+      {ready && state.card === NEW_CARD && !holding && (
         <Drawer open onClose={closeCard} title={`New ${singular}`}>
           <AddRecordForm
             pipeline={pipeline}
@@ -446,6 +554,9 @@ function PipelinePage({ pipeline, onTabChange }) {
           focusField={focus?.id === openId ? focus.field : null}
           activityTick={activityTick}
           suspended={!!reasonFor}
+          holding={holding}
+          guardRef={guardRef}
+          onDirtyChange={handleDirtyChange}
           onClose={closeCard}
           onRequestMove={requestMove}
           onDelete={handleDelete}
@@ -459,8 +570,12 @@ function PipelinePage({ pipeline, onTabChange }) {
         stageId={reasonFor?.to}
         recordName={reasonFor?.record?.name}
         busy={reasonBusy}
+        error={reasonError}
         onConfirm={confirmReason}
-        onCancel={() => setReasonFor(null)}
+        onCancel={() => {
+          setReasonError("");
+          setReasonFor(null);
+        }}
       />
     </div>
   );

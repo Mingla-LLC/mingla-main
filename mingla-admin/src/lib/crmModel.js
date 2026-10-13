@@ -373,14 +373,40 @@ const OWN_WORDS = {
 
 const FORBIDDEN_DEFAULT = "Your account can't use Hosts and Creators. Ask the owner to give you team access.";
 
+// What to say for a token whose own sentence did not arrive with it.
+const WORDS_WHEN_SERVER_SENT_NONE = {
+  stage_sets_itself: MOVE_BLOCK_COPY.stage_sets_itself,
+  stage_is_live: MOVE_BLOCK_COPY.stage_is_live,
+  agreement_required: "Mark the agreement as signed first.",
+  reason_required: "Add one line saying why, so the next person knows.",
+  duplicate_name: "That name is already in the pipeline. Open the existing card instead.",
+  undo_expired: "That move can no longer be undone. Move the card back by hand.",
+  undo_not_live: "This host can't go back to Live right now. Move the card to Onboarded by hand.",
+  invalid_name: "Add a name between 1 and 160 characters.",
+  invalid_body: "Write what happened first, in 4000 characters or fewer.",
+  invalid_followers: "Followers must be a whole number, 0 or more.",
+  invalid_message_ref: "Keep the message link or id to 500 characters or fewer.",
+  too_many_owners: "A card can have at most 10 owners.",
+};
+
+/** A sentence, not a bare word or a token: at least two words. */
+function isSentence(text, token) {
+  return text !== "" && text !== token && /\s/.test(text) && !/^[a-z_]+$/.test(text);
+}
+
 /**
- * The words to show for a server answer. Never a raw error and never a code:
- * a token this screen does not know gets the generic line, not the server text.
+ * The words to show for a server answer. Never a raw error, never a code and
+ * never a token: a token this screen does not know gets the generic line, and
+ * a known token that arrived without its sentence gets the prepared one.
  */
 export function errorCopy(token, message) {
-  const words = typeof message === "string" ? message.trim() : "";
+  const raw = typeof message === "string" ? message.trim() : "";
+  const words = isSentence(raw, token) ? raw : "";
   if (token === "forbidden") return words || FORBIDDEN_DEFAULT;
-  if (SERVER_WORDS.has(token) && words) return words;
+  if (SERVER_WORDS.has(token)) {
+    if (words) return words;
+    return Object.hasOwn(WORDS_WHEN_SERVER_SENT_NONE, token) ? WORDS_WHEN_SERVER_SENT_NONE[token] : GENERIC;
+  }
   if (Object.hasOwn(OWN_WORDS, token)) return OWN_WORDS[token];
   return GENERIC;
 }
@@ -390,6 +416,171 @@ export function errorWords(err) {
   if (err && typeof err.token === "string") return errorCopy(err.token, err.message);
   const parsed = parseServerError(err);
   return errorCopy(parsed.token, parsed.message);
+}
+
+const LOAD_GENERIC = "We couldn't load this. Check your connection and try again.";
+
+/** The same, for something that failed to LOAD (nothing was being saved). */
+export function loadErrorWords(err) {
+  const token = err && typeof err.token === "string" ? err.token : parseServerError(err).token;
+  if (token === "unknown" || token === "try_again" || token === "network") return LOAD_GENERIC;
+  return errorWords(err);
+}
+
+// ── Edits on an open card that have not reached the server ────────────────
+//
+// A card saves each field by itself. These helpers answer, from plain data,
+// "is anything this person typed still not on the server?" so the card can
+// never say Saved while something is unsent, can send ALL of it on Try again,
+// and can refuse to close quietly.
+
+const FIELD_ORDER = [
+  "name", "icp", "region_id", "owners", "contact", "channel", "source", "next_action", "due_on",
+  "brand_id", "place_pool_id", "followers", "agreement", "rate",
+];
+const FIELD_LABELS = {
+  name: "Name",
+  icp: "ICP",
+  region_id: "Region",
+  owners: "Owners",
+  contact: "Contact",
+  channel: "Channel",
+  source: "Source",
+  next_action: "Next action",
+  due_on: "Due",
+  brand_id: "Brand link",
+  place_pool_id: "Place link",
+  followers: "Followers",
+  agreement: "Agreement",
+  rate: "Rate",
+};
+/** Fields that are typed (they save when focus leaves them). */
+export const TEXT_FIELDS = ["name", "contact", "next_action", "rate", "followers"];
+
+export function fieldLabel(key, pipeline) {
+  if (key === "contact" && pipeline === "creators") return "Handle and reach";
+  return Object.hasOwn(FIELD_LABELS, key) ? FIELD_LABELS[key] : "A field";
+}
+
+/** What a typed value becomes before it is compared or sent. */
+export function normalizeTyped(key, raw) {
+  const typed = String(raw ?? "").trim();
+  return key === "name" ? typed.replace(/\s+/g, " ") : typed;
+}
+
+function savedText(record, key) {
+  const v = record ? record[key] : null;
+  return v === null || v === undefined ? "" : String(v);
+}
+
+/**
+ * Typed, not yet sent: text drafts that differ from what is saved and are not
+ * already listed as unsent. [{ key, value }]
+ */
+export function pendingTextEdits(drafts, record, unsent) {
+  const out = [];
+  for (const key of TEXT_FIELDS) {
+    if (!drafts || !Object.hasOwn(drafts, key)) continue;
+    if (unsent && Object.hasOwn(unsent, key)) continue;
+    const value = normalizeTyped(key, drafts[key]);
+    if (value !== savedText(record, key)) out.push({ key, value });
+  }
+  return out;
+}
+
+/** Every field whose last save failed, in the order the card shows them. */
+export function unsentEdits(unsent) {
+  const map = unsent && typeof unsent === "object" ? unsent : {};
+  return FIELD_ORDER.filter((key) => Object.hasOwn(map, key)).map((key) => ({
+    key,
+    value: map[key].value,
+    local: !!map[key].local,
+  }));
+}
+
+/**
+ * Everything that must be sent before the card may say Saved or close: EVERY
+ * failed field (not only the latest) plus anything typed and not yet sent.
+ */
+export function editsToSend(drafts, record, unsent) {
+  return [...unsentEdits(unsent), ...pendingTextEdits(drafts, record, unsent)];
+}
+
+/**
+ * The card's save line.
+ *   saving  -> "Saving..."
+ *   unsent  -> "Not saved: <fields>" + Try again   (keys = the fields)
+ *   pending -> typed, saves when focus leaves the field
+ *   saved   -> "Saved · time"   (ONLY when nothing is unsent or pending)
+ *   idle    -> "Changes save as you make them"
+ */
+export function saveLine({ saving = 0, drafts = {}, record = null, unsent = {}, savedAt = "" } = {}) {
+  if (saving > 0) return { kind: "saving", keys: [] };
+  const failed = unsentEdits(unsent);
+  if (failed.length > 0) return { kind: "unsent", keys: failed.map((e) => e.key) };
+  const pending = pendingTextEdits(drafts, record, unsent);
+  if (pending.length > 0) return { kind: "pending", keys: pending.map((e) => e.key) };
+  return { kind: savedAt ? "saved" : "idle", keys: [] };
+}
+
+/** True while closing the card would lose something. */
+export function hasUnsavedEdits(state) {
+  const kind = saveLine(state).kind;
+  return kind === "saving" || kind === "unsent" || kind === "pending";
+}
+
+/**
+ * The page keeps a card on screen while its edits are still unsent, even when
+ * the address no longer names it (Close, Escape, the Back button).
+ */
+export function shouldHoldCard(shownCard, urlCard, dirtyCard) {
+  return !!shownCard && shownCard !== urlCard && dirtyCard === shownCard;
+}
+
+// ── A card that moved while this person was looking at an old board ───────
+
+/** How often the board refreshes by itself while the page is visible. */
+export const BOARD_REFRESH_MS = 30_000;
+
+function lastMoveInto(activity, stageId) {
+  return (Array.isArray(activity) ? activity : []).find((a) => a.kind === "stage_move" && a.to_stage === stageId) || null;
+}
+
+/**
+ * Before a move is sent, compare the card on screen with the server's copy.
+ *   go      -> nothing changed, send the move
+ *   already -> someone made this same move first: confirm it, send nothing
+ *   moved   -> the card is somewhere else now: move nothing, say who and where
+ */
+export function freshnessVerdict(def, shown, fresh, toStageId, activity, now = Date.now()) {
+  if (!shown || !fresh || fresh.stage === shown.stage) return { kind: "go" };
+  const entry = lastMoveInto(activity, fresh.stage);
+  const who = entry ? (entry.actor_email ? activityActor(entry) : "") : "";
+  const when = entry ? relativeTime(entry.occurred_at, now) : "";
+  const here = stageLabel(def, fresh.stage);
+  const name = fresh.name || shown.name;
+  if (fresh.stage === toStageId) {
+    return {
+      kind: "already",
+      title: `${name} is already in ${here}`,
+      description: who
+        ? `${who} moved it there ${when}. Nothing else was changed.`
+        : entry
+          ? `It moved there by itself ${when}. Nothing else was changed.`
+          : "Someone else moved it there first. Nothing else was changed.",
+    };
+  }
+  const from = stageLabel(def, shown.stage);
+  const how = who
+    ? `${who} moved it from ${from} to ${here} ${when}.`
+    : entry
+      ? `It moved from ${from} to ${here} by itself ${when}.`
+      : `It is in ${here} now, not ${from}.`;
+  return {
+    kind: "moved",
+    title: `${name} is no longer in ${from}`,
+    description: `${how} Your move was not made. The board is up to date now: move the card again if you still want to.`,
+  };
 }
 
 // ── Activity log lines ─────────────────────────────────────────────────────

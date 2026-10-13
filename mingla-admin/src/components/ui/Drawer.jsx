@@ -15,6 +15,7 @@ const FOCUSABLE_SELECTOR =
  */
 export function Drawer({ open, onClose, title, header, footer, suspended = false, children }) {
   const panelRef = useRef(null);
+  const footerRef = useRef(null);
   const previousFocusRef = useRef(null);
   const titleId = useId();
 
@@ -37,6 +38,25 @@ export function Drawer({ open, onClose, title, header, footer, suspended = false
     };
   }, [open]);
 
+  // Lift the toast stack clear of this drawer's footer, so a toast never sits
+  // on the footer's buttons (Delete, Mark as lost) or takes their taps.
+  const hasFooter = !!footer;
+  useEffect(() => {
+    if (!open || !hasFooter) return undefined;
+    const root = document.documentElement;
+    const lift = () => {
+      const h = footerRef.current ? footerRef.current.offsetHeight : 0;
+      root.style.setProperty("--toast-lift", `${h}px`);
+    };
+    lift();
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(lift) : null;
+    if (observer && footerRef.current) observer.observe(footerRef.current);
+    return () => {
+      if (observer) observer.disconnect();
+      root.style.removeProperty("--toast-lift");
+    };
+  }, [open, hasFooter]);
+
   useEffect(() => {
     if (!open || suspended) return undefined;
     const previousOverflow = document.body.style.overflow;
@@ -58,12 +78,19 @@ export function Drawer({ open, onClose, title, header, footer, suspended = false
         return;
       }
       if (e.key !== "Tab") return;
-      const focusable = panel.querySelectorAll(FOCUSABLE_SELECTOR);
+      // Tab stays inside the drawer AND the toasts: a toast's Undo or Open is
+      // part of what the person can do right now, so it is reachable too.
+      const toasts = document.querySelector("[data-toast-region]");
+      const focusable = [
+        ...panel.querySelectorAll(FOCUSABLE_SELECTOR),
+        ...(toasts ? toasts.querySelectorAll(FOCUSABLE_SELECTOR) : []),
+      ];
       if (focusable.length === 0) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       const active = document.activeElement;
-      if (!panel.contains(active)) {
+      const inside = panel.contains(active) || (!!toasts && toasts.contains(active));
+      if (!inside) {
         e.preventDefault();
         first.focus();
       } else if (e.shiftKey && (active === first || active === panel)) {
@@ -131,7 +158,9 @@ export function Drawer({ open, onClose, title, header, footer, suspended = false
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-5">{children}</div>
         {footer && (
-          <div className="shrink-0 border-t border-[var(--gray-200)] px-4 py-3 sm:px-5">{footer}</div>
+          <div ref={footerRef} className="shrink-0 border-t border-[var(--gray-200)] px-4 py-3 sm:px-5">
+            {footer}
+          </div>
         )}
       </aside>
     </div>

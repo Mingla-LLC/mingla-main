@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { Drawer } from "../ui/Drawer";
 import { Button } from "../ui/Button";
@@ -11,20 +11,51 @@ import { LogForm } from "./LogForm";
 import { ActivityLog } from "./ActivityLog";
 import {
   MOVE_BLOCK_COPY,
+  TEXT_FIELDS,
   clockTime,
+  editsToSend,
   errorWords,
+  fieldLabel,
+  hasUnsavedEdits,
+  loadErrorWords,
   nextStage,
+  normalizeTyped,
+  saveLine,
   stageDef,
   stageNeedsSignedAgreement,
   terminalStage,
 } from "../../lib/crmModel";
+import { buildCrmHash } from "../../lib/crmUrl";
 import { getRecord } from "../../services/crmService";
+
+// What someone typed on a card that could not be sent before the card went
+// away (they left the page). Kept in memory only, by card id, so opening the
+// card again shows their text as "Not saved" with Try again. Never server data.
+const leftUnsent = new Map();
+
+const LEFT_BEHIND_WORDS = "This wasn't saved before the card closed.";
+
+function restoreLeftUnsent(recordId) {
+  const kept = leftUnsent.get(recordId);
+  if (!kept) return { drafts: {}, unsent: {} };
+  leftUnsent.delete(recordId);
+  const unsent = {};
+  for (const key of Object.keys(kept)) unsent[key] = { value: kept[key], message: LEFT_BEHIND_WORDS };
+  return { drafts: { ...kept }, unsent };
+}
 
 /**
  * Everything about one host or creator. Each field saves by itself when it
- * changes (selects, date, owners) or when focus leaves it (text); the header
- * shows "Saving…", then "Saved · time", or "Not saved" with "Try again". A
- * failed save keeps what was typed.
+ * changes (selects, date, owners) or when focus leaves it (text).
+ *
+ * The rule this component keeps: nothing a person typed is ever lost quietly.
+ *   - Every field whose save failed is remembered (not only the latest), the
+ *     header names them, and Try again sends ALL of them.
+ *   - The header never says Saved while anything is unsent or still typed.
+ *   - Closing sends what is unsent first; if that fails the card stays open
+ *     and says so, with Try again and "Close without saving".
+ *   - If the page itself goes away, the text is kept and a message offers the
+ *     card back.
  */
 export function RecordDrawer({
   pipeline,
@@ -38,6 +69,9 @@ export function RecordDrawer({
   focusField,
   activityTick,
   suspended,
+  holding = false,
+  guardRef,
+  onDirtyChange,
   onClose,
   onRequestMove,
   onDelete,
@@ -48,13 +82,16 @@ export function RecordDrawer({
   const fid = (key) => `${uid}-${key}`;
   const [detail, setDetail] = useState({ id: null, status: "loading", data: null, message: "" });
   const [reloadTick, setReloadTick] = useState(0);
-  const [drafts, setDrafts] = useState({});
+  const [edits, setEdits] = useState(() => restoreLeftUnsent(recordId));
+  const { drafts, unsent } = edits;
   const [savingCount, setSavingCount] = useState(0);
   const [savedAt, setSavedAt] = useState("");
-  const [failed, setFailed] = useState(null);
   const [nameNote, setNameNote] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [closeBlocked, setCloseBlocked] = useState(false);
+  const askDeleteRef = useRef(null);
+  const keepRef = useRef(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -62,7 +99,6 @@ export function RecordDrawer({
       mounted.current = false;
     };
   }, []);
-
   // The page gives each card its own `key`, so a different card starts clean.
 
   const { applyRecord } = pipe;
@@ -86,7 +122,7 @@ export function RecordDrawer({
         } else {
           // A refresh that failed keeps the card that is already on screen.
           setDetail((d) =>
-            d.id === recordId && d.status === "ready" ? d : { id: recordId, status: "error", data: null, message: errorWords(err) }
+            d.id === recordId && d.status === "ready" ? d : { id: recordId, status: "error", data: null, message: loadErrorWords(err) }
           );
         }
       }
@@ -100,6 +136,12 @@ export function RecordDrawer({
   const record = listRecord || current.data?.record || null;
   const locked = !online;
 
+  // The latest values, for code that runs later (a close, an unmount).
+  const live = useRef({ drafts, unsent, record, discarded: false });
+  useEffect(() => {
+    live.current = { ...live.current, drafts, unsent, record };
+  }, [drafts, unsent, record]);
+
   useEffect(() => {
     if (!focusField || !record) return undefined;
     const t = setTimeout(() => document.getElementById(`${uid}-${focusField}`)?.focus(), 60);
@@ -107,33 +149,61 @@ export function RecordDrawer({
   }, [focusField, record?.id, uid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const markMissing = useCallback(() => {
+    live.current.discarded = true;
+    setEdits({ drafts: {}, unsent: {} });
     setDetail({ id: recordId, status: "missing", data: null, message: "" });
     pipe.dropRecord(recordId);
   }, [recordId, pipe]);
 
+  /** Keep the text and say so, for an edit that failed after the card went away. */
+  const keepForLater = useCallback(
+    (entries, name) => {
+      if (entries.length === 0) return;
+      const kept = { ...(leftUnsent.get(recordId) || {}) };
+      for (const e of entries) kept[e.key] = e.value;
+      leftUnsent.set(recordId, kept);
+      const labels = Object.keys(kept).map((k) => fieldLabel(k, pipeline)).join(", ");
+      addToast({
+        variant: "error",
+        title: `Changes to ${name} weren't saved`,
+        description: `${labels}. What you typed is kept: open the card to send it again.`,
+        action: {
+          label: "Open the card",
+          onClick: () => {
+            window.location.hash = buildCrmHash(pipeline, { card: recordId });
+          },
+        },
+      });
+    },
+    [recordId, pipeline, addToast]
+  );
+
   /** Save one field. Returns true when the server took it. */
   const save = useCallback(
     async (key, value) => {
-      if (!record) return false;
-      setDrafts((d) => ({ ...d, [key]: value }));
-      setFailed((f) => (f?.key === key ? null : f));
+      const before = live.current.record;
+      if (!before) return false;
+      setEdits((e) => {
+        const nextUnsent = { ...e.unsent };
+        delete nextUnsent[key];
+        return { drafts: { ...e.drafts, [key]: value }, unsent: nextUnsent };
+      });
       setSavingCount((n) => n + 1);
-      const before = record;
       try {
         let res;
         if (key === "owners") {
-          res = await pipe.setOwners(record.id, value);
+          res = await pipe.setOwners(before.id, value);
         } else {
           let sent = value === "" ? null : value;
           if (key === "followers" && sent !== null) sent = Number(sent);
-          res = await pipe.update(record.id, { [key]: sent });
+          res = await pipe.update(before.id, { [key]: sent });
         }
         if (!mounted.current) return true;
-        setDrafts((d) => {
-          if (d[key] !== value) return d;
-          const next = { ...d };
-          delete next[key];
-          return next;
+        setEdits((e) => {
+          if (e.drafts[key] !== value) return e;
+          const nextDrafts = { ...e.drafts };
+          delete nextDrafts[key];
+          return { drafts: nextDrafts, unsent: e.unsent };
         });
         setSavedAt(clockTime());
         if (key === "brand_id" || key === "place_pool_id") {
@@ -152,18 +222,126 @@ export function RecordDrawer({
         }
         return true;
       } catch (err) {
-        if (!mounted.current) return false;
+        if (!mounted.current) {
+          // The card is gone from the screen: never drop this quietly.
+          if (err?.token !== "not_found") keepForLater([{ key, value }], before.name);
+          return false;
+        }
         if (err?.token === "not_found") {
           markMissing();
           return false;
         }
-        setFailed({ key, value, message: errorWords(err), existingId: err?.token === "duplicate_name" ? err.detail : "" });
+        setEdits((e) => ({
+          drafts: e.drafts,
+          unsent: {
+            ...e.unsent,
+            [key]: { value, message: errorWords(err), existingId: err?.token === "duplicate_name" ? err.detail : "" },
+          },
+        }));
         return false;
       } finally {
         if (mounted.current) setSavingCount((n) => Math.max(0, n - 1));
       }
     },
-    [record, pipe, addToast, markMissing]
+    [pipe, addToast, markMissing, keepForLater]
+  );
+
+  const dropDraft = (key) =>
+    setEdits((e) => {
+      if (!Object.hasOwn(e.drafts, key) && !Object.hasOwn(e.unsent, key)) return e;
+      const nextDrafts = { ...e.drafts };
+      const nextUnsent = { ...e.unsent };
+      delete nextDrafts[key];
+      delete nextUnsent[key];
+      return { drafts: nextDrafts, unsent: nextUnsent };
+    });
+
+  /** Check a typed value and send it. Returns true when nothing is left unsent for this field. */
+  const commitValue = useCallback(
+    async (key, typed) => {
+      const rec = live.current.record;
+      if (!rec) return false;
+      const was = rec[key] === null || rec[key] === undefined ? "" : String(rec[key]);
+      if (key === "name" && typed === "") {
+        dropDraft("name");
+        setNameNote("A name can't be empty, so the old one was kept.");
+        return true;
+      }
+      if (key === "followers" && typed !== "" && !/^\d{1,9}$/.test(typed)) {
+        setEdits((e) => ({
+          drafts: { ...e.drafts, [key]: typed },
+          unsent: { ...e.unsent, [key]: { value: typed, message: "Followers must be a whole number, 0 or more.", local: true } },
+        }));
+        return false;
+      }
+      if (typed === was) {
+        dropDraft(key);
+        return true;
+      }
+      return save(key, typed);
+    },
+    [save]
+  );
+
+  const commitText = (key) => {
+    if (!Object.hasOwn(drafts, key)) return;
+    commitValue(key, normalizeTyped(key, drafts[key]));
+  };
+
+  /**
+   * Send EVERYTHING that has not reached the server: every field whose save
+   * failed and anything typed and not yet sent. True when nothing is left.
+   */
+  const sendAll = useCallback(async () => {
+    const { drafts: d, unsent: u, record: rec } = live.current;
+    let ok = true;
+    for (const edit of editsToSend(d, rec, u)) {
+      // Typed fields are checked again (a blank name, a non-number); the
+      // rest are sent as they are.
+      const sent = TEXT_FIELDS.includes(edit.key)
+        ? await commitValue(edit.key, normalizeTyped(edit.key, edit.value))
+        : await save(edit.key, edit.value);
+      if (!sent) ok = false;
+    }
+    return ok;
+  }, [save, commitValue]);
+
+  const dirty = hasUnsavedEdits({ saving: savingCount, drafts, record, unsent });
+  useEffect(() => {
+    onDirtyChange?.(recordId, dirty);
+  }, [recordId, dirty, onDirtyChange]);
+
+  // What the page can ask of this card before it lets it go.
+  useImperativeHandle(
+    guardRef,
+    () => ({
+      id: recordId,
+      /** Send what is unsent. False (and the card says why) when something still is. */
+      flush: async () => {
+        const ok = await sendAll();
+        if (mounted.current) setCloseBlocked(!ok);
+        return ok;
+      },
+      discard: () => {
+        live.current.discarded = true;
+        leftUnsent.delete(recordId);
+        if (mounted.current) setEdits({ drafts: {}, unsent: {} });
+      },
+    }),
+    [recordId, sendAll]
+  );
+
+  // The card is leaving the screen with something unsent (the person went to
+  // another page): keep the text and say so.
+  useEffect(
+    () => () => {
+      const { drafts: d, unsent: u, record: rec, discarded } = live.current;
+      onDirtyChange?.(recordId, false);
+      if (discarded || !rec) return;
+      const left = editsToSend(d, rec, u);
+      if (left.length > 0) keepForLater(left, rec.name);
+    },
+    [] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const val = (key) => {
@@ -172,37 +350,13 @@ export function RecordDrawer({
     return v === null || v === undefined ? "" : String(v);
   };
   const setDraft = (key, value) => {
-    setDrafts((d) => ({ ...d, [key]: value }));
-    if (failed?.key === key) setFailed(null);
-    if (key === "name") setNameNote("");
-  };
-  const clearDraft = (key) =>
-    setDrafts((d) => {
-      if (!Object.hasOwn(d, key)) return d;
-      const next = { ...d };
-      delete next[key];
-      return next;
+    setEdits((e) => {
+      const nextUnsent = { ...e.unsent };
+      // Typing again in a field that failed: it is "typed, not sent" again.
+      delete nextUnsent[key];
+      return { drafts: { ...e.drafts, [key]: value }, unsent: nextUnsent };
     });
-
-  const commitText = (key) => {
-    if (!Object.hasOwn(drafts, key) || !record) return;
-    let typed = String(drafts[key]).trim();
-    if (key === "name") typed = typed.replace(/\s+/g, " ");
-    const was = record[key] === null || record[key] === undefined ? "" : String(record[key]);
-    if (key === "name" && typed === "") {
-      clearDraft("name");
-      setNameNote("A name can't be empty, so the old one was kept.");
-      return;
-    }
-    if (key === "followers" && typed !== "" && !/^\d{1,9}$/.test(typed)) {
-      setFailed({ key, value: typed, message: "Followers must be a whole number, 0 or more.", local: true });
-      return;
-    }
-    if (typed === was) {
-      clearDraft(key);
-      return;
-    }
-    save(key, typed);
+    if (key === "name") setNameNote("");
   };
 
   const textProps = (key) => ({
@@ -222,7 +376,7 @@ export function RecordDrawer({
     disabled: locked,
     onChange: (e) => save(key, e.target.value),
   });
-  const fieldError = (key) => (failed?.key === key ? failed.message : "");
+  const fieldError = (key) => (Object.hasOwn(unsent, key) ? unsent[key].message : "");
 
   const submitLog = async (entry, requestKey) => {
     try {
@@ -233,7 +387,6 @@ export function RecordDrawer({
             ? { ...d, data: { ...d.data, activity: [res.activity, ...(d.data.activity || []).filter((a) => a.id !== res.activity.id)] } }
             : d
         );
-        setSavedAt(clockTime());
         addToast({ variant: "success", title: "Added to the log" });
       }
       return { ok: true };
@@ -243,6 +396,19 @@ export function RecordDrawer({
     }
   };
 
+  // Keyboard: focus goes INTO the delete question, and back to the button that
+  // asked when the answer is Keep.
+  const askedRef = useRef(false);
+  useEffect(() => {
+    if (confirmDelete) {
+      askedRef.current = true;
+      keepRef.current?.focus();
+    } else if (askedRef.current) {
+      askedRef.current = false;
+      askDeleteRef.current?.focus();
+    }
+  }, [confirmDelete]);
+
   const doDelete = async () => {
     setDeleting(true);
     const ok = await onDelete(record);
@@ -250,6 +416,15 @@ export function RecordDrawer({
       setDeleting(false);
       if (!ok) setConfirmDelete(false);
     }
+  };
+
+  const closeWithoutSaving = () => {
+    live.current.discarded = true;
+    leftUnsent.delete(recordId);
+    setEdits({ drafts: {}, unsent: {} });
+    setCloseBlocked(false);
+    onDirtyChange?.(recordId, false);
+    onClose();
   };
 
   const plural = def.label;
@@ -330,7 +505,10 @@ export function RecordDrawer({
   else if (isHosts) stageHelp = "Live sets itself when the linked brand has a public listing.";
   else if (record.agreement !== "signed" && !here?.terminal) stageHelp = "Booked and Posted need the agreement marked as signed.";
 
-  const saving = savingCount > 0;
+  const line = saveLine({ saving: savingCount, drafts, record, unsent, savedAt });
+  const names = line.keys.map((k) => fieldLabel(k, pipeline)).join(", ");
+  const canRetry = line.kind === "unsent" && line.keys.some((k) => !unsent[k]?.local);
+  const duplicate = Object.values(unsent).find((u) => u.existingId) || null;
   const header = (
     <div className="min-w-0">
       <input
@@ -348,36 +526,60 @@ export function RecordDrawer({
         className="h-10 w-full rounded-lg border border-transparent bg-transparent px-2 text-lg font-semibold text-[var(--color-text-primary)] outline-none transition-colors duration-150 hover:border-[var(--gray-300)] focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] disabled:cursor-not-allowed disabled:opacity-70"
       />
       <div className="mt-1 flex min-h-8 flex-wrap items-center gap-2 px-2 text-xs" aria-live="polite">
-        {saving ? (
-          <span className="text-[var(--color-text-tertiary)]">Saving…</span>
-        ) : failed ? (
+        {line.kind === "saving" ? (
+          <span className="text-[var(--color-text-tertiary)]">{holding ? "Saving before closing…" : "Saving…"}</span>
+        ) : line.kind === "unsent" ? (
           <>
-            <span className="font-semibold text-[var(--color-error-700)]">Not saved</span>
-            {!failed.local && (
-              <Button variant="secondary" size="sm" disabled={locked} onClick={() => save(failed.key, failed.value)}>
+            <span className="font-semibold text-[var(--color-error-700)]">Not saved: {names}</span>
+            {canRetry && (
+              <Button variant="secondary" size="sm" className="max-sm:h-10" disabled={locked} onClick={sendAll}>
                 Try again
               </Button>
             )}
           </>
-        ) : savedAt ? (
+        ) : line.kind === "pending" ? (
+          <span className="text-[var(--color-text-tertiary)]">
+            {names} not saved yet. It saves when you leave the field.
+          </span>
+        ) : line.kind === "saved" ? (
           <span className="text-[var(--color-success-700)]">Saved · {savedAt}</span>
         ) : (
           <span className="text-[var(--color-text-tertiary)]">Changes save as you make them</span>
         )}
       </div>
-      {failed && !saving && (
+      {line.kind === "unsent" && (
         <p role="alert" className="px-2 text-xs text-[var(--color-error-700)]">
-          {failed.message}{" "}
-          {failed.existingId && (
+          {line.keys.length === 1 ? unsent[line.keys[0]].message : "What you typed is still here. Try again sends all of it."}{" "}
+          {duplicate && (
             <button
               type="button"
               className="cursor-pointer font-semibold underline"
-              onClick={() => onOpenCard(failed.existingId)}
+              onClick={() => onOpenCard(duplicate.existingId)}
             >
               Open it
             </button>
           )}
         </p>
+      )}
+      {closeBlocked && line.kind !== "saved" && line.kind !== "idle" && line.kind !== "saving" && (
+        <div
+          role="alert"
+          className="mx-2 mt-2 flex flex-col gap-2 rounded-lg bg-[var(--color-warning-50)] px-3 py-2 text-xs text-[var(--color-warning-700)]"
+        >
+          <span>
+            The card stayed open because {names} {line.keys.length === 1 ? "isn't" : "aren't"} saved. What you typed is still here.
+          </span>
+          <span className="flex flex-wrap gap-2">
+            {canRetry && (
+              <Button variant="secondary" size="sm" className="max-sm:h-10" disabled={locked} onClick={sendAll}>
+                Try again
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="max-sm:h-10" onClick={closeWithoutSaving}>
+              Close without saving
+            </Button>
+          </span>
+        </div>
       )}
       {nameNote && <p className="px-2 text-xs text-[var(--color-text-tertiary)]">{nameNote}</p>}
     </div>
@@ -390,12 +592,12 @@ export function RecordDrawer({
         <Button variant="danger" size="sm" className="max-sm:h-10" loading={deleting} disabled={locked} onClick={doDelete}>
           Delete
         </Button>
-        <Button variant="ghost" size="sm" className="max-sm:h-10" disabled={deleting} onClick={() => setConfirmDelete(false)}>
+        <Button ref={keepRef} variant="ghost" size="sm" className="max-sm:h-10" disabled={deleting} onClick={() => setConfirmDelete(false)}>
           Keep
         </Button>
       </div>
     ) : (
-      <Button variant="ghost" size="sm" className="max-sm:h-10" disabled={locked || pending} onClick={() => setConfirmDelete(true)}>
+      <Button ref={askDeleteRef} variant="ghost" size="sm" className="max-sm:h-10" disabled={locked || pending} onClick={() => setConfirmDelete(true)}>
         Delete
       </Button>
     )
@@ -505,7 +707,7 @@ export function RecordDrawer({
               record={record}
               links={current.data?.links}
               disabled={locked}
-              saving={saving}
+              saving={savingCount > 0}
               onSave={(changes) => {
                 const [key] = Object.keys(changes);
                 return save(key, changes[key] === null ? "" : changes[key]);

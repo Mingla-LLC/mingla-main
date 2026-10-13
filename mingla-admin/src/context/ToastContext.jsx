@@ -9,6 +9,9 @@ const AUTO_DISMISS_MS = {
   error: null, // manual only
 };
 
+// How long a toast stays after the pointer or keyboard focus leaves it.
+const RELEASE_MS = 4000;
+
 let toastIdCounter = 0;
 
 export function ToastProvider({ children }) {
@@ -65,8 +68,27 @@ export function ToastProvider({ children }) {
     [removeToast]
   );
 
+  // A toast someone is pointing at, or has moved keyboard focus into, does not
+  // disappear under them (#3802): holdToast stops its clock, releaseToast
+  // gives it a few more seconds. A toast with no clock (errors) is unaffected.
+  const holdToast = useCallback((id) => {
+    if (timersRef.current[id]) {
+      clearTimeout(timersRef.current[id]);
+      timersRef.current[id] = "held";
+    }
+  }, []);
+
+  const releaseToast = useCallback(
+    (id) => {
+      if (timersRef.current[id] === "held") {
+        timersRef.current[id] = setTimeout(() => removeToast(id), RELEASE_MS);
+      }
+    },
+    [removeToast]
+  );
+
   return (
-    <ToastContext.Provider value={{ toasts, addToast, removeToast }}>
+    <ToastContext.Provider value={{ toasts, addToast, removeToast, holdToast, releaseToast }}>
       {children}
     </ToastContext.Provider>
   );

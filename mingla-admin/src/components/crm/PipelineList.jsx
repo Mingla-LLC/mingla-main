@@ -26,7 +26,7 @@ export function PipelineList({ def, records, regions, team, today, loading = fal
             data-open-record={row.id}
             onClick={() => onOpen(row)}
             title={row.name}
-            className="max-w-full cursor-pointer truncate rounded text-left font-semibold text-[var(--color-text-primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+            className="flex min-h-11 w-full max-w-full cursor-pointer items-center truncate rounded text-left font-semibold text-[var(--color-text-primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
           >
             {row.name}
           </button>

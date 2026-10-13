@@ -1,15 +1,21 @@
 import { Menu, Moon, Sun } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { Breadcrumbs } from "../ui/Breadcrumbs";
+import { useAuth } from "../../context/AuthContext";
+import { pageTitle } from "../../lib/access";
 
 export function Header({ title, onMobileMenuOpen, onNavigate, homeId }) {
   const { theme, toggleTheme } = useTheme();
+  const { access } = useAuth();
 
-  const breadcrumbItems = [
-    // Issue #3802 — the root goes to this person's own home page.
-    { label: "Admin", onClick: () => { if (homeId) onNavigate?.(homeId); } },
-    { label: title },
-  ];
+  // Issue #3802 — the root goes to this person's own home page and is named
+  // after it: "Admin" for owner and admin (their home is the dashboard), the
+  // role's own home ("My day", "Company view") for everyone else.
+  const rootLabel = homeId === "home" ? pageTitle("home", access, []) : "Admin";
+  const breadcrumbItems =
+    title === rootLabel
+      ? [{ label: title }]
+      : [{ label: rootLabel, onClick: () => { if (homeId) onNavigate?.(homeId); } }, { label: title }];
 
   return (
     <header

@@ -13,7 +13,7 @@ const COPY = {
  * requires one). Cancel changes nothing. The caller gives each ask its own
  * `key`, so the box always starts empty.
  */
-export function ReasonPrompt({ open, stageId, recordName, busy = false, onConfirm, onCancel }) {
+export function ReasonPrompt({ open, stageId, recordName, busy = false, error = "", onConfirm, onCancel }) {
   const [reason, setReason] = useState("");
   const inputRef = useRef(null);
   const id = useId();
@@ -50,16 +50,23 @@ export function ReasonPrompt({ open, stageId, recordName, busy = false, onConfir
             placeholder="One line, so the next person knows"
             className={CONTROL_CLASS}
           />
-          <p className="mt-2 text-xs text-[var(--color-text-tertiary)]">
-            The card moves only after you add a reason. Cancel leaves it where it is.
-          </p>
+          {error ? (
+            // The move failed: the box stays open with what was typed.
+            <p role="alert" className="mt-2 text-sm text-[var(--color-error-700)]">
+              The card didn&apos;t move. {error} Your reason is still here.
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-[var(--color-text-tertiary)]">
+              The card moves only after you add a reason. Cancel leaves it where it is.
+            </p>
+          )}
         </ModalBody>
         <ModalFooter>
           <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
           <Button type="submit" variant="primary" loading={busy} disabled={!trimmed}>
-            {copy.confirm}
+            {error ? "Try again" : copy.confirm}
           </Button>
         </ModalFooter>
       </form>

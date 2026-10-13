@@ -6,6 +6,9 @@
 // browser. Writes are optimistic where the result is predictable (a stage
 // move) and always end with the server's own copy of the record.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import { crmKeys } from "./useCrmConfig";
+import { BOARD_REFRESH_MS } from "../lib/crmModel";
 import * as crm from "../services/crmService";
 
 /** Follows the browser's own online/offline signal. */
@@ -26,9 +29,16 @@ export function useOnline() {
   return online;
 }
 
-export function useCrmPipeline(pipeline, { enabled = true } = {}) {
+/**
+ * `paused` stops the quiet timer (not the load): the page passes true while a
+ * card field is being edited, so a refresh never lands under someone's typing.
+ */
+export function useCrmPipeline(pipeline, { enabled = true, paused = false } = {}) {
+  const { access } = useAuth();
+  // The list belongs to this person and this pipeline.
+  const key = crmKeys.records(access?.email, pipeline);
   const [state, setState] = useState({
-    pipeline,
+    key,
     records: [],
     truncated: false,
     loaded: false,
@@ -56,14 +66,14 @@ export function useCrmPipeline(pipeline, { enabled = true } = {}) {
   const refetch = useCallback(
     async ({ quiet = false } = {}) => {
       const seq = ++loadSeq.current;
-      if (!quiet) setState((s) => ({ ...s, pipeline, loaded: false, error: null }));
+      if (!quiet) setState((s) => ({ ...s, key, loaded: false, error: null }));
       try {
         const data = await crm.listRecords(pipeline);
         if (!mounted.current || seq !== loadSeq.current) return;
         // A background refresh never overwrites a card that is mid-save.
         if (quiet && pendingRef.current.size > 0) return;
         setState({
-          pipeline,
+          key,
           records: Array.isArray(data?.records) ? data.records : [],
           truncated: !!data?.truncated,
           loaded: true,
@@ -73,10 +83,10 @@ export function useCrmPipeline(pipeline, { enabled = true } = {}) {
         if (!mounted.current || seq !== loadSeq.current) return;
         // A failed background refresh keeps what is on screen.
         if (quiet) return;
-        setState({ pipeline, records: [], truncated: false, loaded: true, error });
+        setState({ key, records: [], truncated: false, loaded: true, error });
       }
     },
-    [pipeline]
+    [pipeline, key]
   );
 
   useEffect(() => {
@@ -95,6 +105,30 @@ export function useCrmPipeline(pipeline, { enabled = true } = {}) {
       window.removeEventListener("online", onOnline);
     };
   }, [enabled, refetch]);
+
+  // A quiet refresh on a timer, so a board left open does not go stale. Only
+  // while the page is visible, the browser is online and nobody is typing.
+  const pausedRef = useRef(paused);
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const timer = setInterval(() => {
+      if (pausedRef.current) return;
+      if (document.visibilityState !== "visible") return;
+      if (navigator.onLine === false) return;
+      refetch({ quiet: true });
+    }, BOARD_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [enabled, refetch]);
+
+  /**
+   * The server's copy of one card, right now: { record, activity, ... }. Used
+   * before a move, so a card someone else already moved is never moved again
+   * from where it USED to be.
+   */
+  const checkFresh = useCallback((id) => crm.getRecord(id), []);
 
   /** Put the server's copy of one record into the list (or add it). */
   const applyRecord = useCallback(
@@ -199,7 +233,7 @@ export function useCrmPipeline(pipeline, { enabled = true } = {}) {
     [applyRecord]
   );
 
-  const current = state.pipeline === pipeline;
+  const current = state.key === key;
   return {
     records: current ? state.records : [],
     truncated: current && state.truncated,
@@ -207,6 +241,8 @@ export function useCrmPipeline(pipeline, { enabled = true } = {}) {
     error: current ? state.error : null,
     pendingIds,
     refetch,
+    checkFresh,
+    setBusy: setPending,
     applyRecord,
     dropRecord,
     moveStage,

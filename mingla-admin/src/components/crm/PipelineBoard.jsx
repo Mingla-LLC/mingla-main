@@ -1,11 +1,17 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Skeleton } from "../ui/Skeleton";
 import { RecordCard } from "./RecordCard";
-import { groupByStage } from "../../lib/crmModel";
+import { groupByStage, moveBlocker } from "../../lib/crmModel";
 
+// A column never grows past the screen: its cards scroll inside it, so a
+// column of 200 cards is as tall as a column of 5.
 const COLUMN_CLASS =
-  "flex min-h-[180px] flex-col gap-2 rounded-[var(--radius-md)] bg-[var(--gray-100)] p-2.5";
+  "flex min-h-[180px] max-h-[min(72vh,760px)] flex-col gap-2 rounded-[var(--radius-md)] bg-[var(--gray-100)] p-2.5";
 const BOARD_CLASS = "grid grid-flow-col auto-cols-[minmax(200px,1fr)] gap-3";
+// While a card is dragged within this many pixels of the board's left or right
+// edge, the board scrolls that way so an off-screen column can be reached.
+const EDGE_PX = 72;
+const EDGE_SPEED = 14;
 
 /** Seven columns of two placeholder cards while the pipeline loads. */
 export function PipelineBoardSkeleton() {
@@ -46,6 +52,33 @@ export function PipelineBoard({
   const [dragId, setDragId] = useState(null);
   const [overStage, setOverStage] = useState(null);
   const groups = groupByStage(def, records);
+  const dragged = dragId ? records.find((r) => r.id === dragId) || null : null;
+
+  // Sideways auto-scroll while dragging near an edge.
+  const scrollerRef = useRef(null);
+  const speedRef = useRef(0);
+  const frameRef = useRef(0);
+  const stopScrolling = () => {
+    speedRef.current = 0;
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    frameRef.current = 0;
+  };
+  const stepScroll = () => {
+    const el = scrollerRef.current;
+    if (el && speedRef.current !== 0) el.scrollLeft += speedRef.current;
+    frameRef.current = speedRef.current !== 0 ? requestAnimationFrame(stepScroll) : 0;
+  };
+  const steerScroll = (e) => {
+    const el = scrollerRef.current;
+    if (!el || dragId === null) return;
+    const box = el.getBoundingClientRect();
+    let speed = 0;
+    if (e.clientX < box.left + EDGE_PX) speed = -EDGE_SPEED;
+    else if (e.clientX > box.right - EDGE_PX) speed = EDGE_SPEED;
+    speedRef.current = speed;
+    if (speed !== 0 && !frameRef.current) frameRef.current = requestAnimationFrame(stepScroll);
+  };
+  useEffect(() => stopScrolling, []);
 
   const handleDragStart = (e, record) => {
     setDragId(record.id);
@@ -57,6 +90,7 @@ export function PipelineBoard({
     }
   };
   const endDrag = () => {
+    stopScrolling();
     setDragId(null);
     setOverStage(null);
   };
@@ -67,18 +101,32 @@ export function PipelineBoard({
     const record = records.find((r) => r.id === id);
     if (record && record.stage !== stageId) onMove(record, stageId);
   };
+  // A column that will never take this card (Live sets itself; a Live host
+  // only leaves for Lost) must not LOOK like a place to drop it.
+  const refusal = (stageId) => {
+    if (!dragged || dragged.stage === stageId) return null;
+    const block = moveBlocker(def, dragged, stageId);
+    return block && (block.token === "stage_sets_itself" || block.token === "stage_is_live") ? block : null;
+  };
 
   return (
     <div
       role="region"
       aria-label={`${def.label} board`}
       tabIndex={0}
+      ref={scrollerRef}
+      onDragOver={canDrag && !disabled ? steerScroll : undefined}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) stopScrolling();
+      }}
       className="max-w-full overflow-x-auto rounded-[var(--radius-md)] pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
     >
       <div className={BOARD_CLASS}>
         {def.stages.map((stage) => {
           const cards = groups[stage.id] || [];
-          const isOver = overStage === stage.id && dragId !== null;
+          const over = overStage === stage.id && dragId !== null;
+          const refused = over ? refusal(stage.id) : null;
+          const isOver = over && !refused;
           return (
             <section
               key={stage.id}
@@ -87,9 +135,15 @@ export function PipelineBoard({
               onDragOver={
                 canDrag && !disabled
                   ? (e) => {
+                      if (overStage !== stage.id) setOverStage(stage.id);
+                      // Not calling preventDefault is what tells the browser
+                      // "no drop here": the pointer shows the not-allowed sign.
+                      if (refusal(stage.id)) {
+                        e.dataTransfer.dropEffect = "none";
+                        return;
+                      }
                       e.preventDefault();
                       e.dataTransfer.dropEffect = "move";
-                      if (overStage !== stage.id) setOverStage(stage.id);
                     }
                   : undefined
               }
@@ -100,6 +154,7 @@ export function PipelineBoard({
               className={[
                 COLUMN_CLASS,
                 isOver ? "outline outline-2 -outline-offset-2 outline-[var(--color-brand-500)]" : "",
+                refused ? "cursor-not-allowed opacity-70 outline-dashed outline-1 -outline-offset-1 outline-[var(--gray-400)]" : "",
               ].join(" ")}
             >
               <div className="flex items-center justify-between gap-2 px-0.5">
@@ -114,12 +169,18 @@ export function PipelineBoard({
                 <span className="text-xs tabular-nums text-[var(--color-text-tertiary)]">{cards.length}</span>
               </div>
               <p className="px-0.5 text-xs text-[var(--color-text-tertiary)]">{stage.hint}</p>
+              {refused && (
+                <p role="status" className="rounded-[var(--radius-sm)] bg-[var(--color-background-primary)] px-2 py-1.5 text-xs text-[var(--color-text-secondary)]">
+                  Can&apos;t drop here. {refused.message}
+                </p>
+              )}
               {cards.length === 0 ? (
                 <p className="rounded-[var(--radius-sm)] border border-dashed border-[var(--gray-300)] px-2 py-4 text-center text-xs text-[var(--color-text-tertiary)]">
                   {stage.auto ? "Fills in by itself" : canDrag ? "Drop a card here" : "Nothing here yet"}
                 </p>
               ) : (
-                cards.map((record) => (
+                <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 py-0.5">
+                  {cards.map((record) => (
                   <RecordCard
                     key={record.id}
                     record={record}
@@ -135,7 +196,8 @@ export function PipelineBoard({
                     onDragStart={handleDragStart}
                     onDragEnd={endDrag}
                   />
-                ))
+                  ))}
+                </div>
               )}
             </section>
           );
