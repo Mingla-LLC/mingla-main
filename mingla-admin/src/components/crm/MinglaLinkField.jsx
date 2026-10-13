@@ -87,7 +87,7 @@ export function MinglaLinkField({ record, links, disabled = false, saving = fals
             <Button
               variant="ghost"
               size="sm"
-              className="max-sm:h-10"
+              className="max-sm:h-11"
               disabled={disabled || saving}
               onClick={() => onSave({ place_pool_id: null })}
             >
@@ -110,7 +110,7 @@ export function MinglaLinkField({ record, links, disabled = false, saving = fals
             <Button
               variant="ghost"
               size="sm"
-              className="max-sm:h-10"
+              className="max-sm:h-11"
               disabled={disabled || saving}
               onClick={() => onSave({ brand_id: null })}
             >
@@ -141,7 +141,7 @@ export function MinglaLinkField({ record, links, disabled = false, saving = fals
             <Button
               variant="secondary"
               size="sm"
-              className="max-sm:h-10"
+              className="max-sm:h-11"
               disabled={disabled || saving}
               onClick={() => setOpen(true)}
             >
@@ -152,7 +152,7 @@ export function MinglaLinkField({ record, links, disabled = false, saving = fals
           <div className="flex flex-col gap-2 border-t border-[var(--gray-200)] pt-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Segmented label="Search for" options={KINDS} value={kind} onChange={setKind} disabled={saving} />
-              <Button variant="ghost" size="sm" className="max-sm:h-10" onClick={() => setOpen(false)}>
+              <Button variant="ghost" size="sm" className="max-sm:h-11" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
             </div>
@@ -179,7 +179,7 @@ export function MinglaLinkField({ record, links, disabled = false, saving = fals
               {search.state === "error" && (
                 <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-error-700)]">
                   <span>{search.error}</span>
-                  <Button variant="secondary" size="sm" className="max-sm:h-10" onClick={() => setAttempt((n) => n + 1)}>
+                  <Button variant="secondary" size="sm" className="max-sm:h-11" onClick={() => setAttempt((n) => n + 1)}>
                     Try again
                   </Button>
                 </div>

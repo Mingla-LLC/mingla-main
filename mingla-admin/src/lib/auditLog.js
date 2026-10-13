@@ -83,6 +83,9 @@ export const ACTION_LABELS = {
   "crm.record_delete": "Deleted a host or creator",
   "crm.record_restore": "Restored a host or creator",
   "crm.bulk_create": "Added records in bulk",
-  "crm.target_set": "Set a target",
+  "crm.target_set": "Set a monthly target",
+  "crm.target_remove": "Removed a monthly target",
   "crm.beta_lead_add": "Added a beta lead to Hosts",
+  "crm.beta_lead_convert": "Added a beta lead to Hosts",
+  "crm.beta_lead_link": "Linked a beta lead to a host",
 };

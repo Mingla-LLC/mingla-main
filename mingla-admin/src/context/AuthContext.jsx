@@ -344,6 +344,11 @@ export function AuthProvider({ children }) {
     }
 
     if (!data || data.state !== "ok") {
+      // An address that cannot take team access: the function names the
+      // invited address, so the screen can say which one needs a new invite.
+      if (data?.state === "account_conflict" && typeof data.email === "string") {
+        return { state: "account_conflict", email: data.email };
+      }
       return { state: typeof data?.state === "string" ? data.state : "invalid" };
     }
 

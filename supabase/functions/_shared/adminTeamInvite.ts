@@ -71,34 +71,31 @@ export interface InviteAccount {
   identities?: InviteAccountIdentity[] | null;
 }
 
-function normaliseEmail(v: unknown): string | null {
-  return typeof v === "string" ? v.trim().toLowerCase() : null;
-}
-
 /**
  * May team access be attached to this existing account?
  *
- * "conflict" when the account signs in some way other than this email
- * address: it has a phone number, a phone identity, or a social identity
- * under a different (or unknown) email. The person is then asked for a
+ * ONE strict rule (issue #3802): "conflict" when the account can sign in any
+ * way other than email. That is a phone number on the account, a phone
+ * identity, or any social identity (Google, Apple, ...) whether it is under
+ * the invited address or another one. Only an account whose every identity is
+ * the email one may be given team access; the person is otherwise asked for a
  * different address.
+ *
+ * The rule is DEFINED in the database (admin_team_invite_address_verdict),
+ * which decides when an invitation is sent and is asked again when one is
+ * opened. This function applies the same rule to the account the sign-in
+ * service returned, as a second check that needs no extra trust.
  */
 export function accountVerdict(
   user: InviteAccount | null | undefined,
-  email: string,
+  _email: string,
 ): "ok" | "conflict" {
   if (!user) return "conflict";
-  const wanted = normaliseEmail(email);
   if (typeof user.phone === "string" && user.phone.trim().length > 0) {
     return "conflict";
   }
   for (const identity of user.identities ?? []) {
-    if (identity.provider === "phone") return "conflict";
-    if (identity.provider !== "email") {
-      if (normaliseEmail(identity.identity_data?.email) !== wanted) {
-        return "conflict";
-      }
-    }
+    if (identity.provider !== "email") return "conflict";
   }
   return "ok";
 }

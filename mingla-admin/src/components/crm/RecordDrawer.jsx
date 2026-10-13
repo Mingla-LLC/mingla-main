@@ -35,6 +35,11 @@ const leftUnsent = new Map();
 
 const LEFT_BEHIND_WORDS = "This wasn't saved before the card closed.";
 
+/** The same value, for a field that holds text or a list (owners). */
+function sameValue(a, b) {
+  return Array.isArray(a) || Array.isArray(b) ? JSON.stringify(a) === JSON.stringify(b) : a === b;
+}
+
 function restoreLeftUnsent(recordId) {
   const kept = leftUnsent.get(recordId);
   if (!kept) return { drafts: {}, unsent: {} };
@@ -178,8 +183,13 @@ export function RecordDrawer({
     [recordId, pipeline, addToast]
   );
 
-  /** Save one field. Returns true when the server took it. */
-  const save = useCallback(
+  // Saves that are on their way to the server, by field: key -> { value,
+  // promise }. Closing a card while a field is still saving must wait for that
+  // answer, not send the same value a second time.
+  const inFlight = useRef(new Map());
+
+  /** Send one field to the server. Returns true when the server took it. */
+  const sendField = useCallback(
     async (key, value) => {
       const before = live.current.record;
       if (!before) return false;
@@ -246,6 +256,20 @@ export function RecordDrawer({
     [pipe, addToast, markMissing, keepForLater]
   );
 
+  /** Save one field. Returns true when the server took it. */
+  const save = useCallback(
+    (key, value) => {
+      const promise = sendField(key, value);
+      const entry = { value, promise };
+      inFlight.current.set(key, entry);
+      promise.finally(() => {
+        if (inFlight.current.get(key) === entry) inFlight.current.delete(key);
+      });
+      return promise;
+    },
+    [sendField]
+  );
+
   const dropDraft = (key) =>
     setEdits((e) => {
       if (!Object.hasOwn(e.drafts, key) && !Object.hasOwn(e.unsent, key)) return e;
@@ -296,11 +320,21 @@ export function RecordDrawer({
     const { drafts: d, unsent: u, record: rec } = live.current;
     let ok = true;
     for (const edit of editsToSend(d, rec, u)) {
-      // Typed fields are checked again (a blank name, a non-number); the
-      // rest are sent as they are.
-      const sent = TEXT_FIELDS.includes(edit.key)
-        ? await commitValue(edit.key, normalizeTyped(edit.key, edit.value))
-        : await save(edit.key, edit.value);
+      const typed = TEXT_FIELDS.includes(edit.key);
+      const value = typed ? normalizeTyped(edit.key, edit.value) : edit.value;
+      const flying = inFlight.current.get(edit.key);
+      let sent;
+      if (flying && sameValue(flying.value, value)) {
+        // This very value is already on its way: use that answer. Sending it
+        // again would write the field (and its history) twice.
+        sent = await flying.promise;
+      } else {
+        // A different value for a field that is mid-save goes after it.
+        if (flying) await flying.promise;
+        // Typed fields are checked again (a blank name, a non-number); the
+        // rest are sent as they are.
+        sent = typed ? await commitValue(edit.key, value) : await save(edit.key, value);
+      }
       if (!sent) ok = false;
     }
     return ok;
@@ -537,7 +571,7 @@ export function RecordDrawer({
           <>
             <span className="font-semibold text-[var(--color-error-700)]">Not saved: {names}</span>
             {canRetry && (
-              <Button variant="secondary" size="sm" className="max-sm:h-10" disabled={locked} onClick={sendAll}>
+              <Button variant="secondary" size="sm" className="max-sm:h-11" disabled={locked} onClick={sendAll}>
                 Try again
               </Button>
             )}
@@ -576,11 +610,11 @@ export function RecordDrawer({
           </span>
           <span className="flex flex-wrap gap-2">
             {canRetry && (
-              <Button variant="secondary" size="sm" className="max-sm:h-10" disabled={locked} onClick={sendAll}>
+              <Button variant="secondary" size="sm" className="max-sm:h-11" disabled={locked} onClick={sendAll}>
                 Try again
               </Button>
             )}
-            <Button variant="ghost" size="sm" className="max-sm:h-10" onClick={closeWithoutSaving}>
+            <Button variant="ghost" size="sm" className="max-sm:h-11" onClick={closeWithoutSaving}>
               Close without saving
             </Button>
           </span>
@@ -594,15 +628,15 @@ export function RecordDrawer({
     confirmDelete ? (
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Confirm delete">
         <span className="text-sm text-[var(--color-text-primary)]">Delete for everyone?</span>
-        <Button variant="danger" size="sm" className="max-sm:h-10" loading={deleting} disabled={locked} onClick={doDelete}>
+        <Button variant="danger" size="sm" className="max-sm:h-11" loading={deleting} disabled={locked} onClick={doDelete}>
           Delete
         </Button>
-        <Button ref={keepRef} variant="ghost" size="sm" className="max-sm:h-10" disabled={deleting} onClick={() => setConfirmDelete(false)}>
+        <Button ref={keepRef} variant="ghost" size="sm" className="max-sm:h-11" disabled={deleting} onClick={() => setConfirmDelete(false)}>
           Keep
         </Button>
       </div>
     ) : (
-      <Button ref={askDeleteRef} variant="ghost" size="sm" className="max-sm:h-10" disabled={locked || pending} onClick={() => setConfirmDelete(true)}>
+      <Button ref={askDeleteRef} variant="ghost" size="sm" className="max-sm:h-11" disabled={locked || pending} onClick={() => setConfirmDelete(true)}>
         Delete
       </Button>
     )
@@ -610,7 +644,7 @@ export function RecordDrawer({
     <Button
       variant="ghost"
       size="sm"
-      className="max-sm:h-10"
+      className="max-sm:h-11"
       disabled={locked || pending}
       onClick={() => onRequestMove(record, closing.id)}
     >
@@ -622,7 +656,10 @@ export function RecordDrawer({
 
   return (
     <Drawer open onClose={onClose} title={record.name} header={header} footer={footer} suspended={suspended}>
-      <div className="flex flex-col gap-5">
+      {/* The space at the end is as tall as any message shown over the card on
+          a phone, so the last fields can always be scrolled clear of it
+          (components/ui/Toast.jsx sets --toast-clear). */}
+      <div className="flex flex-col gap-5" style={{ paddingBottom: "var(--toast-clear, 0px)" }}>
         {locked && (
           <p className="rounded-lg bg-[var(--color-warning-50)] px-3 py-2 text-xs text-[var(--color-warning-700)]">
             You&apos;re offline. You can read this card, but changes won&apos;t save until you&apos;re back.
@@ -632,7 +669,7 @@ export function RecordDrawer({
           <div>
             <Button
               size="sm"
-              className="max-sm:h-10"
+              className="max-sm:h-11"
               iconRight={ArrowRight}
               disabled={locked || pending}
               onClick={() => onRequestMove(record, next.id)}
@@ -768,7 +805,7 @@ export function RecordDrawer({
         {current.status === "error" && (
           <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-error-700)]" role="alert">
             <span>Couldn&apos;t load the activity. {current.message}</span>
-            <Button variant="secondary" size="sm" className="max-sm:h-10" onClick={() => setReloadTick((n) => n + 1)}>
+            <Button variant="secondary" size="sm" className="max-sm:h-11" onClick={() => setReloadTick((n) => n + 1)}>
               Try again
             </Button>
           </div>

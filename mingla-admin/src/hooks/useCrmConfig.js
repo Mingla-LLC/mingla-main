@@ -8,15 +8,25 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { fetchConfig } from "../services/crmService";
 
+/** A summary key for one person: the same shape as the two keys below. */
+function summaryKey(kind, email) {
+  return ["crm", kind, email || ""].join(":");
+}
+
 /**
  * One key per entity; nothing else names these caches. `config` keys the
  * shared configuration cache below; `records` keys the list a pipeline page
  * holds (hooks/useCrmPipeline.js), so one person's list is never shown to the
- * next person who signs in on the same browser.
+ * next person who signs in on the same browser. `home`, `team` and
+ * `betaLeads` key what hooks/useCrmSummary.js holds for a role home, the Team
+ * dashboard and the Beta leads page.
  */
 export const crmKeys = {
   config: (email) => `crm:config:${email || ""}`,
   records: (email, pipeline) => `crm:records:${email || ""}:${pipeline}`,
+  home: (email) => summaryKey("home", email),
+  team: (email) => summaryKey("team", email),
+  betaLeads: (email) => summaryKey("beta-leads", email),
 };
 
 let cache = { key: null, promise: null };

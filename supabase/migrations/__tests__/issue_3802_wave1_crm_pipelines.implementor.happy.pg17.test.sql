@@ -48,7 +48,7 @@
 
 \set ON_ERROR_STOP on
 \getenv t3802w_pw PGPASSWORD
-\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20270820003802_issue_3802_wave1_crm_pipelines.sql`
+\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20270823003802_issue_3802_wave1_homes_targets_beta.sql`
 
 -- ===========================================================================
 -- PART 1 — one transaction, rolled back.
@@ -1494,16 +1494,20 @@ declare
   c_client constant text[] := array[
     'crm_config()', 'crm_duplicate_check(text,text,uuid)', 'crm_link_search(text,text)',
     'crm_record_create(text,jsonb,text)', 'crm_record_delete(uuid)', 'crm_record_get(uuid)',
-    'crm_record_log(uuid,jsonb,text)', 'crm_record_move_stage(uuid,text,text)', 'crm_record_restore(uuid)',
+    'crm_record_log(uuid,jsonb,text)', 'crm_record_move_stage(uuid,text,text,text)', 'crm_record_restore(uuid)',
     'crm_record_set_owners(uuid,text[])', 'crm_record_undo_stage_move(uuid)', 'crm_record_update(uuid,jsonb)',
-    'crm_records_bulk_create(text,jsonb,text)', 'crm_records_list(text)'];
+    'crm_records_bulk_create(text,jsonb,text)', 'crm_records_list(text)',
+    'crm_beta_lead_to_host(uuid)', 'crm_beta_leads_list()', 'crm_home_summary(date)',
+    'crm_target_set(uuid,text,integer)', 'crm_team_summary(date)'];
   c_internal constant text[] := array[
     'admin_team_directory()', 'crm_activity_json(crm_activity)', 'crm_apply_brand_link(uuid)',
     'crm_audit(text,text,text,text,jsonb)', 'crm_brand_is_live(uuid)', 'crm_clean_owners(jsonb)', 'crm_ctx()',
     'crm_display_name(text)', 'crm_name_key(text)', 'crm_pipeline_def(text)', 'crm_reconcile_live(uuid)',
     'crm_record_create_core(text,jsonb,text,text)', 'crm_record_json(crm_records)', 'crm_record_lite_json(crm_records)',
     'crm_request_begin(text,text,text)', 'crm_request_finish(text,text,text,jsonb)', 'crm_stage_def(text,text)',
-    'crm_undoable_activity(uuid,text)', 'crm_validate_fields(text,jsonb,text)', 'crm_vocab()'];
+    'crm_undoable_activity(uuid,text)', 'crm_validate_fields(text,jsonb,text)', 'crm_vocab()',
+    'crm_beta_icp(text[])', 'crm_city_region(text)', 'crm_due_json(text,date,integer)',
+    'crm_stage_counts_json()', 'crm_targets_json(date)'];
   v_fn text;
   v_tbl text;
   v_role text;
@@ -1563,9 +1567,9 @@ begin
   -- Who writes each table, by name, in every schema.
   for w in
     select * from (values
-      ('crm_records',       'public.crm_apply_brand_link,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update'),
+      ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update'),
       ('crm_record_owners', 'public.crm_record_create_core,public.crm_record_set_owners'),
-      ('crm_activity',      'public.crm_apply_brand_link,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move'),
+      ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move'),
       ('crm_request_keys',  'public.crm_reconcile_live,public.crm_request_finish')
     ) as v(tbl, want)
   loop

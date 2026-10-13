@@ -393,10 +393,16 @@ describe("#3802 R-7 (F-7): a stale board", () => {
     assert.match(PAGE, /useCrmPipeline\(pipeline, \{ enabled: !!def, paused: !!dirtyCard \|\| !!reasonFor \}\);/);
   });
 
-  it("the server's move function has no 'only if still in stage X' option yet", () => {
-    // If this fails, the migration gained one: use it in crmService.moveStage
-    // and drop the read-then-move check's reliance on timing.
-    assert.match(MIGRATION, /FUNCTION public\.crm_record_move_stage\(p_id uuid, p_to text, p_reason text DEFAULT NULL\)/);
+  it("every move names the stage it saw", () => {
+    // The server's move function takes the stage the caller last saw the card
+    // in, and refuses the move if the card has moved since. The screen sends
+    // it on every move.
+    const NEXT_MIGRATION = fs.readFileSync(
+      path.resolve(SRC, "../../supabase/migrations/20270823003802_issue_3802_wave1_homes_targets_beta.sql"),
+      "utf8"
+    );
+    assert.match(NEXT_MIGRATION, /p_expected_from text DEFAULT NULL/);
+    assert.match(SERVICE, /p_expected_from: expectedFrom/);
   });
 });
 

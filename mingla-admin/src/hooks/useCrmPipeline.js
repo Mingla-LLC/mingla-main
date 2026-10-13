@@ -147,7 +147,11 @@ export function useCrmPipeline(pipeline, { enabled = true, paused = false } = {}
     setState((s) => ({ ...s, records: s.records.filter((r) => r.id !== id) }));
   }, []);
 
-  /** Optimistic: the card shows in its new stage while the server answers. */
+  /**
+   * Optimistic: the card shows in its new stage while the server answers.
+   * `record` is the card as this person saw it; its stage is sent with the
+   * move as the expected stage.
+   */
   const moveStage = useCallback(
     async (record, toStage, reason = null) => {
       setPending(record.id, true);
@@ -156,7 +160,9 @@ export function useCrmPipeline(pipeline, { enabled = true, paused = false } = {}
         records: s.records.map((r) => (r.id === record.id ? { ...r, stage: toStage } : r)),
       }));
       try {
-        const res = await crm.moveStage(record.id, toStage, reason);
+        // The stage this person saw goes with the move: the server refuses it
+        // if the card has moved since.
+        const res = await crm.moveStage(record.id, toStage, reason, record.stage);
         if (mounted.current) applyRecord(res.record);
         return res;
       } catch (error) {

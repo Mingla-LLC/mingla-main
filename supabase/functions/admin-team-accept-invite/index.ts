@@ -11,6 +11,8 @@
 //
 // Every handled outcome answers 200 with a `state` field:
 //   ok | used | expired | invalid | account_conflict | try_again
+// "account_conflict" also carries the invited address, so the screen can say
+// which address needs a different invite. No other refusal carries it.
 // Nothing about the link or the sign-in is ever logged.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -109,9 +111,27 @@ serve(async (req) => {
       console.error("[admin-team-accept-invite] account step failed");
       return jsonResponse({ state: "try_again" });
     }
-    if (accountVerdict(existing.data.user, seen.email) === "conflict") {
+    // One rule, defined in the database and already applied when the
+    // invitation was sent: an account that can sign in any way other than
+    // email cannot be given team access. It is asked again here, because the
+    // account may have changed since, and the account the sign-in service
+    // returned is judged by the same rule.
+    const { data: verdict, error: verdictError } = await admin.rpc(
+      "admin_team_invite_address_verdict",
+      { p_email: seen.email },
+    );
+    if (verdictError || (verdict !== "ok" && verdict !== "conflict")) {
+      console.error("[admin-team-accept-invite] account step failed");
+      return jsonResponse({ state: "try_again" });
+    }
+    if (
+      verdict === "conflict" ||
+      accountVerdict(existing.data.user, seen.email) === "conflict"
+    ) {
       // Nothing is used up: the person can come back to the same email.
-      return jsonResponse({ state: "account_conflict" });
+      // The address is named so they can ask for an invite to another one;
+      // they hold the pending link for it (the "ok" answer names it too).
+      return jsonResponse({ state: "account_conflict", email: seen.email });
     }
 
     // 3. Prepare the single-use sign-in for that address.
@@ -127,7 +147,7 @@ serve(async (req) => {
     }
     if (signIn.data.user?.id !== userId) {
       // The sign-in must be for the very account the invitation is tied to.
-      return jsonResponse({ state: "account_conflict" });
+      return jsonResponse({ state: "account_conflict", email: seen.email });
     }
 
     // 4. Use the invitation up, for this account. Works once.

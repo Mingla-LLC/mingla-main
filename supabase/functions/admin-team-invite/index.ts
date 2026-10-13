@@ -8,6 +8,10 @@
 // Who may invite is decided by the database (owner only). This function holds
 // no gate of its own: it calls the database as the signed-in caller.
 //
+// The database also refuses an address that cannot take team access because
+// its account signs in another way (code `address_in_use`). Like every other
+// refusal it reaches the caller as `{ ok: false, code }` and no email is sent.
+//
 // Every handled outcome answers 200 with an `ok` field. Malformed requests
 // answer 400; a missing or rejected sign-in answers 401.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";

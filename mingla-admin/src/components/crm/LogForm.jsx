@@ -174,7 +174,7 @@ export function LogForm({ record, config, disabled = false, onSubmit }) {
         </p>
       )}
       <div>
-        <Button type="submit" size="sm" className="max-sm:h-10" loading={busy} disabled={disabled}>
+        <Button type="submit" size="sm" className="max-sm:h-11" loading={busy} disabled={disabled}>
           Add to log
         </Button>
       </div>

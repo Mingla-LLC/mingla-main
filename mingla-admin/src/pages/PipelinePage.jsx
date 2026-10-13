@@ -39,6 +39,7 @@ import { PipelineByRegion } from "../components/crm/PipelineByRegion";
 import { RecordDrawer } from "../components/crm/RecordDrawer";
 import { AddRecordForm } from "../components/crm/AddRecordForm";
 import { ReasonPrompt } from "../components/crm/ReasonPrompt";
+import { PipelineOverlays } from "../components/crm/CrmLayer";
 
 const UNDO_MS = 8000;
 const BLOCK_TITLES = {
@@ -180,6 +181,34 @@ function PipelinePage({ pipeline, onTabChange }) {
     [pipe, addToast]
   );
 
+  /** A move the server refused because the card had moved: say where it is. */
+  const explainStale = useCallback(
+    async (shown, to, err) => {
+      let fresh;
+      try {
+        fresh = await pipe.checkFresh(shown.id);
+      } catch (again) {
+        if (again?.token === "not_found") {
+          pipe.dropRecord(shown.id);
+          addToast({ variant: "warning", title: `${shown.name} is no longer here`, description: "It was deleted. The board is up to date now." });
+        } else {
+          addToast({ variant: "warning", title: `${shown.name} didn't move`, description: errorWords(err) });
+        }
+        return;
+      }
+      pipe.applyRecord(fresh.record);
+      setActivityTick((n) => n + 1);
+      const verdict = freshnessVerdict(def, shown, fresh.record, to, fresh.activity);
+      if (verdict.kind === "go") {
+        // It is back where this person saw it: nothing to explain but the refusal.
+        addToast({ variant: "warning", title: `${shown.name} didn't move`, description: errorWords(err) });
+        return;
+      }
+      addToast({ variant: verdict.kind === "already" ? "info" : "warning", title: verdict.title, description: verdict.description });
+    },
+    [pipe, def, addToast]
+  );
+
   const performMove = useCallback(
     async (record, to, reason = null) => {
       clearUndoToast(record.id);
@@ -200,12 +229,27 @@ function PipelinePage({ pipeline, onTabChange }) {
           variant: "success",
           title: `${record.name} moved to ${stageLabel(def, to)}`,
           duration: UNDO_MS,
-          action: res.activity_id ? { label: "Undo", onClick: () => undoMove(res.activity_id) } : undefined,
+          action: res.activity_id
+            ? {
+                label: "Undo",
+                onClick: () => undoMove(res.activity_id),
+                // From the keyboard with no card open: back to the card on the board.
+                focusAfter: () => [...document.querySelectorAll("[data-record-id]")].find((el) => el.getAttribute("data-record-id") === record.id) || addButtonRef.current,
+              }
+            : undefined,
         });
         undoToast.current = { toastId, recordId: record.id };
         return true;
       } catch (err) {
         if (err?.token === "not_found") pipe.dropRecord(record.id);
+        if (err?.token === "stage_changed") {
+          // Someone moved the card between the look and the move, so the
+          // server moved nothing. Read the card again and say who moved it
+          // where: the same words as a card found moved before the move was
+          // sent. (The Lost/Passed question closes: failure stays empty.)
+          await explainStale(record, to, err);
+          return false;
+        }
         if (moveErrorSink.current && err?.token !== "not_found") {
           moveErrorSink.current(errorWords(err));
           return false;
@@ -215,7 +259,7 @@ function PipelinePage({ pipeline, onTabChange }) {
         return false;
       }
     },
-    [pipe, def, addToast, clearUndoToast, undoMove, openCard]
+    [pipe, def, addToast, clearUndoToast, undoMove, openCard, explainStale]
   );
 
   const requestMove = useCallback(
@@ -227,8 +271,8 @@ function PipelinePage({ pipeline, onTabChange }) {
       }
       // The board may be old: ask the server where the card is NOW before
       // moving it, so a card a colleague already moved is never moved again
-      // from where it used to be. (The server's move function has no "only if
-      // it is still in stage X" option, so this check is made here.)
+      // from where it used to be. (The move itself also names the stage it
+      // saw, and the server refuses it if the card moved in between.)
       pipe.setBusy(shown.id, true);
       let fresh;
       try {
@@ -387,8 +431,14 @@ function PipelinePage({ pipeline, onTabChange }) {
     const guard = guardRef.current;
     Promise.resolve(guard ? guard.flush() : true).then((ok) => {
       if (!live || ok) return;
-      // Not saved: the card stays, so the address names it again.
-      cardEntryPushed.current = false;
+      // Not saved: the card stays, so the address names it again, in a
+      // history entry of ITS OWN on top of the board's: a new entry is added
+      // and then given the card's address. X, Escape and Back therefore all
+      // behave the same however many times they are refused (each one goes
+      // back to the board's entry, the card is held, and it is put back
+      // here), and Back never leaves the page while something is unsent.
+      window.history.pushState(null, "", window.location.href);
+      cardEntryPushed.current = true;
       setSearch(buildCrmSearch({ ...stateRef.current, card: shownCard }), { replace: true });
     });
     return () => {
@@ -540,58 +590,71 @@ function PipelinePage({ pipeline, onTabChange }) {
         </>
       )}
 
-      {ready && state.card === NEW_CARD && !holding && (
-        <Drawer open onClose={closeCard} title={`New ${singular}`}>
-          <AddRecordForm
-            pipeline={pipeline}
-            def={def}
-            config={config}
-            records={pipe.records}
-            defaults={{ icp: state.icp, regionId: regionId === NO_REGION ? "" : regionId, me }}
-            disabled={!online}
-            onCreate={handleCreate}
-            onOpenExisting={(id) => openCard(id, { replace: true })}
-            onCancel={closeCard}
-          />
-        </Drawer>
-      )}
-
-      {ready && openId && (
-        <RecordDrawer
-          key={openId}
-          pipeline={pipeline}
-          def={def}
-          config={config}
-          recordId={openId}
-          listRecord={openRecordInList}
-          pipe={drawerPipe}
-          online={online}
-          canDelete={canDelete}
-          focusField={focus?.id === openId ? focus.field : null}
-          activityTick={activityTick}
-          suspended={!!reasonFor}
-          holding={holding}
-          guardRef={guardRef}
-          onDirtyChange={handleDirtyChange}
-          onClose={closeCard}
-          onRequestMove={requestMove}
-          onDelete={handleDelete}
-          onOpenCard={(id) => openCard(id, { replace: true })}
-        />
-      )}
-
-      <ReasonPrompt
-        key={reasonFor ? `${reasonFor.record.id}:${reasonFor.to}` : "closed"}
-        open={!!reasonFor}
-        stageId={reasonFor?.to}
-        recordName={reasonFor?.record?.name}
-        busy={reasonBusy}
-        error={reasonError}
-        onConfirm={confirmReason}
-        onCancel={() => {
-          setReasonError("");
-          setReasonFor(null);
-        }}
+      {/* Everything that opens over the board is drawn in its own layer, at
+          the top of the page (lib/crmLayers.js has the one stacking order):
+          the card panel or the add form in "card", and the Lost/Passed
+          question in "dialog", which is always above an open card. */}
+      <PipelineOverlays
+        card={
+          ready && state.card === NEW_CARD && !holding ? (
+            <Drawer open onClose={closeCard} title={`New ${singular}`}>
+              {/* Room at the end of the form, so a message shown over it on a
+                  phone never hides its last fields (components/ui/Toast.jsx). */}
+              <div style={{ paddingBottom: "var(--toast-clear, 0px)" }}>
+                <AddRecordForm
+                  pipeline={pipeline}
+                  def={def}
+                  config={config}
+                  records={pipe.records}
+                  defaults={{ icp: state.icp, regionId: regionId === NO_REGION ? "" : regionId, me }}
+                  disabled={!online}
+                  onCreate={handleCreate}
+                  onOpenExisting={(id) => openCard(id, { replace: true })}
+                  onCancel={closeCard}
+                />
+              </div>
+            </Drawer>
+          ) : ready && openId ? (
+            <RecordDrawer
+              key={openId}
+              pipeline={pipeline}
+              def={def}
+              config={config}
+              recordId={openId}
+              listRecord={openRecordInList}
+              pipe={drawerPipe}
+              online={online}
+              canDelete={canDelete}
+              focusField={focus?.id === openId ? focus.field : null}
+              activityTick={activityTick}
+              suspended={!!reasonFor}
+              holding={holding}
+              guardRef={guardRef}
+              onDirtyChange={handleDirtyChange}
+              onClose={closeCard}
+              onRequestMove={requestMove}
+              onDelete={handleDelete}
+              onOpenCard={(id) => openCard(id, { replace: true })}
+            />
+          ) : null
+        }
+        dialog={
+          reasonFor ? (
+            <ReasonPrompt
+              key={reasonFor ? `${reasonFor.record.id}:${reasonFor.to}` : "closed"}
+              open={!!reasonFor}
+              stageId={reasonFor?.to}
+              recordName={reasonFor?.record?.name}
+              busy={reasonBusy}
+              error={reasonError}
+              onConfirm={confirmReason}
+              onCancel={() => {
+                setReasonError("");
+                setReasonFor(null);
+              }}
+            />
+          ) : null
+        }
       />
     </div>
   );

@@ -3,7 +3,7 @@
 // it is easy to hit on a phone.
 
 export const CONTROL_CLASS = [
-  "w-full h-10 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
+  "w-full h-10 max-sm:h-11 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
   "border border-[var(--gray-300)] rounded-lg outline-none transition-all duration-150",
   "focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
   "disabled:opacity-60 disabled:cursor-not-allowed",
@@ -72,7 +72,7 @@ export function Segmented({ label, options, value, onChange, disabled = false, c
               if (!pressed) onChange(o.value);
             }}
             className={[
-              "h-10 px-3 text-sm font-medium rounded-md whitespace-nowrap transition-colors duration-150",
+              "h-10 max-sm:h-11 px-3 text-sm font-medium rounded-md whitespace-nowrap transition-colors duration-150",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]",
               pressed
                 ? "bg-[var(--color-brand-500)] text-white"

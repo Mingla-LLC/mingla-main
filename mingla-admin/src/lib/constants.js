@@ -202,10 +202,12 @@ export const NAV_GROUPS = [
   },
   // Issue #3802 (Wave 1): the team's Hosts and Creators pipelines. Opened by
   // the `crm` area (lib/access.js), so all four team roles see this group.
-  // Store and Sparkles are already in Sidebar.jsx ICON_MAP.
+  // The Team dashboard has no entry in lib/access.js, so it is owner and admin
+  // only. BarChart3, Store and Sparkles are already in Sidebar.jsx ICON_MAP.
   {
     label: "Team",
     items: [
+      { id: "team-dashboard",            label: "Team dashboard",     icon: "BarChart3" },
       { id: "hosts",                     label: "Hosts",              icon: "Store" },
       { id: "creators",                  label: "Creators",           icon: "Sparkles" },
     ],

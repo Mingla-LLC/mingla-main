@@ -41,7 +41,14 @@ const TEAM_ERRORS = {
   team_membership_conflict: "They already have access under another role. Reload and try again.",
   already_active: "They already have access. Change their role on their row instead.",
   invalid_token: "Something went wrong. Try again.",
+  // The address belongs to an account that signs in another way (issue #3802).
+  address_in_use: "That address can't be used for team access.",
 };
+
+/** Why an address was refused as "in use", and what to do. Stays on screen. */
+function addressInUseLine(email) {
+  return `${email} already has a Mingla account that signs in another way (a phone number, or Google or Apple). Invite them on an address that has no Mingla account.`;
+}
 
 /** A server refusal (its message starts with a short code) as toast text. */
 function teamError(raw) {
@@ -95,6 +102,11 @@ export function AdminPage() {
   const [notices, setNotices] = useState({});      // email -> { text, undo }
   const [reinvite, setReinvite] = useState({});    // email -> role picked for "Invite again"
   const [highlight, setHighlight] = useState(null);
+  // Addresses the server refused as "in use": the one typed in the invite
+  // form, and people on the list a re-send was refused for. Each line stays
+  // until the address is edited or an invite to it goes through.
+  const [formInUse, setFormInUse] = useState("");
+  const [rowsInUse, setRowsInUse] = useState({});  // email -> true
 
   // Activity modal
   const [activityTarget, setActivityTarget] = useState(null);
@@ -195,6 +207,15 @@ export function AdminPage() {
     }
   };
 
+  const markRowInUse = (email, on) =>
+    setRowsInUse((prev) => {
+      if (!!prev[email] === on) return prev;
+      const next = { ...prev };
+      if (on) next[email] = true;
+      else delete next[email];
+      return next;
+    });
+
   /** The toast for an invitation that could not be sent at all. */
   const toastInviteFailure = (result) => {
     if (result.outcome === "refused") {
@@ -241,9 +262,12 @@ export function AdminPage() {
         }
         setInviteEmail("");
         setInviteRole("");
+        setFormInUse("");
         await load({ quiet: true });
       } else {
         toastInviteFailure(result);
+        // The typed address stays in the field, with the reason under it.
+        if (result.outcome === "refused" && result.code === "address_in_use") setFormInUse(email);
       }
     } finally {
       if (mountedRef.current) setInviting(false);
@@ -380,12 +404,15 @@ export function AdminPage() {
           title: "Invite resent",
           description: `A new link is on its way to ${email}. The old one no longer works.`,
         });
+        markRowInUse(email, false);
         await load({ quiet: true });
       } else if (result.outcome === "not_sent") {
         toastNotSent(email);
+        markRowInUse(email, false);
         await load({ quiet: true });
       } else {
         toastInviteFailure(result);
+        if (result.outcome === "refused" && result.code === "address_in_use") markRowInUse(email, true);
       }
     } finally {
       if (mountedRef.current) setRowBusy(email, null);
@@ -414,9 +441,11 @@ export function AdminPage() {
           delete next[email];
           return next;
         });
+        markRowInUse(email, false);
         await load({ quiet: true });
       } else {
         toastInviteFailure(result);
+        if (result.outcome === "refused" && result.code === "address_in_use") markRowInUse(email, true);
       }
     } finally {
       if (mountedRef.current) setRowBusy(email, null);
@@ -675,6 +704,14 @@ export function AdminPage() {
           <div className="shrink-0 max-w-full">{controls}</div>
         </div>
         {renderNotice(row)}
+        {rowsInUse[row.email] && (
+          <p
+            role="status"
+            className="mx-5 mb-3 rounded-lg bg-[var(--color-warning-50)] px-3 py-2 text-xs text-[var(--color-warning-700)]"
+          >
+            {addressInUseLine(row.email)}
+          </p>
+        )}
         {isOwner && onlyOwner && (
           <p className="px-5 pb-4 text-sm text-[var(--color-text-tertiary)]">
             It&apos;s just you so far. Invite your first teammate above.
@@ -717,7 +754,10 @@ export function AdminPage() {
               placeholder="teammate@company.com"
               value={inviteEmail}
               disabled={inviting}
-              onChange={(e) => setInviteEmail(e.target.value)}
+              onChange={(e) => {
+                setInviteEmail(e.target.value);
+                setFormInUse("");
+              }}
             />
             <div className="mt-1 min-h-[18px] text-xs text-[var(--color-text-tertiary)]" aria-live="polite">
               {typedMatch && typedHasAccess && (
@@ -763,6 +803,14 @@ export function AdminPage() {
             </Button>
           </div>
         </form>
+        {formInUse && (
+          <p
+            role="alert"
+            className="mt-3 rounded-lg bg-[var(--color-warning-50)] px-3 py-2 text-xs text-[var(--color-warning-700)]"
+          >
+            {addressInUseLine(formInUse)}
+          </p>
+        )}
       </SectionCard>
 
       {/* People */}
