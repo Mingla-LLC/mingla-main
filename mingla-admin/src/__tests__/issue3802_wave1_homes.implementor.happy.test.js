@@ -592,6 +592,22 @@ describe("#3802 M-12: the invite follow-ups", () => {
     // The signed-in address still fills the state it always filled.
     assert.equal(acceptBody("signed_in_other", { email: "me@x.co" }), "You're signed in as me@x.co. Sign out to accept this invite.");
   });
+  it("the invited address reaches the screen: sign-in passes it on for this one state only", () => {
+    const AUTH = read("context/AuthContext.jsx");
+    assert.match(
+      AUTH,
+      /if \(data\?\.state === "account_conflict" && typeof data\.email === "string"\) \{\s*return \{ state: "account_conflict", email: data\.email \};\s*\}/
+    );
+    // Every other answer that is not "ok" still passes on the state and nothing else.
+    assert.match(AUTH, /return \{ state: typeof data\?\.state === "string" \? data\.state : "invalid" \};/);
+    const fn = AUTH.slice(AUTH.indexOf("const acceptInvite = async (token) => {"), AUTH.indexOf("const completeInviteSetup"));
+    assert.equal((fn.match(/email:/g) || []).length, 1, "the address is passed on in exactly one place");
+    // The link's secret is handled exactly as before: sent once, in the request body, never stored or logged.
+    assert.equal((fn.match(/\btoken\b/g) || []).length, 2);
+    assert.match(fn, /body: \{ token \},/);
+    assert.ok(!/console\.[a-z]+\([^)]*\btoken\b/.test(fn) && !/setItem\([^)]*token\b/.test(fn));
+  });
+
   it("the message to send is ready, with and without the address", () => {
     assert.equal(
       acceptConflictMessage("tunde@example.com"),
