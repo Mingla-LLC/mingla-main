@@ -1130,3 +1130,266 @@ test("#3802 H-9: six keys used at once, sixty requests: every answer is for the 
     assert.equal(all, "10", row);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Retest additions (after the rework).
+//
+//   H-10  a key that works is answered whatever the wrong-key counts say; a
+//         wrong key is counted against the address the platform's front door
+//         added (the last one in the list) and against one overall ceiling,
+//         never against anything the sender wrote; a refusal still takes the
+//         fixed wait when it is told to wait
+//   H-11  an answer that depends on the day starts by saying the day and the
+//         zone it used, straight after the note that it is data; one that
+//         does not, carries none; a date or zone the connector cannot use is
+//         refused in plain words
+// ---------------------------------------------------------------------------
+
+test("#3802 H-10: wrong keys never make a working key wait, and a sender cannot choose which count it lands in", async () => {
+  // Requests in a flood arrive together, so here the clock stands still
+  // while a refusal waits: every wait is recorded, none moves the minute on.
+  clock = 5_000_000;
+  slept.length = 0;
+  handle = createTeamAgentHandler({
+    gateway,
+    now: () => clock,
+    sleep: (ms: number) => {
+      slept.push(ms);
+      return Promise.resolve();
+    },
+  });
+  const json: [string, string] = ["content-type", "application/json"];
+  const good = s.keys["admin.claude"];
+  await s.sql("delete from public.team_agent_calls where key_id = :'k';", {
+    k: s.ids["admin.claude"],
+  });
+  const wrong = (from: string | null) =>
+    ask([bearer(strangerKey()), json], PING, { from });
+  const right = (from: string | null) =>
+    ask([bearer(good), json], PING, { from });
+
+  // Thirty-five wrong keys from one address: that address is told to wait.
+  let last = 0;
+  for (let i = 0; i < 35; i++) last = (await wrong("203.0.113.40")).status;
+  assert.equal(last, 429);
+  // The working key from that very address is served, at once.
+  const waits = slept.length;
+  const served = await right("203.0.113.40");
+  assert.equal(served.status, 200);
+  assert.deepEqual(served.json, { jsonrpc: "2.0", id: 1, result: {} });
+  assert.equal(slept.length, waits, "and is not made to wait");
+  assert.equal(
+    (await wrong("203.0.113.40")).status,
+    429,
+    "a wrong key there still waits",
+  );
+
+  // What a sender writes in front of the platform's entry changes nothing:
+  // thirty wrong keys with thirty different first entries are one address.
+  for (let i = 0; i < 29; i++) {
+    assert.equal((await wrong(`198.51.100.${i}, 203.0.113.41`)).status, 401);
+  }
+  assert.equal((await wrong("198.51.100.99, 203.0.113.41")).status, 401);
+  assert.equal((await wrong("198.51.100.100, 203.0.113.41")).status, 429);
+  // And naming someone else's address first puts nothing on their count.
+  for (let i = 0; i < 40; i++) {
+    const r = await wrong(`203.0.113.42, 198.51.101.${i}`);
+    assert.equal(r.status, 401, `first entry is never counted (${i})`);
+  }
+  assert.equal(
+    (await wrong("203.0.113.42")).status,
+    401,
+    "the named address has no count against it",
+  );
+  assert.equal((await right("203.0.113.42")).status, 200);
+
+  // No usable entry (none, or text that is not an address): no address
+  // count at all. Forty in a row are each simply refused.
+  for (const from of [null, "x".repeat(70), "unknown", "<script>", ""]) {
+    for (let i = 0; i < 8; i++) {
+      assert.equal((await wrong(from)).status, 401, String(from).slice(0, 12));
+    }
+  }
+
+  // The overall ceiling: wrong keys from many addresses, until every wrong
+  // key is told to wait, whoever sends it.
+  let ceiling = 0;
+  let sent = 0;
+  for (let i = 0; i < 400 && ceiling !== 429; i++) {
+    ceiling = (await wrong(`10.90.${i >> 8}.${i & 255}`)).status;
+    sent += 1;
+  }
+  assert.equal(ceiling, 429, "the overall ceiling is reached");
+  assert.ok(
+    sent <= 300,
+    `within three hundred wrong keys in the minute (${sent} more were needed)`,
+  );
+  const fresh = await wrong("192.0.2.200");
+  assert.equal(
+    fresh.status,
+    429,
+    "a wrong key from an address never seen before waits too",
+  );
+  assert.equal(fresh.headers["retry-after"], "60");
+  assert.match(
+    fresh.json.error.message,
+    /^Too many requests with a key that cannot be used\. Wait \d+ seconds, then try again\.$/,
+  );
+  assert.equal(fresh.json.id, null);
+  // Told to wait, a refusal still takes the fixed time: the wait is not a
+  // faster way to learn anything.
+  const before = slept.length;
+  await wrong("192.0.2.201");
+  assert.deepEqual(slept.slice(before), [MIN_REFUSAL_MS]);
+  const noKey = await ask([json], PING, { from: "192.0.2.202" });
+  assert.equal(noKey.status, 429);
+
+  // Through all of it a working key is served, from anywhere, at once.
+  await s.sql("delete from public.team_agent_calls where key_id = :'k';", {
+    k: s.ids["admin.claude"],
+  });
+  for (
+    const from of ["192.0.2.200", "203.0.113.40", null, "10.90.0.1", "x, y"]
+  ) {
+    const n = slept.length;
+    const r = await right(from);
+    assert.equal(r.status, 200, String(from));
+    assert.equal(slept.length, n, String(from));
+  }
+  const day = await tool(good, "my_day", {});
+  assert.equal(day.json.result.isError, false);
+
+  // The ceiling lifts by itself.
+  clock += 61_000;
+  assert.equal((await wrong("192.0.2.203")).status, 401);
+});
+
+test("#3802 H-11: an answer that depends on the day says the day and the zone first; hostile dates and zones are refused in plain words", async () => {
+  handle = newHandler();
+  await s.sql(
+    "delete from public.team_agent_calls where owner_email like 'issue3802h-%';",
+  );
+  const zoned = JSON.parse(
+    await s.asPerson(
+      "partner",
+      "select public.team_agent_key_create('claude', 'Pacific/Kiritimati')::text",
+    ),
+  );
+  assert.equal(zoned.time_zone, "Pacific/Kiritimati");
+  const east = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Pacific/Kiritimati",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const utc = new Date().toISOString().slice(0, 10);
+
+  for (
+    const [name, args] of [
+      ["my_day", {}],
+      ["find_records", { pipeline: "hosts" }],
+      ["find_records", { pipeline: "hosts", count_by: ["stage"] }],
+      ["find_records", { pipeline: "creators", due: "this_week" }],
+    ] as [string, Record<string, unknown>][]
+  ) {
+    const r = await tool(zoned.key, name, args);
+    const got = r.json.result.structuredContent;
+    assert.deepEqual(Object.keys(got).slice(0, 2), ["_note", "_dates"], name);
+    assert.deepEqual(got._dates, {
+      today: east,
+      date_from: "the clock",
+      time_zone: "Pacific/Kiritimati",
+      zone_from: "your key",
+    }, name);
+    assert.deepEqual(JSON.parse(r.json.result.content[0].text), got, name);
+  }
+  // The owner-and-admin tool too, for a key made with no zone.
+  const team = await tool(s.keys["admin.claude"], "team_summary", {});
+  assert.deepEqual(team.json.result.structuredContent._dates, {
+    today: utc,
+    date_from: "the clock",
+    time_zone: "UTC",
+    zone_from: "no zone is recorded for your key, so UTC",
+  });
+  // A tool that does not depend on the day carries no date.
+  for (
+    const [name, args] of [
+      ["get_started", {}],
+      ["get_record", { id: s.ids.alpha }],
+      ["check_names", { pipeline: "hosts", names: ["x"] }],
+      ["list_beta_leads", {}],
+    ] as [string, Record<string, unknown>][]
+  ) {
+    const r = await tool(zoned.key, name, args);
+    assert.equal(r.json.result.isError, false, name);
+    assert.equal("_dates" in r.json.result.structuredContent, false, name);
+  }
+  // A request may name its own zone; the answer says that it did.
+  const named = await tool(s.keys["admin.claude"], "my_day", {
+    time_zone: "Pacific/Kiritimati",
+  });
+  assert.deepEqual(named.json.result.structuredContent._dates, {
+    today: east,
+    date_from: "the clock",
+    time_zone: "Pacific/Kiritimati",
+    zone_from: "this request",
+  });
+  assert.equal(named.json.result.structuredContent.today, east);
+
+  const INTERNAL =
+    /crm_|team_agent|pg_|timezone_names|SQLSTATE|\bSELECT\b|ERROR:|\.ts:\d+|jsonb/;
+  const refused: [string, Record<string, unknown>][] = [
+    ["my_day", { time_zone: "Mars/Olympus" }],
+    ["my_day", { time_zone: "america/new_york" }],
+    ["my_day", { time_zone: "UTC'; select pg_sleep(9);--" }],
+    ["my_day", { time_zone: "A".repeat(65) }],
+    ["my_day", { time_zone: "" }],
+    ["my_day", { time_zone: 5 }],
+    ["my_day", { time_zone: ["UTC"] }],
+    ["my_day", { time_zone: "../../etc/passwd" }],
+    ["find_records", { pipeline: "hosts", time_zone: "UTC+25" }],
+    ["team_summary", { time_zone: "Nowhere/At_All" }],
+    ["my_day", { today: "2026-02-30" }],
+    ["my_day", { today: "1999-01-01" }],
+    ["find_records", { pipeline: "hosts", today: "2999-12-31" }],
+    ["find_records", {
+      pipeline: "hosts",
+      today: "2026-10-13'; drop table x;--",
+    }],
+    ["team_summary", { today: 20261013 }],
+    ["get_record", { id: s.ids.alpha, today: utc }],
+    ["get_started", { time_zone: "UTC" }],
+  ];
+  for (const [name, args] of refused) {
+    const key = name === "team_summary" ? s.keys["admin.claude"] : zoned.key;
+    const r = await tool(key, name, args);
+    const where = `${name} ${JSON.stringify(args).slice(0, 60)}`;
+    assert.equal(r.status, 200, where);
+    assert.equal(r.json.result.isError, true, where);
+    assert.equal(
+      r.json.result.structuredContent.error.token,
+      "invalid_arguments",
+      where,
+    );
+    assert.match(
+      r.json.result.structuredContent.error.message,
+      /^".+\.$/s,
+      where,
+    );
+    assert.equal(
+      INTERNAL.test(r.body),
+      false,
+      `${where}: ${r.json.result.content[0].text}`,
+    );
+    assert.equal("_dates" in r.json.result.structuredContent, false, where);
+  }
+  // Every date tool tells the agent, in its description, to say the date.
+  const listed = await rpc(s.keys["admin.claude"], "tools/list");
+  for (const t of listed.json.result.tools as any[]) {
+    const dated = ["my_day", "team_summary", "find_records"].includes(t.name);
+    assert.equal(/_dates/.test(t.description), dated, t.name);
+    assert.equal("time_zone" in t.inputSchema.properties, dated, t.name);
+    assert.equal("today" in t.inputSchema.properties, dated, t.name);
+    assert.ok(t.description.length <= 1900, t.name);
+  }
+});

@@ -796,6 +796,198 @@ end;
 $ta8$;
 
 -- ---------------------------------------------------------------------------
+-- Retest additions (after the rework). The bare CI image has no banned_until
+-- or deleted_at on auth.users; they are added here, inside this rolled-back
+-- transaction, in the shape the sign-in service gives them.
+--
+--   TA-9   requests on one key are taken one at a time, and only on that key
+--   TA-10  an agent's "today" is its person's own date: two keys whose zones
+--          are always on different dates never share a "today"; the answer
+--          says which date and zone it used; the same person on screen gets
+--          the same answer for that date; a request can name its own date or
+--          zone, within reason; a zone nobody has heard of is never stored
+--   TA-11  an account that can no longer sign in cannot act through a key,
+--          and that never touches anyone else's key
+-- ---------------------------------------------------------------------------
+alter table auth.users add column if not exists banned_until timestamptz;
+alter table auth.users add column if not exists deleted_at timestamptz;
+
+do $ta9$
+declare
+  v text;
+  v_mine bigint;
+  v_other bigint;
+begin
+  perform pg_temp.t3802ta_newkey('owner', 'claude', 'r.owner');
+  perform pg_temp.t3802ta_newkey('partner', 'claude', 'r.partner');
+  v := pg_temp.t3802ta_gw('r.owner', 'mcp:ping');
+  -- hashtextextended gives one 64-bit number; an advisory lock stores it as
+  -- two 32-bit halves.
+  select count(*) into v_mine from pg_catalog.pg_locks l
+   where l.locktype = 'advisory' and l.pid = pg_backend_pid() and l.granted
+     and ((l.classid::bigint << 32) | l.objid::bigint)
+         = pg_catalog.hashtextextended('team_agent_limit:' || pg_temp.t3802ta_id('r.owner.id'), 0);
+  select count(*) into v_other from pg_catalog.pg_locks l
+   where l.locktype = 'advisory' and l.pid = pg_backend_pid() and l.granted
+     and ((l.classid::bigint << 32) | l.objid::bigint)
+         = pg_catalog.hashtextextended('team_agent_limit:' || pg_temp.t3802ta_id('r.partner.id'), 0);
+  perform pg_temp.t3802ta_ok('TA-9', 'a served request holds its own key''s turn until its transaction ends',
+    (v::jsonb ->> 'ok')::boolean and v_mine = 1, v_mine::text);
+  perform pg_temp.t3802ta_ok('TA-9', 'and holds nobody else''s', v_other = 0, v_other::text);
+  select count(*) into v_other from pg_catalog.pg_locks l where l.locktype = 'advisory' and l.pid = pg_backend_pid();
+  v := pg_temp.t3802ta_as('service', format('select public.team_agent_call(%L, %L, %L::jsonb, %L)::text',
+    repeat('c', 64), 'mcp:ping', '{}', 'x'));
+  perform pg_temp.t3802ta_ok('TA-9', 'a key nobody holds takes no turn at all',
+    v::jsonb = '{"auth":"invalid"}'::jsonb
+    and (select count(*) from pg_catalog.pg_locks l where l.locktype = 'advisory' and l.pid = pg_backend_pid()) = v_other);
+end;
+$ta9$;
+
+do $ta10$
+declare
+  v text;
+  v_east jsonb;
+  v_west jsonb;
+  v_none jsonb;
+  d_east date := (clock_timestamp() at time zone 'Pacific/Kiritimati')::date;   -- 14 hours ahead of UTC
+  d_west date := (clock_timestamp() at time zone 'Etc/GMT+12')::date;           -- 12 hours behind UTC
+  d_utc  date := (clock_timestamp() at time zone 'UTC')::date;
+  v_screen jsonb;
+  z text;
+begin
+  -- A record due on each of the three dates that can be "today" somewhere.
+  insert into public.crm_records (pipeline, name, stage, due_on, created_by, updated_by)
+  select 'hosts', 'Issue3802ta Day ' || (array['before', 'same', 'after'])[g + 2], 'prospect', d_utc + g, 'issue3802ta-growth@test.local', 'issue3802ta-growth@test.local'
+  from generate_series(-1, 1) g;
+  insert into public.crm_record_owners (record_id, owner_email, added_by)
+  select r.id, 'issue3802ta-partner@test.local', 'issue3802ta-admin@test.local' from public.crm_records r where r.name like 'Issue3802ta Day %';
+
+  v := pg_temp.t3802ta_as('partner', $q$select public.team_agent_key_create('claude', 'Pacific/Kiritimati')::text$q$);
+  insert into t3802ta_ids (k, v) values ('z.east', v::jsonb ->> 'key'), ('z.east.id', v::jsonb ->> 'key_id');
+  perform pg_temp.t3802ta_ok('TA-10', 'a key remembers the zone it was made in, and says so once', v::jsonb ->> 'time_zone' = 'Pacific/Kiritimati', left(v, 80));
+  v := pg_temp.t3802ta_as('partner', $q$select public.team_agent_key_create('codex', 'Etc/GMT+12')::text$q$);
+  insert into t3802ta_ids (k, v) values ('z.west', v::jsonb ->> 'key'), ('z.west.id', v::jsonb ->> 'key_id');
+  perform pg_temp.t3802ta_ok('TA-10', 'the two zones are on different dates right now, whenever this runs', d_east > d_west and d_east - d_west in (1, 2));
+
+  v_east := pg_temp.t3802ta_gw('z.east', 'my_day')::jsonb;
+  v_west := pg_temp.t3802ta_gw('z.west', 'my_day')::jsonb;
+  perform pg_temp.t3802ta_ok('TA-10', 'each key''s "today" is the date in its own zone',
+    v_east #>> '{dates,today}' = d_east::text and v_west #>> '{dates,today}' = d_west::text
+    and v_east #>> '{result,today}' = d_east::text and v_west #>> '{result,today}' = d_west::text,
+    (v_east -> 'dates')::text || ' / ' || (v_west -> 'dates')::text);
+  perform pg_temp.t3802ta_ok('TA-10', 'the answer says the date, the zone, and where each came from',
+    v_east -> 'dates' = jsonb_build_object('today', d_east, 'time_zone', 'Pacific/Kiritimati', 'zone_from', 'your key', 'date_from', 'the clock'),
+    (v_east -> 'dates')::text);
+  -- The same person, on screen, at this instant, in each of those places.
+  v_screen := pg_temp.t3802ta_as('partner', format('select public.crm_home_summary(%L)::text', d_east))::jsonb;
+  perform pg_temp.t3802ta_ok('TA-10', 'east of the date line the agent and the screen give one answer', v_east -> 'result' = v_screen);
+  v_screen := pg_temp.t3802ta_as('partner', format('select public.crm_home_summary(%L)::text', d_west))::jsonb;
+  perform pg_temp.t3802ta_ok('TA-10', 'west of it too', v_west -> 'result' = v_screen);
+  perform pg_temp.t3802ta_ok('TA-10', 'and the two answers differ, because the day differs', v_east -> 'result' <> v_west -> 'result');
+
+  -- find_records measures "due" from the same date.
+  v_east := pg_temp.t3802ta_gw('z.east', 'find_records', '{"pipeline":"hosts","q":"Issue3802ta Day","due":"today"}')::jsonb;
+  v_west := pg_temp.t3802ta_gw('z.west', 'find_records', '{"pipeline":"hosts","q":"Issue3802ta Day","due":"today"}')::jsonb;
+  perform pg_temp.t3802ta_ok('TA-10', 'due today is due on the key''s own date',
+    (select count(*) = 1 and bool_and(r ->> 'due_on' = d_east::text) from jsonb_array_elements(v_east #> '{result,records}') r)
+    and (select count(*) = 1 and bool_and(r ->> 'due_on' = d_west::text) from jsonb_array_elements(v_west #> '{result,records}') r)
+    and v_east #>> '{dates,today}' = d_east::text and v_west #>> '{dates,today}' = d_west::text);
+  v_west := pg_temp.t3802ta_gw('z.west', 'find_records', '{"pipeline":"hosts","q":"Issue3802ta Day","due":"overdue"}')::jsonb;
+  perform pg_temp.t3802ta_ok('TA-10', 'overdue is before the key''s own date, not before the date in UTC',
+    (select coalesce(bool_and((r ->> 'due_on')::date < d_west), true) and count(*) = (d_west - (d_utc - 1))
+       from jsonb_array_elements(v_west #> '{result,records}') r));
+  perform pg_temp.t3802ta_ok('TA-10', 'a count carries the date it was counted for',
+    pg_temp.t3802ta_gw('z.east', 'find_records', '{"pipeline":"hosts","count_by":["stage"]}')::jsonb #>> '{dates,time_zone}' = 'Pacific/Kiritimati');
+  perform pg_temp.t3802ta_ok('TA-10', 'a tool that does not depend on the day carries no date',
+    not (pg_temp.t3802ta_gw('z.east', 'get_started')::jsonb ? 'dates')
+    and not (pg_temp.t3802ta_gw('z.east', 'list_beta_leads')::jsonb ? 'dates')
+    and not (pg_temp.t3802ta_gw('z.east', 'mcp:ping')::jsonb ? 'dates'));
+
+  -- A key with no zone: UTC, and it says so.
+  v_none := pg_temp.t3802ta_gw('r.owner', 'my_day')::jsonb;
+  perform pg_temp.t3802ta_ok('TA-10', 'a key with no zone uses the date in UTC and says that is why',
+    v_none -> 'dates' = jsonb_build_object('today', d_utc, 'time_zone', 'UTC', 'zone_from', 'no zone is recorded for your key, so UTC', 'date_from', 'the clock'),
+    (v_none -> 'dates')::text);
+
+  -- One request can name its own zone or date.
+  v_none := pg_temp.t3802ta_gw('r.owner', 'my_day', '{"time_zone":"Pacific/Kiritimati"}')::jsonb;
+  perform pg_temp.t3802ta_ok('TA-10', 'a request may name a zone', v_none #>> '{dates,today}' = d_east::text and v_none #>> '{dates,zone_from}' = 'this request');
+  v_none := pg_temp.t3802ta_gw('z.east', 'my_day', format('{"today":"%s"}', d_utc - 1))::jsonb;
+  perform pg_temp.t3802ta_ok('TA-10', 'a request may name its person''s date, a day either side of UTC',
+    v_none #>> '{dates,today}' = (d_utc - 1)::text and v_none #>> '{dates,date_from}' = 'this request' and v_none #>> '{result,today}' = (d_utc - 1)::text);
+  perform pg_temp.t3802ta_ok('TA-10', 'the other side too',
+    pg_temp.t3802ta_gw('z.west', 'find_records', format('{"pipeline":"hosts","today":"%s"}', d_utc + 1))::jsonb #>> '{dates,today}' = (d_utc + 1)::text);
+  perform pg_temp.t3802ta_ok('TA-10', 'no further: a date two days off is refused in plain words, and is not used',
+    not exists (
+      select 1 from unnest(array[d_utc + 2, d_utc - 2, d_utc + 400]) d, unnest(array['my_day', 'team_summary']) t
+       where pg_temp.t3802ta_gw('r.owner', t, format('{"today":"%s"}', d))::jsonb #>> '{error,token}' is distinct from 'invalid_arguments')
+    and pg_temp.t3802ta_gw('z.east', 'find_records', format('{"pipeline":"hosts","today":"%s"}', d_utc + 2))::jsonb #>> '{error,message}' ~ '^"today" is missing or the wrong kind\. Send your person''s own date');
+  foreach z in array array['Mars/Olympus', 'america/new_york', 'UTC+25', ' UTC', '', 'UTC''; select pg_sleep(9);--', repeat('A', 65), '../../etc/passwd'] loop
+    v := pg_temp.t3802ta_gw('z.east', 'my_day', jsonb_build_object('time_zone', z)::text);
+    perform pg_temp.t3802ta_ok('TA-10', 'a zone nobody has heard of is refused: ' || left(z, 20),
+      v::jsonb #>> '{error,token}' = 'invalid_arguments' and v::jsonb #>> '{error,message}' = '"time_zone" is missing or the wrong kind. Send a zone name such as America/New_York.', left(v, 160));
+    v := pg_temp.t3802ta_as('mover', format('select public.team_agent_key_create(%L, %L) ->> %L', 'codex', z, 'time_zone'));
+    perform pg_temp.t3802ta_ok('TA-10', 'and is never stored on a key: ' || left(z, 20), v is null, coalesce(v, '<null>'));
+  end loop;
+  perform pg_temp.t3802ta_ok('TA-10', 'a zone value that is not text is refused too',
+    pg_temp.t3802ta_gw('z.east', 'my_day', '{"time_zone":{"a":1}}')::jsonb #>> '{error,token}' = 'invalid_arguments'
+    and pg_temp.t3802ta_gw('z.east', 'my_day', '{"today":["2026-10-13"]}')::jsonb #>> '{error,token}' = 'invalid_arguments');
+  perform pg_temp.t3802ta_ok('TA-10', 'every stored zone is one the server knows, or none',
+    not exists (select 1 from public.team_agent_keys k where k.time_zone is not null
+                 and not exists (select 1 from pg_catalog.pg_timezone_names n where n.name = k.time_zone)));
+  perform pg_temp.t3802ta_ok('TA-10', 'the person''s list of keys shows the zone, so the card can say it',
+    (select bool_or(k ->> 'time_zone' = 'Pacific/Kiritimati') from jsonb_array_elements(pg_temp.t3802ta_as('partner', 'select public.team_agent_keys_mine()::text')::jsonb -> 'keys') k));
+end;
+$ta10$;
+
+do $ta11$
+declare
+  v text;
+  v_before jsonb;
+  v_after jsonb;
+begin
+  perform pg_temp.t3802ta_newkey('mover', 'claude', 'b.mover');
+  perform pg_temp.t3802ta_newkey('admin', 'claude', 'b.admin');
+  perform pg_temp.t3802ta_newkey('admin', 'codex', 'b.admin2');
+  select jsonb_agg(to_jsonb(t) order by t.id) into v_before from public.team_agent_keys t where t.owner_email <> 'issue3802ta-mover@test.local';
+
+  update auth.users set banned_until = now() - interval '1 minute' where email = 'issue3802ta-mover@test.local';
+  perform pg_temp.t3802ta_ok('TA-11', 'a ban that has ended changes nothing', (pg_temp.t3802ta_gw('b.mover', 'mcp:ping')::jsonb ->> 'ok')::boolean);
+  update auth.users set banned_until = now() + interval '1 hour' where email = 'issue3802ta-mover@test.local';
+  v := pg_temp.t3802ta_gw('b.mover', 'my_day');
+  perform pg_temp.t3802ta_ok('TA-11', 'a banned account gets the one answer every unusable key gets', v::jsonb = '{"auth":"invalid"}'::jsonb, left(v, 120));
+  perform pg_temp.t3802ta_ok('TA-11', 'and its key is ended, by nobody in particular',
+    (select revoked_at is not null and revoked_by = 'system' and revoke_reason = 'access_removed'
+       from public.team_agent_keys where id = pg_temp.t3802ta_id('b.mover.id')::uuid));
+  update auth.users set banned_until = null where email = 'issue3802ta-mover@test.local';
+  perform pg_temp.t3802ta_ok('TA-11', 'lifting the ban does not bring the key back',
+    pg_temp.t3802ta_gw('b.mover', 'mcp:ping')::jsonb = '{"auth":"invalid"}'::jsonb);
+  perform pg_temp.t3802ta_newkey('mover', 'claude', 'b.mover2');
+  perform pg_temp.t3802ta_ok('TA-11', 'the person can make a new one once they can sign in again',
+    (pg_temp.t3802ta_gw('b.mover2', 'mcp:ping')::jsonb ->> 'ok')::boolean);
+  update auth.users set deleted_at = now() where email = 'issue3802ta-mover@test.local';
+  v := pg_temp.t3802ta_gw('b.mover2', 'mcp:ping');
+  perform pg_temp.t3802ta_ok('TA-11', 'a deleted account gets the same answer, and its key is ended',
+    v::jsonb = '{"auth":"invalid"}'::jsonb
+    and (select revoke_reason = 'access_removed' from public.team_agent_keys where id = pg_temp.t3802ta_id('b.mover2.id')::uuid), left(v, 120));
+  update auth.users set deleted_at = null where email = 'issue3802ta-mover@test.local';
+
+  select jsonb_agg(to_jsonb(t) - 'last_used_at' - 'last_used_client' order by t.id) into v_after
+    from public.team_agent_keys t where t.owner_email <> 'issue3802ta-mover@test.local';
+  perform pg_temp.t3802ta_ok('TA-11', 'none of that touched anyone else''s key',
+    v_after = (select jsonb_agg(e - 'last_used_at' - 'last_used_client' order by e ->> 'id') from jsonb_array_elements(v_before) e));
+  perform pg_temp.t3802ta_ok('TA-11', 'and everyone else''s key still works',
+    (pg_temp.t3802ta_gw('b.admin', 'mcp:ping')::jsonb ->> 'ok')::boolean and (pg_temp.t3802ta_gw('b.admin2', 'mcp:ping')::jsonb ->> 'ok')::boolean);
+  -- Only the account the key belongs to counts: another account being
+  -- banned, even one with a look-alike address, ends nothing.
+  insert into auth.users (id, email, email_confirmed_at, banned_until)
+  values ('38020000-0000-4000-f000-0000000000ee', 'issue3802ta-admin+other@test.local', now(), now() + interval '1 hour');
+  perform pg_temp.t3802ta_ok('TA-11', 'someone else''s banned account ends nobody''s key',
+    (pg_temp.t3802ta_gw('b.admin', 'mcp:ping')::jsonb ->> 'ok')::boolean);
+end;
+$ta11$;
+
+-- ---------------------------------------------------------------------------
 -- Report.
 -- ---------------------------------------------------------------------------
 do $report$

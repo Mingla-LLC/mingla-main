@@ -606,3 +606,209 @@ describe("#3802 TG-9: the workflow runs this suite and its siblings", () => {
     assert.match(step, /PGUSER: supabase_admin/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Retest additions (after the rework).
+//
+//   TG-10  after a create that got no answer, the page says which of three
+//          things is true, from what the server holds now, for every
+//          combination of "key before" and "key after"
+//   TG-11  a key on screen stays only while the server lists it as active,
+//          whatever the list looks like
+//   TG-12  the zone a key is made in: only a plain zone name is ever sent,
+//          and the card says in words which date the agent will use
+//   TG-13  under every line the page says where the key ends up and how to
+//          take it out; lines not run on that kind of computer say so
+//   TG-14  the page's checks on a shown key start and stop with the key
+// ---------------------------------------------------------------------------
+const more = await import("../lib/agentConnect.js");
+
+describe("#3802 TG-10: the truth after a create that got no answer", () => {
+  const { createOutcome } = more;
+  const WORDS = "You seem to be offline, so that didn't go through. Check your connection and try again.";
+  const IDS = [null, "", undefined, "key-a", "key-b"];
+  it("for every key before and every key after, exactly one of three things is said", () => {
+    let unseen = 0, unchanged = 0, unknown = 0;
+    for (const before of IDS) {
+      for (const after of [...IDS, "key-c"]) {
+        for (const label of ["Claude", "Codex"]) {
+          const o = createOutcome({ before, after, label, words: WORDS });
+          const all = `${o.problem} ${o.notice} ${o.toastTitle} ${o.toastWords}`;
+          assert.equal(/undefined|null|NaN|\[object|key-[abc]/.test(all), false, all);
+          assert.equal(!!o.problem !== !!o.notice, true, "one sentence on the card, never two, never none");
+          assert.match(o.problem || o.notice, /^[A-Z].+\.$/);
+          assert.ok(all.includes(label));
+          const had = !!before;
+          if (after === undefined) {
+            unknown += 1;
+            assert.equal(o.kind, "unknown");
+            assert.match(o.problem, /^We couldn't tell whether/);
+            assert.equal(/No key was created/.test(all), false, "it never says nothing happened when it does not know");
+            assert.equal(/was replaced, but|was created, but/.test(all), false, "nor that something did");
+            assert.equal(o.replaceAgain, false);
+            if (had) assert.match(o.problem, /If it was, the key you have no longer works\./);
+          } else if ((after || null) !== (before || null)) {
+            unseen += 1;
+            assert.equal(o.kind, "unseen");
+            assert.equal(o.replaceAgain, true, "the button offers the way out");
+            assert.equal(/No key was created/.test(all), false, "a key WAS made: the page must not say otherwise");
+            if (had) assert.match(o.notice, /was replaced, but the new key couldn't be shown\. The old key no longer works\./);
+            else assert.match(o.notice, /key was created, but it couldn't be shown\./);
+            assert.equal(o.toastVariant, "warning");
+          } else {
+            unchanged += 1;
+            assert.equal(o.kind, "unchanged");
+            assert.match(o.problem, /^No key was created/);
+            assert.equal(o.problem.includes("the key you have still works"), had);
+            assert.ok(o.problem.endsWith(WORDS));
+            assert.equal(o.replaceAgain, false);
+          }
+        }
+      }
+    }
+    assert.ok(unseen > 20 && unchanged > 10 && unknown === 10, `${unseen}/${unchanged}/${unknown}`);
+  });
+  it("the page reads the keys again before it says anything, waits a fixed time for a create, and sends it once", () => {
+    const PAGE = stripComments(read("pages/AgentPage.jsx"));
+    const at = PAGE.indexOf("} catch (err) {", PAGE.indexOf("const create = useCallback("));
+    const until = PAGE.indexOf("} finally {", at);
+    const failed = PAGE.slice(at, until);
+    assert.match(failed, /const now = await refetch\(\{ quiet: true \}\);/);
+    assert.ok(failed.indexOf("await refetch(") < failed.indexOf("setProblem("), "read first, then speak");
+    assert.match(failed, /const after = Array\.isArray\(now\) \? activeKey\(now, agentId\)\?\.key_id \|\| null : undefined;/);
+    assert.match(failed, /createOutcome\(\{ before, after, label, words \}\)/);
+    assert.equal(/No key was created/.test(failed), false, "the page itself never writes that sentence; the decision does");
+    const body = PAGE.slice(PAGE.indexOf("const create = useCallback("), until);
+    assert.equal((body.match(/createKey\(/g) ?? []).length, 1, "one request per press: the page never sends a create again by itself");
+    assert.equal(/for \(|while \(|retry|attempt/i.test(body), false);
+    assert.match(PAGE, /const CREATE_WAIT_MS = 20_000;/);
+    assert.match(body, /Promise\.race\(\[\s*createKey\(agentId, browserTimeZone\(\)\),/);
+    assert.match(body, /const before = activeKey\(keysRef\.current, agentId\)\?\.key_id \|\| null;/);
+    assert.match(PAGE, /\} finally \{\s*clearTimeout\(timer\);/);
+  });
+});
+
+describe("#3802 TG-11: a key on screen stays only while it is listed as active", () => {
+  const { shownKeyVerdict } = more;
+  it("for every shape of list and every state of the key", () => {
+    const live = { key_id: "k1", agent: "claude", revoked_at: null };
+    const dead = { key_id: "k1", agent: "claude", revoked_at: "2026-10-13T00:00:00Z" };
+    const other = { key_id: "k2", agent: "claude", revoked_at: null };
+    assert.equal(shownKeyVerdict([live], { keyId: "k1", listed: false }), "listed");
+    assert.equal(shownKeyVerdict([live], { keyId: "k1", listed: true }), "keep");
+    assert.equal(shownKeyVerdict([dead], { keyId: "k1", listed: true }), "hide");
+    assert.equal(shownKeyVerdict([dead], { keyId: "k1", listed: false }), "hide", "ended before it was ever listed: still hidden");
+    assert.equal(shownKeyVerdict([dead, other], { keyId: "k1", listed: true }), "hide", "replaced: the new key does not keep the old one on screen");
+    assert.equal(shownKeyVerdict([other], { keyId: "k1", listed: true }), "hide", "gone from the list after having been listed");
+    assert.equal(shownKeyVerdict([other], { keyId: "k1", listed: false }), "wait", "not listed yet: the read after the create has not landed");
+    assert.equal(shownKeyVerdict([], { keyId: "k1", listed: false }), "wait");
+    for (const junk of [null, undefined, "x", 7, {}, [null, "x", 7, {}]]) {
+      assert.equal(shownKeyVerdict(junk, { keyId: "k1", listed: true }), "hide", `a list that does not name it cannot keep it: ${JSON.stringify(junk)}`);
+      assert.equal(shownKeyVerdict(junk, { keyId: "k1", listed: false }), "wait");
+    }
+    for (const nothing of [null, undefined, {}, { keyId: "" }, { keyId: null, listed: true }]) {
+      assert.equal(shownKeyVerdict([dead], nothing), "keep", "no key on screen, nothing to hide");
+    }
+    // A key of the same person for the OTHER agent never keeps this one.
+    assert.equal(shownKeyVerdict([{ key_id: "k9", agent: "codex", revoked_at: null }], { keyId: "k1", listed: true }), "hide");
+  });
+  it("hiding drops the key from the page's memory and says why", () => {
+    const PAGE = stripComments(read("pages/AgentPage.jsx"));
+    assert.match(PAGE, /\} else if \(verdict === "hide"\) \{\s*setFresh\(\(f\) => \(\{ \.\.\.f, \[a\.id\]: null \}\)\);\s*setShownIds\(\(m\) => \(\{ \.\.\.m, \[a\.id\]: null \}\)\);\s*setNotice\(\(n\) => \(\{ \.\.\.n, \[a\.id\]: REPLACED_ELSEWHERE_WORDS \}\)\);/);
+    assert.equal(more.REPLACED_ELSEWHERE_WORDS, "This key was replaced or disconnected somewhere else, so it no longer works and is hidden here.");
+    assert.match(PAGE, /setShownIds\(\(m\) => \(\{ \.\.\.m, \[agentId\]: \{ keyId: made\.key_id, listed: false \} \}\)\);/, "what is remembered is the key's id, never the key");
+    assert.equal(/setShownIds\([^)]*made\.key\b(?!_id)/.test(PAGE), false);
+  });
+});
+
+describe("#3802 TG-12: the zone a key is made in", () => {
+  const { browserTimeZone, zoneWords } = more;
+  it("only a plain zone name is ever sent; anything else is sent as nothing", () => {
+    const real = Intl.DateTimeFormat;
+    const withZone = (zone, run) => {
+      Intl.DateTimeFormat = function () { return { resolvedOptions: () => ({ timeZone: zone }) }; };
+      try { return run(); } finally { Intl.DateTimeFormat = real; }
+    };
+    for (const ok of ["America/New_York", "Africa/Lagos", "UTC", "Etc/GMT+12", "America/Argentina/Buenos_Aires", "Asia/Ho_Chi_Minh"]) {
+      assert.equal(withZone(ok, browserTimeZone), ok);
+    }
+    for (const bad of ["", " ", "America/New York", "UTC'; drop table x;--", "<b>", "A".repeat(65), "Europe/Paris\n", "../../etc", null, undefined, 7, {}, ["UTC"]]) {
+      assert.equal(withZone(bad, browserTimeZone), null, JSON.stringify(bad));
+    }
+    Intl.DateTimeFormat = function () { throw new Error("no zones here"); };
+    try { assert.equal(browserTimeZone(), null); } finally { Intl.DateTimeFormat = real; }
+    assert.equal(typeof browserTimeZone(), "string", "this machine has a zone");
+    const SERVICE = stripComments(read("services/teamAgentService.js"));
+    assert.match(SERVICE, /supabase\.rpc\("team_agent_key_create", \{ p_agent: agent, p_time_zone: timeZone \}\)/);
+  });
+  it("the card says in words which date the agent will use, whatever the key row holds", () => {
+    assert.equal(zoneWords({ time_zone: "America/New_York" }), `Your agent's "today" follows America/New York, the time zone this key was made in.`);
+    for (const none of [{}, { time_zone: null }, { time_zone: "" }, { time_zone: 7 }, { time_zone: {} }]) {
+      assert.equal(zoneWords(none), `No time zone is recorded for this key, so your agent's "today" is the date in UTC. Replace the key from this browser to set it.`);
+    }
+    assert.equal(zoneWords(null), "");
+    assert.equal(zoneWords(undefined), "");
+    const CARD = stripComments(read("components/agent/AgentKeyCard.jsx"));
+    assert.equal((CARD.match(/\{zoneWords\(activeKey\)\}/g) ?? []).length, 2, "shown while the key is on screen and after");
+  });
+});
+
+describe("#3802 TG-13: where a key ends up, and lines that were not run", () => {
+  it("every line, for every agent and computer, says where the key ends up or that it holds none, and how to take it out", () => {
+    for (const agent of AGENTS) {
+      for (const osId of ["mac", "windows"]) {
+        const lines = connectLines({ agent: agent.id, os: osId, endpoint: ENDPOINT, key: madeUpKey(agent.letter, 7) });
+        for (const l of [...lines.steps, lines.simpler]) {
+          const where = `${agent.id}/${osId}/${l.id}`;
+          assert.equal(typeof l.where, "string", where);
+          assert.match(l.where, /^[A-Z].+/, where);
+          assert.equal(l.where.includes(madeUpKey(agent.letter, 7).slice(7)), false, where);
+          if (l.hasKey) {
+            assert.match(l.where, /The key (ends up|is saved) (in|as) /, where);
+            assert.match(l.where, /readable by any program you run/, `${where}: it does not pretend the key is out of an agent's reach`);
+            assert.match(l.where, /To remove it/, where);
+          } else {
+            assert.match(l.where, /hold(s)? no key/, where);
+            assert.match(l.where, /To remove Mingla from/, where);
+          }
+          assert.equal(/not in a file an agent can read back/.test(`${l.label} ${l.where}`), false, where);
+        }
+        assert.equal(lines.untested, osId === "windows", `${agent.id}/${osId}`);
+        assert.equal(lines.notes.some((n) => /were not run on Windows here/.test(n)), osId === "windows");
+      }
+    }
+    assert.match(connectLines({ agent: "claude", os: "mac", endpoint: ENDPOINT, key: null }).steps[0].where, /~\/\.zshrc/);
+    assert.match(connectLines({ agent: "claude", os: "windows", endpoint: ENDPOINT, key: null }).steps[0].where, /reg delete HKCU\\Environment \/v MINGLA_CLAUDE_KEY \/f$/);
+    assert.match(connectLines({ agent: "codex", os: "windows", endpoint: ENDPOINT, key: null }).steps[0].where, /MINGLA_CODEX_KEY \/f$/);
+    assert.match(connectLines({ agent: "claude", os: "mac", endpoint: ENDPOINT, key: null }).simpler.where, /claude mcp remove mingla --scope user$/);
+  });
+  it("the page shows that text under each line and a warning above lines that were not run", () => {
+    const STEPS = stripComments(read("components/agent/AgentConnectSteps.jsx"));
+    assert.match(STEPS, /note=\{line\.where\}/);
+    assert.match(STEPS, /note=\{lines\.simpler\.where\}/);
+    assert.match(STEPS, /\{lines\.untested && \(\s*<AlertCard variant="warning" title="Not tested on Windows">/);
+    assert.match(STEPS, /We have not run these lines on a Windows computer\./);
+    assert.equal((STEPS.match(/min-h-11/g) ?? []).length >= 2, true, "tabs and disclosures are full-height targets");
+  });
+});
+
+describe("#3802 TG-14: the checks on a shown key start and stop with the key", () => {
+  const PAGE = stripComments(read("pages/AgentPage.jsx"));
+  it("they run only while a key is on screen, read and send nothing but the ordinary list, and are cleared", () => {
+    assert.match(PAGE, /const SHOWN_KEY_REFRESH_MS = 5_000;/);
+    assert.match(PAGE, /const showingKey = AGENTS\.some\(\(a\) => !!shownIds\[a\.id\]\);/);
+    const at = PAGE.indexOf("if (!showingKey) return undefined;");
+    assert.ok(at > 0);
+    const effect = PAGE.slice(at, PAGE.indexOf("}, [showingKey, refetch]);", at));
+    assert.match(effect, /const timer = setInterval\(\(\) => \{\s*if \(navigator\.onLine === false\) return;\s*refetch\(\{ quiet: true \}\);\s*\}, SHOWN_KEY_REFRESH_MS\);\s*return \(\) => clearInterval\(timer\);/);
+    assert.equal(/fresh|made|key\b/.test(effect.replace(/showingKey/g, "")), false, "the check carries no key");
+    assert.equal((PAGE.match(/setInterval\(/g) ?? []).length, 1);
+    assert.match(PAGE, /const doneAndForget = useCallback\(\s*\(agentId\) => \{\s*done\(agentId\);\s*setShownIds\(\(m\) => \(\{ \.\.\.m, \[agentId\]: null \}\)\);/);
+    assert.match(PAGE, /onDone=\{doneAndForget\}/);
+  });
+  it("nothing passes between tabs: no channel, no storage event, no shared worker", () => {
+    for (const f of ["pages/AgentPage.jsx", "hooks/useAgentKeys.js", "lib/agentConnect.js", "components/agent/AgentKeyCard.jsx", "components/agent/AgentConnectSteps.jsx", "components/agent/AgentTeamList.jsx", "components/agent/CopyBlock.jsx", "services/teamAgentService.js"]) {
+      assert.equal(/BroadcastChannel|SharedWorker|addEventListener\(\s*["']storage["']|localStorage|sessionStorage|postMessage|indexedDB/.test(stripComments(read(f))), false, f);
+    }
+  });
+});
