@@ -52,7 +52,11 @@
     },
     "admin-ad-campaign-action": {
       "migration_fallback_top_level": [],
-      "optional_top_level": [],
+      "optional_top_level": [
+        "MINGLA_ALERT_RECIPIENTS_JSON",
+        "RESEND_API_KEY",
+        "STRIPE_DISPUTE_ALERT_EMAILS"
+      ],
       "required_bundle_fields": {},
       "required_top_level": []
     },
@@ -1174,7 +1178,10 @@
     "host-ad-campaign": {
       "migration_fallback_top_level": [],
       "optional_top_level": [
-        "BUSINESS_WEB_ORIGIN"
+        "BUSINESS_WEB_ORIGIN",
+        "MINGLA_ALERT_RECIPIENTS_JSON",
+        "RESEND_API_KEY",
+        "STRIPE_DISPUTE_ALERT_EMAILS"
       ],
       "required_bundle_fields": {},
       "required_top_level": []

@@ -1,13 +1,12 @@
 /**
- * host-ad-campaign — toward #3697 Wave 7c.
+ * host-ad-campaign — toward #3697 Wave 7c / Wave 8.
  *
- * Host-owned ad campaigns (owner_kind=host): list / create / launch / pause / end.
- * Launch debits Ads credit (campaign_spend). Provider adapter create/sync is
- * deferred (Wave 7c invent is DB-first; Admin adapters remain the creative
- * matrix). ACTIVE means credit is committed for a Host draft pending provider
- * sync — not guaranteed delivery.
+ * Host-owned ad campaigns (owner_kind=host): list / create / launch / pause /
+ * end / cancel. Launch debits Ads credit (campaign_spend). Cancel only before
+ * any platform spend (full credit return); End after spend. Wave 8: every
+ * launch attempt emails admins. Provider adapter create/sync remains deferred.
  *
- * Actions: list | get | create | launch | pause | end
+ * Actions: list | get | create | launch | pause | end | cancel
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
@@ -18,6 +17,7 @@ import {
   AdDestinationError,
   resolveAdDestination,
 } from "../_shared/adDestination.ts";
+import { notifyAdLaunchAttempt } from "../_shared/adLaunchAttemptOpsAlert.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -315,7 +315,10 @@ serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  if (action === "launch" || action === "pause" || action === "end") {
+  if (
+    action === "launch" || action === "pause" || action === "end" ||
+    action === "cancel"
+  ) {
     const campaignId = typeof body.campaign_id === "string"
       ? body.campaign_id
       : "";
@@ -331,7 +334,7 @@ serve(async (req: Request): Promise<Response> => {
     const { data: camp, error: campErr } = await supabase
       .from("ad_campaigns")
       .select(
-        "id, status, brand_id, owner_kind, cap_cents, currency, daily_budget_cents",
+        "id, status, brand_id, owner_kind, cap_cents, currency, daily_budget_cents, name, platform",
       )
       .eq("id", campaignId)
       .eq("brand_id", brandId)
@@ -342,6 +345,109 @@ serve(async (req: Request): Promise<Response> => {
         { error: "validation_error", detail: "campaign_not_found" },
         404,
       );
+    }
+
+    if (action === "cancel") {
+      const status = String(camp.status ?? "").toUpperCase();
+      if (status === "ARCHIVED" || status === "DELETED") {
+        return json({
+          ok: true,
+          campaign_id: campaignId,
+          status,
+          replayed: true,
+          credit_returned_cents: 0,
+          action: "cancel",
+        });
+      }
+      if (status !== "ACTIVE" && status !== "PAUSED") {
+        return json({
+          error: "validation_error",
+          detail: "campaign_not_cancelable",
+        }, 409);
+      }
+      const { data: spendRows, error: spendErr } = await supabase
+        .from("ad_spend_daily")
+        .select("spend_cents")
+        .eq("campaign_id", campaignId);
+      if (spendErr) {
+        return json({
+          error: "apply_failed",
+          detail: "spend_read_failed",
+        }, 502);
+      }
+      const spent = (spendRows ?? []).reduce(
+        (n, r) => n + Number(r.spend_cents ?? 0),
+        0,
+      );
+      // Cancel only before any platform spend — after spend, hosts must End.
+      if (spent > 0) {
+        return json({
+          error: "validation_error",
+          detail: "campaign_has_spend_use_end",
+        }, 409);
+      }
+      const { data: spendHold, error: holdErr } = await supabase
+        .from("ad_credit_ledger")
+        .select("id")
+        .eq("campaign_id", campaignId)
+        .eq("entry_kind", "campaign_spend")
+        .limit(1)
+        .maybeSingle();
+      if (holdErr) {
+        return json({ error: "apply_failed", detail: holdErr.message }, 502);
+      }
+      const cap = Number(camp.cap_cents ?? camp.daily_budget_cents ?? 0);
+      let creditReturned = 0;
+      if (spendHold && cap > 0) {
+        const { error: creditErr } = await supabase.rpc("ad_credit_apply", {
+          p_brand_id: brandId,
+          p_entry_kind: "unspend_return",
+          p_amount_cents: cap,
+          p_currency: camp.currency,
+          p_idempotency_key: `cancel_return:host:${campaignId}`,
+          p_fee_cents: 0,
+          p_pay_cents: null,
+          p_refund_cents: null,
+          p_campaign_id: campaignId,
+          p_external_ref: null,
+          p_actor_id: user.id,
+          p_metadata: { source: "host-ad-campaign", action: "cancel" },
+        });
+        if (creditErr) {
+          return json(
+            { error: "apply_failed", detail: creditErr.message },
+            409,
+          );
+        }
+        creditReturned = cap;
+      }
+      const { data: deleted, error } = await supabase
+        .from("ad_campaigns")
+        .update({ status: "DELETED" })
+        .eq("id", campaignId)
+        .in("status", ["ACTIVE", "PAUSED"])
+        .select("id")
+        .maybeSingle();
+      if (error) {
+        return json({ error: "apply_failed", detail: error.message }, 502);
+      }
+      if (!deleted?.id) {
+        return json({
+          ok: true,
+          campaign_id: campaignId,
+          status: "DELETED",
+          replayed: true,
+          credit_returned_cents: creditReturned,
+          action: "cancel",
+        });
+      }
+      return json({
+        ok: true,
+        campaign_id: campaignId,
+        status: "DELETED",
+        credit_returned_cents: creditReturned,
+        action: "cancel",
+      });
     }
 
     if (action === "pause") {
@@ -439,6 +545,13 @@ serve(async (req: Request): Promise<Response> => {
         (n, r) => n + Number(r.spend_cents ?? 0),
         0,
       );
+      // End only after platform spend has begun — before spend, hosts Cancel.
+      if (spent <= 0) {
+        return json({
+          error: "validation_error",
+          detail: "campaign_no_spend_use_cancel",
+        }, 409);
+      }
       const cap = Number(camp.cap_cents ?? camp.daily_budget_cents ?? 0);
       const unspent = Math.max(0, cap - spent);
       // Campaign-scoped key: a second end with a new client key cannot double-credit.
@@ -492,7 +605,21 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // launch — claim PAUSED→ACTIVE under a row filter, debit once per campaign.
+    const launchAlertBase = {
+      source: "host" as const,
+      campaignId,
+      brandId,
+      platform: typeof camp.platform === "string" ? camp.platform : null,
+      name: typeof camp.name === "string" ? camp.name : null,
+      actorId: user.id,
+    };
     if (camp.status === "ACTIVE") {
+      await notifyAdLaunchAttempt({
+        ...launchAlertBase,
+        outcome: "accepted",
+        detail: "replayed_already_active",
+        idempotencyKey: `ads_launch:host:${campaignId}:active`,
+      });
       return json({
         ok: true,
         campaign_id: campaignId,
@@ -501,6 +628,12 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
     if (String(camp.status).toUpperCase() !== "PAUSED") {
+      await notifyAdLaunchAttempt({
+        ...launchAlertBase,
+        outcome: "rejected",
+        detail: "campaign_not_launchable",
+        idempotencyKey: `ads_launch:host:${campaignId}:not_launchable`,
+      });
       return json({
         error: "validation_error",
         detail: "campaign_not_launchable",
@@ -508,6 +641,12 @@ serve(async (req: Request): Promise<Response> => {
     }
     const debit = Number(camp.cap_cents ?? camp.daily_budget_cents ?? 0);
     if (!Number.isFinite(debit) || debit <= 0) {
+      await notifyAdLaunchAttempt({
+        ...launchAlertBase,
+        outcome: "rejected",
+        detail: "budget_invalid",
+        idempotencyKey: `ads_launch:host:${campaignId}:budget_invalid`,
+      });
       return json({ error: "validation_error", detail: "budget_invalid" }, 400);
     }
     // Campaign-scoped debit key so concurrent client keys cannot double-charge.
@@ -533,11 +672,23 @@ serve(async (req: Request): Promise<Response> => {
     if (debitErr) {
       const msg = debitErr.message ?? "";
       if (msg.includes("ad_credit_insufficient")) {
+        await notifyAdLaunchAttempt({
+          ...launchAlertBase,
+          outcome: "rejected",
+          detail: "balance_too_low",
+          idempotencyKey: `ads_launch:host:${campaignId}:insufficient`,
+        });
         return json(
           { error: "insufficient_credit", detail: "balance_too_low" },
           409,
         );
       }
+      await notifyAdLaunchAttempt({
+        ...launchAlertBase,
+        outcome: "failed",
+        detail: msg.slice(0, 500),
+        idempotencyKey: `ads_launch:host:${campaignId}:debit_failed`,
+      });
       return json({ error: "apply_failed", detail: msg }, 409);
     }
     const { data: claimed, error } = await supabase
@@ -548,10 +699,22 @@ serve(async (req: Request): Promise<Response> => {
       .select("id")
       .maybeSingle();
     if (error) {
+      await notifyAdLaunchAttempt({
+        ...launchAlertBase,
+        outcome: "failed",
+        detail: error.message,
+        idempotencyKey: `ads_launch:host:${campaignId}:claim_failed`,
+      });
       return json({ error: "apply_failed", detail: error.message }, 502);
     }
     if (!claimed?.id) {
       // Another launch won the claim; debit was idempotent on campaign key.
+      await notifyAdLaunchAttempt({
+        ...launchAlertBase,
+        outcome: "accepted",
+        detail: "replayed_claim_lost",
+        idempotencyKey: `ads_launch:host:${campaignId}:accepted`,
+      });
       return json({
         ok: true,
         campaign_id: campaignId,
@@ -560,6 +723,12 @@ serve(async (req: Request): Promise<Response> => {
         debited_cents: debit,
       });
     }
+    await notifyAdLaunchAttempt({
+      ...launchAlertBase,
+      outcome: "accepted",
+      detail: `debited_cents=${debit}`,
+      idempotencyKey: `ads_launch:host:${campaignId}:accepted`,
+    });
     return json({
       ok: true,
       campaign_id: campaignId,

@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-13 — Hosts can Cancel an ad before any spend (full credit back) or End it after spend — never both on one card — filter Ads by Live/Paused/Ended, and every Host or Admin launch attempt emails the ops inbox — web `[deploy]` (toward #3697, PR #3834)
 - 2026-10-13 — A brand's contact phone now keeps its country: the number is saved with its country code, so re-opening Edit brand shows the country the host picked (Nigeria stays Nigeria, no reset to +44) with the same digits, and the phone link on the public brand page dials with the country code; numbers saved before this still open and dial as they were, a number that is not valid for the chosen country shows a message on the field, and on a brand with no country the phone field shows "Choose country" instead of a default UK flag and asks the host to choose one before saving a number typed without a country code, so it is never stamped +44 (toward #3380, PR #3829)
 - 2026-10-13 — Hosts can withdraw unused Ads credit to the original card or Paystack charge, top up in Naira, run Host-owned ads from Blast (list, detail, pause/end) with live cards on Home, and ask Ari to propose and launch a plan that spends Ads credit — web `[deploy]` (toward #3697, PR #3825)
 - 2026-10-13 — Hosts can add Ads credit with a card (USD/GBP): Confirm and pay after the fee preview, Stripe charges Mingla's platform account, and credit lands only after the payment is verified (toward #3697, PR #3824)
