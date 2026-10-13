@@ -33,9 +33,10 @@ CREATE TABLE IF NOT EXISTS public.ad_credit_ledger (
   balance_after_cents bigint NOT NULL CHECK (balance_after_cents >= 0),
   currency            char(3) NOT NULL
     REFERENCES public.supported_brand_currencies(code),
-  -- Audit ids only — no FK. ON DELETE SET NULL would UPDATE these rows and
-  -- trip the append-only trigger; RESTRICT would block delete-user / campaign
-  -- cleanup. Wave 7+ may add RESTRICT once those owners learn the hold.
+  -- Audit ids only — no FK. A cascading null on parent delete would UPDATE
+  -- these rows and trip the append-only trigger; RESTRICT would block
+  -- delete-user / campaign cleanup. Wave 7+ may add RESTRICT once those
+  -- owners learn the hold.
   campaign_id         uuid NULL,
   external_ref        text NULL,
   actor_id            uuid NULL,

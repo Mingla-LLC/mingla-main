@@ -99,11 +99,14 @@ Deno.test("Wave 6: migration + edge gate source contracts", async () => {
   assertEquals(mig.includes("is_supported_offering_currency"), true);
   assertEquals(mig.includes("supported_brand_currencies"), true);
   assertEquals(mig.includes("ON DELETE RESTRICT"), true);
-  // Append-only ledger must not use ON DELETE SET NULL (that UPDATEs rows).
-  assertEquals(
-    /ad_credit_ledger[\s\S]*?ON DELETE SET NULL/.test(mig),
-    false,
+  // Append-only ledger must not FK-cascade-null (that UPDATEs rows).
+  const ledgerDdl = mig.slice(
+    mig.indexOf("CREATE TABLE IF NOT EXISTS public.ad_credit_ledger"),
+    mig.indexOf("CREATE TABLE IF NOT EXISTS public.ad_credit_lots"),
   );
+  assertEquals(/ON DELETE SET NULL/i.test(ledgerDdl), false);
+  assertEquals(/REFERENCES\s+auth\.users/i.test(ledgerDdl), false);
+  assertEquals(/REFERENCES\s+public\.ad_campaigns/i.test(ledgerDdl), false);
   assertEquals(mig.includes("biz_can_view_payments_for_brand_for_caller"), true);
   assertEquals(mig.includes("campaign_hold"), false);
   assertEquals(mig.includes("GRANT SELECT, INSERT ON public.ad_credit_ledger"), true);
