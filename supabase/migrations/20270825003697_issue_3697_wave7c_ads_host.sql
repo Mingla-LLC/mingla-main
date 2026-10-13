@@ -1,4 +1,5 @@
 -- toward #3697 Wave 7c — withdraw lot→PI breakdown, campaign_spend, host campaign read.
+-- MONOTONIC VERSION 20270825003697 (after tip census 20270824003697 / #3697).
 -- Do NOT auto-apply — Management API post-merge.
 
 BEGIN;
@@ -243,6 +244,12 @@ BEGIN
           v_provider := 'paystack';
         ELSE
           RAISE EXCEPTION 'ad_credit_lot_payment_ref_unsupported' USING ERRCODE = 'P0001';
+        END IF;
+
+        -- Paystack rejects partial refunds below 5_000 subunits; fail before
+        -- wallet debit commits (this SECURITY DEFINER call is one transaction).
+        IF v_provider = 'paystack' AND v_pay_take < 5000 THEN
+          RAISE EXCEPTION 'ad_credit_paystack_refund_below_minimum' USING ERRCODE = 'P0001';
         END IF;
 
         UPDATE public.ad_credit_lots

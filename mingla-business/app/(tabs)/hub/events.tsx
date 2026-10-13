@@ -1080,7 +1080,7 @@ const styles = StyleSheet.create({
     backgroundColor: semantic.success,
   },
   liveAdName: {
-    ...typography.bodyMd,
+    ...typography.body,
     color: textTokens.primary,
   },
   liveAdMeta: {

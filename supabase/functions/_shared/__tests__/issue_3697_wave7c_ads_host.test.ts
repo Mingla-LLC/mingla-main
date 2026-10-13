@@ -78,10 +78,35 @@ Deno.test("Wave 7c: host-ad-campaign edge + ad-credit withdraw surface exist", a
   assert(host.includes('owner_kind: "host"'));
   assert(host.includes('action === "launch"'));
   assert(host.includes("campaign_spend"));
+  assert(host.includes("biz_can_view_payments_for_brand"));
+  assert(host.includes("campaign_never_launched"));
+  assert(host.includes("campaign_not_pausable"));
   const edge = await Deno.readTextFile(
     new URL("../../ad-credit/index.ts", import.meta.url),
   );
   assert(edge.includes('action === "apply_withdraw"'));
   assert(edge.includes("refunds.create") || edge.includes("stripe.refunds"));
   assert(edge.includes("mingla_adc_") || edge.includes("Paystack"));
+  assert(edge.includes("`top_up:${paymentRef}`") || edge.includes("top_up:${paymentRef}"));
+  assert(edge.includes("markProviderRefundOrThrow") || edge.includes("ad_credit_mark_provider_refund_failed"));
+  const tools = await Deno.readTextFile(
+    new URL("../agentDomainTools.ts", import.meta.url),
+  );
+  assert(tools.includes("ari_create_${operationId}") || tools.includes("ari_create_"));
+  assert(tools.includes("requireAgentOperationId(context)"));
+  const stripeRouter = await Deno.readTextFile(
+    new URL("../stripeWebhookRouter.ts", import.meta.url),
+  );
+  assert(stripeRouter.includes("applyAdCreditWithdrawFromStripeRefund"));
+  const paystackRouter = await Deno.readTextFile(
+    new URL("../paystackRefundRouter.ts", import.meta.url),
+  );
+  assert(paystackRouter.includes("applyAdCreditWithdrawFromPaystackRefund"));
+  const mig = await Deno.readTextFile(
+    new URL(
+      "../../../migrations/20270825003697_issue_3697_wave7c_ads_host.sql",
+      import.meta.url,
+    ),
+  );
+  assert(mig.includes("ad_credit_paystack_refund_below_minimum"));
 });

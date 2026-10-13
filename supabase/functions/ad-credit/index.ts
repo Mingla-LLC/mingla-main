@@ -37,9 +37,25 @@ import {
 } from "../_shared/paystack.ts";
 import {
   createPaystackRefund,
+  PAYSTACK_MIN_REFUND_SUBUNITS,
   paystackRefundOutcomeStatus,
 } from "../_shared/paystackRefunds.ts";
 import { stripeTicketCheckout, stripeTicketRefund } from "../_shared/stripe.ts";
+
+async function markProviderRefundOrThrow(
+  supabase: ReturnType<typeof createClient>,
+  args: {
+    p_id: string;
+    p_status: string;
+    p_provider_refund_id: string | null;
+    p_error_detail: string | null;
+  },
+): Promise<void> {
+  const { error } = await supabase.rpc("ad_credit_mark_provider_refund", args);
+  if (error) {
+    throw new Error(`ad_credit_mark_provider_refund_failed:${error.message}`);
+  }
+}
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -534,12 +550,15 @@ serve(async (req: Request): Promise<Response> => {
       }, 400);
     }
 
+    // Ledger key is exclusively the verified payment reference — never the
+    // caller's arbitrary idempotency_key (replays with new keys must not mint).
+    void idempotencyKey;
     const { data, error } = await supabase.rpc("ad_credit_apply", {
       p_brand_id: brandId,
       p_entry_kind: "top_up",
       p_amount_cents: quoted.credit_cents,
       p_currency: quoted.currency,
-      p_idempotency_key: idempotencyKey || `top_up:${paymentRef}`,
+      p_idempotency_key: `top_up:${paymentRef}`,
       p_fee_cents: quoted.fee_cents,
       p_pay_cents: quoted.pay_cents,
       p_refund_cents: null,
@@ -633,6 +652,13 @@ serve(async (req: Request): Promise<Response> => {
           detail: "withdraw_payment_ref_unsupported",
         }, 409);
       }
+      if (msg.includes("ad_credit_paystack_refund_below_minimum")) {
+        return json({
+          error: "validation_error",
+          detail: "paystack_refund_below_minimum",
+          min_subunits: PAYSTACK_MIN_REFUND_SUBUNITS,
+        }, 400);
+      }
       return json({ error: "apply_failed", detail: msg }, 409);
     }
     const result = data && typeof data === "object"
@@ -680,7 +706,7 @@ serve(async (req: Request): Promise<Response> => {
           );
           const stripeStatus = String(refund.status ?? "").toLowerCase();
           if (stripeStatus === "succeeded" || stripeStatus === "pending") {
-            await supabase.rpc("ad_credit_mark_provider_refund", {
+            await markProviderRefundOrThrow(supabase, {
               p_id: id,
               p_status: stripeStatus === "succeeded" ? "succeeded" : "pending",
               p_provider_refund_id: refund.id,
@@ -689,7 +715,7 @@ serve(async (req: Request): Promise<Response> => {
             if (stripeStatus !== "succeeded") refundsPending += 1;
           } else {
             refundFailures += 1;
-            await supabase.rpc("ad_credit_mark_provider_refund", {
+            await markProviderRefundOrThrow(supabase, {
               p_id: id,
               p_status: "failed",
               p_provider_refund_id: refund.id,
@@ -697,15 +723,26 @@ serve(async (req: Request): Promise<Response> => {
             });
           }
         } else if (provider === "paystack") {
+          if (payTake < PAYSTACK_MIN_REFUND_SUBUNITS) {
+            refundFailures += 1;
+            await markProviderRefundOrThrow(supabase, {
+              p_id: id,
+              p_status: "failed",
+              p_provider_refund_id: null,
+              p_error_detail: "paystack_refund_below_minimum",
+            });
+            continue;
+          }
           const refund = await createPaystackRefund({
             transaction: paymentRef,
             amountSubunits: payTake,
             currency: "NGN",
+            // Full idempotency key so Paystack webhooks can match the row.
             merchantNote: rowIdem.slice(0, 100),
           });
           const outcome = paystackRefundOutcomeStatus(refund.status);
           if (outcome === "processed") {
-            await supabase.rpc("ad_credit_mark_provider_refund", {
+            await markProviderRefundOrThrow(supabase, {
               p_id: id,
               p_status: "succeeded",
               p_provider_refund_id: refund.id,
@@ -713,16 +750,16 @@ serve(async (req: Request): Promise<Response> => {
             });
           } else if (outcome === "failed") {
             refundFailures += 1;
-            await supabase.rpc("ad_credit_mark_provider_refund", {
+            await markProviderRefundOrThrow(supabase, {
               p_id: id,
               p_status: "failed",
               p_provider_refund_id: refund.id,
               p_error_detail: `paystack_refund_${refund.status}`,
             });
           } else {
-            // accepted / pending / processing — keep retryable for webhook.
+            // accepted / pending / processing — webhook completes the row.
             refundsPending += 1;
-            await supabase.rpc("ad_credit_mark_provider_refund", {
+            await markProviderRefundOrThrow(supabase, {
               p_id: id,
               p_status: "pending",
               p_provider_refund_id: refund.id,
@@ -731,7 +768,7 @@ serve(async (req: Request): Promise<Response> => {
           }
         } else {
           refundFailures += 1;
-          await supabase.rpc("ad_credit_mark_provider_refund", {
+          await markProviderRefundOrThrow(supabase, {
             p_id: id,
             p_status: "failed",
             p_provider_refund_id: null,
@@ -741,12 +778,23 @@ serve(async (req: Request): Promise<Response> => {
       } catch (e) {
         refundFailures += 1;
         console.error("[ad-credit] provider refund failed:", e);
-        await supabase.rpc("ad_credit_mark_provider_refund", {
-          p_id: id,
-          p_status: "failed",
-          p_provider_refund_id: null,
-          p_error_detail: e instanceof Error ? e.message : "refund_failed",
-        });
+        try {
+          await markProviderRefundOrThrow(supabase, {
+            p_id: id,
+            p_status: "failed",
+            p_provider_refund_id: null,
+            p_error_detail: e instanceof Error ? e.message : "refund_failed",
+          });
+        } catch (markErr) {
+          console.error("[ad-credit] mark provider refund failed:", markErr);
+          return json({
+            ok: false,
+            error: "apply_failed",
+            detail: "provider_refund_persist_failed",
+            estimate: quoted,
+            result,
+          }, 502);
+        }
       }
     }
 

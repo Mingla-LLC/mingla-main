@@ -281,10 +281,15 @@ BEGIN
     'ari.rsvp.update',
     'ari.marketing.update_draft', 'ari.marketing.delete_draft', 'ari.growth.read_report',
     'ari.order.refund_preview', 'ari.installment.list',
-    -- #1982/#1984 tip census only; absent in production
+    -- #1982/#1984/#3697 tip census only; absent in production
     'ari.team.revoke_invitation',
     'ari.analytics.listing_conversion',
-    'ari.analytics.reservation_metrics');
+    'ari.analytics.reservation_metrics',
+    'ari.ads.propose_ad_plan',
+    'ari.ads.approve_ad_plan',
+    'ari.ads.pause_ad_campaign',
+    'ari.ads.end_ad_campaign',
+    'ari.ads.get_ad_campaign_report');
   INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode)
   VALUES ('ari.guests.set_approval', 'write');
   UPDATE public.ari_cert_capability_requirements

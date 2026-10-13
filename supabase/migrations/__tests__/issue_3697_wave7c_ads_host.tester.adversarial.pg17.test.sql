@@ -129,4 +129,40 @@ begin
   end;
 end $$;
 
+-- Paystack lot take below 5_000 subunits must fail before wallet debit.
+do $$
+declare
+  v_brand uuid := '3697c100-0000-4000-c000-000000000011';
+  v_actor uuid := '3697c100-0000-4000-c000-000000000001';
+begin
+  insert into public.brands (id, account_id, name, slug, created_at, updated_at)
+  values (
+    v_brand,
+    v_actor,
+    'Issue 3697 Wave7c PSK Min',
+    'issue3697wave7cpskmin',
+    now(),
+    now()
+  )
+  on conflict (id) do nothing;
+
+  perform public.ad_credit_apply(
+    v_brand, 'top_up', 4000, 'NGN', 'w7c-adv-psk-min-top',
+    0, 4000, null, null, 'mingla_adc_w7c_min',
+    v_actor, '{}'::jsonb
+  );
+  begin
+    perform public.ad_credit_apply(
+      v_brand, 'withdraw', 4000, 'NGN', 'w7c-adv-psk-min-wd',
+      0, null, null, null, null, v_actor, '{}'::jsonb
+    );
+    raise exception 'ISSUE-3697 W7c adv: sub-5000 Paystack withdraw should fail';
+  exception
+    when others then
+      if sqlerrm not like '%ad_credit_paystack_refund_below_minimum%' then
+        raise;
+      end if;
+  end;
+end $$;
+
 ROLLBACK;

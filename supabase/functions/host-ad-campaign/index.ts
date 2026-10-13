@@ -70,16 +70,31 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  const { data: canManage, error: manageErr } = await supabase.rpc(
-    "biz_can_manage_payments_for_brand",
-    { p_brand_id: brandId, p_user_id: user.id },
-  );
-  if (manageErr) {
-    console.error("[host-ad-campaign] manage auth failed:", manageErr.message);
-    return json({ error: "internal_error" }, 500);
-  }
-  if (canManage !== true) {
-    return json({ error: "forbidden", detail: "permission_denied" }, 403);
+  const isReadAction = action === "list" || action === "get";
+  if (isReadAction) {
+    const { data: canView, error: viewErr } = await supabase.rpc(
+      "biz_can_view_payments_for_brand",
+      { p_brand_id: brandId, p_user_id: user.id },
+    );
+    if (viewErr) {
+      console.error("[host-ad-campaign] view auth failed:", viewErr.message);
+      return json({ error: "internal_error" }, 500);
+    }
+    if (canView !== true) {
+      return json({ error: "forbidden", detail: "permission_denied" }, 403);
+    }
+  } else {
+    const { data: canManage, error: manageErr } = await supabase.rpc(
+      "biz_can_manage_payments_for_brand",
+      { p_brand_id: brandId, p_user_id: user.id },
+    );
+    if (manageErr) {
+      console.error("[host-ad-campaign] manage auth failed:", manageErr.message);
+      return json({ error: "internal_error" }, 500);
+    }
+    if (canManage !== true) {
+      return json({ error: "forbidden", detail: "permission_denied" }, 403);
+    }
   }
 
   if (action === "list") {
@@ -330,12 +345,36 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     if (action === "pause") {
-      const { error } = await supabase
+      const status = String(camp.status ?? "").toUpperCase();
+      if (status === "PAUSED") {
+        return json({
+          ok: true,
+          campaign_id: campaignId,
+          status: "PAUSED",
+          replayed: true,
+        });
+      }
+      if (status !== "ACTIVE") {
+        return json({
+          error: "validation_error",
+          detail: "campaign_not_pausable",
+        }, 409);
+      }
+      const { data: paused, error } = await supabase
         .from("ad_campaigns")
         .update({ status: "PAUSED" })
-        .eq("id", campaignId);
+        .eq("id", campaignId)
+        .eq("status", "ACTIVE")
+        .select("id")
+        .maybeSingle();
       if (error) {
         return json({ error: "apply_failed", detail: error.message }, 502);
+      }
+      if (!paused) {
+        return json({
+          error: "validation_error",
+          detail: "campaign_pause_conflict",
+        }, 409);
       }
       return json({ ok: true, campaign_id: campaignId, status: "PAUSED" });
     }
@@ -355,6 +394,24 @@ serve(async (req: Request): Promise<Response> => {
         return json({
           error: "validation_error",
           detail: "campaign_not_endable",
+        }, 409);
+      }
+      // Only release credit that was previously held by launch (campaign_spend).
+      // A never-launched PAUSED draft must not mint unspend_return.
+      const { data: spendHold, error: holdErr } = await supabase
+        .from("ad_credit_ledger")
+        .select("id")
+        .eq("campaign_id", campaignId)
+        .eq("entry_kind", "campaign_spend")
+        .limit(1)
+        .maybeSingle();
+      if (holdErr) {
+        return json({ error: "apply_failed", detail: holdErr.message }, 502);
+      }
+      if (!spendHold) {
+        return json({
+          error: "validation_error",
+          detail: "campaign_never_launched",
         }, 409);
       }
       // Pause first so spend feed cannot keep growing while we reconcile.

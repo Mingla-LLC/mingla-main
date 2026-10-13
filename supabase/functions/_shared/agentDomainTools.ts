@@ -3222,9 +3222,9 @@ const approveAdPlan = writeTool(
     "currency",
     "platform",
   ],
-  async (args, client, userId) => {
+  async (args, client, userId, context) => {
     await requireBrand(args, client, userId);
-    const idem = newIdempotencyKey();
+    const operationId = requireAgentOperationId(context);
     const platform = String(args.platform).trim().toLowerCase();
     const currency = String(args.currency).trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) {
@@ -3247,7 +3247,7 @@ const approveAdPlan = writeTool(
       primary_text: typeof args.primary_text === "string"
         ? args.primary_text
         : "",
-      idempotency_key: `ari_create_${idem}`,
+      idempotency_key: `ari_create_${operationId}`,
     }) as { campaign_id?: string; campaign?: { id?: string } };
     const campaignId = created.campaign_id ?? created.campaign?.id;
     if (!campaignId || !isUuid(campaignId)) {
@@ -3260,7 +3260,7 @@ const approveAdPlan = writeTool(
       action: "launch",
       brand_id: args.brand_id,
       campaign_id: campaignId,
-      idempotency_key: `ari_launch_${idem}`,
+      idempotency_key: `ari_launch_${operationId}`,
     });
     return { campaign_id: campaignId, created, launched };
   },
@@ -3290,16 +3290,17 @@ const endAdCampaign = writeTool(
   "End a Host ad campaign and return unspent Ads credit. Type END to confirm.",
   { brand_id: UUID, campaign_id: UUID },
   ["brand_id", "campaign_id"],
-  async (args, client, userId) => {
+  async (args, client, userId, context) => {
     await requireBrand(args, client, userId);
     if (!isUuid(args.campaign_id)) {
       throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
     }
+    const operationId = requireAgentOperationId(context);
     return await invokeFn(client, "host-ad-campaign", {
       action: "end",
       brand_id: args.brand_id,
       campaign_id: args.campaign_id,
-      idempotency_key: `ari_end_${newIdempotencyKey()}`,
+      idempotency_key: `ari_end_${operationId}`,
     });
   },
   "END",

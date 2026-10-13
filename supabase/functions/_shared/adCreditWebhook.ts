@@ -1,6 +1,7 @@
 /**
  * toward #3697 Wave 7c — Ads credit webhook apply (Stripe + Paystack).
  * Client apply remains the fast path; ledger idempotency `top_up:{ref}` collapses doubles.
+ * Withdraw refunds: Stripe/Paystack lifecycle events mark `ad_credit_provider_refunds`.
  */
 
 import {
@@ -10,11 +11,18 @@ import {
 } from "./adCreditStripe.ts";
 import { quoteTopUp } from "./adMoney.ts";
 
+export const AD_CREDIT_WITHDRAW_PURPOSE = "ad_credit_withdraw";
+export const AD_CREDIT_WD_MERCHANT_PREFIX = "ad_credit_wd:";
+
 /** Loose admin client — stripe/paystack routers pass the service-role Supabase client.
- * `rpc` is typed as returning `any` (not Promise) because supabase-js returns a
- * Thenable builder that is awaitable but is not assignable to Promise<T>. */
+ * `rpc` / `from` are typed loosely because supabase-js Thenables are not Promise<T>. */
 // deno-lint-ignore no-explicit-any
-type AdminClient = { rpc: (...args: any[]) => any };
+type AdminClient = {
+  // deno-lint-ignore no-explicit-any
+  rpc: (...args: any[]) => any;
+  // deno-lint-ignore no-explicit-any
+  from: (...args: any[]) => any;
+};
 
 export function isAdCreditTopUpStripeObject(
   obj: { metadata?: Record<string, string> | null } | null | undefined,
@@ -126,4 +134,186 @@ export async function applyAdCreditTopUpFromPaystackCharge(
     return { brandId, applied: false, detail: error.message };
   }
   return { brandId, applied: true };
+}
+
+function withdrawRefundStatusFromStripe(
+  refundStatus: string,
+): "succeeded" | "pending" | "failed" {
+  const s = refundStatus.toLowerCase();
+  if (s === "succeeded") return "succeeded";
+  if (s === "failed" || s === "canceled") return "failed";
+  return "pending";
+}
+
+function withdrawRefundStatusFromPaystack(
+  eventName: string,
+): "succeeded" | "pending" | "failed" {
+  if (eventName === "refund.processed") return "succeeded";
+  if (eventName === "refund.failed") return "failed";
+  return "pending";
+}
+
+async function markProviderRefundRow(
+  supabase: AdminClient,
+  rowId: string,
+  status: "succeeded" | "pending" | "failed",
+  providerRefundId: string | null,
+  errorDetail: string | null,
+): Promise<void> {
+  const { error } = await supabase.rpc("ad_credit_mark_provider_refund", {
+    p_id: rowId,
+    p_status: status,
+    p_provider_refund_id: providerRefundId,
+    p_error_detail: errorDetail,
+  });
+  if (error) {
+    throw new Error(`ad_credit_mark_provider_refund_failed:${error.message}`);
+  }
+}
+
+/**
+ * Stripe refund.* for platform Ads-credit withdraw.
+ * Returns brand_id when handled; null when this event is not an Ads withdraw.
+ */
+export async function applyAdCreditWithdrawFromStripeRefund(
+  supabase: AdminClient,
+  refund: {
+    id?: string | null;
+    status?: string | null;
+    amount?: number | null;
+    payment_intent?: string | null;
+    metadata?: Record<string, unknown> | null;
+  },
+): Promise<{ handled: boolean; brandId: string | null }> {
+  const meta = refund.metadata ?? {};
+  if (String(meta.mingla_purpose ?? "") !== AD_CREDIT_WITHDRAW_PURPOSE) {
+    return { handled: false, brandId: null };
+  }
+  const refundId = typeof refund.id === "string" ? refund.id : "";
+  const brandHint = typeof meta.brand_id === "string" ? meta.brand_id : null;
+  const paymentRef = typeof refund.payment_intent === "string"
+    ? refund.payment_intent
+    : "";
+  const amount = typeof refund.amount === "number" ? refund.amount : NaN;
+  const status = withdrawRefundStatusFromStripe(String(refund.status ?? ""));
+
+  let row: { id: string; brand_id: string } | null = null;
+  if (refundId) {
+    const { data, error } = await supabase
+      .from("ad_credit_provider_refunds")
+      .select("id, brand_id")
+      .eq("provider", "stripe")
+      .eq("provider_refund_id", refundId)
+      .maybeSingle();
+    if (error) {
+      throw new Error(
+        `ad_credit_withdraw_refund_lookup_failed:${error.message}`,
+      );
+    }
+    row = data ?? null;
+  }
+  if (
+    !row && paymentRef && brandHint && Number.isFinite(amount) && amount > 0
+  ) {
+    const { data, error } = await supabase
+      .from("ad_credit_provider_refunds")
+      .select("id, brand_id")
+      .eq("provider", "stripe")
+      .eq("brand_id", brandHint)
+      .eq("payment_ref", paymentRef)
+      .eq("pay_take_cents", amount)
+      .eq("status", "pending")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      throw new Error(
+        `ad_credit_withdraw_refund_fallback_lookup_failed:${error.message}`,
+      );
+    }
+    row = data ?? null;
+  }
+  if (!row) {
+    throw new Error("ad_credit_withdraw_refund_row_missing");
+  }
+  await markProviderRefundRow(
+    supabase,
+    row.id,
+    status,
+    refundId || null,
+    status === "failed" ? `stripe_refund_${refund.status ?? "unknown"}` : null,
+  );
+  return { handled: true, brandId: row.brand_id };
+}
+
+/**
+ * Paystack refund.* for Ads-credit withdraw (merchant_note `ad_credit_wd:*`).
+ */
+export async function applyAdCreditWithdrawFromPaystackRefund(
+  supabase: AdminClient,
+  eventName:
+    | "refund.pending"
+    | "refund.processing"
+    | "refund.needs-attention"
+    | "refund.processed"
+    | "refund.failed",
+  data: {
+    id?: unknown;
+    merchant_note?: unknown;
+  },
+): Promise<boolean> {
+  const merchantNote = typeof data.merchant_note === "string"
+    ? data.merchant_note
+    : "";
+  if (!merchantNote.startsWith(AD_CREDIT_WD_MERCHANT_PREFIX)) {
+    return false;
+  }
+  const providerRefundId =
+    typeof data.id === "string" || typeof data.id === "number"
+      ? String(data.id)
+      : "";
+  const status = withdrawRefundStatusFromPaystack(eventName);
+
+  let row: { id: string } | null = null;
+  // Prefer provider id (always set once the create call returns).
+  if (providerRefundId) {
+    const { data: byProvider, error: provErr } = await supabase
+      .from("ad_credit_provider_refunds")
+      .select("id")
+      .eq("provider", "paystack")
+      .eq("provider_refund_id", providerRefundId)
+      .maybeSingle();
+    if (provErr) {
+      throw new Error(
+        `ad_credit_wd_paystack_provider_lookup_failed:${provErr.message}`,
+      );
+    }
+    row = byProvider ?? null;
+  }
+  // merchant_note may be truncated to Paystack's 100-char limit — prefix match.
+  if (!row && merchantNote) {
+    const { data: byKey, error: keyErr } = await supabase
+      .from("ad_credit_provider_refunds")
+      .select("id")
+      .eq("provider", "paystack")
+      .like("idempotency_key", `${merchantNote}%`)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (keyErr) {
+      throw new Error(`ad_credit_wd_paystack_lookup_failed:${keyErr.message}`);
+    }
+    row = byKey ?? null;
+  }
+  if (!row) {
+    throw new Error("ad_credit_wd_paystack_row_missing");
+  }
+  await markProviderRefundRow(
+    supabase,
+    row.id,
+    status,
+    providerRefundId || null,
+    status === "failed" ? "paystack_refund_failed" : null,
+  );
+  return true;
 }

@@ -308,7 +308,7 @@ export function inspectNativeArtifactManifest(
     for (
       const [field, maxBytes] of [
         ["artifact_id", 256],
-        ["runtime_version", 133],
+        ["runtime_version", 128],
         ["device", 256],
       ]
     ) {

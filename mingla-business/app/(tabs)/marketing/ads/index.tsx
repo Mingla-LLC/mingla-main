@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   campaignName: {
-    ...typography.bodyMd,
+    ...typography.body,
     color: textTokens.primary,
   },
   campaignMeta: {

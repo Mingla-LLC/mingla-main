@@ -43,6 +43,7 @@ import {
 import { handleChargeDispute } from "./stripeDisputeHandlers.ts";
 import {
   applyAdCreditTopUpFromPaymentIntent,
+  applyAdCreditWithdrawFromStripeRefund,
   isAdCreditTopUpStripeObject,
 } from "./adCreditWebhook.ts";
 // ORCH-1054 — partner splits + Stripe Transfer pipeline.
@@ -927,6 +928,18 @@ async function handleRefundEvent(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(metadata.mingla_refund_id)
     ? metadata.mingla_refund_id
     : null;
+
+  // toward #3697 Wave 7c — platform Ads-credit withdraw refunds (no Connect order).
+  {
+    const adCredit = await applyAdCreditWithdrawFromStripeRefund(supabase, {
+      id: refundId,
+      status: refundStatus,
+      amount: amountCents,
+      payment_intent: paymentIntentId,
+      metadata,
+    });
+    if (adCredit.handled) return adCredit.brandId;
+  }
 
   // #1221 typed Venue/RSVP refunds are resolved by immutable operation metadata
   // before every legacy order fallback. Provider evidence must match exactly.

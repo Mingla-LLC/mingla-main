@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   metric: {
-    ...typography.bodyMd,
+    ...typography.body,
     color: textTokens.primary,
     marginTop: spacing.md,
   },
