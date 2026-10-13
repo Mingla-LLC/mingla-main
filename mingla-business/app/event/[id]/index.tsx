@@ -41,6 +41,7 @@ import { useGuestStore } from "../../../src/store/guestStore";
 import { useScanStore } from "../../../src/store/scanStore";
 import { useEventEditLogStore } from "../../../src/store/eventEditLogStore";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
+import { eventUnpublishFailureCopy } from "../../../src/utils/eventUnpublishFailureCopy";
 import { deriveLiveStatus } from "../../../src/utils/eventLifecycle";
 import { computeMasterStartAtUtc } from "../../../src/utils/eventDateMath";
 import { formatCurrency, currencyCodeOrNull } from "../../../src/utils/currency";
@@ -415,10 +416,8 @@ export default function EventDetailScreen(): React.ReactElement {
       showToast("Event moved back to drafts.");
       router.replace(`/event/${result.event.id}/edit` as never);
     } catch (error) {
-      const code = error instanceof Error ? error.message : "unpublish_failed";
-      showToast(code.includes("event_unpublish_has_commitments")
-        ? "This event has buyer activity and cannot be unpublished. Cancel it instead."
-        : "Could not unpublish this event. Try again.");
+      // #3645 — the rejection is a bare PostgREST object, not an Error.
+      showToast(eventUnpublishFailureCopy(error));
     }
   }, [event, isServerBackedEvent, router, showToast]);
 
