@@ -84,7 +84,7 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
   });
   it("is a real page of the app, with its own address", () => {
     assert.ok(APP.includes('import { AgentPage } from "./pages/AgentPage";'));
-    assert.ok(/\n  agent: AgentPage,\n/.test(APP));
+    assert.ok(/\n {2}agent: AgentPage,\n/.test(APP));
     assert.deepEqual(resolveRoute("agent", growth, ["home", "agent"]), { pageId: "agent", denied: false, requestedId: "agent" });
     assert.deepEqual(resolveRoute("agent", person("growth", ["role_home"]), ["home", "agent"]), { pageId: "home", denied: true, requestedId: "agent" });
   });
@@ -111,7 +111,7 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
   });
   it("the menu, the title and the command palette all know it", () => {
     assert.ok(SIDEBAR.includes("teamNavGroups(") && SIDEBAR.includes("TEAM_AGENT_NAV_ITEMS.filter((item) => canOpenPage(access, item.id))"));
-    assert.ok(/\bBot,\n\} from "lucide-react";/.test(SIDEBAR) && /\n  Bot,\n\};/.test(SIDEBAR), "the Bot icon is imported and registered");
+    assert.ok(/\bBot,\n\} from "lucide-react";/.test(SIDEBAR) && /\n {2}Bot,\n\};/.test(SIDEBAR), "the Bot icon is imported and registered");
     assert.equal(teamAgentTitle("agent"), "My agent");
     assert.equal(teamAgentTitle("hosts"), "");
     assert.equal(teamAgentTitle("__proto__"), "");
