@@ -1094,6 +1094,196 @@ end;
 $xb10$;
 
 -- ---------------------------------------------------------------------------
+-- XB-11 (retest) — names decided by Unicode category. A name in any script
+-- works; a name made only of marks, format characters, private-use or
+-- unassigned characters is not a name; the same name in two forms is one key.
+-- ---------------------------------------------------------------------------
+do $xb11$
+declare
+  r record;
+  v_got text;
+begin
+  for r in select * from (values
+      ('Latin with accents',                 U&'Cr\00E8me Br\00FBl\00E9e'),
+      ('Latin, accents typed as marks',      U&'Pa\0302te\0301 Maison'),
+      ('Vietnamese',                         U&'Ph\1EDF H\00E0 N\1ED9i'),
+      ('Hebrew with points',                 U&'\05D1\05B5\05BC\05D9\05EA \05E7\05B8\05E4\05B6\05D4'),
+      ('Arabic with vowel marks',            U&'\0645\064E\0637\0652\0639\064E\0645'),
+      ('Persian with a non-joiner',          U&'\0645\06CC\200C\062E\0648\0627\0647\0645'),
+      ('Devanagari, one syllable',           U&'\0915\093F'),
+      ('Tamil',                              U&'\0BA4\0BAE\0BBF\0BB4\0BCD'),
+      ('Thai, a consonant and a vowel sign', U&'\0E01\0E34'),
+      ('hiragana',                           U&'\3059\3057'),
+      ('katakana with a long mark',          U&'\30E9\30FC\30E1\30F3'),
+      ('kana with its voiced mark typed apart', U&'\304B\3099'),
+      ('half-width katakana',                U&'\FF7D\FF7C\FF94'),
+      ('Chinese',                            U&'\6771\4EAC'),
+      ('Chinese beyond the basic plane',     U&'\+020BB7\91CE\5BB6'),
+      ('Korean typed as separate jamo',      U&'\1112\1161\11AB'),
+      ('Ethiopic',                           U&'\12A0\12F2\1235'),
+      ('one emoji',                          U&'\+01F355'),
+      ('an emoji with its selector',         U&'\2764\FE0F'),
+      ('a joined family emoji',              U&'\+01F468\200D\+01F469\200D\+01F467'),
+      ('a flag',                             U&'\+01F1F3\+01F1EC'),
+      ('a keycap',                           U&'1\FE0F\20E3'),
+      ('an emoji with a skin tone',          U&'\+01F44D\+01F3FD'),
+      ('an emoji added in Unicode 16',       U&'\+01FAE9'),
+      ('an emoji added in Unicode 17',       U&'\+01FAEA'),
+      ('currency signs',                     U&'\20A6\20A6'),
+      ('Arabic-Indic digits',                U&'\0661\0662'),
+      ('a letter in an enclosing mark',      U&'e\20DD')
+    ) as t(label, name) loop
+    v_got := pg_temp.y_as('growth', format($q$select public.crm_record_create('creators', %L::jsonb, %L)::text$q$,
+      jsonb_build_object('name', r.name)::text, 'yk-' || gen_random_uuid()::text));
+    perform pg_temp.y_eq('XB-11', r.label || ' is a name', case when v_got like 'ERR:%' then v_got else v_got::jsonb ->> 'status' end, 'created');
+    perform pg_temp.y_eq('XB-11', r.label || ': it has a key, and the stored name is in one form',
+      (public.crm_name_key(r.name) <> '')::text || '/' || coalesce((select (c.name = normalize(c.name, NFC))::text from public.crm_records c
+          where c.pipeline = 'creators' and c.name_key = public.crm_name_key(r.name) and c.deleted_at is null), 'no row'), 'true/true');
+  end loop;
+
+  for r in select * from (values
+      ('a Latin mark',                       U&'\0301'),
+      ('a Hebrew point',                     U&'\05B4'),
+      ('an Arabic vowel mark',               U&'\064E'),
+      ('a Devanagari vowel sign',            U&'\093F'),
+      ('a Devanagari nukta and virama',      U&'\093C\094D'),
+      ('a Tamil vowel sign',                 U&'\0BBF'),
+      ('a Thai vowel sign',                  U&'\0E34'),
+      ('the kana voiced mark',               U&'\3099'),
+      ('a musical combining stem',           U&'\+01D165'),
+      ('the keycap mark',                    U&'\20E3'),
+      ('marks of four scripts and spaces',   U&'\0301 \05B4 \093F\0E34'),
+      ('the two joiners',                    U&'\200D\200C'),
+      ('direction marks',                    U&'\202E\2066'),
+      ('the Arabic number sign',             U&'\0600'),
+      ('an interlinear anchor',              U&'\FFF9'),
+      ('tag characters',                     U&'\+0E0041\+0E007F'),
+      ('private use, basic plane',           U&'\E000\F8FF'),
+      ('private use, plane 15',              U&'\+0F0000'),
+      ('private use, plane 16',              U&'\+10FFFD'),
+      ('a code point with no character',     U&'\0378'),
+      ('a noncharacter',                     U&'\FDD0'),
+      ('fillers and a blank cell',           U&'\3164\2800\115F'),
+      ('the null notehead and a script filler', U&'\+01D159\+016FE4'),
+      ('every kind of space',                U&' \00A0\2003\3000\205F\1680'),
+      ('controls',                           U&'\0001\007F\0085'),
+      ('a mark, a private-use character and a joiner', U&'\0301\E000\200D')
+    ) as t(label, name) loop
+    perform pg_temp.y_eq('XB-11', r.label || ' alone has no key', public.crm_name_key(r.name), '');
+    perform pg_temp.y_like('XB-11', r.label || ' alone is refused as a name on add',
+      pg_temp.y_as('growth', format($q$select public.crm_record_create('hosts', %L::jsonb, %L)::text$q$,
+        jsonb_build_object('name', r.name)::text, 'yk-' || gen_random_uuid()::text)), 'ERR:22023:invalid_name:%');
+  end loop;
+
+  for r in select * from (values
+      ('composed and decomposed accent',     U&'Caf\00E9',        U&'Cafe\0301'),
+      ('full-width and plain letters',       'Palm Court',        U&'\FF30\FF41\FF4C\FF4D \FF23\FF4F\FF55\FF52\FF54'),
+      ('kana voiced mark joined or apart',   U&'\30AC',           U&'\30AB\3099'),
+      ('half-width voiced kana',             U&'\30AC',           U&'\FF76\FF9E'),
+      ('Korean as a syllable or as jamo',    U&'\D55C',           U&'\1112\1161\11AB'),
+      ('a private-use character inside',     'Palm Court',        U&'Palm\E000 Court'),
+      ('a code point with no character inside', 'Palm Court',     U&'Pa\0378lm Court')
+    ) as t(label, a, b) loop
+    perform pg_temp.y_eq('XB-11', r.label || ': one key', public.crm_name_key(r.b), public.crm_name_key(r.a));
+  end loop;
+
+  -- What a note keeps: the characters that shape a word, and its line breaks.
+  perform pg_temp.y_eq('XB-11', 'a note keeps a Persian non-joiner, a joined emoji and its line breaks exactly',
+    public.crm_validate_fields('hosts', jsonb_build_object('kind', 'note', 'body', U&'\0645\06CC\200C\062E\0648\0627\0647\0645' || E'\n\tsecond line ' || U&'\+01F468\200D\+01F469\200D\+01F467'), 'log') ->> 'body',
+    U&'\0645\06CC\200C\062E\0648\0627\0647\0645' || E'\n\tsecond line ' || U&'\+01F468\200D\+01F469\200D\+01F467');
+  perform pg_temp.y_eq('XB-11', 'a contact keeps accents and every script, in one form',
+    public.crm_validate_fields('hosts', jsonb_build_object('contact', U&'Cre\0300me \05E9\05B4 \0915\093F \0E01\0E34'), 'update') ->> 'contact',
+    normalize(U&'Cre\0300me \05E9\05B4 \0915\093F \0E01\0E34', NFC));
+end;
+$xb11$;
+
+-- ---------------------------------------------------------------------------
+-- XB-12 (retest) — the strict invite rule: an address whose account can sign
+-- in by anything other than email is never given team access, by any route.
+-- ---------------------------------------------------------------------------
+do $xb12$
+declare
+  r record;
+  v_id uuid;
+  v_seq int := 0;
+  v_before text;
+begin
+  for r in select * from (values
+      ('no account',                                   null,     null,            'ok'),
+      ('email sign-in only',                           'email',  null,            'ok'),
+      ('no sign-in recorded at all',                   null,     'account',       'ok'),
+      ('Google under the same address',                'google', 'same',          'conflict'),
+      ('Google under the same address, no email sign-in', 'google', 'only',       'conflict'),
+      ('Apple with a relay address',                   'apple',  'other',         'conflict'),
+      ('a company single sign-on',                     'sso:38020000-0000-4000-e000-00000000aaaa', 'same', 'conflict'),
+      ('a provider written in capitals',               'EMAIL',  'same',          'conflict'),
+      ('a phone sign-in beside the email one',         'phone',  'same',          'conflict')
+    ) as t(label, provider, how, want) loop
+    v_seq := v_seq + 1;
+    v_id := ('38020000-0000-4000-e710-0000000000' || lpad(v_seq::text, 2, '0'))::uuid;
+    if r.label <> 'no account' then
+      insert into auth.users (id, email, email_confirmed_at) values (v_id, 'issue3802y-s' || v_seq || '@test.local', now());
+      if r.provider is not null then
+        if r.how <> 'only' and r.provider <> 'email' then
+          insert into auth.identities (user_id, provider, identity_data) values (v_id, 'email', jsonb_build_object('email', 'issue3802y-s' || v_seq || '@test.local'));
+        end if;
+        insert into auth.identities (user_id, provider, identity_data)
+        values (v_id, r.provider, jsonb_build_object('email', case r.how when 'other' then 'relay@privaterelay.example' else 'issue3802y-s' || v_seq || '@test.local' end));
+      end if;
+    end if;
+    perform pg_temp.y_eq('XB-12', r.label || ': the one rule answers ' || r.want,
+      public.admin_team_invite_address_verdict('issue3802y-s' || v_seq || '@test.local'), r.want);
+    v_before := (select count(*) from public.admin_team_members) || '/' || (select count(*) from public.admin_team_invites) || '/' || (select count(*) from public.admin_audit_log where action like 'team.%');
+    if r.want = 'conflict' then
+      perform pg_temp.y_eq('XB-12', r.label || ': sending is refused and writes nothing',
+        pg_temp.y_as('owner', format('select public.admin_team_issue_invite(%L, %L, %L)::text', 'issue3802y-s' || v_seq || '@test.local', 'growth', md5(r.label) || md5(r.label)))
+          || ' ' || ((select count(*) from public.admin_team_members) || '/' || (select count(*) from public.admin_team_invites) || '/' || (select count(*) from public.admin_audit_log where action like 'team.%') = v_before)::text,
+        'ERR:22023:address_in_use true');
+      perform pg_temp.y_eq('XB-12', r.label || ': it is refused for every role that can be invited',
+        pg_temp.y_as('owner', format('select public.admin_team_issue_invite(%L, %L, %L)::text', 'issue3802y-s' || v_seq || '@test.local', 'admin', repeat('a', 64)))
+          || '|' || pg_temp.y_as('owner', format('select public.admin_team_issue_invite(%L, %L, %L)::text', 'issue3802y-s' || v_seq || '@test.local', 'partner', repeat('a', 64))),
+        'ERR:22023:address_in_use|ERR:22023:address_in_use');
+      -- Going round the invitation: the owner writes the row directly. The
+      -- person then signs in and asks for access by both activation calls.
+      perform pg_temp.y_like('XB-12', r.label || ': the owner cannot switch the address straight to active',
+        pg_temp.y_as('owner', format('select public.admin_team_set_member(%L, %L, %L)::text', 'issue3802y-s' || v_seq || '@test.local', 'growth', 'active')), 'ERR:%');
+      insert into y_people values ('s' || v_seq, v_id, 'issue3802y-s' || v_seq || '@test.local');
+      perform pg_temp.y_as('owner', format('select public.admin_team_set_member(%L, %L, %L)::text', 'issue3802y-s' || v_seq || '@test.local', 'growth', 'invited'));
+      perform pg_temp.y_as('s' || v_seq, 'select public.admin_team_activate_self()::text');
+      perform pg_temp.y_as('s' || v_seq, $q$select public.activate_invited_admin()::text$q$);
+      perform pg_temp.y_eq('XB-12', r.label || ': with no opened invitation neither activation call gives access, and nothing can be read',
+        coalesce((select status from public.admin_team_members where email = 'issue3802y-s' || v_seq || '@test.local'), 'none')
+          || '/' || left(pg_temp.y_as('s' || v_seq, 'select public.crm_home_summary()::text'), 10)
+          || '/' || left(pg_temp.y_as('s' || v_seq, 'select public.crm_beta_leads_list()::text'), 10),
+        'invited/ERR:42501:/ERR:42501:');
+      delete from public.admin_team_members where email = 'issue3802y-s' || v_seq || '@test.local';
+    else
+      perform pg_temp.y_eq('XB-12', r.label || ': the invitation goes out',
+        pg_temp.y_as('owner', format('select public.admin_team_issue_invite(%L, %L, %L)::text', 'issue3802y-s' || v_seq || '@test.local', 'growth', md5(r.label) || md5(r.label)))::jsonb ->> 'status', 'invited');
+    end if;
+  end loop;
+
+  -- The same rule is asked again when a link is opened: the trusted server
+  -- role may ask it, no client may.
+  perform pg_temp.y_eq('XB-12', 'the rule can be asked by the trusted server role and by no client',
+    has_function_privilege('service_role', 'public.admin_team_invite_address_verdict(text)', 'EXECUTE')::text
+      || '/' || has_function_privilege('authenticated', 'public.admin_team_invite_address_verdict(text)', 'EXECUTE')::text
+      || '/' || has_function_privilege('anon', 'public.admin_team_invite_address_verdict(text)', 'EXECUTE')::text, 'true/false/false');
+  -- An invited person whose account gains a social sign-in before the link is
+  -- opened: the rule now says conflict for the very address that was invited.
+  insert into auth.identities (user_id, provider, identity_data)
+  select u.id, 'google', jsonb_build_object('email', u.email) from auth.users u where u.email = 'issue3802y-s2@test.local';
+  perform pg_temp.y_eq('XB-12', 'an invited address whose account then gains a Google sign-in is a conflict when asked again',
+    public.admin_team_invite_address_verdict('issue3802y-s2@test.local') || '/' || (select status from public.admin_team_members where email = 'issue3802y-s2@test.local'),
+    'conflict/invited');
+  perform pg_temp.y_eq('XB-12', 'and a re-send to it is refused, leaving the earlier invitation as it was',
+    pg_temp.y_as('owner', format('select public.admin_team_issue_invite(%L, %L, %L)::text', 'issue3802y-s2@test.local', 'growth', repeat('f', 64)))
+      || '/' || (select (i.token_hash <> repeat('f', 64))::text from public.admin_team_invites i where i.email = 'issue3802y-s2@test.local'),
+    'ERR:22023:address_in_use/true');
+end;
+$xb12$;
+
+-- ---------------------------------------------------------------------------
 -- Verdict (part 1).
 -- ---------------------------------------------------------------------------
 do $verdict$

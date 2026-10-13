@@ -557,6 +557,17 @@ jobs:
       - name: "Issue #3802 — homes rework: one stacking order, toasts at every width, Beta leads layouts, names by category, touch sizes, the strict invite rule"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_homes_rework.implementor.happy.test.js
+      # The rendered stacking check builds and renders the real card, layer and
+      # "Why is this lost?" components, so it needs the admin app's packages
+      # (react, react-dom, esbuild). `npm ci` only, from the lockfile. Every
+      # other step in this job reads source text and needs nothing installed;
+      # this install comes after them so it cannot change what they see.
+      - name: "Issue #3802 — install the admin app's packages for the rendered stacking check"
+        working-directory: mingla-admin
+        run: npm ci --no-audit --no-fund
+      - name: "Issue #3802 — a question opened from an open card is drawn above the card (rendered, every width)"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave1_overlay_stack.rendered.test.js
       - name: "Issue #3802 — role homes, targets, Beta leads and invite follow-ups: independent tester adversarial proof (hostile addresses, every area combination, answers that are not answers, no raw error on screen)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js

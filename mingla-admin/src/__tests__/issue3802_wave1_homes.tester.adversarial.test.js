@@ -665,3 +665,230 @@ describe("#3802 TA-9: no raw database error reaches the screen for the new calls
     assert.deepEqual([parsed.token, parsed.detail], ["stage_changed", "meeting"]);
   });
 });
+
+// ===========================================================================
+// RETEST (appended). The rework's fixes, from the outside:
+//
+//   TA-10  one stacking order, and nothing on the boards drawn outside it
+//   TA-11  where messages sit beside an open card, at every width
+//   TA-12  names decided by category: every script works, marks-only,
+//          format-only and private-use-only names do not
+//   TA-13  every #3802 admin suite is really run by the workflow
+// ===========================================================================
+import { CRM_LAYER_ORDER, CRM_LAYER_Z, layerStyle } from "../lib/crmLayers.js";
+import { EDGE_GAP, NARROWEST_TOAST, PANEL_GAP, USUAL_TOAST, stackEdges, stackPlace } from "../lib/toastPlace.js";
+
+describe("#3802 TA-10: one stacking order for everything that opens over a board", () => {
+  const PAGE = read("pages/PipelinePage.jsx");
+  const LAYER = read("components/crm/CrmLayer.jsx");
+  const CSS = read("globals.css");
+
+  it("a question is above a card, and messages are above both", () => {
+    assert.deepEqual(CRM_LAYER_ORDER, ["board", "card", "dialog", "toast"]);
+    assert.ok(CRM_LAYER_Z.dialog > CRM_LAYER_Z.card);
+    const toast = Number(CSS.match(/--z-toast:\s*(\d+);/)[1]);
+    assert.ok(toast > CRM_LAYER_Z.dialog, `${toast} must be above ${CRM_LAYER_Z.dialog}`);
+    for (const name of ["card", "dialog"]) {
+      const style = layerStyle(name);
+      // A layer is a stacking context of its own: a number AND a position.
+      assert.equal(style.zIndex, CRM_LAYER_Z[name]);
+      assert.ok(["relative", "fixed", "absolute"].includes(style.position), style.position);
+    }
+    for (const unknown of ["toast", "board", "", "__proto__", "constructor", undefined, null]) {
+      assert.throws(() => layerStyle(unknown), /Unknown layer/, String(unknown));
+    }
+    assert.ok(Object.isFrozen(CRM_LAYER_Z));
+  });
+
+  it("the page hands the card and the question to the layers, each in its own slot, and draws neither anywhere else", () => {
+    const overlays = PAGE.slice(PAGE.indexOf("<PipelineOverlays"));
+    const cardSlot = overlays.slice(overlays.indexOf("card={"), overlays.indexOf("dialog={"));
+    const dialogSlot = overlays.slice(overlays.indexOf("dialog={"));
+    assert.ok(cardSlot.includes("<RecordDrawer") && cardSlot.includes("<AddRecordForm"));
+    assert.ok(!cardSlot.includes("<ReasonPrompt"), "the question is never in the card's layer");
+    // The question goes into the dialog slot itself, not into some other prop.
+    assert.match(overlays, /\n\s+dialog=\{\s*reasonFor \? \(\s*<ReasonPrompt/);
+    assert.equal((overlays.match(/\n\s+[a-zA-Z]+=\{/g) || []).filter((m) => /^\n {8}[a-zA-Z]+=\{$/.test(m)).map((m) => m.trim()).join(" "), "card={ dialog={");
+    assert.ok(dialogSlot.includes("<ReasonPrompt") && !dialogSlot.includes("<RecordDrawer") && !dialogSlot.includes("<Drawer"));
+    // Each is drawn exactly once in the page, and only inside the layers.
+    for (const tag of ["<ReasonPrompt", "<RecordDrawer", "<AddRecordForm"]) {
+      assert.equal(PAGE.split(tag).length - 1, 1, tag);
+      assert.ok(PAGE.indexOf(tag) > PAGE.indexOf("<PipelineOverlays"), tag);
+    }
+    // The page places nothing at the top of the document by itself, and sets no stacking number.
+    assert.ok(!/createPortal|zIndex|z-\[|z-\d/.test(PAGE), "PipelinePage.jsx stacks nothing by hand");
+  });
+
+  it("the layer component draws the question after the card and takes its numbers from the one file", () => {
+    assert.ok(LAYER.indexOf('name="card"') < LAYER.indexOf('name="dialog"'));
+    assert.match(LAYER, /style=\{layerStyle\(name\)\}/);
+    assert.match(LAYER, /createPortal\(box, document\.body\)/);
+    assert.ok(!/zIndex:\s*\d|z-\[|z-\d/.test(LAYER));
+    // While a question is open the card does not also answer the keyboard.
+    assert.match(PAGE, /suspended=\{!!reasonFor\}/);
+  });
+});
+
+describe("#3802 TA-11: where messages sit beside an open card", () => {
+  const PANEL = 440; // the side panel's width from 640px up
+
+  it("from 640px up there is always room beside the card, and the stack never reaches it", () => {
+    for (let vw = 640; vw <= 2600; vw++) {
+      const place = stackPlace(vw, PANEL, true);
+      assert.equal(place.beside, PANEL, `${vw}px`);
+      const edges = stackEdges(vw, place);
+      assert.ok(edges.left >= EDGE_GAP, `${vw}px`);
+      assert.ok(edges.right <= vw - PANEL - PANEL_GAP, `${vw}px: the stack would touch the card`);
+      assert.ok(edges.right - edges.left >= NARROWEST_TOAST, `${vw}px: ${edges.right - edges.left}px is too narrow to read`);
+      // It only squeezes when it has to.
+      assert.equal(place.fill, edges.right - edges.left < USUAL_TOAST, `${vw}px`);
+    }
+  });
+
+  it("on a phone, with no card, or with a card as wide as the screen, the stack stays at the bottom", () => {
+    for (let vw = 280; vw < 640; vw++) assert.deepEqual(stackPlace(vw, vw, false), { beside: 0, fill: false }, `${vw}px`);
+    for (const vw of [640, 1024, 1400]) {
+      assert.deepEqual(stackPlace(vw, 0, true), { beside: 0, fill: false });
+      assert.deepEqual(stackPlace(vw, vw, true), { beside: 0, fill: false });
+      assert.deepEqual(stackPlace(vw, PANEL, false), { beside: 0, fill: false });
+      assert.equal(stackEdges(vw, stackPlace(vw, 0, true)), null);
+    }
+  });
+
+  it("odd measurements never put the stack over the card or off the screen", () => {
+    const ODD = [NaN, Infinity, -Infinity, -1, 0, null, undefined, "440", {}, []];
+    for (const vw of [...ODD, 320, 640, 1400]) for (const panel of [...ODD.filter((v) => v !== Infinity), 440, 5000]) for (const wide of [true, false, undefined, "yes"]) {
+      let place;
+      assert.doesNotThrow(() => {
+        place = stackPlace(vw, panel, wide);
+      });
+      // Real measurements are finite numbers; for those the stack is beside
+      // the card only when there is room, and never over it.
+      if (typeof vw === "number" && Number.isFinite(vw) && typeof panel === "number" && Number.isFinite(panel)) {
+        assert.ok(place.beside === 0 || (wide && place.beside === panel && vw - panel - EDGE_GAP - PANEL_GAP >= NARROWEST_TOAST), `${vw} ${panel} ${String(wide)} -> ${JSON.stringify(place)}`);
+        const edges = stackEdges(vw, place);
+        if (edges) assert.ok(edges.right > edges.left && edges.left >= 0 && edges.right <= vw - panel, `${vw} ${panel}`);
+      } else {
+        assert.doesNotThrow(() => stackEdges(vw, place));
+      }
+    }
+    for (const notAPlace of [null, undefined, {}, { beside: -5 }, { beside: 0 }, { beside: NaN }]) assert.equal(stackEdges(1400, notAPlace), null);
+  });
+
+  it("an open card on a phone leaves room after its last field for a message shown over it", () => {
+    const DRAWER = read("components/crm/RecordDrawer.jsx");
+    const TOAST = read("components/ui/Toast.jsx");
+    const PAGE = read("pages/PipelinePage.jsx");
+    assert.match(DRAWER, /paddingBottom: "var\(--toast-clear, 0px\)"/);
+    assert.match(PAGE, /paddingBottom: "var\(--toast-clear, 0px\)"/, "the add form leaves the same room");
+    assert.match(TOAST, /setProperty\("--toast-clear"/);
+    assert.match(TOAST, /removeProperty\("--toast-clear"\)/);
+  });
+});
+
+describe("#3802 TA-12: names decided by category (the database gave the same answers)", () => {
+  const WORKS = [
+    ["Latin with accents", `Cr${cp(0xe8)}me Br${cp(0xfb)}l${cp(0xe9)}e`],
+    ["Latin, accents typed as marks", `Pa${cp(0x302)}te${cp(0x301)} Maison`],
+    ["Vietnamese", `Ph${cp(0x1edf)} H${cp(0xe0)} N${cp(0x1ed9)}i`],
+    ["Hebrew with points", cp(0x5d1, 0x5b5, 0x5bc, 0x5d9, 0x5ea)],
+    ["Arabic with vowel marks", cp(0x645, 0x64e, 0x637, 0x652, 0x639, 0x64e, 0x645)],
+    ["Persian with a non-joiner", cp(0x645, 0x6cc, 0x200c, 0x62e, 0x648, 0x627, 0x647, 0x645)],
+    ["Devanagari, one syllable", cp(0x915, 0x93f)],
+    ["Tamil", cp(0xba4, 0xbae, 0xbbf, 0xbb4, 0xbcd)],
+    ["Thai, a consonant and a vowel sign", cp(0xe01, 0xe34)],
+    ["hiragana", cp(0x3059, 0x3057)],
+    ["katakana with a long mark", cp(0x30e9, 0x30fc, 0x30e1, 0x30f3)],
+    ["kana with its voiced mark typed apart", cp(0x304b, 0x3099)],
+    ["Chinese", cp(0x6771, 0x4eac)],
+    ["Chinese beyond the basic plane", cp(0x20bb7, 0x91ce, 0x5bb6)],
+    ["Korean typed as separate jamo", cp(0x1112, 0x1161, 0x11ab)],
+    ["Ethiopic", cp(0x12a0, 0x12f2, 0x1235)],
+    ["one emoji", cp(0x1f355)],
+    ["an emoji with its selector", cp(0x2764, 0xfe0f)],
+    ["a joined family emoji", cp(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467)],
+    ["a flag", cp(0x1f1f3, 0x1f1ec)],
+    ["a keycap", `1${cp(0xfe0f, 0x20e3)}`],
+    ["an emoji with a skin tone", cp(0x1f44d, 0x1f3fd)],
+    ["currency signs", cp(0x20a6, 0x20a6)],
+    ["Arabic-Indic digits", cp(0x661, 0x662)],
+    ["a letter in an enclosing mark", `e${cp(0x20dd)}`],
+  ];
+  const NOTHING = [
+    ["a Latin mark", cp(0x301)],
+    ["a Hebrew point", cp(0x5b4)],
+    ["an Arabic vowel mark", cp(0x64e)],
+    ["a Devanagari vowel sign", cp(0x93f)],
+    ["a Devanagari nukta and virama", cp(0x93c, 0x94d)],
+    ["a Tamil vowel sign", cp(0xbbf)],
+    ["a Thai vowel sign", cp(0xe34)],
+    ["the kana voiced mark", cp(0x3099)],
+    ["a musical combining stem", cp(0x1d165)],
+    ["the keycap mark", cp(0x20e3)],
+    ["marks of four scripts and spaces", `${cp(0x301)} ${cp(0x5b4)} ${cp(0x93f, 0xe34)}`],
+    ["the two joiners", cp(0x200d, 0x200c)],
+    ["direction marks", cp(0x202e, 0x2066)],
+    ["the Arabic number sign", cp(0x600)],
+    ["an interlinear anchor", cp(0xfff9)],
+    ["tag characters", cp(0xe0041, 0xe007f)],
+    ["private use, basic plane", cp(0xe000, 0xf8ff)],
+    ["private use, plane 15", cp(0xf0000)],
+    ["private use, plane 16", cp(0x10fffd)],
+    ["a code point with no character", cp(0x378)],
+    ["a noncharacter", cp(0xfdd0)],
+    ["fillers and a blank cell", cp(0x3164, 0x2800, 0x115f)],
+    ["the null notehead and a script filler", cp(0x1d159, 0x16fe4)],
+    ["every kind of space", ` ${cp(0xa0, 0x2003, 0x3000, 0x205f, 0x1680)}`],
+    ["controls", cp(0x1, 0x7f, 0x85)],
+    ["a lone surrogate", "\ud800"],
+    ["a mark, a private-use character and a joiner", cp(0x301, 0xe000, 0x200d)],
+  ];
+  for (const [label, name] of WORKS) it(`${label} has a key`, () => assert.notEqual(nameKey(name), ""));
+  for (const [label, name] of NOTHING) it(`${label} alone has no key`, () => assert.equal(nameKey(name), ""));
+
+  it("the same name in two forms is one key, and what nobody can see changes nothing", () => {
+    const SAME = [
+      [`Caf${cp(0xe9)}`, `Cafe${cp(0x301)}`],
+      ["Palm Court", cp(0xff30, 0xff41, 0xff4c, 0xff4d, 0x20, 0xff23, 0xff4f, 0xff55, 0xff52, 0xff54)],
+      [cp(0x30ac), cp(0x30ab, 0x3099)],
+      [cp(0x30ac), cp(0xff76, 0xff9e)],
+      [cp(0xd55c), cp(0x1112, 0x1161, 0x11ab)],
+      ["Palm Court", `Palm${cp(0xe000)} Court`],
+      ["Palm Court", `Pa${cp(0x378)}lm Court`],
+      ["Palm Court", `P${cp(0x200d)}alm${cp(0x2800)} Co${cp(0xfe0f)}urt${cp(0xe0041)}`],
+    ];
+    for (const [a, b] of SAME) assert.equal(nameKey(b), nameKey(a), [...b].map((c) => c.codePointAt(0).toString(16)).join(" "));
+    // Two scripts that only look alike stay apart, and so do hiragana and katakana.
+    assert.notEqual(nameKey("AB"), nameKey(cp(0x410, 0x412)));
+    assert.notEqual(nameKey(cp(0x3059, 0x3057)), nameKey(cp(0x30b9, 0x30b7)));
+  });
+
+  it("the rule is written by category, not as a list someone has to keep up", () => {
+    const MODEL = read("lib/crmModel.js");
+    assert.match(MODEL, /\\p\{Cf\}/);
+    assert.match(MODEL, /\\p\{Co\}/);
+    assert.match(MODEL, /const NAME_KEY_MARKS = \/\\p\{M\}\+\/gu;/);
+  });
+});
+
+describe("#3802 TA-13: every #3802 admin suite is run by the workflow", () => {
+  const WORKFLOW = fs.readFileSync(path.resolve(SRC, "../../.github/workflows/supabase-migrations-and-stripe-deno.yml"), "utf8");
+  const suites = fs.readdirSync(path.join(SRC, "__tests__")).filter((f) => /^issue3802_.*\.test\.js$/.test(f)).sort();
+
+  it("there are nine of them, and each has a step that runs it", () => {
+    assert.equal(suites.length, 9, suites.join(", "));
+    for (const file of suites) {
+      const run = new RegExp(`\\n\\s+run: node --test src/__tests__/${file.replace(/\./g, "\\.")}\\n`);
+      assert.match(WORKFLOW, run, `${file} is listed for triggering but no step runs it`);
+    }
+  });
+
+  it("the rendered stacking check has the packages it needs installed before it runs, in the same job", () => {
+    const at = WORKFLOW.indexOf("run: node --test src/__tests__/issue3802_wave1_overlay_stack.rendered.test.js");
+    assert.ok(at > 0);
+    const job = WORKFLOW.slice(WORKFLOW.lastIndexOf("\n    steps:\n", at), at);
+    const install = job.lastIndexOf("run: npm ci");
+    assert.ok(install > 0, "an install step comes before the rendered check");
+    assert.match(job.slice(job.lastIndexOf("- name:", install), install), /working-directory: mingla-admin/);
+  });
+});
