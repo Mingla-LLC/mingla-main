@@ -200,6 +200,16 @@ export const NAV_GROUPS = [
       { id: "campaigns",                 label: "Campaigns",          icon: "ClipboardList" },
     ],
   },
+  // Issue #3802 (Wave 1): the team's Hosts and Creators pipelines. Opened by
+  // the `crm` area (lib/access.js), so all four team roles see this group.
+  // Store and Sparkles are already in Sidebar.jsx ICON_MAP.
+  {
+    label: "Team",
+    items: [
+      { id: "hosts",                     label: "Hosts",              icon: "Store" },
+      { id: "creators",                  label: "Creators",           icon: "Sparkles" },
+    ],
+  },
 ];
 
 // Backward-compatible flat list (used by AppShell.currentTitle)

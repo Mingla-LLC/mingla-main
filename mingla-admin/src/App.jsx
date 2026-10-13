@@ -62,6 +62,8 @@ import { AdEnginePage } from "./pages/AdEnginePage";
 import { CampaignBuilderPage } from "./pages/CampaignBuilderPage";
 import { CampaignsPage } from "./pages/CampaignsPage";
 import { RefundOperationsPage } from "./pages/RefundOperationsPage";
+// Issue #3802 (Wave 1) — the team's Hosts and Creators boards (#/hosts, #/creators).
+import { HostsPage, CreatorsPage } from "./pages/PipelinePage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -120,6 +122,9 @@ const PAGES = {
   "campaign-builder": CampaignBuilderPage,
   campaigns: CampaignsPage,
   "refund-operations": RefundOperationsPage,
+  // Issue #3802 (Wave 1): opened by the `crm` area, not by admin_console.
+  hosts: HostsPage,
+  creators: CreatorsPage,
 };
 
 // Issue #3802 — every page id the app knows. Which of them a person may open
