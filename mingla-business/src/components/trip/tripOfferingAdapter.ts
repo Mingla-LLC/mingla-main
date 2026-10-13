@@ -17,7 +17,7 @@ import {
   type TripRefundPolicyShape,
 } from "@mingla/offering-rendering";
 
-import type { Trip } from "../../services/tripsService";
+import type { Trip, TripPricingTier } from "../../services/tripsService";
 import type { TripPreviewBrand } from "./TripPreview";
 
 // META-ORCH-1174 Leg A.3 — "N days · M nights" now derives via the SHARED
@@ -48,6 +48,27 @@ function coerceRefundPolicy(raw: unknown): TripRefundPolicyShape | null {
   return { kind, tiers };
 }
 
+/**
+ * Issue #3801 — seats still bookable across the whole trip: the sum of every
+ * package's remaining seats. Null when there are no packages, when any package
+ * has no limit, or when any package's remaining count is unknown (rule 9 — a
+ * partial sum is not the trip's number).
+ */
+export function sumTripSeatsLeft(
+  packages: readonly Pick<TripPricingTier, "isUnlimited" | "ticketsRemaining">[],
+): number | null {
+  if (packages.length === 0) return null;
+  let total = 0;
+  for (const pkg of packages) {
+    if (pkg.isUnlimited) return null;
+    if (typeof pkg.ticketsRemaining !== "number" || !Number.isFinite(pkg.ticketsRemaining)) {
+      return null;
+    }
+    total += Math.max(0, pkg.ticketsRemaining);
+  }
+  return total;
+}
+
 export function buildTripOfferingData(
   trip: Trip,
   bookable: boolean,
@@ -60,18 +81,21 @@ export function buildTripOfferingData(
   const bt = trip.businessTrip;
   const tier = trip.pricingTiers[0];
   const duration = deriveTripDuration(bt.startAt, bt.endAt);
+  // Issue #3801 — the seats pill describes the whole trip, not its first
+  // package. `capacity` is the summed spots of every package (the read fills it
+  // through `sumTripPackageSpots`; null when any package has no limit).
   const capacity = bt.capacity;
-  const isSoldOut =
-    tier !== undefined &&
-    tier.isUnlimited === false &&
-    tier.ticketsRemaining !== null &&
-    tier.ticketsRemaining <= 0;
+  const seatsLeft = sumTripSeatsLeft(trip.pricingTiers);
+  // Sold out only when every package is: each has a limit and none has a seat.
+  const isSoldOut = capacity !== null && seatsLeft !== null && seatsLeft <= 0;
+  // No capacity means no honest "max" (or "left") figure: the pill is hidden
+  // rather than showing one package's number as the trip's (rule 9).
   const spotsLabel =
     capacity !== null
       ? isSoldOut
         ? `Sold out · ${capacity} of ${capacity} booked`
-        : tier?.ticketsRemaining != null
-          ? `${tier.ticketsRemaining} seats left · ${capacity} max`
+        : seatsLeft !== null
+          ? `${seatsLeft} seats left · ${capacity} max`
           : `${capacity} max`
       : null;
 
