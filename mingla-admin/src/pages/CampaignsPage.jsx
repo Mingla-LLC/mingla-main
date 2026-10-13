@@ -18,7 +18,7 @@ import { ExternalLink, Pause, RefreshCw, Rocket } from "lucide-react";
 import { AlertCard, SectionCard } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
-import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
+import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
 import {
@@ -33,6 +33,7 @@ import {
 import { DELIVERY_BADGE_VARIANTS, mapReviewDetail } from "../lib/adBuilder/reviewDetailMap";
 import { launchConfirmCopy } from "../lib/adBuilder/budgetRules";
 import { PLATFORM_LABELS } from "../lib/adBuilder/channelPlan";
+import { LAUNCH_CONFIRM_PHRASE } from "../lib/adLaunchConfirm";
 // ISSUE-865 PR1 WP-4 — pure ROI math (ROAS/cost-per-result only from REAL spend).
 import { toCampaignRoiView } from "../lib/adRoi";
 import {
@@ -184,38 +185,43 @@ export function CampaignsPage() {
     return () => { active = false; };
   }, [detail?.dest_page_type, selectedId]);
 
-  const handleAction = async (campaign, action) => {
+  const handleAction = async (campaign, action, extras = {}) => {
     setRowBusy((prev) => ({ ...prev, [campaign.id]: action }));
-    const { data, error } = await campaignAction(campaign.id, action);
+    const { data, error } = await campaignAction(campaign.id, action, extras);
     if (error) {
       const parsed = await parseEdgeError(error);
+      const detail = String(
+        typeof parsed?.body?.detail === "string"
+          ? parsed.body.detail
+          : parsed?.body?.detail?.message ?? parsed?.message ?? "",
+      );
       addToast({
         variant: "error",
         title: `${action} failed`,
-        description: String(
-          typeof parsed?.body?.detail === "string"
-            ? parsed.body.detail
-            : parsed?.body?.detail?.message ?? parsed?.message ?? "",
-        ),
+        description: detail,
       });
+      setRowBusy((prev) => ({ ...prev, [campaign.id]: null }));
+      return { ok: false, detail };
+    }
+    if (data?.warning) {
+      // The 200 + warning contract: launched, but delivery is gated upstream.
+      setRowWarning((prev) => ({ ...prev, [campaign.id]: data.warning }));
+      addToast({ variant: "warning", title: "Launched with warning", description: data.warning });
     } else {
-      if (data?.warning) {
-        // The 200 + warning contract: launched, but delivery is gated upstream.
-        setRowWarning((prev) => ({ ...prev, [campaign.id]: data.warning }));
-        addToast({ variant: "warning", title: "Launched with warning", description: data.warning });
-      } else {
-        setRowWarning((prev) => ({ ...prev, [campaign.id]: null }));
+      setRowWarning((prev) => ({ ...prev, [campaign.id]: null }));
+      if (action === "launch") {
         addToast({
           variant: "success",
-          title: action === "launch"
-            ? `Live on ${PLATFORM_LABELS[campaign.platform] ?? campaign.platform}. It'll be in review before it starts delivering.`
-            : "Paused. Spending stopped.",
+          title: `Live on ${PLATFORM_LABELS[campaign.platform] ?? campaign.platform}. It'll be in review before it starts delivering.`,
         });
+      } else {
+        addToast({ variant: "success", title: "Paused. Spending stopped." });
       }
-      await load();
-      if (selectedId === campaign.id) await loadDetail(campaign.id);
     }
+    await load();
+    if (selectedId === campaign.id) await loadDetail(campaign.id);
     setRowBusy((prev) => ({ ...prev, [campaign.id]: null }));
+    return { ok: true, data };
   };
 
   const handleSync = async (campaignId) => {
@@ -604,35 +610,36 @@ export function CampaignsPage() {
         </SectionCard>
       )}
 
-      {/* Launch confirm — blueprint §1.8 modal copy (175% pacing truth). */}
-      <Modal
+      {/* Launch confirm — Wave 5 / #3704: type LAUNCH + reason (server-enforced). */}
+      <HighRiskActionModal
         open={launchTarget !== null}
         onClose={() => setLaunchTarget(null)}
         title="Launch this campaign?"
-      >
-        <ModalBody>
-          <p className="text-sm">
-            {launchTarget &&
-              launchConfirmCopy({
-                channelCount: 1,
-                totalDailyCents: Number(launchTarget.daily_budget_cents) || 0,
-              })}
-          </p>
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={() => setLaunchTarget(null)}>Cancel</Button>
-          <Button
-            icon={Rocket}
-            onClick={() => {
-              const target = launchTarget;
-              setLaunchTarget(null);
-              if (target) handleAction(target, "launch");
-            }}
-          >
-            Launch
-          </Button>
-        </ModalFooter>
-      </Modal>
+        description={
+          launchTarget
+            ? launchConfirmCopy({
+              channelCount: 1,
+              totalDailyCents: Number(launchTarget.daily_budget_cents) || 0,
+            })
+            : undefined
+        }
+        confirmLabel="Launch"
+        confirmPhrase={LAUNCH_CONFIRM_PHRASE}
+        requireReason
+        reasonLabel="Why are you launching? (audit log)"
+        successMessage={null}
+        onConfirm={async ({ reason }) => {
+          const target = launchTarget;
+          if (!target) throw new Error("No campaign selected");
+          const result = await handleAction(target, "launch", {
+            confirm_phrase: LAUNCH_CONFIRM_PHRASE,
+            reason,
+          });
+          if (!result.ok) {
+            throw new Error(result.detail || "Launch failed");
+          }
+        }}
+      />
     </div>
   );
 }
