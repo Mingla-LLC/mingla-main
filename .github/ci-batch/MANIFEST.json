@@ -18036,7 +18036,7 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a7de5650a1ce560a7b25948c0c23bfedfdeea882614871916f9c14a3c6a9fbb8",
+        "sourceSha256": "6acad4f9243162da61237be6b2f4663ab916e29a3470eae9489f1c7c0d5e22af",
         "triggers": [
           "pull_request",
           "push"
