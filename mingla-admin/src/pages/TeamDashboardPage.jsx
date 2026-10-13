@@ -1,0 +1,349 @@
+// Issue #3802 (Wave 1) — the Team dashboard (#/team-dashboard), for an owner
+// or admin: the team's pipelines by stage, everything due, this week by
+// person, and the monthly host targets (set, changed and removed here).
+//
+// Every number was counted by the server (crm_team_summary, through
+// hooks/useCrmSummary.js). The page id has no entry in lib/access.js, so only
+// an owner or admin can open it; the server refuses everyone else as well.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertCard } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
+import { useCrmConfig } from "../hooks/useCrmConfig";
+import { useCrmSummary } from "../hooks/useCrmSummary";
+import { useHashQuery } from "../hooks/useHashQuery";
+import { useOnline } from "../hooks/useCrmPipeline";
+import { canOpenPage } from "../lib/access";
+import { displayName, dueTotals, errorWords, loadErrorWords, localToday, ownerLabel } from "../lib/crmModel";
+import { buildCrmHash, buildTeamSearch, parseTeamSearch } from "../lib/crmUrl";
+import { setTarget } from "../services/crmService";
+import { Segmented } from "../components/crm/fields";
+import { StatTile, StatTileRow, StatTileSkeleton } from "../components/crm/home/StatTile";
+import { DueList, LINK_BUTTON_CLASS } from "../components/crm/home/DueList";
+import { StageFunnel } from "../components/crm/home/StageFunnel";
+import { GONE_REGION, TargetsCard } from "../components/crm/home/TargetsCard";
+import { TargetAddForm, TargetRowControls } from "../components/crm/home/TargetEditor";
+import { WeekByPerson } from "../components/crm/home/WeekByPerson";
+
+const PAGE_ID = "team-dashboard";
+const UNDO_MS = 8000;
+const OFFLINE_WORDS = "You're offline. You can look around, but the numbers won't update and targets can't be changed until you're back.";
+const NOT_READY_WORDS = "The team dashboard isn't switched on yet. Try again in a few minutes, or tell an admin.";
+const PIPELINES = [
+  { value: "hosts", label: "Hosts" },
+  { value: "creators", label: "Creators" },
+];
+const DOT = String.fromCharCode(183);
+
+function overdueNote(totals) {
+  return totals.overdue > 0 ? `${totals.overdue} overdue` : "";
+}
+
+export function TeamDashboardPage() {
+  const { access } = useAuth();
+  const { addToast } = useToast();
+  const online = useOnline();
+  const cfg = useCrmConfig();
+  const summary = useCrmSummary("team");
+  const config = cfg.config;
+  const data = summary.data;
+
+  const [search, setSearch] = useHashQuery(PAGE_ID);
+  const person = useMemo(() => parseTeamSearch(search).person, [search]);
+  const [pipeline, setPipeline] = useState("hosts");
+  const dueRef = useRef(null);
+
+  const name = data?.me?.display_name || displayName(access?.email || "");
+  const today = data?.today || localToday();
+  const error = summary.error || cfg.error;
+  const loading = !error && (summary.loading || cfg.loading);
+  const retry = () => {
+    if (cfg.error) cfg.retry();
+    summary.refetch();
+  };
+
+  const people = useMemo(() => (Array.isArray(data?.by_person) ? data.by_person : []), [data]);
+  // A person in the address who is not in the list is dropped quietly.
+  useEffect(() => {
+    if (!data || !person) return;
+    if (!people.some((p) => p.email === person)) setSearch("", { replace: true });
+  }, [data, person, people, setSearch]);
+  const picked = person && people.some((p) => p.email === person) ? person : "";
+  const personName = (email) => ownerLabel(email, people);
+
+  const showDue = useCallback(() => {
+    const el = dueRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    el.focus({ preventScroll: true });
+  }, []);
+  const pickPerson = useCallback(
+    (email) => {
+      setSearch(buildTeamSearch({ person: email }), { replace: true });
+      showDue();
+    },
+    [setSearch, showDue]
+  );
+  const tileTo = (which) => (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    setPipeline(which);
+    showDue();
+  };
+
+  // ── Targets ─────────────────────────────────────────────────────────────
+  const { patch, refetch } = summary;
+  // The Undo in a target's toast calls the same writer, a moment later.
+  const writeAgain = useRef(null);
+  const writeTarget = useCallback(
+    async (regionId, icp, number, { where, undo = true } = {}) => {
+      if (!online) return { ok: false, message: "You're offline, so that didn't go through. Try again once you're back." };
+      let res;
+      try {
+        res = await setTarget(regionId, icp, number);
+      } catch (err) {
+        if (err?.token === "forbidden") refetch({ quiet: false });
+        return { ok: false, message: errorWords(err) };
+      }
+      // Show the server's answer straight away, then read everything again.
+      patch((d) => {
+        const rest = (d.targets || []).filter((t) => !(t.region_id === regionId && t.icp === icp));
+        return { ...d, targets: res.target ? [...rest, res.target] : rest };
+      });
+      refetch({ quiet: true });
+      const label = where || [res.target?.region_name, res.target?.icp_label].filter(Boolean).join(` ${DOT} `);
+      const previous = res.previous ?? null;
+      addToast({
+        variant: res.changed ? "success" : "info",
+        title: !res.changed
+          ? `Target for ${label} is already ${number === null ? "removed" : number}`
+          : number === null
+            ? `Target for ${label} removed`
+            : `Target for ${label} set to ${number}`,
+        duration: UNDO_MS,
+        action:
+          undo && res.changed
+            ? {
+                label: "Undo",
+                onClick: async () => {
+                  const back = await writeAgain.current(regionId, icp, previous, { where: label, undo: false });
+                  if (!back.ok) addToast({ variant: "error", title: "Couldn't undo that", description: back.message });
+                },
+              }
+            : undefined,
+      });
+      return { ok: true };
+    },
+    [online, patch, refetch, addToast]
+  );
+  useEffect(() => {
+    writeAgain.current = writeTarget;
+  }, [writeTarget]);
+
+  const hostsDue = dueTotals(data?.due?.hosts);
+  const creatorsDue = dueTotals(data?.due?.creators);
+  const due = data?.due?.[pipeline];
+  const dueAll = dueTotals(due);
+  const allRows = Array.isArray(due?.rows) ? due.rows : [];
+  const rows = picked ? allRows.filter((r) => Array.isArray(r.owners) && r.owners.includes(picked)) : allRows;
+  const withDue = people.filter((p) => Number(p.overdue) + Number(p.due_today) > 0);
+  const chips = picked && !withDue.some((p) => p.email === picked) ? [...withDue, people.find((p) => p.email === picked)] : withDue;
+  const plural = pipeline === "creators" ? "Creators" : "Hosts";
+  const def = config?.pipelines?.[pipeline] || null;
+  const hostIcps = config?.pipelines?.hosts?.icps || [];
+
+  return (
+    <div className="flex min-w-0 flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="break-words text-2xl font-bold text-[var(--color-text-primary)]">Team dashboard</h1>
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+            {name ? `Hi ${name}. Here is the team.` : "Here is the team."}
+          </p>
+        </div>
+        {canOpenPage(access, "admin") ? (
+          <a href="#/admin" className={LINK_BUTTON_CLASS}>
+            Team and roles
+          </a>
+        ) : null}
+      </div>
+
+      {!online && <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>}
+
+      {error ? (
+        error.token === "forbidden" ? (
+          <AlertCard
+            variant="error"
+            title="You can't open the team dashboard any more"
+            action={
+              <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
+                Reload
+              </Button>
+            }
+          >
+            {errorWords(error)}
+          </AlertCard>
+        ) : (
+          <AlertCard
+            variant="error"
+            title="Couldn't load the team dashboard"
+            action={
+              <Button variant="secondary" size="sm" onClick={retry}>
+                Retry
+              </Button>
+            }
+          >
+            {error.token === "not_ready" ? NOT_READY_WORDS : loadErrorWords(error)}
+          </AlertCard>
+        )
+      ) : loading ? (
+        <>
+          <StatTileRow label="Loading">
+            <StatTileSkeleton />
+            <StatTileSkeleton />
+            <StatTileSkeleton />
+          </StatTileRow>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <StageFunnel title="Hosts by stage" pipeline="hosts" loading />
+            <StageFunnel title="Creators by stage" pipeline="creators" loading />
+          </div>
+          <DueList title="Due and overdue, whole team" pipeline="hosts" loading />
+          <WeekByPerson loading />
+          <TargetsCard loading />
+        </>
+      ) : (
+        <>
+          <StatTileRow label="The team's numbers">
+            <StatTile
+              href={buildCrmHash("hosts", { view: "list" })}
+              onClick={tileTo("hosts")}
+              value={hostsDue.total}
+              label="Hosts due"
+              note={overdueNote(hostsDue)}
+            />
+            <StatTile
+              href={buildCrmHash("creators", { view: "list" })}
+              onClick={tileTo("creators")}
+              value={creatorsDue.total}
+              label="Creators due"
+              note={overdueNote(creatorsDue)}
+            />
+            <StatTile href="#/beta-leads?show=new" value={data.beta_leads_new ?? 0} label="New beta leads" />
+          </StatTileRow>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <StageFunnel title="Hosts by stage" pipeline="hosts" stages={data.stages?.hosts} />
+            <StageFunnel title="Creators by stage" pipeline="creators" stages={data.stages?.creators} />
+          </div>
+
+          <section ref={dueRef} tabIndex={-1} aria-label="Due and overdue, whole team" className="flex scroll-mt-20 flex-col gap-3 outline-none">
+            <div className="flex flex-wrap items-center gap-2">
+              <Segmented label="Pipeline" options={PIPELINES} value={pipeline} onChange={setPipeline} />
+            </div>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Whose cards to list">
+              <button
+                type="button"
+                aria-pressed={!picked}
+                onClick={() => setSearch("", { replace: true })}
+                className={chipClass(!picked)}
+              >
+                Everyone
+              </button>
+              {chips.filter(Boolean).map((p) => (
+                <button
+                  key={p.email}
+                  type="button"
+                  aria-pressed={picked === p.email}
+                  title={p.email}
+                  onClick={() => setSearch(buildTeamSearch({ person: p.email }), { replace: true })}
+                  className={chipClass(picked === p.email)}
+                >
+                  {personName(p.email)}
+                  <span className="tabular-nums opacity-80">{Number(p.overdue) + Number(p.due_today)}</span>
+                </button>
+              ))}
+            </div>
+            <DueList
+              title="Due and overdue, whole team"
+              pipeline={pipeline}
+              def={def}
+              rows={rows}
+              total={picked ? rows.length : dueAll.total}
+              regions={config.regions}
+              team={config.team}
+              today={today}
+              who="owners"
+              moreHref={buildCrmHash(pipeline, { view: "list" })}
+              emptyText={
+                picked
+                  ? `Nothing is due or overdue for ${personName(picked)} in ${plural}.`
+                  : "Nothing is due or overdue."
+              }
+              action={
+                picked ? (
+                  <Button variant="secondary" size="sm" className="max-sm:h-10" onClick={() => setSearch("", { replace: true })}>
+                    Show everyone
+                  </Button>
+                ) : null
+              }
+            />
+            {picked && due?.truncated ? (
+              <p className="text-xs text-[var(--color-text-tertiary)]">
+                Only the first {allRows.length} due {plural.toLowerCase()} are searched here.{" "}
+                <a href={buildCrmHash(pipeline, { view: "list" })} className="font-semibold underline">
+                  Open the list
+                </a>{" "}
+                to see every one.
+              </p>
+            ) : null}
+          </section>
+
+          <WeekByPerson
+            byPerson={people}
+            selected={picked}
+            hrefFor={(email) => `#/${PAGE_ID}?${buildTeamSearch({ person: email })}`}
+            onPick={pickPerson}
+          />
+
+          <TargetsCard
+            targets={data.targets}
+            subtitle="Hosts that reached Onboarded or Live this month, against the monthly number"
+            emptyHint="Add the first one below."
+            renderControls={(t) => (
+              <TargetRowControls
+                target={t}
+                offline={!online}
+                onSave={(number) => writeTarget(t.region_id, t.icp, number, { where: targetWhere(t) })}
+                onRemove={() => writeTarget(t.region_id, t.icp, null, { where: targetWhere(t) })}
+              />
+            )}
+            footer={
+              <TargetAddForm
+                regions={config.regions}
+                icps={hostIcps}
+                targets={data.targets}
+                offline={!online}
+                onSave={(regionId, icp, number) => writeTarget(regionId, icp, number)}
+              />
+            }
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function targetWhere(t) {
+  return `${t.region_name || GONE_REGION} ${DOT} ${t.icp_label}`;
+}
+
+function chipClass(pressed) {
+  return [
+    "inline-flex h-10 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors duration-150",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
+    pressed
+      ? "cursor-default border-transparent bg-[var(--color-brand-500)] text-white"
+      : "cursor-pointer border-[var(--gray-300)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]",
+  ].join(" ");
+}
