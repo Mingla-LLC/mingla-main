@@ -23,25 +23,45 @@
 // Pure module: no React, no RN, no app imports (I-MOR-0827-PACKAGE-ISOLATION).
 // Import it by its deep specifier (`@mingla/offering-rendering/priceDecimals`).
 
+// FLOAT NOISE: a total summed in floats is rarely a clean integer (15 tickets
+// at 8.20 is 122.99999999999999), so "whole" is decided AFTER rounding to the
+// currency's own minor unit, and Intl does that rounding. An amount within
+// half a penny of a whole number asks only for "no minimum decimals": Intl
+// rounds it to the currency's digits and drops the zeros, so pounds show
+// "£123" while a 3-digit currency still shows "KWD 122.996". That close to a
+// whole number the rounded amount can never end in a single decimal.
+
 const WHOLE: Intl.NumberFormatOptions = Object.freeze({
   minimumFractionDigits: 0,
   maximumFractionDigits: 0,
 });
+const WHOLE_IF_IT_ROUNDS_TO_ONE: Intl.NumberFormatOptions = Object.freeze({
+  minimumFractionDigits: 0,
+});
 const CURRENCY_DEFAULT: Intl.NumberFormatOptions = Object.freeze({});
+
+/** Half of the smallest unit of a 2-digit currency, in major units. */
+const HALF_A_PENNY = 0.005;
 
 /**
  * Fraction-digit options for a displayed price in MAJOR units.
  *
  * @example priceDecimals(5000)      → no decimals        ("₦5,000")
+ * @example priceDecimals(15 * 8.2)  → whole once rounded ("£123")
  * @example priceDecimals(1515772.5) → currency's default ("₦1,515,772.50")
  * @example priceDecimals(10.5)      → currency's default ("£10.50", "¥11")
  */
-export const priceDecimals = (amountMajor: number): Intl.NumberFormatOptions =>
-  Number.isInteger(amountMajor) ? WHOLE : CURRENCY_DEFAULT;
+export const priceDecimals = (amountMajor: number): Intl.NumberFormatOptions => {
+  if (Number.isInteger(amountMajor)) return WHOLE;
+  return Math.abs(amountMajor - Math.round(amountMajor)) <= HALF_A_PENNY
+    ? WHOLE_IF_IT_ROUNDS_TO_ONE
+    : CURRENCY_DEFAULT;
+};
 
 /**
  * Decimals for the plain-text fallback used when Intl rejects a currency code:
- * none for a whole amount, two otherwise. Never one.
+ * none for an amount that is whole once rounded to two decimals, two
+ * otherwise. Never one.
  */
 export const priceFallbackDecimals = (amountMajor: number): 0 | 2 =>
-  Number.isInteger(amountMajor) ? 0 : 2;
+  Number.isInteger(Number(amountMajor.toFixed(2))) ? 0 : 2;
