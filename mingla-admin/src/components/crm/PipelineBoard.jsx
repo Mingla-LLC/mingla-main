@@ -80,7 +80,14 @@ export function PipelineBoard({
   };
   useEffect(() => stopScrolling, []);
 
+  // The column the pointer was last over, and whether this drag ended in a
+  // drop. Both are read when the drag ends.
+  const lastOver = useRef({ stage: null, at: 0 });
+  const dropped = useRef(false);
+
   const handleDragStart = (e, record) => {
+    dropped.current = false;
+    lastOver.current = { stage: null, at: 0 };
     setDragId(record.id);
     e.dataTransfer.effectAllowed = "move";
     try {
@@ -94,8 +101,32 @@ export function PipelineBoard({
     setDragId(null);
     setOverStage(null);
   };
+  // The drag is over. A card let go over a column that will never take it
+  // (Live sets itself; a Live host only leaves for Lost) gets no drop from the
+  // browser, because that column is not a drop target. Letting go there must
+  // not be silent: the move is asked for anyway, and the page answers it in
+  // plain words without moving anything. The column still never LOOKS like a
+  // place to drop.
+  const handleDragEnd = (e) => {
+    const record = dragged;
+    const wasDropped = dropped.current;
+    endDrag();
+    if (!record || wasDropped || disabled) return;
+    let stageId = null;
+    if (e && (e.clientX || e.clientY)) {
+      const under = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el.closest?.("[data-stage]"));
+      stageId = under ? under.closest("[data-stage]").getAttribute("data-stage") : null;
+    } else if (e && e.timeStamp - lastOver.current.at < 700) {
+      // A browser that gives no position for the end of a drag.
+      stageId = lastOver.current.stage;
+    }
+    if (!stageId || stageId === record.stage) return;
+    const block = moveBlocker(def, record, stageId);
+    if (block && (block.token === "stage_sets_itself" || block.token === "stage_is_live")) onMove(record, stageId);
+  };
   const handleDrop = (e, stageId) => {
     e.preventDefault();
+    dropped.current = true;
     const id = dragId || e.dataTransfer.getData("text/plain");
     endDrag();
     const record = records.find((r) => r.id === id);
@@ -136,6 +167,7 @@ export function PipelineBoard({
                 canDrag && !disabled
                   ? (e) => {
                       if (overStage !== stage.id) setOverStage(stage.id);
+                      lastOver.current = { stage: stage.id, at: e.timeStamp };
                       // Not calling preventDefault is what tells the browser
                       // "no drop here": the pointer shows the not-allowed sign.
                       if (refusal(stage.id)) {
@@ -194,7 +226,7 @@ export function PipelineBoard({
                     onOpen={onOpen}
                     onMove={onMove}
                     onDragStart={handleDragStart}
-                    onDragEnd={endDrag}
+                    onDragEnd={handleDragEnd}
                   />
                   ))}
                 </div>

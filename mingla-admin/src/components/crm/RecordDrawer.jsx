@@ -35,6 +35,11 @@ const leftUnsent = new Map();
 
 const LEFT_BEHIND_WORDS = "This wasn't saved before the card closed.";
 
+/** The same value, for a field that holds text or a list (owners). */
+function sameValue(a, b) {
+  return Array.isArray(a) || Array.isArray(b) ? JSON.stringify(a) === JSON.stringify(b) : a === b;
+}
+
 function restoreLeftUnsent(recordId) {
   const kept = leftUnsent.get(recordId);
   if (!kept) return { drafts: {}, unsent: {} };
@@ -178,8 +183,13 @@ export function RecordDrawer({
     [recordId, pipeline, addToast]
   );
 
-  /** Save one field. Returns true when the server took it. */
-  const save = useCallback(
+  // Saves that are on their way to the server, by field: key -> { value,
+  // promise }. Closing a card while a field is still saving must wait for that
+  // answer, not send the same value a second time.
+  const inFlight = useRef(new Map());
+
+  /** Send one field to the server. Returns true when the server took it. */
+  const sendField = useCallback(
     async (key, value) => {
       const before = live.current.record;
       if (!before) return false;
@@ -246,6 +256,20 @@ export function RecordDrawer({
     [pipe, addToast, markMissing, keepForLater]
   );
 
+  /** Save one field. Returns true when the server took it. */
+  const save = useCallback(
+    (key, value) => {
+      const promise = sendField(key, value);
+      const entry = { value, promise };
+      inFlight.current.set(key, entry);
+      promise.finally(() => {
+        if (inFlight.current.get(key) === entry) inFlight.current.delete(key);
+      });
+      return promise;
+    },
+    [sendField]
+  );
+
   const dropDraft = (key) =>
     setEdits((e) => {
       if (!Object.hasOwn(e.drafts, key) && !Object.hasOwn(e.unsent, key)) return e;
@@ -296,11 +320,21 @@ export function RecordDrawer({
     const { drafts: d, unsent: u, record: rec } = live.current;
     let ok = true;
     for (const edit of editsToSend(d, rec, u)) {
-      // Typed fields are checked again (a blank name, a non-number); the
-      // rest are sent as they are.
-      const sent = TEXT_FIELDS.includes(edit.key)
-        ? await commitValue(edit.key, normalizeTyped(edit.key, edit.value))
-        : await save(edit.key, edit.value);
+      const typed = TEXT_FIELDS.includes(edit.key);
+      const value = typed ? normalizeTyped(edit.key, edit.value) : edit.value;
+      const flying = inFlight.current.get(edit.key);
+      let sent;
+      if (flying && sameValue(flying.value, value)) {
+        // This very value is already on its way: use that answer. Sending it
+        // again would write the field (and its history) twice.
+        sent = await flying.promise;
+      } else {
+        // A different value for a field that is mid-save goes after it.
+        if (flying) await flying.promise;
+        // Typed fields are checked again (a blank name, a non-number); the
+        // rest are sent as they are.
+        sent = typed ? await commitValue(edit.key, value) : await save(edit.key, value);
+      }
       if (!sent) ok = false;
     }
     return ok;

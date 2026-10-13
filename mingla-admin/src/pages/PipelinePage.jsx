@@ -5,6 +5,7 @@
 // itself. The view, the filters and the open card live in the address, so a
 // reload or a pasted link shows exactly the same thing.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Plus } from "lucide-react";
 import { AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -180,6 +181,34 @@ function PipelinePage({ pipeline, onTabChange }) {
     [pipe, addToast]
   );
 
+  /** A move the server refused because the card had moved: say where it is. */
+  const explainStale = useCallback(
+    async (shown, to, err) => {
+      let fresh;
+      try {
+        fresh = await pipe.checkFresh(shown.id);
+      } catch (again) {
+        if (again?.token === "not_found") {
+          pipe.dropRecord(shown.id);
+          addToast({ variant: "warning", title: `${shown.name} is no longer here`, description: "It was deleted. The board is up to date now." });
+        } else {
+          addToast({ variant: "warning", title: `${shown.name} didn't move`, description: errorWords(err) });
+        }
+        return;
+      }
+      pipe.applyRecord(fresh.record);
+      setActivityTick((n) => n + 1);
+      const verdict = freshnessVerdict(def, shown, fresh.record, to, fresh.activity);
+      if (verdict.kind === "go") {
+        // It is back where this person saw it: nothing to explain but the refusal.
+        addToast({ variant: "warning", title: `${shown.name} didn't move`, description: errorWords(err) });
+        return;
+      }
+      addToast({ variant: verdict.kind === "already" ? "info" : "warning", title: verdict.title, description: verdict.description });
+    },
+    [pipe, def, addToast]
+  );
+
   const performMove = useCallback(
     async (record, to, reason = null) => {
       clearUndoToast(record.id);
@@ -206,6 +235,14 @@ function PipelinePage({ pipeline, onTabChange }) {
         return true;
       } catch (err) {
         if (err?.token === "not_found") pipe.dropRecord(record.id);
+        if (err?.token === "stage_changed") {
+          // Someone moved the card between the look and the move, so the
+          // server moved nothing. Read the card again and say who moved it
+          // where: the same words as a card found moved before the move was
+          // sent. (The Lost/Passed question closes: failure stays empty.)
+          await explainStale(record, to, err);
+          return false;
+        }
         if (moveErrorSink.current && err?.token !== "not_found") {
           moveErrorSink.current(errorWords(err));
           return false;
@@ -215,7 +252,7 @@ function PipelinePage({ pipeline, onTabChange }) {
         return false;
       }
     },
-    [pipe, def, addToast, clearUndoToast, undoMove, openCard]
+    [pipe, def, addToast, clearUndoToast, undoMove, openCard, explainStale]
   );
 
   const requestMove = useCallback(
@@ -227,8 +264,8 @@ function PipelinePage({ pipeline, onTabChange }) {
       }
       // The board may be old: ask the server where the card is NOW before
       // moving it, so a card a colleague already moved is never moved again
-      // from where it used to be. (The server's move function has no "only if
-      // it is still in stage X" option, so this check is made here.)
+      // from where it used to be. (The move itself also names the stage it
+      // saw, and the server refuses it if the card moved in between.)
       pipe.setBusy(shown.id, true);
       let fresh;
       try {
@@ -387,8 +424,14 @@ function PipelinePage({ pipeline, onTabChange }) {
     const guard = guardRef.current;
     Promise.resolve(guard ? guard.flush() : true).then((ok) => {
       if (!live || ok) return;
-      // Not saved: the card stays, so the address names it again.
-      cardEntryPushed.current = false;
+      // Not saved: the card stays, so the address names it again, in a
+      // history entry of ITS OWN on top of the board's: a new entry is added
+      // and then given the card's address. X, Escape and Back therefore all
+      // behave the same however many times they are refused (each one goes
+      // back to the board's entry, the card is held, and it is put back
+      // here), and Back never leaves the page while something is unsent.
+      window.history.pushState(null, "", window.location.href);
+      cardEntryPushed.current = true;
       setSearch(buildCrmSearch({ ...stateRef.current, card: shownCard }), { replace: true });
     });
     return () => {
@@ -540,7 +583,12 @@ function PipelinePage({ pipeline, onTabChange }) {
         </>
       )}
 
-      {ready && state.card === NEW_CARD && !holding && (
+      {/* The card panels are drawn at the top of the page, outside this page's
+          own box: the page slides in when it mounts, and a panel placed inside
+          a moving box is sized by that box (a strip as short as the heading)
+          until the slide ends. Drawn outside it, the first paint is full
+          height. */}
+      {ready && state.card === NEW_CARD && !holding && createPortal(
         <Drawer open onClose={closeCard} title={`New ${singular}`}>
           <AddRecordForm
             pipeline={pipeline}
@@ -553,10 +601,11 @@ function PipelinePage({ pipeline, onTabChange }) {
             onOpenExisting={(id) => openCard(id, { replace: true })}
             onCancel={closeCard}
           />
-        </Drawer>
+        </Drawer>,
+        document.body
       )}
 
-      {ready && openId && (
+      {ready && openId && createPortal(
         <RecordDrawer
           key={openId}
           pipeline={pipeline}
@@ -577,7 +626,8 @@ function PipelinePage({ pipeline, onTabChange }) {
           onRequestMove={requestMove}
           onDelete={handleDelete}
           onOpenCard={(id) => openCard(id, { replace: true })}
-        />
+        />,
+        document.body
       )}
 
       <ReasonPrompt
