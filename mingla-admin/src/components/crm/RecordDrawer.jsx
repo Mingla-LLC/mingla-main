@@ -571,7 +571,7 @@ export function RecordDrawer({
           <>
             <span className="font-semibold text-[var(--color-error-700)]">Not saved: {names}</span>
             {canRetry && (
-              <Button variant="secondary" size="sm" className="max-sm:h-10" disabled={locked} onClick={sendAll}>
+              <Button variant="secondary" size="sm" className="max-sm:h-11" disabled={locked} onClick={sendAll}>
                 Try again
               </Button>
             )}
@@ -610,11 +610,11 @@ export function RecordDrawer({
           </span>
           <span className="flex flex-wrap gap-2">
             {canRetry && (
-              <Button variant="secondary" size="sm" className="max-sm:h-10" disabled={locked} onClick={sendAll}>
+              <Button variant="secondary" size="sm" className="max-sm:h-11" disabled={locked} onClick={sendAll}>
                 Try again
               </Button>
             )}
-            <Button variant="ghost" size="sm" className="max-sm:h-10" onClick={closeWithoutSaving}>
+            <Button variant="ghost" size="sm" className="max-sm:h-11" onClick={closeWithoutSaving}>
               Close without saving
             </Button>
           </span>
@@ -628,15 +628,15 @@ export function RecordDrawer({
     confirmDelete ? (
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Confirm delete">
         <span className="text-sm text-[var(--color-text-primary)]">Delete for everyone?</span>
-        <Button variant="danger" size="sm" className="max-sm:h-10" loading={deleting} disabled={locked} onClick={doDelete}>
+        <Button variant="danger" size="sm" className="max-sm:h-11" loading={deleting} disabled={locked} onClick={doDelete}>
           Delete
         </Button>
-        <Button ref={keepRef} variant="ghost" size="sm" className="max-sm:h-10" disabled={deleting} onClick={() => setConfirmDelete(false)}>
+        <Button ref={keepRef} variant="ghost" size="sm" className="max-sm:h-11" disabled={deleting} onClick={() => setConfirmDelete(false)}>
           Keep
         </Button>
       </div>
     ) : (
-      <Button ref={askDeleteRef} variant="ghost" size="sm" className="max-sm:h-10" disabled={locked || pending} onClick={() => setConfirmDelete(true)}>
+      <Button ref={askDeleteRef} variant="ghost" size="sm" className="max-sm:h-11" disabled={locked || pending} onClick={() => setConfirmDelete(true)}>
         Delete
       </Button>
     )
@@ -644,7 +644,7 @@ export function RecordDrawer({
     <Button
       variant="ghost"
       size="sm"
-      className="max-sm:h-10"
+      className="max-sm:h-11"
       disabled={locked || pending}
       onClick={() => onRequestMove(record, closing.id)}
     >
@@ -656,7 +656,10 @@ export function RecordDrawer({
 
   return (
     <Drawer open onClose={onClose} title={record.name} header={header} footer={footer} suspended={suspended}>
-      <div className="flex flex-col gap-5">
+      {/* The space at the end is as tall as any message shown over the card on
+          a phone, so the last fields can always be scrolled clear of it
+          (components/ui/Toast.jsx sets --toast-clear). */}
+      <div className="flex flex-col gap-5" style={{ paddingBottom: "var(--toast-clear, 0px)" }}>
         {locked && (
           <p className="rounded-lg bg-[var(--color-warning-50)] px-3 py-2 text-xs text-[var(--color-warning-700)]">
             You&apos;re offline. You can read this card, but changes won&apos;t save until you&apos;re back.
@@ -666,7 +669,7 @@ export function RecordDrawer({
           <div>
             <Button
               size="sm"
-              className="max-sm:h-10"
+              className="max-sm:h-11"
               iconRight={ArrowRight}
               disabled={locked || pending}
               onClick={() => onRequestMove(record, next.id)}
@@ -802,7 +805,7 @@ export function RecordDrawer({
         {current.status === "error" && (
           <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-error-700)]" role="alert">
             <span>Couldn&apos;t load the activity. {current.message}</span>
-            <Button variant="secondary" size="sm" className="max-sm:h-10" onClick={() => setReloadTick((n) => n + 1)}>
+            <Button variant="secondary" size="sm" className="max-sm:h-11" onClick={() => setReloadTick((n) => n + 1)}>
               Try again
             </Button>
           </div>

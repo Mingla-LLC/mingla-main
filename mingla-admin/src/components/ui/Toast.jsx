@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { CheckCircle, AlertTriangle, AlertCircle, Info, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "../../context/ToastContext";
+import { EDGE_GAP, PANEL_GAP, stackPlace } from "../../lib/toastPlace";
 
 const VARIANT_CONFIG = {
   success: { bg: "bg-[var(--color-success-50)]", border: "border-l-[#22c55e]", text: "text-[var(--color-success-700)]", Icon: CheckCircle },
@@ -15,8 +16,8 @@ const VARIANT_CONFIG = {
 const DIALOG_PANEL = '[role="dialog"][aria-modal="true"]';
 // A drawer is a side panel; a dialog in the middle of the screen is not.
 const SIDE_PANEL = `aside${DIALOG_PANEL}`;
-// Room a toast needs beside a side panel: its 320px minimum plus the margins.
-const ROOM_BESIDE_PANEL = 368;
+// The air left between the last field of an open card and a toast over it.
+const CLEAR_GAP = 32;
 
 /**
  * Call BEFORE a toast is dismissed from one of its own buttons; call what it
@@ -25,7 +26,7 @@ const ROOM_BESIDE_PANEL = 368;
  * put on the open drawer or dialog instead, so the next Tab stays inside the
  * card. With nothing open, or focus elsewhere, nothing is touched.
  */
-function focusReturn(toastEl) {
+function focusReturn(toastEl, elsewhere) {
   const inside = !!toastEl && toastEl.contains(document.activeElement);
   return () => {
     if (!inside) return;
@@ -35,12 +36,19 @@ function focusReturn(toastEl) {
       if (active && active !== document.body && document.body.contains(active) && !toastEl.contains(active)) return;
       const panels = document.querySelectorAll(DIALOG_PANEL);
       const panel = panels.length > 0 ? panels[panels.length - 1] : null;
-      if (panel && typeof panel.focus === "function") panel.focus();
+      if (panel && typeof panel.focus === "function") {
+        panel.focus();
+        return;
+      }
+      // Nothing is open: go where the toast's owner said the work continues
+      // (action.focusAfter returns that element), so focus is never dropped.
+      const next = typeof elsewhere === "function" ? elsewhere() : null;
+      if (next && typeof next.focus === "function" && document.body.contains(next)) next.focus();
     });
   };
 }
 
-function ToastItem({ toast, onDismiss, onHold, onRelease }) {
+function ToastItem({ toast, onDismiss, onHold, onRelease, fill = false }) {
   const config = VARIANT_CONFIG[toast.variant] || VARIANT_CONFIG.info;
   const ToastIcon = config.Icon;
   const rootRef = useRef(null);
@@ -57,6 +65,9 @@ function ToastItem({ toast, onDismiss, onHold, onRelease }) {
       onFocus={() => onHold?.(toast.id)}
       onBlur={() => onRelease?.(toast.id)}
       className="pointer-events-auto w-full sm:w-auto sm:min-w-[320px] max-w-[480px] overflow-hidden rounded-lg bg-[var(--color-background-primary)] shadow-[var(--shadow-lg)]"
+      // Beside a card there may be less than 320px: the toast then takes the
+      // room there is instead of spilling under the card or off the screen.
+      style={fill ? { minWidth: 0, width: "100%" } : undefined}
     >
       <div className={["p-3 px-4 border-l-4", config.bg, config.border].join(" ")}>
         <div className="flex items-start gap-3">
@@ -70,7 +81,7 @@ function ToastItem({ toast, onDismiss, onHold, onRelease }) {
               <button
                 type="button"
                 onClick={() => {
-                  const restoreFocus = focusReturn(rootRef.current);
+                  const restoreFocus = focusReturn(rootRef.current, toast.action.focusAfter);
                   onDismiss(toast.id);
                   toast.action.onClick?.();
                   restoreFocus();
@@ -84,7 +95,7 @@ function ToastItem({ toast, onDismiss, onHold, onRelease }) {
           <button
             type="button"
             onClick={() => {
-              const restoreFocus = focusReturn(rootRef.current);
+              const restoreFocus = focusReturn(rootRef.current, toast.action?.focusAfter);
               onDismiss(toast.id);
               restoreFocus();
             }}
@@ -99,16 +110,8 @@ function ToastItem({ toast, onDismiss, onHold, onRelease }) {
   );
 }
 
-/**
- * How far from the right edge the stack must sit to be clear of an open side
- * panel, in pixels; 0 when there is none, on a phone (the panel is the whole
- * screen there), or when there is no room beside it.
- *
- * A toast drawn over an open card covers the card's lower fields until it
- * clears. Beside the card it covers nothing the person is working on.
- */
-function usePanelWidth(active) {
-  const [width, setWidth] = useState(0);
+function useStackPlace(active) {
+  const [place, setPlace] = useState({ beside: 0, fill: false });
   useEffect(() => {
     if (!active) return undefined;
     const measure = () => {
@@ -116,8 +119,8 @@ function usePanelWidth(active) {
       const wide = typeof window.matchMedia === "function" && window.matchMedia("(min-width: 640px)").matches;
       // offsetWidth, not the on-screen box: the panel slides in, and its
       // width is the same from the first frame.
-      const w = panel && wide ? panel.offsetWidth : 0;
-      setWidth(w > 0 && window.innerWidth - w >= ROOM_BESIDE_PANEL ? w : 0);
+      const next = stackPlace(window.innerWidth, panel ? panel.offsetWidth : 0, wide);
+      setPlace((prev) => (prev.beside === next.beside && prev.fill === next.fill ? prev : next));
     };
     measure();
     const observer = typeof MutationObserver === "function" ? new MutationObserver(measure) : null;
@@ -128,27 +131,54 @@ function usePanelWidth(active) {
       window.removeEventListener("resize", measure);
     };
   }, [active]);
-  return active ? width : 0;
+  return active ? place : { beside: 0, fill: false };
+}
+
+/**
+ * While the stack is at the bottom of the screen (a phone), tell an open card
+ * how much space the stack takes, as --toast-clear on the page. The card adds
+ * that much room after its last field, so every field can be scrolled clear
+ * of a toast. Removed when there are no toasts or the stack is beside the card.
+ */
+function useClearSpace(regionRef, on) {
+  useEffect(() => {
+    const root = document.documentElement;
+    const region = regionRef.current;
+    if (!on || !region) return undefined;
+    const set = () => root.style.setProperty("--toast-clear", `${region.offsetHeight + CLEAR_GAP}px`);
+    set();
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(set) : null;
+    if (observer) observer.observe(region);
+    return () => {
+      if (observer) observer.disconnect();
+      root.style.removeProperty("--toast-clear");
+    };
+  }, [regionRef, on]);
 }
 
 export function ToastContainer() {
   const { toasts, removeToast, holdToast, releaseToast } = useToast();
-  const besidePanel = usePanelWidth(toasts.length > 0);
+  const { beside: besidePanel, fill } = useStackPlace(toasts.length > 0);
+  const regionRef = useRef(null);
+  useClearSpace(regionRef, toasts.length > 0 && besidePanel === 0);
   const more = toasts.length - 1;
 
   return (
     // The stack never takes a click meant for the page (only a toast itself
-    // does). With a card open beside it, it sits to the LEFT of the card, so
-    // no field or button of the card is ever under a toast. Where there is no
-    // room beside the card (a phone, a narrow window) it stays at the bottom,
-    // lifted clear of the card's footer: the drawer sets --toast-lift to its
-    // footer height (components/ui/Drawer.jsx).
+    // does). With a card open beside it, it sits to the LEFT of the card at
+    // every width from 640px up, so no field or button of the card is ever
+    // under a toast. On a phone the card is the whole screen: the stack stays
+    // at the bottom, lifted clear of the card's footer (the drawer sets
+    // --toast-lift to its footer height, components/ui/Drawer.jsx), and the
+    // card leaves room after its last field so everything can be scrolled
+    // clear of it (--toast-clear, set above).
     <div
+      ref={regionRef}
       data-toast-region=""
       className="pointer-events-none fixed inset-x-4 flex flex-col gap-2 sm:left-auto sm:right-6 sm:items-end"
       style={
         besidePanel > 0
-          ? { zIndex: "var(--z-toast)", bottom: "1.5rem", right: `calc(${besidePanel}px + 1.5rem)` }
+          ? { zIndex: "var(--z-toast)", bottom: "1.5rem", left: `${EDGE_GAP}px`, right: `${besidePanel + PANEL_GAP}px` }
           : { zIndex: "var(--z-toast)", bottom: "calc(1.5rem + var(--toast-lift, 0px))" }
       }
     >
@@ -157,6 +187,7 @@ export function ToastContainer() {
           <motion.div
             key={toast.id}
             layout
+            style={fill ? { width: "100%" } : undefined}
             // On a phone only the newest toast is shown in full; the rest are
             // counted in the row below it, so three messages never cover the
             // form someone is filling in.
@@ -166,7 +197,7 @@ export function ToastContainer() {
             exit={{ opacity: 0, x: 100, scale: 0.95 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
           >
-            <ToastItem toast={toast} onDismiss={removeToast} onHold={holdToast} onRelease={releaseToast} />
+            <ToastItem toast={toast} onDismiss={removeToast} onHold={holdToast} onRelease={releaseToast} fill={fill} />
           </motion.div>
         ))}
       </AnimatePresence>
