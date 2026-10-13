@@ -82,8 +82,8 @@ function parsePageIds() {
 const PAGE_IDS = parsePageIds();
 
 // The same area lists the server returns for each role.
-const owner = { email: "owner@test.local", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm"] };
-const admin = { email: "admin@test.local", role: "admin", status: "active", areas: ["admin_console", "crm"] };
+const owner = { email: "owner@test.local", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm", "beta_leads"] };
+const admin = { email: "admin@test.local", role: "admin", status: "active", areas: ["admin_console", "crm", "beta_leads"] };
 const growth = { email: "growth@test.local", role: "growth", status: "active", areas: ["role_home"] };
 const partner = { email: "partner@test.local", role: "partner", status: "active", areas: ["role_home"] };
 const invitedGrowth = { email: "inv@test.local", role: "growth", status: "invited", areas: [] };
@@ -117,7 +117,7 @@ describe("#3802 C-1: a page nobody listed is owner/admin-only", () => {
   });
 
   it("only two pages are listed as exceptions, and neither loosens the default", () => {
-    assert.deepEqual(PAGE_AREA_OVERRIDES, { home: "role_home", admin: "team_manage", hosts: "crm", creators: "crm" });
+    assert.deepEqual(PAGE_AREA_OVERRIDES, { home: "role_home", admin: "team_manage", hosts: "crm", creators: "crm", "beta-leads": "beta_leads" });
     for (const id of PAGE_IDS) {
       if (Object.hasOwn(PAGE_AREA_OVERRIDES, id)) continue;
       assert.equal(areaForPage(id), "admin_console", `'${id}' must need admin_console`);
@@ -326,7 +326,7 @@ describe("#3802 C-8: titles and role display names", () => {
       partner: "Founding partner",
     });
     assert.deepEqual(INVITABLE_ROLES, ["admin", "growth", "partner"]);
-    assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm" });
+    assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm", BETA_LEADS: "beta_leads" });
   });
 
   it("team actions have plain-English labels in the activity list", () => {
@@ -420,8 +420,8 @@ describe("#3802 C-9: source contracts — auth, menu, palette, routes", () => {
 
   it("the role home reads nothing from the database and offers a next step", () => {
     assert.equal(/supabase/.test(ROLE_HOME_PAGE), false);
-    assert.ok(ROLE_HOME_PAGE.includes("Sign out"));
-    assert.ok(ROLE_HOME_PAGE.includes("Need something sooner? Ask the person who invited you."));
+    assert.ok(ROLE_HOME_PAGE.includes("useCrmSummary"));
+    assert.ok(ROLE_HOME_PAGE.includes("Nothing due. Set a next action and a date"));
   });
 });
 
@@ -457,7 +457,7 @@ describe("#3802 C-11: every invite screen state has a next step", () => {
   });
 
   it("each has a title, a body and exactly one action of a known kind", () => {
-    assert.deepEqual(ACCEPT_ACTION_KINDS, ["continue", "go_sign_in", "retry", "sign_out"]);
+    assert.deepEqual(ACCEPT_ACTION_KINDS, ["continue", "go_sign_in", "retry", "sign_out", "copy_message"]);
     for (const state of expected) {
       const copy = ACCEPT_COPY[state];
       assert.ok(typeof copy.title === "string" && copy.title.length > 0, `${state} title`);
@@ -480,9 +480,10 @@ describe("#3802 C-11: every invite screen state has a next step", () => {
     assert.equal(ACCEPT_COPY.offline.title, "You're offline");
     assert.equal(ACCEPT_COPY.signed_in_other.title, "You're signed in already");
     assert.equal(ACCEPT_COPY.signed_in_other.action.label, "Sign out and continue");
-    for (const state of ["used", "expired", "invalid", "account_conflict"]) {
+    for (const state of ["used", "expired", "invalid"]) {
       assert.deepEqual(ACCEPT_COPY[state].action, { label: "Go to sign in", kind: "go_sign_in" });
     }
+    assert.deepEqual(ACCEPT_COPY.account_conflict.action, { label: "Copy a message to send them", kind: "copy_message" });
     for (const state of ["try_again", "offline"]) {
       assert.deepEqual(ACCEPT_COPY[state].action, { label: "Try again", kind: "retry" });
     }

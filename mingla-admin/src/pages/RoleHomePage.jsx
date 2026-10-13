@@ -1,65 +1,189 @@
-import { LogOut } from "lucide-react";
-import { useState } from "react";
-import { SectionCard } from "../components/ui/Card";
+// Issue #3802 (Wave 1) — the home page of the Sales and marketing and
+// Founding partner roles (#/home): "My day" and "Company view".
+//
+// Every number on this page was counted by the server (crm_home_summary,
+// through hooks/useCrmSummary.js). Nothing is typed into this file, and this
+// file never talks to the database itself. Every tile and row goes somewhere;
+// every empty section says what to do next.
+import { AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { useAuth } from "../context/AuthContext";
-import { ROLE_HOME_TITLES, ROLE_LABELS } from "../lib/access";
+import { useCrmConfig } from "../hooks/useCrmConfig";
+import { useCrmSummary } from "../hooks/useCrmSummary";
+import { useOnline } from "../hooks/useCrmPipeline";
+import { ROLE_HOME_TITLES } from "../lib/access";
+import { displayName, dueTotals, errorWords, loadErrorWords, localToday, longDate } from "../lib/crmModel";
+import { buildCrmHash } from "../lib/crmUrl";
+import { StatTile, StatTileRow, StatTileSkeleton } from "../components/crm/home/StatTile";
+import { DueList } from "../components/crm/home/DueList";
+import { StageFunnel } from "../components/crm/home/StageFunnel";
+import { TargetsCard } from "../components/crm/home/TargetsCard";
 
-/**
- * Issue #3802 — the home page of the Sales and marketing and Founding partner
- * roles (#/home). A placeholder until their workspaces launch: it reads nothing
- * from the database, and it always offers a next step.
- */
+const OFFLINE_WORDS = "You're offline. You can look around, but the numbers won't update until you're back.";
+const NOT_READY_WORDS = "Your home isn't switched on yet. Try again in a few minutes, or tell an admin.";
+
+/** The empty state of a due list: why it is empty and what fills it. */
+function nothingDue(singular) {
+  return `Nothing due. Set a next action and a date on a ${singular} and it will show here.`;
+}
+
+/** "3 overdue" under a tile, or nothing. */
+function overdueNote(totals) {
+  return totals.overdue > 0 ? `${totals.overdue} overdue` : "";
+}
+
 export function RoleHomePage() {
-  const { access, signOut } = useAuth();
-  const [signingOut, setSigningOut] = useState(false);
-  const [signOutError, setSignOutError] = useState("");
+  const { access } = useAuth();
+  const online = useOnline();
+  const cfg = useCrmConfig();
+  const summary = useCrmSummary("home");
+  const config = cfg.config;
+  const data = summary.data;
 
+  const partner = access?.role === "partner";
   const title = (access && ROLE_HOME_TITLES[access.role]) || "Home";
-  const roleLabel = access ? ROLE_LABELS[access.role] : "";
+  const name = data?.me?.display_name || displayName(access?.email || "");
+  const today = data?.today || localToday();
+  const greeting = partner ? "Here is where outreach stands." : "Here is your day.";
 
-  const handleSignOut = async () => {
-    setSigningOut(true);
-    setSignOutError("");
-    try {
-      await signOut();
-    } catch (err) {
-      console.error("Sign out failed:", err?.message || err);
-      setSignOutError("Couldn't sign you out. Check your connection and try again.");
-      setSigningOut(false);
-    }
+  const error = summary.error || cfg.error;
+  const loading = !error && (summary.loading || cfg.loading);
+  const retry = () => {
+    if (cfg.error) cfg.retry();
+    summary.refetch();
   };
 
+  const scope = partner ? data?.due?.team : data?.due?.mine;
+  const hostsDue = dueTotals(scope?.hosts);
+  const creatorsDue = dueTotals(scope?.creators);
+  const listState = partner ? { view: "list" } : { view: "list", mine: true };
+  const hostsDef = config?.pipelines?.hosts || null;
+  const creatorsDef = config?.pipelines?.creators || null;
+
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">{title}</h1>
+    <div className="flex min-w-0 flex-col gap-6">
+      <div className="min-w-0">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
+          {partner ? title : longDate(today) || title}
+        </p>
+        <h1 className="mt-1 break-words text-2xl font-bold text-[var(--color-text-primary)]">
+          {name ? `Hi ${name}. ${greeting}` : greeting}
+        </h1>
       </div>
 
-      <SectionCard title="You're in">
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            Your workspace is being set up. Hosts, Creators and the Content calendar will appear
-            here as they launch. There is nothing you need to do yet.
-          </p>
-          {access && (
-            <p className="text-sm text-[var(--color-text-tertiary)]">
-              {`Signed in as ${access.email} · ${roleLabel}`}
-            </p>
-          )}
-          <div className="flex flex-col items-start gap-2">
-            <Button variant="secondary" icon={LogOut} loading={signingOut} onClick={handleSignOut}>
-              Sign out
-            </Button>
-            {signOutError && (
-              <p className="text-xs text-[#ef4444]" role="alert">{signOutError}</p>
+      {!online && <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>}
+
+      {error ? (
+        error.token === "forbidden" ? (
+          <AlertCard
+            variant="error"
+            title="You can't open this any more"
+            action={
+              <Button variant="secondary" size="sm" className="max-sm:h-11" onClick={() => window.location.reload()}>
+                Reload
+              </Button>
+            }
+          >
+            {errorWords(error)}
+          </AlertCard>
+        ) : (
+          <AlertCard
+            variant="error"
+            title="Couldn't load your home"
+            action={
+              <Button variant="secondary" size="sm" className="max-sm:h-11" onClick={retry}>
+                Retry
+              </Button>
+            }
+          >
+            {error.token === "not_ready" ? NOT_READY_WORDS : loadErrorWords(error)}
+          </AlertCard>
+        )
+      ) : loading ? (
+        <>
+          <StatTileRow label="Loading">
+            <StatTileSkeleton />
+            <StatTileSkeleton />
+            <StatTileSkeleton />
+          </StatTileRow>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {partner ? (
+              <>
+                <StageFunnel title="Hosts by stage" pipeline="hosts" loading />
+                <StageFunnel title="Creators by stage" pipeline="creators" loading />
+              </>
+            ) : (
+              <>
+                <DueList title="Due today, hosts" pipeline="hosts" loading />
+                <DueList title="Due today, creators" pipeline="creators" loading />
+              </>
             )}
-            <p className="text-xs text-[var(--color-text-tertiary)]">
-              Need something sooner? Ask the person who invited you.
-            </p>
           </div>
-        </div>
-      </SectionCard>
+          <TargetsCard loading />
+        </>
+      ) : (
+        <>
+          <StatTileRow label={partner ? "The team's numbers" : "Your numbers"}>
+            <StatTile
+              href={buildCrmHash("hosts", listState)}
+              value={hostsDue.total}
+              label="Hosts due"
+              note={overdueNote(hostsDue)}
+            />
+            <StatTile
+              href={buildCrmHash("creators", listState)}
+              value={creatorsDue.total}
+              label="Creators due"
+              note={overdueNote(creatorsDue)}
+            />
+            {data.beta_leads_new !== null && data.beta_leads_new !== undefined ? (
+              <StatTile href="#/beta-leads?show=new" value={data.beta_leads_new} label="New beta leads" />
+            ) : null}
+          </StatTileRow>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {partner ? (
+              <>
+                <StageFunnel title="Hosts by stage" pipeline="hosts" stages={data.stages?.hosts} />
+                <StageFunnel title="Creators by stage" pipeline="creators" stages={data.stages?.creators} />
+              </>
+            ) : (
+              <>
+                <DueList
+                  title="Due today, hosts"
+                  pipeline="hosts"
+                  def={hostsDef}
+                  rows={data.due?.mine?.hosts?.rows}
+                  total={hostsDue.total}
+                  regions={config.regions}
+                  team={config.team}
+                  today={today}
+                  moreHref={buildCrmHash("hosts", listState)}
+                  emptyText={nothingDue("host")}
+                />
+                <DueList
+                  title="Due today, creators"
+                  pipeline="creators"
+                  def={creatorsDef}
+                  rows={data.due?.mine?.creators?.rows}
+                  total={creatorsDue.total}
+                  regions={config.regions}
+                  team={config.team}
+                  today={today}
+                  moreHref={buildCrmHash("creators", listState)}
+                  emptyText={nothingDue("creator")}
+                />
+              </>
+            )}
+          </div>
+
+          <TargetsCard
+            targets={data.targets}
+            subtitle="Hosts that reached Onboarded or Live this month, against the monthly number"
+            emptyHint="An owner or admin sets them on the Team dashboard."
+          />
+        </>
+      )}
     </div>
   );
 }

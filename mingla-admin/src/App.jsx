@@ -16,6 +16,7 @@ import { pageTitle, resolveRoute } from "./lib/access";
 import { INVITE_ROUTE, parseInviteHash } from "./lib/inviteLink";
 // Issue #3802 — the home page of the two non-admin team roles (#/home).
 import { RoleHomePage } from "./pages/RoleHomePage";
+import { TeamDashboardPage } from "./pages/TeamDashboardPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { AdminPage } from "./pages/AdminPage";
 import { PlacePoolManagementPage } from "./pages/PlacePoolManagementPage";
@@ -124,6 +125,7 @@ const PAGES = {
   "refund-operations": RefundOperationsPage,
   // Issue #3802 (Wave 1): opened by the `crm` area, not by admin_console.
   hosts: HostsPage,
+  "team-dashboard": TeamDashboardPage,
   creators: CreatorsPage,
 };
 

@@ -71,7 +71,7 @@ export function RecordCard({
             <Button
               variant="secondary"
               size="sm"
-              className="max-sm:h-10"
+              className="max-sm:h-11"
               iconRight={ArrowRight}
               disabled={disabled || pending}
               title={`Move to ${next.label}`}

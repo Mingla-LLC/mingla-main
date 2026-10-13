@@ -200,6 +200,24 @@ on:
       - "mingla-admin/src/__tests__/issue3802_wave1_boards_rework.implementor.happy.test.js"
       - "mingla-admin/src/components/layout/Header.jsx"
       - "mingla-admin/src/__tests__/issue3802_wave1_pipelines.tester.adversarial.test.js"
+      # #3802 Wave 1 (homes): the client suite and the pages it reads that are
+      # not already listed here. The SQL suite rides on supabase/migrations/**.
+      - "mingla-admin/src/__tests__/issue3802_wave1_homes.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave1_homes_rework.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave1_overlay_stack.rendered.test.js"
+      - "mingla-admin/src/lib/crmLayers.js"
+      - "mingla-admin/src/lib/toastPlace.js"
+      - "mingla-admin/src/globals.css"
+      - "mingla-admin/src/components/ui/Modal.jsx"
+      - "mingla-admin/package-lock.json"
+      - "mingla-admin/src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js"
+      - "mingla-admin/src/pages/RoleHomePage.jsx"
+      - "mingla-admin/src/pages/TeamDashboardPage.jsx"
+      - "mingla-admin/src/pages/BetaLeadsPage.jsx"
+      - "mingla-admin/src/pages/AdminPage.jsx"
+      - "mingla-admin/src/components/InviteAcceptScreen.jsx"
+      - "mingla-admin/src/lib/auditLog.js"
+      - "mingla-admin/src/lib/constants.js"
       - "mingla-admin/src/lib/crmModel.js"
       - "mingla-admin/src/lib/crmUrl.js"
       - "mingla-admin/src/services/crmService.js"
@@ -385,6 +403,24 @@ on:
       - "mingla-admin/src/__tests__/issue3802_wave1_boards_rework.implementor.happy.test.js"
       - "mingla-admin/src/components/layout/Header.jsx"
       - "mingla-admin/src/__tests__/issue3802_wave1_pipelines.tester.adversarial.test.js"
+      # #3802 Wave 1 (homes): the client suite and the pages it reads that are
+      # not already listed here. The SQL suite rides on supabase/migrations/**.
+      - "mingla-admin/src/__tests__/issue3802_wave1_homes.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave1_homes_rework.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave1_overlay_stack.rendered.test.js"
+      - "mingla-admin/src/lib/crmLayers.js"
+      - "mingla-admin/src/lib/toastPlace.js"
+      - "mingla-admin/src/globals.css"
+      - "mingla-admin/src/components/ui/Modal.jsx"
+      - "mingla-admin/package-lock.json"
+      - "mingla-admin/src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js"
+      - "mingla-admin/src/pages/RoleHomePage.jsx"
+      - "mingla-admin/src/pages/TeamDashboardPage.jsx"
+      - "mingla-admin/src/pages/BetaLeadsPage.jsx"
+      - "mingla-admin/src/pages/AdminPage.jsx"
+      - "mingla-admin/src/components/InviteAcceptScreen.jsx"
+      - "mingla-admin/src/lib/auditLog.js"
+      - "mingla-admin/src/lib/constants.js"
       - "mingla-admin/src/lib/crmModel.js"
       - "mingla-admin/src/lib/crmUrl.js"
       - "mingla-admin/src/services/crmService.js"
@@ -515,6 +551,26 @@ jobs:
       - name: "Issue #3802 — Hosts and Creators boards: independent tester adversarial proof (every server refusal in plain words, honest Undo, hostile input)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_pipelines.tester.adversarial.test.js
+      - name: "Issue #3802 — role homes, targets, Beta leads and invite follow-ups: names, addresses, access, words for every answer, source contracts"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave1_homes.implementor.happy.test.js
+      - name: "Issue #3802 — homes rework: one stacking order, toasts at every width, Beta leads layouts, names by category, touch sizes, the strict invite rule"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave1_homes_rework.implementor.happy.test.js
+      # The rendered stacking check builds and renders the real card, layer and
+      # "Why is this lost?" components, so it needs the admin app's packages
+      # (react, react-dom, esbuild). `npm ci` only, from the lockfile. Every
+      # other step in this job reads source text and needs nothing installed;
+      # this install comes after them so it cannot change what they see.
+      - name: "Issue #3802 — install the admin app's packages for the rendered stacking check"
+        working-directory: mingla-admin
+        run: npm ci --no-audit --no-fund
+      - name: "Issue #3802 — a question opened from an open card is drawn above the card (rendered, every width)"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave1_overlay_stack.rendered.test.js
+      - name: "Issue #3802 — role homes, targets, Beta leads and invite follow-ups: independent tester adversarial proof (hostile addresses, every area combination, answers that are not answers, no raw error on screen)"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
@@ -1103,6 +1159,35 @@ jobs:
           # root for the same reasons as the suite above.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave1_crm_pipelines.tester.adversarial.pg17.test.sql
+          # Issue #3802 (Wave 1) — role homes, monthly targets and Beta leads
+          # for the whole team, on the same schema. A move names the stage it
+          # saw; one form and one key for a name, with the migration's own
+          # re-key lines run again on planted rows; a stuck host is reported
+          # once a day; each summary as each kind of caller and every number
+          # against a direct count; targets; the role-aware Beta leads reader
+          # and Add to Hosts; an invitation refused when it is sent; the
+          # creator agreement rule over every pair of stages; and the
+          # migration's self-check against deliberate mistakes. Part 2 opens
+          # real second and third sessions. Runs as `supabase_admin` from the
+          # repository root for the same reasons as the suites above (it
+          # reads two migration files, and adds the sign-in columns this
+          # image lacks inside its own rolled-back transaction).
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave1_homes_targets_beta.implementor.happy.pg17.test.sql
+          # Issue #3802 (Wave 1) — INDEPENDENT TESTER proof for the same
+          # migration, from the edges: the full grantee list of every new
+          # object; a role with the pipelines but not Beta leads; a stale move
+          # aimed at every stage, leaving the card byte-for-byte as it was;
+          # names nobody can see and one name in two forms; the stuck-host
+          # report just inside and just outside 24 hours; every home number
+          # against a count written a different way, to the microsecond of
+          # the week and the month; the lead type table over all 128
+          # combinations; Add to Hosts after a host is deleted; and the invite
+          # address check under different spellings. Part 2 opens three real
+          # sessions at once. Runs as `supabase_admin` from the repository
+          # root, like the suites above.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave1_homes_targets_beta.tester.adversarial.pg17.test.sql
 
           # toward #3697 Wave 6 — Ads credit FIFO withdraw, idempotency, immutability.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
