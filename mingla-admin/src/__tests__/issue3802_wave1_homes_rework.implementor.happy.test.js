@@ -297,3 +297,10 @@ describe("#3802 W-10: the invite rule is strict, in one place", () => {
     assert.match(read("lib/inviteLink.js"), /already has a Mingla account that signs in another way, so team access can't be added to it\./);
   });
 });
+
+describe("#3802 W-5 (P3b): the toast's own buttons hand that place on", () => {
+  it("Undo and the close button both pass the owner's answer to the focus return", () => {
+    assert.match(TOAST, /const restoreFocus = focusReturn\(rootRef\.current, toast\.action\.focusAfter\);\s*onDismiss\(toast\.id\);\s*toast\.action\.onClick\?\.\(\);\s*restoreFocus\(\);/);
+    assert.match(TOAST, /const restoreFocus = focusReturn\(rootRef\.current, toast\.action\?\.focusAfter\);\s*onDismiss\(toast\.id\);\s*restoreFocus\(\);/);
+  });
+});
