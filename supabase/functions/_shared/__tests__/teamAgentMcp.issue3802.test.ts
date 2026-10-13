@@ -365,6 +365,16 @@ Deno.test("#3802 U-1: text that is not JSON, a list of requests, and something t
     assertEquals(JSON.parse(r.body).error.code, code, raw);
   }
   assertEquals(h.seen.length, 0);
+  // A list is told it is a list, so the agent knows what to change.
+  const batch = await shape(
+    await h.handler(
+      post(null, { key: KEY_GROWTH, raw: JSON.stringify([rpc("ping")]) }),
+    ),
+  );
+  assertEquals(
+    JSON.parse(batch.body).error.message,
+    "Send one request at a time, not a list.",
+  );
 });
 
 // --------------------------------------------------------------------------

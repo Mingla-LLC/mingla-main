@@ -443,7 +443,7 @@ describe("#3802 A-7: source contracts", () => {
       assert.ok(/agentErrorWords\(err\)/.test(body[1]), `${fn} uses plain words`);
     }
     // A second press while the first is on its way sends nothing.
-    assert.ok(PAGE.includes("if (busyRef.current[agentId]) return;"));
+    assert.equal((PAGE.match(/if \(busyRef\.current\[agentId\]\) return;/g) || []).length, 2, "create and disconnect each ignore a second press");
     assert.ok(PAGE.includes("if (busyKeyId) return;"));
     // A failure also stays on the card, not only in a message that disappears.
     assert.ok(PAGE.includes("setProblem((p) => ({ ...p, [agentId]: `No key was created. ${words}` }));"));

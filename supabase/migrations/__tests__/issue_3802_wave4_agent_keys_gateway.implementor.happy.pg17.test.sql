@@ -692,6 +692,13 @@ begin
   perform pg_temp.t3802k_check('K-5', 'that key was turned off',
     (select revoke_reason from public.team_agent_keys where id = pg_temp.t3802k_id('unconf.claude.id')::uuid), 'access_removed');
 
+  -- The same for a full admin, whose role is read another way.
+  perform pg_temp.t3802k_newkey('admin', 'claude', 'admin.unconf');
+  perform pg_temp.t3802k_check('K-5', 'before: the admin''s key works', pg_temp.t3802k_get(pg_temp.t3802k_gw('admin.unconf', 'get_started'), 'ok'), 'true');
+  update auth.users set email_confirmed_at = null where id = '38020000-0000-4000-e000-000000000002';
+  perform pg_temp.t3802k_check('K-5', 'an admin''s key whose account has no confirmed address', pg_temp.t3802k_gw('admin.unconf', 'get_started'), c_invalid);
+  update auth.users set email_confirmed_at = now() where id = '38020000-0000-4000-e000-000000000002';
+
   -- Two accounts answer to one address.
   perform pg_temp.t3802k_newkey('twin', 'codex', 'twin.codex');
   insert into auth.users (id, email, email_confirmed_at) values ('38020000-0000-4000-e000-0000000000aa', ' ISSUE3802K-Twin@test.local', now());
@@ -738,11 +745,15 @@ begin
   v := pg_temp.t3802k_as('idle', 'select public.team_agent_keys_mine()::text');
   perform pg_temp.t3802k_check('K-5', 'its owner sees why each key stopped',
     (select string_agg(e->>'revoke_reason', ',' order by e->>'agent') from jsonb_array_elements(v::jsonb -> 'keys') e), 'idle,idle');
+  -- A key refused only after its owner was looked up (unused too long).
+  perform pg_temp.t3802k_newkey('idle', 'claude', 'idle.late');
+  update public.team_agent_keys set created_at = now() - interval '200 days' where id = pg_temp.t3802k_id('idle.late.id')::uuid;
   perform pg_temp.t3802k_check('K-5', 'after a refusal nobody is acting for the rest of the request',
     pg_temp.t3802k_as('service', format($q$select (public.team_agent_call(%L, 'get_started', '{}', 'x') ->> 'auth')
        || '/' || coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''), 'nobody')
-       || '/' || coalesce(auth.uid()::text, 'nobody')$q$, pg_temp.t3802k_digest(pg_temp.t3802k_id('idle.codex')))),
-    'invalid/nobody/nobody');
+       || '/' || coalesce(nullif(current_setting('request.jwt.claims', true), ''), 'nobody')
+       || '/' || coalesce(auth.uid()::text, 'nobody')$q$, pg_temp.t3802k_digest(pg_temp.t3802k_id('idle.late')))),
+    'invalid/nobody/nobody/nobody');
 end;
 $k5$;
 
@@ -1187,6 +1198,9 @@ begin
   perform pg_temp.t3802k_check('K-10', 'the gateway and every function it calls are plain statements: none builds one from text',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'team\_agent\_%' and p.prosrc ~* '\mexecute\M'), '0');
+  perform pg_temp.t3802k_check('K-10', 'the gateway asks the pipelines gate itself, before it picks a tool',
+    (select (p.prosrc ~ 'PERFORM 1 FROM public\.crm_ctx\(\);\s+CASE v_tool')::text
+       from pg_proc p where p.oid = 'public.team_agent_call(text,text,jsonb,text)'::regprocedure), 'true');
   perform pg_temp.t3802k_check('K-10', 'nothing here sends, reaches outside the database or removes a pipeline record',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'team\_agent\_%'
