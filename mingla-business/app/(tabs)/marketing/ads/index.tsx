@@ -302,12 +302,12 @@ export default function MarketingAdsRoute(): React.ReactElement {
         <View style={styles.filterRow} testID="ads-campaign-filters">
           {(
             [
-              ["all", "All"],
-              ["live", "Live"],
-              ["paused", "Paused"],
-              ["ended", "Ended"],
+              ["all", "All", "ads-filter-all"],
+              ["live", "Live", "ads-filter-live"],
+              ["paused", "Paused", "ads-filter-paused"],
+              ["ended", "Ended", "ads-filter-ended"],
             ] as const
-          ).map(([key, label]) => {
+          ).map(([key, label, testID]) => {
             const selected = campaignFilter === key;
             return (
               <Pressable
@@ -317,7 +317,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 accessibilityLabel={`Filter ads: ${label}`}
-                testID={`ads-filter-${key}`}
+                testID={testID}
               >
                 <Text
                   style={[
