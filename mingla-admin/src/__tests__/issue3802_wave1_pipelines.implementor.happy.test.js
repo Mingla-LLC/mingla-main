@@ -391,7 +391,7 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
     assert.equal(Object.hasOwn(PAGE_AREA_OVERRIDES, "beta-leads"), true);
     assert.equal(PAGE_AREA_OVERRIDES["beta-leads"], "beta_leads");
     assert.equal(canOpenPage(growth, "beta-leads"), true);
-    assert.deepEqual(Object.keys(PAGE_AREA_OVERRIDES).sort(), ["admin", "beta-leads", "creators", "home", "hosts"]);
+    assert.deepEqual(Object.keys(PAGE_AREA_OVERRIDES).sort(), ["admin", "agent", "beta-leads", "creators", "home", "hosts"]);
   });
 });
 
