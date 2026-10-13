@@ -6,7 +6,10 @@ import { targetSliceHash } from "../../../lib/crmUrl";
 
 export const GONE_REGION = "A region no longer in the list";
 
-const CELLS = "grid min-w-0 flex-1 grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_auto_auto] items-center gap-x-3 gap-y-1";
+// On a phone the four cells take the whole row and any controls sit on the
+// line beneath; from 640px they share one line.
+const CELLS =
+  "grid min-w-0 basis-full grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_auto_auto] items-center gap-x-3 gap-y-1 sm:flex-1 sm:basis-0";
 
 /**
  * "Targets this month" (issue #3802). One row per target with how many hosts
