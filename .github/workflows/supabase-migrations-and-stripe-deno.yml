@@ -242,6 +242,8 @@ on:
       - "mingla-admin/src/components/layout/**"
       - "supabase/functions/admin-team-invite/**"
       - "supabase/functions/admin-team-accept-invite/**"
+      # #3802 Wave 4 — the agent connector and its suites.
+      - "supabase/functions/team-agent/**"
       # #3645 PR11c — Organiser Terms accept edge + Deno suite. Listed in BOTH
       # path filters so a handler/test-only edit still runs the Stripe Deno lane
       # (registering the file in DENO_TEST_FILES alone is not enough).
@@ -445,6 +447,8 @@ on:
       - "mingla-admin/src/components/layout/**"
       - "supabase/functions/admin-team-invite/**"
       - "supabase/functions/admin-team-accept-invite/**"
+      # #3802 Wave 4 — the agent connector and its suites.
+      - "supabase/functions/team-agent/**"
       # #3645 PR11c — Organiser Terms accept edge + Deno suite (both filters).
       - "supabase/functions/brand-mingla-tos-accept/**"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
@@ -1581,6 +1585,30 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1345_reservation_slot_unavailable_ops_alert.tester.adversarial.pg17.test.sql
 
+      # Issue #3802 (Wave 4) — the agent connector, spoken to the way an agent
+      # speaks to it: real JSON-RPC over real HTTP into the function's real
+      # handler, against the database replayed above, with keys made by the
+      # real key function. The first file connects, calls every read tool,
+      # reads the guide, and proves there is no session, that every unusable
+      # key gets one answer byte for byte, and what is and is not kept about
+      # a request. The second attacks it: a person named in the arguments, a
+      # key anywhere but its header, tokens that are not keys, the visible
+      # part of someone else's key, tool names that carry a statement, a web
+      # page's Origin, and two keys used at the same moment. Runs under Node
+      # here (not in the Deno lane) because this is the job that has a
+      # database; one file at a time, since both add and remove the one
+      # sign-in column this image lacks. `supabase_admin` for that reason.
+      - name: "Issue #3802 — the agent connector speaks the protocol and refuses every borrowed identity, against the real database"
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: supabase_admin
+          PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
+        run: |
+          node --experimental-strip-types --test --test-concurrency=1 \
+            supabase/functions/team-agent/__tests__/protocol.issue3802.test.ts \
+            supabase/functions/team-agent/__tests__/spoofing.issue3802.test.ts
+
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
       # "hide the address until someone buys" had that address served to an
@@ -1878,6 +1906,10 @@ jobs:
             # toward #3802 — team invitation helpers + source contracts on the
             # two invite functions (hermetic: no network, no database).
             supabase/functions/_shared/__tests__/adminTeamInvite.issue3802.test.ts
+            # toward #3802 Wave 4 — the agent connector's wire rules with a
+            # stand-in gateway, and source contracts on the function and its
+            # migration (hermetic: no network, no database).
+            supabase/functions/_shared/__tests__/teamAgentMcp.issue3802.test.ts
             # ISSUE-996 — implementor source guard: A5 keeps its local fetch
             # declaration + fireAdConversion injection (no network execution).
             supabase/functions/_shared/__tests__/issue_996_a5_hermetic_fetch.test.ts

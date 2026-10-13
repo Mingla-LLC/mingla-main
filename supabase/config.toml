@@ -588,6 +588,12 @@ verify_jwt = true
 [functions.admin-team-accept-invite]
 verify_jwt = false
 
+# Issue #3802 — the connector a teammate's own agent talks to. An agent holds
+# a personal key, not a session, so the function checks that key itself on
+# every request and the platform's session check is off here.
+[functions.team-agent]
+verify_jwt = false
+
 # toward #3697 Wave 2 — hourly spend feed + 98% hard-cap pause. Cron posts with
 # the service-role Bearer (verify_jwt=false); the function also accepts an
 # active admin JWT for manual refresh. In-code gate is mandatory either way.

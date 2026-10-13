@@ -247,6 +247,12 @@
       "required_bundle_fields": {},
       "required_top_level": []
     },
+    "team-agent": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
     "admin-team-invite": {
       "migration_fallback_top_level": [],
       "optional_top_level": [],
