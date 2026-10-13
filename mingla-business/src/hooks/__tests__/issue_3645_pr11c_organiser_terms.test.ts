@@ -145,7 +145,14 @@ describe("#3645 PR11c — gate honesty + publish wiring", () => {
 
   test("paid publish wizards mount the shared Organiser Terms publish gate", () => {
     expect(publishGateSource).toContain("ORGANISER_TERMS_PUBLISH_RETRY_TOAST");
-    expect(publishGateSource).toContain("tap Publish again");
+    // [TEST-MOD-APPROVED #3645] Approved behaviour change: accepting the terms
+    // now CONTINUES the publish, so the gate no longer tells the host to tap
+    // Publish again. It takes the interrupted publish and resumes it.
+    expect(publishGateSource).toContain(
+      '"Accept the Organiser Terms to publish."',
+    );
+    expect(publishGateSource).toContain("onAccepted?: () => void");
+    expect(publishGateSource).toContain("pendingResumeRef");
     expect(publishGateSource).toContain("MinglaToSAcceptanceGate");
     expect(eventWizard).toContain("useOrganiserTermsPublishGate");
     expect(eventWizard).toContain("blockPaidPublishUntilAccepted");

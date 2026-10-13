@@ -96,10 +96,12 @@ import {
   experienceDraftIsPaid,
   offeringNeedsStripeToPublish,
 } from "../offering/publishStripeReadiness";
+import { useOrganiserTermsPublishGate } from "../../hooks/useOrganiserTermsPublishGate";
 import {
-  ORGANISER_TERMS_PUBLISH_RETRY_TOAST,
-  useOrganiserTermsPublishGate,
-} from "../../hooks/useOrganiserTermsPublishGate";
+  buildBankSetupReturnPath,
+  resolveExperienceWizardInitialStep,
+  withBankSetupReturn,
+} from "../../utils/bankSetupReturn";
 import { payoutGateStatus } from "../../utils/brandPayout";
 import {
   emptyStop,
@@ -192,7 +194,14 @@ export interface ExperienceCreatorWizardProps {
   liveExperience?: ExperienceDetail;
   /** Total confirmed (paid) order quantity for the live experience (refund-gate input). */
   liveSoldCount?: number;
+  /**
+   * #3645 — the step to open on (the edit route's `?step=`), used when the host
+   * comes back from bank setup after a full page load. Unknown values start at
+   * step 1.
+   */
+  initialStep?: number;
 }
+
 
 const ExperienceTitleInput: React.FC<{
   value: string;
@@ -293,6 +302,10 @@ const RPC_ERROR_COPY: Record<string, string> = {
     "This experience can't be edited in its current state.",
 };
 
+/** #3645 — the draft is saved before the host leaves for bank setup. */
+export const EXPERIENCE_SAVE_BEFORE_BANK_FAILED_COPY =
+  "Couldn't save your draft, so you're still here. Check your connection and try again.";
+
 const currencySymbolFor = (currency: string): string => {
   if (currency === "GBP") return "£";
   if (currency === "EUR") return "€";
@@ -327,6 +340,7 @@ export const ExperienceCreatorWizard: React.FC<
   initialDraft,
   liveExperience,
   liveSoldCount,
+  initialStep,
 }) => {
   const isLiveEdit = liveExperience !== undefined;
   const { user, signOut } = useAuth();
@@ -358,7 +372,13 @@ export const ExperienceCreatorWizard: React.FC<
   // though this client believed the brand had one (stale brand state).
   const [serverCurrencyRefusal, setServerCurrencyRefusal] = useState(false);
 
-  const [step, setStep] = useState<StepIndex>(1);
+  const [step, setStep] = useState<StepIndex>(
+    () => resolveExperienceWizardInitialStep(initialStep).start,
+  );
+  // #3645 — a host returning from bank setup to the Review step (7).
+  const resumeReviewRef = useRef<boolean>(
+    resolveExperienceWizardInitialStep(initialStep).resumeReview,
+  );
   // Each step opens at the top — the ScrollView is shared by every step.
   useScrollToTopOnStepChange(scrollRef, step);
   const [intelGateOpen, setIntelGateOpen] = useState(false);
@@ -499,6 +519,14 @@ export const ExperienceCreatorWizard: React.FC<
   }, [persistedInvite.plan.data, persistedInvite.quote.data]);
   useEffect(() => {
     if (!inviteEnabled) setStep((value) => value > 5 ? 5 : value);
+  }, [inviteEnabled]);
+  // #3645 — back from bank setup onto Review: land there once the invite step
+  // is known to be on (Review does not exist until then).
+  useEffect(() => {
+    if (inviteEnabled && resumeReviewRef.current) {
+      resumeReviewRef.current = false;
+      setStep(7);
+    }
   }, [inviteEnabled]);
   const inviteSummaryReady = !inviteEnabled || (invitePlan !== null && inviteQuote !== null &&
     inviteQuote.selectionRevision === invitePlan.selectionRevision &&
@@ -717,11 +745,9 @@ export const ExperienceCreatorWizard: React.FC<
     [isLiveEdit, isFree, resolvedTotalMajor, brand],
   );
 
-  const handleConnectStripe = useCallback((): void => {
-    if (brand !== null) {
-      router.push(brandPaymentOnboardingRoute(brand.id) as never);
-    }
-  }, [brand, router]);
+  // #3645 — the Organiser Terms sheet resumes the publish it interrupted. The
+  // ref always holds the LATEST beginPublish.
+  const resumePublishRef = useRef<() => void>(() => undefined);
 
   // Per-step Continue gate.
   const stopsValid = useMemo(() => {
@@ -924,6 +950,89 @@ export const ExperienceCreatorWizard: React.FC<
     setStep((prev) => Math.min(finalStep, prev + 1) as StepIndex);
   }, [canContinue, ensureDraft, experienceId, finalStep, inviteNavigation, step, whenAdapter]);
 
+  // #3645 — "Connect bank" carries where the host is, so bank setup brings
+  // them straight back to this experience on this step (web and native).
+  //
+  // The wizard only writes its later steps (stops, dates, pricing) when the
+  // host saves or publishes. On the web, hosted bank setup is a full page load,
+  // so leaving without saving would bring them back to a half-empty draft. The
+  // draft is therefore saved FIRST, and if that save fails the host stays here
+  // with the reason instead of losing their work. A live experience is never
+  // written by this path: it only navigates.
+  const connectBankInFlight = useRef<boolean>(false);
+  const handleConnectStripe = useCallback((): void => {
+    if (brand === null) return;
+    const bankRoute = brandPaymentOnboardingRoute(brand.id);
+    if (isLiveEdit) {
+      router.push(
+        withBankSetupReturn(
+          bankRoute,
+          experienceId === null
+            ? null
+            : buildBankSetupReturnPath({ kind: "experience", id: experienceId }),
+        ) as never,
+      );
+      return;
+    }
+    if (connectBankInFlight.current) return;
+    connectBankInFlight.current = true;
+    void (async (): Promise<void> => {
+      try {
+        if (!refundValid) {
+          setToast(
+            "Fix your refund policy tiers on the Pricing step before connecting a bank.",
+          );
+          return;
+        }
+        const targetId = await ensureDraft();
+        if (targetId === null) return; // ensureDraft already said why.
+        const refundRefusal = await writeRefundPolicyIfChanged(targetId, null);
+        if (refundRefusal !== null) {
+          setToast(refundTermsSaveFailureCopy(refundRefusal.reason));
+          return;
+        }
+        const { error } = await supabase.rpc(
+          "issue_1719_publish_experience_with_poster",
+          {
+            p_event_id: targetId,
+            p_payload: buildPayload(false),
+            p_publish: false,
+          },
+        );
+        if (error !== null) {
+          setToast(EXPERIENCE_SAVE_BEFORE_BANK_FAILED_COPY);
+          return;
+        }
+        await flushThemeWrite(targetId);
+        router.push(
+          withBankSetupReturn(
+            bankRoute,
+            buildBankSetupReturnPath({
+              kind: "experience",
+              id: targetId,
+              step,
+            }),
+          ) as never,
+        );
+      } catch {
+        setToast(EXPERIENCE_SAVE_BEFORE_BANK_FAILED_COPY);
+      } finally {
+        connectBankInFlight.current = false;
+      }
+    })();
+  }, [
+    brand,
+    buildPayload,
+    ensureDraft,
+    experienceId,
+    flushThemeWrite,
+    isLiveEdit,
+    refundValid,
+    router,
+    step,
+    writeRefundPolicyIfChanged,
+  ]);
+
   // ORCH-1075 — surface the two paid-publish guard reasons as actionable copy
   // and route to Stripe onboarding (Guard A) or the When step (Guard B).
   // Returns true when the raw reason WAS an ORCH-1075 guard (so the caller
@@ -934,9 +1043,7 @@ export const ExperienceCreatorWizard: React.FC<
       if (copy === null) return false;
       setToast(copy.body);
       if (copy.action === "payment_onboarding") {
-        if (brand !== null) {
-          router.push(brandPaymentOnboardingRoute(brand.id) as never);
-        }
+        handleConnectStripe();
       } else {
         // Guard B — jump to the When step (step 3) and reveal its errors.
         setStep(3);
@@ -945,7 +1052,7 @@ export const ExperienceCreatorWizard: React.FC<
       }
       return true;
     },
-    [brand, router, whenAdapter],
+    [handleConnectStripe, whenAdapter],
   );
 
   const handleSubmit = useCallback(
@@ -978,9 +1085,9 @@ export const ExperienceCreatorWizard: React.FC<
         publish &&
         blockPaidPublishUntilAccepted(
           experienceDraftIsPaid({ isFree, resolvedTotalMajor }),
+          () => resumePublishRef.current(),
         )
       ) {
-        setToast(ORGANISER_TERMS_PUBLISH_RETRY_TOAST);
         return;
       }
       if (
@@ -1203,9 +1310,9 @@ export const ExperienceCreatorWizard: React.FC<
     if (
       blockPaidPublishUntilAccepted(
         experienceDraftIsPaid({ isFree, resolvedTotalMajor }),
+        () => resumePublishRef.current(),
       )
     ) {
-      setToast(ORGANISER_TERMS_PUBLISH_RETRY_TOAST);
       return;
     }
     if (!inviteEnabled) {
@@ -1246,6 +1353,12 @@ export const ExperienceCreatorWizard: React.FC<
     }
   }, [brand?.defaultCurrency, maybeOpenIntelGate, persistedInvite, inviteEnabled, inviteRollbackReady,
     inviteFlag.data, blockPaidPublishUntilAccepted, isFree, resolvedTotalMajor]);
+
+  useEffect(() => {
+    resumePublishRef.current = (): void => {
+      void beginPublish();
+    };
+  }, [beginPublish]);
 
   const closeIntelGate = useCallback((): void => {
     intelSessionRef.current?.dismissGate(currentIntelGateKey());
@@ -1741,6 +1854,21 @@ export const ExperienceCreatorWizard: React.FC<
               <Text style={styles.label}>Price</Text><Text style={styles.reviewValue}>{isFree ? "Free" : `${currencySymbol}${resolvedTotalMajor.toFixed(2)}`}</Text>
             </View>
             <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} />
+          </View>
+        ) : null}
+
+        {/* #3645 — the Review step (Invite people on) is where Publish lives,
+            so the bank card belongs here too. Before this the button was
+            simply disabled with nothing on screen saying why. */}
+        {inviteEnabled && step === 7 && experienceNeedsStripe ? (
+          <View style={styles.stripeBannerWrap}>
+            <StripeBlockedCard
+              title="Bank required for paid experiences"
+              body="Connect a bank to publish this paid experience. You'll come straight back here."
+              ctaLabel="Connect bank"
+              onConnectStripe={handleConnectStripe}
+              testID="experience-review-stripe-blocked"
+            />
           </View>
         ) : null}
 

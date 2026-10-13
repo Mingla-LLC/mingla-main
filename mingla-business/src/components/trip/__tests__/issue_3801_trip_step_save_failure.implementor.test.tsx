@@ -105,6 +105,8 @@ const asyncNoop = async (): Promise<undefined> => undefined;
 const settledIdle = { isPending: false, isFetching: false, isError: false };
 
 const BOUNDARY: Record<string, () => unknown> = {
+  // #3645 — REAL: the bank-setup return target is pure.
+  bankSetupReturn: () => jest.requireActual("../../../utils/bankSetupReturn"),
   react: () => React,
   "react-native": () => jest.requireActual("react-native"),
   "expo-router": () => ({
@@ -414,16 +416,26 @@ describe("#3801 — a failed step save is shown on that step", () => {
     expect(shown.message).toBe(GENERIC_SAVE_FAILED);
   });
 
-  test("Continue: a money-setup refusal as a PLAIN OBJECT still routes to payments setup", async () => {
+  // [TEST-MOD-APPROVED #3645] Approved behaviour change: a step save never
+  // sends the host to bank setup. The refusal is still READ off the plain
+  // object (the point of #3801) — it is now said on the step, in the locked
+  // money-setup copy, and nothing navigates.
+  test("Continue: a money-setup refusal as a PLAIN OBJECT is said on the step and does not navigate", async () => {
     saves.basics.mockRejectedValue(postgrestError("stripe_charges_disabled", "P0001"));
     const tree = await mountWizard();
 
     await pressLabel(tree, "Continue");
 
-    expect(routerPush).toHaveBeenCalledTimes(1);
-    expect(routerPush).toHaveBeenCalledWith(
-      paidPublishGuards.brandPaymentOnboardingRoute(BRAND_ID),
+    expect(routerPush).not.toHaveBeenCalled();
+    const shown = toast(tree);
+    expect(shown.visible).toBe(true);
+    expect(shown.message).toBe(
+      paidPublishGuards.resolveProviderNeutralPaidPublishGuardCopy(
+        "stripe_charges_disabled",
+      )?.body,
     );
+    expect(shown.message).not.toBe(GENERIC_SAVE_FAILED);
+    expect(shown.message).not.toContain("[object");
     expect(onStep(tree, "TripCreatorStep1Basics")).toBe(true);
   });
 
@@ -467,17 +479,26 @@ describe("#3801 — Back is never blocked by a failed save", () => {
     expect(toast(tree).message).not.toBe(GENERIC_SAVE_FAILED);
   });
 
-  test("Back: a money-setup refusal keeps its existing route to payments setup", async () => {
+  // [TEST-MOD-APPROVED #3645] Approved behaviour change: Back is never a detour
+  // to bank setup. A money-setup refusal now behaves like every other failed
+  // save on Back: it is said, and the wizard goes back.
+  test("Back: a money-setup refusal is said, does not navigate, and still goes back", async () => {
     const tree = await mountWizard();
     await pressLabel(tree, "Continue");
 
     saves.days.mockRejectedValue(postgrestError("P0001: stripe_charges_disabled", "P0001"));
     await pressLabel(tree, "Back");
 
-    expect(routerPush).toHaveBeenCalledTimes(1);
-    expect(routerPush).toHaveBeenCalledWith(
-      paidPublishGuards.brandPaymentOnboardingRoute(BRAND_ID),
+    expect(routerPush).not.toHaveBeenCalled();
+    const shown = toast(tree);
+    expect(shown.visible).toBe(true);
+    expect(shown.message).toBe(
+      paidPublishGuards.resolveProviderNeutralPaidPublishGuardCopy(
+        "stripe_charges_disabled",
+      )?.body,
     );
+    expect(onStep(tree, "TripCreatorStep1Basics")).toBe(true);
+    expect(onStep(tree, "TripCreatorStep2Itinerary")).toBe(false);
   });
 });
 

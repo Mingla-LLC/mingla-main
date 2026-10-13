@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-13 — Hosts can now save a draft with paid settings before a bank is connected: a trip keeps its priced packages and an RSVP keeps chip-ins switched on, and the stop moves to Publish, which says why and offers "Connect bank"; bank setup then brings the host back to the screen they left in the event, RSVP, trip and experience creators, accepting the Organiser Terms continues the publish instead of asking for a second tap, and an RSVP with chip-ins and no bank can publish without them (toward #3645, PR #TBD)
 - 2026-10-12 — Host Blast now has an Ads tab: see Ads credit balance and history, preview fee-inclusive top-up and withdraw quotes, and open Ads from the brand page (toward #3697, PR #3815)
 - 2026-10-12 — Someone who opens a brand invitation while signed in with a different email now sees the "Wrong account" screen, which names the invited email and the signed-in email and offers a way to switch accounts, instead of "Invitation not found"; the invitation itself was always valid (toward #3259, PR #3817)
 - 2026-10-13 — New Host brands are no longer saved in pounds by default: brand creation now asks for a payout country (every supported country listed, nothing preselected) and saves no currency until one is chosen; skipping is allowed, and entering a price on a brand with no currency asks for the country in place in the event, trip, experience and RSVP creators (#3645, PR #3818)

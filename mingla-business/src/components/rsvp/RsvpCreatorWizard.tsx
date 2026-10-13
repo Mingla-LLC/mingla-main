@@ -76,7 +76,10 @@ import {
 } from "../../utils/draftRsvpValidation";
 import type { ValidationError } from "../../utils/draftEventValidation";
 import { isDraftEventPristine } from "../../utils/draftEventPristine";
-import { resolvePaidPublishGuardCopy } from "../../utils/paidPublishGuards";
+import {
+  detectPaidPublishGuardReason,
+  resolvePaidPublishGuardCopy,
+} from "../../utils/paidPublishGuards";
 import {
   readRpcFailureMessage,
   rsvpRpcFailureCopy,
@@ -205,7 +208,7 @@ export interface RsvpCreatorWizardProps {
    *  IS invoked — the RSVP catch routes stripe_charges_disabled (ORCH-1291
    *  chip-in bank gate) and event_currency_required (currency-less brand) to
    *  the provider-neutral payments onboarding. */
-  onOpenStripeOnboard?: () => void;
+  onOpenStripeOnboard?: (step?: number) => void;
   onAutosaveDraft?: (draft: DraftEvent) => void;
   /**
    * Reads the server draft's cover, so a cover video that finishes after its
@@ -258,6 +261,21 @@ const focusedTextInput = (): unknown => {
 
 const revealStillOwnsFocus = (owner: unknown): boolean =>
   owner === undefined || (owner !== null && focusedTextInput() === owner);
+
+/**
+ * #3645 — how long to wait after one dialog closes before raising the next.
+ * iOS presents one modal at a time and silently drops a second raised while the
+ * first is still leaving (#1360). Equal to `DEFER_SETTLE_MS` in
+ * utils/deferAfterDismiss.ts; written out here because that module is not on
+ * this wizard's import boundary. Pinned equal by the #3645 RSVP suite.
+ */
+export const CHIP_IN_CHOICE_SETTLE_MS = 340;
+
+// #3645 — the chip-in bank choice dialog is loaded the first time it opens.
+// Most RSVPs never show it, so it stays out of the wizard's own chunk.
+const LazyRsvpChipInBankChoiceDialog = React.lazy(
+  () => import("./RsvpChipInBankChoiceDialog"),
+);
 
 export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   draft: initialDraft,
@@ -811,11 +829,38 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
 
   // ---- Publish gate (no Stripe — RSVP is moneyless) ----
 
+  // #3645 — chip-ins on, brand cannot collect: a CHOICE at Publish, not a
+  // refusal. The RSVP is free and can always go live.
+  const [chipInChoiceVisible, setChipInChoiceVisible] = useState(false);
+  // Mounted from its first opening onwards, so closing keeps its exit animation.
+  const [chipInChoiceLoaded, setChipInChoiceLoaded] = useState(false);
+  const openChipInChoice = useCallback((): void => {
+    setChipInChoiceLoaded(true);
+    setChipInChoiceVisible(true);
+  }, []);
+  // The latest handlePublishTap, so "Publish without chip-ins" continues with
+  // the draft AFTER chip-ins were switched off, not the one captured earlier.
+  const resumePublishRef = useRef<() => void>(() => undefined);
+  // Readiness is only trusted once the provider status has actually loaded;
+  // while it is loading or failed, the server's own refusal decides (below).
+  const chipInReadinessKnown =
+    brand !== null &&
+    !chipInStripeStatus.isLoading &&
+    !chipInStripeStatus.isError;
+
   const handlePublishTap = useCallback(async (): Promise<void> => {
     const errs = validateRsvpPublish(liveDraft);
     if (errs.length > 0) {
       setPendingErrors(errs);
       setErrorsSheetVisible(true);
+      return;
+    }
+    if (
+      liveDraft.rsvpContributionEnabled &&
+      chipInReadinessKnown &&
+      !chipInPayoutReady
+    ) {
+      openChipInChoice();
       return;
     }
     if (!inviteEnabled) {
@@ -856,7 +901,34 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       setCheckingInvitePublish(false);
     }
   }, [liveDraft, handleShowToast, persistedInvite, inviteEnabled,
-    inviteRollbackReady, inviteFlag.data]);
+    inviteRollbackReady, inviteFlag.data, chipInReadinessKnown,
+    chipInPayoutReady, openChipInChoice]);
+
+  useEffect(() => {
+    resumePublishRef.current = (): void => {
+      void handlePublishTap();
+    };
+  }, [handlePublishTap]);
+
+  const handleCloseChipInChoice = useCallback((): void => {
+    setChipInChoiceVisible(false);
+  }, []);
+
+  // Primary — bank setup, which brings the host back to this step.
+  const handleChipInChoiceConnectBank = useCallback((): void => {
+    setChipInChoiceVisible(false);
+    onOpenStripeOnboard?.(currentStep);
+  }, [onOpenStripeOnboard, currentStep]);
+
+  // Secondary — switch chip-ins off on the draft, then carry on into the
+  // normal publish (its confirmation and invite checks included). The resume
+  // waits for this dialog to finish dismissing: iOS drops a dialog raised
+  // while another is still leaving (#1360).
+  const handleChipInChoicePublishWithout = useCallback((): void => {
+    handleUpdate({ rsvpContributionEnabled: false });
+    setChipInChoiceVisible(false);
+    setTimeout(() => resumePublishRef.current(), CHIP_IN_CHOICE_SETTLE_MS);
+  }, [handleUpdate]);
 
   const handleClosePublishDialog = useCallback((): void => {
     if (isPublishing) return;
@@ -939,6 +1011,19 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       // and the destination screen is itself the affordance. Only the
       // fix-nothing-here failures keep the dialog open.
       const code = readRpcFailureMessage(error);
+      // #3645 — the server says chip-ins are on and the brand cannot collect.
+      // Same choice as the proactive check in handlePublishTap (this is the
+      // path when readiness was still loading, or the client was wrong): never
+      // a toast plus a surprise trip to bank setup. Raised once the publish
+      // dialog has finished dismissing (#1360).
+      if (
+        latestDraftRef.current.rsvpContributionEnabled &&
+        detectPaidPublishGuardReason(code) === "stripe_charges_disabled"
+      ) {
+        setPublishConfirmVisible(false);
+        setTimeout(openChipInChoice, CHIP_IN_CHOICE_SETTLE_MS);
+        return;
+      }
       const guardCopy = resolvePaidPublishGuardCopy(code);
       if (guardCopy !== null && guardCopy.action === "stripe_onboarding") {
         setPublishConfirmVisible(false);
@@ -974,6 +1059,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     deleteDraft,
     handleShowToast,
     onOpenStripeOnboard,
+    openChipInChoice,
     invitePlan,
   ]);
 
@@ -1022,7 +1108,18 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       case 3:
         return <CreatorStep4Cover {...baseProps} />;
       case 4:
-        return <RsvpStep5Setup {...baseProps} />;
+        // #3645 — only this step gets the callout's "Connect bank" action;
+        // it is kept out of baseProps so the other steps' props stay stable.
+        return (
+          <RsvpStep5Setup
+            {...baseProps}
+            onConnectChipInBank={
+              onOpenStripeOnboard !== undefined
+                ? handleChipInChoiceConnectBank
+                : undefined
+            }
+          />
+        );
       case 5:
         return <InvitePeopleStep eventId={/^[0-9a-f-]{36}$/.test(liveDraft.id) ? liveDraft.id : null}
           brandId={liveDraft.brandId} eventType="rsvp"
@@ -1420,6 +1517,17 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         onClose={() => setErrorsSheetVisible(false)}
         onFix={handleFixJump}
       />
+
+      {chipInChoiceLoaded ? (
+        <React.Suspense fallback={null}>
+          <LazyRsvpChipInBankChoiceDialog
+            visible={chipInChoiceVisible}
+            onClose={handleCloseChipInChoice}
+            onConnectBank={handleChipInChoiceConnectBank}
+            onPublishWithoutChipIns={handleChipInChoicePublishWithout}
+          />
+        </React.Suspense>
+      ) : null}
 
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast

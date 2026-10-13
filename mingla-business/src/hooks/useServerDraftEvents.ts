@@ -267,6 +267,13 @@ export interface ServerDraftAutosaveState {
   isSaving: boolean;
   hasError: boolean;
   lastSavedAt: string | null;
+  /**
+   * #3645 — the failure behind `hasError`, so a route can say WHY a save was
+   * refused instead of only "retrying". Null when there is no reportable
+   * failure (a revision resync, a retired draft and auth-not-ready are not
+   * failures and stay null).
+   */
+  lastError: Error | null;
 }
 
 export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
@@ -367,18 +374,21 @@ export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
     [authStatus, isAuthReady, mutation],
   );
 
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    const hasError =
+      mutation.isError &&
+      !isDraftRevisionConflictError(mutation.error) &&
+      !isServerDraftLifecycleError(mutation.error) &&
+      !isBusinessAuthNotReadyError(mutation.error);
+    return {
       saveDraft,
       saveDraftAsync: mutation.mutateAsync,
       isSaving: mutation.isPending,
-      hasError:
-        mutation.isError &&
-        !isDraftRevisionConflictError(mutation.error) &&
-        !isServerDraftLifecycleError(mutation.error) &&
-        !isBusinessAuthNotReadyError(mutation.error),
+      hasError,
       lastSavedAt,
-    }),
+      lastError: hasError ? mutation.error ?? null : null,
+    };
+  },
     [
       lastSavedAt,
       mutation.error,

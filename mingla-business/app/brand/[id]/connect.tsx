@@ -11,6 +11,11 @@
 import React from "react";
 import { Redirect, useLocalSearchParams, type Href } from "expo-router";
 
+import {
+  sanitizeBankSetupReturnPath,
+  withBankSetupReturn,
+} from "../../../src/utils/bankSetupReturn";
+
 function firstParam(value: string | string[] | undefined): string | null {
   const first = Array.isArray(value) ? value[0] : value;
   return typeof first === "string" && first.trim().length > 0 ? first : null;
@@ -21,8 +26,11 @@ export default function BrandBankConnectNativeAlias(): React.ReactElement {
     id?: string | string[];
     from?: string | string[];
     country?: string | string[];
+    resume?: string | string[];
   }>();
   const brandId = firstParam(params.id);
+  // #3645 — where a creator sent the host from; validated, then carried on.
+  const resumePath = sanitizeBankSetupReturnPath(params.resume);
   // #3645 — carry the payout country chosen during brand creation through.
   const country = firstParam(params.country);
   const countryQuery = country !== null && /^[A-Za-z]{2}$/.test(country)
@@ -36,7 +44,10 @@ export default function BrandBankConnectNativeAlias(): React.ReactElement {
   const onboardHref = (
     params.from === "brand-create"
       ? `/brand/${encodeURIComponent(brandId)}/payments/onboard?from=brand-create${countryQuery}`
-      : `/brand/${encodeURIComponent(brandId)}/payments/onboard`
+      : withBankSetupReturn(
+        `/brand/${encodeURIComponent(brandId)}/payments/onboard`,
+        resumePath,
+      )
   ) as Href;
   return <Redirect href={onboardHref} />;
 }

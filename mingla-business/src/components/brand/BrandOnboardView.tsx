@@ -136,6 +136,8 @@ import { useSelectPaystackProvider } from "../../hooks/useBrandPaystack";
 import { useClearPaystackProvider } from "../../hooks/useBrandPaystack";
 /* eslint-enable import/no-duplicates */
 import { describePayoutCountrySwitchFailure } from "../../utils/payoutCountrySwitchCopy";
+import { buildBankSetupWebReturnUrl } from "../../utils/bankSetupReturn";
+import { refreshBrandPaymentState } from "../../hooks/brandPaymentStateRefresh";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
@@ -217,6 +219,12 @@ export interface BrandOnboardViewProps {
    * unless it is a supported card-rail country.
    */
   initialCountry?: string | null;
+  /**
+   * #3645 — the creator screen the host came from, already validated by the
+   * route (`sanitizeBankSetupReturnPath`). On web it becomes the URL hosted
+   * bank setup returns to. Null keeps the payments page.
+   */
+  returnPath?: string | null;
 }
 
 /** Best-effort haptic — silently swallowed if unavailable. */
@@ -257,12 +265,23 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   onAfterDone,
   onEditContact,
   initialCountry = null,
+  returnPath = null,
 }) => {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const onboardMutation = useStartBrandStripeOnboarding();
   const { signedInEmail, onSwitchAccount } = useSwitchAccount();
   const statusQuery = useBrandStripeStatus(brand?.id ?? null);
+  // #3645 — as bank setup is left (finished or abandoned), the screen the host
+  // lands on re-reads the brand's payment state, so a creator's Publish enables
+  // without a manual refresh.
+  const brandIdForRefresh = brand?.id ?? null;
+  useEffect(
+    () => (): void => {
+      refreshBrandPaymentState(queryClient, brandIdForRefresh);
+    },
+    [brandIdForRefresh, queryClient],
+  );
   const startInProgressRef = useRef(false);
   const initialCountryRail = resolveBankConnectRailForCountry(initialCountry);
   const chosenCountryHint =
@@ -610,9 +629,13 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     announceForAccessibility("Creating your Stripe account.");
 
     try {
+      // #3645 — sent here from a creator: hosted setup returns the browser to
+      // that creator screen (finished or left half-way), not to the payments
+      // page. No usable creator path keeps the payments page as before.
       const returnUrl =
         Platform.OS === "web"
-          ? buildLegacyWebReturnUrl(window.location.origin, brand.id)
+          ? buildBankSetupWebReturnUrl(window.location.origin, returnPath) ??
+            buildLegacyWebReturnUrl(window.location.origin, brand.id)
           : RETURN_DEEP_LINK;
       const result = await onboardMutation.mutateAsync({
         brandId: brand.id,
@@ -720,6 +743,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     brand,
     onboardMutation,
     queryClient,
+    returnPath,
     selectedCountry,
     statusQuery,
   ]);

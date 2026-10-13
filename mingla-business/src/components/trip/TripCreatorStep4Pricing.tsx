@@ -105,7 +105,19 @@ export interface TripCreatorStep4PricingProps {
   draft: Step4Draft;
   onChange: (patch: Partial<Step4Draft>) => void;
   disabled?: boolean;
+  /**
+   * #3645 — true when the trip is paid (or has a payment plan) and the brand
+   * cannot take payments yet. Shows an informational card: the draft saves, and
+   * a bank is only needed to publish. No button here — the stop, and the
+   * "Connect bank" button, are on the Review step.
+   */
+  needsBankToPublish?: boolean;
 }
+
+/** #3645 — locked copy for the pricing step's "keep building" card. */
+export const TRIP_PRICING_KEEP_BUILDING_TITLE = "You can keep building";
+export const TRIP_PRICING_KEEP_BUILDING_BODY =
+  "This trip saves as a draft. You'll need a bank connected before you publish it with a price.";
 
 const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";
 const INPUT_BG = "rgba(255, 255, 255, 0.04)";
@@ -373,6 +385,7 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
   draft,
   onChange,
   disabled,
+  needsBankToPublish = false,
 }) => {
   const brand = useCurrentBrand();
   const router = useRouter();
@@ -519,6 +532,22 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
         testID="trip-pricing-payout-country-prompt"
       />
 
+      {/* #3645 — paid, no bank yet: reassure, do not block. */}
+      {needsBankToPublish ? (
+        <View
+          style={styles.keepBuildingCard}
+          accessibilityRole="text"
+          testID="trip-pricing-keep-building-card"
+        >
+          <Text style={styles.keepBuildingTitle}>
+            {TRIP_PRICING_KEEP_BUILDING_TITLE}
+          </Text>
+          <Text style={styles.keepBuildingBody}>
+            {TRIP_PRICING_KEEP_BUILDING_BODY}
+          </Text>
+        </View>
+      ) : null}
+
       {brand !== null ? (
         <WhoCoversCostsSection
           format="trip"
@@ -650,6 +679,25 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
     fontStyle: "italic",
+  },
+  // #3645 — informational "keep building" card (neutral glass, not a warning).
+  keepBuildingCard: {
+    padding: spacing.md,
+    borderRadius: radiusTokens.lg,
+    backgroundColor: INPUT_BG,
+    borderWidth: 1,
+    borderColor: INPUT_BORDER,
+    gap: spacing.xxs,
+  },
+  keepBuildingTitle: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  keepBuildingBody: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight * 1.35,
+    color: textTokens.secondary,
   },
   lockedHint: {
     fontSize: typography.caption.fontSize,

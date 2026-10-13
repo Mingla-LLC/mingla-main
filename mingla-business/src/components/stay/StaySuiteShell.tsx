@@ -349,15 +349,27 @@ function StayOverview({
     !venueApproved ||
     settings === null;
 
+  // #3645 — accepting the Organiser Terms continues the publish that opened
+  // them. The ref holds the latest handler so the resumed run reads current
+  // settings.
+  const resumePublishStayRef = React.useRef<() => void>(() => undefined);
   const handlePublishStay = useCallback((): void => {
     if (settings === null) return;
     // Stay publish requires a current price → always paid for Organiser Terms.
-    if (blockPaidPublishUntilAccepted(true)) {
+    if (
+      blockPaidPublishUntilAccepted(true, () => {
+        setOrganiserTermsToast(false);
+        resumePublishStayRef.current();
+      })
+    ) {
       setOrganiserTermsToast(true);
       return;
     }
     publish.mutate({ expectedVersion: settings.version });
   }, [settings, blockPaidPublishUntilAccepted, publish]);
+  React.useEffect(() => {
+    resumePublishStayRef.current = handlePublishStay;
+  }, [handlePublishStay]);
 
   if (inventory.isLoading || currency.isLoading) {
     return (

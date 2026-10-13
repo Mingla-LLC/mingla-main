@@ -330,6 +330,8 @@ const stripeStatusQuery = { data: { status: "active" } };
 
 /** Wizard import specifier (by its last path segment) -> module the test supplies. */
 const BOUNDARY: Record<string, () => unknown> = {
+  // #3645 — the bank-setup return target is pure and supplied REAL.
+  bankSetupReturn: () => jest.requireActual("../../utils/bankSetupReturn"),
   react: () => React,
   "react-native": () => jest.requireActual("react-native"),
   "expo-router": () => jest.requireMock("expo-router"),

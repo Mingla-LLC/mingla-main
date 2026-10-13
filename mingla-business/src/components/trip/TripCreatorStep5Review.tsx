@@ -120,7 +120,7 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
         <View style={styles.stripeBannerWrap}>
           <StripeBlockedCard
             title="Bank required for paid trips"
-            body="Connect a bank to publish this paid trip. Free trips can be published any time."
+            body="Connect a bank to publish this paid trip. Your draft is saved and you'll come straight back here."
             ctaLabel="Connect bank"
             onConnectStripe={onConnectStripe ?? (() => undefined)}
             testID="trip-step5-stripe-blocked"

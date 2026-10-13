@@ -97,10 +97,7 @@ import {
   describeUnmappedPublishGuard,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
-import {
-  ORGANISER_TERMS_PUBLISH_RETRY_TOAST,
-  useOrganiserTermsPublishGate,
-} from "../../hooks/useOrganiserTermsPublishGate";
+import { useOrganiserTermsPublishGate } from "../../hooks/useOrganiserTermsPublishGate";
 // issue #3284 — publish writes the refund terms first and throws this if they
 // did not land; its message is organiser copy.
 import { OfferingRefundTermsError } from "../../utils/refundPolicyTerms";
@@ -855,6 +852,11 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
 
   // ---- Publish gate ----
 
+  // #3645 — the Organiser Terms sheet resumes the publish it interrupted. The
+  // ref always holds the LATEST handlePublishTap, so the resumed run reads the
+  // current draft, not the one captured when the sheet opened.
+  const resumePublishRef = useRef<() => void>(() => undefined);
+
   const handlePublishTap = useCallback(async (): Promise<void> => {
     if (!coverAuthority.isReady) return;
     const errs = validatePublish(liveDraft, stripeStatus);
@@ -881,14 +883,17 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       return;
     }
     // #3645 PR11c — paid listings require current Organiser Terms acceptance.
-    // Free-only publishes skip. After accept, host taps Publish again.
+    // Free-only publishes skip. Accepting continues this publish (#3645).
     // Paid mirror matches eventDraftIsPaid / draftEventValidation (online-sellable
     // tickets with price > 0) without importing publishStripeReadiness here.
     const isPaidListing = liveDraft.tickets.some(
       (t) => !t.isFree && (t.priceGbp ?? 0) > 0,
     );
-    if (blockPaidPublishUntilAccepted(isPaidListing)) {
-      handleShowToast(ORGANISER_TERMS_PUBLISH_RETRY_TOAST);
+    if (
+      blockPaidPublishUntilAccepted(isPaidListing, () =>
+        resumePublishRef.current(),
+      )
+    ) {
       return;
     }
     if (!inviteEnabled) {
@@ -928,6 +933,12 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   }, [liveDraft, stripeStatus, handleShowToast, persistedInvite, inviteEnabled,
     inviteRollbackReady, inviteFlag.data, coverAuthority.isReady,
     blockPaidPublishUntilAccepted]);
+
+  useEffect(() => {
+    resumePublishRef.current = (): void => {
+      void handlePublishTap();
+    };
+  }, [handlePublishTap]);
 
   const handleConfirmPublish = useCallback(async (): Promise<void> => {
     if (isPublishing) return;
