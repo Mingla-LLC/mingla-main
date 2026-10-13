@@ -2087,7 +2087,7 @@ export async function routeStripeEvent(
           amount?: number;
           currency?: string;
         } | undefined;
-        if (isAdCreditTopUpStripeObject(piObj)) {
+        if (piObj && isAdCreditTopUpStripeObject(piObj)) {
           if (event.type === "payment_intent.succeeded") {
             const applied = await applyAdCreditTopUpFromPaymentIntent(
               supabase,

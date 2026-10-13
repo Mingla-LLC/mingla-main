@@ -10,9 +10,11 @@ import {
 } from "./adCreditStripe.ts";
 import { quoteTopUp } from "./adMoney.ts";
 
-/** Loose admin client — stripe/paystack routers pass the service-role Supabase client. */
+/** Loose admin client — stripe/paystack routers pass the service-role Supabase client.
+ * `rpc` is typed as returning `any` (not Promise) because supabase-js returns a
+ * Thenable builder that is awaitable but is not assignable to Promise<T>. */
 // deno-lint-ignore no-explicit-any
-type AdminClient = { rpc: (...args: any[]) => Promise<any> };
+type AdminClient = { rpc: (...args: any[]) => any };
 
 export function isAdCreditTopUpStripeObject(
   obj: { metadata?: Record<string, string> | null } | null | undefined,
