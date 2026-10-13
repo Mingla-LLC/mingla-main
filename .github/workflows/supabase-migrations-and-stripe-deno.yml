@@ -676,6 +676,15 @@ jobs:
           # once.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_rsvp_draft_saves_chip_ins.tester.adversarial.pg17.test.sql
+          # Issue #3827 — a live edit keeps an event's two copies of its location
+          # in step. An address edit moves the structured address, the label and
+          # the pin; hide-address switches off and on through the key readers
+          # use; a save that moves nothing keeps the pin's precision; the RSVP
+          # `location` key writes both halves; a live RSVP still refuses
+          # chip-ins without a bank; and the SQL label composer matches the
+          # parity table the Host app's composer is tested against.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3827_live_edit_location_one_owner.implementor.happy.pg17.test.sql
           # Issue #1977 — canonical RSVP draft/guest/contribution owners and
           # the Ari receipt seam. Behavioural against the applied schema.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
