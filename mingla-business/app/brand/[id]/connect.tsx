@@ -20,8 +20,14 @@ export default function BrandBankConnectNativeAlias(): React.ReactElement {
   const params = useLocalSearchParams<{
     id?: string | string[];
     from?: string | string[];
+    country?: string | string[];
   }>();
   const brandId = firstParam(params.id);
+  // #3645 — carry the payout country chosen during brand creation through.
+  const country = firstParam(params.country);
+  const countryQuery = country !== null && /^[A-Za-z]{2}$/.test(country)
+    ? `&country=${country.toUpperCase()}`
+    : "";
 
   if (brandId === null) {
     return <Redirect href="/(tabs)/account" />;
@@ -29,7 +35,7 @@ export default function BrandBankConnectNativeAlias(): React.ReactElement {
 
   const onboardHref = (
     params.from === "brand-create"
-      ? `/brand/${encodeURIComponent(brandId)}/payments/onboard?from=brand-create`
+      ? `/brand/${encodeURIComponent(brandId)}/payments/onboard?from=brand-create${countryQuery}`
       : `/brand/${encodeURIComponent(brandId)}/payments/onboard`
   ) as Href;
   return <Redirect href={onboardHref} />;

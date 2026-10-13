@@ -30,7 +30,12 @@ export default function BrandOnboardRoute(): React.ReactElement {
   const params = useLocalSearchParams<{
     id: string | string[];
     from?: string | string[];
+    country?: string | string[];
   }>();
+  // #3645 — payout country chosen during brand creation; the view validates it.
+  const countryParam = Array.isArray(params.country)
+    ? params.country[0]
+    : params.country;
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brandId = typeof idParam === "string" && idParam.length > 0
     ? idParam
@@ -90,6 +95,7 @@ export default function BrandOnboardRoute(): React.ReactElement {
           onCancel={handleBack}
           onAfterDone={handleAfterDone}
           onEditContact={brandId !== null ? handleEditContact : undefined}
+          initialCountry={typeof countryParam === "string" ? countryParam : null}
         />
       </BrandPaymentsPermissionGate>
     </View>

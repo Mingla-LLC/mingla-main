@@ -134,6 +134,14 @@ import {
   normalizeThemeOverrides,
   patchOfferingTheme,
 } from "../../services/offeringTheme";
+import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
+import { currencyCodeOrNull } from "../../utils/currency";
+import {
+  EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY,
+  experienceDisplayCurrencySymbol,
+  experiencePublishNeedsPayoutCountry,
+  isEventCurrencyRequiredRefusal,
+} from "../../utils/experiencePublishCurrencyGate";
 
 // #1742 / ORCH-1083 — the gate sheet is needed only at the final publish door.
 // Preload its async chunk one step early so opening it remains immediate while
@@ -337,8 +345,18 @@ export const ExperienceCreatorWizard: React.FC<
   const venueDefault = useExperienceVenueDefault(brandId);
   const scrollRef = useRef<ScrollView>(null);
 
+  // The draft payload still carries a placeholder currency for a brand with
+  // none (server behaviour, left alone by #3645). It is never DISPLAYED: a
+  // brand with no currency shows no symbol and no currency code.
   const currency = brand?.defaultCurrency ?? "USD";
-  const currencySymbol = currencySymbolFor(currency);
+  const currencySymbol = experienceDisplayCurrencySymbol(
+    brand?.defaultCurrency,
+    currencySymbolFor,
+  );
+  const displayCurrency = currencyCodeOrNull(brand?.defaultCurrency);
+  // #3645 — set when the server refused a publish for want of a currency even
+  // though this client believed the brand had one (stale brand state).
+  const [serverCurrencyRefusal, setServerCurrencyRefusal] = useState(false);
 
   const [step, setStep] = useState<StepIndex>(1);
   // Each step opens at the top — the ScrollView is shared by every step.
@@ -933,6 +951,19 @@ export const ExperienceCreatorWizard: React.FC<
   const handleSubmit = useCallback(
     async (publish: boolean): Promise<void> => {
       if (brand === null || user?.id === undefined) return;
+      // #3645 — an experience cannot leave draft on a brand with no currency
+      // (the server refuses it, free or priced). Stop here, before any RPC,
+      // and point at the country prompt on this screen. Draft saves are exempt.
+      if (
+        experiencePublishNeedsPayoutCountry({
+          publish,
+          brandDefaultCurrency: brand.defaultCurrency,
+        })
+      ) {
+        setToast(EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY);
+        return;
+      }
+      if (publish) setServerCurrencyRefusal(false);
       // ORCH-1076 Stream B — proactive Stripe pre-check. A paid experience on a
       // Stripe-unready brand can't publish; surface the blocking toast and
       // return BEFORE the biz_publish_experience RPC. Draft saves
@@ -1018,6 +1049,15 @@ export const ExperienceCreatorWizard: React.FC<
           // otherwise surface the raw reason so the operator sees SOMETHING
           // actionable instead of a no-op publish.
           const code = (error.message ?? "").trim();
+          // #3645 — the server says this brand has no currency. Same sentence
+          // and the same in-place country prompt as the client guard above,
+          // never a trip to bank setup and never the raw code. Checked BEFORE
+          // the paid-publish guards, which would route this to bank setup.
+          if (publish && isEventCurrencyRequiredRefusal(error)) {
+            setServerCurrencyRefusal(true);
+            setToast(EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY);
+            return;
+          }
           // ORCH-1075 — paid-publish integrity guards (Stripe readiness /
           // past date) get actionable copy + a route, not a raw error.
           if (handlePaidPublishGuard(code)) {
@@ -1149,6 +1189,16 @@ export const ExperienceCreatorWizard: React.FC<
   }, [currentIntelGateKey, handleSubmit, isLiveEdit]);
 
   const beginPublish = useCallback(async (): Promise<void> => {
+    // #3645 — no currency, no publish: stop before terms, invites or any RPC.
+    if (
+      experiencePublishNeedsPayoutCountry({
+        publish: true,
+        brandDefaultCurrency: brand?.defaultCurrency,
+      })
+    ) {
+      setToast(EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY);
+      return;
+    }
     // #3645 PR11c — open Organiser Terms before invite/intel confirm for paid.
     if (
       blockPaidPublishUntilAccepted(
@@ -1194,7 +1244,7 @@ export const ExperienceCreatorWizard: React.FC<
     } finally {
       setCheckingInvitePublish(false);
     }
-  }, [maybeOpenIntelGate, persistedInvite, inviteEnabled, inviteRollbackReady,
+  }, [brand?.defaultCurrency, maybeOpenIntelGate, persistedInvite, inviteEnabled, inviteRollbackReady,
     inviteFlag.data, blockPaidPublishUntilAccepted, isFree, resolvedTotalMajor]);
 
   const closeIntelGate = useCallback((): void => {
@@ -1575,7 +1625,7 @@ export const ExperienceCreatorWizard: React.FC<
         {step === 4 && brand !== null ? (
           <ExperiencePricingStep
             currencySymbol={currencySymbol}
-            currency={currency}
+            currency={displayCurrency}
             pricingMode={pricingMode}
             setPricingMode={setPricingMode}
             stops={stops}
@@ -1626,6 +1676,18 @@ export const ExperienceCreatorWizard: React.FC<
         {/* ORCH-1076 Stream B — proactive Stripe banner on the Pricing step, at
             the bottom of the step body so the brand sees it the moment they set
             a non-zero price. */}
+        {/* #3645 — a price on a brand with no currency asks for the payout
+            country here, in place. */}
+        {step === 4 ? (
+          <View style={styles.stripeBannerWrap}>
+            <PayoutCountryInlinePrompt
+              brand={brand}
+              priced={experienceDraftIsPaid({ isFree, resolvedTotalMajor })}
+              testID="experience-pricing-payout-country-prompt"
+            />
+          </View>
+        ) : null}
+
         {step === 4 && experienceNeedsStripe ? (
           <View style={styles.stripeBannerWrap}>
             <StripeBlockedCard
@@ -1679,6 +1741,22 @@ export const ExperienceCreatorWizard: React.FC<
               <Text style={styles.label}>Price</Text><Text style={styles.reviewValue}>{isFree ? "Free" : `${currencySymbol}${resolvedTotalMajor.toFixed(2)}`}</Text>
             </View>
             <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} />
+          </View>
+        ) : null}
+
+        {/* #3645 — Publish waits for a payout country on a brand with no
+            currency (free or priced). The prompt sits on the publish screen so
+            the organiser chooses and publishes without leaving their draft. */}
+        {step === finalStep && !isLiveEdit ? (
+          <View style={styles.stripeBannerWrap}>
+            <PayoutCountryInlinePrompt
+              brand={brand}
+              priced
+              force={serverCurrencyRefusal}
+              reason={EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY}
+              onCountryChosen={() => setServerCurrencyRefusal(false)}
+              testID="experience-publish-payout-country-prompt"
+            />
           </View>
         ) : null}
 
