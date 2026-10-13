@@ -109,7 +109,17 @@ Deno.test("Wave 6: migration + edge gate source contracts", async () => {
   assertEquals(/REFERENCES\s+public\.ad_campaigns/i.test(ledgerDdl), false);
   assertEquals(mig.includes("biz_can_view_payments_for_brand_for_caller"), true);
   assertEquals(mig.includes("campaign_hold"), false);
-  assertEquals(mig.includes("GRANT SELECT, INSERT ON public.ad_credit_ledger"), true);
+  assertEquals(
+    mig.includes(
+      "REVOKE ALL ON public.ad_credit_ledger FROM PUBLIC, anon, authenticated, service_role",
+    ),
+    true,
+  );
+  assertEquals(
+    mig.includes("GRANT SELECT ON public.ad_credit_ledger TO authenticated, service_role"),
+    true,
+  );
+  assertEquals(mig.includes("GRANT SELECT, INSERT ON public.ad_credit_ledger"), false);
 
   const edge = await Deno.readTextFile(
     new URL("../../ad-credit/index.ts", import.meta.url),

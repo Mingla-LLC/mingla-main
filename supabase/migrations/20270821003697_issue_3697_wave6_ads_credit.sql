@@ -132,16 +132,14 @@ CREATE POLICY ad_credit_lots_brand_select ON public.ad_credit_lots
   FOR SELECT TO authenticated
   USING (public.biz_can_view_payments_for_brand_for_caller(brand_id));
 
-REVOKE ALL ON public.ad_credit_wallets FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON public.ad_credit_ledger FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON public.ad_credit_lots FROM PUBLIC, anon, authenticated;
-GRANT SELECT ON public.ad_credit_wallets TO authenticated;
-GRANT SELECT ON public.ad_credit_ledger TO authenticated;
-GRANT SELECT ON public.ad_credit_lots TO authenticated;
--- Wallets/lots mutate via SECURITY DEFINER apply; ledger is INSERT-only.
-GRANT SELECT, INSERT, UPDATE ON public.ad_credit_wallets TO service_role;
-GRANT SELECT, INSERT ON public.ad_credit_ledger TO service_role;
-GRANT SELECT, INSERT, UPDATE ON public.ad_credit_lots TO service_role;
+-- Baseline grants service_role ALL on new public tables; revoke that so
+-- mutations can only go through SECURITY DEFINER ad_credit_apply.
+REVOKE ALL ON public.ad_credit_wallets FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON public.ad_credit_ledger FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON public.ad_credit_lots FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT ON public.ad_credit_wallets TO authenticated, service_role;
+GRANT SELECT ON public.ad_credit_ledger TO authenticated, service_role;
+GRANT SELECT ON public.ad_credit_lots TO authenticated, service_role;
 
 -- ── Idempotent apply (service_role / edge only) ─────────────────────────────
 CREATE OR REPLACE FUNCTION public.ad_credit_apply(
