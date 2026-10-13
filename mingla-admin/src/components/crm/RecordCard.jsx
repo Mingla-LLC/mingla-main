@@ -4,9 +4,10 @@ import { DueBadge } from "./DueBadge";
 import { displayOwners, icpLabel, nextStage, regionName } from "../../lib/crmModel";
 
 /**
- * One card on the board. The card opens through a full-size button that sits
- * beside (not around) the arrow button, so each is its own control for a
- * keyboard and a screen reader.
+ * One card on the board. The whole card is a button (Enter or Space opens
+ * it); the arrow is a real button inside it that keeps its own click. The card
+ * itself is the draggable element, so a drag can start anywhere on it in every
+ * browser.
  */
 export function RecordCard({
   record,
@@ -31,35 +32,39 @@ export function RecordCard({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${record.name}`}
+      aria-busy={pending || undefined}
       draggable={draggable}
       onDragStart={draggable ? (e) => onDragStart?.(e, record) : undefined}
       onDragEnd={draggable ? onDragEnd : undefined}
+      onClick={() => onOpen(record)}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(record);
+        }
+      }}
       data-record-id={record.id}
-      aria-busy={pending || undefined}
       className={[
-        "group relative rounded-[var(--radius-sm)] border border-[var(--gray-200)]",
+        "group rounded-[var(--radius-sm)] border border-[var(--gray-200)]",
         "bg-[var(--color-background-primary)] p-3 shadow-[var(--shadow-sm)] transition-opacity duration-150",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]",
         pending ? "opacity-60" : "",
-        draggable ? "cursor-grab active:cursor-grabbing" : "",
+        draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
       ].join(" ")}
     >
-      <button
-        type="button"
-        aria-label={`Open ${record.name}`}
-        onClick={() => onOpen(record)}
-        className="absolute inset-0 h-full w-full cursor-pointer rounded-[var(--radius-sm)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
-      />
-      <div className="pointer-events-none relative">
-        <p className="break-words text-sm font-semibold text-[var(--color-text-primary)]">{record.name}</p>
-        <p className="mt-0.5 break-words text-xs text-[var(--color-text-secondary)]">{where}</p>
-        <p className="mt-0.5 break-words text-xs text-[var(--color-text-tertiary)]">
-          {owners}
-          {record.next_action ? ` · ${record.next_action}` : ""}
-        </p>
-      </div>
+      <p className="break-words text-sm font-semibold text-[var(--color-text-primary)]">{record.name}</p>
+      <p className="mt-0.5 break-words text-xs text-[var(--color-text-secondary)]">{where}</p>
+      <p className="mt-0.5 break-words text-xs text-[var(--color-text-tertiary)]">
+        {owners}
+        {record.next_action ? ` \u00b7 ${record.next_action}` : ""}
+      </p>
       {(record.due_on || next) && (
-        <div className="relative mt-2 flex flex-wrap items-center justify-between gap-2">
-          <span className="pointer-events-none">
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <span>
             <DueBadge dueOn={record.due_on} today={today} />
           </span>
           {next && (
