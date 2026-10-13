@@ -591,6 +591,35 @@ jobs:
           # fixtures it must leave alone.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3801_trip_draft_dates_single_owner.tester.adversarial.pg17.test.sql
+          # Issue #3645 — a trip DRAFT now saves a priced package before the
+          # brand can take payments; the stop moved to Publish. The draft owner
+          # used to raise `stripe_charges_disabled` on the save itself. Happy
+          # path: a price saved by update and by insert (with a payment plan),
+          # publish refused with nothing lost, then the same draft publishes
+          # once the brand can collect.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_trip_draft_saves_priced_packages.implementor.happy.pg17.test.sql
+          # Issue #3645 — independent tester. Attacks what the removal must not
+          # have loosened: publish still refused (price by insert and by
+          # update), a stranger and a signed-out caller still refused, a
+          # PUBLISHED trip still unwritable by the draft owner, the other
+          # package rules intact, a free trip still publishing, and the publish
+          # owners still asking about payment readiness.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_trip_draft_saves_priced_packages.tester.adversarial.pg17.test.sql
+          # Issue #3645 — an RSVP DRAFT now saves with chip-ins on before the
+          # brand can take payments. Publish still refuses; "publish without
+          # chip-ins" and "connect a bank, then publish" both work from the
+          # saved draft.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_rsvp_draft_saves_chip_ins.implementor.happy.pg17.test.sql
+          # Issue #3645 — independent tester for the RSVP half: both publish
+          # doors still refuse, a published RSVP still cannot switch chip-ins on
+          # without a bank (live branch unchanged), strangers and signed-out
+          # callers refused, amount and revision rules intact, retries answered
+          # once.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_rsvp_draft_saves_chip_ins.tester.adversarial.pg17.test.sql
           # Issue #1977 — canonical RSVP draft/guest/contribution owners and
           # the Ari receipt seam. Behavioural against the applied schema.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
