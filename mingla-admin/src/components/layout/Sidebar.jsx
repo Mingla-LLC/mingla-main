@@ -42,8 +42,8 @@ import {
   Bot,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { NAV_GROUPS, TEAM_AGENT_NAV_ITEMS, teamNavGroups } from "../../lib/constants";
-import { ROLE_LABELS, canOpenPage, visibleNavGroups } from "../../lib/access";
+import { NAV_GROUPS } from "../../lib/constants";
+import { ROLE_LABELS, visibleNavGroups } from "../../lib/access";
 // ISSUE-1001 — wordmark imported from the canonical master package
 // (packages/brand-assets); the admin-local copy is deleted.
 import minglaLogo from "../../../../packages/brand-assets/mingla-wordmark.png";
@@ -97,11 +97,7 @@ export function Sidebar({
 }) {
   const { session, access, signOut } = useAuth();
   // Issue #3802 — the menu holds only what this person may open.
-  // Wave 4: My agent joins the Team group for everyone who may open it.
-  const groups = teamNavGroups(
-    visibleNavGroups(NAV_GROUPS, access),
-    TEAM_AGENT_NAV_ITEMS.filter((item) => canOpenPage(access, item.id))
-  );
+  const groups = visibleNavGroups(NAV_GROUPS, access);
   const [collapsedGroups, setCollapsedGroups] = useState(() => {
     const initial = {};
     visibleNavGroups(NAV_GROUPS, access).forEach((g) => {

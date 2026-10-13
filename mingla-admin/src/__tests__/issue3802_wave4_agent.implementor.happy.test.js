@@ -1,7 +1,7 @@
 // Issue #3802 (Wave 4, first part) — the My agent page: its pure decisions and
 // its source contracts.
 //
-//   A-1  who may open My agent, and where it sits in the menu
+//   A-1  who may open My agent, and its own Help group in the menu
 //   A-2  the lines to paste, for each agent and each kind of computer; where
 //        the key appears and where it never does
 //   A-3  the status line, and why a key stopped, in plain words
@@ -19,8 +19,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PAGE_AREA_OVERRIDES, areaForPage, canOpenPage, resolveRoute, visibleNavGroups } from "../lib/access.js";
-import { NAV_GROUPS, NAV_ITEMS, TEAM_AGENT_NAV_ITEMS, teamAgentTitle, teamNavGroups } from "../lib/constants.js";
+import { PAGE_AREA_OVERRIDES, areaForPage, canOpenPage, pageTitle, resolveRoute, visibleNavGroups } from "../lib/access.js";
+import { NAV_GROUPS, NAV_ITEMS } from "../lib/constants.js";
 import {
   AGENTS,
   AGENT_ABILITIES,
@@ -88,35 +88,31 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
     assert.deepEqual(resolveRoute("agent", growth, ["home", "agent"]), { pageId: "agent", denied: false, requestedId: "agent" });
     assert.deepEqual(resolveRoute("agent", person("growth", ["role_home"]), ["home", "agent"]), { pageId: "home", denied: true, requestedId: "agent" });
   });
-  it("sits at the end of the Team group in the menu each role is shown", () => {
-    const drawn = (a) => teamNavGroups(visibleNavGroups(NAV_GROUPS, a), TEAM_AGENT_NAV_ITEMS.filter((i) => canOpenPage(a, i.id)));
+  it("sits in its own Help group, below Team, in the menu each role is shown", () => {
+    const groups = (a) => visibleNavGroups(NAV_GROUPS, a);
     for (const a of [growth, partner]) {
-      assert.deepEqual(drawn(a).flatMap((g) => g.items).map((i) => i.id), ["home", "beta-leads", "hosts", "creators", "agent"], a.role);
+      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "beta-leads", "hosts", "creators", "agent"], a.role);
     }
-    for (const a of [owner, admin]) {
-      const team = drawn(a).at(-1);
-      assert.equal(team.label, "Team");
-      assert.deepEqual(team.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["team-dashboard:Team dashboard:BarChart3", "hosts:Hosts:Store", "creators:Creators:Sparkles", "agent:My agent:Bot"]);
+    for (const a of [owner, admin, growth, partner]) {
+      const shown = groups(a);
+      const help = shown.at(-1);
+      assert.equal(help.label, "Help", a.role);
+      assert.deepEqual(help.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["agent:My agent:Bot"]);
+      assert.equal(shown.at(-2).label, "Team", "Help comes straight after Team");
+      assert.equal(shown.at(-2).items.some((i) => i.id === "agent"), false);
     }
-    // Someone with no pipelines area is shown no My agent, and no empty group.
-    const none = person("growth", ["role_home"]);
-    assert.deepEqual(drawn(none).flatMap((g) => g.items).map((i) => i.id), ["home"]);
-    // A person whose menu has no Team group still gets one, holding My agent.
-    assert.deepEqual(teamNavGroups([{ label: null, items: [{ id: "home" }] }], TEAM_AGENT_NAV_ITEMS).at(-1), { label: "Team", items: TEAM_AGENT_NAV_ITEMS });
-    // It changes neither list it was given.
-    const before = JSON.stringify(NAV_GROUPS);
-    drawn(owner);
-    assert.equal(JSON.stringify(NAV_GROUPS), before);
-    assert.equal(NAV_ITEMS.some((i) => i.id === "agent"), false, "the earlier flat list is as it was");
+    assert.equal(NAV_GROUPS.at(-1).label, "Help");
+    assert.equal(NAV_GROUPS.filter((g) => g.label === "Help").length, 1);
+    // Someone with no pipelines area is shown no Help group at all.
+    assert.deepEqual(groups(person("growth", ["role_home"])).map((g) => g.label), [null]);
   });
   it("the menu, the title and the command palette all know it", () => {
-    assert.ok(SIDEBAR.includes("teamNavGroups(") && SIDEBAR.includes("TEAM_AGENT_NAV_ITEMS.filter((item) => canOpenPage(access, item.id))"));
+    assert.ok(SIDEBAR.includes("const groups = visibleNavGroups(NAV_GROUPS, access);"), "the menu is drawn from the one list, like every other group");
     assert.ok(/\bBot,\n\} from "lucide-react";/.test(SIDEBAR) && /\n {2}Bot,\n\};/.test(SIDEBAR), "the Bot icon is imported and registered");
-    assert.equal(teamAgentTitle("agent"), "My agent");
-    assert.equal(teamAgentTitle("hosts"), "");
-    assert.equal(teamAgentTitle("__proto__"), "");
-    assert.ok(SHELL.includes("teamAgentTitle(activeTab) || pageTitle(activeTab, access, NAV_ITEMS)"));
-    assert.ok(PALETTE.includes("[...TEAM_NAV_GROUP.items, ...NAV_ITEMS, ...TEAM_AGENT_NAV_ITEMS].filter((p) => canOpenPage(access, p.id))"));
+    assert.equal(NAV_ITEMS.find((i) => i.id === "agent")?.label, "My agent");
+    assert.equal(pageTitle("agent", growth, NAV_ITEMS), "My agent");
+    assert.ok(SHELL.includes("pageTitle(activeTab, access, NAV_ITEMS)"));
+    assert.ok(PALETTE.includes("[...TEAM_NAV_GROUP.items, ...NAV_ITEMS].filter((p) => canOpenPage(access, p.id))"));
   });
 });
 

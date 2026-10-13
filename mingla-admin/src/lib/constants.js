@@ -212,81 +212,16 @@ export const NAV_GROUPS = [
       { id: "creators",                  label: "Creators",           icon: "Sparkles" },
     ],
   },
+  // Issue #3802 (Wave 4): Help, below Team. My agent is opened by the `crm`
+  // area (lib/access.js), so all four team roles see this group. Bot is in
+  // Sidebar.jsx ICON_MAP.
+  {
+    label: "Help",
+    items: [
+      { id: "agent",                     label: "My agent",           icon: "Bot" },
+    ],
+  },
 ];
 
 // Backward-compatible flat list (used by AppShell.currentTitle)
 export const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
-
-// Issue #3802 (Wave 4): My agent, shown at the end of the Team group for
-// everyone who holds the `crm` area. It is a list of its own, added to the
-// Team group where the menu is drawn (teamNavGroups below), so NAV_GROUPS
-// and NAV_ITEMS stay exactly the lists the earlier waves pinned. Bot is in
-// Sidebar.jsx ICON_MAP.
-export const TEAM_GROUP_LABEL = "Team";
-export const TEAM_AGENT_NAV_ITEMS = [
-  { id: "agent",                     label: "My agent",           icon: "Bot" },
-];
-
-/** The title of a My agent page, or "" for any other page. */
-export function teamAgentTitle(pageId) {
-  return TEAM_AGENT_NAV_ITEMS.find((item) => item.id === pageId)?.label || "";
-}
-
-/**
- * The menu as it is drawn: `groups` is what visibleNavGroups() returned for
- * this person; `allowed` is the My agent items this person may open. They go
- * at the end of the Team group (a Team group is made when the person has
- * none). Pure: it changes neither argument.
- */
-export function teamNavGroups(groups, allowed) {
-  const extra = Array.isArray(allowed) ? allowed : [];
-  const list = Array.isArray(groups) ? groups : [];
-  if (extra.length === 0) return list;
-  if (!list.some((g) => g.label === TEAM_GROUP_LABEL)) {
-    return [...list, { label: TEAM_GROUP_LABEL, items: [...extra] }];
-  }
-  return list.map((g) => (g.label === TEAM_GROUP_LABEL ? { ...g, items: [...g.items, ...extra] } : g));
-}
-
-export const STATUS_COLORS = {
-  pending: "warning",
-  reviewed: "info",
-  resolved: "success",
-  dismissed: "default",
-};
-
-// ORCH-0640 ch08: TABLE_CATEGORIES rescoped.
-export const TABLE_CATEGORIES = [
-  {
-    label: "Users & Profiles",
-    tables: ["profiles", "preferences", "notification_preferences", "saved_card", "saved_people"],
-  },
-  {
-    label: "Places & Serving",
-    tables: ["place_pool", "place_scores", "signal_definitions", "signal_definition_versions", "curated_teaser_cache"],
-  },
-  {
-    label: "Engagement",
-    tables: ["engagement_metrics", "user_interactions", "user_sessions", "user_activity", "place_reviews"],
-  },
-  {
-    label: "Rules Engine",
-    tables: ["rule_sets", "rule_set_versions", "rule_entries", "rules_versions", "rules_runs", "rules_run_results"],
-  },
-  {
-    label: "Social & Messaging",
-    tables: ["friends", "friend_requests", "friend_links", "messages", "conversations", "conversation_participants", "blocked_users"],
-  },
-  {
-    label: "Collaboration & Boards",
-    tables: ["collaboration_sessions", "session_participants", "boards", "board_cards", "board_votes", "board_messages", "board_card_messages", "board_card_rsvps", "board_saved_cards", "board_user_swipe_states"],
-  },
-  {
-    label: "Calendar & Safety",
-    tables: ["calendar_entries", "experience_feedback", "scheduled_activities", "user_reports", "app_feedback", "activity_history", "admin_email_log"],
-  },
-  {
-    label: "Caches & Admin",
-    tables: ["discover_daily_cache", "google_places_cache", "ticketmaster_events_cache", "admin_backfill_log", "admin_config", "admin_audit_log", "email_templates"],
-  },
-];
