@@ -74,6 +74,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useEventOrders.ts", // the proven template — must stay gated
   // toward #3697 Wave 7 — Ads credit wallet via ad-credit edge (JWT + brand payments view).
   "marketing/useAdCreditWallet.ts",
+  // toward #3697 Wave 7c — Host-owned ad campaigns list (JWT + brand-scoped edge).
+  "marketing/useHostAdCampaigns.ts",
   "marketing/useAudienceList.ts",
   "marketing/useBrandCustomers.ts",
   "marketing/useEventBuyers.ts",
