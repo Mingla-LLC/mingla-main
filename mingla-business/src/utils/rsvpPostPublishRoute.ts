@@ -1,4 +1,10 @@
 /**
+ * RETIRED by issue #3237 — no route calls this any more. Every RSVP visibility
+ * now lands on the RSVP's manage screen (/rsvp/{id}) with a "Published" banner;
+ * see app/rsvp/[id]/edit.tsx. The function and its test are left in place
+ * because the test suite is append-only; removing both needs an approved test
+ * change. What follows describes the behaviour before #3237.
+ *
  * Where the host lands straight after publishing an RSVP.
  *
  * The RSVP wizard used to send EVERY publish to the public page. For an Unlisted

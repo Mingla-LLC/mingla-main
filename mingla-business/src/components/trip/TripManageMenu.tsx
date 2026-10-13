@@ -42,6 +42,12 @@ export interface TripManageMenuProps {
   onCancelTrip: () => void;
   /** Whether to render the Cancel trip row (hidden for drafts). */
   canCancelTrip?: boolean;
+  /**
+   * issue #3237 — whether the trip has a public page to open. False for a
+   * draft, which hides "View public page" and "Share trip link": both open the
+   * buyer's page, and that page does not exist until the trip is published.
+   */
+  canOpenPublicPage?: boolean;
 }
 
 interface RowProps {
@@ -79,30 +85,35 @@ export const TripManageMenu: React.FC<TripManageMenuProps> = ({
   onViewPublic,
   onCancelTrip,
   canCancelTrip = true,
+  canOpenPublicPage = true,
 }) => {
   return (
     <Sheet visible={visible} onClose={onClose} testID="trip-manage-menu">
       <View style={styles.host}>
         <Text style={styles.heading}>Trip options</Text>
         <View style={styles.divider} />
-        <Row
-          icon="eye"
-          label="View public page"
-          onPress={() => {
-            onClose();
-            onViewPublic();
-          }}
-          testID="trip-manage-view-public"
-        />
-        <Row
-          icon="share"
-          label="Share trip link"
-          onPress={() => {
-            onClose();
-            onShare();
-          }}
-          testID="trip-manage-share"
-        />
+        {canOpenPublicPage ? (
+          <>
+            <Row
+              icon="eye"
+              label="View public page"
+              onPress={() => {
+                onClose();
+                onViewPublic();
+              }}
+              testID="trip-manage-view-public"
+            />
+            <Row
+              icon="share"
+              label="Share trip link"
+              onPress={() => {
+                onClose();
+                onShare();
+              }}
+              testID="trip-manage-share"
+            />
+          </>
+        ) : null}
         <Row
           icon="edit"
           label="Edit trip"

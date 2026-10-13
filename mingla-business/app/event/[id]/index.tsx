@@ -80,6 +80,10 @@ import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNot
 import { useSwitchAccount } from "../../../src/hooks/useSwitchAccount";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
+// issue #3237 — the one-shot "Published. It's live." banner after a publish.
+import { useJustPublishedArrival } from "../../../src/hooks/useJustPublishedArrival";
+import { LazyPublishedBanner } from "../../../src/components/offering/LazyPublishedBanner";
+import { publishedEventBannerKind } from "../../../src/components/offering/publishedBannerCopy";
 import {
   useCancelBusinessEvent,
   useEndBusinessEventTicketSales,
@@ -154,6 +158,8 @@ export default function EventDetailScreen(): React.ReactElement {
   }, [id, routeEvent.replacementEventId, resolvedLiveEvent, draftEvent, router]);
 
   // ----- State ---------------------------------------------------
+  // issue #3237 — true once, straight after this event was published.
+  const publishedArrival = useJustPublishedArrival(id);
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
   const [manageMenuVisible, setManageMenuVisible] = useState<boolean>(false);
   const [endSalesVisible, setEndSalesVisible] = useState<boolean>(false);
@@ -803,6 +809,20 @@ export default function EventDetailScreen(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* issue #3237 — publish confirmation. Share and View public page are
+            this screen's own handlers, so they open exactly what the header
+            Share and the Public page tile open. */}
+        {publishedArrival.justPublished ? (
+          <LazyPublishedBanner
+            kind={publishedEventBannerKind(event.tickets)}
+            onShare={shareability.shareable ? handleShareOpen : undefined}
+            onViewPublic={
+              shareability.shareable ? handleViewPublic : undefined
+            }
+            onDismiss={publishedArrival.dismiss}
+            testID="event-published-banner"
+          />
+        ) : null}
         {/* Hero — cover band + status pill + name + date+venue */}
         <View style={styles.hero}>
           <View style={styles.heroCoverWrap}>

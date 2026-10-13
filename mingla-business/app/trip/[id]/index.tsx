@@ -61,6 +61,12 @@ import {
   deriveTripLifecycleStatus,
 } from "../../../src/components/trip/TripDetailHeroStatusPill";
 import { TripDetailKpiCard } from "../../../src/components/trip/TripDetailKpiCard";
+import { Pill } from "../../../src/components/ui/Pill";
+// issue #3237 — the one-shot "Published. It's live." banner after a publish,
+// and the rule that keeps a draft from offering links that open "not found".
+import { useJustPublishedArrival } from "../../../src/hooks/useJustPublishedArrival";
+import { LazyPublishedBanner } from "../../../src/components/offering/LazyPublishedBanner";
+import { canOfferPublicLinks } from "../../../src/utils/offeringPublicLinks";
 import { Button } from "../../../src/components/ui/Button";
 import { SignedInNotFoundNotice } from "../../../src/components/auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null branch below.
@@ -197,6 +203,10 @@ export default function TripDashboardRoute(): React.ReactElement {
   const [cancelDialogVisible, setCancelDialogVisible] = useState<boolean>(false);
   const [cancelSubmitting, setCancelSubmitting] = useState<boolean>(false);
   const softDeleteMutation = useSoftDeleteTrip();
+  // issue #3237 — true once, straight after this trip was published.
+  const publishedArrival = useJustPublishedArrival(
+    typeof eventId === "string" ? eventId : null,
+  );
 
   const moneyData = useMemo(() => {
     if (installmentsQuery.data === undefined) return null;
@@ -418,6 +428,18 @@ export default function TripDashboardRoute(): React.ReactElement {
     endAt: trip.businessTrip.endAt,
   });
   const coverMediaType = normalizeCoverMediaType(trip.coverMediaType);
+  // issue #3237 — Share and the public page both open the buyer's page, which
+  // does not exist for a draft (the public read leaves drafts out).
+  const canOpenPublic = canOfferPublicLinks({
+    status: trip.status,
+    brandSlug: trip.brandSlug,
+  });
+  const handleShareOpen = (): void => setShareModalVisible(true);
+  const handleViewPublic = (): void => {
+    if (canOpenPublic) {
+      router.push(`/t/${trip.brandSlug}/${trip.slug}` as never);
+    }
+  };
 
   return (
     <SafeScreen
@@ -441,11 +463,11 @@ export default function TripDashboardRoute(): React.ReactElement {
           title={trip.title}
           rightSlot={
             <View style={styles.headerRightSlot}>
-              {trip.brandSlug !== null && trip.brandSlug.length > 0 ? (
+              {trip.brandSlug !== null && trip.brandSlug.length > 0 && canOpenPublic ? (
                 <IconChrome
                   icon="share"
                   size={36}
-                  onPress={() => setShareModalVisible(true)}
+                  onPress={handleShareOpen}
                   accessibilityLabel="Share trip"
                 />
               ) : null}
@@ -479,6 +501,18 @@ export default function TripDashboardRoute(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
+      {/* issue #3237 — publish confirmation. Share and View public page are
+          this screen's own handlers, so they open exactly what the header
+          Share and the Public page tile open. */}
+      {publishedArrival.justPublished ? (
+        <LazyPublishedBanner
+          kind="trip"
+          onShare={canOpenPublic ? handleShareOpen : undefined}
+          onViewPublic={canOpenPublic ? handleViewPublic : undefined}
+          onDismiss={publishedArrival.dismiss}
+          testID="trip-published-banner"
+        />
+      ) : null}
       {/* ORCH-0874: hero — full-width cover + gradient overlay + status pill
           + 24pt title overlay + 13pt date/destination subline. EventCoverMedia
           is content-agnostic; coverHue derived from trip.id when no media. */}
@@ -499,7 +533,12 @@ export default function TripDashboardRoute(): React.ReactElement {
         />
         <View style={styles.heroOverlay} pointerEvents="none" />
         <View style={styles.heroContent} pointerEvents="none">
-          <TripDetailHeroStatusPill status={tripLifecycleStatus} />
+          {/* issue #3237 — a draft is not "Upcoming": nothing is on sale. */}
+          {trip.status === "draft" ? (
+            <Pill variant="draft">Draft</Pill>
+          ) : (
+            <TripDetailHeroStatusPill status={tripLifecycleStatus} />
+          )}
           <Text style={styles.heroTitle} numberOfLines={2}>
             {trip.title}
           </Text>
@@ -538,6 +577,10 @@ export default function TripDashboardRoute(): React.ReactElement {
             tile.requiresPublicPage &&
             (trip.brandSlug === null || trip.brandSlug.length === 0)
           ) {
+            return null;
+          }
+          // issue #3237 — a draft has no public page to open yet.
+          if (tile.key === "public" && !canOpenPublic) {
             return null;
           }
           return (
@@ -666,13 +709,10 @@ export default function TripDashboardRoute(): React.ReactElement {
       <TripManageMenu
         visible={manageMenuVisible}
         onClose={() => setManageMenuVisible(false)}
-        onShare={() => setShareModalVisible(true)}
+        onShare={handleShareOpen}
         onEdit={() => router.push(`/trip/${trip.id}/edit` as never)}
-        onViewPublic={() => {
-          if (trip.brandSlug !== null && trip.brandSlug.length > 0) {
-            router.push(`/t/${trip.brandSlug}/${trip.slug}` as never);
-          }
-        }}
+        onViewPublic={handleViewPublic}
+        canOpenPublicPage={canOpenPublic}
         onCancelTrip={() => setCancelDialogVisible(true)}
         canCancelTrip={
           trip.status !== "draft" &&
@@ -683,7 +723,7 @@ export default function TripDashboardRoute(): React.ReactElement {
 
       {/* ORCH-0874: ShareModal — opened from header share IconChrome or
           TripManageMenu share row */}
-      {trip.brandSlug !== null && trip.brandSlug.length > 0 ? (
+      {trip.brandSlug !== null && trip.brandSlug.length > 0 && canOpenPublic ? (
         <ShareModal
           preloadContent
           visible={shareModalVisible}

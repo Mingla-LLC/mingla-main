@@ -74,6 +74,11 @@ import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { offeringActivityFromOrders } from "../../../src/utils/offeringActivityFromOrders";
 import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
 import { unpublishExperienceToDraft } from "../../../src/services/experienceDetailService";
+// issue #3237 — the one-shot "Published. It's live." banner after a publish,
+// and the rule that keeps a draft from offering links that open "not found".
+import { useJustPublishedArrival } from "../../../src/hooks/useJustPublishedArrival";
+import { LazyPublishedBanner } from "../../../src/components/offering/LazyPublishedBanner";
+import { canOfferPublicLinks } from "../../../src/utils/offeringPublicLinks";
 // #3372 — naira shows "₦", not "NGN", on the host experience screen (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
@@ -161,6 +166,10 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
     coverPosterUrl: experience?.coverMediaPosterUrl, coverType: experience?.coverMediaType,
     status: experience?.status,
   });
+  // issue #3237 — true once, straight after this experience was published.
+  const publishedArrival = useJustPublishedArrival(
+    typeof eventId === "string" ? eventId : null,
+  );
   const currentBrandRole = useCurrentBrandRole(experience?.brandId ?? null);
   const canShowListingInsights =
     !currentBrandRole.isLoading &&
@@ -312,6 +321,18 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
 
   const hasPublicPage =
     experience.brandSlug !== null && experience.brandSlug.length > 0;
+  // issue #3237 — Share and the public page both open the buyer's page, which
+  // does not exist for a draft (the public read leaves drafts out).
+  const canOpenPublic = canOfferPublicLinks({
+    status: experience.status,
+    brandSlug: experience.brandSlug,
+  });
+  const handleShareOpen = (): void => setShareModalVisible(true);
+  const handleViewPublic = (): void => {
+    if (canOpenPublic) {
+      router.push(`/exp/${experience.brandSlug}/${experience.slug}` as never);
+    }
+  };
   const ticket = experience.ticket;
   const priceLabel =
     ticket === null
@@ -342,11 +363,11 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           title={experience.title}
           rightSlot={
             <View style={styles.headerRightSlot}>
-              {hasPublicPage ? (
+              {canOpenPublic ? (
                 <IconChrome
                   icon="share"
                   size={36}
-                  onPress={() => setShareModalVisible(true)}
+                  onPress={handleShareOpen}
                   accessibilityLabel="Share experience"
                 />
               ) : null}
@@ -371,6 +392,18 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* issue #3237 — publish confirmation. Share and View public page are
+            this screen's own handlers, so they open exactly what the header
+            Share and the Public page tile open. */}
+        {publishedArrival.justPublished ? (
+          <LazyPublishedBanner
+            kind="experience"
+            onShare={canOpenPublic ? handleShareOpen : undefined}
+            onViewPublic={canOpenPublic ? handleViewPublic : undefined}
+            onDismiss={publishedArrival.dismiss}
+            testID="experience-published-banner"
+          />
+        ) : null}
         <View style={styles.hero}>
           <EventCoverMedia
             hue={hueFromId(experience.id)}
@@ -411,6 +444,8 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
               return null;
             }
             if (tile.requiresPublicPage && !hasPublicPage) return null;
+            // issue #3237 — a draft has no public page to open yet.
+            if (tile.key === "public" && !canOpenPublic) return null;
             return (
               <ActionTile
                 key={tile.key}
@@ -550,15 +585,8 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           {
             onEdit: () =>
               router.push(`/experience/${experience.id}/edit` as never),
-            onViewPublic: hasPublicPage
-              ? () =>
-                  router.push(
-                    `/exp/${experience.brandSlug}/${experience.slug}` as never,
-                  )
-              : undefined,
-            onShare: hasPublicPage
-              ? () => setShareModalVisible(true)
-              : undefined,
+            onViewPublic: canOpenPublic ? handleViewPublic : undefined,
+            onShare: canOpenPublic ? handleShareOpen : undefined,
             onCancel:
               experience.status !== "ended" &&
               experience.status !== "cancelled" &&
@@ -570,7 +598,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
         )}
       />
 
-      {hasPublicPage ? (
+      {canOpenPublic ? (
         <ShareModal
           preloadContent
           visible={shareModalVisible}

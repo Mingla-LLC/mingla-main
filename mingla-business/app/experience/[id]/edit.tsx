@@ -25,6 +25,7 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 
 import {
@@ -54,7 +55,12 @@ const EventTicketCheckoutAccessCard = React.lazy(() =>
     (m) => ({ default: m.EventTicketCheckoutAccessCard }),
   ),
 );
-import { useExperienceDetail } from "../../../src/hooks/useExperienceDetail";
+import {
+  experienceDetailKeys,
+  useExperienceDetail,
+} from "../../../src/hooks/useExperienceDetail";
+import { experienceKeys } from "../../../src/hooks/useExperiencesByBrand";
+import { markJustPublished } from "../../../src/utils/justPublishedSignal";
 import { useExperienceSoldCount } from "../../../src/hooks/useExperienceSoldCount";
 import type { ExperienceDetail } from "../../../src/services/experienceDetailService";
 import type { CoverPatch } from "../../../src/components/ui/CoverPicker";
@@ -231,6 +237,7 @@ function detailToInitialDraft(
 
 export default function ExperienceEditRoute(): React.ReactElement {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
 
@@ -397,7 +404,18 @@ export default function ExperienceEditRoute(): React.ReactElement {
           initialCover={initialCover}
           liveExperience={isLive ? experience : undefined}
           liveSoldCount={isLive ? soldCountQuery.data ?? 0 : undefined}
-          onComplete={(id) => router.replace(`/experience/${id}` as never)}
+          onPublished={markJustPublished}
+          onComplete={(id) => {
+            // issue #3237 — the wizard writes through RPCs, not a mutation
+            // hook, so refresh the manage screen and the Hub list it feeds.
+            void queryClient.invalidateQueries({
+              queryKey: experienceKeys.listByBrand(experience.brandId),
+            });
+            void queryClient.invalidateQueries({
+              queryKey: experienceDetailKeys.detail(id),
+            });
+            router.replace(`/experience/${id}` as never);
+          }}
           onCancel={() => {
             if (router.canGoBack()) router.back();
             else router.replace(`/experience/${experience.id}` as never);
