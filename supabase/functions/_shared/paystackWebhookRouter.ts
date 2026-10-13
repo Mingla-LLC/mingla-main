@@ -138,7 +138,10 @@ export async function handlePaystackChargeSuccess(
         target_id: reference,
         after: { detail: applied.detail },
       });
-      return { status: "ad_credit_failed" };
+      // Throw so the outer inbox keeps the row retryable (do not mark processed).
+      throw new Error(
+        `paystack_ad_credit_apply_failed:${applied.detail ?? "unknown"}`,
+      );
     }
     return { status: "ad_credit_finalized" };
   }

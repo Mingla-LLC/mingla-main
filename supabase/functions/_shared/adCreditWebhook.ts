@@ -10,12 +10,9 @@ import {
 } from "./adCreditStripe.ts";
 import { quoteTopUp } from "./adMoney.ts";
 
-type AdminClient = {
-  rpc: (
-    fn: string,
-    args: Record<string, unknown>,
-  ) => Promise<{ data: unknown; error: { message?: string } | null }>;
-};
+/** Loose admin client — stripe/paystack routers pass the service-role Supabase client. */
+// deno-lint-ignore no-explicit-any
+type AdminClient = { rpc: (...args: any[]) => Promise<any> };
 
 export function isAdCreditTopUpStripeObject(
   obj: { metadata?: Record<string, string> | null } | null | undefined,
@@ -118,7 +115,10 @@ export async function applyAdCreditTopUpFromPaystackCharge(
     p_campaign_id: null,
     p_external_ref: reference,
     p_actor_id: typeof meta.actor_id === "string" ? meta.actor_id : null,
-    p_metadata: { source: "paystack_webhook", purpose: AD_CREDIT_TOP_UP_PURPOSE },
+    p_metadata: {
+      source: "paystack_webhook",
+      purpose: AD_CREDIT_TOP_UP_PURPOSE,
+    },
   });
   if (error) {
     return { brandId, applied: false, detail: error.message };

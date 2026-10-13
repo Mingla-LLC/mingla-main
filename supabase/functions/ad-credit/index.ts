@@ -19,10 +19,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import {
-  quoteTopUp,
-  quoteWithdraw,
-} from "../_shared/adMoney.ts";
+import { quoteTopUp, quoteWithdraw } from "../_shared/adMoney.ts";
 import {
   adCreditTopUpMetadata,
   buildAdCreditPaystackReference,
@@ -38,11 +35,11 @@ import {
   paystackInitializeTransaction,
   paystackVerifyTransaction,
 } from "../_shared/paystack.ts";
-import { createPaystackRefund } from "../_shared/paystackRefunds.ts";
 import {
-  stripeTicketCheckout,
-  stripeTicketRefund,
-} from "../_shared/stripe.ts";
+  createPaystackRefund,
+  paystackRefundOutcomeStatus,
+} from "../_shared/paystackRefunds.ts";
+import { stripeTicketCheckout, stripeTicketRefund } from "../_shared/stripe.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -125,7 +122,9 @@ function buildAdCreditCheckoutReturnUrls(
 }
 
 serve(async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
   let body: Record<string, unknown>;
@@ -150,7 +149,9 @@ serve(async (req: Request): Promise<Response> => {
     const payCents = typeof body.pay_cents === "number" ? body.pay_cents : NaN;
     const currency = typeof body.currency === "string" ? body.currency : "USD";
     const quoted = quoteTopUp(payCents, currency);
-    if (!quoted.ok) return json({ error: quoted.error, detail: quoted.detail }, 400);
+    if (!quoted.ok) {
+      return json({ error: quoted.error, detail: quoted.detail }, 400);
+    }
     return json(quoted);
   }
 
@@ -159,7 +160,9 @@ serve(async (req: Request): Promise<Response> => {
       ? body.credit_cents
       : NaN;
     const quoted = quoteWithdraw(creditCents);
-    if (!quoted.ok) return json({ error: quoted.error, detail: quoted.detail }, 400);
+    if (!quoted.ok) {
+      return json({ error: quoted.error, detail: quoted.detail }, 400);
+    }
     return json({
       ...quoted,
       note: "estimate_only_fifo_lots_apply_at_withdraw",
@@ -168,7 +171,10 @@ serve(async (req: Request): Promise<Response> => {
 
   const brandId = typeof body.brand_id === "string" ? body.brand_id : "";
   if (!UUID_REGEX.test(brandId)) {
-    return json({ error: "validation_error", detail: "brand_id_invalid_uuid" }, 400);
+    return json(
+      { error: "validation_error", detail: "brand_id_invalid_uuid" },
+      400,
+    );
   }
 
   if (action === "get_wallet") {
@@ -241,7 +247,9 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const quoted = quoteTopUp(payCents, currency);
-    if (!quoted.ok) return json({ error: quoted.error, detail: quoted.detail }, 400);
+    if (!quoted.ok) {
+      return json({ error: quoted.error, detail: quoted.detail }, 400);
+    }
     const stripeOk = isAdCreditStripeTopUpCurrency(quoted.currency);
     const paystackOk = isAdCreditPaystackTopUpCurrency(quoted.currency);
     if (!stripeOk && !paystackOk) {
@@ -263,7 +271,9 @@ serve(async (req: Request): Promise<Response> => {
 
     // Wave 7c — NGN via Paystack (host→Mingla; no subaccount split).
     if (paystackOk) {
-      if (returnUrl.length === 0 || !buildAdCreditCheckoutReturnUrls(returnUrl)) {
+      if (
+        returnUrl.length === 0 || !buildAdCreditCheckoutReturnUrls(returnUrl)
+      ) {
         return json({
           error: "validation_error",
           detail: "return_url_invalid",
@@ -341,7 +351,10 @@ serve(async (req: Request): Promise<Response> => {
           { idempotencyKey: `cs:${createIdem}` },
         );
         if (!session.url) {
-          return json({ error: "apply_failed", detail: "checkout_url_missing" }, 502);
+          return json(
+            { error: "apply_failed", detail: "checkout_url_missing" },
+            502,
+          );
         }
         const piId = typeof session.payment_intent === "string"
           ? session.payment_intent
@@ -407,7 +420,10 @@ serve(async (req: Request): Promise<Response> => {
       ? body.idempotency_key.trim()
       : "";
     if (!paymentRef && !checkoutSessionId && !paystackReference) {
-      return json({ error: "validation_error", detail: "payment_ref_required" }, 400);
+      return json(
+        { error: "validation_error", detail: "payment_ref_required" },
+        400,
+      );
     }
 
     let quoted;
@@ -423,7 +439,9 @@ serve(async (req: Request): Promise<Response> => {
             detail: "payment_not_succeeded",
           }, 400);
         }
-        const amount = typeof verified.amount === "number" ? verified.amount : NaN;
+        const amount = typeof verified.amount === "number"
+          ? verified.amount
+          : NaN;
         const cur = typeof verified.currency === "string"
           ? verified.currency.toUpperCase()
           : "NGN";
@@ -536,7 +554,12 @@ serve(async (req: Request): Promise<Response> => {
         detail: error.message,
       }, 409);
     }
-    return json({ ok: true, quote: quoted, result: data, payment_ref: paymentRef });
+    return json({
+      ok: true,
+      quote: quoted,
+      result: data,
+      payment_ref: paymentRef,
+    });
   }
 
   if (action === "apply_withdraw") {
@@ -547,7 +570,9 @@ serve(async (req: Request): Promise<Response> => {
       ? body.idempotency_key.trim()
       : "";
     const quoted = quoteWithdraw(creditCents);
-    if (!quoted.ok) return json({ error: quoted.error, detail: quoted.detail }, 400);
+    if (!quoted.ok) {
+      return json({ error: quoted.error, detail: quoted.detail }, 400);
+    }
     if (!idempotencyKey) {
       return json({
         error: "validation_error",
@@ -560,9 +585,14 @@ serve(async (req: Request): Promise<Response> => {
       .select("currency, balance_cents")
       .eq("brand_id", brandId)
       .maybeSingle();
-    const currency = typeof wallet?.currency === "string" ? wallet.currency : "USD";
+    const currency = typeof wallet?.currency === "string"
+      ? wallet.currency
+      : "USD";
     if (!wallet || Number(wallet.balance_cents) < quoted.credit_cents) {
-      return json({ error: "insufficient_credit", detail: "balance_too_low" }, 409);
+      return json(
+        { error: "insufficient_credit", detail: "balance_too_low" },
+        409,
+      );
     }
 
     // Debit + pending provider_refunds (FIFO lot takes). Edge issues refunds.
@@ -586,7 +616,10 @@ serve(async (req: Request): Promise<Response> => {
     if (error) {
       const msg = error.message ?? "";
       if (msg.includes("ad_credit_insufficient")) {
-        return json({ error: "insufficient_credit", detail: "balance_too_low" }, 409);
+        return json(
+          { error: "insufficient_credit", detail: "balance_too_low" },
+          409,
+        );
       }
       if (msg.includes("ad_credit_lot_missing_payment_ref")) {
         return json({
@@ -613,9 +646,16 @@ serve(async (req: Request): Promise<Response> => {
     // as Wave 7b top-up. Reuses TICKET_REFUND RAK for refunds:write.
     const stripe = stripeTicketRefund();
     let refundFailures = 0;
+    let refundsPending = 0;
     for (const row of refunds) {
       const status = String(row.status ?? "");
+      // succeeded: done. pending with a provider id: already accepted; wait for
+      // refund.processed / Stripe succeeded webhook (do not re-create).
       if (status === "succeeded") continue;
+      if (status === "pending" && row.provider_refund_id) {
+        refundsPending += 1;
+        continue;
+      }
       const id = String(row.id ?? "");
       const provider = String(row.provider ?? "");
       const paymentRef = String(row.payment_ref ?? "");
@@ -638,12 +678,24 @@ serve(async (req: Request): Promise<Response> => {
             },
             { idempotencyKey: rowIdem },
           );
-          await supabase.rpc("ad_credit_mark_provider_refund", {
-            p_id: id,
-            p_status: "succeeded",
-            p_provider_refund_id: refund.id,
-            p_error_detail: null,
-          });
+          const stripeStatus = String(refund.status ?? "").toLowerCase();
+          if (stripeStatus === "succeeded" || stripeStatus === "pending") {
+            await supabase.rpc("ad_credit_mark_provider_refund", {
+              p_id: id,
+              p_status: stripeStatus === "succeeded" ? "succeeded" : "pending",
+              p_provider_refund_id: refund.id,
+              p_error_detail: null,
+            });
+            if (stripeStatus !== "succeeded") refundsPending += 1;
+          } else {
+            refundFailures += 1;
+            await supabase.rpc("ad_credit_mark_provider_refund", {
+              p_id: id,
+              p_status: "failed",
+              p_provider_refund_id: refund.id,
+              p_error_detail: `stripe_refund_${stripeStatus || "unknown"}`,
+            });
+          }
         } else if (provider === "paystack") {
           const refund = await createPaystackRefund({
             transaction: paymentRef,
@@ -651,12 +703,32 @@ serve(async (req: Request): Promise<Response> => {
             currency: "NGN",
             merchantNote: rowIdem.slice(0, 100),
           });
-          await supabase.rpc("ad_credit_mark_provider_refund", {
-            p_id: id,
-            p_status: "succeeded",
-            p_provider_refund_id: refund.id,
-            p_error_detail: null,
-          });
+          const outcome = paystackRefundOutcomeStatus(refund.status);
+          if (outcome === "processed") {
+            await supabase.rpc("ad_credit_mark_provider_refund", {
+              p_id: id,
+              p_status: "succeeded",
+              p_provider_refund_id: refund.id,
+              p_error_detail: null,
+            });
+          } else if (outcome === "failed") {
+            refundFailures += 1;
+            await supabase.rpc("ad_credit_mark_provider_refund", {
+              p_id: id,
+              p_status: "failed",
+              p_provider_refund_id: refund.id,
+              p_error_detail: `paystack_refund_${refund.status}`,
+            });
+          } else {
+            // accepted / pending / processing — keep retryable for webhook.
+            refundsPending += 1;
+            await supabase.rpc("ad_credit_mark_provider_refund", {
+              p_id: id,
+              p_status: "pending",
+              p_provider_refund_id: refund.id,
+              p_error_detail: null,
+            });
+          }
         } else {
           refundFailures += 1;
           await supabase.rpc("ad_credit_mark_provider_refund", {
@@ -686,6 +758,7 @@ serve(async (req: Request): Promise<Response> => {
         estimate: quoted,
         result,
         provider_refund_cents: result.refund_cents ?? null,
+        provider_refunds_pending: refundsPending,
       }, 502);
     }
 
@@ -694,6 +767,9 @@ serve(async (req: Request): Promise<Response> => {
       estimate: quoted,
       result,
       provider_refund_cents: result.refund_cents ?? null,
+      provider_refunds_pending: refundsPending,
+      // Wallet debited; provider money may still be in flight when pending > 0.
+      withdraw_complete: refundsPending === 0,
     });
   }
 

@@ -57,7 +57,9 @@ export interface AdCreditQuoteSheetProps {
 }
 
 function adsReturnUrl(): string | undefined {
-  if (Platform.OS !== "web") return undefined;
+  // Native: Host deep link so Paystack/Stripe can return into the Ads screen
+  // (ad-credit allows mingla-business://; ads/index reads reference params).
+  if (Platform.OS !== "web") return "mingla-business://marketing/ads";
   if (typeof window === "undefined" || !window.location?.origin) return undefined;
   // Host web Ads route (tabs group is omitted in the public path).
   return `${window.location.origin}/marketing/ads`;

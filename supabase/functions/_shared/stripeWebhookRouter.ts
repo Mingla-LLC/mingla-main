@@ -2093,6 +2093,11 @@ export async function routeStripeEvent(
               supabase,
               piObj,
             );
+            if (!applied.applied) {
+              throw new Error(
+                `ad_credit_top_up_apply_failed:${applied.detail ?? "unknown"}`,
+              );
+            }
             brandId = applied.brandId;
           }
           break;
@@ -2133,30 +2138,13 @@ export async function routeStripeEvent(
         brandId = await handleVenueOrderStripeEvent(supabase, event);
         break;
       }
-      // toward #3697 Wave 7c — Ads credit Checkout Session (metadata on session).
-      {
-        const sess = event.data?.object as {
-          metadata?: Record<string, string> | null;
-          payment_intent?: string | { id?: string } | null;
-          amount_total?: number | null;
-          currency?: string | null;
-        } | undefined;
-        if (isAdCreditTopUpStripeObject(sess)) {
-          const piId = typeof sess?.payment_intent === "string"
-            ? sess.payment_intent
-            : sess?.payment_intent?.id ?? null;
-          if (piId) {
-            const applied = await applyAdCreditTopUpFromPaymentIntent(supabase, {
-              id: piId,
-              status: "succeeded",
-              amount: sess?.amount_total ?? undefined,
-              currency: sess?.currency ?? undefined,
-              metadata: sess?.metadata ?? null,
-            });
-            brandId = applied.brandId;
-          }
-          break;
-        }
+      // toward #3697 Wave 7c — Ads credit Checkout: do NOT credit here.
+      // checkout.session.completed is not proof the PI succeeded (async methods).
+      // Credit applies only on payment_intent.succeeded (above) or client apply.
+      if (isAdCreditTopUpStripeObject(event.data?.object as {
+        metadata?: Record<string, string> | null;
+      } | undefined)) {
+        break;
       }
       brandId = await handleCheckoutSessionCompleted(supabase, event);
       break;

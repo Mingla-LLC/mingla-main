@@ -3132,45 +3132,57 @@ const cancelCampaign = writeTool(
 // toward #3697 Wave 7c — Host Ads plan/approve/run (distinct from Blast marketing_campaigns).
 const proposeAdPlan = writeTool(
   "propose_ad_plan",
-  "Propose a Host Ads plan (destination, platforms, budget, schedule, primary copy). Does not create or spend. Distinct from draft_campaign (Blast email/SMS).",
+  "Propose a Host Ads plan (typed destination, one platform, budget, schedule, primary copy). Does not create or spend. Distinct from draft_campaign (Blast email/SMS).",
   {
     brand_id: UUID,
     name: STR,
-    dest_url: STR,
     dest_page_type: { type: "string" },
-    platforms: { type: "array", items: { type: "string" } },
+    dest_brand_slug: STR,
+    dest_entity_slug: { type: "string" },
+    platform: { type: "string" },
     budget_cents: { type: "integer", minimum: 100 },
-    currency: { type: "string", enum: ["USD", "GBP", "NGN"] },
+    currency: { type: "string", minLength: 3, maxLength: 3 },
     starts_at: { type: "string" },
     ends_at: { type: "string" },
     primary_text: { type: "string" },
   },
-  ["brand_id", "name", "dest_url", "budget_cents"],
+  [
+    "brand_id",
+    "name",
+    "dest_page_type",
+    "dest_brand_slug",
+    "budget_cents",
+    "currency",
+    "platform",
+  ],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    const platforms = Array.isArray(args.platforms) && args.platforms.length > 0
-      ? (args.platforms as unknown[]).map((p) => String(p).toLowerCase())
-      : ["meta"];
+    const platform = typeof args.platform === "string" && args.platform.trim()
+      ? args.platform.trim().toLowerCase()
+      : "";
+    if (!platform) {
+      throw new ToolError("INVALID_ARGS", "platform is required");
+    }
     const currency = typeof args.currency === "string"
-      ? args.currency.toUpperCase()
-      : "USD";
+      ? args.currency.trim().toUpperCase()
+      : "";
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
+    }
     const budgetCents = Number(args.budget_cents);
     if (!Number.isFinite(budgetCents) || budgetCents < 100) {
       throw new ToolError("INVALID_ARGS", "budget_cents must be ≥ 100");
-    }
-    const destUrl = String(args.dest_url ?? "");
-    if (!/^https?:\/\//i.test(destUrl)) {
-      throw new ToolError("INVALID_ARGS", "dest_url must be an http(s) URL");
     }
     return {
       plan: {
         brand_id: args.brand_id,
         name: String(args.name),
-        dest_url: destUrl,
-        dest_page_type: typeof args.dest_page_type === "string"
-          ? args.dest_page_type
-          : "brand",
-        platforms,
+        dest_page_type: String(args.dest_page_type),
+        dest_brand_slug: String(args.dest_brand_slug),
+        dest_entity_slug: typeof args.dest_entity_slug === "string"
+          ? args.dest_entity_slug
+          : null,
+        platform,
         budget_cents: budgetCents,
         currency,
         starts_at: typeof args.starts_at === "string" ? args.starts_at : null,
@@ -3180,7 +3192,7 @@ const proposeAdPlan = writeTool(
           : "",
       },
       next_step:
-        "Call approve_ad_plan with these fields (confirm LAUNCH) to create and launch with Ads credit.",
+        "Call approve_ad_plan with the same fields (confirm LAUNCH) to create and launch with Ads credit.",
     };
   },
 );
@@ -3191,33 +3203,45 @@ const approveAdPlan = writeTool(
   {
     brand_id: UUID,
     name: STR,
-    dest_url: STR,
     dest_page_type: { type: "string" },
+    dest_brand_slug: STR,
+    dest_entity_slug: { type: "string" },
     platform: { type: "string" },
     budget_cents: { type: "integer", minimum: 100 },
-    currency: { type: "string", enum: ["USD", "GBP", "NGN"] },
+    currency: { type: "string", minLength: 3, maxLength: 3 },
     starts_at: { type: "string" },
     ends_at: { type: "string" },
     primary_text: { type: "string" },
   },
-  ["brand_id", "name", "dest_url", "budget_cents"],
+  [
+    "brand_id",
+    "name",
+    "dest_page_type",
+    "dest_brand_slug",
+    "budget_cents",
+    "currency",
+    "platform",
+  ],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
     const idem = newIdempotencyKey();
-    const platform = typeof args.platform === "string"
-      ? args.platform.toLowerCase()
-      : "meta";
+    const platform = String(args.platform).trim().toLowerCase();
+    const currency = String(args.currency).trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
+    }
     const created = await invokeFn(client, "host-ad-campaign", {
       action: "create",
       brand_id: args.brand_id,
       name: args.name,
-      dest_url: args.dest_url,
-      dest_page_type: typeof args.dest_page_type === "string"
-        ? args.dest_page_type
-        : "brand",
+      dest_page_type: args.dest_page_type,
+      dest_brand_slug: args.dest_brand_slug,
+      dest_entity_slug: typeof args.dest_entity_slug === "string"
+        ? args.dest_entity_slug
+        : null,
       platform,
       budget_cents: Number(args.budget_cents),
-      currency: typeof args.currency === "string" ? args.currency : "USD",
+      currency,
       starts_at: typeof args.starts_at === "string" ? args.starts_at : null,
       ends_at: typeof args.ends_at === "string" ? args.ends_at : null,
       primary_text: typeof args.primary_text === "string"
@@ -3227,7 +3251,10 @@ const approveAdPlan = writeTool(
     }) as { campaign_id?: string; campaign?: { id?: string } };
     const campaignId = created.campaign_id ?? created.campaign?.id;
     if (!campaignId || !isUuid(campaignId)) {
-      throw new ToolError("RPC_FAILED", "host-ad-campaign create returned no id");
+      throw new ToolError(
+        "RPC_FAILED",
+        "host-ad-campaign create returned no id",
+      );
     }
     const launched = await invokeFn(client, "host-ad-campaign", {
       action: "launch",
