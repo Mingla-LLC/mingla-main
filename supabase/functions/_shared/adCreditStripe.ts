@@ -83,8 +83,29 @@ export function adCreditTopUpMetadata(input: {
   };
 }
 
-/** Wave 7b ships Stripe card top-up for USD/GBP only; NGN stays Paystack follow-up. */
+/** Stripe card top-up: USD/GBP. NGN uses Paystack (`isAdCreditPaystackTopUpCurrency`). */
 export function isAdCreditStripeTopUpCurrency(currency: string): boolean {
   const c = currency.trim().toUpperCase();
   return c === "USD" || c === "GBP";
+}
+
+/** Wave 7c — Paystack NGN top-up reference prefix (webhook discriminator). */
+export const AD_CREDIT_PAYSTACK_REF_PREFIX = "mingla_adc_" as const;
+
+export function isAdCreditPaystackTopUpCurrency(currency: string): boolean {
+  return currency.trim().toUpperCase() === "NGN";
+}
+
+export function isAdCreditPaystackReference(reference: string): boolean {
+  return typeof reference === "string" &&
+    reference.startsWith(AD_CREDIT_PAYSTACK_REF_PREFIX);
+}
+
+export function buildAdCreditPaystackReference(input: {
+  brandId: string;
+  clientIdem: string;
+}): string {
+  const compact = input.clientIdem.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
+  return `${AD_CREDIT_PAYSTACK_REF_PREFIX}${input.brandId.replace(/-/g, "").slice(0, 12)}_${compact}`
+    .slice(0, 100);
 }
