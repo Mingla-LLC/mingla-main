@@ -141,6 +141,84 @@ describe("ORCH-0859 — tripsService.publishTrip", () => {
     ]);
   });
 
+  test("issue #3801 — draft dates are written to the event_dates group, not the theme JSONB", async () => {
+    const eventChain = {
+      select: () => eventChain,
+      eq: () => eventChain,
+      is: () => eventChain,
+      maybeSingle: () =>
+        Promise.resolve({
+          data: {
+            id: "trip-1",
+            brand_id: "b-1",
+            title: "Test Trip",
+            description: null,
+            slug: "test-trip",
+            status: "draft",
+            visibility: "public",
+            published_at: null,
+            timezone: "UTC",
+            cover_media_url: null,
+            cover_media_type: null,
+            theme: {
+              business_trip: {
+                startAt: "2026-08-01T09:00:00Z",
+                endAt: "2026-08-08T09:00:00Z",
+              },
+            },
+            event_type: "trip",
+            created_at: "2026-05-17T00:00:00Z",
+            updated_at: "2026-05-17T00:00:00Z",
+            brands: { slug: "brand-1" },
+          },
+          error: null,
+        }),
+      in: () => eventChain,
+      order: () => eventChain,
+    };
+    fromMock.mockImplementation((table: string) => {
+      if (table === "events") return eventChain;
+      return createChainableQuery({ data: [] });
+    });
+    rpcMock.mockResolvedValueOnce({ data: { event: {} }, error: null });
+    rpcMock.mockResolvedValueOnce({
+      data: { ok: true, event: { id: "trip-1" } },
+      error: null,
+    });
+    rpcMock.mockResolvedValueOnce({ data: 0, error: null });
+
+    await publishTrip("trip-1", {
+      title: "Test Trip",
+      theme: {
+        business_trip: {
+          destinationLocationText: "Lagos, Nigeria",
+          startAt: "2026-08-01T09:00:00Z",
+          endAt: "2026-08-08T09:00:00Z",
+        },
+      },
+    });
+
+    // [#3801] The save patch carries BOTH the event group (dates stripped from
+    // the theme) and the canonical event_dates group, so publish and every
+    // other reader see the dates without a JSONB fallback.
+    const [saveFn, saveArgs] = rpcMock.mock.calls[0] as [
+      string,
+      { p_patch: Record<string, unknown> },
+    ];
+    const patch = saveArgs.p_patch;
+    expect(saveFn).toBe("biz_apply_trip_draft_graph");
+    expect(patch.event).toEqual({
+      business_trip: { destinationLocationText: "Lagos, Nigeria" },
+    });
+    expect(patch.event_dates).toEqual([
+      {
+        start_at: "2026-08-01T09:00:00Z",
+        end_at: "2026-08-08T09:00:00Z",
+        is_master: true,
+      },
+    ]);
+  });
+
   test("raises TripPublishValidationError on RPC error with real Postgrest shape", async () => {
     // Postgrest returns `code = "P0001"` (SQLSTATE) for unqualified
     // `RAISE EXCEPTION 'foo'` statements; the literal name lives in

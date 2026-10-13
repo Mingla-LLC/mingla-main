@@ -449,14 +449,18 @@ BEGIN
   SELECT status INTO v_status FROM public.events WHERE id = v_event;
   IF v_status IS DISTINCT FROM 'draft' THEN RAISE EXCEPTION 'F-02 a refused publish still moved status to %', v_status; END IF;
 
-  -- Give it a master date, then publish for real.
+  -- Give it dates the way the client actually does — via the theme JSONB
+  -- (issue #3801) — then publish for real. No `event_dates` row is seeded:
+  -- only the `business_trip` theme object is authored, exactly like
+  -- `mapDraftPayloadToGraphEvent` used to do. The publish command must fall
+  -- back to those JSONB dates and migrate them into a canonical master row.
   SELECT id, updated_at INTO v_event, v_rev FROM public.events WHERE id = v_event;
   PERFORM public.biz_apply_trip_draft_graph(
     v_event,
-    jsonb_build_object('event_dates', jsonb_build_array(jsonb_build_object(
-      'start_at', (now() + interval '60 days')::text,
-      'end_at', (now() + interval '67 days')::text,
-      'is_master', true))),
+    jsonb_build_object('event', jsonb_build_object(
+      'business_trip', jsonb_build_object(
+        'startAt', (now() + interval '60 days')::text,
+        'endAt', (now() + interval '67 days')::text))),
     v_rev, '19710000-0000-4000-8000-0000000000d2');
 
   SELECT updated_at INTO v_rev FROM public.events WHERE id = v_event;
@@ -466,6 +470,12 @@ BEGIN
   -- NULL-safe: `NULL NOT IN (...)` is NULL, and `IF NULL THEN` does nothing.
   IF v_status IS NULL OR v_status NOT IN ('scheduled', 'live') THEN
     RAISE EXCEPTION 'F-03 publish did not promote the trip, status=% result=%', v_status, v_result;
+  END IF;
+  -- The JSONB-only dates were migrated into a canonical master row (#3801),
+  -- so every later reader sees them without another fallback.
+  IF (SELECT count(*) FROM public.event_dates
+       WHERE event_id = v_event AND is_master = true) <> 1 THEN
+    RAISE EXCEPTION 'F-03b publish did not migrate the JSONB dates into the canonical master row';
   END IF;
   IF v_result->'graph' IS NULL THEN RAISE EXCEPTION 'F-04 publish returned no graph'; END IF;
   -- The persisted destination survives publish, which is what proves the
@@ -750,15 +760,19 @@ BEGIN
   -- regression the tester found: publish reads the column, so if a theme-shaped
   -- destination never reached it, publish raised trip_destination_required
   -- where the pre-#1971 control published cleanly.
+  --
+  -- Dates are authored the same theme-only way (issue #3801): no `event_dates`
+  -- group, just `business_trip.startAt/endAt`. The publish command must fall
+  -- back to those JSONB dates and migrate them into a canonical master row.
   SELECT updated_at INTO v_rev FROM public.events WHERE id = v_event;
   PERFORM public.biz_apply_trip_draft_graph(
     v_event,
     jsonb_build_object(
       'days', jsonb_build_array(jsonb_build_object('ordinal', 1, 'title', 'Arrive')),
-      'event_dates', jsonb_build_array(jsonb_build_object(
-        'start_at', (now() + interval '90 days')::text,
-        'end_at', (now() + interval '97 days')::text,
-        'is_master', true))),
+      'event', jsonb_build_object(
+        'business_trip', jsonb_build_object(
+          'startAt', (now() + interval '90 days')::text,
+          'endAt', (now() + interval '97 days')::text))),
     v_rev, '19710000-0000-4000-8000-0000000000ec');
 
   SELECT updated_at INTO v_rev FROM public.events WHERE id = v_event;
@@ -767,6 +781,12 @@ BEGIN
 
   IF (SELECT status FROM public.events WHERE id = v_event) NOT IN ('scheduled', 'live') THEN
     RAISE EXCEPTION 'M-05 a theme-authored trip could not publish: %', v_result;
+  END IF;
+  -- The JSONB-only dates were migrated into the canonical master row, and the
+  -- theme mirror the live path reads agrees with it (#3801).
+  IF (SELECT count(*) FROM public.event_dates
+       WHERE event_id = v_event AND is_master = true) <> 1 THEN
+    RAISE EXCEPTION 'M-05b publish did not migrate the JSONB dates into the canonical master row';
   END IF;
 END $$;
 
@@ -1040,6 +1060,110 @@ BEGIN
   -- The manual reader sees the Ari write, because there is one owner.
   IF (SELECT count(*) FROM public.trip_days WHERE event_id = v_event) <> 3 THEN
     RAISE EXCEPTION 'K-02 the manual read path does not see the Ari write';
+  END IF;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- Z. issue #3801 regression: a LEGACY draft whose dates live ONLY in the theme
+--    JSONB (`theme.business_trip.startAt/endAt`) and that has NO `event_dates`
+--    row at all must publish. Before #3801 the client draft-save path wrote
+--    dates only to the theme object, so such a draft hit
+--    `business_publish_trip_draft` with a NULL `startAt` payload and raised
+--    `trip_dates_required` — no trip could publish. The command must fall back
+--    to the JSONB dates, migrate them into the canonical master row, and then
+--    publish cleanly.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_brand uuid := '19710000-0000-4000-8000-000000000010';
+  v_event uuid;
+  v_rev timestamptz;
+  g jsonb;
+  v_start_at timestamptz := (now() + interval '120 days');
+  v_end_at timestamptz := (now() + interval '127 days');
+  v_migrated_start timestamptz;
+  v_migrated_end timestamptz;
+  v_result jsonb;
+BEGIN
+  -- Z-01 create a draft whose ONLY date sources are the JSONB theme keys. A
+  -- legacy draft never wrote an `event_dates` row, and the seed below mirrors
+  -- exactly what the old client mapper produced.
+  g := public.biz_create_trip_draft(
+    v_brand,
+    jsonb_build_object(
+      'title', 'Legacy JSONB dates',
+      'business_trip', jsonb_build_object(
+        'destinationLocationText', 'Nairobi, Kenya',
+        'startAt', v_start_at::text,
+        'endAt', v_end_at::text)),
+    '19710000-0000-4000-8000-0000000000f4');
+  v_event := (g#>>'{event,id}')::uuid;
+  v_rev := (g->>'revision')::timestamptz;
+
+  IF v_event IS NULL THEN RAISE EXCEPTION 'Z-01 create returned no event'; END IF;
+  IF (g#>>'{event,theme,business_trip,startAt}') IS DISTINCT FROM v_start_at::text THEN
+    RAISE EXCEPTION 'Z-01 seed dates did not reach the theme JSONB';
+  END IF;
+  IF (SELECT count(*) FROM public.event_dates WHERE event_id = v_event) <> 0 THEN
+    RAISE EXCEPTION 'Z-01 the legacy draft unexpectedly has event_dates rows already';
+  END IF;
+
+  -- Z-02 the date keys must NOT be considered the canonical source: the theme
+  -- write must not have produced an event_dates row either (there is no
+  -- back-fill trigger).
+  IF (SELECT count(*) FROM public.event_dates WHERE event_id = v_event) <> 0 THEN
+    RAISE EXCEPTION 'Z-02 a theme-only draft gained an event_dates row by itself';
+  END IF;
+
+  -- Publish prerequisites: a destination reaches the canonical column only via
+  -- the `event` group, and the trip needs at least one day.
+  SELECT updated_at INTO v_rev FROM public.events WHERE id = v_event;
+  g := public.biz_apply_trip_draft_graph(
+    v_event,
+    jsonb_build_object(
+      'event', jsonb_build_object(
+        'business_trip', jsonb_build_object('destinationLocationText', 'Nairobi, Kenya')),
+      'days', jsonb_build_array(jsonb_build_object('ordinal', 1, 'title', 'Arrive'))),
+    v_rev, '19710000-0000-4000-8000-0000000000f5');
+
+  -- Z-03 still no event_dates row: the graph patch wrote the theme and the day
+  -- only. This is the exact pre-#3801 world.
+  IF (SELECT count(*) FROM public.event_dates WHERE event_id = v_event) <> 0 THEN
+    RAISE EXCEPTION 'Z-03 a pre-publish patch wrote an event_dates row by itself';
+  END IF;
+  IF (SELECT count(*) FROM public.trip_days WHERE event_id = v_event) <> 1 THEN
+    RAISE EXCEPTION 'Z-03 the day patch did not land';
+  END IF;
+
+  -- Z-04 publish: the command must rescue the JSONB dates and publish.
+  SELECT updated_at INTO v_rev FROM public.events WHERE id = v_event;
+  v_result := public.biz_publish_trip_command(
+    v_event, v_rev, '19710000-0000-4000-8000-0000000000f6');
+
+  IF NOT COALESCE((v_result->>'ok')::boolean, false) THEN
+    RAISE EXCEPTION 'Z-04 a JSONB-only-dated legacy draft could not publish: %', v_result;
+  END IF;
+
+  -- Z-05 the command migrated the dates into the canonical master row.
+  SELECT start_at, end_at INTO v_migrated_start, v_migrated_end
+    FROM public.event_dates
+   WHERE event_id = v_event AND is_master = true;
+  IF v_migrated_start IS DISTINCT FROM v_start_at
+     OR v_migrated_end IS DISTINCT FROM v_end_at THEN
+    RAISE EXCEPTION 'Z-05 publish migrated the wrong dates: got start=% end=%, want start=% end=%',
+      v_migrated_start, v_migrated_end, v_start_at, v_end_at;
+  END IF;
+  IF (SELECT count(*) FROM public.event_dates WHERE event_id = v_event AND is_master = true) <> 1 THEN
+    RAISE EXCEPTION 'Z-05 publish did not write exactly one master row';
+  END IF;
+
+  -- Z-06 the published trip is live, and the reader agrees with the migrated row.
+  IF (SELECT status FROM public.events WHERE id = v_event) NOT IN ('scheduled', 'live') THEN
+    RAISE EXCEPTION 'Z-06 the migrated-legacy trip did not promote to live';
+  END IF;
+  IF (v_result#>>'{graph,event_dates,0,start_at}')::timestamptz IS DISTINCT FROM v_start_at
+     OR (v_result#>>'{graph,event_dates,0,end_at}')::timestamptz IS DISTINCT FROM v_end_at THEN
+    RAISE EXCEPTION 'Z-06 the published graph does not agree with the migrated dates';
   END IF;
 END $$;
 

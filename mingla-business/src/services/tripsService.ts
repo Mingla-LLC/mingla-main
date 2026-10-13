@@ -658,9 +658,15 @@ function readBusinessTrip(
   canonicalDeparture: string | null,
 ): TripBusinessTrip {
   const bt = (theme?.business_trip as Record<string, unknown> | undefined) ?? {};
+  // issue #3801 — prefer the canonical event_dates master row; legacy drafts
+  // that never wrote one still carry dates in theme.business_trip JSONB.
+  const startAt =
+    canonicalStartAt ?? (typeof bt.startAt === "string" ? bt.startAt : null);
+  const endAt =
+    canonicalEndAt ?? (typeof bt.endAt === "string" ? bt.endAt : null);
   return {
-    startAt: canonicalStartAt,
-    endAt: canonicalEndAt,
+    startAt,
+    endAt,
     destinationPlaceId:
       typeof bt.destinationPlaceId === "string" ? bt.destinationPlaceId : null,
     destinationLocationText: canonicalDestination,
@@ -1474,9 +1480,16 @@ export async function publishTrip(
   // Ari executor sent `{}` and could never succeed), and the wizard's own
   // save now has to land before publish rather than racing it.
   const eventPatch = mapDraftPayloadToGraphEvent(draftPayload);
-  if (Object.keys(eventPatch).length > 0) {
+  // issue #3801 — the draft's dates go to the canonical event_dates table
+  // (master row), not just theme.business_trip JSONB, so publish and every
+  // other reader see them without a JSONB fallback.
+  const eventDates = mapDraftDatesToGraphEventDates(draftPayload);
+  const draftPatch: Record<string, unknown> = {};
+  if (Object.keys(eventPatch).length > 0) draftPatch.event = eventPatch;
+  if (eventDates !== undefined) draftPatch.event_dates = [eventDates];
+  if (Object.keys(draftPatch).length > 0) {
     try {
-      await applyTripDraftGraph(eventId, { event: eventPatch }, {
+      await applyTripDraftGraph(eventId, draftPatch, {
         operationId: options?.saveOperationId ?? newTripOperationId(),
         expectedUpdatedAt: options?.expectedUpdatedAt,
       });
@@ -1554,9 +1567,34 @@ function mapDraftPayloadToGraphEvent(
     | { business_trip?: Record<string, unknown> }
     | undefined;
   if (theme?.business_trip !== undefined) {
-    eventPatch.business_trip = theme.business_trip;
+    // issue #3801 — strip the draft dates from the theme object written to the
+    // `event` group; they must live in the canonical event_dates table instead.
+    const { startAt, endAt, ...businessTrip } = theme.business_trip;
+    void startAt;
+    void endAt;
+    eventPatch.business_trip = businessTrip;
   }
   return eventPatch;
+}
+
+/**
+ * issue #3801 — extract the draft's start/end dates for the canonical
+ * `event_dates` draft-graph group. Returns undefined when either date is
+ * missing so a partial draft never patches the canonical dates table.
+ */
+function mapDraftDatesToGraphEventDates(
+  draftPayload: Record<string, unknown>,
+): { start_at: string; end_at: string; is_master: true } | undefined {
+  const theme = draftPayload.theme as
+    | { business_trip?: Record<string, unknown> }
+    | undefined;
+  const startAt = theme?.business_trip?.startAt;
+  const endAt = theme?.business_trip?.endAt;
+  if (typeof startAt !== "string" || startAt === "" ||
+      typeof endAt !== "string" || endAt === "") {
+    return undefined;
+  }
+  return { start_at: startAt, end_at: endAt, is_master: true };
 }
 
 // ---------------------- softDeleteTrip ----------------------
