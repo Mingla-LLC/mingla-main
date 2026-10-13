@@ -38,7 +38,11 @@ import {
   EventCreatorWizard,
   type WizardExitMode,
 } from "../../../src/components/event/EventCreatorWizard";
-import { EditPublishedScreen } from "../../../src/components/event/EditPublishedScreen";
+import {
+  EditPublishedScreen,
+  type EditPublishedScreenProps,
+} from "../../../src/components/event/EditPublishedScreen";
+import { useEventBuyerCount } from "../../../src/hooks/useEventBuyerCount";
 import { useBrandList } from "../../../src/store/currentBrandStore";
 import {
   useDraftById,
@@ -91,6 +95,18 @@ const safeEventsExitRoute = (): "/home#hub-events" | "/(tabs)/hub/events" =>
   Platform.OS === "web" ? "/home#hub-events" : "/(tabs)/hub/events";
 
 const MISSING_DRAFT_TIMEOUT_MS = 6000;
+
+// issue #3827 — the published-event editor with its buyer count. The count is
+// read HERE, by the route, and handed down as a prop: it is only wanted when a
+// published event is on screen, and the editor itself stays free of the read.
+// `null` (loading, failed, or the server function not applied yet) keeps the
+// edit reason mandatory.
+function EditPublishedEventWithBuyerCount(
+  props: Omit<EditPublishedScreenProps, "buyerCount" | "rsvpMode">,
+): React.ReactElement {
+  const buyerCount = useEventBuyerCount(props.liveEvent.serverEventId);
+  return <EditPublishedScreen {...props} buyerCount={buyerCount} />;
+}
 
 export default function EventEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -779,7 +795,7 @@ export default function EventEditRoute(): React.ReactElement {
       );
     }
     return (
-      <EditPublishedScreen
+      <EditPublishedEventWithBuyerCount
         liveEvent={resolvedLiveEvent}
         disableLocalSaveReason={
           liveEvent === null

@@ -26,7 +26,8 @@
 
 -- The label-composer parity table. This is the ONE copy: the Host app's jest
 -- suite (mingla-business/src/utils/__tests__/issue_3827_live_edit_diff.implementor.test.ts)
--- reads the JSON between the two `$cases$` markers out of THIS file and runs
+-- reads the JSON inside the dollar-quoted block below out of THIS file (the
+-- quote tag appears exactly twice in this file: do not use it elsewhere) and runs
 -- the same rows through the TypeScript composer `locationTextForDraft`. Keep
 -- it strict JSON. `venue`/`address` are the stored halves; `expected` is the
 -- label, or null when there is nothing to show.
