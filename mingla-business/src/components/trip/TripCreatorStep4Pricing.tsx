@@ -47,6 +47,7 @@ import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
 // META-ORCH-1174 Leg B2 — soft cap (DEC-E) lives in the pure validator module
 // (RN-free) so the wizard + edit-published path + tests share one source.
 import { MAX_TRIP_PACKAGES } from "./tripPackagesValidation";
+import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 
 export { MAX_TRIP_PACKAGES };
 
@@ -509,6 +510,14 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
       <Text style={styles.footnote}>
         Currency comes from your brand setup and can&apos;t be changed here.
       </Text>
+
+      {/* #3645 — a package price on a brand with no currency asks for the
+          payout country here, in place. */}
+      <PayoutCountryInlinePrompt
+        brand={brand}
+        priced={previewBaseCents > 0}
+        testID="trip-pricing-payout-country-prompt"
+      />
 
       {brand !== null ? (
         <WhoCoversCostsSection

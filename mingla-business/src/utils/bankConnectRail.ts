@@ -97,16 +97,6 @@ export function resolveBankConnectRailForCountry(
   return supported === null ? null : stripeRail(supported);
 }
 
-/**
- * Every country a brand can be paid out in, sorted by name: the card-rail
- * allowlist plus Nigeria. The one list behind every payout-country picker.
- */
-export function listSupportedPayoutRails(): readonly BankConnectRail[] {
-  return [...STRIPE_SUPPORTED_COUNTRIES.map(stripeRail), PAYSTACK_RAIL].sort(
-    (a, b) => a.displayName.localeCompare(b.displayName),
-  );
-}
-
 interface SavedPayoutCountryInput {
   /** `brands.payment_provider`. */
   paymentProvider?: string | null;

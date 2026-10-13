@@ -134,6 +134,7 @@ import {
   normalizeThemeOverrides,
   patchOfferingTheme,
 } from "../../services/offeringTheme";
+import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 
 // #1742 / ORCH-1083 — the gate sheet is needed only at the final publish door.
 // Preload its async chunk one step early so opening it remains immediate while
@@ -1626,6 +1627,18 @@ export const ExperienceCreatorWizard: React.FC<
         {/* ORCH-1076 Stream B — proactive Stripe banner on the Pricing step, at
             the bottom of the step body so the brand sees it the moment they set
             a non-zero price. */}
+        {/* #3645 — a price on a brand with no currency asks for the payout
+            country here, in place. */}
+        {step === 4 ? (
+          <View style={styles.stripeBannerWrap}>
+            <PayoutCountryInlinePrompt
+              brand={brand}
+              priced={experienceDraftIsPaid({ isFree, resolvedTotalMajor })}
+              testID="experience-pricing-payout-country-prompt"
+            />
+          </View>
+        ) : null}
+
         {step === 4 && experienceNeedsStripe ? (
           <View style={styles.stripeBannerWrap}>
             <StripeBlockedCard

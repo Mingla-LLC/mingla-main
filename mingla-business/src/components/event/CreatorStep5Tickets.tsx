@@ -67,6 +67,7 @@ const TicketTierEditSheet = React.lazy(() =>
 );
 import { errorForKey, type StepBodyProps } from "./types";
 import { isPerNightCapacity } from "../../utils/perNightCapacity";
+import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 
 // ---- Main component (Step 5 body) -----------------------------------
 
@@ -364,6 +365,14 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           </View>
         </GlassCard>
       ) : null}
+
+      {/* #3645 — a price on a brand with no currency asks for the payout
+          country here, in place. */}
+      <PayoutCountryInlinePrompt
+        brand={brand}
+        priced={lowestPaidMajor !== null}
+        testID="event-tickets-payout-country-prompt"
+      />
 
       {brand !== null ? (
         <WhoCoversCostsSection
