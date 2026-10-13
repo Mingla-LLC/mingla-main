@@ -2598,7 +2598,6 @@ export const getPublicTripById = async (
   // Issue #3801 — buyers see packages in the order the host authored them
   // (ticket_types.display_order, then created_at, then id). The tiers query
   // has no order of its own, so heap order used to leak onto the public page.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orderedTiers = orderTripPricingTierRows<any>(tiers, ticketsById);
   const bt =
     (event.theme?.business_trip as Record<string, unknown> | undefined) ?? {};

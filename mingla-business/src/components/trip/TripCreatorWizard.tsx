@@ -383,7 +383,7 @@ export function tripToStep4Draft(trip: Trip): Step4Draft {
  * partial number (Constitution rule 9).
  */
 export function draftPackagesTotalSpots(
-  packages: ReadonlyArray<Pick<Step4Package, "capacity">>,
+  packages: readonly Pick<Step4Package, "capacity">[],
 ): number | null {
   if (packages.length === 0) return null;
   let total = 0;
