@@ -5,7 +5,7 @@
  * Withdraw stays quote-only until the refund adapter ships.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -37,6 +37,7 @@ import {
   type AdCreditWithdrawQuote,
 } from "../../services/adCreditService";
 import { formatCurrency, minorFromMajor } from "../../utils/currency";
+import { randomId } from "../../utils/randomId";
 import { Button } from "../ui/Button";
 
 export type AdCreditQuoteMode = "top_up" | "withdraw";
@@ -77,6 +78,8 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [topUp, setTopUp] = useState<AdCreditTopUpQuote | null>(null);
   const [withdraw, setWithdraw] = useState<AdCreditWithdrawQuote | null>(null);
+  // Stable per Confirm attempt so start_top_up retries do not mint a second PI.
+  const topUpIdemRef = useRef<string>("");
 
   useEffect(() => {
     if (!visible) {
@@ -85,6 +88,7 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
       setTopUp(null);
       setWithdraw(null);
       setBusy(false);
+      topUpIdemRef.current = "";
     }
   }, [visible]);
 
@@ -93,7 +97,17 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
     setTopUp(null);
     setWithdraw(null);
     setError(null);
+    topUpIdemRef.current = "";
   }, [majorText, mode]);
+
+  useEffect(() => {
+    if (topUp !== null && topUpIdemRef.current.length === 0) {
+      topUpIdemRef.current = randomId();
+    }
+    if (topUp === null) {
+      topUpIdemRef.current = "";
+    }
+  }, [topUp]);
 
   const runQuote = useCallback(async () => {
     setError(null);
@@ -134,12 +148,16 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
     setError(null);
     setBusy(true);
     try {
+      if (topUpIdemRef.current.length === 0) {
+        topUpIdemRef.current = randomId();
+      }
       const returnUrl = adsReturnUrl();
       const started = await startAdCreditTopUp({
         brandId,
         payCents: topUp.pay_cents,
         currency: topUp.currency,
         returnUrl,
+        idempotencyKey: topUpIdemRef.current,
       });
       const pay = await presentPay(started);
       if (pay.outcome === "redirected") {
@@ -159,7 +177,9 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
         payCents: topUp.pay_cents,
         currency: topUp.currency,
         paymentRef: pay.paymentIntentId,
+        idempotencyKey: `top_up:${pay.paymentIntentId}`,
       });
+      topUpIdemRef.current = "";
       onTopUpApplied?.();
       onClose();
     } catch (e) {

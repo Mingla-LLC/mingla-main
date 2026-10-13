@@ -45,6 +45,7 @@
     "ad-credit": {
       "migration_fallback_top_level": [],
       "optional_top_level": [
+        "BUSINESS_WEB_ORIGIN",
         "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
         "STRIPE_PUBLISHABLE_KEY"
       ],

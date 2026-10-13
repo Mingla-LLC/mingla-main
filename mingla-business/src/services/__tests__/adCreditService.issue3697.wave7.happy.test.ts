@@ -154,6 +154,7 @@ describe("adCreditService Wave 7", () => {
       brandId: "b1",
       payCents: 2500,
       currency: "USD",
+      idempotencyKey: "attempt-abc-12345",
     });
     expect(started.kind).toBe("requires_payment_sheet");
     expect(mockInvoke).toHaveBeenCalledWith("ad-credit", {
@@ -162,6 +163,7 @@ describe("adCreditService Wave 7", () => {
         brand_id: "b1",
         pay_cents: 2500,
         currency: "USD",
+        idempotency_key: "attempt-abc-12345",
       },
     });
   });

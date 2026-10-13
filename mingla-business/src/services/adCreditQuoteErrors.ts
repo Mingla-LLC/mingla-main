@@ -38,6 +38,8 @@ export function mapAdCreditQuoteError(err: unknown): string {
       return "That payment does not match this top-up. Credit was not added.";
     case "return_url_invalid":
       return "Could not open checkout. Try again from the Ads page.";
+    case "idempotency_key_required":
+      return "Could not start payment. Close the sheet and try again.";
     case "stripe_start_failed":
     case "checkout_url_missing":
     case "client_secret_missing":

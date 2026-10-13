@@ -167,19 +167,18 @@ export async function startAdCreditTopUp(input: {
   brandId: string;
   payCents: number;
   currency: string;
+  /** Stable per Confirm attempt; required by edge for Stripe create idempotency. */
+  idempotencyKey: string;
   /** Web Checkout return URL; omit on native for PaymentSheet. */
   returnUrl?: string;
-  idempotencyKey?: string;
 }): Promise<AdCreditStartTopUpResult> {
   return invokeAdCredit<AdCreditStartTopUpResult>({
     action: "start_top_up",
     brand_id: input.brandId,
     pay_cents: input.payCents,
     currency: input.currency,
+    idempotency_key: input.idempotencyKey,
     ...(input.returnUrl ? { return_url: input.returnUrl } : {}),
-    ...(input.idempotencyKey
-      ? { idempotency_key: input.idempotencyKey }
-      : {}),
   });
 }
 

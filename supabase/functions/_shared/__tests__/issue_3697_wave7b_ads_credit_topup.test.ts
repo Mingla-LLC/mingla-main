@@ -109,6 +109,14 @@ Deno.test("Wave 7b: ad-credit edge wires start_top_up + PI verify", async () => 
   assertEquals(edge.includes("paymentIntents.create"), true);
   assertEquals(edge.includes("checkout.sessions.create"), true);
   assertEquals(edge.includes("paymentIntents.retrieve"), true);
+  assertEquals(edge.includes("idempotency_key_required"), true);
+  assertEquals(edge.includes("isAllowedAdCreditReturnUrl"), true);
+  assertEquals(edge.includes("buildAdCreditCheckoutReturnUrls"), true);
+  assertEquals(edge.includes("resolveBusinessWebOrigin"), true);
+  assertEquals(
+    edge.includes("orch-strict-grep-allow stripe-no-idempotency-key"),
+    true,
+  );
   // Platform charge — never Connect request-option / application fee on create.
   assertEquals(edge.includes("stripeAccount:"), false);
   assertEquals(edge.includes("application_fee_amount"), false);

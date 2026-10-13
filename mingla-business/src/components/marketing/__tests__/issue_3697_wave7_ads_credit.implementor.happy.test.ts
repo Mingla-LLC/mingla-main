@@ -79,9 +79,16 @@ describe("issue #3697 Wave 7 Ads credit Host surface", () => {
     expect(sheet).toContain("ad-credit-quote-confirm-pay");
     expect(sheet).toContain("startAdCreditTopUp");
     expect(sheet).toContain("applyAdCreditTopUp");
+    expect(sheet).toContain("randomId");
+    expect(sheet).toContain("idempotencyKey");
+    expect(sheet).toContain("topUpIdemRef");
     const route = read("app/(tabs)/marketing/ads/index.tsx");
     expect(route).toContain("checkoutSessionId");
     expect(route).toContain("ad_credit_top_up");
+    const edge = read("../supabase/functions/ad-credit/index.ts");
+    expect(edge).toContain("idempotency_key_required");
+    expect(edge).toContain("isAllowedAdCreditReturnUrl");
+    expect(edge).toContain("buildAdCreditCheckoutReturnUrls");
   });
 });
 

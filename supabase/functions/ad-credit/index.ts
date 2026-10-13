@@ -27,6 +27,10 @@ import {
   isAdCreditStripeTopUpCurrency,
   verifyAdCreditTopUpPaymentIntent,
 } from "../_shared/adCreditStripe.ts";
+import {
+  PRODUCTION_BUSINESS_WEB_ORIGIN,
+  resolveBusinessWebOrigin,
+} from "../_shared/businessWebOrigin.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -47,6 +51,66 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function configuredBusinessWebOrigin(): string {
+  const fromEnv = (Deno.env.get("BUSINESS_WEB_ORIGIN") ?? "").trim().replace(
+    /\/$/,
+    "",
+  );
+  return fromEnv.length > 0 ? fromEnv : PRODUCTION_BUSINESS_WEB_ORIGIN;
+}
+
+/** Checkout returns only to Mingla business web (or host deep link). */
+function isAllowedAdCreditReturnUrl(returnUrl: string): boolean {
+  if (returnUrl.startsWith("mingla-business://")) return true;
+  let parsed: URL;
+  try {
+    parsed = new URL(returnUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+  const configured = configuredBusinessWebOrigin();
+  const origin = parsed.origin;
+  const resolved = resolveBusinessWebOrigin({
+    configuredOrigin: configured,
+    override: origin === configured ? undefined : origin,
+  });
+  return resolved.ok && resolved.origin === origin;
+}
+
+/**
+ * Build Stripe success/cancel URLs from a validated return path.
+ * `{CHECKOUT_SESSION_ID}` must stay literal (Stripe template — do not encode).
+ */
+function buildAdCreditCheckoutReturnUrls(
+  returnUrl: string,
+): { successUrl: string; cancelUrl: string } | null {
+  if (!isAllowedAdCreditReturnUrl(returnUrl)) return null;
+  if (returnUrl.startsWith("mingla-business://")) {
+    const sep = returnUrl.includes("?") ? "&" : "?";
+    return {
+      successUrl:
+        `${returnUrl}${sep}ad_credit_top_up=1&session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${returnUrl}${sep}ad_credit_top_up=0&payment=cancelled`,
+    };
+  }
+  let base: URL;
+  try {
+    base = new URL(returnUrl);
+  } catch {
+    return null;
+  }
+  const success = new URL(base.pathname + base.search, base.origin);
+  success.searchParams.set("ad_credit_top_up", "1");
+  const cancel = new URL(base.pathname + base.search, base.origin);
+  cancel.searchParams.set("ad_credit_top_up", "0");
+  cancel.searchParams.set("payment", "cancelled");
+  return {
+    successUrl: `${success.toString()}&session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: cancel.toString(),
+  };
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -157,6 +221,13 @@ serve(async (req: Request): Promise<Response> => {
     const clientIdem = typeof body.idempotency_key === "string"
       ? body.idempotency_key.trim()
       : "";
+    // Client must own the attempt key (stable across transport retries).
+    if (clientIdem.length < 8) {
+      return json({
+        error: "validation_error",
+        detail: "idempotency_key_required",
+      }, 400);
+    }
 
     const quoted = quoteTopUp(payCents, currency);
     if (!quoted.ok) return json({ error: quoted.error, detail: quoted.detail }, 400);
@@ -174,24 +245,19 @@ serve(async (req: Request): Promise<Response> => {
       actorId: user.id,
     });
     const stripe = stripeTicketCheckout();
-    const idemBase = clientIdem || crypto.randomUUID();
     const createIdem =
-      `ad_credit_top_up:${brandId}:${quoted.pay_cents}:${quoted.currency}:${idemBase}`
+      `ad_credit_top_up:${brandId}:${quoted.pay_cents}:${quoted.currency}:${clientIdem}`
         .slice(0, 240);
 
     try {
       if (returnUrl.length > 0) {
-        if (!/^https:\/\//i.test(returnUrl) && !/^mingla-business:\/\//i.test(returnUrl)) {
+        const urls = buildAdCreditCheckoutReturnUrls(returnUrl);
+        if (!urls) {
           return json({
             error: "validation_error",
             detail: "return_url_invalid",
           }, 400);
         }
-        const sep = returnUrl.includes("?") ? "&" : "?";
-        const successUrl =
-          `${returnUrl}${sep}ad_credit_top_up=1&session_id={CHECKOUT_SESSION_ID}`;
-        const cancelUrl =
-          `${returnUrl}${sep}ad_credit_top_up=0&payment=cancelled`;
 
         // Platform Checkout Session (no stripeAccount) — host pays Mingla.
         const session = await stripe.checkout.sessions.create(
@@ -210,8 +276,8 @@ serve(async (req: Request): Promise<Response> => {
               metadata: meta,
               statement_descriptor_suffix: "ADS CREDIT",
             },
-            success_url: successUrl,
-            cancel_url: cancelUrl,
+            success_url: urls.successUrl,
+            cancel_url: urls.cancelUrl,
             metadata: meta,
           },
           { idempotencyKey: `cs:${createIdem}` },
@@ -288,7 +354,10 @@ serve(async (req: Request): Promise<Response> => {
     let quoted;
     try {
       if (!paymentRef && checkoutSessionId) {
-        const session = await stripe.checkout.sessions.retrieve(checkoutSessionId);
+        // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+        const session = await stripe.checkout.sessions.retrieve(
+          checkoutSessionId,
+        ); // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve
         const piField = session.payment_intent;
         paymentRef = typeof piField === "string"
           ? piField
@@ -303,7 +372,8 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
 
-      const pi = await stripe.paymentIntents.retrieve(paymentRef);
+      // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
+      const pi = await stripe.paymentIntents.retrieve(paymentRef); // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve
       // Checkout return may omit pay_cents — PI amount/currency are authority.
       if (checkoutSessionId || !Number.isFinite(payCents) || payCents <= 0) {
         payCents = typeof pi.amount === "number" ? pi.amount : NaN;
