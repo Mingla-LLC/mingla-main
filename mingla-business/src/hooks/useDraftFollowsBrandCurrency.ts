@@ -23,7 +23,7 @@
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { fetchDraftOpenState } from "../services/draftCurrencyTruth";
+import { fetchDraftOpenState, stopDraftOpenReads } from "../services/draftCurrencyTruth";
 import { adoptServerDraftAfterSync } from "../services/draftServerReconcile";
 import { useDraftEventStore, type DraftEvent } from "../store/draftEventStore";
 import {
@@ -128,6 +128,16 @@ export const useDraftFollowsBrandCurrency = ({
     currency: string | null;
   } | null>(null);
 
+  // Nothing started here outlives the screen: once it has closed, a read that
+  // comes back late changes nothing, saves nothing and logs nothing.
+  const closedRef = useRef(false);
+  useEffect(() => {
+    closedRef.current = false;
+    return (): void => {
+      closedRef.current = true;
+    };
+  }, []);
+
   useEffect(() => {
     if (draftId === null || draftId.startsWith("d_")) return undefined;
     let live = true;
@@ -141,6 +151,7 @@ export const useDraftFollowsBrandCurrency = ({
         setDraftServerCurrency(draftId, open.currency, askedAt);
         setOwnAnswer({ draftId, currency: open.currency });
       } catch (error) {
+        if (!live) return;
         console.warn("[useDraftFollowsBrandCurrency] could not read the draft's currency", {
           draftId,
           message: error instanceof Error ? error.message : String(error),
@@ -150,6 +161,7 @@ export const useDraftFollowsBrandCurrency = ({
     void ask();
     return (): void => {
       live = false;
+      stopDraftOpenReads(draftId);
       // The screen is closing: what it was told goes with it.
       forgetDraftServerCurrency(draftId);
       clearPricesClearedNote(draftId);
@@ -200,9 +212,10 @@ export const useDraftFollowsBrandCurrency = ({
       reconcilingRef.current.add(key);
       void adoptServerDraftAfterSync(draft.id)
         .then((owedSave) => {
-          if (owedSave !== null) onSave(owedSave);
+          if (owedSave !== null && !closedRef.current) onSave(owedSave);
         })
         .catch((error: unknown) => {
+          if (closedRef.current) return;
           console.warn("[useDraftFollowsBrandCurrency] could not read the server's copy of the draft", {
             draftId: draft.id,
             message: error instanceof Error ? error.message : String(error),
@@ -237,6 +250,7 @@ export const useDraftFollowsBrandCurrency = ({
         reconcilingRef.current.add(key);
         const confirm = async (): Promise<void> => {
           const now = await fetchDraftOpenState(confirmDraftId);
+          if (closedRef.current) return;
           if (
             pricesClearedNoteFromTheme(now.theme) !== null &&
             now.currency === serverCurrency
@@ -248,10 +262,11 @@ export const useDraftFollowsBrandCurrency = ({
           clearPricesClearedNote(confirmDraftId);
           setDraftServerCurrency(confirmDraftId, now.currency);
           const owedSave = await adoptServerDraftAfterSync(confirmDraftId);
-          if (owedSave !== null) onSave(owedSave);
+          if (owedSave !== null && !closedRef.current) onSave(owedSave);
         };
         void confirm()
           .catch((error: unknown) => {
+            if (closedRef.current) return;
             console.warn("[useDraftFollowsBrandCurrency] could not confirm the draft is still cleared", {
               draftId: confirmDraftId,
               message: error instanceof Error ? error.message : String(error),
