@@ -25,7 +25,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, test } from "@jest/globals";
+import { afterEach, describe, expect, jest, test } from "@jest/globals";
 
 import {
   brandPhoneSessionCountryCount,
@@ -46,6 +46,56 @@ import {
   type BrandPhoneDirectory,
   type BrandPhoneSaveResult,
 } from "../brandContactPhoneRules";
+import { updateBrand } from "../../../services/brandsService";
+
+const BRAND_ROW_ID = "33800000-0000-4000-8000-0000000000a2";
+
+// The database boundary only. `updateBrand`, the row mapping in both
+// directions and the phone rules are all REAL; this stands in for the one
+// `brands` row PostgREST would update and hand back.
+const brandRow: Record<string, unknown> = {};
+const brandRowWrites: Record<string, unknown>[] = [];
+const resetBrandRow = (contactPhone: string | null): void => {
+  for (const key of Object.keys(brandRow)) delete brandRow[key];
+  Object.assign(brandRow, {
+    id: BRAND_ROW_ID,
+    account_id: "account-3380",
+    name: "Phone Brand",
+    slug: "phone-brand",
+    description: null,
+    contact_email: "hello@example.com",
+    contact_phone: contactPhone,
+    social_links: {},
+    custom_links: [],
+    default_currency: "GBP",
+  });
+  brandRowWrites.length = 0;
+};
+jest.mock("../../../services/supabase", () => ({
+  supabase: {
+    from: (table: string) => {
+      if (table !== "brands") throw new Error(`unexpected table ${table}`);
+      let payload: Record<string, unknown> | null = null;
+      const query = {
+        update: (next: Record<string, unknown>) => {
+          payload = next;
+          return query;
+        },
+        eq: () => query,
+        is: () => query,
+        select: () => query,
+        single: () => {
+          if (payload === null) throw new Error("only updates are expected here");
+          brandRowWrites.push(payload);
+          Object.assign(brandRow, payload);
+          return Promise.resolve({ data: { ...brandRow }, error: null });
+        },
+      };
+      return query;
+    },
+  },
+}));
+jest.mock("../../../services/appsFlyerService", () => ({ logAppsFlyerEvent: () => undefined }));
 
 const read = (relativePath: string): string =>
   readFileSync(join(process.cwd(), relativePath), "utf8");
@@ -954,5 +1004,100 @@ describe("issue #3380 retest 2 — choosing the default country is a real change
     });
     expect(reopened.chip).toBe(BRAND_PHONE_CHOOSE_COUNTRY_LABEL);
     expect(brandPhoneSessionCountryCount()).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. The row. The screen model is driven as above, but every accepted save is
+// sent through the REAL `updateBrand` and the next open reads what the REAL
+// row mapping hands back, so the form, the service and the mapping are tested
+// as one path.
+// ---------------------------------------------------------------------------
+
+describe("issue #3380 retest 2 — nothing under an unchosen country ever reaches the brand row", () => {
+  /** Save the model; an accepted save is written through the service. */
+  const persist = async (model: EditorModel): Promise<BrandPhoneSaveResult | "not dirty"> => {
+    const result = model.save();
+    if (result !== "not dirty" && result.ok) {
+      const saved = await updateBrand(BRAND_ROW_ID, { contact: { phone: model.stored } }, null);
+      // The next open reads the number the service returned, not the model's.
+      model.stored = saved.contact?.phone;
+    }
+    return result;
+  };
+
+  const RIGHT_COUNTRY: Record<(typeof RETEST_1_INPUTS)[number], [string, string]> = {
+    "4155550123": ["US", "+14155550123"],
+    "(415) 555-0123": ["US", "+14155550123"],
+    "9193770509": ["US", "+19193770509"],
+    "0241234567": ["GH", "+233241234567"],
+    "0712345678": ["KE", "+254712345678"],
+    "0851234567": ["IE", "+353851234567"],
+    "08031234567": ["NG", "+2348031234567"],
+    "020 7946 0000": ["GB", "+442079460000"],
+  };
+
+  test.each(RETEST_1_INPUTS)(
+    "%p: refused for every kind of 'no country', written once the host picks the country",
+    async (text) => {
+      const [iso, expected] = RIGHT_COUNTRY[text];
+      for (const brandCountry of NO_BRAND_COUNTRY) {
+        resetBrandRow(null);
+        clearBrandPhoneSessionCountries();
+        const model = new EditorModel(undefined, brandCountry);
+        expect(refused(await persist(model.type(text)))).toBe(BRAND_PHONE_CHOOSE_COUNTRY_MESSAGE);
+        // Trying again, and editing something else, still writes nothing.
+        expect(refused(await persist(model.editAnotherField()))).toBe(
+          BRAND_PHONE_CHOOSE_COUNTRY_MESSAGE,
+        );
+        expect(brandRowWrites).toEqual([]);
+        expect(brandRow.contact_phone).toBeNull();
+
+        expect(saved(await persist(model.pick(iso)))).toBe(expected);
+        expect(brandRowWrites).toHaveLength(1);
+        expect(brandRow.contact_phone).toBe(expected);
+        if (iso !== "GB") expect(String(brandRow.contact_phone).startsWith("+44")).toBe(false);
+      }
+    },
+  );
+
+  test("a legacy number left alone survives any number of unrelated saves, byte for byte", async () => {
+    resetBrandRow("08031234567");
+    const model = new EditorModel("08031234567", null);
+    for (let round = 0; round < 3; round += 1) {
+      expect(saved(await persist(model.editAnotherField()))).toBe("08031234567");
+      expect(brandRow.contact_phone).toBe("08031234567");
+      expect(model.stored).toBe("08031234567");
+      expect(model.chip).toBe(BRAND_PHONE_CHOOSE_COUNTRY_LABEL);
+    }
+  });
+
+  test("a row that comes back with spaces in an E.164 number still opens under its own country", async () => {
+    resetBrandRow(null);
+    const model = new EditorModel(undefined, null);
+    expect(saved(await persist(model.type("08031234567").pick("NG")))).toBe("+2348031234567");
+    // Someone edits the row by hand; the next save of another field reads it back.
+    brandRow.contact_phone = " +234 803 123 4567 ";
+    const reread = await updateBrand(BRAND_ROW_ID, { contact: { phone: "+2348031234567" } }, null);
+    expect(reread.contact?.phone).toBe("+2348031234567");
+    const reopened = new EditorModel(reread.contact?.phone, null);
+    expect(reopened.source).toBe("stored");
+    expect(reopened.chip).toBe("flag:NG");
+    // New digits now compose under Nigeria with no pick, and are written.
+    expect(saved(await persist(reopened.type("08031234568")))).toBe("+2348031234568");
+    expect(brandRow.contact_phone).toBe("+2348031234568");
+  });
+
+  test("clearing the number writes an empty phone, whatever the source", async () => {
+    for (const [stored, brandCountry] of [
+      ["+2348031234567", null],
+      ["08031234567", "NG"],
+      ["4155550123", null],
+    ] as const) {
+      resetBrandRow(stored);
+      const model = new EditorModel(stored, brandCountry);
+      expect(saved(await persist(model.type("")))).toBeUndefined();
+      expect(brandRow.contact_phone).toBeNull();
+    }
   });
 });

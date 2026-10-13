@@ -27,6 +27,7 @@ import {
   BRAND_PHONE_CHOOSE_COUNTRY_LABEL,
   BRAND_PHONE_CHOOSE_COUNTRY_MESSAGE,
   BRAND_PHONE_UK_PLUS_ADVICE,
+  brandContactWithSavedPhone,
   brandPhoneCountrySourceForEdit,
   brandPhoneForEdit,
   brandPhoneForSave,
@@ -36,6 +37,56 @@ import {
   type BrandPhoneCountrySource,
   type BrandPhoneDirectory,
 } from "../brandContactPhoneRules";
+import { updateBrand } from "../../../services/brandsService";
+
+const BRAND_ROW_ID = "33800000-0000-4000-8000-000000000001";
+
+// The database boundary only. `updateBrand`, the row mapping in both
+// directions and the phone rules are all REAL; this stands in for the one
+// `brands` row PostgREST would update and hand back.
+const brandRow: Record<string, unknown> = {};
+const brandRowWrites: Record<string, unknown>[] = [];
+const resetBrandRow = (contactPhone: string | null): void => {
+  for (const key of Object.keys(brandRow)) delete brandRow[key];
+  Object.assign(brandRow, {
+    id: BRAND_ROW_ID,
+    account_id: "account-3380",
+    name: "Phone Brand",
+    slug: "phone-brand",
+    description: null,
+    contact_email: "hello@example.com",
+    contact_phone: contactPhone,
+    social_links: {},
+    custom_links: [],
+    default_currency: "GBP",
+  });
+  brandRowWrites.length = 0;
+};
+jest.mock("../../../services/supabase", () => ({
+  supabase: {
+    from: (table: string) => {
+      if (table !== "brands") throw new Error(`unexpected table ${table}`);
+      let payload: Record<string, unknown> | null = null;
+      const query = {
+        update: (next: Record<string, unknown>) => {
+          payload = next;
+          return query;
+        },
+        eq: () => query,
+        is: () => query,
+        select: () => query,
+        single: () => {
+          if (payload === null) throw new Error("only updates are expected here");
+          brandRowWrites.push(payload);
+          Object.assign(brandRow, payload);
+          return Promise.resolve({ data: { ...brandRow }, error: null });
+        },
+      };
+      return query;
+    },
+  },
+}));
+jest.mock("../../../services/appsFlyerService", () => ({ logAppsFlyerEvent: () => undefined }));
 
 const source = (relativePath: string): string =>
   readFileSync(join(process.cwd(), relativePath), "utf8");
@@ -399,5 +450,115 @@ describe("issue #3380 rework 2 — sign-out forgets the remembered countries", (
     clearAllStores();
 
     expect(brandPhoneSessionCountryCount()).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The save, all the way to the row: rules -> contact block -> the REAL
+// `updateBrand` -> the row mapping, out and back.
+// ---------------------------------------------------------------------------
+
+describe("issue #3380 rework 2 — what the brand row holds after Save", () => {
+  /** The editor's save: refuse on the field, or write through the service. */
+  const saveFromEditor = async (
+    stored: string | null,
+    brandCountryCode: string | null,
+    edit: { text: string; countryIso: string; countrySource: BrandPhoneCountrySource } | null,
+  ): Promise<{ refused: string } | { reopenedPhone: string | undefined }> => {
+    const phoneToSave = brandPhoneForSave({
+      stored,
+      brandCountryCode,
+      edit,
+      directory: DIRECTORY,
+    });
+    if (!phoneToSave.ok) return { refused: phoneToSave.message };
+    const contact = brandContactWithSavedPhone(
+      { email: "hello@example.com", phone: stored ?? undefined },
+      phoneToSave,
+    );
+    const saved = await updateBrand(BRAND_ROW_ID, { contact }, null);
+    if (edit !== null) rememberBrandPhoneSavedCountry(phoneToSave);
+    return { reopenedPhone: saved.contact?.phone };
+  };
+
+  test.each(BARE_DIGITS)(
+    "%p under the flag nobody chose: refused, and the row is never written",
+    async (text) => {
+      resetBrandRow(null);
+      const outcome = await saveFromEditor(null, null, {
+        text,
+        countryIso: brandPhoneForEdit(null, null, DIRECTORY).countryIso,
+        countrySource: "fallback",
+      });
+      expect(outcome).toEqual({ refused: BRAND_PHONE_CHOOSE_COUNTRY_MESSAGE });
+      expect(brandRowWrites).toEqual([]);
+      expect(brandRow.contact_phone).toBeNull();
+    },
+  );
+
+  test.each([
+    ["4155550123", "US", "+14155550123"],
+    ["0241234567", "GH", "+233241234567"],
+    ["08031234567", "NG", "+2348031234567"],
+    ["020 7946 0000", "GB", "+442079460000"],
+  ])("%p with %s picked: the row holds %s", async (text, iso, expected) => {
+    resetBrandRow(null);
+    const outcome = await saveFromEditor(null, null, {
+      text,
+      countryIso: iso,
+      countrySource: "picked",
+    });
+    expect(brandRowWrites).toHaveLength(1);
+    expect(brandRow.contact_phone).toBe(expected);
+    // The brand the service hands back carries the same number.
+    expect(outcome).toEqual({ reopenedPhone: expected });
+  });
+
+  test("the reported case end to end: a United States number never reaches the row as +44", async () => {
+    resetBrandRow("4155550123");
+    // Typed under the default flag: refused, the legacy digits stay as they were.
+    expect(
+      await saveFromEditor("4155550123", null, {
+        text: "4155550124",
+        countryIso: "GB",
+        countrySource: "fallback",
+      }),
+    ).toEqual({ refused: BRAND_PHONE_CHOOSE_COUNTRY_MESSAGE });
+    expect(brandRow.contact_phone).toBe("4155550123");
+    // The host picks United States: now it is written, as a +1 number.
+    await saveFromEditor("4155550123", null, {
+      text: "4155550124",
+      countryIso: "US",
+      countrySource: "picked",
+    });
+    expect(brandRow.contact_phone).toBe("+14155550124");
+    expect(String(brandRow.contact_phone).startsWith("+44")).toBe(false);
+  });
+
+  test("a saved number re-opens under its own country, and new digits then compose with no pick", async () => {
+    resetBrandRow(null);
+    const first = await saveFromEditor(null, null, {
+      text: "08031234567",
+      countryIso: "NG",
+      countrySource: "picked",
+    });
+    const reopenedPhone = (first as { reopenedPhone: string }).reopenedPhone;
+    expect(brandPhoneCountrySourceForEdit(reopenedPhone, null, DIRECTORY)).toBe("stored");
+    const reopened = brandPhoneForEdit(reopenedPhone, null, DIRECTORY);
+    expect(reopened.countryIso).toBe("NG");
+
+    await saveFromEditor(reopenedPhone, null, {
+      text: "08031234568",
+      countryIso: reopened.countryIso,
+      countrySource: brandPhoneCountrySourceForEdit(reopenedPhone, null, DIRECTORY),
+    });
+    expect(brandRow.contact_phone).toBe("+2348031234568");
+  });
+
+  test("an untouched legacy number is written back exactly as stored when another field is saved", async () => {
+    resetBrandRow("4155550123");
+    const outcome = await saveFromEditor("4155550123", null, null);
+    expect(outcome).toEqual({ reopenedPhone: "4155550123" });
+    expect(brandRow.contact_phone).toBe("4155550123");
   });
 });
