@@ -92,14 +92,45 @@ export async function sha256Hex(input: string): Promise<string> {
     .join("");
 }
 
+// The invite error names the accept RPC raises as its exception MESSAGE.
+const RPC_MESSAGE_ERRORS: ReadonlyArray<{ error: string; status: number }> = [
+  { error: "invite_currency_mismatch", status: 409 },
+  { error: "invite_not_found", status: 404 },
+  { error: "invite_already_used", status: 410 },
+  { error: "invite_expired", status: 410 },
+  { error: "invite_email_mismatch", status: 403 },
+  { error: "invite_revoked", status: 410 },
+  { error: "invite_declined", status: 410 },
+];
+
+// Maps the RPC's exception MESSAGE → HTTP envelope (pgrest sometimes surfaces
+// the message without a usable code).
+export function mapRpcMessage(message: string | undefined): {
+  status: number;
+  error: string;
+} | null {
+  if (typeof message !== "string" || message.length === 0) return null;
+  const hit = RPC_MESSAGE_ERRORS.find((e) => message.includes(e.error));
+  return hit ? { status: hit.status, error: hit.error } : null;
+}
+
 // Maps Postgres ERRCODE → HTTP envelope.
-export function mapRpcError(code: string | undefined): {
+export function mapRpcError(code: string | undefined, message?: string): {
   status: number;
   error: string;
 } | null {
   switch (code) {
-    case "P0001":
+    case "P0001": {
+      // #3259 — P0001 is also Postgres's DEFAULT code for any RAISE EXCEPTION,
+      // so the code alone does not prove "not found". The RPC raised the email
+      // mismatch as P0001 and a rightful invitee on the wrong account was told
+      // the invitation did not exist. A named message wins; an unrelated raise
+      // (a trigger refusal) is not reported as not-found.
+      const named = mapRpcMessage(message);
+      if (named) return named;
+      if (typeof message === "string" && message.length > 0) return null;
       return { status: 404, error: "invite_not_found" };
+    }
     case "P0002":
       return { status: 410, error: "invite_already_used" };
     case "P0003":
@@ -310,7 +341,10 @@ export async function handler(req: Request): Promise<Response> {
     );
 
     if (rpcErr) {
-      const mapped = mapRpcError(rpcErr.code);
+      // Code first; the message decides a P0001 and is the fallback when
+      // pgrest surfaces the message instead of the code.
+      const mapped = mapRpcError(rpcErr.code, rpcErr.message) ??
+        mapRpcMessage(rpcErr.message);
       if (mapped) {
         if (mapped.error === "invite_currency_mismatch") {
           // ORCH-1052: surface the partner-gate payload (brand_currency,
@@ -326,33 +360,6 @@ export async function handler(req: Request): Promise<Response> {
           );
         }
         return json({ error: mapped.error }, mapped.status);
-      }
-      // Sometimes pgrest surfaces the message instead of the code.
-      const msg = rpcErr.message ?? "";
-      if (msg.includes("invite_currency_mismatch")) {
-        const partnerGate = parsePartnerGateDetail(
-          (rpcErr as { details?: string }).details ??
-            (rpcErr as { detail?: string }).detail,
-        );
-        return json(
-          { error: "invite_currency_mismatch", partner_gate: partnerGate },
-          409,
-        );
-      }
-      if (msg.includes("invite_not_found")) {
-        return json({ error: "invite_not_found" }, 404);
-      }
-      if (msg.includes("invite_already_used")) {
-        return json({ error: "invite_already_used" }, 410);
-      }
-      if (msg.includes("invite_expired")) {
-        return json({ error: "invite_expired" }, 410);
-      }
-      if (msg.includes("invite_email_mismatch")) {
-        return json({ error: "invite_email_mismatch" }, 403);
-      }
-      if (msg.includes("invite_revoked")) {
-        return json({ error: "invite_revoked" }, 410);
       }
       console.error(
         "[accept-brand-invitation] rpc failed",
