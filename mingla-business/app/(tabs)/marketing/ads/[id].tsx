@@ -1,5 +1,6 @@
 /**
- * toward #3697 Wave 7c — Host ad campaign detail (spend vs cap, pause/end).
+ * toward #3697 Wave 7c / 8 — Host ad campaign detail (spend vs cap,
+ * pause / Cancel-before-spend / End-after-spend — never both).
  */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -25,6 +26,7 @@ import {
 import { useCanManageBrandPayments } from "../../../../src/hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import {
+  cancelHostAdCampaign,
   endHostAdCampaign,
   getHostAdCampaign,
   pauseHostAdCampaign,
@@ -104,6 +106,24 @@ export default function HostAdDetailRoute(): React.ReactElement {
     }
   }, [brandId, campaignId, load]);
 
+  const onCancel = useCallback(async () => {
+    if (brandId === null || campaignId === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await cancelHostAdCampaign({
+        brandId,
+        campaignId,
+        idempotencyKey: randomId(),
+      });
+      await load();
+    } catch {
+      setError("Could not cancel this ad.");
+    } finally {
+      setBusy(false);
+    }
+  }, [brandId, campaignId, load]);
+
   if (brandId === null || campaignId === null) {
     return (
       <View style={styles.host}>
@@ -148,6 +168,9 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const isLive = status.toUpperCase() === "ACTIVE";
   const isEnded =
     status.toUpperCase() === "ARCHIVED" || status.toUpperCase() === "DELETED";
+  // Phase 3: Cancel before spend; End after — a card never shows both.
+  const canCancel = !isEnded && spent <= 0;
+  const canEnd = !isEnded && spent > 0;
 
   return (
     <View style={styles.host} testID="ads-detail-screen">
@@ -200,18 +223,34 @@ export default function HostAdDetailRoute(): React.ReactElement {
                 </Text>
               </Pressable>
             ) : null}
-            <Pressable
-              style={[styles.actionBtn, styles.actionDanger]}
-              disabled={busy}
-              onPress={() => void onEnd()}
-              accessibilityRole="button"
-              accessibilityLabel="End ad"
-              testID="ads-detail-end"
-            >
-              <Text style={styles.actionLabel}>
-                {busy ? "Working…" : "End ad"}
-              </Text>
-            </Pressable>
+            {canCancel ? (
+              <Pressable
+                style={[styles.actionBtn, styles.actionDanger]}
+                disabled={busy}
+                onPress={() => void onCancel()}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel ad"
+                testID="ads-detail-cancel"
+              >
+                <Text style={styles.actionLabel}>
+                  {busy ? "Working…" : "Cancel ad"}
+                </Text>
+              </Pressable>
+            ) : null}
+            {canEnd ? (
+              <Pressable
+                style={[styles.actionBtn, styles.actionDanger]}
+                disabled={busy}
+                onPress={() => void onEnd()}
+                accessibilityRole="button"
+                accessibilityLabel="End ad"
+                testID="ads-detail-end"
+              >
+                <Text style={styles.actionLabel}>
+                  {busy ? "Working…" : "End ad"}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
       </ScrollView>
