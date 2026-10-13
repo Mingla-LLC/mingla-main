@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { acceptBody, acceptCopy } from "../lib/inviteLink";
+import { acceptBody, acceptConflictMessage, acceptCopy } from "../lib/inviteLink";
 import { AlertCircle, Loader2, MailOpen, ShieldCheck, Lock } from "lucide-react";
 import minglaLogo from "../../../packages/brand-assets/mingla-wordmark.png";
 
@@ -43,6 +43,9 @@ const btnStyle = {
 // States that mean "this did not work" get the alert icon.
 const PROBLEM_STATES = ["used", "expired", "invalid", "account_conflict", "try_again", "offline"];
 
+// How long the copy button reads "Copied".
+const COPIED_MS = 3000;
+
 // How long to wait for the password screen after a successful open before
 // offering a retry instead of leaving the person on a spinner.
 const HANDOVER_MS = 10000;
@@ -54,6 +57,13 @@ export function InviteAcceptScreen({ token, onDone }) {
   const [view, setView] = useState(() => (session ? "signed_in_other" : "ready"));
   const [signedInEmail] = useState(() => session?.user?.email || "");
   const [busy, setBusy] = useState(false);
+  // The invited address, when the server named it (an address that cannot
+  // take team access), and what happened to the last copy: "" | "copied" |
+  // "blocked".
+  const [invitedEmail, setInvitedEmail] = useState("");
+  const [copyState, setCopyState] = useState("");
+  const copyTimerRef = useRef(null);
+  const messageRef = useRef(null);
   const titleRef = useRef(null);
   const handoverRef = useRef(null);
   // True once the link was opened and the password screen is about to take over.
@@ -74,11 +84,13 @@ export function InviteAcceptScreen({ token, onDone }) {
   // screen does not come back once the password is chosen.
   useEffect(() => () => {
     clearTimeout(handoverRef.current);
+    clearTimeout(copyTimerRef.current);
     if (openedRef.current) onDoneRef.current();
   }, []);
 
   const copy = acceptCopy(view);
   const working = view === "working";
+  const conflict = view === "account_conflict";
 
   const openInvite = async () => {
     setBusy(true);
@@ -96,7 +108,24 @@ export function InviteAcceptScreen({ token, onDone }) {
       return;
     }
     setBusy(false);
+    setInvitedEmail(typeof result.email === "string" ? result.email : "");
+    setCopyState("");
     setView(result.state);
+  };
+
+  // Copies the ready-made message. Nothing is sent anywhere.
+  const copyMessage = async () => {
+    clearTimeout(copyTimerRef.current);
+    try {
+      await navigator.clipboard.writeText(acceptConflictMessage(invitedEmail));
+      setCopyState("copied");
+      copyTimerRef.current = setTimeout(() => setCopyState(""), COPIED_MS);
+    } catch (err) {
+      console.error("Copy was blocked:", err?.name || "error");
+      setCopyState("blocked");
+      messageRef.current?.focus();
+      messageRef.current?.select();
+    }
   };
 
   const signOutThenContinue = async () => {
@@ -117,6 +146,8 @@ export function InviteAcceptScreen({ token, onDone }) {
     const kind = copy.action.kind;
     if (kind === "go_sign_in") {
       onDone();
+    } else if (kind === "copy_message") {
+      copyMessage();
     } else if (kind === "sign_out") {
       signOutThenContinue();
     } else if (view === "offline" && session) {
@@ -214,9 +245,51 @@ export function InviteAcceptScreen({ token, onDone }) {
               aria-live="polite"
               style={{ fontSize: 12, lineHeight: "18px", color: COLORS.textSecondary, margin: 0, textAlign: "center" }}
             >
-              {acceptBody(view, { email: signedInEmail })}
+              {acceptBody(view, { email: signedInEmail, invitedEmail })}
             </p>
           </div>
+
+          {conflict && (
+            <div style={{ marginBottom: 12 }}>
+              <label
+                htmlFor="invite-conflict-message"
+                style={{ display: "block", fontSize: 11, fontWeight: 600, color: COLORS.textSecondary, marginBottom: 4 }}
+              >
+                A message you can send them
+              </label>
+              <textarea
+                id="invite-conflict-message"
+                ref={messageRef}
+                readOnly
+                rows={5}
+                value={acceptConflictMessage(invitedEmail)}
+                onFocus={(e) => e.currentTarget.select()}
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  resize: "none",
+                  padding: "8px 10px",
+                  fontSize: 12,
+                  lineHeight: "18px",
+                  fontFamily: "inherit",
+                  color: COLORS.text,
+                  backgroundColor: "var(--gray-50, #f9fafb)",
+                  border: `1px solid ${COLORS.borderLight}`,
+                  borderRadius: 8,
+                }}
+              />
+              <p
+                aria-live="polite"
+                style={{ minHeight: 16, margin: "4px 0 0", fontSize: 11, lineHeight: "16px", color: COLORS.textSecondary }}
+              >
+                {copyState === "copied"
+                  ? "Copied. Paste it into a message to the person who invited you."
+                  : copyState === "blocked"
+                    ? "Copying was blocked. Select the text above and copy it by hand."
+                    : ""}
+              </p>
+            </div>
+          )}
 
           <button
             type="button"
@@ -232,8 +305,30 @@ export function InviteAcceptScreen({ token, onDone }) {
             {busy && (
               <Loader2 aria-hidden="true" style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} />
             )}
-            {working ? "Checking..." : copy.action.label}
+            {working ? "Checking..." : conflict && copyState === "copied" ? "Copied" : copy.action.label}
           </button>
+
+          {conflict && (
+            <button
+              type="button"
+              onClick={onDone}
+              style={{
+                width: "100%",
+                minHeight: 40,
+                marginTop: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                color: COLORS.textSecondary,
+                background: "transparent",
+                border: "none",
+                borderRadius: 10,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              Close
+            </button>
+          )}
         </div>
 
         <div

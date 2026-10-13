@@ -65,7 +65,7 @@ export const INVITE_STATE_COPY = {
   },
 };
 
-export const ACCEPT_ACTION_KINDS = ["continue", "go_sign_in", "retry", "sign_out"];
+export const ACCEPT_ACTION_KINDS = ["continue", "go_sign_in", "retry", "sign_out", "copy_message"];
 
 /**
  * Every state the invite screen can be in. Each one says what happened and
@@ -110,8 +110,8 @@ export const ACCEPT_COPY = {
   },
   account_conflict: {
     title: "This email needs a different invite",
-    body: "This address already has a Mingla account that signs in another way, so we can't attach team access to it. Ask the person who invited you to invite a different email address. Your link still works if this is sorted out.",
-    action: { label: "Go to sign in", kind: "go_sign_in" },
+    body: "{email} already has a Mingla account that signs in another way, so team access can't be added to it. There is nothing to sign in to yet. Ask the person who invited you to send the invite to a different email address.",
+    action: { label: "Copy a message to send them", kind: "copy_message" },
   },
   try_again: {
     title: "We couldn't open your invite",
@@ -130,6 +130,33 @@ export function acceptCopy(state) {
   return Object.hasOwn(ACCEPT_COPY, state) ? ACCEPT_COPY[state] : ACCEPT_COPY.invalid;
 }
 
+/**
+ * The body for a state with `{email}` filled in. For "account_conflict" it is
+ * the invited address (`context.invitedEmail`), or "This address" when the
+ * server did not say which; for every other state it is the address someone
+ * is signed in with.
+ */
 export function acceptBody(state, context = {}) {
-  return acceptCopy(state).body.replace("{email}", context.email || "another account");
+  const body = acceptCopy(state).body;
+  if (state === "account_conflict") {
+    return body.replace("{email}", cleanAddress(context.invitedEmail) || "This address");
+  }
+  return body.replace("{email}", context.email || "another account");
+}
+
+/** An address worth showing: plainly an email, short, on one line. */
+function cleanAddress(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return /^[^\s@]{1,64}@[^\s@]{1,190}$/.test(text) ? text : "";
+}
+
+/**
+ * The message an invited person can send to whoever invited them when their
+ * address cannot take team access. Plain text, ready to paste.
+ */
+export function acceptConflictMessage(email) {
+  const address = cleanAddress(email);
+  return address
+    ? `Hi, my Mingla Admin invite to ${address} can't be used because that address already has a Mingla account that signs in another way. Could you send the invite to a different email address of mine? Thanks.`
+    : "Hi, my Mingla Admin invite can't be used because the address already has a Mingla account that signs in another way. Could you send the invite to a different email address of mine? Thanks.";
 }
