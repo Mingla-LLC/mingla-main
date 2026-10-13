@@ -206,7 +206,7 @@ export function agoWords(iso, now = Date.now()) {
   const s = Math.max(0, Math.floor((now - t) / 1000));
   if (s < 90) return "just now";
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m} minutes ago`;
+  if (m < 60) return m === 1 ? "1 minute ago" : `${m} minutes ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return h === 1 ? "1 hour ago" : `${h} hours ago`;
   const d = Math.floor(h / 24);

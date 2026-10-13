@@ -48,6 +48,8 @@ import {
   shownKeyVerdict,
 } from "../lib/agentConnect";
 
+/** While a key is on screen the page checks this often that it still works. */
+const SHOWN_KEY_REFRESH_MS = 5_000;
 /** How long a create waits for its answer before the page stops waiting. */
 const CREATE_WAIT_MS = 20_000;
 
@@ -139,6 +141,19 @@ export function AgentPage() {
       }
     }
   }, [keys, shownIds, loading, error]);
+
+  // While a key is on screen, read again every few seconds, in the
+  // background too, so a key ended in another tab or window is already gone
+  // from this one when somebody next looks at it.
+  const showingKey = AGENTS.some((a) => !!shownIds[a.id]);
+  useEffect(() => {
+    if (!showingKey) return undefined;
+    const timer = setInterval(() => {
+      if (navigator.onLine === false) return;
+      refetch({ quiet: true });
+    }, SHOWN_KEY_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [showingKey, refetch]);
 
   const create = useCallback(
     async (agentId) => {

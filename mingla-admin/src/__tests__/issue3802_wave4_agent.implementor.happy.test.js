@@ -215,6 +215,7 @@ describe("#3802 A-3: the status line, and why a key stopped", () => {
     assert.equal(ago(5_000), "just now");
     assert.equal(ago(89_000), "just now");
     assert.equal(ago(5 * 60_000), "5 minutes ago");
+    assert.equal(ago(100_000), "1 minute ago");
     assert.equal(ago(60 * 60_000), "1 hour ago");
     assert.equal(ago(5 * 3600_000), "5 hours ago");
     assert.equal(ago(24 * 3600_000), "1 day ago");
@@ -572,6 +573,9 @@ describe("#3802 A-8: a key that was ended somewhere else does not stay on screen
   it("the page hides it, says why, and learns of the change whenever the tab is looked at again", () => {
     assert.ok(/verdict === "hide"\) \{\s*setFresh\(\(f\) => \(\{ \.\.\.f, \[a\.id\]: null \}\)\);\s*setShownIds\(\(m\) => \(\{ \.\.\.m, \[a\.id\]: null \}\)\);\s*setNotice\(\(n\) => \(\{ \.\.\.n, \[a\.id\]: REPLACED_ELSEWHERE_WORDS \}\)\);/.test(PAGE));
     assert.equal(REPLACED_ELSEWHERE_WORDS, "This key was replaced or disconnected somewhere else, so it no longer works and is hidden here.");
+    // While a key is on screen the page checks every five seconds that it still works.
+    assert.ok(PAGE.includes("const SHOWN_KEY_REFRESH_MS = 5_000;"));
+    assert.ok(/const showingKey = AGENTS\.some\(\(a\) => !!shownIds\[a\.id\]\);\s*useEffect\(\(\) => \{\s*if \(!showingKey\) return undefined;\s*const timer = setInterval\(\(\) => \{[\s\S]*?refetch\(\{ quiet: true \}\);\s*\}, SHOWN_KEY_REFRESH_MS\);/.test(PAGE));
     assert.ok(PAGE.includes("setShownIds((m) => ({ ...m, [agentId]: { keyId: made.key_id, listed: false } }));"));
     assert.ok(HOOK.includes('document.addEventListener("visibilitychange", onFocus);') && HOOK.includes('window.addEventListener("focus", onFocus);'));
     // Only an id is remembered beside the key, and nothing is sent to another tab or kept in storage.
