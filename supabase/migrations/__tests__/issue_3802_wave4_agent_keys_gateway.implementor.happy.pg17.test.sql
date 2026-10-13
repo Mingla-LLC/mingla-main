@@ -24,6 +24,10 @@
 --   K-11  the daily clean-up and its schedule
 --   K-12  is_admin_user() is unchanged
 --   K-13  the migration's self-check aborts on each wrong grant
+--   K-14  "today" is the person's own date: the zone a key remembers, a
+--         zone or a date named in the request, what the answer says it used
+--   K-15  a key whose owner's sign-in account is banned or deleted
+--   K-16  the per-minute count and the request row are one step
 --   Part 2  real sessions: the person set for a request is gone in the next
 --           statement on the same connection; "via" is not visible to the
 --           next transaction; two sessions with two keys never cross
@@ -58,6 +62,8 @@ begin;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;
 alter table auth.users add column if not exists phone text;
+alter table auth.users add column if not exists banned_until timestamptz;
+alter table auth.users add column if not exists deleted_at timestamptz;
 create table if not exists auth.identities (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null,
@@ -265,7 +271,7 @@ begin
   for f in
     select * from (values
       ('public.team_agent_guide()', true),
-      ('public.team_agent_key_create(text)', true),
+      ('public.team_agent_key_create(text,text)', true),
       ('public.team_agent_key_revoke(uuid)', true),
       ('public.team_agent_keys_mine()', true),
       ('public.team_agent_keys_overview()', true),
@@ -1199,7 +1205,9 @@ begin
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'team\_agent\_%' and p.prosrc ~* '\mexecute\M'), '0');
   perform pg_temp.t3802k_check('K-10', 'the gateway asks the pipelines gate itself, before it picks a tool',
-    (select (p.prosrc ~ 'PERFORM 1 FROM public\.crm_ctx\(\);\s+CASE v_tool')::text
+    (select (position('PERFORM 1 FROM public.crm_ctx();' in p.prosrc) > 0
+             and position('PERFORM 1 FROM public.crm_ctx();' in p.prosrc) < position('CASE v_tool' in p.prosrc)
+             and position('PERFORM 1 FROM public.crm_ctx();' in p.prosrc) < position('v_zone := v_auth' in p.prosrc))::text
        from pg_proc p where p.oid = 'public.team_agent_call(text,text,jsonb,text)'::regprocedure), 'true');
   perform pg_temp.t3802k_check('K-10', 'nothing here sends, reaches outside the database or removes a pipeline record',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -1300,8 +1308,8 @@ begin
       ('the filtered reader opened to signed-in users', $q$grant execute on function public.team_agent_records_find(jsonb) to authenticated$q$, '%authenticated can execute the internal public.team_agent_records_find(jsonb)%'),
       ('the guide definition opened to signed-in users', $q$grant execute on function public.team_agent_guide_def() to authenticated$q$, '%authenticated can execute the internal public.team_agent_guide_def()%'),
       ('the clean-up opened to signed-in users', $q$grant execute on function public.team_agent_housekeeping() to authenticated$q$, '%authenticated can execute the internal public.team_agent_housekeeping()%'),
-      ('key creation opened to anon',           $q$grant execute on function public.team_agent_key_create(text) to anon$q$, '%anon can execute public.team_agent_key_create(text)%'),
-      ('key creation closed to signed-in users', $q$revoke execute on function public.team_agent_key_create(text) from authenticated$q$, '%authenticated cannot execute public.team_agent_key_create(text)%'),
+      ('key creation opened to anon',           $q$grant execute on function public.team_agent_key_create(text, text) to anon$q$, '%anon can execute public.team_agent_key_create(text,text)%'),
+      ('key creation closed to signed-in users', $q$revoke execute on function public.team_agent_key_create(text, text) from authenticated$q$, '%authenticated cannot execute public.team_agent_key_create(text,text)%'),
       ('the gateway closed to the server role', $q$revoke execute on function public.team_agent_call(text, text, jsonb, text) from service_role$q$, '%service_role cannot execute public.team_agent_call(text,text,jsonb,text)%'),
       ('the gateway without its pinned search path', $q$alter function public.team_agent_call(text, text, jsonb, text) reset search_path$q$, '%does not pin an empty search path%'),
       ('the keys table readable by signed-in users', $q$grant select on public.team_agent_keys to authenticated$q$, '%authenticated holds SELECT on public.team_agent_keys%'),
@@ -1346,6 +1354,171 @@ end;
 $k13$;
 
 -- ---------------------------------------------------------------------------
+-- K-14 — "today" is the person's own date.
+-- ---------------------------------------------------------------------------
+do $k14$
+declare
+  v text;
+  v_east text;
+  v_west text;
+  c_east constant text := 'Pacific/Kiritimati';   -- 14 hours ahead of UTC
+  c_west constant text := 'Pacific/Pago_Pago';    -- 11 hours behind UTC
+  d_east date := (clock_timestamp() at time zone 'Pacific/Kiritimati')::date;
+  d_west date := (clock_timestamp() at time zone 'Pacific/Pago_Pago')::date;
+  d_utc  date := (now() at time zone 'UTC')::date;
+  z text;
+begin
+  perform pg_temp.t3802k_next_request();
+  v := pg_temp.t3802k_as('growth2', format('select public.team_agent_key_create(%L, %L)::text', 'claude', c_east));
+  perform pg_temp.t3802k_keep('east', v::jsonb ->> 'key');
+  perform pg_temp.t3802k_keep('east.id', v::jsonb ->> 'key_id');
+  perform pg_temp.t3802k_check('K-14', 'a key made with a zone remembers it and says so',
+    pg_temp.t3802k_get(v, 'time_zone') || '/' || (select time_zone from public.team_agent_keys where id = (v::jsonb ->> 'key_id')::uuid),
+    c_east || '/' || c_east);
+  v := pg_temp.t3802k_as('partner', format('select public.team_agent_key_create(%L, %L)::text', 'codex', c_west));
+  perform pg_temp.t3802k_keep('west', v::jsonb ->> 'key');
+  perform pg_temp.t3802k_check('K-14', 'my keys shows the zone',
+    (select string_agg(e->>'time_zone', ',') from jsonb_array_elements(pg_temp.t3802k_as('partner', 'select public.team_agent_keys_mine()::text')::jsonb -> 'keys') e
+      where e->>'revoked_at' is null and e->>'agent' = 'codex'), c_west);
+  perform pg_temp.t3802k_check('K-14', 'the two test zones are on different dates right now (they are 25 hours apart)', (d_east > d_west)::text, 'true');
+
+  -- A zone this server does not know is "not known", never an error.
+  foreach z in array array['Mars/Olympus_Mons', 'America/New York', '', 'x''; drop table public.crm_records; --', repeat('A', 65), 'UTC0; select 1'] loop
+    perform pg_temp.t3802k_next_request();
+    v := pg_temp.t3802k_as('admin', format('select public.team_agent_key_create(%L, %L)::text', 'codex', z));
+    perform pg_temp.t3802k_check('K-14', 'a zone that is not one: the key is made, with no zone: ' || left(z, 20),
+      (v::jsonb ->> 'key' ~ '^mgla_x_')::text || '/' || coalesce(v::jsonb ->> 'time_zone', 'none'), 'true/none');
+  end loop;
+  perform pg_temp.t3802k_keep('nozone', v::jsonb ->> 'key');
+  perform pg_temp.t3802k_check('K-14', 'creating a key the old way (no zone sent) still works',
+    (pg_temp.t3802k_as('admin', $q$select public.team_agent_key_create('codex')::text$q$)::jsonb ->> 'time_zone') is null::text, 'true');
+  perform pg_temp.t3802k_keep('nozone', (select v2::jsonb ->> 'key' from (select pg_temp.t3802k_as('admin', $q$select public.team_agent_key_create('codex')::text$q$) as v2) x));
+
+  -- my_day: the key's zone decides, and the answer says so.
+  v_east := pg_temp.t3802k_gw('east', 'my_day');
+  v_west := pg_temp.t3802k_gw('west', 'my_day');
+  perform pg_temp.t3802k_check('K-14', 'my_day through the far-east key is that zone''s date, and says where it came from',
+    (v_east::jsonb -> 'dates')::text,
+    jsonb_build_object('today', d_east, 'time_zone', c_east, 'zone_from', 'your key', 'date_from', 'the clock')::text);
+  perform pg_temp.t3802k_check('K-14', 'the home summary inside it was worked out for that same date',
+    pg_temp.t3802k_get(v_east, 'result', 'today'), d_east::text);
+  perform pg_temp.t3802k_check('K-14', 'my_day through the far-west key is a different date at the same moment',
+    pg_temp.t3802k_get(v_west, 'dates', 'today') || '/' || pg_temp.t3802k_get(v_west, 'result', 'today') || '/' || pg_temp.t3802k_get(v_west, 'dates', 'time_zone'),
+    d_west || '/' || d_west || '/' || c_west);
+  perform pg_temp.t3802k_check('K-14', 'that is what the same person''s browser asks for: its own date',
+    (pg_temp.t3802k_gw('east', 'my_day')::jsonb -> 'result')::text,
+    pg_temp.t3802k_as('growth2', format('select public.crm_home_summary(%L)::text', d_east)));
+  v := pg_temp.t3802k_gw('nozone', 'my_day');
+  perform pg_temp.t3802k_check('K-14', 'a key with no zone answers in UTC and says no zone is recorded',
+    (v::jsonb -> 'dates')::text,
+    jsonb_build_object('today', d_utc, 'time_zone', 'UTC', 'zone_from', 'no zone is recorded for your key, so UTC', 'date_from', 'the clock')::text);
+
+  -- The request can name a zone or a date.
+  v := pg_temp.t3802k_gw('east', 'my_day', format('{"time_zone":"%s"}', c_west));
+  perform pg_temp.t3802k_check('K-14', 'a zone named in the request wins over the key''s, and the answer says so',
+    pg_temp.t3802k_get(v, 'dates', 'today') || '/' || pg_temp.t3802k_get(v, 'dates', 'zone_from') || '/' || pg_temp.t3802k_get(v, 'result', 'today'),
+    d_west || '/this request/' || d_west);
+  v := pg_temp.t3802k_gw('east', 'my_day', format('{"today":"%s"}', d_utc - 1));
+  perform pg_temp.t3802k_check('K-14', 'a date named in the request wins, and the answer says so',
+    pg_temp.t3802k_get(v, 'dates', 'today') || '/' || pg_temp.t3802k_get(v, 'dates', 'date_from') || '/' || pg_temp.t3802k_get(v, 'result', 'today'),
+    (d_utc - 1) || '/this request/' || (d_utc - 1));
+  foreach z in array array['{"time_zone":"Mars/Olympus_Mons"}', '{"time_zone":7}', '{"time_zone":""}', '{"time_zone":"America/New York"}'] loop
+    perform pg_temp.t3802k_like('K-14', 'a zone that is not one is refused in plain words: ' || z,
+      pg_temp.t3802k_gw('east', 'my_day', z), '%"token": "invalid_arguments"%Send a zone name such as America/New_York.%');
+  end loop;
+  foreach z in array array[format('{"today":"%s"}', d_utc + 2), format('{"today":"%s"}', d_utc - 2), '{"today":"1999-01-01"}', '{"today":"2026-02-30"}', '{"today":"tomorrow"}'] loop
+    perform pg_temp.t3802k_like('K-14', 'a date that cannot be today anywhere is refused, never quietly replaced: ' || z,
+      pg_temp.t3802k_gw('east', 'my_day', z), '%"ok": false%"token": "invalid_arguments"%');
+  end loop;
+  perform pg_temp.t3802k_check('K-14', 'the team summary follows the same rule',
+    pg_temp.t3802k_get(pg_temp.t3802k_gw('owner.claude', 'team_summary', format('{"time_zone":"%s"}', c_east)), 'dates', 'today')
+      || '/' || pg_temp.t3802k_get(pg_temp.t3802k_gw('owner.claude', 'team_summary', format('{"time_zone":"%s"}', c_east)), 'result', 'today'),
+    d_east || '/' || d_east);
+
+  -- find_records: "due today" and "overdue" are measured from that date.
+  perform pg_temp.t3802k_next_request();
+  v := pg_temp.t3802k_as('growth2', format($q$select public.crm_record_create('hosts', '{"name":"Issue3802k Due East","due_on":"%s"}'::jsonb, 'issue3802k-due-e') -> 'record' ->> 'id'$q$, d_east));
+  perform pg_temp.t3802k_check('K-14', 'a card due on the far-east date is "due today" through the far-east key',
+    pg_temp.t3802k_get(pg_temp.t3802k_gw('east', 'find_records', '{"pipeline":"hosts","q":"Issue3802k Due East","due":"today"}'), 'result', 'total'), '1');
+  perform pg_temp.t3802k_check('K-14', 'and not through the far-west key, where it is not that date yet',
+    pg_temp.t3802k_get(pg_temp.t3802k_gw('west', 'find_records', '{"pipeline":"hosts","q":"Issue3802k Due East","due":"today"}'), 'result', 'total'), '0');
+  perform pg_temp.t3802k_check('K-14', 'nor is it overdue there',
+    pg_temp.t3802k_get(pg_temp.t3802k_gw('west', 'find_records', '{"pipeline":"hosts","q":"Issue3802k Due East","due":"overdue"}'), 'result', 'total'), '0');
+  v := pg_temp.t3802k_gw('west', 'find_records', format('{"pipeline":"hosts","q":"Issue3802k Due East","due":"today","time_zone":"%s"}', c_east));
+  perform pg_temp.t3802k_check('K-14', 'naming the other zone in the request finds it, and the answer says which date and zone were used',
+    pg_temp.t3802k_get(v, 'result', 'total') || '/' || (v::jsonb -> 'dates')::text,
+    '1/' || jsonb_build_object('today', d_east, 'time_zone', c_east, 'zone_from', 'this request', 'date_from', 'the clock')::text);
+  perform pg_temp.t3802k_check('K-14', 'a search that uses no date still says which date it would have used',
+    pg_temp.t3802k_get(pg_temp.t3802k_gw('east', 'find_records', '{"pipeline":"hosts"}'), 'dates', 'today'), d_east::text);
+  perform pg_temp.t3802k_check('K-14', 'a tool that has nothing to do with dates says nothing about them',
+    (pg_temp.t3802k_gw('east', 'get_started')::jsonb ? 'dates')::text || (pg_temp.t3802k_gw('east', 'check_names', '{"pipeline":"hosts","names":["x"]}')::jsonb ? 'dates')::text, 'falsefalse');
+
+  -- The rule itself, at the edge of midnight in two US zones (fixed moments).
+  perform pg_temp.t3802k_check('K-14', '23:30 in New York is still that evening''s date; 00:30 is the next',
+    (timestamptz '2026-10-14 03:30:00+00' at time zone 'America/New_York')::date || '/' || (timestamptz '2026-10-14 04:30:00+00' at time zone 'America/New_York')::date,
+    '2026-10-13/2026-10-14');
+  perform pg_temp.t3802k_check('K-14', '23:30 in Los Angeles is still that evening''s date; 00:30 is the next',
+    (timestamptz '2026-10-14 06:30:00+00' at time zone 'America/Los_Angeles')::date || '/' || (timestamptz '2026-10-14 07:30:00+00' at time zone 'America/Los_Angeles')::date,
+    '2026-10-13/2026-10-14');
+  perform pg_temp.t3802k_check('K-14', 'the gateway works the date out exactly that way, from the clock and the zone',
+    (select (p.prosrc like '%v_date := (clock_timestamp() AT TIME ZONE COALESCE(v_zone, ''UTC''))::date;%')::text
+       from pg_proc p where p.oid = 'public.team_agent_call(text,text,jsonb,text)'::regprocedure), 'true');
+  perform pg_temp.t3802k_check('K-14', 'the rules an agent is given say that today is its person''s own date',
+    (select count(*)::text from jsonb_array_elements_text(public.team_agent_guide_def() -> 'rules') r where r like 'Today is your person''s own date.%'), '1');
+end;
+$k14$;
+
+-- ---------------------------------------------------------------------------
+-- K-15 — an account that can no longer sign in cannot act through a key.
+-- ---------------------------------------------------------------------------
+do $k15$
+declare
+  c_invalid constant text := '{"auth": "invalid"}';
+begin
+  perform pg_temp.t3802k_newkey('growth2', 'claude', 'ban.a');
+  perform pg_temp.t3802k_check('K-15', 'before: the key works', pg_temp.t3802k_get(pg_temp.t3802k_gw('ban.a', 'get_started'), 'ok'), 'true');
+  update auth.users set banned_until = now() - interval '1 minute' where id = '38020000-0000-4000-e000-000000000005';
+  perform pg_temp.t3802k_check('K-15', 'a ban that has already ended changes nothing', pg_temp.t3802k_get(pg_temp.t3802k_gw('ban.a', 'get_started'), 'ok'), 'true');
+  update auth.users set banned_until = now() + interval '1 hour' where id = '38020000-0000-4000-e000-000000000005';
+  perform pg_temp.t3802k_check('K-15', 'a key whose owner''s account is banned', pg_temp.t3802k_gw('ban.a', 'get_started'), c_invalid);
+  perform pg_temp.t3802k_check('K-15', 'that key was turned off',
+    (select revoke_reason || '/' || revoked_by from public.team_agent_keys where id = pg_temp.t3802k_id('ban.a.id')::uuid), 'access_removed/system');
+  update auth.users set banned_until = null where id = '38020000-0000-4000-e000-000000000005';
+  perform pg_temp.t3802k_check('K-15', 'lifting the ban does not bring the key back', pg_temp.t3802k_gw('ban.a', 'get_started'), c_invalid);
+
+  perform pg_temp.t3802k_newkey('growth2', 'claude', 'ban.b');
+  update auth.users set deleted_at = now() where id = '38020000-0000-4000-e000-000000000005';
+  perform pg_temp.t3802k_check('K-15', 'a key whose owner''s account is deleted', pg_temp.t3802k_gw('ban.b', 'get_started'), c_invalid);
+  update auth.users set deleted_at = null where id = '38020000-0000-4000-e000-000000000005';
+
+  -- A full admin, whose role is read another way.
+  perform pg_temp.t3802k_newkey('admin', 'claude', 'ban.c');
+  update auth.users set banned_until = 'infinity' where id = '38020000-0000-4000-e000-000000000002';
+  perform pg_temp.t3802k_check('K-15', 'an admin''s key whose account is banned', pg_temp.t3802k_gw('ban.c', 'team_summary'), c_invalid);
+  update auth.users set banned_until = null where id = '38020000-0000-4000-e000-000000000002';
+  perform pg_temp.t3802k_check('K-15', 'other people''s keys were never affected',
+    pg_temp.t3802k_get(pg_temp.t3802k_gw('growth.claude', 'get_started'), 'ok'), 'true');
+end;
+$k15$;
+
+-- ---------------------------------------------------------------------------
+-- K-16 — the count and the request row are one step (the shape; part 2 runs
+-- it with real sessions).
+-- ---------------------------------------------------------------------------
+do $k16$
+begin
+  perform pg_temp.t3802k_check('K-16', 'the gateway takes one lock per key before it counts, and counts before it writes the request row',
+    (select (position('pg_advisory_xact_lock(pg_catalog.hashtextextended(''team_agent_limit:'' || v_key::text, 0))' in p.prosrc) > 0
+             and position('team_agent_limit:' in p.prosrc) < position('SELECT count(*), min(c.started_at) INTO v_n, v_oldest' in p.prosrc)
+             and position('SELECT count(*), min(c.started_at) INTO v_n, v_oldest' in p.prosrc) < position('RETURNING id INTO v_call' in p.prosrc))::text
+       from pg_proc p where p.oid = 'public.team_agent_call(text,text,jsonb,text)'::regprocedure), 'true');
+  perform pg_temp.t3802k_check('K-16', 'the lock is per key: it names the key, not the person or the tool',
+    (select count(*)::text from pg_proc p where p.oid = 'public.team_agent_call(text,text,jsonb,text)'::regprocedure
+      and p.prosrc ~ 'team_agent_limit:'' \|\| v_key::text'), '1');
+end;
+$k16$;
+
+-- ---------------------------------------------------------------------------
 -- Verdict (part 1). Every failed check is listed; one or more fails the suite.
 -- ---------------------------------------------------------------------------
 do $verdict$
@@ -1356,11 +1529,11 @@ declare
   v_tests text;
 begin
   select count(*), count(*) filter (where not ok) into v_total, v_failed from t3802k_results;
-  if v_total < 330 then
+  if v_total < 400 then
     raise exception 'ISSUE-3802 AGENT KEYS FAIL: only % checks ran; the suite did not execute fully', v_total;
   end if;
-  if (select count(distinct test) from t3802k_results) < 13 then
-    raise exception 'ISSUE-3802 AGENT KEYS FAIL: only % of 13 groups ran', (select count(distinct test) from t3802k_results);
+  if (select count(distinct test) from t3802k_results) < 16 then
+    raise exception 'ISSUE-3802 AGENT KEYS FAIL: only % of 16 groups ran', (select count(distinct test) from t3802k_results);
   end if;
   if v_failed > 0 then
     for r in select * from t3802k_results where not ok order by seq limit 80 loop
@@ -1369,7 +1542,7 @@ begin
     select string_agg(distinct test, ', ' order by test) into v_tests from t3802k_results where not ok;
     raise exception 'ISSUE-3802 AGENT KEYS FAIL: % of % checks failed in: %', v_failed, v_total, v_tests;
   end if;
-  raise notice 'ISSUE-3802 AGENT KEYS PASS (part 1): % checks across K-1..K-13, 0 failed', v_total;
+  raise notice 'ISSUE-3802 AGENT KEYS PASS (part 1): % checks across K-1..K-16, 0 failed', v_total;
 end;
 $verdict$;
 
@@ -1499,6 +1672,54 @@ begin
            count(*)::text || ' row(s)'
       from public.team_agent_calls where owner_email like 'issue3802k-race-%';
 
+    -- R-5: forty requests with one key at the same moment, with room for
+    -- only a few. They are held behind the key's own lock, released together,
+    -- and exactly the room that was left is served.
+    declare
+      v_room int;
+      v_ok int := 0;
+      v_limited int := 0;
+      v_other int := 0;
+      v_r text;
+      i int;
+      v_key uuid := (select id from public.team_agent_keys where key_hash = d1);
+    begin
+      perform dblink_exec('t3802k_c1', format(
+        $q$insert into public.team_agent_calls (key_id, owner_email, actor_uid, agent, tool, xact_id, started_at, outcome)
+           select %L, 'issue3802k-race-1@test.local', '38020000-0000-4000-e900-000000000001', 'claude', 'mcp:ping', '3'::xid8, clock_timestamp() - interval '5 seconds', 'ok'
+             from generate_series(1, 110)$q$, v_key));
+      select 120 - x::int into v_room from dblink('t3802k_c1', format(
+        $q$select count(*)::text from public.team_agent_calls where key_id = %L and outcome <> 'limited' and started_at > clock_timestamp() - interval '60 seconds'$q$, v_key)) as t(x text);
+      perform dblink_exec('t3802k_c1', 'begin');
+      perform * from dblink('t3802k_c1', format(
+        $q$select pg_advisory_xact_lock(hashtextextended('team_agent_limit:' || %L, 0))::text$q$, v_key::text)) as t(x text);
+      for i in 1..40 loop
+        perform dblink_connect('t3802k_p' || i, c_conn);
+        perform dblink_send_query('t3802k_p' || i, format($q$select public.team_agent_call(%L, 'mcp:ping', '{}'::jsonb, 'race/burst')::text$q$, d1));
+      end loop;
+      perform pg_sleep(0.5);
+      insert into t3802k_race.results (label, ok, detail)
+      select 'R-5 while another request for the key is in its step, the forty wait: none has been counted', count(*) = 120 - v_room, count(*)::text
+        from dblink('t3802k_c2', format($q$select 1 from public.team_agent_calls where key_id = %L and outcome <> 'limited' and started_at > clock_timestamp() - interval '60 seconds'$q$, v_key)) as t(x int);
+      perform dblink_exec('t3802k_c1', 'commit');
+      for i in 1..40 loop
+        select x into v_r from dblink_get_result('t3802k_p' || i) as t(x text);
+        if v_r::jsonb ->> 'ok' = 'true' then v_ok := v_ok + 1;
+        elsif v_r::jsonb #>> '{limited,token}' = 'rate_limited' then v_limited := v_limited + 1;
+        else v_other := v_other + 1;
+        end if;
+        perform dblink_disconnect('t3802k_p' || i);
+      end loop;
+      insert into t3802k_race.results (label, ok, detail)
+      values ('R-5 of forty at once, exactly the room that was left is served and the rest are told to wait',
+              v_room between 1 and 9 and v_ok = v_room and v_limited = 40 - v_room and v_other = 0,
+              format('room %s, served %s, told to wait %s, other %s', v_room, v_ok, v_limited, v_other));
+      insert into t3802k_race.results (label, ok, detail)
+      select 'R-5 the key was served exactly 120 times in the minute, never 121', count(*) = 120, count(*)::text
+        from dblink('t3802k_c2', format($q$select 1 from public.team_agent_calls where key_id = %L and outcome <> 'limited' and started_at > clock_timestamp() - interval '60 seconds'$q$, v_key)) as t(x int);
+      perform dblink_exec('t3802k_c1', format($q$delete from public.team_agent_calls where key_id = %L and tool = 'mcp:ping'$q$, v_key));
+    end;
+
     -- R-4: a key turned off in one session is refused by the next request in another.
     perform dblink_exec('t3802k_c1', $q$update public.team_agent_keys set revoked_at = now(), revoked_by = 'system', revoke_reason = 'owner'
      where owner_email = 'issue3802k-race-2@test.local'$q$);
@@ -1509,10 +1730,8 @@ begin
     insert into t3802k_race.results (label, ok, detail)
     values ('part 2 ran without an unexpected error', false, sqlstate || ': ' || sqlerrm);
   end;
-  foreach v_c in array array['t3802k_c1', 't3802k_c2'] loop
-    if v_c = any (coalesce(dblink_get_connections(), '{}')) then
-      perform dblink_disconnect(v_c);
-    end if;
+  foreach v_c in array coalesce(dblink_get_connections(), '{}') loop
+    perform dblink_disconnect(v_c);
   end loop;
 end;
 $race$;
@@ -1540,7 +1759,7 @@ drop extension if exists dblink;
 \endif
 drop schema t3802k_race cascade;
 
-select (:t3802k_race_total < 8 or :t3802k_race_failed > 0) as t3802k_race_bad \gset
+select (:t3802k_race_total < 11 or :t3802k_race_failed > 0) as t3802k_race_bad \gset
 \if :t3802k_race_bad
   \echo 'ISSUE-3802 AGENT KEYS FAILED (part 2):' :t3802k_race_failures
   do $$ begin raise exception 'ISSUE-3802 AGENT KEYS FAIL: real-session checks failed or did not run'; end $$;
