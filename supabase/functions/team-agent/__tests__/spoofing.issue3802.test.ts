@@ -16,6 +16,8 @@
 //   S-10  a key ended in the browser stops at the very next request
 //   S-11  the keys themselves cannot be reached through the connector
 //   S-12  guessing keys from one network address is slowed down
+//   S-13  nobody can make a working key wait, whatever they write in a
+//         forwarding header
 //
 // Run: node --experimental-strip-types --test --test-concurrency=1 <this file>
 import assert from "node:assert/strict";
@@ -581,11 +583,11 @@ test("#3802 S-12: thirty wrong keys from one network address, and that address w
   });
   assert.equal(blocked.status, 429);
   assert.equal(blocked.headers["retry-after"], "60");
-  // It holds for a good key from that address too, and not for anyone else.
+  // A working key from that same address is answered: only wrong keys wait.
   assert.equal(
     (await s.send({ key: s.keys["growth.claude"], headers: from, body }))
       .status,
-    429,
+    200,
   );
   assert.equal(
     (await s.send({ key: s.keys["growth.claude"], body })).status,
@@ -594,6 +596,82 @@ test("#3802 S-12: thirty wrong keys from one network address, and that address w
   // No guess reached a real key's record.
   const rows = await s.sql(
     "select count(*) from public.team_agent_calls where owner_email like 'issue3802s-%' and outcome = 'limited';",
+  );
+  assert.equal(rows[0], "0");
+});
+
+test("#3802 S-13: wrong keys never make a working key wait, whatever the sender writes in a forwarding header", async () => {
+  const body = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: { name: "get_started" },
+  };
+  const wrong = (n: number) => "mgla_c_" + String(n).padStart(43, "w");
+  const good = s.keys["admin.claude"];
+  // A flood of wrong keys from one address; the working key from that very address still answers, every time.
+  const from = { "x-forwarded-for": "203.0.113.77" };
+  for (let i = 0; i < 60; i++) {
+    const r = await s.send({ key: wrong(i), headers: from, body });
+    assert.equal(r.status, i < 30 ? 401 : 429, `wrong key ${i + 1}`);
+    if (i % 10 === 9) {
+      const ok = await s.send({ key: good, headers: from, body });
+      assert.equal(ok.status, 200, `the working key after ${i + 1} wrong ones`);
+      assert.equal(ok.json.result.structuredContent.me.email, s.emails.admin);
+    }
+  }
+  // A key that was ended is a wrong key like any other: it waits with the rest from its address.
+  const ended = await s.send({
+    key: s.keys["partner.claude"],
+    headers: from,
+    body,
+  });
+  assert.equal(ended.status, 429);
+  // The sender writes another person's address in front of its own: that person is not made to wait.
+  for (let i = 0; i < 40; i++) {
+    await s.send({
+      key: wrong(100 + i),
+      headers: { "x-forwarded-for": "198.51.100.200, 203.0.113.78" },
+      body,
+    });
+  }
+  assert.equal(
+    (await s.send({
+      key: wrong(200),
+      headers: { "x-forwarded-for": "198.51.100.200" },
+      body,
+    })).status,
+    401,
+    "an address only named by someone else was never counted",
+  );
+  assert.equal(
+    (await s.send({
+      key: wrong(201),
+      headers: { "x-forwarded-for": "9.9.9.9, 203.0.113.78" },
+      body,
+    })).status,
+    429,
+    "the real sender is, whatever it writes in front",
+  );
+  // No header, a header that is not an address, an over-long one: no bucket anyone can fill for others.
+  for (
+    const headers of [{ "x-forwarded-for": "" }, {
+      "x-forwarded-for": "unknown",
+    }, { "x-forwarded-for": "x".repeat(300) }]
+  ) {
+    for (let i = 0; i < 35; i++) {
+      await s.send({ key: wrong(300 + i), headers, body });
+    }
+    assert.equal(
+      (await s.send({ key: wrong(400), headers, body })).status,
+      401,
+    );
+    assert.equal((await s.send({ key: good, headers, body })).status, 200);
+  }
+  // None of it counted against the working key.
+  const rows = await s.sql(
+    "select count(*) from public.team_agent_calls where key_id = :'id' and outcome = 'limited';",
+    { id: s.ids["admin.claude"] },
   );
   assert.equal(rows[0], "0");
 });

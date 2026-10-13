@@ -13,6 +13,7 @@
 //   P-7   what the server keeps about a request, and what it never keeps
 //   P-8   the per-minute limit, end to end
 //   P-9   nothing here writes: the tools that arrive later do not exist yet
+//   P-10  an agent's today is the date on its person's screen
 //
 // Run: node --experimental-strip-types --test --test-concurrency=1 <this file>
 // with PGHOST, PGPORT, PGUSER, PGPASSWORD pointing at a replayed database.
@@ -570,4 +571,113 @@ test("#3802 P-9: nothing here writes: the tools that arrive later do not exist y
     { id: s.ids.alpha },
   );
   assert.deepEqual(after, before);
+});
+
+test("#3802 P-10: an agent's today is the date on its person's screen, and every date answer says which date and zone it used", async () => {
+  // What a browser in a given zone calls today (the home screen sends this).
+  const screenToday = (zone: string) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  // Two zones 25 hours apart: at any moment they are on different dates, so
+  // at least one of them is not the date in UTC.
+  const zones = ["Pacific/Kiritimati", "Pacific/Pago_Pago"];
+  assert.notEqual(screenToday(zones[0]), screenToday(zones[1]));
+  const made: Record<string, string> = {};
+  for (
+    const [who, zone] of [["admin", zones[0]], ["growth", zones[1]]] as const
+  ) {
+    const answer = JSON.parse(
+      await s.asPerson(
+        who,
+        `select public.team_agent_key_create('claude', '${zone}')::text`,
+      ),
+    );
+    assert.equal(answer.time_zone, zone);
+    made[zone] = answer.key;
+    const expected = screenToday(zone);
+    const day =
+      (await call(answer.key, "my_day")).json.result.structuredContent;
+    assert.deepEqual(day._dates, {
+      today: expected,
+      time_zone: zone,
+      zone_from: "your key",
+      date_from: "the clock",
+    });
+    assert.equal(
+      Object.keys(day)[1],
+      "_dates",
+      "the dates come first, after the note",
+    );
+    assert.equal(
+      day.today,
+      expected,
+      "the summary was worked out for that date",
+    );
+    // The same numbers the person's own screen gets for its own date.
+    const screen = JSON.parse(
+      await s.asPerson(
+        who,
+        `select public.crm_home_summary('${expected}')::text`,
+      ),
+    );
+    assert.deepEqual(day.due, screen.due);
+    assert.deepEqual(day.stages, screen.stages);
+    const found = (await call(answer.key, "find_records", {
+      pipeline: "hosts",
+      due: "today",
+    })).json.result.structuredContent;
+    assert.deepEqual(found._dates, {
+      today: expected,
+      time_zone: zone,
+      zone_from: "your key",
+      date_from: "the clock",
+    });
+  }
+  // The same key, asked for another zone or another date: the answer says so.
+  const other =
+    (await call(made[zones[0]], "my_day", { time_zone: zones[1] })).json.result
+      .structuredContent;
+  assert.deepEqual(other._dates, {
+    today: screenToday(zones[1]),
+    time_zone: zones[1],
+    zone_from: "this request",
+    date_from: "the clock",
+  });
+  const named =
+    (await call(made[zones[0]], "my_day", { today: screenToday("UTC") })).json
+      .result.structuredContent;
+  assert.equal(named._dates.today, screenToday("UTC"));
+  assert.equal(named._dates.date_from, "this request");
+  // A key made without a zone answers in UTC and says no zone is recorded.
+  const plain = (await call(s.keys["growth.codex"], "my_day")).json.result
+    .structuredContent;
+  assert.deepEqual(plain._dates, {
+    today: screenToday("UTC"),
+    time_zone: "UTC",
+    zone_from: "no zone is recorded for your key, so UTC",
+    date_from: "the clock",
+  });
+  // Refusals are plain words.
+  const badZone = await call(made[zones[0]], "my_day", {
+    time_zone: "Mars/Olympus_Mons",
+  });
+  assert.equal(
+    badZone.json.result.content[0].text,
+    'invalid_arguments: "time_zone" is missing or the wrong kind. Send a zone name such as America/New_York.',
+  );
+  const badDay = await call(made[zones[0]], "my_day", { today: "1999-01-01" });
+  assert.match(
+    badDay.json.result.content[0].text,
+    /^invalid_arguments: "today" is missing or the wrong kind\. Send your person's own date today/,
+  );
+  // A tool with no date in it says nothing about dates.
+  assert.equal(
+    "_dates" in
+      (await call(made[zones[0]], "get_started")).json.result.structuredContent,
+    false,
+  );
 });

@@ -25,10 +25,12 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   createTeamAgentHandler,
+  FAILED_KEYS_OVERALL_PER_MINUTE,
   FAILED_KEYS_PER_MINUTE,
   INSTRUCTIONS,
   MAX_BODY_BYTES,
   MIN_REFUSAL_MS,
+  platformAddress,
   renderGuideMarkdown,
   SUPPORTED_PROTOCOL_VERSIONS,
 } from "../teamAgentMcp.ts";
@@ -928,7 +930,7 @@ Deno.test("#3802 U-6: arguments of the wrong shape are refused in plain words an
     [
       "my_day",
       { actor_email: "owner@example.test" },
-      /"actor_email" is not something my_day takes\. It takes: today\./,
+      /"actor_email" is not something my_day takes\. It takes: today, time_zone\./,
     ],
     [
       "find_records",
@@ -1123,7 +1125,7 @@ Deno.test("#3802 U-7: thirty wrong keys from one address in a minute, and that a
   const from = (addr: string, key: string | null) =>
     post(rpc("ping"), {
       key,
-      headers: { "x-forwarded-for": `${addr}, 10.0.0.1` },
+      headers: { "x-forwarded-for": `10.0.0.1, ${addr}` },
     });
   assertEquals(FAILED_KEYS_PER_MINUTE, 30);
   for (let i = 0; i < 30; i++) {
@@ -1131,7 +1133,9 @@ Deno.test("#3802 U-7: thirty wrong keys from one address in a minute, and that a
     assertEquals(r.status, 401, `attempt ${i + 1}`);
     await r.body?.cancel();
   }
-  const blocked = await shape(await h.handler(from("203.0.113.9", KEY_GROWTH)));
+  const blocked = await shape(
+    await h.handler(from("203.0.113.9", KEY_UNKNOWN)),
+  );
   assertEquals(blocked.status, 429);
   assertEquals(blocked.headers["retry-after"], "60");
   assert(!blocked.body.includes("203.0.113.9"));
@@ -1651,4 +1655,252 @@ Deno.test("#3802 U-11: nothing in this part sends, and the function's platform s
     required_bundle_fields: {},
     required_top_level: [],
   });
+});
+
+// --------------------------------------------------------------------------
+// U-12 (rework): a working key is never made to wait by someone else's wrong
+// keys, and the address that is counted is one the sender cannot choose.
+// --------------------------------------------------------------------------
+const bad = (n: number) => "mgla_c_" + String(n).padStart(43, "b");
+const sendFrom = (forwarded: string | null, key: string | null) =>
+  post(rpc("ping"), {
+    key,
+    headers: forwarded === null ? {} : { "x-forwarded-for": forwarded },
+  });
+
+Deno.test("#3802 U-12: after any number of wrong keys from an address, a working key from that same address is answered at once", async () => {
+  const h = harness({ minRefusalMs: MIN_REFUSAL_MS });
+  for (let i = 0; i < 45; i++) {
+    const r = await h.handler(sendFrom("198.51.100.7", bad(i)));
+    assertEquals(r.status, i < 30 ? 401 : 429, `wrong key ${i + 1}`);
+    await r.body?.cancel();
+  }
+  const sleptBefore = h.slept.length;
+  for (const key of [KEY_GROWTH, KEY_OWNER]) {
+    const good = await shape(await h.handler(sendFrom("198.51.100.7", key)));
+    assertEquals(good.status, 200);
+    assertEquals(JSON.parse(good.body).result, {});
+  }
+  assertEquals(
+    h.slept.length,
+    sleptBefore,
+    "a working key is not slowed down either",
+  );
+  // The wrong keys from there are still told to wait, in the same time class as any refusal.
+  const still = await shape(await h.handler(sendFrom("198.51.100.7", bad(99))));
+  assertEquals(still.status, 429);
+  assertEquals(h.slept.at(-1), MIN_REFUSAL_MS);
+  assert(
+    Number(still.headers["retry-after"]) >= 1 &&
+      Number(still.headers["retry-after"]) <= 60,
+  );
+  assert(
+    !still.body.includes("198.51.100.7"),
+    "the answer never repeats an address",
+  );
+  // Every working key reached the gateway; a working key is looked up before any count is consulted.
+  assertEquals(
+    h.seen.filter((s) => s.hash === HASH_GROWTH || s.hash === HASH_OWNER)
+      .length,
+    2,
+  );
+});
+
+Deno.test("#3802 U-12: the address that is counted is the last one in the list, which the sender cannot choose", async () => {
+  assertEquals(platformAddress(sendFrom("203.0.113.5", null)), "203.0.113.5");
+  assertEquals(
+    platformAddress(sendFrom("1.1.1.1, 2.2.2.2, 203.0.113.5", null)),
+    "203.0.113.5",
+  );
+  assertEquals(
+    platformAddress(sendFrom("  spoofed , 203.0.113.5  ", null)),
+    "203.0.113.5",
+  );
+  assertEquals(
+    platformAddress(sendFrom("2001:db8::1, 2001:db8::2", null)),
+    "2001:db8::2",
+  );
+  for (
+    const none of [
+      null,
+      "",
+      " ",
+      ",",
+      "203.0.113.5,",
+      "unknown",
+      "x".repeat(70),
+      "203.0.113.5, " + "9".repeat(60),
+      "a b",
+      "<script>",
+      "203.0.113.5; drop",
+    ]
+  ) {
+    assertEquals(platformAddress(sendFrom(none, null)), null, String(none));
+  }
+  // Changing what the sender writes in front changes nothing: 30 and it waits.
+  const h = harness();
+  for (let i = 0; i < 30; i++) {
+    const r = await h.handler(
+      sendFrom(`10.9.${i}.1, made-up-${i}, 203.0.113.5`, bad(i)),
+    );
+    assertEquals(r.status, 401, `wrong key ${i + 1}`);
+    await r.body?.cancel();
+  }
+  const waits = await h.handler(sendFrom("172.16.0.1, 203.0.113.5", bad(31)));
+  assertEquals(waits.status, 429);
+  await waits.body?.cancel();
+  // Writing someone else's address in FRONT does not make them wait.
+  const victim = await h.handler(sendFrom("192.0.2.44", bad(32)));
+  assertEquals(
+    victim.status,
+    401,
+    "an address only named by another sender was never counted",
+  );
+  await victim.body?.cancel();
+  const h2 = harness();
+  for (let i = 0; i < 40; i++) {
+    await (await h2.handler(sendFrom("192.0.2.44, 203.0.113.5", bad(i)))).body
+      ?.cancel();
+  }
+  const real = await h2.handler(sendFrom("192.0.2.44", bad(41)));
+  assertEquals(
+    real.status,
+    401,
+    "the address written in front by someone else is not waiting",
+  );
+  await real.body?.cancel();
+});
+
+Deno.test("#3802 U-12: with no address to go by there is no shared bucket to fill, only an overall ceiling on wrong keys", async () => {
+  assertEquals(FAILED_KEYS_OVERALL_PER_MINUTE, 300);
+  const h = harness();
+  // Far more than 30 wrong keys with no usable address: nobody is made to wait by them.
+  for (const forwarded of [null, "x".repeat(70), "unknown"]) {
+    for (let i = 0; i < 40; i++) {
+      const r = await h.handler(sendFrom(forwarded, bad(i)));
+      assertEquals(r.status, 401, `${String(forwarded).slice(0, 8)} ${i + 1}`);
+      await r.body?.cancel();
+    }
+  }
+  // 120 so far. At 300 wrong keys in a minute from anywhere, wrong keys wait; working keys never do.
+  for (let i = 120; i < 300; i++) {
+    const r = await h.handler(sendFrom(`198.51.${i % 250}.${i % 200}`, bad(i)));
+    assertEquals(r.status, 401, `wrong key ${i + 1}`);
+    await r.body?.cancel();
+  }
+  const over = await h.handler(sendFrom(null, bad(301)));
+  assertEquals(over.status, 429);
+  await over.body?.cancel();
+  const overFresh = await h.handler(sendFrom("192.0.2.200", bad(302)));
+  assertEquals(
+    overFresh.status,
+    429,
+    "the overall ceiling covers every wrong key",
+  );
+  await overFresh.body?.cancel();
+  for (const forwarded of [null, "192.0.2.200", "x".repeat(70)]) {
+    const good = await h.handler(sendFrom(forwarded, KEY_GROWTH));
+    assertEquals(
+      good.status,
+      200,
+      "a working key is answered through the overall ceiling",
+    );
+    await good.body?.cancel();
+  }
+  h.tick(60_001);
+  const later = await h.handler(sendFrom(null, bad(303)));
+  assertEquals(
+    later.status,
+    401,
+    "a minute later wrong keys are plain refusals again",
+  );
+  await later.body?.cancel();
+});
+
+Deno.test("#3802 U-12: a date-relative answer starts by saying the date and time zone it used", async () => {
+  const dates = {
+    today: "2026-10-13",
+    time_zone: "America/New_York",
+    zone_from: "your key",
+    date_from: "the clock",
+  };
+  const h = harness({
+    answer: (tool) =>
+      tool === "my_day" || tool === "find_records"
+        ? {
+          ok: true,
+          result: { today: "2026-10-13", total: 0 },
+          me: { role: "growth", agent: "claude" },
+          dates,
+        }
+        : undefined,
+  });
+  for (
+    const [name, args] of [["my_day", {}], ["find_records", {
+      pipeline: "hosts",
+      due: "today",
+    }]] as const
+  ) {
+    const r = JSON.parse(
+      (await shape(
+        await h.handler(
+          post(rpc("tools/call", { name, arguments: args }), {
+            key: KEY_GROWTH,
+          }),
+        ),
+      )).body,
+    ).result;
+    assertEquals(Object.keys(r.structuredContent).slice(0, 2), [
+      "_note",
+      "_dates",
+    ]);
+    assertEquals(r.structuredContent._dates, dates);
+    assertEquals(JSON.parse(r.content[0].text)._dates, dates);
+  }
+  const plain = JSON.parse(
+    (await shape(
+      await h.handler(
+        post(rpc("tools/call", { name: "get_started" }), { key: KEY_GROWTH }),
+      ),
+    )).body,
+  ).result;
+  assertEquals(
+    "_dates" in plain.structuredContent,
+    false,
+    "a tool that uses no date says nothing about dates",
+  );
+  // The date tools take a date and a zone; the others do not.
+  for (const name of ["my_day", "team_summary", "find_records"]) {
+    const t = findTool(name)!;
+    assert(
+      Object.hasOwn(t.inputSchema.properties, "today") &&
+        Object.hasOwn(t.inputSchema.properties, "time_zone"),
+      name,
+    );
+    assertMatch(t.description, /person's own date/);
+    assert(t.description.length < 1900, name);
+    assert(
+      checkArguments(t, {
+        ...(name === "find_records" ? { pipeline: "hosts" } : {}),
+        time_zone: "America/Los_Angeles",
+        today: "2026-10-13",
+      }).ok,
+    );
+    for (const zone of ["", "America/New York", "x".repeat(65), "a;b", 7]) {
+      assertEquals(
+        checkArguments(t, {
+          ...(name === "find_records" ? { pipeline: "hosts" } : {}),
+          time_zone: zone,
+        }).ok,
+        false,
+        String(zone),
+      );
+    }
+  }
+  assertEquals(
+    Object.hasOwn(findTool("get_record")!.inputSchema.properties, "time_zone"),
+    false,
+  );
+  assert(INSTRUCTIONS.includes("Today means your person's own date"));
+  assert(INSTRUCTIONS.length <= 1900);
 });

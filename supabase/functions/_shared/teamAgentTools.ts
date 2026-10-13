@@ -79,6 +79,16 @@ const TODAY: ArgSchema = {
   pattern: "^\\d{4}-\\d{2}-\\d{2}$",
   hint: "Send a date such as 2026-10-13",
 };
+const TIME_ZONE: ArgSchema = {
+  type: "string",
+  minLength: 1,
+  maxLength: 64,
+  pattern: "^[A-Za-z0-9_+/-]{1,64}$",
+  hint: "Send a zone name such as America/New_York",
+};
+
+const DATES =
+  "Today is your person's own date: the time zone their key remembers, unless you pass time_zone (a zone name) or today (their date). The result starts with _dates, the date and zone it used; say them when the answer depends on the day.";
 
 function schema(
   properties: Record<string, ArgSchema>,
@@ -114,8 +124,9 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     title: "My day",
     description:
       "What is on this person's plate: the records they own that are due today or overdue, how many records sit in each stage, monthly targets with progress, and how many beta leads are new. Reads only. " +
+      DATES + " " +
       DATA_NOT_INSTRUCTIONS,
-    inputSchema: schema({ today: TODAY }),
+    inputSchema: schema({ today: TODAY, time_zone: TIME_ZONE }),
     annotations: READ,
     reaches: ["crm_home_summary"],
     writes: false,
@@ -127,7 +138,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "find_records",
     title: "Find records",
     description:
-      "Search one pipeline (hosts or creators), a page at a time, with each record's last touch and last reply inline; or count records by stage, ICP, region or owner with count_by. Filters: q (part of a name), stage, icp, region_id (ids from get_started), owner (me, none, or a team email), due (overdue, today, this_week = Monday to Sunday UTC, none), needs_reply (their message is the latest touch), no_touch (never contacted), updated_since. A page holds 25 records (100 at most); pass next_cursor back as cursor for the next page. Use this instead of reading a whole pipeline. " +
+      "Search one pipeline (hosts or creators), a page at a time, with each record's last touch and last reply inline; or count records by stage, ICP, region or owner with count_by. Filters: q (part of a name), stage, icp, region_id (ids from get_started), owner (me, none, or a team email), due (overdue, today, this_week = Monday to Sunday, none; measured from your person's own date, see _dates in the result; pass time_zone or today to change it), needs_reply (their message is the latest touch), no_touch (never contacted), updated_since. A page holds 25 records (100 at most); pass next_cursor back as cursor for the next page. Use this instead of reading a whole pipeline. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       pipeline: PIPELINE,
@@ -206,6 +217,8 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
         maximum: 100,
         hint: "Send a whole number from 1 to 100",
       },
+      today: TODAY,
+      time_zone: TIME_ZONE,
       cursor: {
         type: "string",
         maxLength: 200,
@@ -327,8 +340,9 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     title: "Team summary",
     description:
       "Owner and admin only: the team's numbers this week by person (touches, stage moves, records added, overdue), everything due across the team, stage counts and targets with progress. Anyone else is refused. " +
+      DATES + " " +
       DATA_NOT_INSTRUCTIONS,
-    inputSchema: schema({ today: TODAY }),
+    inputSchema: schema({ today: TODAY, time_zone: TIME_ZONE }),
     annotations: READ,
     reaches: ["crm_team_summary"],
     writes: false,
