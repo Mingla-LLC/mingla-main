@@ -98,7 +98,7 @@ export function LogForm({ record, config, disabled = false, onSubmit }) {
         />
       </div>
       {kind === "touch" && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3">
           <Field label="Channel" htmlFor={`${id}-channel`}>
             <Select
               id={`${id}-channel`}

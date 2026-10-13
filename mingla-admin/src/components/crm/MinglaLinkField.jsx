@@ -124,6 +124,11 @@ export function MinglaLinkField({ record, links, disabled = false, saving = fals
             Onboarded, unless the new brand also has a public listing.
           </p>
         )}
+        {hasBrand && !isLive && brand && !brand.is_live && record.stage !== "lost" && (
+          <p className="text-xs text-[var(--color-text-tertiary)]">
+            The card moves to Live by itself once this brand has a public listing. Nothing else to do here.
+          </p>
+        )}
         {!hasBrand && !isLive && (
           <p className="text-xs text-[var(--color-text-tertiary)]">
             Linking a brand moves the card to Onboarded. It moves to Live by itself once the brand has a

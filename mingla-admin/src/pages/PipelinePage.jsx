@@ -315,9 +315,7 @@ function PipelinePage({ pipeline, onTabChange }) {
       </div>
 
       {!online && (
-        <AlertCard variant="warning" title="You're offline">
-          {OFFLINE_WORDS}
-        </AlertCard>
+        <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>
       )}
 
       {loadError ? (

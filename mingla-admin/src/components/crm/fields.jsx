@@ -58,7 +58,7 @@ export function Segmented({ label, options, value, onChange, disabled = false, c
     <div
       role="group"
       aria-label={label}
-      className={`inline-flex max-w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-0.5 ${className}`}
+      className={`inline-flex max-w-full flex-wrap rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-0.5 ${className}`}
     >
       {options.map((o) => {
         const pressed = o.value === value;
@@ -72,7 +72,7 @@ export function Segmented({ label, options, value, onChange, disabled = false, c
               if (!pressed) onChange(o.value);
             }}
             className={[
-              "h-9 px-3 text-sm font-medium rounded-md whitespace-nowrap transition-colors duration-150",
+              "h-10 px-3 text-sm font-medium rounded-md whitespace-nowrap transition-colors duration-150",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]",
               pressed
                 ? "bg-[var(--color-brand-500)] text-white"

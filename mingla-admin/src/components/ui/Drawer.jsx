@@ -129,7 +129,7 @@ export function Drawer({ open, onClose, title, header, footer, suspended = false
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-5">{children}</div>
         {footer && (
           <div className="shrink-0 border-t border-[var(--gray-200)] px-4 py-3 sm:px-5">{footer}</div>
         )}
