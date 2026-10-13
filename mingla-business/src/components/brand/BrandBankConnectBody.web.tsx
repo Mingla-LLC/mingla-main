@@ -69,10 +69,14 @@ import {
 } from "../../utils/bankConnectFunnel";
 import {
   resolveBankConnectRail,
+  resolveBankConnectRailForCountry,
   type BankConnectProvider,
 } from "../../utils/bankConnectRail";
 import { isInviteFunnelValue } from "../../utils/inviteFunnelSignal";
-import { describePayoutCountrySwitchFailure } from "../../utils/payoutCountrySwitchCopy";
+import {
+  describePayoutCountrySwitchFailure,
+  PAYOUT_COUNTRY_PAYMENT_ACCOUNT_LOCKED_COPY,
+} from "../../utils/payoutCountrySwitchCopy";
 
 const TERMS_URL = ORGANISER_TERMS_URL;
 const PAYSTACK_PICKER_OPTIONS = [
@@ -80,13 +84,12 @@ const PAYSTACK_PICKER_OPTIONS = [
     code: "NG",
     name: "Nigeria",
     currency: "NGN",
-    sublabel: "Bank transfer via Paystack",
+    sublabel: "Bank transfer",
   },
 ] as const;
 const NO_EXTRA_OPTIONS = [] as const;
 // Shown under the country row when Nigeria is withheld (see railSwitchLocked).
-const PAYMENT_ACCOUNT_LOCKED_COPY =
-  "This brand already has a payment account. Contact support to change country.";
+const PAYMENT_ACCOUNT_LOCKED_COPY = PAYOUT_COUNTRY_PAYMENT_ACCOUNT_LOCKED_COPY;
 // The one payout country this screen offers beyond the card rail.
 const NIGERIA_COUNTRY = PAYSTACK_PICKER_OPTIONS[0].code;
 
@@ -148,9 +151,17 @@ export default function BrandBankConnectBody(): React.ReactElement {
     id?: string | string[];
     provider?: string | string[];
     from?: string | string[];
+    country?: string | string[];
   }>();
   const brandId = firstParam(params.id);
   const providerHint = firstParam(params.provider);
+  // #3645 — the card-rail country the organiser chose during brand creation.
+  // It outranks the brand's ADDRESS country as the picker's seed; anything
+  // that is not a supported card-rail country is ignored.
+  const chosenCountryHint = (() => {
+    const rail = resolveBankConnectRailForCountry(firstParam(params.country));
+    return rail !== null && rail.provider === "stripe" ? rail.countryCode : null;
+  })();
   // #948 W4 [web-skip-download] — invite-funnel phase gates the Back-hide + Skip
   // reveal. Exact-match on `?from=invite`; absent/other values keep Back + no Skip.
   const isInviteFunnel = isInviteFunnelValue(params.from);
@@ -202,10 +213,10 @@ export default function BrandBankConnectBody(): React.ReactElement {
   const canonicalRail = useMemo(
     () =>
       resolveBankConnectRail({
-        countryCode: brand?.countryCode,
+        countryCode: chosenCountryHint ?? brand?.countryCode,
         paymentProvider: brand?.paymentProvider ?? providerHint,
       }),
-    [brand?.countryCode, brand?.paymentProvider, providerHint],
+    [brand?.countryCode, brand?.paymentProvider, chosenCountryHint, providerHint],
   );
 
   const brandOnNigeriaRail =

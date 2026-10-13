@@ -47,7 +47,8 @@ import type {
 
 export interface ExperiencePricingStepProps {
   currencySymbol: string;
-  currency: string;
+  /** null when the brand has no currency yet (#3645): previews show no symbol. */
+  currency: string | null;
   pricingMode: ExperiencePricingMode;
   setPricingMode: (m: ExperiencePricingMode) => void;
   stops: ExperienceStopDraft[];

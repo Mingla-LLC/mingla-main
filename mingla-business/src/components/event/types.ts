@@ -9,6 +9,7 @@
  */
 
 import type { DraftEvent } from "../../store/draftEventStore";
+import type { Brand } from "../../types/brand";
 import type { ValidationError } from "../../utils/draftEventValidation";
 
 export interface StepBodyProps {
@@ -141,6 +142,12 @@ export interface StepBodyProps {
    * false-positive). Does NOT touch the publish-time pg_brand_can_collect gate.
    */
   chipInPayoutReady?: boolean;
+  /**
+   * #3645 — the brand this draft belongs to, for the inline "choose your payout
+   * country" prompt shown when money is entered on a brand with no currency.
+   * Optional and undefined-safe: steps that do not price anything ignore it.
+   */
+  payoutCountryBrand?: Brand | null;
   /**
    * Issue #3291 — the brand's saved location, when it has one. The Where step
    * uses it as the FIRST source of a rank-only proximity hint for address

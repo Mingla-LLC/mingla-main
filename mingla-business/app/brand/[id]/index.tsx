@@ -187,6 +187,15 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/brand/${brandId}/blasts` as never);
   };
 
+  // toward #3697 Wave 7 — brand Ads row → Blast → Ads credit.
+  // Account can open `/brand/{id}` without switching the active brand; Ads
+  // scopes the wallet through `useCurrentBrand()`, so set the pointer first.
+  const setCurrentBrandId = useCurrentBrandStore((s) => s.setCurrentBrandId);
+  const handleOpenAds = (brandId: string): void => {
+    setCurrentBrandId(brandId);
+    router.push("/(tabs)/marketing/ads" as never);
+  };
+
   // Cycle 7 FX1 — retired BrandProfileView TRANSITIONAL Toasts.
   const handleViewPublic = (brandSlug: string): void => {
     router.push(`/b/${brandSlug}` as never);
@@ -254,6 +263,7 @@ export default function BrandProfileRoute(): React.ReactElement {
         onAuditLog={handleOpenAuditLog}
         onWebsite={handleOpenWebsite}
         onBlasts={handleOpenBlasts}
+        onAds={handleOpenAds}
         onViewPublic={handleViewPublic}
         onCreateEvent={handleCreateEvent}
         onOpenEvent={handleOpenEvent}

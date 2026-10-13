@@ -117,6 +117,17 @@ export const FEATURE_REGISTRY: readonly SearchRegistryItem[] = [
     iconName: "template",
   },
   {
+    key: "marketing-ads",
+    type: "screen",
+    title: "Ads",
+    subtitle: "Ads credit, top-up and withdraw",
+    route: "/(tabs)/marketing/ads",
+    group: "goto",
+    minRank: 20,
+    synonyms: ["ad credit", "ads credit", "top up ads", "blast ads"],
+    iconName: "sparkle",
+  },
+  {
     key: "account",
     type: "screen",
     title: "Account",

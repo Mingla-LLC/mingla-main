@@ -40,6 +40,7 @@ import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 // #3372 — the chip-in money prefix reads "₦", not "NGN" (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 
 const ROW_BG = Platform.select({
   ios: glass.tint.profileBase,
@@ -213,6 +214,7 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
   updateDraft,
   brandDefaultCurrency,
   chipInPayoutReady,
+  payoutCountryBrand,
 }) => {
   const intelCapacityHighlight = useTurnoutFocusTarget("capacity");
   const capacityOn = draft.rsvpCapacity !== null;
@@ -391,6 +393,13 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
               cents={draft.rsvpContributionMinCents}
               onChange={(c) => updateDraft({ rsvpContributionMinCents: c })}
               testID="rsvp-contribution-min"
+            />
+            {/* #3645 — chip-ins on a brand with no currency ask for the payout
+                country here, in place. */}
+            <PayoutCountryInlinePrompt
+              brand={payoutCountryBrand}
+              priced
+              testID="rsvp-contribution-payout-country-prompt"
             />
             {/* ORCH-1335 / #3645 — callout mirrors charge readiness
                 (`isChipInPayoutReady` → pg_brand_can_collect). READY copy must

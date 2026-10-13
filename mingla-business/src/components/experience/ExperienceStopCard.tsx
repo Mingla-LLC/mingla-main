@@ -379,7 +379,9 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
             {priceError ? (
               <Text style={styles.inlineError}>{priceError}</Text>
             ) : (
-              <Text style={styles.helper}>{`Buyers see ${currencySymbol} prices.`}</Text>
+              <Text style={styles.helper}>{currencySymbol.trim().length > 0
+                  ? `Buyers see ${currencySymbol} prices.`
+                  : "Your currency is set when you choose a payout country."}</Text>
             )}
           </>
         ) : null}
