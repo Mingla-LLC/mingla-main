@@ -44,7 +44,10 @@
     },
     "ad-credit": {
       "migration_fallback_top_level": [],
-      "optional_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
       "required_bundle_fields": {},
       "required_top_level": []
     },

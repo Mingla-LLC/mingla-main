@@ -1,9 +1,8 @@
 /**
- * toward #3697 Wave 7 — Host Ads credit client (Wave 6 `ad-credit` edge).
+ * toward #3697 Wave 7 / 7b — Host Ads credit client (`ad-credit` edge).
  *
- * Mirrors growthToolsService: `supabase.functions.invoke` + typed errors.
- * Mutating apply_* stays for the charge/refund adapter follow-up; this
- * surface reads the wallet and quotes top-up / withdraw fee splits.
+ * Wave 7: wallet + quotes. Wave 7b: Stripe platform top-up start/apply
+ * (USD/GBP). Withdraw refund + Paystack stay deferred.
  */
 
 import { supabase } from "./supabase";
@@ -66,6 +65,34 @@ export type AdCreditWithdrawQuote = {
   refund_cents: number;
   fee_returned_cents: number;
   note?: string;
+};
+
+export type AdCreditStartTopUpSheet = {
+  ok: true;
+  kind: "requires_payment_sheet";
+  client_secret: string;
+  payment_intent_id: string;
+  quote: AdCreditTopUpQuote;
+};
+
+export type AdCreditStartTopUpRedirect = {
+  ok: true;
+  kind: "requires_checkout_redirect";
+  url: string;
+  checkout_session_id: string;
+  payment_intent_id: string | null;
+  quote: AdCreditTopUpQuote;
+};
+
+export type AdCreditStartTopUpResult =
+  | AdCreditStartTopUpSheet
+  | AdCreditStartTopUpRedirect;
+
+export type AdCreditApplyTopUpResult = {
+  ok: true;
+  quote: AdCreditTopUpQuote;
+  result: unknown;
+  payment_ref: string;
 };
 
 async function invokeAdCredit<T>(
@@ -133,5 +160,48 @@ export async function quoteAdCreditWithdraw(
   return invokeAdCredit<AdCreditWithdrawQuote>({
     action: "quote_withdraw",
     credit_cents: creditCents,
+  });
+}
+
+export async function startAdCreditTopUp(input: {
+  brandId: string;
+  payCents: number;
+  currency: string;
+  /** Web Checkout return URL; omit on native for PaymentSheet. */
+  returnUrl?: string;
+  idempotencyKey?: string;
+}): Promise<AdCreditStartTopUpResult> {
+  return invokeAdCredit<AdCreditStartTopUpResult>({
+    action: "start_top_up",
+    brand_id: input.brandId,
+    pay_cents: input.payCents,
+    currency: input.currency,
+    ...(input.returnUrl ? { return_url: input.returnUrl } : {}),
+    ...(input.idempotencyKey
+      ? { idempotency_key: input.idempotencyKey }
+      : {}),
+  });
+}
+
+export async function applyAdCreditTopUp(input: {
+  brandId: string;
+  payCents: number;
+  currency: string;
+  paymentRef?: string;
+  checkoutSessionId?: string;
+  idempotencyKey?: string;
+}): Promise<AdCreditApplyTopUpResult> {
+  return invokeAdCredit<AdCreditApplyTopUpResult>({
+    action: "apply_top_up",
+    brand_id: input.brandId,
+    pay_cents: input.payCents,
+    currency: input.currency,
+    ...(input.paymentRef ? { payment_ref: input.paymentRef } : {}),
+    ...(input.checkoutSessionId
+      ? { checkout_session_id: input.checkoutSessionId }
+      : {}),
+    ...(input.idempotencyKey
+      ? { idempotency_key: input.idempotencyKey }
+      : {}),
   });
 }

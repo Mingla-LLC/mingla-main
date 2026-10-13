@@ -1,11 +1,11 @@
 /**
- * toward #3697 Wave 7 — Blast → Ads (credit balance + history).
+ * toward #3697 Wave 7 / 7b — Blast → Ads (credit balance + history + Stripe top-up).
  *
- * Host campaigns / Ari plan-pay / live-ad Home cards land in follow-ups.
- * This surface consumes Wave 6 `ad-credit` for wallet truth.
+ * Host campaigns / Ari plan-pay / live-ad Home cards / withdraw refund land later.
  */
 
-import React, { useCallback, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -33,7 +33,18 @@ import {
 import { useAdCreditWallet } from "../../../../src/hooks/marketing/useAdCreditWallet";
 import { useCanManageBrandPayments } from "../../../../src/hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
+import { applyAdCreditTopUp } from "../../../../src/services/adCreditService";
 import { formatCurrency } from "../../../../src/utils/currency";
+
+function firstParam(
+  value: string | string[] | undefined,
+): string | null {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (Array.isArray(value) && typeof value[0] === "string" && value[0].length > 0) {
+    return value[0];
+  }
+  return null;
+}
 
 export default function MarketingAdsRoute(): React.ReactElement {
   const brand = useCurrentBrand();
@@ -41,10 +52,64 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const walletQuery = useAdCreditWallet(brandId);
   const manage = useCanManageBrandPayments(brandId);
   const [sheetMode, setSheetMode] = useState<AdCreditQuoteMode | null>(null);
+  const [returnNotice, setReturnNotice] = useState<string | null>(null);
+  const params = useLocalSearchParams<{
+    ad_credit_top_up?: string | string[];
+    session_id?: string | string[];
+    payment?: string | string[];
+  }>();
+  const router = useRouter();
+  const appliedSessionRef = useRef<string | null>(null);
 
   const onRefresh = useCallback(() => {
     void walletQuery.refetch();
   }, [walletQuery]);
+
+  // Web Checkout return: ?ad_credit_top_up=1&session_id=cs_...
+  useEffect(() => {
+    const flag = firstParam(params.ad_credit_top_up);
+    const sessionId = firstParam(params.session_id);
+    const payment = firstParam(params.payment);
+    if (payment === "cancelled" || flag === "0") {
+      setReturnNotice("Checkout canceled. Credit was not added.");
+      router.replace("/(tabs)/marketing/ads" as never);
+      return;
+    }
+    if (flag !== "1" || sessionId === null || brandId === null) return;
+    if (appliedSessionRef.current === sessionId) return;
+    if (!manage.allowed || manage.isLoading) return;
+
+    appliedSessionRef.current = sessionId;
+    void (async () => {
+      try {
+        // Edge reads pay/currency from the Checkout Session's PaymentIntent.
+        await applyAdCreditTopUp({
+          brandId,
+          payCents: 0,
+          currency: "USD",
+          checkoutSessionId: sessionId,
+        });
+        setReturnNotice("Ads credit added.");
+        await walletQuery.refetch();
+      } catch {
+        setReturnNotice(
+          "Payment returned but credit was not added. Try again or contact support.",
+        );
+        appliedSessionRef.current = null;
+      } finally {
+        router.replace("/(tabs)/marketing/ads" as never);
+      }
+    })();
+  }, [
+    brandId,
+    manage.allowed,
+    manage.isLoading,
+    params.ad_credit_top_up,
+    params.payment,
+    params.session_id,
+    router,
+    walletQuery,
+  ]);
 
   if (brandId === null) {
     return (
@@ -135,6 +200,11 @@ export default function MarketingAdsRoute(): React.ReactElement {
           />
         }
       >
+        {returnNotice !== null ? (
+          <Text style={styles.notice} testID="ads-return-notice">
+            {returnNotice}
+          </Text>
+        ) : null}
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.kicker}>Available credit</Text>
           <Text style={styles.balance} testID="ads-credit-balance">
@@ -193,10 +263,14 @@ export default function MarketingAdsRoute(): React.ReactElement {
         <AdCreditQuoteSheet
           visible
           mode={sheetMode}
+          brandId={brandId}
           currency={currency}
           balanceCents={balanceCents}
           canManage={manage.allowed}
           onClose={() => setSheetMode(null)}
+          onTopUpApplied={() => {
+            void walletQuery.refetch();
+          }}
         />
       ) : null}
     </View>
@@ -213,6 +287,10 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.xxl,
     gap: spacing.md,
+  },
+  notice: {
+    ...typography.caption,
+    color: textTokens.secondary,
   },
   kicker: {
     ...typography.caption,

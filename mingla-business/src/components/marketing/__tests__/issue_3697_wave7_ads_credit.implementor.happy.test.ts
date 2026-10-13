@@ -46,7 +46,8 @@ describe("issue #3697 Wave 7 Ads credit Host surface", () => {
     expect(svc).toContain('action: "get_wallet"');
     expect(svc).toContain('action: "quote_top_up"');
     expect(svc).toContain('action: "quote_withdraw"');
-    expect(svc).not.toContain("apply_top_up");
+    expect(svc).toContain('action: "start_top_up"');
+    expect(svc).toContain('action: "apply_top_up"');
     expect(svc).not.toContain("apply_withdraw");
   });
 
@@ -72,6 +73,16 @@ describe("issue #3697 Wave 7 Ads credit Host surface", () => {
     expect(sheet).toContain("[majorText, mode]");
     expect(sheet).toContain("mapAdCreditQuoteError");
   });
+
+  it("Wave 7b: Confirm and pay + Checkout return wiring", () => {
+    const sheet = read("src/components/marketing/AdCreditQuoteSheet.tsx");
+    expect(sheet).toContain("ad-credit-quote-confirm-pay");
+    expect(sheet).toContain("startAdCreditTopUp");
+    expect(sheet).toContain("applyAdCreditTopUp");
+    const route = read("app/(tabs)/marketing/ads/index.tsx");
+    expect(route).toContain("checkoutSessionId");
+    expect(route).toContain("ad_credit_top_up");
+  });
 });
 
 describe("mapAdCreditQuoteError", () => {
@@ -90,7 +101,12 @@ describe("mapAdCreditQuoteError", () => {
       mapAdCreditQuoteError(
         new AdCreditAppError("validation_error", "x", "currency_unsupported"),
       ),
-    ).toMatch(/not supported/i);
+    ).toMatch(/USD and GBP/i);
+    expect(
+      mapAdCreditQuoteError(
+        new AdCreditAppError("validation_error", "x", "payment_not_succeeded"),
+      ),
+    ).toMatch(/did not complete/i);
   });
 
   it("never surfaces unknown machine tokens", () => {
@@ -98,7 +114,7 @@ describe("mapAdCreditQuoteError", () => {
       mapAdCreditQuoteError(
         new AdCreditAppError("validation_error", "x", "some_new_token"),
       ),
-    ).toBe("Could not quote. Try again.");
+    ).toBe("Could not complete Ads credit. Try again.");
     expect(mapAdCreditQuoteError(new Error("boom"))).toBe(
       "Could not quote. Try again.",
     );

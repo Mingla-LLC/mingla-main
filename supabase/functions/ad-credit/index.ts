@@ -1,14 +1,15 @@
 /**
- * ad-credit — toward #3697 Wave 6 (D2 / D12).
+ * ad-credit — toward #3697 Wave 6 / Wave 7b.
  *
- * Host Ads credit quotes + ledger applies. Payment capture / card refund
- * execution stays with Stripe/Paystack callers (Wave 7 UI + webhooks); this
- * function records the wallet after a successful charge and when withdrawing.
+ * Host Ads credit quotes + ledger applies. Wave 7b: platform Stripe top-up
+ * (`start_top_up`) and PaymentIntent verify before `apply_top_up`. Withdraw
+ * card refund + Paystack/NGN stay with the caller follow-up.
  *
  * Actions:
  *   quote_top_up    — fee split + min/max (auth required; no brand gate)
  *   quote_withdraw  — estimate only; live refund uses FIFO lots at apply
- *   apply_top_up    — after payment succeeds (payment_ref required)
+ *   start_top_up    — create platform PI (native) or Checkout Session (web)
+ *   apply_top_up    — after payment succeeds (payment_ref or checkout_session_id)
  *   apply_withdraw  — debit wallet via FIFO lots; returns refund_cents
  *   get_wallet      — balance + recent ledger (payment view authority)
  */
@@ -21,6 +22,12 @@ import {
   quoteTopUp,
   quoteWithdraw,
 } from "../_shared/adMoney.ts";
+import {
+  adCreditTopUpMetadata,
+  isAdCreditStripeTopUpCurrency,
+  verifyAdCreditTopUpPaymentIntent,
+} from "../_shared/adCreditStripe.ts";
+import { stripeTicketCheckout } from "../_shared/stripe.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -139,20 +146,199 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "forbidden", detail: "permission_denied" }, 403);
   }
 
-  if (action === "apply_top_up") {
+  // Wave 7b: platform Stripe top-up (host → Mingla). Reuses TICKET_CHECKOUT
+  // RAK for platform PIs — no stripeAccount, no application_fee.
+  if (action === "start_top_up") {
     const payCents = typeof body.pay_cents === "number" ? body.pay_cents : NaN;
     const currency = typeof body.currency === "string" ? body.currency : "USD";
-    const paymentRef = typeof body.payment_ref === "string"
+    const returnUrl = typeof body.return_url === "string"
+      ? body.return_url.trim()
+      : "";
+    const clientIdem = typeof body.idempotency_key === "string"
+      ? body.idempotency_key.trim()
+      : "";
+
+    const quoted = quoteTopUp(payCents, currency);
+    if (!quoted.ok) return json({ error: quoted.error, detail: quoted.detail }, 400);
+    if (!isAdCreditStripeTopUpCurrency(quoted.currency)) {
+      return json({
+        error: "validation_error",
+        detail: "currency_unsupported",
+      }, 400);
+    }
+
+    const meta = adCreditTopUpMetadata({
+      brandId,
+      payCents: quoted.pay_cents,
+      currency: quoted.currency,
+      actorId: user.id,
+    });
+    const stripe = stripeTicketCheckout();
+    const idemBase = clientIdem || crypto.randomUUID();
+    const createIdem =
+      `ad_credit_top_up:${brandId}:${quoted.pay_cents}:${quoted.currency}:${idemBase}`
+        .slice(0, 240);
+
+    try {
+      if (returnUrl.length > 0) {
+        if (!/^https:\/\//i.test(returnUrl) && !/^mingla-business:\/\//i.test(returnUrl)) {
+          return json({
+            error: "validation_error",
+            detail: "return_url_invalid",
+          }, 400);
+        }
+        const sep = returnUrl.includes("?") ? "&" : "?";
+        const successUrl =
+          `${returnUrl}${sep}ad_credit_top_up=1&session_id={CHECKOUT_SESSION_ID}`;
+        const cancelUrl =
+          `${returnUrl}${sep}ad_credit_top_up=0&payment=cancelled`;
+
+        // Platform Checkout Session (no stripeAccount) — host pays Mingla.
+        const session = await stripe.checkout.sessions.create(
+          {
+            mode: "payment",
+            currency: quoted.currency.toLowerCase(),
+            line_items: [{
+              price_data: {
+                currency: quoted.currency.toLowerCase(),
+                unit_amount: quoted.pay_cents,
+                product_data: { name: "Mingla Ads credit" },
+              },
+              quantity: 1,
+            }],
+            payment_intent_data: {
+              metadata: meta,
+              statement_descriptor_suffix: "ADS CREDIT",
+            },
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            metadata: meta,
+          },
+          { idempotencyKey: `cs:${createIdem}` },
+        );
+        if (!session.url) {
+          return json({ error: "apply_failed", detail: "checkout_url_missing" }, 502);
+        }
+        const piId = typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id ?? null;
+        return json({
+          ok: true,
+          kind: "requires_checkout_redirect",
+          url: session.url,
+          checkout_session_id: session.id,
+          payment_intent_id: piId,
+          quote: quoted,
+        });
+      }
+
+      const pi = await stripe.paymentIntents.create(
+        {
+          amount: quoted.pay_cents,
+          currency: quoted.currency.toLowerCase(),
+          payment_method_types: ["card", "link"],
+          metadata: meta,
+          statement_descriptor_suffix: "ADS CREDIT",
+        },
+        { idempotencyKey: createIdem },
+      );
+      if (!pi.client_secret) {
+        return json({
+          error: "apply_failed",
+          detail: "client_secret_missing",
+        }, 502);
+      }
+      // Host uses its bundled EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY (platform PI;
+      // no Connect stripeAccountId). Avoid resolvePublishableKey here so
+      // ad-credit does not pull unclassified publishable-key literals.
+      return json({
+        ok: true,
+        kind: "requires_payment_sheet",
+        client_secret: pi.client_secret,
+        payment_intent_id: pi.id,
+        quote: quoted,
+      });
+    } catch (e) {
+      console.error("[ad-credit] start_top_up stripe failed:", e);
+      return json({
+        error: "apply_failed",
+        detail: "stripe_start_failed",
+      }, 502);
+    }
+  }
+
+  if (action === "apply_top_up") {
+    let payCents = typeof body.pay_cents === "number" ? body.pay_cents : NaN;
+    let currency = typeof body.currency === "string" ? body.currency : "USD";
+    let paymentRef = typeof body.payment_ref === "string"
       ? body.payment_ref.trim()
+      : "";
+    const checkoutSessionId = typeof body.checkout_session_id === "string"
+      ? body.checkout_session_id.trim()
       : "";
     const idempotencyKey = typeof body.idempotency_key === "string"
       ? body.idempotency_key.trim()
       : "";
-    if (!paymentRef) {
+    if (!paymentRef && !checkoutSessionId) {
       return json({ error: "validation_error", detail: "payment_ref_required" }, 400);
     }
-    const quoted = quoteTopUp(payCents, currency);
-    if (!quoted.ok) return json({ error: quoted.error, detail: quoted.detail }, 400);
+
+    // Reuses TICKET_CHECKOUT RAK — platform retrieve (no stripeAccount).
+    const stripe = stripeTicketCheckout();
+    let quoted;
+    try {
+      if (!paymentRef && checkoutSessionId) {
+        const session = await stripe.checkout.sessions.retrieve(checkoutSessionId);
+        const piField = session.payment_intent;
+        paymentRef = typeof piField === "string"
+          ? piField
+          : (piField && typeof piField === "object" && "id" in piField
+            ? String((piField as { id: string }).id)
+            : "");
+        if (!paymentRef) {
+          return json({
+            error: "validation_error",
+            detail: "payment_not_found",
+          }, 400);
+        }
+      }
+
+      const pi = await stripe.paymentIntents.retrieve(paymentRef);
+      // Checkout return may omit pay_cents — PI amount/currency are authority.
+      if (checkoutSessionId || !Number.isFinite(payCents) || payCents <= 0) {
+        payCents = typeof pi.amount === "number" ? pi.amount : NaN;
+        currency = typeof pi.currency === "string"
+          ? pi.currency.toUpperCase()
+          : currency;
+      }
+      quoted = quoteTopUp(payCents, currency);
+      if (!quoted.ok) {
+        return json({ error: quoted.error, detail: quoted.detail }, 400);
+      }
+      if (!isAdCreditStripeTopUpCurrency(quoted.currency)) {
+        return json({
+          error: "validation_error",
+          detail: "currency_unsupported",
+        }, 400);
+      }
+      const verified = verifyAdCreditTopUpPaymentIntent(pi, {
+        brandId,
+        payCents: quoted.pay_cents,
+        currency: quoted.currency,
+      });
+      if (!verified.ok) {
+        return json({
+          error: "validation_error",
+          detail: verified.detail,
+        }, 400);
+      }
+    } catch (e) {
+      console.error("[ad-credit] apply_top_up verify failed:", e);
+      return json({
+        error: "validation_error",
+        detail: "payment_not_found",
+      }, 400);
+    }
 
     const { data, error } = await supabase.rpc("ad_credit_apply", {
       p_brand_id: brandId,
@@ -174,7 +360,7 @@ serve(async (req: Request): Promise<Response> => {
         detail: error.message,
       }, 409);
     }
-    return json({ ok: true, quote: quoted, result: data });
+    return json({ ok: true, quote: quoted, result: data, payment_ref: paymentRef });
   }
 
   if (action === "apply_withdraw") {

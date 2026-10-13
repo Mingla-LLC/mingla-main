@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-13 — Hosts can add Ads credit with a card (USD/GBP): Confirm and pay after the fee preview, Stripe charges Mingla's platform account, and credit lands only after the payment is verified (toward #3697, PR #TBD)
 - 2026-10-12 — Host Blast now has an Ads tab: see Ads credit balance and history, preview fee-inclusive top-up and withdraw quotes, and open Ads from the brand page (toward #3697, PR #3815)
 - 2026-10-13 — Mingla Admin homes are real: Sales and marketing see what is due today, Founding partners see hosts and creators by stage, owners and admins get a Team dashboard and set monthly host targets; Beta leads opens to the whole team with one "Add to Hosts" button; an invite to an address that cannot be used is refused when it is sent; two people can no longer move the same card to different stages at once (toward #3802, PR #3821)
 - 2026-10-12 — Someone who opens a brand invitation while signed in with a different email now sees the "Wrong account" screen, which names the invited email and the signed-in email and offers a way to switch accounts, instead of "Invitation not found"; the invitation itself was always valid (toward #3259, PR #3817)
