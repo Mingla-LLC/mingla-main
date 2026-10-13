@@ -47,6 +47,7 @@ import { TripCreatorWizard } from "../../../src/components/trip/TripCreatorWizar
 import { EditPublishedTripScreen } from "../../../src/components/trip/EditPublishedTripScreen";
 import { Button } from "../../../src/components/ui/Button";
 import { TRIP_DRAFT_PLACEHOLDER_TITLE } from "../../../src/services/tripsService";
+import { markJustPublished } from "../../../src/utils/justPublishedSignal";
 
 export default function TripEditRoute(): React.ReactElement {
   const router = useRouter();
@@ -300,7 +301,10 @@ export default function TripEditRoute(): React.ReactElement {
           });
         }
       }}
+      // issue #3237 — the trip dashboard confirms the publish and offers
+      // Share + the public page (it used to open with no confirmation).
       onPublished={(published) => {
+        markJustPublished(published.id);
         router.replace(`/trip/${published.id}` as never);
       }}
       onExit={() => router.back()}

@@ -266,16 +266,16 @@ begin
 
   perform pg_temp.t3802_check('T-3', 'owner access',
     pg_temp.t3802_j(pg_temp.t3802_as('owner', $q$select public.admin_team_my_access()::text$q$)),
-    pg_temp.t3802_j('{"email":"issue3802-owner@test.local","role":"owner","status":"active","areas":["admin_console","team_manage"]}'));
+    pg_temp.t3802_j('{"email":"issue3802-owner@test.local","role":"owner","status":"active","areas":["admin_console","team_manage","crm","beta_leads"]}'));
   perform pg_temp.t3802_check('T-3', 'admin access',
     pg_temp.t3802_j(pg_temp.t3802_as('admin', $q$select public.admin_team_my_access()::text$q$)),
-    pg_temp.t3802_j('{"email":"issue3802-admin@test.local","role":"admin","status":"active","areas":["admin_console"]}'));
+    pg_temp.t3802_j('{"email":"issue3802-admin@test.local","role":"admin","status":"active","areas":["admin_console","crm","beta_leads"]}'));
   perform pg_temp.t3802_check('T-3', 'growth access',
     pg_temp.t3802_j(pg_temp.t3802_as('growth', $q$select public.admin_team_my_access()::text$q$)),
-    pg_temp.t3802_j('{"email":"issue3802-growth@test.local","role":"growth","status":"active","areas":["role_home"]}'));
+    pg_temp.t3802_j('{"email":"issue3802-growth@test.local","role":"growth","status":"active","areas":["role_home","crm","beta_leads"]}'));
   perform pg_temp.t3802_check('T-3', 'partner access',
     pg_temp.t3802_j(pg_temp.t3802_as('partner', $q$select public.admin_team_my_access()::text$q$)),
-    pg_temp.t3802_j('{"email":"issue3802-partner@test.local","role":"partner","status":"active","areas":["role_home"]}'));
+    pg_temp.t3802_j('{"email":"issue3802-partner@test.local","role":"partner","status":"active","areas":["role_home","crm","beta_leads"]}'));
   perform pg_temp.t3802_check('T-3', 'invitee access (invited, no areas)',
     pg_temp.t3802_j(pg_temp.t3802_as('invitee', $q$select public.admin_team_my_access()::text$q$)),
     pg_temp.t3802_j('{"email":"issue3802-invitee@test.local","role":"partner","status":"invited","areas":[]}'));
@@ -481,7 +481,7 @@ begin
 
   r := pg_temp.t3802_as('invitee', $q$select public.admin_team_activate_self()::text$q$);
   perform pg_temp.t3802_check('T-9', 'invitee activation result', pg_temp.t3802_j(r),
-    pg_temp.t3802_j('{"email":"issue3802-invitee@test.local","role":"partner","status":"active","areas":["role_home"]}'));
+    pg_temp.t3802_j('{"email":"issue3802-invitee@test.local","role":"partner","status":"active","areas":["role_home","crm","beta_leads"]}'));
   perform pg_temp.t3802_check('T-9', 'invitee row is active with the invited role',
     (select role || '/' || status || '/' || (accepted_at is not null)::text
        from public.admin_team_members where email = 'issue3802-invitee@test.local'),

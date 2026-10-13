@@ -78,6 +78,7 @@ import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 import { isDraftDirty } from "../../../src/utils/draftDirtyCheck";
 import { brandPaymentOnboardingRoute } from "../../../src/utils/paidPublishGuards";
 import { formatEventLiveToast } from "../../../src/utils/eventPublishCopy";
+import { markJustPublished } from "../../../src/utils/justPublishedSignal";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -197,6 +198,9 @@ export default function EventEditRoute(): React.ReactElement {
   const autosave = useServerDraftAutosave();
   const discardServerDraft = useDiscardServerDraft();
   const publishServerDraft = usePublishBusinessEventDraft();
+  // issue #3237 — the id the publish RPC actually wrote, read by handleExit so
+  // the host lands on that event's manage screen.
+  const publishedEventIdRef = React.useRef<string | null>(null);
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const migratingLegacyIdRef = React.useRef<string | null>(null);
   // #1022 A/F-7 — set when an autosave is requested while a d_* promotion
@@ -502,12 +506,16 @@ export default function EventEditRoute(): React.ReactElement {
           visible: true,
           message: formatEventLiveToast(name, ctx?.slug?.occurrenceCount),
         });
-        // Cycle 6 — route to the new public event page when slug is
-        // provided. Falls back to home tab when slug missing (e.g.
-        // pre-Cycle-6 draft or publish-failed-but-flagged-published).
-        if (ctx?.slug !== undefined) {
+        // issue #3237 — land on the event's manage screen, which confirms the
+        // publish and offers Share + the public page. The buyer's page (the
+        // old destination) has no way back for the host. Falls back to the
+        // Events tab when the published id is unknown.
+        const publishedEventId = publishedEventIdRef.current;
+        publishedEventIdRef.current = null;
+        if (publishedEventId !== null && publishedEventId.length > 0) {
+          markJustPublished(publishedEventId);
           router.replace(
-            `/e/${ctx.slug.brandSlug}/${ctx.slug.eventSlug}` as never,
+            `/event/${encodeURIComponent(publishedEventId)}` as never,
           );
         } else {
           router.replace(safeEventsExitRoute() as never);
@@ -887,6 +895,8 @@ export default function EventEditRoute(): React.ReactElement {
       onDiscardServerDraft={handleDiscardDraft}
       onPublishDraft={async (draftToPublish, invites) => {
         const published = await publishServerDraft.publishDraft(draftToPublish, invites);
+        publishedEventIdRef.current =
+          published.event.serverEventId ?? published.event.id;
         return {
           brandSlug: published.brand.slug,
           eventSlug: published.event.eventSlug,

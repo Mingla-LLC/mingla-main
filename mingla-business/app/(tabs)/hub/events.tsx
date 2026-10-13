@@ -62,6 +62,7 @@ import { DraftSelectBar } from "../../../src/components/offering/DraftSelectBar"
 import { useDraftMultiSelect } from "../../../src/hooks/useDraftMultiSelect";
 import { useDiscardOfferingDrafts } from "../../../src/hooks/useDiscardOfferingDrafts";
 import { HapticFeedback } from "../../../src/utils/hapticFeedback";
+import { eventUnpublishFailureCopy } from "../../../src/utils/eventUnpublishFailureCopy";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import {
   useDiscardServerDraft,
@@ -473,13 +474,8 @@ export default function EventsTab(): React.ReactElement {
       setToast({ visible: true, message: "Event moved back to drafts." });
       router.push(`/event/${result.event.id}/edit` as never);
     } catch (error) {
-      const code = error instanceof Error ? error.message : "unpublish_failed";
-      setToast({
-        visible: true,
-        message: code.includes("event_unpublish_has_commitments")
-          ? "This event has buyer activity and cannot be unpublished. Cancel it instead."
-          : "Could not unpublish this event. Try again.",
-      });
+      // #3645 — the rejection is a bare PostgREST object, not an Error.
+      setToast({ visible: true, message: eventUnpublishFailureCopy(error) });
     }
   }, [manageCtx, router, serverBackedEventIds]);
 

@@ -301,7 +301,7 @@ begin
     (select string_agg(n.nspname || '.' || p.proname, ',' order by n.nspname, p.proname)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where p.prokind in ('f', 'p') and n.nspname !~ '^pg_temp' and p.prosrc ~* 'admin_team_members'),
-    'public.admin_team_activate_self,public.admin_team_guard_exclusive,public.admin_team_list,public.admin_team_my_access,public.admin_team_role,public.admin_team_set_member');
+    'public.admin_team_activate_self,public.admin_team_directory,public.admin_team_guard_exclusive,public.admin_team_list,public.admin_team_my_access,public.admin_team_role,public.admin_team_set_member');
   perform pg_temp.t3802x_check('X-1', 'no function builds a statement on the full-admin table at run time',
     (select count(*)::text from pg_proc p
       where p.prokind in ('f', 'p') and p.prolang = (select oid from pg_language where lanname = 'plpgsql')
@@ -705,10 +705,10 @@ begin
     -- I3
     v_view := pg_temp.t3802x_as('fuzz', $q$select coalesce(public.admin_team_role(), '-') || '|' || public.is_admin_user()::text || '|' || public.admin_team_can('admin_console')::text || '|' || public.admin_team_can('team_manage')::text || '|' || public.admin_team_can('role_home')::text || '|' || coalesce(public.admin_team_my_access()->>'role', '-') || ':' || coalesce(public.admin_team_my_access()->>'status', '-') || ':' || coalesce(public.admin_team_my_access()->>'areas', '-')$q$);
     v_want_view := case
-      when v_live_after = 'full:admin:active'   then 'admin|true|true|false|false|admin:active:["admin_console"]'
+      when v_live_after = 'full:admin:active'   then 'admin|true|true|false|false|admin:active:["admin_console", "crm", "beta_leads"]'
       when v_live_after = 'full:admin:invited'  then '-|false|false|false|false|admin:invited:[]'
-      when v_live_after = 'team:growth:active'  then 'growth|false|false|false|true|growth:active:["role_home"]'
-      when v_live_after = 'team:partner:active' then 'partner|false|false|false|true|partner:active:["role_home"]'
+      when v_live_after = 'team:growth:active'  then 'growth|false|false|false|true|growth:active:["role_home", "crm", "beta_leads"]'
+      when v_live_after = 'team:partner:active' then 'partner|false|false|false|true|partner:active:["role_home", "crm", "beta_leads"]'
       when v_live_after = 'team:growth:invited' then '-|false|false|false|false|growth:invited:[]'
       when v_live_after = 'team:partner:invited' then '-|false|false|false|false|partner:invited:[]'
       when v_live_after = 'none'                then '-|false|false|false|false|-:-:-'

@@ -53,6 +53,7 @@ import { DESKTOP_HUB_GRID_COLUMNS } from "../../../src/constants/desktopLayout";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import { useDraftMultiSelect } from "../../../src/hooks/useDraftMultiSelect";
 import { useDiscardOfferingDrafts } from "../../../src/hooks/useDiscardOfferingDrafts";
+import { canOfferPublicLinks } from "../../../src/utils/offeringPublicLinks";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useExperiencesByBrand } from "../../../src/hooks/useExperiencesByBrand";
 import { HapticFeedback } from "../../../src/utils/hapticFeedback";
@@ -466,11 +467,21 @@ export default function HubExperiencesRoute(): React.ReactElement {
             {
               onEdit: () =>
                 router.push(`/experience/${manageExp.id}/edit` as never),
-              onViewPublic: hasBrandSlug
+              // issue #3237 — a draft has no public page: both links opened
+              // "not found". Published experiences are unchanged.
+              onViewPublic: canOfferPublicLinks({
+                status: manageExp.status,
+                brandSlug,
+              })
                 ? () =>
                     router.push(`/exp/${brandSlug}/${manageExp.slug}` as never)
                 : undefined,
-              onShare: hasBrandSlug ? () => setShareExp(manageExp) : undefined,
+              onShare: canOfferPublicLinks({
+                status: manageExp.status,
+                brandSlug,
+              })
+                ? () => setShareExp(manageExp)
+                : undefined,
               onCancel:
                 manageExp.status !== "ended" &&
                 manageExp.status !== "cancelled" &&
