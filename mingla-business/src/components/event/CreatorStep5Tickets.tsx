@@ -234,6 +234,19 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   // ORCH-1006 — "Who covers the costs?" section state.
   const brand = useCurrentBrand();
   const router = useRouter();
+  // #3645 — the payout country prompt also appears INSIDE the add/edit ticket
+  // sheet, as soon as a price above zero is typed on a brand with no currency.
+  // (It used to appear only on this step, after the ticket had been saved.)
+  const renderTicketSheetPayoutCountryPrompt = useCallback(
+    (priced: boolean): React.ReactNode => (
+      <PayoutCountryInlinePrompt
+        brand={brand}
+        priced={priced}
+        testID="ticket-sheet-payout-country-prompt"
+      />
+    ),
+    [brand],
+  );
   const taxRegistration = useBrandTaxRegistration(brand?.id ?? null);
   const pricingSwitches = draft.pricingSwitches ?? {
     passTax: null,
@@ -434,6 +447,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           eventId={coverMediaEventId}
           eventStartsAtIso={eventStartsAtIso}
           eventEndsAtIso={eventEndsAtIso}
+          renderUnderPrice={renderTicketSheetPayoutCountryPrompt}
         />
       </Suspense>
 

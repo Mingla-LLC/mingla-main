@@ -28,6 +28,7 @@ import { publicEventKeys } from "./usePublicEvents";
 // Imported from the keyless `upcomingKeys` module to avoid a require-cycle
 // (useUpcomingForBrand → useBusinessEvents → useUpcomingForBrand).
 import { upcomingKeys } from "./upcomingKeys";
+import { keepEventDatesAcrossLifecycleWrite } from "../utils/lifecycleWriteKeepsDates";
 // META-ORCH-1187 [Growth Analytics Hub] — offering-published conversion (SC-6).
 import { postHogService } from "../services/postHogService";
 import { captureHostSearchOutcome } from "../analytics/searchOutcome";
@@ -99,6 +100,33 @@ const writePublishedEventCaches = (
   queryClient.invalidateQueries({
     queryKey: publicEventKeys.brandBySlug(published.event.brandSlug),
   });
+};
+
+/**
+ * #3645 — the cancel and end-ticket-sales RPCs answer without the event's
+ * dates. Keep the date the cache already holds for that event, so a cancelled
+ * event still shows when it was instead of "Date TBD".
+ */
+const withKnownDates = (
+  queryClient: QueryClient,
+  published: PublishedBusinessEvent,
+  brandId: string,
+): PublishedBusinessEvent => {
+  let previous: LiveEvent | null = null;
+  try {
+    const detail = queryClient.getQueryData<BusinessEventDetail | null>(
+      businessEventKeys.detail(published.event.id),
+    );
+    previous =
+      detail?.event ??
+      (queryClient.getQueryData<LiveEvent[]>(businessEventKeys.list(brandId)) ?? [])
+        .find((event) => event.id === published.event.id) ??
+      null;
+  } catch {
+    previous = null;
+  }
+  const event = keepEventDatesAcrossLifecycleWrite(published.event, previous);
+  return event === published.event ? published : { ...published, event };
 };
 
 export const businessEventKeys = {
@@ -256,7 +284,11 @@ export const useCancelBusinessEvent = (): {
   >({
     mutationFn: ({ eventId }) => cancelBusinessEvent(eventId),
     onSuccess: (published, input) => {
-      writePublishedEventCaches(queryClient, published, input.brandId);
+      writePublishedEventCaches(
+        queryClient,
+        withKnownDates(queryClient, published, input.brandId),
+        input.brandId,
+      );
     },
     onError: (error) => {
       logMutationError("useCancelBusinessEvent", error);
@@ -284,7 +316,11 @@ export const useEndBusinessEventTicketSales = (): {
   >({
     mutationFn: ({ eventId }) => endBusinessEventTicketSales(eventId),
     onSuccess: (published, input) => {
-      writePublishedEventCaches(queryClient, published, input.brandId);
+      writePublishedEventCaches(
+        queryClient,
+        withKnownDates(queryClient, published, input.brandId),
+        input.brandId,
+      );
     },
     onError: (error) => {
       logMutationError("useEndBusinessEventTicketSales", error);

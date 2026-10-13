@@ -73,6 +73,8 @@ import {
   type BankConnectProvider,
 } from "../../utils/bankConnectRail";
 import { isInviteFunnelValue } from "../../utils/inviteFunnelSignal";
+import { sanitizeBankSetupReturnPath } from "../../utils/bankSetupReturn";
+import { refreshBrandPaymentState } from "../../hooks/brandPaymentStateRefresh";
 import {
   describePayoutCountrySwitchFailure,
   PAYOUT_COUNTRY_PAYMENT_ACCOUNT_LOCKED_COPY,
@@ -147,13 +149,23 @@ function useStartBankConnectOnboarding(): UseMutationResult<
 
 export default function BrandBankConnectBody(): React.ReactElement {
   const router = useRouter();
+  const bodyQueryClient = useQueryClient();
   const params = useLocalSearchParams<{
     id?: string | string[];
     provider?: string | string[];
     from?: string | string[];
     country?: string | string[];
+    resume?: string | string[];
   }>();
   const brandId = firstParam(params.id);
+  // #3645 — as bank setup is left (finished or abandoned), the screen the host
+  // lands on re-reads the brand's payment state.
+  useEffect(
+    () => (): void => {
+      refreshBrandPaymentState(bodyQueryClient, brandId);
+    },
+    [bodyQueryClient, brandId],
+  );
   const providerHint = firstParam(params.provider);
   // #3645 — the card-rail country the organiser chose during brand creation.
   // It outranks the brand's ADDRESS country as the picker's seed; anything
@@ -166,6 +178,12 @@ export default function BrandBankConnectBody(): React.ReactElement {
   // reveal. Exact-match on `?from=invite`; absent/other values keep Back + no Skip.
   const isInviteFunnel = isInviteFunnelValue(params.from);
   const isBrandCreateFunnel = params.from === "brand-create";
+  // #3645 — the creator screen the host came from ("Connect bank" at Publish),
+  // validated against the closed list of creator routes. The brand-creation
+  // funnel keeps its own return and ignores it.
+  const resumePath = isBrandCreateFunnel
+    ? null
+    : sanitizeBankSetupReturnPath(params.resume);
   const brandQuery = useBrand(brandId);
   const brand = brandQuery.data ?? null;
   const { user } = useAuth();
@@ -301,12 +319,16 @@ export default function BrandBankConnectBody(): React.ReactElement {
       router.back();
       return;
     }
+    if (resumePath !== null) {
+      router.replace(resumePath as never);
+      return;
+    }
     if (brandId !== null) {
       router.replace(`/brand/${brandId}/payments` as never);
       return;
     }
     router.replace("/(tabs)/account" as never);
-  }, [brandId, isBrandCreateFunnel, router]);
+  }, [brandId, isBrandCreateFunnel, resumePath, router]);
 
   // #948 W4 [web-skip-download] — ORCH-1401 [continue-web-home]: "Continue on
   // web" lands on the top-level web-app home (`/(tabs)/home`) rather than the
@@ -423,8 +445,12 @@ export default function BrandBankConnectBody(): React.ReactElement {
       );
       return;
     }
+    if (resumePath !== null) {
+      router.replace(resumePath as never);
+      return;
+    }
     router.replace(`/brand/${brandId}/payments` as never);
-  }, [brandId, isBrandCreateFunnel, router]);
+  }, [brandId, isBrandCreateFunnel, resumePath, router]);
 
   const handleStartStripe = useCallback(async (): Promise<void> => {
     if (
@@ -448,6 +474,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
         mintOnboarding: (input) => onboardMutation.mutateAsync(input),
         assign: (url) => window.location.assign(url),
         destination: isBrandCreateFunnel ? "brand-create" : "payments",
+        returnPath: resumePath,
       });
     } catch (error) {
       const message =
@@ -463,6 +490,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
     brand,
     isBrandCreateFunnel,
     onboardMutation,
+    resumePath,
     selectedCountry,
     user,
   ]);

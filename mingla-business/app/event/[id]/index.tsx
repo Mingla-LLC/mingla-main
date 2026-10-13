@@ -15,7 +15,7 @@
  * Per Cycle 9 spec §3.A.2.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Platform,
   ScrollView,
@@ -89,6 +89,11 @@ import {
   useEndBusinessEventTicketSales,
 } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
+import {
+  cancelEventDialogDescription,
+  cancelEventDoneToast,
+  nothingSoldIsKnown,
+} from "../../../src/utils/cancelEventCopy";
 import { useOfferingPayoutMoney } from "../../../src/hooks/useOfferingPayoutMoney";
 import { canPerformAction } from "../../../src/utils/permissionGates";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
@@ -159,7 +164,13 @@ export default function EventDetailScreen(): React.ReactElement {
 
   // ----- State ---------------------------------------------------
   // issue #3237 — true once, straight after this event was published.
-  const publishedArrival = useJustPublishedArrival(id);
+  // #3645 — and no longer once it is returned to draft or cancelled.
+  const publishedArrival = useJustPublishedArrival(
+    id,
+    resolvedLiveEvent?.status,
+  );
+  // Stable across renders, so the Share handler keeps one identity.
+  const isPublishArrivalPress = publishedArrival.isArrivalPress;
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
   const [manageMenuVisible, setManageMenuVisible] = useState<boolean>(false);
   const [endSalesVisible, setEndSalesVisible] = useState<boolean>(false);
@@ -217,12 +228,14 @@ export default function EventDetailScreen(): React.ReactElement {
         : "event";
 
   const handleShareOpen = useCallback((): void => {
+    // #3645 — publishing never opens the share sheet by itself.
+    if (isPublishArrivalPress()) return;
     if (!shareability.shareable) {
       setToast({ visible: true, message: shareability.reason });
       return;
     }
     setShareModalVisible(true);
-  }, [shareability]);
+  }, [shareability, isPublishArrivalPress]);
 
   const handleManageOpen = useCallback((): void => {
     // ORCH-1136 F-2: never a silent dead tap (Const #1). EventManageMenu
@@ -351,6 +364,9 @@ export default function EventDetailScreen(): React.ReactElement {
     setCancelDialogVisible(true);
   }, []);
 
+  // #3645 — "is it known that nothing was sold?" is worked out further down
+  // (it needs the orders read); the cancel handler reads the latest answer.
+  const nothingSoldRef = useRef<boolean>(false);
   const handleCancelConfirm = useCallback(async (): Promise<void> => {
     if (id === null) return;
     if (isServerBackedEvent) {
@@ -386,7 +402,10 @@ export default function EventDetailScreen(): React.ReactElement {
     // [TRANSITIONAL] Buyer email cascade is a no-op stub — B-cycle
     // wires Resend + auto-refund triggers.
     showToast(
-      "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
+      cancelEventDoneToast(
+        nothingSoldRef.current,
+        "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
+      ),
     );
     // ORCH-0862: see comment above — no navigation; screen re-renders in place.
   }, [id, isServerBackedEvent, event, cancelServerEvent, updateLifecycle, showToast]);
@@ -472,6 +491,17 @@ export default function EventDetailScreen(): React.ReactElement {
     return allCompEntries.filter((c) => c.eventId === event.id).length;
   }, [allCompEntries, event]);
   const totalGuestCount = totalSoldCount + doorSoldCount + compGuestCount;
+  // #3645 — only when it is KNOWN that nobody holds a ticket do the cancel
+  // dialog and toast say there is nothing to refund.
+  const nothingSold = nothingSoldIsKnown({
+    ordersStatus: eventOrdersQuery.status,
+    onlineSoldCount: totalSoldCount,
+    doorSoldCount,
+    doorSalesEnabled: event?.inPersonPaymentsEnabled === true,
+  });
+  useEffect(() => {
+    nothingSoldRef.current = nothingSold;
+  }, [nothingSold]);
   const moneySummary = useMemo(
     () =>
       summarizeEventMoney({
@@ -837,7 +867,10 @@ export default function EventDetailScreen(): React.ReactElement {
           </View>
           <View style={styles.heroOverlay} pointerEvents="none">
             <View style={styles.heroPillRow}>
-              <EventDetailHeroStatusPill status={status} />
+              <EventDetailHeroStatusPill
+                status={status}
+                cancelled={event.status === "cancelled"}
+              />
             </View>
             <Text style={styles.heroTitle} numberOfLines={2}>
               {event.name.trim().length > 0 ? event.name : "Untitled event"}
@@ -1117,7 +1150,10 @@ export default function EventDetailScreen(): React.ReactElement {
         }}
         onConfirm={handleCancelConfirm}
         title="Cancel this event?"
-        description="This is serious. Buyers will be notified by email and refunded automatically when those wire up (B-cycle). You can't undo this."
+        description={cancelEventDialogDescription(
+          nothingSold,
+          "This is serious. Buyers will be notified by email and refunded automatically when those wire up (B-cycle). You can't undo this.",
+        )}
         variant="typeToConfirm"
         confirmText={event.name.trim().length > 0 ? event.name : event.eventSlug}
         confirmLabel="Cancel event"

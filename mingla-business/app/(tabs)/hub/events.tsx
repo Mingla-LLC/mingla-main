@@ -53,6 +53,13 @@ import {
   useLiveEventsForBrand,
 } from "../../../src/store/liveEventStore";
 import type { LiveEvent } from "../../../src/store/liveEventStore";
+import { useEventOrders } from "../../../src/hooks/useEventOrders";
+import {
+  cancelEventDialogDescription,
+  cancelEventDoneToast,
+  countSoldTickets,
+  nothingSoldIsKnown,
+} from "../../../src/utils/cancelEventCopy";
 
 import {
   EventListCard,
@@ -216,6 +223,22 @@ export default function EventsTab(): React.ReactElement {
   // 9b-1 lifecycle action state — End sales + Cancel event + Delete draft
   const [endSalesEvent, setEndSalesEvent] = useState<LiveEvent | null>(null);
   const [cancelEvent, setCancelEvent] = useState<LiveEvent | null>(null);
+  // #3645 — the cancel dialog only says "nothing to refund" when that is
+  // KNOWN: the orders of the event being cancelled are read while the dialog
+  // is open (server-backed events only; nothing is read otherwise).
+  const cancelEventOrders = useEventOrders(
+    cancelEvent !== null && serverBackedEventIds.has(cancelEvent.id)
+      ? cancelEvent.id
+      : null,
+  );
+  const cancelNothingSold =
+    cancelEvent !== null &&
+    nothingSoldIsKnown({
+      ordersStatus: cancelEventOrders.status,
+      onlineSoldCount: countSoldTickets(cancelEventOrders.data ?? []),
+      doorSoldCount: 0,
+      doorSalesEnabled: cancelEvent.inPersonPaymentsEnabled === true,
+    });
   const [cancelSubmitting, setCancelSubmitting] = useState<boolean>(false);
   const [deleteDraftCtx, setDeleteDraftCtx] = useState<{
     id: string;
@@ -558,10 +581,12 @@ export default function EventsTab(): React.ReactElement {
     // [TRANSITIONAL] Buyer email cascade is a no-op stub — B-cycle wires Resend.
     setToast({
       visible: true,
-      message:
+      message: cancelEventDoneToast(
+        cancelNothingSold,
         "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
+      ),
     });
-  }, [cancelEvent, serverBackedEventIds, updateLifecycle, cancelServerEvent]);
+  }, [cancelEvent, serverBackedEventIds, updateLifecycle, cancelServerEvent, cancelNothingSold]);
 
   const handleManageDeleteDraft = useCallback((): void => {
     if (manageCtx === null || manageCtx.kind !== "draft") return;
@@ -956,7 +981,10 @@ export default function EventsTab(): React.ReactElement {
         }}
         onConfirm={handleCancelEventConfirm}
         title="Cancel this event?"
-        description="This is serious. Buyers will be notified by email and refunded automatically when those wire up (B-cycle). You can't undo this."
+        description={cancelEventDialogDescription(
+          cancelNothingSold,
+          "This is serious. Buyers will be notified by email and refunded automatically when those wire up (B-cycle). You can't undo this.",
+        )}
         variant="typeToConfirm"
         confirmText={
           cancelEvent !== null

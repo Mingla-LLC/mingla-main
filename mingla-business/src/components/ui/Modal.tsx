@@ -47,6 +47,7 @@ import {
 } from "../../constants/designSystem";
 
 import { GlassCard } from "./GlassCard";
+import { useEscapeLayer } from "./escapeLayerStack";
 // ORCH-1165: Modal inputs (e.g. CancelOrderDialog) live in this Modal's own
 // native window — mount a Done bar inside RNModal so they get the toolbar too.
 import { KeyboardToolbarRoot } from "../../wrappers/KeyboardToolbarRoot";
@@ -158,7 +159,8 @@ const ModalNative: React.FC<ModalProps> = ({
     };
   }, [panelOpacity, panelScale, scrimOpacity]);
 
-  // Web Escape-key handler.
+  // Web Escape-key handler. #3645 — only the top-most open overlay acts on it.
+  const isEscapeTop = useEscapeLayer(Platform.OS === "web" && visible);
   useEffect(() => {
     if (Platform.OS !== "web" || !visible) return;
     const docLike = globalThis as unknown as {
@@ -169,7 +171,7 @@ const ModalNative: React.FC<ModalProps> = ({
     };
     if (docLike.document === undefined) return;
     const handler = (event: { key: string }): void => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && isEscapeTop()) {
         onClose();
       }
     };
@@ -177,7 +179,7 @@ const ModalNative: React.FC<ModalProps> = ({
     return (): void => {
       docLike.document!.removeEventListener("keydown", handler);
     };
-  }, [onClose, visible]);
+  }, [isEscapeTop, onClose, visible]);
 
   const scrimStyle = useAnimatedStyle(() => ({
     opacity: scrimOpacity.value,
@@ -350,7 +352,8 @@ const ModalWeb: React.FC<ModalProps> = ({
     return cancelRaf;
   }, [visible, mounted]);
 
-  // Web Escape-key handler.
+  // Web Escape-key handler. #3645 — only the top-most open overlay acts on it.
+  const isEscapeTop = useEscapeLayer(visible);
   useEffect(() => {
     if (!visible) return;
     const docLike = globalThis as unknown as {
@@ -361,13 +364,13 @@ const ModalWeb: React.FC<ModalProps> = ({
     };
     if (docLike.document === undefined) return;
     const handler = (event: { key: string }): void => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && isEscapeTop()) onClose();
     };
     docLike.document.addEventListener("keydown", handler);
     return (): void => {
       docLike.document!.removeEventListener("keydown", handler);
     };
-  }, [onClose, visible]);
+  }, [isEscapeTop, onClose, visible]);
 
   const handleScrimPress = (): void => {
     if (dismissOnScrimTap) onClose();

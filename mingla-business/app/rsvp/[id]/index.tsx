@@ -133,7 +133,13 @@ export default function RsvpDetailScreen(): React.ReactElement {
 
   // ----- State -------------------------------------------------------
   // issue #3237 — true once, straight after this RSVP was published.
-  const publishedArrival = useJustPublishedArrival(id);
+  // #3645 — and no longer once it is returned to draft or cancelled.
+  const publishedArrival = useJustPublishedArrival(
+    id,
+    resolvedLiveEvent?.status,
+  );
+  // Stable across renders, so the Share handler keeps one identity.
+  const isPublishArrivalPress = publishedArrival.isArrivalPress;
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
@@ -172,12 +178,14 @@ export default function RsvpDetailScreen(): React.ReactElement {
   );
 
   const handleShareOpen = useCallback((): void => {
+    // #3645 — publishing never opens the share sheet by itself.
+    if (isPublishArrivalPress()) return;
     if (!shareability.shareable) {
       setToast({ visible: true, message: shareability.reason });
       return;
     }
     setShareModalVisible(true);
-  }, [shareability]);
+  }, [shareability, isPublishArrivalPress]);
 
   const handleEdit = useCallback((): void => {
     if (id !== null) {
@@ -365,7 +373,10 @@ export default function RsvpDetailScreen(): React.ReactElement {
           </View>
           <View style={styles.heroOverlay} pointerEvents="none">
             <View style={styles.heroPillRow}>
-              <EventDetailHeroStatusPill status={status} />
+              <EventDetailHeroStatusPill
+                status={status}
+                cancelled={event.status === "cancelled"}
+              />
             </View>
             <Text style={styles.heroTitle} numberOfLines={2}>
               {event.name.trim().length > 0 ? event.name : "Untitled RSVP"}

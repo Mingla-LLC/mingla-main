@@ -434,7 +434,26 @@ export interface TicketTierEditSheetProps {
    * apart. Optional and null in the create wizard.
    */
   eventEndsAtIso?: string | null;
+  /**
+   * issue #3645 — rendered directly under the Price field. The Tickets step
+   * passes the "choose your payout country" card here so a price typed on a
+   * brand with no currency asks for the country IN this sheet, while the host
+   * is typing, instead of only after the ticket is saved. `priced` is true once
+   * the field holds a price above zero on a ticket that is not free. Optional:
+   * every other caller renders exactly as before.
+   */
+  renderUnderPrice?: (priced: boolean) => React.ReactNode;
 }
+
+/** issue #3645 — is the text in the Price field a price above zero? */
+export const ticketPriceTextIsPriced = (
+  isFree: boolean,
+  priceText: string,
+): boolean => {
+  if (isFree) return false;
+  const value = Number.parseFloat(priceText);
+  return Number.isFinite(value) && value > 0;
+};
 
 export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   visible,
@@ -450,6 +469,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   canEditPrice = true,
   eventCurrency,
   eventId = null,
+  renderUnderPrice,
 }) => {
   // ORCH-0704 v2: when this tier has sales, lock price + isFree + isUnlimited
   // fields and surface the refund-first messaging.
@@ -1076,6 +1096,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   to new buyers only — refund first to change.
                 </Text>
               ) : null}
+              {/* #3645 — e.g. the payout country prompt, as the price is typed. */}
+              {renderUnderPrice?.(ticketPriceTextIsPriced(isFree, priceText))}
             </View>
           ) : null}
 

@@ -177,6 +177,8 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (name.endsWith("/brandPayout")) return { payoutGateStatus: () => "ready" };
     if (name.endsWith("/chipInPayoutReadiness")) return { isChipInPayoutReady: () => true };
     if (name.endsWith("/paidPublishGuards") || name.endsWith("/rsvpRpcFailure")) return {};
+    // #3645 — pure, so it is supplied REAL: the order of "save, then publish".
+    if (name.endsWith("/rsvpPublishWithoutChipIns")) return jest.requireActual("../../../utils/rsvpPublishWithoutChipIns");
     if (name.endsWith("/refundPolicyTerms")) return { OfferingRefundTermsError: class extends Error {} };
     if (name.endsWith("/recurrenceRule")) return { expandRecurrenceToDates: () => [] };
     if (name === "@mingla/brand-assets") return { MINGLA_BUSINESS_LOGO: 1 };

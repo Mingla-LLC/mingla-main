@@ -23,6 +23,7 @@ import { BrandOnboardView } from "../../../../src/components/brand/BrandOnboardV
 import { BrandPaymentsPermissionGate } from "../../../../src/components/brand/BrandPaymentsPermissionGate";
 import { canvas } from "../../../../src/constants/designSystem";
 import { useBrand } from "../../../../src/hooks/useBrands";
+import { sanitizeBankSetupReturnPath } from "../../../../src/utils/bankSetupReturn";
 
 export default function BrandOnboardRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -31,7 +32,12 @@ export default function BrandOnboardRoute(): React.ReactElement {
     id: string | string[];
     from?: string | string[];
     country?: string | string[];
+    resume?: string | string[];
   }>();
+  // #3645 — the creator screen the host came from ("Connect bank" at Publish).
+  // Validated against the closed list of creator routes; anything else is null
+  // and this route behaves exactly as it did before.
+  const resumePath = sanitizeBankSetupReturnPath(params.resume);
   // #3645 — payout country chosen during brand creation; the view validates it.
   const countryParam = Array.isArray(params.country)
     ? params.country[0]
@@ -50,7 +56,13 @@ export default function BrandOnboardRoute(): React.ReactElement {
         `/brand/new?resume_brand=${encodeURIComponent(brandId)}` as never,
       );
     } else if (router.canGoBack()) {
+      // The creator that pushed this route is still mounted underneath, on the
+      // step the host left; going back is the truest "same screen".
       router.back();
+    } else if (resumePath !== null) {
+      // No history (a reload, or the browser came back from hosted setup onto
+      // this route): reopen the creator screen itself.
+      router.replace(resumePath as never);
     } else if (brand !== null) {
       router.replace(`/brand/${brand.id}/payments` as never);
     } else {
@@ -96,6 +108,7 @@ export default function BrandOnboardRoute(): React.ReactElement {
           onAfterDone={handleAfterDone}
           onEditContact={brandId !== null ? handleEditContact : undefined}
           initialCountry={typeof countryParam === "string" ? countryParam : null}
+          returnPath={isBrandCreateFunnel ? null : resumePath}
         />
       </BrandPaymentsPermissionGate>
     </View>
