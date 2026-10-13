@@ -75,6 +75,8 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (name.endsWith("/draftEventPristine")) return { isDraftEventPristine: () => false };
     if (name.endsWith("/chipInPayoutReadiness")) return { isChipInPayoutReady: () => true };
     if (name.endsWith("/paidPublishGuards") || name.endsWith("/rsvpRpcFailure")) return {};
+    // #3645 — pure, so it is supplied REAL: the order of "save, then publish".
+    if (name.endsWith("/rsvpPublishWithoutChipIns")) return jest.requireActual("../../../utils/rsvpPublishWithoutChipIns");
     if (name.endsWith("/eventOrdersService")) return { buildSoldCountContextFromOrders: () => ({ soldCountByTier: {}, capacityFloorByTier: {}, soldCountForEvent: 0 }) };
     if (name.endsWith("/perNightCapacity")) return { isPerNightCapacity: () => false };
     if (name.endsWith("/useEventOrders")) return { useEventReconciliation: () => ({ data: [], status: "ready" }), useEventHasWebPurchases: () => ({ data: false }) };

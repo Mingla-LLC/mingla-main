@@ -80,6 +80,7 @@ import {
   detectPaidPublishGuardReason,
   resolvePaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
+import { switchChipInsOffThenProceed } from "../../utils/rsvpPublishWithoutChipIns";
 import {
   readRpcFailureMessage,
   rsvpRpcFailureCopy,
@@ -219,6 +220,13 @@ export interface RsvpCreatorWizardProps {
   /** issue #3040 — see EventCreatorWizard. Route-owned server-row resolver. */
   onRequireServerDraft?: () => Promise<string>;
   onDiscardServerDraft?: (draft: DraftEvent) => Promise<void>;
+  /**
+   * #3645 — an AWAITED save. Resolves with the draft as the server stored it,
+   * and rejects when the save did not land. "Publish without chip-ins for now"
+   * needs it: publish reads the stored draft, so chip-ins must be stored off
+   * before the publish flow continues.
+   */
+  onSaveDraftNow?: (draft: DraftEvent) => Promise<DraftEvent>;
   onPublishDraft?: (draft: DraftEvent, invites: {
     selectionRevision: number | null;
     confirmed: boolean;
@@ -289,6 +297,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   fetchServerCover,
   onRequireServerDraft,
   onDiscardServerDraft,
+  onSaveDraftNow,
   onPublishDraft,
   serverSaveState,
 }) => {
@@ -910,25 +919,57 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     };
   }, [handlePublishTap]);
 
+  const [chipInChoiceWorking, setChipInChoiceWorking] = useState(false);
+  const [chipInChoiceError, setChipInChoiceError] = useState<string | null>(null);
+  const chipInChoiceInFlightRef = useRef(false);
   const handleCloseChipInChoice = useCallback((): void => {
+    if (chipInChoiceInFlightRef.current) return;
     setChipInChoiceVisible(false);
+    setChipInChoiceError(null);
   }, []);
 
   // Primary — bank setup, which brings the host back to this step.
   const handleChipInChoiceConnectBank = useCallback((): void => {
+    if (chipInChoiceInFlightRef.current) return;
     setChipInChoiceVisible(false);
+    setChipInChoiceError(null);
     onOpenStripeOnboard?.(currentStep);
   }, [onOpenStripeOnboard, currentStep]);
 
-  // Secondary — switch chip-ins off on the draft, then carry on into the
-  // normal publish (its confirmation and invite checks included). The resume
-  // waits for this dialog to finish dismissing: iOS drops a dialog raised
-  // while another is still leaving (#1360).
-  const handleChipInChoicePublishWithout = useCallback((): void => {
-    handleUpdate({ rsvpContributionEnabled: false });
-    setChipInChoiceVisible(false);
-    setTimeout(() => resumePublishRef.current(), CHIP_IN_CHOICE_SETTLE_MS);
-  }, [handleUpdate]);
+  // Secondary — switch chip-ins off on the draft, WAIT for that to be stored,
+  // then carry on into the normal publish (its confirmation and invite checks
+  // included). Publish reads the stored draft, so it must never run ahead of
+  // this save: the order, the failure path and the restore are owned by
+  // switchChipInsOffThenProceed. The resume waits for this dialog to finish
+  // dismissing: iOS drops a dialog raised while another is still leaving (#1360).
+  const handleChipInChoicePublishWithout = useCallback(async (): Promise<void> => {
+    if (chipInChoiceInFlightRef.current) return;
+    chipInChoiceInFlightRef.current = true;
+    try {
+      await switchChipInsOffThenProceed<DraftEvent>({
+        getLocalChipIns: () => latestDraftRef.current.rsvpContributionEnabled,
+        setLocalChipIns: (enabled) => {
+          handleUpdate({ rsvpContributionEnabled: enabled });
+          return latestDraftRef.current;
+        },
+        cancelQueuedSave: () => {
+          if (autosaveTimerRef.current !== null) {
+            clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+          }
+        },
+        saveNow: onSaveDraftNow,
+        setWorking: setChipInChoiceWorking,
+        setError: setChipInChoiceError,
+        proceed: () => {
+          setChipInChoiceVisible(false);
+          setTimeout(() => resumePublishRef.current(), CHIP_IN_CHOICE_SETTLE_MS);
+        },
+      });
+    } finally {
+      chipInChoiceInFlightRef.current = false;
+    }
+  }, [handleUpdate, onSaveDraftNow]);
 
   const handleClosePublishDialog = useCallback((): void => {
     if (isPublishing) return;
@@ -1016,10 +1057,12 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       // path when readiness was still loading, or the client was wrong): never
       // a toast plus a surprise trip to bank setup. Raised once the publish
       // dialog has finished dismissing (#1360).
-      if (
-        latestDraftRef.current.rsvpContributionEnabled &&
-        detectPaidPublishGuardReason(code) === "stripe_charges_disabled"
-      ) {
+      //
+      // The STORED draft is what the server judged, so the local flag is not
+      // consulted: if the screen says chip-ins are off and the server still
+      // refuses, the two disagree, and the choice (whose secondary saves "off"
+      // and waits for it) is the way to make them agree — never bank setup.
+      if (detectPaidPublishGuardReason(code) === "stripe_charges_disabled") {
         setPublishConfirmVisible(false);
         setTimeout(openChipInChoice, CHIP_IN_CHOICE_SETTLE_MS);
         return;
@@ -1524,7 +1567,11 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
             visible={chipInChoiceVisible}
             onClose={handleCloseChipInChoice}
             onConnectBank={handleChipInChoiceConnectBank}
-            onPublishWithoutChipIns={handleChipInChoicePublishWithout}
+            onPublishWithoutChipIns={() => {
+              void handleChipInChoicePublishWithout();
+            }}
+            working={chipInChoiceWorking}
+            errorMessage={chipInChoiceError}
           />
         </React.Suspense>
       ) : null}

@@ -804,6 +804,29 @@ export default function RsvpEditRoute(): React.ReactElement {
     ],
   );
 
+  // #3645 — an AWAITED save for the wizard's "Publish without chip-ins for
+  // now": publish reads the stored draft, so the wizard must know the save
+  // landed. Resolves with the draft as the server stored it; rejects otherwise.
+  // A draft with no server row yet is given one first (the single promotion
+  // path), then saved.
+  const handleSaveDraftNow = React.useCallback(
+    async (draftToSave: DraftEvent): Promise<DraftEvent> => {
+      if (!isLocalOnlyDraft(draftToSave)) {
+        return autosave.saveDraftAsync(draftToSave);
+      }
+      const serverId = await handleRequireServerDraft();
+      const promoted = useDraftEventStore.getState().getDraft(serverId);
+      if (promoted === null || promoted === undefined) {
+        throw new Error("rsvp_draft_not_saved");
+      }
+      return autosave.saveDraftAsync({
+        ...promoted,
+        rsvpContributionEnabled: draftToSave.rsvpContributionEnabled,
+      });
+    },
+    [autosave, handleRequireServerDraft],
+  );
+
   // Cycle 9b-2 edit-published branch — render the focused edit screen
   // when ?mode=edit-published. Loading shell while liveEvent resolves.
   // ORCH-1172 R4 — mount the editor against `editorLiveEvent` (seed-from-fresh-
@@ -972,6 +995,7 @@ export default function RsvpEditRoute(): React.ReactElement {
       fetchServerCover={fetchServerDraftCover}
       onRequireServerDraft={handleRequireServerDraft}
       onDiscardServerDraft={handleDiscardDraft}
+      onSaveDraftNow={handleSaveDraftNow}
       onPublishDraft={async (draftToPublish, invites) => {
         const published = await publishServerDraft.mutateAsync({
           draft: draftToPublish,
