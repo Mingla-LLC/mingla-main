@@ -542,6 +542,7 @@ describe("#3802 A-8: what the page says after a create or replace that did not a
     assert.ok(body.includes("setNotice((n) => ({ ...n, [agentId]: outcome.notice }));") && body.includes("setUnseen((u) => ({ ...u, [agentId]: outcome.replaceAgain }));"));
     assert.ok(/Promise\.race\(\[\s*createKey\(agentId, browserTimeZone\(\)\),/.test(body), "a create that never answers does not leave the button waiting for ever");
     assert.ok(PAGE.includes("const CREATE_WAIT_MS = 20_000;") && body.includes("clearTimeout(timer);"));
+    assert.ok(body.includes('timer = setTimeout(() => reject({ token: "network", message: "" }), CREATE_WAIT_MS);'), "the wait is really armed");
     assert.equal(/No key was created/.test(body.replace(/"No key was created\. Try again once you're back\."/, "")), false, "the page itself never decides that nothing was made");
     // The hook hands back what it read, or null when it could not read.
     assert.ok(HOOK.includes("return Array.isArray(data?.mine?.keys) ? data.mine.keys : [];"));

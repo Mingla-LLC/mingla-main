@@ -1687,7 +1687,13 @@ Deno.test("#3802 U-12: after any number of wrong keys from an address, a working
     "a working key is not slowed down either",
   );
   // The wrong keys from there are still told to wait, in the same time class as any refusal.
+  const sleptBeforeWait = h.slept.length;
   const still = await shape(await h.handler(sendFrom("198.51.100.7", bad(99))));
+  assertEquals(
+    h.slept.length,
+    sleptBeforeWait + 1,
+    "a wrong key that must wait is held for the minimum time too",
+  );
   assertEquals(still.status, 429);
   assertEquals(h.slept.at(-1), MIN_REFUSAL_MS);
   assert(
