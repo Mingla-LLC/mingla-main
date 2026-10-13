@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Search, FileText, User, MapPin, Settings } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import { NAV_ITEMS } from "../lib/constants";
+import { NAV_ITEMS, TEAM_AGENT_NAV_ITEMS } from "../lib/constants";
 import { useAuth } from "../context/AuthContext";
 import { AREA, TEAM_NAV_GROUP, canOpenPage } from "../lib/access";
 import { escapeLike } from "../lib/formatters";
@@ -65,7 +65,7 @@ export function CommandPalette({ open, onClose, onNavigate }) {
 
   // Client-side page filter (instant)
   const pageResults = useMemo(() => {
-    const pages = [...TEAM_NAV_GROUP.items, ...NAV_ITEMS].filter((p) => canOpenPage(access, p.id));
+    const pages = [...TEAM_NAV_GROUP.items, ...NAV_ITEMS, ...TEAM_AGENT_NAV_ITEMS].filter((p) => canOpenPage(access, p.id));
     if (!query) return pages.slice(0, 5);
     const lower = query.toLowerCase();
     return pages.filter((p) => p.label.toLowerCase().includes(lower)).slice(0, 5);

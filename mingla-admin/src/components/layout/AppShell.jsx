@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
-import { NAV_ITEMS } from "../../lib/constants";
+import { NAV_ITEMS, teamAgentTitle } from "../../lib/constants";
 import { useAuth } from "../../context/AuthContext";
 import { homePageFor, pageTitle } from "../../lib/access";
 
@@ -22,7 +22,8 @@ export function AppShell({ activeTab, onTabChange, children }) {
     setMobileMenuOpen(true);
   }, []);
 
-  const currentTitle = pageTitle(activeTab, access, NAV_ITEMS);
+  // Issue #3802 (Wave 4): My agent has its own menu list (lib/constants.js).
+  const currentTitle = teamAgentTitle(activeTab) || pageTitle(activeTab, access, NAV_ITEMS);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[--color-background-secondary]">

@@ -211,6 +211,13 @@ on:
       - "mingla-admin/src/components/ui/Modal.jsx"
       - "mingla-admin/package-lock.json"
       - "mingla-admin/src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js"
+      # #3802 Wave 4 (My agent): the client suite and the files it reads.
+      - "mingla-admin/src/__tests__/issue3802_wave4_agent.implementor.happy.test.js"
+      - "mingla-admin/src/pages/AgentPage.jsx"
+      - "mingla-admin/src/components/agent/**"
+      - "mingla-admin/src/lib/agentConnect.js"
+      - "mingla-admin/src/services/teamAgentService.js"
+      - "mingla-admin/src/hooks/useAgentKeys.js"
       - "mingla-admin/src/pages/RoleHomePage.jsx"
       - "mingla-admin/src/pages/TeamDashboardPage.jsx"
       - "mingla-admin/src/pages/BetaLeadsPage.jsx"
@@ -416,6 +423,13 @@ on:
       - "mingla-admin/src/components/ui/Modal.jsx"
       - "mingla-admin/package-lock.json"
       - "mingla-admin/src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js"
+      # #3802 Wave 4 (My agent): the client suite and the files it reads.
+      - "mingla-admin/src/__tests__/issue3802_wave4_agent.implementor.happy.test.js"
+      - "mingla-admin/src/pages/AgentPage.jsx"
+      - "mingla-admin/src/components/agent/**"
+      - "mingla-admin/src/lib/agentConnect.js"
+      - "mingla-admin/src/services/teamAgentService.js"
+      - "mingla-admin/src/hooks/useAgentKeys.js"
       - "mingla-admin/src/pages/RoleHomePage.jsx"
       - "mingla-admin/src/pages/TeamDashboardPage.jsx"
       - "mingla-admin/src/pages/BetaLeadsPage.jsx"
@@ -575,6 +589,9 @@ jobs:
       - name: "Issue #3802 — role homes, targets, Beta leads and invite follow-ups: independent tester adversarial proof (hostile addresses, every area combination, answers that are not answers, no raw error on screen)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js
+      - name: "Issue #3802 — My agent: who may open it, the lines to paste, the status in plain words, what it can do against the connector's own list, and that a key is never stored or logged"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave4_agent.implementor.happy.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
