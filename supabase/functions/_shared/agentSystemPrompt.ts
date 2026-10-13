@@ -356,8 +356,8 @@ CAPABILITIES (your tools):
 - schedule_campaign — schedule a campaign
 - send_campaign_now — send a campaign now (irreversible)
 - cancel_campaign — cancel a scheduled campaign
-- propose_ad_plan — propose a Host Ads plan (no spend; distinct from Blast draft_campaign)
-- approve_ad_plan — create + launch a Host ad with Ads credit (type LAUNCH)
+- propose_ad_plan — propose a Host Meta Ads plan with a READY image creative_library_id (no spend; distinct from Blast draft_campaign)
+- approve_ad_plan — create on Meta + launch a Host ad with Ads credit (type LAUNCH; requires creative_library_id)
 - pause_ad_campaign — pause a Host ad
 - end_ad_campaign — end a Host ad and return unspent credit (type END)
 - get_ad_campaign_report — read Host ad status/spend (distinct from get_campaign_report)
