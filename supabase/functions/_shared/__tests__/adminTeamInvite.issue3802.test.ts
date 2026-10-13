@@ -357,3 +357,72 @@ Deno.test("#3802 E-6: the accept function prepares the sign-in first and returns
   );
   assert(ACCEPT_SRC.includes('state === "used" || state === "expired"'));
 });
+
+// ---------------------------------------------------------------------------
+// Wave 1 follow-ups (appended): the conflict answer names the invited address,
+// and a refusal from the database still reaches the owner as a refusal.
+// ---------------------------------------------------------------------------
+
+/** Every `jsonResponse({...})` literal in a source, as written. */
+function responseLiterals(src: string): string[] {
+  return [...src.matchAll(/jsonResponse\(\{([\s\S]*?)\}(?:,\s*\d+)?\)/g)].map((
+    m,
+  ) => m[1].replace(/\s+/g, " ").trim());
+}
+
+Deno.test("#3802 E-7: both account-conflict answers name the invited address, and nothing else does", () => {
+  const answers = responseLiterals(ACCEPT_SRC);
+  const conflicts = answers.filter((a) => a.includes('"account_conflict"'));
+  assertEquals(conflicts.length, 2);
+  for (const c of conflicts) {
+    assertEquals(c, 'state: "account_conflict", email: seen.email');
+  }
+  // The address leaves in exactly three answers: the two conflicts and "ok".
+  const withEmail = answers.filter((a) => /\bemail\b/.test(a));
+  assertEquals(withEmail.length, 3);
+  assert(
+    withEmail.some((a) =>
+      a.startsWith('state: "ok"') && a.includes("email: opened.email")
+    ),
+  );
+  // No closed link (used, expired, invalid) and no try-again answer says
+  // whose invitation it was.
+  for (const a of answers) {
+    if (
+      a.includes("closedState(") || a.includes('"invalid"') ||
+      a.includes('"try_again"')
+    ) {
+      assertEquals(/\bemail\b/.test(a), false, a);
+    }
+  }
+  // Still answered before the link is used up, and after the link was found
+  // to be pending.
+  const pendingAt = ACCEPT_SRC.indexOf('seen.state !== "pending"');
+  const firstConflictAt = ACCEPT_SRC.indexOf('state: "account_conflict"');
+  const redeemAt = ACCEPT_SRC.indexOf('"admin_team_redeem_invite"');
+  assert(pendingAt > 0 && pendingAt < firstConflictAt);
+  assert(ACCEPT_SRC.lastIndexOf('state: "account_conflict"') < redeemAt);
+  // The set of states is unchanged.
+  const states = new Set(
+    [...ACCEPT_SRC.matchAll(/state: "([a-z_]+)"/g)].map((m) => m[1]),
+  );
+  assertEquals(
+    [...states].sort(),
+    ["account_conflict", "invalid", "ok", "try_again"],
+  );
+});
+
+Deno.test("#3802 E-7: the invite function still acts as the caller and passes a refusal on as a refusal", () => {
+  const src = code(INVITE_SRC);
+  assertEquals(src.includes("SERVICE_ROLE"), false);
+  assertEquals(src.includes("auth.admin"), false);
+  // One database call, as the caller; a refusal answers before any email.
+  assertEquals(src.match(/\.rpc\(/g)?.length, 1);
+  const refusedAt = src.indexOf("return jsonResponse({ ok: false, code });");
+  const emailAt = src.indexOf("await sendInviteEmail(");
+  assert(refusedAt > 0 && emailAt > 0 && refusedAt < emailAt);
+  // The code is the database's own first word, whatever it is: no list of
+  // known codes to fall out of date.
+  assert(src.includes("const code = errorCode(issueError?.message);"));
+  assertEquals(src.includes("address_in_use"), false);
+});
