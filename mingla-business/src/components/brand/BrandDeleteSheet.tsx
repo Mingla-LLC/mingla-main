@@ -347,7 +347,8 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
                   </Text>
                 </View>
                 <View style={styles.previewRow}>
-                  <Text style={styles.previewLabel}>Stripe Connect</Text>
+                  {/* #3645 — host-facing copy never names a payment provider. */}
+                  <Text style={styles.previewLabel}>Payment account</Text>
                   <Text style={styles.previewValue}>
                     {counts.hasStripeConnect ? "Linked (will unlink)" : "None"}
                   </Text>

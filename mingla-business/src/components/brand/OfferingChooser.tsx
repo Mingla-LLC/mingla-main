@@ -163,7 +163,9 @@ function accessibilityLabel(
     const notConnectedCopy: Record<OfferingKind, string> = {
       event: "A free event can be published now. Connect a bank only for paid tickets.",
       trip: "A free trip can be published now. Connect a bank only for paid packages.",
-      experience: "A free experience can be published now. Connect a bank only for paid bookings.",
+      // #3645 — an experience cannot be published, free or paid, until the
+      // brand has a payout country; "can be published now" was not true.
+      experience: "Free experiences need a payout country first; no bank needed.",
       rsvp: "A free RSVP can be published now. Connect a bank only for optional chip-ins.",
       venue: "A free venue listing can be published now. Connect a bank only for paid orders or reservations.",
     };

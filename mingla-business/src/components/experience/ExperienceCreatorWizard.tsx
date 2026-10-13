@@ -105,6 +105,7 @@ import {
 import { payoutGateStatus } from "../../utils/brandPayout";
 import {
   emptyStop,
+  initialWholePriceInput,
   stopHasValidatedLocation,
   stopHasValidDescription,
   type ExperienceLocationMode,
@@ -420,8 +421,11 @@ export const ExperienceCreatorWizard: React.FC<
   );
 
   // Pricing
-  const [wholePriceMajor, setWholePriceMajor] = useState(
-    initialDraft?.wholePriceMajor ?? prefill?.wholePriceMajor ?? "0.00",
+  // #3645 — starts EMPTY (0.00 is the field's placeholder, not its value).
+  const [wholePriceMajor, setWholePriceMajor] = useState(() =>
+    initialWholePriceInput(
+      initialDraft?.wholePriceMajor ?? prefill?.wholePriceMajor,
+    ),
   );
   const [isFree, setIsFree] = useState(initialDraft?.isFree ?? false);
   const [capacity, setCapacity] = useState(initialDraft?.capacity ?? "20");

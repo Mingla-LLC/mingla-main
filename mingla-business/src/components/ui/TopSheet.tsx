@@ -79,6 +79,7 @@ import {
 } from "../../constants/designSystem";
 
 import { WebSafeGestureDetector } from "./WebSafeGestureDetector";
+import { useEscapeLayer } from "./escapeLayerStack";
 import { shouldUseRealBlur } from "../../utils/glassBlur";
 
 // ORCH-1136 R3: prefers-reduced-motion read for the WEB variant. On web,
@@ -300,7 +301,9 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
     };
   }, [scrimOpacity, translateY]);
 
-  // Web Escape key
+  // Web Escape key. #3645 — only the top-most open overlay acts on it, so a
+  // list opened over this sheet closes alone.
+  const isEscapeTop = useEscapeLayer(Platform.OS === "web" && visible);
   useEffect(() => {
     if (Platform.OS !== "web" || !visible) return;
     const docLike = globalThis as unknown as {
@@ -317,13 +320,13 @@ const TopSheetNative: React.FC<TopSheetProps> = ({
     };
     if (docLike.document === undefined) return;
     const handler = (event: { key: string }): void => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && isEscapeTop()) onClose();
     };
     docLike.document.addEventListener("keydown", handler);
     return (): void => {
       docLike.document!.removeEventListener("keydown", handler);
     };
-  }, [onClose, visible]);
+  }, [isEscapeTop, onClose, visible]);
 
   // Android hardware back
   useEffect(() => {
@@ -767,7 +770,9 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
     return cancelRaf;
   }, [visible, mounted, compactReady]);
 
-  // Web Escape key.
+  // Web Escape key. #3645 — only the top-most open overlay acts on it, so a
+  // list opened over this sheet closes alone.
+  const isEscapeTop = useEscapeLayer(visible);
   useEffect(() => {
     if (!visible) return;
     const docLike = globalThis as unknown as {
@@ -778,13 +783,13 @@ const TopSheetWeb: React.FC<TopSheetProps> = ({
     };
     if (docLike.document === undefined) return;
     const handler = (event: { key: string }): void => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && isEscapeTop()) onClose();
     };
     docLike.document.addEventListener("keydown", handler);
     return (): void => {
       docLike.document!.removeEventListener("keydown", handler);
     };
-  }, [onClose, visible]);
+  }, [isEscapeTop, onClose, visible]);
 
   const handleScrimPress = (): void => {
     if (dismissOnScrimTap) onClose();

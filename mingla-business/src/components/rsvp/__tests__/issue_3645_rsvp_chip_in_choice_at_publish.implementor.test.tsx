@@ -11,14 +11,15 @@
  * offers "Connect bank".
  *
  * The dialog is MOUNTED here (real component, host-element stubs for the UI
- * kit). The wizard wiring is pinned by source assertions, per the repo's
- * node-jest convention for RN components.
+ * kit). How the wizard is WIRED to it (the choice before the publish dialog, a
+ * server refusal opening the same choice, chip-ins switched off before the
+ * publish continues, the Setup step callout, the truthful save-refusal copy)
+ * is enforced by the strict-grep gate
+ * .github/scripts/strict-grep/issue-3645-paid-drafts-stop-at-publish.mjs, group C.
  */
 
 import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 
 jest.mock("react-native", () => ({
   Platform: {
@@ -214,188 +215,5 @@ describe("#3645 — the chip-in bank choice dialog", () => {
     expect(alert).toHaveLength(1);
     expect(alert[0].props["aria-live"]).toBe("assertive");
     tree.unmount();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Wizard wiring (source).
-// ---------------------------------------------------------------------------
-
-const read = (relative: string): string =>
-  readFileSync(path.join(process.cwd(), relative), "utf8");
-const WIZARD = read("src/components/rsvp/RsvpCreatorWizard.tsx");
-const SETUP = read("src/components/rsvp/RsvpStep5Setup.tsx");
-const ROUTE = read("app/rsvp/[id]/edit.tsx");
-
-const between = (source: string, from: string, to: string): string => {
-  const start = source.indexOf(from);
-  expect(start).toBeGreaterThan(-1);
-  const end = source.indexOf(to, start + from.length);
-  expect(end).toBeGreaterThan(start);
-  return source.slice(start, end);
-};
-
-describe("#3645 — Publish opens the choice instead of refusing", () => {
-  const tap = between(
-    WIZARD,
-    "const handlePublishTap = useCallback(async (): Promise<void> => {",
-    "const handleCloseChipInChoice = useCallback(",
-  );
-
-  test("chip-ins on + brand known not to collect → the choice, before any publish dialog", () => {
-    const choice = tap.indexOf("openChipInChoice();");
-    const confirm = tap.indexOf("setPublishConfirmVisible(true);");
-    expect(choice).toBeGreaterThan(-1);
-    expect(confirm).toBeGreaterThan(choice);
-    expect(tap).toContain("liveDraft.rsvpContributionEnabled &&");
-    expect(tap).toContain("chipInReadinessKnown &&");
-    expect(tap).toContain("!chipInPayoutReady");
-  });
-
-  test("validation errors still come first", () => {
-    expect(tap.indexOf("validateRsvpPublish(liveDraft)")).toBeLessThan(
-      tap.indexOf("openChipInChoice();"),
-    );
-  });
-
-  test("readiness is only trusted once it has loaded without error", () => {
-    expect(WIZARD).toContain("!chipInStripeStatus.isLoading &&");
-    expect(WIZARD).toContain("!chipInStripeStatus.isError;");
-  });
-
-  test("a server refusal for chip-ins opens the same choice, not a toast and a trip to bank setup", () => {
-    const publish = between(
-      WIZARD,
-      "const handleConfirmPublish = useCallback(async (): Promise<void> => {",
-      "const handleFixJump = useCallback(",
-    );
-    const refusal = publish.indexOf(
-      'detectPaidPublishGuardReason(code) === "stripe_charges_disabled"',
-    );
-    const legacy = publish.indexOf(
-      'guardCopy !== null && guardCopy.action === "stripe_onboarding"',
-    );
-    expect(refusal).toBeGreaterThan(-1);
-    // Checked BEFORE the legacy money-setup branch, which toasts and navigates.
-    expect(legacy).toBeGreaterThan(refusal);
-    const block = publish.slice(refusal, legacy);
-    expect(block).toContain("setPublishConfirmVisible(false);");
-    expect(block).toContain(
-      "setTimeout(openChipInChoice, CHIP_IN_CHOICE_SETTLE_MS);",
-    );
-    expect(block).toContain("return;");
-    expect(block).not.toContain("handleShowToast");
-    expect(block).not.toContain("onOpenStripeOnboard");
-    // The reason is read with the plain-object-safe reader.
-    expect(publish).toContain("const code = readRpcFailureMessage(error);");
-  });
-
-  test("the dialog is loaded on first opening and wired to the three handlers", () => {
-    expect(WIZARD).toContain('() => import("./RsvpChipInBankChoiceDialog"),');
-    expect(WIZARD).not.toContain('from "./RsvpChipInBankChoiceDialog"');
-    expect(WIZARD).toContain("{chipInChoiceLoaded ? (");
-    expect(WIZARD).toContain("<LazyRsvpChipInBankChoiceDialog");
-    expect(WIZARD).toContain("visible={chipInChoiceVisible}");
-    expect(WIZARD).toContain("onClose={handleCloseChipInChoice}");
-    expect(WIZARD).toContain("onConnectBank={handleChipInChoiceConnectBank}");
-    expect(WIZARD).toContain(
-      "onPublishWithoutChipIns={handleChipInChoicePublishWithout}",
-    );
-  });
-});
-
-describe("#3645 — the two choices", () => {
-  test("Connect bank: closes the dialog and opens bank setup with the current step", () => {
-    const body = between(
-      WIZARD,
-      "const handleChipInChoiceConnectBank = useCallback((): void => {",
-      "}, [onOpenStripeOnboard, currentStep]);",
-    );
-    expect(body).toContain("setChipInChoiceVisible(false);");
-    expect(body).toContain("onOpenStripeOnboard?.(currentStep);");
-    expect(body).not.toContain("rsvpContributionEnabled");
-  });
-
-  test("Publish without chip-ins: chip-ins off on the draft FIRST, then the normal publish", () => {
-    const body = between(
-      WIZARD,
-      "const handleChipInChoicePublishWithout = useCallback((): void => {",
-      "}, [handleUpdate]);",
-    );
-    const off = body.indexOf("handleUpdate({ rsvpContributionEnabled: false });");
-    const resume = body.indexOf("resumePublishRef.current()");
-    expect(off).toBeGreaterThan(-1);
-    expect(resume).toBeGreaterThan(off);
-    // It resumes the wizard's own publish (confirmation and invite checks
-    // included) once this dialog has finished dismissing.
-    expect(body).toContain("CHIP_IN_CHOICE_SETTLE_MS");
-    expect(WIZARD).toContain("void handlePublishTap();");
-  });
-
-  test("the publish that follows uses the draft AFTER chip-ins were switched off", () => {
-    expect(WIZARD).toContain("const draftToPublish = latestDraftRef.current;");
-    const update = between(
-      WIZARD,
-      "const handleUpdate = useCallback(",
-      "[draftId, markDraftDirty, queueAutosave, updateDraft],",
-    );
-    expect(update).toContain("latestDraftRef.current = nextDraft;");
-  });
-
-  test("the settle delay equals deferAfterDismiss's", () => {
-    const value = /export const CHIP_IN_CHOICE_SETTLE_MS = (\d+);/.exec(WIZARD);
-    expect(value).not.toBeNull();
-    const sheet = /export const UNMOUNT_DELAY_MS\s*=\s*(\d+)/.exec(
-      read("src/components/ui/SheetMobile.tsx"),
-    ) as RegExpExecArray;
-    const modal = /export const UNMOUNT_DELAY_MS\s*=\s*(\d+)/.exec(
-      read("src/components/ui/Modal.tsx"),
-    ) as RegExpExecArray;
-    const margin = /const SETTLE_MARGIN_MS\s*=\s*(\d+)/.exec(
-      read("src/utils/deferAfterDismiss.ts"),
-    ) as RegExpExecArray;
-    expect(Number((value as RegExpExecArray)[1])).toBe(
-      Math.max(Number(sheet[1]), Number(modal[1])) + Number(margin[1]),
-    );
-  });
-});
-
-describe("#3645 — the Setup step callout", () => {
-  test("draft wizard: says the draft saves either way and offers Connect bank", () => {
-    expect(SETUP).toContain(
-      '"Your draft saves either way. Connect now, or choose when you publish.";',
-    );
-    expect(SETUP).toContain("{onConnectChipInBank !== undefined ? (");
-    expect(SETUP).toContain("onPress={onConnectChipInBank}");
-    expect(SETUP).toContain('accessibilityLabel="Connect bank"');
-    expect(SETUP).toContain('testID="rsvp-contribution-connect-bank"');
-  });
-
-  test("the published-RSVP edit screen keeps the original callout (no draft claim)", () => {
-    expect(SETUP).toContain("you'll be prompted to finish setup when");
-    const edit = read("src/components/event/EditPublishedScreen.tsx");
-    expect(edit).not.toContain("onConnectChipInBank");
-  });
-
-  test("only the Setup step receives the action, so the other steps' props stay stable", () => {
-    const step = between(WIZARD, "<RsvpStep5Setup", "/>");
-    expect(step).toContain("onConnectChipInBank={");
-    const base = between(WIZARD, "const baseProps = {", "};");
-    expect(base).not.toContain("onConnectChipInBank");
-  });
-});
-
-describe("#3645 — a refused RSVP save says why", () => {
-  test("the route maps the refusal to truthful copy on both save paths", () => {
-    expect(ROUTE).toContain("message: rsvpDraftSaveFailureCopy(error),");
-    expect(ROUTE).toContain("if (!isRsvpChipInBankRefusal(autosaveLastError)) return;");
-    expect(ROUTE).toContain(
-      "setToast({ visible: true, message: RSVP_CHIP_IN_SAVE_REFUSED_COPY });",
-    );
-  });
-
-  test("the autosave hook exposes the failure it already tracked", () => {
-    const hook = read("src/hooks/useServerDraftEvents.ts");
-    expect(hook).toContain("lastError: hasError ? mutation.error ?? null : null,");
   });
 });

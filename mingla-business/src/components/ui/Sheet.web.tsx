@@ -58,6 +58,7 @@ import {
   shadows,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useEscapeLayer } from "./escapeLayerStack";
 
 // Import the canonical bottom sheet from the platform-NEUTRAL `./SheetMobile`,
 // never from the bare `./Sheet` specifier. On web, Metro resolves `./Sheet` to
@@ -139,6 +140,10 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   panelBackground,
   presentation,
 }) => {
+  // #3645 — this card's own Escape is handled by the platform modal
+  // (onRequestClose). Registering it as an Escape layer is what stops the
+  // sheet or dialog UNDERNEATH from closing on the same key press.
+  useEscapeLayer(visible);
   const competition = presentation !== undefined;
   const reduceMotion = useWebReducedMotion();
 

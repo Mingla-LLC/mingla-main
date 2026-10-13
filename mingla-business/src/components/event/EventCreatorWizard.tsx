@@ -295,6 +295,27 @@ const focusedTextInput = (): unknown => {
 const revealStillOwnsFocus = (owner: unknown): boolean =>
   owner === undefined || (owner !== null && focusedTextInput() === owner);
 
+/**
+ * issue #3645 — what the publish confirmation says, by visibility.
+ *
+ * It used to say "Public sale starts immediately" for every event, including an
+ * Unlisted one, which is not on public sale at all. Private makes no claim
+ * about who can buy: Private ticket sales are not open in this release
+ * (`privatePublishBlockReason` stops the publish before this dialog), so the
+ * only sentence that is certainly true for it is the one about editing.
+ */
+export const eventPublishConfirmDescription = (
+  visibility: string | null | undefined,
+): string => {
+  if (visibility === "unlisted") {
+    return "Anyone with the link can buy straight away. You can edit details after publishing.";
+  }
+  if (visibility === "private") {
+    return "You can edit details after publishing.";
+  }
+  return "Public sale starts immediately. You can edit details after publishing.";
+};
+
 export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   draft: initialDraft,
   brand,
@@ -1526,7 +1547,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       ) : (
         <ConfirmDialog visible={publishConfirmVisible} onClose={() => setPublishConfirmVisible(false)}
           onConfirm={handleConfirmPublish} title={publishModalTitle}
-          description="Public sale starts immediately. You can edit details after publishing."
+          description={eventPublishConfirmDescription(liveDraft.visibility)}
           confirmLabel="Publish" confirmLoading={isPublishing} confirmDisabled={isPublishing}
           closeDisabled={isPublishing} />
       )}
