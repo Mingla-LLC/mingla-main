@@ -6,15 +6,16 @@
  * thing: with NO buyers, Review changes stops promising a buyer notification
  * and stops demanding a reason. Only zero versus non-zero is contractual.
  *
- * Returns `null` whenever the answer is not KNOWN: no server id, still
- * loading, the request failed, or the function is not on the server yet (the
- * web app ships before the migration is applied). `null` keeps the reason
+ * Returns `null` whenever the answer is not KNOWN: no server id, the session
+ * is not ready yet, still loading, the request failed, or the function is not
+ * on the server yet (the web app ships before the migration is applied). `null` keeps the reason
  * mandatory, so not knowing can only ever be the stricter behaviour, and the
  * server re-checks on save regardless.
  */
 
 import { useQuery } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 
 export const eventBuyerCountKeys = {
@@ -43,7 +44,10 @@ export const fetchEventBuyerCount = async (
 export const useEventBuyerCount = (
   serverEventId: string | null,
 ): number | null => {
-  const enabled = serverEventId !== null;
+  // The RPC is auth.uid()-scoped (event managers and above). Asked before the
+  // session is ready it would be refused as signed out, so it waits (ORCH-1004).
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && serverEventId !== null;
   const query = useQuery({
     queryKey: enabled ? eventBuyerCountKeys.detail(serverEventId) : DISABLED_KEY,
     queryFn: () => fetchEventBuyerCount(serverEventId as string),

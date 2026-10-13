@@ -197,6 +197,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #1384 — both reads are brand-team/auth.uid()-scoped. A pre-auth request
   // would cache an RLS-empty success and hide the canonical currency/range.
   "useBrandDiscoveryCurrency.ts",
+  // #3827 — business_event_buyer_count is auth.uid()-scoped (event managers and
+  // above). A pre-auth request would be refused as signed out; the hook folds
+  // isAuthReady into enabled and reports "not known" until it can ask.
+  "useEventBuyerCount.ts",
   // [TEST-MOD-APPROVED #2830] Website status, version, and analytics reads are
   // caller/brand scoped through the authenticated control gateway. They must
   // not cache a pre-auth denial or empty result as the operator's site truth.

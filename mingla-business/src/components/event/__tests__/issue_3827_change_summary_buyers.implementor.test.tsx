@@ -12,7 +12,7 @@
 //   BC-*   the REAL useEventBuyerCount, rendered under a real QueryClient:
 //          the server's number when it answers; null while loading, on an
 //          error, when the function is missing, on a malformed answer, and
-//          with no server id (which makes no request at all).
+//          with no server id or before the session is ready (no request at all).
 //   WIRE-* the editor wiring, read from source: the event route reads the
 //          count and hands it down; RSVP passes `undefined`; the guard is told
 //          the reason is optional only for a known zero; a save that includes
@@ -61,6 +61,10 @@ jest.mock("../../../services/supabase", () => ({
   supabase: {
     rpc: (name: string, args: Record<string, unknown>) => mockRpc(name, args),
   },
+}));
+const mockAuth = { isAuthReady: true };
+jest.mock("../../../context/AuthContext", () => ({
+  useAuth: () => mockAuth,
 }));
 jest.mock("../../ui/Sheet", () => ({
   Sheet: (props: { visible: boolean; children?: React.ReactNode }) =>
@@ -324,6 +328,7 @@ const mountCount = async (
 describe("issue #3827 — useEventBuyerCount", () => {
   beforeEach(() => {
     mockRpc.mockReset();
+    mockAuth.isAuthReady = true;
   });
 
   test("BC-1: it asks the server's one definition of a buyer and returns its number", async () => {
@@ -380,6 +385,17 @@ describe("issue #3827 — useEventBuyerCount", () => {
       odd.tree.unmount();
       odd.client.clear();
     }
+  });
+
+  test("BC-6: before the session is ready it makes no request and is 'not known'", async () => {
+    mockAuth.isAuthReady = false;
+    mockRpc.mockResolvedValue({ data: 0, error: null });
+    const early = await mountCount("server-event-3827");
+    await flush();
+    expect(early.read()).toBeNull();
+    expect(mockRpc).not.toHaveBeenCalled();
+    early.tree.unmount();
+    early.client.clear();
   });
 
   test("BC-5: with no server id it makes no request and is 'not known'", async () => {

@@ -28,7 +28,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { describe, expect, test } from "@jest/globals";
+import { beforeAll, describe, expect, test } from "@jest/globals";
 
 import {
   computeRichFieldDiffs,
@@ -371,8 +371,11 @@ const SQL_SUITE = path.resolve(
   "../../../../supabase/migrations/__tests__/issue_3827_live_edit_location_one_owner.implementor.happy.pg17.test.sql",
 );
 
-const readSharedLabelCases = (): LabelCase[] => {
-  const sql = fs.readFileSync(SQL_SUITE, "utf8");
+const readSharedLabelCases = async (): Promise<{
+  sql: string;
+  cases: LabelCase[];
+}> => {
+  const sql = await fs.promises.readFile(SQL_SUITE, "utf8");
   const first = sql.indexOf("$cases$");
   const last = sql.lastIndexOf("$cases$");
   if (first === -1 || last === first) {
@@ -380,15 +383,23 @@ const readSharedLabelCases = (): LabelCase[] => {
       "issue #3827: the shared label table is no longer between two $cases$ markers in the pg17 suite",
     );
   }
-  return JSON.parse(sql.slice(first + "$cases$".length, last)) as LabelCase[];
+  return {
+    sql,
+    cases: JSON.parse(sql.slice(first + "$cases$".length, last)) as LabelCase[],
+  };
 };
 
 describe("issue #3827 — one label rule, in TypeScript and in SQL", () => {
-  const cases = readSharedLabelCases();
+  let cases: LabelCase[] = [];
+  let sql = "";
+  beforeAll(async () => {
+    const shared = await readSharedLabelCases();
+    cases = shared.cases;
+    sql = shared.sql;
+  });
 
   test("LABEL-1: the shared table was read whole and is used by the SQL suite", () => {
     expect(cases.length).toBeGreaterThanOrEqual(15);
-    const sql = fs.readFileSync(SQL_SUITE, "utf8");
     // The same rows are run through the SQL composer in H-06.
     expect(sql).toContain("pg_temp.issue_3827_label_cases()");
     expect(sql).toContain(
@@ -402,21 +413,30 @@ describe("issue #3827 — one label rule, in TypeScript and in SQL", () => {
     expect(names).toContain("neither");
   });
 
-  test.each(readSharedLabelCases().map((c) => [c.name, c] as const))(
-    "LABEL-2: %s",
-    (_name, labelCase) => {
+  test("LABEL-2: every row composes to the same label in TypeScript as in SQL", () => {
+    // One row per case, by name, so a failure says which case broke.
+    const composed = cases.map((labelCase) => {
       const draft: DraftEvent = {
         ...liveEventToEditableDraft(liveEvent()),
         venueName: labelCase.venue,
         address: labelCase.address,
       };
       // `locationTextForDraft` is the composer; both builders call it.
-      expect(buildRsvpUpdatePayload(draft).location_text).toBe(labelCase.expected);
-      expect(
-        buildRsvpUpdatePayloadDiff(liveEvent(), draft).location_text,
-      ).toBe(labelCase.expected);
-    },
-  );
+      return {
+        name: labelCase.name,
+        full: buildRsvpUpdatePayload(draft).location_text,
+        diff: buildRsvpUpdatePayloadDiff(liveEvent(), draft).location_text,
+      };
+    });
+    expect(composed).toEqual(
+      cases.map((labelCase) => ({
+        name: labelCase.name,
+        full: labelCase.expected,
+        diff: labelCase.expected,
+      })),
+    );
+    expect(composed).toHaveLength(cases.length);
+  });
 });
 
 describe("issue #3827 — the reason is required only when it is owed", () => {
@@ -461,10 +481,10 @@ describe("issue #3827 — the reason is required only when it is owed", () => {
     }
   });
 
-  test("GUARD-4: the local log's no-buyers reason is the server's, and passes the default check", () => {
+  test("GUARD-4: the local log's no-buyers reason is the server's, and passes the default check", async () => {
     // business_resolve_edit_reason records exactly these words.
     expect(NO_BUYERS_EDIT_REASON).toBe("No buyers at time of edit; no reason given");
-    const migration = fs.readFileSync(
+    const migration = await fs.promises.readFile(
       path.resolve(
         __dirname,
         "../../../../supabase/migrations/20270828003827_issue_3827_live_edit_location_one_owner.sql",
