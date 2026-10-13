@@ -31,7 +31,8 @@
 --   H-13  the migration's self-check aborts on a wrong grant or a stale key
 --   Part 2  two sessions move one card to different stages, each naming the
 --           stage it saw: exactly one succeeds; two sessions add one lead to
---           Hosts: one host (real sessions)
+--           Hosts: one host; two sessions set one new target: the second
+--           waits and is answered, one row (real sessions)
 --
 -- Part 1 is one transaction, rolled back. Part 2 commits a few rows and
 -- removes them. Never run on production.
@@ -453,7 +454,15 @@ declare
     U&'\+01D173\+01D17A',             -- musical format characters
     U&'\0301',                        -- a combining mark alone
     U&'\200B\2800 \+0E0020\0301',     -- a mix of all of them
-    U&'\+0110BD\+013430\+01BCA0'      -- format characters from three scripts
+    U&'\+0110BD\+013430\+01BCA0',     -- format characters from three scripts
+    U&'\093F',                        -- a Devanagari vowel sign alone
+    U&'\0E34\0E48',                   -- Thai marks alone
+    U&'\05B4\05C1',                   -- Hebrew points alone
+    U&'\064E\0651',                   -- Arabic marks alone
+    U&'\20DD',                        -- an enclosing mark alone
+    U&'\+01D159\+016FE4\+01DA9B',     -- three characters with no shape
+    U&'\E000\+0F0000',                -- private-use characters
+    U&'\0378\0600'                    -- an unassigned and a format character
   ];
 begin
   -- The same inputs the admin web client is tested against.
@@ -475,6 +484,29 @@ begin
       ('ideographic variation', U&'\+0E0100',                                       ''),
       ('musical format',        U&'\+01D173\+01D17A',                               ''),
       ('combining mark alone',  U&'\0301',                                          ''),
+      ('Devanagari mark alone', U&'\093F',                                          ''),
+      ('Thai mark alone',       U&'\0E34',                                          ''),
+      ('Hebrew point alone',    U&'\05B4',                                          ''),
+      ('Arabic mark alone',     U&'\064E',                                          ''),
+      ('enclosing mark alone',  U&'\20DD',                                          ''),
+      ('spacing mark alone',    U&'\0903',                                          ''),
+      ('marks of five scripts', U&'\0301\093F\0E34\05B4\+01E8D0',                   ''),
+      ('shapeless note head',   U&'\+01D159',                                       ''),
+      ('script filler',         U&'\+016FE4',                                       ''),
+      ('sign fill modifier',    U&'\+01DA9B',                                       ''),
+      ('private use',           U&'\E000\+0F0000\+100000',                          ''),
+      ('unassigned',            U&'\0378\+0E0080',                                  ''),
+      ('format character',      U&'\0600\200E',                                     ''),
+      ('joiners alone',         U&'\200C\200D',                                     ''),
+      ('accented Latin',        U&'\00C9cole Fran\00E7aise',                         U&'\00E9colefran\00E7aise'),
+      ('Hebrew with points',    U&'\05E9\05B4\05C1\05DC\05D5\05DD',                  U&'\05E9\05DC\05D5\05DD'),
+      ('Arabic with marks',     U&'\0645\064E\0637\0639\064E\0645',                  U&'\0645\0637\0639\0645'),
+      ('kana',                  U&'\3059\3057 \30E9\30FC\30E1\30F3',                 U&'\3059\3057\30E9\30FC\30E1\30F3'),
+      ('CJK',                   U&'\65E5\672C\6599\7406',                           U&'\65E5\672C\6599\7406'),
+      ('Hangul',                U&'\D55C\AD6D \C2DD\B2F9',                          U&'\D55C\AD6D\C2DD\B2F9'),
+      ('star symbols',          U&'\2605\2605',                                     U&'\2605\2605'),
+      ('emoji with a joiner',   U&'\+01F468\200D\+01F373',                          U&'\+01F468\+01F373'),
+      ('flag emoji',            U&'\+01F1F3\+01F1EC',                               U&'\+01F1F3\+01F1EC'),
       ('Palm Court Kitchen',    'Palm Court Kitchen',                               'palmcourtkitchen'),
       ('palm-court kitchen',    'palm-court kitchen',                               'palmcourtkitchen'),
       ('@PalmCourtKitchen',     '@PalmCourtKitchen',                                'palmcourtkitchen'),
@@ -542,7 +574,27 @@ begin
   perform pg_temp.t3802h_check('H-3', 'the duplicate check finds it from the full-width spelling',
     pg_temp.t3802h_get(r, 'exact', 'id'), pg_temp.t3802h_id('h3fw'));
 
-  -- Still accepted.
+  -- Still accepted: a name in any script, with its marks attached to letters.
+  for c in
+    select * from (values
+      ('h3s1', U&'H3 \0915\093F\0924\093E\092C \0918\0930'),      -- Devanagari
+      ('h3s2', U&'H3 \0E01\0E34\0E19\0E02\0E49\0E32\0E27'),          -- Thai
+      ('h3s3', U&'H3 \05E9\05B4\05C1\05DC\05D5\05DD'),              -- Hebrew with points
+      ('h3s4', U&'H3 \0645\064E\0637\0652\0639\064E\0645'),          -- Arabic with marks
+      ('h3s5', U&'H3 \3059\3057\30E9\30FC\30E1\30F3'),              -- kana
+      ('h3s6', U&'H3 \65E5\672C\6599\7406'),                        -- CJK
+      ('h3s7', U&'H3 \00C9cole Fran\00E7aise'),                      -- accented Latin
+      ('h3s8', U&'H3 \+01F468\200D\+01F373 Kitchen')                -- an emoji made with a joiner
+    ) as v(k, name)
+  loop
+    r := pg_temp.t3802h_make(c.k, 'growth', 'hosts', jsonb_build_object('name', c.name));
+    perform pg_temp.t3802h_check('H-3', 'a name in its own script is accepted and stored as typed (' || c.k || ')',
+      pg_temp.t3802h_get(r, 'status') || '/' || (select encode(convert_to(x.name, 'UTF8'), 'hex') from public.crm_records x where x.id = pg_temp.t3802h_id(c.k)::uuid),
+      'created/' || encode(convert_to(normalize(c.name, NFC), 'UTF8'), 'hex'));
+  end loop;
+  r := pg_temp.t3802h_make('h3strip', 'growth', 'hosts', jsonb_build_object('name', U&'H3 Str\E000ip\0600ped\0378 \+01D159Name'));
+  perform pg_temp.t3802h_check('H-3', 'private-use, format, unassigned and shapeless characters inside a name are removed before it is stored',
+    (select name from public.crm_records where id = pg_temp.t3802h_id('h3strip')::uuid), 'H3 Stripped Name');
   r := pg_temp.t3802h_make('h3emoji', 'growth', 'hosts', jsonb_build_object('name', U&'\+01F355\+01F355'));
   perform pg_temp.t3802h_check('H-3', 'an emoji-only name is still accepted', pg_temp.t3802h_get(r, 'status'), 'created');
   r := pg_temp.t3802h_make('h3arabic', 'growth', 'hosts', jsonb_build_object('name', U&'\0645\0637\0639\0645 \0627\0644\0646\062E\064A\0644'));
@@ -1372,10 +1424,13 @@ begin
       ('an account that signs in with this email',     'issue3802h-emailonly@test.local', null, 'email', 'issue3802h-emailonly@test.local', 'ok'),
       ('an account with no sign-in method recorded',   'issue3802h-bare@test.local',    null, null, 'account', 'ok'),
       ('an account with a phone number',               'issue3802h-phone@test.local',   '+15550103802', 'email', 'issue3802h-phone@test.local', 'conflict'),
+      ('an email sign-in and a Google one, same email', 'issue3802h-both@test.local',   null, 'google', 'issue3802h-both@test.local', 'conflict'),
       ('an account with a blank phone number',         'issue3802h-blankphone@test.local', '   ', 'email', 'issue3802h-blankphone@test.local', 'ok'),
       ('an account with a phone sign-in',              'issue3802h-phoneid@test.local', null, 'phone', null, 'conflict'),
       ('a Google sign-in under another email',         'issue3802h-google@test.local',  null, 'google', 'someone-else@test.local', 'conflict'),
-      ('a Google sign-in under this email, other case', 'issue3802h-googlesame@test.local', null, 'google', '  Issue3802H-GoogleSame@Test.Local ', 'ok'),
+      ('a Google sign-in under this same email',       'issue3802h-googlesame@test.local', null, 'google', '  Issue3802H-GoogleSame@Test.Local ', 'conflict'),
+      ('an Apple sign-in under this same email',       'issue3802h-applesame@test.local', null, 'apple', 'issue3802h-applesame@test.local', 'conflict'),
+      ('a sign-in method this app has never heard of', 'issue3802h-other@test.local',   null, 'sso:example', 'issue3802h-other@test.local', 'conflict'),
       ('an Apple sign-in with no email at all',        'issue3802h-apple@test.local',   null, 'apple', null, 'conflict')
     ) as v(label, email, phone, provider, identity_email, want)
   loop
@@ -1385,6 +1440,9 @@ begin
       if c.provider is not null then
         insert into auth.identities (user_id, provider, identity_data)
         values (v_id, c.provider, case when c.identity_email is null then '{}'::jsonb else jsonb_build_object('email', c.identity_email) end);
+      end if;
+      if c.label like 'an email sign-in and a Google one%' then
+        insert into auth.identities (user_id, provider, identity_data) values (v_id, 'email', jsonb_build_object('email', c.email));
       end if;
     end if;
     perform pg_temp.t3802h_check('H-10', 'verdict for ' || c.label,
@@ -1638,7 +1696,7 @@ declare
   r record;
 begin
   select count(*), count(*) filter (where not ok) into v_total, v_failed from t3802h_results;
-  if v_total < 470 then
+  if v_total < 550 then
     raise exception 'ISSUE-3802 HOMES FAIL: only % checks ran; the suite did not execute fully', v_total;
   end if;
   if v_failed > 0 then
@@ -1682,7 +1740,9 @@ delete from public.crm_record_owners where owner_email like 'issue3802h-race-%'
 delete from public.crm_records where created_by like 'issue3802h-race-%';
 delete from public.crm_request_keys where actor_email like 'issue3802h-race-%';
 delete from public.beta_access_leads where email like 'issue3802h-race-%';
+delete from public.crm_targets where created_by like 'issue3802h-race-%';
 set local session_replication_role = replica;
+delete from public.seeding_cities where google_place_id = 'issue3802h-race-city';
 delete from public.admin_audit_log where admin_email like 'issue3802h-race-%';
 delete from public.admin_users where lower(btrim(email)) like 'issue3802h-race-%';
 delete from auth.users where email like 'issue3802h-race-%';
@@ -1696,6 +1756,11 @@ insert into public.crm_records (id, pipeline, name, stage, created_by, updated_b
   ('38020000-0000-4000-d910-000000000001', 'hosts', 'Issue3802h Race Card', 'prospect', 'issue3802h-race-1@test.local', 'issue3802h-race-1@test.local');
 insert into public.beta_access_leads (id, brand_type, brand_name, contact_name, city, email, consent, source) values
   ('38020000-0000-4000-d920-000000000001', array['restaurant'], 'Issue3802h Race Lead', 'Race', 'Nowhere', 'issue3802h-race-lead@test.local', true, 'organiser_marketing');
+set local session_replication_role = replica;
+insert into public.seeding_cities (id, google_place_id, name, country, country_code, center_lat, center_lng,
+                                   bbox_sw_lat, bbox_sw_lng, bbox_ne_lat, bbox_ne_lng, is_live_for_consumers) values
+  ('38020000-0000-4000-d930-000000000001', 'issue3802h-race-city', 'Issue3802h Race City', 'Nigeria', 'NG', 1, 1, 0, 0, 2, 2, false);
+set local session_replication_role = origin;
 commit;
 
 do $race$
@@ -1825,6 +1890,72 @@ begin
       perform dblink_disconnect(v_c);
     end if;
   end loop;
+
+  -- R-3: two admins set the same new target at the same moment. The second
+  -- waits its turn and is answered like any later change: never a raw error,
+  -- never two rows.
+  begin
+    v_n := 0;
+    foreach v_c in array array['t3802h_c1', 't3802h_c2'] loop
+      v_n := v_n + 1;
+      perform dblink_connect(v_c, c_conn);
+      perform dblink_exec(v_c, 'begin');
+      perform dblink_exec(v_c, 'set local role authenticated');
+      perform * from dblink(v_c, format(
+        $q$select set_config('request.jwt.claim.sub', '38020000-0000-4000-d900-00000000000%s', true) || set_config('request.jwt.claims', '{"sub":"38020000-0000-4000-d900-00000000000%s","role":"authenticated"}', true)$q$,
+        v_n, v_n)) as t(x text);
+    end loop;
+
+    select x into v_r1 from dblink('t3802h_c1',
+      $q$select public.crm_target_set('38020000-0000-4000-d930-000000000001', 'partner_org', 5)::text$q$) as t(x text);
+    select x into v_pid from dblink('t3802h_c2', 'select pg_backend_pid()') as t(x int);
+    perform dblink_send_query('t3802h_c2',
+      $q$select public.crm_target_set('38020000-0000-4000-d930-000000000001', 'partner_org', 7)::text$q$);
+    v_waited := false;
+    for i in 1..200 loop
+      select exists (select 1 from pg_locks l where l.pid = v_pid and not l.granted and l.locktype = 'advisory') into v_waited;
+      exit when v_waited or dblink_is_busy('t3802h_c2') = 0;
+      perform pg_sleep(0.05);
+    end loop;
+    insert into t3802h_race.results (label, ok, detail)
+    values ('R-3 the second target change waits its turn on the per-target lock', v_waited, 'waited=' || v_waited::text);
+
+    perform dblink_exec('t3802h_c1', 'commit');
+    v_r2 := null;
+    begin
+      select x into v_r2 from dblink_get_result('t3802h_c2', false) as t(x text);
+    exception when others then
+      v_r2 := null;
+    end;
+    v_err := coalesce(dblink_error_message('t3802h_c2'), '');
+    perform * from dblink_get_result('t3802h_c2', false) as t(x text);
+    begin
+      perform dblink_exec('t3802h_c2', 'commit');
+    exception when others then
+      null;
+    end;
+
+    insert into t3802h_race.results (label, ok, detail)
+    values ('R-3 the first change set the target', coalesce((v_r1::jsonb ->> 'changed') = 'true' and (v_r1::jsonb ->> 'previous') is null, false), coalesce(left(v_r1, 80), '<null>'));
+    insert into t3802h_race.results (label, ok, detail)
+    values ('R-3 the second change is answered as a change from the first number, not with an error',
+            coalesce((v_r2::jsonb ->> 'changed') = 'true' and (v_r2::jsonb ->> 'previous') = '5', false),
+            coalesce(left(v_r2, 80), '<no answer>') || ' / ' || left(v_err, 120));
+    insert into t3802h_race.results (label, ok, detail)
+    select 'R-3 one row holds the later number, and each change wrote one audit row',
+           count(*) = 1 and max(monthly_target) = 7
+             and (select count(*) from public.admin_audit_log where action = 'crm.target_set' and admin_email like 'issue3802h-race-%') = 2,
+           count(*)::text || ' row(s), target ' || coalesce(max(monthly_target)::text, '-')
+      from public.crm_targets where region_id = '38020000-0000-4000-d930-000000000001';
+  exception when others then
+    insert into t3802h_race.results (label, ok, detail)
+    values ('R-3 ran without an unexpected error', false, sqlstate || ': ' || sqlerrm);
+  end;
+  foreach v_c in array array['t3802h_c1', 't3802h_c2'] loop
+    if v_c = any (coalesce(dblink_get_connections(), '{}')) then
+      perform dblink_disconnect(v_c);
+    end if;
+  end loop;
 end;
 $race$;
 
@@ -1842,7 +1973,9 @@ delete from public.crm_record_owners where owner_email like 'issue3802h-race-%'
 delete from public.crm_records where created_by like 'issue3802h-race-%';
 delete from public.crm_request_keys where actor_email like 'issue3802h-race-%';
 delete from public.beta_access_leads where email like 'issue3802h-race-%';
+delete from public.crm_targets where created_by like 'issue3802h-race-%';
 set local session_replication_role = replica;
+delete from public.seeding_cities where google_place_id = 'issue3802h-race-city';
 delete from public.admin_audit_log where admin_email like 'issue3802h-race-%';
 delete from public.admin_users where lower(btrim(email)) like 'issue3802h-race-%';
 delete from auth.users where email like 'issue3802h-race-%';
@@ -1853,7 +1986,7 @@ drop extension if exists dblink;
 \endif
 drop schema t3802h_race cascade;
 
-select (:t3802h_race_total < 8 or :t3802h_race_failed > 0) as t3802h_race_bad \gset
+select (:t3802h_race_total < 13 or :t3802h_race_failed > 0) as t3802h_race_bad \gset
 \if :t3802h_race_bad
   \echo 'ISSUE-3802 HOMES FAILED (part 2):' :t3802h_race_failures
   do $$ begin raise exception 'ISSUE-3802 HOMES FAIL: concurrency checks failed or did not run'; end $$;
