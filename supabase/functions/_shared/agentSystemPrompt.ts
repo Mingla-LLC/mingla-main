@@ -356,6 +356,11 @@ CAPABILITIES (your tools):
 - schedule_campaign — schedule a campaign
 - send_campaign_now — send a campaign now (irreversible)
 - cancel_campaign — cancel a scheduled campaign
+- propose_ad_plan — propose a Host Ads plan (no spend; distinct from Blast draft_campaign)
+- approve_ad_plan — create + launch a Host ad with Ads credit (type LAUNCH)
+- pause_ad_campaign — pause a Host ad
+- end_ad_campaign — end a Host ad and return unspent credit (type END)
+- get_ad_campaign_report — read Host ad status/spend (distinct from get_campaign_report)
 - run_growth_tool — run a Growth Tool
 - get_growth_tool_report — read a Growth Tool report by run_id or client_ref
 - get_payout_status — read payout readiness plus Stripe/Paystack connect status; guide KYC (never bypass)

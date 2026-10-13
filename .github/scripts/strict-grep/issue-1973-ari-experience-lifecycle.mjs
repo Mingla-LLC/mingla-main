@@ -158,10 +158,11 @@ function check(s) {
   // [TEST-MOD-APPROVED #1981] Refund preview + trip installments; 135→137 / 134→136.
   // [TEST-MOD-APPROVED #1982] Brand invitation revoke; 137→138 / 136→137.
   // [TEST-MOD-APPROVED #1984] Listing conversion + reservation metrics; 138→140 / 137→139.
-  requireAll("140-capability certification proof", s.certificationTest, [
+  // [TEST-MOD-APPROVED #3697] Host Ads tools; 140→145 / 139→144.
+  requireAll("145-capability certification proof", s.certificationTest, [
     "ari.experience.unpublish",
-    "ari_cert_missing_capabilities:139",
-    "expected exactly 140 certification requirements",
+    "ari_cert_missing_capabilities:144",
+    "expected exactly 145 certification requirements",
   ]);
   requireAll("public payload Edge proof", s.publicPayloadTest, [
     '"update_experience"',
@@ -263,7 +264,7 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       certificationTest: sources.certificationTest.replace(
-        "ari_cert_missing_capabilities:139",
+        "ari_cert_missing_capabilities:144",
         "accepted_obsolete_inventory",
       ),
     },

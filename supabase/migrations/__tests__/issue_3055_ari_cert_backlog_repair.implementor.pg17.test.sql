@@ -40,8 +40,9 @@
 -- When a later migration changes the requirement set or re-issues these functions,
 -- B2/A0/A2 move with it — the precedent is #1980/#1981 amending #2592's denominator
 -- suite. The fixture fingerprints are production's, probed once, and never move.
--- [TEST-MOD-APPROVED #1984] Tip census is now 20270705001984 (138→140). B2 re-applies
--- only #1984 (no-op on tip). The (A) repair path applies #3055 then #1982 then #1984
+-- [TEST-MOD-APPROVED #1984] Tip census was 20270705001984 (138→140).
+-- [TEST-MOD-APPROVED #3697] Tip census is now 20270824003697 (140→145). B2 re-applies
+-- only #3697 (no-op on tip). The (A) repair path applies #3055 then #1982 then #1984 then #3697
 -- so it converges on (B).
 -- [TEST-MOD-APPROVED #1982] Tip census was 20270704001982 (137→138). B2 re-applies
 -- only #1982 (no-op on tip). The (A) repair path applies #3055 then #1982 so it converges on (B).
@@ -280,10 +281,15 @@ BEGIN
     'ari.rsvp.update',
     'ari.marketing.update_draft', 'ari.marketing.delete_draft', 'ari.growth.read_report',
     'ari.order.refund_preview', 'ari.installment.list',
-    -- #1982/#1984 tip census only; absent in production
+    -- #1982/#1984/#3697 tip census only; absent in production
     'ari.team.revoke_invitation',
     'ari.analytics.listing_conversion',
-    'ari.analytics.reservation_metrics');
+    'ari.analytics.reservation_metrics',
+    'ari.ads.propose_ad_plan',
+    'ari.ads.approve_ad_plan',
+    'ari.ads.pause_ad_campaign',
+    'ari.ads.end_ad_campaign',
+    'ari.ads.get_ad_campaign_report');
   INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode)
   VALUES ('ari.guests.set_approval', 'write');
   UPDATE public.ari_cert_capability_requirements
@@ -319,19 +325,20 @@ BEGIN
 END;
 $b1$;
 
--- Tip census after #3055 is #1984. Re-applying #3055 alone on this tip would
--- rewrite finalize back to 137 and abort against 140 rows; B2 therefore proves
--- the tip file is the no-op.
-\ir ../20270705001984_issue_1984_ari_cert_capability_census.sql
+-- Tip census after #3697. Re-applying #3055 alone on this tip would rewrite
+-- finalize back and abort against 145 rows; B2 therefore proves the tip file
+-- is the no-op.
+-- [TEST-MOD-APPROVED #3697]
+\ir ../20270824003697_issue_3697_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('B+repair');
-\ir ../20270705001984_issue_1984_ari_cert_capability_census.sql
+\ir ../20270824003697_issue_3697_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('B+repair+repair');
 
 DO $b2$
 BEGIN
   PERFORM pg_temp.issue_3055_assert_same('T-3055-B2 repair is not a no-op on the chain', 'B', 'B+repair');
   PERFORM pg_temp.issue_3055_assert_same('T-3055-B2 second repair on the chain changed state', 'B+repair', 'B+repair+repair');
-  RAISE NOTICE 'T-3055-B2 PASS: tip census #1984 applied twice to (B) changed nothing';
+  RAISE NOTICE 'T-3055-B2 PASS: tip census #3697 applied twice to (B) changed nothing';
 END;
 $b2$;
 
@@ -418,10 +425,12 @@ ROLLBACK;
 \ir ../20270630003055_issue_3055_ari_cert_backlog_repair.sql
 \ir ../20270704001982_issue_1982_ari_cert_capability_census.sql
 \ir ../20270705001984_issue_1984_ari_cert_capability_census.sql
+\ir ../20270824003697_issue_3697_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('A+repair');
--- Second pass is tip-only: re-applying #3055 on the post-#1984 tip would rewrite
--- finalize to 137 and abort against 140 rows (same constraint as B2).
-\ir ../20270705001984_issue_1984_ari_cert_capability_census.sql
+-- Second pass is tip-only: re-applying older censuses on the post-#3697 tip
+-- would rewrite finalize and abort against 145 rows (same constraint as B2).
+-- [TEST-MOD-APPROVED #3697]
+\ir ../20270824003697_issue_3697_ari_cert_capability_census.sql
 SELECT pg_temp.issue_3055_capture('A+repair+repair');
 
 DO $a2$
@@ -447,7 +456,7 @@ BEGIN
   RAISE NOTICE 'T-3055-A2 PASS: (A)+repair is identical to (B) on rows, digest, functions, trigger and every ari_cert_* catalog object';
 
   PERFORM pg_temp.issue_3055_assert_same('T-3055-A3 second repair on (A) changed state', 'A+repair', 'A+repair+repair');
-  RAISE NOTICE 'T-3055-A3 PASS: tip census #1984 applied again to (A) changed nothing';
+  RAISE NOTICE 'T-3055-A3 PASS: tip census #3697 applied again to (A) changed nothing';
 
   v_rows := pg_temp.issue_3055_assert_ledger_agreement('T-3055-A4');
   RAISE NOTICE 'T-3055-A4 PASS: repaired set holds % requirement rows, id-for-id equal to the ledger', v_rows;

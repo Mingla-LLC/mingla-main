@@ -26,6 +26,7 @@ import { mapAdCreditQuoteError } from "../adCreditQuoteErrors";
 import {
   AdCreditAppError,
   applyAdCreditTopUp,
+  applyAdCreditWithdraw,
   getAdCreditWallet,
   quoteAdCreditTopUp,
   quoteAdCreditWithdraw,
@@ -164,6 +165,36 @@ describe("adCreditService Wave 7", () => {
         pay_cents: 2500,
         currency: "USD",
         idempotency_key: "attempt-abc-12345",
+      },
+    });
+  });
+
+  it("Wave 7c: applyAdCreditWithdraw sends apply_withdraw with idempotency", async () => {
+    mockInvoke.mockResolvedValueOnce(
+      ok({
+        ok: true,
+        estimate: {
+          ok: true,
+          credit_cents: 2125,
+          refund_cents: 2500,
+          fee_returned_cents: 375,
+        },
+        result: { replayed: false },
+        provider_refund_cents: 2500,
+      }),
+    );
+    const applied = await applyAdCreditWithdraw({
+      brandId: "b1",
+      creditCents: 2125,
+      idempotencyKey: "wd-attempt-1",
+    });
+    expect(applied.provider_refund_cents).toBe(2500);
+    expect(mockInvoke).toHaveBeenCalledWith("ad-credit", {
+      body: {
+        action: "apply_withdraw",
+        brand_id: "b1",
+        credit_cents: 2125,
+        idempotency_key: "wd-attempt-1",
       },
     });
   });

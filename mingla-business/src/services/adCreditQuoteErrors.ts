@@ -19,7 +19,9 @@ export function mapAdCreditQuoteError(err: unknown): string {
     case "pay_above_maximum":
       return "That amount is above the maximum top-up for this currency.";
     case "currency_unsupported":
-      return "Card top-up is available for USD and GBP. Naira ships next.";
+      return "Top-up is available for USD, GBP (card), and NGN (Paystack).";
+    case "ad_connection_required":
+      return "Connect an ad account in Admin before launching Host ads.";
     case "credit_below_minimum":
     case "credit_invalid":
       return "Enter a valid credit amount to withdraw.";
@@ -41,9 +43,15 @@ export function mapAdCreditQuoteError(err: unknown): string {
     case "idempotency_key_required":
       return "Could not start payment. Close the sheet and try again.";
     case "stripe_start_failed":
+    case "paystack_start_failed":
     case "checkout_url_missing":
     case "client_secret_missing":
       return "Could not start card checkout. Try again.";
+    case "provider_refund_partial":
+      return "Credit was withdrawn but part of the card refund failed. Contact support.";
+    case "withdraw_missing_payment_ref":
+    case "withdraw_payment_ref_unsupported":
+      return "That credit cannot be refunded automatically. Contact support.";
     default:
       if (err.code === "forbidden") {
         return "You need finance permission to add or withdraw credit.";
