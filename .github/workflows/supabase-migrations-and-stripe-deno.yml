@@ -203,6 +203,7 @@ on:
       # #3802 Wave 1 (homes): the client suite and the pages it reads that are
       # not already listed here. The SQL suite rides on supabase/migrations/**.
       - "mingla-admin/src/__tests__/issue3802_wave1_homes.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js"
       - "mingla-admin/src/pages/RoleHomePage.jsx"
       - "mingla-admin/src/pages/TeamDashboardPage.jsx"
       - "mingla-admin/src/pages/BetaLeadsPage.jsx"
@@ -398,6 +399,7 @@ on:
       # #3802 Wave 1 (homes): the client suite and the pages it reads that are
       # not already listed here. The SQL suite rides on supabase/migrations/**.
       - "mingla-admin/src/__tests__/issue3802_wave1_homes.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js"
       - "mingla-admin/src/pages/RoleHomePage.jsx"
       - "mingla-admin/src/pages/TeamDashboardPage.jsx"
       - "mingla-admin/src/pages/BetaLeadsPage.jsx"
@@ -538,6 +540,9 @@ jobs:
       - name: "Issue #3802 — role homes, targets, Beta leads and invite follow-ups: names, addresses, access, words for every answer, source contracts"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_homes.implementor.happy.test.js
+      - name: "Issue #3802 — role homes, targets, Beta leads and invite follow-ups: independent tester adversarial proof (hostile addresses, every area combination, answers that are not answers, no raw error on screen)"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
@@ -1141,6 +1146,20 @@ jobs:
           # image lacks inside its own rolled-back transaction).
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave1_homes_targets_beta.implementor.happy.pg17.test.sql
+          # Issue #3802 (Wave 1) — INDEPENDENT TESTER proof for the same
+          # migration, from the edges: the full grantee list of every new
+          # object; a role with the pipelines but not Beta leads; a stale move
+          # aimed at every stage, leaving the card byte-for-byte as it was;
+          # names nobody can see and one name in two forms; the stuck-host
+          # report just inside and just outside 24 hours; every home number
+          # against a count written a different way, to the microsecond of
+          # the week and the month; the lead type table over all 128
+          # combinations; Add to Hosts after a host is deleted; and the invite
+          # address check under different spellings. Part 2 opens three real
+          # sessions at once. Runs as `supabase_admin` from the repository
+          # root, like the suites above.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave1_homes_targets_beta.tester.adversarial.pg17.test.sql
 
           # toward #3697 Wave 6 — Ads credit FIFO withdraw, idempotency, immutability.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
