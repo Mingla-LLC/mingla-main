@@ -42,6 +42,10 @@ import {
   handleVenueOrderPaystackCharge,
   isVenueOrderPaystackReference,
 } from "./venueOrderWebhook.ts";
+import {
+  applyAdCreditTopUpFromPaystackCharge,
+} from "./adCreditWebhook.ts";
+import { isAdCreditPaystackReference } from "./adCreditStripe.ts";
 
 // Verifier is injected so tests can stub the network call deterministically.
 export type PaystackVerifier = (
@@ -69,7 +73,10 @@ export interface PaystackChargeResult {
     // statuses so the edge fn never treats a venue order as a ticket order (no
     // dispatchTicketConfirmation, no partner-split fan-out). No orderId is set.
     | "venue_order_finalized"
-    | "venue_order_replayed";
+    | "venue_order_replayed"
+    // toward #3697 Wave 7c — Ads credit NGN top-up
+    | "ad_credit_finalized"
+    | "ad_credit_failed";
   orderId?: string;
   /** ORCH-1331 — verified txn paid_at (ISO), plumbed to the partner-split
    * fan-out so the partner relationship pins at sale time. Additive/optional. */
@@ -111,6 +118,32 @@ export async function handlePaystackChargeSuccess(
       after: { verify_status: txnStatus },
     });
     return { status: "verify_not_success" };
+  }
+
+  // toward #3697 Wave 7c — Ads credit NGN top-up (`mingla_adc_` prefix).
+  if (isAdCreditPaystackReference(reference)) {
+    const applied = await applyAdCreditTopUpFromPaystackCharge(supabase, {
+      ...txn,
+      reference,
+      metadata: (txn.metadata as Record<string, unknown> | undefined) ??
+        (data.metadata as Record<string, unknown> | undefined) ??
+        {},
+    });
+    if (!applied.applied) {
+      await writeAudit(supabase, {
+        user_id: null,
+        brand_id: applied.brandId,
+        action: "paystack.ad_credit_apply_failed",
+        target_type: "paystack_transaction",
+        target_id: reference,
+        after: { detail: applied.detail },
+      });
+      // Throw so the outer inbox keeps the row retryable (do not mark processed).
+      throw new Error(
+        `paystack_ad_credit_apply_failed:${applied.detail ?? "unknown"}`,
+      );
+    }
+    return { status: "ad_credit_finalized" };
   }
 
   // ORCH-1291 [rsvp-chip-in] — a voluntary RSVP contribution shares the reference

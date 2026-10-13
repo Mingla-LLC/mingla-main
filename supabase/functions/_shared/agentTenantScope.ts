@@ -23,6 +23,9 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "list_brand_team",
   "list_event_orders",
   "get_campaign_report",
+  // toward #3697 Wave 7c — Host Ads plan propose + report (inline reads).
+  "propose_ad_plan",
+  "get_ad_campaign_report",
   // #1980 — Growth Tool report resume/read; brand-scoped like Host app-lane.
   "get_growth_tool_report",
   "get_operator_snapshot",

@@ -334,7 +334,8 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // Census after #3802 Wave 0: admin-team-invite and admin-team-accept-invite.
   // [TEST-MOD-APPROVED #3697] 243 -> 244: Wave 6 adds `ad-credit` (ledger
   // quote/apply for top-up + withdraw). Census pin only.
-  assert.equal(Object.keys(contract.functions).length, 244);
+  // [TEST-MOD-APPROVED #3697] 244 -> 245: Wave 7c adds `host-ad-campaign`.
+  assert.equal(Object.keys(contract.functions).length, 245);
   assert.equal(manifest.secrets.length, 88);
 });
 

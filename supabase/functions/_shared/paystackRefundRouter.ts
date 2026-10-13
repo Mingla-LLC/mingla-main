@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { applyAdCreditWithdrawFromPaystackRefund } from "./adCreditWebhook.ts";
 
 function text(value: unknown): string {
   return typeof value === "string"
@@ -50,6 +51,16 @@ export async function handlePaystackRefundEvent(
       "[paystack-refund-router] refund event lacks reconciliation identity",
       { eventName, providerRefundId },
     );
+    return;
+  }
+
+  // toward #3697 Wave 7c — Ads-credit withdraw (merchant_note ad_credit_wd:*).
+  if (
+    await applyAdCreditWithdrawFromPaystackRefund(supabase, eventName, {
+      id: providerRefundId || data.id,
+      merchant_note: merchantNote,
+    })
+  ) {
     return;
   }
 
