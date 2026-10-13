@@ -83,6 +83,31 @@ Deno.test("#3645 organiserTermsRefusal recognises only the terms code", () => {
   }
 });
 
+Deno.test("#3645 a longer code that only contains the terms code is not this refusal", async () => {
+  for (
+    const nearMiss of [
+      "mingla_tos_not_accepted_v2",
+      "x_mingla_tos_not_accepted",
+      "ari_execute_event_operation: mingla_tos_not_accepted_for_partner",
+      "MINGLA_TOS_NOT_ACCEPTED",
+    ]
+  ) {
+    assertEquals(organiserTermsRefusal(nearMiss), null, nearMiss);
+    const error = await thrown(() => callRpc(rpcClient(nearMiss), "some_rpc", {}));
+    assertEquals(error.code, "RPC_FAILED", nearMiss);
+  }
+  // Decorated, punctuated and quoted forms of the real code still count.
+  for (
+    const real of [
+      "P0001: mingla_tos_not_accepted",
+      'error "mingla_tos_not_accepted" (detail)',
+      "mingla_tos_not_accepted\n",
+    ]
+  ) {
+    assertEquals(organiserTermsRefusal(real)?.code, ORGANISER_TERMS_REQUIRED_CODE, real);
+  }
+});
+
 Deno.test("#3645 callRpc: the terms code becomes the typed refusal", async () => {
   const error = await thrown(() =>
     callRpc(rpcClient("mingla_tos_not_accepted"), "ari_execute_event_operation", {})

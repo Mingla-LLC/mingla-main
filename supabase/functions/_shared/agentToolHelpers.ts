@@ -158,9 +158,15 @@ export const ORGANISER_TERMS_REQUIRED_CODE = "ORGANISER_TERMS_REQUIRED";
 export const ORGANISER_TERMS_REQUIRED_MESSAGE =
   "Accept the Organiser Terms in the Mingla Host app, then ask me again. Nothing has changed.";
 
+// The code as a whole token, the way the Host app matches it: a longer code
+// that merely contains it (a future `mingla_tos_not_accepted_v2`) is a
+// different refusal and must not become this terminal one.
+const ORGANISER_TERMS_SERVER_CODE_TOKEN =
+  /(?:^|[^a-z0-9_])mingla_tos_not_accepted(?:$|[^a-z0-9_])/;
+
 /** The typed refusal when `raw` carries the server's terms code, else null. */
 export function organiserTermsRefusal(raw: unknown): ToolError | null {
-  return typeof raw === "string" && raw.includes(ORGANISER_TERMS_SERVER_CODE)
+  return typeof raw === "string" && ORGANISER_TERMS_SERVER_CODE_TOKEN.test(raw)
     ? new ToolError(
       ORGANISER_TERMS_REQUIRED_CODE,
       ORGANISER_TERMS_REQUIRED_MESSAGE,
