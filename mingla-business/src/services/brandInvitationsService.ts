@@ -108,11 +108,19 @@ export interface AcceptBrandInvitationResult {
 export class BrandInvitationServiceError extends Error {
   readonly code: string;
   readonly status: number;
-  constructor(code: string, status: number, message?: string) {
+  /** #3259 — the address the invitation was sent to, when the server names it. */
+  readonly invitedEmail: string | null;
+  constructor(
+    code: string,
+    status: number,
+    message?: string,
+    invitedEmail: string | null = null,
+  ) {
     super(message ?? code);
     this.name = "BrandInvitationServiceError";
     this.code = code;
     this.status = status;
+    this.invitedEmail = invitedEmail;
   }
 }
 
@@ -193,11 +201,12 @@ export async function acceptBrandInvitation(
     // ORCH-1404 — the load-bearing accept parse. A 403 invite_email_mismatch,
     // 404, 409, 410, etc. now surface their REAL status/code so the accept
     // screen renders the specific copy (and the wrong-account recovery).
-    const { status, code } = await parseFunctionsError(error);
+    const { status, code, invitedEmail } = await parseFunctionsError(error);
     throw new BrandInvitationServiceError(
       code,
       status,
       error instanceof Error ? error.message : undefined,
+      invitedEmail ?? null,
     );
   }
   if (!data || typeof data !== "object") {
@@ -489,13 +498,15 @@ function isResponseLike(value: unknown): value is ResponseLike {
 
 export async function parseFunctionsError(
   error: unknown,
-): Promise<{ status: number; code: string }> {
+): Promise<{ status: number; code: string; invitedEmail?: string }> {
   if (error && typeof error === "object") {
     const ctx = (error as { context?: unknown }).context;
     // The FunctionsHttpError case — `context` IS the `Response`.
     if (isResponseLike(ctx)) {
       const status = ctx.status;
       let code = "server";
+      // #3259 — present only when the accept 403 names the invited address.
+      let invitedEmail: string | undefined;
       try {
         // `.clone()` so a second reader (logging / React Query) can never trip
         // "body already read". Fall back to the response itself if `.clone` is
@@ -510,11 +521,18 @@ export async function parseFunctionsError(
         ) {
           code = (body as { error: string }).error;
         }
+        const invited = (body as { invited_email?: unknown } | null)
+          ?.invited_email;
+        if (typeof invited === "string" && invited.trim().length > 0) {
+          invitedEmail = invited.trim();
+        }
       } catch {
         // Unparseable body — keep the real status, generic code.
         code = "server";
       }
-      return { status, code };
+      return invitedEmail === undefined
+        ? { status, code }
+        : { status, code, invitedEmail };
     }
     // Legacy fallback — hand-constructed / re-thrown errors that carry the
     // status/code at the top level (e.g. a re-thrown BrandInvitationServiceError).

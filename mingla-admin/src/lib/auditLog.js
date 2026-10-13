@@ -72,4 +72,17 @@ export const ACTION_LABELS = {
   "team.restore": "Restored a teammate's access",
   "team.activate": "Accepted an invite",
   "team.status_change": "Changed a teammate's status",
+  // Issue #3802 (Wave 1): Hosts and Creators pipelines.
+  "crm.record_create": "Added a host or creator",
+  "crm.record_update": "Edited a host or creator",
+  "crm.stage_move": "Moved a card",
+  "crm.stage_undo": "Undid a move",
+  "crm.stage_auto_live": "A host went live",
+  "crm.owners_set": "Changed owners",
+  "crm.log_add": "Logged activity",
+  "crm.record_delete": "Deleted a host or creator",
+  "crm.record_restore": "Restored a host or creator",
+  "crm.bulk_create": "Added records in bulk",
+  "crm.target_set": "Set a target",
+  "crm.beta_lead_add": "Added a beta lead to Hosts",
 };

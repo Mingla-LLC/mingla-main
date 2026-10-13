@@ -151,4 +151,85 @@ BEGIN
   RAISE NOTICE 'ISSUE-3660 invite handover happy OK';
 END $$;
 
+-- Issue #3259 — the wrong account is refused as invite_email_mismatch (P0004),
+-- never as invite_not_found (P0001). The edge function maps P0001 to 404
+-- "Invitation not found", so the wrong code hid a valid invite from its
+-- rightful invitee. Fails on revert of 20270822003259.
+INSERT INTO public.brands (id, account_id, name, slug, created_at, updated_at)
+VALUES
+  ('00000000-3660-4000-8000-000000000212', '00000000-3660-4000-8000-000000000201',
+   'Issue 3259 Mismatch', 'issue3259mismatch', now(), now());
+
+INSERT INTO public.brand_invitations (
+  brand_id, email, role, token_hash, expires_at, status, outgoing_disposition
+)
+VALUES
+  ('00000000-3660-4000-8000-000000000212',
+   'issue3660h-in@example.test', 'brand_owner',
+   '3259mismatchhash000000000000000000000000000000000000000000000',
+   now() + interval '7 days', 'pending', 'leave');
+
+DO $$
+DECLARE
+  v_state text;
+  v_msg text;
+  v_status text;
+  v_owner uuid;
+  v_result jsonb;
+BEGIN
+  -- Signed in as a different email than the invitation was sent to.
+  BEGIN
+    PERFORM public.accept_invite_and_transfer_brand_ownership(
+      '3259mismatchhash000000000000000000000000000000000000000000000',
+      '00000000-3660-4000-8000-000000000203'
+    );
+    RAISE EXCEPTION 'ISSUE-3259: wrong account was allowed to accept';
+  EXCEPTION WHEN SQLSTATE 'P0004' THEN
+    GET STACKED DIAGNOSTICS v_state = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+  WHEN SQLSTATE 'P0001' THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    RAISE EXCEPTION 'ISSUE-3259: refusal "%" raised as P0001 (reads as invite_not_found), want P0004', v_msg;
+  END;
+  IF v_msg IS DISTINCT FROM 'invite_email_mismatch' THEN
+    RAISE EXCEPTION 'ISSUE-3259: P0004 message % want invite_email_mismatch', v_msg;
+  END IF;
+
+  -- The refusal changed nothing: still pending, still the inviter's brand.
+  SELECT status INTO v_status FROM public.brand_invitations
+  WHERE token_hash = '3259mismatchhash000000000000000000000000000000000000000000000';
+  SELECT account_id INTO v_owner FROM public.brands
+  WHERE id = '00000000-3660-4000-8000-000000000212';
+  IF v_status IS DISTINCT FROM 'pending' THEN
+    RAISE EXCEPTION 'ISSUE-3259: invitation status % after refusal, want pending', v_status;
+  END IF;
+  IF v_owner IS DISTINCT FROM '00000000-3660-4000-8000-000000000201'::uuid THEN
+    RAISE EXCEPTION 'ISSUE-3259: brand owner changed on a refused accept';
+  END IF;
+
+  -- A token that matches nothing is still the only invite_not_found.
+  v_state := NULL; v_msg := NULL;
+  BEGIN
+    PERFORM public.accept_invite_and_transfer_brand_ownership(
+      '3259nosuchhash0000000000000000000000000000000000000000000000',
+      '00000000-3660-4000-8000-000000000203'
+    );
+    RAISE EXCEPTION 'ISSUE-3259: unknown token was accepted';
+  EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+  END;
+  IF v_msg IS DISTINCT FROM 'invite_not_found' THEN
+    RAISE EXCEPTION 'ISSUE-3259: unknown token raised % want invite_not_found', v_msg;
+  END IF;
+
+  -- The rightful invitee can still accept after the wrong account tried.
+  v_result := public.accept_invite_and_transfer_brand_ownership(
+    '3259mismatchhash000000000000000000000000000000000000000000000',
+    '00000000-3660-4000-8000-000000000202'
+  );
+  IF (v_result->>'transferred') IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION 'ISSUE-3259: rightful invitee could not accept after a refused attempt';
+  END IF;
+  RAISE NOTICE 'ISSUE-3259 invite email mismatch errcode OK';
+END $$;
+
 ROLLBACK;

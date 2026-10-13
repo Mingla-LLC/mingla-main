@@ -232,3 +232,61 @@ describe("ORCH-1404 — errorCopyFor enumeration completeness", () => {
     expect(body).not.toMatch(/\b\d{3}\b/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #3259 — the wrong-account screen names BOTH addresses when the server
+// says which email was invited. Appended here because this is the file CI runs
+// for this screen. Fails on revert: without the invitedEmail branch the invited
+// address appears nowhere in the tree.
+// ─────────────────────────────────────────────────────────────────────────────
+function renderRecoveryWithInvited(
+  signedInEmail: string | null,
+  invitedEmail: string | null | undefined,
+): { buttons: El[]; texts: string[] } {
+  const tree = WrongAccountRecovery({
+    signedInEmail,
+    invitedEmail,
+    onSwitchAccount: () => undefined,
+    onGoHome: () => undefined,
+  }) as unknown as El;
+  const all: El[] = [];
+  collect(tree, all);
+  return {
+    buttons: all.filter((e) => e.type === MockButton),
+    texts: all.filter((e) => e.type === "Text").map(textOf),
+  };
+}
+
+describe("#3259 — WrongAccountRecovery names the invited and signed-in emails", () => {
+  test("shows the invited address and the signed-in address, each under its own label", () => {
+    const { texts } = renderRecoveryWithInvited("me@personal.test", "owner@brand.test");
+    expect(texts).toContain("Invited");
+    expect(texts).toContain("owner@brand.test");
+    expect(texts).toContain("Signed in as");
+    expect(texts).toContain("me@personal.test");
+    expect(texts.join(" ")).toContain("Sign in with owner@brand.test to accept it.");
+  });
+
+  test("keeps both actions when the invited address is shown", () => {
+    const { buttons } = renderRecoveryWithInvited("me@personal.test", "owner@brand.test");
+    const labels = buttons.map((b) => b.props.label);
+    expect(labels).toContain("Sign in with a different email");
+    expect(labels).toContain("Back to Mingla");
+  });
+
+  test("invited address known but signed-in address unknown: no empty 'Signed in as' row", () => {
+    const { texts } = renderRecoveryWithInvited(null, "owner@brand.test");
+    expect(texts).toContain("owner@brand.test");
+    expect(texts).not.toContain("Signed in as");
+  });
+
+  test.each([[null], [undefined]])(
+    "server did not name the invited address (%p): the original copy is unchanged",
+    (invited) => {
+      const { texts } = renderRecoveryWithInvited("me@personal.test", invited);
+      expect(texts).not.toContain("Invited");
+      expect(texts.join(" ")).toContain("You're signed in as me@personal.test.");
+      expect(texts.join(" ")).toContain("Sign in with the");
+    },
+  );
+});

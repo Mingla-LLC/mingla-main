@@ -160,3 +160,42 @@ describe("ORCH-1404 — parseFunctionsError (FunctionsHttpError parse)", () => {
     await expect(declineBrandInvitation("inv_1")).resolves.toBeUndefined();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #3259 — the accept 403 may name the invited address (`invited_email`);
+// the service carries it to the wrong-account screen. Appended here because
+// this is the file CI runs for the accept error parse.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("#3259 — accept 403 carries the invited email", () => {
+  beforeEach(() => {
+    invoke.mockReset();
+  });
+
+  test("invited_email on a 403 invite_email_mismatch reaches the thrown error", async () => {
+    const thrown = await acceptAndCatch(
+      makeFunctionsHttpError(403, {
+        error: "invite_email_mismatch",
+        invited_email: "owner@brand.test",
+      }),
+    );
+    expect(thrown.status).toBe(403);
+    expect(thrown.code).toBe("invite_email_mismatch");
+    expect(thrown.invitedEmail).toBe("owner@brand.test");
+  });
+
+  test.each([
+    [{ error: "invite_email_mismatch" }],
+    [{ error: "invite_email_mismatch", invited_email: null }],
+    [{ error: "invite_email_mismatch", invited_email: "   " }],
+    [{ error: "invite_email_mismatch", invited_email: 42 }],
+  ])("absent or unusable invited_email (%j) is null, never a fabricated address", async (body) => {
+    const thrown = await acceptAndCatch(makeFunctionsHttpError(403, body));
+    expect(thrown.code).toBe("invite_email_mismatch");
+    expect(thrown.invitedEmail).toBeNull();
+  });
+
+  test("a network failure carries no invited email", async () => {
+    const thrown = await acceptAndCatch(makeFunctionsFetchError());
+    expect(thrown.invitedEmail).toBeNull();
+  });
+});
