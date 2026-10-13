@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-12 — Mingla Admin has Hosts and Creators boards for the whole team: drag a card, use its arrow or the stage menu, filter by ICP, region or Mine, edit a card that saves as you type, and get warned about duplicates while adding; every view, filter and open card has its own link (toward #3802, PR #TBD)
 - 2026-10-12 — Groundwork for the team's Hosts and Creators pipelines: records, owners and a structured activity log now live on the server, every change is checked against the person's role, recorded, and safe to repeat, and Live sets itself from the host's public listing; the Beta leads reader is now limited to full admins (toward #3802, PR #3811)
 - 2026-10-12 — Ads can send people to Mingla marketing pages on usemingla.com (Host home, downloads, tools) from the Admin picker, with first-party click capture on those landings (toward #3697, PR #3809)
 - 2026-10-12 — A CI check that had been failing since 6 October for any change to the event builder is repaired: its replay of the publish database functions now ends with the newest one (the Organiser Terms publish rule), so those pull requests can go green again; no app or database change (toward #3645, PR #3810)
