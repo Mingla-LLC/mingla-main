@@ -5,7 +5,6 @@
 // itself. The view, the filters and the open card live in the address, so a
 // reload or a pasted link shows exactly the same thing.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Plus } from "lucide-react";
 import { AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -40,6 +39,7 @@ import { PipelineByRegion } from "../components/crm/PipelineByRegion";
 import { RecordDrawer } from "../components/crm/RecordDrawer";
 import { AddRecordForm } from "../components/crm/AddRecordForm";
 import { ReasonPrompt } from "../components/crm/ReasonPrompt";
+import { PipelineOverlays } from "../components/crm/CrmLayer";
 
 const UNDO_MS = 8000;
 const BLOCK_TITLES = {
@@ -229,7 +229,14 @@ function PipelinePage({ pipeline, onTabChange }) {
           variant: "success",
           title: `${record.name} moved to ${stageLabel(def, to)}`,
           duration: UNDO_MS,
-          action: res.activity_id ? { label: "Undo", onClick: () => undoMove(res.activity_id) } : undefined,
+          action: res.activity_id
+            ? {
+                label: "Undo",
+                onClick: () => undoMove(res.activity_id),
+                // From the keyboard with no card open: back to the card on the board.
+                focusAfter: () => [...document.querySelectorAll("[data-record-id]")].find((el) => el.getAttribute("data-record-id") === record.id) || addButtonRef.current,
+              }
+            : undefined,
         });
         undoToast.current = { toastId, recordId: record.id };
         return true;
@@ -583,65 +590,71 @@ function PipelinePage({ pipeline, onTabChange }) {
         </>
       )}
 
-      {/* The card panels are drawn at the top of the page, outside this page's
-          own box: the page slides in when it mounts, and a panel placed inside
-          a moving box is sized by that box (a strip as short as the heading)
-          until the slide ends. Drawn outside it, the first paint is full
-          height. */}
-      {ready && state.card === NEW_CARD && !holding && createPortal(
-        <Drawer open onClose={closeCard} title={`New ${singular}`}>
-          <AddRecordForm
-            pipeline={pipeline}
-            def={def}
-            config={config}
-            records={pipe.records}
-            defaults={{ icp: state.icp, regionId: regionId === NO_REGION ? "" : regionId, me }}
-            disabled={!online}
-            onCreate={handleCreate}
-            onOpenExisting={(id) => openCard(id, { replace: true })}
-            onCancel={closeCard}
-          />
-        </Drawer>,
-        document.body
-      )}
-
-      {ready && openId && createPortal(
-        <RecordDrawer
-          key={openId}
-          pipeline={pipeline}
-          def={def}
-          config={config}
-          recordId={openId}
-          listRecord={openRecordInList}
-          pipe={drawerPipe}
-          online={online}
-          canDelete={canDelete}
-          focusField={focus?.id === openId ? focus.field : null}
-          activityTick={activityTick}
-          suspended={!!reasonFor}
-          holding={holding}
-          guardRef={guardRef}
-          onDirtyChange={handleDirtyChange}
-          onClose={closeCard}
-          onRequestMove={requestMove}
-          onDelete={handleDelete}
-          onOpenCard={(id) => openCard(id, { replace: true })}
-        />,
-        document.body
-      )}
-
-      <ReasonPrompt
-        key={reasonFor ? `${reasonFor.record.id}:${reasonFor.to}` : "closed"}
-        open={!!reasonFor}
-        stageId={reasonFor?.to}
-        recordName={reasonFor?.record?.name}
-        busy={reasonBusy}
-        error={reasonError}
-        onConfirm={confirmReason}
-        onCancel={() => {
-          setReasonError("");
-          setReasonFor(null);
-        }}
+      {/* Everything that opens over the board is drawn in its own layer, at
+          the top of the page (lib/crmLayers.js has the one stacking order):
+          the card panel or the add form in "card", and the Lost/Passed
+          question in "dialog", which is always above an open card. */}
+      <PipelineOverlays
+        card={
+          ready && state.card === NEW_CARD && !holding ? (
+            <Drawer open onClose={closeCard} title={`New ${singular}`}>
+              {/* Room at the end of the form, so a message shown over it on a
+                  phone never hides its last fields (components/ui/Toast.jsx). */}
+              <div style={{ paddingBottom: "var(--toast-clear, 0px)" }}>
+                <AddRecordForm
+                  pipeline={pipeline}
+                  def={def}
+                  config={config}
+                  records={pipe.records}
+                  defaults={{ icp: state.icp, regionId: regionId === NO_REGION ? "" : regionId, me }}
+                  disabled={!online}
+                  onCreate={handleCreate}
+                  onOpenExisting={(id) => openCard(id, { replace: true })}
+                  onCancel={closeCard}
+                />
+              </div>
+            </Drawer>
+          ) : ready && openId ? (
+            <RecordDrawer
+              key={openId}
+              pipeline={pipeline}
+              def={def}
+              config={config}
+              recordId={openId}
+              listRecord={openRecordInList}
+              pipe={drawerPipe}
+              online={online}
+              canDelete={canDelete}
+              focusField={focus?.id === openId ? focus.field : null}
+              activityTick={activityTick}
+              suspended={!!reasonFor}
+              holding={holding}
+              guardRef={guardRef}
+              onDirtyChange={handleDirtyChange}
+              onClose={closeCard}
+              onRequestMove={requestMove}
+              onDelete={handleDelete}
+              onOpenCard={(id) => openCard(id, { replace: true })}
+            />
+          ) : null
+        }
+        dialog={
+          reasonFor ? (
+            <ReasonPrompt
+              key={reasonFor ? `${reasonFor.record.id}:${reasonFor.to}` : "closed"}
+              open={!!reasonFor}
+              stageId={reasonFor?.to}
+              recordName={reasonFor?.record?.name}
+              busy={reasonBusy}
+              error={reasonError}
+              onConfirm={confirmReason}
+              onCancel={() => {
+                setReasonError("");
+                setReasonFor(null);
+              }}
+            />
+          ) : null
+        }
       />
     </div>
   );
