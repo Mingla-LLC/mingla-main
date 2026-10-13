@@ -213,6 +213,7 @@ on:
       - "mingla-admin/src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js"
       # #3802 Wave 4 (My agent): the client suite and the files it reads.
       - "mingla-admin/src/__tests__/issue3802_wave4_agent.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/agent_connector_issue3802.tester.adversarial.test.js"
       - "mingla-admin/src/pages/AgentPage.jsx"
       - "mingla-admin/src/components/agent/**"
       - "mingla-admin/src/lib/agentConnect.js"
@@ -425,6 +426,7 @@ on:
       - "mingla-admin/src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js"
       # #3802 Wave 4 (My agent): the client suite and the files it reads.
       - "mingla-admin/src/__tests__/issue3802_wave4_agent.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/agent_connector_issue3802.tester.adversarial.test.js"
       - "mingla-admin/src/pages/AgentPage.jsx"
       - "mingla-admin/src/components/agent/**"
       - "mingla-admin/src/lib/agentConnect.js"
@@ -592,6 +594,9 @@ jobs:
       - name: "Issue #3802 — My agent: who may open it, the lines to paste, the status in plain words, what it can do against the connector's own list, and that a key is never stored or logged"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave4_agent.implementor.happy.test.js
+      - name: "Issue #3802 — My agent: independent tester adversarial proof (the pasted lines run in a real shell, hostile keys and addresses, every combination of areas, broken dates and unknown reasons, no raw error on screen, where the key on screen can go)"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/agent_connector_issue3802.tester.adversarial.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
@@ -1252,6 +1257,21 @@ jobs:
           # adds the sign-in columns this image lacks, removing them again).
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave4_agent_keys_gateway.implementor.happy.pg17.test.sql
+          # Issue #3802 (Wave 4) — INDEPENDENT TESTER guard, the opposite axis:
+          # it tries to make the rules disagree with each other. A replacement
+          # that is undone leaves the old key working; "via" belongs to one
+          # person in one transaction; the limits at their exact edges, with
+          # refused requests never extending a wait; the agent reads exactly
+          # what the same person reads on screen, for every filter, across
+          # pages that share one timestamp, and never a deleted record or a
+          # phone number; a key is in no row and no answer, for anyone;
+          # nothing else can reach the two tables; removing a person ends
+          # every key they hold and rewrites no history; and an account that
+          # can sign in another way is refused at the next request, whatever
+          # its role, except the owner's own. One rolled-back transaction, as
+          # `supabase_admin` from the repository root.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave4_agent_keys_gateway.tester.adversarial.pg17.test.sql
 
           # toward #3697 Wave 6 — Ads credit FIFO withdraw, idempotency, immutability.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
@@ -1660,6 +1680,27 @@ jobs:
           node --experimental-strip-types --test --test-concurrency=1 \
             supabase/functions/team-agent/__tests__/protocol.issue3802.test.ts \
             supabase/functions/team-agent/__tests__/spoofing.issue3802.test.ts
+
+      # Issue #3802 (Wave 4) — INDEPENDENT TESTER guard for the connector. It
+      # hands the function's real handler the requests an HTTP server would
+      # never tidy up (two credential headers, a body with no declared
+      # length, a body one byte over the limit), keeps the refusal wait ON
+      # under a clock it controls, and reads every answer the way a model
+      # reads it: other people's text only inside JSON string values under a
+      # note that says it is data, and unable to add a field, a heading or a
+      # line to anything the connector says itself. The gateway behind it is
+      # the real one, in the database replayed above. Its own step, because
+      # each of these files adds and removes the one sign-in column this
+      # image lacks.
+      - name: "Issue #3802 — the agent connector: independent tester adversarial proof (header games, real body sizes, the refusal wait, hostile record text, forty malformed requests, every function name asked for as a tool, six keys at once)"
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: supabase_admin
+          PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
+        run: |
+          node --experimental-strip-types --test --test-concurrency=1 \
+            supabase/functions/team-agent/__tests__/hostile.issue3802.tester.adversarial.test.ts
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
