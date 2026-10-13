@@ -42,6 +42,7 @@ import {
   clearPricesClearedNote,
   getPricesClearedNote,
   isPricesClearedNoteFromThisDevice,
+  pricesClearedNoteFromTheme,
   recordPricesClearedNote,
   subscribePricesClearedNotes,
   type PricesClearedNote,
@@ -107,6 +108,8 @@ export const useDraftFollowsBrandCurrency = ({
   // the adopting save lands.
   const noticedDraftIdsRef = useRef<Set<string>>(new Set());
   const reconcilingRef = useRef<Set<string>>(new Set());
+  const confirmedClearsRef = useRef<Set<string>>(new Set());
+  const [confirmTick, setConfirmTick] = useState(0);
   const draftId = draft?.id ?? null;
 
   // THIS VISIT ONLY. What the server said about this draft is believed only
@@ -211,6 +214,57 @@ export const useDraftFollowsBrandCurrency = ({
       return;
     }
 
+    // "The row it JUST read": a note held here may be older than the row. It
+    // was read when the server had cleared the draft; since then someone may
+    // have entered prices again, and clearing on the strength of the old note
+    // wiped them (seen about once in twenty runs of a random-turn test). So
+    // before this device clears a price because of the SERVER's note, the row
+    // is read once more. Still cleared and still in that currency: go ahead.
+    // Otherwise the note is dropped and the server's copy replaces this
+    // device's.
+    if (
+      serverNote !== null &&
+      localCurrency !== null &&
+      serverCurrency !== null &&
+      localCurrency !== serverCurrency &&
+      adoptBrandCurrencyForDraft(draft, serverCurrency).pricesCleared &&
+      !isPricesClearedNoteFromThisDevice(draft.id)
+    ) {
+      const confirmDraftId = draft.id;
+      const key = `${confirmDraftId}:${serverCurrency}:${serverNote.from ?? ""}`;
+      if (!confirmedClearsRef.current.has(key)) {
+        if (reconcilingRef.current.has(key)) return;
+        reconcilingRef.current.add(key);
+        const confirm = async (): Promise<void> => {
+          const now = await fetchDraftOpenState(confirmDraftId);
+          if (
+            pricesClearedNoteFromTheme(now.theme) !== null &&
+            now.currency === serverCurrency
+          ) {
+            confirmedClearsRef.current.add(key);
+            setConfirmTick((tick) => tick + 1);
+            return;
+          }
+          clearPricesClearedNote(confirmDraftId);
+          setDraftServerCurrency(confirmDraftId, now.currency);
+          const owedSave = await adoptServerDraftAfterSync(confirmDraftId);
+          if (owedSave !== null) onSave(owedSave);
+        };
+        void confirm()
+          .catch((error: unknown) => {
+            console.warn("[useDraftFollowsBrandCurrency] could not confirm the draft is still cleared", {
+              draftId: confirmDraftId,
+              message: error instanceof Error ? error.message : String(error),
+            });
+          })
+          .finally(() => {
+            reconcilingRef.current.delete(key);
+          });
+        return;
+      }
+      confirmedClearsRef.current.delete(key);
+    }
+
     const plan = planDraftCurrencyFollow(draft, serverCurrency, serverNote);
     if (plan === null) return;
     // A note this device made itself (its own save cleared the prices) only
@@ -237,5 +291,5 @@ export const useDraftFollowsBrandCurrency = ({
     // `draft` is read fresh on the render these keys change in; listing the
     // whole object would re-run this on every keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftId, draft?.currency, draft?.status, serverCurrency, serverNoteTo]);
+  }, [draftId, draft?.currency, draft?.status, serverCurrency, serverNoteTo, confirmTick]);
 };

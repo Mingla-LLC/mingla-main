@@ -161,6 +161,8 @@ interface FakeServer {
   brandReads: number;
   /** When true, a read of the WHOLE draft (the server's copy) fails. */
   failDraftReads: boolean;
+  /** Run once, right after the read made as the draft opens has answered. */
+  afterOpenRead?: () => void;
   saves: { rpc: string; currency: string | null; businessDraft: Record<string, unknown> }[];
 }
 
@@ -215,6 +217,15 @@ const installServer = (): void => {
       if (columns.includes("brand:brands")) {
         server.brandReads += 1;
         row.brand = { default_currency: server.brandCurrency };
+        const after = server.afterOpenRead;
+        if (after !== undefined && columns.includes("theme")) {
+          server.afterOpenRead = undefined;
+          // The answer is what the server held; things change straight after.
+          return Promise.resolve({ data: row, error: null }).then((answer) => {
+            after();
+            return answer;
+          });
+        }
       }
       return Promise.resolve({ data: row, error: null });
     });
@@ -452,6 +463,42 @@ describe("#3645 polish D1: a cleared-prices note beside prices is stale", () => 
     expect(JSON.stringify(server.saves)).not.toContain(`"priceGbp":50`);
     expect(route.notices).toEqual([]);
     expect(route.draft()?.tickets[0]?.priceGbp).toBe(7000);
+    route.unmount();
+  });
+
+  test("a note read a moment ago is checked against the row again before anything is cleared", async () => {
+    const id = nextDraftId();
+    // When this device opens the draft the server HAS cleared it ...
+    server = baseServer(id, {
+      businessDraft: {
+        clientRevision: 3,
+        currency: "NGN",
+        tickets: [ticket({ priceGbp: null, currency: "NGN" })],
+        pricesClearedForCurrencyChange: STALE_NOTE,
+      },
+    });
+    // ... and a moment later, before this device has done anything about it,
+    // someone enters a naira price and resolves the note.
+    server.afterOpenRead = () => {
+      server.businessDraft = {
+        clientRevision: 3,
+        currency: "NGN",
+        tickets: [ticket({ priceGbp: 7000, currency: "NGN" })],
+      };
+    };
+    installServer();
+    useDraftEventStore.getState().upsertServerDraft(
+      localDraft(id, { currency: "GBP", tickets: [ticket({ priceGbp: 50, currency: "GBP" })], clientRevision: 3 }),
+    );
+    const route = await mountRoute(id, "GBP");
+    await settle(120);
+
+    // The price entered a moment ago is intact; this device took it.
+    expect((server.businessDraft.tickets as TicketStub[])[0]?.priceGbp).toBe(7000);
+    expect(JSON.stringify(server.saves)).not.toContain(`"priceGbp":null`);
+    expect(route.draft()?.currency).toBe("NGN");
+    expect(route.draft()?.tickets[0]?.priceGbp).toBe(7000);
+    expect(route.notices).toEqual([]);
     route.unmount();
   });
 
