@@ -42,6 +42,12 @@
       "required_bundle_fields": {},
       "required_top_level": []
     },
+    "ad-credit": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
     "admin-ad-campaign-sync": {
       "migration_fallback_top_level": [],
       "optional_top_level": [],

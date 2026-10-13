@@ -332,7 +332,9 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // new function's contract entry and the deepEqual above fails with
   // `contract:function_set_mismatch` before this line is ever reached.
   // Census after #3802 Wave 0: admin-team-invite and admin-team-accept-invite.
-  assert.equal(Object.keys(contract.functions).length, 243);
+  // [TEST-MOD-APPROVED #3697] 243 -> 244: Wave 6 adds `ad-credit` (ledger
+  // quote/apply for top-up + withdraw). Census pin only.
+  assert.equal(Object.keys(contract.functions).length, 244);
   assert.equal(manifest.secrets.length, 88);
 });
 
