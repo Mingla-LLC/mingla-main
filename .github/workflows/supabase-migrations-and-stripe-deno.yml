@@ -685,6 +685,18 @@ jobs:
           # parity table the Host app's composer is tested against.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3827_live_edit_location_one_owner.implementor.happy.pg17.test.sql
+          # Issue #3827 — INDEPENDENT TESTER guard, the opposite axis. The suite
+          # above proves the repaired paths work. This one proves the repair
+          # broke nothing and left nothing open: a venue-name-only edit never
+          # touches the address or the pin; a blank reason saves only with NO
+          # buyers and one paid order restores `invalid_edit_reason` with
+          # nothing written; refunded, cancelled, void and unapproved are not
+          # buyers; Ari's address-only patch replaces the whole location; a
+          # stranger gets no buyer count and no edit; an identical RSVP
+          # `location` notifies no guest; and visibility and refund terms
+          # still demand a reason.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3827_live_edit_location_one_owner.tester.adversarial.pg17.test.sql
           # Issue #1977 — canonical RSVP draft/guest/contribution owners and
           # the Ari receipt seam. Behavioural against the applied schema.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
