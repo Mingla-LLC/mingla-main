@@ -395,6 +395,22 @@ function PipelinePage({ pipeline, onTabChange }) {
       live = false;
     };
   }, [holding, shownCard, setSearch]);
+  // When a card closes, keyboard focus goes back to that card on the board.
+  // (The drawer returns focus to where it was, but a card that changed column
+  // while it was open is a new element, so it is found again by its id.)
+  const lastOpenId = useRef("");
+  useEffect(() => {
+    const closed = lastOpenId.current;
+    lastOpenId.current = openId;
+    if (!closed || openId) return undefined;
+    const t = setTimeout(() => {
+      const active = document.activeElement;
+      if (active && active !== document.body && document.body.contains(active)) return;
+      const card = [...document.querySelectorAll("[data-record-id]")].find((el) => el.getAttribute("data-record-id") === closed);
+      (card || addButtonRef.current)?.focus();
+    }, 80);
+    return () => clearTimeout(t);
+  }, [openId]);
   const openRecordInList = openId ? pipe.records.find((r) => r.id === openId) || null : null;
   const addDisabled = !ready || !online;
 

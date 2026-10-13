@@ -173,6 +173,8 @@ describe("#3802 R-2 (F-2): a card with unsent edits is not let go quietly", () =
   it("a save that fails after the card left the screen keeps the text and says so", () => {
     assert.match(DRAWER, /if \(!mounted\.current\) \{[\s\S]{0,160}keepForLater\(\[\{ key, value \}\], before\.name\);/);
     assert.match(DRAWER, /if \(left\.length > 0\) keepForLater\(left, rec\.name\);/);
+    // ...and only when the card really is gone (not on a development-mode re-run).
+    assert.match(DRAWER, /setTimeout\(\(\) => \{\s*if \(mounted\.current\) return;/);
     assert.match(DRAWER, /title: `Changes to \$\{name\} weren't saved`/);
     assert.match(DRAWER, /label: "Open the card"/);
     assert.match(DRAWER, /useState\(\(\) => restoreLeftUnsent\(recordId\)\)/);
@@ -311,6 +313,10 @@ describe("#3802 R-6 (F-6): keyboard", () => {
     assert.match(UI_DRAWER, /const toasts = document\.querySelector\("\[data-toast-region\]"\);/);
     assert.match(UI_DRAWER, /\.\.\.panel\.querySelectorAll\(FOCUSABLE_SELECTOR\),\s*\.\.\.\(toasts \? toasts\.querySelectorAll\(FOCUSABLE_SELECTOR\) : \[\]\),/);
     assert.match(UI_DRAWER, /const inside = panel\.contains\(active\) \|\| \(!!toasts && toasts\.contains\(active\)\);/);
+  });
+
+  it("a closed card gets focus back even when it changed column while open", () => {
+    assert.match(PAGE, /el\.getAttribute\("data-record-id"\) === closed\);\s*\(card \|\| addButtonRef\.current\)\?\.focus\(\);/);
   });
 
   it("Escape still closes the card and focus still returns to where it was", () => {

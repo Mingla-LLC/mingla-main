@@ -335,11 +335,16 @@ export function RecordDrawer({
   // another page): keep the text and say so.
   useEffect(
     () => () => {
-      const { drafts: d, unsent: u, record: rec, discarded } = live.current;
       onDirtyChange?.(recordId, false);
-      if (discarded || !rec) return;
-      const left = editsToSend(d, rec, u);
-      if (left.length > 0) keepForLater(left, rec.name);
+      // Decided a tick later, and only if the card really is gone: React's
+      // development mode runs every cleanup once on a card that stays.
+      setTimeout(() => {
+        if (mounted.current) return;
+        const { drafts: d, unsent: u, record: rec, discarded } = live.current;
+        if (discarded || !rec) return;
+        const left = editsToSend(d, rec, u);
+        if (left.length > 0) keepForLater(left, rec.name);
+      }, 0);
     },
     [] // eslint-disable-line react-hooks/exhaustive-deps
   );
