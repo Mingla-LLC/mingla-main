@@ -3,7 +3,7 @@
  * (ORCH-0815-B foundation).
  *
  * Sits at the top of every `/(tabs)/marketing/*` route (except composer,
- * which hides it). Four pills: Overview · People · Campaigns · Templates.
+ * which hides it). Pills: Overview · People · Campaigns · Templates · Ads.
  * Active pill: `accent.tint` background + `accent.border`. Inactive: text
  * tertiary on transparent. Tap switches sub-route via expo-router `replace`.
  *
@@ -30,7 +30,12 @@ import {
   typography,
 } from "../../constants/designSystem";
 
-export type MarketingSubNavId = "overview" | "people" | "campaigns" | "templates";
+export type MarketingSubNavId =
+  | "overview"
+  | "people"
+  | "campaigns"
+  | "templates"
+  | "ads";
 
 interface SubNavTab {
   id: MarketingSubNavId;
@@ -44,6 +49,7 @@ const TABS: ReadonlyArray<SubNavTab> = [
   { id: "people", label: "People", path: "/(tabs)/marketing/people" },
   { id: "campaigns", label: "Campaigns", path: "/(tabs)/marketing/campaigns" },
   { id: "templates", label: "Templates", path: "/(tabs)/marketing/templates" },
+  { id: "ads", label: "Ads", path: "/(tabs)/marketing/ads" },
 ];
 
 function detectActive(pathname: string): MarketingSubNavId {
@@ -51,6 +57,7 @@ function detectActive(pathname: string): MarketingSubNavId {
   if (lower.includes("/marketing/people") || lower.includes("/marketing/audiences")) return "people";
   if (lower.includes("/marketing/campaigns")) return "campaigns";
   if (lower.includes("/marketing/templates")) return "templates";
+  if (lower.includes("/marketing/ads")) return "ads";
   return "overview";
 }
 
@@ -58,7 +65,7 @@ export const MarketingSubNav: React.FC = () => {
   const router = useRouter();
   const pathname = usePathname();
   // Composer is a child route of Campaigns, NOT a sub-nav tab — hide the
-  // 4-pill segmented control while the operator is authoring a campaign.
+  // pill segmented control while the operator is authoring a campaign.
   // SPEC §4.2 (ORCH-0815-B) + Phase A `_layout.tsx` deferred this to Phase B.
   if (pathname.includes("/campaigns/compose")) return null;
   const active = detectActive(pathname);

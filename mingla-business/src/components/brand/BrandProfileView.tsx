@@ -218,6 +218,8 @@ export interface BrandProfileViewProps {
    * customers →" CTA that pre-fills the marketing composer.
    */
   onBlasts: (brandId: string) => void;
+  /** toward #3697 Wave 7 — Blast → Ads credit. */
+  onAds: (brandId: string) => void;
   /**
    * Called when user taps "View public page". Receives the brand SLUG
    * (not id) — the public page route is `/b/{brandSlug}`.
@@ -276,6 +278,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   onAuditLog,
   onWebsite,
   onBlasts,
+  onAds,
   onViewPublic,
   onCreateEvent,
   onOpenEvent,
@@ -533,6 +536,15 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
         },
       },
       {
+        // toward #3697 Wave 7 — compact Ads entry → Blast → Ads credit.
+        icon: "sparkle",
+        label: "Ads",
+        sub: "Credit balance, top-up, withdraw, and ad history",
+        onPress: () => {
+          if (brand !== null) onAds(brand.id);
+        },
+      },
+      {
         icon: "chart",
         label: "Finance reports",
         sub: "Stripe-ready CSVs",
@@ -556,6 +568,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     brand,
     onTeam,
     onBlasts,
+    onAds,
     onPayments,
     onPricingDefaults,
     onReports,
