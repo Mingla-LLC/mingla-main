@@ -200,6 +200,16 @@ on:
       - "mingla-admin/src/__tests__/issue3802_wave1_boards_rework.implementor.happy.test.js"
       - "mingla-admin/src/components/layout/Header.jsx"
       - "mingla-admin/src/__tests__/issue3802_wave1_pipelines.tester.adversarial.test.js"
+      # #3802 Wave 1 (homes): the client suite and the pages it reads that are
+      # not already listed here. The SQL suite rides on supabase/migrations/**.
+      - "mingla-admin/src/__tests__/issue3802_wave1_homes.implementor.happy.test.js"
+      - "mingla-admin/src/pages/RoleHomePage.jsx"
+      - "mingla-admin/src/pages/TeamDashboardPage.jsx"
+      - "mingla-admin/src/pages/BetaLeadsPage.jsx"
+      - "mingla-admin/src/pages/AdminPage.jsx"
+      - "mingla-admin/src/components/InviteAcceptScreen.jsx"
+      - "mingla-admin/src/lib/auditLog.js"
+      - "mingla-admin/src/lib/constants.js"
       - "mingla-admin/src/lib/crmModel.js"
       - "mingla-admin/src/lib/crmUrl.js"
       - "mingla-admin/src/services/crmService.js"
@@ -385,6 +395,16 @@ on:
       - "mingla-admin/src/__tests__/issue3802_wave1_boards_rework.implementor.happy.test.js"
       - "mingla-admin/src/components/layout/Header.jsx"
       - "mingla-admin/src/__tests__/issue3802_wave1_pipelines.tester.adversarial.test.js"
+      # #3802 Wave 1 (homes): the client suite and the pages it reads that are
+      # not already listed here. The SQL suite rides on supabase/migrations/**.
+      - "mingla-admin/src/__tests__/issue3802_wave1_homes.implementor.happy.test.js"
+      - "mingla-admin/src/pages/RoleHomePage.jsx"
+      - "mingla-admin/src/pages/TeamDashboardPage.jsx"
+      - "mingla-admin/src/pages/BetaLeadsPage.jsx"
+      - "mingla-admin/src/pages/AdminPage.jsx"
+      - "mingla-admin/src/components/InviteAcceptScreen.jsx"
+      - "mingla-admin/src/lib/auditLog.js"
+      - "mingla-admin/src/lib/constants.js"
       - "mingla-admin/src/lib/crmModel.js"
       - "mingla-admin/src/lib/crmUrl.js"
       - "mingla-admin/src/services/crmService.js"
@@ -515,6 +535,9 @@ jobs:
       - name: "Issue #3802 — Hosts and Creators boards: independent tester adversarial proof (every server refusal in plain words, honest Undo, hostile input)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_pipelines.tester.adversarial.test.js
+      - name: "Issue #3802 — role homes, targets, Beta leads and invite follow-ups: names, addresses, access, words for every answer, source contracts"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave1_homes.implementor.happy.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
@@ -1103,6 +1126,21 @@ jobs:
           # root for the same reasons as the suite above.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave1_crm_pipelines.tester.adversarial.pg17.test.sql
+          # Issue #3802 (Wave 1) — role homes, monthly targets and Beta leads
+          # for the whole team, on the same schema. A move names the stage it
+          # saw; one form and one key for a name, with the migration's own
+          # re-key lines run again on planted rows; a stuck host is reported
+          # once a day; each summary as each kind of caller and every number
+          # against a direct count; targets; the role-aware Beta leads reader
+          # and Add to Hosts; an invitation refused when it is sent; the
+          # creator agreement rule over every pair of stages; and the
+          # migration's self-check against deliberate mistakes. Part 2 opens
+          # real second and third sessions. Runs as `supabase_admin` from the
+          # repository root for the same reasons as the suites above (it
+          # reads two migration files, and adds the sign-in columns this
+          # image lacks inside its own rolled-back transaction).
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave1_homes_targets_beta.implementor.happy.pg17.test.sql
 
           # toward #3697 Wave 6 — Ads credit FIFO withdraw, idempotency, immutability.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
