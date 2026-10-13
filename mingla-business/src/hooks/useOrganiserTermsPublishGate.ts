@@ -58,6 +58,20 @@ export interface OrganiserTermsPublishGate {
     isPaid: boolean,
     onAccepted?: () => void,
   ) => boolean;
+  /**
+   * #3645 — the SERVER refused a paid publish for want of the Organiser Terms.
+   * The app's own copy of "accepted" is therefore wrong or out of date, so it is
+   * read again first:
+   *  - not accepted: the acceptance sheet opens, and `onAccepted` (the publish
+   *    that was refused) runs once the terms are accepted and the sheet closed;
+   *  - still reads as accepted: the sheet has nothing to offer, so `onUnresolved`
+   *    runs instead and the publish is NOT retried. That is what stops a refusal
+   *    the sheet cannot clear from looping.
+   */
+  acceptTermsAfterServerRefusal: (
+    onAccepted?: () => void,
+    onUnresolved?: () => void,
+  ) => void;
   /** Mount at wizard root (I-13 overlay contract). Null when closed. */
   gateElement: React.ReactElement | null;
 }
@@ -91,6 +105,67 @@ export function useOrganiserTermsPublishGate(
       pendingResumeRef.current = onAccepted ?? null;
       setGateOpen(true);
       return true;
+    },
+    [],
+  );
+
+  // The latest query object, read when the server refuses (never at render).
+  const acceptanceQueryRef = useRef(acceptanceQuery);
+  acceptanceQueryRef.current = acceptanceQuery;
+  const mountedRef = useRef(true);
+  useEffect(
+    () => (): void => {
+      mountedRef.current = false;
+    },
+    [],
+  );
+  const scopeRef = useRef<string>("");
+  scopeRef.current = `${resolvedBrandId ?? ""}|${userId ?? ""}`;
+  const scopeReadyRef = useRef<boolean>(false);
+  scopeReadyRef.current = resolvedBrandId !== null && userId !== null;
+
+  const acceptTermsAfterServerRefusal = useCallback(
+    (onAccepted?: () => void, onUnresolved?: () => void): void => {
+      // The server is the authority: forget "accepted a moment ago".
+      justPassedRef.current = false;
+      const scope = scopeRef.current;
+      if (!scopeReadyRef.current) {
+        // No brand or no signed-in member: there is no sheet to open.
+        onUnresolved?.();
+        return;
+      }
+      const open = (): void => {
+        pendingResumeRef.current = onAccepted ?? null;
+        setGateOpen(true);
+      };
+      const refetch = (
+        acceptanceQueryRef.current as {
+          refetch?: () => Promise<{ data?: unknown; isError?: boolean }>;
+        }
+      ).refetch;
+      if (typeof refetch !== "function") {
+        open();
+        return;
+      }
+      void refetch()
+        .then((result) => {
+          if (!mountedRef.current || scopeRef.current !== scope) return;
+          if (
+            result.isError !== true &&
+            isCurrentMinglaToSAccepted(
+              result.data as Parameters<typeof isCurrentMinglaToSAccepted>[0],
+            )
+          ) {
+            onUnresolved?.();
+            return;
+          }
+          // Not accepted, or the read failed (the sheet shows its own retry).
+          open();
+        })
+        .catch(() => {
+          if (!mountedRef.current || scopeRef.current !== scope) return;
+          open();
+        });
     },
     [],
   );
@@ -148,5 +223,9 @@ export function useOrganiserTermsPublishGate(
     });
   }
 
-  return { blockPaidPublishUntilAccepted, gateElement };
+  return {
+    blockPaidPublishUntilAccepted,
+    acceptTermsAfterServerRefusal,
+    gateElement,
+  };
 }

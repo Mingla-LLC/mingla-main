@@ -71,6 +71,7 @@ import type {
   StayPropertyKind,
   StaySettingsInput,
 } from "../../types/stayInventory";
+import { isOrganiserTermsRefusalMessage } from "../../utils/paidPublishGuards";
 import type { SuiteDesktopModule } from "../suite/SuiteDesktopShell";
 import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
@@ -163,6 +164,12 @@ const joinTags = (value: string[] | undefined): string =>
 
 function publishErrorCopy(error: Error | null): string | null {
   if (error === null) return null;
+  // #3645 — the server asks for the Organiser Terms. The acceptance sheet
+  // opens for this (see handlePublishStay); the line under the button says the
+  // same thing in plain words, never the server's code.
+  if (isOrganiserTermsRefusalMessage(error.message)) {
+    return "Accept the Organiser Terms to publish this Stay.";
+  }
   if (error.message.includes("stay_authoring_disabled")) {
     return "Stay publishing is not active yet.";
   }
@@ -306,6 +313,7 @@ function StayOverview({
   // #3645 PR11c — stays that can publish always have a current price (paid).
   const {
     blockPaidPublishUntilAccepted,
+    acceptTermsAfterServerRefusal,
     gateElement: organiserTermsGateElement,
   } = useOrganiserTermsPublishGate(brandId);
   const [organiserTermsToast, setOrganiserTermsToast] = useState(false);
@@ -365,8 +373,24 @@ function StayOverview({
       setOrganiserTermsToast(true);
       return;
     }
-    publish.mutate({ expectedVersion: settings.version });
-  }, [settings, blockPaidPublishUntilAccepted, publish]);
+    publish.mutate(
+      { expectedVersion: settings.version },
+      {
+        // #3645 — the server refused for want of the Organiser Terms although
+        // the app thought they were accepted. Open the acceptance sheet and
+        // publish again once accepted.
+        onError: (error) => {
+          if (!isOrganiserTermsRefusalMessage(error.message)) return;
+          acceptTermsAfterServerRefusal(() => resumePublishStayRef.current());
+        },
+      },
+    );
+  }, [
+    settings,
+    blockPaidPublishUntilAccepted,
+    acceptTermsAfterServerRefusal,
+    publish,
+  ]);
   React.useEffect(() => {
     resumePublishStayRef.current = handlePublishStay;
   }, [handlePublishStay]);

@@ -95,6 +95,9 @@ import { isDraftEventPristine } from "../../utils/draftEventPristine";
 import { payoutGateStatus } from "../../utils/brandPayout";
 import {
   describeUnmappedPublishGuard,
+  eventPublishCarriesMoney,
+  isOrganiserTermsRefusalMessage,
+  ORGANISER_TERMS_UNCONFIRMED_COPY,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import { useOrganiserTermsPublishGate } from "../../hooks/useOrganiserTermsPublishGate";
@@ -345,6 +348,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // #3645 PR11c — Organiser Terms before first paid listing publish.
   const {
     blockPaidPublishUntilAccepted,
+    acceptTermsAfterServerRefusal,
     gateElement: organiserTermsGateElement,
   } = useOrganiserTermsPublishGate(liveDraft.brandId);
   const updateDraft = useDraftEventStore((s) => s.updateDraft);
@@ -905,11 +909,11 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     }
     // #3645 PR11c — paid listings require current Organiser Terms acceptance.
     // Free-only publishes skip. Accepting continues this publish (#3645).
-    // Paid mirror matches eventDraftIsPaid / draftEventValidation (online-sellable
-    // tickets with price > 0) without importing publishStripeReadiness here.
-    const isPaidListing = liveDraft.tickets.some(
-      (t) => !t.isFree && (t.priceGbp ?? 0) > 0,
-    );
+    // #3645 — the SERVER's test, mirrored: any ticket priced above zero, online
+    // or door, whatever its free flag says. The older mirror skipped a ticket
+    // flagged free that still carried a price, which the server counts as
+    // money, so the app let that publish through to a refusal.
+    const isPaidListing = eventPublishCarriesMoney(liveDraft.tickets);
     if (
       blockPaidPublishUntilAccepted(isPaidListing, () =>
         resumePublishRef.current(),
@@ -1012,6 +1016,16 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       // #3645 — reads the message off an Error AND a bare PostgREST object;
       // `String(object)` used to yield "[object Object]" and match no guard.
       const code = readRpcFailureMessage(error);
+      // #3645 — the server asks for the Organiser Terms. Offer the acceptance
+      // sheet and resume this publish once accepted; never the raw code and
+      // never a generic failure. Checked before every other mapping.
+      if (isOrganiserTermsRefusalMessage(code)) {
+        acceptTermsAfterServerRefusal(
+          () => resumePublishRef.current(),
+          () => handleShowToast(ORGANISER_TERMS_UNCONFIRMED_COPY),
+        );
+        return;
+      }
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(code);
       if (guardCopy !== null) {
         handleShowToast(guardCopy.body);
@@ -1058,6 +1072,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     deleteDraft,
     handleShowToast,
     onOpenPaymentOnboarding,
+    acceptTermsAfterServerRefusal,
     coverAuthority.isReady,
     invitePlan,
   ]);

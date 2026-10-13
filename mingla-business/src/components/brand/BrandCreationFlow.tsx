@@ -81,7 +81,7 @@ import {
   resolveSavedPayoutCountry,
   type BankConnectRail,
 } from "../../utils/bankConnectRail";
-import { brandSellsBeforeBank } from "../../utils/brandPayout";
+import { payoutStepSellsBeforeBank } from "../../utils/brandPayout";
 import {
   deriveBrandCreationPayoutState,
   shouldResumeBrandCreationAtCreate,
@@ -1595,7 +1595,10 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                     />
                   ) : null}
                   <Text style={styles.payoutConsequence}>
-                    {brandSellsBeforeBank(payoutCanonicalBrand)
+                    {payoutStepSellsBeforeBank(
+                        pickedPayoutRail,
+                        payoutCanonicalBrand,
+                      )
                       ? BRAND_CREATION_COPY.step4.consequenceSellBeforeBank
                       : BRAND_CREATION_COPY.step4.consequence}
                   </Text>

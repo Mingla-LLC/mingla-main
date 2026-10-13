@@ -127,6 +127,8 @@ import {
 } from "../../utils/publishedExperienceEditGuards";
 import {
   brandPaymentOnboardingRoute,
+  isOrganiserTermsRefusalMessage,
+  ORGANISER_TERMS_UNCONFIRMED_COPY,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import type { ExperienceDetail } from "../../services/experienceDetailService";
@@ -351,6 +353,7 @@ export const ExperienceCreatorWizard: React.FC<
   // #3645 PR11c — Organiser Terms before first paid listing publish.
   const {
     blockPaidPublishUntilAccepted,
+    acceptTermsAfterServerRefusal,
     gateElement: organiserTermsGateElement,
   } = useOrganiserTermsPublishGate(brandId);
   // ORCH-1165: this bare ScrollView has no KAS auto-scroll, so when the Done
@@ -1169,6 +1172,17 @@ export const ExperienceCreatorWizard: React.FC<
             setToast(EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY);
             return;
           }
+          // #3645 — the server asks for the Organiser Terms. Offer the
+          // acceptance sheet and resume this publish once accepted; never the
+          // raw code. Checked before the paid-publish guards and before the
+          // fallback below, which would print the code.
+          if (publish && isOrganiserTermsRefusalMessage(code)) {
+            acceptTermsAfterServerRefusal(
+              () => resumePublishRef.current(),
+              () => setToast(ORGANISER_TERMS_UNCONFIRMED_COPY),
+            );
+            return;
+          }
           // ORCH-1075 — paid-publish integrity guards (Stripe readiness /
           // past date) get actionable copy + a route, not a raw error.
           if (handlePaidPublishGuard(code)) {
@@ -1234,6 +1248,7 @@ export const ExperienceCreatorWizard: React.FC<
       brand,
       brandId,
       blockPaidPublishUntilAccepted,
+      acceptTermsAfterServerRefusal,
       buildPayload,
       ensureDraft,
       flushThemeWrite,
