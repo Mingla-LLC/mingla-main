@@ -43,8 +43,8 @@ import {
 import { NAV_GROUPS } from "../lib/constants.js";
 
 const VALID = "A".repeat(43);
-const owner = { email: "o@x", role: "owner", status: "active", areas: ["admin_console", "team_manage"] };
-const admin = { email: "a@x", role: "admin", status: "active", areas: ["admin_console"] };
+const owner = { email: "o@x", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm"] };
+const admin = { email: "a@x", role: "admin", status: "active", areas: ["admin_console", "crm"] };
 const growth = { email: "g@x", role: "growth", status: "active", areas: ["role_home"] };
 const partner = { email: "p@x", role: "partner", status: "active", areas: ["role_home"] };
 

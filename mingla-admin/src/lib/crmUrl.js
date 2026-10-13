@@ -13,7 +13,7 @@ export const CRM_VIEWS = ["board", "list", "region"];
 export const NEW_CARD = "new";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ID_WORD = /^[a-z0-9_]{1,40}$/;
+const ID_WORD = /^[a-z][a-z0-9_]{0,39}$/;
 const SLUG = /^[a-z0-9-]{1,60}$/;
 const MAX_Q = 80;
 

@@ -195,6 +195,17 @@ on:
       # above, so they are listed EXPLICITLY in BOTH filters.
       - "mingla-admin/src/__tests__/issue3802_wave0_roles.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/issue3802_wave0_roles.tester.adversarial.test.js"
+      # #3802 Wave 1 (boards): the client suite and the files it reads.
+      - "mingla-admin/src/__tests__/issue3802_wave1_pipelines.implementor.happy.test.js"
+      - "mingla-admin/src/lib/crmModel.js"
+      - "mingla-admin/src/lib/crmUrl.js"
+      - "mingla-admin/src/services/crmService.js"
+      - "mingla-admin/src/hooks/**"
+      - "mingla-admin/src/pages/PipelinePage.jsx"
+      - "mingla-admin/src/components/crm/**"
+      - "mingla-admin/src/components/ui/Toast.jsx"
+      - "mingla-admin/src/components/ui/Drawer.jsx"
+      - "mingla-admin/src/context/ToastContext.jsx"
       - "mingla-admin/src/App.jsx"
       - "mingla-admin/src/context/AuthContext.jsx"
       - "mingla-admin/src/lib/access.js"
@@ -366,6 +377,17 @@ on:
       # above, so they are listed EXPLICITLY in BOTH filters.
       - "mingla-admin/src/__tests__/issue3802_wave0_roles.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/issue3802_wave0_roles.tester.adversarial.test.js"
+      # #3802 Wave 1 (boards): the client suite and the files it reads.
+      - "mingla-admin/src/__tests__/issue3802_wave1_pipelines.implementor.happy.test.js"
+      - "mingla-admin/src/lib/crmModel.js"
+      - "mingla-admin/src/lib/crmUrl.js"
+      - "mingla-admin/src/services/crmService.js"
+      - "mingla-admin/src/hooks/**"
+      - "mingla-admin/src/pages/PipelinePage.jsx"
+      - "mingla-admin/src/components/crm/**"
+      - "mingla-admin/src/components/ui/Toast.jsx"
+      - "mingla-admin/src/components/ui/Drawer.jsx"
+      - "mingla-admin/src/context/ToastContext.jsx"
       - "mingla-admin/src/App.jsx"
       - "mingla-admin/src/context/AuthContext.jsx"
       - "mingla-admin/src/lib/access.js"
@@ -478,6 +500,9 @@ jobs:
       - name: "Issue #3802 — roles in Mingla Admin: independent tester adversarial proof"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave0_roles.tester.adversarial.test.js
+      - name: "Issue #3802 — Hosts and Creators boards in Mingla Admin: names, filters, addresses, access, one caller of the server functions"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave1_pipelines.implementor.happy.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
