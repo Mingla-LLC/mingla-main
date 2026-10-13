@@ -50,20 +50,34 @@ export interface PayoutCountryInlinePromptProps {
   brand: Brand | null | undefined;
   /** True once the organiser has entered a price above zero. */
   priced: boolean;
+  /** Replaces the default body, e.g. why Publish is waiting. */
+  reason?: string;
+  /**
+   * Show the card even when this client's copy of the brand has a currency:
+   * the server has just said it has none (stale brand state).
+   */
+  force?: boolean;
+  /** Fired once a country has been saved from this card. */
+  onCountryChosen?: () => void;
   testID?: string;
 }
 
 export function PayoutCountryInlinePrompt({
   brand,
   priced,
+  reason,
+  force = false,
+  onCountryChosen,
   testID = "payout-country-inline-prompt",
 }: PayoutCountryInlinePromptProps): React.ReactElement | null {
   if (!priced || brand === null || brand === undefined) return null;
-  if (!brandNeedsPayoutCountry(brand)) return null;
+  if (!force && !brandNeedsPayoutCountry(brand)) return null;
   return (
     <View style={styles.card} testID={testID} accessibilityRole="summary">
       <Text style={styles.title}>{PAYOUT_COUNTRY_PROMPT_COPY.title}</Text>
-      <Text style={styles.body}>{PAYOUT_COUNTRY_PROMPT_COPY.body}</Text>
+      <Text style={styles.body}>
+        {reason ?? PAYOUT_COUNTRY_PROMPT_COPY.body}
+      </Text>
       <React.Suspense
         fallback={(
           <Text style={styles.body} accessibilityRole="text">
@@ -73,6 +87,7 @@ export function PayoutCountryInlinePrompt({
       >
         <LazyBrandPayoutCountryField
           brand={brand}
+          onCountryChosen={onCountryChosen}
           testID={`${testID}-field`}
         />
       </React.Suspense>
