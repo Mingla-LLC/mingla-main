@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-13 — Prices on the public event, trip and experience pages and on the Buy button never show a single decimal digit: a price with pence or kobo shows both digits ("₦1,515,772.50", not "₦1,515,772.5"), a whole price still shows none, and the trip and experience headline no longer rounds a price ending in .50 up past what is charged; nothing about what is charged changed — web `[deploy]` (toward #3645, PR #TBD)
 - 2026-10-13 — When a host asks Ari to run a Meta ad, Mingla creates the real Meta campaign from a READY image creative (no more placeholder IDs), launches and pauses it on Meta, and returns Ads credit if Meta activate fails — web `[deploy]` (toward #3697, PR #3836)
 - 2026-10-13 — Hosts can Cancel an ad before any spend (full credit back) or End it after spend — never both on one card — filter Ads by Live/Paused/Ended, and every Host or Admin launch attempt emails the ops inbox — web `[deploy]` (toward #3697, PR #3834)
 - 2026-10-13 — Hosts can withdraw unused Ads credit to the original card or Paystack charge, top up in Naira, run Host-owned ads from Blast (list, detail, pause/end) with live cards on Home, and ask Ari to propose and launch a plan that spends Ads credit — web `[deploy]` (toward #3697, PR #3825)
