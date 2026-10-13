@@ -217,6 +217,37 @@ export const NAV_GROUPS = [
 // Backward-compatible flat list (used by AppShell.currentTitle)
 export const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
 
+// Issue #3802 (Wave 4): My agent, shown at the end of the Team group for
+// everyone who holds the `crm` area. It is a list of its own, added to the
+// Team group where the menu is drawn (teamNavGroups below), so NAV_GROUPS
+// and NAV_ITEMS stay exactly the lists the earlier waves pinned. Bot is in
+// Sidebar.jsx ICON_MAP.
+export const TEAM_GROUP_LABEL = "Team";
+export const TEAM_AGENT_NAV_ITEMS = [
+  { id: "agent",                     label: "My agent",           icon: "Bot" },
+];
+
+/** The title of a My agent page, or "" for any other page. */
+export function teamAgentTitle(pageId) {
+  return TEAM_AGENT_NAV_ITEMS.find((item) => item.id === pageId)?.label || "";
+}
+
+/**
+ * The menu as it is drawn: `groups` is what visibleNavGroups() returned for
+ * this person; `allowed` is the My agent items this person may open. They go
+ * at the end of the Team group (a Team group is made when the person has
+ * none). Pure: it changes neither argument.
+ */
+export function teamNavGroups(groups, allowed) {
+  const extra = Array.isArray(allowed) ? allowed : [];
+  const list = Array.isArray(groups) ? groups : [];
+  if (extra.length === 0) return list;
+  if (!list.some((g) => g.label === TEAM_GROUP_LABEL)) {
+    return [...list, { label: TEAM_GROUP_LABEL, items: [...extra] }];
+  }
+  return list.map((g) => (g.label === TEAM_GROUP_LABEL ? { ...g, items: [...g.items, ...extra] } : g));
+}
+
 export const STATUS_COLORS = {
   pending: "warning",
   reviewed: "info",
