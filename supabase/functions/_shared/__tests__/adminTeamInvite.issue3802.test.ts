@@ -143,7 +143,7 @@ Deno.test("#3802 E-5: which existing accounts may receive team access", () => {
         identity_data: { email: " Person@Example.com " },
       }],
     }, email),
-    "ok",
+    "conflict",
   );
   // a phone number on the account
   assertEquals(
@@ -425,4 +425,89 @@ Deno.test("#3802 E-7: the invite function still acts as the caller and passes a 
   // known codes to fall out of date.
   assert(src.includes("const code = errorCode(issueError?.message);"));
   assertEquals(src.includes("address_in_use"), false);
+});
+
+// ---------------------------------------------------------------------------
+// The strict rule (appended): any way of signing in other than email.
+// ---------------------------------------------------------------------------
+
+Deno.test("#3802 E-8: an account that can sign in any way other than email cannot be given team access", () => {
+  const email = "person@example.com";
+  const emailIdentity = { provider: "email", identity_data: { email } };
+  // The same cases as H-10 in the SQL suite.
+  const cases: Array<[string, Parameters<typeof accountVerdict>[0], string]> = [
+    ["email only", { identities: [emailIdentity] }, "ok"],
+    ["no identity recorded", { phone: null, identities: [] }, "ok"],
+    ["a blank phone", { phone: "   ", identities: [emailIdentity] }, "ok"],
+    [
+      "a phone number",
+      { phone: "15555550100", identities: [emailIdentity] },
+      "conflict",
+    ],
+    [
+      "a phone sign-in",
+      { identities: [emailIdentity, { provider: "phone" }] },
+      "conflict",
+    ],
+    ["Google under this same email", {
+      identities: [emailIdentity, {
+        provider: "google",
+        identity_data: { email },
+      }],
+    }, "conflict"],
+    ["Google only, under this same email", {
+      identities: [{ provider: "google", identity_data: { email } }],
+    }, "conflict"],
+    ["Apple under this same email", {
+      identities: [emailIdentity, {
+        provider: "apple",
+        identity_data: { email },
+      }],
+    }, "conflict"],
+    ["Google under another email", {
+      identities: [emailIdentity, {
+        provider: "google",
+        identity_data: { email: "x@y.z" },
+      }],
+    }, "conflict"],
+    ["Apple with no email", {
+      identities: [{ provider: "apple", identity_data: null }],
+    }, "conflict"],
+    ["a sign-in method nobody listed", {
+      identities: [emailIdentity, { provider: "sso:example" }],
+    }, "conflict"],
+    [
+      "an identity with no provider",
+      { identities: [emailIdentity, {}] },
+      "conflict",
+    ],
+  ];
+  for (const [label, account, want] of cases) {
+    assertEquals(accountVerdict(account, email), want, label);
+  }
+});
+
+Deno.test("#3802 E-8: the accept function asks the database's one rule, and fails closed", () => {
+  const src = code(ACCEPT_SRC);
+  const askAt = src.indexOf('"admin_team_invite_address_verdict"');
+  const linkAt = src.indexOf("auth.admin.generateLink(");
+  const redeemAt = src.indexOf('"admin_team_redeem_invite"');
+  assert(askAt > 0 && askAt < linkAt && askAt < redeemAt);
+  assert(src.includes("{ p_email: seen.email }"));
+  // Anything but a clear "ok" or "conflict" stops before a sign-in is prepared.
+  assert(
+    src.includes(
+      'if (verdictError || (verdict !== "ok" && verdict !== "conflict")) {',
+    ),
+  );
+  // Either check saying "conflict" is a conflict.
+  assertMatch(
+    src,
+    /verdict === "conflict" \|\|\s*accountVerdict\(existing\.data\.user, seen\.email\) === "conflict"/,
+  );
+  // The invite function still decides nothing itself.
+  assertEquals(
+    code(INVITE_SRC).includes("admin_team_invite_address_verdict"),
+    false,
+  );
 });

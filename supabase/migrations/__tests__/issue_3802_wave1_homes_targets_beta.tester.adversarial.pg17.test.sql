@@ -1031,7 +1031,7 @@ begin
       ('a phone identity',                                    'issue3802y-i4@test.local',      null,           'phone',  null,                              'issue3802y-i4@test.local',     'conflict'),
       ('a social identity under another address',             'issue3802y-i5@test.local',      null,           'google', 'someone-else@gmail.example',      'issue3802y-i5@test.local',     'conflict'),
       ('a social identity that names no address',             'issue3802y-i6@test.local',      null,           'apple',  null,                              'issue3802y-i6@test.local',     'conflict'),
-      ('a social identity under the same address, typed differently', 'issue3802y-i7@test.local', null,        'google', ' ISSUE3802Y-I7@test.local ',      'issue3802y-i7@test.local',     'ok'),
+      ('a social identity under the same address, typed differently', 'issue3802y-i7@test.local', null,        'google', ' ISSUE3802Y-I7@test.local ',      'issue3802y-i7@test.local',     'conflict'),
       ('the invite typed in capitals with spaces, phone account', 'issue3802y-i8@test.local',  '+15550000008', 'email',  'issue3802y-i8@test.local',        '  ISSUE3802Y-I8@TEST.LOCAL ',  'conflict'),
       ('the account stored in capitals, social under another address', 'Issue3802Y-I9@Test.Local', null,       'apple',  'hidden@privaterelay.example',     'issue3802y-i9@test.local',     'conflict')
     ) as t(label, acct, phone, provider, ident_email, invited, want) loop
