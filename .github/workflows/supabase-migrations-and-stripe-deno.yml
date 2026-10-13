@@ -1995,6 +1995,12 @@ jobs:
             supabase/functions/_shared/__tests__/issue_1345_reservation_slot_unavailable_ops_alert.test.ts
             # ISSUE-1981 — paid-cancel ToolError must map to HTTP 409 (not 500).
             supabase/functions/agent-confirm-action/__tests__/issue_1981_paid_order_must_refund_status.test.ts
+            # Issue #3645 — the Organiser Terms refusal: Ari's write helpers turn
+            # the database's terms code into one typed, plain, terminal refusal
+            # on every publish tool (never a result, never "result unknown", and
+            # an envelope code installed apps already know); the Stay function
+            # answers a typed 409; every other answer is what it was.
+            supabase/functions/_shared/__tests__/issue_3645_organiser_terms_refusal.implementor.test.ts
             # ISSUE-1982 — team list, scanner revoke, Brand People manage.
             supabase/functions/_shared/__tests__/issue_1982_ari_team_people.implementor.test.ts
             # ISSUE-1982 — adversarial: wrong-table scanner invite, hard-DELETE forbid, cursor.

@@ -139,13 +139,79 @@ export async function assertCanCollect(
   }
 }
 
+/**
+ * Issue #3645 — the Organiser Terms refusal.
+ *
+ * A paid publish by a member who has not accepted the current Organiser Terms
+ * is refused by the database with `mingla_tos_not_accepted`. Ari acts as the
+ * signed-in member and has no way to accept the terms for them, so the only
+ * honest answer is to send them to the app. The refusal is deterministic and
+ * raised before any write, so it is a typed, terminal failure: it must never
+ * be reported as "result unknown" and never as a publish.
+ *
+ * The sentence is stored as the failure reason and shown in the thread as
+ * "That didn't go through. <sentence>", so it is one plain line under 200
+ * characters with no code in it.
+ */
+export const ORGANISER_TERMS_SERVER_CODE = "mingla_tos_not_accepted";
+export const ORGANISER_TERMS_REQUIRED_CODE = "ORGANISER_TERMS_REQUIRED";
+export const ORGANISER_TERMS_REQUIRED_MESSAGE =
+  "Accept the Organiser Terms in the Mingla Host app, then ask me again. Nothing has changed.";
+
+/** The typed refusal when `raw` carries the server's terms code, else null. */
+export function organiserTermsRefusal(raw: unknown): ToolError | null {
+  return typeof raw === "string" && raw.includes(ORGANISER_TERMS_SERVER_CODE)
+    ? new ToolError(
+      ORGANISER_TERMS_REQUIRED_CODE,
+      ORGANISER_TERMS_REQUIRED_MESSAGE,
+    )
+    : null;
+}
+
+/**
+ * The same refusal read off a failed edge-function call. A non-2xx answer
+ * arrives as a generic message with the real body on `context`; only a body
+ * whose `code` or `detail` is exactly the terms code counts. The body is read
+ * from a clone and any failure to read it means "not this refusal".
+ */
+async function organiserTermsRefusalFromInvoke(
+  error: { message?: unknown; context?: unknown },
+): Promise<ToolError | null> {
+  const direct = organiserTermsRefusal(error.message);
+  if (direct) return direct;
+  const context = error.context as
+    | { clone?: () => { json?: () => Promise<unknown> } }
+    | null
+    | undefined;
+  if (!context || typeof context.clone !== "function") return null;
+  try {
+    const body = await context.clone().json?.() as
+      | { code?: unknown; detail?: unknown }
+      | null
+      | undefined;
+    if (
+      body?.code === ORGANISER_TERMS_SERVER_CODE ||
+      body?.detail === ORGANISER_TERMS_SERVER_CODE
+    ) {
+      return organiserTermsRefusal(ORGANISER_TERMS_SERVER_CODE);
+    }
+  } catch {
+    // Not JSON, or already consumed: not a refusal this helper recognises.
+  }
+  return null;
+}
+
 export async function callRpc<T = unknown>(
   client: SupabaseClient,
   fn: string,
   args: Record<string, unknown>,
 ): Promise<T> {
   const { data, error } = await client.rpc(fn, args);
-  if (error) throw new ToolError("RPC_FAILED", `${fn}: ${error.message}`);
+  if (error) {
+    const terms = organiserTermsRefusal(error.message);
+    if (terms) throw terms;
+    throw new ToolError("RPC_FAILED", `${fn}: ${error.message}`);
+  }
   return data as T;
 }
 
@@ -159,6 +225,10 @@ export async function invokeFn<T = unknown>(
     body,
     headers,
   });
-  if (error) throw new ToolError("EDGE_FAILED", `${name}: ${error.message}`);
+  if (error) {
+    const terms = await organiserTermsRefusalFromInvoke(error);
+    if (terms) throw terms;
+    throw new ToolError("EDGE_FAILED", `${name}: ${error.message}`);
+  }
   return data as T;
 }
