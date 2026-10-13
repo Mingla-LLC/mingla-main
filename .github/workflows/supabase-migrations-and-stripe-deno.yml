@@ -197,6 +197,8 @@ on:
       - "mingla-admin/src/__tests__/issue3802_wave0_roles.tester.adversarial.test.js"
       # #3802 Wave 1 (boards): the client suite and the files it reads.
       - "mingla-admin/src/__tests__/issue3802_wave1_pipelines.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave1_boards_rework.implementor.happy.test.js"
+      - "mingla-admin/src/components/layout/Header.jsx"
       - "mingla-admin/src/__tests__/issue3802_wave1_pipelines.tester.adversarial.test.js"
       - "mingla-admin/src/lib/crmModel.js"
       - "mingla-admin/src/lib/crmUrl.js"
@@ -380,6 +382,8 @@ on:
       - "mingla-admin/src/__tests__/issue3802_wave0_roles.tester.adversarial.test.js"
       # #3802 Wave 1 (boards): the client suite and the files it reads.
       - "mingla-admin/src/__tests__/issue3802_wave1_pipelines.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave1_boards_rework.implementor.happy.test.js"
+      - "mingla-admin/src/components/layout/Header.jsx"
       - "mingla-admin/src/__tests__/issue3802_wave1_pipelines.tester.adversarial.test.js"
       - "mingla-admin/src/lib/crmModel.js"
       - "mingla-admin/src/lib/crmUrl.js"
@@ -505,6 +509,9 @@ jobs:
       - name: "Issue #3802 — Hosts and Creators boards in Mingla Admin: names, filters, addresses, access, one caller of the server functions"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_pipelines.implementor.happy.test.js
+      - name: "Issue #3802 — boards rework: unsent edits, stale cards, plain words, toasts and keyboard"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave1_boards_rework.implementor.happy.test.js
       - name: "Issue #3802 — Hosts and Creators boards: independent tester adversarial proof (every server refusal in plain words, honest Undo, hostile input)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_pipelines.tester.adversarial.test.js
