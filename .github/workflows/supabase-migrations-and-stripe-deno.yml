@@ -724,6 +724,18 @@ jobs:
           # untouched.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.tester.retest.pg17.test.sql
+          # Issue #3645 — tester RETEST 2. The app now follows the draft ROW, so
+          # what the database does with a draft it did not move is pinned: a
+          # brand moved to a currency no offering may use leaves the draft
+          # exactly as it was and Publish is refused; a draft the trigger
+          # skips (a checkout was started on it) on a dollar brand that moves
+          # to naira is untouched and cannot go on sale at the old number. A
+          # cleared trip package: metadata replaced by JSON null with the old
+          # number is refused, and the old number from a form that read the
+          # trip before the clear is a revision conflict. The commit-time
+          # check finds a package among 3,000 through its index.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.tester.retest2.pg17.test.sql
           # Issue #1977 — canonical RSVP draft/guest/contribution owners and
           # the Ari receipt seam. Behavioural against the applied schema.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
