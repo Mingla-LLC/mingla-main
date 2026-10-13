@@ -40,6 +40,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { installmentReassuranceText } from "../../copy/installmentReassurance";
 // #3372 — naira instalments show "₦", not "NGN" (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import { formatCalendarDate } from "../../utils/calendarDate";
 
 export interface InstallmentScheduleDisplaySchedule {
   fullPriceCents: number;
@@ -52,6 +53,14 @@ export interface InstallmentScheduleDisplaySchedule {
     amountCents: number;
     /** ISO 8601 UTC. */
     dueAt: string;
+    /**
+     * Issue #3801 — true when `dueAt` is a CALENDAR DATE pinned to UTC (a
+     * payment plan's `fixed_date`), not a moment. It is then shown as that
+     * day in every timezone. Absent/false = a real instant (an offset from the
+     * booking moment, or an order's stored due time), shown in the viewer's
+     * own timezone.
+     */
+    dueIsCalendarDate?: boolean;
   }[];
 }
 
@@ -104,6 +113,18 @@ function formatDate(iso: string): string {
   }
 }
 
+/**
+ * Issue #3801 — a `fixed_date` due day is a calendar date and reads the same
+ * day everywhere; anything else is a real instant and keeps `formatDate`.
+ */
+function formatDueDate(inst: { dueAt: string; dueIsCalendarDate?: boolean }): string {
+  if (inst.dueIsCalendarDate === true) {
+    const label = formatCalendarDate(inst.dueAt);
+    if (label.length > 0) return label;
+  }
+  return formatDate(inst.dueAt);
+}
+
 export const InstallmentScheduleDisplay: React.FC<
   InstallmentScheduleDisplayProps
 > = ({ schedule, variant, isProjection = false }) => {
@@ -116,7 +137,7 @@ export const InstallmentScheduleDisplay: React.FC<
       },
       installments: schedule.installments.map((inst) => ({
         ordinal: inst.ordinal,
-        label: formatDate(inst.dueAt),
+        label: formatDueDate(inst),
         amount: formatCurrency(inst.amountCents, schedule.currency),
       })),
       total: formatCurrency(schedule.fullPriceCents, schedule.currency),
