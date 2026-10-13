@@ -83,6 +83,7 @@ import { KpiTile } from "../ui/KpiTile";
 import { OfferingListCard } from "../offering/OfferingListCard";
 import { liveEventToOfferingModel } from "../offering/offeringCardModels";
 import { TopBar } from "../ui/TopBar";
+import { brandPhoneTelHref } from "@mingla/brand-rendering/brandPhoneHref";
 import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
 import { useSwitchAccount } from "../../hooks/useSwitchAccount";
@@ -854,7 +855,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
               chips.push({ key: "email", icon: "mail", aria: `Email ${brand.contact.email}`, url: `mailto:${brand.contact.email}` });
             }
             if (typeof brand.contact?.phone === "string" && brand.contact.phone.length > 0) {
-              chips.push({ key: "phone", icon: "phone", aria: `Phone ${brand.contact.phone}`, url: `tel:${brand.contact.phone}` });
+              chips.push({ key: "phone", icon: "phone", aria: `Phone ${brand.contact.phone}`, url: brandPhoneTelHref(brand.contact.phone) });
             }
             if (typeof brand.links?.website === "string" && brand.links.website.length > 0) {
               chips.push({ key: "website", icon: "globe", aria: `Website ${brand.links.website}`, url: normalizeSocialUrl(brand.links.website, "https://") });

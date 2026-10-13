@@ -54,6 +54,15 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 // #3191/#3208 — the contact-email rule and its copy have one owner.
 import { validateBrandContactEmail } from "../../utils/brandContactEmail";
+import {
+  BRAND_PHONE_CHOOSE_COUNTRY_LABEL,
+  brandContactWithSavedPhone,
+  brandPhoneCountrySourceForEdit,
+  brandPhoneForEdit,
+  brandPhoneForSave,
+  rememberBrandPhoneSavedCountry,
+  type BrandPhoneCountrySource,
+} from "./brandContactPhoneRules";
 
 import {
   accent,
@@ -74,7 +83,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
-import { Input } from "../ui/Input";
+import { Input, PHONE_COUNTRIES } from "../ui/Input";
 import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
 // Issue #1835 — brand deletion is owner-only; the danger zone is hidden for
@@ -369,6 +378,36 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   const [contactEmailError, setContactEmailError] = useState<string | null>(
     null,
   );
+  // issue #3380 — the phone is saved as E.164 (`+2348031234567`), so the
+  // country survives a save. The box shows the local digits and the chip shows
+  // the country, both read back out of the saved number. `phoneEdit` stays null
+  // until the host touches the box or the chip, so a number they never touched
+  // is never a reason to refuse a save.
+  //
+  // issue #3380 rework 2 — `countrySource` says where the chip's country came
+  // from. A number typed without a "+" is only composed under a country the
+  // host can be said to have chosen; under `fallback` Save asks for one.
+  const [phoneEdit, setPhoneEdit] = useState<{
+    text: string;
+    countryIso: string;
+    countrySource: BrandPhoneCountrySource;
+  } | null>(null);
+  const [contactPhoneError, setContactPhoneError] = useState<string | null>(
+    null,
+  );
+  const savedPhone = draft?.contact?.phone;
+  const brandCountryCode = draft?.countryCode;
+  const openedPhone = useMemo(
+    () => ({
+      ...brandPhoneForEdit(savedPhone, brandCountryCode, PHONE_COUNTRIES),
+      countrySource: brandPhoneCountrySourceForEdit(
+        savedPhone,
+        brandCountryCode,
+        PHONE_COUNTRIES,
+      ),
+    }),
+    [savedPhone, brandCountryCode],
+  );
   const [discardDialogVisible, setDiscardDialogVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
 
@@ -380,8 +419,19 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   // revisit. Per spec §3.4.2.
   const isDirty = useMemo<boolean>(() => {
     if (brand === null || draft === null) return false;
+    if (
+      phoneEdit !== null &&
+      (phoneEdit.text.trim() !== openedPhone.localText ||
+        phoneEdit.countryIso !== openedPhone.countryIso ||
+        // Choosing the country the chip already defaulted to is still a
+        // choice: it lets a number saved without a country be saved with one.
+        (openedPhone.countrySource === "fallback" &&
+          phoneEdit.countrySource === "picked"))
+    ) {
+      return true;
+    }
     return JSON.stringify(draft) !== JSON.stringify(brand);
-  }, [draft, brand]);
+  }, [draft, brand, phoneEdit, openedPhone]);
 
   // ONE patch per user action, derived from current draft state at commit time.
   const handleBrandThemeChange = useCallback((theme: ThemeInput | null): void => {
@@ -428,13 +478,49 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
       }
       return;
     }
+    // issue #3380 — save the phone as E.164 under the country on the chip. A
+    // number the host changed must be a real one for that country; the error
+    // sits on the field, exactly like the email above.
+    const phoneToSave = brandPhoneForSave({
+      stored: draft.contact?.phone,
+      brandCountryCode: draft.countryCode,
+      edit: phoneEdit,
+      directory: PHONE_COUNTRIES,
+    });
+    if (!phoneToSave.ok) {
+      setContactPhoneError(phoneToSave.message);
+      const contactY = sectionYRef.current.contact;
+      if (contactY !== undefined) {
+        scrollRef.current?.scrollTo({
+          y: Math.max(0, contactY - 8),
+          animated: true,
+        });
+      }
+      try {
+        AccessibilityInfo.announceForAccessibility(phoneToSave.message);
+      } catch {
+        // No announcer on this platform — the inline error still shows.
+      }
+      return;
+    }
+    const draftToSave: Brand = {
+      ...draft,
+      contact: brandContactWithSavedPhone(draft.contact, phoneToSave),
+    };
     setSubmitting(true);
     // Cycle 17e-A: parent's onSave is now async and wires useUpdateBrand
     // mutation. Removed simulated 300ms delay — real network round-trip
     // provides the actual latency. Optimistic updates make UI feel instant
     // anyway (per Decision 10 hybrid pattern).
     try {
-      await onSave(draft);
+      await onSave(draftToSave);
+      // The saved number is now the one on screen; the box goes back to
+      // "untouched" so the form is clean until the next edit.
+      // Remember the country it was saved under, so a shared dial code (+1,
+      // +7) re-opens under the country the host picked, not the first match.
+      if (phoneEdit !== null) rememberBrandPhoneSavedCountry(phoneToSave);
+      setDraft(draftToSave);
+      setPhoneEdit(null);
       fireToast("Saved");
       setTimeout(() => onAfterSave(), POST_SAVE_NAV_DELAY_MS);
     } catch (error) {
@@ -446,7 +532,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     } finally {
       setSubmitting(false);
     }
-  }, [draft, isDirty, submitting, onSave, onAfterSave, fireToast]);
+  }, [draft, isDirty, submitting, onSave, onAfterSave, fireToast, phoneEdit]);
 
   const handleBackPress = useCallback((): void => {
     if (isDirty) {
@@ -826,22 +912,39 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             />
             <Input
               variant="phone"
-              value={draft.contact?.phone ?? ""}
-              onChangeText={(v) =>
-                setDraft({ ...draft, contact: { ...draft.contact, phone: v } })
-              }
-              // issue #3380 — the brand's own country, not a fixed UK flag.
-              defaultCountryIso={
-                draft.contact?.phoneCountryIso ?? draft.countryCode ?? "GB"
-              }
-              onCountryChange={(country) =>
-                setDraft({
-                  ...draft,
-                  contact: { ...draft.contact, phoneCountryIso: country.iso },
-                })
+              value={phoneEdit?.text ?? openedPhone.localText}
+              onChangeText={(v) => {
+                setPhoneEdit({
+                  text: v,
+                  countryIso: phoneEdit?.countryIso ?? openedPhone.countryIso,
+                  countrySource:
+                    phoneEdit?.countrySource ?? openedPhone.countrySource,
+                });
+                if (contactPhoneError !== null) setContactPhoneError(null);
+              }}
+              // issue #3380 — the country the number was saved under, then the
+              // brand's own country, then the field's default. Never a fixed
+              // UK flag over a number saved for somewhere else.
+              defaultCountryIso={openedPhone.countryIso}
+              onCountryChange={(country) => {
+                setPhoneEdit({
+                  text: phoneEdit?.text ?? openedPhone.localText,
+                  countryIso: country.iso,
+                  countrySource: "picked",
+                });
+                if (contactPhoneError !== null) setContactPhoneError(null);
+              }}
+              // issue #3380 rework 2 — no flag until somebody chose a country.
+              countryPlaceholder={
+                (phoneEdit?.countrySource ?? openedPhone.countrySource) ===
+                "fallback"
+                  ? BRAND_PHONE_CHOOSE_COUNTRY_LABEL
+                  : undefined
               }
               placeholder="Phone number"
               accessibilityLabel="Contact phone"
+              error={contactPhoneError}
+              errorId="brand-edit-contact-phone-error"
             />
           </View>
 
