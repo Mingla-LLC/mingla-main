@@ -83,6 +83,10 @@ export function projectInstallmentSchedule(
   const installments = schedule.installments.map((inst) => {
     const amountCents = Math.round((fullPriceCents * inst.pct) / 100);
     let dueAt: string;
+    // Issue #3801 — a fixed_date is a calendar date, a days-after-booking due
+    // time is a real instant. The display must know which it was handed.
+    const dueIsCalendarDate =
+      typeof inst.fixed_date === "string" && inst.fixed_date.length > 0;
     if (typeof inst.fixed_date === "string" && inst.fixed_date.length > 0) {
       // fixed_date is a YYYY-MM-DD string; pin to UTC midnight for stable
       // Intl.DateTimeFormat output across viewer time zones.
@@ -99,6 +103,7 @@ export function projectInstallmentSchedule(
       pct: inst.pct,
       amountCents,
       dueAt,
+      ...(dueIsCalendarDate ? { dueIsCalendarDate: true } : {}),
     };
   });
 

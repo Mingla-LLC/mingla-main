@@ -33,9 +33,12 @@ function formatDateRange(
 ): string {
   if (startIso === null) return "Date TBD";
   try {
+    // Issue #3801 — trip dates are calendar dates stored at UTC; read them at
+    // UTC so the day never shifts with the device's timezone.
     const fmt = new Intl.DateTimeFormat(undefined, {
       month: "short",
       day: "numeric",
+      timeZone: "UTC",
     });
     const start = fmt.format(new Date(startIso));
     if (endIso === null) return start;

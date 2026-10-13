@@ -42,6 +42,7 @@ import { spacing, text as textTokens } from "../../constants/designSystem";
 import type { ThemePalette } from "@mingla/offering-rendering";
 import { GlassCard } from "../ui/GlassCard";
 import { formatCurrency } from "../../utils/currency";
+import { formatCalendarDate } from "../../utils/calendarDate";
 import {
   InstallmentScheduleDisplay,
   type InstallmentScheduleDisplaySchedule,
@@ -433,7 +434,7 @@ const PaymentMockupCard: React.FC<{
                   <ScheduleRow
                     key={inst.ordinal}
                     palette={palette}
-                    when={formatScheduleDate(inst.dueAt)}
+                    when={formatScheduleDate(inst.dueAt, inst.dueIsCalendarDate === true)}
                     amount={formatCurrency(inst.amountCents, currency, true)}
                     future
                   />
@@ -489,7 +490,14 @@ const ScheduleRow: React.FC<{
   </View>
 );
 
-function formatScheduleDate(iso: string): string {
+// Issue #3801 — a fixed-date due day is a calendar date and reads the same day
+// in every timezone; a days-after-booking due time is a real instant and stays
+// in the buyer's own timezone.
+function formatScheduleDate(iso: string, isCalendarDate: boolean): string {
+  if (isCalendarDate) {
+    const label = formatCalendarDate(iso, { month: "short", day: "numeric" });
+    if (label.length > 0) return label;
+  }
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return iso;
   try {

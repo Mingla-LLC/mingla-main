@@ -52,6 +52,15 @@ import {
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import type { LocationSelectionState } from "@mingla/location-input";
+import {
+  calendarDateToInputValue,
+  calendarDateToPickerDate,
+  formatCalendarDate,
+  inputValueToCalendarIso,
+  pickerDateToCalendarIso,
+  pickerDateToInputValue,
+  todayInputValue,
+} from "../../utils/calendarDate";
 // ORCH-1118 — trip location must have a confirmed automatically resolved
 // coordinate before publish/save.
 import {
@@ -134,55 +143,33 @@ export interface TripCreatorStep1BasicsProps {
 const INPUT_BORDER = "rgba(255, 255, 255, 0.12)";
 const INPUT_BG = "rgba(255, 255, 255, 0.04)";
 
-function isoToDate(iso: string | null): Date | null {
-  if (iso === null) return null;
-  try {
-    const d = new Date(iso);
-    return isNaN(d.getTime()) ? null : d;
-  } catch {
-    return null;
-  }
-}
-
-function dateToIso(d: Date, isEnd: boolean): string {
-  // Lock time to start-of-day or end-of-day UTC so trips render whole days.
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const time = isEnd ? "23:59:59" : "00:00:00";
-  return new Date(`${yyyy}-${mm}-${dd}T${time}.000Z`).toISOString();
-}
-
+// Issue #3801 — trip start/end are CALENDAR DATES stored at UTC. Every read
+// and write below goes through utils/calendarDate so the day is the same in
+// every device timezone. These used to read the stored instant with the
+// device's local clock, which showed 12 November as 11 November in New York
+// and, on native, wrote the shifted day back when the host tapped Done.
 function isoToHtml5Date(iso: string | null): string {
-  const d = isoToDate(iso);
-  if (d === null) return "";
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return calendarDateToInputValue(iso);
 }
 
 function htmlDateToIso(value: string, isEnd: boolean): string | null {
-  if (value.trim().length === 0) return null;
-  const time = isEnd ? "23:59:59" : "00:00:00";
-  try {
-    return new Date(`${value}T${time}.000Z`).toISOString();
-  } catch {
-    return null;
-  }
+  return inputValueToCalendarIso(value, isEnd);
 }
 
 function formatDateDisplay(iso: string | null): string {
-  const d = isoToDate(iso);
-  if (d === null) return "";
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatCalendarDate(iso);
 }
 
-function todayMidnight(): Date {
+/** The local day to open a native picker on when no date is stored yet. */
+function todayPickerDate(): Date {
   const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return now;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
+}
+
+/** True when the stored end day falls before the given calendar day. */
+function endIsBefore(endIso: string | null, day: string): boolean {
+  const end = calendarDateToInputValue(endIso);
+  return end.length > 0 && end < day;
 }
 
 type PickerMode = "start" | "end" | null;
@@ -421,16 +408,41 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   const handleOpenPicker = useCallback(
     (mode: "start" | "end"): void => {
       if (disabled === true) return;
+      // Seed the picker with the STORED calendar day, as a local day. Tapping
+      // Done without touching the wheel must leave the stored day unchanged.
       const current =
-        mode === "start" ? isoToDate(draft.startAt) : isoToDate(draft.endAt);
+        mode === "start"
+          ? calendarDateToPickerDate(draft.startAt)
+          : calendarDateToPickerDate(draft.endAt);
       const fallback =
         mode === "end"
-          ? (isoToDate(draft.startAt) ?? todayMidnight())
-          : todayMidnight();
+          ? (calendarDateToPickerDate(draft.startAt) ?? todayPickerDate())
+          : todayPickerDate();
       setTempPickerValue(current ?? fallback);
       setPickerMode(mode);
     },
     [disabled, draft.startAt, draft.endAt],
+  );
+
+  // Write the LOCAL day the picker returned as that calendar day at UTC (the
+  // same value the web date input writes). Picking a start after the current
+  // end moves the end to the same day.
+  const commitPickedDay = useCallback(
+    (picked: Date, mode: "start" | "end"): void => {
+      const iso = pickerDateToCalendarIso(picked, mode === "end");
+      if (iso === null) return;
+      if (mode === "end") {
+        onChange({ endAt: iso });
+        return;
+      }
+      const pickedDay = pickerDateToInputValue(picked);
+      if (endIsBefore(draft.endAt, pickedDay)) {
+        onChange({ startAt: iso, endAt: pickerDateToCalendarIso(picked, true) });
+      } else {
+        onChange({ startAt: iso });
+      }
+    },
+    [draft.endAt, onChange],
   );
 
   const handlePickerChange = useCallback(
@@ -444,17 +456,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           return;
         }
         if (selected !== undefined && pickerMode !== null) {
-          const iso = dateToIso(selected, pickerMode === "end");
-          if (pickerMode === "start") {
-            onChange({ startAt: iso });
-            // Bump end date if it precedes new start
-            const endDate = isoToDate(draft.endAt);
-            if (endDate !== null && endDate.getTime() < selected.getTime()) {
-              onChange({ startAt: iso, endAt: dateToIso(selected, true) });
-            }
-          } else {
-            onChange({ endAt: iso });
-          }
+          commitPickedDay(selected, pickerMode);
         }
         setPickerMode(null);
         setTempPickerValue(null);
@@ -463,31 +465,21 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
       // iOS: just store the wheel value; commit on Done press.
       if (selected !== undefined) setTempPickerValue(selected);
     },
-    [draft.endAt, onChange, pickerMode],
+    [commitPickedDay, pickerMode],
   );
 
   const handleIosCommit = useCallback((): void => {
     if (tempPickerValue !== null && pickerMode !== null) {
-      const iso = dateToIso(tempPickerValue, pickerMode === "end");
-      if (pickerMode === "start") {
-        const endDate = isoToDate(draft.endAt);
-        if (endDate !== null && endDate.getTime() < tempPickerValue.getTime()) {
-          onChange({ startAt: iso, endAt: dateToIso(tempPickerValue, true) });
-        } else {
-          onChange({ startAt: iso });
-        }
-      } else {
-        onChange({ endAt: iso });
-      }
+      commitPickedDay(tempPickerValue, pickerMode);
     }
     setPickerMode(null);
     setTempPickerValue(null);
-  }, [draft.endAt, onChange, pickerMode, tempPickerValue]);
+  }, [commitPickedDay, pickerMode, tempPickerValue]);
 
   const pickerMinDate =
     pickerMode === "end"
-      ? (isoToDate(draft.startAt) ?? todayMidnight())
-      : todayMidnight();
+      ? (calendarDateToPickerDate(draft.startAt) ?? todayPickerDate())
+      : todayPickerDate();
 
   return (
     <View style={styles.host}>
@@ -516,7 +508,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             React.createElement("input" as any, {
               type: "date",
               value: isoToHtml5Date(draft.startAt),
-              min: isoToHtml5Date(todayMidnight().toISOString()),
+              min: todayInputValue(),
               disabled: disabled,
               onChange: (
                 e: { target: { value: string } },
@@ -524,13 +516,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
                 const v = e.target.value;
                 const iso = htmlDateToIso(v, false);
                 if (iso === null) return;
-                const startDate = new Date(`${v}T00:00:00.000Z`);
-                const endDate = isoToDate(draft.endAt);
-                if (
-                  endDate !== null &&
-                  endDate.getTime() < startDate.getTime()
-                ) {
-                  onChange({ startAt: iso, endAt: dateToIso(startDate, true) });
+                if (endIsBefore(draft.endAt, v)) {
+                  onChange({ startAt: iso, endAt: htmlDateToIso(v, true) });
                 } else {
                   onChange({ startAt: iso });
                 }
@@ -567,9 +554,10 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             React.createElement("input" as any, {
               type: "date",
               value: isoToHtml5Date(draft.endAt),
-              min: isoToHtml5Date(
-                (draft.startAt ?? todayMidnight().toISOString()),
-              ),
+              min:
+                draft.startAt !== null
+                  ? isoToHtml5Date(draft.startAt)
+                  : todayInputValue(),
               disabled: disabled,
               onChange: (e: { target: { value: string } }) => {
                 const v = e.target.value;

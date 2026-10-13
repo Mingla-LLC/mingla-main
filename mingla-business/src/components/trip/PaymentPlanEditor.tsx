@@ -43,6 +43,11 @@ import { GlassCard } from "../ui/GlassCard";
 // Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
 // installment fixed-due-date picker was broken on web.
 import { WebDateTimeInput } from "../ui/WebDateTimeInput";
+import {
+  calendarDateToPickerDate,
+  formatCalendarDate,
+  pickerDateToInputValue,
+} from "../../utils/calendarDate";
 // #3372 — naira plan amounts show "₦", not "NGN" (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
@@ -105,18 +110,11 @@ function formatCurrency(cents: number, currency: string): string {
   }
 }
 
+// Issue #3801 — `fixed_date` is a CALENDAR DATE (`YYYY-MM-DD`). Reading it
+// with the device's local clock showed 29 October as 28 October west of UTC.
 function formatDateForDisplay(iso: string): string {
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    }).format(d);
-  } catch {
-    return iso;
-  }
+  const label = formatCalendarDate(iso);
+  return label.length > 0 ? label : iso;
 }
 
 function todayPlusDays(daysFromToday: number): string {
@@ -541,8 +539,10 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
       (event: DateTimePickerEvent, selected?: Date): void => {
         if (Platform.OS !== "ios") setOpenDatePickerOrdinal(null);
         if (event.type === "dismissed" || selected === undefined) return;
-        const iso = selected.toISOString().slice(0, 10);
-        updateInstallmentDate(ordinal, iso);
+        // Issue #3801 — the picker returns a LOCAL day; `toISOString()` reads
+        // it at UTC and wrote the previous day east of UTC.
+        if (Number.isNaN(selected.getTime())) return;
+        updateInstallmentDate(ordinal, pickerDateToInputValue(selected));
       },
     [updateInstallmentDate],
   );
@@ -685,15 +685,19 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
             Platform.OS !== "web" ? (
               <DateTimePicker
                 value={
-                  inst.fixed_date !== undefined && inst.fixed_date !== null
-                    ? new Date(`${inst.fixed_date}T00:00:00Z`)
-                    : new Date(`${todayPlusDays(30)}T00:00:00Z`)
+                  // Issue #3801 — seed with the stored calendar day as a local
+                  // day, so the picker opens on the day that is stored.
+                  calendarDateToPickerDate(inst.fixed_date ?? null) ??
+                  calendarDateToPickerDate(todayPlusDays(30)) ??
+                  new Date()
                 }
                 mode="date"
                 display={Platform.OS === "ios" ? "inline" : "default"}
                 themeVariant="dark"
                 textColor={textTokens.primary}
-                minimumDate={new Date(`${todayPlusDays(1)}T00:00:00Z`)}
+                minimumDate={
+                  calendarDateToPickerDate(todayPlusDays(1)) ?? undefined
+                }
                 onChange={onDateChange(inst.ordinal)}
               />
             ) : null}
