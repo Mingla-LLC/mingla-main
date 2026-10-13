@@ -570,8 +570,8 @@ verify_jwt = true
 [functions.admin-ad-campaign-action]
 verify_jwt = true
 
-# toward #3697 Wave 6 — Ads credit quote / apply (top-up + withdraw ledger).
-# Host Blast UI is Wave 7; payment provider refunds stay with the caller.
+# toward #3697 Wave 6/7b — Ads credit quote / Stripe platform top-up / ledger.
+# Withdraw card refund + Paystack/NGN stay with the caller follow-up.
 [functions.ad-credit]
 verify_jwt = true
 

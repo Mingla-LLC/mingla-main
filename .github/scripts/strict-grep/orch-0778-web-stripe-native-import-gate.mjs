@@ -25,6 +25,9 @@ const checkedRoots = ["mingla-business/app", "mingla-business/src"];
 // an explicit workflow step (see strict-grep-mingla-business.yml).
 const allowedNativeImportFiles = new Set([
   "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
+  // toward #3697 Wave 7b — platform Ads credit PaymentSheet; web sibling
+  // `useAdCreditTopUpPay.ts` has no @stripe/stripe-react-native import.
+  "mingla-business/src/payments/useAdCreditTopUpPay.native.ts",
 ]);
 const failures = [];
 const stripeReactNativeImportPattern =
@@ -175,8 +178,16 @@ if (process.argv.includes("--self-test")) {
         source: "import { initPaymentSheet } from '@stripe/stripe-react-native';\n",
       },
       {
+        relativePath: "mingla-business/src/payments/useAdCreditTopUpPay.native.ts",
+        source: "import { initStripe } from '@stripe/stripe-react-native';\n",
+      },
+      {
         relativePath: "mingla-business/src/payments/nativeCheckoutFlow.ts",
         source: "export async function runNativeCheckout() {}\n",
+      },
+      {
+        relativePath: "mingla-business/src/payments/useAdCreditTopUpPay.ts",
+        source: "export function useAdCreditTopUpPay() {}\n",
       },
     ],
     f,
