@@ -32,6 +32,110 @@ export const CAP_PAUSE_RATIO = 0.98;
 /** Host pays this share as Mingla fee; ad budget = pay × (1 − fee). */
 export const HOST_FEE_RATIO = 0.15;
 
+/**
+ * toward #3697 Wave 6 — standalone Ads credit top-up limits (Seth 2026-09-30):
+ * at least $25 / £20 / ₦25,000; at most $5,000 (or currency peer).
+ * Amounts are pay-cents (what the host is charged), not credit after fee.
+ */
+export const AD_CREDIT_TOP_UP_LIMITS_CENTS: Readonly<
+  Record<"USD" | "GBP" | "NGN", { min_pay_cents: number; max_pay_cents: number }>
+> = {
+  USD: { min_pay_cents: 2500, max_pay_cents: 500_000 },
+  GBP: { min_pay_cents: 2000, max_pay_cents: 500_000 },
+  NGN: { min_pay_cents: 2_500_000, max_pay_cents: 750_000_000 },
+};
+
+export type AdCreditCurrency = keyof typeof AD_CREDIT_TOP_UP_LIMITS_CENTS;
+
+export type AdCreditEntryKind =
+  | "top_up"
+  | "withdraw"
+  | "campaign_hold"
+  | "campaign_release"
+  | "campaign_spend"
+  | "unspend_return";
+
+/** Credit that lands in the wallet after the 15% fee is taken at top-up. */
+export function creditCentsFromPay(payCents: number): number {
+  if (!Number.isInteger(payCents) || payCents <= 0) return 0;
+  return Math.floor(payCents * (1 - HOST_FEE_RATIO));
+}
+
+/** Fee Mingla keeps from a top-up payment (pay − credit). */
+export function feeCentsFromPay(payCents: number): number {
+  if (!Number.isInteger(payCents) || payCents <= 0) return 0;
+  return payCents - creditCentsFromPay(payCents);
+}
+
+/**
+ * Card/bank refund when withdrawing unused credit: unused credit + its fee.
+ * Inverse of credit = floor(pay × 0.85) → refund = ceil(credit / 0.85).
+ */
+export function refundCentsFromCredit(creditCents: number): number {
+  if (!Number.isInteger(creditCents) || creditCents <= 0) return 0;
+  return Math.ceil(creditCents / (1 - HOST_FEE_RATIO));
+}
+
+export function quoteTopUp(payCents: number, currency: string): {
+  ok: true;
+  currency: AdCreditCurrency;
+  pay_cents: number;
+  credit_cents: number;
+  fee_cents: number;
+} | {
+  ok: false;
+  error: string;
+  detail: string;
+} {
+  const cur = currency.toUpperCase();
+  if (!(cur in AD_CREDIT_TOP_UP_LIMITS_CENTS)) {
+    return { ok: false, error: "validation_error", detail: "currency_unsupported" };
+  }
+  const limits = AD_CREDIT_TOP_UP_LIMITS_CENTS[cur as AdCreditCurrency];
+  if (!Number.isInteger(payCents) || payCents <= 0) {
+    return { ok: false, error: "validation_error", detail: "pay_cents_invalid" };
+  }
+  if (payCents < limits.min_pay_cents) {
+    return { ok: false, error: "validation_error", detail: "pay_below_minimum" };
+  }
+  if (payCents > limits.max_pay_cents) {
+    return { ok: false, error: "validation_error", detail: "pay_above_maximum" };
+  }
+  const credit = creditCentsFromPay(payCents);
+  if (credit <= 0) {
+    return { ok: false, error: "validation_error", detail: "credit_zero" };
+  }
+  return {
+    ok: true,
+    currency: cur as AdCreditCurrency,
+    pay_cents: payCents,
+    credit_cents: credit,
+    fee_cents: feeCentsFromPay(payCents),
+  };
+}
+
+export function quoteWithdraw(creditCents: number): {
+  ok: true;
+  credit_cents: number;
+  refund_cents: number;
+  fee_returned_cents: number;
+} | {
+  ok: false;
+  error: string;
+  detail: string;
+} {
+  if (!Number.isInteger(creditCents) || creditCents <= 0) {
+    return { ok: false, error: "validation_error", detail: "credit_cents_invalid" };
+  }
+  const refund = refundCentsFromCredit(creditCents);
+  return {
+    ok: true,
+    credit_cents: creditCents,
+    refund_cents: refund,
+    fee_returned_cents: refund - creditCents,
+  };
+}
+
 export interface AdMinimumBreakdownRow {
   platform: Platform;
   per_day_cents: number;
