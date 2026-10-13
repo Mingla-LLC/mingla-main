@@ -48,7 +48,8 @@ describe("issue #3697 Wave 7 Ads credit Host surface", () => {
     expect(svc).toContain('action: "quote_withdraw"');
     expect(svc).toContain('action: "start_top_up"');
     expect(svc).toContain('action: "apply_top_up"');
-    expect(svc).not.toContain("apply_withdraw");
+    // Wave 7c unlocks Confirm withdraw (apply_withdraw).
+    expect(svc).toContain('action: "apply_withdraw"');
   });
 
   it("brand Ads navigation sets currentBrandId before the tab route", () => {
@@ -108,7 +109,7 @@ describe("mapAdCreditQuoteError", () => {
       mapAdCreditQuoteError(
         new AdCreditAppError("validation_error", "x", "currency_unsupported"),
       ),
-    ).toMatch(/USD and GBP/i);
+    ).toMatch(/NGN/i);
     expect(
       mapAdCreditQuoteError(
         new AdCreditAppError("validation_error", "x", "payment_not_succeeded"),
