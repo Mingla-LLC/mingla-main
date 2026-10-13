@@ -30,6 +30,7 @@ import {
   type AdConnectionRow,
   getAdapter,
 } from "../_shared/adChannel.ts";
+import { isLaunchConfirmPhrase } from "../_shared/adLaunchConfirm.ts";
 import { shouldPauseForCap } from "../_shared/adMoney.ts";
 import {
   endDatePassed,
@@ -97,6 +98,23 @@ serve(async (req: Request): Promise<Response> => {
   }
   if (action !== "launch" && action !== "pause") {
     return json({ error: "validation_error", detail: "action_invalid" }, 400);
+  }
+
+  // toward #3697 Wave 5 / #3704: LAUNCH is challenge-gated. Pause stays a
+  // one-click stop. Missing or wrong confirm_phrase never reaches the adapter.
+  const confirmPhrase = body.confirm_phrase;
+  const launchReason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (action === "launch" && !isLaunchConfirmPhrase(confirmPhrase)) {
+    return json({
+      error: "launch_confirm_required",
+      detail: "confirm_phrase_must_be_LAUNCH",
+    }, 400);
+  }
+  if (action === "launch" && launchReason.length === 0) {
+    return json({
+      error: "launch_confirm_required",
+      detail: "reason_required",
+    }, 400);
   }
 
   // ── Load campaign + connection + children. ───────────────────────────────────
@@ -230,7 +248,12 @@ serve(async (req: Request): Promise<Response> => {
       from_status: fromStatus,
       to_status: toStatus,
       external_ids: { external_campaign_id: campaign.external_campaign_id },
-      provider_response: effectiveStatus ? { effective_status: effectiveStatus } : null,
+      provider_response: {
+        ...(effectiveStatus ? { effective_status: effectiveStatus } : {}),
+        ...(action === "launch"
+          ? { launch_confirm: "LAUNCH", launch_reason: launchReason }
+          : {}),
+      },
     });
 
     // Per-platform delivery-warning vocabularies — the Meta branch is

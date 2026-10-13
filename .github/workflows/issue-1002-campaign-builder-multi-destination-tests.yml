@@ -36,6 +36,9 @@ on:
       - "supabase/functions/_shared/adDestination.ts"
       - "supabase/functions/_shared/__tests__/issue1002_multi_destination_fanout.test.ts"
       - "supabase/functions/_shared/__tests__/issue_3697_wave4_marketing_dest.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3697_wave5_launch_confirm.test.ts"
+      - "supabase/functions/_shared/adLaunchConfirm.ts"
+      - "supabase/functions/admin-ad-campaign-action/**"
       - "supabase/migrations/20270107001002_issue_1002_ad_campaign_destinations.sql"
       - "supabase/migrations/20270818003697_issue_3697_wave4_marketing_destinations.sql"
       - ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml"
@@ -49,6 +52,9 @@ on:
       - "supabase/functions/_shared/adDestination.ts"
       - "supabase/functions/_shared/__tests__/issue1002_multi_destination_fanout.test.ts"
       - "supabase/functions/_shared/__tests__/issue_3697_wave4_marketing_dest.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_3697_wave5_launch_confirm.test.ts"
+      - "supabase/functions/_shared/adLaunchConfirm.ts"
+      - "supabase/functions/admin-ad-campaign-action/**"
       - "supabase/migrations/20270107001002_issue_1002_ad_campaign_destinations.sql"
       - "supabase/migrations/20270818003697_issue_3697_wave4_marketing_destinations.sql"
       - ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml"
@@ -81,6 +87,7 @@ jobs:
           src/__tests__/issue3697_wave2_spend_cap.test.js
           src/__tests__/issue3697_wave3_ads_console.test.js
           src/__tests__/issue3697_wave4_marketing_dest.test.js
+          src/__tests__/issue3697_wave5_launch_confirm.test.js
 
   issue-1002-edge-deno-test:
     if: ${{ github.event.pull_request.draft != true }}
@@ -97,3 +104,4 @@ jobs:
         run: >
           deno test --allow-read
           supabase/functions/_shared/__tests__/issue1002_multi_destination_fanout.test.ts
+          supabase/functions/_shared/__tests__/issue_3697_wave5_launch_confirm.test.ts

@@ -1092,6 +1092,12 @@ jobs:
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave1_crm_pipelines.tester.adversarial.pg17.test.sql
 
+          # toward #3697 Wave 6 — Ads credit FIFO withdraw, idempotency, immutability.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3697_wave6_ads_credit.implementor.happy.pg17.test.sql
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3697_wave6_ads_credit.tester.adversarial.pg17.test.sql
+
           # Issue #2725 Amendment 8 — executable hard-cap proof on the fully
           # replayed PG17 schema. All funding lanes share one serialized $1.00
           # venue/ISO-week boundary; the 21st 50,000-microusd reservation is
@@ -1442,6 +1448,21 @@ jobs:
           # helper ACL + paid refuse + free/draft exemption (behavioral).
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_organiser_terms_paid_publish_rpc.implementor.happy.pg17.test.sql
+          # Issue #3645 — one supported-currency source for offerings: the helper
+          # answers from supported_brand_currencies (looped over the table, no
+          # literal list), events.currency is held by a validated foreign key
+          # instead of a hand-written CHECK, NULL stays allowed, and retiring a
+          # currency never breaks an event that already uses it.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_shared_offering_currency_source.implementor.happy.pg17.test.sql
+          # Issue #3645 — tester adversarial, same migration from other angles:
+          # a signed-in organiser's direct write still works without reading the
+          # list, the brand-currency copy trigger meets the foreign key, the
+          # helper cannot be steered by the caller's search_path, owner-rights
+          # callers get an answer and caller-rights wrappers do not, hostile
+          # spellings are false, and no code the retired CHECK admitted was lost.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_shared_offering_currency_source.tester.adversarial.pg17.test.sql
           # Issue #1345 — durable outbox for paid NG reservation slot-unavailable
           # ops alerts (enqueue idempotency + authenticated cannot claim).
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -1737,6 +1758,10 @@ jobs:
             supabase/functions/_shared/__tests__/issue_3697_wave2_ad_money.test.ts
             # toward #3697 Wave 4 — marketing destinations B1.
             supabase/functions/_shared/__tests__/issue_3697_wave4_marketing_dest.test.ts
+            # toward #3697 Wave 5 — challenge-based LAUNCH (#3704).
+            supabase/functions/_shared/__tests__/issue_3697_wave5_launch_confirm.test.ts
+            # toward #3697 Wave 6 — Ads credit fee split / limits / withdraw.
+            supabase/functions/_shared/__tests__/issue_3697_wave6_ads_credit.test.ts
             # toward #3802 — team invitation helpers + source contracts on the
             # two invite functions (hermetic: no network, no database).
             supabase/functions/_shared/__tests__/adminTeamInvite.issue3802.test.ts

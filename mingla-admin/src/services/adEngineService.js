@@ -131,11 +131,21 @@ export async function createCampaign(payload) {
   return invokeWithRefresh("admin-ad-create-campaign", { body: payload });
 }
 
-/** action: 'launch' | 'pause' */
-export async function campaignAction(campaignId, action) {
-  return invokeWithRefresh("admin-ad-campaign-action", {
-    body: { campaign_id: campaignId, action },
-  });
+/**
+ * action: 'launch' | 'pause'
+ * Launch requires confirm_phrase "LAUNCH" + reason (Wave 5 / #3704).
+ */
+export async function campaignAction(campaignId, action, extras = {}) {
+  const body = { campaign_id: campaignId, action };
+  if (action === "launch") {
+    if (typeof extras.confirm_phrase === "string") {
+      body.confirm_phrase = extras.confirm_phrase;
+    }
+    if (typeof extras.reason === "string") {
+      body.reason = extras.reason;
+    }
+  }
+  return invokeWithRefresh("admin-ad-campaign-action", { body });
 }
 
 /** campaignId omitted → sync all. */

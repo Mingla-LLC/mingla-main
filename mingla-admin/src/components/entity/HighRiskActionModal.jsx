@@ -63,7 +63,10 @@ export function HighRiskActionModal({
     setError(null);
     try {
       await onConfirm({ reason: reason.trim() });
-      addToast({ variant: "success", title: successMessage });
+      // null successMessage = caller already toasted (e.g. launch 200+warning).
+      if (successMessage != null) {
+        addToast({ variant: "success", title: successMessage });
+      }
       handleClose();
     } catch (err) {
       // Stay open, preserve the reason, surface the error inline.
