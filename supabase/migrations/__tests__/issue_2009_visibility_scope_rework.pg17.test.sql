@@ -139,6 +139,11 @@ BEGIN
   INSERT INTO public.creator_accounts(id) VALUES (uM), (uAd) ON CONFLICT DO NOTHING;
   INSERT INTO public.brands(id, account_id, name, slug, claim_status, pricing_currency, default_currency)
   VALUES (bC, uM, 'I2009RW Brand', 'i2009rw-brand', 'verified', 'usd', 'USD');
+  -- Since #3660 a brand's creator is seated as brand_owner automatically and the
+  -- removal guard refuses a demotion with no caller. This fixture needs the
+  -- creator as an event_manager, so it arms the guard's own transfer switch for
+  -- this one statement (transaction-local), as the #3660 and #2101 suites do.
+  PERFORM set_config('app.allow_brand_owner_transfer', 'on', true);
   INSERT INTO public.brand_team_members(brand_id, user_id, role, accepted_at)
   VALUES (bC, uM, 'event_manager', now())
   ON CONFLICT (brand_id, user_id) WHERE removed_at IS NULL
