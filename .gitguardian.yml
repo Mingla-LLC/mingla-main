@@ -59,6 +59,10 @@ secret:
     # container (POSTGRES_PASSWORD: postgres) for the live has_function_privilege
     # probe; identical throwaway-credential pattern as the workflow above.
     - .github/workflows/security-definer-anon-grant-gate.yml
+    # toward #3697 Wave 6 — PG17 suites. Fixture ids only; Generic High Entropy
+    # false-positive on a prior commit of these paths (incident 38150366).
+    - supabase/migrations/__tests__/issue_3697_wave6_ads_credit.implementor.happy.pg17.test.sql
+    - supabase/migrations/__tests__/issue_3697_wave6_ads_credit.tester.adversarial.pg17.test.sql
 
   # Path-based ignores for fixture / test / build-config files that
   # legitimately contain non-secret values matching common secret regexes.
