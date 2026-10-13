@@ -3132,7 +3132,7 @@ const cancelCampaign = writeTool(
 // toward #3697 Wave 7c — Host Ads plan/approve/run (distinct from Blast marketing_campaigns).
 const proposeAdPlan = writeTool(
   "propose_ad_plan",
-  "Propose a Host Ads plan (typed destination, one platform, budget, schedule, primary copy). Does not create or spend. Distinct from draft_campaign (Blast email/SMS).",
+  "Propose a Host Ads plan (typed destination, Meta, READY image creative, budget, schedule, primary copy). Does not create or spend. Distinct from draft_campaign (Blast email/SMS).",
   {
     brand_id: UUID,
     name: STR,
@@ -3145,6 +3145,7 @@ const proposeAdPlan = writeTool(
     starts_at: { type: "string" },
     ends_at: { type: "string" },
     primary_text: { type: "string" },
+    creative_library_id: UUID,
   },
   [
     "brand_id",
@@ -3154,6 +3155,7 @@ const proposeAdPlan = writeTool(
     "budget_cents",
     "currency",
     "platform",
+    "creative_library_id",
   ],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
@@ -3162,6 +3164,18 @@ const proposeAdPlan = writeTool(
       : "";
     if (!platform) {
       throw new ToolError("INVALID_ARGS", "platform is required");
+    }
+    if (platform !== "meta") {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "platform_unsupported — Host Ads Wave 9 is Meta only",
+      );
+    }
+    if (!isUuid(args.creative_library_id)) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "creative_library_id must be a uuid of a READY image creative",
+      );
     }
     const currency = typeof args.currency === "string"
       ? args.currency.trim().toUpperCase()
@@ -3190,16 +3204,17 @@ const proposeAdPlan = writeTool(
         primary_text: typeof args.primary_text === "string"
           ? args.primary_text
           : "",
+        creative_library_id: String(args.creative_library_id),
       },
       next_step:
-        "Call approve_ad_plan with the same fields (confirm LAUNCH) to create and launch with Ads credit.",
+        "Call approve_ad_plan with the same fields (confirm LAUNCH) to create on Meta and launch with Ads credit.",
     };
   },
 );
 
 const approveAdPlan = writeTool(
   "approve_ad_plan",
-  "Create a Host ad campaign (owner_kind=host) then launch it by debiting Ads credit. Type LAUNCH to confirm. Distinct from send_campaign_now.",
+  "Create a Host Meta ad campaign (owner_kind=host, READY image creative) then launch it by debiting Ads credit. Type LAUNCH to confirm. Distinct from send_campaign_now.",
   {
     brand_id: UUID,
     name: STR,
@@ -3212,6 +3227,7 @@ const approveAdPlan = writeTool(
     starts_at: { type: "string" },
     ends_at: { type: "string" },
     primary_text: { type: "string" },
+    creative_library_id: UUID,
   },
   [
     "brand_id",
@@ -3221,11 +3237,24 @@ const approveAdPlan = writeTool(
     "budget_cents",
     "currency",
     "platform",
+    "creative_library_id",
   ],
   async (args, client, userId, context) => {
     await requireBrand(args, client, userId);
     const operationId = requireAgentOperationId(context);
     const platform = String(args.platform).trim().toLowerCase();
+    if (platform !== "meta") {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "platform_unsupported — Host Ads Wave 9 is Meta only",
+      );
+    }
+    if (!isUuid(args.creative_library_id)) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "creative_library_id must be a uuid of a READY image creative",
+      );
+    }
     const currency = String(args.currency).trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) {
       throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
@@ -3247,6 +3276,7 @@ const approveAdPlan = writeTool(
       primary_text: typeof args.primary_text === "string"
         ? args.primary_text
         : "",
+      creative_library_id: args.creative_library_id,
       idempotency_key: `ari_create_${operationId}`,
     }) as { campaign_id?: string; campaign?: { id?: string } };
     const campaignId = created.campaign_id ?? created.campaign?.id;
