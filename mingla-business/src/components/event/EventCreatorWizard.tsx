@@ -134,6 +134,7 @@ import type {
   WizardInvitePlan,
   WizardInviteQuote,
 } from "../../services/offeringInvitePlanService";
+import { readRpcFailureMessage } from "../../services/rsvpRpcFailure";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
 
@@ -976,7 +977,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         }
         return;
       }
-      const code = error instanceof Error ? error.message : String(error ?? "");
+      // #3645 — reads the message off an Error AND a bare PostgREST object;
+      // `String(object)` used to yield "[object Object]" and match no guard.
+      const code = readRpcFailureMessage(error);
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(code);
       if (guardCopy !== null) {
         handleShowToast(guardCopy.body);

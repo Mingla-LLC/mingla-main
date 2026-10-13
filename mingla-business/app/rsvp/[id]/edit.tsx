@@ -72,7 +72,7 @@ import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 import { isDraftDirty } from "../../../src/utils/draftDirtyCheck";
 // Unlisted RSVP invite link — a private RSVP lands on its dashboard, not on a
 // public page nobody can open without an invite.
-import { rsvpPostPublishRoute } from "../../../src/utils/rsvpPostPublishRoute";
+import { markJustPublished } from "../../../src/utils/justPublishedSignal";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -540,20 +540,22 @@ export default function RsvpEditRoute(): React.ReactElement {
       if (mode === "published") {
         const name = ctx?.name ?? "Your RSVP";
         setToast({ visible: true, message: `${name} is live.` });
-        // Cycle 6 — route to the new public event page when slug is
-        // provided. Falls back to home tab when slug missing (e.g.
-        // pre-Cycle-6 draft or publish-failed-but-flagged-published).
-        // Unlisted RSVP invite link — public and unlisted open the public page
-        // (the invite link); private opens the RSVP dashboard. See
-        // rsvpPostPublishRoute for why.
+        // issue #3237 — every visibility lands on the RSVP's manage screen,
+        // which confirms the publish and offers Share + the public page (a
+        // private RSVP already landed here). The buyer's page, the old
+        // destination for public and unlisted, has no way back for the host.
+        // Falls back to the Events tab when the published id is unknown.
         const landing = publishedLandingRef.current;
         publishedLandingRef.current = null;
-        const route = rsvpPostPublishRoute({
-          visibility: landing?.visibility ?? null,
-          eventId: landing?.eventId ?? null,
-          slug: ctx?.slug ?? null,
-        });
-        router.replace((route ?? safeEventsExitRoute()) as never);
+        const publishedEventId = landing?.eventId ?? null;
+        if (publishedEventId !== null && publishedEventId.length > 0) {
+          markJustPublished(publishedEventId);
+          router.replace(
+            `/rsvp/${encodeURIComponent(publishedEventId)}` as never,
+          );
+        } else {
+          router.replace(safeEventsExitRoute() as never);
+        }
       } else {
         // Discarded / abandoned (chrome X close) — route to Events tab
         // so the founder lands where they can see drafts + start a new

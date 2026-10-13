@@ -56,6 +56,9 @@ import { TopBar } from "../../../src/components/ui/TopBar";
 import { ActionTile } from "../../../src/components/event/ActionTile";
 import { EventDetailHeroStatusPill } from "../../../src/components/event/EventDetailHeroStatusPill";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
+// issue #3237 — the one-shot "Published. It's live." banner after a publish.
+import { useJustPublishedArrival } from "../../../src/hooks/useJustPublishedArrival";
+import { LazyPublishedBanner } from "../../../src/components/offering/LazyPublishedBanner";
 import { useBusinessEventsForBrand } from "../../../src/hooks/useBusinessEvents";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
@@ -129,6 +132,8 @@ export default function RsvpDetailScreen(): React.ReactElement {
   }, [id, routeEvent.replacementEventId, resolvedLiveEvent, draftEvent, router]);
 
   // ----- State -------------------------------------------------------
+  // issue #3237 — true once, straight after this RSVP was published.
+  const publishedArrival = useJustPublishedArrival(id);
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
@@ -331,6 +336,21 @@ export default function RsvpDetailScreen(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* issue #3237 — publish confirmation. Share and View public page are
+            this screen's own handlers. A private RSVP has no page the public
+            can open and its Share is refused, so it gets the confirmation with
+            neither button. */}
+        {publishedArrival.justPublished ? (
+          <LazyPublishedBanner
+            kind="rsvp"
+            onShare={shareability.shareable ? handleShareOpen : undefined}
+            onViewPublic={
+              shareability.shareable ? handleViewPublic : undefined
+            }
+            onDismiss={publishedArrival.dismiss}
+            testID="rsvp-published-banner"
+          />
+        ) : null}
         {/* Hero — cover band + status pill + name + date+venue */}
         <View style={styles.hero}>
           <View style={styles.heroCoverWrap}>

@@ -742,6 +742,27 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     setWriteError(null);
     try {
       updateState({ type: "setIdentity", name: trimmedName, bio });
+      // #3645 — this flow already created its brand and the organiser stepped
+      // back to this step. Continue must EDIT that brand, never insert a
+      // second one. The slug is immutable server-side, so it stays as created.
+      if (brand !== null) {
+        const nextBio = bio.trim();
+        if (
+          trimmedName !== brand.displayName ||
+          nextBio !== (brand.bio ?? "").trim()
+        ) {
+          const updatedBrand = await updateBrandMutation.mutateAsync({
+            brandId: brand.id,
+            accountId,
+            patch: { displayName: trimmedName, bio: nextBio },
+            existingDescription: joinBrandDescription(brand.tagline, brand.bio),
+          });
+          setBrand(updatedBrand);
+          setCurrentBrand(updatedBrand);
+        }
+        updateState({ type: "brandCreated", brandId: brand.id });
+        return;
+      }
       const newBrand = await createBrandMutation.mutateAsync({
         accountId,
         name: trimmedName,
@@ -780,10 +801,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   }, [
     accountId,
     bio,
+    brand,
     commitDefaultBrand,
     createBrandMutation,
+    setCurrentBrand,
     state.mode,
     trimmedName,
+    updateBrandMutation,
     updateState,
   ]);
 
