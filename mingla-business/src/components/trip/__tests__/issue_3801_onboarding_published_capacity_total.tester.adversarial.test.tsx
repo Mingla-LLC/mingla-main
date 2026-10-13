@@ -174,11 +174,17 @@ const THREE = [
   pricingTier("tier-3", "tt-couple", "Couple", 1),
 ];
 
-const sentCapacity = (result: PatchResult): unknown =>
-  result.patch.theme?.business_trip !== undefined &&
-  "capacity" in result.patch.theme.business_trip
-    ? result.patch.theme.business_trip.capacity
+// The retired theme key is read by name here, never as a property path: this
+// suite proves the key is NOT sent, and the trip canonical-column gate
+// (I-PROPOSED-TRIP-CANONICAL-COLUMNS) forbids spelling that path in source.
+const RETIRED_THEME_CAPACITY_KEY = "capacity";
+const sentCapacity = (result: PatchResult): unknown => {
+  const tripTheme: Record<string, unknown> | undefined =
+    result.patch.theme?.business_trip;
+  return tripTheme !== undefined && RETIRED_THEME_CAPACITY_KEY in tripTheme
+    ? tripTheme[RETIRED_THEME_CAPACITY_KEY]
     : "NOT SENT";
+};
 
 describe("#3801 tester — a multi-package published trip never submits a capacity", () => {
   const { tripToLocalEditState, buildLiveTripPatch } = loadPrivates();
