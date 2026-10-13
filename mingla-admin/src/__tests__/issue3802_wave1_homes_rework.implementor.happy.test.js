@@ -248,7 +248,7 @@ describe("#3802 W-7 (P3d): touch targets are 44px on the screens this work adds 
   it("Add to Hosts, Open host and the email are 44px wherever the cards are shown", () => {
     assert.match(BETA, /className=\{block \? "!h-11 w-full !text-sm" : "max-xl:!h-11"\}/);
     assert.match(BETA, /inline-flex min-h-11 max-w-full cursor-pointer/);
-    assert.match(BETA, /className=\{`\$\{LINK_BUTTON_CLASS\} \$\{block \? "w-full" : /);
+    assert.match(BETA, /className=\{`\$\{LINK_BUTTON_CLASS\} \$\{block \? "!h-11 w-full" : /);
   });
   it("the accept screen's buttons are 44px", () => {
     const accept = read("components/InviteAcceptScreen.jsx");

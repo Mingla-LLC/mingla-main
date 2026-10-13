@@ -203,6 +203,13 @@ on:
       # #3802 Wave 1 (homes): the client suite and the pages it reads that are
       # not already listed here. The SQL suite rides on supabase/migrations/**.
       - "mingla-admin/src/__tests__/issue3802_wave1_homes.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave1_homes_rework.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave1_overlay_stack.rendered.test.js"
+      - "mingla-admin/src/lib/crmLayers.js"
+      - "mingla-admin/src/lib/toastPlace.js"
+      - "mingla-admin/src/globals.css"
+      - "mingla-admin/src/components/ui/Modal.jsx"
+      - "mingla-admin/package-lock.json"
       - "mingla-admin/src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js"
       - "mingla-admin/src/pages/RoleHomePage.jsx"
       - "mingla-admin/src/pages/TeamDashboardPage.jsx"
@@ -399,6 +406,13 @@ on:
       # #3802 Wave 1 (homes): the client suite and the pages it reads that are
       # not already listed here. The SQL suite rides on supabase/migrations/**.
       - "mingla-admin/src/__tests__/issue3802_wave1_homes.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave1_homes_rework.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave1_overlay_stack.rendered.test.js"
+      - "mingla-admin/src/lib/crmLayers.js"
+      - "mingla-admin/src/lib/toastPlace.js"
+      - "mingla-admin/src/globals.css"
+      - "mingla-admin/src/components/ui/Modal.jsx"
+      - "mingla-admin/package-lock.json"
       - "mingla-admin/src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js"
       - "mingla-admin/src/pages/RoleHomePage.jsx"
       - "mingla-admin/src/pages/TeamDashboardPage.jsx"
@@ -540,6 +554,9 @@ jobs:
       - name: "Issue #3802 — role homes, targets, Beta leads and invite follow-ups: names, addresses, access, words for every answer, source contracts"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_homes.implementor.happy.test.js
+      - name: "Issue #3802 — homes rework: one stacking order, toasts at every width, Beta leads layouts, names by category, touch sizes, the strict invite rule"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave1_homes_rework.implementor.happy.test.js
       - name: "Issue #3802 — role homes, targets, Beta leads and invite follow-ups: independent tester adversarial proof (hostile addresses, every area combination, answers that are not answers, no raw error on screen)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_homes.tester.adversarial.test.js

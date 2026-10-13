@@ -192,9 +192,11 @@ export function ToastContainer() {
             // counted in the row below it, so three messages never cover the
             // form someone is filling in.
             className={index > 0 ? "max-sm:hidden" : undefined}
-            initial={{ opacity: 0, x: 100, scale: 0.95 }}
+            // Beside a card a toast fades in place: sliding in from the right
+            // would carry it across the card's edge for a moment.
+            initial={{ opacity: 0, x: besidePanel > 0 ? 0 : 100, scale: 0.95 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 100, scale: 0.95 }}
+            exit={{ opacity: 0, x: besidePanel > 0 ? 0 : 100, scale: 0.95 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
           >
             <ToastItem toast={toast} onDismiss={removeToast} onHold={holdToast} onRelease={releaseToast} fill={fill} />

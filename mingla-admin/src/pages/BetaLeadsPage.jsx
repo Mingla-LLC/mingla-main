@@ -191,7 +191,7 @@ export function BetaLeadsPage() {
           <a
             href={buildCrmHash("hosts", { card: row.host.id })}
             aria-label={`Open the host ${row.host.name || row.brand_name}`}
-            className={`${LINK_BUTTON_CLASS} ${block ? "w-full" : "xl:h-9 xl:min-h-0 xl:px-3 xl:text-xs"}`}
+            className={`${LINK_BUTTON_CLASS} ${block ? "!h-11 w-full" : "xl:h-9 xl:min-h-0 xl:px-3 xl:text-xs"}`}
           >
             Open host
           </a>
