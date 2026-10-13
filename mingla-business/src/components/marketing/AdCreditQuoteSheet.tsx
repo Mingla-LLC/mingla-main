@@ -38,6 +38,35 @@ import { Button } from "../ui/Button";
 
 export type AdCreditQuoteMode = "top_up" | "withdraw";
 
+/** Map edge machine details to host-facing copy (never show raw tokens). */
+export function mapAdCreditQuoteError(err: unknown): string {
+  if (!(err instanceof AdCreditAppError)) {
+    return "Could not quote. Try again.";
+  }
+  const detail = (err.detail ?? err.message ?? "").trim();
+  switch (detail) {
+    case "pay_below_minimum":
+      return "That amount is below the minimum top-up for this currency.";
+    case "pay_above_maximum":
+      return "That amount is above the maximum top-up for this currency.";
+    case "currency_unsupported":
+      return "This currency is not supported for Ads credit yet.";
+    case "credit_below_minimum":
+    case "credit_invalid":
+      return "Enter a valid credit amount to withdraw.";
+    case "balance_too_low":
+      return "That is more than your available credit.";
+    default:
+      if (err.code === "forbidden") {
+        return "You need finance permission to add or withdraw credit.";
+      }
+      if (err.code === "unauthorized") {
+        return "Sign in again to continue.";
+      }
+      return "Could not quote. Try again.";
+  }
+}
+
 export interface AdCreditQuoteSheetProps {
   visible: boolean;
   mode: AdCreditQuoteMode;
@@ -72,6 +101,13 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
     }
   }, [visible]);
 
+  // Editing the amount (or switching mode) invalidates any prior Preview quote.
+  useEffect(() => {
+    setTopUp(null);
+    setWithdraw(null);
+    setError(null);
+  }, [majorText, mode]);
+
   const runQuote = useCallback(async () => {
     setError(null);
     setTopUp(null);
@@ -100,10 +136,7 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
         setWithdraw(q);
       }
     } catch (e) {
-      const msg = e instanceof AdCreditAppError
-        ? (e.detail ?? e.message)
-        : "Could not quote. Try again.";
-      setError(msg);
+      setError(mapAdCreditQuoteError(e));
     } finally {
       setBusy(false);
     }

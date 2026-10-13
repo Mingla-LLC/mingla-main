@@ -188,7 +188,11 @@ export default function BrandProfileRoute(): React.ReactElement {
   };
 
   // toward #3697 Wave 7 — brand Ads row → Blast → Ads credit.
-  const handleOpenAds = (_brandId: string): void => {
+  // Account can open `/brand/{id}` without switching the active brand; Ads
+  // scopes the wallet through `useCurrentBrand()`, so set the pointer first.
+  const setCurrentBrandId = useCurrentBrandStore((s) => s.setCurrentBrandId);
+  const handleOpenAds = (brandId: string): void => {
+    setCurrentBrandId(brandId);
     router.push("/(tabs)/marketing/ads" as never);
   };
 

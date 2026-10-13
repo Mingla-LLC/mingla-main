@@ -325,8 +325,8 @@ describe("globalSearch — T-12 every registry route resolves + group order", ()
     expect(GROUP_ORDER).toEqual(["offerings", "goto", "settings"]);
   });
 
-  test("registry has 27 entries, all with non-empty static routes", () => {
-    expect(FEATURE_REGISTRY.length).toBe(27);
+  test("registry has 28 entries, all with non-empty static routes", () => {
+    expect(FEATURE_REGISTRY.length).toBe(28);
     for (const item of FEATURE_REGISTRY) {
       expect(item.route.length).toBeGreaterThan(0);
       expect(item.route.startsWith("/")).toBe(true);

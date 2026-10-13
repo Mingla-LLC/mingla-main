@@ -22,6 +22,8 @@ export const AREA = {
   ADMIN_CONSOLE: "admin_console",
   TEAM_MANAGE: "team_manage",
   ROLE_HOME: "role_home",
+  // Hosts and Creators (issue #3802, Wave 1). The server decides who holds it.
+  CRM: "crm",
 };
 
 // Every page id NOT listed here needs AREA.ADMIN_CONSOLE. A page added by any
@@ -30,6 +32,8 @@ export const AREA = {
 export const PAGE_AREA_OVERRIDES = {
   home: AREA.ROLE_HOME,
   admin: AREA.TEAM_MANAGE,
+  hosts: AREA.CRM,
+  creators: AREA.CRM,
 };
 
 export const TEAM_NAV_GROUP = {

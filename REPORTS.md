@@ -21,8 +21,10 @@ parentheses for traceability.
 
 ## Shipped
 - 2026-10-12 — Host Blast now has an Ads tab: see Ads credit balance and history, preview fee-inclusive top-up and withdraw quotes, and open Ads from the brand page (toward #3697, PR #3815)
+- 2026-10-12 — Someone who opens a brand invitation while signed in with a different email now sees the "Wrong account" screen, which names the invited email and the signed-in email and offers a way to switch accounts, instead of "Invitation not found"; the invitation itself was always valid (toward #3259, PR #3817)
 - 2026-10-12 — Host Ads credit now has a wallet and ledger: top-ups take Mingla's 15% fee into spendable credit (min $25 / £20 / ₦25,000), and withdrawing unused credit refunds that credit plus its fee (toward #3697, PR #3814)
 - 2026-10-12 — Admin campaign Launch now requires typing LAUNCH plus a reason; the server rejects launch without that challenge so spend cannot start on a one-click (toward #3697, PR #3813)
+- 2026-10-12 — Mingla Admin has Hosts and Creators boards for the whole team: drag a card, use its arrow or the stage menu, filter by ICP, region or Mine, edit a card that saves as you type, and get warned about duplicates while adding; every view, filter and open card has its own link (toward #3802, PR #3816)
 - 2026-10-12 — Groundwork for the team's Hosts and Creators pipelines: records, owners and a structured activity log now live on the server, every change is checked against the person's role, recorded, and safe to repeat, and Live sets itself from the host's public listing; the Beta leads reader is now limited to full admins (toward #3802, PR #3811)
 - 2026-10-12 — Ads can send people to Mingla marketing pages on usemingla.com (Host home, downloads, tools) from the Admin picker, with first-party click capture on those landings (toward #3697, PR #3809)
 - 2026-10-12 — A CI check that had been failing since 6 October for any change to the event builder is repaired: its replay of the publish database functions now ends with the newest one (the Organiser Terms publish rule), so those pull requests can go green again; no app or database change (toward #3645, PR #3810)

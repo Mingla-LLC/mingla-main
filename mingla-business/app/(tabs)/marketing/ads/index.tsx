@@ -67,6 +67,26 @@ export default function MarketingAdsRoute(): React.ReactElement {
     );
   }
 
+  // Role-lookup RPC failure must not look like permission denied.
+  if (walletQuery.viewError) {
+    return (
+      <View style={styles.host}>
+        <EmptyState
+          illustration="users"
+          title="Couldn't check access"
+          description="Check your connection and try again."
+          testID="ads-view-error"
+          cta={{
+            label: "Retry",
+            onPress: () => {
+              void walletQuery.refetchView();
+            },
+          }}
+        />
+      </View>
+    );
+  }
+
   if (!walletQuery.canView) {
     return (
       <View style={styles.host}>

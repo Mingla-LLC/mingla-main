@@ -4,6 +4,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
+import { useAuth } from "../../context/AuthContext";
 import {
   AdCreditAppError,
   getAdCreditWallet,
@@ -15,8 +16,14 @@ export const adCreditWalletKey = (brandId: string | null) =>
   ["ad-credit-wallet", brandId] as const;
 
 export function useAdCreditWallet(brandId: string | null) {
+  // ORCH-1004 — ad-credit is JWT + brand-scoped; never fire pre-auth.
+  const { isAuthReady } = useAuth();
   const view = useCanViewBrandPayments(brandId);
-  const enabled = brandId !== null && view.allowed && !view.isLoading;
+  const enabled =
+    isAuthReady &&
+    brandId !== null &&
+    view.allowed &&
+    !view.isLoading;
 
   const query = useQuery<AdCreditWalletPayload, AdCreditAppError>({
     queryKey: adCreditWalletKey(brandId),
