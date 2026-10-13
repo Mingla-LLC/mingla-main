@@ -53,6 +53,7 @@ export function TeamDashboardPage() {
   const person = useMemo(() => parseTeamSearch(search).person, [search]);
   const [pipeline, setPipeline] = useState("hosts");
   const dueRef = useRef(null);
+  const targetsRef = useRef(null);
 
   const name = data?.me?.display_name || displayName(access?.email || "");
   const today = data?.today || localToday();
@@ -64,12 +65,15 @@ export function TeamDashboardPage() {
   };
 
   const people = useMemo(() => (Array.isArray(data?.by_person) ? data.by_person : []), [data]);
-  // A person in the address who is not in the list is dropped quietly.
-  useEffect(() => {
-    if (!data || !person) return;
-    if (!people.some((p) => p.email === person)) setSearch("", { replace: true });
-  }, [data, person, people, setSearch]);
   const picked = person && people.some((p) => p.email === person) ? person : "";
+  // Whatever the address carries that names nobody on the list (a person who
+  // left, a value that is not an address, any other parameter) is dropped
+  // from the address quietly, and the default view is shown.
+  useEffect(() => {
+    if (!data) return;
+    const clean = buildTeamSearch({ person: picked });
+    if (search !== clean) setSearch(clean, { replace: true });
+  }, [data, search, picked, setSearch]);
   const personName = (email) => ownerLabel(email, people);
 
   const showDue = useCallback(() => {
@@ -126,6 +130,9 @@ export function TeamDashboardPage() {
           undo && res.changed
             ? {
                 label: "Undo",
+                // After Undo from the keyboard, focus goes to the targets,
+                // where the change just happened, not to nowhere.
+                focusAfter: () => targetsRef.current,
                 onClick: async () => {
                   const back = await writeAgain.current(regionId, icp, previous, { where: label, undo: false });
                   if (!back.ok) addToast({ variant: "error", title: "Couldn't undo that", description: back.message });
@@ -177,7 +184,7 @@ export function TeamDashboardPage() {
             variant="error"
             title="You can't open the team dashboard any more"
             action={
-              <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
+              <Button variant="secondary" size="sm" className="max-sm:h-11" onClick={() => window.location.reload()}>
                 Reload
               </Button>
             }
@@ -189,7 +196,7 @@ export function TeamDashboardPage() {
             variant="error"
             title="Couldn't load the team dashboard"
             action={
-              <Button variant="secondary" size="sm" onClick={retry}>
+              <Button variant="secondary" size="sm" className="max-sm:h-11" onClick={retry}>
                 Retry
               </Button>
             }
@@ -282,7 +289,7 @@ export function TeamDashboardPage() {
               }
               action={
                 picked ? (
-                  <Button variant="secondary" size="sm" className="max-sm:h-10" onClick={() => setSearch("", { replace: true })}>
+                  <Button variant="secondary" size="sm" className="max-sm:h-11" onClick={() => setSearch("", { replace: true })}>
                     Show everyone
                   </Button>
                 ) : null
@@ -306,6 +313,7 @@ export function TeamDashboardPage() {
             onPick={pickPerson}
           />
 
+          <section ref={targetsRef} tabIndex={-1} aria-label="Targets this month" className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]">
           <TargetsCard
             targets={data.targets}
             subtitle="Hosts that reached Onboarded or Live this month, against the monthly number"
@@ -328,6 +336,7 @@ export function TeamDashboardPage() {
               />
             }
           />
+          </section>
         </>
       )}
     </div>
@@ -340,7 +349,7 @@ function targetWhere(t) {
 
 function chipClass(pressed) {
   return [
-    "inline-flex h-10 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors duration-150",
+    "inline-flex h-10 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors duration-150 max-sm:h-11",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
     pressed
       ? "cursor-default border-transparent bg-[var(--color-brand-500)] text-white"

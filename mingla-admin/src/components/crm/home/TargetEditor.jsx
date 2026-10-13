@@ -4,6 +4,7 @@ import { CONTROL_CLASS, Field, Select } from "../fields";
 import { parseTarget } from "../../../lib/crmModel";
 
 const NUMBER_HELP = "A whole number from 1 to 1000.";
+const EMPTY_HELP = "Type a whole number from 1 to 1000. To take the target away, press Cancel and then Remove.";
 const OFFLINE = "You're offline";
 
 /**
@@ -105,7 +106,7 @@ export function TargetAddForm({ regions, icps, targets, offline = false, onSave 
           />
         </Field>
         <div className="sm:pt-[22px]">
-          <Button type="submit" disabled={!ready || busy || offline} className="w-full sm:w-auto">
+          <Button type="submit" disabled={!ready || busy || offline} className="w-full max-sm:h-11 sm:w-auto">
             {busy ? "Saving…" : error ? "Try again" : "Add target"}
           </Button>
         </div>
@@ -176,7 +177,13 @@ export function TargetRowControls({ target, offline = false, onSave, onRemove })
     else setError(res?.message || "That didn't save. Try again.");
   };
   const save = () => {
-    if (number === null || busy || offline) return;
+    if (busy || offline) return;
+    if (number === null) {
+      // Enter on an empty or unusable number is never silent.
+      setError(typed.trim() === "" ? EMPTY_HELP : NUMBER_HELP);
+      inputRef.current?.focus();
+      return;
+    }
     if (unchanged) {
       returnTo.current = "number";
       setMode("view");
@@ -224,13 +231,13 @@ export function TargetRowControls({ target, offline = false, onSave, onRemove })
           }}
           className={`${CONTROL_CLASS} !w-20`}
         />
-        <Button size="sm" className="max-sm:h-10" disabled={number === null || offline} onClick={save}>
-          {error ? "Try again" : "Save"}
+        <Button size="sm" className="max-sm:h-11" disabled={offline} onClick={save}>
+          {error && number !== null ? "Try again" : "Save"}
         </Button>
-        <Button size="sm" variant="ghost" className="max-sm:h-10" onClick={() => cancel("number")}>
+        <Button size="sm" variant="ghost" className="max-sm:h-11" onClick={() => cancel("number")}>
           Cancel
         </Button>
-        {typed.trim() !== "" && number === null ? (
+        {typed.trim() !== "" && number === null && !error ? (
           <span role="alert" className="basis-full text-xs text-[var(--color-error-700)]">
             {NUMBER_HELP}
           </span>
@@ -250,7 +257,7 @@ export function TargetRowControls({ target, offline = false, onSave, onRemove })
         <Button
           size="sm"
           variant="danger"
-          className="max-sm:h-10"
+          className="max-sm:h-11"
           disabled={offline}
           onClick={() => {
             returnTo.current = null;
@@ -259,7 +266,7 @@ export function TargetRowControls({ target, offline = false, onSave, onRemove })
         >
           {error ? "Try again" : "Remove"}
         </Button>
-        <Button ref={keepRef} size="sm" variant="ghost" className="max-sm:h-10" onClick={() => cancel("remove")}>
+        <Button ref={keepRef} size="sm" variant="ghost" className="max-sm:h-11" onClick={() => cancel("remove")}>
           Keep
         </Button>
         {error ? (
@@ -276,7 +283,7 @@ export function TargetRowControls({ target, offline = false, onSave, onRemove })
         ref={numberRef}
         size="sm"
         variant="secondary"
-        className="tabular-nums max-sm:h-10"
+        className="tabular-nums max-sm:h-11"
         disabled={offline}
         title={offline ? OFFLINE : undefined}
         aria-label={`Change the target for ${where}. It is ${target.monthly_target} a month`}
@@ -292,7 +299,7 @@ export function TargetRowControls({ target, offline = false, onSave, onRemove })
         ref={removeRef}
         size="sm"
         variant="ghost"
-        className="max-sm:h-10"
+        className="max-sm:h-11"
         disabled={offline}
         title={offline ? OFFLINE : undefined}
         aria-label={`Remove the target for ${where}`}

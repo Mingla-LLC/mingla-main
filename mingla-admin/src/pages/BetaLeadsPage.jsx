@@ -182,106 +182,134 @@ export function BetaLeadsPage() {
     [online, patch, refetch, addToast]
   );
 
+  // The one control of a lead: Add to Hosts, or Open host once it is one.
+  // The same control is used by the table (wide screens) and by the cards.
+  const renderAction = useCallback(
+    (row, { block = false } = {}) =>
+      betaLeadButton(row) === "open" ? (
+        <div className={`flex flex-col gap-1 ${block ? "items-stretch" : "items-start"}`}>
+          <a
+            href={buildCrmHash("hosts", { card: row.host.id })}
+            aria-label={`Open the host ${row.host.name || row.brand_name}`}
+            className={`${LINK_BUTTON_CLASS} ${block ? "w-full" : "xl:h-9 xl:min-h-0 xl:px-3 xl:text-xs"}`}
+          >
+            Open host
+          </a>
+          {row.host.linked === false ? (
+            <span className="text-xs text-[var(--color-text-tertiary)]">A host with this name already exists.</span>
+          ) : null}
+        </div>
+      ) : (
+        <div className={`flex flex-col gap-1 ${block ? "items-stretch" : "items-start"}`}>
+          <Button
+            size="sm"
+            className={block ? "!h-11 w-full !text-sm" : "max-xl:!h-11"}
+            disabled={!online || adding.has(row.id)}
+            title={!online ? "You're offline" : undefined}
+            aria-label={`Add ${row.brand_name} to Hosts`}
+            onClick={() => addToHosts(row)}
+          >
+            {adding.has(row.id) ? "Adding\u2026" : "Add to Hosts"}
+          </Button>
+          <span className="text-xs text-[var(--color-text-tertiary)]">{betaSuggestionLine(row)}</span>
+        </div>
+      ),
+    [addToHosts, adding, online]
+  );
+
+  const renderTypes = (row) =>
+    (Array.isArray(row.brand_types) ? row.brand_types : []).map((t) => (
+      <Badge key={t} variant="default">
+        {betaTypeLabel(t)}
+      </Badge>
+    ));
+
+  const renderEmail = useCallback(
+    (row) => (
+      <button
+        type="button"
+        onClick={() => handleCopyEmail(row.email)}
+        aria-label={`Copy ${row.email}`}
+        title="Copy this email"
+        className="inline-flex min-h-11 max-w-full cursor-pointer items-center break-all rounded-md text-left font-mono text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] xl:min-h-9"
+      >
+        {row.email}
+      </button>
+    ),
+    [handleCopyEmail]
+  );
+
+  // The table is only drawn where all five columns fit without scrolling
+  // sideways (1280px and wider). Narrower than that every lead is a card, so
+  // the one control is always on screen.
   const columns = useMemo(
     () => [
       {
         key: "business",
         label: "Business",
-        cellClassName: "!whitespace-normal",
+        cellClassName: "!max-w-none !whitespace-normal",
         render: (_v, row) => (
-          <div className="min-w-[160px]">
+          <div className="min-w-[150px]">
             <p className="break-words font-semibold text-[var(--color-text-primary)]">{row.brand_name}</p>
-            <div className="mt-1 flex flex-wrap gap-1">
-              {(Array.isArray(row.brand_types) ? row.brand_types : []).map((t) => (
-                <Badge key={t} variant="default">
-                  {betaTypeLabel(t)}
-                </Badge>
-              ))}
-            </div>
+            <div className="mt-1 flex flex-wrap gap-1">{renderTypes(row)}</div>
           </div>
         ),
       },
       {
         key: "contact_name",
         label: "Contact",
-        width: "150px",
-        render: (_v, row) => <span className="truncate text-[var(--color-text-secondary)]">{row.contact_name}</span>,
+        cellClassName: "!max-w-none !whitespace-normal",
+        render: (_v, row) => (
+          <div className="min-w-[170px]">
+            <p className="break-words text-[var(--color-text-primary)]">{row.contact_name}</p>
+            {renderEmail(row)}
+          </div>
+        ),
       },
       {
         key: "city",
         label: "City",
-        width: "140px",
-        render: (_v, row) => <span className="truncate text-[var(--color-text-secondary)]">{row.city}</span>,
-      },
-      {
-        key: "email",
-        label: "Email",
-        render: (_v, row) => (
-          <button
-            type="button"
-            onClick={() => handleCopyEmail(row.email)}
-            aria-label={`Copy ${row.email}`}
-            className="inline-flex min-h-10 max-w-full cursor-pointer items-center truncate rounded-md font-mono text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
-          >
-            {row.email}
-          </button>
-        ),
-      },
-      {
-        key: "source",
-        label: "Source",
-        width: "100px",
-        render: (_v, row) => <Badge variant="outline">{SOURCE_LABELS[row.source] || row.source}</Badge>,
+        cellClassName: "!max-w-[160px] !whitespace-normal",
+        render: (_v, row) => <span className="break-words text-[var(--color-text-secondary)]">{row.city}</span>,
       },
       {
         key: "created_at",
         label: "Received",
-        width: "120px",
         sortable: true,
         cellClassName: "tabular-nums",
         render: (_v, row) => (
-          <span className="tabular-nums text-[var(--color-text-secondary)]" title={new Date(row.created_at).toISOString()}>
-            {relativeTime(row.created_at)}
-          </span>
+          <div className="flex flex-col items-start gap-1">
+            <span className="tabular-nums text-[var(--color-text-secondary)]" title={new Date(row.created_at).toISOString()}>
+              {relativeTime(row.created_at)}
+            </span>
+            <Badge variant="outline">{SOURCE_LABELS[row.source] || row.source}</Badge>
+          </div>
         ),
       },
       {
         key: "host",
         label: "In Hosts",
         cellClassName: ACTION_CELL,
-        render: (_v, row) =>
-          betaLeadButton(row) === "open" ? (
-            <div className="flex min-w-[150px] flex-col items-start gap-1">
-              <a
-                href={buildCrmHash("hosts", { card: row.host.id })}
-                aria-label={`Open the host ${row.host.name || row.brand_name}`}
-                className={`${LINK_BUTTON_CLASS} h-8 px-3 text-xs max-sm:h-10`}
-              >
-                Open host
-              </a>
-              {row.host.linked === false ? (
-                <span className="text-xs text-[var(--color-text-tertiary)]">A host with this name already exists.</span>
-              ) : null}
-            </div>
-          ) : (
-            <div className="flex min-w-[150px] flex-col items-start gap-1">
-              <Button
-                size="sm"
-                className="max-sm:h-10"
-                disabled={!online || adding.has(row.id)}
-                title={!online ? "You're offline" : undefined}
-                aria-label={`Add ${row.brand_name} to Hosts`}
-                onClick={() => addToHosts(row)}
-              >
-                {adding.has(row.id) ? "Adding…" : "Add to Hosts"}
-              </Button>
-              <span className="text-xs text-[var(--color-text-tertiary)]">{betaSuggestionLine(row)}</span>
-            </div>
-          ),
+        render: (_v, row) => <div className="min-w-[150px]">{renderAction(row)}</div>,
       },
     ],
-    [handleCopyEmail, addToHosts, adding, online]
+    [renderEmail, renderAction]
   );
+
+  const emptyMessage =
+    leads.length === 0
+      ? "No beta leads yet. New ones show here when a business asks for early access; until then, add a host by hand."
+      : "No new leads. Every lead is already in Hosts.";
+  const emptyAction =
+    leads.length === 0 ? (
+      <a href={buildCrmHash("hosts", {})} className={LINK_BUTTON_CLASS}>
+        Open Hosts
+      </a>
+    ) : (
+      <Button variant="secondary" className="max-sm:h-11" onClick={() => setSearch("", { replace: true })}>
+        Show all
+      </Button>
+    );
 
   const error = summary.error;
   const loading = !error && summary.loading;
@@ -314,7 +342,7 @@ export function BetaLeadsPage() {
             variant="error"
             title="You can't open Beta leads any more"
             action={
-              <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
+              <Button variant="secondary" size="sm" className="max-sm:h-11" onClick={() => window.location.reload()}>
                 Reload
               </Button>
             }
@@ -326,7 +354,7 @@ export function BetaLeadsPage() {
             variant="error"
             title="Couldn't load beta leads"
             action={
-              <Button variant="secondary" size="sm" onClick={() => refetch()}>
+              <Button variant="secondary" size="sm" className="max-sm:h-11" onClick={() => refetch()}>
                 Retry
               </Button>
             }
@@ -370,30 +398,50 @@ export function BetaLeadsPage() {
             subtitle={loading ? undefined : show === "new" ? `${rows.length} new of ${total}` : `${total} total`}
             noPadding
           >
-            <DataTable
-              columns={columns}
-              rows={rows}
-              loading={loading}
-              striped
-              emptyIcon={Inbox}
-              emptyMessage={
-                leads.length === 0
-                  ? "No beta leads yet. New ones show here when a business asks for early access; until then, add a host by hand."
-                  : "No new leads. Every lead is already in Hosts."
-              }
-              emptyAction={
-                leads.length === 0 ? (
-                  <a href={buildCrmHash("hosts", {})} className={LINK_BUTTON_CLASS}>
-                    Open Hosts
-                  </a>
-                ) : (
-                  <Button variant="secondary" onClick={() => setSearch("", { replace: true })}>
-                    Show all
-                  </Button>
-                )
-              }
-              getRowId={(r) => r.id}
-            />
+            <div className="hidden xl:block">
+              <DataTable
+                columns={columns}
+                rows={rows}
+                loading={loading}
+                striped
+                emptyIcon={Inbox}
+                emptyMessage={emptyMessage}
+                emptyAction={emptyAction}
+                getRowId={(r) => r.id}
+              />
+            </div>
+            {/* Narrower than 1280px: one card per lead. */}
+            <div className="xl:hidden">
+              {loading ? (
+                <div className="flex flex-col gap-3 p-4" aria-busy="true" aria-label="Loading">
+                  <Skeleton height={96} style={{ borderRadius: 12 }} />
+                  <Skeleton height={96} style={{ borderRadius: 12 }} />
+                </div>
+              ) : rows.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+                  <Inbox className="h-10 w-10 text-[var(--gray-300)]" aria-hidden="true" />
+                  <p className="text-sm text-[var(--color-text-tertiary)]">{emptyMessage}</p>
+                  {emptyAction}
+                </div>
+              ) : (
+                <ul className="divide-y divide-[var(--gray-200)]">
+                  {rows.map((row) => (
+                    <li key={row.id} className="flex min-w-0 flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words font-semibold text-[var(--color-text-primary)]">{row.brand_name}</p>
+                        <div className="mt-1 flex flex-wrap gap-1">{renderTypes(row)}</div>
+                        <p className="mt-2 break-words text-sm text-[var(--color-text-primary)]">{row.contact_name}</p>
+                        {renderEmail(row)}
+                        <p className="break-words text-xs text-[var(--color-text-tertiary)]">
+                          {[row.city, relativeTime(row.created_at), SOURCE_LABELS[row.source] || row.source].filter(Boolean).join(` ${String.fromCharCode(183)} `)}
+                        </p>
+                      </div>
+                      <div className="shrink-0 sm:w-[220px]">{renderAction(row, { block: true })}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </SectionCard>
         </>
       )}

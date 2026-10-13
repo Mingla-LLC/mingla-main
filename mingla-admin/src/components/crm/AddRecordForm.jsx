@@ -150,7 +150,7 @@ export function AddRecordForm({
                     type="button"
                     variant="secondary"
                     size="sm"
-                    className="max-sm:h-10"
+                    className="max-sm:h-11"
                     onClick={() => onOpenExisting(r.id)}
                   >
                     Open it

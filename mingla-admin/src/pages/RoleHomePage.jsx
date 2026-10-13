@@ -79,7 +79,7 @@ export function RoleHomePage() {
             variant="error"
             title="You can't open this any more"
             action={
-              <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
+              <Button variant="secondary" size="sm" className="max-sm:h-11" onClick={() => window.location.reload()}>
                 Reload
               </Button>
             }
@@ -91,7 +91,7 @@ export function RoleHomePage() {
             variant="error"
             title="Couldn't load your home"
             action={
-              <Button variant="secondary" size="sm" onClick={retry}>
+              <Button variant="secondary" size="sm" className="max-sm:h-11" onClick={retry}>
                 Retry
               </Button>
             }

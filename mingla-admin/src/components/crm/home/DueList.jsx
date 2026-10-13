@@ -6,7 +6,7 @@ import { displayOwners, icpLabel, regionName } from "../../../lib/crmModel";
 import { buildCrmHash } from "../../../lib/crmUrl";
 
 export const LINK_BUTTON_CLASS = [
-  "inline-flex h-10 items-center justify-center rounded-lg border px-4 text-sm font-semibold no-underline",
+  "inline-flex h-10 items-center justify-center rounded-lg border px-4 text-sm font-semibold no-underline max-sm:h-11",
   "border-[var(--gray-300)] bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
   "transition-all duration-150 ease-out hover:bg-[var(--gray-50)]",
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",

@@ -19,7 +19,7 @@ export function StageFunnel({ title, pipeline, stages, loading = false }) {
     <SectionCard
       title={title}
       action={
-        <a href={board} className={`${LINK_BUTTON_CLASS} h-8 px-3 text-xs max-sm:h-10`}>
+        <a href={board} className={`${LINK_BUTTON_CLASS} sm:h-8 sm:px-3 sm:text-xs`}>
           Open board
         </a>
       }

@@ -5,18 +5,22 @@
 // every one of these rules and is asked again on every write.
 
 // Characters the server drops before it compares two names (crm_name_key):
-// every kind of blank space and every invisible or control character.
-// Written as code points on purpose: several of these characters are
-// invisible, and two of them end a line in JavaScript source.
-// (The control and combining characters in the classes are the point of them.)
-/* eslint-disable no-control-regex, no-misleading-character-class */
+// every kind of space, and every character nobody can see. Like the server,
+// this is decided by Unicode general category, not by a hand-picked list:
+// control (Cc), format (Cf), private use (Co), unassigned (Cn) and lone
+// surrogate (Cs) characters, the variation selectors, and a short list of
+// assigned characters that have no shape of their own (fillers and blanks).
+// The short list is written as code points on purpose: nobody could see or
+// review those characters if they were typed into this file.
+/* eslint-disable no-misleading-character-class */
 const NAME_KEY_DROPPED =
-  /[\s\u0001-\u001F\u007F-\u00A0\u00AD\u034F\u061C\u115F\u1160\u1680\u17B4\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF9-\uFFFB\u{110BD}\u{110CD}\u{13430}-\u{1343F}\u{1BCA0}-\u{1BCA3}\u{1D173}-\u{1D17A}\u{E0000}-\u{E0FFF}]+/gu;
-// Combining marks. A name made only of these (and of dropped characters) has
-// nothing visible in it. They are removed for that test only, never from the
-// key of a name that has other characters.
-const NAME_KEY_MARKS = /[\u0300-\u036F\u0483-\u0489\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F]+/gu;
-/* eslint-enable no-control-regex, no-misleading-character-class */
+  /[\s\p{Z}\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Cs}\uFE00-\uFE0F\u{E0100}-\u{E01EF}\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180F\u2800\u3164\uFFA0\u{1D159}\u{16FE4}\u{1DA9B}-\u{1DA9F}\u{1DAA1}-\u{1DAAF}]+/gu;
+// Combining marks of every script (Mn, Mc, Me). A name made only of these
+// (and of dropped characters) has nothing visible in it. They are removed for
+// that test only, never from the key of a name that has other characters, so
+// a mark attached to a letter stays part of the name.
+const NAME_KEY_MARKS = /\p{M}+/gu;
+/* eslint-enable no-misleading-character-class */
 
 /**
  * One name, one key: case, spacing, punctuation, a leading @, full-width or
