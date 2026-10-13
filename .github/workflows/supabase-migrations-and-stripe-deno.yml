@@ -746,6 +746,21 @@ jobs:
           # check finds a package among 3,000 through its index.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.tester.retest2.pg17.test.sql
+          # Issue #3645 — tester RETEST 3. The stop at Publish and the host's
+          # way out of it, from other angles: the retest-2 scenario through
+          # the real owners; the old number relabelled with the brand's
+          # currency, and a caller that declares its own publish free-only,
+          # are both refused; a checkout still open, a payment in flight and
+          # an order each stop the sync and nothing is changed; every rank
+          # below event manager, a host of another brand, a removed member
+          # and a signed-out caller are refused, and it cannot reach a
+          # published event, an experience or a deleted draft; a draft in
+          # step is left byte for byte and one with no currency keeps its
+          # typed price; free-only, no-currency and untouched republish
+          # paths are unchanged; an RSVP with old amounts written back
+          # cannot go live.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.tester.retest3.pg17.test.sql
           # Issue #1977 — canonical RSVP draft/guest/contribution owners and
           # the Ari receipt seam. Behavioural against the applied schema.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
