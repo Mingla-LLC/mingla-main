@@ -63,6 +63,14 @@ export function parseTripTimestampMs(raw: string | null | undefined): number | n
 /**
  * Derive "N days · M nights" (or "N day") from a trip's start→end window, or null
  * when not derivable (rule 9 — never fabricated). Hermes-safe via the normalizer.
+ *
+ * Issue #3801 — counts CALENDAR days, in UTC: days = (UTC date of the end) −
+ * (UTC date of the start) + 1, nights = days − 1. Trip dates are stored as UTC
+ * day bounds (start 00:00:00Z, end 23:59:59Z), so 12 Nov 00:00:00Z to 16 Nov
+ * 23:59:59Z is 5 days · 4 nights. The earlier rule rounded the elapsed time,
+ * which turned a 23:59:59 end into one extra day on every trip the wizard
+ * created. Plain UTC arithmetic on the parsed instants: the answer does not
+ * depend on the device's timezone, and nothing here needs `Intl`.
  */
 export function deriveTripDuration(
   startAt: string | null,
@@ -72,7 +80,7 @@ export function deriveTripDuration(
   const e = parseTripTimestampMs(endAt);
   if (s === null || e === null || e < s) return null;
   const dayMs = 24 * 60 * 60 * 1000;
-  const nights = Math.max(0, Math.round((e - s) / dayMs));
+  const nights = Math.max(0, Math.floor(e / dayMs) - Math.floor(s / dayMs));
   const days = nights + 1;
   if (nights === 0) return `${days} day`;
   return `${days} days · ${nights} night${nights === 1 ? "" : "s"}`;
