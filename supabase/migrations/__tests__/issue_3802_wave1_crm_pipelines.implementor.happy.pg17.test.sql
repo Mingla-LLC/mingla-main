@@ -48,7 +48,7 @@
 
 \set ON_ERROR_STOP on
 \getenv t3802w_pw PGPASSWORD
-\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20270820003802_issue_3802_wave1_crm_pipelines.sql`
+\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20270823003802_issue_3802_wave1_homes_targets_beta.sql`
 
 -- ===========================================================================
 -- PART 1 — one transaction, rolled back.
