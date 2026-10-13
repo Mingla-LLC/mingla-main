@@ -55,6 +55,15 @@ export const recordPricesClearedNote = (draftId: string, theme: unknown): void =
   emit();
 };
 
+/**
+ * Set a note this device produced itself: a save that moved a draft to the
+ * brand's currency and cleared its prices. The server never saw a note for it.
+ */
+export const setPricesClearedNote = (draftId: string, note: PricesClearedNote): void => {
+  notes.set(draftId, note);
+  emit();
+};
+
 export const getPricesClearedNote = (draftId: string): PricesClearedNote | null =>
   notes.get(draftId) ?? null;
 

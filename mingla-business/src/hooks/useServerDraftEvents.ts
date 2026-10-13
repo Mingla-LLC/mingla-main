@@ -16,6 +16,7 @@ import {
   isDraftRevisionConflictError,
   isServerDraftLifecycleError,
 } from "../services/eventDrafts";
+import { fetchDraftBrandCurrency } from "../services/draftCurrencyTruth";
 import {
   useDraftEventStore,
   type DraftEvent,
@@ -276,13 +277,41 @@ export interface ServerDraftAutosaveState {
   lastError: Error | null;
 }
 
+// Issue #3645 — the brand's current currency for a draft, asked of the server
+// just before a save. Autosaves come in bursts while the host types, so an
+// answer is reused for a few seconds; a failed or brand-less answer is never
+// reused and yields null ("not known").
+const FRESH_BRAND_CURRENCY_TTL_MS = 5_000;
+const freshBrandCurrencyByDraft = new Map<
+  string,
+  { at: number; currency: string | null }
+>();
+const readFreshBrandCurrency = async (draftId: string): Promise<string | null> => {
+  const cached = freshBrandCurrencyByDraft.get(draftId);
+  if (cached !== undefined && Date.now() - cached.at < FRESH_BRAND_CURRENCY_TTL_MS) {
+    return cached.currency;
+  }
+  try {
+    const currency = await fetchDraftBrandCurrency(draftId);
+    if (currency === undefined) return null;
+    freshBrandCurrencyByDraft.set(draftId, { at: Date.now(), currency });
+    return currency;
+  } catch (error) {
+    console.warn("[useServerDraftAutosave] could not read the brand's current currency", {
+      draftId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+};
+
 export interface ServerDraftAutosaveOptions {
   /**
-   * Issue #3645 — the currency of the brand the wizard is editing for, kept in
-   * a ref the route updates on every render. Read at SAVE time, so a save
-   * always carries the brand's current currency and a draft can never write an
-   * old one back. Every wizard route must pass it (source-scanned by
-   * issue_3645_drafts_follow_brand_currency.implementor.test.ts).
+   * Issue #3645 — the currency of the brand the wizard is editing for, as this
+   * device holds it, kept in a ref the route updates on every render. A LAST
+   * RESORT only: every save asks the server for the brand's current currency
+   * and, failing that, follows the server row. Every wizard route must pass it
+   * (source-scanned by issue_3645_drafts_follow_brand_currency.implementor.test.ts).
    */
   brandCurrencyRef?: { readonly current: string | null | undefined };
 }
@@ -300,8 +329,15 @@ export const useServerDraftAutosave = (
   const mutation = useMutation<DraftEvent, Error, DraftEvent>({
     mutationFn: async (draft) => {
       requireBusinessAuthReady(authStatus, session);
+      // Issue #3645 — ask the SERVER what the brand's currency is now, and
+      // save in that. The brand list cached on this device is not believed:
+      // it can be older than the draft row. If the server cannot say, the
+      // save follows the server ROW's currency instead; the cached value is
+      // the last resort, for a row that has none.
       return autosaveServerDraft(draft, {
-        brandCurrency: brandCurrencyRef?.current ?? null,
+        brandCurrency: await readFreshBrandCurrency(draft.id),
+        serverRowWins: true,
+        cachedBrandCurrency: brandCurrencyRef?.current ?? null,
       });
     },
     onSuccess: (draft) => {

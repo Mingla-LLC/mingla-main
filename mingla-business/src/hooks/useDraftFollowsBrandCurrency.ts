@@ -8,8 +8,10 @@
  *
  * Two things can have happened since the host last saw the draft:
  *   1. The copy kept on this device still carries the brand's OLD currency.
- *      It takes the brand's currency here; paid prices and chip-in amounts are
- *      cleared (see adoptBrandCurrencyForDraft).
+ *      It takes the currency the SERVER reports (one read when the draft
+ *      opens, never a brand list cached here); paid prices and chip-in
+ *      amounts are cleared (see adoptBrandCurrencyForDraft). A copy already in
+ *      the server's currency is never cleared.
  *   2. The server already moved the draft and cleared its prices, and left a
  *      note saying so (utils/draftPricesClearedNote).
  * Either way the host is told once, in plain words, why the price fields are
@@ -19,8 +21,9 @@
  * A draft with no currency yet is left alone here: the save stamps it and its
  * typed prices stay, with no notice.
  */
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { fetchDraftCurrencyTruth } from "../services/draftCurrencyTruth";
 import { useDraftEventStore, type DraftEvent } from "../store/draftEventStore";
 import {
   adoptBrandCurrencyForDraft,
@@ -39,8 +42,6 @@ type DraftPatch = Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>;
 export interface DraftFollowsBrandCurrencyInput {
   /** The draft the route resolved; null while it loads or for a live event. */
   draft: DraftEvent | null;
-  /** The brand's currency as the route holds it; null/undefined = unknown. */
-  brandCurrency: string | null | undefined;
   /** The route's own draft save (promotion-aware). */
   onSave: (draft: DraftEvent) => void;
   /** The route's own toast. */
@@ -87,7 +88,6 @@ export const planDraftCurrencyFollow = (
 
 export const useDraftFollowsBrandCurrency = ({
   draft,
-  brandCurrency,
   onSave,
   onNotice,
 }: DraftFollowsBrandCurrencyInput): void => {
@@ -97,6 +97,42 @@ export const useDraftFollowsBrandCurrency = ({
   // the adopting save lands.
   const noticedDraftIdsRef = useRef<Set<string>>(new Set());
   const draftId = draft?.id ?? null;
+
+  // What the SERVER says this draft's currency should be, asked once per
+  // draft when it opens. Never the brand list cached on this device: that
+  // list can be older than the draft, and trusting it let a second device
+  // clear a correctly re-priced draft. A draft that only exists on this
+  // device (d_*) has no server row to ask about; its first save is checked
+  // against the server instead. Until the answer arrives, and if it cannot be
+  // had, nothing is adopted here.
+  const [serverTruth, setServerTruth] = useState<{
+    draftId: string;
+    currency: string | null;
+  } | null>(null);
+  useEffect(() => {
+    if (draftId === null || draftId.startsWith("d_")) return undefined;
+    let live = true;
+    const ask = async (): Promise<void> => {
+      try {
+        const currency = await fetchDraftCurrencyTruth(draftId);
+        if (live) setServerTruth({ draftId, currency });
+      } catch (error) {
+        console.warn("[useDraftFollowsBrandCurrency] could not read the draft's currency", {
+          draftId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+    void ask();
+    return (): void => {
+      live = false;
+    };
+  }, [draftId]);
+  const serverCurrency =
+    serverTruth !== null && serverTruth.draftId === draftId
+      ? serverTruth.currency
+      : null;
+
   const serverNote = useSyncExternalStore(
     subscribePricesClearedNotes,
     () => (draftId === null ? null : getPricesClearedNote(draftId)),
@@ -106,7 +142,7 @@ export const useDraftFollowsBrandCurrency = ({
 
   useEffect(() => {
     if (draft === null) return;
-    const plan = planDraftCurrencyFollow(draft, brandCurrency, serverNote);
+    const plan = planDraftCurrencyFollow(draft, serverCurrency, serverNote);
     if (plan === null) return;
     clearPricesClearedNote(draft.id);
     // Same shape as a wizard edit: a new revision, marked dirty, then saved.
@@ -124,5 +160,5 @@ export const useDraftFollowsBrandCurrency = ({
     // `draft` is read fresh on the render these keys change in; listing the
     // whole object would re-run this on every keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftId, draft?.currency, draft?.status, brandCurrency, serverNoteTo]);
+  }, [draftId, draft?.currency, draft?.status, serverCurrency, serverNoteTo]);
 };

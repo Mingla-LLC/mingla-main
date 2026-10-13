@@ -200,9 +200,10 @@ export default function EventEditRoute(): React.ReactElement {
   );
   const serverLiveEvent = businessEventQuery.data?.event ?? null;
   const resolvedLiveEvent = serverLiveEvent ?? liveEvent;
-  // Issue #3645 — the brand's currency, read by every draft save at the moment
-  // it runs, so a draft can never write an old currency back. Filled in below,
-  // once the brand is resolved.
+  // Issue #3645 — the brand's currency as this device holds it. A FALLBACK
+  // only: every draft save reads the brand's current currency from the server
+  // in the same query as the draft row, and uses this value only if that read
+  // carried no brand. Filled in below, once the brand is resolved.
   const brandCurrencyRef = React.useRef<string | null>(null);
   const autosave = useServerDraftAutosave({ brandCurrencyRef });
   const discardServerDraft = useDiscardServerDraft();
@@ -711,15 +712,15 @@ export default function EventEditRoute(): React.ReactElement {
     ],
   );
 
-  // Issue #3645 — when the draft opens still carrying another currency, or the
-  // server already cleared its prices, it takes the brand's currency here and
-  // the host is told once why the price fields are empty.
+  // Issue #3645 — when the draft opens still carrying a currency the SERVER no
+  // longer holds for it, or the server already cleared its prices, it is moved
+  // here and the host is told once why the price fields are empty. The hook
+  // asks the server; it never trusts the brand list cached on this device.
   const showPricesClearedNotice = React.useCallback((message: string): void => {
     setToast({ visible: true, message });
   }, []);
   useDraftFollowsBrandCurrency({
     draft: isEditPublished ? null : draft,
-    brandCurrency: isEditPublished ? null : brand?.defaultCurrency ?? null,
     onSave: handleAutosaveDraft,
     onNotice: showPricesClearedNotice,
   });
