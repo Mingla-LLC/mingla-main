@@ -15,6 +15,7 @@
  * Spec: Mingla_Artifacts/specs/SPEC_ORCH-0859_TR2_MINIMUM_VIABLE_TRIP.md §4.6
  */
 
+import { withoutPriceClearedMarker } from "../utils/tripPriceReentry";
 import { supabase } from "./supabase";
 import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-rendering";
 import { themeOverridesFromColumns } from "./offeringTheme";
@@ -444,6 +445,13 @@ export interface TripPricingPatch {
    * preserved (mirrors the installmentSchedule "present vs absent" semantics).
    */
   description?: string | null;
+  /**
+   * Issue #3645 — true when the host has typed a price (any price, 0 included)
+   * into a package whose price was cleared by a brand currency change. The
+   * save then removes tier_metadata.price_cleared_for_currency_change so the
+   * package can publish. Absent/false keeps the marker.
+   */
+  priceEntered?: boolean;
 }
 
 export class SlugCollisionError extends Error {
@@ -1272,6 +1280,13 @@ export async function updateTripPricing(
       desc.length > 0
         ? { ...metadataWithoutDescription, description: desc }
         : metadataWithoutDescription;
+  }
+
+  // Issue #3645 — the host entered a price again: the "price was cleared" marker
+  // has done its job. The draft owner replaces tier_metadata with what it is
+  // sent, so leaving the key out removes it.
+  if (patch.priceEntered === true) {
+    nextMetadata = withoutPriceClearedMarker(nextMetadata);
   }
 
   // issue #1971 — the ticket_types write and the trip_pricing_tiers write were

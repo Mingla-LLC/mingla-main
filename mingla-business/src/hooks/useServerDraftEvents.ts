@@ -276,7 +276,21 @@ export interface ServerDraftAutosaveState {
   lastError: Error | null;
 }
 
-export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
+export interface ServerDraftAutosaveOptions {
+  /**
+   * Issue #3645 — the currency of the brand the wizard is editing for, kept in
+   * a ref the route updates on every render. Read at SAVE time, so a save
+   * always carries the brand's current currency and a draft can never write an
+   * old one back. Every wizard route must pass it (source-scanned by
+   * issue_3645_drafts_follow_brand_currency.implementor.test.ts).
+   */
+  brandCurrencyRef?: { readonly current: string | null | undefined };
+}
+
+export const useServerDraftAutosave = (
+  options: ServerDraftAutosaveOptions = {},
+): ServerDraftAutosaveState => {
+  const brandCurrencyRef = options.brandCurrencyRef;
   const { authStatus, isAuthReady, session } = useAuth();
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -286,7 +300,9 @@ export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
   const mutation = useMutation<DraftEvent, Error, DraftEvent>({
     mutationFn: async (draft) => {
       requireBusinessAuthReady(authStatus, session);
-      return autosaveServerDraft(draft);
+      return autosaveServerDraft(draft, {
+        brandCurrency: brandCurrencyRef?.current ?? null,
+      });
     },
     onSuccess: (draft) => {
       const accepted = upsertServerDraft(draft);

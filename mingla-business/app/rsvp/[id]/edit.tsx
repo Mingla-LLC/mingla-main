@@ -29,6 +29,7 @@ import {
 } from "../../../src/constants/designSystem";
 import { Spinner } from "../../../src/components/ui/Spinner";
 import { Toast } from "../../../src/components/ui/Toast";
+import { useDraftFollowsBrandCurrency } from "../../../src/hooks/useDraftFollowsBrandCurrency";
 import { Button } from "../../../src/components/ui/Button";
 import {
   RsvpCreatorWizard,
@@ -220,7 +221,11 @@ export default function RsvpEditRoute(): React.ReactElement {
     ? serverLiveEvent ?? (serverEventSettled ? liveEvent : null)
     : null;
   const resolvedLiveEvent = serverLiveEvent ?? liveEvent;
-  const autosave = useServerDraftAutosave();
+  // Issue #3645 — the brand's currency, read by every draft save at the moment
+  // it runs, so a draft can never write an old currency back. Filled in below,
+  // once the brand is resolved.
+  const brandCurrencyRef = React.useRef<string | null>(null);
+  const autosave = useServerDraftAutosave({ brandCurrencyRef });
   const discardServerDraft = useDiscardServerDraft();
   const publishServerDraft = usePublishRsvpDraft();
   // What the publish RPC actually wrote, read by handleExit to pick the landing.
@@ -300,6 +305,11 @@ export default function RsvpEditRoute(): React.ReactElement {
     draft,
     brands,
   ]);
+
+  // Issue #3645 — drafts only: a published event keeps the currency it sold in.
+  brandCurrencyRef.current = isEditPublished
+    ? null
+    : brand?.defaultCurrency ?? null;
 
   const [toast, setToast] = React.useState<{
     visible: boolean;
@@ -757,6 +767,19 @@ export default function RsvpEditRoute(): React.ReactElement {
     ],
   );
 
+  // Issue #3645 — when the draft opens still carrying another currency, or the
+  // server already cleared its prices, it takes the brand's currency here and
+  // the host is told once why the price fields are empty.
+  const showPricesClearedNotice = React.useCallback((message: string): void => {
+    setToast({ visible: true, message });
+  }, []);
+  useDraftFollowsBrandCurrency({
+    draft: isEditPublished ? null : draft,
+    brandCurrency: isEditPublished ? null : brand?.defaultCurrency ?? null,
+    onSave: handleAutosaveDraft,
+    onNotice: showPricesClearedNotice,
+  });
+
   // issue #3040 — the Cover step's server-row precondition (mirror of the event
   // route; the RSVP wizard renders the same `CreatorStep4Cover`).
   //
@@ -982,43 +1005,53 @@ export default function RsvpEditRoute(): React.ReactElement {
   }
 
   return (
-    <RsvpCreatorWizard
-      draft={renderDraft}
-      brand={brand}
-      initialStep={initialStep}
-      isCreateMode={isCreateMode}
-      onExit={handleExit}
-      onOpenPreview={handleOpenPreview}
-      onOpenStripeOnboard={handleOpenStripe}
-      onAutosaveDraft={handleAutosaveDraft}
-      // A cover video that finishes after its sheet closed lands on the draft.
-      fetchServerCover={fetchServerDraftCover}
-      onRequireServerDraft={handleRequireServerDraft}
-      onDiscardServerDraft={handleDiscardDraft}
-      onSaveDraftNow={handleSaveDraftNow}
-      onPublishDraft={async (draftToPublish, invites) => {
-        const published = await publishServerDraft.mutateAsync({
-          draft: draftToPublish,
-          invites,
-        });
-        publishedLandingRef.current = {
-          visibility: published.event.visibility ?? null,
-          eventId: published.event.serverEventId ?? published.event.id,
-        };
-        return {
-          brandSlug: published.brand.slug,
-          eventSlug: published.event.eventSlug,
-        };
-      }}
-      serverSaveState={{
-        isSaving:
-          autosave.isSaving ||
-          discardServerDraft.isPending ||
-          publishServerDraft.isPending,
-        hasError: autosave.hasError || serverDraftQuery.isError,
-        lastSavedAt: autosave.lastSavedAt,
-      }}
-    />
+    <>
+      <RsvpCreatorWizard
+        draft={renderDraft}
+        brand={brand}
+        initialStep={initialStep}
+        isCreateMode={isCreateMode}
+        onExit={handleExit}
+        onOpenPreview={handleOpenPreview}
+        onOpenStripeOnboard={handleOpenStripe}
+        onAutosaveDraft={handleAutosaveDraft}
+        // A cover video that finishes after its sheet closed lands on the draft.
+        fetchServerCover={fetchServerDraftCover}
+        onRequireServerDraft={handleRequireServerDraft}
+        onDiscardServerDraft={handleDiscardDraft}
+        onSaveDraftNow={handleSaveDraftNow}
+        onPublishDraft={async (draftToPublish, invites) => {
+          const published = await publishServerDraft.mutateAsync({
+            draft: draftToPublish,
+            invites,
+          });
+          publishedLandingRef.current = {
+            visibility: published.event.visibility ?? null,
+            eventId: published.event.serverEventId ?? published.event.id,
+          };
+          return {
+            brandSlug: published.brand.slug,
+            eventSlug: published.event.eventSlug,
+          };
+        }}
+        serverSaveState={{
+          isSaving:
+            autosave.isSaving ||
+            discardServerDraft.isPending ||
+            publishServerDraft.isPending,
+          hasError: autosave.hasError || serverDraftQuery.isError,
+          lastSavedAt: autosave.lastSavedAt,
+        }}
+      />
+      {/* Issue #3645 — the route's own notices (prices cleared because the
+          brand's currency changed) need a Toast beside the wizard. */}
+      <Toast
+        visible={toast.visible}
+        kind="info"
+        message={toast.message}
+        onDismiss={() => setToast((p) => ({ ...p, visible: false }))}
+      />
+    </>
   );
 }
 

@@ -1,4 +1,6 @@
 import { supabase } from "./supabase";
+import { adoptBrandCurrencyForDraft } from "../utils/draftFollowsBrandCurrency";
+import { recordPricesClearedNote } from "../utils/draftPricesClearedNote";
 import {
   buildDraftEvent,
   type DraftEvent,
@@ -152,8 +154,13 @@ const requireUserId = async (): Promise<string> => {
   return userId;
 };
 
-const rowToDraft = (row: unknown): DraftEvent =>
-  serverRowToDraft(row as ServerDraftEventRow);
+const rowToDraft = (row: unknown): DraftEvent => {
+  const draft = serverRowToDraft(row as ServerDraftEventRow);
+  // Issue #3645 — keep the server's "prices were cleared" note beside the
+  // draft (it is a one-time message, not a draft field).
+  recordPricesClearedNote(draft.id, (row as { theme?: unknown } | null)?.theme);
+  return draft;
+};
 
 const createRsvpRequestId = (): string => {
   const maybeCrypto = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
@@ -196,10 +203,18 @@ const fetchBrandDefaultCurrency = async (brandId: string): Promise<string | null
   );
 };
 
+// Issue #3645 — for a DRAFT the brand's currency wins, when the caller passes
+// it. The wizards hold the brand and pass its currency on every save, so a
+// draft kept on this device (or a stale server copy) can no longer write an
+// old currency back. With nothing passed the order is what it always was:
+// this draft, then the server row, then the brand.
 const resolveDraftCurrencyForSave = async (
   draft: DraftEvent,
   existingCurrency: unknown = null,
+  brandCurrency: unknown = null,
 ): Promise<string | null> => {
+  const passedBrandCurrency = nullableCurrency(brandCurrency);
+  if (passedBrandCurrency !== null) return passedBrandCurrency;
   const localCurrency = nullableCurrency(draft.currency);
   if (localCurrency !== null) return localCurrency;
   const serverCurrency = nullableCurrency(existingCurrency);
@@ -421,12 +436,31 @@ const toRevisionConflictError = async (
   return new DraftRevisionConflictError(draftId, serverDraft);
 };
 
+export interface AutosaveServerDraftOptions {
+  /**
+   * Issue #3645 — the currency of the brand this draft belongs to, as the
+   * wizard holds it. When it is a currency, the draft is saved in it; null or
+   * absent means "not known here" and changes nothing.
+   */
+  brandCurrency?: string | null;
+}
+
 export const autosaveServerDraft = async (
   draft: DraftEvent,
+  options: AutosaveServerDraftOptions = {},
 ): Promise<DraftEvent> => {
   const existing = await fetchExistingDraftSaveContext(draft.id);
-  const effectiveCurrency = await resolveDraftCurrencyForSave(draft, existing.currency);
-  const normalizedDraft = { ...draft, currency: effectiveCurrency };
+  const effectiveCurrency = await resolveDraftCurrencyForSave(
+    draft,
+    existing.currency,
+    options.brandCurrency,
+  );
+  // Issue #3645 — a draft that still carries ANOTHER currency is moved to the
+  // brand's with its paid prices and chip-in amounts cleared, so a number
+  // typed in pounds is never saved as naira. A draft with no currency yet only
+  // takes the currency and keeps its prices.
+  const adopted = adoptBrandCurrencyForDraft(draft, options.brandCurrency).draft;
+  const normalizedDraft = { ...adopted, currency: effectiveCurrency };
   const updatePayload = draftToServerUpdate(
     normalizedDraft,
     existing.theme,

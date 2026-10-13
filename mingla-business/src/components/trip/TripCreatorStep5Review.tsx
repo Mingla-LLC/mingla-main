@@ -10,6 +10,10 @@
  * pattern — mirrors EventCreatorWizard).
  */
 
+import {
+  TRIP_PRICE_REENTRY_MESSAGE,
+  TRIP_PRICE_REENTRY_REQUIRED_CODE,
+} from "../../utils/tripPriceReentry";
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
@@ -221,6 +225,14 @@ export function mapPublishErrorToState(
         code,
         message: "Add at least one day to the itinerary before publishing.",
         pointsToStep: 2,
+      };
+    // Issue #3645 — a package price cleared by a brand currency change has not
+    // been entered again (server trigger, migration 20270829003645).
+    case TRIP_PRICE_REENTRY_REQUIRED_CODE:
+      return {
+        code,
+        message: TRIP_PRICE_REENTRY_MESSAGE,
+        pointsToStep: 4,
       };
     case "trip_pricing_tier_required":
       return {

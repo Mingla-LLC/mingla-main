@@ -332,12 +332,33 @@ export function tripToInclusionsDraft(trip: Trip): InclusionDraft[] {
 // packages[0] is the primary tier (createTripDraft-seeded). When the trip has
 // no tiers yet (brand-new draft pre-first-autosave), seed one empty primary
 // package so the wizard always shows ≥1 row (DEC-E min 1).
+// Issue #3645 — true while a package's price was cleared because the brand's
+// currency changed and has not been entered again: price 0 AND the server's
+// marker in the package's own metadata (migration 20270829003645). Kept inline,
+// not imported: several suites compile this wizard against a closed list of
+// imports. utils/tripPriceReentry holds the same rule for everything else, and
+// issue_3645_drafts_follow_brand_currency.implementor.test.ts pins the two
+// together.
+function tierPriceWasCleared(tier: Trip["pricingTiers"][number]): boolean {
+  const marker = tier.tierMetadata?.["price_cleared_for_currency_change"];
+  return (
+    tier.priceCents === 0 &&
+    typeof marker === "object" &&
+    marker !== null &&
+    !Array.isArray(marker)
+  );
+}
+
 function tierToStep4Package(tier: Trip["pricingTiers"][number]): Step4Package {
+  // A cleared price opens as an EMPTY required field, never as "0.00" (which
+  // this wizard reads as free).
+  const needsReentry = tierPriceWasCleared(tier);
   return {
     key: makePackageKey(),
     ticketTypeId: tier.ticketTypeId,
     name: tier.tierName,
-    priceMajor: (tier.priceCents / 100).toFixed(2),
+    ...(needsReentry ? { priceNeedsReentry: true } : {}),
+    priceMajor: needsReentry ? "" : (tier.priceCents / 100).toFixed(2),
     description: tier.description ?? "",
     capacity: tier.quantityTotal,
     paymentPlan: tier.installmentSchedule ?? null,
@@ -570,6 +591,17 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
   }, []);
+
+  // Issue #3645 — the brand's currency changed and the server cleared this
+  // draft's package prices. Say so once when the draft opens; the pricing step
+  // names the new currency and marks each package.
+  const priceReentryNoticeShownRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (priceReentryNoticeShownRef.current) return;
+    if (!trip.pricingTiers.some(tierPriceWasCleared)) return;
+    priceReentryNoticeShownRef.current = true;
+    showToast("Your brand's currency changed. Enter your package prices again.");
+  }, [trip.pricingTiers, showToast]);
   const dismissToast = useCallback((): void => {
     setToast((p) => ({ ...p, visible: false }));
   }, []);
@@ -905,6 +937,11 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
             capacity,
             installmentSchedule: pkg.paymentPlan,
             description: descriptionPatch.length > 0 ? descriptionPatch : null,
+            // Issue #3645 — any typed price (0 included) on a package whose
+            // price was cleared removes the "price was cleared" marker.
+            ...(pkg.priceNeedsReentry === true && pkg.priceMajor.trim().length > 0
+              ? { priceEntered: true }
+              : {}),
           },
         });
       } else {

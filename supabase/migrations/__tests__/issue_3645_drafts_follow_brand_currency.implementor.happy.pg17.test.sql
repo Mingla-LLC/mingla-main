@@ -12,7 +12,8 @@
 --   A. CHANGED currency (GBP to NGN), fired by service_role with no signed-in
 --      user: the event, RSVP and trip drafts move to NGN in every copy, paid
 --      prices are cleared, free stays free, a cleared trip package cannot be
---      published until the host enters a price, and then it publishes.
+--      published until the host enters a price (which removes the marker,
+--      also for an explicit "free"), and then it publishes.
 --      An experience draft and a draft that was once published are untouched.
 --   B. FIRST currency (none to NGN), fired by the signed-in host: drafts are
 --      stamped and every typed price is KEPT.
@@ -326,13 +327,35 @@ BEGIN
     RAISE EXCEPTION 'A-42 a refused publish moved the trip to %', v_status;
   END IF;
 
-  -- A-50 the host enters a naira price the way the wizard saves it (it merges
-  -- into tier_metadata, so the marker rides along), and the SAME draft publishes.
+  -- A-45 the host says "this one is free after all": the wizard saves 0 and
+  -- leaves the marker out of tier_metadata. The draft owner replaces
+  -- tier_metadata with what it is sent, so the marker is REMOVED and the
+  -- package is an ordinary free package again.
+  PERFORM public.biz_apply_trip_draft_graph(
+    v_trip,
+    jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object(
+      'ticket_type_id', t.id, 'tier_name', 'Standard', 'price_cents', 0,
+      'capacity', 12,
+      'tier_metadata', v_meta - 'price_cleared_for_currency_change'))),
+    pg_temp.rev(v_trip), '36450829-0000-4000-8000-0000000002a4');
+  SELECT count(*) INTO v_count
+    FROM public.trip_pricing_tiers tpt
+    JOIN public.ticket_types tt ON tt.id = tpt.ticket_type_id
+   WHERE tpt.ticket_type_id = t.id
+     AND NOT (tpt.tier_metadata ? 'price_cleared_for_currency_change')
+     AND tpt.tier_metadata->>'description' = 'Shared room'
+     AND tt.price_cents = 0 AND tt.is_free = true;
+  IF v_count <> 1 THEN
+    RAISE EXCEPTION 'A-45 an explicit "free" did not remove the marker, or lost the rest of the package';
+  END IF;
+
+  -- A-50 the host enters a naira price instead, and the SAME draft publishes.
   PERFORM public.biz_apply_trip_draft_graph(
     v_trip,
     jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object(
       'ticket_type_id', t.id, 'tier_name', 'Standard', 'price_cents', 9000000,
-      'capacity', 12, 'tier_metadata', v_meta))),
+      'capacity', 12,
+      'tier_metadata', v_meta - 'price_cleared_for_currency_change'))),
     pg_temp.rev(v_trip), '36450829-0000-4000-8000-0000000002a2');
   v_result := public.biz_publish_trip_command(
     v_trip, pg_temp.rev(v_trip), '36450829-0000-4000-8000-0000000002a3');
