@@ -64,6 +64,8 @@ async function digest(key: string): Promise<string> {
   return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 }
 
+let gatewayCalls = 0;
+
 /** The real gateway, asked the way the deployed function asks it. */
 async function gateway(
   hash: string,
@@ -71,6 +73,7 @@ async function gateway(
   args: unknown,
   client: string,
 ): Promise<unknown> {
+  gatewayCalls += 1;
   const lines = await s.sql(
     `begin;
      set local role service_role;
@@ -154,6 +157,15 @@ const tool = (key: string, name: unknown, args?: unknown) =>
     "tools/call",
     args === undefined ? { name } : { name, arguments: args },
   );
+
+/**
+ * A string shaped like a session token, assembled at run time so that no
+ * token-shaped text sits in this file. It is signed by nothing.
+ */
+function tokenShaped(role: string): string {
+  return [JSON.stringify({ alg: "HS256" }), JSON.stringify({ role }), "sig"]
+    .map((part) => btoa(part).replace(/=+$/, "")).join(".");
+}
 
 /** A string shaped like a key that no one was ever given. */
 function strangerKey(letter = "c"): string {
@@ -371,6 +383,49 @@ test("#3802 H-2: the size limit is the body's real length, and an unusable key i
     "the body of a request with no usable key is never read",
   );
 
+  // Neither is anything that is not shaped like a key, and the database is
+  // never asked about it. A string shaped like a key costs one lookup.
+  for (
+    const credential of [
+      "Bearer hello",
+      "Bearer " + "A".repeat(60000),
+      `Bearer ${good}A`,
+      `Bearer ${good.slice(0, -1)}`,
+      `bearer ${good}`,
+      `Bearer ${good}, Bearer ${good}`,
+      `Bearer ${tokenShaped("service_role")}`,
+    ]
+  ) {
+    let read = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        read = true;
+        controller.enqueue(new TextEncoder().encode(PING));
+        controller.close();
+      },
+    }, { highWaterMark: 0 });
+    const asked = gatewayCalls;
+    const r = await ask([["authorization", credential], json], body);
+    assert.equal(r.status, 401, credential.slice(0, 30));
+    assert.equal(
+      gatewayCalls,
+      asked,
+      `${credential.slice(0, 30)}: the database is not asked`,
+    );
+    assert.equal(
+      read,
+      false,
+      `${credential.slice(0, 30)}: the body is not read`,
+    );
+  }
+  const askedBefore = gatewayCalls;
+  assert.equal((await ask([bearer(strangerKey()), json], PING)).status, 401);
+  assert.equal(
+    gatewayCalls,
+    askedBefore + 1,
+    "a string shaped like a key costs exactly one lookup",
+  );
+
   // Depth and junk cost nothing more than a refusal.
   const deep = await ask(
     [bearer(good), json],
@@ -411,7 +466,7 @@ test("#3802 H-3: every refusal of a key takes the fixed wait, whatever the cause
     "a key whose owner was removed": [bearer(s.keys["leaver.claude"])],
     "a session token": [[
       "authorization",
-      "Bearer eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYXV0aGVudGljYXRlZCJ9.c2ln",
+      `Bearer ${tokenShaped("authenticated")}`,
     ]],
   };
   const bodies = new Set<string>();
