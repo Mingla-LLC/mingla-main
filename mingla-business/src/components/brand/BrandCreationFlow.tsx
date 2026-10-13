@@ -77,7 +77,10 @@ import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 import type { LocationSelectionState } from "@mingla/location-input";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { useShareNetworkState } from "../ui/useShareNetworkState";
-import { resolveBankConnectRail } from "../../utils/bankConnectRail";
+import {
+  resolveSavedPayoutCountry,
+  type BankConnectRail,
+} from "../../utils/bankConnectRail";
 import {
   deriveBrandCreationPayoutState,
   shouldResumeBrandCreationAtCreate,
@@ -87,6 +90,13 @@ import { captureException } from "../../diagnostics/sentry";
 const LazyOfferingChooser = React.lazy(async () => {
   const module = await import("./OfferingChooser");
   return { default: module.OfferingChooser };
+});
+
+// #3645 — the payout-country field (picker sheet, rail switch calls) loads with
+// the Payouts step, not with every screen that can open this flow.
+const LazyBrandPayoutCountryField = React.lazy(async () => {
+  const module = await import("./BrandPayoutCountryField");
+  return { default: module.BrandPayoutCountryField };
 });
 
 // The append-only #881 renderer predates the resume/payout hooks and replaces
@@ -232,7 +242,12 @@ export const BRAND_CREATION_COPY = {
   step4: {
     title: "Get paid when people book",
     body: "Connect a bank when you’re ready to charge. Free events, trips, experiences, RSVPs and venue listings can be created and published without one. Setup takes about 5 minutes.",
-    trust: "Your bank details go straight to Stripe or Paystack — Mingla never sees them.",
+    // #3645 — organiser-facing copy names no payment provider.
+    trust: "Your bank details go straight to our payment partner — Mingla never sees them.",
+    // #3645 — nothing is chosen for the organiser: no country, no currency.
+    countryHelper: "Where your bank account is. This sets the currency for your prices. You can skip this and choose later.",
+    countryNeeded: "Choose your payout country to set up payouts.",
+    countryLoading: "Loading payout countries…",
     primary: "Set up payouts",
     secondary: "Set up payouts later",
     consequence: "You can keep building and publish free offerings. Connect a bank before collecting money from tickets, trip packages, bookings, orders, paid reservations or RSVP chip-ins.",
@@ -501,6 +516,19 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const [currencyWriteState, setCurrencyWriteState] = useState<
     "idle" | "writing" | "succeeded" | "failed"
   >("idle");
+  // #3645 — the payout country the organiser picked in this session. Nothing
+  // is preselected: a brand with no saved choice has no country and no
+  // currency until they pick one (or skip, which is allowed).
+  const [pickedPayoutRail, setPickedPayoutRail] =
+    useState<BankConnectRail | null>(null);
+  const [payoutCountryPending, setPayoutCountryPending] = useState(false);
+  const savedPayoutRail = resolveSavedPayoutCountry({
+    paymentProvider: payoutCanonicalBrand?.paymentProvider,
+    cardAccountCountry: stripeStatusQuery.data?.country ?? null,
+    defaultCurrency: payoutCanonicalBrand?.defaultCurrency,
+    addressCountryCode: payoutCanonicalBrand?.countryCode,
+  });
+  const chosenPayoutRail = pickedPayoutRail ?? savedPayoutRail;
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [address, setAddress] = useState("");
   // META-ORCH-1009 Sub-F WS1: validated-address metadata. Only set when the user
@@ -643,13 +671,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     setResumeError(null);
     setBrand(resumedBrand);
     setCurrentBrand(resumedBrand);
-    const rail = resolveBankConnectRail({
-      countryCode: resumedBrand.countryCode,
-      paymentProvider: resumedBrand.paymentProvider,
-    });
-    setCurrencyWriteState(
-      resumedBrand.defaultCurrency === rail.currency ? "succeeded" : "failed",
-    );
+    // #3645 — a resumed brand is never judged against a guessed country. It
+    // either has a payout country already or the organiser chooses one below.
+    setCurrencyWriteState("idle");
     setName(resumedBrand.displayName);
     setBio(resumedBrand.bio ?? "");
     setAddress(resumedBrand.address ?? "");
@@ -872,12 +896,24 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     updateState({ type: "setAddress", address: null });
   }, [updateState]);
 
+  // #3645 — NO currency is written until a payout country has been chosen.
+  // This only ever aligns the currency of a brand that ALREADY carries a
+  // choice (it is on the Nigerian rail, or has a card payment account in a
+  // country). A brand with nothing chosen, whatever its address says, is left
+  // with no currency; the country field on the Payouts step is where the
+  // organiser chooses, and skipping it is allowed.
   const persistRailCurrency = useCallback(async (): Promise<void> => {
     if (brand === null || accountId === null || resumeBrandId !== null) return;
-    const rail = resolveBankConnectRail({
-      countryCode: brand.countryCode,
+    const rail = resolveSavedPayoutCountry({
       paymentProvider: brand.paymentProvider,
+      cardAccountCountry: stripeStatusQuery.data?.country ?? null,
+      defaultCurrency: brand.defaultCurrency,
+      addressCountryCode: brand.countryCode,
     });
+    if (rail === null) {
+      setCurrencyWriteState("idle");
+      return;
+    }
     if (brand.defaultCurrency === rail.currency) {
       setCurrencyWriteState("succeeded");
       return;
@@ -908,6 +944,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     brand,
     resumeBrandId,
     setCurrentBrand,
+    stripeStatusQuery.data?.country,
     updateBrandMutation,
   ]);
 
@@ -925,22 +962,33 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
       payoutPermission.isError ||
       !payoutPermission.allowed ||
       !online ||
-      currencyWriteState !== "succeeded" ||
+      chosenPayoutRail === null ||
+      payoutCountryPending ||
+      currencyWriteState === "writing" ||
+      currencyWriteState === "failed" ||
       setupNavigationInProgressRef.current
     ) {
       return;
     }
     setupNavigationInProgressRef.current = true;
+    // #3645 — a card-rail country chosen here is carried to the bank screen,
+    // which would otherwise seed its own picker from the address. (A brand on
+    // the Nigerian rail needs no hint: the saved brand row already says so.)
+    const countryHint = chosenPayoutRail.provider === "stripe"
+      ? `&country=${encodeURIComponent(chosenPayoutRail.countryCode)}`
+      : "";
     router.push(
-      `/brand/${encodeURIComponent(brand.id)}/connect?from=brand-create` as never,
+      `/brand/${encodeURIComponent(brand.id)}/connect?from=brand-create${countryHint}` as never,
     );
     setTimeout(() => {
       setupNavigationInProgressRef.current = false;
     }, 750);
   }, [
     brand,
+    chosenPayoutRail,
     currencyWriteState,
     online,
+    payoutCountryPending,
     payoutPermission.allowed,
     payoutPermission.isError,
     payoutPermission.isLoading,
@@ -1041,13 +1089,16 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   // #3260 — same stale-snapshot hazard as payoutState: a brand that flipped to
   // the Paystack rail during the connect round trip must not be labelled from
   // the pre-connect local copy.
-  const payoutRail = resolveBankConnectRail({
-    countryCode: payoutCanonicalBrand?.countryCode,
-    paymentProvider: payoutCanonicalBrand?.paymentProvider,
-  });
-  const payoutProviderLabel = payoutRail.provider === "paystack"
-    ? "Paystack"
-    : "Stripe";
+  const handlePayoutBrandChanged = useCallback(
+    (nextBrand: Brand): void => {
+      setBrand(nextBrand);
+      setCurrentBrand(nextBrand);
+      setCurrencyWriteState("idle");
+      // On the resume path the query owns this brand; bring it up to date.
+      if (resumeBrandId !== null) void resumeBrandQuery.refetch();
+    },
+    [resumeBrandId, resumeBrandQuery, setCurrentBrand],
+  );
   const payoutStateMessage = currencyWriteState === "failed"
     ? "Couldn’t save the payout currency yet. Free publishing still works."
     : payoutState === "loading"
@@ -1073,7 +1124,11 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const showPayoutPrimary = payoutState !== "ready" &&
     payoutState !== "permission-denied";
   const payoutPrimaryDisabled =
-    currencyWriteState !== "succeeded" ||
+    // #3645 — payout setup starts from a chosen country, never a guessed one.
+    chosenPayoutRail === null ||
+    payoutCountryPending ||
+    currencyWriteState === "writing" ||
+    currencyWriteState === "failed" ||
     payoutState === "loading" ||
     payoutState === "unknown-error" ||
     payoutState === "offline" ||
@@ -1468,9 +1523,35 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                   <View style={styles.payoutRailRow}>
                     <Icon name="bank" size={24} color={accent.warm} />
                     <Text style={styles.payoutRail}>
-                      {payoutRail.displayName} · {payoutRail.currency} · {payoutProviderLabel}
+                      {chosenPayoutRail !== null
+                        ? `${chosenPayoutRail.displayName} · ${chosenPayoutRail.currency}`
+                        : BRAND_CREATION_COPY.step4.countryNeeded}
                     </Text>
                   </View>
+                  {payoutCanonicalBrand !== null ? (
+                    <React.Suspense
+                      fallback={(
+                        <Text style={styles.payoutTrust} accessibilityRole="text">
+                          {BRAND_CREATION_COPY.step4.countryLoading}
+                        </Text>
+                      )}
+                    >
+                      <LazyBrandPayoutCountryField
+                        brand={payoutCanonicalBrand}
+                        cardAccountCountry={
+                          stripeStatusQuery.data?.country ?? null
+                        }
+                        cardAccountExists={
+                          (stripeStatusQuery.data?.stripe_account_id ?? null) !==
+                            null
+                        }
+                        helperText={BRAND_CREATION_COPY.step4.countryHelper}
+                        onBrandChanged={handlePayoutBrandChanged}
+                        onCountryChosen={setPickedPayoutRail}
+                        onPendingChange={setPayoutCountryPending}
+                      />
+                    </React.Suspense>
+                  ) : null}
                   <Text style={styles.payoutTrust}>
                     {BRAND_CREATION_COPY.step4.trust}
                   </Text>

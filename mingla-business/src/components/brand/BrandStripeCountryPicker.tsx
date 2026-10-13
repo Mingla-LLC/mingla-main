@@ -21,7 +21,7 @@
  * Per I-38 (touch targets ≥ 44pt) + I-39 (accessibilityLabel on Pressable).
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -34,6 +34,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import * as Haptics from "expo-haptics";
 
 import { Sheet } from "../ui/Sheet";
+import { PayoutCountryTriggerRow } from "./PayoutCountryTriggerRow";
 import { Spinner } from "../ui/Spinner";
 import {
   spacing,
@@ -45,7 +46,10 @@ import {
   glass,
 } from "../../constants/designSystem";
 import { useBrandStripeCountries } from "../../hooks/useBrandStripeCountries";
-import { getStripeSupportedCountry } from "../../constants/stripeSupportedCountries";
+import {
+  getStripeSupportedCountry,
+  type StripeSupportedCountry,
+} from "../../constants/stripeSupportedCountries";
 
 interface BrandStripeCountryPickerProps {
   /** Currently selected ISO 3166-1 alpha-2 code. Default to "GB" if null. */
@@ -80,7 +84,41 @@ interface BrandStripeCountryPickerProps {
   presentation?: "operation-picker" | "payout-confirm";
 }
 
-export function BrandStripeCountryPicker({
+export function BrandStripeCountryPicker(
+  props: BrandStripeCountryPickerProps,
+): React.ReactElement {
+  const countriesQuery = useBrandStripeCountries();
+  return (
+    <PayoutCountryPickerView
+      {...props}
+      countriesQuery={{
+        data: countriesQuery.data,
+        isLoading: countriesQuery.isLoading,
+        isError: countriesQuery.isError,
+        refetch: countriesQuery.refetch,
+      }}
+    />
+  );
+}
+
+/** The country list a picker renders, however it was obtained. */
+export interface PayoutCountryPickerCountries {
+  data: readonly StripeSupportedCountry[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  refetch: () => unknown;
+}
+
+export interface PayoutCountryPickerViewProps
+  extends BrandStripeCountryPickerProps {
+  countriesQuery: PayoutCountryPickerCountries;
+}
+
+/**
+ * The picker itself, with the country list handed in: the trigger row plus the
+ * country sheet. `BrandStripeCountryPicker` feeds it from the query hook.
+ */
+export function PayoutCountryPickerView({
   value,
   onChange,
   disabled = false,
@@ -89,10 +127,9 @@ export function BrandStripeCountryPicker({
   extraOptions = [],
   defaultOpen = false,
   presentation = "operation-picker",
-}: BrandStripeCountryPickerProps): React.ReactElement {
+  countriesQuery,
+}: PayoutCountryPickerViewProps): React.ReactElement {
   const [open, setOpen] = useState(defaultOpen);
-  const [search, setSearch] = useState("");
-  const countriesQuery = useBrandStripeCountries();
 
   const selectedCode = value ?? "GB";
   const selected = getStripeSupportedCountry(selectedCode);
@@ -102,7 +139,6 @@ export function BrandStripeCountryPicker({
   const handleOpen = useCallback((): void => {
     if (disabled) return;
     void Haptics.selectionAsync();
-    setSearch("");
     setOpen(true);
   }, [disabled]);
 
@@ -110,13 +146,81 @@ export function BrandStripeCountryPicker({
     setOpen(false);
   }, []);
 
+  const selectedName =
+    selected?.displayName ?? selectedExtra?.name ?? selectedCode;
+  const selectedCurrency =
+    selected?.defaultCurrency ?? selectedExtra?.currency ?? null;
+  const triggerLabel = selectedCurrency !== null
+    ? `${selectedName} · ${selectedCurrency}`
+    : `Country: ${selectedCode}`;
+  const payoutConfirm = presentation === "payout-confirm";
+
+  return (
+    <View style={styles.wrap}>
+      <PayoutCountryTriggerRow
+        onPress={handleOpen}
+        disabled={disabled}
+        accessibilityLabel={
+          payoutConfirm
+            ? `Payout country: ${selectedName}, tap to change`
+            : `Country: ${selectedName}, tap to change`
+        }
+        label={payoutConfirm ? "PAYOUTS IN" : "Where will you operate?"}
+        valueText={triggerLabel}
+        actionText={payoutConfirm ? "Change" : "›"}
+        actionKind={payoutConfirm ? "link" : "chevron"}
+        helperText={helperText}
+        warningText={warningText}
+      />
+
+      <PayoutCountrySheet
+        visible={open}
+        onClose={handleClose}
+        onPick={onChange}
+        selectedCode={selectedCode}
+        extraOptions={extraOptions}
+        countriesQuery={countriesQuery}
+      />
+    </View>
+  );
+}
+
+export interface PayoutCountrySheetProps {
+  visible: boolean;
+  onClose: () => void;
+  /** Fired with the picked ISO code; the sheet closes itself. */
+  onPick: (countryCode: string) => void;
+  /** Currently selected ISO code, or null when nothing is chosen. */
+  selectedCode: string | null;
+  extraOptions?: BrandStripeCountryPickerProps["extraOptions"];
+  countriesQuery: PayoutCountryPickerCountries;
+}
+
+/**
+ * The searchable country sheet on its own, so a host with its own trigger row
+ * (the #3645 payout-country field) can open the very same list.
+ */
+export function PayoutCountrySheet({
+  visible,
+  onClose,
+  onPick,
+  selectedCode,
+  extraOptions = [],
+  countriesQuery,
+}: PayoutCountrySheetProps): React.ReactElement {
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    if (visible) setSearch("");
+  }, [visible]);
+
   const handlePick = useCallback(
     (code: string): void => {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onChange(code);
-      setOpen(false);
+      onPick(code);
+      onClose();
     },
-    [onChange],
+    [onClose, onPick],
   );
 
   // Unified, alphabetically-sorted list: Stripe countries + any extra (Paystack)
@@ -148,60 +252,13 @@ export function BrandStripeCountryPicker({
     );
   }, [allRows, search]);
 
-  const selectedName =
-    selected?.displayName ?? selectedExtra?.name ?? selectedCode;
-  const selectedCurrency =
-    selected?.defaultCurrency ?? selectedExtra?.currency ?? null;
-  const triggerLabel = selectedCurrency !== null
-    ? `${selectedName} · ${selectedCurrency}`
-    : `Country: ${selectedCode}`;
-  const payoutConfirm = presentation === "payout-confirm";
-
   return (
-    <View style={styles.wrap}>
-      <Pressable
-        onPress={handleOpen}
-        disabled={disabled}
-        accessibilityRole="button"
-        accessibilityLabel={
-          payoutConfirm
-            ? `Payout country: ${selectedName}, tap to change`
-            : `Country: ${selectedName}, tap to change`
-        }
-        accessibilityState={{ disabled }}
-        style={({ pressed }) => [
-          styles.trigger,
-          pressed && !disabled ? styles.triggerPressed : null,
-          disabled ? styles.triggerDisabled : null,
-        ]}
-      >
-        <View style={styles.triggerRow}>
-          <Text style={styles.triggerLabel}>
-            {payoutConfirm ? "PAYOUTS IN" : "Where will you operate?"}
-          </Text>
-          <Text style={styles.triggerValue}>{triggerLabel}</Text>
-        </View>
-        <Text
-          style={payoutConfirm ? styles.triggerChange : styles.triggerChevron}
-        >
-          {payoutConfirm ? "Change" : "›"}
-        </Text>
-      </Pressable>
-
-      {helperText !== null ? (
-        <Text style={styles.helperText}>{helperText}</Text>
-      ) : null}
-
-      {warningText !== null ? (
-        <Text style={styles.warningText}>{warningText}</Text>
-      ) : null}
-
-      <Sheet visible={open} onClose={handleClose} snapPoint="full">
+      <Sheet visible={visible} onClose={onClose} snapPoint="full">
         <View style={styles.sheetWrap}>
           <Text style={styles.sheetTitle}>Pick your country</Text>
           <Text style={styles.sheetBody}>
-            Choose where your business is registered. Stripe payouts route to
-            this country{"'"}s banking system.
+            Choose where your business is registered. Payouts go to a bank
+            account in this country.
           </Text>
 
           <TextInput
@@ -287,72 +344,12 @@ export function BrandStripeCountryPicker({
           </ScrollView>
         </View>
       </Sheet>
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
     gap: spacing.xs,
-  },
-  trigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    minHeight: 56,
-  },
-  triggerPressed: {
-    opacity: 0.85,
-  },
-  triggerDisabled: {
-    opacity: 0.5,
-  },
-  triggerRow: {
-    flex: 1,
-    flexDirection: "column",
-    gap: 2,
-  },
-  triggerLabel: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
-    fontWeight: "600",
-    letterSpacing: 0.6,
-  },
-  triggerValue: {
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    color: textTokens.primary,
-    fontWeight: "600",
-  },
-  triggerChevron: {
-    fontSize: 24,
-    color: textTokens.tertiary,
-    paddingLeft: spacing.sm,
-  },
-  triggerChange: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.secondary,
-    paddingLeft: spacing.sm,
-    textDecorationLine: "underline",
-  },
-  helperText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.secondary,
-  },
-  warningText: {
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-    color: textTokens.tertiary,
   },
   sheetWrap: {
     flex: 1,

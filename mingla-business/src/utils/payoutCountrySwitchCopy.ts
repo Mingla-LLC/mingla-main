@@ -15,6 +15,14 @@ export const PAYOUT_COUNTRY_SWITCH_FAILED_COPY =
 export const PAYOUT_COUNTRY_BANK_ALREADY_CONNECTED_COPY =
   "This brand already has a bank connected. Remove it in Payments before choosing a different country.";
 
+/**
+ * Shown under the country row when the brand already has a card payment
+ * account, so its payout country cannot be changed from the app. One sentence,
+ * shared by the web bank screen and the brand-creation / inline country field.
+ */
+export const PAYOUT_COUNTRY_PAYMENT_ACCOUNT_LOCKED_COPY =
+  "This brand already has a payment account. Contact support to change country.";
+
 export interface PayoutCountrySwitchFailure {
   /** What the organiser reads. */
   message: string;
