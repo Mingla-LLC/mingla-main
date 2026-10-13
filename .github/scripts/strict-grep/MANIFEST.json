@@ -25,8 +25,8 @@
     "is the FOURTH: it raises this to 653 and adds its own batch:E row in the same PR. P2/P3 are exact",
     "equalities, so a row cannot be registered before its file exists."
   ],
-  "expectedStrictGrepMjsFiles": 659,
-  "selfTestWiredFloor": 420,
+  "expectedStrictGrepMjsFiles": 660,
+  "selfTestWiredFloor": 421,
   "classAShardCount": 3,
   "unenforcedCap": 2,
   "fixtureCap": 9,
@@ -9783,6 +9783,15 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-3645-paid-drafts-stop-at-publish.mjs",
+      "kind": "file",
+      "enforcement": "batch:E",
+      "invocation": "node",
+      "modes": ["self-test", "plain"],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3827-live-edit-label-is-derived.mjs",
       "kind": "file",
       "enforcement": "batch:E",
       "invocation": "node",

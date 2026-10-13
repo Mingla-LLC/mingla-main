@@ -2468,6 +2468,7 @@ import type {
 // this buyer-checkout trip read stays type-complete (and the gallery rides
 // through to any buyer-side render).
 import { coerceTripDayMedia } from "./tripsService";
+import { orderTripPricingTierRows } from "./tripPackages";
 
 export interface PublicTripBrand {
   id: string;
@@ -2594,6 +2595,10 @@ export const getPublicTripById = async (
   ]);
 
   const ticketsById = new Map(tickets.map((tt) => [tt.id, tt]));
+  // Issue #3801 — buyers see packages in the order the host authored them
+  // (ticket_types.display_order, then created_at, then id). The tiers query
+  // has no order of its own, so heap order used to leak onto the public page.
+  const orderedTiers = orderTripPricingTierRows<any>(tiers, ticketsById);
   const bt =
     (event.theme?.business_trip as Record<string, unknown> | undefined) ?? {};
   // ORCH-1130 Fix #1 — canonical start/end from the event_dates master row.
@@ -2669,7 +2674,7 @@ export const getPublicTripById = async (
       stops: Array.isArray(d.stops) ? d.stops : [],
       media: coerceTripDayMedia(d.media),
     })),
-    pricingTiers: tiers.map((t): TripPricingTier => {
+    pricingTiers: orderedTiers.map((t): TripPricingTier => {
       const tt = ticketsById.get(t.ticket_type_id);
       const installmentSchedule =
         (t.tier_metadata?.installments as

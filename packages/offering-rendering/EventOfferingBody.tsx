@@ -92,6 +92,8 @@ import {
 import { type ResolvedTheme } from "./designTokens";
 // #3341 — naira shows "₦", not "NGN", whatever the engine or locale.
 import { withCurrencyGlyph } from "./currencyGlyph";
+// #3645 — a price never shows a single decimal digit (one shared rule).
+import { priceDecimals } from "./priceDecimals";
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
@@ -244,8 +246,7 @@ const formatMoney = (amount: number, currency: string | null): string => {
       new Intl.NumberFormat("en-US", {
         style: "currency",
         currency,
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
+        ...priceDecimals(amount),
       }).format(amount),
       currency,
     );

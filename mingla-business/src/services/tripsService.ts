@@ -26,6 +26,7 @@ import { themeOverridesFromColumns } from "./offeringTheme";
 import type { BrandRole } from "../store/currentBrandStore";
 // META-ORCH-1235 — settle-guarantee for the Hub trips full-screen gate.
 import { withTimeout, DATA_FETCH_TIMEOUT_MS } from "../utils/withTimeout";
+import { orderTripPricingTierRows, sumTripPackageSpots } from "./tripPackages";
 
 // ============================================================================
 // issue #1971 — the canonical trip command boundary.
@@ -509,6 +510,9 @@ interface TicketTypeRow {
   currency: string;
   quantity_total: number | null;
   is_unlimited: boolean;
+  // Issue #3801 — the authored package order. Present on `select("*")` reads.
+  display_order?: number | null;
+  created_at?: string | null;
 }
 
 interface EventRow {
@@ -751,14 +755,17 @@ function mapTrip(
       : [],
     businessTrip: readBusinessTrip(
       event.theme,
-      ticketTypes[0]?.quantity_total ?? null,
+      // Issue #3801 — a trip's capacity is the SUM of its packages' spots, not
+      // whichever ticket_types row an unordered read happened to return first.
+      sumTripPackageSpots(ticketTypes),
       masterDate?.start_at ?? null,
       masterDate?.end_at ?? null,
       event.destination_text ?? null,
       event.departure_text ?? null,
     ),
     days: days.map(mapTripDay),
-    pricingTiers: tiers.map((t) =>
+    // Issue #3801 — packages in the order the host authored them.
+    pricingTiers: orderTripPricingTierRows(tiers, ticketTypesById).map((t) =>
       mapTripPricingTier(t, ticketTypesById.get(t.ticket_type_id)),
     ),
     inclusions: inclusions.map(mapTripInclusion),

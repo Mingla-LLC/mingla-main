@@ -309,7 +309,12 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
               ? ""
               : (firstTier.priceCents / 100).toFixed(2),
           description: firstTier?.description ?? "",
-          capacity: trip.businessTrip.capacity,
+          // Issue #3801 — this package's OWN spots. The trip total is the sum
+          // of every package and must not be shown as one package's spots.
+          capacity:
+            firstTier !== undefined
+              ? firstTier.quantityTotal
+              : trip.businessTrip.capacity,
           paymentPlan: firstTier?.installmentSchedule ?? null,
           soldCount: 0,
         },
@@ -1776,23 +1781,37 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
               </View>
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>Capacity</Text>
-                <TextInput
-                  value={
-                    editState.capacity === null ? "" : String(editState.capacity)
-                  }
-                  onChangeText={(v) => {
-                    const n = parseInt(v.replace(/[^0-9]/g, ""), 10);
-                    updateBasics({
-                      capacity: Number.isFinite(n) && n > 0 ? n : null,
-                    });
-                  }}
-                  placeholder="12"
-                  placeholderTextColor={textTokens.tertiary}
-                  keyboardType="number-pad"
-                  style={styles.textInput}
-                  accessibilityLabel="Trip capacity"
-                  testID="edit-trip-capacity"
-                />
+                {trip.pricingTiers.length > 1 ? (
+                  // Issue #3801 — with several packages the trip total is the
+                  // sum of their spots. One number here cannot say which
+                  // package it belongs to, so the total is shown, not edited.
+                  <Text
+                    style={styles.capacityReadOnly}
+                    testID="edit-trip-capacity-total"
+                  >
+                    {editState.capacity === null
+                      ? `No overall limit across ${trip.pricingTiers.length} packages.`
+                      : `${editState.capacity} traveler${editState.capacity === 1 ? "" : "s"} across ${trip.pricingTiers.length} packages. Spots are set per package.`}
+                  </Text>
+                ) : (
+                  <TextInput
+                    value={
+                      editState.capacity === null ? "" : String(editState.capacity)
+                    }
+                    onChangeText={(v) => {
+                      const n = parseInt(v.replace(/[^0-9]/g, ""), 10);
+                      updateBasics({
+                        capacity: Number.isFinite(n) && n > 0 ? n : null,
+                      });
+                    }}
+                    placeholder="12"
+                    placeholderTextColor={textTokens.tertiary}
+                    keyboardType="number-pad"
+                    style={styles.textInput}
+                    accessibilityLabel="Trip capacity"
+                    testID="edit-trip-capacity"
+                  />
+                )}
               </View>
             </View>
           );
@@ -2263,6 +2282,11 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     fontWeight: "600",
+    color: textTokens.secondary,
+  },
+  capacityReadOnly: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
   },
   // Issue #1363 — non-silent inline hint on a failed free-text geocode (rule 3).
