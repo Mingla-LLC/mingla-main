@@ -36,6 +36,7 @@ describe("issue #3697 Wave 7c Host Ads surfaces", () => {
     expect(detail).toContain("ads-detail-screen");
     expect(detail).toContain("ads-detail-pause");
     expect(detail).toContain("ads-detail-end");
+    expect(detail).toContain("ads-detail-cancel");
     expect(detail).toContain("spend_total_cents");
   });
 

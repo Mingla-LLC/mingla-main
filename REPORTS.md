@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-13 — Hosts can Cancel an ad before any spend (full credit back) or End it after spend — never both on one card — filter Ads by Live/Paused/Ended, and every Host or Admin launch attempt emails the ops inbox — web `[deploy]` (toward #3697, PR #3834)
 - 2026-10-13 — Hosts can withdraw unused Ads credit to the original card or Paystack charge, top up in Naira, run Host-owned ads from Blast (list, detail, pause/end) with live cards on Home, and ask Ari to propose and launch a plan that spends Ads credit — web `[deploy]` (toward #3697, PR #3825)
 - 2026-10-13 — Host web: a cover video that runs a few frames over 15 seconds (a phone "15 second" clip is really 15.015 s) is now accepted instead of being refused with "Choose a video that is 15 seconds or shorter"; anything over 15.5 seconds is still refused, and the phone apps still open the trimmer (toward #3040, PR #3828)
 - 2026-10-13 — Hosts can add Ads credit with a card (USD/GBP): Confirm and pay after the fee preview, Stripe charges Mingla's platform account, and credit lands only after the payment is verified (toward #3697, PR #3824)
