@@ -248,7 +248,13 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 // 16 -> 17), T-23 17 -> 18 (branchCount and globs), T-24 16 -> 17 (branchCount),
 // T-2723 16 -> 17 (globs and skipped). Every assertion, parser scenario and the
 // exact inventory deepEqual are unchanged.
-test("T-10 — lane inventory is exactly 4 lanes at 17/1/3/15 (a blind parser reds here)", () => {
+// [TEST-MOD-APPROVED #3801] The #2117 lane gains ONE exact skip for
+// 20270830003801_issue_3801_public_trip_tiers_ordered.sql, which re-emits
+// `pg_public_trip_by_slug`; its `LANGUAGE sql` body calls
+// `pg_offering_visibility_gate`, which the lane's phase 1 lacks. ONLY T-10's
+// #2117 count moves, 15 -> 16. Every assertion, parser scenario and the exact
+// inventory deepEqual are unchanged.
+test("T-10 — lane inventory is exactly 4 lanes at 17/1/3/16 (a blind parser reds here)", () => {
   const { lanes, violations } = analyseLanes();
   assert.equal(violations.length, 0);
 
@@ -257,7 +263,7 @@ test("T-10 — lane inventory is exactly 4 lanes at 17/1/3/15 (a blind parser re
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
     [LANE]: 17,
-    "issue-2117-offering-visibility-gate-tests.yml": 15,
+    "issue-2117-offering-visibility-gate-tests.yml": 16,
   });
   assert.equal(lanes.length, 4, "exactly four filtered replay lanes exist on this base");
 
