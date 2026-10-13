@@ -697,6 +697,16 @@ jobs:
           # free-after-clear and a correct re-price pass); the check has its index.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency_rework.implementor.happy.pg17.test.sql
+          # Issue #3645 retest 2 — a draft out of step with its brand cannot be
+          # published, and its host is never at a dead end. Through the real
+          # owners: publish, a buyer starts a checkout and leaves, unpublish,
+          # GBP to NGN; Publish is refused with price_reentry_required;
+          # biz_sync_draft_currency moves and clears the draft (an abandoned
+          # checkout does not stop it; one in progress or completed does); a
+          # written-back or stale pound publish is refused before the re-stamp;
+          # free-only and matching-currency publishes are unaffected.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency_publish_stop.implementor.happy.pg17.test.sql
           # Issue #3645 — tester adversarial proof for the same change. Prices
           # survive on a draft with a checkout session, an order, a chip-in or
           # a door sale, on a published or deleted event, on another brand, on

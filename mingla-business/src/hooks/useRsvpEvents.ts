@@ -7,6 +7,8 @@
  * ORCH-1150: do NOT merge back into the event/ticket path. See SPEC §5.1/§5.2.
  */
 
+import { publishWithDraftCurrencySync } from "../services/draftCurrencySync";
+import { adoptServerDraftAfterSync } from "../services/draftServerReconcile";
 import { useMutation } from "@tanstack/react-query";
 
 import {
@@ -28,8 +30,14 @@ export function usePublishRsvpDraft() {
       confirmed: boolean;
     } }
   >({
+    // Issue #3645 — same way out of a `price_reentry_required` refusal as the
+    // event publish (see services/draftCurrencySync).
     mutationFn: ({ draft, clientRevision, invites }) =>
-      publishRsvpDraft(draft, clientRevision ?? draft.clientRevision ?? null, invites),
+      publishWithDraftCurrencySync(
+        draft.id,
+        () => publishRsvpDraft(draft, clientRevision ?? draft.clientRevision ?? null, invites),
+        () => adoptServerDraftAfterSync(draft.id),
+      ),
     onSuccess: () => {
       captureHostSearchOutcome("listing_published", {
         audience: "host",

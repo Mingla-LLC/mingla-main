@@ -27,6 +27,8 @@
  * case.
  */
 
+import { draftCurrencyRefusalCopy } from "./draftCurrencyPublishRefusal";
+
 export type PaidPublishGuardReason =
   | "stripe_charges_disabled"
   | "offering_date_past"
@@ -259,6 +261,10 @@ export const describeUnmappedPublishGuard = (
   raw: string | null | undefined,
 ): string => {
   const s = typeof raw === "string" ? raw.trim() : "";
+  // Issue #3645 — the draft is priced in a currency its brand no longer sells
+  // in. These two codes have plain words of their own.
+  const currencyCopy = draftCurrencyRefusalCopy(s);
+  if (currencyCopy !== null) return currencyCopy;
   // Requirement 3 — always logged, before anything is shown.
   console.error("[#2333] unmapped publish guard", s);
   if (UNMAPPED_GUARD_TOKEN_SHAPE.test(s)) {

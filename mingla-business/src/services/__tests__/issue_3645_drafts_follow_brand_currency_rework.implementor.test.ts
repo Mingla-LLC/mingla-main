@@ -154,7 +154,7 @@ interface SavedPayload {
  */
 const runAutosave = async (
   draft: DraftEvent,
-  server: { row: string | null; brand?: string | null },
+  server: { row: string | null; brand?: string | null; cleared?: { from: string; to: string } },
   options?: {
     brandCurrency?: string | null;
     serverRowWins?: boolean;
@@ -175,7 +175,15 @@ const runAutosave = async (
       Promise.resolve({
         data: {
           currency: server.row,
-          theme: { business_draft: { clientRevision: draft.clientRevision, currency: server.row } },
+          theme: {
+            business_draft: {
+              clientRevision: draft.clientRevision,
+              currency: server.row,
+              ...(server.cleared === undefined
+                ? {}
+                : { pricesClearedForCurrencyChange: server.cleared }),
+            },
+          },
           ...("brand" in server ? { brand: { default_currency: server.brand } } : {}),
         },
         error: null,
@@ -250,7 +258,7 @@ describe("#3645 rework: a brand list cached on this device is never believed ove
     for (const fresh of ["NGN", null]) {
       const { payload } = await runAutosave(
         baseDraft(), // still GBP with a 50 ticket on this device
-        { row: "NGN" },
+        { row: "NGN", cleared: { from: "GBP", to: "NGN" } },
         wizardSave(fresh, "GBP"),
       );
       expect(payload.currency).toBe("NGN");
@@ -276,7 +284,7 @@ describe("#3645 rework: a brand list cached on this device is never believed ove
     // Inside the few seconds a brand answer is reused, the brand moved to
     // naira and the server cleared the row. The reused answer still says
     // pounds, and so does this device's copy.
-    const stale = await runAutosave(baseDraft(), { row: "NGN" }, wizardSave("GBP", "GBP"));
+    const stale = await runAutosave(baseDraft(), { row: "NGN", cleared: { from: "GBP", to: "NGN" } }, wizardSave("GBP", "GBP"));
     expect(stale.payload.currency).toBe("NGN");
     expect(stale.payload.theme.business_draft.tickets[0]?.priceGbp).toBeNull();
     expect(JSON.stringify(stale.payload)).not.toContain("GBP");
@@ -290,10 +298,28 @@ describe("#3645 rework: a brand list cached on this device is never believed ove
 
   test("a save that clears this device's old prices leaves the note for the notice", async () => {
     const draft = baseDraft();
-    await runAutosave(draft, { row: "NGN" }, wizardSave("NGN", "GBP"));
+    await runAutosave(draft, { row: "NGN", cleared: { from: "GBP", to: "NGN" } }, wizardSave("NGN", "GBP"));
     expect(getPricesClearedNote(draft.id)).toEqual({ from: "GBP", to: "NGN" });
     // It is this device's own note: showing it owes the server nothing.
     expect(isPricesClearedNoteFromThisDevice(draft.id)).toBe(true);
+  });
+
+  test("INVARIANT: prices are cleared only when the row just read carries the cleared state; otherwise nothing is written and the server's copy comes back", async () => {
+    // This device holds pounds and 50. The row is in naira and was NOT cleared
+    // by the server: someone re-priced it. Two currencies differing is not a
+    // reason to clear anything.
+    const draft = baseDraft();
+    await expect(
+      runAutosave(draft, { row: "NGN" }, wizardSave("NGN", "GBP")),
+    ).rejects.toMatchObject({ name: "DraftRevisionConflictError", draftId: draft.id });
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(getPricesClearedNote(draft.id)).toBeNull();
+    // A copy in another currency with NOTHING priced has nothing to clear: it
+    // takes the row's currency and its edit is saved.
+    const unpriced = baseDraft({ tickets: [freeTicket] });
+    const { payload } = await runAutosave(unpriced, { row: "NGN" }, wizardSave("NGN", "GBP"));
+    expect(payload.currency).toBe("NGN");
+    expect(payload.theme.business_draft.tickets[0]?.isFree).toBe(true);
   });
 
   test("a save that moves nothing sets no note (adopting the currency a draft is already in is a no-op)", async () => {
@@ -364,7 +390,7 @@ describe("#3645 rework: adopt-on-open asks the server", () => {
   test("the draft ROW's currency is the answer; the brand's is used only when the row has none", async () => {
     const selects = answer({ currency: "GBP", brand: { default_currency: "ngn" } });
     await expect(fetchDraftCurrencyTruth("draft-1")).resolves.toBe("GBP");
-    expect(selects).toEqual(["currency,brand:brands(default_currency)"]);
+    expect(selects).toEqual(["currency,theme,brand:brands(default_currency)"]);
     answer({ currency: null, brand: { default_currency: "ngn" } });
     await expect(fetchDraftCurrencyTruth("draft-1")).resolves.toBe("NGN");
     answer({ currency: null, brand: [{ default_currency: "NGN" }] });
@@ -408,7 +434,7 @@ describe("#3645 rework: adopt-on-open asks the server", () => {
         .replace(/\/\*[\s\S]*?\*\//g, "")
         .replace(/^\s*\/\/.*$/gm, "");
     const hook = code(path.join("src", "hooks", "useDraftFollowsBrandCurrency.ts"));
-    expect(hook).toContain("await fetchDraftCurrencyTruth(draftId)");
+    expect(hook).toContain("await fetchDraftOpenState(draftId)");
     expect(hook).toContain("planDraftCurrencyFollow(draft, serverCurrency, serverNote)");
     expect(hook).not.toContain("defaultCurrency");
     expect(hook).not.toContain("useBrandList");

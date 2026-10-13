@@ -21,9 +21,10 @@
  * A draft with no currency yet is left alone here: the save stamps it and its
  * typed prices stay, with no notice.
  */
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { fetchDraftCurrencyTruth } from "../services/draftCurrencyTruth";
+import { fetchDraftOpenState } from "../services/draftCurrencyTruth";
+import { adoptServerDraftAfterSync } from "../services/draftServerReconcile";
 import { useDraftEventStore, type DraftEvent } from "../store/draftEventStore";
 import {
   adoptBrandCurrencyForDraft,
@@ -31,7 +32,9 @@ import {
 } from "../utils/draftFollowsBrandCurrency";
 import { currencyCodeOrNull } from "../utils/currency";
 import {
-  getDraftServerCurrency,
+  draftServerCurrencySequence,
+  forgetDraftServerCurrency,
+  getDraftServerCurrencyAnswer,
   setDraftServerCurrency,
   subscribeDraftServerCurrency,
 } from "../utils/draftServerCurrency";
@@ -39,6 +42,7 @@ import {
   clearPricesClearedNote,
   getPricesClearedNote,
   isPricesClearedNoteFromThisDevice,
+  recordPricesClearedNote,
   subscribePricesClearedNotes,
   type PricesClearedNote,
 } from "../utils/draftPricesClearedNote";
@@ -102,24 +106,37 @@ export const useDraftFollowsBrandCurrency = ({
   // One notice per draft per mount, even if the server copy is re-read before
   // the adopting save lands.
   const noticedDraftIdsRef = useRef<Set<string>>(new Set());
+  const reconcilingRef = useRef<Set<string>>(new Set());
   const draftId = draft?.id ?? null;
 
-  // What the SERVER says this draft's currency is. There is ONE owner of
-  // that answer (utils/draftServerCurrency): this hook asks once when the
-  // draft opens and writes the answer there; every draft save writes its
-  // result there too, and it is always the newest answer that is believed.
-  // So after a save has moved the draft, this hook can never move it back on
-  // the strength of what it was told when the screen opened. A draft that
-  // only exists on this device (d_*) has no server row to ask about. Until an
-  // answer exists, and if none can be had, nothing is adopted here.
+  // THIS VISIT ONLY. What the server said about this draft is believed only
+  // if it was learned while this screen is mounted: by this mount's own read
+  // (kept in this hook's state), or by a save or server read made since (the
+  // shared answer, but only one recorded after this mount began). An answer
+  // left from an earlier visit is never acted on: between two visits the
+  // brand may have changed currency and someone may have re-priced the draft,
+  // and acting on the old answer cleared those new prices.
+  const mountSequenceRef = useRef<number | null>(null);
+  if (mountSequenceRef.current === null) {
+    mountSequenceRef.current = draftServerCurrencySequence();
+  }
+  const [ownAnswer, setOwnAnswer] = useState<{
+    draftId: string;
+    currency: string | null;
+  } | null>(null);
+
   useEffect(() => {
     if (draftId === null || draftId.startsWith("d_")) return undefined;
     let live = true;
     const askedAt = Date.now();
     const ask = async (): Promise<void> => {
       try {
-        const currency = await fetchDraftCurrencyTruth(draftId);
-        if (live) setDraftServerCurrency(draftId, currency, askedAt);
+        const open = await fetchDraftOpenState(draftId);
+        if (!live) return;
+        // The row's own "prices were cleared" note, read by this visit.
+        recordPricesClearedNote(draftId, open.theme);
+        setDraftServerCurrency(draftId, open.currency, askedAt);
+        setOwnAnswer({ draftId, currency: open.currency });
       } catch (error) {
         console.warn("[useDraftFollowsBrandCurrency] could not read the draft's currency", {
           draftId,
@@ -130,14 +147,23 @@ export const useDraftFollowsBrandCurrency = ({
     void ask();
     return (): void => {
       live = false;
+      // The screen is closing: what it was told goes with it.
+      forgetDraftServerCurrency(draftId);
+      clearPricesClearedNote(draftId);
     };
   }, [draftId]);
-  const serverCurrency =
-    useSyncExternalStore(
-      subscribeDraftServerCurrency,
-      () => (draftId === null ? null : getDraftServerCurrency(draftId) ?? null),
-      () => null,
-    ) ?? null;
+
+  const sharedAnswer = useSyncExternalStore(
+    subscribeDraftServerCurrency,
+    () => (draftId === null ? undefined : getDraftServerCurrencyAnswer(draftId)),
+    () => undefined,
+  );
+  const serverCurrency: string | null =
+    sharedAnswer !== undefined && sharedAnswer.seq > mountSequenceRef.current
+      ? sharedAnswer.currency
+      : ownAnswer !== null && ownAnswer.draftId === draftId
+        ? ownAnswer.currency
+        : null;
 
   const serverNote = useSyncExternalStore(
     subscribePricesClearedNotes,
@@ -147,7 +173,40 @@ export const useDraftFollowsBrandCurrency = ({
   const serverNoteTo = serverNote?.to ?? null;
 
   useEffect(() => {
-    if (draft === null) return;
+    if (draft === null || draft.status !== "draft") return;
+    const localCurrency = currencyCodeOrNull(draft.currency);
+
+    // INVARIANT (issue #3645): this device clears its own prices ONLY when the
+    // server row it read carries the cleared state (the note), never because
+    // two currencies differ. A copy in another currency than a row the server
+    // did not clear is a copy of a draft someone has since re-priced: the
+    // server's copy replaces it. Nothing is cleared, nothing is saved, and
+    // the host is told nothing, because nothing of theirs was removed.
+    // (A copy that holds no price has nothing to clear; it takes the server's
+    // currency through the ordinary path below.)
+    if (
+      serverNote === null &&
+      localCurrency !== null &&
+      serverCurrency !== null &&
+      localCurrency !== serverCurrency &&
+      adoptBrandCurrencyForDraft(draft, serverCurrency).pricesCleared
+    ) {
+      const key = `${draft.id}:${serverCurrency}`;
+      if (reconcilingRef.current.has(key)) return;
+      reconcilingRef.current.add(key);
+      void adoptServerDraftAfterSync(draft.id)
+        .catch((error: unknown) => {
+          console.warn("[useDraftFollowsBrandCurrency] could not read the server's copy of the draft", {
+            draftId: draft.id,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        })
+        .finally(() => {
+          reconcilingRef.current.delete(key);
+        });
+      return;
+    }
+
     const plan = planDraftCurrencyFollow(draft, serverCurrency, serverNote);
     if (plan === null) return;
     // A note this device made itself (its own save cleared the prices) only

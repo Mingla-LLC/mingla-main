@@ -10,15 +10,26 @@
  *
  * An answer is only replaced by a NEWER one (by the moment it was asked for or
  * received), so a slow read that started before a save cannot overwrite what
- * the save established. Kept in memory only; nothing fetched is persisted.
+ * the save established. An answer belongs to the visit that obtained it: a
+ * screen believes only answers recorded after it mounted, drops the draft's
+ * answer when it closes, and sign-out clears them all. Kept in memory only;
+ * nothing fetched is persisted.
  */
-interface ServerCurrencyAnswer {
+export interface ServerCurrencyAnswer {
   /** Null = the server holds no currency for this draft. */
   currency: string | null;
   at: number;
+  /**
+   * The position of this answer among ALL answers ever recorded here, for any
+   * draft. A screen notes the position when it mounts and believes only
+   * answers recorded after it: what an earlier visit to the draft was told is
+   * never acted on.
+   */
+  seq: number;
 }
 
 const answers = new Map<string, ServerCurrencyAnswer>();
+let sequence = 0;
 const listeners = new Set<() => void>();
 
 const normalize = (currency: string | null | undefined): string | null => {
@@ -38,7 +49,8 @@ export const setDraftServerCurrency = (
   const held = answers.get(draftId);
   if (held !== undefined && held.at > at) return;
   const next = normalize(currency);
-  answers.set(draftId, { currency: next, at });
+  sequence += 1;
+  answers.set(draftId, { currency: next, at, seq: sequence });
   if (held === undefined || held.currency !== next) {
     listeners.forEach((listener) => listener());
   }
@@ -48,6 +60,25 @@ export const setDraftServerCurrency = (
 export const getDraftServerCurrency = (
   draftId: string,
 ): string | null | undefined => answers.get(draftId)?.currency;
+
+/** The whole answer, with its position; `undefined` = nothing known. */
+export const getDraftServerCurrencyAnswer = (
+  draftId: string,
+): ServerCurrencyAnswer | undefined => answers.get(draftId);
+
+/** The position of the newest answer recorded so far, for any draft. */
+export const draftServerCurrencySequence = (): number => sequence;
+
+/** The screen showing this draft has closed: what it was told is dropped. */
+export const forgetDraftServerCurrency = (draftId: string): void => {
+  if (answers.delete(draftId)) listeners.forEach((listener) => listener());
+};
+
+/** Sign-out: nothing learned for one account is kept for the next. */
+export const clearDraftServerCurrencies = (): void => {
+  answers.clear();
+  listeners.forEach((listener) => listener());
+};
 
 export const subscribeDraftServerCurrency = (listener: () => void): (() => void) => {
   listeners.add(listener);

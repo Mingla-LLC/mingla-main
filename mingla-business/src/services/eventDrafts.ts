@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 import { adoptBrandCurrencyForDraft } from "../utils/draftFollowsBrandCurrency";
 import {
   getPricesClearedNote,
+  pricesClearedNoteFromTheme,
   recordPricesClearedNote,
   setPricesClearedNote,
   type PricesClearedNote,
@@ -478,6 +479,28 @@ export const autosaveServerDraft = async (
         nullableCurrency(options.brandCurrency) ??
         nullableCurrency(options.cachedBrandCurrency)
       : nullableCurrency(options.brandCurrency);
+  // INVARIANT (issue #3645): this device clears its own prices ONLY when the
+  // server row it just read carries the cleared state (the server's note),
+  // never because two currencies differ. A wizard save whose copy is in
+  // another currency than a row the server did NOT clear is a copy of a draft
+  // someone has since re-priced: nothing is written, and the server's copy is
+  // handed back to be adopted, exactly as for a revision conflict.
+  // (A copy in another currency that holds NO price has nothing to clear: it
+  // simply takes the row's currency and saves.)
+  if (
+    options.serverRowWins === true &&
+    existing.currency !== null &&
+    adoptBrandCurrencyForDraft(draft, existing.currency).pricesCleared &&
+    pricesClearedNoteFromTheme(existing.theme) === null
+  ) {
+    let serverDraft: DraftEvent | null = null;
+    try {
+      serverDraft = await fetchDraftById(draft.id);
+    } catch {
+      serverDraft = null;
+    }
+    throw new DraftRevisionConflictError(draft.id, serverDraft);
+  }
   const effectiveCurrency =
     followCurrency ?? (await resolveDraftCurrencyForSave(draft, existing.currency));
   const brandCurrency = followCurrency;

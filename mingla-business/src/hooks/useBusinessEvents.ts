@@ -1,3 +1,5 @@
+import { publishWithDraftCurrencySync } from "../services/draftCurrencySync";
+import { adoptServerDraftAfterSync } from "../services/draftServerReconcile";
 import {
   useMutation,
   useQuery,
@@ -236,7 +238,14 @@ export const usePublishBusinessEventDraft = (): {
       // `private_access_not_ready`, so deleting this block cannot admit a Private publish.
       const blocked = privatePublishBlockReason(draft.visibility);
       if (blocked !== null) return Promise.reject(new Error(blocked));
-      return publishBusinessEventDraft(draft, draft.clientRevision ?? 0, invites);
+      // Issue #3645 — refused because the draft is priced in a currency its
+      // brand no longer sells in: ask the server to bring it in step, then
+      // re-read it so the wizard shows what the server now holds.
+      return publishWithDraftCurrencySync(
+        draft.id,
+        () => publishBusinessEventDraft(draft, draft.clientRevision ?? 0, invites),
+        () => adoptServerDraftAfterSync(draft.id),
+      );
     },
     onSuccess: (published, { draft }) => {
       deleteDraft(draft.id);

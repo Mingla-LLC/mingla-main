@@ -382,6 +382,9 @@ export const useServerDraftAutosave = (
         const serverDraft = error.serverDraft;
         if (serverDraft !== null) {
           upsertServerDraft(serverDraft);
+          // #3645 — the server's copy is the newest word on this draft's
+          // currency; the adopt-on-open hook acts on it.
+          setDraftServerCurrency(serverDraft.id, serverDraft.currency);
           queryClient.setQueryData(
             eventDraftKeys.detail(serverDraft.id),
             serverDraft,

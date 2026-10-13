@@ -91,6 +91,13 @@ export const subscribePricesClearedNotes = (listener: () => void): (() => void) 
   };
 };
 
+/** Sign-out: no note learned for one account is kept for the next. */
+export const clearAllPricesClearedNotes = (): void => {
+  notes.clear();
+  madeByThisDevice.clear();
+  emit();
+};
+
 /** Test seam. */
 export const resetPricesClearedNotesForTest = (): void => {
   notes.clear();

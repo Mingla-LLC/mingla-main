@@ -20,6 +20,8 @@ interface DraftCurrencyRow {
   rowCurrency: string | null;
   /** undefined = the answer carried no brand. */
   brandCurrency: string | null | undefined;
+  /** The row's draft JSON, for the server's "prices were cleared" note. */
+  theme: unknown;
 }
 
 const readDraftCurrencyRow = async (
@@ -28,7 +30,7 @@ const readDraftCurrencyRow = async (
   // orch-strict-grep-allow events-type-filter — issue #3645: draft currency read is scoped via .in("event_type", ["event","rsvp"]); event_type IS filtered (event+rsvp), not unfiltered.
   const { data, error } = await supabase
     .from("events")
-    .select("currency,brand:brands(default_currency)")
+    .select("currency,theme,brand:brands(default_currency)")
     .eq("id", draftId)
     .in("event_type", ["event", "rsvp"])
     .eq("status", "draft")
@@ -36,13 +38,13 @@ const readDraftCurrencyRow = async (
     .maybeSingle();
   if (error !== null && error !== undefined) throw error;
   if (data === null || data === undefined || typeof data !== "object") return null;
-  const row = data as { currency?: unknown; brand?: unknown };
+  const row = data as { currency?: unknown; brand?: unknown; theme?: unknown };
   const brand = Array.isArray(row.brand) ? row.brand[0] : row.brand;
   const brandCurrency =
     typeof brand === "object" && brand !== null && "default_currency" in brand
       ? codeOrNull((brand as { default_currency?: unknown }).default_currency)
       : undefined;
-  return { rowCurrency: codeOrNull(row.currency), brandCurrency };
+  return { rowCurrency: codeOrNull(row.currency), brandCurrency, theme: row.theme };
 };
 
 /**
@@ -69,4 +71,17 @@ export const fetchDraftCurrencyTruth = async (
   const row = await readDraftCurrencyRow(draftId);
   if (row === null) return null;
   return row.rowCurrency ?? row.brandCurrency ?? null;
+};
+
+/**
+ * What a wizard needs when a draft opens: the currency the draft is in on the
+ * server, and the row's draft JSON (it carries the server's "prices were
+ * cleared" note when the brand's currency change cleared this draft).
+ */
+export const fetchDraftOpenState = async (
+  draftId: string,
+): Promise<{ currency: string | null; theme: unknown }> => {
+  const row = await readDraftCurrencyRow(draftId);
+  if (row === null) return { currency: null, theme: undefined };
+  return { currency: row.rowCurrency ?? row.brandCurrency ?? null, theme: row.theme };
 };
