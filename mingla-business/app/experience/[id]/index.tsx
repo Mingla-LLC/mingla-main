@@ -167,8 +167,10 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
     status: experience?.status,
   });
   // issue #3237 — true once, straight after this experience was published.
+  // #3645 — and no longer once it is returned to draft or cancelled.
   const publishedArrival = useJustPublishedArrival(
     typeof eventId === "string" ? eventId : null,
+    experience?.status,
   );
   const currentBrandRole = useCurrentBrandRole(experience?.brandId ?? null);
   const canShowListingInsights =
@@ -327,7 +329,11 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
     status: experience.status,
     brandSlug: experience.brandSlug,
   });
-  const handleShareOpen = (): void => setShareModalVisible(true);
+  const handleShareOpen = (): void => {
+    // #3645 — publishing never opens the share sheet by itself.
+    if (publishedArrival.isArrivalPress()) return;
+    setShareModalVisible(true);
+  };
   const handleViewPublic = (): void => {
     if (canOpenPublic) {
       router.push(`/exp/${experience.brandSlug}/${experience.slug}` as never);

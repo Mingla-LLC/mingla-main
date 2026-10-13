@@ -18,6 +18,20 @@
       "required_bundle_fields": {},
       "required_top_level": []
     },
+    "ad-credit": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "PAYSTACK_SECRET_KEY_LIVE",
+        "PAYSTACK_SECRET_KEY_TEST",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
     "admin-ad-app-identity-preflight": {
       "migration_fallback_top_level": [],
       "optional_top_level": [],
@@ -39,16 +53,6 @@
     "admin-ad-campaign-action": {
       "migration_fallback_top_level": [],
       "optional_top_level": [],
-      "required_bundle_fields": {},
-      "required_top_level": []
-    },
-    "ad-credit": {
-      "migration_fallback_top_level": [],
-      "optional_top_level": [
-        "BUSINESS_WEB_ORIGIN",
-        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
-        "STRIPE_PUBLISHABLE_KEY"
-      ],
       "required_bundle_fields": {},
       "required_top_level": []
     },
@@ -114,6 +118,12 @@
         "BUSINESS_WEB_ORIGIN",
         "GOOGLE_ADS_LOGIN_CUSTOMER_ID"
       ]
+    },
+    "admin-ad-spend-sync": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
     },
     "admin-ad-targeting-search": {
       "migration_fallback_top_level": [],
@@ -1167,6 +1177,14 @@
         "TWILIO_STATUS_CALLBACK_SECRET"
       ]
     },
+    "host-ad-campaign": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "BUSINESS_WEB_ORIGIN"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
     "invite-brand-member": {
       "migration_fallback_top_level": [],
       "optional_top_level": [],
@@ -1662,6 +1680,18 @@
       "required_bundle_fields": {},
       "required_top_level": []
     },
+    "resend-webhook": {
+      "migration_fallback_top_level": [
+        "RESEND_WEBHOOK_SECRET"
+      ],
+      "optional_top_level": [],
+      "required_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "RESEND_WEBHOOK_SECRET"
+        ]
+      },
+      "required_top_level": []
+    },
     "resolve-follow-invite": {
       "migration_fallback_top_level": [],
       "optional_top_level": [
@@ -1674,18 +1704,6 @@
       "required_top_level": [
         "app.qr_token_pepper"
       ]
-    },
-    "resend-webhook": {
-      "migration_fallback_top_level": [
-        "RESEND_WEBHOOK_SECRET"
-      ],
-      "optional_top_level": [],
-      "required_bundle_fields": {
-        "AD_CONVERSION_TOKENS": [
-          "RESEND_WEBHOOK_SECRET"
-        ]
-      },
-      "required_top_level": []
     },
     "reviewer-signin": {
       "migration_fallback_top_level": [],
@@ -2374,12 +2392,6 @@
       "required_top_level": [
         "OPENWEATHER_API_KEY"
       ]
-    },
-    "admin-ad-spend-sync": {
-      "migration_fallback_top_level": [],
-      "optional_top_level": [],
-      "required_bundle_fields": {},
-      "required_top_level": []
     }
   },
   "non_secret_runtime_config": [

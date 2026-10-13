@@ -575,6 +575,9 @@ verify_jwt = true
 [functions.ad-credit]
 verify_jwt = true
 
+[functions.host-ad-campaign]
+verify_jwt = true
+
 [functions.admin-ad-campaign-sync]
 verify_jwt = true
 

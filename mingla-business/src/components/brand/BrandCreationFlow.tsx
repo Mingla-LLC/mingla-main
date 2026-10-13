@@ -81,6 +81,7 @@ import {
   resolveSavedPayoutCountry,
   type BankConnectRail,
 } from "../../utils/bankConnectRail";
+import { brandSellsBeforeBank } from "../../utils/brandPayout";
 import {
   deriveBrandCreationPayoutState,
   shouldResumeBrandCreationAtCreate,
@@ -251,6 +252,9 @@ export const BRAND_CREATION_COPY = {
     primary: "Set up payouts",
     secondary: "Set up payouts later",
     consequence: "You can keep building and publish free offerings. Connect a bank before collecting money from tickets, trip packages, bookings, orders, paid reservations or RSVP chip-ins.",
+    // #3645 — a brand on the Nigerian rail sells before it has a bank; the
+    // line above ("connect a bank before collecting money") is false for it.
+    consequenceSellBeforeBank: "You can start selling now. Your money waits until you add a bank.",
   },
   step5: {
     title: "Invite the owner",
@@ -1591,7 +1595,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                     />
                   ) : null}
                   <Text style={styles.payoutConsequence}>
-                    {BRAND_CREATION_COPY.step4.consequence}
+                    {brandSellsBeforeBank(payoutCanonicalBrand)
+                      ? BRAND_CREATION_COPY.step4.consequenceSellBeforeBank
+                      : BRAND_CREATION_COPY.step4.consequence}
                   </Text>
                 </View>
               </GlassCard>

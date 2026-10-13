@@ -89,11 +89,20 @@ describe("issue #1014 RETEST — catch structure pins (order + gate, BOTH catche
     }
   });
 
-  it("GATE: each catch routes ONLY stripe_onboarding-action copies, with the guard reason as banner code", () => {
+  // [TEST-MOD-APPROVED #3645] Approved behaviour change: neither autosave catch
+  // navigates to bank setup any more. Each still gates on the money-setup
+  // action and carries the guard reason as the banner code; the gated block
+  // now toasts the locked copy and ends without a router.push.
+  it("GATE: each catch handles ONLY stripe_onboarding-action copies in place, with the guard reason as banner code", () => {
     for (const w of catchWindows()) {
       expect(w).toContain('guardCopy.action === "payment_onboarding"');
       expect(w).toContain("code: guardCopy.reason");
-      expect(w).toContain("router.push(brandPaymentOnboardingRoute(trip.brandId)");
+      const gateStart = w.indexOf('guardCopy.action === "payment_onboarding"');
+      const gateEnd = w.indexOf("return;", gateStart);
+      expect(gateEnd).toBeGreaterThan(gateStart);
+      const gated = w.slice(gateStart, gateEnd);
+      expect(gated).toContain("showToast(guardCopy.body)");
+      expect(gated).not.toContain("router.push");
     }
   });
 });

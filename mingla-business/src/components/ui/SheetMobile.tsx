@@ -85,6 +85,7 @@ import { KeyboardRoot } from "../../wrappers/KeyboardRoot";
 // ORCH-1206: single owner of the panel-height math (pure, no RN imports) so a
 // fractional numeric snapPoint (0–1) is a RATIO of the screen, not clamped UP
 // to MIN_SNAP_PX. Shared by the native + web variants below.
+import { useEscapeLayer } from "./escapeLayerStack";
 import { computeSheetHeight } from "./sheetSnapHeight";
 import type { SheetSnapPoint, SheetSnapValue } from "./sheetSnapHeight";
 
@@ -794,6 +795,10 @@ const SheetWeb: React.FC<SheetProps> = ({
   panelBackground,
   presentation,
 }) => {
+  // #3645 — this sheet's own Escape is handled by the platform modal
+  // (onRequestClose). Registering it as an Escape layer is what stops the
+  // sheet or dialog UNDERNEATH from closing on the same key press.
+  useEscapeLayer(visible);
   const competition = presentation !== undefined;
   // ORCH-1197 / ORCH-1199: size + anchor the panel against the VISIBLE (visual)
   // viewport, not the LAYOUT viewport. The Modal's absoluteFill fills

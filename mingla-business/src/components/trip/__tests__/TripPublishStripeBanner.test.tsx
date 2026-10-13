@@ -29,8 +29,10 @@ describe("ORCH-1076 — trip review banner (T-17 / T-18)", () => {
     expect(src).toContain("import { StripeBlockedCard }");
     expect(src).toContain("{needsStripe ? (");
     expect(src).toContain('title="Bank required for paid trips"');
+    // [TEST-MOD-APPROVED #3645] Approved copy change: the card now says the
+    // draft is saved and that bank setup brings the host straight back.
     expect(src).toContain(
-      "Connect a bank to publish this paid trip. Free trips can be published any time.",
+      "Connect a bank to publish this paid trip. Your draft is saved and you'll come straight back here.",
     );
     expect(src).toContain('ctaLabel="Connect bank"');
     expect(src).toContain('testID="trip-step5-stripe-blocked"');

@@ -99,3 +99,20 @@ export const stopHasValidDescription = (s: ExperienceStopDraft): boolean => {
   const len = s.description.trim().length;
   return len > 0 && len <= MAX_STOP_DESCRIPTION;
 };
+
+/**
+ * issue #3645 — what the whole-experience price FIELD starts with.
+ *
+ * The field used to start with the literal text "0.00", so typing 30 produced
+ * "0.0030". It now starts empty and shows 0.00 as its placeholder. A saved or
+ * prefilled price above zero is shown as it was saved; zero, blank or anything
+ * unreadable starts empty. Every reader of the value already treats an empty
+ * field as zero, so free/paid logic and validation are unchanged.
+ */
+export const initialWholePriceInput = (
+  saved: string | null | undefined,
+): string => {
+  if (typeof saved !== "string") return "";
+  const value = parseFloat(saved);
+  return Number.isFinite(value) && value > 0 ? saved : "";
+};

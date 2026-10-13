@@ -73,6 +73,15 @@ import { isDraftDirty } from "../../../src/utils/draftDirtyCheck";
 // Unlisted RSVP invite link — a private RSVP lands on its dashboard, not on a
 // public page nobody can open without an invite.
 import { markJustPublished } from "../../../src/utils/justPublishedSignal";
+import {
+  RSVP_CHIP_IN_SAVE_REFUSED_COPY,
+  isRsvpChipInBankRefusal,
+  rsvpDraftSaveFailureCopy,
+} from "../../../src/utils/rsvpChipInBankRefusal";
+import {
+  buildBankSetupReturnPath,
+  withBankSetupReturn,
+} from "../../../src/utils/bankSetupReturn";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -297,6 +306,21 @@ export default function RsvpEditRoute(): React.ReactElement {
     message: string;
   }>({ visible: false, message: "" });
   const [missingDraftTimedOut, setMissingDraftTimedOut] = React.useState(false);
+  // #3645 — a save the server REFUSED because chip-ins are on and the brand
+  // cannot collect says exactly that, once per failure. (A server that has the
+  // #3645 migration never refuses this save; this is for one that does not.)
+  const autosaveLastError = autosave.lastError ?? null;
+  const reportedAutosaveErrorRef = React.useRef<unknown>(null);
+  React.useEffect(() => {
+    if (autosaveLastError === null) {
+      reportedAutosaveErrorRef.current = null;
+      return;
+    }
+    if (reportedAutosaveErrorRef.current === autosaveLastError) return;
+    if (!isRsvpChipInBankRefusal(autosaveLastError)) return;
+    reportedAutosaveErrorRef.current = autosaveLastError;
+    setToast({ visible: true, message: RSVP_CHIP_IN_SAVE_REFUSED_COPY });
+  }, [autosaveLastError]);
 
   useEffect(() => {
     if (isEditPublished || draft !== null) {
@@ -574,10 +598,23 @@ export default function RsvpEditRoute(): React.ReactElement {
     router.push(`/rsvp/${draft.id}/preview` as never);
   }, [draft, router]);
 
-  const handleOpenStripe = React.useCallback((): void => {
-    if (draft === null) return;
-    router.push(`/brand/${draft.brandId}/payments/onboard` as never);
-  }, [draft, router]);
+  // #3645 — bank setup returns the host to this RSVP, on the step they left.
+  const handleOpenStripe = React.useCallback(
+    (step?: number): void => {
+      if (draft === null) return;
+      router.push(
+        withBankSetupReturn(
+          `/brand/${draft.brandId}/payments/onboard`,
+          buildBankSetupReturnPath({
+            kind: "rsvp",
+            id: draft.id,
+            step: step ?? draft.lastStepReached ?? initialStep ?? null,
+          }),
+        ) as never,
+      );
+    },
+    [draft, initialStep, router],
+  );
 
   const handleDiscardDraft = React.useCallback(
     async (draftToDiscard: DraftEvent): Promise<void> => {
@@ -705,8 +742,7 @@ export default function RsvpEditRoute(): React.ReactElement {
           }
           setToast({
             visible: true,
-            message:
-              "Couldn't save this draft. Tap Save again or check your connection.",
+            message: rsvpDraftSaveFailureCopy(error),
           });
         });
     },
@@ -766,6 +802,29 @@ export default function RsvpEditRoute(): React.ReactElement {
       queryClient,
       takePromotionPromise,
     ],
+  );
+
+  // #3645 — an AWAITED save for the wizard's "Publish without chip-ins for
+  // now": publish reads the stored draft, so the wizard must know the save
+  // landed. Resolves with the draft as the server stored it; rejects otherwise.
+  // A draft with no server row yet is given one first (the single promotion
+  // path), then saved.
+  const handleSaveDraftNow = React.useCallback(
+    async (draftToSave: DraftEvent): Promise<DraftEvent> => {
+      if (!isLocalOnlyDraft(draftToSave)) {
+        return autosave.saveDraftAsync(draftToSave);
+      }
+      const serverId = await handleRequireServerDraft();
+      const promoted = useDraftEventStore.getState().getDraft(serverId);
+      if (promoted === null || promoted === undefined) {
+        throw new Error("rsvp_draft_not_saved");
+      }
+      return autosave.saveDraftAsync({
+        ...promoted,
+        rsvpContributionEnabled: draftToSave.rsvpContributionEnabled,
+      });
+    },
+    [autosave, handleRequireServerDraft],
   );
 
   // Cycle 9b-2 edit-published branch — render the focused edit screen
@@ -936,6 +995,7 @@ export default function RsvpEditRoute(): React.ReactElement {
       fetchServerCover={fetchServerDraftCover}
       onRequireServerDraft={handleRequireServerDraft}
       onDiscardServerDraft={handleDiscardDraft}
+      onSaveDraftNow={handleSaveDraftNow}
       onPublishDraft={async (draftToPublish, invites) => {
         const published = await publishServerDraft.mutateAsync({
           draft: draftToPublish,

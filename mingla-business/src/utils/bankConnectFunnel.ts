@@ -1,3 +1,5 @@
+import { buildBankSetupWebReturnUrl } from "./bankSetupReturn";
+
 interface StartStripeWebBankConnectInput {
   brandId: string;
   userId: string;
@@ -16,6 +18,12 @@ interface StartStripeWebBankConnectInput {
   }) => Promise<{ onboarding_url: string }>;
   assign: (url: string) => void;
   destination?: BankConnectReturnDestination;
+  /**
+   * #3645 — where the host was when they tapped "Connect bank" (a creator
+   * screen). Validated; when usable it replaces the payments landing page as
+   * the return URL. Ignored inside the brand-creation funnel.
+   */
+  returnPath?: string | null;
 }
 
 export type BankConnectReturnDestination = "payments" | "brand-create";
@@ -24,10 +32,21 @@ export function buildBankConnectWebReturnUrl(
   origin: string,
   brandId: string,
   destination: BankConnectReturnDestination = "payments",
+  returnPath: string | null = null,
 ): string {
   const parsedOrigin = new URL(origin);
   if (parsedOrigin.protocol !== "https:") {
     throw new Error("Bank setup requires a secure HTTPS page.");
+  }
+  // #3645 — a host sent here from a creator goes back to that creator, also
+  // when they leave bank setup half-way. The brand-creation funnel keeps its
+  // own return (`/brand/new?resume_brand=`).
+  if (destination !== "brand-create") {
+    const creatorReturn = buildBankSetupWebReturnUrl(
+      parsedOrigin.origin,
+      returnPath,
+    );
+    if (creatorReturn !== null) return creatorReturn;
   }
   const returnUrl = destination === "brand-create"
     ? new URL("/brand/new", parsedOrigin.origin)
@@ -79,6 +98,7 @@ export async function startStripeWebBankConnect(
     input.origin,
     input.brandId,
     input.destination,
+    input.returnPath ?? null,
   );
   const result = await input.mintOnboarding({
     brandId: input.brandId,

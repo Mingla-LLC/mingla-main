@@ -148,6 +148,10 @@ const FORMAT_NOUN: Record<OfferingFormat, string> = {
   experience: "experience",
 };
 
+/** #3645 — shown in place of the cost preview while the brand has no currency. */
+export const COST_PREVIEW_NEEDS_CURRENCY_COPY =
+  "Choose a payout country to see what you keep.";
+
 export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
   overrides,
   defaults,
@@ -271,7 +275,13 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
       </View>
 
       {/* Preview chip (the hero) — Surface 1 §2.3 */}
-      {hasPrice ? (
+      {hasPrice && currency === null ? (
+        /* #3645 — no currency yet: a bare "You keep 24.62" is a number with no
+           meaning. Say what unlocks the figure instead. */
+        <Text style={styles.emptyHint} testID="who-covers-costs-needs-currency">
+          {COST_PREVIEW_NEEDS_CURRENCY_COPY}
+        </Text>
+      ) : hasPrice ? (
         <View
           style={styles.previewChip}
           accessibilityRole="summary"

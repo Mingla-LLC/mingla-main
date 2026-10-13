@@ -209,12 +209,17 @@ export const rsvpHideCountSub = (privateGuestList: boolean): string =>
     ? "Guests won't see how many spots remain."
     : "Guests see who's going — not how many spots remain.";
 
+/** #3645 — locked body for the draft wizard's chip-in bank callout. */
+export const RSVP_CHIP_IN_DRAFT_CALLOUT_BODY =
+  "Your draft saves either way. Connect now, or choose when you publish.";
+
 export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
   draft,
   updateDraft,
   brandDefaultCurrency,
   chipInPayoutReady,
   payoutCountryBrand,
+  onConnectChipInBank,
 }) => {
   const intelCapacityHighlight = useTurnoutFocusTarget("capacity");
   const capacityOn = draft.rsvpCapacity !== null;
@@ -428,11 +433,31 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
                 <Text style={styles.connectHeading}>
                   Connect your bank to collect contributions
                 </Text>
-                <Text style={styles.connectSub}>
-                  Guests can chip in once your payouts are set up. If your bank
-                  isn't connected yet, you'll be prompted to finish setup when
-                  you publish.
-                </Text>
+                {onConnectChipInBank !== undefined ? (
+                  /* #3645 — draft wizard: the save is never refused, and the
+                     host can connect now or decide at Publish. */
+                  <>
+                    <Text style={styles.connectSub}>
+                      {RSVP_CHIP_IN_DRAFT_CALLOUT_BODY}
+                    </Text>
+                    <Pressable
+                      onPress={onConnectChipInBank}
+                      accessibilityRole="button"
+                      accessibilityLabel="Connect bank"
+                      style={styles.connectBankBtn}
+                      testID="rsvp-contribution-connect-bank"
+                    >
+                      <Text style={styles.connectBankLabel}>Connect bank</Text>
+                      <Icon name="chevR" size={14} color={accent.warm} />
+                    </Pressable>
+                  </>
+                ) : (
+                  <Text style={styles.connectSub}>
+                    Guests can chip in once your payouts are set up. If your bank
+                    isn't connected yet, you'll be prompted to finish setup when
+                    you publish.
+                  </Text>
+                )}
               </View>
             )}
           </>
@@ -595,6 +620,20 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight * 1.35,
     color: textTokens.secondary,
     marginTop: spacing.xxs,
+  },
+  // #3645 — secondary "Connect bank" action inside the callout.
+  connectBankBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: spacing.xxs,
+    marginTop: spacing.sm,
+    minHeight: 44,
+  },
+  connectBankLabel: {
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+    color: accent.warm,
   },
 
   // ORCH-1335 — payout-ready positive callout (mirrors connectCallout with the

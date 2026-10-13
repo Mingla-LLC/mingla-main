@@ -238,8 +238,18 @@ function detailToInitialDraft(
 export default function ExperienceEditRoute(): React.ReactElement {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    step?: string | string[];
+  }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
+  // #3645 — `?step=N` reopens the wizard on the step the host left for bank
+  // setup. The wizard validates the number; anything else starts at step 1.
+  const stepParam = Array.isArray(params.step) ? params.step[0] : params.step;
+  const initialStep =
+    typeof stepParam === "string" && /^[0-9]{1,2}$/.test(stepParam)
+      ? Number(stepParam)
+      : undefined;
 
   const detailQuery = useExperienceDetail(
     typeof eventId === "string" ? eventId : null,
@@ -404,6 +414,7 @@ export default function ExperienceEditRoute(): React.ReactElement {
           initialCover={initialCover}
           liveExperience={isLive ? experience : undefined}
           liveSoldCount={isLive ? soldCountQuery.data ?? 0 : undefined}
+          initialStep={isLive ? undefined : initialStep}
           onPublished={markJustPublished}
           onComplete={(id) => {
             // issue #3237 — the wizard writes through RPCs, not a mutation

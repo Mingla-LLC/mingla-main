@@ -1,7 +1,5 @@
 /**
- * toward #3697 Wave 7 / 7b — Blast → Ads (credit balance + history + Stripe top-up).
- *
- * Host campaigns / Ari plan-pay / live-ad Home cards / withdraw refund land later.
+ * toward #3697 Wave 7 / 7b / 7c — Blast → Ads (credit + host campaigns).
  */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -31,6 +29,7 @@ import {
   typography,
 } from "../../../../src/constants/designSystem";
 import { useAdCreditWallet } from "../../../../src/hooks/marketing/useAdCreditWallet";
+import { useHostAdCampaigns } from "../../../../src/hooks/marketing/useHostAdCampaigns";
 import { useCanManageBrandPayments } from "../../../../src/hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { applyAdCreditTopUp } from "../../../../src/services/adCreditService";
@@ -46,10 +45,19 @@ function firstParam(
   return null;
 }
 
+function statusLabel(status: string): string {
+  const s = status.toUpperCase();
+  if (s === "ACTIVE") return "Live";
+  if (s === "PAUSED") return "Paused";
+  if (s === "ARCHIVED" || s === "DELETED") return "Ended";
+  return status;
+}
+
 export default function MarketingAdsRoute(): React.ReactElement {
   const brand = useCurrentBrand();
   const brandId = brand?.id ?? null;
   const walletQuery = useAdCreditWallet(brandId);
+  const campaignsQuery = useHostAdCampaigns(brandId);
   const manage = useCanManageBrandPayments(brandId);
   const [sheetMode, setSheetMode] = useState<AdCreditQuoteMode | null>(null);
   const [returnNotice, setReturnNotice] = useState<string | null>(null);
@@ -57,32 +65,66 @@ export default function MarketingAdsRoute(): React.ReactElement {
     ad_credit_top_up?: string | string[];
     session_id?: string | string[];
     payment?: string | string[];
+    reference?: string | string[];
+    trxref?: string | string[];
   }>();
   const router = useRouter();
   const appliedSessionRef = useRef<string | null>(null);
 
   const onRefresh = useCallback(() => {
     void walletQuery.refetch();
-  }, [walletQuery]);
+    void campaignsQuery.refetch();
+  }, [campaignsQuery, walletQuery]);
 
-  // Web Checkout return: ?ad_credit_top_up=1&session_id=cs_...
+  // Stripe Checkout return: ?ad_credit_top_up=1&session_id=cs_...
+  // Paystack return: ?reference=mingla_adc_... (and/or trxref)
   useEffect(() => {
     const flag = firstParam(params.ad_credit_top_up);
     const sessionId = firstParam(params.session_id);
     const payment = firstParam(params.payment);
+    const paystackRef =
+      firstParam(params.reference) ?? firstParam(params.trxref);
     if (payment === "cancelled" || flag === "0") {
       setReturnNotice("Checkout canceled. Credit was not added.");
       router.replace("/(tabs)/marketing/ads" as never);
       return;
     }
-    if (flag !== "1" || sessionId === null || brandId === null) return;
-    if (appliedSessionRef.current === sessionId) return;
+
+    if (brandId === null) return;
     if (!manage.allowed || manage.isLoading) return;
+
+    if (paystackRef && paystackRef.startsWith("mingla_adc_")) {
+      if (appliedSessionRef.current === paystackRef) return;
+      appliedSessionRef.current = paystackRef;
+      void (async () => {
+        try {
+          await applyAdCreditTopUp({
+            brandId,
+            payCents: 0,
+            currency: "NGN",
+            paystackReference: paystackRef,
+            idempotencyKey: `top_up:${paystackRef}`,
+          });
+          setReturnNotice("Ads credit added.");
+          await walletQuery.refetch();
+        } catch {
+          setReturnNotice(
+            "Payment returned but credit was not added. Try again or contact support.",
+          );
+          appliedSessionRef.current = null;
+        } finally {
+          router.replace("/(tabs)/marketing/ads" as never);
+        }
+      })();
+      return;
+    }
+
+    if (flag !== "1" || sessionId === null) return;
+    if (appliedSessionRef.current === sessionId) return;
 
     appliedSessionRef.current = sessionId;
     void (async () => {
       try {
-        // Edge reads pay/currency from the Checkout Session's PaymentIntent.
         await applyAdCreditTopUp({
           brandId,
           payCents: 0,
@@ -106,7 +148,9 @@ export default function MarketingAdsRoute(): React.ReactElement {
     manage.isLoading,
     params.ad_credit_top_up,
     params.payment,
+    params.reference,
     params.session_id,
+    params.trxref,
     router,
     walletQuery,
   ]);
@@ -132,7 +176,6 @@ export default function MarketingAdsRoute(): React.ReactElement {
     );
   }
 
-  // Role-lookup RPC failure must not look like permission denied.
   if (walletQuery.viewError) {
     return (
       <View style={styles.host}>
@@ -188,6 +231,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const history = walletQuery.data?.history ?? [];
   const currency = wallet?.currency ?? "USD";
   const balanceCents = wallet?.balance_cents ?? 0;
+  const campaigns = campaignsQuery.campaigns;
 
   return (
     <View style={styles.host} testID="ads-credit-screen">
@@ -195,7 +239,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
         contentContainerStyle={styles.scroll}
         refreshControl={
           <RefreshControl
-            refreshing={walletQuery.isRefetching}
+            refreshing={walletQuery.isRefetching || campaignsQuery.isRefetching}
             onRefresh={onRefresh}
           />
         }
@@ -211,7 +255,8 @@ export default function MarketingAdsRoute(): React.ReactElement {
             {formatCurrency(balanceCents, currency, true)}
           </Text>
           <Text style={styles.sub}>
-            Top-ups keep 15% as Mingla's fee. Withdraw unused credit any time.
+            Top-ups keep 15% as Mingla&apos;s fee. Withdraw unused credit any time.
+            USD/GBP by card; Naira via Paystack.
           </Text>
           <View style={styles.actions}>
             <Pressable
@@ -235,6 +280,53 @@ export default function MarketingAdsRoute(): React.ReactElement {
           </View>
         </GlassCard>
 
+        <Text style={styles.sectionTitle}>Your ads</Text>
+        <GlassCard variant="base" padding={0}>
+          {campaigns.length === 0 ? (
+            <View style={styles.emptyHistory} testID="ads-campaigns-empty">
+              <Text style={styles.emptyHistoryText}>
+                No Host ads yet. Ask Ari to propose a plan, or add credit first.
+              </Text>
+            </View>
+          ) : (
+            campaigns.map((c) => (
+              <Pressable
+                key={c.id}
+                style={styles.campaignRow}
+                onPress={() =>
+                  router.push(`/(tabs)/marketing/ads/${c.id}` as never)
+                }
+                accessibilityRole="button"
+                accessibilityLabel={`${c.name}, ${statusLabel(c.status)}`}
+                testID={`ads-campaign-row-${c.id}`}
+              >
+                <View style={styles.campaignText}>
+                  <Text style={styles.campaignName}>{c.name}</Text>
+                  <Text style={styles.campaignMeta}>
+                    {c.platform} ·{" "}
+                    {formatCurrency(
+                      Number(c.cap_cents ?? c.daily_budget_cents ?? 0),
+                      c.currency ?? currency,
+                      true,
+                    )}
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.statusPill,
+                    String(c.status).toUpperCase() === "ACTIVE" &&
+                      styles.statusPillLive,
+                  ]}
+                >
+                  <Text style={styles.statusPillLabel}>
+                    {statusLabel(c.status)}
+                  </Text>
+                </View>
+              </Pressable>
+            ))
+          )}
+        </GlassCard>
+
         <Text style={styles.sectionTitle}>History</Text>
         <GlassCard variant="base" padding={0}>
           {history.length === 0 ? (
@@ -248,14 +340,6 @@ export default function MarketingAdsRoute(): React.ReactElement {
               <AdCreditLedgerRow key={row.id} row={row} />
             ))
           )}
-        </GlassCard>
-
-        <Text style={styles.sectionTitle}>Your ads</Text>
-        <GlassCard variant="base" padding={spacing.lg}>
-          <Text style={styles.emptyHistoryText} testID="ads-campaigns-placeholder">
-            Ad campaigns you run with Ari will list here. Plan and pay ships
-            next.
-          </Text>
         </GlassCard>
       </ScrollView>
 
@@ -336,5 +420,40 @@ const styles = StyleSheet.create({
   emptyHistoryText: {
     ...typography.bodySm,
     color: textTokens.secondary,
+  },
+  campaignRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: glass.border.chrome,
+    gap: spacing.sm,
+  },
+  campaignText: {
+    flex: 1,
+    gap: 2,
+  },
+  campaignName: {
+    ...typography.body,
+    color: textTokens.primary,
+  },
+  campaignMeta: {
+    ...typography.caption,
+    color: textTokens.secondary,
+  },
+  statusPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: glass.tint.chrome.idle,
+  },
+  statusPillLive: {
+    backgroundColor: "rgba(46, 160, 90, 0.18)",
+  },
+  statusPillLabel: {
+    ...typography.caption,
+    color: textTokens.primary,
   },
 });

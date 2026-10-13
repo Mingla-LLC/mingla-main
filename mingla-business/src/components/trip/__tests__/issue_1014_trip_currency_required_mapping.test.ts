@@ -94,7 +94,11 @@ describe("issue #1014 rework — autosave catches map money-setup guards (F-1)",
     expect(calls).toBe(2);
   });
 
-  test("the payment_onboarding branch surfaces the locked copy and routes to payments", () => {
+  // [TEST-MOD-APPROVED #3645] Approved behaviour change: a step save no longer
+  // sends the host to bank setup. The branch still surfaces the locked copy
+  // (banner + toast on the step) and now navigates nowhere; the stop is at
+  // Publish, where the Review card offers "Connect bank".
+  test("the payment_onboarding branch surfaces the locked copy and stays on the step", () => {
     const firstCatch = WIZARD_SOURCE.indexOf(
       "resolveProviderNeutralPaidPublishGuardCopy(autosaveErrCode)",
     );
@@ -102,9 +106,11 @@ describe("issue #1014 rework — autosave catches map money-setup guards (F-1)",
     const branch = WIZARD_SOURCE.slice(firstCatch, firstCatch + 700);
     expect(branch).toContain('guardCopy.action === "payment_onboarding"');
     expect(branch).toContain("message: guardCopy.body");
-    expect(branch).toContain(
-      "router.push(brandPaymentOnboardingRoute(trip.brandId)",
-    );
+    expect(branch).toContain("showToast(guardCopy.body)");
+    const gateStart = branch.indexOf('guardCopy.action === "payment_onboarding"');
+    const gateEnd = branch.indexOf("return;", gateStart);
+    expect(gateEnd).toBeGreaterThan(gateStart);
+    expect(branch.slice(gateStart, gateEnd)).not.toContain("router.push");
   });
 
   test("unrecognized autosave errors keep the connection toast (both catches)", () => {
