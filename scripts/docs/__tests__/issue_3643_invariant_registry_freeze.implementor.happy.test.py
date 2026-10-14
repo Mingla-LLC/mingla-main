@@ -11,6 +11,8 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
 
@@ -124,6 +126,36 @@ def load_guard(root: Path) -> ModuleType:
 
 def blob(root: Path, commit: str, path: str) -> bytes:
     return git(root, "show", f"{commit}:{path}")
+
+
+def optional_blob(root: Path, commit: str, path: str) -> bytes | None:
+    proc = subprocess.run(
+        ["git", "show", f"{commit}:{path}"],
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return proc.stdout if proc.returncode == 0 else None
+
+
+def find_freeze_transition(root: Path, guard: ModuleType, head: str) -> tuple[str, str]:
+    banner_prefix = (guard.BANNER + "\n\n").encode()
+    candidates: list[tuple[str, str]] = []
+    commits = git(root, "rev-list", head, "--", guard.REGISTRY_PATH).decode().splitlines()
+    for commit in commits:
+        current = optional_blob(root, commit, guard.REGISTRY_PATH)
+        if current is None or not current.startswith(banner_prefix):
+            continue
+        parents = git(root, "show", "-s", "--format=%P", commit).decode().split()
+        for parent in parents:
+            previous = optional_blob(root, parent, guard.REGISTRY_PATH)
+            if previous is not None and current == banner_prefix + previous:
+                candidates.append((parent, commit))
+    check(
+        len(candidates) == 1,
+        f"expected exactly one banner-only freeze transition, found {len(candidates)}",
+    )
+    return candidates[0]
 
 
 def workflow_name(text: str) -> str:
@@ -372,37 +404,153 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
-    root = args.repo_root.resolve()
-    guard = load_guard(root)
-    base = guard.GitTree(root).commit(args.base_sha, "base SHA")
-    head = guard.GitTree(root).commit(args.head_sha, "head SHA")
-    merge_base = guard.GitTree(root).merge_base(base, head)
+def commit_paths(root: Path, message: str, *paths: str) -> str:
+    git(root, "add", "--", *paths)
+    git(root, "commit", "--quiet", "-m", message)
+    return git(root, "rev-parse", "HEAD").decode().strip()
 
-    mode, base_registry, head_registry = guard.classify_freeze(
-        guard.GitTree(root), base, head, merge_base
-    )
-    check(mode == "bootstrap", f"Phase 2 proof expected bootstrap mode, got {mode}")
-    check(
-        head_registry == (guard.BANNER + "\n\n").encode() + base_registry,
-        "bootstrap changed historical registry body bytes",
-    )
+
+def expect_failure(action: Callable[[], object], fragment: str) -> None:
+    try:
+        action()
+    except AssertionError as exc:
+        check(fragment in str(exc), f"unexpected failure: {exc}")
+    else:
+        fail(f"mutation unexpectedly passed: {fragment}")
+
+
+def exercise_future_states(root: Path, head: str) -> None:
+    owner_id = "I-PROPOSED-1436-SECRET-CAPACITY-EXIT"
+    owner_path = EXPECTED_OWNERS[owner_id]
+    with tempfile.TemporaryDirectory(prefix="issue-3643-frozen-") as temp_dir:
+        clone = Path(temp_dir) / "repo"
+        git(root, "clone", "--quiet", "--shared", str(root), str(clone))
+        git(clone, "switch", "--quiet", "--detach", head)
+        git(clone, "config", "user.name", "Phase 2 proof")
+        git(clone, "config", "user.email", "phase2-proof@example.invalid")
+        git(clone, "config", "commit.gpgsign", "false")
+
+        owner_file = clone / owner_path
+        owner_file.write_text(
+            owner_file.read_text() + "\n// Future frozen owner-surface change.\n"
+        )
+        ordinary_head = commit_paths(clone, "future frozen owner change", owner_path)
+        check(
+            validate_proof(clone, head, ordinary_head, exercise_future=False) == "frozen",
+            "ordinary future owner-surface commit did not validate in frozen mode",
+        )
+
+        git(clone, "switch", "--quiet", "--detach", head)
+        future_path = "scripts/docs/__tests__/issue_3643_future_owner.test.mjs"
+        (clone / future_path).write_text(
+            "// MINGLA-INVARIANT: I-3643-FUTURE-LOCAL-OWNER | issue #3643 | "
+            "Future invariants remain locally owned by their enforcing tests.\n"
+            'export const FUTURE_INVARIANT = "I-3643-FUTURE-LOCAL-OWNER";\n'
+        )
+        future_head = commit_paths(clone, "future local invariant", future_path)
+        check(
+            validate_proof(clone, head, future_head, exercise_future=False) == "frozen",
+            "future valid local declaration did not validate in frozen mode",
+        )
+
+        git(clone, "switch", "--quiet", "--detach", head)
+        original = owner_file.read_text()
+        marker = f"MINGLA-INVARIANT: {owner_id} |"
+        without_owner = "".join(
+            line for line in original.splitlines(keepends=True) if marker not in line
+        )
+        check(without_owner != original, "original owner declaration fixture was not found")
+        owner_file.write_text(without_owner)
+        missing_head = commit_paths(clone, "remove original owner", owner_path)
+        expect_failure(
+            lambda: validate_proof(clone, head, missing_head, exercise_future=False),
+            "original invariant owners changed or disappeared",
+        )
+
+        git(clone, "switch", "--quiet", "--detach", head)
+        current_workflows = workflows(clone, head)
+        docs_path, _ = current_workflows["Docs Artifact Regression"]
+        docs_file = clone / docs_path
+        route_line = '      - "**/*.spec.*"\n'
+        routed = docs_file.read_text()
+        check(routed.count(route_line) == 2, "owner-route fixture changed")
+        docs_file.write_text(routed.replace(route_line, "", 1))
+        route_head = commit_paths(clone, "remove one owner route", docs_path)
+        expect_failure(
+            lambda: validate_proof(clone, head, route_head, exercise_future=False),
+            "docs workflow pull_request paths miss invariant owner surfaces: **/*.spec.*",
+        )
+
+
+def validate_proof(
+    root: Path, base_arg: str, head_arg: str, *, exercise_future: bool
+) -> str:
+    guard = load_guard(root)
+    tree = guard.GitTree(root)
+    base = tree.commit(base_arg, "base SHA")
+    head = tree.commit(head_arg, "head SHA")
+    merge_base = tree.merge_base(base, head)
+
+    mode, base_registry, head_registry = guard.classify_freeze(tree, base, head, merge_base)
+    check(mode in {"bootstrap", "frozen"}, f"unsupported event mode: {mode}")
+    if mode == "bootstrap":
+        check(
+            head_registry == (guard.BANNER + "\n\n").encode() + base_registry,
+            "bootstrap changed historical registry body bytes",
+        )
+    else:
+        check(
+            head_registry == base_registry
+            and head_registry.startswith((guard.BANNER + "\n\n").encode()),
+            "frozen event changed historical registry bytes",
+        )
 
     validated_mode, declarations = guard.validate(root, base, head)
-    check(validated_mode == "bootstrap", "full guard did not validate bootstrap mode")
+    check(validated_mode == mode, "full guard and event classifier disagree")
     actual_owners = {key: value.path for key, value in declarations.items()}
-    check(len(actual_owners) == 35, f"expected 35 migrated declarations, found {len(actual_owners)}")
-    check(actual_owners == EXPECTED_OWNERS, "migrated invariant owner map changed")
+    owner_mismatches = {
+        key: (expected, actual_owners.get(key))
+        for key, expected in EXPECTED_OWNERS.items()
+        if actual_owners.get(key) != expected
+    }
+    check(
+        not owner_mismatches,
+        "original invariant owners changed or disappeared: "
+        + ", ".join(
+            f"{key} expected {expected}, found {actual or 'missing'}"
+            for key, (expected, actual) in sorted(owner_mismatches.items())
+        ),
+    )
+    if mode == "bootstrap":
+        check(
+            len(actual_owners) == 35,
+            f"bootstrap expected 35 migrated declarations, found {len(actual_owners)}",
+        )
+        check(actual_owners == EXPECTED_OWNERS, "bootstrap owner map changed")
     check(
         sum(owner == ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs" for owner in actual_owners.values()) == 3,
         "multiple declarations in one gate are not preserved",
     )
     exercise_contract_helpers(guard)
 
-    base_workflows = workflows(root, base)
+    transition_base, transition_head = find_freeze_transition(root, guard, head)
+    transition_merge_base = tree.merge_base(transition_base, transition_head)
+    transition_mode, historical_registry, frozen_registry = guard.classify_freeze(
+        tree, transition_base, transition_head, transition_merge_base
+    )
+    check(transition_mode == "bootstrap", "discovered freeze transition is not bootstrap")
+    check(
+        frozen_registry == (guard.BANNER + "\n\n").encode() + historical_registry,
+        "discovered freeze transition changed historical registry body bytes",
+    )
+
+    base_workflows = workflows(root, transition_base)
+    transition_workflows = workflows(root, transition_head)
+    check(
+        set(base_workflows) == set(transition_workflows),
+        "freeze transition changed workflow inventory",
+    )
     head_workflows = workflows(root, head)
-    check(set(base_workflows) == set(head_workflows), "workflow inventory changed")
     _, docs_text = head_workflows["Docs Artifact Regression"]
     for event in ("pull_request", "push"):
         missing_routes = OWNER_SURFACE_ROUTES - workflow_trigger_paths(docs_text, event)
@@ -411,6 +559,17 @@ def main() -> int:
             f"docs workflow {event} paths miss invariant owner surfaces: "
             + ", ".join(sorted(missing_routes)),
         )
+    current_functional_names = {
+        name
+        for name, (_, text) in head_workflows.items()
+        if noncomment_registry_lines(text, guard.REGISTRY_PATH)
+        and name not in {"Strict Grep Gates (Mingla Host)", "Docs Artifact Regression"}
+    }
+    check(
+        not current_functional_names,
+        "current functional workflows still route on the registry: "
+        + ", ".join(sorted(current_functional_names)),
+    )
     functional_names = {
         name
         for name, (_, text) in base_workflows.items()
@@ -420,7 +579,7 @@ def main() -> int:
     check(len(functional_names) == 19, f"expected 19 functional workflow readers, found {len(functional_names)}")
     for name in sorted(functional_names):
         base_text = base_workflows[name][1]
-        head_text = head_workflows[name][1]
+        head_text = transition_workflows[name][1]
         check(
             not noncomment_registry_lines(head_text, guard.REGISTRY_PATH),
             f"functional workflow still routes on the registry: {name}",
@@ -431,11 +590,16 @@ def main() -> int:
             f"non-registry routing changed in functional workflow: {name}",
         )
 
-    base_batch = json.loads(blob(root, base, ".github/ci-batch/MANIFEST.json"))
+    base_batch = json.loads(blob(root, transition_base, ".github/ci-batch/MANIFEST.json"))
+    transition_batch = json.loads(blob(root, transition_head, ".github/ci-batch/MANIFEST.json"))
     head_batch = json.loads(blob(root, head, ".github/ci-batch/MANIFEST.json"))
     check(
         manifest_counts(base_batch, guard.REGISTRY_PATH) == (9, 3, 26),
         "base CI-batch registry-routing census changed",
+    )
+    check(
+        manifest_counts(transition_batch, guard.REGISTRY_PATH) == (0, 0, 0),
+        "freeze transition left CI-batch registry routing behind",
     )
     check(
         manifest_counts(head_batch, guard.REGISTRY_PATH) == (0, 0, 0),
@@ -447,7 +611,7 @@ def main() -> int:
     }
     head_origins = {
         f"{origin['stem']}.{origin['extension']}": origin
-        for origin in head_batch.get("legacyOrigins", [])
+        for origin in transition_batch.get("legacyOrigins", [])
     }
     changed_source_digests = {
         name
@@ -471,12 +635,12 @@ def main() -> int:
         "live workflow source-digest reconciliation changed the wrong origins",
     )
     for name in sorted(expected_source_digests):
-        expected = hashlib.sha256(blob(root, head, f".github/workflows/{name}")).hexdigest()
+        expected = hashlib.sha256(blob(root, transition_head, f".github/workflows/{name}")).hexdigest()
         actual = head_origins[name]["workflowMetadata"]["sourceSha256"]
         check(actual == expected, f"live workflow source digest is stale: {name}")
 
     base_suites = {suite["id"]: suite for suite in base_batch.get("suites", [])}
-    head_suites = {suite["id"]: suite for suite in head_batch.get("suites", [])}
+    head_suites = {suite["id"]: suite for suite in transition_batch.get("suites", [])}
     changed_trigger_digests = {
         suite_id
         for suite_id in base_suites
@@ -498,15 +662,15 @@ def main() -> int:
         base_batch, guard.REGISTRY_PATH, expected_source_digests
     )
     normalized_head = strip_manifest_registry(
-        head_batch, guard.REGISTRY_PATH, expected_source_digests
+        transition_batch, guard.REGISTRY_PATH, expected_source_digests
     )
     check(
-        head_batch.get("phase3bContractSha256")
+        transition_batch.get("phase3bContractSha256")
         == normalized_head.get("phase3bContractSha256"),
         "Phase 3B contract digest is stale after trigger reconciliation",
     )
     check(
-        head_batch.get("phase3cContractSha256")
+        transition_batch.get("phase3cContractSha256")
         == normalized_head.get("phase3cContractSha256"),
         "Phase 3C contract digest is stale after trigger reconciliation",
     )
@@ -515,19 +679,42 @@ def main() -> int:
         "CI-batch non-registry routing or suite metadata changed",
     )
 
-    base_strict = json.loads(blob(root, base, ".github/scripts/strict-grep/MANIFEST.json"))
+    base_strict = json.loads(blob(root, transition_base, ".github/scripts/strict-grep/MANIFEST.json"))
+    transition_strict = json.loads(
+        blob(root, transition_head, ".github/scripts/strict-grep/MANIFEST.json")
+    )
     head_strict = json.loads(blob(root, head, ".github/scripts/strict-grep/MANIFEST.json"))
     check(
-        strict_entries(base_strict) == strict_entries(head_strict),
+        strict_entries(base_strict) == strict_entries(transition_strict),
+        "freeze transition changed strict-reader registrations or modes",
+    )
+    check(
+        strict_entries(transition_strict) == strict_entries(head_strict),
         "strict-reader enforcement, invocation, modes, self-test, or job keys changed",
     )
 
     for path in RETAINED_FIXTURES:
-        check(blob(root, base, path) == blob(root, head, path), f"retained historical fixture changed: {path}")
+        check(
+            blob(root, transition_base, path) == blob(root, transition_head, path),
+            f"freeze transition changed retained historical fixture: {path}",
+        )
+
+    if exercise_future:
+        exercise_future_states(root, head)
+
+    return mode
+
+
+def main() -> int:
+    args = parse_args()
+    mode = validate_proof(
+        args.repo_root.resolve(), args.base_sha, args.head_sha, exercise_future=True
+    )
 
     print(
         "PASS: banner-only freeze; 21 readers removed; 35 owners localized; "
-        "19 workflow and 9 batch routes removed; declarations and registrations preserved"
+        "19 workflow and 9 batch routes removed; declarations and registrations preserved; "
+        f"{mode} event and future-frozen matrix passed"
     )
     return 0
 
