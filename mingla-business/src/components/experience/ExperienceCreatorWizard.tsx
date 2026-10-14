@@ -128,7 +128,7 @@ import {
 import {
   brandPaymentOnboardingRoute,
   isOrganiserTermsRefusalMessage,
-  ORGANISER_TERMS_UNCONFIRMED_COPY,
+  organiserTermsUnresolvedCopy,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import type { ExperienceDetail } from "../../services/experienceDetailService";
@@ -1065,13 +1065,15 @@ export const ExperienceCreatorWizard: React.FC<
   const handleSubmit = useCallback(
     async (publish: boolean): Promise<void> => {
       if (brand === null || user?.id === undefined) return;
-      // #3645 — an experience cannot leave draft on a brand with no currency
-      // (the server refuses it, free or priced). Stop here, before any RPC,
-      // and point at the country prompt on this screen. Draft saves are exempt.
+      // #3645 — a PAID experience cannot leave draft on a brand with no
+      // currency. Stop here, before any RPC, and point at the country prompt on
+      // this screen. Draft saves are exempt, and so is a free experience: the
+      // server answers for that one (see experiencePublishCurrencyGate).
       if (
         experiencePublishNeedsPayoutCountry({
           publish,
           brandDefaultCurrency: brand.defaultCurrency,
+          isPaid: experienceDraftIsPaid({ isFree, resolvedTotalMajor }),
         })
       ) {
         setToast(EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY);
@@ -1179,7 +1181,7 @@ export const ExperienceCreatorWizard: React.FC<
           if (publish && isOrganiserTermsRefusalMessage(code)) {
             acceptTermsAfterServerRefusal(
               () => resumePublishRef.current(),
-              () => setToast(ORGANISER_TERMS_UNCONFIRMED_COPY),
+              (reason) => setToast(organiserTermsUnresolvedCopy(reason)),
             );
             return;
           }
@@ -1315,11 +1317,12 @@ export const ExperienceCreatorWizard: React.FC<
   }, [currentIntelGateKey, handleSubmit, isLiveEdit]);
 
   const beginPublish = useCallback(async (): Promise<void> => {
-    // #3645 — no currency, no publish: stop before terms, invites or any RPC.
+    // #3645 — paid and no currency: stop before terms, invites or any RPC.
     if (
       experiencePublishNeedsPayoutCountry({
         publish: true,
         brandDefaultCurrency: brand?.defaultCurrency,
+        isPaid: experienceDraftIsPaid({ isFree, resolvedTotalMajor }),
       })
     ) {
       setToast(EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY);
@@ -1891,14 +1894,19 @@ export const ExperienceCreatorWizard: React.FC<
           </View>
         ) : null}
 
-        {/* #3645 — Publish waits for a payout country on a brand with no
-            currency (free or priced). The prompt sits on the publish screen so
-            the organiser chooses and publishes without leaving their draft. */}
+        {/* #3645 — a PAID Publish waits for a payout country on a brand with no
+            currency, so the prompt is on the publish screen from the start. A
+            free experience shows it only once the server has refused for want
+            of a currency. Either way the organiser chooses and publishes
+            without leaving their draft. */}
         {step === finalStep && !isLiveEdit ? (
           <View style={styles.stripeBannerWrap}>
             <PayoutCountryInlinePrompt
               brand={brand}
-              priced
+              priced={
+                serverCurrencyRefusal ||
+                experienceDraftIsPaid({ isFree, resolvedTotalMajor })
+              }
               force={serverCurrencyRefusal}
               reason={EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY}
               onCountryChosen={() => setServerCurrencyRefusal(false)}
