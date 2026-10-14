@@ -623,6 +623,9 @@ jobs:
       - name: "Issue #3802 — install the admin app's packages for the rendered stacking check"
         working-directory: mingla-admin
         run: npm ci --no-audit --no-fund
+      - name: "Issue #3802 — Draft count refreshes coalesce behind a delayed request"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/draft_count_refresh_issue3802.implementor.happy.test.js
       - name: "Issue #3802 — a question opened from an open card is drawn above the card (rendered, every width)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave1_overlay_stack.rendered.test.js

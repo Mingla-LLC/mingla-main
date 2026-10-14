@@ -17,17 +17,36 @@ export function useDraftCounts({ enabled = true } = {}) {
   const [state, setState] = useState({ key, data: null, error: null, loaded: false });
   const seq = useRef(0);
   const pending = useRef("");
+  const queued = useRef("");
+  const live = useRef(false);
+
+  useEffect(() => {
+    live.current = enabled;
+    return () => {
+      live.current = false;
+      queued.current = "";
+      seq.current += 1;
+    };
+  }, [enabled, key]);
+
   const load = useCallback(async ({ quiet = false } = {}) => {
-    if (!enabled || pending.current === key) return;
+    if (!enabled || !live.current) return;
+    if (pending.current === key) {
+      queued.current = key;
+      return;
+    }
     pending.current = key;
     const mine = ++seq.current;
     try {
       const data = await drafts.fetchDraftCounts();
-      if (mine === seq.current) setState({ key, data, error: null, loaded: true });
+      if (live.current && mine === seq.current) setState({ key, data, error: null, loaded: true });
     } catch (error) {
-      if (mine === seq.current && !quiet) setState({ key, data: null, error, loaded: true });
+      if (live.current && mine === seq.current && !quiet) setState({ key, data: null, error, loaded: true });
     } finally {
       if (pending.current === key) pending.current = "";
+      const refreshAgain = queued.current === key;
+      if (refreshAgain) queued.current = "";
+      if (refreshAgain && live.current && enabled) await load({ quiet: true });
     }
   }, [enabled, key]);
 
