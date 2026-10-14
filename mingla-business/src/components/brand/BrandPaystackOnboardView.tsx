@@ -159,8 +159,12 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
       opener.focus();
       return;
     }
-    const node = findNodeHandle(opener);
-    if (node !== null) AccessibilityInfo.setAccessibilityFocus(node);
+    try {
+      const node = findNodeHandle(opener);
+      if (node !== null) AccessibilityInfo.setAccessibilityFocus(node);
+    } catch {
+      // No screen-reader focus on this platform: the form is in view already.
+    }
   }, [focusFirstFieldSignal, showBankForm]);
   const lastAnnouncementRef = useRef<string | null>(null);
   const lastReportedBankErrorRef = useRef<unknown>(null);

@@ -181,7 +181,11 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
     scrollToStepOffset?.(sectionYRef.current[first] ?? 0);
     const message = errorForKey(errorsRef.current, first);
     if (message !== undefined) {
-      AccessibilityInfo.announceForAccessibility(message);
+      try {
+        AccessibilityInfo.announceForAccessibility(message);
+      } catch {
+        // No screen-reader support on this platform: the scroll is enough.
+      }
     }
   }, [focusFirstErrorSignal, scrollToStepOffset]);
   const focusName = useCallback(() => nameRef.current?.focus(), []);

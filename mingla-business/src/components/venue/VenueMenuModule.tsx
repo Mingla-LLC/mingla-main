@@ -441,14 +441,14 @@ export function VenueMenuModule({
   const handleSaveItem = useCallback(
     (input: MenuItemSheetSaveInput): void => {
       if (itemSheetMenuId === null) return;
+      setSaveError(false);
+      setItemSaveFailure(null);
       // #3645 — `menu_items.currency` cannot be empty, and `currency` here is
       // only a crash-guard value (pounds) for a brand with none. A PRICED item
       // is therefore not saved until the brand has a real currency; the sheet
       // shows the payout-country prompt and keeps Save off, and this is the
       // belt behind it. A free or "price on request" item saves as before.
       if (!brandHasCurrency && (input.priceCents ?? 0) > 0) return;
-      setSaveError(false);
-      setItemSaveFailure(null);
       const parentMenu = menus.find((m) => m.id === itemSheetMenuId) ?? null;
       const nextSort =
         editingItem !== null
