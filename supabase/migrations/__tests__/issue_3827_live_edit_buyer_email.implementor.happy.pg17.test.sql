@@ -1277,4 +1277,31 @@ BEGIN
 END $s04$;
 ROLLBACK;
 
+-- ─── U-01 (rework): unpublish and publish record nothing at all ──────────────
+BEGIN;
+DO $u01$
+DECLARE
+  f record;
+  v_rev integer;
+BEGIN
+  SELECT * INTO f FROM pg_temp.e3827_event('u01');
+  PERFORM pg_temp.e3827_go_live(f.v_brand);
+  v_rev := (public.business_unpublish_event_to_draft(f.v_event) ->> 'client_revision')::integer;
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF (SELECT status FROM public.events WHERE id = f.v_event) <> 'draft' THEN
+    RAISE EXCEPTION 'U-01 FIXTURE: the event was not unpublished';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.event_edit_notices WHERE event_id = f.v_event)
+     OR EXISTS (SELECT 1 FROM public.event_edit_notice_pending WHERE event_id = f.v_event) THEN
+    RAISE EXCEPTION 'U-01 FAIL: unpublishing recorded a notice (%)',
+      (SELECT jsonb_agg(to_jsonb(n) - 'base_snapshot' - 'after_snapshot') FROM public.event_edit_notices AS n WHERE n.event_id = f.v_event);
+  END IF;
+  -- Publishing records nothing either: every fixture in this file publishes
+  -- through the wizard's entry point and asserts that no notice and no
+  -- capture is left behind.
+  RAISE NOTICE 'U-01 PASS: unpublishing records nothing (publishing is checked by every fixture)';
+END $u01$;
+ROLLBACK;
+
 \echo 'issue_3827_live_edit_buyer_email.implementor.happy: all cases passed'

@@ -856,6 +856,8 @@ CREATE TRIGGER issue_3827_capture_edit_notice
   BEFORE UPDATE ON public.events
   FOR EACH ROW
   WHEN (OLD.status IN ('scheduled', 'live')
+        -- An unpublish (scheduled or live to draft) or a cancel is not an edit.
+        AND NEW.status IN ('scheduled', 'live')
         AND OLD.event_type <> 'trip'
         AND OLD.deleted_at IS NULL
         AND (OLD.timezone IS DISTINCT FROM NEW.timezone
@@ -953,6 +955,13 @@ BEGIN
      WHERE p.xid = NEW.xid AND p.event_id = NEW.event_id
      RETURNING p.before, p.actor INTO v_before, v_actor;
     IF NOT FOUND THEN
+      RETURN NULL;
+    END IF;
+    -- The listing left sale in this transaction (unpublished to a draft,
+    -- cancelled, ended or deleted): that is not an edit to tell anyone about.
+    IF NOT EXISTS (SELECT 1 FROM public.events AS e
+                    WHERE e.id = NEW.event_id AND e.status IN ('scheduled', 'live')
+                      AND e.deleted_at IS NULL) THEN
       RETURN NULL;
     END IF;
     v_after := public.business_event_notice_snapshot(NEW.event_id);
