@@ -114,6 +114,13 @@ export interface BrandPayoutCountryFieldProps {
   onBrandChanged?: (brand: Brand) => void;
   /** The country now chosen (after a successful pick). */
   onCountryChosen?: (rail: BankConnectRail) => void;
+  /**
+   * A pick has been sent and its outcome is not known yet. Whatever the host
+   * was told about the previous country stops being true from here: the server
+   * may move the brand off its rail and then fail part-way. `onCountryChosen`
+   * follows only if the whole pick succeeds.
+   */
+  onCountryPickStarted?: () => void;
   /** True while a pick is being saved. */
   onPendingChange?: (pending: boolean) => void;
   /** Open the country list straight away (the inline prompt). */
@@ -129,6 +136,7 @@ export function BrandPayoutCountryField({
   cardAccountExists = false,
   onBrandChanged,
   onCountryChosen,
+  onCountryPickStarted,
   onPendingChange,
   defaultOpen = false,
   helperText,
@@ -214,6 +222,8 @@ export function BrandPayoutCountryField({
       inFlightRef.current = true;
       setFailure(null);
       setPendingBoth(true);
+      // #3645 — the previous pick is no longer a fact the host can be told.
+      onCountryPickStarted?.();
 
       const wantsNigeria = rail.provider === "paystack";
       const onNigeriaRail = requestedNigeriaRef.current ??
@@ -255,6 +265,10 @@ export function BrandPayoutCountryField({
           onBrandChanged?.(nextBrand);
           onCountryChosen?.(rail);
         } catch (error) {
+          // #3645 — a pick can fail AFTER the server moved the brand (the
+          // provider was cleared, then saving the currency failed). Read the
+          // brand again so nothing keeps describing the rail it left.
+          refreshBrandCaches();
           setFailure({
             ...describePayoutCountrySwitchFailure(error),
             countryCode: rail.countryCode,
@@ -271,6 +285,7 @@ export function BrandPayoutCountryField({
       lockedCopy,
       onBrandChanged,
       onCountryChosen,
+      onCountryPickStarted,
       refreshBrandCaches,
       setPendingBoth,
       updateBrandMutation,

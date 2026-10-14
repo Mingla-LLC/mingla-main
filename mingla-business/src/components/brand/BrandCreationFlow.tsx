@@ -525,6 +525,12 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   // currency until they pick one (or skip, which is allowed).
   const [pickedPayoutRail, setPickedPayoutRail] =
     useState<BankConnectRail | null>(null);
+  // #3645 — forgotten the moment another pick is sent, so "you can start
+  // selling now" is shown only after a Nigeria pick that completed and was not
+  // followed by a change that failed part-way.
+  const clearPickedPayoutRail = useCallback((): void => {
+    setPickedPayoutRail(null);
+  }, []);
   const [payoutCountryPending, setPayoutCountryPending] = useState(false);
   const savedPayoutRail = resolveSavedPayoutCountry({
     paymentProvider: payoutCanonicalBrand?.paymentProvider,
@@ -1552,6 +1558,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                         helperText={BRAND_CREATION_COPY.step4.countryHelper}
                         onBrandChanged={handlePayoutBrandChanged}
                         onCountryChosen={setPickedPayoutRail}
+                        onCountryPickStarted={clearPickedPayoutRail}
                         onPendingChange={setPayoutCountryPending}
                       />
                     </React.Suspense>
