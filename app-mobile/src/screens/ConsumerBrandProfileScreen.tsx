@@ -1,8 +1,14 @@
 import React, { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as WebBrowser from "expo-web-browser";
 import {
   PublicBrandPage,
   type PublicBrandEvent,
@@ -13,7 +19,6 @@ import {
 } from "@mingla/brand-rendering";
 
 import {
-  consumerBrandEventUrl,
   useBrandBySlug,
   usePublicBrandVenues,
 } from "../hooks/useBrandBySlug";
@@ -32,6 +37,7 @@ import { HapticFeedback } from "../utils/hapticFeedback";
 import { BrandFollowOverflowSheet } from "../components/profile/BrandFollowOverflowSheet";
 import { BrandsYouFollowManageSheet } from "../components/profile/BrandsYouFollowManageSheet";
 import type { BrandFollowRow } from "../services/brandFollowsService";
+import { resolveExplorerPublicPath } from "../services/publicParityNativeAdapter";
 
 export default function ConsumerBrandProfileScreen(): React.ReactElement {
   const router = useRouter();
@@ -80,7 +86,12 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
     else router.replace("/");
   }, [router]);
 
-  if (query.isLoading || query.isFetching) {
+  // Background refresh keeps the last usable page mounted; only a cold read
+  // owns the blocking state. This preserves tab/sheet/focus state on refresh.
+  if (
+    query.isLoading &&
+    (query.data === null || query.data === undefined)
+  ) {
     return (
       <View style={styles.stateWrap}>
         <ActivityIndicator />
@@ -89,7 +100,10 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
     );
   }
 
-  if (query.isError) {
+  if (
+    query.isError &&
+    (query.data === null || query.data === undefined)
+  ) {
     return (
       <View style={styles.stateWrap}>
         <Text style={styles.stateTitle}>Brand could not load</Text>
@@ -108,6 +122,19 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
   }
 
   const detail = query.data;
+  const publicPath = (
+    target: Parameters<typeof resolveExplorerPublicPath>[0],
+  ): string | null =>
+    resolveExplorerPublicPath(target, {
+      platform: Platform.OS,
+      authState: user?.id ? "signed-in" : "anonymous",
+    });
+  const openPublicPath = (
+    target: Parameters<typeof resolveExplorerPublicPath>[0],
+  ): void => {
+    const path = publicPath(target);
+    if (path !== null) router.push(path as never);
+  };
 
   const handleToggleFollow = (): void => {
     if (!user?.id) {
@@ -119,9 +146,25 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
       );
       return;
     }
+    // #3859 — a privileged write cannot trust a stale public-page snapshot.
+    // Re-read first when the page is stale, refreshing, or carrying a retained
+    // refresh error, then require the same canonical brand before following.
+    const followCurrentBrand = async (): Promise<void> => {
+      if (query.isStale || query.isFetching || query.isError) {
+        const refreshed = await query.refetch();
+        if (
+          refreshed.isError || refreshed.data === null ||
+          refreshed.data === undefined ||
+          refreshed.data.brand.id !== detail.brand.id ||
+          refreshed.data.brand.slug !== detail.brand.slug
+        ) {
+          throw new Error("brand_revalidation_failed");
+        }
+      }
+      await brandFollow.follow();
+    };
     // #3682 C7 — Follow tap only follows; Following opens onFollowingMenu.
-    brandFollow
-      .follow()
+    void followCurrentBrand()
       .then(() => {
         HapticFeedback.light();
         toastManager.show(
@@ -186,9 +229,10 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
         }
         venues={venuesQuery.data ?? []}
         venuesLoadState={
-          venuesQuery.isLoading || venuesQuery.isFetching
+          (venuesQuery.isLoading || venuesQuery.isFetching) &&
+              (venuesQuery.data?.length ?? 0) === 0
             ? "loading"
-            : venuesQuery.isError
+            : venuesQuery.isError && (venuesQuery.data?.length ?? 0) === 0
               ? "error"
               : "ready"
         }
@@ -207,28 +251,56 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
           onToggleFollow: handleToggleFollow,
           onFollowingMenu: handleFollowingMenu,
           onOpenEvent: (event: PublicBrandEvent) => {
-            void WebBrowser.openBrowserAsync(consumerBrandEventUrl(event));
+            openPublicPath({
+              kind: "event",
+              entityKind: event.eventType,
+              entityId: event.id,
+              brandSlug: event.brandSlug,
+              eventSlug: event.eventSlug,
+            });
           },
           onOpenTrip: (trip: PublicBrandTrip) => {
-            // ORCH-1016 — open the in-app trip detail (deep-link re-export route),
-            // NOT WebBrowser (the web-eject this ORCH kills).
-            router.push(`/t/${trip.brandSlug}/${trip.slug}`);
+            openPublicPath({
+              kind: "trip",
+              entityId: trip.id,
+              brandSlug: trip.brandSlug,
+              tripSlug: trip.slug,
+            });
           },
           onOpenExperience: (experience: PublicBrandExperience) => {
-            void WebBrowser.openBrowserAsync(
-              `https://host.usemingla.com/exp/${experience.brandSlug}/${experience.experienceSlug}`,
-            );
+            openPublicPath({
+              kind: "experience",
+              entityId: experience.experienceId,
+              brandSlug: experience.brandSlug,
+              experienceSlug: experience.experienceSlug,
+            });
           },
           onOpenUpcoming: (item: PublicBrandUpcoming) => {
-            const path =
-              item.offeringType === "trip"
-                ? `/t/${item.brandSlug}/${item.offeringSlug}`
-                : item.offeringType === "experience"
-                  ? `/exp/${item.brandSlug}/${item.offeringSlug}`
-                  : `/e/${item.brandSlug}/${item.offeringSlug}`;
-            void WebBrowser.openBrowserAsync(
-              `https://host.usemingla.com${path}`,
-            );
+            if (item.offeringType === "trip") {
+              openPublicPath({
+                kind: "trip",
+                entityId: item.offeringId,
+                brandSlug: item.brandSlug,
+                tripSlug: item.offeringSlug,
+              });
+              return;
+            }
+            if (item.offeringType === "experience") {
+              openPublicPath({
+                kind: "experience",
+                entityId: item.offeringId,
+                brandSlug: item.brandSlug,
+                experienceSlug: item.offeringSlug,
+              });
+              return;
+            }
+            openPublicPath({
+              kind: "event",
+              entityKind: item.offeringType,
+              entityId: item.offeringId,
+              brandSlug: item.brandSlug,
+              eventSlug: item.offeringSlug,
+            });
           },
           onReservationsTabViewed: () => {
             postHogService.capture("brand_reservations_tab_viewed", {
@@ -249,13 +321,21 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
               reservable_state: venue.reservationState ?? "error",
               source_tab: "reservations",
             });
-            router.push(
-              `/b/${detail.brand.slug}/v/${venue.slug}${
-                venue.reservationState === "available"
-                  ? "?tab=reservations"
-                  : ""
-              }`,
-            );
+            const path = publicPath({
+              kind: "venue",
+              entityId: venue.id,
+              brandSlug: detail.brand.slug,
+              venueSlug: venue.slug,
+            });
+            if (path !== null) {
+              router.push(
+                `${path}${
+                  venue.reservationState === "available"
+                    ? "?tab=reservations"
+                    : ""
+                }` as never,
+              );
+            }
           },
         }}
       />

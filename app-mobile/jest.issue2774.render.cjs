@@ -18,6 +18,10 @@ module.exports = {
       "react-test-renderer",
       "$1",
     ),
+    "^@mingla/offering-rendering/(.*)$": path.resolve(
+      __dirname,
+      "../packages/offering-rendering/$1",
+    ),
   },
   testMatch: [
     "**/__tests__/publicHeroAccessibility.issue2774.happy.test.tsx",
@@ -35,5 +39,8 @@ module.exports = {
     // issue #3682 (tester) — mounts both brand link routes against a history
     // model: X ends on Home with nothing underneath, never a dead back().
     "**/__tests__/issue_3682_brand_close_fallback.tester_adversarial.render.test.tsx",
+    // issue #3859 — mounts the real Explorer brand host and invokes its public
+    // navigation callbacks through the shared parity-contract adapter.
+    "**/__tests__/issue_3859_explorer_public_parity.implementor.happy.test.tsx",
   ],
 };

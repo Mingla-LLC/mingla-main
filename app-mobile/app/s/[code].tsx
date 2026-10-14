@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Image,
   Linking,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -25,25 +26,20 @@ import {
 import { mixpanelService } from '../../src/services/mixpanelService';
 import { logAppsFlyerEvent } from '../../src/services/appsFlyerService';
 import { persistContentShareAttribution } from '../../src/services/contentShareAttribution';
+import { resolveExplorerContentShareDestination } from '../../src/services/publicParityNativeAdapter';
 
 type RouteFailure = 'not_found' | 'gone' | 'temporarily_unavailable';
 
 export const destinationPath = (share: ContentShareRead): string | null => {
-  const d = share.destination;
-  const segment = (value: unknown): string =>
-    typeof value === 'string' && value.length > 0 ? encodeURIComponent(value) : '';
-  const brand = segment(d.brandSlug);
-  const entity = segment(d.eventSlug);
-  if (share.facts.kind === 'brand' && brand) return `/b/${brand}`;
-  if (share.facts.kind === 'venue' && brand && segment(d.venueSlug)) {
-    return `/b/${brand}/v/${segment(d.venueSlug)}`;
-  }
-  if (share.facts.kind === 'event' || share.facts.kind === 'rsvp_event') {
-    return brand && entity ? `/e/${brand}/${entity}` : null;
-  }
-  if (share.facts.kind === 'trip') return brand && entity ? `/t/${brand}/${entity}` : null;
-  if (share.facts.kind === 'experience') return brand && entity ? `/exp/${brand}/${entity}` : null;
-  return null;
+  return resolveExplorerContentShareDestination(
+    share.shortCode,
+    share.facts.kind,
+    share.destination,
+    {
+      platform: Platform.OS,
+      authState: 'unknown',
+    },
+  );
 };
 
 const capture = (
