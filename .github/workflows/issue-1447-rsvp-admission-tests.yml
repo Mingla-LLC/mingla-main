@@ -24,6 +24,8 @@ on:
       - "supabase/functions/scan-rsvp/**"
       - "supabase/functions/rsvp-pass-fetch/**"
       - "supabase/functions/_shared/notifyV2.ts"
+      - "supabase/functions/_shared/adapters/emailAdapter.ts"
+      - "supabase/functions/_shared/email/eventUpdatedEmail.ts"
       - "supabase/functions/_shared/push-utils.ts"
       - "supabase/functions/_shared/adapters/pushAdapter.ts"
       - "supabase/functions/_shared/rsvpPass.ts"
@@ -56,6 +58,8 @@ on:
       - "supabase/functions/scan-rsvp/**"
       - "supabase/functions/rsvp-pass-fetch/**"
       - "supabase/functions/_shared/notifyV2.ts"
+      - "supabase/functions/_shared/adapters/emailAdapter.ts"
+      - "supabase/functions/_shared/email/eventUpdatedEmail.ts"
       - "supabase/functions/_shared/push-utils.ts"
       - "supabase/functions/_shared/adapters/pushAdapter.ts"
       - "supabase/functions/_shared/rsvpPass.ts"
@@ -97,6 +101,8 @@ jobs:
         run: deno test --allow-read supabase/functions/rsvp-notify/__tests__/unlisted_rsvp_pass_eligibility.test.ts
       - name: The real worker sends unlisted passes without the public-only attendance link (unlisted RSVP invite link)
         run: deno test --import-map=supabase/functions/rsvp-notify/__tests__/_importmap.test.json --allow-read supabase/functions/rsvp-notify/__tests__/unlisted_rsvp_pass_delivery.runtime.test.ts
+      - name: "The real worker delivers a live-edit notice: fan-out before the claim, the email module, Reply-To, five at a time, legacy rows unchanged (issue #3827)"
+        run: deno test --import-map=supabase/functions/rsvp-notify/__tests__/_importmap.test.json --allow-read --no-check supabase/functions/rsvp-notify/__tests__/issue_3827_event_update_delivery.test.ts
       - name: Type-check issue Edge Functions
         run: >-
           deno check

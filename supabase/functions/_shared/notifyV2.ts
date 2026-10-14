@@ -679,7 +679,9 @@ export interface RsvpChannelInput {
   channel: "in_app" | "push" | "email" | "sms";
   user_id: string | null;
   contact: string | null;
-  category_key: "rsvp_acknowledgement" | "rsvp_pass";
+  // Issue #3827 — `buyer_event_updated` is the email-only category for a
+  // ticket or experience buyer told about a live edit.
+  category_key: "rsvp_acknowledgement" | "rsvp_pass" | "buyer_event_updated";
   payload: Record<string, unknown>;
   idempotency_key: string;
   title: string;
@@ -687,6 +689,14 @@ export interface RsvpChannelInput {
   sms_body: string;
   deep_link: string;
   attachment?: { filename: string; content: string } | null;
+  /**
+   * Issue #3827 — an email already rendered by its own module, with its
+   * Reply-To. Only the email channel reads it; absent, nothing changes.
+   */
+  email_override?: {
+    rendered: NonNullable<Parameters<typeof emailAdapter.send>[0]["rendered"]>;
+    replyTo?: string;
+  } | null;
   delivery_id: string;
   lease_id: string;
 }
@@ -789,6 +799,14 @@ export async function dispatchRsvpChannel(
       cta: { label: "View RSVP", url: input.deep_link },
       idempotencyKey: `${input.idempotency_key}:email`,
       ...(input.attachment ? { attachments: [input.attachment] } : {}),
+      ...(input.email_override
+        ? {
+          rendered: input.email_override.rendered,
+          ...(input.email_override.replyTo
+            ? { replyTo: input.email_override.replyTo }
+            : {}),
+        }
+        : {}),
     });
   } else {
     if (!input.contact) {

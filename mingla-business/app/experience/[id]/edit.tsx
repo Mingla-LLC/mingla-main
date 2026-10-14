@@ -62,6 +62,12 @@ import {
 import { experienceKeys } from "../../../src/hooks/useExperiencesByBrand";
 import { markJustPublished } from "../../../src/utils/justPublishedSignal";
 import { useExperienceSoldCount } from "../../../src/hooks/useExperienceSoldCount";
+// issue #3827 — whether buyers are emailed about a live edit, and the words.
+import { useEventBuyerNoticeStatus } from "../../../src/hooks/useEventBuyerNoticeStatus";
+import {
+  buyerNoticeSavedToast,
+  experienceLiveEditNotice,
+} from "../../../src/utils/buyerNoticeCopy";
 import type { ExperienceDetail } from "../../../src/services/experienceDetailService";
 import type { CoverPatch } from "../../../src/components/ui/CoverPicker";
 import type {
@@ -275,6 +281,11 @@ export default function ExperienceEditRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
     isLive,
   );
+  // issue #3827 — read only for a live experience; null (unknown, loading, or
+  // the server function not applied yet) reads as "not switched on".
+  const buyerNoticeStatus = useEventBuyerNoticeStatus(
+    isLive && typeof eventId === "string" ? eventId : null,
+  );
 
   const initialDraft = useMemo<ExperienceWizardInitialDraft | null>(
     () => (experience !== null ? detailToInitialDraft(experience) : null),
@@ -413,6 +424,11 @@ export default function ExperienceEditRoute(): React.ReactElement {
           initialDraft={initialDraft}
           initialCover={initialCover}
           liveExperience={isLive ? experience : undefined}
+          // issue #3827 — what the server will do about emailing buyers.
+          liveBuyerNoticeLine={
+            isLive ? experienceLiveEditNotice(buyerNoticeStatus) : undefined
+          }
+          savedToastFor={isLive ? buyerNoticeSavedToast : undefined}
           liveSoldCount={isLive ? soldCountQuery.data ?? 0 : undefined}
           initialStep={isLive ? undefined : initialStep}
           onPublished={markJustPublished}

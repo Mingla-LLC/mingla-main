@@ -6,11 +6,12 @@
  *   - Diff list (each row: severity stripe + field label + old → new value)
  *   - Tickets sub-renderer (added / removed / updated tiers when patch.tickets)
  *   - Required multiline reason input (10..200 chars, char counter)
- *   - Severity-dependent footer note about buyer notification
+ *   - Footer note saying, truthfully, whether buyers will be emailed
+ *     (issue #3827: the words come from `utils/buyerNoticeCopy`)
  *   - Save changes (primary, disabled until reason valid) + Cancel (ghost)
  *
  * Save button calls `onConfirm(reason.trim())` — caller handles the actual
- * mutation + dispatch of notification stack.
+ * mutation. Whether buyers are emailed is decided by the server on save.
  *
  * Per ORCH-0704 v2 spec §3.4.4.
  */
@@ -45,6 +46,13 @@ import type {
   TripPricingTierDiff,
 } from "../../utils/tripAdapter";
 
+// issue #3827 — the footer and the tag say what the server will do.
+import {
+  changeSummaryNotice,
+  type BuyerNoticeNoun,
+  type BuyerNoticeStatus,
+} from "../../utils/buyerNoticeCopy";
+
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
@@ -67,8 +75,12 @@ export interface ChangeSummaryModalProps {
   /** When patch.pricing_tiers changed (trips), expand per-tier diffs. */
   tripPricingTierDiffs?: TripPricingTierDiff[];
   severity: EditSeverity;
-  /** Drives the "and SMS" copy in the footer note. */
-  webPurchasePresent: boolean;
+  /**
+   * [TRANSITIONAL] issue #3827 — accepted and ignored. It used to add a
+   * text-message promise to the footer; no edit is ever sent by text. Exit: the trip
+   * editor and the #3827 change-summary suite stop passing it, then it goes.
+   */
+  webPurchasePresent?: boolean;
   /** Optional label override for the entity type (default "event"). Trips
    *  pass "trip" so the subhead + footer + log-history copy read naturally. */
   entityLabel?: "event" | "trip";
@@ -82,11 +94,26 @@ export interface ChangeSummaryModalProps {
    *   - `undefined` / `null` (trip editors, RSVP, still loading, unknown):
    *     nothing changes — the reason is required and the buyer copy shows.
    *   - `0`: nobody is there to notify, so the NOTIFIES BUYERS tag and the
-   *     email/SMS footer are not shown (the edit-history copy is), and the
+   *     buyer-email footer are not shown (the edit-history copy is), and the
    *     reason is optional: Save is enabled when it is blank or 10..200 long.
    *   - one or more: nothing changes.
    */
   buyerCount?: number | null;
+  /**
+   * issue #3827 — whether buyer emails are on for this brand and how many
+   * people a material change would reach, from
+   * `business_event_buyer_notice_status`. `null` means "not known" and reads
+   * as "not switched on": the sheet never promises an email it cannot see.
+   */
+  buyerNoticeStatus?: BuyerNoticeStatus | null;
+  /** issue #3827 — "guests" for an RSVP; default "buyers". */
+  buyerNoticeNoun?: BuyerNoticeNoun;
+  /**
+   * issue #3827 — the event has sales and this save is not "refund all":
+   * the server refuses a date or time change, so those rows are never tagged
+   * as emailed.
+   */
+  whenChangeRefused?: boolean;
 }
 
 export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
@@ -97,12 +124,14 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
   tripInclusionDiffs,
   tripPricingTierDiffs,
   severity,
-  webPurchasePresent,
   entityLabel = "event",
   onClose,
   onConfirm,
   submitting = false,
   buyerCount,
+  buyerNoticeStatus,
+  buyerNoticeNoun = "buyers",
+  whenChangeRefused = false,
 }) => {
   const [reason, setReason] = useState<string>("");
   // issue #3827 — only a KNOWN zero relaxes anything.
@@ -131,21 +160,21 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
     onClose();
   }, [submitting, onClose]);
 
-  const footerCopy = ((): string => {
-    // issue #3827 — with no buyers a material change notifies nobody either,
-    // so it gets the same truthful line as an additive one.
-    if (severity === "additive" || (noBuyers && severity === "material")) {
-      return `Changes will be logged in your ${entityLabel}'s edit history. No buyer notification.`;
-    }
-    if (severity === "material") {
-      return webPurchasePresent
-        ? "Material changes notify your buyers by email and SMS. Your reason will be included in the message."
-        : "Material changes notify your buyers by email. Your reason will be included in the message.";
-    }
-    return "";
-  })();
-  // issue #3827 — the footer is styled for what it SAYS, not for the severity.
-  const footerIsMaterial = severity === "material" && !noBuyers;
+  // issue #3827 — one decision for the footer and for the tag: a row is
+  // tagged only when the footer says its buyers will really be told.
+  const notice = changeSummaryNotice({
+    loggedCopy: `Changes will be logged in your ${entityLabel}'s edit history. No buyer notification.`,
+    entityLabel,
+    severity,
+    noBuyers,
+    fieldKeys: diffs.map((diff) => String(diff.fieldKey)),
+    status: buyerNoticeStatus,
+    noun: buyerNoticeNoun,
+    whenRefused: whenChangeRefused,
+  });
+  const footerCopy = notice.footer;
+  // The footer is styled for what it SAYS, not for the severity.
+  const footerIsMaterial = notice.footerIsNotice;
 
   return (
     <Sheet visible={visible} onClose={handleClose} snapPoint="full">
@@ -194,8 +223,8 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
                     <View style={styles.diffContent}>
                       <View style={styles.diffHeaderRow}>
                         <Text style={styles.fieldLabel}>{diff.fieldLabel}</Text>
-                        {isMaterial && !noBuyers ? (
-                          <Text style={styles.severityTag}>NOTIFIES BUYERS</Text>
+                        {notice.taggedKeys.has(String(diff.fieldKey)) ? (
+                          <Text style={styles.severityTag}>{notice.tag}</Text>
                         ) : null}
                       </View>
                       {isTicketsRow &&
