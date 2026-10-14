@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, FileText } from "lucide-react";
 import { Drawer } from "../ui/Drawer";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
@@ -33,6 +33,7 @@ import {
 } from "../../lib/crmModel";
 import { buildCrmHash } from "../../lib/crmUrl";
 import { getRecord } from "../../services/crmService";
+import { useRecordDraftCount } from "../../hooks/useDrafts";
 
 // What someone typed on a card that could not be sent before the card went
 // away (they left the page). Kept in memory only, by card id, so opening the
@@ -148,6 +149,7 @@ export function RecordDrawer({
 
   const current = detail.id === recordId ? detail : { status: "loading", data: null, message: "" };
   const record = listRecord || current.data?.record || null;
+  const draftCount = useRecordDraftCount(record?.id || null);
   const locked = !online;
 
   // The latest values, for code that runs later (a close, an unmount).
@@ -714,6 +716,17 @@ export function RecordDrawer({
             <Badge variant={rule.variant}>{rule.label}</Badge>
             <span className="min-w-0 break-words">{rule.banner.slice(rule.label.length).replace(/^ \u00b7 /, "")}</span>
           </p>
+        )}
+        {draftCount > 0 && (
+          <a
+            href={`#/drafts?record=${record.id}`}
+            aria-label={`${draftCount} ${draftCount === 1 ? "draft" : "drafts"} waiting for ${record.name}. Review drafts.`}
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3 text-[13.5px] font-semibold text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]"
+          >
+            <FileText aria-hidden="true" className="h-4 w-4 shrink-0" />
+            <span>{draftCount} {draftCount === 1 ? "draft" : "drafts"} waiting</span>
+            <ArrowRight aria-hidden="true" className="ml-auto h-4 w-4 shrink-0" />
+          </a>
         )}
         {next && (
           <div>

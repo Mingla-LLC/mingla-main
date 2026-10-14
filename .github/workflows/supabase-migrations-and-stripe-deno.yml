@@ -632,6 +632,9 @@ jobs:
       - name: "Issue #3802 — My agent: who may open it, the lines to paste, the status in plain words, what it can do against the connector's own list, and that a key is never stored or logged"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave4_agent.implementor.happy.test.js
+      - name: "Issue #3802 — Drafts to send: private original/current text, copy-before-record, one count source, responsive queue and accessible states"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_drafts_to_send.implementor.happy.test.js
       - name: "Issue #3802 — My agent: independent tester adversarial proof (the pasted lines run in a real shell, hostile keys and addresses, every combination of areas, broken dates and unknown reasons, no raw error on screen, where the key on screen can go)"
         working-directory: mingla-admin
         run: node --test src/__tests__/agent_connector_issue3802.tester.adversarial.test.js
@@ -2039,6 +2042,20 @@ jobs:
         run: |
           node --experimental-strip-types --test --test-concurrency=1 \
             supabase/functions/team-agent/__tests__/writeProtocol.issue3802.test.ts
+
+      # Issue #3802 (Connector part 3) — the private Drafts to send lifecycle
+      # through the real handler and gateway, then the person's own review,
+      # mark-sent and Undo RPCs. This proves full-argument request-key binding,
+      # original/current text, personal-only text, and exact-touch rollback.
+      - name: "Issue #3802 — Drafts to send works end to end against the replayed database"
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: supabase_admin
+          PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
+        run: |
+          node --experimental-strip-types --test --test-concurrency=1 \
+            supabase/functions/team-agent/__tests__/draftProtocol.issue3802.implementor.happy.test.ts
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on

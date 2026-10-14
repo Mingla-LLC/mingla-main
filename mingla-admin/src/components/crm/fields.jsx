@@ -57,12 +57,12 @@ export function Select({ options, placeholder, className = "", ...props }) {
 }
 
 /** A row of choices where exactly one is pressed. */
-export function Segmented({ label, options, value, onChange, disabled = false, className = "" }) {
+export function Segmented({ label, options, value, onChange, disabled = false, variant = "default", fullWidth = false, className = "" }) {
   return (
     <div
       role="group"
       aria-label={label}
-      className={`inline-flex max-w-full flex-wrap rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-0.5 ${className}`}
+      className={`${fullWidth ? "flex w-full" : "inline-flex"} max-w-full flex-wrap rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-0.5 ${className}`}
     >
       {options.map((o) => {
         const pressed = o.value === value;
@@ -77,9 +77,10 @@ export function Segmented({ label, options, value, onChange, disabled = false, c
             }}
             className={[
               "h-10 max-sm:h-11 px-3 text-sm font-medium rounded-md whitespace-nowrap transition-colors duration-150",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]",
+              fullWidth ? "min-w-0 flex-1 px-2" : "",
+              `focus-visible:outline-none focus-visible:ring-2 ${variant === "highContrast" ? "focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-background-primary)]" : "focus-visible:ring-[var(--color-brand-500)]"}`,
               pressed
-                ? "bg-[var(--color-brand-500)] text-white"
+                ? variant === "highContrast" ? "bg-[var(--color-brand-800)] text-white hover:bg-[var(--color-brand-900)] active:bg-[var(--color-brand-900)]" : "bg-[var(--color-brand-500)] text-white"
                 : "text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]",
               disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer",
             ].join(" ")}

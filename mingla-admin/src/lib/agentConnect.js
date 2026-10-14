@@ -360,6 +360,10 @@ export const AGENT_ABILITIES = [
   { tool: "set_owners", group: "Add and change", title: "Sets owners", detail: "Who on the team owns each card." },
   { tool: "log_activity", group: "Log", title: "Logs notes and touches", detail: "A note, a reply, or the first message to someone never contacted." },
   { tool: "record_reply", group: "Log", title: "Records replies", detail: "Word for word, and moves the card to Replied." },
+  { tool: "save_drafts", group: "Drafts", title: "Writes drafts for you", detail: "Messages for your review. It never sends." },
+  { tool: "update_draft", group: "Drafts", title: "Updates its waiting drafts", detail: "Until you edit one yourself." },
+  { tool: "list_drafts", group: "Drafts", title: "Reads your drafts", detail: "Only your own waiting, sent or discarded drafts." },
+  { tool: "withdraw_drafts", group: "Drafts", title: "Withdraws its waiting drafts", detail: "Until you edit one yourself." },
 ];
 
 /** The abilities this role is offered, grouped in page order. */
@@ -380,7 +384,6 @@ export function abilitiesFor(role) {
 
 /** What arrives next. Shown as "not yet", never as something to try. */
 export const AGENT_NOT_YET = [
-  "Write drafts for you to send. You always send.",
   "Undo a move, add beta leads to Hosts, and set targets: do these in Mingla Admin for now.",
   "Claude in the browser or on your phone signs in a different way. That is coming; for now use Claude Code or Codex.",
 ];
@@ -389,7 +392,7 @@ export const AGENT_GUARDRAILS = [
   "It never sends an email, DM or WhatsApp for you.",
   "It sees only what your role sees.",
   "It cannot delete, manage keys or manage the team.",
-  "It may log the first message to someone new. A follow-up or an answer is yours.",
+  "It may log only a cold first message. It writes every follow-up or answer as a draft for you.",
   "It cannot message a record marked Do not contact or Warm intro only, and it cannot lift that mark.",
   "Every change it makes is recorded under your name, with the agent it came through.",
   "If it is refused, it is told why in plain words, so it can tell you.",

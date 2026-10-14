@@ -19,6 +19,7 @@ import { StatTile, StatTileRow, StatTileSkeleton } from "../components/crm/home/
 import { DueList } from "../components/crm/home/DueList";
 import { StageFunnel } from "../components/crm/home/StageFunnel";
 import { TargetsCard } from "../components/crm/home/TargetsCard";
+import { useDraftCountValue } from "../hooks/useDraftCounts";
 
 const OFFLINE_WORDS = "You're offline. You can look around, but the numbers won't update until you're back.";
 const NOT_READY_WORDS = "Your home isn't switched on yet. Try again in a few minutes, or tell an admin.";
@@ -38,6 +39,7 @@ export function RoleHomePage() {
   const online = useOnline();
   const cfg = useCrmConfig();
   const summary = useCrmSummary("home");
+  const draftCounts = useDraftCountValue();
   const config = cfg.config;
   const data = summary.data;
 
@@ -47,11 +49,12 @@ export function RoleHomePage() {
   const today = data?.today || localToday();
   const greeting = partner ? "Here is where outreach stands." : "Here is your day.";
 
-  const error = summary.error || cfg.error;
-  const loading = !error && (summary.loading || cfg.loading);
+  const error = summary.error || cfg.error || draftCounts.error;
+  const loading = !error && (summary.loading || cfg.loading || draftCounts.loading);
   const retry = () => {
     if (cfg.error) cfg.retry();
     summary.refetch();
+    draftCounts.refetch();
   };
 
   const scope = partner ? data?.due?.team : data?.due?.mine;
@@ -98,7 +101,8 @@ export function RoleHomePage() {
         )
       ) : loading ? (
         <>
-          <StatTileRow label="Loading">
+          <StatTileRow label="Loading" columns={4}>
+            <StatTileSkeleton />
             <StatTileSkeleton />
             <StatTileSkeleton />
             <StatTileSkeleton />
@@ -120,7 +124,7 @@ export function RoleHomePage() {
         </>
       ) : (
         <>
-          <StatTileRow label={partner ? "The team's numbers" : "Your numbers"}>
+          <StatTileRow label={partner ? "The team's numbers" : "Your numbers"} columns={4}>
             <StatTile
               href={buildCrmHash("hosts", listState)}
               value={hostsDue.total}
@@ -133,6 +137,7 @@ export function RoleHomePage() {
               label="Creators due"
               note={overdueNote(creatorsDue)}
             />
+            <StatTile href="#/drafts" value={Number(draftCounts.data?.waiting || 0)} label="Drafts waiting" />
             {data.beta_leads_new !== null && data.beta_leads_new !== undefined ? (
               <StatTile href="#/beta-leads?show=new" value={data.beta_leads_new} label="New beta leads" />
             ) : null}

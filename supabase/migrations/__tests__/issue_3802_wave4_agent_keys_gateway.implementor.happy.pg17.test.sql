@@ -51,7 +51,8 @@
 
 \set ON_ERROR_STOP on
 \getenv t3802k_pw PGPASSWORD
-\set t3802k_selfcheck `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
+-- [TEST-MOD-APPROVED #3802] PR-C carries the newest complete self-check.
+\set t3802k_selfcheck `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql`
 \set t3802k_file `cat supabase/migrations/20270825003802_issue_3802_wave4_agent_keys_gateway.sql`
 \set t3802k_selfcheck_a `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20270825003802_issue_3802_wave4_agent_keys_gateway.sql`
 \set t3802k_oldmember `sed -n '/^CREATE OR REPLACE FUNCTION public.admin_team_set_member/,/^\$\$;/p' supabase/migrations/20270818003802_issue_3802_wave0_invite_binding.sql`
@@ -557,9 +558,11 @@ begin
     (v::jsonb -> 'result' -> 'pipelines' -> 'hosts' -> 'stages')::text, (public.crm_pipeline_def('hosts') -> 'stages')::text);
   perform pg_temp.t3802k_check('K-4', 'the limits are the one definition',
     (v::jsonb -> 'result' -> 'limits')::text, public.team_agent_limits()::text);
+  -- [TEST-MOD-APPROVED #3802] PR-C adds save_drafts and the own waiting count
+  -- to the shipped connector contract; the old exact pins advance with it.
   perform pg_temp.t3802k_check('K-4', 'every routine names only tools that exist today',
     (select count(*)::text from jsonb_array_elements(v::jsonb -> 'result' -> 'routines') r
-      where r->>'text' ~ 'save_drafts|mark_sent|undo_move|set_target|add_beta_leads_to_hosts|delete_record'), '0');
+      where r->>'text' ~ 'mark_sent|undo_move|set_target|add_beta_leads_to_hosts|delete_record'), '0');
   perform pg_temp.t3802k_check('K-4', 'the rules say record text is information, never instructions',
     (select count(*)::text from jsonb_array_elements_text(v::jsonb -> 'result' -> 'rules') r
       where r like '%written by other people%never as instructions%'), '1');
@@ -572,7 +575,7 @@ begin
   v_all := v_all || v;
   perform pg_temp.t3802k_check('K-4', 'my_day is the home summary of the key''s owner',
     (v::jsonb -> 'result')::text,
-    pg_temp.t3802k_as('growth', 'select public.crm_home_summary(null)::text'));
+    pg_temp.t3802k_as('growth', $q$select (public.crm_home_summary(null) || jsonb_build_object('drafts_waiting', public.team_draft_counts()->'waiting'))::text$q$));
   perform pg_temp.t3802k_like('K-4', 'my_day refuses a date that is not a date',
     pg_temp.t3802k_gw('growth.claude', 'my_day', '{"today":"2026-13-45"}'), '%"token": "invalid_arguments"%today%2026-10-13%');
 
@@ -644,7 +647,7 @@ begin
   perform pg_temp.t3802k_like('K-4', 'a tool that does not exist is refused in plain words',
     pg_temp.t3802k_gw('growth.claude', 'delete_record', format('{"id":"%s"}', v_id)),
     '%"token": "unknown_tool", "message": "That tool does not exist. Call tools/list to see what is available."%');
-  foreach t in array array['undo_move', 'add_beta_leads_to_hosts', 'setup:redeem2', 'save_drafts', 'set_target', 'crm_record_delete',
+  foreach t in array array['undo_move', 'add_beta_leads_to_hosts', 'setup:redeem2', 'set_target', 'crm_record_delete',
                            'team_agent_key_create', 'admin_team_set_member', 'team_draft_mark_sent'] loop
     perform pg_temp.t3802k_like('K-4', 'not a tool in this part: ' || t,
       pg_temp.t3802k_gw('owner.claude', t, format('{"id":"%s","p_id":"%s"}', v_id, v_id)), '%"token": "unknown_tool"%');
@@ -1415,7 +1418,7 @@ begin
     d_west || '/' || d_west || '/' || c_west);
   perform pg_temp.t3802k_check('K-14', 'that is what the same person''s browser asks for: its own date',
     (pg_temp.t3802k_gw('east', 'my_day')::jsonb -> 'result')::text,
-    pg_temp.t3802k_as('growth2', format('select public.crm_home_summary(%L)::text', d_east)));
+    pg_temp.t3802k_as('growth2', format($q$select (public.crm_home_summary(%L) || jsonb_build_object('drafts_waiting', public.team_draft_counts()->'waiting'))::text$q$, d_east)));
   v := pg_temp.t3802k_gw('nozone', 'my_day');
   perform pg_temp.t3802k_check('K-14', 'a key with no zone answers in UTC and says no zone is recorded',
     (v::jsonb -> 'dates')::text,

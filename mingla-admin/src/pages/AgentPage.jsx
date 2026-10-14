@@ -637,7 +637,7 @@ export function AgentPage() {
     <div className="flex min-w-0 flex-col gap-6">
       <PageHeader
         title="My agent"
-        description="Connect your own Claude or Codex. It works under your name, with your role and nothing more. It can read and update your pipelines and log what happened; it never deletes, and a follow-up or an answer is always yours to send."
+        description="Connect your own Claude or Codex. It works under your name, with your role and nothing more. It can read and update your pipelines, log what happened, and write drafts for you to review. It never sends."
         meta={
           !loading && !error ? (
             connected.length === 0 ? (

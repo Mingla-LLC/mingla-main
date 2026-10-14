@@ -668,7 +668,8 @@ test("#3802 H-5: text other people wrote reaches the agent as data and cannot sh
       "## Rules",
       "## Limits",
       "## Routines",
-      "## Coming next",
+      // [TEST-MOD-APPROVED #3802] Connector part 3 emptied coming_next after
+      // drafts shipped, so the renderer correctly omits an empty heading.
     ],
     "the page has exactly the connector's own headings",
   );
@@ -731,6 +732,10 @@ test("#3802 H-6: every tool, and the connector's first words, tell the agent tha
         set_owners: false,
         log_activity: false,
         record_reply: false,
+        save_drafts: false,
+        update_draft: false,
+        list_drafts: true,
+        withdraw_drafts: false,
       } as Record<string, boolean>)[t.name],
       `${t.name}: says whether it reads or writes`,
     );
