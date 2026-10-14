@@ -74,3 +74,22 @@ export async function invokeWithRefresh(functionName, options = {}) {
 
   return result;
 }
+
+/**
+ * #3720 / #3512 — true when an edge-function error is an expired/absent session
+ * (HTTP 401) rather than an authorization or business failure. After
+ * invokeWithRefresh has already retried once, the only remedy is re-sign-in.
+ */
+export function isSessionExpiredError(error) {
+  if (!error) return false;
+  const status = error?.context?.status ?? error?.status;
+  if (status === 401) return true;
+  const message = typeof error?.message === "string" ? error.message : "";
+  return (
+    message.includes("not_authenticated") ||
+    /session expired|not authenticated|jwt expired/i.test(message)
+  );
+}
+
+export const SESSION_EXPIRED_MESSAGE =
+  "Your admin session expired. Sign in again to continue.";
