@@ -51,39 +51,32 @@ import {
   AUDIT_CATEGORIES,
   resolveAuditActionLabel,
 } from "../../../src/utils/auditActionLabels";
+import { formatAuditTargetSummary } from "../../../src/utils/auditTargetLabels";
 import { formatRelativeTime } from "../../../src/utils/relativeTime";
-
-const truncId = (id: string | null): string =>
-  id === null ? "—" : `…${id.slice(-6)}`;
 
 interface DisplayRow {
   id: string;
   title: string;
   detail?: string;
   iconName: ReturnType<typeof resolveAuditActionLabel>["iconHint"];
-  targetSummary: string;
-  actorSummary: string;
-  relativeTime: string;
+  metadataSummary: string;
 }
 
 const toDisplayRow = (row: AuditLogRow): DisplayRow => {
   const label = resolveAuditActionLabel(row.action);
-  const targetSummary =
-    row.target_type !== null && row.target_id !== null
-      ? `${row.target_type} ${truncId(row.target_id)}`
-      : row.target_type !== null
-        ? row.target_type
-        : "—";
+  const targetSummary = formatAuditTargetSummary(
+    row.target_type,
+    row.target_id,
+  );
   const actorSummary =
     row.user_id !== null ? `User …${row.user_id.slice(-6)}` : "System";
+  const relativeTime = formatRelativeTime(row.created_at);
   return {
     id: row.id,
     title: label.title,
     detail: label.detail,
     iconName: label.iconHint,
-    targetSummary,
-    actorSummary,
-    relativeTime: formatRelativeTime(row.created_at),
+    metadataSummary: `${relativeTime} · ${actorSummary} · ${targetSummary}`,
   };
 };
 
@@ -224,8 +217,11 @@ export default function AuditLogRoute(): React.ReactElement {
                       {r.detail !== undefined ? (
                         <Text style={styles.rowDetail}>{r.detail}</Text>
                       ) : null}
-                      <Text style={styles.rowMeta}>
-                        {r.relativeTime} · {r.actorSummary} · {r.targetSummary}
+                      <Text
+                        style={styles.rowMeta}
+                        accessibilityLabel={r.metadataSummary}
+                      >
+                        {r.metadataSummary}
                       </Text>
                     </View>
                   </View>
