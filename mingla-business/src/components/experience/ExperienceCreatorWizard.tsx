@@ -111,6 +111,7 @@ import {
   type ExperienceLocationMode,
   type ExperiencePricingMode,
   type ExperienceStopDraft,
+  stopPriceEntryIsValid,
 } from "./experienceWizardTypes";
 import {
   EXPERIENCE_INTENTS,
@@ -787,8 +788,9 @@ export const ExperienceCreatorWizard: React.FC<
     if (!unlimited && (parseInt(capacity, 10) || 0) <= 0) return false;
     if (isFree) return true;
     if (pricingMode === "whole") return resolvedTotalMajor > 0;
-    // per-stop: every stop must have an explicit non-empty price entry
-    return stops.every((s) => s.priceMajor.trim().length > 0);
+    // #3645 — per-stop: an EMPTY price means that stop is free (same as 0), so
+    // only something typed that is not a valid amount stops Continue.
+    return stops.every((s) => stopPriceEntryIsValid(s.priceMajor));
   }, [unlimited, capacity, isFree, pricingMode, resolvedTotalMajor, stops]);
 
   const canContinue = useMemo(() => {
@@ -1898,7 +1900,7 @@ export const ExperienceCreatorWizard: React.FC<
             <View style={styles.reviewCard}>
               <Text style={styles.label}>Experience</Text><Text style={styles.reviewValue}>{title}</Text>
               <Text style={styles.label}>Stops</Text><Text style={styles.reviewValue}>{stops.length}</Text>
-              <Text style={styles.label}>Price</Text><Text style={styles.reviewValue}>{isFree ? "Free" : `${currencySymbol}${resolvedTotalMajor.toFixed(2)}`}</Text>
+              <Text style={styles.label}>Price</Text><Text style={styles.reviewValue}>{isFree || (pricingMode === "per_stop" && resolvedTotalMajor === 0) ? "Free" : `${currencySymbol}${resolvedTotalMajor.toFixed(2)}`}</Text>
             </View>
             <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} />
           </View>

@@ -72,11 +72,19 @@ describe("ORCH-0862 AD-1 — F-1 preserved the error-path UX (cancel handler)", 
     expect(body).toContain("new Date().toISOString()");
   });
 
-  test("legacy client-side path still toasts about the B-cycle refund stub", () => {
+  // [TEST-MOD-APPROVED #3645] This pinned the toast "Buyers will be refunded
+  // when emails wire up (B-cycle)": internal wording shown to hosts, and a
+  // promise nothing in the code keeps. A device-only event has no orders on
+  // Mingla, so the legacy path now says only that the event was cancelled.
+  test("legacy client-side path toasts a plain confirmation, with no internal wording", () => {
     const stripped = body
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/\/\/[^\n]*/g, "");
-    expect(stripped).toContain("Buyers will be refunded when emails wire up");
+    expect(stripped).toContain(
+      'cancelEventDoneToast(nothingSoldRef.current, "Event cancelled.")',
+    );
+    expect(stripped).not.toContain("B-cycle");
+    expect(stripped).not.toContain("wire up");
   });
 
   test("cancelServerEvent reference is preserved in deps array (without router)", () => {

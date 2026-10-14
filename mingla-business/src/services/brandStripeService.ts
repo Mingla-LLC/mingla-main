@@ -67,7 +67,7 @@ export class BrandStripeCountryLockedError extends Error {
     reason?: string | null;
   }) {
     super(
-      `Stripe is connected for ${
+      `A payment account is already set up for ${
         input.existingCountry ?? "this country"
       }. To use a different country or currency, create a new brand.`,
     );

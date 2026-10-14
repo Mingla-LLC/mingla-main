@@ -1901,6 +1901,24 @@ jobs:
           # can-collect check; a paid experience never declares free-only.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_offering_functions_use_shared_currency_source.implementor.adversarial.pg17.test.sql
+          # Issue #3645 — the payout country a host picked is remembered
+          # (brands.payout_country: saved and cleared by the owner through RLS,
+          # nothing else moves), a brand's RSVPs count towards its Hub Events
+          # tab (draft and published), and a published RSVP nobody has answered
+          # goes back to draft whole and publishes again from what was put
+          # back, with values a live edit changed taken from the live columns.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_bank_setup_truthful.implementor.happy.pg17.test.sql
+          # Issue #3645 — the opposite axis. The payout country takes a
+          # two-letter code or nothing, from the brand's own people only, and no
+          # database routine or view reads it (display-only). Deleted and
+          # foreign RSVPs are not counted and visitors cannot read counts. An
+          # RSVP with any reply (going, maybe, not going, waitlisted, awaiting
+          # approval) or any chip-in (paid or not) stays published; drafts,
+          # strangers, visitors, events, started and deleted RSVPs are refused,
+          # and the event unpublish still refuses an RSVP.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_bank_setup_truthful.implementor.adversarial.pg17.test.sql
           # Issue #1345 — durable outbox for paid NG reservation slot-unavailable
           # ops alerts (enqueue idempotency + authenticated cannot claim).
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \

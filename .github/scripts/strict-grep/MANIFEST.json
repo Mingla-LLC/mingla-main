@@ -9807,6 +9807,15 @@
       "modes": ["self-test", "plain"],
       "selfTest": "wired",
       "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-3645-no-provider-names-in-host-copy.mjs",
+      "kind": "file",
+      "enforcement": "batch:B",
+      "invocation": "node",
+      "modes": ["self-test", "plain"],
+      "selfTest": "wired",
+      "jobKeys": []
     }
   ]
 }

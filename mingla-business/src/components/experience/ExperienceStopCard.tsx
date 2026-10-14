@@ -47,6 +47,7 @@ import {
   type ExperienceLocationMode,
   type ExperiencePricingMode,
   type ExperienceStopDraft,
+  stopPriceEntryIsValid,
 } from "./experienceWizardTypes";
 
 const STOP_THUMB = 64;
@@ -169,8 +170,10 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
       ? "Pick this stop's address from the suggestions."
       : undefined;
   const priceError =
-    showErrors && pricingMode === "per_stop" && stop.priceMajor.trim().length === 0
-      ? "Set a price for this stop (or 0 for free)."
+    showErrors &&
+    pricingMode === "per_stop" &&
+    !stopPriceEntryIsValid(stop.priceMajor)
+      ? "Enter a valid price, or leave it empty for a free stop."
       : undefined;
 
   return (
@@ -380,8 +383,8 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               <Text style={styles.inlineError}>{priceError}</Text>
             ) : (
               <Text style={styles.helper}>{currencySymbol.trim().length > 0
-                  ? `Buyers see ${currencySymbol} prices.`
-                  : "Your currency is set when you choose a payout country."}</Text>
+                  ? `Leave empty for a free stop. Buyers see ${currencySymbol} prices.`
+                  : "Leave empty for a free stop. Your currency is set when you choose a payout country."}</Text>
             )}
           </>
         ) : null}

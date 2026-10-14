@@ -33,7 +33,13 @@ export default function BrandOnboardRoute(): React.ReactElement {
     from?: string | string[];
     country?: string | string[];
     resume?: string | string[];
+    choose?: string | string[];
   }>();
+  // #3645 — set by Payments when the host tapped "Choose a different country".
+  const chooseParam = Array.isArray(params.choose)
+    ? params.choose[0]
+    : params.choose;
+  const countryChoiceRequested = chooseParam === "country";
   // #3645 — the creator screen the host came from ("Connect bank" at Publish).
   // Validated against the closed list of creator routes; anything else is null
   // and this route behaves exactly as it did before.
@@ -109,6 +115,7 @@ export default function BrandOnboardRoute(): React.ReactElement {
           onEditContact={brandId !== null ? handleEditContact : undefined}
           initialCountry={typeof countryParam === "string" ? countryParam : null}
           returnPath={isBrandCreateFunnel ? null : resumePath}
+          countryChoiceRequested={countryChoiceRequested}
         />
       </BrandPaymentsPermissionGate>
     </View>

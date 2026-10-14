@@ -28,6 +28,9 @@ interface BrandSeed {
   displayName: string;
   countryCode: string | null;
   paymentProvider: string | null;
+  // #3645 — the brand's own currency. Bank setup opens on the country the
+  // brand CHOSE (its currency), never on its address country.
+  defaultCurrency?: string | null;
 }
 
 let brandSeed: BrandSeed;
@@ -284,6 +287,7 @@ describe("#948 W2 implementor — production connect route render/fire", () => {
       displayName: "Route Proof Brand",
       countryCode: "US",
       paymentProvider: "stripe",
+      defaultCurrency: "USD",
     };
     acceptTerms = jest.fn(async () => ({ accepted: true }));
     mintOnboarding = jest.fn(async () => ({
@@ -373,16 +377,34 @@ describe("#948 W2 implementor — production connect route render/fire", () => {
     ).toThrow();
   });
 
+  // [TEST-MOD-APPROVED #3645] This asserted "the safe GB/GBP fallback": a
+  // brand with no usable country was opened on the United Kingdom. That
+  // fallback is the fault #3645 removes (a host who never chose a country was
+  // set up, and priced, in pounds). A brand that has chosen nothing now opens
+  // on NOTHING: the row reads "Choose a country" and the primary button is
+  // disabled until one is picked.
   test.each([null, "ZZ"])(
-    "brand country %p renders the safe GB/GBP fallback",
+    "brand country %p with nothing chosen opens on no country, never on the United Kingdom",
     async (countryCode) => {
       brandSeed = {
         ...brandSeed,
         countryCode,
         paymentProvider: "stripe",
+        defaultCurrency: null,
       };
       tree = await mountRoute();
-      expect(renderedText(tree.root)).toContain("United Kingdom · GBP");
+      const text = renderedText(tree.root);
+      expect(text).toContain("Choose a country");
+      expect(text).not.toContain("United Kingdom");
+      expect(text).not.toContain("GBP");
+      expect(
+        tree.root.findByProps({ testID: "bank-connect-primary" }).props.disabled,
+      ).toBe(true);
+      expect(
+        tree.root.findByProps({
+          accessibilityLabel: "Payout country: not chosen, tap to choose",
+        }),
+      ).toBeTruthy();
     },
   );
 });

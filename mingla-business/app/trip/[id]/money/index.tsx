@@ -585,7 +585,7 @@ const MoneyRouteBody: React.FC<MoneyRouteBodyProps> = ({
         onClose={() => setPendingAtRiskCharge(null)}
         onConfirm={confirmAtRiskCharge}
         title="Buyer is at-risk"
-        description="Proceeding will create a new Stripe charge attempt anyway. Are you sure?"
+        description="Proceeding will create a new charge attempt anyway. Are you sure?"
         confirmLabel="Charge anyway"
         cancelLabel="Cancel"
         destructive={true}

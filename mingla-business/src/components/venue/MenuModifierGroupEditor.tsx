@@ -215,6 +215,12 @@ export interface MenuModifierGroupEditorProps {
   /** Present → edit; absent → a new group. */
   group: MenuModifierGroup | null;
   currency: string;
+  /**
+   * #3645 — false when the brand has no currency: `currency` is then only a
+   * crash-guard value, and no code or symbol is shown in the option price
+   * fields or their errors. Defaults to true.
+   */
+  showCurrency?: boolean;
   nextSortOrder: number;
   onSave: (input: ModifierGroupSaveInput) => void;
   saving: boolean;
@@ -256,6 +262,7 @@ export function MenuModifierGroupEditor({
   menuItemId,
   group,
   currency,
+  showCurrency = true,
   nextSortOrder,
   onSave,
   saving,
@@ -667,7 +674,11 @@ export function MenuModifierGroupEditor({
             ? validation.error.message
             : null;
         const priceResult = parseSignedMenuMoneyDraft(option.price, code);
-        const priceError = modifierPriceDraftError(priceResult, code);
+        const priceError = modifierPriceDraftError(
+          priceResult,
+          code,
+          showCurrency,
+        );
         const priceErrorId = `modifier-option-price-error-${option.id}`;
         return (
           <View key={option.id} style={styles.optionBlock}>
@@ -747,8 +758,12 @@ export function MenuModifierGroupEditor({
                     }
                     variant="text"
                     inputMode="text"
-                    placeholder={`± ${code}`}
-                    accessibilityLabel={`Price change for option ${optionIndex + 1} in ${code}`}
+                    placeholder={showCurrency ? `± ${code}` : "±"}
+                    accessibilityLabel={
+                      showCurrency
+                        ? `Price change for option ${optionIndex + 1} in ${code}`
+                        : `Price change for option ${optionIndex + 1}`
+                    }
                     accessibilityHint="Leave blank when this option costs the same. Use a minus when it costs less."
                     error={priceError}
                     errorId={priceErrorId}
@@ -965,10 +980,17 @@ function Field({
 function modifierPriceDraftError(
   result: MenuMoneyDraftResult,
   code: string,
+  showCurrency = true,
 ): string | null {
   if (result.kind !== "invalid") return null;
   if (result.reason === "format") {
     return "Enter a valid price change, for example -1.50 or 2.00.";
+  }
+  // #3645 — a brand with no currency is never shown a currency code or symbol.
+  if (!showCurrency) {
+    return result.reason === "precision"
+      ? "Use no more than 2 decimal places."
+      : "Price change is too large.";
   }
   if (result.reason === "precision") {
     return menuMoneyFractionDigits(code) === 0

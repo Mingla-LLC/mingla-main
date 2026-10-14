@@ -96,7 +96,7 @@ export type OrganiserEmailSurface = "brand" | "partner";
  */
 export const BRAND_EMAIL_REQUIRED_TITLE = "Add a contact email first";
 export const BRAND_EMAIL_REQUIRED_SUB =
-  "Stripe needs an email address for this brand, and we couldn't find a valid one. Add a contact email to your brand details, then set up payments again.";
+  "Bank setup needs an email address for this brand, and we couldn't find a valid one. Add a contact email to your brand details, then set up payments again.";
 
 /**
  * Partner: no brand record to fix, so the only way out is support. Rendered
@@ -104,7 +104,7 @@ export const BRAND_EMAIL_REQUIRED_SUB =
  * inline — so the message IS the copy.
  */
 export const PARTNER_EMAIL_REQUIRED_MESSAGE =
-  "We couldn't find a valid email address on your account to give Stripe. Contact support@usemingla.com and we'll sort it out.";
+  "We couldn't find a valid email address on your account for payout setup. Contact support@usemingla.com and we'll sort it out.";
 
 /**
  * TERMINAL, like a permission denial: retrying sends the same session and the

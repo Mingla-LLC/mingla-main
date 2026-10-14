@@ -80,7 +80,8 @@ describe("#3258 — the pending-verification sentence names the account's own UR
     expect(sentence).toContain("www.rambleawaypod.com");
     // The brand page must NOT appear when Stripe is not looking at it.
     expect(sentence).not.toContain("host.usemingla.com");
-    expect(sentence).toContain("Stripe is checking your website");
+    // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
+    expect(sentence).toContain("We're checking your website");
     expect(sentence).toContain("Nothing to do");
     // Never re-introduce the false instruction.
     expect(sentence).not.toContain("Action required");
@@ -107,7 +108,8 @@ describe("#3258 — the pending-verification sentence names the account's own UR
       brandPublicUrl: null,
     });
     expect(sentence).toBe(
-      "Stripe is checking your website. Nothing to do — we'll email you when it's verified.",
+      // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
+      "We're checking your website. Nothing to do — we'll email you when it's verified.",
     );
     expect(sentence).not.toContain("(");
   });

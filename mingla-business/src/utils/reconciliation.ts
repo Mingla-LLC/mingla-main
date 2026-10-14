@@ -328,7 +328,7 @@ export const computeReconciliation = (
       kind: "auto_check_in_mismatch",
       copy: `${d1MissingCount} door ticket${d1MissingCount === 1 ? "" : "s"} sold but never scanned in`,
       followupHint:
-        "Likely auto-check-in race (HIDDEN-1). Manual verify with door scanner; B-cycle backend will reconcile.",
+        "These door tickets were sold but have no check-in recorded. Check them manually with the door scanner.",
     });
   }
 
@@ -344,7 +344,7 @@ export const computeReconciliation = (
       copy: `${currency === null || currency === undefined ? "—" : formatCurrency(d2Diff, currency)} unattributed across payment methods`,
       followupHint: currency === null || currency === undefined
         ? "Revenue totals differ, but no event currency is available. Review the source records."
-        : `Sum-by-method (${formatCurrency(methodSum, currency)}) doesn't equal grand revenue (${formatCurrency(grossRevenue, currency)}). Likely rounding artifact; verify in B-cycle.`,
+        : `Sum-by-method (${formatCurrency(methodSum, currency)}) doesn't equal grand revenue (${formatCurrency(grossRevenue, currency)}). Likely a rounding difference; check the source records.`,
     });
   }
 

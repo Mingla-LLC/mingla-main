@@ -50,6 +50,15 @@ export default function BrandPaymentsRoute(): React.ReactElement {
     router.push(`/brand/${brand.id}/payments/onboard` as never);
   };
 
+  // #3645 — the host asked for a different payout country: bank setup opens
+  // its country list with nothing chosen and does not move the brand back.
+  const handleChooseDifferentCountry = (): void => {
+    if (brand === null) return;
+    router.push(
+      `/brand/${brand.id}/payments/onboard?choose=country` as never,
+    );
+  };
+
   const handleOpenReports = (): void => {
     if (brand === null) return;
     router.push(`/brand/${brand.id}/payments/reports` as never);
@@ -74,6 +83,7 @@ export default function BrandPaymentsRoute(): React.ReactElement {
           onBack={handleBack}
           onOpenOnboard={handleOpenOnboard}
           onOpenReports={handleOpenReports}
+          onChooseDifferentCountry={handleChooseDifferentCountry}
         />
       </BrandPaymentsPermissionGate>
     </View>

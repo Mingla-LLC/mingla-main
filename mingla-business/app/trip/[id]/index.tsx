@@ -157,6 +157,15 @@ function normalizeCoverMediaType(value: string | null): EventCoverMediaType | nu
   return null;
 }
 
+// #3645 — what cancelling a trip really does. It takes the trip down, and only
+// when nobody has booked: with any booking the server refuses and nothing
+// changes. No refund is started here and no buyer is contacted, so the copy
+// promises neither.
+const TRIP_CANCEL_DESCRIPTION =
+  "This takes the trip down for good. A trip that has bookings can't be cancelled here: nothing will change. You can't undo this.";
+const TRIP_CANCEL_HAS_BOOKINGS_COPY =
+  "This trip has bookings, so it wasn't cancelled. Nothing was changed. Email support@usemingla.com for help.";
+
 export default function TripDashboardRoute(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -755,10 +764,22 @@ export default function TripDashboardRoute(): React.ReactElement {
         onConfirm={async () => {
           setCancelSubmitting(true);
           try {
-            await softDeleteMutation.mutateAsync({
+            const result = await softDeleteMutation.mutateAsync({
               eventId: trip.id,
               brandId: trip.brandId,
             });
+            // #3645 — the server refuses to cancel a trip that has bookings
+            // and changes nothing. This screen used to say "Trip cancelled."
+            // and leave anyway.
+            if (result.rejected) {
+              setCancelDialogVisible(false);
+              setToast({
+                visible: true,
+                kind: "warn",
+                message: TRIP_CANCEL_HAS_BOOKINGS_COPY,
+              });
+              return;
+            }
             setCancelDialogVisible(false);
             setToast({
               visible: true,
@@ -781,7 +802,7 @@ export default function TripDashboardRoute(): React.ReactElement {
           }
         }}
         title="Cancel this trip?"
-        description="Buyers will be notified and refunds processed in a future release. This can't be undone."
+        description={TRIP_CANCEL_DESCRIPTION}
         variant="typeToConfirm"
         confirmText={trip.title.length > 0 ? trip.title : trip.slug}
         confirmLabel="Cancel trip"

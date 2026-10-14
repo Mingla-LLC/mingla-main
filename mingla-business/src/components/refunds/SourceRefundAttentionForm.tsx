@@ -36,8 +36,8 @@ export function SourceRefundAttentionForm({
   return (
     <View style={styles.form}>
       <Text>
-        Choose your Nigerian bank. These details are sent to Paystack once and
-        are not stored by Mingla.
+        Choose your Nigerian bank. These details are sent to our payment
+        partner once and are not stored by Mingla.
       </Text>
       <TextInput
         accessibilityLabel="Account number"
