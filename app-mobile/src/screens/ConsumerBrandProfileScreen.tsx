@@ -72,6 +72,14 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
     void shareContent("brand", { brandSlug: slug });
   }, [slug]);
 
+  // #3682 — a brand link can open the app straight onto this page, leaving
+  // nothing to go back to; the X then lands on the Explorer home instead of
+  // doing nothing. Same idiom as the /e, /t and /exp link routes.
+  const handleClose = useCallback((): void => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/");
+  }, [router]);
+
   if (query.isLoading || query.isFetching) {
     return (
       <View style={styles.stateWrap}>
@@ -194,7 +202,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
         chromeTopOffset={insets.top}
         contentBottomInset={insets.bottom + 24}
         callbacks={{
-          onClose: () => router.back(),
+          onClose: handleClose,
           onShare: handleShare,
           onToggleFollow: handleToggleFollow,
           onFollowingMenu: handleFollowingMenu,

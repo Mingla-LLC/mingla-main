@@ -815,6 +815,21 @@ jobs:
           # cannot go live.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.tester.retest3.pg17.test.sql
+          # Issue #3801 — the public trip page (web and the Explorer app) receives
+          # a trip's packages in the order the host authored them. Three packages
+          # stored in the opposite physical order come back in authored order,
+          # equal positions fall back to oldest first, and the shape of a package
+          # is unchanged. Behavioural against the applied schema.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3801_public_trip_tiers_ordered.implementor.happy.pg17.test.sql
+          # Issue #3801 — independent tester adversarial proof for the same reader:
+          # a full tie falls to the tier id, fifty packages stored scrambled and
+          # rewritten in place read the same twenty times, removed and hidden
+          # packages leave no ghost, an anonymous buyer gets the authored order,
+          # and unpublished, private, hidden, deleted and non-trip offerings are
+          # still not returned. Behavioural against the applied schema.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3801_public_trip_tiers_ordered.tester.adversarial.pg17.test.sql
           # Issue #1977 — canonical RSVP draft/guest/contribution owners and
           # the Ari receipt seam. Behavioural against the applied schema.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
