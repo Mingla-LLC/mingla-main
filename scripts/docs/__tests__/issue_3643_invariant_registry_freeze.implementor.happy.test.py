@@ -442,10 +442,11 @@ def exercise_future_states(root: Path, head: str) -> None:
 
         git(clone, "switch", "--quiet", "--detach", head)
         future_path = "scripts/docs/__tests__/issue_3643_future_owner.test.mjs"
+        future_id = "I-" + "3643-FUTURE-LOCAL-OWNER"
         (clone / future_path).write_text(
-            "// MINGLA-INVARIANT: I-3643-FUTURE-LOCAL-OWNER | issue #3643 | "
+            f"// MINGLA-INVARIANT: {future_id} | issue #3643 | "
             "Future invariants remain locally owned by their enforcing tests.\n"
-            'export const FUTURE_INVARIANT = "I-3643-FUTURE-LOCAL-OWNER";\n'
+            f'export const FUTURE_INVARIANT = "{future_id}";\n'
         )
         future_head = commit_paths(clone, "future local invariant", future_path)
         check(
