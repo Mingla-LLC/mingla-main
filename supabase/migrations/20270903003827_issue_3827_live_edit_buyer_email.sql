@@ -738,8 +738,12 @@ BEGIN
     -- acts on changed. biz_update_live_rsvp keeps its own queue otherwise.
     'handled', v_live AND jsonb_array_length(v_changes) > 0,
     'material', jsonb_array_length(v_changes) > 0,
-    'audience', v_audience,
+    -- The people an email can reach (distinct addresses); those with no
+    -- address are counted apart. While emails are being tested only the
+    -- allowlist is emailed, and the host is told so.
+    'audience', v_recipients,
     'no_email', v_no_email,
+    'allowlist_only', public.event_edit_notice_allowlist_only(),
     'send_after', v_send_after);
 END;
 $fn$;
@@ -1205,7 +1209,10 @@ BEGIN
 
   RETURN jsonb_build_object(
     'live', public.event_edit_notice_brand_live(v_brand_id),
-    'audience', v_recipients + v_no_email,
+    -- Emailable people (distinct addresses); those with none apart.
+    'audience', v_recipients,
+    'noEmail', v_no_email,
+    'allowlistOnly', public.event_edit_notice_allowlist_only(),
     'last', v_last_json);
 END;
 $fn$;

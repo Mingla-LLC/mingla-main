@@ -17,14 +17,22 @@ export interface BuyerNotice {
   holdCode: string | null;
   live: boolean;
   material: boolean;
+  /** People an email can reach (distinct addresses). */
   audience: number;
   sendAfter: string | null;
+  /** Emails are being tested: only allowlisted addresses are emailed. */
+  allowlistOnly: boolean;
 }
 
 /** `business_event_buyer_notice_status`, or null when it is not known. */
 export interface BuyerNoticeStatus {
   live: boolean;
+  /** People an email can reach (distinct addresses), not counting those with none. */
   audience: number;
+  /** People with no email address. Absent when there are none (or not known). */
+  noEmail?: number;
+  /** Emails are being tested: only allowlisted addresses are emailed. Absent = no. */
+  allowlistOnly?: boolean;
   last: {
     state: string;
     holdCode: string | null;
@@ -66,6 +74,7 @@ export const parseBuyerNotice = (raw: unknown): BuyerNotice | null => {
     material: raw.material === true,
     audience: count(raw.audience),
     sendAfter: typeof raw.send_after === "string" ? raw.send_after : null,
+    allowlistOnly: raw.allowlist_only === true,
   };
 };
 
@@ -84,7 +93,12 @@ export const parseBuyerNoticeStatus = (raw: unknown): BuyerNoticeStatus | null =
         held: count(raw.last.held),
       }
     : null;
-  return { live: raw.live, audience: count(raw.audience), last };
+  const status: BuyerNoticeStatus = { live: raw.live, audience: count(raw.audience), last };
+  // Optional facts are present only when the server says so.
+  const noEmail = count(raw.noEmail);
+  if (noEmail > 0) status.noEmail = noEmail;
+  if (raw.allowlistOnly === true) status.allowlistOnly = true;
+  return status;
 };
 
 const people = (n: number, noun: BuyerNoticeNoun): string =>
@@ -111,10 +125,31 @@ export const buyerNoticeSavedToast = (
   if (notice === null || notice.state !== "scheduled" || notice.audience === 0) {
     return null;
   }
+  if (notice.allowlistOnly) {
+    return noun === "guests"
+      ? "Saved. Guest emails are being tested: only test addresses get the new email, and your other going guests get the usual alert."
+      : "Saved. Buyer emails are being tested, so only test addresses will be emailed about this change.";
+  }
   const minutes = minutesUntil(notice.sendAfter, now);
   return `Saved. We'll email ${people(notice.audience, noun)} in about ${minutes} ${
     minutes === 1 ? "minute" : "minutes"
   }.`;
+};
+
+/**
+ * The toast after a live RSVP save. A change the edit email owns but did not
+ * schedule (put back to what guests last knew, or nothing they act on) says
+ * just "Saved. Live now." instead of promising an alert; otherwise the
+ * caller decides from the guests the server alerted the usual way.
+ */
+export const rsvpSavedToast = (raw: unknown, now: number = Date.now()): string | null => {
+  const scheduled = buyerNoticeSavedToast(raw, "guests", now);
+  if (scheduled !== null) return scheduled;
+  const notice = parseBuyerNotice(raw);
+  if (notice !== null && notice.live && notice.material && !notice.allowlistOnly) {
+    return "Saved. Live now.";
+  }
+  return null;
 };
 
 /**
@@ -146,6 +181,22 @@ const GUEST_ALERT_FIELD_KEYS: ReadonlySet<string> = new Set([
   "multiDates",
 ]);
 
+/** The date and time fields: refused by the server once tickets are sold. */
+const WHEN_FIELD_KEYS: ReadonlySet<string> = new Set([
+  "date",
+  "doorsOpen",
+  "endsAt",
+  "timezone",
+  "whenMode",
+  "recurrenceRule",
+  "multiDates",
+]);
+
+export const BUYER_EMAILS_TESTING_COPY =
+  "Buyer emails are being tested. Only test addresses will be emailed about this change; your buyers are not emailed yet.";
+export const GUEST_EMAILS_TESTING_COPY =
+  "Guest emails are being tested. Only test addresses get the new email; your other going guests get the usual alert that plans changed.";
+
 export const NOT_SWITCHED_ON_COPY =
   "Buyer emails are not switched on yet. This change is saved and logged; buyers are not emailed.";
 export const TRIP_EDIT_LOGGED_COPY =
@@ -169,6 +220,11 @@ export interface ChangeSummaryNoticeInput {
    */
   status: BuyerNoticeStatus | null | undefined;
   noun: BuyerNoticeNoun;
+  /**
+   * The event has sales and this save is not "refund all": the server refuses
+   * a date or time change, so those rows are never promised an email.
+   */
+  whenRefused?: boolean;
 }
 
 export interface ChangeSummaryNotice {
@@ -199,7 +255,10 @@ export const changeSummaryNotice = (
   if (input.severity === "destructive") {
     return { footer: "", footerIsNotice: false, taggedKeys: NO_KEYS, tag };
   }
-  const emailKeys = input.fieldKeys.filter((key) => EMAIL_MATERIAL_FIELD_KEYS.has(key));
+  const emailKeys = input.fieldKeys.filter((key) =>
+    EMAIL_MATERIAL_FIELD_KEYS.has(key) &&
+    !(input.whenRefused === true && WHEN_FIELD_KEYS.has(key))
+  );
   if (input.severity === "additive" || input.noBuyers || emailKeys.length === 0) {
     return { footer: logged, footerIsNotice: false, taggedKeys: NO_KEYS, tag };
   }
@@ -208,8 +267,24 @@ export const changeSummaryNotice = (
     if (status.audience === 0) {
       return { footer: logged, footerIsNotice: false, taggedKeys: NO_KEYS, tag };
     }
+    if (status.allowlistOnly === true) {
+      if (input.noun === "guests") {
+        // Off-list guests get the usual alert for a date, time or place.
+        const alerted = input.fieldKeys.filter((key) => GUEST_ALERT_FIELD_KEYS.has(key));
+        return {
+          footer: GUEST_EMAILS_TESTING_COPY,
+          footerIsNotice: alerted.length > 0,
+          taggedKeys: new Set(alerted),
+          tag,
+        };
+      }
+      return { footer: BUYER_EMAILS_TESTING_COPY, footerIsNotice: false, taggedKeys: NO_KEYS, tag };
+    }
+    const noEmail = status.noEmail ?? 0;
     return {
-      footer: `We'll email your ${people(status.audience, input.noun)} what changed and your reason.`,
+      footer: `We'll email your ${people(status.audience, input.noun)} what changed and your reason.${
+        noEmail > 0 ? ` ${noEmail} ${noEmail === 1 ? "has" : "have"} no email address.` : ""
+      }`,
       footerIsNotice: true,
       taggedKeys: new Set(emailKeys),
       tag,
@@ -245,13 +320,18 @@ export const changeSummaryNotice = (
 export const experienceLiveEditNotice = (
   status: BuyerNoticeStatus | null,
 ): string => {
+  if (status !== null && status.live && status.allowlistOnly === true) {
+    return BUYER_EMAILS_TESTING_COPY;
+  }
   if (status !== null && status.live && status.audience > 0) {
     return `If the dates, the route or the stop times change, we'll email your ${
       people(status.audience, "buyers")
     } what changed and your reason.`;
   }
   if (status !== null && status.live) {
-    return "Nobody has booked yet, so nobody is emailed. Your reason is saved and logged.";
+    return (status.noEmail ?? 0) > 0
+      ? "None of your buyers has an email address, so nobody is emailed. Your reason is saved and logged."
+      : "Nobody has booked yet, so nobody is emailed. Your reason is saved and logged.";
   }
   return NOT_SWITCHED_ON_COPY;
 };
@@ -265,25 +345,28 @@ export interface LastNoticeLine {
 /** The "Last update" line of the live-edit banner, or null with nothing to say. */
 export const lastNoticeLine = (
   status: BuyerNoticeStatus | null,
+  noun: BuyerNoticeNoun = "buyers",
 ): LastNoticeLine | null => {
   const last = status?.last ?? null;
   if (last === null) return null;
   if (last.state === "scheduled") {
     return {
-      text: `Last update: an email to ${people(last.audience, "buyers")} is waiting to go out.`,
+      text: `Last update: an email to ${people(last.audience, noun)} is waiting to go out.`,
       failed: false,
     };
   }
   if (last.state === "held") {
     return last.holdCode === "refund_all"
       ? {
-          text: "Last update: no email was sent, because that change refunds every buyer.",
+          text: `Last update: no email was sent, because that change refunds every ${noun.slice(0, -1)}.`,
           failed: false,
         }
       : null;
   }
   if (last.state !== "fanned_out") return null;
-  const parts = [`Last update: sent to ${last.sent} of ${last.audience}`];
+  const parts = [
+    `Last update: sent to ${last.sent} of ${last.audience}${noun === "guests" ? " guests" : ""}`,
+  ];
   if (last.pending > 0) parts.push(`${last.pending} still sending`);
   parts.push(
     `${last.noEmail} ${last.noEmail === 1 ? "has" : "have"} no email address`,

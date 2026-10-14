@@ -1194,4 +1194,39 @@ BEGIN
 END $r04$;
 ROLLBACK;
 
+-- ─── S-03 (rework F2, F3): the host is told who an email can reach, and that
+--     emails are being tested ──────────────────────────────────────────────────
+BEGIN;
+DO $s03$
+DECLARE
+  f record;
+  v_status jsonb;
+  v_result jsonb;
+BEGIN
+  SELECT * INTO f FROM pg_temp.e3827_event('s03');
+  PERFORM pg_temp.e3827_buyer(f.v_event, f.v_tier, 'ada@example.test');
+  PERFORM pg_temp.e3827_buyer(f.v_event, f.v_tier, 'ben@example.test');
+  PERFORM pg_temp.e3827_buyer(f.v_event, f.v_tier, NULL);
+  PERFORM pg_temp.e3827_go_live(f.v_brand, true);
+  v_status := public.business_event_buyer_notice_status(f.v_event);
+  IF (v_status ->> 'audience')::integer <> 2 OR (v_status ->> 'noEmail')::integer <> 1
+     OR (v_status ->> 'allowlistOnly')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'S-03 FAIL: status must give 2 emailable, 1 without an address, and allowlist-only (%)', v_status;
+  END IF;
+  v_result := public.business_update_live_event_atomic(f.v_event,
+    jsonb_build_object('core', jsonb_build_object('venueName', 'The Bedford Hall')),
+    'The first room has a power fault', f.v_revision + 1);
+  IF (v_result #>> '{buyer_notice,audience}')::integer <> 2
+     OR (v_result #>> '{buyer_notice,no_email}')::integer <> 1
+     OR (v_result #>> '{buyer_notice,allowlist_only}')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'S-03 FAIL: the save answer must carry the same facts (%)', v_result -> 'buyer_notice';
+  END IF;
+  UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'event_update_buyer_email_allowlist_only';
+  IF (public.business_event_buyer_notice_status(f.v_event) ->> 'allowlistOnly')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'S-03 FAIL: allowlist-only off is not reported';
+  END IF;
+  RAISE NOTICE 'S-03 PASS: status and save answer give the emailable count, those without an address, and allowlist-only';
+END $s03$;
+ROLLBACK;
+
 \echo 'issue_3827_live_edit_buyer_email.implementor.happy: all cases passed'

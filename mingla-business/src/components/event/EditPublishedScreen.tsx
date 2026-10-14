@@ -2034,6 +2034,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         // (unknown) reads as "buyer emails are not switched on".
         buyerNoticeStatus={buyerNoticeStatus ?? null}
         buyerNoticeNoun={rsvpMode ? "guests" : "buyers"}
+        // issue #3827 — with tickets sold the server refuses a date or time
+        // change on this save, so those rows are never promised an email.
+        whenChangeRefused={!rsvpMode && soldCountCtx.soldCountForEvent > 0}
       />
 
       {/* #1035 — Theme picker sheet, hoisted OUT of the memoized

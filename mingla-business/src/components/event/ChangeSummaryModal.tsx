@@ -108,6 +108,12 @@ export interface ChangeSummaryModalProps {
   buyerNoticeStatus?: BuyerNoticeStatus | null;
   /** issue #3827 — "guests" for an RSVP; default "buyers". */
   buyerNoticeNoun?: BuyerNoticeNoun;
+  /**
+   * issue #3827 — the event has sales and this save is not "refund all":
+   * the server refuses a date or time change, so those rows are never tagged
+   * as emailed.
+   */
+  whenChangeRefused?: boolean;
 }
 
 export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
@@ -125,6 +131,7 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
   buyerCount,
   buyerNoticeStatus,
   buyerNoticeNoun = "buyers",
+  whenChangeRefused = false,
 }) => {
   const [reason, setReason] = useState<string>("");
   // issue #3827 — only a KNOWN zero relaxes anything.
@@ -163,6 +170,7 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
     fieldKeys: diffs.map((diff) => String(diff.fieldKey)),
     status: buyerNoticeStatus,
     noun: buyerNoticeNoun,
+    whenRefused: whenChangeRefused,
   });
   const footerCopy = notice.footer;
   // The footer is styled for what it SAYS, not for the severity.

@@ -101,6 +101,7 @@ import {
   experienceLiveEditNotice,
   lastNoticeLine,
   parseBuyerNoticeStatus,
+  rsvpSavedToast,
   type BuyerNoticeStatus,
 } from "../../../utils/buyerNoticeCopy";
 import type { FieldDiff } from "../../../utils/liveEventAdapter";
@@ -270,6 +271,97 @@ describe("issue #3827 — the four footer states of Review changes", () => {
       expect(texts(tree).join(" | ")).not.toMatch(/\bSMS\b|text message|\btexted\b|\bpush\b/i);
       tree.unmount();
     }
+  });
+});
+
+describe("issue #3827 rework — testing, people without an address, refused dates", () => {
+  test("FT-6 (F2): while emails are being tested the host is not told buyers will be emailed", async () => {
+    const testing: BuyerNoticeStatus = { live: true, audience: 254, allowlistOnly: true, last: null };
+    const tree = await mountModal({ buyerNoticeStatus: testing });
+    const all = texts(tree);
+    expect(all).toContain(
+      "Buyer emails are being tested. Only test addresses will be emailed about this change; your buyers are not emailed yet.",
+    );
+    expect(all.join(" ")).not.toMatch(/We'll email/);
+    expect(taggedRows(tree)).toEqual([]);
+    tree.unmount();
+
+    const guests = await mountModal({
+      buyerCount: undefined, buyerNoticeNoun: "guests", buyerNoticeStatus: testing,
+    });
+    expect(texts(guests)).toContain(
+      "Guest emails are being tested. Only test addresses get the new email; your other going guests get the usual alert that plans changed.",
+    );
+    guests.unmount();
+
+    expect(experienceLiveEditNotice(testing)).toMatch(/^Buyer emails are being tested\./);
+    const scheduled = {
+      state: "scheduled", live: true, material: true, audience: 254, allowlist_only: true,
+      send_after: new Date(Date.now() + 5 * 60000).toISOString(),
+    };
+    expect(buyerNoticeSavedToast(scheduled)).toBe(
+      "Saved. Buyer emails are being tested, so only test addresses will be emailed about this change.",
+    );
+    expect(buyerNoticeSavedToast(scheduled, "guests")).toBe(
+      "Saved. Guest emails are being tested: only test addresses get the new email, and your other going guests get the usual alert.",
+    );
+  });
+
+  test("FT-7 (F3): the count is the people an email reaches, and those with none are named", async () => {
+    const status = parseBuyerNoticeStatus({ live: true, audience: 3, noEmail: 2, allowlistOnly: false, last: null });
+    expect(status).toEqual({ live: true, audience: 3, noEmail: 2, last: null });
+    const tree = await mountModal({ buyerNoticeStatus: status });
+    expect(texts(tree)).toContain(
+      "We'll email your 3 buyers what changed and your reason. 2 have no email address.",
+    );
+    tree.unmount();
+    const one = await mountModal({ buyerNoticeStatus: { live: true, audience: 3, noEmail: 1, last: null } });
+    expect(texts(one)).toContain("We'll email your 3 buyers what changed and your reason. 1 has no email address.");
+    one.unmount();
+    // Bought, but nobody can be emailed: nothing is promised.
+    const nobody = await mountModal({ buyerNoticeStatus: { live: true, audience: 0, noEmail: 4, last: null } });
+    expect(texts(nobody)).toContain(LOGGED);
+    nobody.unmount();
+    expect(experienceLiveEditNotice({ live: true, audience: 0, noEmail: 4, last: null })).toBe(
+      "None of your buyers has an email address, so nobody is emailed. Your reason is saved and logged.",
+    );
+  });
+
+  test("FT-8: with tickets sold, a date or time row is never tagged as emailed", async () => {
+    const tree = await mountModal({
+      diffs: [ADDRESS, DATE, diff("doorsOpen", "material")],
+      buyerNoticeStatus: LIVE_254,
+      whenChangeRefused: true,
+    });
+    expect(taggedRows(tree)).toEqual(["Label address"]);
+    tree.unmount();
+    const onlyWhen = await mountModal({ diffs: [DATE], buyerNoticeStatus: LIVE_254, whenChangeRefused: true });
+    expect(taggedRows(onlyWhen)).toEqual([]);
+    expect(texts(onlyWhen).join(" ")).not.toMatch(/We'll email/);
+    onlyWhen.unmount();
+  });
+
+  test("TS-3: an RSVP save the email owns but did not schedule says only that it saved", () => {
+    expect(rsvpSavedToast({ state: "logged", live: true, material: true, audience: 12 })).toBe("Saved. Live now.");
+    // Not owned by the email (off, or nothing a guest acts on): the caller decides.
+    expect(rsvpSavedToast({ state: "held", hold_code: "feature_off", live: false, material: true, audience: 12 })).toBeNull();
+    expect(rsvpSavedToast({ state: "logged", live: true, material: false, audience: 12 })).toBeNull();
+    expect(rsvpSavedToast(undefined)).toBeNull();
+    // While emails are being tested off-list guests DID get the usual alert.
+    expect(rsvpSavedToast({ state: "logged", live: true, material: true, allowlist_only: true, audience: 2 })).toBeNull();
+  });
+
+  test("BN-4: the last-update line says guests for an RSVP", () => {
+    const status: BuyerNoticeStatus = {
+      live: true, audience: 12,
+      last: { state: "fanned_out", holdCode: null, audience: 12, sent: 11, pending: 0, failed: 0, noEmail: 1, held: 0 },
+    };
+    expect(lastNoticeLine(status, "guests")?.text).toBe(
+      "Last update: sent to 11 of 12 guests · 1 has no email address · 0 failed",
+    );
+    expect(lastNoticeLine({ ...status, last: { ...status.last!, state: "scheduled" } }, "guests")?.text).toBe(
+      "Last update: an email to 12 guests is waiting to go out.",
+    );
   });
 });
 
@@ -579,9 +671,9 @@ describe("issue #3827 — the editors are wired to the server's answer", () => {
       "const guestNoticeStatus = useEventBuyerNoticeStatus( isEditPublished ? (editorLiveEvent?.serverEventId ?? null) : null, );",
     );
     expect(rsvpRoute).toContain(
-      "buyerNoticeStatus={guestNoticeStatus} savedToastFor={savedToastForGuests} lastBuyerNotice={lastNoticeLine(guestNoticeStatus)}",
+      'buyerNoticeStatus={guestNoticeStatus} savedToastFor={savedToastForGuests} lastBuyerNotice={lastNoticeLine(guestNoticeStatus, "guests")}',
     );
-    expect(rsvpRoute).toContain('buyerNoticeSavedToast(notice, "guests")');
+    expect(rsvpRoute).toContain("rsvpSavedToast(notice)");
   });
 
   test("WIRE-3: the editor's toasts come from the save's own buyer_notice", () => {

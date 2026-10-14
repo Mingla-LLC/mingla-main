@@ -68,8 +68,8 @@ import { useAuth } from "../../../src/context/AuthContext";
 // issue #3827 — whether going guests are emailed about a live edit, and the words.
 import { useEventBuyerNoticeStatus } from "../../../src/hooks/useEventBuyerNoticeStatus";
 import {
-  buyerNoticeSavedToast,
   lastNoticeLine,
+  rsvpSavedToast,
 } from "../../../src/utils/buyerNoticeCopy";
 import { fetchServerDraftCover } from "../../../src/services/eventDrafts";
 import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
@@ -100,7 +100,7 @@ const MISSING_DRAFT_TIMEOUT_MS = 6000;
 
 // issue #3827 — the toast after a live RSVP save, from the save's own answer.
 const savedToastForGuests = (notice: unknown): string | null =>
-  buyerNoticeSavedToast(notice, "guests");
+  rsvpSavedToast(notice);
 
 export default function RsvpEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -898,7 +898,7 @@ export default function RsvpEditRoute(): React.ReactElement {
         // Unknown (null) reads as "not switched on".
         buyerNoticeStatus={guestNoticeStatus}
         savedToastFor={savedToastForGuests}
-        lastBuyerNotice={lastNoticeLine(guestNoticeStatus)}
+        lastBuyerNotice={lastNoticeLine(guestNoticeStatus, "guests")}
         // ORCH-1150 — RSVP edit-published: drop the Tickets section + the
         // sold-ticket refund gate; show the "N guests are going" notice (§12).
         rsvpMode
