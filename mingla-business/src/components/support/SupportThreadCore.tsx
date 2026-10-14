@@ -161,7 +161,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
 
   const handleSend = useCallback(async (): Promise<void> => {
     const content = composer.trim();
-    if (content.length === 0 || ticket === null) return;
+    if (content.length === 0 || ticket == null) return;
     setSending(true);
     try {
       // #3720: support-send owns insert + last_message_at + audit + push.

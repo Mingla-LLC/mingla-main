@@ -15,10 +15,17 @@ DECLARE
   v_supabase_url text;
   v_service_key text;
 BEGIN
+  -- Deterministic pick if vault ever holds duplicate names (rotation residue).
   SELECT decrypted_secret INTO v_supabase_url
-    FROM vault.decrypted_secrets WHERE name = 'supabase_url' LIMIT 1;
+    FROM vault.decrypted_secrets
+   WHERE name = 'supabase_url'
+   ORDER BY id DESC
+   LIMIT 1;
   SELECT decrypted_secret INTO v_service_key
-    FROM vault.decrypted_secrets WHERE name = 'service_role_key' LIMIT 1;
+    FROM vault.decrypted_secrets
+   WHERE name = 'service_role_key'
+   ORDER BY id DESC
+   LIMIT 1;
 
   IF v_supabase_url IS NULL OR v_service_key IS NULL THEN
     RAISE NOTICE
