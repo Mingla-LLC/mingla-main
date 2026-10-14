@@ -71,3 +71,6 @@ jobs:
 
       - name: Check issue release-record authority
         run: python3 scripts/docs/__tests__/issue_3643_reports_retirement.implementor.happy.test.py --repo-root .
+
+      - name: Check issue release-record fail-closed boundaries
+        run: python3 scripts/docs/__tests__/issue_3643_reports_retirement.tester.adversarial.test.py --repo-root .
