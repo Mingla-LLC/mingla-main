@@ -12,6 +12,7 @@ import {
   PUBLIC_PARITY_PAGE_KINDS,
   type PublicParityContract,
 } from "../publicParityContract.ts";
+import { TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE } from "../tripInstallmentCapability.ts";
 
 const enabled = (kind: string) => ({
   kind,
@@ -317,7 +318,7 @@ Deno.test("issue #3859 installment capability is provider-neutral and unknown fa
   assertEquals(createPublicInstallmentCapability(false), {
     kind: "installments",
     enabled: false,
-    disabledReason: "installment_capability_unavailable",
+    disabledReason: TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE,
   });
   assertEquals(createPublicInstallmentCapability("unknown").enabled, false);
   assertEquals(createPublicInstallmentCapability(undefined).enabled, false);
@@ -477,7 +478,7 @@ Deno.test("issue #3859 shared contract imports no host, auth, analytics, Supabas
   const specifiers = [...source.matchAll(/from\s+["']([^"']+)["']/g)].map(
     (match) => match[1],
   );
-  assertEquals(specifiers, ["./tripInstallmentCapability"]);
+  assertEquals(specifiers, []);
   for (
     const forbidden of [
       "@supabase",

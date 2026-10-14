@@ -6,7 +6,11 @@
  * or provider effect. Unknown input fails closed and is never echoed back.
  */
 
-import { TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE } from "./tripInstallmentCapability";
+// Kept as a literal so this leaf contract is directly Deno-checkable while
+// remaining valid for Metro's extensionless bundler resolution. The issue
+// regression test compares it to the slice-1 authority to prevent drift.
+const INSTALLMENT_CAPABILITY_UNAVAILABLE =
+  "installment_capability_unavailable" as const;
 
 export const PUBLIC_PARITY_PAGE_KINDS = [
   "brand",
@@ -91,7 +95,7 @@ export const PUBLIC_PARITY_DISABLED_REASONS = [
   "revalidation-required",
   "authentication-required",
   "provider-unavailable",
-  TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE,
+  INSTALLMENT_CAPABILITY_UNAVAILABLE,
   "missing-selection",
   "missing-required-information",
 ] as const;
@@ -969,7 +973,7 @@ export function createPublicInstallmentCapability(
     : {
       kind: "installments",
       enabled: false,
-      disabledReason: TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE,
+      disabledReason: INSTALLMENT_CAPABILITY_UNAVAILABLE,
     };
 }
 
