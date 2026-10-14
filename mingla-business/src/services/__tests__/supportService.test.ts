@@ -78,13 +78,12 @@ describe("META-ORCH-1104 supportService — create + list (happy)", () => {
     });
   });
 
+  // [TEST-MOD-APPROVED #3720] client notify is a deliberate no-op; server trigger owns push.
   test("notifyNewSupportTicket no-ops gracefully when notify-support is unavailable", async () => {
     invokeMock.mockRejectedValue(new Error("Function not found"));
-    // Must NOT throw — the ticket already exists; push is best-effort.
+    // Must NOT throw — and must NOT invoke the service-role-only edge with a user JWT.
     await expect(notifyNewSupportTicket("ticket-abc")).resolves.toBeUndefined();
-    expect(invokeMock).toHaveBeenCalledWith("notify-support", {
-      body: { event: "new_ticket", ticketId: "ticket-abc" },
-    });
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   test("listOwnSupportTickets returns the RLS-scoped rows newest-first", async () => {

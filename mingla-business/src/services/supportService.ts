@@ -2,9 +2,8 @@
  * supportService — META-ORCH-1104 Phase 1 (business requester).
  *
  * The requester-side data access for support tickets. A support ticket OWNS a
- * `conversations` row (SPEC §2.1/§2.10); the message thread reuses the existing
- * conversation-id-driven chat substrate (`groupChatService.listMessages` /
- * `postPlannerMessage`) unchanged — there is NO support-specific message engine.
+ * `conversations` row (SPEC §2.1/§2.10); reads reuse `groupChatService.listMessages`,
+ * and sends go through `support-send` (#3720) so audit + push fire.
  *
  * Identity spine = `auth.uid()` end-to-end (SPEC D1). RLS lets a requester read
  * ONLY their own tickets (`support_tickets_requester_read`, SPEC §2.7) and mint a
@@ -94,25 +93,37 @@ export async function createSupportTicket(
 }
 
 /**
- * Best-effort new-ticket push fan-out. The `notify-support` edge fn is NOT yet
- * deployed (orchestrator deploys it); this call is wrapped so it NO-OPS
- * gracefully now (404 / network error swallowed to a console.warn) and lights
- * up automatically once the function is live. Push is NATIVE-ONLY — on web there
- * is no OneSignal, so a failed/absent push is expected and never user-facing
- * (SPEC §5.1 D6, §5.2). This is intentionally fire-and-forget: the ticket is
- * already created and the thread already updates live via realtime, so a missing
- * push must NOT block or fail the requester flow.
+ * @deprecated #3720 — new-ticket staff push is server-side
+ * (`tg_support_ticket_notify_staff` → notify-support with the service-role
+ * bearer). Kept as a no-op so older callers / tests that still invoke it do not
+ * hit the service-role-only edge with a user JWT (which returned 401).
  */
-export async function notifyNewSupportTicket(ticketId: string): Promise<void> {
-  try {
-    await supabase.functions.invoke("notify-support", {
-      body: { event: "new_ticket", ticketId },
-    });
-  } catch (err) {
-    // notify-support not deployed yet (or web/no-push) — documented no-op.
-    console.warn(
-      "[supportService] notify-support unavailable (expected pre-deploy / on web):",
-      err instanceof Error ? err.message : err,
-    );
+export async function notifyNewSupportTicket(_ticketId: string): Promise<void> {
+  return;
+}
+
+/**
+ * Send a support thread message via `support-send` so timestamps, audit and
+ * push all happen server-side (#3720 Phase 0 bugs 2–3). Never insert into
+ * `messages` directly from the Host app for support tickets.
+ */
+export async function sendSupportMessage(
+  ticketId: string,
+  content: string,
+): Promise<void> {
+  const trimmed = content.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Write a message before sending.");
+  }
+  const { data, error } = await supabase.functions.invoke("support-send", {
+    body: { ticketId, content: trimmed },
+  });
+  if (error) {
+    throw new Error(error.message || "Couldn't send your message. Try again.");
+  }
+  if (data && typeof data === "object" && "error" in data) {
+    const errVal = (data as { error?: unknown }).error;
+    const msg = typeof errVal === "string" ? errVal : "Couldn't send your message.";
+    throw new Error(msg);
   }
 }
