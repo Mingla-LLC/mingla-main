@@ -125,9 +125,14 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // `ad_spend_daily` on `(campaign_id,platform,spend_date)` — new arbiter;
   // census +1 (93).
   //
+  // [TEST-MOD-APPROVED #3720] `notify-dispatch` quiet-hours defer upserts
+  // `notification_outbox` on `idempotency_key` — the same arbiter
+  // `sourceRefundNotifications` already uses; census +1 for the new call
+  // site only (94).
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 93);
+  assert.equal(sites.length, 94);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

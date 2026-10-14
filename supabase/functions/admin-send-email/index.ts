@@ -234,6 +234,8 @@ async function sendViaResend(opts: SendOptions): Promise<{
   }
 
   try {
+    // no-attachment: admin campaign and one-off emails are subject + HTML/text
+    // only; this function accepts no file or PDF payload to attach.
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
