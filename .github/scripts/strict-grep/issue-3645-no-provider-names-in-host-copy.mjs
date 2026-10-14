@@ -32,10 +32,13 @@
 //   1. A LINE may carry `orch-strict-grep-allow provider-name-host-copy — <why>`
 //      on it or on the line above. Used where a string is compared against
 //      text the SERVER sends, and is never shown.
-//   2. EXEMPT_FILES below: partner surfaces and the activity log, whose copy
-//      is swept in the second pull request (#3645), and buyer checkout copy,
-//      which is not host-facing. Each entry names why it is listed. Removing
-//      a file from the list turns the rule on for it.
+//   2. EXEMPT_FILES below: buyer checkout copy, which is not host-facing, and
+//      one engineer-facing build diagnostic. Each entry names why it is
+//      listed. Removing a file from the list turns the rule on for it.
+//      The partner surfaces and the brand activity log were exempt until the
+//      second pull request of #3645 swept them; SWEPT_PATHS names them, and
+//      listing any of them (or anything inside them) as exempt again is a
+//      failure.
 //
 // IT FAILS CLOSED AND IS AUDIBLE. A file that cannot be read or parsed, an
 // allowlisted file that no longer exists, an allowlisted file that no longer
@@ -63,18 +66,7 @@ const PROVIDER = /(?<![A-Za-z0-9_])(?:stripe|paystack)(?![A-Za-z0-9_])/i;
 const BARE_BRAND = /^(?:Stripe|Paystack)[^A-Za-z0-9]*$/;
 
 // Paths are relative to mingla-business/. A trailing "/" exempts a directory.
-const TRANCHE_2_FILES = [
-  // --- Swept in the SECOND pull request of #3645 ---------------------------
-  // Partner (affiliate) earnings and payout setup: a separate audience and a
-  // separate approval; not part of the host bank-setup tranche.
-  "app/partner/",
-  "app/connect-partner-account-management.tsx",
-  "src/components/partner/",
-  "src/components/stripe/connect-pages/ConnectPartnerOnboardingBody.web.tsx",
-  "src/components/stripe/connect-pages/ConnectPartnerAccountManagementBody.web.tsx",
-  // The brand activity log: about fifty action labels that describe provider
-  // events to the host; reworded together in the second pull request.
-  "src/utils/auditActionLabels.ts",
+const EXEMPT_FILES = [
   // --- Not host-facing ------------------------------------------------------
   // Buyer checkout. A BUYER reads these, at the moment of paying; naming who
   // handles the card there is a separate product decision (#3645 covers what
@@ -85,6 +77,18 @@ const TRANCHE_2_FILES = [
   // An engineer's diagnostic for a mis-built app (test keys against a live
   // backend). It names the admin page and the runbook; it is not host copy.
   "src/services/stripeModeHandshake.ts",
+];
+
+// Swept in the second pull request of #3645 and covered by the rule from then
+// on: partner (affiliate) earnings and payout setup, and the brand activity
+// log. None of these may be exempted again, by path or by a parent directory.
+const SWEPT_PATHS = [
+  "app/partner/",
+  "app/connect-partner-account-management.tsx",
+  "src/components/partner/",
+  "src/components/stripe/connect-pages/ConnectPartnerOnboardingBody.web.tsx",
+  "src/components/stripe/connect-pages/ConnectPartnerAccountManagementBody.web.tsx",
+  "src/utils/auditActionLabels.ts",
 ];
 
 // TypeScript is installed for class B gates at the repo root; a local run
@@ -203,21 +207,37 @@ function lineIsAllowed(lines, line) {
   return here.includes(ALLOW_MARKER) || above.includes(ALLOW_MARKER);
 }
 
-function isTranche2(rel) {
-  return TRANCHE_2_FILES.some((entry) =>
+function exemptEntryFor(rel, entries = EXEMPT_FILES) {
+  return entries.find((entry) =>
     entry.endsWith("/") ? rel.startsWith(entry) : rel === entry);
 }
 
+/** An exemption that would cover a swept path again (#3645, second pull request). */
+function reExemptedSweptPaths(entries) {
+  const out = [];
+  for (const swept of SWEPT_PATHS) {
+    for (const entry of entries) {
+      const covers = entry.endsWith("/") ? swept.startsWith(entry) : swept === entry;
+      const inside = swept.endsWith("/") && entry.startsWith(swept);
+      if (covers || inside) out.push(`${entry} (swept: ${swept})`);
+    }
+  }
+  return out;
+}
+
 /** Runs the rule over a tree. Returns { failures: string[], notes: string[] }. */
-function run(ts, root, { list = false } = {}) {
+function run(ts, root, { list = false, exempt = EXEMPT_FILES } = {}) {
   const failures = [];
   const notes = [];
+  for (const hit of reExemptedSweptPaths(exempt)) {
+    failures.push(`EXEMPT_FILES lists ${hit}. The partner surfaces and the activity log were swept in #3645 and stay covered.`);
+  }
   const files = listFiles(root, SCAN_DIRS);
   if (files.length === 0) {
     failures.push("no files were scanned (the Host app tree was not found)");
     return { failures, notes, files: 0 };
   }
-  const tranche2Used = new Set();
+  const exemptUsed = new Set();
   for (const rel of files) {
     let text;
     let found;
@@ -231,9 +251,9 @@ function run(ts, root, { list = false } = {}) {
     }
     if (found.length === 0) continue;
     const lines = text.split("\n");
-    if (!list && isTranche2(rel)) {
-      const entry = TRANCHE_2_FILES.find((e) => (e.endsWith("/") ? rel.startsWith(e) : rel === e));
-      tranche2Used.add(entry);
+    const entry = list ? undefined : exemptEntryFor(rel, exempt);
+    if (entry !== undefined) {
+      exemptUsed.add(entry);
       notes.push(`EXEMPT (listed file): ${rel} — ${found.length} string(s)`);
       continue;
     }
@@ -246,12 +266,12 @@ function run(ts, root, { list = false } = {}) {
     }
   }
   if (!list) {
-    for (const entry of TRANCHE_2_FILES) {
+    for (const entry of exempt) {
       const abs = path.join(root, entry);
       if (!fs.existsSync(abs)) {
-        failures.push(`TRANCHE_2_FILES lists "${entry}", which does not exist. Remove the entry.`);
-      } else if (!tranche2Used.has(entry)) {
-        failures.push(`TRANCHE_2_FILES lists "${entry}", but nothing in it names a provider any more. Remove the entry so the rule protects it.`);
+        failures.push(`EXEMPT_FILES lists "${entry}", which does not exist. Remove the entry.`);
+      } else if (!exemptUsed.has(entry)) {
+        failures.push(`EXEMPT_FILES lists "${entry}", but nothing in it names a provider any more. Remove the entry so the rule protects it.`);
       }
     }
   }
@@ -291,9 +311,9 @@ function selfTest(ts) {
     if (!ok) bad += 1;
   };
   const exemptDirs = () => {
-    // Every tranche-2 entry must exist and be in use, or the run fails for
+    // Every exempt entry must exist and be in use, or the run fails for
     // that reason instead of the one under test.
-    for (const entry of TRANCHE_2_FILES) {
+    for (const entry of EXEMPT_FILES) {
       const rel = entry.endsWith("/") ? `${entry}x.tsx` : entry;
       write(rel, `export const t = "Powered by Stripe";\n`);
     }
@@ -351,7 +371,7 @@ function selfTest(ts) {
     expect("test files are out of scope", run(ts, os).failures.length === 0);
 
     // 5. A stale exemption fails.
-    const first = TRANCHE_2_FILES[0];
+    const first = EXEMPT_FILES[0];
     const firstRel = first.endsWith("/") ? `${first}x.tsx` : first;
     write(firstRel, `export const t = "Payout account";\n`);
     expect("an exemption nothing needs any more is a failure",
@@ -363,6 +383,26 @@ function selfTest(ts) {
           run(ts, os).failures.some((f) => f.includes("does not exist")))
         : run(ts, os).failures.some((f) => f.includes("does not exist")));
     exemptDirs();
+
+    // 5b. The swept partner surfaces and activity log are covered: provider
+    // copy in each of them is caught, and exempting one again is a failure.
+    for (const swept of SWEPT_PATHS) {
+      const rel = swept.endsWith("/") ? `${swept}x.tsx` : swept;
+      write(rel, `export const t = "Disconnect Stripe";\n`);
+      const result = run(ts, os);
+      expect(`swept path ${swept} is covered`,
+        result.failures.length === 1 && result.failures[0].startsWith(`${rel}:1 `));
+      fs.rmSync(path.join(os, rel));
+      const reExempt = run(ts, os, { exempt: [...EXEMPT_FILES, swept] });
+      expect(`exempting swept path ${swept} again is a failure`,
+        reExempt.failures.some((f) => f.includes("were swept in #3645")));
+    }
+    expect("exempting a parent directory of a swept path is a failure",
+      run(ts, os, { exempt: [...EXEMPT_FILES, "src/components/"] }).failures
+        .some((f) => f.includes("were swept in #3645")));
+    expect("exempting a file inside a swept directory is a failure",
+      run(ts, os, { exempt: [...EXEMPT_FILES, "app/partner/earnings.tsx"] }).failures
+        .some((f) => f.includes("were swept in #3645")));
 
     // 6. An unparsable file fails closed.
     write("src/broken.tsx", `export const t = "Stripe is here" +;\n`);
