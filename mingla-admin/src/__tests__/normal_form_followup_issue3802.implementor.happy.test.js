@@ -13,6 +13,11 @@
 //        search finds a record by either way of writing it
 //   F-5  the Add form says a record's contact rule once: an exact name match
 //        on a Do-not-contact record is one sentence with one Open it
+//   F-6  rework: every way of writing a YouTube video is one key and a channel
+//        id keeps its case; the Argentine 15 marker; a national number with a
+//        mobile digit or marker finds its number; search finds a bare video id
+//        or a link-in-bio name; the contact-detail input keeps its height on
+//        a phone
 //
 // Run: node --test src/__tests__/normal_form_followup_issue3802.implementor.happy.test.js
 // (from mingla-admin). Hermetic: no network, no browser.
@@ -81,7 +86,7 @@ describe("#3802 F-1: one normal form for a video link and a mobile number, on th
 
 describe("#3802 F-2: two phone numbers match here the way they match on the server", () => {
   it("every pair, asked both ways round", () => {
-    assert.equal(pairs.length, 13);
+    assert.equal(pairs.length, 28);
     for (const p of pairs) {
       assert.equal(phoneMatch(p.a, p.b) || "none", p.want, `${p.a} ~ ${p.b}`);
       assert.equal(phoneMatch(p.b, p.a) || "none", p.want, `${p.b} ~ ${p.a}`);
@@ -104,11 +109,20 @@ describe("#3802 F-3: the follow-up migration's function is written the way this 
     assert.deepEqual(jsWords, sqlWords);
   });
   it("the same video id, the same mobile-digit rule, and the same characters removed", () => {
+    assert.ok(fn.includes("IF t ~ '^[+]54[0-9]{12}$' THEN"));
+    assert.ok(LIB.includes("if (/^[+]54[0-9]{12}$/.test(t)) {"));
+    for (const re of ["^1115", "^[23][0-9]{2}15", "^[23][0-9]{3}15"]) {
+      assert.ok(fn.includes(`v_nat ~ '${re}'`), re);
+      assert.ok(LIB.includes(`/${re}/.test(nat)`), re);
+    }
+    for (const word of ["'shorts', 'embed', 'live'", "'music.youtube.com'", "'youtube-nocookie.com'"]) assert.ok(fn.includes(word), word);
+    for (const word of ['["shorts", "embed", "live"]', '"music.youtube.com"', '"youtube-nocookie.com"']) assert.ok(LIB.includes(word), word);
     assert.equal(/c_video\s+constant text := '([^']*)';/.exec(fn)[1], /const IDENT_VIDEO = "([^"]*)";/.exec(LIB)[1]);
     assert.ok(fn.includes("t ~ '^[+]549[0-9]{10}$' OR t ~ '^[+]521[0-9]{10}$'"));
     assert.ok(LIB.includes("/^[+]549[0-9]{10}$/.test(t) || /^[+]521[0-9]{10}$/.test(t)"));
     assert.ok(fn.includes("v_site = 'youtu.be' AND v_path ~ ('^' || c_video || '$')"));
-    assert.ok(LIB.includes('site === "youtu.be" && new RegExp(`^${IDENT_VIDEO}$`).test(path)'));
+    assert.ok(LIB.includes("const videoId = new RegExp(`^${IDENT_VIDEO}$`);"));
+    assert.ok(LIB.includes('site === "youtu.be" && videoId.test(path)'));
     const points = (cls) =>
       cls.replace(/\\U000([0-9A-F]{5})/g, "\\u{$1}").replace(/\\u\{0*([0-9A-F]+)\}/g, "\\u{$1}").replace(/ /g, "\\u0020");
     assert.equal(points(/c_hidden constant text := '\[([^']*)\]';/.exec(fn)[1]), points(/const IDENT_HIDDEN = \/\[([^\]]*)\]\/gu;/.exec(LIB)[1]));
@@ -137,7 +151,11 @@ describe("#3802 F-4: on the page", () => {
     const ids = (q) => filterRecords(records, { q }).map((r) => r.id).join(",");
     assert.equal(ids("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "a");
     assert.equal(ids("https://youtu.be/dQw4w9WgXcQ"), "a");
-    assert.equal(ids("https://youtu.be/dqw4w9wgxcq"), "");
+    // Search finds by part whatever the case (a bare id, a link-in-bio name),
+    // so another video's id written in lower case still finds this one; the
+    // key itself keeps the two apart (F-1).
+    assert.equal(ids("https://youtu.be/dqw4w9wgxcq"), "a");
+    assert.equal(ids("https://youtu.be/xQw4w9WgXcQ"), "");
     assert.equal(ids("+54 11 1234 5678"), "b");
     assert.equal(ids("+52 1 55 1234 5678"), "c");
     assert.equal(ids("buenos"), "b", "a name still finds it");
@@ -177,5 +195,59 @@ describe("#3802 F-5: the Add form says a record's contact rule once", () => {
     assert.ok(FORM.includes("const ruleNote = addFormRuleNote(hit, shared, lookalikes);"));
     assert.equal((FORM.match(/ is marked \{/g) || []).length, 2, "one in the name warning, one in the rule line");
     assert.equal((FORM.match(/>\s*Open it\s*<\/Button>/g) || []).length, 3, "the name warning, the rule line, the shared detail");
+  });
+});
+
+describe("#3802 F-6: rework after the tester's verdict", () => {
+  it("every way of writing a YouTube video is one key, with its case; a channel id keeps its case", () => {
+    const key = "youtube.com/watch?v=dQw4w9WgXcQ";
+    for (const link of [
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "https://youtu.be/dQw4w9WgXcQ",
+      "https://www.youtube.com/shorts/dQw4w9WgXcQ",
+      "https://youtube.com/shorts/dQw4w9WgXcQ?si=x",
+      "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      "https://www.youtube.com/live/dQw4w9WgXcQ",
+      "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+      "https://music.youtube.com/watch?v=dQw4w9WgXcQ",
+    ]) {
+      assert.equal(identKey("handle", link), key, link);
+    }
+    assert.notEqual(identKey("handle", "https://music.youtube.com/watch?v=dQw4w9WgXcQ"), "music.youtube.com/watch");
+    assert.equal(identKey("handle", "https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw"), "UCuAXFkgsw1L7xaCfnd5JJOw");
+    assert.notEqual(identKey("handle", "https://www.youtube.com/channel/UCabc"), identKey("handle", "https://www.youtube.com/channel/ucABC"));
+  });
+  it("the Argentine 15 after the area code is the mobile marker; Mexico's 044 and 045 stay as they are", () => {
+    for (const typed of ["+54 11 15 1234 5678", "+54 (011) 15 1234-5678", "+54 9 11 1234 5678", "+54 11 1234 5678"]) {
+      assert.equal(identKey("phone", typed), "+541112345678", typed);
+    }
+    for (const typed of ["011 15 1234-5678", "11 15 1234 5678"]) assert.equal(phoneMatch(typed, "+54 9 11 1234 5678"), "national_number", typed);
+    assert.equal(phoneMatch("9 11 1234 5678", "+54 9 11 1234 5678"), "national_number");
+    assert.equal(phoneMatch("1 55 1234 5678", "+52 55 1234 5678"), "national_number");
+    assert.equal(phoneMatch("01 55 1234 5678", "+52 1 55 1234 5678"), "national_number");
+    assert.equal(phoneMatch("044 55 1234 5678", "+52 1 55 1234 5678"), "");
+    assert.equal(phoneMatch("045 55 1234 5678", "+52 55 1234 5678"), "");
+  });
+  it("the page's search finds a bare video id or a link-in-bio name, whatever its case", () => {
+    const records = [
+      { id: "v", name: "Video Creator", identifiers: [{ kind: "handle", value: "https://youtu.be/dQw4w9WgXcQ", key: "youtube.com/watch?v=dQw4w9WgXcQ" }] },
+      { id: "l", name: "Bio Creator", identifiers: [{ kind: "handle", value: "https://linktr.ee/AliceCooks", key: "linktr.ee/AliceCooks" }] },
+    ];
+    const ids = (q) => filterRecords(records, { q }).map((r) => r.id).join(",");
+    for (const q of ["dQw4w9WgXcQ", "dqw4w9wgxcq", "dQw4w", "https://www.youtube.com/shorts/dQw4w9WgXcQ"]) assert.equal(ids(q), "v", q);
+    for (const q of ["AliceCooks", "alicecooks", "@AliceCooks", "linktr.ee/alicecooks"]) assert.equal(ids(q), "l", q);
+    assert.equal(ids("zzqx9"), "");
+    assert.equal(ids("dQ"), "", "two characters find nothing by part");
+  });
+  it("the contact-detail input keeps a 44 px target on a phone: it does not grow into a column", () => {
+    const FIELD = fs.readFileSync(path.join(SRC, "components", "crm", "IdentifiersField.jsx"), "utf8");
+    const input = /<input\b[\s\S]*?className=\{`\$\{CONTROL_CLASS\} ([^`]*)`\}/.exec(FIELD);
+    assert.ok(input, "the input's classes were found");
+    const classes = input[1].split(/\s+/);
+    // flex-1 in the column the field stacks into under 640 px sets its height basis to 0.
+    assert.ok(!classes.includes("flex-1"), `the input grows only in a row: ${input[1]}`);
+    assert.ok(classes.includes("sm:flex-1"));
+    assert.ok(classes.includes("max-sm:min-h-11"), "at least 44 px tall on a phone");
+    assert.match(FIELD, /<div className="flex min-w-0 flex-col gap-2 sm:flex-row">\s*<input/);
   });
 });

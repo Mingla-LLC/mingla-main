@@ -984,6 +984,15 @@ export function identKey(kind, value) {
       // The mobile digit: Argentina's 9 after +54, Mexico's 1 after +52,
       // when the ten digits of a national number follow it.
       if (/^[+]549[0-9]{10}$/.test(t) || /^[+]521[0-9]{10}$/.test(t)) t = t.slice(0, 3) + t.slice(4);
+      // Argentina's other mobile marker, 15 after the area code, when an area
+      // code, 15 and the number make twelve digits: area 11 first, else a
+      // three-digit area, else a four-digit one (both begin with 2 or 3).
+      if (/^[+]54[0-9]{12}$/.test(t)) {
+        const nat = t.slice(3);
+        if (/^1115/.test(nat)) t = `+5411${nat.slice(4)}`;
+        else if (/^[23][0-9]{2}15/.test(nat)) t = `+54${nat.slice(0, 3)}${nat.slice(5)}`;
+        else if (/^[23][0-9]{3}15/.test(nat)) t = `+54${nat.slice(0, 4)}${nat.slice(6)}`;
+      }
     }
     const n = t.replace(/[^0-9]/g, "").length;
     return n >= 7 && n <= 15 ? t : null;
@@ -1012,12 +1021,22 @@ export function identKey(kind, value) {
   if (!/^[a-z0-9-]+([.][a-z0-9-]+)+$/.test(site) || IDENT_NEVER.includes(site)) return null;
   const pathOf = (text) => /^[^?#]*/.exec(text)[0].replace(/\/+/g, "/").replace(/^\/+|\/+$/g, "");
   let path = pathOf(rest);
+  // The path as typed, in the same segments as the lower-cased one.
+  const osegs = pathOf(orig) === "" ? [] : pathOf(orig).split("/");
+  const videoId = new RegExp(`^${IDENT_VIDEO}$`);
   const queryOf = (text = rest) => {
     const q = /^[^?#]*[?]([^#]*)/.exec(text);
     return `&${q ? q[1] : ""}`;
   };
   const idMatch = /&id=([a-z0-9._-]{2,60})(?:&|$)/.exec(queryOf());
   const id = idMatch ? idMatch[1] : null;
+
+  // YouTube Music plays the same videos: its watch page is the video's.
+  if (site === "music.youtube.com" && path === "watch") site = "youtube.com";
+  // A video embedded without cookies is the same video.
+  if (site === "youtube-nocookie.com" && /^embed\/[^/]+$/.test(path) && videoId.test(osegs[1] ?? "")) {
+    return `youtube.com/watch?v=${osegs[1]}`;
+  }
 
   if (IDENT_SITES.includes(site)) {
     if (path === "") return null;
@@ -1027,6 +1046,10 @@ export function identKey(kind, value) {
       const v = new RegExp(`&[Vv]=(${IDENT_VIDEO})(?:&|$)`).exec(queryOf(orig));
       return v ? `youtube.com/watch?v=${v[1]}` : null;
     }
+    // A short, an embed and a live page name their video the same way.
+    if (site === "youtube.com" && ["shorts", "embed", "live"].includes(one) && segs.length === 2 && videoId.test(osegs[1] ?? "")) {
+      return `youtube.com/watch?v=${osegs[1]}`;
+    }
     if (!IDENT_WORDS.has(one)) return IDENT_NAME.test(one) ? one : null;
     if (one === "profile.php") return segs.length === 1 ? id : null;
     if (!IDENT_LEAD.includes(one)) return null;
@@ -1034,13 +1057,15 @@ export function identKey(kind, value) {
       return segs[2];
     }
     const two = (segs[1] || "").replace(/^@/, "");
+    // A YouTube channel id, like a video id, keeps its case.
+    if (site === "youtube.com" && one === "channel" && IDENT_NAME.test(two) && !IDENT_WORDS.has(two)) return osegs[1].replace(/^@/, "");
     return IDENT_NAME.test(two) && !IDENT_WORDS.has(two) ? two : null;
   }
   if (path === "" && !id) return null;
   if (IDENT_LINKS.includes(site)) {
     path = pathOf(orig);
     // A YouTube short link names the same video as its long form.
-    if (site === "youtu.be" && new RegExp(`^${IDENT_VIDEO}$`).test(path)) return `youtube.com/watch?v=${path}`;
+    if (site === "youtu.be" && videoId.test(path)) return `youtube.com/watch?v=${path}`;
   }
   const key = `${site}${path !== "" ? `/${path}` : ""}${id ? `?id=${id}` : ""}`;
   return key.includes(" ") ? null : key;
@@ -1058,8 +1083,11 @@ function phoneNational(key) {
  * a country code and, without leading zeros, the shorter (at least seven
  * digits) ends the longer, or when one carries one and the other's digits
  * without leading zeros (at least seven) end its national part or are its
- * own digits written without the +; "" otherwise. Two numbers that both carry a
- * country code match only when they are equal.
+ * own digits written without the +, or read in its country (after its
+ * country code) give the same normal form, which is how a national number
+ * written with a mobile digit or marker ("9 11 ...", "011 15 ...",
+ * "1 55 ...") finds the number stored with its country code; "" otherwise.
+ * Two numbers that both carry a country code match only when they are equal.
  */
 export function phoneMatch(a, b) {
   const ka = identKey("phone", String(a ?? ""));
@@ -1077,7 +1105,9 @@ export function phoneMatch(a, b) {
   }
   const [intlKey, intl, national] = ia ? [ka, na, nb] : [kb, nb, na];
   if (national.length >= 7 && intl.endsWith(national)) return "national_number";
-  return identKey("phone", `+${national}`) === intlKey ? "national_number" : "";
+  if (identKey("phone", `+${national}`) === intlKey) return "national_number";
+  const cc = intlKey.slice(0, intlKey.length - intl.length);
+  return identKey("phone", `${cc}${national}`) === intlKey ? "national_number" : "";
 }
 
 /**
@@ -1177,7 +1207,9 @@ function identifierMatches(identifiers, n) {
     if (i.kind === "phone") {
       return !!n.digits && (key.includes(n.digits) || (n.digits.length >= 9 && key.endsWith(n.digits.slice(-9))));
     }
-    return !!n.part && key.includes(n.part);
+    // A part of an email or a handle, whatever its case: a YouTube id or a
+    // link-in-bio name is stored as typed.
+    return !!n.part && (key.toLowerCase().includes(n.part) || String(i.value ?? "").toLowerCase().includes(n.part));
   });
 }
 
