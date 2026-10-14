@@ -37,7 +37,7 @@
 -- with its mobile digit.
 --
 -- Invariant (docs/INVARIANT_REGISTRY.md):
---   I-3802-CONTACT-IDENTIFIERS-HAVE-ONE-NORMAL-FORM
+--   I-PROPOSED-3802-CONTACT-IDENTIFIERS-HAVE-ONE-NORMAL-FORM
 --
 -- ---------------------------------------------------------------------------
 -- ROLLBACK (kept here as a comment; there is no down-migration file).
