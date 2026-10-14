@@ -155,6 +155,7 @@ import {
   type NativeCheckoutPhase,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
+import { resolveExplorerCheckoutContact } from "../../payments/explorerCheckoutContact.mjs";
 import { toastManager } from "../../components/ui/Toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -345,6 +346,14 @@ export default function ConsumerTripDetailScreen({
   const queryClient = useQueryClient();
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
+  const explorerCheckoutContact = resolveExplorerCheckoutContact({
+    authUserId: user?.id,
+    authEmail: user?.email,
+    profileId: profile?.id,
+    profileDisplayName: profile?.display_name,
+    profilePhone: profile?.phone,
+    profileCountry: profile?.country,
+  });
   // ORCH-1130 — consumer pay-full vs pay-over-time choice. Default "full" (the
   // deliberate non-surprising default; a buyer who does nothing pays the whole
   // price, never a silent partial). Threaded into the reserve flow so the
@@ -752,26 +761,6 @@ export default function ConsumerTripDetailScreen({
         toastManager.show("Please sign in to get tickets.", "warning");
         return { outcome: "canceled" };
       }
-      const buyerName =
-        profile?.display_name?.trim() || user.email?.split("@")[0] || "Guest";
-      const buyerEmail = user.email ?? profile?.email ?? "";
-      const buyerPhone = profile?.phone ?? "";
-
-      if (buyerEmail.length === 0) {
-        toastManager.show(
-          "We need an email on your profile to issue tickets.",
-          "warning",
-        );
-        return { outcome: "canceled" };
-      }
-      if (buyerPhone.length === 0) {
-        toastManager.show(
-          "Add a phone number to your profile to get tickets.",
-          "warning",
-        );
-        return { outcome: "canceled" };
-      }
-
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setCheckoutInFlight(true);
 
@@ -782,9 +771,7 @@ export default function ConsumerTripDetailScreen({
           eventId: detail.tripId,
           lines: payload.lines,
           buyer: {
-            name: buyerName,
-            email: buyerEmail,
-            phone: buyerPhone,
+            ...payload.buyer,
             marketingOptIn: payload.marketingOptIn,
           },
           // ORCH-1244 (Apple 4.9) — the on-screen trip title becomes the Apple
@@ -843,7 +830,6 @@ export default function ConsumerTripDetailScreen({
       checkoutInFlight,
       detail,
       user,
-      profile,
       runNativeCheckout,
       paymentPlanChoice,
       queryClient,
@@ -1227,11 +1213,10 @@ export default function ConsumerTripDetailScreen({
         // initialTicketTypeId). The cart lands pre-populated + editable (the
         // confirmation step). Empty/undefined → single-tier seed (Leg-A behavior).
         initialQuantities={seededQuantities}
-        buyerName={
-          profile?.display_name?.trim() || user?.email?.split("@")[0] || "Guest"
-        }
-        buyerEmail={user?.email ?? profile?.email ?? ""}
-        buyerPhone={profile?.phone ?? ""}
+        buyerName={explorerCheckoutContact.normalized.name}
+        buyerEmail={explorerCheckoutContact.normalized.email}
+        buyerPhone={explorerCheckoutContact.normalized.phone}
+        buyerCountryCode={profile?.id === user?.id ? profile?.country : null}
         brandName={seed?.brandName ?? null}
         buyerUserId={user?.id ?? null}
         isSubmitting={checkoutInFlight}

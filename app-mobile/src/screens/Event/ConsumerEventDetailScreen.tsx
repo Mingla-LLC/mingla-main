@@ -158,6 +158,7 @@ import {
   type NativeCheckoutPhase,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
+import { resolveExplorerCheckoutContact } from "../../payments/explorerCheckoutContact.mjs";
 // ORCH-1291 [rsvp-chip-in] — voluntary contribution hand-off (reuses the Stripe
 // RN PaymentSheet + connected-account initStripe pattern; NO new native dep).
 import { useStripePaymentSheet } from "@mingla/payments-native";
@@ -351,6 +352,14 @@ export default function ConsumerEventDetailScreen({
   const queryClient = useQueryClient();
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
+  const explorerCheckoutContact = resolveExplorerCheckoutContact({
+    authUserId: user?.id,
+    authEmail: user?.email,
+    profileId: profile?.id,
+    profileDisplayName: profile?.display_name,
+    profilePhone: profile?.phone,
+    profileCountry: profile?.country,
+  });
 
   // ORCH-1342 (D6, SPEC §4.7) — the cold /e/ route passes seed=null; resolve a
   // seed by slug from the anon public view so the FULL page (RSVP branch
@@ -914,26 +923,6 @@ export default function ConsumerEventDetailScreen({
         toastManager.show("Please sign in to get tickets.", "warning");
         return { outcome: "canceled" };
       }
-      const buyerName =
-        profile?.display_name?.trim() || user.email?.split("@")[0] || "Guest";
-      const buyerEmail = user.email ?? profile?.email ?? "";
-      const buyerPhone = profile?.phone ?? "";
-
-      if (buyerEmail.length === 0) {
-        toastManager.show(
-          "We need an email on your profile to issue tickets.",
-          "warning",
-        );
-        return { outcome: "canceled" };
-      }
-      if (buyerPhone.length === 0) {
-        toastManager.show(
-          "Add a phone number to your profile to get tickets.",
-          "warning",
-        );
-        return { outcome: "canceled" };
-      }
-
       // ORCH-1192 — fire `checkout_started` BEFORE the payment sheet opens
       // (mirrors web `web_checkout_started`; precedes the `purchase_completed`
       // success capture below). The `checkoutInFlight` early-return at the top
@@ -957,9 +946,7 @@ export default function ConsumerEventDetailScreen({
           eventId: seed.eventId,
           lines: payload.lines,
           buyer: {
-            name: buyerName,
-            email: buyerEmail,
-            phone: buyerPhone,
+            ...payload.buyer,
             marketingOptIn: payload.marketingOptIn,
           },
           // ORCH-1244 (Apple 4.9) — the on-screen event title becomes the Apple
@@ -1025,7 +1012,7 @@ export default function ConsumerEventDetailScreen({
       }
       return result;
     },
-    [checkoutInFlight, seed, user, profile, runNativeCheckout, queryClient],
+    [checkoutInFlight, seed, user, runNativeCheckout, queryClient],
   );
 
   /**
@@ -1866,11 +1853,10 @@ export default function ConsumerEventDetailScreen({
         fallbackCurrency={seed.currency}
         initialTicketTypeId={initialTicketTypeId}
         initialQuantities={ticketQuantities}
-        buyerName={
-          profile?.display_name?.trim() || user?.email?.split("@")[0] || "Guest"
-        }
-        buyerEmail={user?.email ?? profile?.email ?? ""}
-        buyerPhone={profile?.phone ?? ""}
+        buyerName={explorerCheckoutContact.normalized.name}
+        buyerEmail={explorerCheckoutContact.normalized.email}
+        buyerPhone={explorerCheckoutContact.normalized.phone}
+        buyerCountryCode={profile?.id === user?.id ? profile?.country : null}
         brandName={seed.brandName}
         buyerUserId={user?.id ?? null}
         isSubmitting={checkoutInFlight}

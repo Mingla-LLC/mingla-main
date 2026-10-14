@@ -16,7 +16,7 @@
  *      rendered via `<QuantityRow>` from `@mingla/offering-rendering` with a
  *      dark-mode theme override + `ConsumerCartCard` host wrapper.
  *   4. Bundled consent checkbox (#3682 Follow when signed-in; guest copy otherwise).
- *   5. Buyer recap card (read-only Name / Email / Phone, from auth profile).
+ *   5. Booking contact recap (profile/auth seed, booking-local Change editor).
  *   6. Sticky bottom bar: Subtotal label + value, primary CTA.
  *
  * 7 states handled (per design §5): loading, empty, sold_out, sales_closed,
@@ -37,6 +37,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -105,6 +106,19 @@ import {
 } from "./EventDayChooser";
 import type { PublicEventOccurrenceLike } from "../../hooks/usePublicEventBySlug";
 import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
+import { PhoneInput } from "../onboarding/PhoneInput";
+import {
+  COUNTRIES,
+  getCountryByCode,
+  type PhoneInputTheme,
+} from "@mingla/phone-input";
+import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
+import {
+  explorerCheckoutContactFieldsForEditor,
+  validateExplorerCheckoutContact,
+  type ExplorerCheckoutContactField,
+  type ExplorerCheckoutContactSnapshot,
+} from "../../payments/explorerCheckoutContact.mjs";
 import {
   ConsumerIntakeForm,
   tierHasUnsupportedRequired,
@@ -156,6 +170,46 @@ const CONSUMER_TICKET_CART_THEME: QuantityRowTheme = {
   saleBannerBorder: "rgba(245, 158, 11, 0.32)",
   soldOutBg: "rgba(239, 68, 68, 0.16)",
   soldOutBorder: "rgba(239, 68, 68, 0.32)",
+};
+
+const CHECKOUT_CONTACT_PHONE_THEME: PhoneInputTheme = {
+  backgroundPrimary: "#15181f",
+  textPrimary: "rgba(255, 255, 255, 0.96)",
+  textTertiary: "rgba(255, 255, 255, 0.52)",
+  borderDefault: "rgba(255, 255, 255, 0.14)",
+  borderFocused: "#eb7825",
+  borderError: "#ef4444",
+  searchBackground: "rgba(255, 255, 255, 0.06)",
+  rowPressedBackground: "rgba(255, 255, 255, 0.04)",
+  divider: "rgba(255, 255, 255, 0.08)",
+  accessoryBackground: "rgba(21, 24, 31, 0.95)",
+  accessoryBorder: "rgba(255, 255, 255, 0.08)",
+  accent: "#eb7825",
+  errorText: "#ef4444",
+};
+
+const resolveContactPhoneCountry = (
+  phone: string,
+  countryHint: string | null | undefined,
+): string => {
+  const normalizedHint = countryHint?.trim().toUpperCase() ?? "";
+  const hintedCountry = getCountryByCode(normalizedHint);
+  if (hintedCountry !== undefined && phone.startsWith(hintedCountry.dialCode)) {
+    return hintedCountry.code;
+  }
+  const matchedCountry = [...COUNTRIES]
+    .sort((a, b) => b.dialCode.length - a.dialCode.length)
+    .find((country) => phone.startsWith(country.dialCode));
+  if (matchedCountry !== undefined) return matchedCountry.code;
+  if (hintedCountry !== undefined) return hintedCountry.code;
+  return "US";
+};
+
+const splitContactPhone = (phone: string, countryCode: string): string => {
+  const dialCode = getCountryByCode(countryCode)?.dialCode;
+  return dialCode !== undefined && phone.startsWith(dialCode)
+    ? phone.slice(dialCode.length)
+    : "";
 };
 
 /**
@@ -217,6 +271,8 @@ export interface TicketCartCheckoutPayload {
     paymentPlanChoice: "full" | "installments";
   }>;
   marketingOptIn: boolean;
+  /** Booking-local contact snapshot; editing never writes the account profile. */
+  buyer: ExplorerCheckoutContactSnapshot;
   /**
    * ORCH-1025 — the displayed all-in total (sum of per-tier server `all_in_cents`
    * × qty, in cents). Carried for the paid/free checkout branch + telemetry ONLY;
@@ -280,6 +336,8 @@ export interface TicketCartSheetProps {
   buyerName: string;
   buyerEmail: string;
   buyerPhone: string;
+  /** Profile country used only to seed the booking phone picker. */
+  buyerCountryCode?: string | null;
   /** #3682 — brand name for Follow disclosure; omitted → "this brand". */
   brandName?: string | null;
   /** #3682 — signed-in account id when auto-follow can run; null for guests. */
@@ -356,6 +414,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   buyerName,
   buyerEmail,
   buyerPhone,
+  buyerCountryCode = null,
   brandName = null,
   buyerUserId = null,
   isSubmitting,
@@ -400,6 +459,54 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     Record<string, Record<string, string>>
   >({});
   const lastOpenSeedRef = React.useRef<string | null>(null);
+  const contactOpenSeededRef = React.useRef<boolean>(false);
+  const initialContactValidation = useMemo(
+    () =>
+      validateExplorerCheckoutContact({
+        name: buyerName,
+        email: buyerEmail,
+        phone: buyerPhone,
+      }),
+    [buyerEmail, buyerName, buyerPhone],
+  );
+  const [contactSnapshot, setContactSnapshot] =
+    useState<ExplorerCheckoutContactSnapshot>(
+      initialContactValidation.normalized,
+    );
+  const [contactDraft, setContactDraft] =
+    useState<ExplorerCheckoutContactSnapshot>(
+      initialContactValidation.normalized,
+    );
+  const [contactEditorVisible, setContactEditorVisible] = useState<boolean>(
+    !initialContactValidation.isValid,
+  );
+  const [contactEditAll, setContactEditAll] = useState<boolean>(false);
+  const [contactFieldsToEdit, setContactFieldsToEdit] = useState<
+    ExplorerCheckoutContactField[]
+  >(explorerCheckoutContactFieldsForEditor(initialContactValidation, false));
+  const [contactTouched, setContactTouched] = useState<
+    Partial<Record<ExplorerCheckoutContactField, boolean>>
+  >({});
+  const initialPhoneCountry = resolveContactPhoneCountry(
+    initialContactValidation.normalized.phone,
+    buyerCountryCode,
+  );
+  const [contactPhoneCountry, setContactPhoneCountry] =
+    useState<string>(initialPhoneCountry);
+  const [contactPhoneLocal, setContactPhoneLocal] = useState<string>(() =>
+    splitContactPhone(
+      initialContactValidation.normalized.phone,
+      initialPhoneCountry,
+    ),
+  );
+  const contactValidation = useMemo(
+    () => validateExplorerCheckoutContact(contactSnapshot),
+    [contactSnapshot],
+  );
+  const contactDraftValidation = useMemo(
+    () => validateExplorerCheckoutContact(contactDraft),
+    [contactDraft],
+  );
 
   // Tiers in the cart (qty > 0) that carry an intake schema.
   const selectedSchemaTiers = useMemo<
@@ -565,6 +672,41 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   );
 
   useEffect(() => {
+    if (!visible) {
+      contactOpenSeededRef.current = false;
+      return;
+    }
+    if (contactOpenSeededRef.current) return;
+
+    const validation = validateExplorerCheckoutContact({
+      name: buyerName,
+      email: buyerEmail,
+      phone: buyerPhone,
+    });
+    const phoneCountry = resolveContactPhoneCountry(
+      validation.normalized.phone,
+      buyerCountryCode,
+    );
+    contactOpenSeededRef.current = true;
+    setContactSnapshot(validation.normalized);
+    setContactDraft(validation.normalized);
+    setContactEditorVisible(!validation.isValid);
+    setContactEditAll(false);
+    setContactFieldsToEdit(
+      explorerCheckoutContactFieldsForEditor(validation, false),
+    );
+    setContactTouched(
+      Object.fromEntries(
+        validation.invalidFields.map((field) => [field, true]),
+      ) as Partial<Record<ExplorerCheckoutContactField, boolean>>,
+    );
+    setContactPhoneCountry(phoneCountry);
+    setContactPhoneLocal(
+      splitContactPhone(validation.normalized.phone, phoneCountry),
+    );
+  }, [buyerCountryCode, buyerEmail, buyerName, buyerPhone, visible]);
+
+  useEffect(() => {
     if (visible && tickets) {
       const useMulti = multiSeedKey.length > 0;
       const thisKey = useMulti ? multiSeedKey : initialTicketTypeId;
@@ -642,6 +784,47 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     onCancel();
   }, [isSubmitting, onCancel]);
 
+  const handleContactChange = useCallback((): void => {
+    const phoneCountry = resolveContactPhoneCountry(
+      contactSnapshot.phone,
+      buyerCountryCode,
+    );
+    setContactDraft(contactSnapshot);
+    setContactPhoneCountry(phoneCountry);
+    setContactPhoneLocal(
+      splitContactPhone(contactSnapshot.phone, phoneCountry),
+    );
+    setContactFieldsToEdit(
+      explorerCheckoutContactFieldsForEditor(contactValidation, true),
+    );
+    setContactTouched({});
+    setContactEditAll(true);
+    setContactEditorVisible(true);
+  }, [buyerCountryCode, contactSnapshot, contactValidation]);
+
+  const handleContactSave = useCallback((): void => {
+    setContactTouched({ name: true, email: true, phone: true });
+    if (!contactDraftValidation.isValid) {
+      setContactFieldsToEdit((current) => [
+        ...new Set([...current, ...contactDraftValidation.invalidFields]),
+      ]);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+    setContactSnapshot(contactDraftValidation.normalized);
+    setContactDraft(contactDraftValidation.normalized);
+    setContactEditorVisible(false);
+    setContactEditAll(false);
+  }, [contactDraftValidation]);
+
+  const handleContactCancel = useCallback((): void => {
+    if (!contactValidation.isValid) return;
+    setContactDraft(contactSnapshot);
+    setContactEditorVisible(false);
+    setContactEditAll(false);
+    setContactTouched({});
+  }, [contactSnapshot, contactValidation.isValid]);
+
   const setTierAnswers = useCallback(
     (tierId: string, next: Record<string, IntakeAnswerValue>): void => {
       setIntakeAnswers((prev) => ({ ...prev, [tierId]: next }));
@@ -675,6 +858,25 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     }
     if (totals.isEmpty) return;
     if (hasUnsupportedRequired) return;
+    if (!contactValidation.isValid || contactEditorVisible) {
+      const validation = contactEditorVisible
+        ? contactDraftValidation
+        : contactValidation;
+      setContactEditorVisible(true);
+      if (!contactEditorVisible) {
+        setContactEditAll(false);
+        setContactFieldsToEdit(
+          explorerCheckoutContactFieldsForEditor(validation, false),
+        );
+      } else if (!validation.isValid) {
+        setContactFieldsToEdit((current) => [
+          ...new Set([...current, ...validation.invalidFields]),
+        ]);
+      }
+      setContactTouched({ name: true, email: true, phone: true });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
     if (!termsAccepted) {
       setConsentHintVisible(true);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -749,6 +951,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
               : "full",
         })),
       marketingOptIn,
+      buyer: contactValidation.normalized,
       totalCents: pricing.allInCents,
       intakeFormData,
       // ⚠️ DELETE THIS AND every Explorer pass mints undated, admitting on
@@ -761,6 +964,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     totals.isEmpty,
     isSubmitting,
     hasUnsupportedRequired,
+    contactValidation,
+    contactDraftValidation,
+    contactEditorVisible,
     termsAccepted,
     marketingOptIn,
     signedInBuyer,
@@ -831,6 +1037,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     (!missingRequiredDay && totals.isEmpty) ||
     isSubmitting ||
     hasUnsupportedRequired ||
+    contactEditorVisible ||
+    !contactValidation.isValid ||
     !termsAccepted;
   const ctaPressDisabled =
     isSubmitting || hasUnsupportedRequired || dayTruthUnavailable ||
@@ -1119,14 +1327,185 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           </View>
         </Modal>
 
-        {/* Buyer recap */}
+        {/* #3859 — deterministic, booking-local Explorer contact. */}
         <ConsumerCartCard style={styles.recapCard}>
-          <Text style={styles.recapSectionLabel}>YOUR TICKET GOES TO</Text>
-          <View style={styles.recapBlock}>
-            <BuyerRow label="Name" value={buyerName} />
-            <BuyerRow label="Email" value={buyerEmail} />
-            <BuyerRow label="Phone" value={buyerPhone} />
+          <View style={styles.contactHeader}>
+            <Text style={styles.recapSectionLabel}>
+              CONTACT FOR THIS BOOKING
+            </Text>
+            {!contactEditorVisible ? (
+              <Pressable
+                onPress={handleContactChange}
+                disabled={isSubmitting}
+                accessibilityRole="button"
+                accessibilityLabel="Change contact for this booking"
+                style={({ pressed }) => [
+                  styles.contactChangeButton,
+                  pressed && styles.contactButtonPressed,
+                ]}
+              >
+                <Text style={styles.contactChangeLabel}>Change</Text>
+              </Pressable>
+            ) : null}
           </View>
+          {contactEditorVisible ? (
+            <View style={styles.contactEditor}>
+              {contactFieldsToEdit.includes("name") ? (
+                <View style={styles.contactField}>
+                  <Text style={styles.contactFieldLabel}>Full name</Text>
+                  <TextInput
+                    value={contactDraft.name}
+                    onChangeText={(name) =>
+                      setContactDraft((current) => ({ ...current, name }))
+                    }
+                    onBlur={() =>
+                      setContactTouched((current) => ({
+                        ...current,
+                        name: true,
+                      }))
+                    }
+                    editable={!isSubmitting}
+                    autoCapitalize="words"
+                    autoComplete="name"
+                    accessibilityLabel="Full name for this booking"
+                    style={[
+                      styles.contactTextInput,
+                      contactTouched.name &&
+                        !contactDraftValidation.valid.name &&
+                        styles.contactTextInputError,
+                    ]}
+                  />
+                  {contactTouched.name &&
+                  !contactDraftValidation.valid.name ? (
+                    <Text style={styles.contactError}>
+                      Enter the full name for this booking.
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+              {contactFieldsToEdit.includes("email") ? (
+                <View style={styles.contactField}>
+                  <Text style={styles.contactFieldLabel}>Email</Text>
+                  <TextInput
+                    value={contactDraft.email}
+                    onChangeText={(email) =>
+                      setContactDraft((current) => ({ ...current, email }))
+                    }
+                    onBlur={() =>
+                      setContactTouched((current) => ({
+                        ...current,
+                        email: true,
+                      }))
+                    }
+                    editable={!isSubmitting}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="email"
+                    keyboardType="email-address"
+                    accessibilityLabel="Email for this booking"
+                    style={[
+                      styles.contactTextInput,
+                      contactTouched.email &&
+                        !contactDraftValidation.valid.email &&
+                        styles.contactTextInputError,
+                    ]}
+                  />
+                  {contactTouched.email &&
+                  !contactDraftValidation.valid.email ? (
+                    <Text style={styles.contactError}>
+                      Enter a valid email address.
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+              {contactFieldsToEdit.includes("phone") ? (
+                <View style={styles.contactField}>
+                  <Text style={styles.contactFieldLabel}>Mobile number</Text>
+                  <PhoneInput
+                    pickerPresentation="overlay"
+                    value={contactPhoneLocal}
+                    countryCode={contactPhoneCountry}
+                    onChangePhone={(phone) => {
+                      setContactPhoneLocal(phone);
+                      setContactDraft((current) => ({
+                        ...current,
+                        phone:
+                          resolveUserPhoneE164(phone, contactPhoneCountry) ?? "",
+                      }));
+                    }}
+                    onChangeCountry={(countryCode) => {
+                      setContactPhoneCountry(countryCode);
+                      setContactDraft((current) => ({
+                        ...current,
+                        phone:
+                          resolveUserPhoneE164(contactPhoneLocal, countryCode) ??
+                          "",
+                      }));
+                    }}
+                    onBlur={() =>
+                      setContactTouched((current) => ({
+                        ...current,
+                        phone: true,
+                      }))
+                    }
+                    error={
+                      contactTouched.phone &&
+                      !contactDraftValidation.valid.phone
+                        ? "Select a country and enter a valid mobile number."
+                        : null
+                    }
+                    disabled={isSubmitting}
+                    theme={CHECKOUT_CONTACT_PHONE_THEME}
+                    required
+                    smartEntry
+                    maxLength={40}
+                    testID="explorer-checkout-contact-phone"
+                    countryButtonAccessibilityLabel="Select mobile number country"
+                    phoneInputAccessibilityLabel="Mobile number for this booking"
+                  />
+                </View>
+              ) : null}
+              <View style={styles.contactEditorActions}>
+                {contactEditAll && contactValidation.isValid ? (
+                  <Pressable
+                    onPress={handleContactCancel}
+                    disabled={isSubmitting}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel contact changes"
+                    style={({ pressed }) => [
+                      styles.contactCancelButton,
+                      pressed && styles.contactButtonPressed,
+                    ]}
+                  >
+                    <Text style={styles.contactCancelLabel}>Cancel</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  onPress={handleContactSave}
+                  disabled={isSubmitting}
+                  accessibilityRole="button"
+                  accessibilityLabel="Save contact for this booking"
+                  style={({ pressed }) => [
+                    styles.contactSaveButton,
+                    pressed && styles.contactButtonPressed,
+                  ]}
+                >
+                  <Text style={styles.contactSaveLabel}>
+                    Save for this booking
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.contactRecap}>
+              <Text style={styles.contactName}>{contactSnapshot.name}</Text>
+              <Text style={styles.contactDetail}>{contactSnapshot.email}</Text>
+              <Text style={styles.contactDetail}>{contactSnapshot.phone}</Text>
+              <Text style={styles.contactHelper}>
+                We’ll send booking updates and receipts here.
+              </Text>
+            </View>
+          )}
         </ConsumerCartCard>
 
         {/* ORCH-1016 REWORK (D2) — per-tier trip intake forms. Only renders for
@@ -1343,20 +1722,6 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   );
 };
 
-interface BuyerRowProps {
-  label: string;
-  value: string;
-}
-
-const BuyerRow: React.FC<BuyerRowProps> = ({ label, value }) => (
-  <View style={styles.buyerRow}>
-    <Text style={styles.buyerLabel}>{label}</Text>
-    <Text style={styles.buyerValue} numberOfLines={1}>
-      {value.length > 0 ? value : "—"}
-    </Text>
-  </View>
-);
-
 const styles = StyleSheet.create({
   sheetBackground: {
     backgroundColor: "#15181f",
@@ -1534,26 +1899,102 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.55)",
     textTransform: "uppercase",
     letterSpacing: 0.6,
-    marginBottom: 10,
   },
-  recapBlock: {
-    gap: 8,
-  },
-  buyerRow: {
+  contactHeader: {
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+    marginBottom: 10,
   },
-  buyerLabel: {
-    color: "rgba(255, 255, 255, 0.45)",
-    fontSize: 13,
+  contactChangeButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 8,
   },
-  buyerValue: {
-    flex: 1,
-    color: "rgba(255, 255, 255, 0.96)",
+  contactChangeLabel: {
+    color: "#eb7825",
     fontSize: 14,
-    textAlign: "right",
+    fontWeight: "700",
+  },
+  contactEditor: {
+    gap: 14,
+  },
+  contactField: {
+    gap: 6,
+  },
+  contactFieldLabel: {
+    color: "rgba(255, 255, 255, 0.72)",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  contactTextInput: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.14)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    color: "rgba(255, 255, 255, 0.96)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    fontSize: 15,
+  },
+  contactTextInputError: {
+    borderColor: "#ef4444",
+  },
+  contactError: {
+    color: "#ef4444",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  contactEditorActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 10,
+  },
+  contactCancelButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  contactCancelLabel: {
+    color: "rgba(255, 255, 255, 0.72)",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  contactSaveButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#eb7825",
+  },
+  contactSaveLabel: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  contactButtonPressed: {
+    opacity: 0.72,
+  },
+  contactRecap: {
+    gap: 4,
+  },
+  contactName: {
+    color: "rgba(255, 255, 255, 0.96)",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  contactDetail: {
+    color: "rgba(255, 255, 255, 0.72)",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  contactHelper: {
+    marginTop: 6,
+    color: "rgba(255, 255, 255, 0.45)",
+    fontSize: 12,
+    lineHeight: 17,
   },
   // ORCH-1025 — "What's included" breakdown panel
   breakdownWrap: {

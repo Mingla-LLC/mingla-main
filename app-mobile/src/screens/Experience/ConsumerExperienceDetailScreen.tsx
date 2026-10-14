@@ -129,6 +129,7 @@ import {
   type NativeCheckoutPhase,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
+import { resolveExplorerCheckoutContact } from "../../payments/explorerCheckoutContact.mjs";
 import { toastManager } from "../../components/ui/Toast";
 import { useAppStore } from "../../store/appStore";
 // #1708 — the same two pieces the place sheet uses. Open-Meteo needs no key and
@@ -254,6 +255,14 @@ export default function ConsumerExperienceDetailScreen({
   // public web page) → no travel row at all, which is the honest outcome.
   const { userLocation: viewerLocation } = useRecommendations();
   const profile = useAppStore((s) => s.profile);
+  const explorerCheckoutContact = resolveExplorerCheckoutContact({
+    authUserId: user?.id,
+    authEmail: user?.email,
+    profileId: profile?.id,
+    profileDisplayName: profile?.display_name,
+    profilePhone: profile?.phone,
+    profileCountry: profile?.country,
+  });
 
   const [cartVisible, setCartVisible] = useState<boolean>(false);
   const [initialTicketTypeId, setInitialTicketTypeId] = useState<string | null>(
@@ -626,25 +635,6 @@ export default function ConsumerExperienceDetailScreen({
         toastManager.show("Please sign in to reserve.", "warning");
         return { outcome: "canceled" };
       }
-      const buyerName =
-        profile?.display_name?.trim() || user.email?.split("@")[0] || "Guest";
-      const buyerEmail = user.email ?? profile?.email ?? "";
-      const buyerPhone = profile?.phone ?? "";
-      if (buyerEmail.length === 0) {
-        toastManager.show(
-          "We need an email on your profile to reserve.",
-          "warning",
-        );
-        return { outcome: "canceled" };
-      }
-      if (buyerPhone.length === 0) {
-        toastManager.show(
-          "Add a phone number to your profile to reserve.",
-          "warning",
-        );
-        return { outcome: "canceled" };
-      }
-
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setCheckoutInFlight(true);
 
@@ -655,9 +645,7 @@ export default function ConsumerExperienceDetailScreen({
           eventId: seed.eventId,
           lines: payload.lines,
           buyer: {
-            name: buyerName,
-            email: buyerEmail,
-            phone: buyerPhone,
+            ...payload.buyer,
             marketingOptIn: payload.marketingOptIn,
           },
           // ORCH-1244 (Apple 4.9) — the on-screen experience title becomes the
@@ -753,7 +741,6 @@ export default function ConsumerExperienceDetailScreen({
       checkoutInFlight,
       seed,
       user,
-      profile,
       runNativeCheckout,
       selectedEventDateId,
       queryClient,
@@ -1272,11 +1259,10 @@ export default function ConsumerExperienceDetailScreen({
         fallbackCurrency={seed.currency}
         initialTicketTypeId={initialTicketTypeId}
         initialQuantity={selectedQuantity}
-        buyerName={
-          profile?.display_name?.trim() || user?.email?.split("@")[0] || "Guest"
-        }
-        buyerEmail={user?.email ?? profile?.email ?? ""}
-        buyerPhone={profile?.phone ?? ""}
+        buyerName={explorerCheckoutContact.normalized.name}
+        buyerEmail={explorerCheckoutContact.normalized.email}
+        buyerPhone={explorerCheckoutContact.normalized.phone}
+        buyerCountryCode={profile?.id === user?.id ? profile?.country : null}
         brandName={seed?.brandName ?? null}
         buyerUserId={user?.id ?? null}
         isSubmitting={checkoutInFlight}
