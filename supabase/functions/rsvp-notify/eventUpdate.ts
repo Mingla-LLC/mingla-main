@@ -178,6 +178,34 @@ async function loadNotice(
   }
 }
 
+export type SendCheck = "ok" | "held_feature_off" | "held_allowlist" | "notice_missing" | "unavailable";
+
+/**
+ * Issue #3827 rework F4 — the last word before a provider call. The switches,
+ * the pilot and the allowlist are re-read for every copy, so switching the
+ * feature off stops copies fanned out but not yet sent. Any answer this
+ * worker does not know is "unavailable" (the copy is retried, never sent).
+ */
+export async function checkNoticeSend(
+  admin: NoticeAdminClient,
+  noticeId: string,
+  email: string | null,
+): Promise<SendCheck> {
+  try {
+    const { data, error } = await admin.rpc("event_edit_notice_send_check", {
+      p_notice_id: noticeId,
+      p_email: email,
+    });
+    if (error) return "unavailable";
+    return data === "ok" || data === "held_feature_off" || data === "held_allowlist" ||
+        data === "notice_missing"
+      ? data
+      : "unavailable";
+  } catch {
+    return "unavailable";
+  }
+}
+
 /** The stored switch, as PostgREST hands back a `->>` read: text or null. */
 export function isAddressWithheldNow(raw: unknown): boolean {
   return raw === true || (typeof raw === "string" && raw.trim().toLowerCase() === "true");

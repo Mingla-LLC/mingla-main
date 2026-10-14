@@ -1142,6 +1142,45 @@ COMMENT ON FUNCTION public.event_edit_notice_fanout(integer) IS
   '#3827 turns each due edit notice into one RSVP-ledger row per recipient, after re-checking the switches, the listing and the allowlist. Idempotent. Service role only.';
 
 -- ---------------------------------------------------------------------------
+-- 11b. The last word before a provider call. The worker asks, for every copy
+-- of a notice it is about to send, whether it may still go: the switches are
+-- re-read here, so turning the feature off (or the brand out of the pilot, or
+-- allowlist-only back on with the address off the list) stops copies that
+-- were fanned out but not yet sent. Answers: 'ok', 'held_feature_off',
+-- 'held_allowlist', 'notice_missing'.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.event_edit_notice_send_check(p_notice_id uuid, p_email text)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_brand_id uuid;
+BEGIN
+  SELECT n.brand_id INTO v_brand_id FROM public.event_edit_notices AS n WHERE n.id = p_notice_id;
+  IF NOT FOUND THEN
+    RETURN 'notice_missing';
+  END IF;
+  IF NOT public.event_edit_notice_brand_live(v_brand_id) THEN
+    RETURN 'held_feature_off';
+  END IF;
+  IF public.event_edit_notice_allowlist_only()
+     AND NOT public.event_edit_notice_on_allowlist(p_email) THEN
+    RETURN 'held_allowlist';
+  END IF;
+  RETURN 'ok';
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.event_edit_notice_send_check(uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.event_edit_notice_send_check(uuid, text) TO service_role;
+
+COMMENT ON FUNCTION public.event_edit_notice_send_check(uuid, text) IS
+  '#3827 asked by rsvp-notify before each provider call for an edit notice: re-reads the switches, the pilot and the allowlist. Service role only.';
+
+-- ---------------------------------------------------------------------------
 -- 12. What the host may see: counts, never an address.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.business_event_buyer_notice_status(p_event_id uuid)
@@ -1160,6 +1199,8 @@ DECLARE
   v_sent integer := 0;
   v_pending integer := 0;
   v_failed integer := 0;
+  -- Copies stopped at send time by a switch (not failures).
+  v_held_at_send integer := 0;
   v_last_json jsonb := NULL;
 BEGIN
   IF v_uid IS NULL THEN
@@ -1187,8 +1228,11 @@ BEGIN
     IF v_last.state = 'fanned_out' THEN
       SELECT count(*) FILTER (WHERE d.status = 'sent'),
              count(*) FILTER (WHERE d.status IN ('pending', 'processing', 'failed_retryable')),
-             count(*) FILTER (WHERE d.status IN ('failed_terminal', 'ambiguous'))
-        INTO v_sent, v_pending, v_failed
+             count(*) FILTER (WHERE d.status IN ('failed_terminal', 'ambiguous')
+                                AND COALESCE(d.safe_error_code, '') NOT LIKE 'held\_%'),
+             count(*) FILTER (WHERE d.status = 'failed_terminal'
+                                AND COALESCE(d.safe_error_code, '') LIKE 'held\_%')
+        INTO v_sent, v_pending, v_failed, v_held_at_send
         FROM public.rsvp_notifications AS n
         JOIN public.rsvp_notification_deliveries AS d ON d.notification_id = n.id
        WHERE n.payload ->> 'noticeId' = v_last.id::text
@@ -1204,7 +1248,7 @@ BEGIN
       'pending', v_pending,
       'failed', v_failed,
       'noEmail', v_last.no_email_count,
-      'held', v_last.held_count);
+      'held', v_last.held_count + v_held_at_send);
   END IF;
 
   RETURN jsonb_build_object(
@@ -2399,7 +2443,8 @@ BEGIN
     'public.event_edit_notice_withhold_changes(jsonb, boolean)',
     'public.event_edit_notice_withhold_unsent(uuid)',
     'public.event_edit_notice_allowlist_only()',
-    'public.event_edit_notice_on_allowlist(text)']
+    'public.event_edit_notice_on_allowlist(text)',
+    'public.event_edit_notice_send_check(uuid, text)']
   LOOP
     IF pg_catalog.has_function_privilege('anon', v_fn, 'EXECUTE')
        OR pg_catalog.has_function_privilege('authenticated', v_fn, 'EXECUTE') THEN

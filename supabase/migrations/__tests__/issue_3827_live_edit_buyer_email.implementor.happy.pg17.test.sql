@@ -1229,4 +1229,52 @@ BEGIN
 END $s03$;
 ROLLBACK;
 
+-- ─── S-04 (rework F4): the send-time check re-reads the switches ─────────────
+BEGIN;
+DO $s04$
+DECLARE
+  f record;
+  v_notice uuid;
+  v_status jsonb;
+BEGIN
+  SELECT * INTO f FROM pg_temp.e3827_event('s04');
+  PERFORM pg_temp.e3827_buyer(f.v_event, f.v_tier, 'ada@example.test');
+  PERFORM pg_temp.e3827_buyer(f.v_event, f.v_tier, 'ben@example.test');
+  PERFORM pg_temp.e3827_go_live(f.v_brand);
+  PERFORM public.business_update_live_event_atomic(f.v_event,
+    jsonb_build_object('core', jsonb_build_object('venueName', 'The Bedford Hall')),
+    'The first room has a power fault', f.v_revision + 1);
+  UPDATE public.event_edit_notices SET send_after = now() - interval '1 second' WHERE event_id = f.v_event;
+  PERFORM public.event_edit_notice_fanout(20);
+  SELECT id INTO v_notice FROM public.event_edit_notices WHERE event_id = f.v_event AND state = 'fanned_out';
+  IF public.event_edit_notice_send_check(v_notice, 'ada@example.test') <> 'ok' THEN
+    RAISE EXCEPTION 'S-04 FAIL: a copy that may go was held';
+  END IF;
+  UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'event_update_buyer_email_allowlist_only';
+  INSERT INTO public.event_update_email_allowlist(email) VALUES ('ben@example.test');
+  IF public.event_edit_notice_send_check(v_notice, 'ada@example.test') <> 'held_allowlist'
+     OR public.event_edit_notice_send_check(v_notice, ' Ben@Example.test ') <> 'ok' THEN
+    RAISE EXCEPTION 'S-04 FAIL: allowlist-only switched back on is not re-read at send time';
+  END IF;
+  UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'event_update_buyer_email';
+  IF public.event_edit_notice_send_check(v_notice, 'ben@example.test') <> 'held_feature_off'
+     OR public.event_edit_notice_send_check(gen_random_uuid(), 'ben@example.test') <> 'notice_missing' THEN
+    RAISE EXCEPTION 'S-04 FAIL: the off switch is not re-read at send time';
+  END IF;
+  -- A copy the worker held is counted as held, not as a failure.
+  UPDATE public.rsvp_notification_deliveries AS d
+     SET status = 'failed_terminal', safe_error_code = 'held_feature_off'
+    FROM public.rsvp_notifications AS n
+   WHERE n.id = d.notification_id AND n.payload ->> 'noticeId' = v_notice::text;
+  v_status := public.business_event_buyer_notice_status(f.v_event);
+  IF (v_status #>> '{last,failed}')::integer <> 0 OR (v_status #>> '{last,held}')::integer <> 2 THEN
+    RAISE EXCEPTION 'S-04 FAIL: held copies must not read as failures (%)', v_status -> 'last';
+  END IF;
+  IF has_function_privilege('authenticated', 'public.event_edit_notice_send_check(uuid, text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'S-04 FAIL: a signed-in host can call the send check';
+  END IF;
+  RAISE NOTICE 'S-04 PASS: the send-time check re-reads the master switch, the pilot and the allowlist, and held copies are not failures';
+END $s04$;
+ROLLBACK;
+
 \echo 'issue_3827_live_edit_buyer_email.implementor.happy: all cases passed'

@@ -22,6 +22,7 @@ import { attendanceClaimUrls } from "../_shared/attendanceClaim.ts";
 // Issue #3827 — buyers and guests are told when a live listing changes.
 import {
   buildEventUpdateDispatch,
+  checkNoticeSend,
   createNoticeLoader,
   type EventUpdateDispatch,
   fanOutEventEditNotices,
@@ -319,6 +320,28 @@ async function processClaim(
     }
     if (loaded.state === "not_live") {
       await complete(admin, claim, "failed_terminal", null, "event_not_live");
+      return;
+    }
+    // Rework F4 — the switches are re-read for every copy: a copy fanned out
+    // before the feature was switched off (or its address left the allowlist)
+    // is completed as held, with no provider call.
+    const check = await checkNoticeSend(
+      admin as unknown as NoticeAdminClient,
+      noticeId,
+      text(p.recipientEmail),
+    );
+    if (check === "unavailable") {
+      await complete(admin, claim, "failed_retryable", null, "event_notice_check_unavailable");
+      return;
+    }
+    if (check !== "ok") {
+      await complete(
+        admin,
+        claim,
+        "failed_terminal",
+        null,
+        check === "notice_missing" ? "event_notice_missing" : check,
+      );
       return;
     }
     try {

@@ -80,6 +80,7 @@ interface World {
   notice: Record<string, unknown> | null | "error";
   event: Record<string, unknown> | null;
   resendStatus: number;
+  sendCheck: string | "error";
 }
 
 interface Seen {
@@ -90,6 +91,7 @@ interface Seen {
   texts: Array<Record<string, string>>;
   completions: Array<Record<string, unknown>>;
   categoryReads: string[];
+  sendChecks: unknown[];
   noticeReads: number;
   eventReads: number;
   inFlight: number;
@@ -130,6 +132,7 @@ const world: World = {
   notice: baseNotice(),
   event: baseEvent(),
   resendStatus: 200,
+  sendCheck: "ok",
 };
 const seen: Seen = {
   order: [],
@@ -139,6 +142,7 @@ const seen: Seen = {
   texts: [],
   completions: [],
   categoryReads: [],
+  sendChecks: [],
   noticeReads: 0,
   eventReads: 0,
   inFlight: 0,
@@ -153,6 +157,7 @@ function reset(next: Partial<World> = {}): void {
     notice: baseNotice(),
     event: baseEvent(),
     resendStatus: 200,
+    sendCheck: "ok",
   }, next);
   Object.assign(seen, {
     order: [],
@@ -162,6 +167,7 @@ function reset(next: Partial<World> = {}): void {
     texts: [],
     completions: [],
     categoryReads: [],
+    sendChecks: [],
     noticeReads: 0,
     eventReads: 0,
     inFlight: 0,
@@ -204,6 +210,13 @@ globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => 
         return jsonResponse({ code: "XX000", message: "internal error" }, 500);
       }
       return jsonResponse({ notices: 0, rows: 0 });
+    }
+    if (leaf === "event_edit_notice_send_check") {
+      seen.sendChecks.push(body);
+      if (world.sendCheck === "error") {
+        return jsonResponse({ code: "57014", message: "canceling statement" }, 500);
+      }
+      return jsonResponse(world.sendCheck);
     }
     if (leaf === "claim_rsvp_notification_deliveries") {
       seen.order.push("claim");
@@ -543,4 +556,36 @@ test("D-09 an address hidden after the notice was recorded is never printed", as
   reset({ claims: [buyerClaim(3)], notice: baseNotice() });
   await runTick();
   assert(String(seen.emails[0]?.body.html).includes("Waterside Event Centre"), "public values still print");
+});
+
+test("D-10 a copy fanned out before the switch went off is held at send time, with no provider call", async () => {
+  for (const [check, code] of [
+    ["held_feature_off", "held_feature_off"],
+    ["held_allowlist", "held_allowlist"],
+    ["notice_missing", "event_notice_missing"],
+  ] as const) {
+    reset({ claims: [buyerClaim(1)], sendCheck: check });
+    await runTick();
+    same(seen.emails.length, 0, `${check}: no provider call`);
+    same(
+      [seen.completions[0]?.p_status, seen.completions[0]?.p_safe_error_code],
+      ["failed_terminal", code],
+      `${check}: completed as held`,
+    );
+    same(seen.sendChecks, [{ p_notice_id: NOTICE_ID, p_email: "buyer-1@example.invalid" }], `${check}: asked once, for this address`);
+  }
+  // The check cannot be read: the copy waits, it is never sent blind.
+  reset({ claims: [buyerClaim(1)], sendCheck: "error" });
+  await runTick();
+  same(seen.emails.length, 0, "check unavailable: no provider call");
+  same(
+    [seen.completions[0]?.p_status, seen.completions[0]?.p_safe_error_code],
+    ["failed_retryable", "event_notice_check_unavailable"],
+    "check unavailable: retried",
+  );
+  // Switch still on: sent. A legacy row is never checked.
+  reset({ claims: [buyerClaim(2), legacyClaim()] });
+  await runTick();
+  same(seen.emails.length, 2, "both sent");
+  same(seen.sendChecks.length, 1, "only the notice row was checked");
 });
