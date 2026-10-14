@@ -97,7 +97,7 @@ import {
   describeUnmappedPublishGuard,
   eventPublishCarriesMoney,
   isOrganiserTermsRefusalMessage,
-  ORGANISER_TERMS_UNCONFIRMED_COPY,
+  organiserTermsUnresolvedCopy,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import { useOrganiserTermsPublishGate } from "../../hooks/useOrganiserTermsPublishGate";
@@ -1022,7 +1022,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       if (isOrganiserTermsRefusalMessage(code)) {
         acceptTermsAfterServerRefusal(
           () => resumePublishRef.current(),
-          () => handleShowToast(ORGANISER_TERMS_UNCONFIRMED_COPY),
+          (reason) => handleShowToast(organiserTermsUnresolvedCopy(reason)),
         );
         return;
       }

@@ -126,7 +126,7 @@ import {
 import {
   brandPaymentOnboardingRoute,
   isOrganiserTermsRefusalMessage,
-  ORGANISER_TERMS_UNCONFIRMED_COPY,
+  organiserTermsUnresolvedCopy,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 // issue #3801 — `supabase.rpc()` rejects with a PostgREST PLAIN OBJECT, and
@@ -1620,7 +1620,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         setInvitePublishConfirmVisible(false);
         acceptTermsAfterServerRefusal(
           () => resumePublishRef.current(),
-          () => showToast(ORGANISER_TERMS_UNCONFIRMED_COPY),
+          (reason) => showToast(organiserTermsUnresolvedCopy(reason)),
         );
         return;
       }

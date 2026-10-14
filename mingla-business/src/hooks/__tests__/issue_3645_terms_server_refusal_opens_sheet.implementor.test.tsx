@@ -9,9 +9,12 @@
  * server is the authority, so the hook reads acceptance again and:
  *   - not accepted           -> opens the sheet, resumes the publish on accept;
  *   - still reads accepted   -> does NOT open a sheet that has nothing to
- *                               offer and does NOT retry; the caller is told,
- *                               which is what stops a refusal looping;
- *   - the read fails         -> opens the sheet (it shows its own retry).
+ *                               offer and does NOT retry; the caller is told;
+ *   - the read fails         -> the same: a failed read proves nothing, and
+ *                               the sheet would trust a cached "accepted" and
+ *                               pass straight through to another refusal.
+ * One press of Publish gets at most one automatic resume. Together these are
+ * what stop a refusal the sheet cannot clear from looping.
  *
  * The real hook runs. Its three imports are replaced, as in the sibling
  * resume test: the signed-in user, the acceptance query, and the sheet.
@@ -92,11 +95,17 @@ async function mount(brandId: string | null = "brand-3645"): Promise<Tree> {
 }
 
 const theGate = (): OrganiserTermsPublishGate => gate as OrganiserTermsPublishGate;
+/** Re-renders the mounted harness so the hook reads the current cache. */
+async function mountedRerender(): Promise<void> {
+  await renderer.act(async () => {
+    roots[roots.length - 1].update(<Harness brandId="brand-3645" />);
+  });
+}
 const ACCEPTED: Acceptance = { version: "1.0", acceptedAt: "2026-10-01T00:00:00Z" };
 
 async function refuse(
   onAccepted?: () => void,
-  onUnresolved?: () => void,
+  onUnresolved?: (reason: string) => void,
 ): Promise<void> {
   await renderer.act(async () => {
     theGate().acceptTermsAfterServerRefusal(onAccepted, onUnresolved);
@@ -196,6 +205,7 @@ describe("#3645 — a server terms refusal offers the acceptance sheet", () => {
     const unresolved = jest.fn();
     await refuse(resume, unresolved);
     expect(unresolved).toHaveBeenCalledTimes(1);
+    expect(unresolved).toHaveBeenCalledWith("already_accepted");
     expect(gateProps).toHaveLength(0);
     expect(theGate().gateElement).toBeNull();
     await settle(ORGANISER_TERMS_RESUME_SETTLE_MS * 5);
@@ -235,19 +245,109 @@ describe("#3645 — a server terms refusal offers the acceptance sheet", () => {
     expect(theGate().gateElement).toBeNull();
   });
 
-  test("acceptance cannot be read: the sheet opens (it carries its own retry)", async () => {
-    serverAnswer = () => Promise.resolve({ isError: true });
+  test("acceptance cannot be read: no sheet, no retry, the caller is told why", async () => {
     await mount();
+    const resume = jest.fn();
     const unresolved = jest.fn();
-    await refuse(jest.fn(), unresolved);
-    expect(gateProps.length).toBeGreaterThan(0);
-    expect(unresolved).not.toHaveBeenCalled();
 
-    gateProps.length = 0;
+    serverAnswer = () => Promise.resolve({ isError: true });
+    await refuse(resume, unresolved);
     serverAnswer = () => Promise.reject(new Error("offline"));
-    await refuse(jest.fn(), unresolved);
+    await refuse(resume, unresolved);
+
+    expect(unresolved.mock.calls).toEqual([["unreadable"], ["unreadable"]]);
+    expect(gateProps).toHaveLength(0);
+    expect(theGate().gateElement).toBeNull();
+    await settle(ORGANISER_TERMS_RESUME_SETTLE_MS * 5);
+    expect(resume).not.toHaveBeenCalled();
+  });
+
+  test("stale 'accepted' in the cache and a re-read that fails: one publish attempt, no loop", async () => {
+    // The app holds "accepted" for the session; the server disagrees; the
+    // re-read fails and (as the query library does) hands the stale data back.
+    cached = ACCEPTED;
+    serverAnswer = () => Promise.resolve({ data: ACCEPTED, isError: true });
+    await mount();
+    let publishAttempts = 0;
+    const unresolved = jest.fn();
+    // A Stay-shaped publish: resuming calls the server again with no dialog in
+    // between, and the server refuses every time.
+    const publish = (): void => {
+      if (theGate().blockPaidPublishUntilAccepted(true, publish)) return;
+      publishAttempts += 1;
+      theGate().acceptTermsAfterServerRefusal(publish, unresolved);
+    };
+    await renderer.act(async () => {
+      publish();
+    });
+    for (let i = 0; i < 20; i += 1) {
+      await renderer.act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      await settle(ORGANISER_TERMS_RESUME_SETTLE_MS);
+    }
+    expect(publishAttempts).toBe(1);
+    expect(unresolved).toHaveBeenCalledTimes(1);
+    expect(unresolved).toHaveBeenCalledWith("unreadable");
+    expect(gateProps).toHaveLength(0);
+    expect(theGate().gateElement).toBeNull();
+  });
+
+  test("one press, one automatic resume: a resumed publish refused again is not resumed a second time", async () => {
+    // The server refuses every time and acceptance keeps reading "not accepted"
+    // even after the host accepts, so nothing else would stop the cycle.
+    serverAnswer = () => Promise.resolve({ data: null });
+    // The app's own check lets the first press through.
+    cached = ACCEPTED;
+    await mount();
+    let publishAttempts = 0;
+    const unresolved = jest.fn();
+    const publish = (): void => {
+      if (theGate().blockPaidPublishUntilAccepted(true, publish)) return;
+      publishAttempts += 1;
+      theGate().acceptTermsAfterServerRefusal(publish, unresolved);
+    };
+    await renderer.act(async () => {
+      publish();
+    });
+    await renderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(publishAttempts).toBe(1);
     expect(theGate().gateElement).not.toBeNull();
-    expect(unresolved).not.toHaveBeenCalled();
+    // The host accepts in the sheet: the publish resumes once…
+    await renderer.act(async () => {
+      gateProps[gateProps.length - 1].onPassed();
+    });
+    await settle();
+    await renderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(publishAttempts).toBe(2);
+    // …is refused again, and stops there.
+    expect(unresolved).toHaveBeenCalledTimes(1);
+    expect(unresolved).toHaveBeenCalledWith("already_accepted");
+    expect(theGate().gateElement).toBeNull();
+    await settle(ORGANISER_TERMS_RESUME_SETTLE_MS * 10);
+    expect(publishAttempts).toBe(2);
+
+    // A new press by the host gets its own single resume. (The app again
+    // believes the terms are accepted, so its own check lets the press through.)
+    cached = ACCEPTED;
+    await mountedRerender();
+    await renderer.act(async () => {
+      publish();
+    });
+    await renderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(publishAttempts).toBe(3);
+    expect(theGate().gateElement).not.toBeNull();
+    expect(unresolved).toHaveBeenCalledTimes(1);
   });
 
   test("no brand or no signed-in member: nothing to open, the caller is told", async () => {
@@ -255,6 +355,7 @@ describe("#3645 — a server terms refusal offers the acceptance sheet", () => {
     const unresolved = jest.fn();
     await refuse(jest.fn(), unresolved);
     expect(unresolved).toHaveBeenCalledTimes(1);
+    expect(unresolved).toHaveBeenCalledWith("unavailable");
     expect(refetchCalls).toBe(0);
     expect(theGate().gateElement).toBeNull();
   });

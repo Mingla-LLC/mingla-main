@@ -374,6 +374,7 @@ const BOUNDARY: Record<string, () => unknown> = {
     eventPublishCarriesMoney: () => false,
     isOrganiserTermsRefusalMessage: () => false,
     ORGANISER_TERMS_UNCONFIRMED_COPY: "",
+    organiserTermsUnresolvedCopy: () => "",
     resolveProviderNeutralPaidPublishGuardCopy: () => null,
     resolvePaidPublishGuardCopy: () => null,
     brandPaymentOnboardingRoute: () => "/payments",

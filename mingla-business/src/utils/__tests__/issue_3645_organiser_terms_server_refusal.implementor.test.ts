@@ -26,6 +26,8 @@ import {
   ORGANISER_TERMS_REFUSAL_CODE,
   ORGANISER_TERMS_REFUSAL_COPY,
   ORGANISER_TERMS_UNCONFIRMED_COPY,
+  ORGANISER_TERMS_UNREADABLE_COPY,
+  organiserTermsUnresolvedCopy,
   resolveOrganiserTermsRefusalCopy,
   resolveProviderNeutralPaidPublishGuardCopy,
   type PublishRefusalAction,
@@ -98,6 +100,7 @@ describe("#3645 — what the host reads", () => {
     ORGANISER_TERMS_REFUSAL_COPY.body,
     ORGANISER_TERMS_REFUSAL_COPY.actionLabel,
     ORGANISER_TERMS_UNCONFIRMED_COPY,
+    ORGANISER_TERMS_UNREADABLE_COPY,
   ];
 
   test("plain words: no server code, no provider name", () => {
@@ -112,6 +115,26 @@ describe("#3645 — what the host reads", () => {
   test("the unresolved line does not invite a retry", () => {
     expect(ORGANISER_TERMS_UNCONFIRMED_COPY).not.toMatch(/try again|retry/i);
     expect(ORGANISER_TERMS_UNCONFIRMED_COPY).toMatch(/wasn't published/);
+  });
+
+  test("each unresolved outcome has its own true sentence", () => {
+    expect(organiserTermsUnresolvedCopy("already_accepted")).toBe(ORGANISER_TERMS_UNCONFIRMED_COPY);
+    expect(organiserTermsUnresolvedCopy("unavailable")).toBe(ORGANISER_TERMS_UNCONFIRMED_COPY);
+    // A read that failed is not a reason to contact support: say what happened
+    // and leave pressing Publish again to the host.
+    expect(organiserTermsUnresolvedCopy("unreadable")).toBe(ORGANISER_TERMS_UNREADABLE_COPY);
+    expect(ORGANISER_TERMS_UNREADABLE_COPY).toMatch(/wasn't published/);
+    expect(ORGANISER_TERMS_UNREADABLE_COPY).toMatch(/press Publish again/);
+  });
+
+  test("Stay shows the unresolved sentence under its button instead of asking for what is already done", () => {
+    const shell = source("components/stay/StaySuiteShell.tsx");
+    expect(shell).toContain("{publishErrorCopy(publish.error, termsUnresolved)}");
+    // Cleared by the next press, before the server is asked again.
+    const press = shell.indexOf("setTermsUnresolved(null);");
+    const ask = shell.indexOf("publish.mutate(", press);
+    expect(press).toBeGreaterThan(-1);
+    expect(ask).toBeGreaterThan(press);
   });
 
   test("what an event host saw BEFORE: the last-resort copy quotes the code", () => {
@@ -182,7 +205,7 @@ describe("#3645 — every publish surface offers the sheet before anything else"
       "if (isOrganiserTermsRefusalMessage(code)) {",
       "acceptTermsAfterServerRefusal(",
       "() => resumePublishRef.current(),",
-      "() => handleShowToast(ORGANISER_TERMS_UNCONFIRMED_COPY),",
+      "(reason) => handleShowToast(organiserTermsUnresolvedCopy(reason)),",
       "return;",
       "const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(code);",
       "handleShowToast(describeUnmappedPublishGuard(code));",
@@ -196,7 +219,7 @@ describe("#3645 — every publish surface offers the sheet before anything else"
       "if (publish && isOrganiserTermsRefusalMessage(code)) {",
       "acceptTermsAfterServerRefusal(",
       "() => resumePublishRef.current(),",
-      "() => setToast(ORGANISER_TERMS_UNCONFIRMED_COPY),",
+      "(reason) => setToast(organiserTermsUnresolvedCopy(reason)),",
       "return;",
       "if (handlePaidPublishGuard(code)) {",
       "experience: ${code}`",
@@ -211,7 +234,7 @@ describe("#3645 — every publish surface offers the sheet before anything else"
       "isOrganiserTermsRefusalMessage(readRpcFailureMessage(e))",
       "acceptTermsAfterServerRefusal(",
       "() => resumePublishRef.current(),",
-      "() => showToast(ORGANISER_TERMS_UNCONFIRMED_COPY),",
+      "(reason) => showToast(organiserTermsUnresolvedCopy(reason)),",
       "return;",
       'setPublishError(mapPublishErrorToState(err.code ?? "publish_failed", err.message));',
     ]);
@@ -220,9 +243,9 @@ describe("#3645 — every publish surface offers the sheet before anything else"
   test("stay: the refused publish opens the sheet, and the line under the button is plain", () => {
     const shell = source("components/stay/StaySuiteShell.tsx");
     inOrder(shell, [
-      "function publishErrorCopy(error: Error | null): string | null {",
+      "function publishErrorCopy(",
       "if (isOrganiserTermsRefusalMessage(error.message)) {",
-      'return "Accept the Organiser Terms to publish this Stay.";',
+      'return termsUnresolved ?? "Accept the Organiser Terms to publish this Stay.";',
       'if (error.message.includes("stay_authoring_disabled")) {',
     ]);
     inOrder(shell, [
@@ -230,7 +253,9 @@ describe("#3645 — every publish surface offers the sheet before anything else"
       "{ expectedVersion: settings.version },",
       "onError: (error) => {",
       "if (!isOrganiserTermsRefusalMessage(error.message)) return;",
-      "acceptTermsAfterServerRefusal(() => resumePublishStayRef.current());",
+      "acceptTermsAfterServerRefusal(",
+      "() => resumePublishStayRef.current(),",
+      "(reason) => setTermsUnresolved(organiserTermsUnresolvedCopy(reason)),",
     ]);
   });
 

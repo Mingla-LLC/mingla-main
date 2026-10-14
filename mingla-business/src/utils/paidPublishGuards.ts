@@ -342,6 +342,22 @@ export const ORGANISER_TERMS_UNCONFIRMED_COPY =
   "We couldn't confirm your Organiser Terms, so this wasn't published. Your draft is saved. Contact support@usemingla.com and we'll sort it out.";
 
 /**
+ * Shown when the server asked for the terms and acceptance could not be read
+ * (offline, or the read failed). Nothing was published and nothing is retried
+ * automatically; pressing Publish again is the host's choice.
+ */
+export const ORGANISER_TERMS_UNREADABLE_COPY =
+  "We couldn't check your Organiser Terms just now, so this wasn't published. Your draft is saved. Check your connection, then press Publish again.";
+
+/** The sentence for each way a server terms refusal can be left unresolved. */
+export const organiserTermsUnresolvedCopy = (
+  reason: "already_accepted" | "unreadable" | "unavailable",
+): string =>
+  reason === "unreadable"
+    ? ORGANISER_TERMS_UNREADABLE_COPY
+    : ORGANISER_TERMS_UNCONFIRMED_COPY;
+
+/**
  * True when a raw server message (a publish RPC's `error.message`, or the code a
  * Stay publish answers with) is the Organiser Terms refusal. The token is
  * matched whole, so a longer token that merely contains it does not count.
