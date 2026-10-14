@@ -711,7 +711,7 @@ insert into t3802b_forms values
   ('handle', 'https://bit.ly/3abc', 'bit.ly/3abc'),
   ('handle', 'https://linktr.ee/AliceCooks', 'linktr.ee/AliceCooks'),
   ('handle', 'https://beacons.ai/Alice', 'beacons.ai/Alice'),
-  ('handle', 'https://www.youtube.com/watch?v=AbC_123xyz', 'youtube.com/watch?v=abc_123xyz'),
+  ('handle', 'https://www.youtube.com/watch?v=AbC_123xyz', 'youtube.com/watch?v=AbC_123xyz'),
   ('handle', 'https://www.youtube.com/watch?v=bbbbbbb&t=10', 'youtube.com/watch?v=bbbbbbb'),
   ('handle', 'https://www.youtube.com/watch', '-'),
   ('handle', 'https://x.com/i/status/1', '-'),
