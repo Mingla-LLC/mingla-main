@@ -819,6 +819,13 @@ jobs:
           # nothing.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.implementor.round4.pg17.test.sql
+          # Issue #3827 — tester retest 4: merged edits across two switch flips
+          # alert every guest once per change; a text already sent stops a
+          # second alert when the email is held on its retry; off and on again
+          # never silences the newest change; every going guest is counted
+          # once in the host's status (emailed, reached by text, or no email).
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.tester.retest4.pg17.test.sql
           # Issue #3645 — an unpublished draft with nothing sold follows its
           # brand's currency. Changed currency (GBP to NGN, fired by
           # service_role): event, RSVP and trip drafts move in every copy, paid
@@ -2849,6 +2856,10 @@ jobs:
             # zero-width character beside the dot, `//` with no scheme and
             # punycode are removed; an emoji family keeps its joiners.
             supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.tester.retest3.test.ts
+            # Issue #3827 — tester retest 4 of the link filter: shortener and chat
+            # links in any capitalisation, hosts glued to punctuation, the leader
+            # dots with zero-width characters, and no foreign href in the email.
+            supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.tester.retest4.test.ts
             # issue #2695 — the sweeper's OWN contract suite, which ran in no lane
             # at all and had therefore been red on main since #2218 moved its
             # constants into `logic.ts`. Nothing was broken; the assertions were
