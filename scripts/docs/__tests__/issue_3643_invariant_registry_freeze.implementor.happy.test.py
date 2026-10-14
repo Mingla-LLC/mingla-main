@@ -85,6 +85,14 @@ DERIVED_TRIGGER_SUITES = {
     "issue-2230-consumer-multiday-tests",
 }
 
+OWNER_SURFACE_ROUTES = {
+    ".github/scripts/strict-grep/**",
+    "scripts/**",
+    "**/__tests__/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+}
+
 
 def fail(message: str) -> None:
     raise AssertionError(message)
@@ -140,6 +148,33 @@ def workflows(root: Path, commit: str) -> dict[str, tuple[str, str]]:
         check(name not in result, f"duplicate workflow display name: {name}")
         result[name] = (path, text)
     return result
+
+
+def workflow_trigger_paths(text: str, event: str) -> set[str]:
+    lines = text.splitlines()
+    event_line = f"  {event}:"
+    try:
+        event_index = lines.index(event_line)
+    except ValueError:
+        fail(f"docs workflow trigger missing: {event}")
+
+    event_body: list[str] = []
+    for line in lines[event_index + 1 :]:
+        if line and not line.startswith("    "):
+            break
+        event_body.append(line)
+
+    try:
+        paths_index = event_body.index("    paths:")
+    except ValueError:
+        fail(f"docs workflow paths filter missing: {event}")
+
+    paths: set[str] = set()
+    for line in event_body[paths_index + 1 :]:
+        if not line.startswith("      - "):
+            break
+        paths.add(line.removeprefix("      - ").strip().strip("\"'"))
+    return paths
 
 
 def noncomment_registry_lines(text: str, registry_path: str) -> list[str]:
@@ -368,6 +403,14 @@ def main() -> int:
     base_workflows = workflows(root, base)
     head_workflows = workflows(root, head)
     check(set(base_workflows) == set(head_workflows), "workflow inventory changed")
+    _, docs_text = head_workflows["Docs Artifact Regression"]
+    for event in ("pull_request", "push"):
+        missing_routes = OWNER_SURFACE_ROUTES - workflow_trigger_paths(docs_text, event)
+        check(
+            not missing_routes,
+            f"docs workflow {event} paths miss invariant owner surfaces: "
+            + ", ".join(sorted(missing_routes)),
+        )
     functional_names = {
         name
         for name, (_, text) in base_workflows.items()
