@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-14 — Host app checkout: a guest buying a multi-date or recurring event now sends the date they picked, so Pay no longer fails with "event_date_choice_required", and the all-in price check carries the date too; any refusal from the server now reads as a plain sentence (e.g. "Choose which date you're coming to") instead of a raw code. Native app only — needs a Host production OTA, held for Seth's approval (toward #3281, PR #TBD)
 - 2026-10-14 — Connecting your own agent to Mingla Admin is now one pasted message, and a connected agent can add, update, move and log on the Hosts and Creators boards under your name; hosts gain an Experience host type, records gain searchable emails, phones and handles and a Do not contact mark — web `[deploy]`, migration applied before merge (toward #3802, PR #3847)
 - 2026-10-14 — Main is green again after #3849: the admin email send keeps its no-attachment note, and the upsert audit counts the new quiet-hours outbox write (same safe key the refund notices already use). No behaviour change. (toward #3720, PR #3851)
 - 2026-10-14 — Admin bulk email no longer pretends City/Tier/Last Active work (those options are gone; the server refuses unknown segments), skips opted-out addresses, and sends List-Unsubscribe headers; each send is logged once on the server; quiet-hours pushes are parked until morning instead of dropped — web admin `[deploy]` (toward #3720, PR #3849)
