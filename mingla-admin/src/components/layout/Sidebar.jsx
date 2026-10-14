@@ -39,6 +39,7 @@ import {
   Wrench,
   RotateCcw,
   Home,
+  Bot,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { NAV_GROUPS } from "../../lib/constants";
@@ -81,6 +82,9 @@ const ICON_MAP = {
   // Issue #3802 — Home nav item of the two non-admin team roles. Without this
   // entry the Home icon silently falls back to LayoutDashboard.
   Home,
+  // Issue #3802 (Wave 4) — My agent. Without this entry the Bot icon
+  // silently falls back to LayoutDashboard.
+  Bot,
 };
 
 export function Sidebar({

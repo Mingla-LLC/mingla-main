@@ -352,7 +352,7 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
   it("Sales and marketing and Founding partner open exactly home, hosts and creators", () => {
     for (const a of [growth, partner]) {
       const open = PAGE_IDS.filter((id) => canOpenPage(a, id));
-      assert.deepEqual(open.sort(), ["beta-leads", "creators", "home", "hosts"], a.role);
+      assert.deepEqual(open.sort(), ["agent", "beta-leads", "creators", "home", "hosts"], a.role);
     }
   });
   it("a page nobody listed is still closed to them", () => {
@@ -391,20 +391,20 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
     assert.equal(Object.hasOwn(PAGE_AREA_OVERRIDES, "beta-leads"), true);
     assert.equal(PAGE_AREA_OVERRIDES["beta-leads"], "beta_leads");
     assert.equal(canOpenPage(growth, "beta-leads"), true);
-    assert.deepEqual(Object.keys(PAGE_AREA_OVERRIDES).sort(), ["admin", "beta-leads", "creators", "home", "hosts"]);
+    assert.deepEqual(Object.keys(PAGE_AREA_OVERRIDES).sort(), ["admin", "agent", "beta-leads", "creators", "home", "hosts"]);
   });
 });
 
 describe("#3802 P-7: the menu each role sees", () => {
   const ids = (a) => visibleNavGroups(NAV_GROUPS, a).flatMap((g) => g.items).map((i) => i.id);
   it("Sales and marketing and Founding partner see Home, Hosts and Creators", () => {
-    assert.deepEqual(ids(growth), ["home", "beta-leads", "hosts", "creators"]);
-    assert.deepEqual(ids(partner), ["home", "beta-leads", "hosts", "creators"]);
+    assert.deepEqual(ids(growth), ["home", "beta-leads", "hosts", "creators", "agent"]);
+    assert.deepEqual(ids(partner), ["home", "beta-leads", "hosts", "creators", "agent"]);
   });
   it("owner and admin see the Team group last, after everything they had", () => {
     for (const a of [owner, admin]) {
       const groups = visibleNavGroups(NAV_GROUPS, a);
-      const last = groups[groups.length - 1];
+      const last = groups[groups.length - 2];
       assert.equal(last.label, "Team");
       assert.deepEqual(last.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["team-dashboard:Team dashboard:BarChart3", "hosts:Hosts:Store", "creators:Creators:Sparkles"]);
     }
@@ -412,7 +412,7 @@ describe("#3802 P-7: the menu each role sees", () => {
     assert.ok(!ids(admin).includes("admin"));
   });
   it("the group is appended, not inserted, and its icons are ones the sidebar knows", () => {
-    assert.equal(NAV_GROUPS[NAV_GROUPS.length - 1].label, "Team");
+    assert.equal(NAV_GROUPS[NAV_GROUPS.length - 2].label, "Team");
     const sidebar = read("components/layout/Sidebar.jsx");
     const map = sidebar.slice(sidebar.indexOf("ICON_MAP"));
     assert.ok(/\bStore\b/.test(map) && /\bSparkles\b/.test(map));

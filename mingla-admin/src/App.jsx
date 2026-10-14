@@ -65,6 +65,8 @@ import { CampaignsPage } from "./pages/CampaignsPage";
 import { RefundOperationsPage } from "./pages/RefundOperationsPage";
 // Issue #3802 (Wave 1) — the team's Hosts and Creators boards (#/hosts, #/creators).
 import { HostsPage, CreatorsPage } from "./pages/PipelinePage";
+// Issue #3802 (Wave 4) — connect your own agent (#/agent).
+import { AgentPage } from "./pages/AgentPage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -127,6 +129,8 @@ const PAGES = {
   hosts: HostsPage,
   "team-dashboard": TeamDashboardPage,
   creators: CreatorsPage,
+  // Issue #3802 (Wave 4): opened by the `crm` area, like the boards.
+  agent: AgentPage,
 };
 
 // Issue #3802 — every page id the app knows. Which of them a person may open
