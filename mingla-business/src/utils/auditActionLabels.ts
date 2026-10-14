@@ -26,7 +26,7 @@ export type AuditCategory =
   | "other";
 
 export interface AuditActionLabel {
-  /** Short headline. e.g. "Disconnected Stripe account". */
+  /** Short headline. e.g. "Disconnected payout account". */
   title: string;
   /** Optional plain-English detail line shown under the title. */
   detail?: string;
@@ -37,7 +37,7 @@ export interface AuditActionLabel {
 }
 
 export const AUDIT_CATEGORIES: readonly { id: AuditCategory; label: string }[] = [
-  { id: "stripe_connect", label: "Stripe Connect" },
+  { id: "stripe_connect", label: "Payout account" },
   { id: "payouts_refunds", label: "Payouts & refunds" },
   { id: "orders", label: "Orders" },
   { id: "legal", label: "Legal" },
@@ -183,28 +183,28 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     // META-ORCH-1076 — Paystack (NG) webhook anomaly events.
     case "paystack.charge_verify_not_success":
       return {
-        title: "Paystack charge not verified",
+        title: "Nigerian payment not verified",
         detail: "A charge.success webhook arrived but the verify call did not return success; no order was created.",
         category: "orders",
         iconHint: "shield",
       };
     case "paystack.charge_orphan_reference":
       return {
-        title: "Paystack charge with no matching checkout",
-        detail: "A verified Paystack charge referenced no known checkout session.",
+        title: "Nigerian payment with no matching checkout",
+        detail: "A verified Nigerian payment referenced no known checkout session.",
         category: "orders",
         iconHint: "flag",
       };
     case "paystack.charge_amount_mismatch":
       return {
-        title: "Paystack charge amount mismatch",
+        title: "Nigerian payment amount mismatch",
         detail: "The paid amount did not match the checkout total; no order was created.",
         category: "orders",
         iconHint: "shield",
       };
     case "paystack.charge_currency_mismatch":
       return {
-        title: "Paystack charge currency mismatch",
+        title: "Nigerian payment currency mismatch",
         detail: "The paid currency was not NGN; no order was created.",
         category: "orders",
         iconHint: "shield",
@@ -212,14 +212,14 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     // ORCH-1291 [rsvp-chip-in] — Paystack (NG) RSVP contribution webhook guards.
     case "paystack.contribution_amount_mismatch":
       return {
-        title: "Paystack contribution amount mismatch",
+        title: "Nigerian contribution amount mismatch",
         detail: "The paid amount did not match the contribution total; the contribution was marked failed.",
         category: "orders",
         iconHint: "shield",
       };
     case "paystack.contribution_currency_mismatch":
       return {
-        title: "Paystack contribution currency mismatch",
+        title: "Nigerian contribution currency mismatch",
         detail: "The paid currency was not NGN; the contribution was marked failed.",
         category: "orders",
         iconHint: "shield",
@@ -228,56 +228,56 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     // finalize guards emitted by _shared/reservationPaystackFinalize.
     case "paystack.reservation_amount_mismatch":
       return {
-        title: "Paystack reservation amount mismatch",
+        title: "Nigerian reservation amount mismatch",
         detail: "The paid amount did not match the reservation total; the reservation session was marked failed and NOT minted.",
         category: "orders",
         iconHint: "shield",
       };
     case "paystack.reservation_currency_mismatch":
       return {
-        title: "Paystack reservation currency mismatch",
+        title: "Nigerian reservation currency mismatch",
         detail: "The paid currency was not NGN; the reservation session was marked failed and NOT minted.",
         category: "orders",
         iconHint: "shield",
       };
     case "paystack.reservation_slot_unavailable_refund_due":
       return {
-        title: "Paystack reservation needs manual refund",
-        detail: "The slot was taken between charge and finalize. Funds were captured but no reservation was minted; a MANUAL refund is required (the Paystack venue-refund rail is currently dark).",
+        title: "Nigerian reservation needs manual refund",
+        detail: "The slot was taken between charge and finalize. Funds were captured but no reservation was minted; a MANUAL refund is required (automatic refunds for Nigerian venue reservations are currently off).",
         category: "orders",
         iconHint: "flag",
       };
     case "paystack.webhook_unhandled_event":
       return {
-        title: "Unhandled Paystack webhook event",
+        title: "Unhandled Nigerian payment webhook event",
         category: "ops",
         iconHint: "flag",
       };
     case "paystack.subaccount_created":
       return {
-        title: "Paystack payout account connected",
-        detail: "A bank account was connected and a Paystack subaccount created; this brand can now receive payouts.",
+        title: "Nigerian payout account connected",
+        detail: "A bank account was connected and a Nigerian payout account created; this brand can now receive payouts.",
         category: "ops",
         iconHint: "shield",
       };
     case "paystack.subaccount_updated":
       return {
-        title: "Paystack payout bank updated",
-        detail: "The settlement bank account on this brand's Paystack subaccount was changed.",
+        title: "Nigerian payout bank updated",
+        detail: "The settlement bank account on this brand's Nigerian payout account was changed.",
         category: "ops",
         iconHint: "shield",
       };
     case "paystack.subaccount_disconnected":
       return {
-        title: "Paystack payout account disconnected",
-        detail: "The brand's Paystack payout bank was disconnected; it will not receive payouts until reconnected.",
+        title: "Nigerian payout account disconnected",
+        detail: "The brand's Nigerian payout bank was disconnected; it will not receive payouts until reconnected.",
         category: "ops",
         iconHint: "flag",
       };
     case "paystack.provider_selected":
       return {
         title: "Nigeria payouts selected",
-        detail: "The brand chose to get paid in Nigeria via Paystack; bank connection is the next step.",
+        detail: "The brand chose to get paid in Nigeria; bank connection is the next step.",
         category: "ops",
         iconHint: "shield",
       };
@@ -293,7 +293,7 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     case "partner_paystack.recipient_created":
       return {
         title: "Partner payout bank connected (Nigeria)",
-        detail: "A partner connected their Nigerian bank account; partner splits can now be paid out via Paystack.",
+        detail: "A partner connected their Nigerian bank account; partner splits can now be paid out to it.",
         category: "ops",
         iconHint: "shield",
       };
@@ -313,7 +313,7 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
       };
     case "paystack.webhook_unhandled_refund_state":
       return {
-        title: "Paystack refund not final yet",
+        title: "Nigerian refund not final yet",
         detail: "A refund webhook arrived in a non-final state (pending, processing, or failed); only refund.processed moves the ledger.",
         category: "ops",
         iconHint: "flag",
@@ -321,39 +321,39 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     case "paystack.ad_credit_apply_failed":
       return {
         title: "Ads credit top-up not applied",
-        detail: "Paystack confirmed an NGN Ads credit charge, but crediting the wallet failed; the webhook will retry.",
+        detail: "Our payment partner confirmed an NGN Ads credit charge, but crediting the wallet failed; the webhook will retry.",
         category: "ops",
         iconHint: "flag",
       };
     case "stripe_connect.onboard_initiated":
       return {
-        title: "Started Stripe onboarding",
+        title: "Started bank setup",
         category: "stripe_connect",
         iconHint: "bank",
       };
     case "stripe_connect.account_session_created":
       return {
-        title: "Opened Stripe account management",
+        title: "Opened payout account management",
         detail: "An embedded Account Session was minted for onboarding or account management.",
         category: "stripe_connect",
         iconHint: "bank",
       };
     case "partner_stripe_connect.onboard_initiated":
       return {
-        title: "Started partner Stripe onboarding",
+        title: "Started partner bank setup",
         category: "stripe_connect",
         iconHint: "bank",
       };
     case "partner_stripe_connect.account_session_created":
       return {
-        title: "Opened partner Stripe account management",
+        title: "Opened partner payout account management",
         detail: "An embedded Account Session was minted for partner onboarding or account management.",
         category: "stripe_connect",
         iconHint: "bank",
       };
     case "stripe_connect.reactivated":
       return {
-        title: "Reconnected Stripe account",
+        title: "Reconnected payout account",
         detail: "A previously detached account was re-enabled.",
         category: "stripe_connect",
         iconHint: "bank",
@@ -361,53 +361,53 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     case "stripe_connect.country_change_locked":
       return {
         title: "Country change blocked",
-        detail: "Stripe account already has activity — country is now locked.",
+        detail: "The payout account already has activity — country is now locked.",
         category: "stripe_connect",
         iconHint: "shield",
       };
     case "stripe_connect.country_change_replaced_before_completion":
       return {
-        title: "Replaced Stripe account during onboarding",
+        title: "Replaced payout account during bank setup",
         detail: "Old account discarded; a fresh account was created for the new country.",
         category: "stripe_connect",
         iconHint: "bank",
       };
     case "stripe_connect.detach_completed":
       return {
-        title: "Disconnected Stripe account",
+        title: "Disconnected payout account",
         category: "stripe_connect",
         iconHint: "bank",
       };
     case "stripe_connect.detach_local_success_stripe_rejected":
       return {
-        title: "Disconnected locally — Stripe rejected",
-        detail: "Local state cleared; Stripe still holds the account record.",
+        title: "Disconnected locally — payment partner refused",
+        detail: "Local state cleared; our payment partner still holds the account record.",
         category: "stripe_connect",
         iconHint: "shield",
       };
     case "stripe_connect.balance_retrieved":
       return {
-        title: "Checked Stripe balance",
+        title: "Checked payout balance",
         category: "payouts_refunds",
         iconHint: "pound",
       };
     case "stripe_connect.status_refreshed":
       return {
-        title: "Refreshed Stripe status",
+        title: "Refreshed payout account status",
         category: "stripe_connect",
         iconHint: "bank",
       };
     case "stripe_connect.account_updated":
       return {
-        title: "Stripe account updated",
-        detail: "Stripe sent an account.updated webhook.",
+        title: "Payout account updated",
+        detail: "Our payment partner sent an account.updated webhook.",
         category: "stripe_connect",
         iconHint: "bank",
       };
     case "stripe_connect.account_deauthorized":
       return {
-        title: "Stripe revoked access",
-        detail: "Stripe deauthorized the Mingla platform on this account.",
+        title: "Payment partner revoked access",
+        detail: "Our payment partner deauthorized the Mingla platform on this account.",
         category: "stripe_connect",
         iconHint: "shield",
       };
@@ -420,20 +420,20 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     case "stripe_connect.webhook_ip_soft_fail":
       return {
         title: "Webhook IP check failed (non-blocking)",
-        detail: "Stripe webhook arrived from an unexpected IP — processed but flagged.",
+        detail: "A card payment webhook arrived from an unexpected IP — processed but flagged.",
         category: "ops",
         iconHint: "settings",
       };
     case "stripe_connect.webhook_unhandled":
       return {
-        title: "Unhandled Stripe webhook",
+        title: "Unhandled card payment webhook",
         category: "ops",
         iconHint: "settings",
       };
     case "stripe_connect.kyc_stall_reminder_sent":
       return {
         title: "KYC reminder sent",
-        detail: "Stripe verification is overdue — reminder email dispatched.",
+        detail: "Payout account verification is overdue — reminder email dispatched.",
         category: "stripe_connect",
         iconHint: "bank",
       };
@@ -465,22 +465,22 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     // ORCH-0804 — Stripe Tax slugs.
     case "stripe_tax.checkout_enabled":
       return {
-        title: "Stripe Tax enabled on checkout",
+        title: "Automatic tax enabled on checkout",
         detail: "First tax-enabled Checkout Session created for this brand.",
         category: "stripe_connect",
         iconHint: "bank",
       };
     case "stripe_tax.registration_link_opened":
       return {
-        title: "Opened Stripe Tax dashboard",
-        detail: "Brand admin opened Stripe Express Dashboard to manage tax registrations.",
+        title: "Opened payment partner tax dashboard",
+        detail: "Brand admin opened our payment partner's dashboard to manage tax registrations.",
         category: "stripe_connect",
         iconHint: "bank",
       };
     case "stripe_tax.account_session_minted":
       return {
-        title: "Opened embedded Stripe Tax tools",
-        detail: "Brand admin opened the Mingla-hosted Tax registrations + settings page powered by Stripe embedded Connect components (ORCH-0955).",
+        title: "Opened Mingla tax tools",
+        detail: "Brand admin opened the Mingla-hosted Tax registrations + settings page (ORCH-0955).",
         category: "stripe_connect",
         iconHint: "bank",
       };
@@ -509,7 +509,7 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     case "tr3.installment_failed_webhook":
       return {
         title: "Installment payment failed (webhook)",
-        detail: "Stripe webhook reported installment PaymentIntent failure; retry cadence applied or at-risk flagged.",
+        detail: "Our payment partner reported an installment PaymentIntent failure; retry cadence applied or at-risk flagged.",
         category: "orders",
         iconHint: "pound",
       };
@@ -568,14 +568,14 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     case "payout_hold.onboard_flipped":
       return {
         title: "Payout hold enabled at onboarding",
-        detail: "The new Stripe account was switched from daily to manual payouts (funds held) and the cutover was recorded.",
+        detail: "The new payout account was switched from daily to manual payouts (funds held) and the cutover was recorded.",
         category: "payouts_refunds",
         iconHint: "pound",
       };
     case "payout_hold.onboard_flip_failed":
       return {
         title: "Payout hold not applied at onboarding",
-        detail: "Switching the new Stripe account to manual payouts failed; it stays on daily payouts and will be migrated later.",
+        detail: "Switching the new payout account to manual payouts failed; it stays on daily payouts and will be migrated later.",
         category: "payouts_refunds",
         iconHint: "flag",
       };
@@ -589,14 +589,14 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
     case "payout_hold.migrate":
       return {
         title: "Payout hold applied (admin migration)",
-        detail: "An admin batch migration switched this brand's Stripe account to manual payouts (funds held).",
+        detail: "An admin batch migration switched this brand's payout account to manual payouts (funds held).",
         category: "payouts_refunds",
         iconHint: "pound",
       };
     case "payout_hold.rollback":
       return {
         title: "Payout hold reverted (admin migration)",
-        detail: "An admin batch migration reverted this brand's Stripe account back to daily payouts.",
+        detail: "An admin batch migration reverted this brand's payout account back to daily payouts.",
         category: "payouts_refunds",
         iconHint: "flag",
       };
@@ -632,7 +632,7 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
   if (/^stripe\..+\.orphan$/.test(action)) {
     return {
       title: "Orphan refund recorded",
-      detail: "Refund arrived from Stripe with no matching Mingla order.",
+      detail: "Refund arrived from our payment partner with no matching Mingla order.",
       category: "payouts_refunds",
       iconHint: "pound",
     };
@@ -656,7 +656,7 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
   if (action.startsWith("stripe_connect.")) {
     const tail = action.slice("stripe_connect.".length);
     return {
-      title: `Stripe Connect: ${humanizeSlug(tail)}`,
+      title: `Payout account: ${humanizeSlug(tail)}`,
       category: "stripe_connect",
       iconHint: "bank",
     };

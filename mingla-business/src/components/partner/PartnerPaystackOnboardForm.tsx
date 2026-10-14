@@ -75,7 +75,7 @@ const E1_UNRESOLVED =
 const E2_RESOLVE_NETWORK =
   "We couldn't reach the bank check right now. Give it a second and try again.";
 const E3_STRIPE_CONNECTED =
-  "You already have a Stripe payout account. Disconnect it first, then connect your Nigerian bank.";
+  "You already have a payout account in another country. Disconnect it first, then connect your Nigerian bank.";
 const E4_CONNECT_GENERIC =
   "We couldn't connect this bank account. Please try again in a moment.";
 const E5_BANKS_UNAVAILABLE =
@@ -257,8 +257,8 @@ export const PartnerPaystackOnboardForm: React.FC<Props> = ({
         paid in NGN directly to this account.
       </Text>
       <Text style={styles.ngnNote}>
-        Paystack will settle you in NGN. You{"'"}ll only be able to partner with
-        brands that sell in NGN.
+        You{"'"}ll be paid in NGN. You{"'"}ll only be able to partner with brands
+        that sell in NGN.
       </Text>
 
       {/* Bank picker field */}

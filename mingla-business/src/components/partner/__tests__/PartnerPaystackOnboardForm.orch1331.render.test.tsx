@@ -155,16 +155,18 @@ import { PartnerPaystackOnboardForm } from "../PartnerPaystackOnboardForm";
 const C2 = "Get paid in Nigeria";
 const C3 =
   "Connect your bank account to receive your partner earnings. Splits are paid in NGN directly to this account.";
+// [TEST-MOD-APPROVED #3645] was "Paystack will settle you in NGN.": partner copy no longer names the payment provider.
 const C4 =
-  "Paystack will settle you in NGN. You'll only be able to partner with brands that sell in NGN.";
+  "You'll be paid in NGN. You'll only be able to partner with brands that sell in NGN.";
 const C8 = "We keep only the last 4 digits of your account number.";
 const C10_HINT = "Make sure this is you — payouts go to this account.";
 const E1 =
   "We couldn't verify that account. Check the number and bank, then try again.";
 const E2 =
   "We couldn't reach the bank check right now. Give it a second and try again.";
+// [TEST-MOD-APPROVED #3645] was "a Stripe payout account": partner copy no longer names the payment provider.
 const E3 =
-  "You already have a Stripe payout account. Disconnect it first, then connect your Nigerian bank.";
+  "You already have a payout account in another country. Disconnect it first, then connect your Nigerian bank.";
 const E5 = "Couldn't load the bank list. Check your connection and try again.";
 
 async function mount() {
