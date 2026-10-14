@@ -93,6 +93,12 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python3 scripts/docs/__tests__/issue_3643_invariant_registry_freeze.implementor.happy.test.py --repo-root . --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
 
+      - name: Check invariant-registry freeze adversarial boundaries
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 scripts/docs/__tests__/issue_3643_invariant_registry_freeze.tester.adversarial.test.py --repo-root . --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
+
       - name: Check issue release-record authority
         run: python3 scripts/docs/__tests__/issue_3643_reports_retirement.implementor.happy.test.py --repo-root .
 
