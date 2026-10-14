@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 
 -- Issue #3827 — tester adversarial proof for the buyer email on a live edit
--- (migration 20270903003827). Run after the full migration chain on
+-- (migration 20271014103827). Run after the full migration chain on
 -- PostgreSQL 17.
 --
 -- The implementor's suite proves the feature does what it says on the happy

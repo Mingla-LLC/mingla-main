@@ -10,14 +10,14 @@
 -- away, and the "we'll email your buyers" promise on screen was a console line.
 -- A live RSVP edit queued `rsvp_event_updated` rows with no wording.
 --
--- AFTER (20270903003827). Every live edit writes one `event_edit_notices` row.
+-- AFTER (20271014103827). Every live edit writes one `event_edit_notices` row.
 -- The before-values are captured by triggers at the first write, so a leaf
 -- call and a plain table UPDATE are covered too. One email per event after
 -- five quiet minutes (15 at most after the first unsent edit, 20 at least
 -- after the previous email). Ships off; pilot brands and an allowlist sit
 -- behind the switch.
 --
--- FAILS-ON-REVERT (replay the chain without 20270903003827): every case fails
+-- FAILS-ON-REVERT (replay the chain without 20271014103827): every case fails
 -- at its first statement, because `event_edit_notices`, the flags and the
 -- functions it calls do not exist. With only the three re-emitted bodies
 -- reverted to their 20270828003827 / 20270323001919 text, E-01, E-02, E-03,

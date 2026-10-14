@@ -8,7 +8,7 @@
  *
  * The Host app used to tell a host that buyers "will be notified by email and
  * SMS" after a live edit while `services/eventChangeNotifier.ts` only wrote a
- * console line. Migration 20270903003827 gives the decision ONE owner: each of
+ * console line. Migration 20271014103827 gives the decision ONE owner: each of
  * the three live-edit functions calls `event_edit_notice_flush`, which records
  * the edit in `event_edit_notices` and decides whether, and when, an email
  * goes out. The app only repeats the server's answer.
@@ -22,7 +22,7 @@
  *       "push": no edit is sent by text message or push alert, so no screen
  *       may promise one. (Comments count: a claim in a comment is the next
  *       claim on screen.)
- *   S3. Reading migrations at or after 20270903003827 (SQL comments stripped,
+ *   S3. Reading migrations at or after 20271014103827 (SQL comments stripped,
  *       so a commented-out call never reads as present), the LAST definition
  *       of each live-edit function calls `event_edit_notice_flush(`. The floor
  *       migration exists and defines all three: a gate that discovers nothing
@@ -45,7 +45,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = process.cwd();
-const FLOOR = "20270903003827";
+const FLOOR = "20271014103827";
 const MIGRATIONS_DIR = "supabase/migrations";
 const STUB_PATH = "mingla-business/src/services/eventChangeNotifier.ts";
 const PRODUCT_ROOTS = ["mingla-business/src", "mingla-business/app"];
@@ -238,11 +238,11 @@ if (process.argv.includes("--self-test")) {
     ["S3 the floor migration is missing", { ...good(), migrations: [good().migrations[0]] }, 4],
     ["S3 a later migration re-creates a function without the flush (comment only)", {
       ...good(),
-      migrations: [...good().migrations, { name: "20271001000000_later.sql", text: badFn("biz_update_live_rsvp") }],
+      migrations: [...good().migrations, { name: "20271101000000_later.sql", text: badFn("biz_update_live_rsvp") }],
     }, 1],
     ["S3 a later migration that keeps the flush passes", {
       ...good(),
-      migrations: [...good().migrations, { name: "20271001000000_later.sql", text: goodFn("biz_update_live_rsvp") }],
+      migrations: [...good().migrations, { name: "20271101000000_later.sql", text: goodFn("biz_update_live_rsvp") }],
     }, 0],
     ["S3 the floor does not define one of the three", {
       ...good(),
@@ -254,10 +254,10 @@ if (process.argv.includes("--self-test")) {
     ["S4 the buyer category gains SMS", {
       ...good(),
       migrations: [...good().migrations, {
-        name: "20271001000000_later.sql",
+        name: "20271101000000_later.sql",
         text: "UPDATE public.notification_categories SET default_channels = ARRAY['email','sms'] WHERE key = 'buyer_event_updated';",
       }, {
-        name: "20271002000000_later.sql",
+        name: "20271102000000_later.sql",
         text: "INSERT INTO public.notification_categories (key, default_channels) VALUES ('buyer_event_updated', ARRAY['email','sms']);",
       }],
     }, 1],
