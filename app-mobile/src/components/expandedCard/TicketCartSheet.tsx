@@ -211,7 +211,11 @@ const isVisibleForConsumer = (ticket: PublicTicketProps): boolean =>
   ticket.visibility !== "hidden" && ticket.availableAt !== "door";
 
 export interface TicketCartCheckoutPayload {
-  lines: Array<{ ticketTypeId: string; quantity: number }>;
+  lines: Array<{
+    ticketTypeId: string;
+    quantity: number;
+    paymentPlanChoice: "full" | "installments";
+  }>;
   marketingOptIn: boolean;
   /**
    * ORCH-1025 — the displayed all-in total (sum of per-tier server `all_in_cents`
@@ -735,7 +739,15 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     onCheckout({
       lines: lines
         .filter((l) => l.quantity > 0)
-        .map((l) => ({ ticketTypeId: l.ticketTypeId, quantity: l.quantity })),
+        .map((l) => ({
+          ticketTypeId: l.ticketTypeId,
+          quantity: l.quantity,
+          // #3859 — only this exact tier's choice is authoritative.
+          paymentPlanChoice:
+            planTiersByTicketId?.[l.ticketTypeId] !== undefined
+              ? "installments"
+              : "full",
+        })),
       marketingOptIn,
       totalCents: pricing.allInCents,
       intakeFormData,
@@ -761,6 +773,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     intakeAnswers,
     intakeSchemasByTier,
     lines,
+    planTiersByTicketId,
     pricing.allInCents,
     multiDaySelection,
     onCheckout,

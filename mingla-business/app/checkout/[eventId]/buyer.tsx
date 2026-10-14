@@ -285,6 +285,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     result: cartResult,
     eventDateId,
     eventDateIds,
+    checkoutAttemptIdFor,
   } = useCart();
   const totals = useCartTotals();
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -644,6 +645,12 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           // disagreed. The fallback stays for older builds; this build stops
           // relying on it.
           surface: Platform.OS === "web" ? "web" : "native",
+          ...(Platform.OS === "web"
+            ? {
+              checkoutContractVersion: 2 as const,
+              checkoutAttemptId: checkoutAttemptIdFor({ eventId, surface: "web" }),
+            }
+            : {}),
           ...(heldToken.length > 0 ? { buyerStatusToken: heldToken } : {}),
           ...(eventDateId !== null ? { eventDateId } : {}),
         // issue #2160 — forward the chosen day SET. Empty => byte-identical
@@ -782,6 +789,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     eventDateIds,
     // issue #2337 — the handler reads the cart's held buyer status token.
     cartResult,
+    checkoutAttemptIdFor,
     recordResult,
     router,
   ]);

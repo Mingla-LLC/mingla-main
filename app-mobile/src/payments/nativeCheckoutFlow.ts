@@ -17,6 +17,10 @@
  */
 
 import { useStripePaymentSheet } from "@mingla/payments-native";
+import {
+  createCheckoutAttemptTracker,
+  TICKET_CHECKOUT_CONTRACT_VERSION,
+} from "@mingla/offering-rendering/ticketCheckoutContract";
 import { initStripe } from "@stripe/stripe-react-native";
 // META-ORCH-1076 [Paystack Africa] — in-app browser for the Paystack hosted
 // checkout redirect (the pre-ORCH-0849 hosted-checkout primitive). The buyer
@@ -74,8 +78,14 @@ const emitPhase = (
 };
 
 export interface NativeCheckoutInput {
+  /** #3859 — omitted callers stay on the legacy v1 request contract. */
+  checkoutContractVersion?: typeof TICKET_CHECKOUT_CONTRACT_VERSION;
   eventId: string;
-  lines: Array<{ ticketTypeId: string; quantity: number }>;
+  lines: Array<{
+    ticketTypeId: string;
+    quantity: number;
+    paymentPlanChoice?: "full" | "installments";
+  }>;
   buyer: {
     name: string;
     email: string;
@@ -365,6 +375,10 @@ const PAYSTACK_HANDOFF_TTL_MS = 15 * 60 * 1000;
 
 const heldPaystackHandoffs = new Map<string, HeldPaystackHandoff>();
 
+// #3859 — one in-memory UUID is retained through an unchanged logical retry,
+// rotated when canonical checkout input changes, and cleared on success/sign-out.
+const checkoutAttemptTracker = createCheckoutAttemptTracker();
+
 const normalizedEventDateIds = (
   input: NativeCheckoutInput,
 ): string[] => [...new Set(
@@ -379,7 +393,11 @@ const checkoutFingerprint = (input: NativeCheckoutInput): string => {
     ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
     email: input.buyer.email.trim().toLowerCase(),
     phone: input.buyer.phone.trim(),
-    lines: input.lines.map((line) => [line.ticketTypeId, line.quantity]),
+    lines: input.lines.map((line) =>
+      line.paymentPlanChoice === undefined
+        ? [line.ticketTypeId, line.quantity]
+        : [line.ticketTypeId, line.quantity, line.paymentPlanChoice]
+    ),
     paymentPlanChoice: input.paymentPlanChoice ?? null,
     intakeFormData: input.intakeFormData ?? null,
     idempotencyKey: input.idempotencyKey ?? null,
@@ -443,6 +461,7 @@ let activeCheckoutFingerprint: string | null = null;
  */
 export const clearAllHeldHandoffs = (): void => {
   heldPaystackHandoffs.clear();
+  checkoutAttemptTracker.reset();
   activeCheckoutFingerprint = null;
 };
 
@@ -576,7 +595,14 @@ export const useNativeCheckoutFlow = (): ((
     }
     activeCheckoutFingerprint = fingerprint;
     try {
-      return await runCheckout(input, fingerprint);
+      const result = await runCheckout(input, fingerprint);
+      if (
+        input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION &&
+        result.outcome === "succeeded"
+      ) {
+        checkoutAttemptTracker.reset();
+      }
+      return result;
     } finally {
       // Cleared on EVERY path, including a throw, or the buy control is dead
       // for the life of the process.
@@ -616,6 +642,45 @@ export const useNativeCheckoutFlow = (): ((
       );
     }
 
+    let checkoutAttemptId: string | undefined;
+    if (input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION) {
+      // V2 has no scalar escape hatch: malformed or missing line choices fail
+      // before ticket-checkout-create can reach a provider.
+      if (input.paymentPlanChoice !== undefined) {
+        return {
+          outcome: "failed",
+          message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
+        };
+      }
+      try {
+        checkoutAttemptId = checkoutAttemptTracker.idFor({
+          eventId: input.eventId,
+          buyer: {
+            name: input.buyer.name,
+            email: input.buyer.email,
+            phone: input.buyer.phone,
+            marketingOptIn: input.buyer.marketingOptIn === true,
+          },
+          providerInput: { surface: "native" },
+          lines: input.lines.map((line) => ({
+            ticketTypeId: line.ticketTypeId,
+            quantity: line.quantity,
+            paymentPlanChoice: line.paymentPlanChoice as
+              | "full"
+              | "installments",
+          })),
+          eventDateId: input.eventDateId ?? null,
+          eventDateIds: normalizedEventDateIds(input),
+          intakeFormData: input.intakeFormData ?? [],
+        });
+      } catch {
+        return {
+          outcome: "failed",
+          message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
+        };
+      }
+    }
+
     // 1. Create the checkout session on the server.
     emitPhase(onPhase, "creating");
     const { data, error } = await supabase.functions.invoke<CheckoutCreateResponse>(
@@ -625,6 +690,12 @@ export const useNativeCheckoutFlow = (): ((
           eventId: input.eventId,
           surface: "native",
           returnContract: "host_v1",
+          ...(input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION
+            ? {
+              checkoutContractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
+              checkoutAttemptId,
+            }
+            : {}),
           buyer: {
             name: input.buyer.name,
             email: input.buyer.email,
@@ -634,7 +705,14 @@ export const useNativeCheckoutFlow = (): ((
             // — tax is venue-sourced, SPEC §B.1).
             ...(input.buyer.address ? { address: input.buyer.address } : {}),
           },
-          lines: input.lines,
+          lines:
+            input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION
+              ? input.lines.map((line) => ({
+                ticketTypeId: line.ticketTypeId,
+                quantity: line.quantity,
+                paymentPlanChoice: line.paymentPlanChoice,
+              }))
+              : input.lines,
           // ORCH-1016: trip intake answers → orders.intake_form_data.
           ...(input.intakeFormData && input.intakeFormData.length > 0
             ? { intake_form_data: input.intakeFormData }
@@ -654,7 +732,8 @@ export const useNativeCheckoutFlow = (): ((
           // pay-over-time choice for plan trips. Omitted when absent (no-plan
           // trips) → byte-identical request, edge-fn default 'auto' path
           // untouched for the 99% non-plan case.
-          ...(input.paymentPlanChoice
+          ...(input.checkoutContractVersion !== TICKET_CHECKOUT_CONTRACT_VERSION &&
+              input.paymentPlanChoice
             ? { payment_plan_choice: input.paymentPlanChoice }
             : {}),
           ...(input.idempotencyKey !== undefined

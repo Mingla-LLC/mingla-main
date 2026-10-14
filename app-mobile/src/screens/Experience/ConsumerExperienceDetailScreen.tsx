@@ -651,6 +651,7 @@ export default function ConsumerExperienceDetailScreen({
       let result: NativeCheckoutOutcome;
       try {
         result = await runNativeCheckout({
+          checkoutContractVersion: 2,
           eventId: seed.eventId,
           lines: payload.lines,
           buyer: {

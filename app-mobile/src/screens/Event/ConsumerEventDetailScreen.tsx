@@ -953,6 +953,7 @@ export default function ConsumerEventDetailScreen({
       let result: NativeCheckoutOutcome;
       try {
         result = await runNativeCheckout({
+          checkoutContractVersion: 2,
           eventId: seed.eventId,
           lines: payload.lines,
           buyer: {
@@ -966,8 +967,7 @@ export default function ConsumerEventDetailScreen({
           displayTitle: seed.title,
           // ORCH-1025 — NO taxCalculationId, NO address: tax computed server-side
           // from the venue. Per-tier intake answers ride intakeFormData; empty
-          // array omitted (byte-identical). NO paymentPlanChoice for events (no
-          // installment plan) — request byte-identical to the EBES event path.
+          // array omitted when empty. Event lines explicitly select full pay.
           ...(payload.intakeFormData.length > 0
             ? { intakeFormData: payload.intakeFormData }
             : {}),

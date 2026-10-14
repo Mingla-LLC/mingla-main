@@ -38,6 +38,7 @@ import React, {
   useState,
 } from "react";
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -80,7 +81,7 @@ import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
 import { phoneStartCountryForCurrency } from "../../../src/utils/phoneStartCountryForCurrency";
-import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
+import { tripSummedDueTodayCents } from "@mingla/offering-rendering";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
 // issue #2337 — the trip rail's FREE branch used to render `error.message`
 // straight to the guest, so a handled 409 arrived as the literal transport
@@ -280,7 +281,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     intakeFormData,
     setBuyer,
     recordResult,
-    paymentPlanChoice,
+    checkoutAttemptIdFor,
   } = useCart();
   const totals = useCartTotals();
 
@@ -291,26 +292,32 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   // use (mirror of index.tsx's dueTodayCents memo) — NEVER recomputed here.
   // null → no due-today line (pay-in-full / no-plan), Total only (unchanged).
   const dueTodayCents = useMemo<number | null>(() => {
-    if (paymentPlanChoice !== "installments" || trip === null) return null;
-    for (const line of lines) {
-      const sourceTier = trip.pricingTiers.find(
-        (t) => t.ticketTypeId === line.ticketTypeId,
-      );
-      if (
-        sourceTier !== undefined &&
-        sourceTier.installmentSchedule !== null &&
-        line.quantity >= 1
-      ) {
-        const projected = projectInstallmentSchedule(
-          sourceTier,
-          new Date(),
-          line.quantity,
-        );
-        if (projected !== null) return projected.depositCents;
-      }
-    }
-    return null;
-  }, [paymentPlanChoice, trip, lines]);
+    if (
+      trip === null ||
+      !lines.some((line) => line.paymentPlanChoice === "installments")
+    ) return null;
+    return tripSummedDueTodayCents(
+      trip.pricingTiers.map((tier) => ({
+        ticketTypeId: tier.ticketTypeId,
+        priceCents: tier.priceCents,
+        priceAllInCents:
+          tier.priceAllInGbp == null
+            ? null
+            : Math.round(tier.priceAllInGbp * 100),
+        isFree: tier.priceCents === 0,
+        isUnlimited: tier.isUnlimited,
+        ticketsRemaining: tier.ticketsRemaining,
+        installmentSchedule: tier.installmentSchedule,
+      })),
+      Object.fromEntries(lines.map((line) => [line.ticketTypeId, line.quantity])),
+      Object.fromEntries(
+        lines.map((line) => [
+          line.ticketTypeId,
+          line.paymentPlanChoice ?? "full",
+        ]),
+      ),
+    );
+  }, [trip, lines]);
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — fetch per-tier intake schemas to
   // decide whether to route Continue → /intake (before /payment) when any
@@ -561,6 +568,15 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         eventId: tripEventId,
         buyer,
         lines,
+        ...(Platform.OS === "web"
+          ? {
+            checkoutContractVersion: 2 as const,
+            checkoutAttemptId: checkoutAttemptIdFor({
+              eventId: tripEventId,
+              surface: "web",
+            }),
+          }
+          : {}),
         ...(intakeArray.length > 0 ? { intakeFormData: intakeArray } : {}),
       });
       if (result.kind !== "free_completed") {
@@ -604,7 +620,15 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
       submitInFlight.current = false;
       setSubmitting(false);
     }
-  }, [tripEventId, intakeFormData, lines, buyer, recordResult, router]);
+  }, [
+    tripEventId,
+    intakeFormData,
+    lines,
+    buyer,
+    checkoutAttemptIdFor,
+    recordResult,
+    router,
+  ]);
 
   const showConsentHint = useCallback((): void => {
     setNameTouched(true);

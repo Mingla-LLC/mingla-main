@@ -41,7 +41,10 @@ import { projectInstallmentSchedule } from "../../../src/utils/installmentSchedu
 // ORCH-1181 — the shared per-package installment sub-line copy (business + web +
 // consumer identical). The deposit-due-today still comes from the existing
 // projectInstallmentSchedule; this only formats the already-computed cents.
-import { formatTripTierInstallmentNote } from "@mingla/offering-rendering";
+import {
+  formatTripTierInstallmentNote,
+  tripSummedDueTodayCents,
+} from "@mingla/offering-rendering";
 import type { TripPricingTier } from "../../../src/services/tripsService";
 import type {
   TicketAvailableAt,
@@ -244,26 +247,32 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   // recomputed); otherwise it reads the full cart total. No-plan / pay-in-full
   // → full total, unchanged.
   const dueTodayCents = React.useMemo<number | null>(() => {
-    if (paymentPlanChoice !== "installments" || trip === null) return null;
-    for (const line of lines) {
-      const sourceTier = trip.pricingTiers.find(
-        (t) => t.ticketTypeId === line.ticketTypeId,
-      );
-      if (
-        sourceTier !== undefined &&
-        sourceTier.installmentSchedule !== null &&
-        line.quantity >= 1
-      ) {
-        const projected = projectInstallmentSchedule(
-          sourceTier,
-          new Date(),
-          line.quantity,
-        );
-        if (projected !== null) return projected.depositCents;
-      }
-    }
-    return null;
-  }, [paymentPlanChoice, trip, lines]);
+    if (
+      trip === null ||
+      lines.every((line) => line.paymentPlanChoice !== "installments")
+    ) return null;
+    return tripSummedDueTodayCents(
+      trip.pricingTiers.map((tier) => ({
+        ticketTypeId: tier.ticketTypeId,
+        priceCents: tier.priceCents,
+        priceAllInCents:
+          tier.priceAllInGbp == null
+            ? null
+            : Math.round(tier.priceAllInGbp * 100),
+        isFree: tier.priceCents === 0,
+        isUnlimited: tier.isUnlimited,
+        ticketsRemaining: tier.ticketsRemaining,
+        installmentSchedule: tier.installmentSchedule,
+      })),
+      Object.fromEntries(lines.map((line) => [line.ticketTypeId, line.quantity])),
+      Object.fromEntries(
+        lines.map((line) => [
+          line.ticketTypeId,
+          line.paymentPlanChoice ?? "full",
+        ]),
+      ),
+    );
+  }, [trip, lines]);
 
   // ORCH-1147R2 — the FULL-TOTAL (non-deposit) branch leads with the server
   // fee-grossed all-in (totals.allInTotal), NOT the bare base subtotal
@@ -362,6 +371,9 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
     const stubById = new Map(
       trip.pricingTiers.map((t) => [t.ticketTypeId, tierToTicketStub(t)] as const),
     );
+    const tierById = new Map(
+      trip.pricingTiers.map((t) => [t.ticketTypeId, t] as const),
+    );
     const resolved = seededLinesParam.flatMap((line) => {
       const stub = stubById.get(line.ticketTypeId);
       if (stub === undefined) return [];
@@ -371,17 +383,29 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           : Math.max(0, stub.capacity);
       const qty = Math.min(line.quantity, cap);
       if (qty <= 0) return [];
-      return [{ stub, qty }];
+      return [{
+        stub,
+        qty,
+        paymentPlanChoice:
+          line.paymentPlanChoice === "installments" &&
+            tierById.get(line.ticketTypeId)?.installmentSchedule != null
+            ? "installments" as const
+            : "full" as const,
+      }];
     });
     if (resolved.length === 0) return;
 
     // Are all resolved lines already in the cart at the requested qty? If not,
     // dispatch the writes and WAIT for the next commit (do NOT navigate here).
-    const allLanded = resolved.every(({ stub, qty }) =>
-      lines.some((l) => l.ticketTypeId === stub.id && l.quantity === qty),
+    const allLanded = resolved.every(({ stub, qty, paymentPlanChoice }) =>
+      lines.some((l) =>
+        l.ticketTypeId === stub.id &&
+        l.quantity === qty &&
+        (l.paymentPlanChoice ?? "full") === paymentPlanChoice
+      ),
     );
     if (!allLanded) {
-      for (const { stub, qty } of resolved) {
+      for (const { stub, qty, paymentPlanChoice } of resolved) {
         setLineQuantity({
           ticketTypeId: stub.id,
           ticketName: stub.name,
@@ -390,6 +414,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           currency: stub.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
           isFree: stub.isFree,
           quantity: qty,
+          paymentPlanChoice,
         });
       }
       return;
@@ -444,6 +469,10 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
         currency: sole.currency ?? trip.pricingTiers[0]?.currency ?? "USD",
         isFree: sole.isFree,
         quantity: 1,
+        paymentPlanChoice:
+          trip.pricingTiers[0]?.installmentSchedule != null
+            ? paymentPlanChoice
+            : "full",
       });
       return;
     }
@@ -639,13 +668,13 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
           const line = lines.find((l) => l.ticketTypeId === ticket.id);
           const qty = line?.quantity ?? 0;
           // ORCH-1181 — per-package installment sub-line on the tile. Shown ONLY
-          // when pay-over-time is the active cart choice AND this tier is on a
+          // when pay-over-time is this line's choice AND this tier is on a
           // plan AND it has ≥1 selected. The deposit comes from the SAME
           // projectInstallmentSchedule the cart-level "Due today" reads (lines
           // 195-215) — never recomputed/fabricated. No-plan / pay-in-full / cart
           // "full" → null (events untouched: trip-only tiers carry a schedule).
           const sourceTier =
-            paymentPlanChoice === "installments"
+            line?.paymentPlanChoice === "installments"
               ? trip.pricingTiers.find((t) => t.ticketTypeId === ticket.id)
               : undefined;
           const tierDeposit =
@@ -681,6 +710,12 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
                       "USD",
                     isFree: ticket.isFree,
                     quantity: next,
+                    paymentPlanChoice:
+                      lines.find((line) => line.ticketTypeId === ticket.id)
+                        ?.paymentPlanChoice ??
+                      (sourceTier?.installmentSchedule != null
+                        ? paymentPlanChoice
+                        : "full"),
                   })
                 }
               />

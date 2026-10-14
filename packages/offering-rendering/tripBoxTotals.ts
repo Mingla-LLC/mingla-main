@@ -41,8 +41,59 @@ export interface TripSelectedLine {
 /** Per-tier installment template (deposit_pct + relative-offset installments). */
 export interface TripInstallmentTemplateLike {
   deposit_pct: number;
-  installments: Array<unknown>;
+  installments: Array<{
+    ordinal: number;
+    pct: number;
+    days_after_booking?: number;
+    fixed_date?: string;
+  }>;
 }
+
+export interface TripInstallmentAmounts {
+  depositCents: number;
+  installments: Array<{ ordinal: number; pct: number; amountCents: number }>;
+}
+
+/** Server-parity integer-cent math for every client installment projection. */
+export const tripInstallmentAmounts = (
+  fullPriceCents: number,
+  rawTemplate: unknown,
+): TripInstallmentAmounts | null => {
+  const template = asInstallmentTemplate(rawTemplate);
+  if (
+    template === null ||
+    !Number.isInteger(fullPriceCents) ||
+    fullPriceCents < 0 ||
+    !(template.deposit_pct > 0) ||
+    template.deposit_pct > 100 ||
+    template.installments.length < 1 ||
+    Math.abs(
+      template.deposit_pct + template.installments.reduce(
+        (sum, installment) => sum + installment.pct,
+        0,
+      ) - 100,
+    ) > 0.01
+  ) return null;
+  const depositCents = Math.floor(
+    (fullPriceCents * template.deposit_pct) / 100,
+  );
+  let running = 0;
+  const installments = template.installments.map((installment, index) => {
+    const amountCents = index < template.installments.length - 1
+      ? Math.floor((fullPriceCents * installment.pct) / 100)
+      : fullPriceCents - depositCents - running;
+    if (index < template.installments.length - 1) running += amountCents;
+    return {
+      ordinal: installment.ordinal,
+      pct: installment.pct,
+      amountCents,
+    };
+  });
+  if (installments.some((installment) => installment.amountCents <= 0)) {
+    return null;
+  }
+  return { depositCents, installments };
+};
 
 /**
  * The per-package effective max purchasable in ONE reservation. Unlimited → 99
@@ -158,7 +209,7 @@ export const tripSummedDueTodayCents = (
     const template = asInstallmentTemplate(t.installmentSchedule);
     const choice = template !== null ? (planChoiceByTier?.[t.ticketTypeId] ?? "full") : "full";
     if (template !== null && choice === "installments") {
-      due += Math.round((lineAllIn * template.deposit_pct) / 100);
+      due += tripInstallmentAmounts(lineAllIn, template)?.depositCents ?? lineAllIn;
     } else {
       due += lineAllIn;
     }
@@ -198,7 +249,7 @@ export const tripTierDepositTodayCents = (
   if (template === null) return null;
   const lineAllIn = tripTierUnitAllInCents(tier) * Math.floor(quantity);
   if (lineAllIn <= 0) return null;
-  const deposit = Math.round((lineAllIn * template.deposit_pct) / 100);
+  const deposit = tripInstallmentAmounts(lineAllIn, template)?.depositCents ?? 0;
   return deposit > 0 ? deposit : null;
 };
 
@@ -233,5 +284,16 @@ function asInstallmentTemplate(raw: unknown): TripInstallmentTemplateLike | null
   if (raw === null || typeof raw !== "object") return null;
   const obj = raw as { deposit_pct?: unknown; installments?: unknown };
   if (typeof obj.deposit_pct !== "number" || !Array.isArray(obj.installments)) return null;
-  return { deposit_pct: obj.deposit_pct, installments: obj.installments };
+  if (obj.installments.some((entry) =>
+    entry === null || typeof entry !== "object" ||
+    typeof (entry as { ordinal?: unknown }).ordinal !== "number" ||
+    !Number.isInteger((entry as { ordinal: number }).ordinal) ||
+    typeof (entry as { pct?: unknown }).pct !== "number" ||
+    !Number.isFinite((entry as { pct: number }).pct) ||
+    !((entry as { pct: number }).pct > 0)
+  )) return null;
+  return {
+    deposit_pct: obj.deposit_pct,
+    installments: obj.installments as TripInstallmentTemplateLike["installments"],
+  };
 }

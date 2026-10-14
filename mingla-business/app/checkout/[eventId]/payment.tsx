@@ -156,8 +156,15 @@ function CheckoutPaymentScreenContent({
   // issue #2135 [multi-date public day picker] — `eventDateId` is the occurrence
   // the guest chose on the public page, seeded into the cart by the cart step.
   // null on every single-date checkout, which keeps the request byte-identical.
-  const { lines, buyer, setLineQuantity, setBuyer, eventDateId, eventDateIds } =
-    useCart();
+  const {
+    lines,
+    buyer,
+    setLineQuantity,
+    setBuyer,
+    eventDateId,
+    eventDateIds,
+    checkoutAttemptIdFor,
+  } = useCart();
   const totals = useCartTotals();
 
   // ORCH-0789/0790 REWORK: on web, the buyer may be returning from a
@@ -465,6 +472,8 @@ function CheckoutPaymentScreenContent({
           buyer,
           lines,
           surface,
+          checkoutContractVersion: 2,
+          checkoutAttemptId: checkoutAttemptIdFor({ eventId, surface }),
           // issue #2135 — forward the chosen occurrence ONLY when present. The
           // service already omits the field for an empty value, so a single-date
           // request is byte-identical; `orders.event_date_id` (#1188) persists it.
@@ -682,6 +691,7 @@ function CheckoutPaymentScreenContent({
     assignLocation,
     cartFingerprint,
     buyer,
+    checkoutAttemptIdFor,
     event,
     eventId,
     // issue #2135 — the chosen occurrence is read inside this handler.

@@ -116,7 +116,14 @@ function CheckoutExperiencePaymentScreenContent({
 
   const query = usePublicExperienceById(experienceEventId);
   const experience = query.data?.experience ?? null;
-  const { lines, buyer, setLineQuantity, setBuyer, eventDateId } = useCart();
+  const {
+    lines,
+    buyer,
+    setLineQuantity,
+    setBuyer,
+    eventDateId,
+    checkoutAttemptIdFor,
+  } = useCart();
   const totals = useCartTotals();
 
   const [restoreChecked, setRestoreChecked] = useState<boolean>(
@@ -357,6 +364,11 @@ function CheckoutExperiencePaymentScreenContent({
           buyer,
           lines,
           surface,
+          checkoutContractVersion: 2,
+          checkoutAttemptId: checkoutAttemptIdFor({
+            eventId: experienceEventId,
+            surface,
+          }),
           // ORCH-1138 Leg 3 — forward the chosen occurrence ONLY when the buyer
           // picked a slot (adaptive Reserve); null → request byte-identical.
           ...(eventDateId !== null ? { eventDateId } : {}),
@@ -540,6 +552,7 @@ function CheckoutExperiencePaymentScreenContent({
     assignLocation,
     cartFingerprint,
     buyer,
+    checkoutAttemptIdFor,
     eventDateId,
     experienceEventId,
     lines,

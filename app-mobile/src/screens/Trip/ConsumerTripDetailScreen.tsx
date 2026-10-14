@@ -778,6 +778,7 @@ export default function ConsumerTripDetailScreen({
       let result: NativeCheckoutOutcome;
       try {
         result = await runNativeCheckout({
+          checkoutContractVersion: 2,
           eventId: detail.tripId,
           lines: payload.lines,
           buyer: {
@@ -795,10 +796,9 @@ export default function ConsumerTripDetailScreen({
           ...(payload.intakeFormData.length > 0
             ? { intakeFormData: payload.intakeFormData }
             : {}),
-          // ORCH-1130 / DISC-1130-A — forward the buyer's EXPLICIT pay-full vs
-          // pay-over-time choice ONLY for a plan trip (detail.hasPlan). Undefined
-          // for no-plan trips → request byte-identical; NEVER a silent 'auto'.
-          paymentPlanChoice: detail.hasPlan ? paymentPlanChoice : undefined,
+          // #3859 — each selected tier carries its own explicit full-pay or
+          // installment choice in payload.lines. No cart-wide scalar can
+          // overwrite a mixed trip cart.
           // issue #2265 — feed the cart sheet's pending copy.
           onPhase: setCheckoutPhase,
         });
@@ -1212,9 +1212,9 @@ export default function ConsumerTripDetailScreen({
           (Seth, 2026-06-15). EBES stays for events/experiences only. Sibling
           BaseBottomSheet root in the same fragment so it overlays this sheet
           (feedback_rn_sub_sheet_must_render_inside_parent). The checkout request
-          is byte-identical to the prior two-tap EBES path (handleBuy ported
-          verbatim): same lines/buyer, same paymentPlanChoice forwarding, NO
-          address / taxCalculationId (venue-sourced tax, ORCH-1025/1130). */}
+          preserves the prior cart inputs (same lines/buyer and NO address /
+          taxCalculationId; venue-sourced tax, ORCH-1025/1130). #3859 moves
+          payment choice authority onto each line so mixed carts stay explicit. */}
       <TicketCartSheet
         visible={cartVisible}
         eventId={detail.tripId}

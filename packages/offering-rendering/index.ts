@@ -187,6 +187,22 @@ export type { RsvpChipInPanelProps, ChipInPanelState } from "./RsvpChipInPanel";
 export { normalizeCityCountry } from "./normalizeCityCountry";
 export type { StructuredPlaceParts } from "./normalizeCityCountry";
 
+// issue #3859 — dependency-free checkout-v2 line and logical-attempt contract.
+export {
+  checkoutClientAttemptFingerprint,
+  createCheckoutAttemptId,
+  createCheckoutAttemptTracker,
+  isCheckoutAttemptId,
+  normalizeCheckoutV2Lines,
+  TICKET_CHECKOUT_CONTRACT_VERSION,
+} from "./ticketCheckoutContract";
+export type {
+  CheckoutAttemptTracker,
+  CheckoutClientAttemptInput,
+  CheckoutLinePlanChoice,
+  CheckoutV2Line,
+} from "./ticketCheckoutContract";
+
 // META-ORCH-1174 Leg A.4 [trip-page polish · lucide pills] — the shared lucide-icon
 // module (Calendar/Plane/Moon/Users/Globe/MapPin/Minus/Plus/BadgeCheck), drawn as
 // react-native-svg paths (NO lucide dep — I-MOR-0827 isolation). Replaces the emoji
@@ -275,6 +291,7 @@ export {
   tripTotalSelectedQuantity,
   tripSummedAllInCents,
   tripSummedDueTodayCents,
+  tripInstallmentAmounts,
   tripAnyLineOnPlan,
   // ORCH-1181 — per-package deposit-due-today + the shared installment sub-line
   // copy for the checkout/cart ticket tile (business + web + consumer identical).
@@ -284,6 +301,7 @@ export {
 export type {
   TripTierLike,
   TripSelectedLine,
+  TripInstallmentAmounts,
 } from "./tripBoxTotals";
 export { TripReserveBar } from "./TripReserveBar";
 export type { TripReserveBarProps } from "./TripReserveBar";

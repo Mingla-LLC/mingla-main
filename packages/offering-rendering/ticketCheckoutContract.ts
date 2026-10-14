@@ -17,6 +17,28 @@ export interface CheckoutV2Line {
   paymentPlanChoice: CheckoutLinePlanChoice;
 }
 
+export interface CheckoutClientAttemptInput {
+  eventId: string;
+  buyer: {
+    name: string;
+    email: string;
+    phone: string;
+    marketingOptIn: boolean;
+  };
+  providerInput: {
+    surface: "native" | "web" | "mobile-web";
+  };
+  lines: CheckoutV2Line[];
+  eventDateId: string | null;
+  eventDateIds: readonly string[];
+  intakeFormData: unknown;
+}
+
+export interface CheckoutAttemptTracker {
+  idFor(input: CheckoutClientAttemptInput): string;
+  reset(): void;
+}
+
 export interface CanonicalCheckoutLine extends CheckoutV2Line {
   unitPriceCents: number;
   totalCents: number;
@@ -31,6 +53,35 @@ const UUID_PATTERN =
 
 export function isCheckoutAttemptId(value: unknown): value is string {
   return typeof value === "string" && UUID_PATTERN.test(value);
+}
+
+type CheckoutCrypto = {
+  randomUUID?: () => string;
+  getRandomValues?: <T extends Uint8Array>(value: T) => T;
+};
+
+/** Mint a cryptographically random client attempt id without a new dependency. */
+export function createCheckoutAttemptId(
+  cryptoValue: CheckoutCrypto | undefined = (globalThis as {
+    crypto?: CheckoutCrypto;
+  }).crypto,
+): string {
+  if (typeof cryptoValue?.randomUUID === "function") {
+    const value = cryptoValue.randomUUID();
+    if (isCheckoutAttemptId(value)) return value;
+    throw new Error("checkout_attempt_invalid");
+  }
+  if (typeof cryptoValue?.getRandomValues !== "function") {
+    throw new Error("secure_random_unavailable");
+  }
+  const bytes = cryptoValue.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${
+    hex.slice(16, 20)
+  }-${hex.slice(20)}`;
 }
 
 export function normalizeCheckoutV2Lines(
@@ -101,6 +152,62 @@ export function canonicalJson(value: unknown): string {
     throw new Error("checkout_fingerprint_invalid");
   };
   return JSON.stringify(visit(value));
+}
+
+/**
+ * Client-side identity for one logical submission. Server quote/provider truth
+ * is deliberately absent; the server binds those authoritative values later.
+ */
+export function checkoutClientAttemptFingerprint(
+  input: CheckoutClientAttemptInput,
+): string {
+  const parsedLines = normalizeCheckoutV2Lines(input.lines);
+  if (!parsedLines.ok || !UUID_PATTERN.test(input.eventId)) {
+    throw new Error("checkout_attempt_input_invalid");
+  }
+  const intakeFormData = Array.isArray(input.intakeFormData)
+    ? [...input.intakeFormData].sort((a, b) =>
+      canonicalJson(a).localeCompare(canonicalJson(b))
+    )
+    : input.intakeFormData;
+  return canonicalJson({
+    contractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
+    eventId: input.eventId,
+    buyer: {
+      name: input.buyer.name.trim(),
+      email: input.buyer.email.trim().toLowerCase(),
+      phone: input.buyer.phone.trim(),
+      marketingOptIn: input.buyer.marketingOptIn,
+    },
+    providerInput: input.providerInput,
+    lines: parsedLines.lines,
+    eventDateId: input.eventDateId,
+    eventDateIds: [...new Set(input.eventDateIds)].sort(),
+    intakeFormData,
+  });
+}
+
+/**
+ * Retains one UUID while the canonical client input is unchanged and rotates
+ * before the next request whenever cart/contact/consent/intake/surface changes.
+ */
+export function createCheckoutAttemptTracker(
+  mintId: () => string = () => createCheckoutAttemptId(),
+): CheckoutAttemptTracker {
+  let held: { fingerprint: string; id: string } | null = null;
+  return {
+    idFor(input) {
+      const fingerprint = checkoutClientAttemptFingerprint(input);
+      if (held?.fingerprint === fingerprint) return held.id;
+      const id = mintId();
+      if (!isCheckoutAttemptId(id)) throw new Error("checkout_attempt_invalid");
+      held = { fingerprint, id };
+      return id;
+    },
+    reset() {
+      held = null;
+    },
+  };
 }
 
 export function checkoutV2IdempotencyKey(input: {

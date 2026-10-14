@@ -24,6 +24,7 @@ import React, {
   useState,
 } from "react";
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -210,7 +211,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   const experience = query.data?.experience ?? null;
   const experienceBrand = query.data?.brand ?? null;
   const brandDisplayName = experienceBrand?.name ?? null;
-  const { lines, buyer, setBuyer, recordResult } = useCart();
+  const { lines, buyer, setBuyer, recordResult, checkoutAttemptIdFor } = useCart();
   const totals = useCartTotals();
 
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -419,6 +420,15 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           eventId: experienceEventId,
           buyer,
           lines,
+          ...(Platform.OS === "web"
+            ? {
+              checkoutContractVersion: 2 as const,
+              checkoutAttemptId: checkoutAttemptIdFor({
+                eventId: experienceEventId,
+                surface: "web",
+              }),
+            }
+            : {}),
         });
         if (result.kind !== "free_completed") {
           throw new Error("Free reservation unexpectedly required payment.");
@@ -472,6 +482,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     totals.isFree,
     lines,
     buyer,
+    checkoutAttemptIdFor,
     recordResult,
     router,
     brandDisplayName,

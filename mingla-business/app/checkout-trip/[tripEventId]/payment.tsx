@@ -78,6 +78,11 @@ import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Toast } from "../../../src/components/ui/Toast";
 import { TripPaymentChoice } from "../../../src/components/trip/TripPaymentChoice";
 import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
+import {
+  tripSummedAllInCents,
+  tripSummedDueTodayCents,
+  type TripTierLike,
+} from "@mingla/offering-rendering";
 
 import {
   useCart,
@@ -152,58 +157,74 @@ function CheckoutTripPaymentScreenContent({
     // Review & pay step is the last-chance editor.
     paymentPlanChoice,
     setPaymentPlanChoice,
+    setLinePaymentPlanChoice,
+    checkoutAttemptIdFor,
   } = useCart();
   const totals = useCartTotals();
 
-  // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer + Planner
-  // Surfaces] — FIRST plan-active tier aggregate per SPEC Q3. Renders
-  // null when no cart line has a plan. Drives both the in-scroll
-  // schedule card AND the pre-Stripe banner + Pay-button copy change.
-  const projectedSchedule = React.useMemo(() => {
-    if (trip === null) return null;
-    for (const line of lines) {
-      const sourceTier = trip.pricingTiers.find(
-        (t) => t.ticketTypeId === line.ticketTypeId,
+  // #3859 — every eligible selected line owns its own plan choice on web.
+  // Business-native deliberately stays on the legacy v1 scalar rail until its
+  // preview + create pair are migrated together in a later reviewed slice.
+  const planLines = React.useMemo(() => {
+    if (trip === null) return [];
+    return lines.flatMap((line) => {
+      const tier = trip.pricingTiers.find(
+        (candidate) => candidate.ticketTypeId === line.ticketTypeId,
       );
-      if (
-        sourceTier !== undefined &&
-        sourceTier.installmentSchedule !== null &&
-        line.quantity >= 1
-      ) {
-        // ORCH-0882 hotfix-2 — pass line.quantity so disclosure +
-        // banner + Pay-button all scale with cart (€500/tier × qty=2
-        // → €250 deposit, not €125).
-        return projectInstallmentSchedule(
-          sourceTier,
-          new Date(),
-          line.quantity,
-        );
-      }
-    }
-    return null;
-  }, [trip, lines]);
-  const isPlanActive = projectedSchedule !== null;
-  const isUsingInstallments = isPlanActive && paymentPlanChoice === "installments";
-
-  // ORCH-1130 — the source tier behind the plan-active cart line (for the
-  // selector module's depositPct). Single-tier (prod-universal); first
-  // plan-active line wins, mirroring the projectedSchedule selection above.
-  const planTier = React.useMemo(() => {
-    if (trip === null) return undefined;
-    for (const line of lines) {
-      const sourceTier = trip.pricingTiers.find(
-        (t) => t.ticketTypeId === line.ticketTypeId,
-      );
-      if (
-        sourceTier !== undefined &&
-        sourceTier.installmentSchedule !== null &&
-        line.quantity >= 1
-      ) {
-        return sourceTier;
-      }
-    }
-    return undefined;
-  }, [trip, lines]);
+      if (tier?.installmentSchedule == null || line.quantity < 1) return [];
+      const schedule = projectInstallmentSchedule(tier, new Date(), line.quantity);
+      return schedule === null ? [] : [{ line, tier, schedule }];
+    });
+  }, [lines, trip]);
+  // Legacy Business-native still renders one scalar plan editor. Web never
+  // uses this as money authority; each line below owns its own schedule.
+  const projectedSchedule = planLines[0]?.schedule ?? null;
+  const isPlanActive = planLines.length > 0;
+  const planChoiceByTier = React.useMemo<Record<string, "full" | "installments">>(
+    () => Object.fromEntries(
+      lines.map((line) => [
+        line.ticketTypeId,
+        Platform.OS === "web"
+          ? line.paymentPlanChoice ?? "full"
+          : paymentPlanChoice,
+      ]),
+    ),
+    [lines, paymentPlanChoice],
+  );
+  const installmentPlanLines = planLines.filter(
+    ({ line }) => planChoiceByTier[line.ticketTypeId] === "installments",
+  );
+  const isUsingInstallments = installmentPlanLines.length > 0;
+  const selectedQuantities = React.useMemo<Record<string, number>>(
+    () => Object.fromEntries(lines.map((line) => [line.ticketTypeId, line.quantity])),
+    [lines],
+  );
+  const pricingTiers = React.useMemo<TripTierLike[]>(
+    () => trip?.pricingTiers.map((tier) => ({
+      ticketTypeId: tier.ticketTypeId,
+      priceCents: tier.priceCents,
+      priceAllInCents:
+        tier.priceAllInGbp == null
+          ? null
+          : Math.round(tier.priceAllInGbp * 100),
+      isFree: tier.priceCents === 0,
+      isUnlimited: tier.isUnlimited,
+      ticketsRemaining: tier.ticketsRemaining,
+      installmentSchedule: tier.installmentSchedule,
+    })) ?? [],
+    [trip],
+  );
+  const dueTodayCents = tripSummedDueTodayCents(
+    pricingTiers,
+    selectedQuantities,
+    planChoiceByTier,
+  );
+  const fullCartCents = tripSummedAllInCents(pricingTiers, selectedQuantities);
+  const remainingBalanceCents = Math.max(0, fullCartCents - dueTodayCents);
+  const futureInstallmentCount = installmentPlanLines.reduce(
+    (count, entry) => count + entry.schedule.installments.length,
+    0,
+  );
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — flatten per-tier intake answers
   // (keyed by ticket_type_id in CartContext) into the array shape expected
@@ -258,8 +279,11 @@ function CheckoutTripPaymentScreenContent({
     eventId: tripEventId,
     email: buyer.email.trim().toLowerCase(),
     phone: buyer.phone.trim(),
-    lines: lines.map((l) => [l.ticketTypeId, l.quantity]),
-    paymentPlanChoice: isPlanActive ? paymentPlanChoice : null,
+    lines: lines.map((l) => [
+      l.ticketTypeId,
+      l.quantity,
+      l.paymentPlanChoice ?? "full",
+    ]),
     intakeFormData: intakeFormDataArray,
   });
 
@@ -295,6 +319,7 @@ function CheckoutTripPaymentScreenContent({
           currency: l.currency,
           isFree: l.isFree,
           quantity: l.quantity,
+          paymentPlanChoice: l.paymentPlanChoice ?? "full",
         });
       }
       setBuyer(payload.buyer);
@@ -455,6 +480,11 @@ function CheckoutTripPaymentScreenContent({
           buyer,
           lines,
           surface,
+          checkoutContractVersion: 2,
+          checkoutAttemptId: checkoutAttemptIdFor({
+            eventId: tripEventId,
+            surface,
+          }),
           // ORCH-0880 [Tr5 Traveler Intake Forms] — per-tier intake answers
           // gathered by /checkout-trip/[tripEventId]/intake.tsx and stored
           // in CartContext. Edge fn gates HTTP 400 intake_form_required +
@@ -463,7 +493,6 @@ function CheckoutTripPaymentScreenContent({
           ...(intakeFormDataArray.length > 0
             ? { intakeFormData: intakeFormDataArray }
             : {}),
-          ...(isPlanActive ? { paymentPlanChoice: paymentPlanChoice } : {}),
         });
         // issue #2190 — provider-neutral. Stripe brands answer with
         // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
@@ -535,7 +564,12 @@ function CheckoutTripPaymentScreenContent({
 
       const outcome = await nativeCheckout({
         eventId: tripEventId,
-        lines,
+        // #3859 boundary: Business-native preview + create remain paired on
+        // v1, so line-v2 fields are intentionally stripped on this branch.
+        lines: lines.map((line) => ({
+          ticketTypeId: line.ticketTypeId,
+          quantity: line.quantity,
+        })),
         buyer: {
           name: buyer.name,
           email: buyer.email,
@@ -650,6 +684,7 @@ function CheckoutTripPaymentScreenContent({
     assignLocation,
     cartFingerprint,
     buyer,
+    checkoutAttemptIdFor,
     trip,
     tripEventId,
     lines,
@@ -851,38 +886,49 @@ function CheckoutTripPaymentScreenContent({
           </View>
           {/* ORCH-1130 Fix #1 — pay-over-time only: the full Total stays the
               headline; the amount charged TODAY (deposit) shows on its own
-              labeled line. Read from projectedSchedule.depositCents (already
-              in scope, never recomputed). Hidden for pay-in-full / no-plan. */}
-          {isUsingInstallments && projectedSchedule !== null ? (
+              labeled line. Mixed carts sum each installment deposit plus every
+              full-pay line. Hidden for pay-in-full / no-plan. */}
+          {isUsingInstallments ? (
             <View style={styles.summaryDueTodayRow}>
               <Text style={styles.summaryDueTodayLabel}>Total due today</Text>
               <Text style={styles.summaryDueTodayValue}>
-                {formatCurrency(
-                  projectedSchedule.depositCents,
-                  projectedSchedule.currency,
-                  true,
-                )}
+                {formatCurrency(dueTodayCents, totals.currency, true)}
               </Text>
             </View>
           ) : null}
         </GlassCard>
 
-        {/* ORCH-1130 — the single shared selector module (segmented toggle +
-            full-width supporting block). Pre-filled from the public-page choice
-            (CartContext.paymentPlanChoice), editable here as the last-chance
-            editor. Renders the schedule ladder under the over-time option, so
-            the standalone passive projection card below is removed. Null-on-null
-            for no-plan trips. */}
-        {isPlanActive && projectedSchedule !== null && planTier !== undefined ? (
-          <TripPaymentChoice
-            schedule={projectedSchedule}
-            fullPriceCents={projectedSchedule.fullPriceCents}
-            currency={projectedSchedule.currency}
-            depositPct={planTier.installmentSchedule?.deposit_pct ?? 0}
-            value={paymentPlanChoice}
-            onChange={setPaymentPlanChoice}
-          />
-        ) : null}
+        {/* #3859 — web edits each eligible package independently. Native keeps
+            its existing single v1 choice until preview + create migrate together. */}
+        {Platform.OS === "web"
+          ? planLines.map(({ line, tier, schedule }) => (
+            <View key={line.ticketTypeId}>
+              <Text style={styles.summaryLabel}>{line.ticketName}</Text>
+              <TripPaymentChoice
+                schedule={schedule}
+                fullPriceCents={schedule.fullPriceCents}
+                currency={schedule.currency}
+                depositPct={tier.installmentSchedule?.deposit_pct ?? 0}
+                value={line.paymentPlanChoice ?? "full"}
+                onChange={(choice) =>
+                  setLinePaymentPlanChoice(line.ticketTypeId, choice)}
+              />
+            </View>
+          ))
+          : planLines[0] !== undefined && projectedSchedule !== null
+          ? (
+            <TripPaymentChoice
+              schedule={projectedSchedule}
+              fullPriceCents={projectedSchedule.fullPriceCents}
+              currency={projectedSchedule.currency}
+              depositPct={
+                planLines[0].tier.installmentSchedule?.deposit_pct ?? 0
+              }
+              value={paymentPlanChoice}
+              onChange={setPaymentPlanChoice}
+            />
+          )
+          : null}
 
         {/* ORCH-1130 Fix #2 — the CartTaxPreview billing-address + "Calculate
             tax" form was REMOVED. Tax is venue-sourced server-side and the
@@ -922,49 +968,39 @@ function CheckoutTripPaymentScreenContent({
             the last in-product surface to set buyer expectations about
             the deposit + future-installment auto-charge schedule.
             Constitution #3 — no silent failures. */}
-        {isPlanActive && projectedSchedule !== null && isUsingInstallments ? (
+        {isPlanActive && isUsingInstallments ? (
           <View
             style={styles.planBanner}
             accessibilityRole="alert"
-            accessibilityLabel={`Payment plan active. You will be charged ${formatCurrency(projectedSchedule.depositCents, projectedSchedule.currency, true)} today. The remaining ${formatCurrency(projectedSchedule.fullPriceCents - projectedSchedule.depositCents, projectedSchedule.currency, true)} will auto-charge in ${projectedSchedule.installments.length} payments from the same card.`}
+            accessibilityLabel={`Payment plan active. You will be charged ${formatCurrency(dueTodayCents, totals.currency, true)} today. The remaining ${formatCurrency(remainingBalanceCents, totals.currency, true)} is split across ${futureInstallmentCount} scheduled installment payments from the same card.`}
           >
             <Text style={styles.planBannerTitle}>Payment plan active</Text>
             <Text style={styles.planBannerBody}>
               You&rsquo;ll be charged{" "}
               <Text style={styles.planBannerStrong}>
-                {formatCurrency(
-                  projectedSchedule.depositCents,
-                  projectedSchedule.currency,
-                  true,
-                )}
+                {formatCurrency(dueTodayCents, totals.currency, true)}
               </Text>{" "}
               today. The remaining{" "}
               <Text style={styles.planBannerStrong}>
-                {formatCurrency(
-                  projectedSchedule.fullPriceCents -
-                    projectedSchedule.depositCents,
-                  projectedSchedule.currency,
-                  true,
-                )}
+                {formatCurrency(remainingBalanceCents, totals.currency, true)}
               </Text>{" "}
-              will auto-charge in {projectedSchedule.installments.length}{" "}
-              payment
-              {projectedSchedule.installments.length === 1 ? "" : "s"} on the
-              dates above, from the card you enter next.
+              is split across {futureInstallmentCount} scheduled installment
+              payment{futureInstallmentCount === 1 ? "" : "s"}. Each package&rsquo;s
+              dates are shown above and will use the card you enter next.
             </Text>
           </View>
         ) : null}
-        {isPlanActive && projectedSchedule !== null && !isUsingInstallments ? (
+        {isPlanActive && !isUsingInstallments ? (
           <View
             style={[styles.planBanner, styles.fullPayBanner]}
             accessibilityRole="alert"
-            accessibilityLabel={`Paid in full today. You will be charged ${formatCurrency(totals.total, totals.currency)} today and no future installment bills will be scheduled.`}
+            accessibilityLabel={`Paid in full today. You will be charged ${displayAllIn} today and no future installment bills will be scheduled.`}
           >
             <Text style={styles.planBannerTitle}>Paid in full today</Text>
             <Text style={styles.planBannerBody}>
               You&rsquo;ll be charged{" "}
               <Text style={styles.planBannerStrong}>
-                {formatCurrency(totals.total, totals.currency)}
+                {displayAllIn}
               </Text>{" "}
               today. No future installment bills will be scheduled for this
               booking.
@@ -979,15 +1015,11 @@ function CheckoutTripPaymentScreenContent({
         </View>
         {/* ORCH-1130 Fix #1 — due-today (deposit) line in the sticky bar under
             pay-over-time; mirrors the order-summary box + buyer step. */}
-        {isUsingInstallments && projectedSchedule !== null ? (
+        {isUsingInstallments ? (
           <View style={styles.dueTodayRow}>
             <Text style={styles.dueTodayLabel}>Total due today</Text>
             <Text style={styles.dueTodayValue}>
-              {formatCurrency(
-                projectedSchedule.depositCents,
-                projectedSchedule.currency,
-                true,
-              )}
+              {formatCurrency(dueTodayCents, totals.currency, true)}
             </Text>
           </View>
         ) : null}
@@ -1002,14 +1034,12 @@ function CheckoutTripPaymentScreenContent({
           // today" banner — fixed here. (Stripe still charges only the deposit
           // first; the deposit is tax-exclusive at this preview stage, matching
           // the web path's deposit copy.)
+          // The per-line choice still announces
+          // `Pay over time, ${projectedSchedule.depositCents} deposit`; this
+          // cart CTA deliberately says "today" because mixed carts also include
+          // full-pay lines in the aggregate amount.
           label={isUsingInstallments && projectedSchedule !== null
-            ? `Pay ${
-              formatCurrency(
-                projectedSchedule.depositCents,
-                projectedSchedule.currency,
-                true,
-              )
-            } deposit`
+            ? `Pay ${formatCurrency(dueTodayCents, totals.currency, true)} today`
             : Platform.OS !== "web"
             ? `Pay ${displayAllIn}`
             : `Pay ${formatCurrency(totals.total, totals.currency)}`}
@@ -1022,13 +1052,7 @@ function CheckoutTripPaymentScreenContent({
           // immediately (only blocked while a charge is in flight).
           disabled={processing}
           accessibilityLabel={isUsingInstallments && projectedSchedule !== null
-            ? `Pay ${
-              formatCurrency(
-                projectedSchedule.depositCents,
-                projectedSchedule.currency,
-                true,
-              )
-            } deposit with card`
+            ? `Pay ${formatCurrency(dueTodayCents, totals.currency, true)} today with card`
             : Platform.OS !== "web"
             ? `Pay ${displayAllIn} with card`
             : `Pay ${formatCurrency(totals.total, totals.currency)} with card`}
