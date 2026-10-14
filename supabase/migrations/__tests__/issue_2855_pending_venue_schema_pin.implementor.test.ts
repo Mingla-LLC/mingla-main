@@ -134,7 +134,7 @@ const ISSUE_2855_CURRENT_DIFF = [
   ".github/scripts/ci-batch/validate-manifest-v2.mjs",
   ".github/scripts/strict-grep/issue-2148-ci-postgres-wave-shadow.tester.test.mjs",
   ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
-  "REPORTS.md",
+  "AGENTS.md",
   "docs/INVARIANT_REGISTRY.md",
   "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql",
   "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql",
@@ -570,7 +570,7 @@ Deno.test("#2855 SC-4 classifier is exact-path product scope", () => {
     ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
     ".github/ci-batch/MANIFEST.json",
     "docs/INVARIANT_REGISTRY.md",
-    "REPORTS.md",
+    "AGENTS.md",
     "mingla-business/app/venue/[venueId]/index.tsx.test",
     "other/PendingVenueIdentityCorrectionDialog.web.tsx",
   ];
