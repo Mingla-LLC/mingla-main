@@ -1300,6 +1300,23 @@ jobs:
           # `supabase_admin` from the repository root.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave4_agent_keys_gateway.tester.adversarial.pg17.test.sql
+          # Issue #3802 (Wave 4, second part) -- one-time setup codes, the
+          # tools an agent uses to add and change, Experience host, searchable
+          # identifiers and the contact rule. A code is stored as a digest,
+          # used once, for its maker's key only, and every refusal is one
+          # answer; the normal form of an email, a phone number and a handle
+          # (the table the admin web's twin is held to); what an agent may log,
+          # as a truth table of 36 cases; 50 records added in the caller's
+          # order with a repeat that changes nothing; request keys that never
+          # replay across tools; one refused item never stops the rest and a
+          # fault on the server saves nothing; the daily limit on records
+          # written; both self-check blocks against deliberate mistakes. Part
+          # 2 opens real sessions: one code used twice at once, the first
+          # touch logged twice at once, one handle added twice at once, and a
+          # request that waits for its key's turn. Runs as `supabase_admin`
+          # from the repository root, like the suites above.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave4_agent_write_setup.implementor.happy.pg17.test.sql
 
           # toward #3697 Wave 6 — Ads credit FIFO withdraw, idempotency, immutability.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
