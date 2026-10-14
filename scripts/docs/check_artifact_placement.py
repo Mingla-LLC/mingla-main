@@ -28,7 +28,6 @@ CANONICAL_DOCS = (
     "AGENTS.md",
     "PRODUCT_AND_STRATEGY.md",
     "MARKETING.md",
-    "REPORTS.md",
 )
 
 ENGINEERING_REFERENCES = (

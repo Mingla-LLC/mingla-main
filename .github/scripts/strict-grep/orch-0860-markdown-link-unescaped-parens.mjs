@@ -39,7 +39,6 @@ const ROOT_DOCS = [
   "MARKETING.md",
   // #3476: COMMS.md is now a retirement stub; COMMS_LEDGER.md is deleted.
   "COMMS.md",
-  "REPORTS.md",
 ];
 
 // Walk docs/ recursively and collect every .md file.

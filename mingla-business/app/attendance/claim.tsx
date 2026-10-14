@@ -54,7 +54,7 @@ import {
 
 // The desktop scan sheet is lazily imported so `react-qr-code` and the sheet's
 // own bulk never enter the eager boot chunk. The business-web boot-payload
-// budget gate is real and REPORTS.md records it biting repeatedly.
+// budget gate is real, so this route keeps the desktop-only sheet out of eager boot.
 const ContinueOnPhoneSheet = React.lazy(() =>
   import("../../src/components/attendance/ContinueOnPhoneSheet")
 );

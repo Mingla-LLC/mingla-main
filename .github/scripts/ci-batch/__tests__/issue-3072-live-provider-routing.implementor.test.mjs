@@ -187,7 +187,7 @@ test("5. #2885 AC-4's OUTER filter is intact: the registry still records the bas
 });
 
 test("6. a documentation-only pull request starts none of the six", () => {
-  for (const changed of [["REPORTS.md"], ["docs/MINGLA_ENGINEERING_HANDBOOK.md"], ["README.md", "COMMS.md"]]) {
+  for (const changed of [["docs/WORKTREE_STRATEGY.md"], ["docs/MINGLA_ENGINEERING_HANDBOOK.md"], ["README.md", "COMMS.md"]]) {
     for (const ownerIssue of LANES) {
       assert.equal(selects(ownerIssue, changed), false, `${ownerIssue}: ${changed.join(",")} must not select`);
     }
@@ -304,7 +304,7 @@ test("13. a change routing SKIPS on a pull request is still executed by the push
   // full on push. This is the assertion whose absence created the gap: it ties
   // the router's own identity-function behaviour to the trigger that exercises
   // it, so removing either half turns this red.
-  const skippedAtPrTime = [["REPORTS.md"], ["docs/MINGLA_ENGINEERING_HANDBOOK.md"], [BASELINE]];
+  const skippedAtPrTime = [["docs/WORKTREE_STRATEGY.md"], ["docs/MINGLA_ENGINEERING_HANDBOOK.md"], [BASELINE]];
 
   // The router treats a push as unroutable-by-design, not as an empty diff.
   const pushContext = routingContext({ env: { GITHUB_EVENT_NAME: "push" }, root: ROOT });

@@ -1,19 +1,9 @@
-# Mingla Reports — Canonical Shipped-Work Log
+> **Closed 2026-10-14.** Historical record only; do not add new entries. Current release records live on the shipping GitHub issue.
 
-This is the single running log of what has been fixed, implemented, and shipped. It is the
-canonical record: if it shipped, it has a line here.
+# Mingla Reports — Historical Shipped-Work Log
 
-**Going-forward format:** ONE entry is added at the top of the "Shipped" section by the pull request
-that ships the change, before it merges. It is never appended afterwards in a docs-only follow-up
-pull request (#3476). Open the pull request first, then fill in its number with a follow-up commit
-on the same branch:
-
-```
-- YYYY-MM-DD — <plain-English what changed for users/ops> (#<issue>, PR #<pr>)
-```
-
-Detail (evidence, root cause, test notes) and post-merge release records (OTA ids, deploy and live
-verification) live in the issue, not here. One line per ship, newest first, plain English first.
+This file preserves shipped-work history through its closure date. For current work, the shipping
+GitHub issue owns the release record and its evidence.
 
 History before 2026-07-19 is archived in full at git tag `pre-avengers-archive`. Entries below
 that date are a translated back-fill from the old ORCH/artifact system; old IDs are kept in

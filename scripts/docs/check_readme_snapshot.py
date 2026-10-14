@@ -34,7 +34,6 @@ def main() -> int:
         "PRODUCT_AND_STRATEGY.md",
         "MARKETING.md",
         "AGENTS.md",
-        "REPORTS.md",
         "docs/INVARIANT_REGISTRY.md",
         "pre-avengers-archive",
         "python3 scripts/docs/check_links.py --baseline-file scripts/docs/link_baseline.json",
@@ -59,12 +58,25 @@ def main() -> int:
             "Source Of Truth must point to the Mingla Avengers board",
             failures,
         )
-        for doc in ("PRODUCT_AND_STRATEGY.md", "MARKETING.md", "AGENTS.md", "REPORTS.md"):
+        for doc in ("PRODUCT_AND_STRATEGY.md", "MARKETING.md", "AGENTS.md"):
             require(
                 doc in source_body,
                 f"Source Of Truth must point to {doc}",
                 failures,
             )
+        require(
+            "Mingla Avengers board" in source_body and "shipping issues" in source_body,
+            "Source Of Truth must route shipped-work history to the board and shipping issues",
+            failures,
+        )
+
+    require(
+        "complete release-record comment on the shipping issue" in text,
+        "README Done contract must require a complete release record on the shipping issue",
+        failures,
+    )
+    for field in ("PR", "merge commit", "migrations applied", "deploy", "live check"):
+        require(field in text, f"README release record must name `{field}`", failures)
 
     repo_map = repo_map_block(text)
     require(repo_map, "README must contain a fenced Repo Map block", failures)
@@ -89,7 +101,8 @@ def main() -> int:
 
     print("README snapshot check PASS")
     print("- README declares itself a snapshot")
-    print("- source-of-truth links point to the Avengers board and canonical docs")
+    print("- source-of-truth links point to the Avengers board, shipping issues and canonical docs")
+    print("- the Done contract requires all five release-record fields")
     print("- docs lock-in commands are present")
     print("- repo map lists only active roots")
     return 0

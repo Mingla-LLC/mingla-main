@@ -8,7 +8,7 @@ All work — bugs, features, ideas, discoveries — lives as GitHub issues on th
 - **Features are initiatives; extend before you open.** New features are tracked as initiative issues. All work for a feature, including stories, bugs found while speccing, specs, decisions, design contracts and evidence, goes **into its initiative** as comments and acceptance checklists, not as separate sub-issues. New scope is added to an existing open initiative until it closes. Before opening any new issue, search the open issues (`gh issue list --state open --search "<keywords>"`, two or three keyword variants). Open one only when nothing open fits or can be extended, and name the issues you checked.
 - **Status lifecycle:** `Todo` (queued) → `In Progress` (investigating / building) → `In Review` (PR open, testing) → `Done` (merged + verified; auto-closes the issue).
 - **Documentation goes to the issue**, not the repo: investigation findings, spec decisions, implementation notes, and test evidence are issue comments (attach screenshots). Do NOT create per-work-item .md files — CI (`scripts/docs/check_artifact_placement.py`) rejects them.
-- When something ships, its pull request adds one line to `REPORTS.md` (format documented in that file) — see § No docs-only follow-up pull requests.
+- When something ships, add one **release-record comment on the shipping issue** after merge. It must name the PR, merge commit, migrations applied, deploy, and live check; every field has an explicit value such as `none`, `N/A`, or `pending` when it does not yet have a completed result.
 - Set board fields when creating issues (Work Type, Product, Theme, Priority, Estimate; Horizon/Quarter for roadmap items) — board views filter on them.
 - Setting Status = Done auto-closes the issue (a project workflow); don't mark Done anything that should stay open.
 
@@ -18,16 +18,15 @@ All work — bugs, features, ideas, discoveries — lives as GitHub issues on th
 |---|---|
 | `PRODUCT_AND_STRATEGY.md` | Product, positioning, roadmap, strategy |
 | `MARKETING.md` | Channels, attribution, marketing motions |
-| `REPORTS.md` | Shipped-work log |
 | `docs/` | Engineering references: invariant registry, handbook, worktree strategy, runbooks, contracts |
 
 Everything pre-2026-07-19 (Mingla_Artifacts/, Mingla_Roadmap/, per-ORCH docs, the first comms ledger) is preserved at git tag `pre-avengers-archive`. The later `COMMS.md` coordination table was retired by #3476; chats now follow § Coordinate with other chats, and the table's history is in git.
 
-## No docs-only follow-up pull requests
+## Release records and no docs-only follow-up pull requests
 
-- The `REPORTS.md` ship-log line and any `docs/INVARIANT_REGISTRY.md` status change are written in the same pull request as the change they describe, before it merges.
+- Any `docs/INVARIANT_REGISTRY.md` status change is written in the same pull request as the change it describes, before it merges.
 - Exception: if an invariant's proof only exists after merge (it needs a green `main` or a live check), leave it DRAFT, record the post-merge check on the issue, and flip it to ACTIVE in your next pull request.
-- Post-merge release records (OTA ids, deploy and live verification) go on the issue as a comment, not into a repo file.
+- The release-record comment on the shipping issue is the sole current record of the PR, merge commit, migrations applied, deploy, and live check. Use an explicit `none`, `N/A`, or `pending` rather than omitting a field.
 - A docs-only pull request is only for work whose deliverable is the docs themselves.
 
 ## Coordinate with other chats (MANDATORY)
@@ -37,7 +36,7 @@ Claude and Codex chats coordinate by messaging each other directly. The old `COM
 **Find the live chats.** Claude: `ListAgents`, then `SendMessage` (Claude chats on this Mac). Codex: `list_threads`, then `send_message_to_thread` (Codex threads). Claude and Codex cannot message each other, so the GitHub issue is the shared channel between them: anything a chat on the other side must see goes on the issue as a comment.
 
 **1. Before you start** work on an issue:
-- Message the live chats whose work could collide with yours: the issue #, what you are about to change, and any shared thing you will touch (production deploys, migrations, OTA publishes, the shared anchor checkout, simulators, Metro ports, CI gates, a shared file such as `REPORTS.md` or `docs/INVARIANT_REGISTRY.md`).
+- Message the live chats whose work could collide with yours: the issue #, what you are about to change, and any shared thing you will touch (production deploys, migrations, OTA publishes, the shared anchor checkout, simulators, Metro ports, CI gates, or a shared file such as `docs/INVARIANT_REGISTRY.md`).
 - Post the same note as a comment on your issue, including your chat's address (Claude: the name `ListAgents` gives this session; Codex: the thread title) so any chat can find the owner.
 
 **2. When you are blocked** by something another chat owns:
@@ -88,16 +87,15 @@ Opening or amending a pull request must be **fully agent-driven**. The user must
 
 - Prefer the `gh` CLI (`gh pr create`, `gh pr edit`, push with `-u` as needed). Any other fully automatic path is fine if it needs **zero** user clicks.
 - **Never** use tools that open a Cursor/IDE "submit pull request" form (or equivalent) and wait for a human.
-- After create: replace `PR #TBD` in `REPORTS.md` with the real number and push on the same branch.
 - Strip any auto-appended AI-vendor footer from the PR body before leaving it (`gh pr edit` or equivalent). See also § No AI vendor naming below.
 
 ## No AI vendor naming in git / PR / shipped repo text
 
-Never mention Cursor (or `cursoragent`, `Co-authored-by: Cursor`, etc.) anywhere that lands in commit subjects or bodies, PR titles or bodies, `REPORTS.md`, docs, code comments, tests, CI config, or PR review replies GitHub stores. Use neutral wording ("this chat", "this agent", "engineering") or omit attribution. Do not add `Co-authored-by:` trailers for the assistant.
+Never mention Cursor (or `cursoragent`, `Co-authored-by: Cursor`, etc.) anywhere that lands in commit subjects or bodies, PR titles or bodies, docs, code comments, tests, CI config, or PR review replies GitHub stores. Use neutral wording ("this chat", "this agent", "engineering") or omit attribution. Do not add `Co-authored-by:` trailers for the assistant.
 
 ## Epic / initiative delivery
 
-- Ship as sequenced small PRs against the umbrella issue; one `REPORTS.md` line per merged PR.
+- Ship as sequenced small PRs against the umbrella issue; add one issue release-record comment per merged PR.
 - When a phase ends or the eng queue empties, **refresh the issue Progress table and AC ticks** in the issue body (or a dated comment if the body edit races). Tick ACs for shipped code; leave unchecked anything that still needs live proof, legal, or Seth ops (migrations apply, cutover, prod E2E, signed-in browser confirm).
 - When eng has nothing buildable left, say so and list **Seth-owned remainders** (legal text, cutover, E2E, browser proof). Do not invent approved legal prose.
 
