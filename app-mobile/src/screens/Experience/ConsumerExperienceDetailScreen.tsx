@@ -129,6 +129,8 @@ import {
   type NativeCheckoutPhase,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
+import { useNativeCheckoutRecovery } from "../../payments/useNativeCheckoutRecovery";
+import { captureNativePurchaseCompleted } from "../../payments/nativeCheckoutRecovery";
 import { resolveExplorerCheckoutContact } from "../../payments/explorerCheckoutContact.mjs";
 import { toastManager } from "../../components/ui/Toast";
 import { useAppStore } from "../../store/appStore";
@@ -274,6 +276,9 @@ export default function ConsumerExperienceDetailScreen({
   const [checkoutPhase, setCheckoutPhase] = useState<NativeCheckoutPhase | null>(
     null,
   );
+  const [checkoutTerminalOutcome, setCheckoutTerminalOutcome] =
+    useState<NativeCheckoutOutcome | null>(null);
+  const terminalSuccessCloseRef = useRef<(() => void) | null>(null);
   const [muted, setMuted] = useState<boolean>(true);
   // issue #868 [cover-gallery], M.1b — single owner of the shown hero item (shared
   // by the cover pager + the row). Before the early-returns to preserve hook order.
@@ -335,6 +340,25 @@ export default function ConsumerExperienceDetailScreen({
   const ticketsQuery = usePublicEventTickets(eventId);
   const themeQuery = useEventTheme(seed);
   const runNativeCheckout = useNativeCheckoutFlow();
+  const handleRecoveredCheckout = useCallback(
+    (outcome: NativeCheckoutOutcome): void => {
+      terminalSuccessCloseRef.current = outcome.outcome === "succeeded"
+        ? () => {
+          setCartVisible(false);
+          onBack();
+        }
+        : null;
+      setCheckoutTerminalOutcome(outcome);
+      setCartVisible(true);
+    },
+    [onBack],
+  );
+  useNativeCheckoutRecovery({
+    accountId: user?.id ?? null,
+    eventId,
+    recheckWhen: cartVisible,
+    onRecovered: handleRecoveredCheckout,
+  });
   // ORCH-1339 — cross-entity social proof, keyed by the experience's event id.
   // Error/missing → data stays undefined → the momentum unit is omitted and
   // the page renders exactly as today.
@@ -642,6 +666,7 @@ export default function ConsumerExperienceDetailScreen({
       try {
         result = await runNativeCheckout({
           checkoutContractVersion: 2,
+          accountId: user.id,
           eventId: seed.eventId,
           lines: payload.lines,
           buyer: {
@@ -671,6 +696,16 @@ export default function ConsumerExperienceDetailScreen({
       }
 
       if (result.outcome === "succeeded") {
+        if (result.provider !== undefined) {
+          captureNativePurchaseCompleted({
+            orderId: result.orderId,
+            eventId: seed.eventId,
+            totalCents: payload.totalCents,
+            currency: seed.currency,
+            provider: result.provider,
+            recovered: false,
+          });
+        }
         void Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Success,
         );
@@ -695,6 +730,9 @@ export default function ConsumerExperienceDetailScreen({
             if (attempts >= 3) clearInterval(interval);
           }, 1000);
         }
+      } else if (result.outcome === "pending") {
+        // The server has not finalized an order yet; the durable recovery
+        // panel owns the state and prevents another provider attempt.
       } else if (result.outcome === "canceled") {
         // Silent: user dismissed PaymentSheet.
       } else {
@@ -769,15 +807,28 @@ export default function ConsumerExperienceDetailScreen({
     async (payload: TicketCartCheckoutPayload): Promise<void> => {
       const result = await handleBuy(payload);
       if (result.outcome === "succeeded") {
-        setCartVisible(false);
-        onBack();
+        terminalSuccessCloseRef.current = () => {
+          setCartVisible(false);
+          onBack();
+        };
+        setCheckoutTerminalOutcome(result);
+      } else if (
+        result.outcome === "pending" ||
+        (result.outcome === "failed" && result.retryable !== undefined) ||
+        (result.outcome === "canceled" && result.retryable === true)
+      ) {
+        setCheckoutTerminalOutcome(result);
       }
     },
     [handleBuy, onBack],
   );
   const handleCartCancel = useCallback((): void => {
+    const deferredSuccessClose = terminalSuccessCloseRef.current;
+    terminalSuccessCloseRef.current = null;
     setCartVisible(false);
     setInitialTicketTypeId(null);
+    setCheckoutTerminalOutcome(null);
+    deferredSuccessClose?.();
   }, []);
 
   /**
@@ -1267,8 +1318,10 @@ export default function ConsumerExperienceDetailScreen({
         buyerUserId={user?.id ?? null}
         isSubmitting={checkoutInFlight}
         pendingPhase={checkoutPhase}
+        terminalOutcome={checkoutTerminalOutcome}
         clearFloatingNav={false}
         onCancel={handleCartCancel}
+        onTerminalRetry={() => setCheckoutTerminalOutcome(null)}
         onCheckout={handleCartCheckout}
       />
 

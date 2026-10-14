@@ -155,6 +155,8 @@ import {
   type NativeCheckoutPhase,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
+import { useNativeCheckoutRecovery } from "../../payments/useNativeCheckoutRecovery";
+import { captureNativePurchaseCompleted } from "../../payments/nativeCheckoutRecovery";
 import { resolveExplorerCheckoutContact } from "../../payments/explorerCheckoutContact.mjs";
 import { toastManager } from "../../components/ui/Toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -317,6 +319,9 @@ export default function ConsumerTripDetailScreen({
   const [checkoutPhase, setCheckoutPhase] = useState<NativeCheckoutPhase | null>(
     null,
   );
+  const [checkoutTerminalOutcome, setCheckoutTerminalOutcome] =
+    useState<NativeCheckoutOutcome | null>(null);
+  const terminalSuccessCloseRef = useRef<(() => void) | null>(null);
   // ORCH-1138 — the cart + native-checkout wiring the trip screen now owns
   // (ported from ExpandedBusinessEventSheet, scoped to the trip). The cart
   // fetches its own tickets/intake by eventId === tripId, exactly as EBES did.
@@ -353,6 +358,22 @@ export default function ConsumerTripDetailScreen({
     profileDisplayName: profile?.display_name,
     profilePhone: profile?.phone,
     profileCountry: profile?.country,
+  });
+  const handleRecoveredCheckout = useCallback(
+    (outcome: NativeCheckoutOutcome): void => {
+      terminalSuccessCloseRef.current = outcome.outcome === "succeeded"
+        ? () => setCartVisible(false)
+        : null;
+      setCheckoutTerminalOutcome(outcome);
+      setCartVisible(true);
+    },
+    [],
+  );
+  useNativeCheckoutRecovery({
+    accountId: user?.id ?? null,
+    eventId: tripId,
+    recheckWhen: cartVisible,
+    onRecovered: handleRecoveredCheckout,
   });
   // ORCH-1130 — consumer pay-full vs pay-over-time choice. Default "full" (the
   // deliberate non-surprising default; a buyer who does nothing pays the whole
@@ -768,6 +789,7 @@ export default function ConsumerTripDetailScreen({
       try {
         result = await runNativeCheckout({
           checkoutContractVersion: 2,
+          accountId: user.id,
           eventId: detail.tripId,
           lines: payload.lines,
           buyer: {
@@ -801,6 +823,16 @@ export default function ConsumerTripDetailScreen({
       }
 
       if (result.outcome === "succeeded") {
+        if (result.provider !== undefined) {
+          captureNativePurchaseCompleted({
+            orderId: result.orderId,
+            eventId: detail.tripId,
+            totalCents: payload.totalCents,
+            currency: detail.currency ?? undefined,
+            provider: result.provider,
+            recovered: false,
+          });
+        }
         void Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Success,
         );
@@ -821,6 +853,9 @@ export default function ConsumerTripDetailScreen({
             if (attempts >= 3) clearInterval(interval);
           }, 1000);
         }
+      } else if (result.outcome === "pending") {
+        // The server has not finalized an order yet; the recovery panel owns
+        // the durable state and keeps retry unavailable.
       } else if (result.outcome === "canceled") {
         // Silent: user dismissed PaymentSheet.
       } else {
@@ -857,17 +892,30 @@ export default function ConsumerTripDetailScreen({
   const handleCartCheckout = useCallback(
     async (payload: TicketCartCheckoutPayload): Promise<void> => {
       const result = await handleBuy(payload);
-      if (result.outcome === "succeeded") setCartVisible(false);
+      if (result.outcome === "succeeded") {
+        terminalSuccessCloseRef.current = () => setCartVisible(false);
+        setCheckoutTerminalOutcome(result);
+      } else if (
+        result.outcome === "pending" ||
+        (result.outcome === "failed" && result.retryable !== undefined) ||
+        (result.outcome === "canceled" && result.retryable === true)
+      ) {
+        setCheckoutTerminalOutcome(result);
+      }
     },
     [handleBuy],
   );
 
   const handleCartCancel = useCallback((): void => {
+    const deferredSuccessClose = terminalSuccessCloseRef.current;
+    terminalSuccessCloseRef.current = null;
     setCartVisible(false);
     setInitialTicketTypeId(null);
+    setCheckoutTerminalOutcome(null);
     // META-ORCH-1174 Leg B3 — clear the multi-package seed so a later single-tier
     // Reserve doesn't re-seed the prior multi-selection.
     setSeededQuantities(undefined);
+    deferredSuccessClose?.();
   }, []);
 
   // Floating close/share chrome — preserved from the prior overlay, now layered
@@ -1224,6 +1272,7 @@ export default function ConsumerTripDetailScreen({
         buyerUserId={user?.id ?? null}
         isSubmitting={checkoutInFlight}
         pendingPhase={checkoutPhase}
+        terminalOutcome={checkoutTerminalOutcome}
         clearFloatingNav={false}
         // ORCH-1182 (supersedes ORCH-1130's qty-1 `dueTodayCents` scalar) — hand
         // the cart the per-tier plan data so IT sums the qty-scaled deposit over
@@ -1235,6 +1284,7 @@ export default function ConsumerTripDetailScreen({
         // with business/web). Empty for events / no-plan / pay-in-full.
         installmentNoteByTicketId={installmentNoteByTicketId}
         onCancel={handleCartCancel}
+        onTerminalRetry={() => setCheckoutTerminalOutcome(null)}
         onCheckout={handleCartCheckout}
       />
 

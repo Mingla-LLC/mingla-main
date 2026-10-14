@@ -44,6 +44,17 @@ import {
   nativeCheckoutErrorMessage,
   nativePaystackReturnMessage,
 } from "./checkoutErrorMessages";
+import {
+  clearNativeCheckoutRecovery,
+  createNativeCheckoutRecoveryPointer,
+  isNativeCheckoutRecoveryAvailable,
+  persistNativeCheckoutRecovery,
+  reconcileNativeCheckout,
+  recoverNativeCheckout,
+  type NativeCheckoutOutcome,
+} from "./nativeCheckoutRecovery";
+
+export type { NativeCheckoutOutcome } from "./nativeCheckoutRecovery";
 
 /**
  * issue #2265 — what the flow is doing RIGHT NOW, so the surface the buyer
@@ -81,6 +92,8 @@ const emitPhase = (
 export interface NativeCheckoutInput {
   /** #3859 — omitted callers stay on the legacy v1 request contract. */
   checkoutContractVersion?: typeof TICKET_CHECKOUT_CONTRACT_VERSION;
+  /** Signed-in Explorer account that owns v2 restart recovery. */
+  accountId?: string;
   eventId: string;
   lines: Array<{
     ticketTypeId: string;
@@ -147,25 +160,6 @@ export interface NativeCheckoutInput {
    */
   onPhase?: (phase: NativeCheckoutPhase) => void;
 }
-
-export type NativeCheckoutOutcome =
-  | { outcome: "succeeded"; orderId: string }
-  | { outcome: "canceled" }
-  | {
-      outcome: "failed";
-      /**
-       * ALWAYS buyer-facing copy (issue #2229). Never a server token — every
-       * server error on this path goes through `nativeCheckoutErrorMessage`.
-       */
-      message: string;
-      /**
-       * issue #2229 — the bounded server token behind `message`, for callers
-       * that must BRANCH on the reason (the Experience screen re-opens its
-       * occurrence picker on a stale date). Callers display `message`; they
-       * never display this.
-       */
-      token?: string | null;
-    };
 
 type CheckoutCreateResponse =
   | {
@@ -480,6 +474,7 @@ async function followPaystackHandoff(
   checkoutSessionId: string,
   buyerStatusToken: string,
   onPhase?: (phase: NativeCheckoutPhase) => void,
+  includeProvider = false,
 ): Promise<NativeCheckoutOutcome> {
   emitPhase(onPhase, "opening_payment_page");
   let opened: WebBrowser.WebBrowserResult;
@@ -522,7 +517,11 @@ async function followPaystackHandoff(
   const poll = await pollPaystackOrder(checkoutSessionId, buyerStatusToken);
   if (poll.kind === "finalized") {
     clearHeldHandoff(eventId);
-    return { outcome: "succeeded", orderId: poll.orderId };
+    return {
+      outcome: "succeeded",
+      orderId: poll.orderId,
+      ...(includeProvider ? { provider: "paystack" as const } : {}),
+    };
   }
   // #2264 — the held page is DELIBERATELY kept on both remaining arms. The
   // terminal branch performs no database write (proven from production
@@ -560,12 +559,18 @@ async function followPaystackHandoff(
 async function preflightPaymentSheet(
   checkoutSessionId: string,
   buyerStatusToken: string,
+  failClosedOnTransport = false,
 ): Promise<boolean> {
-  const { data, error } = await supabase.functions.invoke<{ status?: string }>(
-    "ticket-checkout-status",
-    { body: { checkoutSessionId, buyerStatusToken, preflight: true } },
-  );
-  return error == null && data?.status === "present_allowed";
+  try {
+    const { data, error } = await supabase.functions.invoke<{ status?: string }>(
+      "ticket-checkout-status",
+      { body: { checkoutSessionId, buyerStatusToken, preflight: true } },
+    );
+    return error == null && data?.status === "present_allowed";
+  } catch (error) {
+    if (failClosedOnTransport) return false;
+    throw error;
+  }
 }
 
 export const isStripeGooglePayTestEnv = (): boolean =>
@@ -624,6 +629,18 @@ export const useNativeCheckoutFlow = (): ((
   ): Promise<NativeCheckoutOutcome> {
     const onPhase = input.onPhase;
 
+    if (
+      input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION &&
+      typeof input.accountId === "string" &&
+      input.accountId.length > 0
+    ) {
+      const recovered = await recoverNativeCheckout({
+        accountId: input.accountId,
+        eventId: input.eventId,
+      });
+      if (recovered !== null) return recovered;
+    }
+
     // issue #2227 — if this exact cart has already been handed a Paystack page,
     // RE-OPEN THAT ONE. The server refuses a second create for a cart with a
     // live provider attempt (409 `checkout_in_progress`) and it is right to;
@@ -642,6 +659,7 @@ export const useNativeCheckoutFlow = (): ((
         heldForCart.checkoutSessionId,
         heldForCart.buyerStatusToken,
         onPhase,
+        input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION,
       );
     }
 
@@ -791,11 +809,44 @@ export const useNativeCheckoutFlow = (): ((
     // 2a. Free ticket — already finalized on server.
     if (data.kind === "free_completed") {
       clearHeldHandoff(input.eventId);
-      return { outcome: "succeeded", orderId: data.orderId };
+      return {
+        outcome: "succeeded",
+        orderId: data.orderId,
+        ...(input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION
+          ? { provider: "free" as const }
+          : {}),
+      };
     }
 
     // 2b. Native payment required — present Stripe PaymentSheet.
     if (data.kind === "requires_payment") {
+      if (
+        input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION &&
+        (!input.accountId || !isNativeCheckoutRecoveryAvailable())
+      ) {
+        return {
+          outcome: "failed",
+          message: "Update Mingla before paying so your booking can be recovered safely.",
+        };
+      }
+      const recoveryPointer =
+        input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION
+          ? createNativeCheckoutRecoveryPointer({
+            checkoutSessionId: data.checkoutSessionId,
+            buyerStatusToken: data.buyerStatusToken,
+            accountId: input.accountId as string,
+            eventId: input.eventId,
+          })
+          : null;
+      if (
+        recoveryPointer !== null &&
+        !await persistNativeCheckoutRecovery(recoveryPointer)
+      ) {
+        return {
+          outcome: "failed",
+          message: "Payment could not start safely. Try again after reopening Mingla.",
+        };
+      }
       // ORCH-0844 — Connect direct-charge: re-initialise the native Stripe
       // SDK for THIS PaymentIntent's connected account. Without this, the
       // SDK's mid-PaymentSheet confirm call hits Stripe under the platform
@@ -813,12 +864,21 @@ export const useNativeCheckoutFlow = (): ((
       // function should always send them on requires_payment, but a
       // future non-Connect platform-direct PI shape falls through cleanly).
       if (data.publishableKey && data.stripeAccountId) {
-        await initStripe({
-          publishableKey: data.publishableKey,
-          stripeAccountId: data.stripeAccountId,
-          merchantIdentifier: "merchant.com.mingla.app.v2",
-          urlScheme: "com.mingla.app.v2",
-        });
+        try {
+          await initStripe({
+            publishableKey: data.publishableKey,
+            stripeAccountId: data.stripeAccountId,
+            merchantIdentifier: "merchant.com.mingla.app.v2",
+            urlScheme: "com.mingla.app.v2",
+          });
+        } catch (error) {
+          if (recoveryPointer === null) throw error;
+          await clearNativeCheckoutRecovery();
+          return {
+            outcome: "failed",
+            message: "Payment could not start safely. Review your booking and try again.",
+          };
+        }
       } else {
         console.warn(
           "[nativeCheckoutFlow] requires_payment missing publishableKey or stripeAccountId — skipping per-PI initStripe; PaymentSheet confirm may fail with 404 if PI is on a connected account",
@@ -829,7 +889,9 @@ export const useNativeCheckoutFlow = (): ((
         );
       }
 
-      const initResult = await initPaymentSheet({
+      let initResult: Awaited<ReturnType<typeof initPaymentSheet>>;
+      try {
+        initResult = await initPaymentSheet({
         merchantDisplayName: MERCHANT_DISPLAY_NAME,
         paymentIntentClientSecret: data.clientSecret,
         // ORCH-0829-B: returnURL is required by Stripe for any payment
@@ -881,10 +943,19 @@ export const useNativeCheckoutFlow = (): ((
         googlePay: {
           merchantCountryCode: "US",
           testEnv: isStripeGooglePayTestEnv(),
-          currencyCode: "usd",
+          currencyCode: data.currency.trim().toLowerCase(),
         },
-      });
+        });
+      } catch (error) {
+        if (recoveryPointer === null) throw error;
+        await clearNativeCheckoutRecovery();
+        return {
+          outcome: "failed",
+          message: "Couldn't open payment sheet.",
+        };
+      }
       if (initResult.error) {
+        if (recoveryPointer !== null) await clearNativeCheckoutRecovery();
         return {
           outcome: "failed",
           message:
@@ -901,19 +972,52 @@ export const useNativeCheckoutFlow = (): ((
         !await preflightPaymentSheet(
           data.checkoutSessionId,
           data.buyerStatusToken,
+          recoveryPointer !== null,
         )
       ) {
+        if (recoveryPointer !== null) await clearNativeCheckoutRecovery();
         return {
           outcome: "failed",
           message: "This sale is no longer available.",
         };
       }
       emitPhase(onPhase, "presenting_sheet");
-      const presentResult = await presentPaymentSheet();
-      if (presentResult.error) {
-        if (presentResult.error.code === "Canceled") {
-          return { outcome: "canceled" };
+      let presentResult: Awaited<ReturnType<typeof presentPaymentSheet>>;
+      try {
+        presentResult = await presentPaymentSheet();
+      } catch (error) {
+        if (
+          input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION &&
+          recoveryPointer !== null
+        ) {
+          emitPhase(onPhase, "confirming_payment");
+          return await reconcileNativeCheckout(
+            recoveryPointer,
+            "payment_completed",
+          );
         }
+        throw error;
+      }
+      if (
+        input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION &&
+        recoveryPointer !== null
+      ) {
+        emitPhase(onPhase, "confirming_payment");
+        const reconciled = await reconcileNativeCheckout(
+          recoveryPointer,
+          presentResult.error?.code === "Canceled"
+            ? "payment_canceled"
+            : "payment_completed",
+        );
+        if (reconciled.outcome === "succeeded") {
+          clearHeldHandoff(input.eventId);
+        }
+        return reconciled;
+      }
+
+      // Legacy v1 behavior remains unchanged until its callers migrate.
+      if (presentResult.error) {
+        if (presentResult.error.code === "Canceled") return { outcome: "canceled" };
         return {
           outcome: "failed",
           message:
@@ -922,12 +1026,6 @@ export const useNativeCheckoutFlow = (): ((
             "Payment failed.",
         };
       }
-
-      // PaymentSheet succeeded. Stripe webhook + biz_ticket_checkout_finalize
-      // produce the order row asynchronously; we surface the checkoutSessionId
-      // here so the caller can navigate to a confirmation surface that polls
-      // for the finalized order (or trust the realtime calendar subscription
-      // to pick up the new ticket entry).
       clearHeldHandoff(input.eventId);
       return { outcome: "succeeded", orderId: data.checkoutSessionId };
     }
@@ -956,6 +1054,7 @@ export const useNativeCheckoutFlow = (): ((
         data.checkoutSessionId,
         data.buyerStatusToken,
         onPhase,
+        input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION,
       );
     }
 

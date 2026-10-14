@@ -158,6 +158,11 @@ import {
   type NativeCheckoutPhase,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
+import { useNativeCheckoutRecovery } from "../../payments/useNativeCheckoutRecovery";
+import {
+  claimNativePurchaseCompleted,
+  nativePurchaseAnalyticsProperties,
+} from "../../payments/nativeCheckoutRecovery";
 import { resolveExplorerCheckoutContact } from "../../payments/explorerCheckoutContact.mjs";
 // ORCH-1291 [rsvp-chip-in] — voluntary contribution hand-off (reuses the Stripe
 // RN PaymentSheet + connected-account initStripe pattern; NO new native dep).
@@ -420,6 +425,9 @@ export default function ConsumerEventDetailScreen({
   const [checkoutPhase, setCheckoutPhase] = useState<NativeCheckoutPhase | null>(
     null,
   );
+  const [checkoutTerminalOutcome, setCheckoutTerminalOutcome] =
+    useState<NativeCheckoutOutcome | null>(null);
+  const terminalSuccessCloseRef = useRef<(() => void) | null>(null);
   // issue #868 [cover-gallery], M.1b — single owner of the shown hero item
   // (0 = cover, i = gallery[i-1]) shared by the cover pager + the row. Placed with
   // the other hooks (before the loading early-returns) to preserve hook order.
@@ -491,6 +499,25 @@ export default function ConsumerEventDetailScreen({
   const intakeSchemasQuery = useTripIntakeSchemas(eventId);
   const themeQuery = useEventTheme(canonical === null ? seed : null);
   const runNativeCheckout = useNativeCheckoutFlow();
+  const handleRecoveredCheckout = useCallback(
+    (outcome: NativeCheckoutOutcome): void => {
+      terminalSuccessCloseRef.current = outcome.outcome === "succeeded"
+        ? () => {
+          setCartVisible(false);
+          onBack();
+        }
+        : null;
+      setCheckoutTerminalOutcome(outcome);
+      setCartVisible(true);
+    },
+    [onBack],
+  );
+  useNativeCheckoutRecovery({
+    accountId: user?.id ?? null,
+    eventId,
+    recheckWhen: cartVisible,
+    onRecovered: handleRecoveredCheckout,
+  });
 
   const validatedDayCanonical =
     canonicalQuery.data !== null &&
@@ -943,6 +970,7 @@ export default function ConsumerEventDetailScreen({
       try {
         result = await runNativeCheckout({
           checkoutContractVersion: 2,
+          accountId: user.id,
           eventId: seed.eventId,
           lines: payload.lines,
           buyer: {
@@ -973,13 +1001,21 @@ export default function ConsumerEventDetailScreen({
       }
 
       if (result.outcome === "succeeded") {
-        // META-ORCH-1187 — purchase conversion (SC-5). value in major units.
-        postHogService.capture("purchase_completed", {
-          event_id: seed.eventId,
-          value: payload.totalCents / 100,
-          currency: seed.currency,
-          surface: "consumer_app",
-        });
+        if (
+          result.provider !== undefined &&
+          claimNativePurchaseCompleted(result.orderId)
+        ) {
+          postHogService.capture(
+            "purchase_completed",
+            nativePurchaseAnalyticsProperties({
+              eventId: seed.eventId,
+              totalCents: payload.totalCents,
+              currency: seed.currency,
+              provider: result.provider,
+              recovered: false,
+            }),
+          );
+        }
         void Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Success,
         );
@@ -1004,6 +1040,9 @@ export default function ConsumerEventDetailScreen({
             if (attempts >= 3) clearInterval(interval);
           }, 1000);
         }
+      } else if (result.outcome === "pending") {
+        // The server has not finalized an order yet. The cart switches to the
+        // durable terminal panel; retry remains unavailable while this is true.
       } else if (result.outcome === "canceled") {
         // Silent: user dismissed PaymentSheet.
       } else {
@@ -1035,15 +1074,28 @@ export default function ConsumerEventDetailScreen({
     async (payload: TicketCartCheckoutPayload): Promise<void> => {
       const result = await handleBuy(payload);
       if (result.outcome === "succeeded") {
-        setCartVisible(false);
-        onBack();
+        terminalSuccessCloseRef.current = () => {
+          setCartVisible(false);
+          onBack();
+        };
+        setCheckoutTerminalOutcome(result);
+      } else if (
+        result.outcome === "pending" ||
+        (result.outcome === "failed" && result.retryable !== undefined) ||
+        (result.outcome === "canceled" && result.retryable === true)
+      ) {
+        setCheckoutTerminalOutcome(result);
       }
     },
     [handleBuy, onBack],
   );
   const handleCartCancel = useCallback((): void => {
+    const deferredSuccessClose = terminalSuccessCloseRef.current;
+    terminalSuccessCloseRef.current = null;
     setCartVisible(false);
     setInitialTicketTypeId(null);
+    setCheckoutTerminalOutcome(null);
+    deferredSuccessClose?.();
   }, []);
 
   // ORCH-1163 [rsvp-shared-body] — lift the shared RSVP decision/submit/dialog
@@ -1861,10 +1913,12 @@ export default function ConsumerEventDetailScreen({
         buyerUserId={user?.id ?? null}
         isSubmitting={checkoutInFlight}
         pendingPhase={checkoutPhase}
+        terminalOutcome={checkoutTerminalOutcome}
         multiDaySelection={multiDaySelection}
         hideRemainingCount={hideRemainingCount}
         clearFloatingNav={false}
         onCancel={handleCartCancel}
+        onTerminalRetry={() => setCheckoutTerminalOutcome(null)}
         onCheckout={handleCartCheckout}
       />
 

@@ -70,6 +70,7 @@ import { fireOrderFinalizeNotifications } from "../_shared/businessNotifyTrigger
 import { fireAdConversion } from "../_shared/adConversionFire.ts";
 // #3682 — auto-follow brand after signed-in purchase (fail-open).
 import { autoFollowBrandBestEffort } from "../_shared/autoFollowBrand.ts";
+import { classifyStripeCheckoutConfirmationStatus } from "../_shared/ticketCheckoutConfirmationStatus.ts";
 
 interface ConfirmRequest {
   checkoutSessionId: string;
@@ -508,7 +509,8 @@ serve(async (req) => {
   const piStatus = typeof paymentIntent.status === "string"
     ? paymentIntent.status
     : "";
-  if (piStatus === "succeeded") {
+  const confirmationStatus = classifyStripeCheckoutConfirmationStatus(piStatus);
+  if (confirmationStatus === "paid") {
     const paymentMethodType =
       Array.isArray(paymentIntent.payment_method_types) &&
         typeof paymentIntent.payment_method_types[0] === "string"
@@ -747,7 +749,7 @@ serve(async (req) => {
     });
   }
 
-  if (piStatus === "processing" || piStatus === "requires_action") {
+  if (confirmationStatus === "pending") {
     return jsonResponse({
       checkoutSessionId: session.id,
       status: "pending" as FinalizeStatus,

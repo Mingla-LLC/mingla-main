@@ -76,7 +76,10 @@ import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
 // issue #2265 — TYPE ONLY. A value import here would pull the Stripe native SDK
 // into the cart sheet's module graph; `import type` is erased at compile time.
-import type { NativeCheckoutPhase } from "../../payments/nativeCheckoutFlow";
+import type {
+  NativeCheckoutOutcome,
+  NativeCheckoutPhase,
+} from "../../payments/nativeCheckoutFlow";
 import {
   CONSENT_VISIBLE_FOLLOW_AFTER,
   CONSENT_VISIBLE_FOLLOW_BEFORE,
@@ -361,6 +364,8 @@ export interface TicketCartSheetProps {
    * Invariant: I-PROPOSED-CHECKOUT-PENDING-SURFACE-SURVIVES.
    */
   pendingPhase?: NativeCheckoutPhase | null;
+  /** Server-confirmed v2 terminal/recovery state. */
+  terminalOutcome?: NativeCheckoutOutcome | null;
   /**
    * True when this cart is rendered inline below Mingla's floating nav. When the
    * parent group is already hosted in an overlay carrier, the nav is behind the
@@ -403,6 +408,8 @@ export interface TicketCartSheetProps {
    */
   hideRemainingCount?: boolean;
   onCancel: () => void;
+  /** Available only after server truth says a new attempt is safe. */
+  onTerminalRetry?: () => void;
   onCheckout: (payload: TicketCartCheckoutPayload) => void;
 }
 
@@ -423,12 +430,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   buyerUserId = null,
   isSubmitting,
   pendingPhase = null,
+  terminalOutcome = null,
   clearFloatingNav = true,
   planTiersByTicketId,
   installmentNoteByTicketId,
   multiDaySelection = null,
   hideRemainingCount = false,
   onCancel,
+  onTerminalRetry,
   onCheckout,
 }) => {
   const insets = useSafeAreaInsets();
@@ -1118,7 +1127,15 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         numberOfLines={multiDaySelection === null ? 1 : undefined}
         allowFontScaling
       >
-        Get tickets
+        {terminalOutcome?.outcome === "succeeded"
+          ? (terminalOutcome.title ?? "You’re booked")
+          : terminalOutcome?.outcome === "pending"
+          ? terminalOutcome.title
+          : terminalOutcome?.outcome === "canceled"
+          ? "Payment canceled"
+          : terminalOutcome?.outcome === "failed"
+          ? "Payment needs attention"
+          : "Get tickets"}
       </Text>
       <Pressable
         style={styles.closeIcon}
@@ -1162,8 +1179,36 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     );
   });
 
-  const body =
-    renderState === "loading" ? (
+  const terminalBody = terminalOutcome === null ? null : (
+    <View
+      style={styles.terminalBody}
+      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
+      testID="explorer-checkout-terminal-state"
+    >
+      <Text style={styles.terminalTitle}>
+        {terminalOutcome.outcome === "succeeded"
+          ? (terminalOutcome.title ?? "You’re booked")
+          : terminalOutcome.outcome === "pending"
+          ? terminalOutcome.title
+          : terminalOutcome.outcome === "canceled"
+          ? "Payment canceled"
+          : "Payment needs attention"}
+      </Text>
+      <Text style={styles.terminalMessage}>
+        {terminalOutcome.outcome === "succeeded"
+          ? "Your booking is confirmed and your tickets are ready."
+          : terminalOutcome.outcome === "pending"
+          ? terminalOutcome.message
+          : terminalOutcome.outcome === "canceled"
+          ? "No completed or pending payment was found. You can review your booking and try again."
+          : terminalOutcome.message}
+      </Text>
+    </View>
+  );
+
+  const body = terminalBody ??
+    (renderState === "loading" ? (
       <View style={styles.bodyMessageWrap}>
         <ActivityIndicator color="rgba(255,255,255,0.65)" />
         <Text style={styles.bodyMessage}>Loading tickets…</Text>
@@ -1598,10 +1643,52 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           </View>
         ) : null}
       </>
-    );
+    ));
 
   const stickyFooter =
-    renderState === "populated" ? (
+    terminalOutcome !== null ? (
+      <View style={stickyBarStyle}>
+        <Pressable
+          onPress={
+            (terminalOutcome.outcome === "canceled" &&
+              terminalOutcome.retryable === true) ||
+              (terminalOutcome.outcome === "failed" &&
+                terminalOutcome.retryable === true)
+              ? onTerminalRetry
+              : handleCancel
+          }
+          disabled={
+            ((terminalOutcome.outcome === "canceled" &&
+              terminalOutcome.retryable === true) ||
+              (terminalOutcome.outcome === "failed" &&
+                terminalOutcome.retryable === true)) &&
+            onTerminalRetry === undefined
+          }
+          accessibilityRole="button"
+          accessibilityLabel={
+            (terminalOutcome.outcome === "canceled" &&
+              terminalOutcome.retryable === true) ||
+              (terminalOutcome.outcome === "failed" &&
+                terminalOutcome.retryable === true)
+              ? "Review booking and try again"
+              : "Close"
+          }
+          style={({ pressed }) => [
+            styles.ctaButton,
+            pressed && styles.ctaButtonPressed,
+          ]}
+        >
+          <Text style={styles.ctaLabel}>
+            {(terminalOutcome.outcome === "canceled" &&
+                terminalOutcome.retryable === true) ||
+                (terminalOutcome.outcome === "failed" &&
+                  terminalOutcome.retryable === true)
+              ? "Review and try again"
+              : "Close"}
+          </Text>
+        </Pressable>
+      </View>
+    ) : renderState === "populated" ? (
       <View style={stickyBarStyle}>
         <View style={styles.subtotalRow}>
           <Text style={styles.subtotalLabel}>{subtotalLabelText}</Text>
@@ -2112,6 +2199,21 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#eb7825",
     letterSpacing: -0.2,
+  },
+  terminalBody: {
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+  },
+  terminalTitle: {
+    color: "rgba(255, 255, 255, 0.96)",
+    fontSize: 24,
+    fontWeight: "700",
+    marginBottom: 10,
+  },
+  terminalMessage: {
+    color: "rgba(255, 255, 255, 0.72)",
+    fontSize: 16,
+    lineHeight: 24,
   },
   ctaButton: {
     height: 52,
