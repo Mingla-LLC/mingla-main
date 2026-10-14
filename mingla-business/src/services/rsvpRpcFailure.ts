@@ -42,6 +42,8 @@
  * deployed".
  */
 
+import { draftCurrencyRefusalCopy } from "../utils/draftCurrencyPublishRefusal";
+
 /**
  * The two error shapes an RSVP RPC caller can be handed: a real `Error`
  * (thrown by our own service code) or the bare PostgREST object.
@@ -127,6 +129,10 @@ export const rsvpRpcFailureCopy = (
   error: unknown,
   action: string,
 ): string => {
+  // Issue #3645 — the draft is priced in a currency its brand no longer sells
+  // in: say what to do, not "try again".
+  const currencyCopy = draftCurrencyRefusalCopy(readRpcFailureMessage(error));
+  if (currencyCopy !== null) return currencyCopy;
   if (isMissingRpcFailure(error)) {
     return `We couldn't ${action}. This is a problem on our side, not something you did — retrying won't help. Please contact support@usemingla.com so we can fix it.`;
   }

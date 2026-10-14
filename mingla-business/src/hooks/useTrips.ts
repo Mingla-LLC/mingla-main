@@ -15,6 +15,7 @@
  * Spec: Mingla_Artifacts/specs/SPEC_ORCH-0859_TR2_MINIMUM_VIABLE_TRIP.md §4.7
  */
 
+import { publishWithDraftCurrencySync } from "../services/draftCurrencySync";
 import {
   useMutation,
   useQuery,
@@ -288,6 +289,12 @@ export const useUpdateTripPricing = (): UseMutationResult<
         message: error.message,
         eventId,
       });
+      // Issue #3645 — the save was refused because the server cleared this
+      // package's price (the brand's currency changed). Read the trip again so
+      // the open pricing form re-seeds that package as "no price yet".
+      if (error.message === "price_reentry_required") {
+        queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
+      }
     },
   });
 };
@@ -379,13 +386,24 @@ export const usePublishTrip = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<Trip, Error, PublishTripInput>({
+    // Issue #3645 — refused because the trip is priced in a currency its brand
+    // no longer sells in: ask the server to bring it in step, then read the
+    // trip again so the pricing form re-opens the cleared packages empty.
     mutationFn: async (variables) =>
-      publishTrip(variables.eventId, variables.draftPayload, {
-        operationId: operationIdFor(variables),
-        // publish runs two commands; the pre-save needs its own stable id.
-        saveOperationId: operationIdFor(variables.draftPayload),
-        invites: variables.invites,
-      }),
+      publishWithDraftCurrencySync(
+        variables.eventId,
+        () =>
+          publishTrip(variables.eventId, variables.draftPayload, {
+            operationId: operationIdFor(variables),
+            // publish runs two commands; the pre-save needs its own stable id.
+            saveOperationId: operationIdFor(variables.draftPayload),
+            invites: variables.invites,
+          }),
+        () =>
+          queryClient.invalidateQueries({
+            queryKey: tripKeys.detail(variables.eventId),
+          }),
+      ),
     onSuccess: (trip, { brandId }) => {
       queryClient.setQueryData<Trip>(tripKeys.detail(trip.id), trip);
       queryClient.invalidateQueries({

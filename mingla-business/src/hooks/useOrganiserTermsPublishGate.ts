@@ -48,6 +48,12 @@ export const ORGANISER_TERMS_PUBLISH_RETRY_TOAST =
  */
 export const ORGANISER_TERMS_RESUME_SETTLE_MS = 340 as const;
 
+/** Why a server terms refusal could not be turned into the acceptance sheet. */
+export type OrganiserTermsUnresolvedReason =
+  | "already_accepted"
+  | "unreadable"
+  | "unavailable";
+
 export interface OrganiserTermsPublishGate {
   /**
    * Returns true when publish must stop (gate opened / ToS still loading for a
@@ -58,6 +64,27 @@ export interface OrganiserTermsPublishGate {
     isPaid: boolean,
     onAccepted?: () => void,
   ) => boolean;
+  /**
+   * #3645 — the SERVER refused a paid publish for want of the Organiser Terms.
+   * The app's own copy of "accepted" is therefore wrong or out of date, so it is
+   * read again first:
+   *  - not accepted: the acceptance sheet opens, and `onAccepted` (the publish
+   *    that was refused) runs once the terms are accepted and the sheet closed;
+   *  - still reads as accepted (`already_accepted`), or cannot be read
+   *    (`unreadable`), or there is no brand or member (`unavailable`): the
+   *    sheet has nothing to offer, so `onUnresolved` runs with that reason and
+   *    the publish is NOT retried.
+   *
+   * One host press of Publish gets at most ONE automatic resume from here. If
+   * the resumed publish is refused again, `onUnresolved("already_accepted")`
+   * runs at once: nothing publishes a second time until the host presses
+   * Publish again. That, and never trusting a cached "accepted" over a failed
+   * read, is what stops a refusal the sheet cannot clear from looping.
+   */
+  acceptTermsAfterServerRefusal: (
+    onAccepted?: () => void,
+    onUnresolved?: (reason: OrganiserTermsUnresolvedReason) => void,
+  ) => void;
   /** Mount at wizard root (I-13 overlay contract). Null when closed. */
   gateElement: React.ReactElement | null;
 }
@@ -80,17 +107,99 @@ export function useOrganiserTermsPublishGate(
   acceptedRef.current = accepted;
   const justPassedRef = useRef<boolean>(false);
   const pendingResumeRef = useRef<(() => void) | null>(null);
+  // #3645 — one automatic resume per host press, for a server refusal.
+  const pendingResumeFromServerRef = useRef<boolean>(false);
+  const serverResumeSpentRef = useRef<boolean>(false);
+  const inResumeRef = useRef<boolean>(false);
   const [resumeNonce, setResumeNonce] = useState(0);
 
   const blockPaidPublishUntilAccepted = useCallback(
     (isPaid: boolean, onAccepted?: () => void): boolean => {
+      // A call from outside a resume is the host pressing Publish: they get a
+      // fresh automatic resume for that press.
+      if (!inResumeRef.current) serverResumeSpentRef.current = false;
       if (!isPaid) return false;
       if (acceptedRef.current || justPassedRef.current) return false;
       // Still loading: open the gate (renders null while loading, then sheet or
       // onPassed). Prefer fail-closed over publishing without a known accept.
       pendingResumeRef.current = onAccepted ?? null;
+      pendingResumeFromServerRef.current = false;
       setGateOpen(true);
       return true;
+    },
+    [],
+  );
+
+  // The latest query object, read when the server refuses (never at render).
+  const acceptanceQueryRef = useRef(acceptanceQuery);
+  acceptanceQueryRef.current = acceptanceQuery;
+  const mountedRef = useRef(true);
+  useEffect(
+    () => (): void => {
+      mountedRef.current = false;
+    },
+    [],
+  );
+  const scopeRef = useRef<string>("");
+  scopeRef.current = `${resolvedBrandId ?? ""}|${userId ?? ""}`;
+  const scopeReadyRef = useRef<boolean>(false);
+  scopeReadyRef.current = resolvedBrandId !== null && userId !== null;
+
+  const acceptTermsAfterServerRefusal = useCallback(
+    (
+      onAccepted?: () => void,
+      onUnresolved?: (reason: OrganiserTermsUnresolvedReason) => void,
+    ): void => {
+      // The server is the authority: forget "accepted a moment ago".
+      justPassedRef.current = false;
+      // This press already had its automatic resume and was refused again.
+      if (serverResumeSpentRef.current) {
+        onUnresolved?.("already_accepted");
+        return;
+      }
+      const scope = scopeRef.current;
+      if (!scopeReadyRef.current) {
+        // No brand or no signed-in member: there is no sheet to open.
+        onUnresolved?.("unavailable");
+        return;
+      }
+      const refetch = (
+        acceptanceQueryRef.current as {
+          refetch?: () => Promise<{ data?: unknown; isError?: boolean }>;
+        }
+      ).refetch;
+      if (typeof refetch !== "function") {
+        onUnresolved?.("unreadable");
+        return;
+      }
+      const stillHere = (): boolean =>
+        mountedRef.current && scopeRef.current === scope;
+      void refetch()
+        .then((result) => {
+          if (!stillHere()) return;
+          // A failed read proves nothing. The sheet would trust whatever is
+          // cached, and a cached "accepted" would pass it straight through to
+          // another refused publish, so a failed read never opens the sheet.
+          if (result.isError === true) {
+            onUnresolved?.("unreadable");
+            return;
+          }
+          if (
+            isCurrentMinglaToSAccepted(
+              result.data as Parameters<typeof isCurrentMinglaToSAccepted>[0],
+            )
+          ) {
+            onUnresolved?.("already_accepted");
+            return;
+          }
+          pendingResumeRef.current = onAccepted ?? null;
+          pendingResumeFromServerRef.current = true;
+          setGateOpen(true);
+        })
+        .catch(() => {
+          if (!stillHere()) return;
+          onUnresolved?.("unreadable");
+        });
     },
     [],
   );
@@ -107,6 +216,8 @@ export function useOrganiserTermsPublishGate(
   useEffect(() => {
     justPassedRef.current = false;
     pendingResumeRef.current = null;
+    pendingResumeFromServerRef.current = false;
+    serverResumeSpentRef.current = false;
   }, [resolvedBrandId, userId]);
 
   // Resume the interrupted publish once, after the gate has unmounted AND its
@@ -119,11 +230,22 @@ export function useOrganiserTermsPublishGate(
   useEffect(() => {
     if (resumeNonce === 0) return;
     const resume = pendingResumeRef.current;
+    const fromServerRefusal = pendingResumeFromServerRef.current;
     pendingResumeRef.current = null;
+    pendingResumeFromServerRef.current = false;
     if (resume === null) return;
     resumeTimerRef.current = setTimeout(() => {
       resumeTimerRef.current = null;
-      resume();
+      // #3645 — this press has now had its one automatic resume. `inResumeRef`
+      // marks the resumed handler's own gate check so it is not mistaken for a
+      // new press.
+      if (fromServerRefusal) serverResumeSpentRef.current = true;
+      inResumeRef.current = true;
+      try {
+        resume();
+      } finally {
+        inResumeRef.current = false;
+      }
     }, ORGANISER_TERMS_RESUME_SETTLE_MS);
   }, [resumeNonce]);
   useEffect(
@@ -148,5 +270,9 @@ export function useOrganiserTermsPublishGate(
     });
   }
 
-  return { blockPaidPublishUntilAccepted, gateElement };
+  return {
+    blockPaidPublishUntilAccepted,
+    acceptTermsAfterServerRefusal,
+    gateElement,
+  };
 }

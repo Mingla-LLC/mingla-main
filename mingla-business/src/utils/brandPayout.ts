@@ -61,6 +61,30 @@ export function brandSellsBeforeBank(
   return isBrandChargeReady(brand) && !isBrandPayoutReady(brand);
 }
 
+/**
+ * #3645 — the same question for the brand-creation Payouts step, answered from
+ * the payout country the organiser has JUST picked there.
+ *
+ * Picking Nigeria is confirmed by the server before the step is told about it,
+ * and from that moment the brand sells before it has a bank. The brand object
+ * the step holds does not carry the server's stamp yet, so asking
+ * `brandSellsBeforeBank(brand)` alone kept showing "connect a bank before
+ * collecting money" to a host who could already sell (seen live, 2026-10-14).
+ * The country just picked therefore decides:
+ *  - Nigeria picked: sells before bank, unless a bank is already connected;
+ *  - any other country picked: does not, even if the brand object still reads
+ *    as Nigerian for a moment;
+ *  - nothing picked in this session: the saved brand decides, as before.
+ */
+export function payoutStepSellsBeforeBank(
+  pickedRail: { provider: string } | null | undefined,
+  brand: PayoutBrand | null | undefined,
+): boolean {
+  if (pickedRail == null) return brandSellsBeforeBank(brand);
+  if (pickedRail.provider !== "paystack") return false;
+  return !isBrandPayoutReady({ ...(brand ?? {}), paymentProvider: "paystack" });
+}
+
 /** Can receive organiser payouts (bank / recipient connected). */
 export function isBrandPayoutReady(
   brand: PayoutBrand | null | undefined,

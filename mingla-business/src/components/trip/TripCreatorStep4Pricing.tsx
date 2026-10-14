@@ -48,6 +48,7 @@ import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
 // (RN-free) so the wizard + edit-published path + tests share one source.
 import { MAX_TRIP_PACKAGES } from "./tripPackagesValidation";
 import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
+import { pricesClearedNotice } from "../../utils/draftFollowsBrandCurrency";
 
 export { MAX_TRIP_PACKAGES };
 
@@ -73,6 +74,12 @@ export interface Step4Package {
   paymentPlan: TripInstallmentSchedule | null;
   /** True once ≥1 buyer has booked THIS package — locks price + plan. */
   soldCount: number;
+  /**
+   * Issue #3645 — this package's price was cleared because the brand's currency
+   * changed. While the price field is empty the package is "no price yet",
+   * not free.
+   */
+  priceNeedsReentry?: boolean;
 }
 
 export interface Step4Draft {
@@ -165,6 +172,8 @@ const PackageCard: React.FC<PackageCardProps> = ({
 }) => {
   const [confirmRemovePlanOpen, setConfirmRemovePlanOpen] = useState(false);
   const priceCents = Math.round((parseFloat(pkg.priceMajor) || 0) * 100);
+  const priceAwaitingReentry =
+    pkg.priceNeedsReentry === true && pkg.priceMajor.trim().length === 0;
   const planEnabled = pkg.paymentPlan !== null;
   // Post-sale price lock — the server's `tier_price_change_with_sales` refund
   // gate rejects any price change on a sold package; this removes the editable
@@ -268,8 +277,19 @@ const PackageCard: React.FC<PackageCardProps> = ({
         </View>
       </View>
 
+      {/* Issue #3645 — a price cleared by a currency change is not "free". */}
+      {!priceLocked && priceAwaitingReentry ? (
+        <Text
+          style={styles.freeHint}
+          accessibilityRole="alert"
+          testID={`trip-step4-price-reentry-${index}`}
+        >
+          {"Your brand's currency changed. Enter this package's price again."}
+        </Text>
+      ) : null}
+
       {/* Free-package hint — price 0 is allowed (DEC-I). */}
-      {!priceLocked && priceCents === 0 ? (
+      {!priceLocked && priceCents === 0 && !priceAwaitingReentry ? (
         <Text style={styles.freeHint} testID={`trip-step4-free-hint-${index}`}>
           Free package — buyers reserve a spot at no charge.
         </Text>
@@ -395,6 +415,9 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
   );
 
   const packages = draft.packages;
+  const pricesAwaitingReentry = packages.some(
+    (p) => p.priceNeedsReentry === true && p.priceMajor.trim().length === 0,
+  );
   const canAdd = packages.length < MAX_TRIP_PACKAGES;
   const canRemoveAny = packages.length > 1;
 
@@ -480,6 +503,18 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
         has its own price, spots, and optional payment plan. Free packages are
         allowed alongside paid ones.
       </Text>
+
+      {/* Issue #3645 — the brand's currency changed and these prices were
+          cleared. Stays until every cleared package has a price again. */}
+      {pricesAwaitingReentry && draft.currency.trim().length > 0 ? (
+        <Text
+          style={styles.freeHint}
+          accessibilityRole="alert"
+          testID="trip-step4-prices-cleared-notice"
+        >
+          {pricesClearedNotice(draft.currency)}
+        </Text>
+      ) : null}
 
       {packages.map((pkg, index) => (
         <PackageCard
