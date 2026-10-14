@@ -434,9 +434,12 @@ export const lastNoticeLine = (
       heldOff > 0 ? `${heldOff} not sent because emails were switched off` : null,
     ]);
   }
+  // "Being tested" is what the server recorded for this notice when it went
+  // out (`testing`), never today's switch. An answer from an older server
+  // without that field falls back to the shape a test leaves behind.
   if (
     heldTesting > 0 || last.testing === true ||
-    (alerted > 0 && heldOff === 0 && last.sent > 0)
+    (last.testing === undefined && alerted > 0 && heldOff === 0 && last.sent > 0)
   ) {
     // Emails were being tested: only test addresses had the new email.
     return finish([
@@ -450,10 +453,14 @@ export const lastNoticeLine = (
     ]);
   }
   return finish([
-    `sent to ${last.sent} of ${last.audience}${noun === "guests" ? " guests" : ""}`,
+    `sent to ${last.sent} of ${
+      noun === "guests" ? people(last.audience, noun) : String(last.audience)
+    }`,
     otherPart,
     last.pending > 0 ? `${last.pending} still sending` : null,
-    `${last.noEmail} ${last.noEmail === 1 ? "has" : "have"} no email address`,
+    // A zero is never a clause: "0 have no email address" beside a guest with
+    // no address reached by text read as a contradiction.
+    last.noEmail > 0 ? `${last.noEmail} ${last.noEmail === 1 ? "has" : "have"} no email address` : null,
     heldOff > 0 ? `${heldOff} not sent because emails were switched off` : null,
     alerted > 0 ? `${people(alerted, noun)} alerted the usual way` : null,
     `${last.failed} failed`,

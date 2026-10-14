@@ -46,7 +46,7 @@ const line = (last: Record<string, unknown>, noun: "buyers" | "guests" = "guests
 describe("issue #3827 round 4 — every guest is counted, once, truthfully", () => {
   test("R4-C1: guests reached by text or the app are named; 'no email address' is only the unreached", () => {
     expect(line({ ...fannedOut, sent: 2, reachedOther: 1, noEmail: 0 })?.text).toBe(
-      "Last update: sent to 2 of 3 guests · 1 guest with no email address reached by text or the app · 0 have no email address · 0 failed",
+      "Last update: sent to 2 of 3 guests · 1 guest with no email address reached by text or the app · 0 failed",
     );
     expect(line({ ...fannedOut, audience: 4, sent: 2, reachedOther: 1, noEmail: 1 })?.text).toBe(
       "Last update: sent to 2 of 4 guests · 1 guest with no email address reached by text or the app · 1 has no email address · 0 failed",
