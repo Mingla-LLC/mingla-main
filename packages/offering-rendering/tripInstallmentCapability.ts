@@ -24,6 +24,29 @@ export function tripInstallmentsSupported(effectiveProvider: unknown): boolean {
   );
 }
 
+/**
+ * Public-reader capability decoder. Only an explicit server `true` may expose a
+ * saved schedule. Missing fields from an older server, malformed values, and an
+ * explicit refusal all fail closed without revealing the provider identity.
+ */
+export function publicTripInstallmentsAvailable(capability: unknown): boolean {
+  return capability === true;
+}
+
+/**
+ * Remove a stale public schedule unless the canonical reader explicitly enabled
+ * it. This is generic so both native and web adapters retain their local schedule
+ * types while sharing the rolling-deploy rule.
+ */
+export function publicTripInstallmentSchedule<T>(
+  capability: unknown,
+  schedule: T | null | undefined,
+): T | null {
+  return publicTripInstallmentsAvailable(capability) && schedule !== undefined
+    ? schedule
+    : null;
+}
+
 /** True only for a structurally present installment template. */
 export function hasTripInstallmentTemplate(metadata: unknown): boolean {
   if (metadata === null || typeof metadata !== "object") return false;

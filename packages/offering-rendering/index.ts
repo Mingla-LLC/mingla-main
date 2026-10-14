@@ -303,6 +303,10 @@ export type {
   TripSelectedLine,
   TripInstallmentAmounts,
 } from "./tripBoxTotals";
+export {
+  publicTripInstallmentsAvailable,
+  publicTripInstallmentSchedule,
+} from "./tripInstallmentCapability";
 export { TripReserveBar } from "./TripReserveBar";
 export type { TripReserveBarProps } from "./TripReserveBar";
 export { TripPaymentChoice as TripOfferingPaymentChoice } from "./TripPaymentChoice";

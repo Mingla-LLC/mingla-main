@@ -32,6 +32,7 @@ import {
   type OfferingGalleryImage,
   type ThemeInput,
 } from "@mingla/offering-rendering";
+import { publicTripInstallmentSchedule } from "@mingla/offering-rendering/tripInstallmentCapability";
 
 import { supabase } from "../services/supabase";
 import { tripKeys } from "./useTrips";
@@ -199,6 +200,8 @@ interface RpcTripPayload {
   refundPolicy: unknown;
   bookingDeadline: string | null;
   bookingsClosed: boolean;
+  /** #3859 — absent on an older server and malformed values both mean unavailable. */
+  installmentCapabilityAvailable?: unknown;
   themeColorOverride: unknown;
   themeFontOverride: unknown;
   themeAnimationOverride: unknown;
@@ -334,6 +337,40 @@ export const usePublicTripBySlug = (
           is_unlimited: t.isUnlimited === true,
         })),
       );
+      const rawPricingTiers = (p.tiers ?? []).map(
+        (t): TripPricingTier => ({
+          id: t.id,
+          eventId: p.id,
+          ticketTypeId: t.ticketTypeId,
+          tierName: t.tierName,
+          tierMetadata: t.tierMetadata ?? {},
+          priceCents: t.priceCents ?? 0,
+          currency: t.currency ?? "",
+          quantityTotal: t.quantityTotal ?? null,
+          // ORCH-1138 B2 / META-ORCH-1174 — real remaining for the sold-out
+          // gate. null when unlimited (never "0 left") — the RPC already emits
+          // null for unlimited/uncapped tiers (no fabricated sold-out, rule 9).
+          ticketsRemaining: t.isUnlimited ? null : (t.ticketsRemaining ?? null),
+          isUnlimited: t.isUnlimited === true,
+          installmentSchedule: asInstallmentSchedule(t.installments),
+          // META-ORCH-1174 Leg B2 — per-package description from tier_metadata.
+          description:
+            typeof (t.tierMetadata as Record<string, unknown> | null)?.description ===
+            "string"
+              ? ((t.tierMetadata as Record<string, unknown>).description as string)
+              : null,
+        }),
+      );
+      // #3859 rolling compatibility: stale/pre-migration readers may still emit
+      // the saved template. Only an explicit provider-neutral server capability
+      // keeps it selectable; old-server unknown and refusal both strip it.
+      const pricingTiers = rawPricingTiers.map((tier) => ({
+        ...tier,
+        installmentSchedule: publicTripInstallmentSchedule(
+          p.installmentCapabilityAvailable,
+          tier.installmentSchedule,
+        ),
+      }));
 
       const trip: Trip = {
         id: p.id,
@@ -384,30 +421,7 @@ export const usePublicTripBySlug = (
             media: coerceTripDayMedia(d.media),
           }),
         ),
-        pricingTiers: (p.tiers ?? []).map(
-          (t): TripPricingTier => ({
-            id: t.id,
-            eventId: p.id,
-            ticketTypeId: t.ticketTypeId,
-            tierName: t.tierName,
-            tierMetadata: t.tierMetadata ?? {},
-            priceCents: t.priceCents ?? 0,
-            currency: t.currency ?? "",
-            quantityTotal: t.quantityTotal ?? null,
-            // ORCH-1138 B2 / META-ORCH-1174 — real remaining for the sold-out
-            // gate. null when unlimited (never "0 left") — the RPC already emits
-            // null for unlimited/uncapped tiers (no fabricated sold-out, rule 9).
-            ticketsRemaining: t.isUnlimited ? null : (t.ticketsRemaining ?? null),
-            isUnlimited: t.isUnlimited === true,
-            installmentSchedule: asInstallmentSchedule(t.installments),
-            // META-ORCH-1174 Leg B2 — per-package description from tier_metadata.
-            description:
-              typeof (t.tierMetadata as Record<string, unknown> | null)?.description ===
-              "string"
-                ? ((t.tierMetadata as Record<string, unknown>).description as string)
-                : null,
-          }),
-        ),
+        pricingTiers,
         inclusions: (p.inclusions ?? []).map(
           (i): TripInclusion => ({
             id: i.id,
