@@ -29,6 +29,35 @@
 export const DISCLOSURE_VERSION = "2026-10-08" as const;
 
 /**
+ * #3859 — purchase acceptance and marketing are separate affirmative acts.
+ * The purchase sentence is recorded only under transactional scope; the
+ * optional marketing sentence is recorded only when the buyer selects it.
+ */
+export const PURCHASE_TERMS_DISCLOSURE_VERSION =
+  "2026-10-14-purchase-v1" as const;
+export const PURCHASE_TERMS_DISCLOSURE_TEXT =
+  "I agree to Mingla’s Terms of Service and Privacy Policy." as const;
+export const PURCHASE_TERMS_LABEL_PREFIX = "I agree to Mingla’s " as const;
+export const PURCHASE_TERMS_LABEL_TERMS = "Terms of Service" as const;
+export const PURCHASE_TERMS_LABEL_JOINER = " and " as const;
+export const PURCHASE_TERMS_LABEL_PRIVACY = "Privacy Policy" as const;
+export const PURCHASE_TERMS_LABEL_SUFFIX = "." as const;
+
+export const CHECKOUT_MARKETING_DISCLOSURE_VERSION =
+  "2026-10-14-marketing-v1" as const;
+export const CHECKOUT_MARKETING_LABEL =
+  "Send me occasional updates and offers from Mingla and this host." as const;
+export const CHECKOUT_MARKETING_HELPER =
+  "Optional. You can unsubscribe at any time." as const;
+export const CHECKOUT_MARKETING_DISCLOSURE_TEXT =
+  `${CHECKOUT_MARKETING_LABEL} ${CHECKOUT_MARKETING_HELPER}` as const;
+
+export const PURCHASE_TERMS_URL =
+  "https://www.usemingla.com/terms-of-service" as const;
+export const PURCHASE_PRIVACY_URL =
+  "https://www.usemingla.com/privacy-policy" as const;
+
+/**
  * Guest checkout (no buyer_user_id) — auto-follow is skipped, so do not record
  * or display the Follow clause. Same pre-follow §1b / version as onboarding.
  * Signed-in checkout uses DISCLOSURE_VERSION + CONSENT_DISCLOSURE_TEXT above.

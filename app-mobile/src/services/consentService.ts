@@ -1,10 +1,9 @@
 /**
  * META-ORCH-1161 Sub-A.2 (consent-capture slice) — onboarding consent writer.
  *
- * Calls the shared `record-consent` edge function to append the bundled-mandatory
- * consent audit rows at signup (DEC-186, source='onboarding'). One call writes a
- * transactional AND a marketing `consent_records` row per provided channel/contact;
- * the EXACT §1b disclosure string (CONSENT_DISCLOSURE_TEXT) is recorded VERBATIM.
+ * Calls the shared `record-consent` edge function to append scoped consent
+ * audit rows. Legacy onboarding callers omit `scopes` and preserve the bundled
+ * behavior; #3859 checkout passes transactional explicitly.
  *
  * Non-blocking by contract at the call site: a failed consent-audit write MUST NOT
  * block the user finishing onboarding (the affirmative checkbox act already
@@ -17,7 +16,7 @@ export type ConsentScope = "transactional" | "marketing";
 
 export interface RecordConsentInput {
   source: "onboarding" | "checkout";
-  /** EXACT §1b disclosure string the user saw (CONSENT_DISCLOSURE_TEXT). */
+  /** Exact disclosure string the user saw. */
   disclosureText: string;
   /** Pins the disclosure wording version (DISCLOSURE_VERSION). */
   disclosureVersion: string;

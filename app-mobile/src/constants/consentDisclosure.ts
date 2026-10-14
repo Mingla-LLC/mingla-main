@@ -29,6 +29,21 @@
 export const DISCLOSURE_VERSION = "2026-10-08" as const;
 
 /**
+ * #3859 — checkout purchase acceptance is deliberately separate from every
+ * marketing/follow grant. This exact sentence is both the visible label and
+ * the transactional-only audit artifact.
+ */
+export const PURCHASE_TERMS_DISCLOSURE_VERSION =
+  "2026-10-14-purchase-v1" as const;
+export const PURCHASE_TERMS_DISCLOSURE_TEXT =
+  "I agree to Mingla’s Terms of Service and Privacy Policy." as const;
+export const PURCHASE_TERMS_LABEL_PREFIX = "I agree to Mingla’s " as const;
+export const PURCHASE_TERMS_LABEL_TERMS = "Terms of Service" as const;
+export const PURCHASE_TERMS_LABEL_JOINER = " and " as const;
+export const PURCHASE_TERMS_LABEL_PRIVACY = "Privacy Policy" as const;
+export const PURCHASE_TERMS_LABEL_SUFFIX = "." as const;
+
+/**
  * Onboarding phone-consent audit pin. The visible checkbox is still the
  * `onboarding:phone.consent_*` i18n strings (no Follow clause). Keep this
  * pre-follow §1b + version so the consent_records row matches what the user

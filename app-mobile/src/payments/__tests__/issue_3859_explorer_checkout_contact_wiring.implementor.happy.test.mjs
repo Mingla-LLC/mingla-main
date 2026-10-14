@@ -52,9 +52,16 @@ test("#3859 every migrated Explorer checkout sends the saved booking snapshot", 
   }
 });
 
-test("#3859 leaves the existing consent rail in place pending approved legal copy", () => {
-  assert.match(cartSource, /const \[marketingOptIn, setMarketingOptIn\]/);
+// [TEST-MOD-APPROVED #3859] The prior assertion deliberately pinned the
+// temporary bundled rail only until Seth approved the purchase-only contract.
+// That approval now supersedes it: Explorer has no checkout marketing control.
+test("#3859 enforces purchase-only consent while Explorer marketing stays account-level", () => {
+  assert.match(cartSource, /const \[termsAccepted, setTermsAccepted\]/);
+  assert.doesNotMatch(cartSource, /const \[marketingOptIn, setMarketingOptIn\]/);
   assert.match(cartSource, /void recordConsent\(\{/);
-  assert.match(cartSource, /marketingOptIn,/);
-  assert.match(cartSource, /disclosureVersion:/);
+  assert.match(cartSource, /scopes: \["transactional"\]/);
+  assert.doesNotMatch(cartSource, /scopes: \["marketing"\]/);
+  assert.match(cartSource, /marketingOptIn: true/);
+  assert.match(cartSource, /PURCHASE_TERMS_DISCLOSURE_VERSION/);
+  assert.doesNotMatch(cartSource, /CONSENT_VISIBLE_FOLLOW_BEFORE/);
 });

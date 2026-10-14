@@ -28,48 +28,51 @@ describe("#3682 Wave 2.4 — checkout consent names Follow (surface b)", () => {
     expect(src).toContain("function rsvpFollowHelperLine");
   });
 
-  test("buyer checkout emphasizes brand phrase and records filled disclosure", () => {
+  // [TEST-MOD-APPROVED #3859] Checkout no longer mints Follow/marketing from
+  // the required purchase box. #3682's account/follow behavior survives; only
+  // its checkout bundling assertion was superseded by Seth's approved contract.
+  test("buyer checkout separates purchase acceptance from optional marketing", () => {
     const src = read("app/checkout/[eventId]/buyer.tsx");
-    expect(src).toContain("consentDisclosureText(brand?.displayName)");
-    expect(src).toContain("CONSENT_VISIBLE_FOLLOW_BEFORE");
-    expect(src).toContain("checkboxFollowBrand");
-    expect(src).toContain("resolveConsentBrandName(brand?.displayName)");
-    // Guest path must not promise Follow (auto-follow skips null buyer_user_id).
-    expect(src).toContain("GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT");
-    expect(src).toContain("GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX");
-    // Auth must resolve before consent can be accepted (no guest-copy→Follow race).
+    expect(src).toContain("PURCHASE_TERMS_DISCLOSURE_TEXT");
+    expect(src).toContain('scopes: ["transactional"]');
+    expect(src).toContain("CHECKOUT_MARKETING_DISCLOSURE_TEXT");
+    expect(src).toContain('scopes: ["marketing"]');
+    expect(src).not.toContain("CONSENT_VISIBLE_FOLLOW_BEFORE");
+    expect(src).not.toContain("GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT");
     expect(src).toContain("authReady");
     expect(src).toContain("acceptedGrantRef");
   });
 
-  test("trip and experience buyer routes share the Follow disclosure contract", () => {
+  test("trip and experience buyer routes share the separated checkout contract", () => {
     for (const rel of [
       "app/checkout-trip/[tripEventId]/buyer.tsx",
       "app/checkout-experience/[experienceEventId]/buyer.tsx",
     ]) {
       const src = read(rel);
-      expect(src).toContain("CONSENT_VISIBLE_FOLLOW_BEFORE");
-      expect(src).toContain("GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT");
+      expect(src).toContain("PURCHASE_TERMS_DISCLOSURE_TEXT");
+      expect(src).toContain("CHECKOUT_MARKETING_DISCLOSURE_TEXT");
+      expect(src).toContain('scopes: ["transactional"]');
+      expect(src).toContain('scopes: ["marketing"]');
+      expect(src).not.toContain("CONSENT_VISIBLE_FOLLOW_BEFORE");
       expect(src).toContain("recordConsent");
       expect(src).toContain("acceptedGrantRef");
     }
   });
 
-  test("Explorer TicketCartSheet records Follow disclosure for signed-in buyers", () => {
+  test("Explorer TicketCartSheet records purchase terms without a marketing control", () => {
     const src = readFileSync(
       join(ROOT, "../app-mobile/src/components/expandedCard/TicketCartSheet.tsx"),
       "utf8",
     );
-    expect(src).toContain("CONSENT_VISIBLE_FOLLOW_BEFORE");
-    expect(src).toContain("GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT");
+    expect(src).toContain("PURCHASE_TERMS_DISCLOSURE_TEXT");
     expect(src).toContain("recordConsent");
     expect(src).toContain("buyerUserId");
     expect(src).toContain("eventId");
-    expect(src).toMatch(
-      /const\s*\[\s*marketingOptIn\s*,\s*setMarketingOptIn\s*\]\s*=\s*useState<\s*boolean\s*>\s*\(\s*false\s*\)/,
-    );
-    expect(src).toContain("consentTermsBody");
-    expect(src).toContain("setTermsSheetVisible(true)");
+    expect(src).toContain('scopes: ["transactional"]');
+    expect(src).toContain("marketingOptIn: true");
+    expect(src).not.toContain("setMarketingOptIn");
+    expect(src).not.toContain("CHECKOUT_MARKETING_LABEL");
+    expect(src).not.toContain("setTermsSheetVisible(true)");
   });
 
   test("Explorer mirror matches Host DISCLOSURE_VERSION", () => {

@@ -76,12 +76,9 @@ export interface BuyerDetails {
   phone: string;
   marketingOptIn: boolean;
   /**
-   * META-ORCH-1161 Sub-A.2 (DEC-186) — the single bundled-mandatory consent
-   * gate. TRUE means the buyer checked "I agree to all terms and conditions",
-   * which (per DEC-186 bundling) also constitutes the marketing grant. The Pay
-   * button is disabled until this is true AND fields are valid. When set true,
-   * the buyer surface ALSO sets `marketingOptIn=true` (the bundled grant) so the
-   * downstream payment payload carries it. Default false (affirmative act).
+   * #3859 — required purchase acceptance. This gates checkout independently
+   * from the optional `marketingOptIn` choice; changing one never changes the
+   * other. Both default false and require their own affirmative acts.
    */
   termsAccepted?: boolean;
   address?: {
