@@ -431,9 +431,12 @@ describe("#3645 native rework 2 — only a brand known to have no card-rail acco
 
       expect(mockInvoke).not.toHaveBeenCalled();
       expect(count(tree, "paystack-view")).toBe(0);
-      // Card-rail screen on a card-rail country, never the Nigeria confirm.
+      // [TEST-MOD-APPROVED #3645] was `text: "GB"`: with nothing chosen the
+      // row fell back to the United Kingdom. There is no default country any
+      // more. Card-rail screen with NO country chosen, never Nigeria and never
+      // the Nigeria confirm.
       expect(only(tree, "country-picker").props.accessibilityValue).toEqual({
-        text: "GB",
+        text: "",
       });
       expect(count(tree, "onboard-confirm-nigeria")).toBe(0);
     },
@@ -476,5 +479,345 @@ describe("#3645 native rework 2 — only a brand known to have no card-rail acco
       await flush();
       expect(requestsFor("select_provider")).toHaveLength(1);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3645 (bank setup opens on the host's chosen country; "Add bank" leads
+// somewhere a bank can be added) — appended.
+// ---------------------------------------------------------------------------
+describe("#3645 native — the country row opens on the brand's choice, and a host who asked for a different country is not sent back to Nigeria", () => {
+  let tree: TestTree | null = null;
+  let queryClient: QueryClient;
+  const onCancel = jest.fn();
+  const onAfterDone = jest.fn();
+
+  async function mount(
+    brand: Brand,
+    props: { countryChoiceRequested?: boolean; initialCountry?: string | null } = {},
+  ): Promise<TestTree> {
+    let mounted: TestTree | null = null;
+    await TestRenderer.act(async () => {
+      mounted = TestRenderer.create(
+        <QueryClientProvider client={queryClient}>
+          <BrandOnboardView
+            brand={brand}
+            onCancel={onCancel}
+            onAfterDone={onAfterDone}
+            {...props}
+          />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+    if (mounted === null) throw new Error("BrandOnboardView did not mount.");
+    return mounted;
+  }
+
+  const pickerText = (target: TestTree): string =>
+    (only(target, "country-picker").props.accessibilityValue as { text: string })
+      .text;
+  const allText = (target: TestTree): string => textOf(target.root);
+
+  beforeEach(() => {
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue({ data: {}, error: null });
+    mockStripeStatus = STATUS_NO_ACCOUNT;
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+  });
+
+  afterEach(() => {
+    if (tree !== null) {
+      TestRenderer.act(() => tree?.unmount());
+      tree = null;
+    }
+    queryClient.clear();
+  });
+
+  test("N1: nothing chosen and no Nigerian address: the row is empty, never the United Kingdom", async () => {
+    tree = await mount(brandOf({ countryCode: undefined }));
+    expect(pickerText(tree)).toBe("");
+    expect(count(tree, "paystack-view")).toBe(0);
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  test.each(["GB", "FR", "US"])(
+    "N2: an ADDRESS in %s is not a choice: the row stays empty",
+    async (countryCode) => {
+      tree = await mount(brandOf({ countryCode }));
+      expect(pickerText(tree)).toBe("");
+    },
+  );
+
+  test("N3: the remembered pick is shown (a euro brand that picked Ireland), and outranks the address", async () => {
+    tree = await mount(
+      brandOf({ countryCode: "DE", defaultCurrency: "EUR", payoutCountry: "IE" }),
+    );
+    expect(pickerText(tree)).toBe("IE");
+  });
+
+  test("N4: a Nigerian address does NOT move a brand that already chose a country and currency", async () => {
+    // Before: opening bank setup switched this brand to the Nigerian rail and
+    // naira (its address), discarding the dollars it had chosen.
+    tree = await mount(brandOf({ defaultCurrency: "USD" }));
+    expect(requestsFor("select_provider")).toHaveLength(0);
+    expect(count(tree, "paystack-view")).toBe(0);
+    expect(pickerText(tree)).toBe("US");
+  });
+
+  test("N5: a brand that chose nothing and has a Nigerian address is still switched once (#3805 unchanged)", async () => {
+    tree = await mount(brandOf({}));
+    expect(requestsFor("select_provider")).toHaveLength(1);
+    expect(count(tree, "paystack-view")).toBe(1);
+  });
+
+  test("N6: a host who came to choose a DIFFERENT country is not switched back to Nigeria; the row is empty", async () => {
+    tree = await mount(brandOf({}), { countryChoiceRequested: true });
+    expect(requestsFor("select_provider")).toHaveLength(0);
+    expect(count(tree, "paystack-view")).toBe(0);
+    expect(count(tree, "onboard-confirm-nigeria")).toBe(0);
+    expect(pickerText(tree)).toBe("");
+  });
+
+  test("N7: 'Choose a different country' on the Nigerian form leaves NOTHING chosen, not the United Kingdom", async () => {
+    tree = await mount(brandOf({ paymentProvider: "paystack" }));
+    expect(count(tree, "paystack-view")).toBe(1);
+
+    await TestRenderer.act(async () => {
+      (only(tree as TestTree, "paystack-view").props.onCancel as () => void)();
+    });
+    await flush();
+
+    expect(requestsFor("clear_provider")).toHaveLength(1);
+    expect(count(tree, "paystack-view")).toBe(0);
+    expect(pickerText(tree)).toBe("");
+  });
+
+  test("N8: an explicit card-rail country hint seeds the row ahead of everything saved", async () => {
+    tree = await mount(brandOf({ countryCode: "FR", defaultCurrency: "USD" }), {
+      initialCountry: "CA",
+    });
+    expect(pickerText(tree)).toBe("CA");
+  });
+
+  test("N9: no host-facing sentence on the setup screen names the payment provider", async () => {
+    tree = await mount(brandOf({ countryCode: undefined }));
+    const text = allText(tree);
+    expect(text).toContain("Connect your bank to start getting paid");
+    expect(text).toContain("our payment partner");
+    expect(text).not.toMatch(/stripe|paystack/i);
+  });
+
+  test("N10: a brand that can sell but has no bank yet is asked to ADD ONE, not told it is all set", async () => {
+    mockStripeStatus = {
+      ...STATUS_LIVE_ACCOUNT,
+      data: { ...STATUS_LIVE_ACCOUNT.data, payouts_enabled: false },
+    };
+    tree = await mount(brandOf({ countryCode: "GB", stripeStatus: "active" }));
+
+    expect(count(tree, "onboard-add-bank")).toBe(1);
+    const text = allText(tree);
+    expect(text).toContain("Add your bank to get paid");
+    expect(text).not.toContain("all set");
+    expect(text).not.toMatch(/stripe|paystack/i);
+
+    // The button opens payout account management (where a bank is entered),
+    // not the screen that just said there was nothing left to do.
+    await TestRenderer.act(async () => {
+      await (only(tree as TestTree, "onboard-add-bank-cta").props.onPress as () =>
+        Promise<void> | void)();
+    });
+    await flush();
+    const sessionCalls = mockInvoke.mock.calls.filter(
+      ([name]) => name === "brand-stripe-account-session",
+    );
+    expect(sessionCalls).toHaveLength(1);
+    expect(sessionCalls[0]![1].body).toMatchObject({
+      brand_id: BRAND_ID,
+      surface: "account_management",
+    });
+  });
+
+  test("N11: a brand whose payouts ARE enabled still gets the plain 'all set'", async () => {
+    mockStripeStatus = STATUS_LIVE_ACCOUNT;
+    tree = await mount(brandOf({ countryCode: "GB", stripeStatus: "active" }));
+    expect(count(tree, "onboard-add-bank")).toBe(0);
+    expect(allText(tree)).toContain("all set");
+  });
+});
+
+// #3645 — BrandOnboardView restates the two "add a bank" strings instead of
+// importing them (importing them moves the payout modules into the start-up
+// chunk). This pins the restated copy to its owner so the two cannot drift.
+describe("#3645 native — the add-bank state says exactly what the Payments card says", () => {
+  test("N12: the sentence and the button label are the Payments card's own", async () => {
+    const owner = jest.requireActual("../../../utils/brandPayoutVisibility") as {
+      SELLING_ADD_BANK_CTA: string;
+      SELLING_ADD_BANK_SUB: string;
+    };
+    mockStripeStatus = {
+      ...STATUS_LIVE_ACCOUNT,
+      data: { ...STATUS_LIVE_ACCOUNT.data, payouts_enabled: false },
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    let mounted: TestTree | null = null;
+    await TestRenderer.act(async () => {
+      mounted = TestRenderer.create(
+        <QueryClientProvider client={queryClient}>
+          <BrandOnboardView
+            brand={brandOf({ countryCode: "GB", stripeStatus: "active" })}
+            onCancel={jest.fn()}
+            onAfterDone={jest.fn()}
+          />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+    const tree = mounted as unknown as TestTree;
+    expect(textOf(tree.root)).toContain(owner.SELLING_ADD_BANK_SUB);
+    expect(only(tree, "onboard-add-bank-cta").props.accessibilityLabel).toBe(
+      owner.SELLING_ADD_BANK_CTA,
+    );
+    TestRenderer.act(() => tree.unmount());
+    queryClient.clear();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #3645 review follow-up — appended.
+// ---------------------------------------------------------------------------
+describe("#3645 native — review follow-up: lock-aware country list, and an Add bank that never fails silently", () => {
+  let tree: TestTree | null = null;
+  let queryClient: QueryClient;
+
+  async function mount(
+    brand: Brand,
+    props: { countryChoiceRequested?: boolean } = {},
+  ): Promise<TestTree> {
+    let mounted: TestTree | null = null;
+    await TestRenderer.act(async () => {
+      mounted = TestRenderer.create(
+        <QueryClientProvider client={queryClient}>
+          <BrandOnboardView
+            brand={brand}
+            onCancel={jest.fn()}
+            onAfterDone={jest.fn()}
+            {...props}
+          />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+    if (mounted === null) throw new Error("BrandOnboardView did not mount.");
+    return mounted;
+  }
+
+  beforeEach(() => {
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue({ data: {}, error: null });
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+  });
+
+  afterEach(() => {
+    if (tree !== null) {
+      TestRenderer.act(() => tree?.unmount());
+      tree = null;
+    }
+    queryClient.clear();
+  });
+
+  test("F1: a host who came to choose a country is not shown the list until the lock state is known", async () => {
+    mockStripeStatus = STATUS_LOADING;
+    tree = await mount(brandOf({ countryCode: undefined }), {
+      countryChoiceRequested: true,
+    });
+    // Still reading: the normal loading state, no country row to open.
+    expect(count(tree, "onboard-awaiting-lock-state")).toBe(1);
+    expect(count(tree, "country-picker")).toBe(0);
+    expect(textOf(tree.root)).toContain("Checking your payout status");
+  });
+
+  test("F2: once the status is known the row appears; opened by an ordinary visit it never waited", async () => {
+    mockStripeStatus = STATUS_NO_ACCOUNT;
+    tree = await mount(brandOf({ countryCode: undefined }), {
+      countryChoiceRequested: true,
+    });
+    expect(count(tree, "onboard-awaiting-lock-state")).toBe(0);
+    expect(count(tree, "country-picker")).toBe(1);
+    TestRenderer.act(() => tree?.unmount());
+
+    // An ordinary visit (no request to choose) shows the row while loading,
+    // exactly as before.
+    mockStripeStatus = STATUS_LOADING;
+    tree = await mount(brandOf({ countryCode: undefined }));
+    expect(count(tree, "onboard-awaiting-lock-state")).toBe(0);
+    expect(count(tree, "country-picker")).toBe(1);
+  });
+
+  test("F3: when Add bank cannot open, the host is told so in plain words and can try again", async () => {
+    mockStripeStatus = {
+      ...STATUS_LIVE_ACCOUNT,
+      data: { ...STATUS_LIVE_ACCOUNT.data, payouts_enabled: false },
+    };
+    // The request answers with nothing usable (the same path a refused
+    // browser window takes: the open throws and is caught).
+    const quiet = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    tree = await mount(brandOf({ countryCode: "GB", stripeStatus: "active" }));
+    expect(count(tree, "onboard-add-bank-error")).toBe(0);
+
+    await TestRenderer.act(async () => {
+      await (only(tree as TestTree, "onboard-add-bank-cta").props.onPress as () =>
+        Promise<void> | void)();
+    });
+    await flush();
+
+    const error = only(tree, "onboard-add-bank-error");
+    expect(textOf(error)).toBe("We couldn't open bank setup. Try again.");
+    expect(error.props.accessibilityRole).toBe("alert");
+    // Still on the add-bank state, with its button, not "all set".
+    expect(count(tree, "onboard-add-bank-cta")).toBe(1);
+    expect(textOf(tree.root)).not.toContain("all set");
+    quiet.mockRestore();
+  });
+
+  test("F4: a browser that refuses to open the window is a visible failure too", async () => {
+    mockStripeStatus = {
+      ...STATUS_LIVE_ACCOUNT,
+      data: { ...STATUS_LIVE_ACCOUNT.data, payouts_enabled: false },
+    };
+    mockInvoke.mockResolvedValue({
+      data: {
+        client_secret: "cs_test",
+        account_id: "acct_test",
+        target_url: "https://host.usemingla.com/connect-account-management?x=1",
+      },
+      error: null,
+    });
+    const browser = jest.requireMock("expo-web-browser") as {
+      openAuthSessionAsync: jest.Mock;
+    };
+    browser.openAuthSessionAsync.mockRejectedValueOnce(
+      Object.assign(new Error("Popup window was blocked by the browser"), {
+        code: "ERR_WEB_BROWSER_BLOCKED",
+      }),
+    );
+    tree = await mount(brandOf({ countryCode: "GB", stripeStatus: "active" }));
+
+    await TestRenderer.act(async () => {
+      await (only(tree as TestTree, "onboard-add-bank-cta").props.onPress as () =>
+        Promise<void> | void)();
+    });
+    await flush();
+
+    expect(browser.openAuthSessionAsync).toHaveBeenCalledTimes(1);
+    expect(textOf(only(tree, "onboard-add-bank-error"))).toBe(
+      "We couldn't open bank setup. Try again.",
+    );
   });
 });

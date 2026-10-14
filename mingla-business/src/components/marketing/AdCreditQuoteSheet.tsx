@@ -229,8 +229,8 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
 
   const title = mode === "top_up" ? "Add Ads credit" : "Withdraw credit";
   const hint = mode === "top_up"
-    ? "Mingla keeps 15% as the service fee; the rest becomes spendable Ads credit. Card: USD / GBP; Naira via Paystack."
-    : "Unused credit is refunded with its fee (FIFO) to the original card or Paystack charge.";
+    ? "Mingla keeps 15% as the service fee; the rest becomes spendable Ads credit. Card: USD / GBP; Naira through our Nigerian payment partner."
+    : "Unused credit is refunded with its fee (FIFO) to the original payment method.";
 
   const topUpPayReady =
     mode === "top_up" &&

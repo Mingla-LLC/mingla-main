@@ -250,10 +250,10 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
     type: "business.account_status_changed",
     // Default branch = restricted (the loud, action-bearing one).
     pushTitle: "Payments paused",
-    pushBody: "{brandName}: Stripe paused payments. Tap to resolve.",
+    pushBody: "{brandName}: payments are paused. Tap to resolve.",
     inAppTitle: "Payments paused on {brandName}",
     inAppBody:
-      "Stripe paused payments while it verifies a few details. Resolve it to start accepting payments again.",
+      "Payments are paused while a few details are verified. Resolve it to start accepting payments again.",
     severity: "blocking",
     family: "risk",
     icon: "shield",
@@ -335,17 +335,17 @@ export const BUSINESS_NOTIFICATION_BRANCH_COPY: {
   "business.account_status_changed": {
     restricted: {
       pushTitle: "Payments paused",
-      pushBody: "{brandName}: Stripe paused payments. Tap to resolve.",
+      pushBody: "{brandName}: payments are paused. Tap to resolve.",
       inAppTitle: "Payments paused on {brandName}",
       inAppBody:
-        "Stripe paused payments while it verifies a few details. Resolve it to start accepting payments again.",
+        "Payments are paused while a few details are verified. Resolve it to start accepting payments again.",
     },
     reactivated: {
       pushTitle: "Payments back on",
       pushBody: "{brandName} can accept payments again.",
       inAppTitle: "{brandName} is back online",
       inAppBody:
-        "Stripe finished verifying — payments and payouts are working again. Nothing more for you to do.",
+        "Verification is complete — payments and payouts are working again. Nothing more for you to do.",
     },
   },
   "business.claim_decision": {

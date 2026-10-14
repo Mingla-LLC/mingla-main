@@ -146,6 +146,8 @@ export interface MenuItemOptionsSectionProps {
   /** Null while the item is unsaved — groups need a real item id. */
   menuItemId: string | null;
   itemCurrency: string;
+  /** #3645 — false when the brand has no currency; no code or symbol is shown. */
+  showCurrency?: boolean;
   canMutate: boolean;
   onSavingChange?: (saving: boolean) => void;
   /**
@@ -164,6 +166,7 @@ export function MenuItemOptionsSection({
   brandId,
   menuItemId,
   itemCurrency,
+  showCurrency = true,
   canMutate,
   onSavingChange,
   onDirtyChange,
@@ -870,6 +873,7 @@ export function MenuItemOptionsSection({
             menuItemId={menuItemId}
             group={group}
             currency={itemCurrency}
+            showCurrency={showCurrency}
             nextSortOrder={group.sortOrder}
             onSave={handleSave}
             saving={saveGroup.isPending}
@@ -937,6 +941,7 @@ export function MenuItemOptionsSection({
           menuItemId={menuItemId}
           group={null}
           currency={itemCurrency}
+          showCurrency={showCurrency}
           nextSortOrder={groups.length}
           onSave={handleSave}
           saving={saveGroup.isPending}

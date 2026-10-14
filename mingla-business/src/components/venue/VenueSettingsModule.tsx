@@ -62,7 +62,9 @@ import {
   majorFromMinor,
   minorFromMajor,
   normalizeCurrency,
+  currencyCodeOrNull,
 } from "../../utils/currency";
+import { LazyPayoutCountryInlinePrompt } from "../brand/LazyPayoutCountryInlinePrompt";
 import {
   brandStripeOnboardingRoute,
   paidPublishGuardCopy,
@@ -145,6 +147,10 @@ export const VenueSettingsModule = forwardRef<
   const updateFee = useUpdateReservationFee(brandId, venueId);
 
   const currency = normalizeCurrency(brand?.defaultCurrency);
+  // #3645 — `currency` above is a crash-guard value (pounds) when the brand has
+  // none. A brand with no currency is never SHOWN pounds: the amount field is
+  // replaced by the payout-country prompt and no amount is previewed.
+  const brandHasCurrency = currencyCodeOrNull(brand?.defaultCurrency) !== null;
   const readiness = brandPayoutReadiness({
     stripeStatus: brand?.stripeStatus,
     paystackSubaccountCode: brand?.paystackSubaccountCode ?? null,
@@ -569,7 +575,16 @@ export const VenueSettingsModule = forwardRef<
               </View>
             ) : null}
 
-            {feeEnabled && !feeBlocked ? (
+            {feeEnabled && !feeBlocked && !brandHasCurrency ? (
+              <LazyPayoutCountryInlinePrompt
+                brand={brand}
+                priced
+                reason="A reservation fee needs a currency. Pick the country your bank account is in and we'll use its currency for this brand."
+                testID="venue-settings-fee-payout-country"
+              />
+            ) : null}
+
+            {feeEnabled && !feeBlocked && brandHasCurrency ? (
               <View style={styles.amountBlock}>
                 <Text style={styles.fieldLabel}>
                   Fee amount ({normalizeCurrency(currency)})
@@ -596,7 +611,7 @@ export const VenueSettingsModule = forwardRef<
               </View>
             ) : null}
 
-            {feeActive && feePreview !== null ? (
+            {feeActive && feePreview !== null && brandHasCurrency ? (
               <Text
                 style={styles.feePreview}
                 testID="venue-settings-fee-preview"

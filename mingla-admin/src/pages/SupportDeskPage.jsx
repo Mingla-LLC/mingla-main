@@ -10,7 +10,7 @@
  * umbrella (Phase 0 RLS), so it can read every support ticket, conversation,
  * and message and INSERT replies into a support conversation. Lifecycle writes
  * (claim / status / priority / staff-grant) flow through the deployed
- * `support-*` edge functions; reply is a direct message INSERT through the
+ * `support-*` edge functions; reply is ONLY via support-send (#3720) through the
  * `messages_support_staff_insert` RLS policy.
  *
  * The support-* edge functions are deployed by the orchestrator at close. Until
@@ -291,27 +291,16 @@ export function SupportDeskPage() {
     if (!body) return;
     setActing(true);
     try {
-      // Admin inserts directly via the messages_support_staff_insert RLS policy
-      // (scoped to linked_entity_type='support' + is_admin_user()). sender_id
-      // MUST be auth.uid() for the WITH CHECK to pass.
-      const { error } = await supabase.from("messages").insert({
-        conversation_id: selectedTicket.conversation_id,
-        sender_id: myUserId,
-        content: body,
-        message_type: "text",
-      });
-      if (error) throw error;
-      // Bump last_message_at / first_response_at via the edge fn (service-role
-      // side-effects + push). The message is already persisted above, so a
-      // missing edge fn doesn't lose the reply — just the push + timestamp bump.
+      // #3720: one path — support-send inserts the message (user JWT + RLS),
+      // bumps last_message_at / first_response_at, writes audit, and pushes the
+      // host as "Veronica from Mingla". Never insert messages here; always pass
+      // the reply body (support-send requires content).
       const sideEffect = await invokeSupportFn("support-send", {
         ticketId: selectedTicket.id,
-        notifyOnly: true,
+        content: body,
       });
       if (!sideEffect.ok) {
-        // Non-fatal: the reply landed; only the push/timestamp side-effect is
-        // pending the undeployed function.
-        console.warn("[support] reply persisted; side-effect deferred:", sideEffect.error);
+        throw new Error(sideEffect.error || "Couldn't send reply");
       }
       await logAdminAction("support.reply", "support_ticket", selectedTicket.id);
       if (!mountedRef.current) return;
@@ -323,7 +312,7 @@ export function SupportDeskPage() {
     } finally {
       if (mountedRef.current) setActing(false);
     }
-  }, [selectedTicket, reply, myUserId, addToast, loadThread, loadQueue]);
+  }, [selectedTicket, reply, addToast, loadThread, loadQueue]);
 
   const handleSetStatus = useCallback(async (nextStatus) => {
     if (!selectedTicket || nextStatus === selectedTicket.status) return;
@@ -625,20 +614,25 @@ export function SupportDeskPage() {
                 </div>
                 {/* Composer */}
                 <div className="border-t border-[var(--gray-200)] p-3 flex items-end gap-2">
-                  <textarea
-                    value={reply}
-                    onChange={(e) => setReply(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                        e.preventDefault();
-                        void handleReply();
-                      }
-                    }}
-                    placeholder="Reply to the business…"
-                    rows={2}
-                    disabled={acting}
-                    className="flex-1 resize-none rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] outline-none"
-                  />
+                  <div className="flex-1 space-y-1">
+                    <p className="text-[11px] text-[var(--color-text-tertiary)]">
+                      Replying as Veronica from Mingla
+                    </p>
+                    <textarea
+                      value={reply}
+                      onChange={(e) => setReply(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                          e.preventDefault();
+                          void handleReply();
+                        }
+                      }}
+                      placeholder="Reply to the business…"
+                      rows={2}
+                      disabled={acting}
+                      className="w-full resize-none rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 py-2 text-sm text-[var(--color-text-primary)] focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)] outline-none"
+                    />
+                  </div>
                   <Button
                     variant="primary"
                     icon={Send}

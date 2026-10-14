@@ -97,8 +97,13 @@ beforeEach(() => {
 });
 
 describe("A. ordering — email-required is decided before the 'stripe' heuristic", () => {
-  it("the brand copy really does contain 'stripe', so the trap is live", () => {
-    expect(BRAND_EMAIL_REQUIRED_SUB.toLowerCase()).toContain("stripe");
+  // [TEST-MOD-APPROVED #3645] This pinned that the brand copy CONTAINS
+  // "stripe" (which is what made the ordering a live trap). Host copy no
+  // longer names the payment provider, so the copy must NOT contain it. The
+  // ordering rule itself is still proved by the next test, on the typed error.
+  it("the brand copy no longer names the provider, so it cannot fall into the 'stripe' heuristic", () => {
+    expect(BRAND_EMAIL_REQUIRED_SUB.toLowerCase()).not.toContain("stripe");
+    expect(BRAND_EMAIL_REQUIRED_SUB).toContain("Bank setup needs an email address");
   });
 
   it("yet the typed error still classifies email-required, not failed-stripe", () => {

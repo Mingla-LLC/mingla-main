@@ -568,12 +568,12 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
       <SectionRow
         label="Card reader (door)"
         value={fmt(summary.revenueByMethod.card_reader)}
-        hint="B-cycle"
+        hint="Not available yet"
       />
       <SectionRow
         label="NFC tap (door)"
         value={fmt(summary.revenueByMethod.nfc)}
-        hint="B-cycle"
+        hint="Not available yet"
       />
       <SectionRow
         label="Manual (door)"
@@ -606,7 +606,7 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
         variant="big"
       />
       <SectionRow
-        label="Stripe fee (online)"
+        label="Processing fee (online)"
         value={
           stripeFeeOnline !== null && currency !== null
             ? `−${formatCurrency(stripeFeeOnline, currency)}`
@@ -625,7 +625,7 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
         variant="mid"
         hint={
           summary.expectedPayoutMajor !== null
-            ? "Net to your Stripe account after fees and refunds"
+            ? "Net to your payout account after fees and refunds"
             : "No payments yet"
         }
       />
@@ -797,7 +797,7 @@ const ExportSection: React.FC<ExportSectionProps> = ({
     <View style={styles.exportSecondaryDisabled}>
       <Icon name="mail" size={18} color={textTokens.tertiary} />
       <Text style={styles.exportSecondaryLabel}>Email PDF report</Text>
-      <Text style={styles.exportSecondaryHint}>B-cycle</Text>
+      <Text style={styles.exportSecondaryHint}>Not available yet</Text>
     </View>
   </View>
 );

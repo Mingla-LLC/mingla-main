@@ -74,6 +74,8 @@ export interface BrandRow {
   // 'paystack' + a subaccount code means the brand is on the NG Paystack rail.
   payment_provider?: "stripe" | "paystack" | null;
   payment_country?: string | null;
+  /** #3645 — display-only remembered payout-country pick; absent before the migration. */
+  payout_country?: string | null;
   paystack_subaccount_code?: string | null;
   /** #3645 — hold-rail stamp; optional until row is loaded with the column. */
   payout_hold_cutover_at?: string | null;
@@ -329,6 +331,7 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     // META-ORCH-1076 — payout rail. Defaults to 'stripe' for every existing brand.
     paymentProvider: row.payment_provider ?? "stripe",
     paymentCountry: row.payment_country ?? undefined,
+    payoutCountry: row.payout_country ?? null,
     paystackSubaccountCode: row.paystack_subaccount_code ?? undefined,
     payoutHoldCutoverAt: row.payout_hold_cutover_at ?? null,
     hasPaystackRecipient: options.hasPaystackRecipient ?? null,

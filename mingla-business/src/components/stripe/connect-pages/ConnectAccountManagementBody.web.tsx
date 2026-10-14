@@ -57,7 +57,7 @@ export default function ConnectAccountManagementBody(): React.ReactElement {
     const publishableKey = fromExtra ?? fromProcessEnv;
     if (publishableKey === undefined || publishableKey.length === 0) {
       setInitError(
-        "Stripe publishable key is not configured. Contact support@usemingla.com.",
+        "Payout tools are not configured. Contact support@usemingla.com.",
       );
       return null;
     }
@@ -73,7 +73,7 @@ export default function ConnectAccountManagementBody(): React.ReactElement {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setInitError(`Couldn't initialize Stripe: ${message}`);
+      setInitError(`Couldn't open payout tools: ${message}`);
       return null;
     }
   }, [sessionClientSecret]);
@@ -107,7 +107,7 @@ export default function ConnectAccountManagementBody(): React.ReactElement {
         )
         : "";
     setLoadError(
-      message.length > 0 ? message : "Stripe couldn't load account management.",
+      message.length > 0 ? message : "Account management couldn't be loaded.",
     );
   };
 
@@ -129,7 +129,7 @@ export default function ConnectAccountManagementBody(): React.ReactElement {
     return (
       <div style={connectEmbeddedPageStyles.pageWrapperStyle}>
         <div style={connectEmbeddedPageStyles.errorCardStyle}>
-          <h2 style={connectEmbeddedPageStyles.errorTitleStyle}>Couldn&rsquo;t load Stripe</h2>
+          <h2 style={connectEmbeddedPageStyles.errorTitleStyle}>Couldn&rsquo;t load payout tools</h2>
           <p style={connectEmbeddedPageStyles.errorBodyStyle}>{initError ?? loadError}</p>
         </div>
       </div>
@@ -177,8 +177,8 @@ export default function ConnectAccountManagementBody(): React.ReactElement {
       </main>
       <footer style={connectEmbeddedPageStyles.footerStyle}>
         <p style={connectEmbeddedPageStyles.footerTextStyle}>
-          Powered by Stripe. Your bank details go directly to Stripe — Mingla
-          never sees them.
+          Your bank details go straight to our payment partner — Mingla never
+          sees them.
         </p>
       </footer>
     </div>

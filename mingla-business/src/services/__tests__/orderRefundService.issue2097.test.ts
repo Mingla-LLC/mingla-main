@@ -64,7 +64,8 @@ describe("#2097 Business non-2xx refund truth", () => {
     expect(error.applicationFeeRefundStatus).toBe("pending_visibility");
     expect(error.applicationFeeRefundedCents).toBeNull();
     expect(error.message).toMatch(/buyer refund was issued/i);
-    expect(error.message).toMatch(/still confirming the Stripe fee refund/i);
+    // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
+    expect(error.message).toMatch(/still confirming the processing fee refund/i);
   });
 
   it("never claims a buyer refund for a pre-provider waiting state", async () => {

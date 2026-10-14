@@ -44,6 +44,7 @@ import {
   selectPaystackProvider,
 } from "../../services/brandPaystackService";
 import { joinBrandDescription } from "../../services/brandMapping";
+import { rememberBrandPayoutCountry } from "../../services/brandPayoutCountryService";
 import type { Brand } from "../../types/brand";
 import {
   NIGERIA_BANK_CONNECT_RAIL,
@@ -175,11 +176,13 @@ export function BrandPayoutCountryField({
         cardAccountCountry,
         defaultCurrency: brand.defaultCurrency,
         addressCountryCode: brand.countryCode,
+        payoutCountry: brand.payoutCountry,
       }),
     [
       brand.countryCode,
       brand.defaultCurrency,
       brand.paymentProvider,
+      brand.payoutCountry,
       cardAccountCountry,
     ],
   );
@@ -260,6 +263,17 @@ export function BrandPayoutCountryField({
               ),
             });
           }
+          // #3645 — remember the country itself, so a currency several
+          // countries share (the euro) still names the one that was picked.
+          // Best-effort: the pick above is already saved either way.
+          const remembered = await rememberBrandPayoutCountry(
+            brand.id,
+            rail.countryCode,
+          );
+          nextBrand = {
+            ...nextBrand,
+            payoutCountry: remembered ? rail.countryCode : null,
+          };
           refreshBrandCaches();
           setPickedRail(rail);
           onBrandChanged?.(nextBrand);

@@ -19,7 +19,7 @@ export function mapAdCreditQuoteError(err: unknown): string {
     case "pay_above_maximum":
       return "That amount is above the maximum top-up for this currency.";
     case "currency_unsupported":
-      return "Top-up is available for USD, GBP (card), and NGN (Paystack).";
+      return "Top-up is available for USD, GBP (card), and NGN.";
     case "ad_connection_required":
       return "Connect an ad account in Admin before launching Host ads.";
     case "credit_below_minimum":

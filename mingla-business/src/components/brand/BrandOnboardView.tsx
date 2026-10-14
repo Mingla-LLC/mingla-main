@@ -85,6 +85,16 @@ import {
   brandStripeStatusKeys,
 } from "../../hooks/useBrandStripeStatus";
 import { useQueryClient } from "@tanstack/react-query";
+import { useBrandStripeAccountSession } from "../../hooks/useBrandStripeAccountSession";
+// The two "add a bank" strings are restated here on purpose: importing them
+// from utils/brandPayoutVisibility makes that module (and the payout breakdown
+// it pulls in) shared between two lazily loaded screens, and the bundler then
+// moves all of it into the start-up chunk every visitor downloads (+7.9 KB,
+// measured). The copy is pinned to its owner by the #3645 bank-setup suite.
+const SELLING_ADD_BANK_CTA = "Add bank";
+const ADD_BANK_OPEN_FAILED_COPY = "We couldn't open bank setup. Try again.";
+const SELLING_ADD_BANK_SUB =
+  "You can keep selling. Your money waits until you add a bank.";
 
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -123,7 +133,12 @@ import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 import {
   resolveBankConnectRail,
   resolveBankConnectRailForCountry,
+  resolveBankSetupSeedCountry,
 } from "../../utils/bankConnectRail";
+import {
+  healRememberedPayoutCountry,
+  rememberBrandPayoutCountry,
+} from "../../services/brandPayoutCountryService";
 import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
 import { useSwitchAccount } from "../../hooks/useSwitchAccount";
@@ -140,7 +155,8 @@ import { buildBankSetupWebReturnUrl } from "../../utils/bankSetupReturn";
 import { refreshBrandPaymentState } from "../../hooks/brandPaymentStateRefresh";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
-const DEFAULT_COUNTRY = "GB" as const;
+// #3645 — there is NO default country. Bank setup opens on the country the
+// host chose (see `resolveBankSetupSeedCountry`) or on nothing at all.
 // orch-strict-grep-allow stripe-country-out-of-scope — Nigeria is the Paystack rail, deliberately outside the Stripe allowlist.
 const NIGERIA_COUNTRY = "NG" as const;
 // META-ORCH-1076 — Nigeria is a Paystack (not Stripe) payout region, surfaced as
@@ -225,6 +241,13 @@ export interface BrandOnboardViewProps {
    * bank setup returns to. Null keeps the payments page.
    */
   returnPath?: string | null;
+  /**
+   * #3645 — the host arrived BECAUSE they asked for a different country
+   * ("Choose a different country" on Payments). The country list opens with
+   * nothing chosen, and a brand with a Nigerian address is NOT switched
+   * straight back to Nigeria. A brand with a payment account keeps its lock.
+   */
+  countryChoiceRequested?: boolean;
 }
 
 /** Best-effort haptic — silently swallowed if unavailable. */
@@ -266,6 +289,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   onEditContact,
   initialCountry = null,
   returnPath = null,
+  countryChoiceRequested = false,
 }) => {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -288,9 +312,23 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     initialCountryRail !== null && initialCountryRail.provider === "stripe"
       ? initialCountryRail.countryCode
       : null;
+  // What the brand's ADDRESS resolves to. Used for one thing only: the #3805
+  // automatic move to the Nigerian rail for a brand that has chosen nothing.
+  // It never seeds the country row.
   const brandRail = resolveBankConnectRail({
     countryCode: chosenCountryHint ?? brand?.countryCode,
     paymentProvider: brand?.paymentProvider,
+  });
+  // #3645 — the country the row opens on: the explicit hint, then the brand's
+  // saved payout country (remembered pick, or what its currency implies), else
+  // null = "Choose a country". The payment account's country, once the status
+  // query knows it, replaces this (see the seeding effect below).
+  const seedRail = brand === null ? null : resolveBankSetupSeedCountry({
+    countryHint: chosenCountryHint,
+    paymentProvider: brand.paymentProvider,
+    defaultCurrency: brand.defaultCurrency,
+    addressCountryCode: brand.countryCode,
+    payoutCountry: brand.payoutCountry,
   });
 
   // Mount-time bypass derivation
@@ -315,15 +353,28 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // means a card-rail account exists.
   const brandRowHasCardAccount =
     brand !== null && (brand.stripeStatus ?? "not_connected") !== "not_connected";
-  // A brand with a card-rail account and a Nigerian address stays on its
-  // card-rail screen: seed the default card country, never Nigeria.
-  const seedCountry =
+  // A card-rail country the brand chose seeds this row; a brand on the
+  // Nigerian rail gets the Nigerian bank form instead (`paystackSelected`).
+  // The one case an ADDRESS still shows through is #3805's: a brand that has
+  // chosen nothing, has no card-rail account and whose address says Nigeria
+  // sees Nigeria in the row with "Continue with Nigeria" (and is switched
+  // automatically once it is known to have no account). Everything else with
+  // nothing chosen opens on NOTHING: there is no default country.
+  const addressSuggestsNigeria =
+    seedRail === null &&
+    !countryChoiceRequested &&
     brandRail.provider === "paystack" &&
-      !brandOnNigeriaRail &&
-      brandRowHasCardAccount
-      ? DEFAULT_COUNTRY
-      : brandRail.countryCode;
-  const [selectedCountry, setSelectedCountry] = useState<string>(seedCountry);
+    !brandOnNigeriaRail &&
+    !brandRowHasCardAccount;
+  const seedCountry: string | null =
+    seedRail !== null && seedRail.provider === "stripe"
+      ? seedRail.countryCode
+      : addressSuggestsNigeria
+        ? NIGERIA_COUNTRY
+        : null;
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(
+    seedCountry,
+  );
   const [countryTouched, setCountryTouched] = useState(false);
   // Synchronous twin of `countryTouched`: a seeding effect replayed with a
   // stale closure (StrictMode) must not overwrite a pick made in the same pass.
@@ -373,7 +424,11 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const autoSwitchFiredRef = useRef(false);
   // When the user returns from the Nigeria bank form, re-open the country sheet
   // so they can immediately re-pick (rather than landing on the closed picker).
-  const [reopenPickerOnReturn, setReopenPickerOnReturn] = useState(false);
+  // #3645 — also true from the start when the host asked for a different
+  // country on Payments: the list opens straight away, nothing chosen.
+  const [reopenPickerOnReturn, setReopenPickerOnReturn] = useState(
+    countryChoiceRequested,
+  );
   const handleCountryChange = useCallback((countryCode: string): void => {
     setReopenPickerOnReturn(false);
     countryTouchedRef.current = true;
@@ -389,7 +444,10 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         railSwitchInFlightRef.current = true;
         setSelectPending(true);
         selectPaystackProvider.mutate(brand.id)
-          .then(() => setErrorMessage(null))
+          .then(() => {
+            setErrorMessage(null);
+            void rememberBrandPayoutCountry(brand.id, NIGERIA_COUNTRY);
+          })
           .catch((err: unknown) => {
             const failure = describePayoutCountrySwitchFailure(err);
             setErrorMessage(failure.message);
@@ -407,6 +465,23 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   }, [brand?.id, selectPaystackProvider]);
 
   const savedStripeCountry = statusQuery.data?.country ?? null;
+  // #3645 — the remembered pick is never authoritative over a real account:
+  // once the account's country is known, a different remembered one is
+  // corrected (fire-and-forget).
+  const brandIdForHeal = brand?.id ?? null;
+  const rememberedPayoutCountry = brand?.payoutCountry ?? null;
+  useEffect(() => {
+    healRememberedPayoutCountry({
+      brandId: brandIdForHeal,
+      rememberedCountry: rememberedPayoutCountry,
+      accountCountry: savedStripeCountry,
+    });
+  }, [brandIdForHeal, rememberedPayoutCountry, savedStripeCountry]);
+  // #3645 — a host who came to choose a different country is not shown the
+  // country list until it is known whether the row is locked (a brand with a
+  // submitted payment account keeps its country). A status read that is not
+  // running (or has answered, or failed) is "known".
+  const awaitingLockState = countryChoiceRequested && statusQuery.isLoading;
 
   // #3645 — the brand's ADDRESS says Nigeria but the saved brand is not on the
   // Nigerian rail yet. Perform the same switch a manual pick does, once — but
@@ -421,9 +496,15 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     !statusQuery.isError &&
     (statusQuery.data?.stripe_account_id ?? null) === null &&
     (statusQuery.data?.status ?? "not_connected") === "not_connected";
+  // #3645 — and ONLY for a brand that has chosen nothing (no hint, no saved
+  // payout country): a brand that already picked a country and currency is
+  // never moved to naira by its address. Nor when the host came here to pick
+  // a different country: that would send them straight back to Nigeria.
   const needsAutoSwitch =
     brand !== null &&
     !countryTouched &&
+    !countryChoiceRequested &&
+    seedRail === null &&
     brandRail.provider === "paystack" &&
     !brandOnNigeriaRail &&
     !brandRowHasCardAccount &&
@@ -437,6 +518,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   });
   const countryPickerHelper =
     savedStripeCountry !== null &&
+      selectedCountry !== null &&
       savedStripeCountry !== selectedCountry &&
       !countryPickerLocked
       ? getStripeCountryReplaceableCopy(selectedCountry)
@@ -491,26 +573,26 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           setErrorMessage(null);
           fireHaptic("success");
           announceForAccessibility(
-            "Submitted to Stripe. Stripe is verifying your details.",
+            "Submitted. Your details are being verified.",
           );
           break;
         case "needs-information":
           setViewState("needs-information");
           setErrorMessage(
-            "Stripe needs a few more details before payments can be enabled. Continue verification to finish the missing steps.",
+            "A few more details are needed before payments can be enabled. Continue verification to finish the missing steps.",
           );
           fireHaptic("warning");
           announceForAccessibility(
-            "Stripe needs more information. Continue verification to finish setup.",
+            "More information is needed. Continue verification to finish setup.",
           );
           break;
         case "failed-stripe":
           setViewState("failed-stripe");
           setErrorMessage(
-            "Stripe could not verify this account. Contact support if this looks wrong.",
+            "This account could not be verified. Contact support if this looks wrong.",
           );
           fireHaptic("error");
-          announceForAccessibility("Stripe could not verify this account.");
+          announceForAccessibility("This account could not be verified.");
           break;
         case "session-expired":
           setViewState("session-expired");
@@ -581,10 +663,10 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       }
       setViewState("failed-network");
       setErrorMessage(
-        "We couldn't confirm your Stripe status. Check your connection and try again.",
+        "We couldn't confirm your payout status. Check your connection and try again.",
       );
       fireHaptic("error");
-      announceForAccessibility("Could not confirm your Stripe status.");
+      announceForAccessibility("Could not confirm your payout status.");
       return;
     }
 
@@ -622,11 +704,13 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // ----- Action handlers ------------------------------------------------
 
   const handleStart = useCallback(async (): Promise<void> => {
-    if (brand === null || startInProgressRef.current) return;
+    if (brand === null || selectedCountry === null || startInProgressRef.current) {
+      return;
+    }
     startInProgressRef.current = true;
     setViewState("starting");
     setErrorMessage(null);
-    announceForAccessibility("Creating your Stripe account.");
+    announceForAccessibility("Setting up your payout account.");
 
     try {
       // #3645 — sent here from a creator: hosted setup returns the browser to
@@ -642,6 +726,11 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         returnUrl,
         country: selectedCountry,
       });
+      // #3645 — remember the country setup was started in. A display-only
+      // convenience: fired, never awaited, so it can neither delay nor block
+      // what follows. If the browser leaves first, the pick is corrected from
+      // the account's own country the next time a screen reads it.
+      void rememberBrandPayoutCountry(brand.id, selectedCountry);
 
       setViewState("in-flight");
       announceForAccessibility(
@@ -656,7 +745,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           )
         ) {
           throw new Error(
-            "Stripe returned an unexpected bank setup link. Please try again.",
+            "We got an unexpected bank setup link. Please try again.",
           );
         }
         window.location.assign(result.onboarding_url);
@@ -669,7 +758,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       );
 
       setViewState("settling-status");
-      announceForAccessibility("Confirming your Stripe status.");
+      announceForAccessibility("Confirming your payout status.");
 
       // Refresh status to determine outcome. Stripe can lag the browser
       // return, so settle briefly before deciding what the user sees.
@@ -709,6 +798,22 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       // §4.6 still holds: a 403 is decided before any fallback.
       const failure = classifyBrandOnboardingStartError(err);
       if (failure === "country-locked") {
+        // #3645 — the row moves to the account's country instead of keeping
+        // the stale one, and the remembered pick is corrected.
+        const existing = (err as { existingCountry?: unknown }).existingCountry;
+        if (typeof existing === "string") {
+          const lockedRail = resolveBankConnectRailForCountry(existing);
+          if (lockedRail !== null && lockedRail.provider === "stripe") {
+            countryTouchedRef.current = true;
+            setCountryTouched(true);
+            setSelectedCountry(lockedRail.countryCode);
+            healRememberedPayoutCountry({
+              brandId: brand.id,
+              rememberedCountry: brand.payoutCountry,
+              accountCountry: lockedRail.countryCode,
+            });
+          }
+        }
         setViewState("failed-stripe");
         setErrorMessage(message);
         fireHaptic("warning");
@@ -763,6 +868,35 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const handleDone = useCallback((): void => {
     onAfterDone();
   }, [onAfterDone]);
+
+  // #3645 — a brand that can sell but whose payouts are not enabled has
+  // nothing left to answer in bank setup, so this screen used to tell it
+  // "You're all set" and send it back to a Payments page that said "Add
+  // bank". The bank account is entered in payout account management.
+  const bankStillNeeded =
+    statusQuery.data?.charges_enabled === true &&
+    statusQuery.data?.payouts_enabled === false;
+  const accountSession = useBrandStripeAccountSession();
+  // True when the last attempt to open payout account management failed, for
+  // ANY reason: the request, or the browser refusing to open the window (a
+  // popup blocker refuses a window opened after a request). Never silent.
+  const [addBankFailed, setAddBankFailed] = useState(false);
+  const handleAddBank = useCallback(async (): Promise<void> => {
+    if (brand === null || accountSession.isPending) return;
+    setAddBankFailed(false);
+    try {
+      const result = await accountSession.mutateAsync({
+        brandId: brand.id,
+        surface: "account_management",
+      });
+      await WebBrowser.openAuthSessionAsync(result.targetUrl, RETURN_DEEP_LINK);
+      await statusQuery.refetch();
+    } catch {
+      setAddBankFailed(true);
+      fireHaptic("error");
+      announceForAccessibility(ADD_BANK_OPEN_FAILED_COPY);
+    }
+  }, [accountSession, brand, statusQuery]);
 
   const handleSupport = useCallback((): void => {
     void Linking.openURL(SUPPORT_MAILTO);
@@ -870,7 +1004,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           setReopenPickerOnReturn(true);
           setSelectFailure(null);
           setPaystackSelected(false);
-          setSelectedCountry(DEFAULT_COUNTRY);
+          // #3645 — nothing chosen: it used to be reset to the United Kingdom.
+          setSelectedCountry(null);
+          void rememberBrandPayoutCountry(brand.id, null);
         })
         .catch((err: unknown) => {
           setErrorMessage(describePayoutCountrySwitchFailure(err).message);
@@ -1033,7 +1169,53 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           </>
         ) : null}
 
-        {viewState === "already-active" ? (
+        {viewState === "already-active" && bankStillNeeded ? (
+          <>
+            <View style={styles.stateBlock} testID="onboard-add-bank">
+              <View
+                style={[styles.stateIconCircle, styles.stateIconCircleSuccess]}
+              >
+                <Icon name="bank" size={32} color={accent.warm} />
+              </View>
+              <Text style={styles.stateTitle}>Add your bank to get paid</Text>
+              <Text style={styles.stateSub}>
+                {SELLING_ADD_BANK_SUB}
+              </Text>
+              {addBankFailed ? (
+                <Text
+                  style={[styles.stateSub, styles.addBankError]}
+                  accessibilityRole="alert"
+                  testID="onboard-add-bank-error"
+                >
+                  {ADD_BANK_OPEN_FAILED_COPY}
+                </Text>
+              ) : null}
+            </View>
+            <View style={styles.actionsCol}>
+              <Button
+                label={accountSession.isPending ? "Opening…" : SELLING_ADD_BANK_CTA}
+                onPress={handleAddBank}
+                variant="primary"
+                size="lg"
+                fullWidth
+                disabled={accountSession.isPending}
+                leadingIcon="bank"
+                accessibilityLabel="Add a bank account to get paid"
+                testID="onboard-add-bank-cta"
+              />
+              <Button
+                label="Back to payments"
+                onPress={handleDone}
+                variant="secondary"
+                size="md"
+                fullWidth
+                accessibilityLabel="Back to payments"
+              />
+            </View>
+          </>
+        ) : null}
+
+        {viewState === "already-active" && !bankStillNeeded ? (
           <>
             <View style={styles.stateBlock}>
               <View
@@ -1043,8 +1225,8 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               </View>
               <Text style={styles.stateTitle}>You{"’"}re all set</Text>
               <Text style={styles.stateSub}>
-                Your Stripe account is active. You can publish your offerings and
-                accept payments.
+                Your payout account is active. You can publish your offerings
+                and accept payments.
               </Text>
             </View>
             <View style={styles.actionsCol}>
@@ -1063,10 +1245,10 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         {viewState === "checking-status" || viewState === "settling-status" ? (
           <View style={styles.stateBlock}>
             <Spinner size={48} color={accent.warm} />
-            <Text style={styles.stateTitle}>Checking Stripe status...</Text>
+            <Text style={styles.stateTitle}>Checking your payout status…</Text>
             <Text style={styles.stateSub}>
-              We{"’"}re confirming your account with Stripe before marking
-              payments ready.
+              We{"’"}re confirming your account before marking payments
+              ready.
             </Text>
           </View>
         ) : null}
@@ -1082,7 +1264,14 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           />
         ) : null}
 
-        {viewState === "idle" ? (
+        {viewState === "idle" && awaitingLockState ? (
+          <View style={styles.stateBlock} testID="onboard-awaiting-lock-state">
+            <Spinner size={48} color={accent.warm} />
+            <Text style={styles.stateTitle}>Checking your payout status…</Text>
+          </View>
+        ) : null}
+
+        {viewState === "idle" && !awaitingLockState ? (
           <>
             <View style={styles.stateBlock}>
               <Text style={styles.stateTitle}>
@@ -1091,8 +1280,8 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <Text style={styles.stateSub}>
                 Set up payments to publish your offerings and get paid.{"\n\n"}
                 <Text style={styles.bold}>
-                  Your bank details go directly to Stripe — Mingla never sees
-                  them.
+                  Your bank details go straight to our payment partner —
+                  Mingla never sees them.
                 </Text>
                 {"\n\n"}Takes about 5 minutes.
               </Text>
@@ -1105,7 +1294,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                   helperText={countryPickerHelper}
                   warningText={countryPickerWarning}
                   extraOptions={PAYSTACK_PICKER_OPTIONS}
-                  defaultOpen={reopenPickerOnReturn}
+                  // Never opened over a locked row (a brand with a payment
+                  // account keeps its country).
+                  defaultOpen={reopenPickerOnReturn && !countryPickerLocked}
                 />
               </View>
 
@@ -1143,19 +1334,22 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                   variant="primary"
                   size="lg"
                   fullWidth
-                  disabled={!tosPassed}
+                  disabled={!tosPassed || selectedCountry === null}
                   accessibilityLabel={
-                    tosPassed
-                      ? "Start Stripe Connect onboarding"
-                      : "Accept Mingla terms first to start Stripe onboarding"
+                    selectedCountry === null
+                      ? "Choose a country first, then set up payments"
+                      : tosPassed
+                        ? "Start bank setup"
+                        : "Accept Mingla terms first to start bank setup"
                   }
+                  testID="onboard-start"
                 />
               )}
             </View>
 
             <View style={styles.poweredByRow}>
               <Text style={styles.poweredByText}>
-                Powered by Stripe. Your data is encrypted.
+                Your data is encrypted.
               </Text>
             </View>
           </>
@@ -1164,7 +1358,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         {viewState === "starting" ? (
           <View style={styles.stateBlock}>
             <Spinner size={48} color={accent.warm} />
-            <Text style={styles.stateTitle}>Creating your Stripe account…</Text>
+            <Text style={styles.stateTitle}>Setting up your payout account…</Text>
           </View>
         ) : null}
 
@@ -1189,7 +1383,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                 variant="primary"
                 size="lg"
                 fullWidth
-                accessibilityLabel="Continue Stripe onboarding"
+                accessibilityLabel="Continue bank setup"
               />
               <Pressable
                 onPress={handleSupport}
@@ -1238,9 +1432,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               >
                 <Icon name="check" size={32} color={accent.warm} />
               </View>
-              <Text style={styles.stateTitle}>{"✓"} Submitted to Stripe</Text>
+              <Text style={styles.stateTitle}>{"✓"} Submitted</Text>
               <Text style={styles.stateSub}>
-                Stripe is verifying your details. We{"’"}ll email you the
+                Your details are being verified. We{"’"}ll email you the
                 moment it{"’"}s done — usually within minutes.
               </Text>
             </View>
@@ -1266,7 +1460,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <Text style={styles.stateTitle}>More information needed</Text>
               <Text style={styles.stateSub}>
                 {errorMessage ??
-                  "Stripe needs a few more details before payments can be enabled."}
+                  "A few more details are needed before payments can be enabled."}
               </Text>
             </View>
             <View style={styles.actionsCol}>
@@ -1277,7 +1471,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                 size="lg"
                 fullWidth
                 disabled={onboardMutation.isPending}
-                accessibilityLabel="Continue Stripe verification"
+                accessibilityLabel="Continue verification"
               />
               <Button
                 label="Back to payments"
@@ -1332,8 +1526,8 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               </View>
               <Text style={styles.stateTitle}>Onboarding link expired</Text>
               <Text style={styles.stateSub}>
-                The Stripe onboarding link expired. Tap try again — your
-                progress is saved.
+                The bank setup link expired. Tap try again — your progress is
+                saved.
               </Text>
             </View>
             <View style={styles.actionsCol}>
@@ -1363,7 +1557,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               <View style={[styles.stateIconCircle, styles.stateIconCircleFailed]}>
                 <Icon name="flag" size={32} color={semantic.error} />
               </View>
-              <Text style={styles.stateTitle}>Couldn{"’"}t reach Stripe</Text>
+              <Text style={styles.stateTitle}>Couldn{"’"}t reach bank setup</Text>
               <Text style={styles.stateSub}>
                 Check your connection and try again. If the problem continues,
                 contact support.
@@ -1434,13 +1628,13 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               </View>
               <Text style={styles.stateTitle}>
                 {isCountryLockedError
-                  ? "Stripe is already connected"
-                  : "Stripe couldn't verify"}
+                  ? "A payment account is already set up"
+                  : "This account couldn't be verified"}
               </Text>
               <Text style={styles.stateSub}>
                 {isCountryLockedError
                   ? errorMessage
-                  : `${errorMessage ?? "Stripe needs additional information."} Try again or contact support.`}
+                  : `${errorMessage ?? "Additional information is needed."} Try again or contact support.`}
               </Text>
             </View>
             <View style={styles.actionsCol}>
@@ -1563,6 +1757,9 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     textAlign: "center",
     paddingHorizontal: spacing.md,
+  },
+  addBankError: {
+    color: semantic.error,
   },
   bold: {
     fontWeight: "600",

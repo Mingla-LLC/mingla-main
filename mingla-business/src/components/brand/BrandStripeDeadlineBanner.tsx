@@ -122,7 +122,7 @@ export function BrandStripeDeadlineBanner({
       </View>
 
       <Text style={styles.body}>
-        Stripe needs verification details to keep your payouts running. Tap
+        Verification details are needed to keep your payouts running. Tap
         below to provide them.
       </Text>
 

@@ -52,7 +52,11 @@ import {
 } from "../../constants/stripeSupportedCountries";
 
 interface BrandStripeCountryPickerProps {
-  /** Currently selected ISO 3166-1 alpha-2 code. Default to "GB" if null. */
+  /**
+   * Currently selected ISO 3166-1 alpha-2 code. #3645 — null means NOTHING is
+   * chosen: the row reads "Choose a country" and no row is highlighted. There
+   * is no default country.
+   */
   value: string | null;
   /** Fired when the user picks a different country. */
   onChange: (countryCode: string) => void;
@@ -83,6 +87,9 @@ interface BrandStripeCountryPickerProps {
    */
   presentation?: "operation-picker" | "payout-confirm";
 }
+
+/** #3645 — what the country row reads while nothing is chosen. */
+export const PAYOUT_COUNTRY_NOT_CHOSEN_LABEL = "Choose a country";
 
 export function BrandStripeCountryPicker(
   props: BrandStripeCountryPickerProps,
@@ -131,8 +138,10 @@ export function PayoutCountryPickerView({
 }: PayoutCountryPickerViewProps): React.ReactElement {
   const [open, setOpen] = useState(defaultOpen);
 
-  const selectedCode = value ?? "GB";
-  const selected = getStripeSupportedCountry(selectedCode);
+  const selectedCode = value;
+  const selected = selectedCode === null
+    ? null
+    : getStripeSupportedCountry(selectedCode);
   const selectedExtra =
     extraOptions.find((option) => option.code === selectedCode) ?? null;
 
@@ -150,24 +159,31 @@ export function PayoutCountryPickerView({
     selected?.displayName ?? selectedExtra?.name ?? selectedCode;
   const selectedCurrency =
     selected?.defaultCurrency ?? selectedExtra?.currency ?? null;
-  const triggerLabel = selectedCurrency !== null
-    ? `${selectedName} · ${selectedCurrency}`
-    : `Country: ${selectedCode}`;
+  const triggerLabel = selectedCode === null
+    ? PAYOUT_COUNTRY_NOT_CHOSEN_LABEL
+    : selectedCurrency !== null
+      ? `${selectedName} · ${selectedCurrency}`
+      : `Country: ${selectedCode}`;
   const payoutConfirm = presentation === "payout-confirm";
+  const triggerAccessibilityLabel = selectedCode === null
+    ? payoutConfirm
+      ? "Payout country: not chosen, tap to choose"
+      : "Country: not chosen, tap to choose"
+    : payoutConfirm
+      ? `Payout country: ${selectedName}, tap to change`
+      : `Country: ${selectedName}, tap to change`;
 
   return (
     <View style={styles.wrap}>
       <PayoutCountryTriggerRow
         onPress={handleOpen}
         disabled={disabled}
-        accessibilityLabel={
-          payoutConfirm
-            ? `Payout country: ${selectedName}, tap to change`
-            : `Country: ${selectedName}, tap to change`
-        }
+        accessibilityLabel={triggerAccessibilityLabel}
         label={payoutConfirm ? "PAYOUTS IN" : "Where will you operate?"}
         valueText={triggerLabel}
-        actionText={payoutConfirm ? "Change" : "›"}
+        actionText={
+          payoutConfirm ? (selectedCode === null ? "Choose" : "Change") : "›"
+        }
         actionKind={payoutConfirm ? "link" : "chevron"}
         helperText={helperText}
         warningText={warningText}

@@ -62,7 +62,9 @@ export const emptyStop = (): ExperienceStopDraft => ({
   coordinatePrecision: null,
   imageUrls: [],
   startTime: null,
-  priceMajor: "0.00",
+  // #3645 — starts EMPTY (the field shows "0.00" as a placeholder). An empty
+  // per-stop price means that stop is free, exactly like typing 0.
+  priceMajor: "",
   description: "",
 });
 
@@ -116,3 +118,16 @@ export const initialWholePriceInput = (
   const value = parseFloat(saved);
   return Number.isFinite(value) && value > 0 ? saved : "";
 };
+
+/**
+ * #3645 — is a per-stop price entry acceptable? EMPTY is: it means the stop is
+ * free, the same as 0. Anything typed must be a number that is not negative.
+ * Drafts saved before this rule stored "0.00", which is accepted as before.
+ */
+export function stopPriceEntryIsValid(priceMajor: string): boolean {
+  const trimmed = priceMajor.trim();
+  if (trimmed.length === 0) return true;
+  if (!/^\d*(?:\.\d*)?$/.test(trimmed) || !/\d/.test(trimmed)) return false;
+  const value = parseFloat(trimmed);
+  return Number.isFinite(value) && value >= 0;
+}

@@ -367,6 +367,15 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       : fallback;
   });
   const [showStepErrors, setShowStepErrors] = useState<boolean>(false);
+  // #3645 — see StepBodyProps.focusFirstErrorSignal / scrollToStepOffset.
+  const [focusFirstErrorSignal, setFocusFirstErrorSignal] = useState(0);
+  const stepBodyYRef = useRef(0);
+  const handleStepBodyLayout = useCallback(
+    (event: { nativeEvent: { layout: { y: number } } }): void => {
+      stepBodyYRef.current = event.nativeEvent.layout.y;
+    },
+    [],
+  );
   const [discardDialogVisible, setDiscardDialogVisible] =
     useState<boolean>(false);
   const [publishConfirmVisible, setPublishConfirmVisible] =
@@ -569,6 +578,15 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const performScrollToEnd = useCallback((): void => {
     requestAnimationFrame((): void => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
+
+  // #3645 — bring a point inside the step body into view (an invalid field
+  // that cannot take keyboard focus).
+  const scrollToStepOffset = useCallback((y: number): void => {
+    scrollViewRef.current?.scrollTo({
+      y: Math.max(0, stepBodyYRef.current + y - 16),
+      animated: true,
     });
   }, []);
 
@@ -866,6 +884,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     const errs = validateStep(currentStep, liveDraft);
     if (errs.length > 0) {
       setShowStepErrors(true);
+      // #3645 — never a silent refusal: the step moves to its first invalid
+      // field (the caption alone could be off screen).
+      setFocusFirstErrorSignal((signal) => signal + 1);
       return;
     }
     // Advance.
@@ -1134,6 +1155,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       showErrors: showStepErrors,
       onShowToast: handleShowToast,
       scrollToBottom,
+      focusFirstErrorSignal,
+      scrollToStepOffset,
       coverMediaEventId: liveDraft.id,
       onRequireServerDraft,
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
@@ -1442,7 +1465,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
                   ? "Choose people from Your Book. Nothing sends until this event is published."
                   : STEP_DEFS[currentStep].subtitle}
               </Text>
-        <View style={styles.stepBodyWrap}>{renderStepBody()}</View>
+        <View style={styles.stepBodyWrap} onLayout={handleStepBodyLayout}>
+          {renderStepBody()}
+        </View>
       </ScrollView>
 
       {/* Dock — sleek + compact (rework v3). Tight vertical padding,

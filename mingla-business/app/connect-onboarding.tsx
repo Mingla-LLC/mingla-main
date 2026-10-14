@@ -7,7 +7,7 @@ export default function ConnectOnboardingNativeRoute(): React.ReactElement {
   return (
     <NativeConnectWebOnlyFallback
       title="Open onboarding in the browser"
-      body="Stripe onboarding runs in Mingla's hosted web page. Return to payments and open Set up payments again."
+      body="Bank setup runs in Mingla's hosted web page. Return to payments and open Set up payments again."
     />
   );
 }

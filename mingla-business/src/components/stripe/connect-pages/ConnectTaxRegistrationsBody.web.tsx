@@ -43,7 +43,7 @@ export default function ConnectTaxRegistrationsBody(): React.ReactElement {
     const publishableKey = fromExtra ??
       process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
     if (!publishableKey) {
-      setInitError("Stripe publishable key is not configured.");
+      setInitError("Tax tools are not configured.");
       return null;
     }
     try {

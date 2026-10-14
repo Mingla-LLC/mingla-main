@@ -16,7 +16,7 @@ import {
   type StripeRequirementsShape,
 } from "./stripeOnboardingOutcome";
 
-export const ACTIVE_STRIPE_BANNER_TITLE = "You're connected to Stripe";
+export const ACTIVE_STRIPE_BANNER_TITLE = "Your bank is connected";
 
 /**
  * Issue #3258 (review follow-up) — the copy for the window where the live
@@ -27,9 +27,9 @@ export const ACTIVE_STRIPE_BANNER_TITLE = "You're connected to Stripe";
  * (which was the reported lie) and not "verifying" (which would be the same
  * lie inverted). Just what is true — we are asking Stripe.
  */
-export const STRIPE_STATUS_UNRESOLVED_TITLE = "Checking your Stripe status…";
+export const STRIPE_STATUS_UNRESOLVED_TITLE = "Checking your payout status…";
 export const STRIPE_STATUS_UNRESOLVED_SUB =
-  "One moment — we're confirming this with Stripe.";
+  "One moment — we're confirming this with our payment partner.";
 
 /**
  * Issue #3258 — the Stripe requirements blob as the PRESENTATION layer reads
@@ -228,13 +228,13 @@ export function isStripeCountryPickerLocked(
 }
 
 export function getStripeCountryLockedCopy(country: string | null): string {
-  return `Stripe is connected for ${
+  return `A payment account is already set up for ${
     country ?? "this country"
   }. To use a different country or currency, create a new brand.`;
 }
 
 export function getStripeCountryReplaceableCopy(country: string): string {
-  return `You can still change country because Stripe setup is not complete. We'll create a new Stripe setup for ${country}.`;
+  return `You can still change country because bank setup is not complete. We'll start a new setup for ${country}.`;
 }
 
 /**
@@ -256,12 +256,12 @@ export function getBrandProfileStripeBannerCopy(
     case "onboarding":
       return {
         title: "Onboarding submitted — verifying",
-        sub: "We'll email you when Stripe finishes verifying your details.",
+        sub: "We'll email you when your details have been verified.",
       };
     case "pending_verification":
       return {
         title: "Onboarding submitted — verifying",
-        sub: "Nothing needed from you. We'll email you when Stripe finishes checking your details.",
+        sub: "Nothing needed from you. We'll email you when your details have been checked.",
       };
     // #3258 review follow-up — the banner is still a Pressable into Payments,
     // which is a real destination, but it is NOT painted red and it does not
@@ -278,7 +278,7 @@ export function getBrandProfileStripeBannerCopy(
     case "restricted":
       return {
         title: "Action required",
-        sub: "Stripe has limited your account. Tap to resolve.",
+        sub: "Your payment account is limited. Tap to resolve.",
       };
   }
 }

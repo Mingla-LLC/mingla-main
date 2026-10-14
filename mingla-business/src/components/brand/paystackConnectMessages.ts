@@ -66,10 +66,10 @@ export function describePaystackConnectError(
   // and name the recovery instead.
   if (bankDetailsSaved) return PARTIAL_CONNECT_MESSAGE;
   if (raw.includes("recipient_create_failed") || raw.includes("subaccount_create_failed")) {
-    return "Paystack couldn't accept this account right now. Wait a moment and try again — if it keeps failing, contact support.";
+    return "Our payment partner couldn't accept this account right now. Wait a moment and try again — if it keeps failing, contact support.";
   }
   if (raw.includes("recipient_store_failed") || raw.includes("recipient_read_failed")) {
-    return "We reached Paystack but couldn't save the result on our side. Nothing was charged or changed. Try again, and contact support if it persists.";
+    return "We reached our payment partner but couldn't save the result on our side. Nothing was charged or changed. Try again, and contact support if it persists.";
   }
   return isUpdate
     ? "We couldn't update this bank account. Please try again in a moment."

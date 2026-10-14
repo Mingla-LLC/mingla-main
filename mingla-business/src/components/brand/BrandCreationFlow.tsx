@@ -537,6 +537,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     cardAccountCountry: stripeStatusQuery.data?.country ?? null,
     defaultCurrency: payoutCanonicalBrand?.defaultCurrency,
     addressCountryCode: payoutCanonicalBrand?.countryCode,
+    payoutCountry: payoutCanonicalBrand?.payoutCountry,
   });
   const chosenPayoutRail = pickedPayoutRail ?? savedPayoutRail;
   const [resumeError, setResumeError] = useState<string | null>(null);

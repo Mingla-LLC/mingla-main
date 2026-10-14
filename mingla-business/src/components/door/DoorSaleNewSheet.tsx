@@ -369,7 +369,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
             <Text style={styles.bannerTitle}>TESTING MODE</Text>
             <Text style={styles.bannerBody}>
               Only Cash and Manual payments work today. Card reader and NFC
-              tap-to-pay land when the backend ships in B-cycle.
+              tap-to-pay are not available yet.
             </Text>
           </View>
 

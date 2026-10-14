@@ -23,6 +23,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { dispatchNotification } from "../_shared/stripeEdgeAuth.ts";
+import { SUPPORT_HOST_FACING_AGENT } from "../_shared/supportHostFacing.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -105,10 +106,18 @@ serve(async (req) => {
     }
     if (sender) recipients.delete(sender);
 
-    const title = event === "new_ticket" ? "New support request" : "Support reply";
+    // #3720: staff→host push is always signed as Veronica; staff pushes keep
+    // operational titles. Audit log (support-send) still names the real agent.
+    const title = event === "new_ticket"
+      ? "New support request"
+      : body?.senderIsStaff === true
+      ? `${SUPPORT_HOST_FACING_AGENT} replied`
+      : "Support reply";
     const subj = typeof ticket.subject === "string" ? ticket.subject : "your request";
     const pushBody = event === "new_ticket"
       ? `A user opened: ${subj}`
+      : body?.senderIsStaff === true
+      ? `${SUPPORT_HOST_FACING_AGENT} replied on: ${subj}`
       : `New message on: ${subj}`;
 
     let dispatched = 0;

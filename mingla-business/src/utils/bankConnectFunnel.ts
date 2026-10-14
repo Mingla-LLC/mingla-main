@@ -113,7 +113,7 @@ export async function startStripeWebBankConnect(
     )
   ) {
     throw new Error(
-      "Stripe returned an unexpected bank setup link. Please try again.",
+      "We got an unexpected bank setup link. Please try again.",
     );
   }
 

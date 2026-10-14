@@ -532,7 +532,10 @@ describe("#3645 retest — tester adversarial: the automatic Nigeria switch on w
 
     expect(mockInvoke).not.toHaveBeenCalled();
     expect(count(tree, "bank-connect-primary")).toBe(1);
-    expect(pickerValue(tree)).toBe("GB");
+    // [TEST-MOD-APPROVED #3645] was `toBe("GB")`: a brand that has chosen
+    // nothing opened on the United Kingdom. There is no default country any
+    // more; the row is empty ("Choose a country") and still never Nigeria.
+    expect(pickerValue(tree)).toBe("");
   });
 
   test("X10: someone who is not the brand's owner never triggers it, on mount or on re-render", async () => {

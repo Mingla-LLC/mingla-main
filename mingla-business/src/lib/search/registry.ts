@@ -225,6 +225,7 @@ export const FEATURE_REGISTRY: readonly SearchRegistryItem[] = [
     route: `/brand/${BRAND_ID_TOKEN}/payments/onboard`,
     group: "settings",
     minRank: 30,
+    // orch-strict-grep-allow provider-name-host-copy — a search word a host may TYPE; synonyms are matched, never displayed.
     synonyms: ["onboarding", "connect stripe", "verify bank", "payout"],
     iconName: "bank",
   },
@@ -351,13 +352,14 @@ export const FEATURE_REGISTRY: readonly SearchRegistryItem[] = [
     key: "connect-account-mgmt",
     type: "setting",
     title: "Manage payout account",
-    subtitle: "Update bank in the Stripe dashboard",
+    subtitle: "Update your payout bank",
     // The embedded /connect-account-management page needs a Stripe account
     // session token (shows "Invalid management link" without one). Route to
     // the brand payments hub, which launches it with a valid token.
     route: `/brand/${BRAND_ID_TOKEN}/payments`,
     group: "settings",
     minRank: 30,
+    // orch-strict-grep-allow provider-name-host-copy — a search word a host may TYPE; synonyms are matched, never displayed.
     synonyms: ["stripe dashboard", "update bank", "manage account"],
     iconName: "bank",
   },
