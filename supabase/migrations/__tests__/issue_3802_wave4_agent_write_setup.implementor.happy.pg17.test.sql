@@ -831,9 +831,10 @@ begin
     'field_not_for_agents/Only a person can keep a contact detail that another record also holds. Ask your person./1');
   v := pg_temp.t3802b_person('growth', format($q$select public.crm_record_update(%L, '{"identifiers": [{"kind": "email", "value": "hello@palmcourt.example"}, {"kind": "handle", "value": "palm.court"}], "allow_shared_identifier": true}')::text$q$, v_b));
   perform pg_temp.t3802b_check('B-4', 'a person may keep it anyway on a change, as on a new record',
-    pg_temp.t3802b_get(v, 'changed') || '/' || jsonb_array_length(v::jsonb #> '{record,identifiers}')
-      || '/' || (select count(*) from public.crm_record_identifiers where kind = 'handle' and value_key = 'palm.court'
-                  and record_id in (v_a, v_b)), 'true/2/2');
+    case when v like 'ERR:%' then v else
+      pg_temp.t3802b_get(v, 'changed') || '/' || jsonb_array_length(v::jsonb #> '{record,identifiers}')
+        || '/' || (select count(*) from public.crm_record_identifiers where kind = 'handle' and value_key = 'palm.court'
+                    and record_id in (v_a, v_b)) end, 'true/2/2');
   perform pg_temp.t3802b_like('B-4', 'the flag takes true or false and nothing else',
     pg_temp.t3802b_person('growth', format($q$select public.crm_record_update(%L, '{"allow_shared_identifier": "yes"}')::text$q$, v_b)),
     'ERR:22023:invalid_value: "allow_shared_identifier" takes true or false.');
