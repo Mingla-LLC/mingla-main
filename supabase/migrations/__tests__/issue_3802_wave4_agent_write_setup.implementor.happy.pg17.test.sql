@@ -254,7 +254,9 @@ begin
       ('public.team_agent_setup_create(text,text)', true),
       ('public.crm_ident_key(text,text)', false),
       ('public.crm_clean_identifiers(jsonb)', false),
+      ('public.crm_identifier_hits(text,jsonb,uuid)', false),
       ('public.crm_identifier_matches(text,jsonb,uuid)', false),
+      ('public.crm_request_claim(text,text,jsonb)', false),
       ('public.crm_identifiers_json(uuid)', false),
       ('public.team_agent_person(text)', false),
       ('public.team_agent_key_issue(text,text,text,text)', false),
@@ -297,9 +299,9 @@ begin
     perform pg_temp.t3802b_like('B-1', 'an anonymous caller cannot run ' || split_part(t, '(', 1),
       pg_temp.t3802b_as('anon', 'select public.' || t || '::text'), 'ERR:42501:%');
   end loop;
-  perform pg_temp.t3802b_check('B-1', 'there are exactly 16 team_agent_ functions and 48 crm_ functions',
+  perform pg_temp.t3802b_check('B-1', 'there are exactly 16 team_agent_ functions and 50 crm_ functions',
     (select count(*) filter (where p.proname like 'team\_agent\_%')::text || '/' || count(*) filter (where p.proname like 'crm\_%')
-       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '16/48');
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '16/50');
   perform pg_temp.t3802b_check('B-1', 'no agent function takes a person from its caller',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'team\_agent\_%'
@@ -307,9 +309,17 @@ begin
                      where a ~* '(actor|email|uid|user|owner|via|role|address|person)')), '0');
   perform pg_temp.t3802b_check('B-1', 'is_admin_user() has the source it had before this migration',
     (select md5(prosrc) from pg_proc where oid = 'public.is_admin_user()'::regprocedure), 'dc5465a20a4246c6921be0469e261a8b');
-  perform pg_temp.t3802b_check('B-1', 'the migration file never replaces it, the role functions or the team writer',
-    (select (sql !~* 'function\s+public\.(is_admin_user|admin_team_role|admin_team_can|admin_team_role_areas|admin_team_my_access|admin_team_set_member)\M')::text
+  perform pg_temp.t3802b_check('B-1', 'the migration file never replaces it or the role functions',
+    (select (sql !~* 'function\s+public\.(is_admin_user|admin_team_role|admin_team_can|admin_team_role_areas|admin_team_my_access)\M')::text
        from t3802b_src where k = 'file'), 'true');
+  perform pg_temp.t3802b_check('B-1', 'the team writer keeps its signature, its grants and its owner-only gate',
+    (select string_agg(distinct coalesce(g.rolname, 'PUBLIC'), ',' order by coalesce(g.rolname, 'PUBLIC'))
+       from pg_proc p, aclexplode(p.proacl) a left join pg_roles g on g.oid = a.grantee
+      where p.oid = 'public.admin_team_set_member(text,text,text)'::regprocedure and a.privilege_type = 'EXECUTE'
+        and coalesce(g.rolname, 'PUBLIC') in ('PUBLIC', 'anon', 'authenticated', 'service_role'))
+      || '/' || split_part(pg_temp.t3802b_person('growth', $q$select public.admin_team_set_member('issue3802b-growth2@test.local', 'growth', 'revoked')::text$q$), ':', 3)
+      || '/' || (select status from public.admin_team_members where email = 'issue3802b-growth2@test.local'),
+    'authenticated,service_role/forbidden/active');
   perform pg_temp.t3802b_check('B-1', 'the gateway writes only its own two tables',
     (select (p.prosrc !~* '(insert\s+into|update|delete\s+from|truncate|merge\s+into)\s+(only\s+)?(public\.)?(crm_|admin_|team_agent_setup)')::text
        from pg_proc p where p.oid = 'public.team_agent_call(text,text,jsonb,text)'::regprocedure), 'true');
@@ -427,19 +437,57 @@ begin
   -- The owner of a code loses access, or gains another way of signing in.
   v_code := pg_temp.t3802b_person('leaver', $q$select public.team_agent_setup_create('claude')::text$q$)::jsonb ->> 'code';
   perform pg_temp.t3802b_person('owner', $q$select public.admin_team_set_member('issue3802b-leaver@test.local', 'growth', 'revoked')::text$q$);
+  perform pg_temp.t3802b_check('B-2', 'removing a person ends the code they had not used, without using it',
+    (select (voided_at is not null)::text || '/' || (consumed_at is null)::text
+       from public.team_agent_setup_codes where code_hash = pg_temp.t3802b_digest(v_code)), 'true/true');
   perform pg_temp.t3802b_check('B-2', 'a code whose maker was removed is refused',
     pg_temp.t3802b_redeem(v_code), v_refusal);
+  -- Given access again inside the ten minutes, the old code stays ended.
+  perform pg_temp.t3802b_person('owner', $q$select public.admin_team_set_member('issue3802b-leaver@test.local', 'partner', 'active')::text$q$);
+  perform pg_temp.t3802b_check('B-2', 'a person given access again cannot use a code from before they were removed',
+    pg_temp.t3802b_redeem(v_code) || '/' || (select count(*) from public.team_agent_keys where owner_email = 'issue3802b-leaver@test.local'),
+    v_refusal || '/0');
+  perform pg_temp.t3802b_person('owner', $q$select public.admin_team_set_member('issue3802b-leaver@test.local', 'growth', 'revoked')::text$q$);
   v_code := pg_temp.t3802b_person('social', $q$select public.team_agent_setup_create('claude')::text$q$)::jsonb ->> 'code';
   insert into auth.identities (user_id, provider) values ('38020000-0000-4000-b000-000000000006', 'google');
   perform pg_temp.t3802b_check('B-2', 'a code whose maker can now sign in another way is refused',
     pg_temp.t3802b_redeem(v_code), v_refusal);
-  perform pg_temp.t3802b_check('B-2', 'neither refusal made a key, and both codes are used up',
+  perform pg_temp.t3802b_check('B-2', 'neither refusal made a key; one code was ended and the other is used up',
     (select count(*)::text from public.team_agent_keys where owner_email in ('issue3802b-leaver@test.local', 'issue3802b-social@test.local'))
       || '/' || (select count(*) from public.team_agent_setup_codes
-                  where owner_email in ('issue3802b-leaver@test.local', 'issue3802b-social@test.local') and consumed_at is not null and consumed_key_id is null), '0/2');
+                  where owner_email = 'issue3802b-leaver@test.local' and voided_at is not null and consumed_at is null)
+      || '/' || (select count(*) from public.team_agent_setup_codes
+                  where owner_email = 'issue3802b-social@test.local' and consumed_at is not null and consumed_key_id is null), '0/1/1');
   perform pg_temp.t3802b_check('B-2', 'after a refusal nobody is acting',
     pg_temp.t3802b_as('service', format($q$select (public.team_agent_call(%L, 'setup:redeem', '{}'::jsonb, 'x') ->> 'setup')
        || '/' || coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''), 'nobody')$q$, pg_temp.t3802b_digest(v_code))), 'invalid/nobody');
+
+  -- A key that stops working because its person can no longer act ends the
+  -- codes that person has not used.
+  perform pg_temp.t3802b_newkey('growth2', 'claude', 'growth2.claude');
+  v_code2 := pg_temp.t3802b_person('growth2', $q$select public.team_agent_setup_create('codex')::text$q$)::jsonb ->> 'code';
+  update auth.users set banned_until = now() + interval '1 day' where id = '38020000-0000-4000-b000-000000000005';
+  v := pg_temp.t3802b_gw('growth2.claude', 'get_started');
+  perform pg_temp.t3802b_check('B-2', 'a key whose person may no longer act is turned off, and the code they had not used ends with it',
+    v
+      || '/' || (select revoke_reason from public.team_agent_keys where key_hash = pg_temp.t3802b_digest(pg_temp.t3802b_id('growth2.claude')))
+      || '/' || (select (voided_at is not null)::text || (consumed_at is null)::text from public.team_agent_setup_codes
+                  where code_hash = pg_temp.t3802b_digest(v_code2)),
+    '{"auth": "invalid"}/access_removed/truetrue');
+  update auth.users set banned_until = null where id = '38020000-0000-4000-b000-000000000005';
+  perform pg_temp.t3802b_check('B-2', 'able to act again, that person still cannot use the code from before',
+    pg_temp.t3802b_redeem(v_code2), v_refusal);
+  -- A key that has only gone unused for too long leaves a waiting code alone.
+  perform pg_temp.t3802b_newkey('growth2', 'claude', 'growth2.claude');
+  v_code2 := pg_temp.t3802b_person('growth2', $q$select public.team_agent_setup_create('codex')::text$q$)::jsonb ->> 'code';
+  update public.team_agent_keys set created_at = now() - interval '91 days' where key_hash = pg_temp.t3802b_digest(pg_temp.t3802b_id('growth2.claude'));
+  v := pg_temp.t3802b_gw('growth2.claude', 'get_started');
+  perform pg_temp.t3802b_check('B-2', 'a key that went unused too long is turned off, and a waiting code is left alone',
+    v
+      || '/' || (select revoke_reason from public.team_agent_keys where key_hash = pg_temp.t3802b_digest(pg_temp.t3802b_id('growth2.claude')))
+      || '/' || (select (voided_at is null)::text from public.team_agent_setup_codes where code_hash = pg_temp.t3802b_digest(v_code2)),
+    '{"auth": "invalid"}/idle/true');
+  update public.team_agent_setup_codes set voided_at = now() where code_hash = pg_temp.t3802b_digest(v_code2);
 
   -- Who may make one.
   perform pg_temp.t3802b_like('B-2', 'a person without the pipelines cannot make a code',
@@ -522,7 +570,9 @@ $b3$;
 -- ---------------------------------------------------------------------------
 -- B-4 -- identifiers. The table below is the one the admin web's twin of
 -- crm_ident_key is asserted against (kind | value | normal form, "-" = not
--- usable); keep the two in step.
+-- usable); keep the two in step. A value written E'...' carries characters
+-- nobody can see, as \uXXXX. The second table is the pairs of phone numbers
+-- both sides match the same way (exact, last_9_digits or none).
 -- ---------------------------------------------------------------------------
 create temp table t3802b_forms (kind text, value text, want text) on commit drop;
 insert into t3802b_forms values
@@ -556,17 +606,130 @@ insert into t3802b_forms values
   ('handle', 'wa.me/2348035550101', '2348035550101'),
   ('handle', 'has space', '-'),
   ('handle', 'name@example.com', '-'),
-  ('handle', 'https://example.com/someone', 'example.com'),
+  ('handle', 'https://example.com/someone', 'example.com/someone'),
+  ('handle', 'https://linktr.ee/alice', 'linktr.ee/alice'),
+  ('handle', 'https://linktr.ee/bob', 'linktr.ee/bob'),
+  ('handle', 'https://linktr.ee', '-'),
+  ('handle', 'https://linktr.ee/', '-'),
+  ('handle', 'https://www.facebook.com/profile.php?id=100001', '100001'),
+  ('handle', 'https://www.facebook.com/profile.php?id=100002', '100002'),
+  ('handle', 'facebook.com/profile.php', 'facebook.com/profile.php'),
+  ('handle', 'https://m.facebook.com/aliceskitchen', 'aliceskitchen'),
+  ('handle', 'https://mobile.twitter.com/alice', 'alice'),
+  ('handle', 'https://www.youtube.com/channel/UCabc123', 'ucabc123'),
+  ('handle', 'https://www.youtube.com/channel/UCxyz789', 'ucxyz789'),
+  ('handle', 'https://youtube.com/c/AliceCooks', 'alicecooks'),
+  ('handle', 'https://www.youtube.com/user/alice', 'alice'),
+  ('handle', 'https://www.instagram.com/p/Cabc123/', 'cabc123'),
+  ('handle', 'https://www.instagram.com/reel/Cxyz/', 'cxyz'),
+  ('handle', 'https://instagram.com/stories/alice/123', 'alice'),
+  ('handle', 'https://www.instagram.com/explore', 'instagram.com/explore'),
+  ('handle', 'https://www.instagram.com/', '-'),
+  ('handle', 'instagram.com', '-'),
+  ('handle', 'https://www.facebook.com/pages/Alice-Kitchen/12345', '12345'),
+  ('handle', 'https://www.facebook.com/people/Alice/1000', '1000'),
+  ('handle', 'https://www.facebook.com/groups/raleighfood', 'raleighfood'),
+  ('handle', 'https://www.tiktok.com/@alice/video/123', 'alice'),
+  ('handle', 'https://vm.tiktok.com/ZMabc/', 'vm.tiktok.com/zmabc'),
+  ('handle', 'https://t.me/alice', 't.me/alice'),
+  ('handle', 'm.me/alice', 'm.me/alice'),
+  ('handle', 'https://wa.me/2348035550101', '2348035550101'),
+  ('handle', 'https://www.threads.net/@alice', 'threads.net/@alice'),
+  ('handle', 'https://threads.net/@bob', 'threads.net/@bob'),
+  ('handle', 'https://alicekitchen.com/contact', 'alicekitchen.com/contact'),
+  ('handle', 'https://alicekitchen.com/a/b/?x=1#top', 'alicekitchen.com/a/b'),
+  ('handle', 'https://example.com/profile?ref=1&id=77', 'example.com/profile?id=77'),
+  ('handle', 'https://bit.ly/3abc', 'bit.ly/3abc'),
+  ('handle', 'https://bit.ly/4xyz', 'bit.ly/4xyz'),
+  ('handle', 'https://beacons.ai/alice', 'beacons.ai/alice'),
+  ('handle', 'https://beacons.ai/bob', 'beacons.ai/bob'),
+  ('handle', 'linkedin.com/in/alice-smith/', 'alice-smith'),
+  ('handle', 'https://uk.linkedin.com/in/alice', 'alice'),
+  ('handle', 'HTTP://WWW.INSTAGRAM.COM/Alice', 'alice'),
+  ('handle', 'instagram.com/@alice', 'alice'),
+  ('handle', 'tiktok.com/@@ab', '-'),
+  ('handle', '@@alice', '-'),
+  ('handle', 'alice@', '-'),
+  ('handle', 'al ice', '-'),
+  ('handle', 'alice/', 'alice'),
+  ('handle', E'\uFF41\uFF4C\uFF49\uFF43\uFF45', '-'),
+  ('handle', E'\u0430lice', '-'),
+  ('handle', E'@ali\u200Dce', 'alice'),
+  ('handle', E'\u202EB-', 'b-'),
+  ('handle', E'ab\u000A', 'ab'),
+  ('handle', E'https://instagram.com/alice\u200B', 'alice'),
+  ('handle', E'\u3000\u202Eyoutube.com/@00zK9', '00zk9'),
+  ('email', E'\uFEFFa@b.co', 'a@b.co'),
+  ('email', E'a\u200B@b.co', 'a@b.co'),
+  ('email', E'a@b.co\u00A0', 'a@b.co'),
+  ('email', E'a\u2028b@c.co', '-'),
+  ('phone', E'\u00A0+1\u00A0919\u00A0555\u00A00142', '19195550142'),
   ('handle', repeat('a', 61), '-'),
   ('handle', repeat('a', 60), repeat('a', 60)),
   ('handle', '', '-');
+
+create temp table t3802b_phones (a text, b text, want text) on commit drop;
+insert into t3802b_phones values
+  ('+1 (219) 555-0142', '+1 (919) 555-0142', 'none'),
+  ('(219) 555-0142', '(919) 555-0142', 'none'),
+  ('+44 7911 123456', '+234 7911 123456', 'none'),
+  ('+49 30 12345678', '+33 30 12345678', 'none'),
+  ('+61 412 345 678', '+64 412 345 678', 'none'),
+  ('+234 803 555 0101', '0803 555 0101', 'last_9_digits'),
+  ('+234 803 555 0101', '803 555 0101', 'last_9_digits'),
+  ('0803 555 0101', '803 555 0101', 'last_9_digits'),
+  ('+44 7911 123456', '07911 123456', 'last_9_digits'),
+  ('+1 919 555 0142', '919-555-0142 ext 7', 'none'),
+  ('555-0142', '919 555 0142', 'none'),
+  ('+1 919 555 0142', '+1 919 555 0143', 'none'),
+  ('+234 803 555 0101', '00234 803 555 0101', 'exact'),
+  ('+234 803 555 0101', '234 803 555 0101', 'exact'),
+  ('00 44 7911 123456', '+1 44 7911 123456', 'none'),
+  ('(919) 555-0142', '919.555.0142', 'exact');
 
 do $b4$
 declare
   v text;
   v_a uuid;
   v_b uuid;
+  v_c uuid;
+  p record;
+  v_bad text := '';
 begin
+  -- Phone numbers: every pair, asked both ways round.
+  for p in select * from t3802b_phones loop
+    v_c := pg_temp.t3802b_rec('creators', 'B4 phone pair ' || md5(p.a || p.b));
+    insert into public.crm_record_identifiers (record_id, kind, value, value_key, created_by)
+    values (v_c, 'phone', p.a, public.crm_ident_key('phone', p.a), 'issue3802b-fixture');
+    v := coalesce((select h.rule from public.crm_identifier_hits('creators',
+           public.crm_clean_identifiers(jsonb_build_array(jsonb_build_object('kind', 'phone', 'value', p.b))), null) h
+          where h.record_id = v_c), 'none');
+    if v is distinct from p.want then
+      v_bad := v_bad || format('[%s ~ %s: got %s want %s] ', p.a, p.b, v, p.want);
+    end if;
+    delete from public.crm_record_identifiers where record_id = v_c;
+    insert into public.crm_record_identifiers (record_id, kind, value, value_key, created_by)
+    values (v_c, 'phone', p.b, public.crm_ident_key('phone', p.b), 'issue3802b-fixture');
+    v := coalesce((select h.rule from public.crm_identifier_hits('creators',
+           public.crm_clean_identifiers(jsonb_build_array(jsonb_build_object('kind', 'phone', 'value', p.a))), null) h
+          where h.record_id = v_c), 'none');
+    if v is distinct from p.want then
+      v_bad := v_bad || format('[%s ~ %s: got %s want %s] ', p.b, p.a, v, p.want);
+    end if;
+    delete from public.crm_records where id = v_c;
+  end loop;
+  perform pg_temp.t3802b_check('B-4', 'every pair of phone numbers matches as documented, both ways round',
+    (select count(*)::text from t3802b_phones) || ' ' || v_bad, '16 ');
+  perform pg_temp.t3802b_check('B-4', 'a value of 200 characters is usable and one of 201 is not',
+    (public.crm_ident_key('email', repeat('a', 195) || '@b.co') is not null)::text
+      || '/' || (public.crm_ident_key('email', repeat('a', 196) || '@b.co') is null)::text, 'true/true');
+  perform pg_temp.t3802b_like('B-4', 'a site with nothing after it is refused as a handle, in words that say why',
+    pg_temp.t3802b_as('service', $q$select public.crm_clean_identifiers('[{"kind": "handle", "value": "https://linktr.ee/"}]')::text$q$),
+    'ERR:22023:invalid_identifier: "https://linktr.ee/" is not a usable handle. A handle is 2 to 60 letters, digits, dots or underscores, with or without @, or the link to a profile or page (a site with nothing after it is not one).');
+  perform pg_temp.t3802b_check('B-4', 'the platform is read from the address whatever its prefix',
+    (select string_agg(coalesce(e ->> 'platform', '-'), ',' order by e ->> 'value_key')
+       from jsonb_array_elements(public.crm_clean_identifiers('[{"kind": "handle", "value": "https://m.facebook.com/a1"}, {"kind": "handle", "value": "https://uk.linkedin.com/in/a2"}, {"kind": "handle", "value": "https://mobile.twitter.com/a3"}, {"kind": "handle", "value": "https://linktr.ee/a4"}]')) e),
+    'facebook,linkedin,x,-');
   perform pg_temp.t3802b_check('B-4', 'every row of the normal-form table gives its documented key',
     (select coalesce(string_agg(kind || ':' || value || '=>' || coalesce(public.crm_ident_key(kind, value), '-'), '; '), 'all')
        from t3802b_forms where coalesce(public.crm_ident_key(kind, value), '-') is distinct from want), 'all');
@@ -633,6 +796,22 @@ begin
   perform pg_temp.t3802b_like('B-4', 'adding an identifier another record holds is refused, naming that record',
     pg_temp.t3802b_person('growth', format($q$select public.crm_record_update(%L, '{"identifiers": [{"kind": "email", "value": "hello@palmcourt.example"}, {"kind": "handle", "value": "palm.court"}]}')::text$q$, v_b)),
     'ERR:22023:duplicate_identifier: "@Palm.Court" already belongs to "B4 Palm Court" in Hosts. Open that record instead.');
+  -- A person may keep it anyway; an agent may not.
+  v := pg_temp.t3802b_gw('growth.claude', 'update_records', format('{"updates": [{"id": "%s", "changes": {"identifiers": [{"kind": "email", "value": "hello@palmcourt.example"}, {"kind": "handle", "value": "palm.court"}], "allow_shared_identifier": true}}]}', v_b));
+  perform pg_temp.t3802b_check('B-4', 'an agent cannot keep a contact detail another record holds, and says who can',
+    pg_temp.t3802b_get(v, 'result', 'results', '0', 'error', 'token') || '/' || pg_temp.t3802b_get(v, 'result', 'results', '0', 'error', 'message')
+      || '/' || (select count(*) from public.crm_record_identifiers where record_id = v_b),
+    'field_not_for_agents/Only a person can keep a contact detail that another record also holds. Ask your person./1');
+  v := pg_temp.t3802b_person('growth', format($q$select public.crm_record_update(%L, '{"identifiers": [{"kind": "email", "value": "hello@palmcourt.example"}, {"kind": "handle", "value": "palm.court"}], "allow_shared_identifier": true}')::text$q$, v_b));
+  perform pg_temp.t3802b_check('B-4', 'a person may keep it anyway on a change, as on a new record',
+    pg_temp.t3802b_get(v, 'changed') || '/' || jsonb_array_length(v::jsonb #> '{record,identifiers}')
+      || '/' || (select count(*) from public.crm_record_identifiers where kind = 'handle' and value_key = 'palm.court'
+                  and record_id in (v_a, v_b)), 'true/2/2');
+  perform pg_temp.t3802b_like('B-4', 'the flag takes true or false and nothing else',
+    pg_temp.t3802b_person('growth', format($q$select public.crm_record_update(%L, '{"allow_shared_identifier": "yes"}')::text$q$, v_b)),
+    'ERR:22023:invalid_value: "allow_shared_identifier" takes true or false.');
+  perform pg_temp.t3802b_check('B-4', 'the flag alone changes nothing and is never stored',
+    pg_temp.t3802b_get(pg_temp.t3802b_person('growth', format($q$select public.crm_record_update(%L, '{"allow_shared_identifier": true}')::text$q$, v_b)), 'changed'), 'false');
   v := pg_temp.t3802b_person('growth', format($q$select public.crm_record_update(%L, '{"identifiers": [{"kind": "email", "value": "hello@palmcourt.example"}, {"kind": "handle", "value": "shared.manager", "platform": "tiktok"}]}')::text$q$, v_b));
   perform pg_temp.t3802b_check('B-4', 'a record that already shares a detail can still gain one of its own',
     pg_temp.t3802b_get(v, 'changed') || '/' || jsonb_array_length(v::jsonb #> '{record,identifiers}'), 'true/2');
@@ -640,7 +819,7 @@ begin
     pg_temp.t3802b_get(pg_temp.t3802b_person('growth', format($q$select public.crm_record_update(%L, '{"identifiers": [{"kind": "handle", "value": "@Shared.Manager", "platform": "tiktok"}, {"kind": "email", "value": "HELLO@palmcourt.example"}]}')::text$q$, v_b)), 'changed'), 'false');
   perform pg_temp.t3802b_check('B-4', 'the audit row of the change counts identifiers and holds none',
     (select (a.metadata #>> '{before,identifiers}') || '>' || (a.metadata #>> '{after,identifiers}') || '/' || (a.metadata::text !~* 'shared\.manager|hello@')::text
-       from public.admin_audit_log a where a.action = 'crm.record_update' and a.target_id = v_b::text order by a.created_at desc limit 1), '1>2/true');
+       from public.admin_audit_log a where a.action = 'crm.record_update' and a.target_id = v_b::text order by a.created_at desc limit 1), '2>2/true');
   v := pg_temp.t3802b_person('growth', format($q$select public.crm_record_update(%L, '{"identifiers": []}')::text$q$, v_b));
   perform pg_temp.t3802b_check('B-4', 'removing all identifiers leaves none',
     pg_temp.t3802b_get(v, 'changed') || '/' || (v::jsonb #> '{record,identifiers}')::text
@@ -677,21 +856,43 @@ begin
     pg_temp.t3802b_get(v, 'record', 'contact_rule') || '/' || pg_temp.t3802b_get(v, 'record', 'contact_rule_reason')
       || '/' || pg_temp.t3802b_get(v, 'record', 'contact_rule_by') || '/' || (pg_temp.t3802b_get(v, 'record', 'contact_rule_at') is not null)::text,
     'warm_intro_only/Knows the founder/issue3802b-growth@test.local/true');
-  -- An agent: tighten yes, loosen and lift no, reason yes.
-  v := pg_temp.t3802b_gw('partner.claude', 'update_records', format('{"updates": [{"id": "%s", "changes": {"contact_rule": "do_not_contact"}}]}', v_a));
-  perform pg_temp.t3802b_check('B-5', 'an agent may tighten it, and the stored reason is kept',
-    pg_temp.t3802b_get(v, 'result', 'results', '0', 'status') || '/' || pg_temp.t3802b_get(v, 'result', 'results', '0', 'record', 'contact_rule')
-      || '/' || pg_temp.t3802b_get(v, 'result', 'results', '0', 'record', 'contact_rule_reason')
-      || '/' || pg_temp.t3802b_get(v, 'result', 'results', '0', 'record', 'contact_rule_by'),
-    'updated/do_not_contact/Knows the founder/issue3802b-partner@test.local');
-  v := pg_temp.t3802b_gw('partner.claude', 'update_records', format('{"updates": [{"id": "%s", "changes": {"contact_rule": "warm_intro_only"}}, {"id": "%s", "changes": {"contact_rule": null}}, {"id": "%s", "changes": {"contact_rule_reason": "Seth''s personal contact"}}]}', v_a, v_a, v_a));
-  perform pg_temp.t3802b_check('B-5', 'an agent cannot loosen it or lift it, and can change its reason',
-    pg_temp.t3802b_get(v, 'result', 'results', '0', 'error', 'token') || '/' || pg_temp.t3802b_get(v, 'result', 'results', '1', 'error', 'token')
-      || '/' || pg_temp.t3802b_get(v, 'result', 'results', '2', 'status') || '/' || pg_temp.t3802b_get(v, 'result', 'results', '2', 'record', 'contact_rule'),
-    'contact_rule_locked/contact_rule_locked/updated/do_not_contact');
+  -- An agent, on a record that carries a rule: the rule, its reason, the
+  -- name and the contact details it holds are a person's to change.
+  v := pg_temp.t3802b_gw('partner.claude', 'update_records', format(
+    '{"updates": [{"id": "%1$s", "changes": {"contact_rule": "do_not_contact"}},
+                  {"id": "%1$s", "changes": {"contact_rule": null}},
+                  {"id": "%1$s", "changes": {"contact_rule_reason": "Cleared, fine to contact"}},
+                  {"id": "%1$s", "changes": {"name": "B4 Renamed By Agent"}},
+                  {"id": "%1$s", "changes": {"identifiers": []}},
+                  {"id": "%1$s", "changes": {"identifiers": [{"kind": "handle", "value": "@Palm.Court", "platform": "tiktok"}, {"kind": "phone", "value": "+234 803 555 0101"}, {"kind": "email", "value": "hello@palmcourt.example"}]}},
+                  {"id": "%1$s", "changes": {"identifiers": [{"kind": "handle", "value": "@Palm.Court", "platform": "instagram"}, {"kind": "phone", "value": "+234 803 555 0101"}, {"kind": "email", "value": "other@palmcourt.example"}]}}]}', v_a));
+  perform pg_temp.t3802b_check('B-5', 'an agent cannot tighten, lift, re-reason, rename, or remove or replace a contact detail',
+    (select string_agg(coalesce(e #>> '{error,token}', e ->> 'status'), ',' order by ord)
+       from jsonb_array_elements(v::jsonb #> '{result,results}') with ordinality as t(e, ord)),
+    'contact_rule_locked,contact_rule_locked,contact_rule_locked,contact_rule_locked,contact_rule_locked,contact_rule_locked,contact_rule_locked');
   perform pg_temp.t3802b_check('B-5', 'the refusal tells the agent what to do',
     pg_temp.t3802b_get(v, 'result', 'results', '1', 'error', 'message'),
-    'Only a person can lift or loosen a contact rule. Tell your person why you think it should change.');
+    '"B4 Palm Court" carries a contact rule, so its name, its contact details, the rule and its reason are a person''s to change. You can add a contact detail. Tell your person what you would change.');
+  perform pg_temp.t3802b_check('B-5', 'through all of that the record is as the person left it',
+    (select c.name || '/' || c.contact_rule || '/' || c.contact_rule_reason || '/' || c.contact_rule_by
+              || '/' || (select count(*) from public.crm_record_identifiers i where i.record_id = c.id)
+       from public.crm_records c where c.id = v_a),
+    'B4 Palm Court/warm_intro_only/Knows the founder/issue3802b-growth@test.local/3');
+  v := pg_temp.t3802b_gw('partner.claude', 'update_records', format(
+    '{"updates": [{"id": "%1$s", "changes": {"identifiers": [{"kind": "handle", "value": "@Palm.Court", "platform": "instagram"}, {"kind": "phone", "value": "+234 803 555 0101"}, {"kind": "email", "value": "hello@palmcourt.example"}, {"kind": "email", "value": "bookings@palmcourt.example"}]}},
+                  {"id": "%1$s", "changes": {"contact_rule": "warm_intro_only", "contact_rule_reason": "Knows the founder", "next_action": "Ask Tunde"}}]}', v_a));
+  perform pg_temp.t3802b_check('B-5', 'an agent can add a contact detail, and change what is not about who they are or whether to contact them',
+    (v::jsonb #>> '{result,results,0,status}') || '/' || jsonb_array_length(v::jsonb #> '{result,results,0,record,identifiers}')
+      || '/' || (v::jsonb #>> '{result,results,1,status}') || '/' || (v::jsonb #>> '{result,results,1,record,next_action}')
+      || '/' || (v::jsonb #>> '{result,results,1,record,contact_rule_by}'),
+    'updated/4/updated/Ask Tunde/issue3802b-growth@test.local');
+  v := pg_temp.t3802b_gw('partner.claude', 'update_records', format(
+    '{"updates": [{"id": "%s", "changes": {"contact_rule": "warm_intro_only", "contact_rule_reason": "Met at the fair"}}]}', pg_temp.t3802b_id('b4.b')));
+  perform pg_temp.t3802b_check('B-5', 'an agent can put a rule on a record that has none',
+    (v::jsonb #>> '{result,results,0,status}') || '/' || (v::jsonb #>> '{result,results,0,record,contact_rule_by}'), 'updated/issue3802b-partner@test.local');
+  perform pg_temp.t3802b_person('growth', format($q$select public.crm_record_update(%L, '{"contact_rule": null}')::text$q$, pg_temp.t3802b_id('b4.b')));
+  -- The person tightens it.
+  perform pg_temp.t3802b_person('growth2', format($q$select public.crm_record_update(%L, '{"contact_rule": "do_not_contact", "contact_rule_reason": "Seth''s personal contact"}')::text$q$, v_a));
   -- Every shape carries it.
   v := pg_temp.t3802b_gw('growth.claude', 'find_records', '{"pipeline": "hosts", "q": "B4 Palm"}');
   perform pg_temp.t3802b_check('B-5', 'find_records carries it',
@@ -730,7 +931,7 @@ begin
     (select string_agg(coalesce(a.metadata #>> '{before,contact_rule}', '-') || '>' || coalesce(a.metadata #>> '{after,contact_rule}', '-')
                        || ':' || coalesce(a.metadata ->> 'via', 'person'), ' ' order by a.created_at)
        from public.admin_audit_log a where a.action = 'crm.record_update' and a.target_id = v_a::text and (a.metadata -> 'after') ? 'contact_rule'),
-    '->warm_intro_only:person warm_intro_only>do_not_contact:claude do_not_contact>-:person');
+    '->warm_intro_only:person warm_intro_only>do_not_contact:person do_not_contact>-:person');
   -- Set at creation.
   v := pg_temp.t3802b_person('growth', $q$select public.crm_record_create('hosts', '{"name": "B5 Marked At Birth", "contact_rule": "do_not_contact", "contact_rule_reason": "Asked us not to"}', 'b5-create-0001')::text$q$);
   perform pg_temp.t3802b_check('B-5', 'a rule can be set when a record is added',
@@ -790,9 +991,17 @@ begin
       v_bad := v_bad || format('[%s %s touched=%s rule=%s: got %s want %s] ', c.who, c.entry, c.touched, c.rule, v_got, v_want);
     end if;
     if v_want = 'logged' then
-      if (select a.via is distinct from case c.who when 'agent' then 'claude' end from public.crm_activity a
-           where a.record_id = v_id and a.actor_email = 'issue3802b-growth@test.local') then
-        v_bad := v_bad || format('[%s %s: wrong via] ', c.who, c.entry);
+      -- An answer of "logged" counts only with its one row, written as this
+      -- caller and marked with the agent it came through (or with none).
+      if (select count(*) from public.crm_activity a
+           where a.record_id = v_id and a.actor_email = 'issue3802b-growth@test.local'
+             and a.kind = case c.entry when 'note' then 'note' else 'touch' end
+             and a.direction is not distinct from case c.entry when 'note' then null else c.entry end
+             and a.body = case c.entry when 'note' then 'A note' when 'inbound' then 'Their words' else 'My words' end
+             and a.via is not distinct from case c.who when 'agent' then 'claude' end) <> 1
+         or (select count(*) from public.crm_activity a
+              where a.record_id = v_id and a.actor_email = 'issue3802b-growth@test.local') <> 1 then
+        v_bad := v_bad || format('[%s %s touched=%s rule=%s: answered logged without its one row] ', c.who, c.entry, c.touched, c.rule);
       end if;
     elsif exists (select 1 from public.crm_activity a where a.record_id = v_id and a.actor_email = 'issue3802b-growth@test.local') then
       v_bad := v_bad || format('[%s %s: a refused entry was written] ', c.who, c.entry);
@@ -825,6 +1034,46 @@ begin
   v_id := pg_temp.t3802b_rec('hosts', 'B6 Moved By Hand', 'contacted');
   v := pg_temp.t3802b_gw('growth.claude', 'log_activity', format('{"entries": [{"id": "%s", "kind": "touch", "channel": "whatsapp", "direction": "outbound", "body": "Hello"}], "request_key": "b6-edge-0005"}', v_id));
   perform pg_temp.t3802b_check('B-6', 'the stage is not part of the rule', pg_temp.t3802b_get(v, 'result', 'results', '0', 'status'), 'logged');
+
+  -- The same person on two records: a rule on one stops a first message on
+  -- the other, whichever way the agent reaches it.
+  v := pg_temp.t3802b_person('growth', $q$select public.crm_record_create('hosts', '{"name": "B6 Marked Twin", "contact_rule": "do_not_contact", "contact_rule_reason": "Asked us to stop", "identifiers": [{"kind": "email", "value": "twin@b6.example"}]}', 'b6-twin-00001')::text$q$);
+  v := pg_temp.t3802b_person('growth', $q$select public.crm_record_create('hosts', '{"name": "B6 Clean Twin", "identifiers": [{"kind": "email", "value": "twin@b6.example"}, {"kind": "handle", "value": "@b6.clean"}], "allow_shared_identifier": true}', 'b6-twin-00002')::text$q$);
+  v_id := (v::jsonb #>> '{record,id}')::uuid;
+  v := pg_temp.t3802b_gw('growth.claude', 'log_activity', format('{"entries": [{"id": "%s", "kind": "touch", "channel": "email", "direction": "outbound", "body": "Hello twin"}, {"id": "%s", "kind": "note", "body": "Saw them at the fair"}], "request_key": "b6-twin-00003"}', v_id, v_id));
+  perform pg_temp.t3802b_check('B-6', 'a first message is refused when another record with the same contact detail carries a rule; a note is not',
+    (v::jsonb #>> '{result,results,0,error,token}') || '/' || (v::jsonb #>> '{result,results,0,error,message}') || '/' || (v::jsonb #>> '{result,results,1,status}')
+      || '/' || (select count(*) from public.crm_activity where record_id = v_id and kind = 'touch'),
+    'do_not_contact/"B6 Clean Twin" shares a contact detail with "B6 Marked Twin", which is marked Do not contact: Asked us to stop. Nothing was logged. Do not message them; tell your person./logged/0');
+  v := pg_temp.t3802b_person('growth', format($q$select public.crm_record_log(%L, '{"kind": "touch", "channel": "email", "direction": "outbound", "body": "The person wrote"}', 'b6-twin-00004')::text$q$, v_id));
+  perform pg_temp.t3802b_check('B-6', 'the person is not held to that', (v::jsonb #>> '{activity,body}'), 'The person wrote');
+
+  -- A candidate whose name is one record and whose contact detail is on
+  -- another: every match is weighed, and the strictest rule is the verdict.
+  v := pg_temp.t3802b_person('growth', $q$select public.crm_record_create('hosts', '{"name": "B6 Name Only Cafe"}', 'b6-both-00001')::text$q$);
+  v := pg_temp.t3802b_gw('growth.claude', 'check_contactable', '{"pipeline": "hosts", "candidates": [{"name": "B6 Name Only Cafe", "identifiers": [{"kind": "email", "value": "TWIN@b6.example"}]}, {"name": "B6 Nobody Yet"}]}');
+  perform pg_temp.t3802b_check('B-6', 'the verdict is the strictest rule on any match, its record comes first, and the counts follow',
+    (v::jsonb #>> '{result,results,0,verdict}') || '/' || (v::jsonb #>> '{result,results,0,match}') || '/' || (v::jsonb #>> '{result,results,0,record,name}')
+      || '/' || (v::jsonb #>> '{result,results,0,other_matches}') || '/' || (v::jsonb #> '{result,counts}')::text,
+    'do_not_contact/both/B6 Marked Twin/2/{"new": 1, "exists": 0, "invalid": 0, "do_not_contact": 1, "warm_intro_only": 0}');
+  perform pg_temp.t3802b_check('B-6', 'every match is listed with its own rule and what it matched on',
+    (select string_agg((m #>> '{record,name}') || '=' || coalesce(m #>> '{record,contact_rule}', 'none') || ':'
+                       || case when (m ->> 'name_match')::boolean then 'name' else '' end
+                       || coalesce((select string_agg(o ->> 'kind', '+') from jsonb_array_elements(m -> 'matched_on') o), ''), ' ' order by ord)
+       from jsonb_array_elements(v::jsonb #> '{result,results,0,matches}') with ordinality as t(m, ord)),
+    'B6 Marked Twin=do_not_contact:email B6 Clean Twin=none:email B6 Name Only Cafe=none:name');
+  v := pg_temp.t3802b_gw('growth.claude', 'upsert_record', '{"pipeline": "hosts", "record": {"name": "B6 Name Only Cafe", "identifiers": [{"kind": "email", "value": "twin@b6.example"}]}, "touch": {"channel": "email", "direction": "outbound", "body": "Hello cafe"}, "request_key": "b6-both-00002"}');
+  perform pg_temp.t3802b_check('B-6', 'upsert_record weighs every match: the first message is refused and nothing is logged',
+    (v::jsonb #>> '{result,status}') || '/' || (v::jsonb #>> '{result,verdict}') || '/' || (v::jsonb #>> '{result,touch,status}') || '/' || (v::jsonb #>> '{result,touch,error,token}')
+      || '/' || (v::jsonb #>> '{result,touch,error,message}')
+      || '/' || (select count(*) from public.crm_activity a join public.crm_records rc on rc.id = a.record_id where rc.name = 'B6 Name Only Cafe' and a.kind = 'touch'),
+    'exists/do_not_contact/refused/do_not_contact/"B6 Marked Twin" is marked Do not contact: Asked us to stop. Nothing was logged. Do not message them; tell your person./0');
+  v := pg_temp.t3802b_gw('growth.claude', 'upsert_record', '{"pipeline": "hosts", "record": {"name": "B6 Name Only Cafe", "identifiers": [{"kind": "email", "value": "twin@b6.example"}]}, "touch": {"channel": "email", "direction": "inbound", "body": "They wrote to us"}, "request_key": "b6-both-00003"}');
+  perform pg_temp.t3802b_check('B-6', 'a reply from them is still logged', (v::jsonb #>> '{result,touch,status}'), 'logged');
+  v := pg_temp.t3802b_gw('growth.claude', 'add_records', '{"pipeline": "hosts", "records": [{"name": "B6 Name Only Cafe", "identifiers": [{"kind": "email", "value": "twin@b6.example"}], "first_touch": {"channel": "email", "direction": "outbound", "body": "Hello"}}], "request_key": "b6-both-00004"}');
+  perform pg_temp.t3802b_check('B-6', 'add_records says the same: the strictest rule, every match, and no touch',
+    (v::jsonb #>> '{result,results,0,status}') || '/' || (v::jsonb #>> '{result,results,0,verdict}') || '/' || jsonb_array_length(v::jsonb #> '{result,results,0,matches}')
+      || '/' || (v::jsonb #>> '{result,results,0,touch,status}'), 'exists/do_not_contact/3/refused');
 end;
 $b6$;
 
@@ -998,8 +1247,14 @@ begin
     (v::jsonb #>> '{result,results,4,error,token}') || '/' || (v::jsonb #>> '{result,results,5,error,token}'), 'invalid_body/unknown_field');
   v := pg_temp.t3802b_gw('growth.claude', 'record_reply', format(
     '{"replies": [{"id": "%s", "channel": "instagram_dm", "body": "Sure, call me Friday", "reply_class": "interested"}], "request_key": "b8-reply-0001"}', v_c));
-  perform pg_temp.t3802b_check('B-8', 'record_reply: the same reply again with its key is a replay and logs nothing',
-    (v::jsonb #>> '{result,results,0,status}') || '/' || (select count(*) from public.crm_activity a where a.record_id = v_c and a.kind = 'touch'), 'replayed/1');
+  perform pg_temp.t3802b_check('B-8', 'record_reply: one reply of that request under its key is another request, and is refused',
+    (v::jsonb #>> '{error,token}') || '/' || (select count(*) from public.crm_activity a where a.record_id = v_c and a.kind = 'touch'), 'request_key_reused/1');
+  v := pg_temp.t3802b_gw('growth.claude', 'record_reply', format(
+    '{"replies": [{"id": "%s", "channel": "instagram_dm", "body": "Sure, call me Friday", "reply_class": "interested"}, {"id": "%s", "channel": "email", "body": "See you then"}, {"id": "%s", "channel": "email", "body": "Actually we are back"}, {"id": "%s", "channel": "email", "body": "Not for us", "move_to": "lost"}, {"id": "%s", "channel": "email", "body": "  "}, {"id": "%s", "channel": "email", "body": "x", "extra": true}], "request_key": "b8-reply-0001"}',
+    v_c, v_m, v_l, v_p, v_c, v_c));
+  perform pg_temp.t3802b_check('B-8', 'record_reply: the same request again with its key is a replay and logs nothing',
+    (v::jsonb #>> '{result,results,0,status}') || '/' || (v::jsonb #>> '{result,results,1,status}')
+      || '/' || (select count(*) from public.crm_activity a where a.record_id = v_c and a.kind = 'touch'), 'replayed/replayed/1');
   v := pg_temp.t3802b_gw('growth.claude', 'record_reply', format(
     '{"replies": [{"id": "%s", "channel": "email", "body": "We closed", "move_to": "lost", "reason": "Closed down"}], "request_key": "b8-reply-0002"}', v_m));
   perform pg_temp.t3802b_check('B-8', 'record_reply: a move that is asked for, with its reason, is made',
@@ -1103,20 +1358,60 @@ declare
   v_b uuid := pg_temp.t3802b_rec('hosts', 'B9 Two');
   v_before bigint;
 begin
-  -- One request key, four tools: no tool replays another's answer.
-  v := pg_temp.t3802b_gw('growth.claude', 'add_records', '{"pipeline": "hosts", "records": [{"name": "B9 Added", "first_touch": {"channel": "email", "direction": "outbound", "body": "Hi"}}], "request_key": "b9-same-key-01"}');
+  -- A request key belongs to one request: one tool, one set of arguments.
+  v := pg_temp.t3802b_gw('growth.claude', 'add_records', '{"pipeline": "hosts", "records": [{"name": "B9 Added", "first_touch": {"channel": "email", "direction": "outbound", "body": "Written for B9 Added"}}], "request_key": "b9-same-key-01"}');
   perform pg_temp.t3802b_check('B-9', 'add_records with the key', v::jsonb #>> '{result,results,0,status}', 'created');
+  select count(*) into v_before from public.crm_activity;
+  v := pg_temp.t3802b_gw('growth.claude', 'add_records', '{"pipeline": "hosts", "records": [{"name": "B9 Other", "first_touch": {"channel": "email", "direction": "outbound", "body": "Written for B9 Other"}}], "request_key": "b9-same-key-01"}');
+  perform pg_temp.t3802b_check('B-9', 'the same key with other arguments is refused whole, in words that say what to do',
+    (v::jsonb #>> '{ok}') || '/' || (v::jsonb #>> '{error,token}') || '/' || (v::jsonb #>> '{error,message}'),
+    'false/request_key_reused/That request_key was already used for a different request. Nothing was changed. Use a new key.');
+  perform pg_temp.t3802b_check('B-9', 'and nothing was written: no record, no log line, and the first record holds only its own message',
+    (select count(*)::text from public.crm_records where name = 'B9 Other')
+      || '/' || ((select count(*) from public.crm_activity) = v_before)::text
+      || '/' || (select string_agg(a.body, '|') from public.crm_activity a join public.crm_records c on c.id = a.record_id where c.name = 'B9 Added' and a.kind = 'touch'),
+    '0/true/Written for B9 Added');
   v := pg_temp.t3802b_gw('growth.claude', 'log_activity', format('{"entries": [{"id": "%s", "kind": "note", "body": "A note"}], "request_key": "b9-same-key-01"}', v_a));
-  perform pg_temp.t3802b_check('B-9', 'log_activity with the same key logs its own entry', v::jsonb #>> '{result,results,0,status}', 'logged');
+  perform pg_temp.t3802b_check('B-9', 'the same key under another tool is refused too',
+    (v::jsonb #>> '{error,token}') || '/' || (select count(*) from public.crm_activity where record_id = v_a), 'request_key_reused/0');
   v := pg_temp.t3802b_gw('growth.claude', 'record_reply', format('{"replies": [{"id": "%s", "channel": "email", "body": "A reply"}], "request_key": "b9-same-key-01"}', v_a));
-  perform pg_temp.t3802b_check('B-9', 'record_reply with the same key logs its own entry', v::jsonb #>> '{result,results,0,status}', 'logged');
+  perform pg_temp.t3802b_check('B-9', 'and under a third', v::jsonb #>> '{error,token}', 'request_key_reused');
   v := pg_temp.t3802b_gw('growth.claude', 'upsert_record', '{"pipeline": "hosts", "record": {"name": "B9 Upserted"}, "touch": {"channel": "email", "direction": "outbound", "body": "Hi"}, "request_key": "b9-same-key-01"}');
-  perform pg_temp.t3802b_check('B-9', 'upsert_record with the same key adds and logs its own',
+  perform pg_temp.t3802b_check('B-9', 'and under a fourth; nothing was added',
+    (v::jsonb #>> '{error,token}') || '/' || (select count(*) from public.crm_records where name = 'B9 Upserted'), 'request_key_reused/0');
+  perform pg_temp.t3802b_check('B-9', 'a refused reuse is recorded as that outcome, with no counts',
+    (select c.outcome || '/' || c.items || '/' || c.summary::text from public.team_agent_calls c where c.tool = 'upsert_record' order by c.started_at desc, c.id limit 1), 'request_key_reused/0/{}');
+  -- The same request again, key order and spacing aside, is a repeat.
+  v := pg_temp.t3802b_gw('growth.claude', 'add_records', '{"request_key": "b9-same-key-01",   "records": [{"first_touch": {"body": "Written for B9 Added", "direction": "outbound", "channel": "email"}, "name": "B9 Added"}], "pipeline": "hosts"}');
+  perform pg_temp.t3802b_check('B-9', 'the same request again is a repeat: the stored answer, and nothing new',
+    (v::jsonb #>> '{result,replayed}') || '/' || (v::jsonb #>> '{result,results,0,status}') || '/' || (v::jsonb #>> '{result,results,0,touch,status}')
+      || '/' || ((select count(*) from public.crm_activity) = v_before)::text, 'true/created/replayed/true');
+  -- From the person's other agent it is the same request; from another person it is theirs.
+  v := pg_temp.t3802b_newkey('growth', 'codex', 'growth.codex');
+  v := pg_temp.t3802b_gw('growth.codex', 'add_records', '{"pipeline": "hosts", "records": [{"name": "B9 Added", "first_touch": {"channel": "email", "direction": "outbound", "body": "Written for B9 Added"}}], "request_key": "b9-same-key-01"}');
+  perform pg_temp.t3802b_check('B-9', 'the person''s other agent repeating it gets the stored answer', v::jsonb #>> '{result,replayed}', 'true');
+  v := pg_temp.t3802b_gw('partner.claude', 'log_activity', format('{"entries": [{"id": "%s", "kind": "note", "body": "Partner note"}], "request_key": "b9-same-key-01"}', v_a));
+  perform pg_temp.t3802b_check('B-9', 'another person may use the same key for their own request', v::jsonb #>> '{result,results,0,status}', 'logged');
+  -- One key per tool: each stores its own.
+  v := pg_temp.t3802b_gw('growth.claude', 'log_activity', format('{"entries": [{"id": "%s", "kind": "note", "body": "A note"}], "request_key": "b9-tool-key-l"}', v_a));
+  v := pg_temp.t3802b_gw('growth.claude', 'record_reply', format('{"replies": [{"id": "%s", "channel": "email", "body": "A reply"}], "request_key": "b9-tool-key-r"}', v_a));
+  v := pg_temp.t3802b_gw('growth.claude', 'upsert_record', '{"pipeline": "hosts", "record": {"name": "B9 Upserted"}, "touch": {"channel": "email", "direction": "outbound", "body": "Hi"}, "request_key": "b9-tool-key-u"}');
+  perform pg_temp.t3802b_check('B-9', 'upsert_record with its own key adds and logs',
     (v::jsonb #>> '{result,status}') || '/' || (v::jsonb #>> '{result,touch,status}') || '/' || (v::jsonb #>> '{result,replayed}'), 'created/logged/false');
-  perform pg_temp.t3802b_check('B-9', 'six stored keys, each under the function it was used for',
+  perform pg_temp.t3802b_check('B-9', 'each request keeps its claim, and each effect its own key, under the function it was used for',
     (select string_agg(k.request_key || '=' || k.fn, ' ' order by k.request_key) from public.crm_request_keys k
-      where k.actor_email = 'issue3802b-growth@test.local' and k.request_key like 'b9-same-key-01%'),
-    'b9-same-key-01=crm_records_bulk_create b9-same-key-01-c=crm_record_create b9-same-key-01-l0=crm_record_log b9-same-key-01-r0=crm_record_log b9-same-key-01-t0=crm_record_log b9-same-key-01-u=crm_record_log');
+      where k.actor_email = 'issue3802b-growth@test.local' and (k.request_key like 'b9-same-key-01%' or k.request_key like 'b9-tool-key-%')),
+    'b9-same-key-01-a=crm_records_bulk_create b9-same-key-01-claim=agent:add_records b9-same-key-01-t0=crm_record_log b9-tool-key-l-claim=agent:log_activity b9-tool-key-l-l0=crm_record_log b9-tool-key-r-claim=agent:record_reply b9-tool-key-r-r0=crm_record_log b9-tool-key-u-c=crm_record_create b9-tool-key-u-claim=agent:upsert_record b9-tool-key-u-u=crm_record_log');
+  perform pg_temp.t3802b_check('B-9', 'a claim holds a digest of the arguments and none of them',
+    (select (k.response ->> 'arguments_sha256' ~ '^[0-9a-f]{64}$')::text || '/' || (select count(*) from jsonb_object_keys(k.response))
+              || '/' || (k.response::text !~* 'B9 Added|Written')::text
+       from public.crm_request_keys k where k.actor_email = 'issue3802b-growth@test.local' and k.request_key = 'b9-same-key-01-claim'), 'true/1/true');
+  -- A key that looks like another key's derived one never meets it.
+  v := pg_temp.t3802b_gw('growth.claude', 'log_activity', format('{"entries": [{"id": "%s", "kind": "note", "body": "Direct"}], "request_key": "b9-tool-key-l-l0"}', v_b));
+  perform pg_temp.t3802b_check('B-9', 'a key shaped like another request''s stored key is its own request',
+    (v::jsonb #>> '{result,results,0,status}') || '/' || (v::jsonb #>> '{result,results,0,activity,body}'), 'logged/Direct');
+  perform pg_temp.t3802b_like('B-9', 'the claim is not a client function',
+    pg_temp.t3802b_person('growth', $q$select public.crm_request_claim('b9-claim-0001', 'agent:log_activity', '{}'::jsonb)::text$q$), 'ERR:42501:%');
   perform pg_temp.t3802b_like('B-9', 'a request key that is too long to derive from is refused',
     pg_temp.t3802b_gw('growth.claude', 'log_activity', format('{"entries": [{"id": "%s", "kind": "note", "body": "x"}], "request_key": "%s"}', v_a, repeat('k', 71))),
     '%"token": "request_key_required"%');
@@ -1149,6 +1444,8 @@ begin
     'false/try_again/Something went wrong on our side at item 2, so nothing in this request was saved. Send the same request again.');
   perform pg_temp.t3802b_check('B-9', 'nothing was saved: no log line, no stored key',
     ((select count(*) from public.crm_activity) = v_before)::text || '/' || (select count(*) from public.crm_request_keys where request_key like 'b9-fault-%'), 'true/0');
+  perform pg_temp.t3802b_check('B-9', 'so the same key is free for the same request',
+    (select count(*)::text from public.crm_request_keys where request_key = 'b9-fault-0001-claim'), '0');
   perform pg_temp.t3802b_check('B-9', 'the request is recorded as that outcome, with no counts',
     (select c.outcome || '/' || c.items || '/' || c.summary::text from public.team_agent_calls c where c.tool = 'log_activity' order by c.started_at desc, c.id limit 1), 'try_again/0/{}');
   drop trigger issue3802b_fault on public.crm_activity;
@@ -1184,6 +1481,24 @@ begin
     (select count(*)::text from public.crm_activity where record_id = v_id), '1');
   perform pg_temp.t3802b_check('B-10', 'reads still work',
     pg_temp.t3802b_get(pg_temp.t3802b_gw('admin.claude', 'find_records', '{"pipeline": "hosts", "q": "B10"}'), 'result', 'total'), '1');
+  -- A request that could pass the limit part-way is refused before it writes.
+  delete from public.team_agent_calls where key_id = v_key;
+  insert into public.team_agent_calls (key_id, owner_email, actor_uid, agent, tool, xact_id, started_at, outcome, items)
+  values (v_key, 'issue3802b-admin@test.local', '38020000-0000-4000-b000-000000000002', 'claude', 'add_records', '3'::xid8,
+          date_trunc('day', now() at time zone 'UTC') at time zone 'UTC', 'ok', 19990);
+  v := pg_temp.t3802b_gw('admin.claude', 'add_records', (select jsonb_build_object('pipeline', 'hosts', 'request_key', 'b10-bulk-0001',
+         'records', jsonb_agg(jsonb_build_object('name', 'B10 Bulk ' || g)))::text from generate_series(1, 11) g));
+  perform pg_temp.t3802b_check('B-10', 'eleven more at 19,990 is refused before anything is written, saying how many are left',
+    (v::jsonb #>> '{limited,token}') || '/' || (v::jsonb #>> '{limited,message}') || '/' || (select count(*) from public.crm_records where name like 'B10 Bulk %'),
+    'daily_limit/This request could write 11 records and your agent has 10 left of today''s 20000. Nothing was written. Send fewer in one request, or wait: the count starts again at midnight UTC./0');
+  v := pg_temp.t3802b_gw('admin.claude', 'add_records', (select jsonb_build_object('pipeline', 'hosts', 'request_key', 'b10-bulk-0002',
+         'records', jsonb_agg(jsonb_build_object('name', 'B10 Bulk ' || g) || case when g <= 5 then jsonb_build_object('first_touch', jsonb_build_object('channel', 'email', 'direction', 'outbound', 'body', 'Hi')) else '{}'::jsonb end))::text from generate_series(1, 6) g));
+  perform pg_temp.t3802b_check('B-10', 'six records with five first messages count as eleven',
+    (v::jsonb #>> '{limited,token}') || '/' || (select count(*) from public.crm_records where name like 'B10 Bulk %'), 'daily_limit/0');
+  v := pg_temp.t3802b_gw('admin.claude', 'add_records', (select jsonb_build_object('pipeline', 'hosts', 'request_key', 'b10-bulk-0003',
+         'records', jsonb_agg(jsonb_build_object('name', 'B10 Bulk ' || g)))::text from generate_series(1, 10) g));
+  perform pg_temp.t3802b_check('B-10', 'exactly what is left is served, and the day ends on the limit, never past it',
+    (v::jsonb #>> '{result,counts,created}') || '/' || (select sum(c.items) from public.team_agent_calls c where c.key_id = v_key and c.outcome <> 'limited'), '10/20000');
   perform pg_temp.t3802b_check('B-10', 'another key is unaffected',
     pg_temp.t3802b_get(pg_temp.t3802b_gw('owner.claude', 'log_activity', format('{"entries": [{"id": "%s", "kind": "note", "body": "Owner"}], "request_key": "b10-limit-003"}', v_id)), 'result', 'results', '0', 'status'), 'logged');
 end;
@@ -1192,6 +1507,20 @@ $b10$;
 -- ---------------------------------------------------------------------------
 -- B-11 -- both self-check blocks, as shipped and against mistakes.
 -- ---------------------------------------------------------------------------
+-- One function with one piece of its source changed. It refuses to run when
+-- the piece is not there, so a mistake below can never be planted in vain.
+create function pg_temp.t3802b_mutate(p_fn text, p_old text, p_new text) returns void
+language plpgsql as $fn$
+declare
+  v_def text := pg_get_functiondef(p_fn::regprocedure);
+begin
+  if position(p_old in v_def) = 0 then
+    raise exception 'issue3802b: the source of % no longer holds the piece this mistake changes', p_fn;
+  end if;
+  execute replace(v_def, p_old, p_new);
+end;
+$fn$;
+
 do $b11$
 declare
   m record;
@@ -1218,8 +1547,15 @@ begin
       ('w4check', 'another function that writes setup codes', $q$create function public.issue3802b_unspend() returns void language sql security definer set search_path = '' as 'update public.team_agent_setup_codes set consumed_at = null'$q$, '%the functions that write setup codes are%issue3802b_unspend%'),
       ('w4check', 'another function that writes keys', $q$create function public.issue3802b_revive() returns void language sql security definer set search_path = '' as 'update public.team_agent_keys set revoked_at = null, revoked_by = null, revoke_reason = null'$q$, '%the functions that write keys are%issue3802b_revive%'),
       ('w4check', 'another function that writes identifiers', $q$create function public.issue3802b_plant() returns void language sql security definer set search_path = '' as 'delete from public.crm_record_identifiers'$q$, '%the functions that write identifiers are%issue3802b_plant%'),
-      ('w4check', 'the log function without the rule for agents', $q$create or replace function public.crm_record_log(p_id uuid, p_entry jsonb, p_request_key text) returns jsonb language sql security definer set search_path = '' as 'select null::jsonb'$q$, '%crm_record_log() no longer holds the rule for what an agent may log%'),
-      ('w4check', 'the update function without the lock on a contact rule', $q$create or replace function public.crm_record_update(p_id uuid, p_changes jsonb) returns jsonb language sql security definer set search_path = '' as 'select null::jsonb'$q$, '%the functions that write identifiers are%'),
+      ('w4check', 'the log function with its rule for agents switched off, its words kept', $q$select pg_temp.t3802b_mutate('public.crm_record_log(uuid,jsonb,text)', 'IF v.via IS NOT NULL AND v_kind = ''touch'' AND v_direction = ''outbound'' THEN', 'IF false AND v_kind = ''touch'' AND v_direction = ''outbound'' THEN')$q$, '%an agent could log an outbound touch on a record marked Do not contact%'),
+      ('w4check', 'the log function with a follow-up allowed', $q$select pg_temp.t3802b_mutate('public.crm_record_log(uuid,jsonb,text)', 'IF EXISTS (SELECT 1 FROM public.crm_activity a WHERE a.record_id = v_rec.id AND a.kind = ''touch'') THEN', 'IF false THEN')$q$, '%an agent could log a follow-up%'),
+      ('w4check', 'the log function holding a person to the rule for agents', $q$select pg_temp.t3802b_mutate('public.crm_record_log(uuid,jsonb,text)', 'IF v.via IS NOT NULL AND v_kind = ''touch'' AND v_direction = ''outbound'' THEN', 'IF v_kind = ''touch'' AND v_direction = ''outbound'' THEN')$q$, '%a rule for agents was applied to a person%'),
+      ('w4check', 'the update function with its lock on a contact rule switched off, its words kept', $q$select pg_temp.t3802b_mutate('public.crm_record_update(uuid,jsonb)', 'IF v.via IS NOT NULL AND v_rec.contact_rule IS NOT NULL', 'IF false AND v_rec.contact_rule IS NOT NULL')$q$, '%an agent could lift a contact rule%'),
+      ('w4check', 'the update function letting an agent rename a marked record', $q$select pg_temp.t3802b_mutate('public.crm_record_update(uuid,jsonb)', 'AND (v_after ? ''name'' OR v_after ? ''contact_rule''', 'AND (v_after ? ''contact_rule''')$q$, '%an agent could rename a record that carries a contact rule%'),
+      ('w4check', 'the update function letting an agent remove a contact detail from a marked record', $q$select pg_temp.t3802b_mutate('public.crm_record_update(uuid,jsonb)', 'OR (v_ids_changed AND NOT (v_old_ids <@ v_new_ids))', 'OR false')$q$, '%an agent could remove a contact detail from a record that carries a contact rule%'),
+      ('w4check', 'an add that no longer looks for a taken contact detail', $q$select pg_temp.t3802b_mutate('public.crm_record_create_core(text,jsonb,text,text)', 'v_hits := public.crm_identifier_matches(p_pipeline, v_idents, NULL);', 'v_hits := ''[]''::jsonb;')$q$, '%an agent could add a second record with a contact detail another record holds%'),
+      ('w4check', 'a setup code that can be used twice', $q$select pg_temp.t3802b_mutate('public.team_agent_setup_redeem(text,text)', 'WHERE code_hash = p_code_hash AND consumed_at IS NULL AND voided_at IS NULL', 'WHERE code_hash = p_code_hash AND voided_at IS NULL')$q$, '%a used setup code was not refused with the one answer%'),
+      ('w4check', 'the member writer no longer ending unused setup codes', $q$select pg_temp.t3802b_mutate('public.admin_team_set_member(text,text,text)', 'UPDATE public.team_agent_setup_codes', 'UPDATE public.team_agent_keys')$q$, '%the functions that write setup codes are%'),
       ('w4check', 'an ICP the targets table does not accept', $q$alter table public.crm_targets drop constraint crm_targets_icp_check, add constraint crm_targets_icp_check check (icp <> 'experience_host') not valid$q$, '%crm_pipeline_def and the crm_targets CHECK constraint disagree%'),
       ('w4check', 'a digest that need not be unique', $q$alter table public.team_agent_setup_codes drop constraint team_agent_setup_codes_hash_key$q$, '%the setup code digest is not unique and checked%'),
       ('w4check', 'a stray agent function', $q$create function public.team_agent_issue3802b_stray() returns int language sql set search_path = '' as 'select 1'$q$, '%team_agent_ function(s) are not in the checked list%')
@@ -1341,6 +1677,12 @@ declare
   v_t timestamptz;
   v_ms numeric;
   i int;
+  j int;
+  v_kid text;
+  v_served int := 0;
+  v_together int := 0;
+  v_most int := 0;
+  v_first_bad text;
 begin
   begin
     foreach v_c in array array['t3802b_c1', 't3802b_c2', 't3802b_c3'] loop
@@ -1496,6 +1838,84 @@ begin
     select x into v2 from dblink('t3802b_c2', $q$select current_setting('lock_timeout')$q$) as t(x text);
     insert into t3802b_race.results (label, ok, detail)
     values ('P-4 the connection''s own lock setting is as it was', v2 is not distinct from '0', coalesce(v2, '<null>'));
+
+    -- P-5: a code is being used while its person makes a new one (30 times),
+    -- or turns the key off (10 times). A third session holds the code's row
+    -- so that both requests are part-way through at the same moment; then it
+    -- lets go. Each must be served: neither may be stopped to free the other.
+    for i in 1..40 loop
+      perform dblink_exec('t3802b_c3', $q$delete from public.team_agent_setup_codes where owner_email = 'issue3802b-race-1@test.local'$q$);
+      perform dblink_exec('t3802b_c3', 'begin');
+      perform dblink_exec('t3802b_c3', 'set local role authenticated');
+      perform * from dblink('t3802b_c3',
+        $q$select set_config('request.jwt.claim.sub', '38020000-0000-4000-b900-000000000001', true),
+                  set_config('request.jwt.claims', '{"sub":"38020000-0000-4000-b900-000000000001","role":"authenticated","email":"issue3802b-race-1@test.local"}', true),
+                  set_config('request.jwt.claim.email', 'issue3802b-race-1@test.local', true)$q$) as t(x text, y text, z text);
+      select x into v_code from dblink('t3802b_c3', $q$select public.team_agent_setup_create('claude') ->> 'code'$q$) as t(x text);
+      perform dblink_exec('t3802b_c3', 'commit');
+      select x into v_kid from dblink('t3802b_c3',
+        $q$select id::text from public.team_agent_keys where owner_email = 'issue3802b-race-1@test.local' and agent = 'claude' and revoked_at is null$q$) as t(x text);
+      -- The third session holds the row.
+      perform dblink_exec('t3802b_c3', 'begin');
+      perform * from dblink('t3802b_c3', format($q$select 1 from public.team_agent_setup_codes where code_hash = %L for update$q$,
+        encode(sha256(convert_to(v_code, 'UTF8')), 'hex'))) as t(x int);
+      perform dblink_exec('t3802b_c1', 'begin');
+      perform dblink_exec('t3802b_c1', 'set local role service_role');
+      perform dblink_send_query('t3802b_c1', format(
+        $q$select public.team_agent_call(%L, 'setup:redeem', '{}'::jsonb, 'race/5.0') ->> 'setup'$q$,
+        encode(sha256(convert_to(v_code, 'UTF8')), 'hex')));
+      perform pg_sleep(0.1);
+      perform dblink_exec('t3802b_c2', 'begin');
+      perform dblink_exec('t3802b_c2', 'set local role authenticated');
+      perform * from dblink('t3802b_c2',
+        $q$select set_config('request.jwt.claim.sub', '38020000-0000-4000-b900-000000000001', true),
+                  set_config('request.jwt.claims', '{"sub":"38020000-0000-4000-b900-000000000001","role":"authenticated","email":"issue3802b-race-1@test.local"}', true),
+                  set_config('request.jwt.claim.email', 'issue3802b-race-1@test.local', true)$q$) as t(x text, y text, z text);
+      if i <= 30 then
+        perform dblink_send_query('t3802b_c2', $q$select (public.team_agent_setup_create('claude') ->> 'code' ~ '^mgls_c_[A-Za-z0-9_-]{43}$')::text$q$);
+      else
+        perform dblink_send_query('t3802b_c2', format($q$select (public.team_agent_key_revoke(%L) ? 'changed')::text$q$, v_kid));
+      end if;
+      perform pg_sleep(0.15);
+      if dblink_is_busy('t3802b_c1') = 1 and dblink_is_busy('t3802b_c2') = 1 then
+        v_together := v_together + 1;
+      end if;
+      perform dblink_exec('t3802b_c3', 'commit');
+      v1 := null;
+      v2 := null;
+      foreach v_c in array array['t3802b_c1', 't3802b_c2'] loop
+        for j in 1..100 loop
+          exit when dblink_is_busy(v_c) = 0;
+          perform pg_sleep(0.05);
+        end loop;
+        if dblink_is_busy(v_c) = 1 then
+          perform dblink_cancel_query(v_c);
+        end if;
+        if v_c = 't3802b_c1' then
+          select x into v1 from dblink_get_result(v_c, false) as t(x text);
+          v1 := coalesce(v1, 'ERR ' || dblink_error_message(v_c));
+        else
+          select x into v2 from dblink_get_result(v_c, false) as t(x text);
+          v2 := coalesce(v2, 'ERR ' || dblink_error_message(v_c));
+        end if;
+        perform * from dblink_get_result(v_c, false) as t(x text);
+        perform dblink_exec(v_c, 'commit');
+      end loop;
+      if v1 = 'ok' and v2 = 'true' then
+        v_served := v_served + 1;
+      elsif v_first_bad is null then
+        v_first_bad := format('round %s: use=%s other=%s', i, left(v1, 160), left(v2, 160));
+      end if;
+      select greatest(v_most, x) into v_most from dblink('t3802b_c3',
+        $q$select count(*)::int from public.team_agent_keys where owner_email = 'issue3802b-race-1@test.local' and agent = 'claude' and revoked_at is null$q$) as t(x int);
+    end loop;
+    insert into t3802b_race.results (label, ok, detail)
+    values ('P-5 in all 40 rounds the two requests were part-way through at the same moment', v_together = 40, v_together::text);
+    insert into t3802b_race.results (label, ok, detail)
+    values ('P-5 using a code while its person makes another (30) or turns the key off (10): both served every time',
+            v_served = 40, v_served || ' of 40' || coalesce('; ' || v_first_bad, ''));
+    insert into t3802b_race.results (label, ok, detail)
+    values ('P-5 the person never held more than one working key for that agent', v_most = 1, v_most::text);
   exception when others then
     insert into t3802b_race.results (label, ok, detail)
     values ('part 2 ran without an unexpected error', false, sqlstate || ': ' || sqlerrm);
@@ -1533,7 +1953,7 @@ drop extension if exists dblink;
 \endif
 drop schema t3802b_race cascade;
 
-select (:t3802b_race_total < 15 or :t3802b_race_failed > 0) as t3802b_race_bad \gset
+select (:t3802b_race_total < 18 or :t3802b_race_failed > 0) as t3802b_race_bad \gset
 \if :t3802b_race_bad
   \echo 'ISSUE-3802 AGENT WRITE FAILED (part 2):' :t3802b_race_failures
   do $$ begin raise exception 'ISSUE-3802 AGENT WRITE FAIL: real-session checks failed or did not run'; end $$;

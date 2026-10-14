@@ -303,9 +303,9 @@ begin
   perform pg_temp.t3802k_check('K-1', 'there are exactly 16 team_agent_ functions',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'team\_agent\_%'), '16');
-  perform pg_temp.t3802k_check('K-1', 'the number of crm_ functions did not move',
+  perform pg_temp.t3802k_check('K-1', 'there are exactly 50 crm_ functions',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public' and p.proname like 'crm\_%'), '48');
+      where n.nspname = 'public' and p.proname like 'crm\_%'), '50');
 
   foreach t in array array['public.team_agent_keys', 'public.team_agent_calls'] loop
     perform pg_temp.t3802k_check('K-1', t || ': row security on, no policy, no trigger',
@@ -907,9 +907,11 @@ begin
     (select count(*)::text from public.team_agent_keys where owner_email = 'issue3802k-growth@test.local' and revoked_at is null), '2');
   perform pg_temp.t3802k_check('K-7', 'only the owner can remove a person, as before',
     pg_temp.t3802k_as('admin', $q$select public.admin_team_set_member('issue3802k-growth@test.local', 'growth', 'revoked')::text$q$), 'ERR:42501:forbidden');
-  perform pg_temp.t3802k_check('K-7', 'the team writer differs from the earlier one by exactly the added statement',
+  perform pg_temp.t3802k_check('K-7', 'the team writer differs from the earlier one by exactly the added statements',
     (select regexp_replace(p.prosrc,
-        '\s+UPDATE public\.team_agent_keys\s+SET revoked_at = now\(\), revoked_by = v_actor, revoke_reason = ''access_removed''\s+WHERE owner_email = v_email AND revoked_at IS NULL;', '')
+        '\s+PERFORM pg_catalog\.pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(''team_agent_key:'' \|\| v_email, 0\)\);'
+        || '\s+UPDATE public\.team_agent_keys\s+SET revoked_at = now\(\), revoked_by = v_actor, revoke_reason = ''access_removed''\s+WHERE owner_email = v_email AND revoked_at IS NULL;'
+        || '\s+UPDATE public\.team_agent_setup_codes\s+SET voided_at = now\(\)\s+WHERE owner_email = v_email AND consumed_at IS NULL AND voided_at IS NULL;', '')
         = (select substring(s.sql from 'CREATE OR REPLACE FUNCTION public\.admin_team_set_member.*?AS \$\$(.*?)\$\$;')
              from t3802k_src s where s.k = 'oldmember')
        from pg_proc p where p.oid = 'public.admin_team_set_member(text,text,text)'::regprocedure)::text, 'true');

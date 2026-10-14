@@ -333,7 +333,7 @@ begin
   end loop;
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname like 'crm\_%';
-  perform pg_temp.x_eq('XA-1', 'number of crm_ functions', v_n::text, '48');
+  perform pg_temp.x_eq('XA-1', 'number of crm_ functions', v_n::text, '50');
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = any (c_client) and p.prosecdef;
   perform pg_temp.x_eq('XA-1', 'client functions that run with owner rights', v_n::text, '20');

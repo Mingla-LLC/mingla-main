@@ -1509,7 +1509,7 @@ declare
     'crm_beta_icp(text[])', 'crm_city_region(text)', 'crm_due_json(text,date,integer)',
     'crm_stage_counts_json()', 'crm_targets_json(date)',
     'crm_ident_key(text,text)', 'crm_clean_identifiers(jsonb)', 'crm_identifier_matches(text,jsonb,uuid)',
-    'crm_identifiers_json(uuid)'];
+    'crm_identifiers_json(uuid)', 'crm_identifier_hits(text,jsonb,uuid)', 'crm_request_claim(text,text,jsonb)'];
   v_fn text;
   v_tbl text;
   v_role text;
@@ -1573,7 +1573,7 @@ begin
       ('crm_record_owners', 'public.crm_record_create_core,public.crm_record_set_owners'),
       ('crm_record_identifiers', 'public.crm_record_create_core,public.crm_record_update'),
       ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move'),
-      ('crm_request_keys',  'public.crm_reconcile_live,public.crm_request_finish')
+      ('crm_request_keys',  'public.crm_reconcile_live,public.crm_request_claim,public.crm_request_finish')
     ) as v(tbl, want)
   loop
     perform pg_temp.t3802w_check('W1-12', 'functions that write ' || w.tbl,

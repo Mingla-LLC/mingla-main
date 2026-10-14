@@ -16,9 +16,12 @@
 --   * What an agent may log: a note, a reply, and the first message to
 --     someone who has never been contacted. A follow-up or an answer is a
 --     person's to log. An agent's outbound touch on a record that carries a
---     contact rule is refused, and an agent cannot lift or loosen a rule.
---     These rules live in public.crm_record_log() and
---     public.crm_record_update(), the functions the browser uses.
+--     contact rule is refused, on that record or on any record that shares a
+--     contact detail with it. On a record that carries a rule, its name, the
+--     contact details it holds, the rule and its reason are a person's to
+--     change; an agent may add a contact detail. These rules live in
+--     public.crm_record_log() and public.crm_record_update(), the functions
+--     the browser uses.
 --   * public.team_agent_setup_codes: one-time setup codes. Only a SHA-256
 --     digest of a code is stored; the code itself exists once, in the answer
 --     of the function that makes it. A code works once, for 10 minutes, and
@@ -29,16 +32,19 @@
 --     update_records, move_stage, set_owners, log_activity, record_reply),
 --     each reaching the same crm_ function the browser calls; a request waits
 --     at most 5 seconds for its key's turn; the daily limit on records
---     written is applied; and the reserved name "setup:redeem" hands a code
---     digest to public.team_agent_setup_redeem().
+--     written is applied before anything is written; a request key belongs
+--     to one request (public.crm_request_claim()); and the reserved name
+--     "setup:redeem" hands a code digest to public.team_agent_setup_redeem().
+--   * public.admin_team_set_member() (same body, added statements): removing
+--     a person also ends the setup codes they have not used.
 --   * "me.can_add_region" in crm_config(), and plainer words when a region is
 --     not in the Launch Cities list.
 --
 -- One transaction. Additive: no table, column or function is dropped; two
 -- CHECK constraints are dropped and re-added wider in this transaction. NOT
 -- modified: is_admin_user(), admin_team_role(), admin_team_can(),
--- admin_team_role_areas(), admin_team_my_access(), admin_team_set_member(),
--- every policy. No trigger is added. No function here reaches outside the
+-- admin_team_role_areas(), admin_team_my_access(), every policy. No trigger
+-- is added. No function here reaches outside the
 -- database, builds a statement from text, sends a message or deletes a
 -- pipeline record.
 --
@@ -49,8 +55,8 @@
 -- Error tokens added (same shape as before: a token, then plain words):
 --   invalid_identifiers, invalid_identifier, duplicate_identifier,
 --   invalid_contact_rule, invalid_candidates, field_not_for_agents,
---   too_many_codes (22023); do_not_contact, warm_intro_only, needs_a_person,
---   contact_rule_locked (42501).
+--   too_many_codes, request_key_reused (22023); do_not_contact,
+--   warm_intro_only, needs_a_person, contact_rule_locked (42501).
 --
 -- Invariants (docs/INVARIANT_REGISTRY.md):
 --   I-PROPOSED-3802-SETUP-CODE-WORKS-ONCE-AND-IS-STORED-AS-A-DIGEST
@@ -83,9 +89,11 @@
 --   --      team_agent_limits, team_agent_guide_def, team_agent_resolve,
 --   --      team_agent_records_find, team_agent_key_create,
 --   --      team_agent_key_revoke, team_agent_keys_mine, team_agent_call,
---   --      team_agent_housekeeping
+--   --      team_agent_housekeeping, admin_team_set_member
+--   DROP FUNCTION IF EXISTS public.crm_request_claim(text, text, jsonb);
 --   DROP FUNCTION IF EXISTS public.crm_contact_check(text, jsonb);
 --   DROP FUNCTION IF EXISTS public.crm_identifier_matches(text, jsonb, uuid);
+--   DROP FUNCTION IF EXISTS public.crm_identifier_hits(text, jsonb, uuid);
 --   DROP FUNCTION IF EXISTS public.crm_identifiers_json(uuid);
 --   DROP FUNCTION IF EXISTS public.crm_clean_identifiers(jsonb);
 --   DROP FUNCTION IF EXISTS public.team_agent_setup_redeem(text, text);
@@ -154,39 +162,125 @@ ALTER TABLE public.crm_records
 -- 3. Emails, phone numbers and handles.
 --
 -- THE one normal form. NULL when the value is not usable as that kind.
---   email:  the letters A to Z lower-cased, spaces at the ends removed; it
---           needs a name, an @ and a domain, and is at most 254 characters.
+--
+-- First, for every kind: the text is put in its composed form (NFC),
+-- characters nobody can see are removed, every kind of space becomes one
+-- plain space, spaces at the ends are removed and the letters A to Z are
+-- lower-cased. A value longer than 200 characters is not usable.
+--   email:  it needs a name, an @ and a domain.
 --   phone:  digits only; a leading 00 is dropped; 7 to 15 digits remain.
---   handle: lower-cased; a leading http:// or https://, then www., then one
---           known profile address is removed; then everything from the first
---           /, ? or #; then a leading @. 2 to 60 of a-z 0-9 . _ - remain.
+--   handle: written plainly (alice, @alice): 2 to 60 of a-z 0-9 . _ -.
+--           Written as a link, it depends on the site.
+--           A known profile site (Instagram, TikTok, X, Facebook, YouTube,
+--           LinkedIn, wa.me): the name in the address. A path word that is
+--           not a name (profile.php, channel, pages, in, ...) means the id
+--           that follows it; when nothing usable follows, the whole address.
+--           Any other site: the whole address, as site/path, without
+--           http(s)://, www. or m., without a trailing /, without the query
+--           (an id= value is kept) and without the fragment. A site with no
+--           path is not a handle.
 -- The admin web has a twin of this function, held to it by a shared table of
 -- examples that both test suites assert.
 -- ---------------------------------------------------------------------------
 CREATE FUNCTION public.crm_ident_key(p_kind text, p_value text) RETURNS text
-LANGUAGE sql IMMUTABLE STRICT SET search_path = ''
+LANGUAGE plpgsql IMMUTABLE STRICT SET search_path = ''
 AS $$
-  SELECT CASE p_kind
-    WHEN 'email' THEN (
-      SELECT CASE WHEN e.v ~ '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$' AND char_length(e.v) <= 254 THEN e.v END
-      FROM (SELECT translate(btrim(p_value, ' '), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') AS v) e)
-    WHEN 'phone' THEN (
-      SELECT CASE WHEN char_length(d.v) BETWEEN 7 AND 15 THEN d.v END
-      FROM (SELECT regexp_replace(regexp_replace(p_value, '[^0-9]', '', 'g'), '^00', '') AS v) d)
-    WHEN 'handle' THEN (
-      SELECT CASE WHEN h.v ~ '^[a-z0-9._-]{2,60}$' THEN h.v END
-      FROM (SELECT regexp_replace(
-                     regexp_replace(
-                       regexp_replace(
-                         regexp_replace(
-                           regexp_replace(
-                             translate(btrim(p_value, ' '), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'),
-                             '^https?://', ''),
-                           '^www[.]', ''),
-                         '^(instagram[.]com/|tiktok[.]com/@|tiktok[.]com/|x[.]com/|twitter[.]com/|facebook[.]com/|youtube[.]com/@|youtube[.]com/|linkedin[.]com/in/|linkedin[.]com/company/|wa[.]me/)', ''),
-                       '[/?#].*$', ''),
-                     '^@', '') AS v) h)
-  END
+DECLARE
+  c_hidden constant text := '[\u0000-\u0008\u000E-\u001F\u007F-\u0084\u0086-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF9-\uFFFB\U000E0000-\U000E0FFF]';
+  c_space  constant text := '[\u0009-\u000D \u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]';
+  c_name   constant text := '^[a-z0-9._-]{2,60}$';
+  c_sites  constant text[] := ARRAY['instagram.com', 'tiktok.com', 'x.com', 'twitter.com', 'facebook.com',
+                                    'youtube.com', 'linkedin.com', 'wa.me'];
+  -- Path words of those sites that are never a person's name.
+  c_words  constant text[] := ARRAY[
+    'profile.php', 'channel', 'c', 'user', 'pages', 'people', 'groups', 'reel', 'reels', 'stories', 'p',
+    'share', 'sharer', 'sharer.php', 'in', 'company', 'school', 'pub', 'showcase', 'explore', 'tv', 'watch',
+    'shorts', 'playlist', 'hashtag', 'tag', 'tags', 'intent', 'i', 'home', 'search', 'video', 'videos',
+    'events', 'photo', 'photos', 'posts', 'status', 'embed', 'live', 'feed', 'results', 'story.php',
+    'permalink.php', 'login', 'signup', 'accounts', 'about', 'help', 'settings', 'discover', 'foryou',
+    'following', 'music', 't', 'gaming', 'marketplace', 'profile'];
+  t      text;
+  v_site text;
+  v_rest text;
+  v_path text;
+  v_id   text;
+  v_segs text[];
+  v_one  text;
+  v_two  text;
+  v_key  text;
+BEGIN
+  t := regexp_replace(normalize(p_value, NFC), c_hidden, '', 'g');
+  t := btrim(regexp_replace(t, c_space || '+', ' ', 'g'), ' ');
+  t := translate(t, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz');
+  IF char_length(t) > 200 THEN
+    RETURN NULL;
+  END IF;
+
+  IF p_kind = 'email' THEN
+    RETURN CASE WHEN t ~ '^[^@ ]+@[^@ ]+[.][^@ ]+$' THEN t END;
+  END IF;
+
+  IF p_kind = 'phone' THEN
+    t := regexp_replace(regexp_replace(t, '[^0-9]', '', 'g'), '^00', '');
+    RETURN CASE WHEN char_length(t) BETWEEN 7 AND 15 THEN t END;
+  END IF;
+
+  IF p_kind <> 'handle' THEN
+    RETURN NULL;
+  END IF;
+
+  -- Written plainly.
+  IF t !~ '^https?://' AND t !~ '^www[.]' AND t !~ '[/?#]' THEN
+    v_key := regexp_replace(t, '^@', '');
+    RETURN CASE WHEN v_key ~ c_name AND NOT (v_key = ANY (c_sites)) THEN v_key END;
+  END IF;
+
+  -- Written as a link.
+  t := regexp_replace(t, '^https?://', '');
+  v_site := substring(t from '^[^/?#]*');
+  v_rest := substr(t, char_length(v_site) + 1);
+  IF v_site !~ '[.]' THEN
+    -- Not a site: a name with something after it.
+    v_key := regexp_replace(v_site, '^@', '');
+    RETURN CASE WHEN v_key ~ c_name THEN v_key END;
+  END IF;
+  v_site := regexp_replace(v_site, '^(www|m|mobile)[.](?=.*[.])', '');
+  v_site := regexp_replace(v_site, '^[a-z]{2}[.]linkedin[.]com$', 'linkedin.com');
+  IF v_site !~ '^[a-z0-9-]+([.][a-z0-9-]+)+$' THEN
+    RETURN NULL;
+  END IF;
+  v_path := btrim(regexp_replace(substring(v_rest from '^[^?#]*'), '/+', '/', 'g'), '/');
+  v_id := substring('&' || COALESCE(substring(v_rest from '^[^?#]*[?]([^#]*)'), '')
+                    from '&id=([a-z0-9._-]{2,60})(?:&|$)');
+
+  IF v_site = ANY (c_sites) THEN
+    IF v_path = '' THEN
+      RETURN NULL;
+    END IF;
+    v_segs := string_to_array(v_path, '/');
+    v_one := regexp_replace(v_segs[1], '^@', '');
+    IF NOT (v_one = ANY (c_words)) THEN
+      RETURN CASE WHEN v_one ~ c_name THEN v_one END;
+    END IF;
+    IF cardinality(v_segs) = 1 AND v_id IS NOT NULL THEN
+      RETURN v_id;
+    END IF;
+    IF v_site = 'facebook.com' AND v_one IN ('pages', 'people') AND cardinality(v_segs) = 3
+       AND v_segs[3] ~ '^[0-9]{2,60}$' THEN
+      RETURN v_segs[3];
+    END IF;
+    v_two := regexp_replace(COALESCE(v_segs[2], ''), '^@', '');
+    IF v_two ~ c_name AND NOT (v_two = ANY (c_words)) THEN
+      RETURN v_two;
+    END IF;
+  ELSIF v_path = '' AND v_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  v_key := v_site || CASE WHEN v_path <> '' THEN '/' || v_path ELSE '' END
+                  || CASE WHEN v_id IS NOT NULL THEN '?id=' || v_id ELSE '' END;
+  RETURN CASE WHEN v_key !~ ' ' THEN v_key END;
+END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.crm_ident_key(text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_ident_key(text, text) TO service_role;
@@ -201,6 +295,8 @@ CREATE TABLE public.crm_record_identifiers (
   value      text NOT NULL,                 -- as typed, after the shared text clean-up
   value_key  text NOT NULL,                 -- the normal form
   tail9      text GENERATED ALWAYS AS (CASE WHEN kind = 'phone' AND char_length(value_key) >= 9 THEN right(value_key, 9) END) STORED,
+  -- A phone number typed with its country code (a leading + or 00).
+  intl       boolean GENERATED ALWAYS AS (kind = 'phone' AND regexp_replace(value, '[^0-9+]', '', 'g') ~ '^([+]|00)') STORED,
   created_by text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT crm_record_identifiers_kind_check CHECK (kind IN ('email','phone','handle')),
@@ -274,7 +370,7 @@ BEGIN
         left(COALESCE(v_txt, regexp_replace(left(v_raw, 60), '[[:cntrl:]]', '', 'g')), 60), v_kind,
         CASE v_kind WHEN 'email' THEN 'An email needs a name, an @ and a domain.'
                     WHEN 'phone' THEN 'A phone number needs 7 to 15 digits.'
-                    ELSE 'A handle is 2 to 60 letters, digits, dots or underscores, with or without @ or its profile address.' END)
+                    ELSE 'A handle is 2 to 60 letters, digits, dots or underscores, with or without @, or the link to a profile or page (a site with nothing after it is not one).' END)
         USING ERRCODE = '22023';
     END IF;
 
@@ -286,7 +382,9 @@ BEGIN
     END IF;
     IF v_plat IS NULL AND v_kind = 'handle' THEN
       -- Taken from the address the handle was written as, when it was one.
-      v_low := regexp_replace(regexp_replace(lower(v_txt), '^https?://', ''), '^www[.]', '');
+      v_low := regexp_replace(regexp_replace(regexp_replace(lower(v_txt), '^https?://', ''),
+                                             '^(www|m|mobile)[.](?=.*[.])', ''),
+                              '^[a-z]{2}[.]linkedin[.]com', 'linkedin.com');
       v_plat := CASE
         WHEN v_low LIKE 'instagram.com/%' THEN 'instagram'
         WHEN v_low LIKE 'tiktok.com/%' THEN 'tiktok'
@@ -312,16 +410,22 @@ GRANT EXECUTE ON FUNCTION public.crm_clean_identifiers(jsonb) TO service_role;
 COMMENT ON FUNCTION public.crm_clean_identifiers(jsonb) IS
   'Issue #3802. Internal: a caller''s list of emails, phone numbers and handles, cleaned, checked and without repeats, each with its normal form.';
 
--- The live records of one pipeline that hold any of these identifiers (the
--- cleaner's output), other than p_exclude. A row matches when kind and
--- normal form are equal ("exact"), or both are phone numbers with the same
--- last nine digits ("last_9_digits"). At most 5 records, by name.
-CREATE FUNCTION public.crm_identifier_matches(p_pipeline text, p_idents jsonb, p_exclude uuid) RETURNS jsonb
+-- Which stored identifiers of one pipeline's live records match any of these
+-- (the cleaner's output), on a record other than p_exclude. A row matches
+-- when kind and normal form are equal ("exact"). Two phone numbers also match
+-- on their last nine digits ("last_9_digits") when at least one of them was
+-- written without a country code and they are not the same length: one is
+-- then the other without its prefix. Two numbers that both carry a country
+-- code match only when they are equal.
+CREATE FUNCTION public.crm_identifier_hits(p_pipeline text, p_idents jsonb, p_exclude uuid)
+RETURNS TABLE (record_id uuid, kind text, platform text, value text, value_key text, rule text)
 LANGUAGE sql STABLE SET search_path = ''
 AS $$
   WITH want AS (
     SELECT e->>'kind' AS kind, e->>'value_key' AS value_key,
-           CASE WHEN e->>'kind' = 'phone' AND char_length(e->>'value_key') >= 9 THEN right(e->>'value_key', 9) END AS tail9
+           CASE WHEN e->>'kind' = 'phone' AND char_length(e->>'value_key') >= 9 THEN right(e->>'value_key', 9) END AS tail9,
+           (e->>'kind' = 'phone'
+            AND regexp_replace(COALESCE(e->>'value', ''), '[^0-9+]', '', 'g') ~ '^([+]|00)') AS intl
     FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_idents) = 'array' THEN p_idents ELSE '[]'::jsonb END) AS e
   ),
   hit AS (
@@ -333,27 +437,49 @@ AS $$
     FROM want w
     JOIN public.crm_record_identifiers i ON i.tail9 = w.tail9 AND i.kind = 'phone' AND i.value_key <> w.value_key
     WHERE w.tail9 IS NOT NULL
+      AND NOT (i.intl AND w.intl)
+      AND char_length(i.value_key) <> char_length(w.value_key)
+  )
+  SELECT h.record_id, h.kind, h.platform, h.value, h.value_key, h.rule
+  FROM hit h
+  JOIN public.crm_records c ON c.id = h.record_id
+  WHERE c.pipeline = p_pipeline AND c.deleted_at IS NULL
+    AND (p_exclude IS NULL OR c.id <> p_exclude)
+$$;
+REVOKE EXECUTE ON FUNCTION public.crm_identifier_hits(text, jsonb, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.crm_identifier_hits(text, jsonb, uuid) TO service_role;
+COMMENT ON FUNCTION public.crm_identifier_hits(text, jsonb, uuid) IS
+  'Issue #3802. Internal: the stored identifiers of a pipeline''s live records that match any of the given ones, with the rule each matched by.';
+
+-- The same matches, by record: a record marked Do not contact first, then
+-- Warm intro only, then the rest, each group by name. At most 5.
+CREATE FUNCTION public.crm_identifier_matches(p_pipeline text, p_idents jsonb, p_exclude uuid) RETURNS jsonb
+LANGUAGE sql STABLE SET search_path = ''
+AS $$
+  WITH hit AS MATERIALIZED (
+    SELECT * FROM public.crm_identifier_hits(p_pipeline, p_idents, p_exclude)
   ),
   recs AS (
-    SELECT c.* FROM public.crm_records c
-    WHERE c.pipeline = p_pipeline AND c.deleted_at IS NULL
-      AND (p_exclude IS NULL OR c.id <> p_exclude)
-      AND c.id IN (SELECT h.record_id FROM hit h)
-    ORDER BY c.name, c.id
+    SELECT c.id, c.name,
+           CASE c.contact_rule WHEN 'do_not_contact' THEN 0 WHEN 'warm_intro_only' THEN 1 ELSE 2 END AS rule_rank,
+           public.crm_record_lite_json(c) AS lite
+    FROM public.crm_records c
+    WHERE c.id IN (SELECT h.record_id FROM hit h)
+    ORDER BY rule_rank, c.name, c.id
     LIMIT 5
   )
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
-           'record', public.crm_record_lite_json(r),
+           'record', r.lite,
            'matched_on', (SELECT jsonb_agg(jsonb_build_object('kind', h.kind, 'platform', h.platform, 'value', h.value, 'rule', h.rule)
                                            ORDER BY h.kind, h.value_key, h.rule)
                             FROM hit h WHERE h.record_id = r.id))
-         ORDER BY r.name, r.id), '[]'::jsonb)
+         ORDER BY r.rule_rank, r.name, r.id), '[]'::jsonb)
   FROM recs r
 $$;
 REVOKE EXECUTE ON FUNCTION public.crm_identifier_matches(text, jsonb, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_identifier_matches(text, jsonb, uuid) TO service_role;
 COMMENT ON FUNCTION public.crm_identifier_matches(text, jsonb, uuid) IS
-  'Issue #3802. Internal: the live records of a pipeline that hold any of the given identifiers, with what matched and by which rule. At most 5.';
+  'Issue #3802. Internal: the live records of a pipeline that hold any of the given identifiers, with what matched and by which rule; a record that carries a contact rule comes first. At most 5.';
 
 CREATE FUNCTION public.crm_identifiers_json(p_record_id uuid) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path = ''
@@ -452,8 +578,8 @@ REVOKE EXECUTE ON FUNCTION public.crm_beta_icp(text[]) FROM PUBLIC, anon, authen
 GRANT EXECUTE ON FUNCTION public.crm_beta_icp(text[]) TO service_role;
 
 -- The one cleaner of a caller's values. Added: identifiers (a list, cleaned
--- like owners), contact_rule with its reason, allow_shared_identifier for a
--- new record, and plainer words for a region that is not a Launch City.
+-- like owners), contact_rule with its reason, allow_shared_identifier, and
+-- plainer words for a region that is not a Launch City.
 CREATE OR REPLACE FUNCTION public.crm_validate_fields(p_pipeline text, p_fields jsonb, p_mode text) RETURNS jsonb
 LANGUAGE plpgsql STABLE SET search_path = ''
 AS $$
@@ -502,10 +628,7 @@ BEGIN
     v_allowed := v_allowed || ARRAY['owners'];
   END IF;
   IF p_mode IN ('create', 'update') THEN
-    v_allowed := v_allowed || ARRAY['identifiers','contact_rule','contact_rule_reason'];
-  END IF;
-  IF p_mode = 'create' THEN
-    v_allowed := v_allowed || ARRAY['allow_shared_identifier'];
+    v_allowed := v_allowed || ARRAY['identifiers','contact_rule','contact_rule_reason','allow_shared_identifier'];
   END IF;
 
   FOR v_key, v_val IN SELECT e.key, e.value FROM jsonb_each(p_fields) e ORDER BY e.key LOOP
@@ -984,9 +1107,10 @@ REVOKE EXECUTE ON FUNCTION public.crm_config() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_config() TO authenticated, service_role;
 
 -- Change fields of one record (never stage, never owners). Added: the contact
--- rule with its reason (an agent can set or tighten one, never lift or loosen
--- it), and the identifiers, which replace the whole list and may not include
--- a contact detail another record holds.
+-- rule with its reason, and the identifiers, which replace the whole list
+-- and may not include a contact detail another record holds unless a person
+-- says so. On a record that carries a rule, an agent can add a contact
+-- detail and nothing else about who it is or whether to contact them.
 CREATE OR REPLACE FUNCTION public.crm_record_update(p_id uuid, p_changes jsonb) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -1011,6 +1135,7 @@ DECLARE
   v_rule_changed boolean := false;
   v_hits    jsonb;
   v_id      jsonb;
+  v_share   boolean := false;
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   SELECT * INTO v_rec FROM public.crm_records c WHERE c.id = p_id AND c.deleted_at IS NULL FOR UPDATE;
@@ -1037,14 +1162,15 @@ BEGIN
       -- Lifting a rule clears its reason.
       v_clean := v_clean || jsonb_build_object('contact_rule_reason', NULL);
     END IF;
-    -- An agent can set a rule, tighten it, or change its reason. Lifting or
-    -- loosening one is a person's decision.
-    IF v.via IS NOT NULL AND v_rec.contact_rule IS NOT NULL
-       AND ((v_clean->>'contact_rule') IS NULL
-            OR (v_rec.contact_rule = 'do_not_contact' AND (v_clean->>'contact_rule') = 'warm_intro_only')) THEN
-      RAISE EXCEPTION 'contact_rule_locked: Only a person can lift or loosen a contact rule. Tell your person why you think it should change.'
-        USING ERRCODE = '42501';
+  END IF;
+  -- A person may keep a contact detail that another record also holds.
+  IF v_clean ? 'allow_shared_identifier' THEN
+    IF v.via IS NOT NULL THEN
+      RAISE EXCEPTION 'field_not_for_agents: Only a person can keep a contact detail that another record also holds. Ask your person.'
+        USING ERRCODE = '22023';
     END IF;
+    v_share := COALESCE(v_clean->'allow_shared_identifier' = 'true'::jsonb, false);
+    v_clean := v_clean - 'allow_shared_identifier';
   END IF;
   -- Identifiers replace the whole list; they are compared as a set.
   IF v_clean ? 'identifiers' THEN
@@ -1070,6 +1196,16 @@ BEGIN
 
   IF v_after = '{}'::jsonb AND NOT v_ids_changed THEN
     RETURN jsonb_build_object('record', public.crm_record_json(v_rec), 'changed', false, 'moved_to', NULL);
+  END IF;
+
+  -- A record that carries a contact rule: its name, the contact details it
+  -- holds, the rule and its reason are a person's to change. An agent may
+  -- add a contact detail, and may put a rule on a record that has none.
+  IF v.via IS NOT NULL AND v_rec.contact_rule IS NOT NULL
+     AND (v_after ? 'name' OR v_after ? 'contact_rule' OR v_after ? 'contact_rule_reason'
+          OR (v_ids_changed AND NOT (v_old_ids <@ v_new_ids))) THEN
+    RAISE EXCEPTION '%', format('contact_rule_locked: "%s" carries a contact rule, so its name, its contact details, the rule and its reason are a person''s to change. You can add a contact detail. Tell your person what you would change.',
+        v_rec.name) USING ERRCODE = '42501';
   END IF;
 
   IF v_rec.pipeline = 'creators'
@@ -1106,7 +1242,7 @@ BEGIN
                                     WHERE i.record_id = v_rec.id AND i.kind = e->>'kind'
                                       AND i.value_key = e->>'value_key')), '[]'::jsonb),
       v_rec.id);
-    IF jsonb_array_length(v_hits) > 0 THEN
+    IF jsonb_array_length(v_hits) > 0 AND NOT v_share THEN
       RAISE EXCEPTION '%', format('duplicate_identifier: "%s" already belongs to "%s" in %s. Open that record instead.',
           v_hits->0->'matched_on'->0->>'value', v_hits->0->'record'->>'name', v_label)
         USING ERRCODE = '22023', DETAIL = v_hits->0->'record'->>'id';
@@ -1182,6 +1318,7 @@ DECLARE
   v_class     text;
   v_when      timestamptz;
   v_now       timestamptz := clock_timestamp();
+  v_other     jsonb;
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   v_res := public.crm_request_begin(v.actor_email, p_request_key, 'crm_record_log');
@@ -1214,6 +1351,24 @@ BEGIN
     ELSIF v_rec.contact_rule = 'warm_intro_only' THEN
       RAISE EXCEPTION '%', format('warm_intro_only: "%s" is marked Warm intro only: %s. Nothing was logged. Ask your person to make the introduction.',
           v_rec.name, v_rec.contact_rule_reason) USING ERRCODE = '42501';
+    END IF;
+    -- The same person may sit on another record: a rule on any record that
+    -- shares a contact detail with this one stops the touch too.
+    SELECT h->'record' INTO v_other
+      FROM jsonb_array_elements(public.crm_identifier_matches(v_rec.pipeline,
+             (SELECT COALESCE(jsonb_agg(jsonb_build_object('kind', i.kind, 'value', i.value, 'value_key', i.value_key)), '[]'::jsonb)
+                FROM public.crm_record_identifiers i WHERE i.record_id = v_rec.id),
+             v_rec.id)) WITH ORDINALITY AS t(h, ord)
+     WHERE (h->'record'->>'contact_rule') IS NOT NULL
+     ORDER BY ord LIMIT 1;
+    IF v_other IS NOT NULL THEN
+      RAISE EXCEPTION '%', format('%s: "%s" shares a contact detail with "%s", which is marked %s: %s. Nothing was logged. %s',
+          v_other->>'contact_rule', v_rec.name, v_other->>'name',
+          CASE v_other->>'contact_rule' WHEN 'do_not_contact' THEN 'Do not contact' ELSE 'Warm intro only' END,
+          v_other->>'contact_rule_reason',
+          CASE v_other->>'contact_rule' WHEN 'do_not_contact' THEN 'Do not message them; tell your person.'
+                                        ELSE 'Ask your person to make the introduction.' END)
+        USING ERRCODE = '42501';
     END IF;
     IF v_body IS NULL THEN
       RAISE EXCEPTION 'invalid_body: Log the message you sent, word for word.' USING ERRCODE = '22023';
@@ -1441,8 +1596,12 @@ GRANT EXECUTE ON FUNCTION public.crm_beta_lead_to_host(uuid) TO authenticated, s
 -- The contactable check. For each of 1 to 50 candidates (a name, identifiers,
 -- or both): is this someone new, someone already in the pipeline, or someone
 -- marked with a contact rule. The name is matched the way an add matches it;
--- an identifier is matched in its normal form. One candidate that cannot be
--- read is answered as "invalid" and never stops the rest. Reads only.
+-- an identifier is matched in its normal form. Every record that matches is
+-- weighed: the verdict is the strictest contact rule found on any of them
+-- (Do not contact, then Warm intro only, then none), "record" is that record,
+-- and "matches" lists each one with its own rule and what it matched on. One
+-- candidate that cannot be read is answered as "invalid" and never stops the
+-- rest. Reads only.
 -- ---------------------------------------------------------------------------
 CREATE FUNCTION public.crm_contact_check(p_pipeline text, p_candidates jsonb) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
@@ -1454,11 +1613,12 @@ DECLARE
   v_name   text;
   v_key    text;
   v_idents jsonb;
-  v_hits   jsonb;
   v_named  public.crm_records;
   v_rec    public.crm_records;
   v_has_n  boolean;
-  v_others integer;
+  v_has_i  boolean;
+  v_all    jsonb;
+  v_total  integer;
   v_row    jsonb;
   v_rows   jsonb := '[]'::jsonb;
 BEGIN
@@ -1499,18 +1659,31 @@ BEGIN
          WHERE c.pipeline = p_pipeline AND c.deleted_at IS NULL AND c.name_key = v_key;
       END IF;
       v_has_n := v_named.id IS NOT NULL;
-      v_hits := public.crm_identifier_matches(p_pipeline, v_idents, NULL);
 
-      IF jsonb_array_length(v_hits) > 0 THEN
-        SELECT * INTO v_rec FROM public.crm_records c WHERE c.id = (v_hits->0->'record'->>'id')::uuid;
-        v_others := jsonb_array_length(v_hits) - 1
-          + CASE WHEN v_has_n AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_hits) AS h
-                                              WHERE h->'record'->>'id' = v_named.id::text) THEN 1 ELSE 0 END;
-      ELSIF v_has_n THEN
-        v_rec := v_named;
-        v_others := 0;
-      ELSE
-        v_others := 0;
+      -- Every record this candidate matches, the strictest rule first.
+      WITH hit AS MATERIALIZED (
+        SELECT * FROM public.crm_identifier_hits(p_pipeline, v_idents, NULL)
+      ),
+      found AS (
+        SELECT c.id, c.name,
+               CASE c.contact_rule WHEN 'do_not_contact' THEN 0 WHEN 'warm_intro_only' THEN 1 ELSE 2 END AS rule_rank,
+               jsonb_build_object(
+                 'record', public.crm_record_lite_json(c),
+                 'name_match', v_has_n AND c.id = v_named.id,
+                 'matched_on', COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', h.kind, 'platform', h.platform,
+                                                                             'value', h.value, 'rule', h.rule)
+                                                          ORDER BY h.kind, h.value_key, h.rule)
+                                           FROM hit h WHERE h.record_id = c.id), '[]'::jsonb)) AS m
+        FROM public.crm_records c
+        WHERE (v_has_n AND c.id = v_named.id) OR c.id IN (SELECT h.record_id FROM hit h)
+      )
+      SELECT COALESCE(jsonb_agg(f.m ORDER BY f.rule_rank, f.name, f.id), '[]'::jsonb), count(*)::integer,
+             EXISTS (SELECT 1 FROM hit)
+        INTO v_all, v_total, v_has_i
+      FROM found f;
+
+      IF v_total > 0 THEN
+        SELECT * INTO v_rec FROM public.crm_records c WHERE c.id = (v_all->0->'record'->>'id')::uuid;
       END IF;
 
       v_row := jsonb_build_object(
@@ -1519,8 +1692,8 @@ BEGIN
         'verdict', CASE WHEN v_rec.id IS NULL THEN 'new'
                         WHEN v_rec.contact_rule IS NOT NULL THEN v_rec.contact_rule
                         ELSE 'exists' END,
-        'match', CASE WHEN jsonb_array_length(v_hits) > 0 AND v_has_n THEN 'both'
-                      WHEN jsonb_array_length(v_hits) > 0 THEN 'identifier'
+        'match', CASE WHEN v_has_i AND v_has_n THEN 'both'
+                      WHEN v_has_i THEN 'identifier'
                       WHEN v_has_n THEN 'name'
                       ELSE 'none' END,
         'record', CASE WHEN v_rec.id IS NULL THEN NULL ELSE
@@ -1535,7 +1708,10 @@ BEGIN
                              FROM public.crm_activity a
                             WHERE a.record_id = v_rec.id AND a.kind = 'touch' AND a.direction = 'inbound'
                             ORDER BY a.occurred_at DESC, a.created_at DESC, a.id LIMIT 1)) END,
-        'matched_on', CASE WHEN jsonb_array_length(v_hits) > 0 THEN v_hits->0->'matched_on' ELSE '[]'::jsonb END,
+        'matched_on', COALESCE(v_all->0->'matched_on', '[]'::jsonb),
+        'matches', COALESCE((SELECT jsonb_agg(t.e ORDER BY t.ord)
+                               FROM jsonb_array_elements(v_all) WITH ORDINALITY AS t(e, ord)
+                              WHERE t.ord <= 6), '[]'::jsonb),
         'similar', CASE WHEN v_key IS NULL THEN '[]'::jsonb ELSE COALESCE((
           SELECT jsonb_agg(public.crm_record_lite_json(s) ORDER BY s.name, s.id)
           FROM (SELECT c.* FROM public.crm_records c
@@ -1545,14 +1721,14 @@ BEGIN
                    AND (position(v_key IN c.name_key) > 0 OR position(c.name_key IN v_key) > 0)
                  ORDER BY c.name, c.id
                  LIMIT 5) s), '[]'::jsonb) END,
-        'other_matches', v_others);
+        'other_matches', GREATEST(v_total - 1, 0));
     EXCEPTION WHEN invalid_parameter_value THEN
       v_row := jsonb_build_object(
         'index', v_idx,
         'name', CASE WHEN jsonb_typeof(v_item) = 'object' AND jsonb_typeof(v_item->'name') = 'string'
                      THEN left(v_item->>'name', 160) END,
         'verdict', 'invalid', 'match', 'none', 'record', NULL,
-        'matched_on', '[]'::jsonb, 'similar', '[]'::jsonb, 'other_matches', 0,
+        'matched_on', '[]'::jsonb, 'matches', '[]'::jsonb, 'similar', '[]'::jsonb, 'other_matches', 0,
         'error', SQLERRM);
     END;
     v_rows := v_rows || jsonb_build_array(v_row);
@@ -1573,7 +1749,53 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.crm_contact_check(text, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_contact_check(text, jsonb) TO authenticated, service_role;
 COMMENT ON FUNCTION public.crm_contact_check(text, jsonb) IS
-  'Issue #3802. For anyone with the crm area: check 1 to 50 candidates (a name, identifiers, or both) against one pipeline. Each answer says new, exists, do_not_contact, warm_intro_only or invalid, what matched (the name, an identifier, or both), the record with its contact rule, last touch and last reply, and close names. Reads only.';
+  'Issue #3802. For anyone with the crm area: check 1 to 50 candidates (a name, identifiers, or both) against one pipeline. Each answer says new, exists, do_not_contact, warm_intro_only or invalid: the strictest contact rule on any record that matches. It names what matched (the name, an identifier, or both), that record with its contact rule, last touch and last reply, every match with its own rule, and close names. Reads only.';
+
+-- ---------------------------------------------------------------------------
+-- A request key belongs to one request. Internal: the gateway calls this
+-- before a tool that adds or logs does anything.
+--
+-- The first time a person's key is seen, it is kept with the tool it came
+-- with and a digest of that request's arguments, and the answer is false.
+-- The same key with the same tool and the same arguments is a repeat: true.
+-- The same key with another tool or other arguments is refused, so a stored
+-- answer is never paired with a different request. Keys are per person: a
+-- repeat from the person's other agent is a repeat.
+-- ---------------------------------------------------------------------------
+CREATE FUNCTION public.crm_request_claim(p_key text, p_fn text, p_args jsonb) RETURNS boolean
+LANGUAGE plpgsql VOLATILE SET search_path = ''
+AS $$
+DECLARE
+  v      record;
+  v_fn   text;
+  v_res  jsonb;
+  v_hash text := encode(sha256(convert_to(COALESCE(p_args, '{}'::jsonb)::text, 'UTF8')), 'hex');
+BEGIN
+  SELECT * INTO v FROM public.crm_ctx();
+  IF p_key IS NULL OR p_key !~ '^[A-Za-z0-9_-]{8,80}$' OR p_fn IS NULL OR p_fn = '' THEN
+    RAISE EXCEPTION 'request_key_required: Send a request key (8 to 80 letters, digits, - or _) so a repeat changes nothing.'
+      USING ERRCODE = '22023';
+  END IF;
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('crm_req:' || v.actor_email || ':' || p_key, 0));
+  SELECT k.fn, k.response INTO v_fn, v_res
+  FROM public.crm_request_keys k
+  WHERE k.actor_email = v.actor_email AND k.request_key = p_key;
+  IF NOT FOUND THEN
+    INSERT INTO public.crm_request_keys (actor_email, request_key, fn, response, created_at)
+    VALUES (v.actor_email, p_key, p_fn, jsonb_build_object('arguments_sha256', v_hash), clock_timestamp());
+    RETURN false;
+  END IF;
+  IF v_fn IS DISTINCT FROM p_fn OR (v_res->>'arguments_sha256') IS DISTINCT FROM v_hash THEN
+    RAISE EXCEPTION 'request_key_reused: That request_key was already used for a different request. Nothing was changed. Use a new key.'
+      USING ERRCODE = '22023';
+  END IF;
+  RETURN true;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.crm_request_claim(text, text, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.crm_request_claim(text, text, jsonb) TO service_role;
+COMMENT ON FUNCTION public.crm_request_claim(text, text, jsonb) IS
+  'Issue #3802. Internal: keeps a request key with the tool and a digest of the arguments it first came with. A repeat of the same request answers true; the same key with another tool or other arguments is refused.';
 
 -- ---------------------------------------------------------------------------
 -- Setup codes. Row security on, NO policies, no client privilege, no trigger,
@@ -1769,7 +1991,8 @@ COMMENT ON FUNCTION public.team_agent_person(text) IS
 
 -- The one place a key becomes a person: the access rule above, then the idle
 -- rule. Every refusal is the same answer, whatever the cause. A key that can
--- no longer be used is turned off here.
+-- no longer be used is turned off here, and when its person can no longer
+-- act, the setup codes they have not used end with it.
 CREATE OR REPLACE FUNCTION public.team_agent_resolve(p_key_hash text) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -1797,9 +2020,17 @@ BEGIN
   END IF;
 
   IF v_reason IS NOT NULL THEN
+    -- One order everywhere: the person's lock, then their keys and codes.
+    PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('team_agent_key:' || k.owner_email, 0));
     UPDATE public.team_agent_keys
        SET revoked_at = now(), revoked_by = 'system', revoke_reason = v_reason
      WHERE id = k.id AND revoked_at IS NULL;
+    -- A person who can no longer act has no setup code waiting either.
+    IF v_reason <> 'idle' THEN
+      UPDATE public.team_agent_setup_codes
+         SET voided_at = now()
+       WHERE owner_email = k.owner_email AND consumed_at IS NULL AND voided_at IS NULL;
+    END IF;
     -- Nobody is acting for the rest of this transaction.
     PERFORM set_config('request.jwt.claim.sub', '', true);
     PERFORM set_config('request.jwt.claim.role', '', true);
@@ -1991,7 +2222,9 @@ COMMENT ON FUNCTION public.team_agent_setup_create(text, text) IS
 -- over the code's digest. Every refusal is the one answer, whatever the
 -- cause. A code is used up by its first use, whatever happens next: of two
 -- uses arriving together, one statement updates the row and the other finds
--- it already used.
+-- it already used. Making a code, using one and turning a key off all take
+-- the person's lock first and touch rows after, so they never wait on each
+-- other in a circle.
 CREATE FUNCTION public.team_agent_setup_redeem(p_code_hash text, p_client text) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -2001,10 +2234,17 @@ DECLARE
   v_who    jsonb;
   v_made   jsonb;
   v_client text;
+  v_holder text;
 BEGIN
   IF p_code_hash IS NULL OR p_code_hash !~ '^[0-9a-f]{64}$' THEN
     RETURN c_invalid;
   END IF;
+  -- The person's lock first (read without locking the row), then the row.
+  SELECT c.owner_email INTO v_holder FROM public.team_agent_setup_codes c WHERE c.code_hash = p_code_hash;
+  IF NOT FOUND THEN
+    RETURN c_invalid;
+  END IF;
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('team_agent_key:' || v_holder, 0));
   UPDATE public.team_agent_setup_codes
      SET consumed_at = clock_timestamp()
    WHERE code_hash = p_code_hash AND consumed_at IS NULL AND voided_at IS NULL
@@ -2046,7 +2286,7 @@ COMMENT ON FUNCTION public.team_agent_setup_redeem(text, text) IS
   'Issue #3802. Internal: use a one-time setup code (by its digest) and make its maker''s key. A code works once and within its lifetime; every refusal is the same answer. Not client-executable.';
 
 -- Turn a key off. Added: that person's unused setup codes for that agent end
--- with it.
+-- with it, and the key holder's lock is taken before any row.
 CREATE OR REPLACE FUNCTION public.team_agent_key_revoke(p_key_id uuid) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -2055,6 +2295,7 @@ DECLARE
   k       public.team_agent_keys;
   v_owner boolean;
   v_now   timestamptz := clock_timestamp();
+  v_holder text;
 BEGIN
   SELECT * INTO v FROM public.crm_ctx();
   IF v.via IS NOT NULL THEN
@@ -2062,6 +2303,11 @@ BEGIN
   END IF;
   v_owner := COALESCE(public.admin_team_role() = 'owner', false);
 
+  -- The key holder's lock first (read without locking the row), then the row.
+  SELECT t.owner_email INTO v_holder FROM public.team_agent_keys t WHERE t.id = p_key_id;
+  IF FOUND THEN
+    PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('team_agent_key:' || v_holder, 0));
+  END IF;
   SELECT * INTO k FROM public.team_agent_keys t WHERE t.id = p_key_id FOR UPDATE;
   IF NOT FOUND OR (k.owner_email <> v.actor_email AND NOT v_owner) THEN
     RAISE EXCEPTION 'not_found: That key is no longer here.' USING ERRCODE = 'P0002';
@@ -2090,6 +2336,161 @@ END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.team_agent_key_revoke(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.team_agent_key_revoke(uuid) TO authenticated, service_role;
+
+-- Add a person, change their role, or remove them. The earlier body with
+-- three added statements: removing a person takes their lock, then turns
+-- their keys off as before, then ends the setup codes they have not used.
+CREATE OR REPLACE FUNCTION public.admin_team_set_member(p_email text, p_role text, p_status text)
+RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE
+  v_actor         text;
+  v_email         text;
+  v_prev_role     text;
+  v_prev_status   text;
+  v_prev_accepted timestamptz;
+  v_accepted      timestamptz;
+  v_action        text;
+  v_previous      jsonb;
+BEGIN
+  -- Gate FIRST. Only the owner may add people, change a role or remove access.
+  IF NOT COALESCE(public.admin_team_role() = 'owner', false) THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+
+  v_email := lower(btrim(COALESCE(p_email, '')));
+  IF v_email !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$' THEN
+    RAISE EXCEPTION 'invalid_email' USING ERRCODE = '22023';
+  END IF;
+  IF p_role IS NULL OR p_role NOT IN ('admin','growth','partner') THEN
+    RAISE EXCEPTION 'invalid_role' USING ERRCODE = '22023';       -- 'owner' can never be assigned
+  END IF;
+  IF p_status IS NULL OR p_status NOT IN ('invited','active','revoked') THEN
+    RAISE EXCEPTION 'invalid_status' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT lower(btrim(u.email)) INTO v_actor FROM auth.users u WHERE u.id = auth.uid();
+  IF v_email = v_actor THEN
+    RAISE EXCEPTION 'cannot_change_self' USING ERRCODE = '42501';
+  END IF;
+
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('admin_team:' || v_email, 0));
+
+  IF EXISTS (SELECT 1 FROM public.admin_users au
+             WHERE lower(btrim(au.email)) = v_email AND au.role = 'owner') THEN
+    RAISE EXCEPTION 'cannot_change_owner' USING ERRCODE = '42501';
+  END IF;
+
+  -- Current membership: the non-revoked row wins.
+  SELECT x.r, x.s, x.aa INTO v_prev_role, v_prev_status, v_prev_accepted
+  FROM (
+    SELECT 'admin'::text AS r, au.status AS s, au.accepted_at AS aa, au.created_at AS ca
+    FROM public.admin_users au WHERE lower(btrim(au.email)) = v_email
+    UNION ALL
+    SELECT m.role, m.status, m.accepted_at, m.created_at
+    FROM public.admin_team_members m WHERE m.email = v_email
+  ) x
+  ORDER BY (x.s <> 'revoked') DESC, x.aa DESC NULLS LAST, x.ca DESC
+  LIMIT 1;
+
+  v_previous := CASE WHEN v_prev_status IS NULL THEN NULL
+                     ELSE jsonb_build_object('role', v_prev_role, 'status', v_prev_status) END;
+
+  -- Removing someone who has no access: nothing to do.
+  IF p_status = 'revoked' AND (v_prev_status IS NULL OR v_prev_status = 'revoked') THEN
+    IF v_prev_status IS NULL THEN
+      RAISE EXCEPTION 'not_found' USING ERRCODE = 'P0002';
+    END IF;
+    RETURN jsonb_build_object('email', v_email, 'role', v_prev_role, 'status', 'revoked',
+                              'changed', false, 'previous', v_previous);
+  END IF;
+
+  -- A repeated request changes nothing.
+  IF p_status <> 'revoked' AND v_prev_role = p_role AND v_prev_status = p_status THEN
+    RETURN jsonb_build_object('email', v_email, 'role', p_role, 'status', p_status,
+                              'changed', false, 'previous', v_previous);
+  END IF;
+
+  -- 'active' may only RESTORE someone who activated themselves before. The owner can
+  -- never activate a mailbox whose holder has not signed in.
+  IF p_status = 'active' AND v_prev_accepted IS NULL THEN
+    RAISE EXCEPTION 'never_activated' USING ERRCODE = '22023';
+  END IF;
+
+  -- Any change to a person's membership ends their outstanding invitation.
+  DELETE FROM public.admin_team_invites i WHERE i.email = v_email;
+
+  v_accepted := CASE WHEN p_status = 'invited' THEN NULL ELSE v_prev_accepted END;
+
+  IF p_status = 'revoked' THEN
+    UPDATE public.admin_users
+       SET status = 'revoked'
+     WHERE lower(btrim(email)) = v_email AND status <> 'revoked';
+    UPDATE public.admin_team_members
+       SET status = 'revoked', updated_at = now()
+     WHERE email = v_email AND status <> 'revoked';
+    PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('team_agent_key:' || v_email, 0));
+    UPDATE public.team_agent_keys
+       SET revoked_at = now(), revoked_by = v_actor, revoke_reason = 'access_removed'
+     WHERE owner_email = v_email AND revoked_at IS NULL;
+    UPDATE public.team_agent_setup_codes
+       SET voided_at = now()
+     WHERE owner_email = v_email AND consumed_at IS NULL AND voided_at IS NULL;
+    v_action := 'team.remove';
+
+  ELSIF p_role = 'admin' THEN
+    -- Full admin: leave the non-admin table first (exclusivity guard), then admin_users.
+    UPDATE public.admin_team_members
+       SET status = 'revoked', updated_at = now()
+     WHERE email = v_email AND status <> 'revoked';
+    UPDATE public.admin_users
+       SET role = 'admin', status = p_status, accepted_at = v_accepted,
+           invited_by = CASE WHEN p_status = 'invited' THEN v_actor ELSE invited_by END
+     WHERE lower(btrim(email)) = v_email;
+    IF NOT FOUND THEN
+      INSERT INTO public.admin_users (email, role, status, invited_by, accepted_at)
+      VALUES (v_email, 'admin', p_status, v_actor, v_accepted);
+    END IF;
+
+  ELSE
+    -- growth | partner: leave admin_users first (revoke, never delete: other
+    -- records point at admin_users rows), then the team table.
+    UPDATE public.admin_users
+       SET status = 'revoked'
+     WHERE lower(btrim(email)) = v_email AND status <> 'revoked';
+    UPDATE public.admin_team_members
+       SET role = p_role, status = p_status, accepted_at = v_accepted, updated_at = now(),
+           invited_by = CASE WHEN p_status = 'invited' THEN v_actor ELSE invited_by END
+     WHERE email = v_email;
+    IF NOT FOUND THEN
+      INSERT INTO public.admin_team_members (email, role, status, invited_by, accepted_at)
+      VALUES (v_email, p_role, p_status, v_actor, v_accepted);
+    END IF;
+  END IF;
+
+  IF v_action IS NULL THEN
+    v_action := CASE
+      WHEN v_prev_status IS NULL OR v_prev_status = 'revoked'
+        THEN CASE WHEN p_status = 'invited' THEN 'team.invite' ELSE 'team.restore' END
+      WHEN v_prev_role IS DISTINCT FROM p_role THEN 'team.role_change'
+      ELSE 'team.status_change'
+    END;
+  END IF;
+
+  INSERT INTO public.admin_audit_log (admin_email, action, target_type, target_id, metadata)
+  VALUES (v_actor, v_action, 'team_member', v_email,
+          jsonb_build_object('before', v_previous,
+                             'after', jsonb_build_object('role', p_role, 'status', p_status)));
+
+  RETURN jsonb_build_object(
+    'email', v_email,
+    'role', CASE WHEN p_status = 'revoked' THEN v_prev_role ELSE p_role END,
+    'status', p_status, 'changed', true, 'previous', v_previous);
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.admin_team_set_member(text, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_team_set_member(text, text, text) TO authenticated, service_role;
 
 -- The caller's keys. Added: "setup", the setup codes that are still waiting
 -- to be used (which agent, when made, when it ends). Never a code or a digest.
@@ -2463,10 +2864,13 @@ GRANT EXECUTE ON FUNCTION public.team_agent_records_find(jsonb) TO service_role;
 -- Requests of one key run one at a time. A request that has waited 5 seconds
 -- for its turn is told to come back in 2 seconds.
 --
--- A request key makes an add or a log safe to repeat. One stored key per
--- effect is derived from it, so two tools given the same key can never
--- replay each other's answer:
---   add_records              <key>        the bulk add
+-- A request key makes an add or a log safe to repeat, and belongs to one
+-- request: the same key with the same tool and the same arguments is a
+-- repeat and changes nothing; the same key with another tool or other
+-- arguments is refused whole (request_key_reused). One stored key per effect
+-- is derived from it:
+--   every such tool          <key>-claim  the tool and a digest of the arguments
+--   add_records              <key>-a      the bulk add
 --   add_records first touch  <key>-t<i>   one log entry
 --   log_activity item i      <key>-l<i>   one log entry
 --   record_reply item i      <key>-r<i>   one log entry
@@ -2489,6 +2893,9 @@ DECLARE
     'mcp:prompts/list', 'mcp:prompts/get', 'mcp:notification', 'mcp:other'];
   c_uuid constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
   c_rk constant text := '^[A-Za-z0-9_-]{8,70}$';
+  -- The argument that holds the list, for each tool that takes one.
+  c_lists constant jsonb := '{"add_records": "records", "update_records": "updates", "move_stage": "moves",
+                              "set_owners": "items", "log_activity": "entries", "record_reply": "replies"}';
   v_auth    jsonb;
   v_key     uuid;
   v_owner   text;
@@ -2545,6 +2952,9 @@ DECLARE
   v_c3      integer := 0;
   v_c4      integer := 0;
   v_c5      integer := 0;
+  v_want    integer := 0;
+  v_cand    jsonb;
+  v_chk     jsonb;
 BEGIN
   -- A setup code, not a key: handed straight on. Nothing else here runs.
   IF p_tool = 'setup:redeem' THEN
@@ -2603,10 +3013,26 @@ BEGIN
       SELECT COALESCE(sum(c.items), 0) INTO v_n
       FROM public.team_agent_calls c
       WHERE c.key_id = v_key AND c.started_at >= v_day AND c.outcome <> 'limited';
+      -- The most this request could write, counted before it writes anything,
+      -- so the day's limit is never passed part-way through a request.
+      v_list := v_args->COALESCE(c_lists->>v_tool, 'record');
+      v_want := CASE
+        WHEN v_tool = 'upsert_record' THEN 1 + COALESCE((jsonb_typeof(v_args->'touch') = 'object')::integer, 0)
+        WHEN jsonb_typeof(v_list) IS DISTINCT FROM 'array' THEN 1
+        WHEN v_tool = 'add_records' THEN jsonb_array_length(v_list)
+          + (SELECT count(*)::integer FROM jsonb_array_elements(v_list) AS e
+              WHERE jsonb_typeof(e) = 'object' AND jsonb_typeof(e->'first_touch') = 'object')
+        ELSE jsonb_array_length(v_list) END;
+      v_list := NULL;
       IF v_n >= (v_lim->>'records_written_per_day')::integer THEN
         v_retry := GREATEST(1, ceil(extract(epoch FROM (v_day + interval '1 day' - v_started)))::integer);
         v_token := 'daily_limit';
         v_words := format('Your agent reached today''s limit of %s records written. It resets at midnight UTC. Ask the owner if you need more.', v_lim->>'records_written_per_day');
+      ELSIF v_n + v_want > (v_lim->>'records_written_per_day')::integer THEN
+        v_retry := GREATEST(1, ceil(extract(epoch FROM (v_day + interval '1 day' - v_started)))::integer);
+        v_token := 'daily_limit';
+        v_words := format('This request could write %s records and your agent has %s left of today''s %s. Nothing was written. Send fewer in one request, or wait: the count starts again at midnight UTC.',
+          v_want, (v_lim->>'records_written_per_day')::integer - v_n, v_lim->>'records_written_per_day');
       END IF;
     END IF;
   END IF;
@@ -2681,10 +3107,7 @@ BEGIN
       END IF;
 
       -- A tool that takes a list: the list is there, holds 1 to 50 objects.
-      v_field := CASE v_tool
-        WHEN 'add_records' THEN 'records' WHEN 'update_records' THEN 'updates'
-        WHEN 'move_stage' THEN 'moves' WHEN 'set_owners' THEN 'items'
-        WHEN 'log_activity' THEN 'entries' WHEN 'record_reply' THEN 'replies' END;
+      v_field := c_lists->>v_tool;
       IF v_field IS NOT NULL THEN
         v_list := v_args->v_field;
         IF jsonb_typeof(v_list) IS DISTINCT FROM 'array' OR jsonb_array_length(v_list) < 1
@@ -2703,6 +3126,9 @@ BEGIN
             USING ERRCODE = '22023';
         END IF;
         v_rk := v_args->>'request_key';
+        -- The key belongs to this tool and these arguments. Another use of it
+        -- stops here, before anything is written.
+        PERFORM public.crm_request_claim(v_rk || '-claim', 'agent:' || v_tool, v_args);
       END IF;
 
       CASE v_tool
@@ -2817,7 +3243,7 @@ BEGIN
           v_g := public.crm_records_bulk_create(
             v_args->>'pipeline',
             (SELECT jsonb_agg(t.e - 'first_touch' ORDER BY t.ord) FROM jsonb_array_elements(v_list) WITH ORDINALITY AS t(e, ord)),
-            v_rk);
+            v_rk || '-a');
           v_replay := COALESCE((v_g->>'replayed')::boolean, false);
           v_rows := '[]'::jsonb;
           FOR v_idx IN 0 .. jsonb_array_length(v_list) - 1 LOOP
@@ -2862,16 +3288,22 @@ BEGIN
                   'reason', CASE WHEN public.crm_name_key(regexp_replace(btrim(COALESCE(v_item->>'name', '')), '\s+', ' ', 'g'))
                                       = public.crm_name_key(COALESCE(v_one->'existing'->>'name', ''))
                                  THEN 'name' ELSE 'identifier' END);
-                IF v_row->>'reason' = 'identifier' THEN
-                  BEGIN
+                -- Every record this one matches is weighed: the strictest
+                -- contact rule on any of them is the verdict.
+                v_chk := NULL;
+                BEGIN
+                  v_chk := public.crm_contact_check(v_args->>'pipeline', jsonb_build_array(jsonb_strip_nulls(
+                             jsonb_build_object('name', v_item->'name', 'identifiers', v_item->'identifiers'))))->'results'->0;
+                EXCEPTION WHEN invalid_parameter_value THEN
+                  v_chk := NULL;
+                END;
+                IF v_chk->>'verdict' IN ('exists', 'do_not_contact', 'warm_intro_only') THEN
+                  v_row := v_row || jsonb_build_object('verdict', v_chk->'verdict', 'matches', v_chk->'matches');
+                  IF v_row->>'reason' = 'identifier' THEN
                     v_row := v_row || jsonb_build_object('matched_on', (
-                      SELECT h->'matched_on'
-                        FROM jsonb_array_elements(public.crm_identifier_matches(
-                               v_args->>'pipeline', public.crm_clean_identifiers(v_item->'identifiers'), NULL)) AS h
-                       WHERE h->'record'->>'id' = v_one->'existing'->>'id'));
-                  EXCEPTION WHEN invalid_parameter_value THEN
-                    NULL;
-                  END;
+                      SELECT m->'matched_on' FROM jsonb_array_elements(v_chk->'matches') AS m
+                       WHERE m->'record'->>'id' = v_one->'existing'->>'id'));
+                  END IF;
                 END IF;
                 IF v_item ? 'first_touch' AND jsonb_typeof(v_item->'first_touch') <> 'null' THEN
                   v_touch := jsonb_build_object('status', 'refused', 'error', jsonb_build_object('token', 'exists',
@@ -2916,11 +3348,34 @@ BEGIN
             v_result := jsonb_strip_nulls(jsonb_build_object('reason', v_g->'reason', 'matched_on', v_g->'matched_on'))
                         || jsonb_build_object('status', 'exists', 'record', public.crm_record_get(v_id)->'record');
             v_c2 := 1;
+            -- Every record this one matches is weighed: the strictest contact
+            -- rule on any of them is the verdict.
+            BEGIN
+              v_chk := public.crm_contact_check(v_args->>'pipeline', jsonb_build_array(jsonb_strip_nulls(
+                         jsonb_build_object('name', v_args->'record'->'name', 'identifiers', v_args->'record'->'identifiers'))))->'results'->0;
+            EXCEPTION WHEN invalid_parameter_value THEN
+              v_chk := NULL;
+            END;
+            IF v_chk->>'verdict' IN ('exists', 'do_not_contact', 'warm_intro_only') THEN
+              v_result := v_result || jsonb_build_object('verdict', v_chk->'verdict', 'matches', v_chk->'matches');
+            END IF;
           END IF;
           IF v_args ? 'touch' AND jsonb_typeof(v_args->'touch') <> 'null' THEN
             BEGIN
               IF jsonb_typeof(v_args->'touch') <> 'object' THEN
                 RAISE EXCEPTION 'invalid_entry: Send touch as one object with a channel, a direction and the message.' USING ERRCODE = '22023';
+              END IF;
+              -- A first message is not logged when any record this one
+              -- matches carries a contact rule.
+              IF v_chk->>'verdict' IN ('do_not_contact', 'warm_intro_only')
+                 AND (v_args->'touch'->>'direction') IS DISTINCT FROM 'inbound' THEN
+                RAISE EXCEPTION '%', format('%s: "%s" is marked %s: %s. Nothing was logged. %s',
+                    v_chk->>'verdict', v_chk->'record'->>'name',
+                    CASE v_chk->>'verdict' WHEN 'do_not_contact' THEN 'Do not contact' ELSE 'Warm intro only' END,
+                    v_chk->'record'->>'contact_rule_reason',
+                    CASE v_chk->>'verdict' WHEN 'do_not_contact' THEN 'Do not message them; tell your person.'
+                                           ELSE 'Ask your person to make the introduction.' END)
+                  USING ERRCODE = '42501';
               END IF;
               v_two := public.crm_record_log(v_id, (v_args->'touch') || jsonb_build_object('kind', 'touch'), v_rk || '-u');
               IF COALESCE((v_two->>'replayed')::boolean, false) THEN
@@ -3198,7 +3653,9 @@ DECLARE
     'public.admin_team_invite_address_verdict(text)',
     'public.crm_ident_key(text,text)',
     'public.crm_clean_identifiers(jsonb)',
+    'public.crm_identifier_hits(text,jsonb,uuid)',
     'public.crm_identifier_matches(text,jsonb,uuid)',
+    'public.crm_request_claim(text,text,jsonb)',
     'public.crm_identifiers_json(uuid)'
   ];
   c_tables text[] := ARRAY['public.crm_records','public.crm_record_owners','public.crm_activity',
@@ -3462,6 +3919,14 @@ DECLARE
   v_priv  text;
   v_n     integer;
   v_list  text;
+  v_who   record;
+  v_uid   uuid;
+  v_mail  text;
+  v_tag   text;
+  v_plain uuid;
+  v_marked uuid;
+  v_tok   text;
+  v_hash  text;
 BEGIN
   -- 11.1 functions: PUBLIC and anon hold nothing; the signed-in role holds
   -- exactly the client ones; the trusted server role holds all of them;
@@ -3563,7 +4028,7 @@ BEGIN
   JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public' AND p.prokind = 'f'
     AND p.prosrc ~* (c_write || 'team_agent_setup_codes\M');
-  IF v_list IS DISTINCT FROM 'team_agent_housekeeping,team_agent_key_revoke,team_agent_setup_create,team_agent_setup_redeem' THEN
+  IF v_list IS DISTINCT FROM 'admin_team_set_member,team_agent_housekeeping,team_agent_key_revoke,team_agent_resolve,team_agent_setup_create,team_agent_setup_redeem' THEN
     RAISE EXCEPTION 'issue 3802 wave 4 self-check: the functions that write setup codes are [%]', v_list;
   END IF;
   SELECT COALESCE(string_agg(p.proname, ',' ORDER BY p.proname), '') INTO v_list
@@ -3639,14 +4104,203 @@ BEGIN
     RAISE EXCEPTION 'issue 3802 wave 4 self-check: the one-active-key index is missing or not valid';
   END IF;
 
-  -- 11.12 the rule for what an agent may log is in the log function.
-  IF (SELECT p.prosrc !~ 'needs_a_person' OR p.prosrc !~ 'do_not_contact' OR p.prosrc !~ 'v\.via IS NOT NULL'
-        FROM pg_catalog.pg_proc p WHERE p.oid = 'public.crm_record_log(uuid,jsonb,text)'::regprocedure) THEN
-    RAISE EXCEPTION 'issue 3802 wave 4 self-check: crm_record_log() no longer holds the rule for what an agent may log';
-  END IF;
-  IF (SELECT p.prosrc !~ 'contact_rule_locked' OR p.prosrc !~ 'v\.via IS NOT NULL'
-        FROM pg_catalog.pg_proc p WHERE p.oid = 'public.crm_record_update(uuid,jsonb)'::regprocedure) THEN
-    RAISE EXCEPTION 'issue 3802 wave 4 self-check: crm_record_update() no longer keeps a contact rule from being lifted by an agent';
+  -- 11.12 what an agent may do is tested by doing it: as a team member acting
+  -- through an agent, and then as that person, on records made for the test.
+  -- Everything in this block is undone when it ends. It needs the sign-in
+  -- service's record of confirmed addresses, which every team gate reads; a
+  -- bare database without it says so and moves on.
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                  WHERE a.attrelid = 'auth.users'::regclass AND a.attname = 'email_confirmed_at' AND NOT a.attisdropped) THEN
+    RAISE NOTICE 'issue 3802 wave 4 self-check: the test of what an agent may do was SKIPPED (this database has no confirmed sign-in addresses)';
+  ELSE
+  BEGIN
+    FOR v_who IN
+      SELECT u.id, lower(btrim(u.email)) AS email
+      FROM auth.users u
+      WHERE EXISTS (SELECT 1 FROM public.admin_users a
+                     WHERE lower(btrim(a.email)) = lower(btrim(u.email)) AND a.status = 'active')
+         OR EXISTS (SELECT 1 FROM public.admin_team_members m
+                     WHERE m.email = lower(btrim(u.email)) AND m.status = 'active')
+      ORDER BY (SELECT min(CASE a.role WHEN 'owner' THEN 0 ELSE 1 END) FROM public.admin_users a
+                 WHERE lower(btrim(a.email)) = lower(btrim(u.email)) AND a.status = 'active') NULLS LAST, u.id
+      LIMIT 50
+    LOOP
+      PERFORM set_config('request.jwt.claim.sub', v_who.id::text, true);
+      PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+      PERFORM set_config('request.jwt.claim.email', v_who.email, true);
+      PERFORM set_config('request.jwt.claims',
+        jsonb_build_object('sub', v_who.id, 'role', 'authenticated', 'email', v_who.email)::text, true);
+      IF COALESCE(public.admin_team_can('crm'), false) THEN
+        v_uid := v_who.id;
+        v_mail := v_who.email;
+        EXIT;
+      END IF;
+    END LOOP;
+    IF v_uid IS NULL THEN
+      -- A database with no team yet: a stand-in member, undone with the rest.
+      v_uid := gen_random_uuid();
+      v_mail := 'self-check-' || replace(v_uid::text, '-', '') || '@issue3802.invalid';
+      INSERT INTO auth.users (id, email, email_confirmed_at) VALUES (v_uid, v_mail, now());
+      INSERT INTO public.admin_team_members (email, role, status, accepted_at) VALUES (v_mail, 'growth', 'active', now());
+      PERFORM set_config('request.jwt.claim.sub', v_uid::text, true);
+      PERFORM set_config('request.jwt.claim.role', 'authenticated', true);
+      PERFORM set_config('request.jwt.claim.email', v_mail, true);
+      PERFORM set_config('request.jwt.claims',
+        jsonb_build_object('sub', v_uid, 'role', 'authenticated', 'email', v_mail)::text, true);
+      IF NOT COALESCE(public.admin_team_can('crm'), false) THEN
+        RAISE EXCEPTION 'issue 3802 wave 4 self-check: could not act as a team member to test the agent rules';
+      END IF;
+    END IF;
+
+    -- Through an agent.
+    INSERT INTO public.team_agent_calls (key_id, owner_email, actor_uid, agent, tool, xact_id)
+    VALUES (gen_random_uuid(), v_mail, v_uid, 'claude', 'mcp:other', pg_current_xact_id());
+    IF (SELECT c.via FROM public.crm_ctx() c) IS DISTINCT FROM 'claude' THEN
+      RAISE EXCEPTION 'issue 3802 wave 4 self-check: a request row did not mark the caller as acting through an agent';
+    END IF;
+    v_tag := replace(gen_random_uuid()::text, '-', '');
+    v_plain := (public.crm_record_create_core('hosts', jsonb_build_object(
+        'name', 'Issue 3802 self-check plain ' || v_tag,
+        'identifiers', jsonb_build_array(jsonb_build_object('kind', 'email', 'value', 'plain-' || v_tag || '@issue3802.invalid'))),
+      v_mail, 'claude')->'record'->>'id')::uuid;
+    v_marked := (public.crm_record_create_core('hosts', jsonb_build_object(
+        'name', 'Issue 3802 self-check marked ' || v_tag,
+        'contact_rule', 'do_not_contact', 'contact_rule_reason', 'Self-check',
+        'identifiers', jsonb_build_array(jsonb_build_object('kind', 'email', 'value', 'marked-' || v_tag || '@issue3802.invalid'))),
+      v_mail, 'claude')->'record'->>'id')::uuid;
+    IF v_plain IS NULL OR v_marked IS NULL THEN
+      RAISE EXCEPTION 'issue 3802 wave 4 self-check: the test records could not be made';
+    END IF;
+
+    -- On a record that carries a rule, an agent changes neither the rule, its
+    -- reason, the name, nor a contact detail it holds.
+    v_tok := 'allowed';
+    BEGIN
+      PERFORM public.crm_record_update(v_marked, '{"contact_rule": null}'::jsonb);
+    EXCEPTION WHEN insufficient_privilege THEN
+      v_tok := split_part(SQLERRM, ':', 1);
+    END;
+    IF v_tok <> 'contact_rule_locked' THEN
+      RAISE EXCEPTION 'issue 3802 wave 4 self-check: an agent could lift a contact rule (%)', v_tok;
+    END IF;
+    v_tok := 'allowed';
+    BEGIN
+      PERFORM public.crm_record_update(v_marked, '{"contact_rule": "warm_intro_only"}'::jsonb);
+    EXCEPTION WHEN insufficient_privilege THEN
+      v_tok := split_part(SQLERRM, ':', 1);
+    END;
+    IF v_tok <> 'contact_rule_locked' THEN
+      RAISE EXCEPTION 'issue 3802 wave 4 self-check: an agent could change a contact rule (%)', v_tok;
+    END IF;
+    v_tok := 'allowed';
+    BEGIN
+      PERFORM public.crm_record_update(v_marked, '{"contact_rule_reason": "Another reason"}'::jsonb);
+    EXCEPTION WHEN insufficient_privilege THEN
+      v_tok := split_part(SQLERRM, ':', 1);
+    END;
+    IF v_tok <> 'contact_rule_locked' THEN
+      RAISE EXCEPTION 'issue 3802 wave 4 self-check: an agent could change the reason of a contact rule (%)', v_tok;
+    END IF;
+    v_tok := 'allowed';
+    BEGIN
+      PERFORM public.crm_record_update(v_marked, jsonb_build_object('name', 'Issue 3802 self-check renamed ' || v_tag));
+    EXCEPTION WHEN insufficient_privilege THEN
+      v_tok := split_part(SQLERRM, ':', 1);
+    END;
+    IF v_tok <> 'contact_rule_locked' THEN
+      RAISE EXCEPTION 'issue 3802 wave 4 self-check: an agent could rename a record that carries a contact rule (%)', v_tok;
+    END IF;
+    v_tok := 'allowed';
+    BEGIN
+      PERFORM public.crm_record_update(v_marked, '{"identifiers": []}'::jsonb);
+    EXCEPTION WHEN insufficient_privilege THEN
+      v_tok := split_part(SQLERRM, ':', 1);
+    END;
+    IF v_tok <> 'contact_rule_locked' THEN
+      RAISE EXCEPTION 'issue 3802 wave 4 self-check: an agent could remove a contact detail from a record that carries a contact rule (%)', v_tok;
+    END IF;
+
+    -- What an agent may log.
+    v_tok := 'allowed';
+    BEGIN
+      PERFORM public.crm_record_log(v_marked,
+        '{"kind": "touch", "direction": "outbound", "channel": "email", "body": "Self-check."}'::jsonb, 'selfcheck-m-' || v_tag);
+    EXCEPTION WHEN insufficient_privilege THEN
+      v_tok := split_part(SQLERRM, ':', 1);
+    END;
+    IF v_tok <> 'do_not_contact' THEN
+      RAISE EXCEPTION 'issue 3802 wave 4 self-check: an agent could log an outbound touch on a record marked Do not contact (%)', v_tok;
+    END IF;
+    PERFORM public.crm_record_log(v_plain,
+      '{"kind": "touch", "direction": "outbound", "channel": "email", "body": "Self-check, first."}'::jsonb, 'selfcheck-1-' || v_tag);
+    v_tok := 'allowed';
+    BEGIN
+      PERFORM public.crm_record_log(v_plain,
+        '{"kind": "touch", "direction": "outbound", "channel": "email", "body": "Self-check, second."}'::jsonb, 'selfcheck-2-' || v_tag);
+    EXCEPTION WHEN insufficient_privilege THEN
+      v_tok := split_part(SQLERRM, ':', 1);
+    END;
+    IF v_tok <> 'needs_a_person' THEN
+      RAISE EXCEPTION 'issue 3802 wave 4 self-check: an agent could log a follow-up (%)', v_tok;
+    END IF;
+    PERFORM public.crm_record_log(v_plain, '{"kind": "note", "body": "Self-check note."}'::jsonb, 'selfcheck-n-' || v_tag);
+
+    -- An agent cannot add a second record with a contact detail that is taken.
+    IF public.crm_record_create_core('hosts', jsonb_build_object(
+         'name', 'Issue 3802 self-check twin ' || v_tag,
+         'identifiers', jsonb_build_array(jsonb_build_object('kind', 'email', 'value', 'PLAIN-' || v_tag || '@issue3802.invalid'))),
+         v_mail, 'claude')->>'status' IS DISTINCT FROM 'duplicate' THEN
+      RAISE EXCEPTION 'issue 3802 wave 4 self-check: an agent could add a second record with a contact detail another record holds';
+    END IF;
+
+    -- The same person, without the agent: none of that holds them.
+    DELETE FROM public.team_agent_calls c WHERE c.xact_id = pg_current_xact_id() AND c.actor_uid = v_uid;
+    IF (SELECT c.via FROM public.crm_ctx() c) IS NOT NULL THEN
+      RAISE EXCEPTION 'issue 3802 wave 4 self-check: the caller still reads as acting through an agent';
+    END IF;
+    v_tok := 'allowed';
+    BEGIN
+      PERFORM public.crm_record_log(v_plain,
+        '{"kind": "touch", "direction": "outbound", "channel": "email", "body": "Self-check, by the person."}'::jsonb, 'selfcheck-p-' || v_tag);
+      PERFORM public.crm_record_log(v_marked,
+        '{"kind": "touch", "direction": "outbound", "channel": "email", "body": "Self-check, by the person."}'::jsonb, 'selfcheck-q-' || v_tag);
+      IF NOT COALESCE((public.crm_record_update(v_marked, '{"contact_rule": null}'::jsonb)->>'changed')::boolean, false) THEN
+        v_tok := 'unchanged';
+      END IF;
+    EXCEPTION WHEN insufficient_privilege THEN
+      v_tok := split_part(SQLERRM, ':', 1);
+    END;
+    IF v_tok <> 'allowed' THEN
+      RAISE EXCEPTION 'issue 3802 wave 4 self-check: a rule for agents was applied to a person (%)', v_tok;
+    END IF;
+
+    -- A setup code works once.
+    BEGIN
+      v_hash := encode(sha256(convert_to(gen_random_uuid()::text || v_tag, 'UTF8')), 'hex');
+      INSERT INTO public.team_agent_setup_codes (owner_email, agent, code_hash, created_at, expires_at)
+      VALUES (v_mail, 'claude', v_hash, now(), now() + interval '5 minutes');
+      PERFORM public.team_agent_setup_redeem(v_hash, 'self-check');
+      IF NOT EXISTS (SELECT 1 FROM public.team_agent_setup_codes s WHERE s.code_hash = v_hash AND s.consumed_at IS NOT NULL) THEN
+        RAISE EXCEPTION 'issue 3802 wave 4 self-check: a used setup code is not marked as used';
+      END IF;
+      v_tok := 'refused';
+      BEGIN
+        IF public.team_agent_setup_redeem(v_hash, 'self-check')->>'setup' IS DISTINCT FROM 'invalid' THEN
+          v_tok := 'it worked a second time';
+        END IF;
+      EXCEPTION WHEN insufficient_privilege THEN
+        v_tok := split_part(SQLERRM, ':', 1);
+      END;
+      IF v_tok <> 'refused' THEN
+        RAISE EXCEPTION 'issue 3802 wave 4 self-check: a used setup code was not refused with the one answer (%)', v_tok;
+      END IF;
+    END;
+
+    RAISE EXCEPTION 'issue_3802_self_check_rollback' USING ERRCODE = 'P3802';
+  EXCEPTION
+    WHEN SQLSTATE 'P3802' THEN
+      NULL;
+  END;
   END IF;
 
   -- 11.13 every host ICP is accepted as a target (rolled back inside).
