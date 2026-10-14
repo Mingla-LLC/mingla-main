@@ -41,6 +41,8 @@
  */
 
 // MINGLA-INVARIANT: I-PROPOSED-CREATOR-ENTRY-IS-INSTANT | issue #893 | Creator entry routes mount immediately from client state and defer server record creation until meaningful editing or resume migration.
+// Companion enforcement for the deferred-server half lives in
+// mingla-business/src/utils/draftDirtyCheck.ts and its adversarial tests.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
