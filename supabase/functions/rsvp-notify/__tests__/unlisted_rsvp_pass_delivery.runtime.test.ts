@@ -123,6 +123,9 @@ function installFixture(scenario: () => Scenario, seen: Observed): () => void {
         seen.completions.push(body);
         return jsonResponse(true);
       }
+      if (leaf === "event_edit_notice_fanout") {
+        return jsonResponse({ notices: 0, rows: 0 });
+      }
       if (leaf === "can_send" || leaf === "mark_rsvp_notification_provider_io") {
         return jsonResponse(true);
       }
