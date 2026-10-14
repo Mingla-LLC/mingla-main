@@ -405,6 +405,10 @@ module.exports = {
     // The @mingla/offering-rendering barrel eagerly re-exports RN component .tsx —
     // map to a mock that re-exports the REAL pure helpers + stubs the components.
     "^@mingla/offering-rendering$": "<rootDir>/__manual_mocks__/offering-rendering.js",
+    // #3859 — this pure deep contract is new on the issue worktree. Resolve
+    // it from THIS checkout instead of the workspace symlink's anchor checkout.
+    "^@mingla/offering-rendering/publicParityContract$":
+      "<rootDir>/../packages/offering-rendering/publicParityContract.ts",
     // #3682 — FollowButton deep-imports themePalette; the barrel mock above does
     // not cover that subpath, so Jest fails suites that mount PublicEventPage.
     "^@mingla/offering-rendering/themePalette$":

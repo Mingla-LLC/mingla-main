@@ -78,6 +78,8 @@ interface PublicBrandPageProps {
   venues?: PublicBrandVenueSummary[];
   venuesLoadState?: "loading" | "ready" | "error";
   onRetryVenues?: () => void;
+  /** Re-resolve retained public truth before an authenticated follow write. */
+  revalidateBeforeFollow?: () => Promise<boolean>;
   /** ORCH-1186-C — DISPLAY-ONLY menu groups (shared shape; passed through). */
   menu?: PublicMenuGroup[];
   resolvedTheme?: ResolvedTheme;
@@ -210,6 +212,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   venues = [],
   venuesLoadState = "ready",
   onRetryVenues,
+  revalidateBeforeFollow,
   menu = [],
   resolvedTheme,
   useDirectionCIdentity = false,
@@ -388,8 +391,16 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       setSignInFollowOpen(true);
       return;
     }
-    brandFollow
-      .follow()
+    const followCurrentBrand = async (): Promise<void> => {
+      if (
+        revalidateBeforeFollow !== undefined &&
+        !(await revalidateBeforeFollow())
+      ) {
+        throw new Error("brand_revalidation_failed");
+      }
+      await brandFollow.follow();
+    };
+    void followCurrentBrand()
       .then(() => {
         showToast(`You're following ${brand.displayName}.`, "success");
         captureWeb("brand_followed", {
@@ -405,15 +416,31 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           "error",
         );
       });
-  }, [brand.displayName, brand.id, brand.slug, brandFollow, showToast, user?.id]);
+  }, [
+    brand.displayName,
+    brand.id,
+    brand.slug,
+    brandFollow,
+    revalidateBeforeFollow,
+    showToast,
+    user?.id,
+  ]);
 
   const handleFollowingMenu = useCallback((): void => {
     setUnfollowOpen(true);
   }, []);
 
   const handleConfirmUnfollow = useCallback((): void => {
-    brandFollow
-      .unfollow()
+    const unfollowCurrentBrand = async (): Promise<void> => {
+      if (
+        revalidateBeforeFollow !== undefined &&
+        !(await revalidateBeforeFollow())
+      ) {
+        throw new Error("brand_revalidation_failed");
+      }
+      await brandFollow.unfollow();
+    };
+    void unfollowCurrentBrand()
       .then(() => {
         setUnfollowOpen(false);
         showToast(`Unfollowed ${brand.displayName}.`, "success");
@@ -427,7 +454,14 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       .catch(() => {
         showToast("Couldn't update. Try again.", "error");
       });
-  }, [brand.displayName, brand.id, brand.slug, brandFollow, showToast]);
+  }, [
+    brand.displayName,
+    brand.id,
+    brand.slug,
+    brandFollow,
+    revalidateBeforeFollow,
+    showToast,
+  ]);
 
   const pageTitle =
     venue?.isVerifiedVenue === true && venue.city !== null

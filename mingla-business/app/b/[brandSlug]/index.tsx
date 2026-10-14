@@ -25,6 +25,10 @@ import {
   fireAdViewContent,
 } from "../../../src/analytics/webAnalytics";
 import {
+  captureBuyerWebPublicPageViewed,
+  resolveBuyerWebPublicLifecycle,
+} from "../../../src/analytics/publicParityWebAdapter";
+import {
   usePublicBrandBySlug,
   usePublicBrandVenues,
 } from "../../../src/hooks/usePublicEvents";
@@ -57,10 +61,19 @@ export default function PublicBrandRoute(): React.ReactElement {
   const pastFeed = usePublicBrandPast(
     typeof brandSlug === "string" ? brandSlug : null,
   );
+  const routeState = resolveBuyerWebPublicLifecycle({
+    hasData: publicBrandQuery.data !== null &&
+      publicBrandQuery.data !== undefined,
+    isLoading: publicBrandQuery.isLoading,
+    isFetching: publicBrandQuery.isFetching,
+    isError: publicBrandQuery.isError,
+    isStale: publicBrandQuery.isStale,
+  });
 
   // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount.
   // Web-only (no-op on native).
   const viewFiredRef = useRef<boolean>(false);
+  const parityViewFiredRef = useRef<boolean>(false);
   useEffect(() => {
     if (viewFiredRef.current) return;
     viewFiredRef.current = true;
@@ -80,7 +93,22 @@ export default function PublicBrandRoute(): React.ReactElement {
     fireAdViewContent();
   }, [brandSlug]);
 
-  if (publicBrandQuery.isLoading || publicBrandQuery.isFetching) {
+  useEffect(() => {
+    const detail = publicBrandQuery.data;
+    if (parityViewFiredRef.current || detail === null || detail === undefined) {
+      return;
+    }
+    parityViewFiredRef.current = captureBuyerWebPublicPageViewed({
+      target: {
+        kind: "brand",
+        entityId: detail.brand.id,
+        brandSlug: detail.brand.slug,
+      },
+      state: routeState,
+    });
+  }, [publicBrandQuery.data, routeState]);
+
+  if (routeState === "loading") {
     return (
       <View style={styles.stateWrap}>
         <ActivityIndicator />
@@ -89,7 +117,7 @@ export default function PublicBrandRoute(): React.ReactElement {
     );
   }
 
-  if (publicBrandQuery.isError) {
+  if (routeState === "error") {
     return (
       <View style={styles.stateWrap}>
         <Text style={styles.stateTitle}>Brand could not load</Text>
@@ -123,14 +151,27 @@ export default function PublicBrandRoute(): React.ReactElement {
       venue={publicBrandQuery.data.venue}
       venues={brandVenuesQuery.data ?? []}
       venuesLoadState={
-        brandVenuesQuery.isError
-          ? "error"
-          : brandVenuesQuery.isLoading || brandVenuesQuery.isFetching
+        (brandVenuesQuery.isLoading || brandVenuesQuery.isFetching) &&
+            (brandVenuesQuery.data?.length ?? 0) === 0
             ? "loading"
-            : "ready"
+            : brandVenuesQuery.isError &&
+                (brandVenuesQuery.data?.length ?? 0) === 0
+              ? "error"
+              : "ready"
       }
       onRetryVenues={() => {
         brandVenuesQuery.refetch();
+      }}
+      revalidateBeforeFollow={async () => {
+        if (
+          !publicBrandQuery.isStale && !publicBrandQuery.isFetching &&
+          !publicBrandQuery.isError
+        ) return true;
+        const refreshed = await publicBrandQuery.refetch();
+        return !refreshed.isError && refreshed.data !== null &&
+          refreshed.data !== undefined &&
+          refreshed.data.brand.id === publicBrandQuery.data?.brand.id &&
+          refreshed.data.brand.slug === publicBrandQuery.data?.brand.slug;
       }}
     />
   );
