@@ -18,7 +18,7 @@
  * `<InstallmentScheduleDisplay />`.
  *
  * Accessibility: the segment list is `accessibilityRole="radiogroup"` and each
- * segment `accessibilityRole="radio"` + `accessibilityState={{ selected }}` —
+ * segment `accessibilityRole="radio"` + `accessibilityState={{ checked }}` —
  * a segmented control is still an accessible single-select group. The selected
  * state is signaled by THREE redundant channels (border color, fill tint, dot)
  * so it is never color-alone.
@@ -188,7 +188,8 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
         <Pressable
           accessibilityRole="radio"
           accessibilityLabel={`Pay full ${fullLabel} now`}
-          accessibilityState={{ selected: isFull }}
+          accessibilityState={{ checked: isFull }}
+          aria-checked={isFull}
           onPress={() => onChange("full")}
           style={[
             styles.segment,
@@ -224,7 +225,8 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
           accessibilityLabel={`Pay over time, ${depositLabel} deposit today plus ${futureCount} future payment${
             futureCount === 1 ? "" : "s"
           }`}
-          accessibilityState={{ selected: isInstallments }}
+          accessibilityState={{ checked: isInstallments }}
+          aria-checked={isInstallments}
           onPress={() => onChange("installments")}
           style={[
             styles.segment,
@@ -347,19 +349,19 @@ const PaymentMockupCard: React.FC<{
       <View style={mock.inner}>
         {/* Segmented TAB toggle (mockup `.seg`) — dark track, active = accent
             fill + white. This is the mockup's TAB control (SPEC §1.7 tablist/tab),
-            NOT a radio group; RN has no "tab" accessibilityRole so each tab is a
-            selectable button (accessibilityState.selected). Using "button" (not
-            "radio") also keeps the ORCH-1130 radio-count source gate exact — the
-            no-palette path below remains the canonical 2-radio segmented control. */}
+            NOT a radio group. Each tab exposes both native selected state and the
+            web aria-selected state; the no-palette path above remains the canonical
+            2-radio segmented control. */}
         <View
           accessibilityRole="tablist"
           accessibilityLabel="How you pay"
           style={[mock.seg, { borderColor: palette.panelBorder }]}
         >
           <Pressable
-            accessibilityRole="button"
+            accessibilityRole="tab"
             accessibilityLabel={`Pay full ${fullLabel} now`}
             accessibilityState={{ selected: isFull }}
+            aria-selected={isFull}
             onPress={() => onChange("full")}
             style={[mock.segBtn, isFull ? { backgroundColor: palette.accent } : null]}
           >
@@ -373,11 +375,12 @@ const PaymentMockupCard: React.FC<{
             </Text>
           </Pressable>
           <Pressable
-            accessibilityRole="button"
+            accessibilityRole="tab"
             accessibilityLabel={`Pay over time, ${depositLabel} deposit today plus ${futureCount} future payment${
               futureCount === 1 ? "" : "s"
             }`}
             accessibilityState={{ selected: !isFull }}
+            aria-selected={!isFull}
             onPress={() => onChange("installments")}
             style={[mock.segBtn, !isFull ? { backgroundColor: palette.accent } : null]}
           >

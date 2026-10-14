@@ -450,6 +450,28 @@ const ResolvedTripPage: React.FC<{
     [payload.brand],
   );
 
+  // #3859 — the single-tier desktop layout renders the same payment choice in
+  // the package row and the sticky summary. Keep the two existing controls on
+  // one value in both directions so the page can never show "Pay in full" beside
+  // an installment due-today total (or vice versa). Multi-tier carts keep their
+  // independent per-package choices; their sticky summary has no plan selector.
+  const soleTierId =
+    data.tiers.length === 1 ? data.tiers[0]?.ticketTypeId ?? null : null;
+  const handleSynchronizedPaymentPlanChoice = useCallback(
+    (value: TripPaymentPlanChoice): void => {
+      onPaymentPlanChoiceChange(value);
+      if (soleTierId !== null) onChangePlanChoice(soleTierId, value);
+    },
+    [onChangePlanChoice, onPaymentPlanChoiceChange, soleTierId],
+  );
+  const handleSynchronizedTierPlanChoice = useCallback(
+    (ticketTypeId: string, value: TripPaymentPlanChoice): void => {
+      onChangePlanChoice(ticketTypeId, value);
+      if (ticketTypeId === soleTierId) onPaymentPlanChoiceChange(value);
+    },
+    [onChangePlanChoice, onPaymentPlanChoiceChange, soleTierId],
+  );
+
   // META-ORCH-1174 Leg B3 (Seth, ORCH-1138 preserved) — Reserve routes STRAIGHT to
   // the trip checkout chain. DEC-B: the SELECTED LINES ride a JSON `lines` route
   // param `[{ticketTypeId, quantity, paymentPlanChoice?}]` so the checkout index
@@ -491,6 +513,14 @@ const ResolvedTripPage: React.FC<{
       }
       if (tripAccess.blocked) return;
       recordShareDestination("book_trip");
+      // #3859 — a package-row Reserve supplies authoritative per-line choices
+      // but no scalar choice. Project those lines into the legacy scalar too so
+      // the URL never says plan=full while its line payload says installments.
+      // Explicit split-button choices still win, and lines remain authoritative
+      // inside checkout for mixed carts and recovery.
+      if (choice === undefined && lines !== undefined && lines.length > 0) {
+        choice = collapseTripPlanChoice(lines);
+      }
       const linesParam =
         lines !== undefined && lines.length > 0
           ? { lines: JSON.stringify(lines) }
@@ -723,11 +753,11 @@ const ResolvedTripPage: React.FC<{
         onViewBrand={handleViewBrand}
         stateBanner={stateBanner}
         paymentPlanChoice={paymentPlanChoice}
-        onPaymentPlanChoiceChange={onPaymentPlanChoiceChange}
+        onPaymentPlanChoiceChange={handleSynchronizedPaymentPlanChoice}
         quantities={quantities}
         onChangeQuantity={onChangeQuantity}
         planChoiceByTier={planChoiceByTier}
-        onChangePlanChoice={onChangePlanChoice}
+        onChangePlanChoice={handleSynchronizedTierPlanChoice}
         onReserve={handleTripReserve}
         reserveControl={reserveControl}
         contentBottomInset={contentBottomInset}

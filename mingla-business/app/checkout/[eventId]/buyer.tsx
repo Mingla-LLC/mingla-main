@@ -975,6 +975,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           onPress={toggleTerms}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: termsAccepted, disabled: !authReady }}
+          aria-checked={termsAccepted}
           accessibilityLabel={`${CONSENT_VISIBLE_LABEL_PREFIX}${CONSENT_VISIBLE_LABEL_LINK}${
             signedInBuyer
               ? consentVisibleLabelSuffix(brand?.displayName)
