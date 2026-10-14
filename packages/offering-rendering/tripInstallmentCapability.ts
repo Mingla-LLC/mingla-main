@@ -1,0 +1,51 @@
+/**
+ * Provider-capability semantics for trip installment plans.
+ *
+ * Product-facing callers consume only the boolean capability and the bounded
+ * refusal code. Provider names must never leak into Host or buyer copy.
+ * Unknown values fail closed; persisted brand rows are normalized to their
+ * effective provider before they reach this helper.
+ */
+
+export const TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE =
+  "installment_capability_unavailable" as const;
+
+export type TripPaymentPlanChoice = "auto" | "full" | "installments";
+
+export interface TripTierMetadataRow {
+  tier_metadata?: unknown;
+}
+
+/** Only the currently supported effective provider may expose installments. */
+export function tripInstallmentsSupported(effectiveProvider: unknown): boolean {
+  return (
+    typeof effectiveProvider === "string" &&
+    effectiveProvider.trim().toLowerCase() === "stripe"
+  );
+}
+
+/** True only for a structurally present installment template. */
+export function hasTripInstallmentTemplate(metadata: unknown): boolean {
+  if (metadata === null || typeof metadata !== "object") return false;
+  const installments = (metadata as { installments?: unknown }).installments;
+  return (
+    installments !== null &&
+    typeof installments === "object" &&
+    !Array.isArray(installments)
+  );
+}
+
+/**
+ * Whether the selected checkout would use a saved installment schedule.
+ * `full` is always safe. `auto` remains supported for old clients but is
+ * capability-gated whenever one of the selected tiers carries a plan.
+ */
+export function checkoutSelectionUsesTripInstallments(
+  choice: TripPaymentPlanChoice,
+  rows: readonly TripTierMetadataRow[],
+): boolean {
+  return (
+    choice !== "full" &&
+    rows.some((row) => hasTripInstallmentTemplate(row.tier_metadata))
+  );
+}

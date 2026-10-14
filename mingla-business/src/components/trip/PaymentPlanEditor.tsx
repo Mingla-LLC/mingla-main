@@ -76,6 +76,11 @@ export interface PaymentPlanEditorProps {
    * has booked under the current schedule (Q6 resolution).
    */
   locked: boolean;
+  /**
+   * Provider-neutral explanation for a capability-suspended saved schedule.
+   * Omitted for the existing post-sale lock.
+   */
+  lockedReason?: string;
 }
 
 // ---------- constants ----------
@@ -353,6 +358,7 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
   totalAmountCents,
   currency,
   locked,
+  lockedReason,
 }) => {
   const [openDatePickerOrdinal, setOpenDatePickerOrdinal] =
     useState<number | null>(null);
@@ -373,10 +379,12 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
       >
         <View
           accessibilityRole="text"
-          accessibilityLabel="Payment plan locked"
+          accessibilityLabel={lockedReason ?? "Payment plan locked"}
           style={styles.lockedBanner}
         >
-          <Text style={styles.lockedBannerText}>{LOCKED_BANNER_COPY}</Text>
+          <Text style={styles.lockedBannerText}>
+            {lockedReason ?? LOCKED_BANNER_COPY}
+          </Text>
         </View>
         <View style={styles.lockedPreview}>
           <View style={styles.lockedRow}>

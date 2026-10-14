@@ -87,6 +87,10 @@ import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
 // shared by the Paystack callback_url and the Stripe success/cancel URLs.
 import { buyerWebSurfacePath } from "./buyerWebSurfacePath.ts";
 import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
+import {
+  checkoutSelectionUsesTripInstallments,
+  TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE,
+} from "../../../packages/offering-rendering/tripInstallmentCapability.ts";
 
 async function siteAttributionDigest(value: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -1113,6 +1117,48 @@ export const createTicketCheckoutCreateHandler = (
       }
     }
 
+    // #3859 — capability preflight before the session RPC and before provider
+    // I/O. Public readers remove unsupported plans, but a stale client can
+    // still replay `auto`/`installments`; selected tier metadata is therefore
+    // re-read here. Unknown/read-error capability fails closed. Full pay does
+    // not enter this branch and remains byte-for-byte on its existing path.
+    if (
+      tripGateRow?.event_type === "trip" &&
+      paymentPlanChoice !== "full"
+    ) {
+      const selectedTicketTypeIds = Array.from(
+        new Set(lines.map((line) => line.ticketTypeId)),
+      );
+      const { data: selectedTierRows, error: selectedTierError } = await supabase
+        .from("trip_pricing_tiers")
+        .select("tier_metadata")
+        .eq("event_id", eventId)
+        .in("ticket_type_id", selectedTicketTypeIds);
+      if (selectedTierError !== null) {
+        return refuse(
+          { error: TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE },
+          409,
+        );
+      }
+      if (
+        checkoutSelectionUsesTripInstallments(
+          paymentPlanChoice,
+          selectedTierRows ?? [],
+        )
+      ) {
+        const { data: installmentsSupported, error: capabilityError } =
+          await supabase.rpc("pg_trip_installments_supported", {
+            p_event_id: eventId,
+          });
+        if (capabilityError !== null || installmentsSupported !== true) {
+          return refuse(
+            { error: TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE },
+            409,
+          );
+        }
+      }
+    }
+
     // issue #2696 — DERIVED ONLY. The caller no longer supplies this.
     //
     // The edge used to accept `body.idempotencyKey` verbatim, with no
@@ -1207,6 +1253,16 @@ export const createTicketCheckoutCreateHandler = (
         {
         return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
       }
+      }
+      if (
+        sessionError?.message?.includes(
+          TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE,
+        )
+      ) {
+        return jsonResponse(
+          { error: TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE },
+          409,
+        );
       }
       // Issue #2101 — the database re-decides under the event -> brand lock. If
       // the policy or membership changed between the Edge decision above and

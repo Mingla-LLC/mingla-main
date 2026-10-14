@@ -222,7 +222,16 @@ export default function TripEditRoute(): React.ReactElement {
 
   // ORCH-0876 — status-based dispatch.
   if (trip.status === "scheduled" || trip.status === "live") {
-    return <EditPublishedTripScreen trip={trip} />;
+    return (
+      <EditPublishedTripScreen
+        trip={trip}
+        paymentProvider={
+          currentBrand.id === trip.brandId
+            ? currentBrand.paymentProvider
+            : undefined
+        }
+      />
+    );
   }
 
   if (trip.status === "ended" || trip.status === "cancelled") {

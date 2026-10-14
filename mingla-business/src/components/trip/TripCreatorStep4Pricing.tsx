@@ -119,7 +119,12 @@ export interface TripCreatorStep4PricingProps {
    * "Connect bank" button, are on the Review step.
    */
   needsBankToPublish?: boolean;
+  /** False/unknown keeps saved schedules visible but suspended and read-only. */
+  paymentPlansAvailable: boolean;
 }
+
+export const TRIP_PAYMENT_PLAN_UNAVAILABLE_COPY =
+  "Payment plans aren't available with this payment setup. Your saved schedule is kept, but buyers can't select it.";
 
 /** #3645 — locked copy for the pricing step's "keep building" card. */
 export const TRIP_PRICING_KEEP_BUILDING_TITLE = "You can keep building";
@@ -155,6 +160,7 @@ interface PackageCardProps {
   index: number;
   currency: string;
   disabled?: boolean;
+  paymentPlansAvailable: boolean;
   /** Whether a Remove control is shown (false when only 1 package remains). */
   canRemove: boolean;
   onPatch: (patch: Partial<Step4Package>) => void;
@@ -166,6 +172,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
   index,
   currency,
   disabled,
+  paymentPlansAvailable,
   canRemove,
   onPatch,
   onRemove,
@@ -180,11 +187,12 @@ const PackageCard: React.FC<PackageCardProps> = ({
   // affordance for clarity.
   const priceLocked = pkg.soldCount > 0;
   const planLocked = pkg.soldCount > 0;
+  const planSuspended = !paymentPlansAvailable;
 
   const handleTogglePlan = useCallback(
     (next: boolean) => {
       if (next === planEnabled) return;
-      if (planLocked) return;
+      if (planLocked || planSuspended) return;
       if (next) {
         onPatch({ paymentPlan: { ...DEFAULT_PAYMENT_PLAN } });
         return;
@@ -192,7 +200,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
       // Toggle-off destroys a configured schedule → confirm.
       setConfirmRemovePlanOpen(true);
     },
-    [onPatch, planEnabled, planLocked],
+    [onPatch, planEnabled, planLocked, planSuspended],
   );
 
   const handleConfirmRemovePlan = useCallback(() => {
@@ -348,10 +356,10 @@ const PackageCard: React.FC<PackageCardProps> = ({
           accessibilityLabel={`Package ${index + 1} payment plan toggle`}
           accessibilityState={{
             checked: planEnabled,
-            disabled: disabled === true || planLocked,
+            disabled: disabled === true || planLocked || planSuspended,
           }}
           onPress={() => {
-            if (disabled === true || planLocked) return;
+            if (disabled === true || planLocked || planSuspended) return;
             handleTogglePlan(!planEnabled);
           }}
           style={styles.paymentPlanToggleRow}
@@ -359,7 +367,9 @@ const PackageCard: React.FC<PackageCardProps> = ({
           <View style={styles.paymentPlanToggleLeft}>
             <Text style={styles.paymentPlanTitle}>Payment plan</Text>
             <Text style={styles.paymentPlanSubtitle}>
-              {planLocked
+              {planSuspended
+                ? TRIP_PAYMENT_PLAN_UNAVAILABLE_COPY
+                : planLocked
                 ? "Locked — at least one buyer has booked under this schedule."
                 : planEnabled
                   ? "Buyer pays a deposit at booking; remaining installments auto-charge on schedule."
@@ -369,7 +379,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
           <Switch
             value={planEnabled}
             onValueChange={handleTogglePlan}
-            disabled={disabled === true || planLocked}
+            disabled={disabled === true || planLocked || planSuspended}
             trackColor={{ false: "rgba(255,255,255,0.16)", true: accent.warm }}
             thumbColor="#ffffff"
             ios_backgroundColor="rgba(255,255,255,0.16)"
@@ -382,7 +392,10 @@ const PackageCard: React.FC<PackageCardProps> = ({
             onChange={(next) => onPatch({ paymentPlan: next })}
             totalAmountCents={priceCents}
             currency={currency}
-            locked={planLocked}
+            locked={planLocked || planSuspended}
+            lockedReason={
+              planSuspended ? TRIP_PAYMENT_PLAN_UNAVAILABLE_COPY : undefined
+            }
           />
         ) : null}
       </View>
@@ -406,6 +419,7 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
   onChange,
   disabled,
   needsBankToPublish = false,
+  paymentPlansAvailable,
 }) => {
   const brand = useCurrentBrand();
   const router = useRouter();
@@ -523,6 +537,7 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
           index={index}
           currency={draft.currency}
           disabled={disabled}
+          paymentPlansAvailable={paymentPlansAvailable}
           canRemove={canRemoveAny}
           onPatch={(patch) => patchPackage(pkg.key, patch)}
           onRemove={() => handleRequestRemove(pkg.key)}
