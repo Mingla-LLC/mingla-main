@@ -1,5 +1,13 @@
 // Issue #3802 (Wave 1) — implementor suite for the Hosts and Creators boards.
 //
+// [TEST-MOD-APPROVED ISSUE-3802] 2026-10-13: Seth approved the admin shell
+// revamp (issue #3802, "one frame for every page, menu grouped by job").
+// Changed here, and only this: P-7 pinned the OLD menu (a "Team" group
+// appended last, Beta leads before Hosts). It now pins the approved one: Hosts
+// and Creators lead the "Pipeline" group, which also holds Beta Leads, Tool
+// Leads and the Team dashboard. Who sees what is asserted exactly as before.
+//
+//
 //   P-1  one name, one key: the same twelve inputs the server suite uses (W1-4)
 //   P-2  filters: search, ICP, region, Mine, and all of them together
 //   P-3  the arrow on a card: never into Live, never into Lost or Passed
@@ -398,24 +406,29 @@ describe("#3802 P-6: the boards follow the areas the server returned", () => {
 describe("#3802 P-7: the menu each role sees", () => {
   const ids = (a) => visibleNavGroups(NAV_GROUPS, a).flatMap((g) => g.items).map((i) => i.id);
   it("Sales and marketing and Founding partner see Home, Hosts and Creators", () => {
-    assert.deepEqual(ids(growth), ["home", "beta-leads", "hosts", "creators", "agent"]);
-    assert.deepEqual(ids(partner), ["home", "beta-leads", "hosts", "creators", "agent"]);
+    // [TEST-MOD-APPROVED ISSUE-3802] same five pages, in the approved order.
+    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "beta-leads", "agent"]);
+    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "beta-leads", "agent"]);
   });
-  it("owner and admin see the Team group last, after everything they had", () => {
+  it("owner and admin see the Pipeline group straight after the top of the menu", () => {
+    // [TEST-MOD-APPROVED ISSUE-3802] was: a "Team" group, second to last.
     for (const a of [owner, admin]) {
       const groups = visibleNavGroups(NAV_GROUPS, a);
-      const last = groups[groups.length - 2];
-      assert.equal(last.label, "Team");
-      assert.deepEqual(last.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["team-dashboard:Team dashboard:BarChart3", "hosts:Hosts:Store", "creators:Creators:Sparkles"]);
+      assert.equal(groups[0].label, null);
+      const pipeline = groups[1];
+      assert.equal(pipeline.label, "Pipeline");
+      assert.deepEqual(pipeline.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["hosts:Hosts:Handshake", "creators:Creators:Sparkles", "beta-leads:Beta Leads:Inbox", "tool-leads:Tool Leads:Wrench", "team-dashboard:Team dashboard:BarChart3"]);
     }
     assert.ok(ids(owner).includes("admin"));
     assert.ok(!ids(admin).includes("admin"));
   });
-  it("the group is appended, not inserted, and its icons are ones the sidebar knows", () => {
-    assert.equal(NAV_GROUPS[NAV_GROUPS.length - 2].label, "Team");
+  it("the group is in the one menu list, once, and its icons are ones the sidebar knows", () => {
+    // [TEST-MOD-APPROVED ISSUE-3802] was: "Team" is second to last, with Store.
+    assert.equal(NAV_GROUPS.filter((g) => g.label === "Pipeline").length, 1);
+    assert.equal(NAV_GROUPS[1].label, "Pipeline");
     const sidebar = read("components/layout/Sidebar.jsx");
     const map = sidebar.slice(sidebar.indexOf("ICON_MAP"));
-    assert.ok(/\bStore\b/.test(map) && /\bSparkles\b/.test(map));
+    assert.ok(/\bHandshake\b/.test(map) && /\bSparkles\b/.test(map));
   });
 });
 

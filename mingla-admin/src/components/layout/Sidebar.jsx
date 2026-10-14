@@ -1,44 +1,45 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   LayoutDashboard,
-  Database,
-  Terminal,
-  Flag,
-  Shield,
-  Globe,
-  Users,
-  Layers,
-  BarChart3,
-  Mail,
-  Settings,
-  CreditCard,
-  Mic,
-  Rocket,
-  Brain,
-  Activity,
-  Camera,
+  LifeBuoy,
+  Home,
+  Handshake,
   Sparkles,
+  Inbox,
+  Wrench,
+  BarChart3,
+  Users,
+  Building2,
+  Globe,
+  Store,
+  CalendarDays,
+  ClipboardList,
+  CreditCard,
+  Receipt,
+  Landmark,
+  RotateCcw,
+  Repeat,
+  Percent,
+  CircleUser,
+  Map as MapIcon,
+  Rocket,
+  Activity,
+  SlidersHorizontal,
   Microscope,
+  Megaphone,
+  PencilRuler,
+  Flag,
+  Mail,
+  Shield,
+  Briefcase,
+  Wallet,
+  HeartPulse,
+  Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
   X,
-  ClipboardList,
-  Percent,
-  Inbox,
-  SlidersHorizontal,
-  LifeBuoy,
-  Briefcase,
-  Building2,
-  CalendarDays,
-  Store,
-  Receipt,
-  Landmark,
-  Megaphone,
-  Wrench,
-  RotateCcw,
-  Home,
   Bot,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -48,42 +49,48 @@ import { ROLE_LABELS, visibleNavGroups } from "../../lib/access";
 // (packages/brand-assets); the admin-local copy is deleted.
 import minglaLogo from "../../../../packages/brand-assets/mingla-wordmark.png";
 
+// The one registry of menu icons. Every `icon` named in NAV_GROUPS
+// (lib/constants.js) and in the role Home group (lib/access.js) must be a key
+// here, and every key here must be used by exactly one menu item:
+// src/__tests__/admin_shell_issue3802.implementor.happy.test.js fails
+// otherwise. There is no fallback icon, so a wrong name cannot ship looking
+// like the Dashboard.
 const ICON_MAP = {
-  LayoutDashboard, Database, Terminal, Globe, Flag, Shield, Users, Layers,
-  BarChart3, Mail, Settings, CreditCard, Mic, Rocket, Brain, Activity, Camera, Sparkles, Microscope,
-  ClipboardList, Percent, Inbox, SlidersHorizontal,
-  // META-ORCH-1104 Phase 2 — Support nav. Without this entry the LifeBuoy icon
-  // silently falls back to LayoutDashboard (renderNavItem `:77`).
+  Home,
+  LayoutDashboard,
   LifeBuoy,
-  // META-ORCH-1222 — Careers nav (applications + role manager). Same ICON_MAP
-  // registration requirement as Support/Beta-Leads.
-  Briefcase,
-  // ORCH-1271 — Business Console nav (admin full-visibility console foundation).
-  // Without this entry the Building2 icon silently falls back to LayoutDashboard.
+  Handshake,
+  Sparkles,
+  Inbox,
+  Wrench,
+  BarChart3,
+  Users,
   Building2,
-  // ORCH-1273 — Offerings (CalendarDays) + Venues (Store) nav. Same ICON_MAP
-  // registration requirement: without these the icons silently fall back to
-  // LayoutDashboard (renderNavItem `:89`).
-  CalendarDays,
+  Globe,
   Store,
-  // ORCH-1274 — Money console nav (Orders + Money ledger). Without these entries
-  // the Receipt / Landmark icons silently fall back to LayoutDashboard.
+  CalendarDays,
+  ClipboardList,
+  CreditCard,
   Receipt,
   Landmark,
-  // ISSUE-862 WP1 — Ad Engine nav (Growth group). Same ICON_MAP registration
-  // requirement as Careers/Support.
-  Megaphone,
-  // ISSUE-1354 — Tool Leads nav (all free-tool submissions). Without this entry
-  // the Wrench icon silently falls back to LayoutDashboard (renderNavItem).
-  Wrench,
-  // ISSUE-3534 — Refund operations nav. Without this entry the RotateCcw icon
-  // silently falls back to LayoutDashboard (the documented ICON_MAP footgun).
   RotateCcw,
-  // Issue #3802 — Home nav item of the two non-admin team roles. Without this
-  // entry the Home icon silently falls back to LayoutDashboard.
-  Home,
-  // Issue #3802 (Wave 4) — My agent. Without this entry the Bot icon
-  // silently falls back to LayoutDashboard.
+  Repeat,
+  Percent,
+  CircleUser,
+  Map: MapIcon,
+  Rocket,
+  Activity,
+  SlidersHorizontal,
+  Microscope,
+  Megaphone,
+  PencilRuler,
+  Flag,
+  Mail,
+  Shield,
+  Briefcase,
+  Wallet,
+  HeartPulse,
+  Settings,
   Bot,
 };
 
@@ -124,7 +131,7 @@ export function Sidebar({
   };
 
   const renderNavItem = (item) => {
-    const Icon = ICON_MAP[item.icon] || LayoutDashboard;
+    const Icon = ICON_MAP[item.icon];
     const isActive = activeTab === item.id;
 
     return (
@@ -145,7 +152,7 @@ export function Sidebar({
         {isActive && (
           <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[60%] bg-[var(--color-brand-500)] rounded-r-full" />
         )}
-        <Icon className="h-5 w-5 shrink-0" />
+        {Icon ? <Icon className="h-5 w-5 shrink-0" /> : <span className="h-5 w-5 shrink-0" />}
         <span
           className={[
             "overflow-hidden whitespace-nowrap truncate transition-all duration-200 ease-out",
