@@ -161,6 +161,75 @@ export async function processGeneric(
   key: string,
 ) {
   const id = row.id as string;
+  // #3720 Slice B — deferred legacy push after quiet hours. Payload carries the
+  // original type/title/body body under `legacy`; re-drive the legacy contract
+  // (not v2 category_key) with quietHoursRetry so the in-app row is reused.
+  if (row.category_key === "legacy_quiet_hours_push") {
+    const stored = (row.payload as { legacy?: Record<string, unknown> } | null)
+      ?.legacy;
+    if (!stored || typeof stored !== "object") {
+      await admin.from("notification_outbox").update({
+        status: "failed",
+        last_error: "legacy_quiet_hours_payload_missing",
+        processed_at: new Date().toISOString(),
+      }).eq("id", id);
+      return false;
+    }
+    try {
+      const res = await fetch(`${url}/functions/v1/notify-dispatch`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({ ...stored, quietHoursRetry: true }),
+      });
+      const result = await res.json().catch(() => ({})) as {
+        reason?: unknown;
+        retryPending?: unknown;
+        next_attempt_at?: unknown;
+        success?: unknown;
+      };
+      if (
+        result.reason === "quiet_hours" && result.retryPending === true
+      ) {
+        const nextAt = typeof result.next_attempt_at === "string"
+          ? result.next_attempt_at
+          : new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        await admin.from("notification_outbox").update({
+          status: "retry_wait",
+          next_attempt_at: nextAt,
+          last_error: "quiet_hours",
+        }).eq("id", id);
+        return false;
+      }
+      if (!res.ok || result.success === false) {
+        throw new Error(
+          `notify-dispatch ${res.status}: ${
+            typeof result.reason === "string" ? result.reason : "failed"
+          }`,
+        );
+      }
+      await admin.from("notification_outbox").update({
+        status: "done",
+        processed_at: new Date().toISOString(),
+        next_attempt_at: null,
+        last_error: null,
+      }).eq("id", id);
+      return true;
+    } catch (err) {
+      const attempts = ((row.attempts as number) ?? 0) + 1;
+      await admin.from("notification_outbox").update({
+        status: attempts >= 3 ? "failed" : "retry_wait",
+        attempts,
+        next_attempt_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        last_error: err instanceof Error ? err.message : String(err),
+      }).eq("id", id);
+      console.error("[notify-outbox-drain] quiet-hours retry failed for", id, err);
+      return false;
+    }
+  }
+
   let brandName = "Mingla";
   if (row.brand_id) {
     const { data: brand } = await admin.from("brands").select("name")

@@ -7,10 +7,25 @@ import {
   renderTransactionalEmail,
   type SenderIdentity,
 } from "../_shared/email/index.ts";
+import { signUnsubscribeToken } from "../_shared/marketingTokens.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
+
+/** Sentinel IDs for admin bulk blasts (no marketing campaign row). */
+const ADMIN_BLAST_CAMPAIGN_ID = "00000000-0000-4000-8000-372000000001";
+const ADMIN_BLAST_BRAND_ID = "00000000-0000-4000-8000-372000000002";
+
+const BRANDED_UNSUBSCRIBE_LINK_ORIGIN = "https://usemingla.com/unsubscribe";
+
+/** Segments the edge actually filters. Anything else must 400 (fail closed). */
+const SUPPORTED_SEGMENT_TYPES = new Set([
+  "all",
+  "country",
+  "onboarding",
+  "status",
+]);
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,6 +38,14 @@ function jsonResponse(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function getUnsubscribeOrigin(): string {
+  const override = Deno.env.get("MINGLA_UNSUBSCRIBE_LINK_ORIGIN");
+  if (override !== undefined && override.trim().length > 0) {
+    return override.replace(/\/+$/, "");
+  }
+  return BRANDED_UNSUBSCRIBE_LINK_ORIGIN;
 }
 
 function resolveSenderFromInput(
@@ -38,6 +61,101 @@ function resolveSenderFromInput(
   return EMAIL_SENDERS.admin;
 }
 
+function assertSupportedSegment(
+  segment: { type?: string } | null | undefined,
+): string | null {
+  const type = segment?.type ?? "all";
+  if (!SUPPORTED_SEGMENT_TYPES.has(type)) {
+    return `unsupported_segment:${type}`;
+  }
+  return null;
+}
+
+// deno-lint-ignore no-explicit-any
+function applySegmentFilter(query: any, segment: Record<string, unknown> | null) {
+  const type = (segment?.type as string | undefined) ?? "all";
+  if (type === "country" && typeof segment?.country === "string") {
+    return query.eq("country", segment.country);
+  }
+  if (type === "onboarding" && typeof segment?.onboarding === "string") {
+    return query.eq(
+      "has_completed_onboarding",
+      segment.onboarding === "completed",
+    );
+  }
+  if (type === "status" && typeof segment?.status === "string") {
+    if (segment.status === "banned") return query.eq("is_banned", true);
+    if (segment.status === "active") return query.eq("is_banned", false);
+  }
+  return query;
+}
+
+/** Lowercased emails suppressed for marketing/all email channel. */
+// deno-lint-ignore no-explicit-any
+async function loadSuppressedEmails(
+  supabase: any,
+): Promise<Set<string>> {
+  const suppressed = new Set<string>();
+
+  const { data: chanRows, error: chanErr } = await supabase
+    .from("channel_suppressions")
+    .select("contact")
+    .eq("channel", "email")
+    .in("scope", ["marketing", "all"])
+    .not("contact", "is", null);
+  if (chanErr) {
+    throw new Error(`optout_channel_suppressions_failed:${chanErr.message}`);
+  }
+  for (const row of chanRows ?? []) {
+    const c = typeof row.contact === "string" ? row.contact.toLowerCase().trim() : "";
+    if (c) suppressed.add(c);
+  }
+
+  const { data: legacyRows, error: legacyErr } = await supabase
+    .from("marketing_unsubscribes")
+    .select("contact_email")
+    .not("contact_email", "is", null);
+  if (legacyErr) {
+    // Table may be absent on some envs — fail closed only when present-and-erroring.
+    if (!/does not exist|relation/i.test(legacyErr.message)) {
+      throw new Error(`optout_marketing_unsubscribes_failed:${legacyErr.message}`);
+    }
+  } else {
+    for (const row of legacyRows ?? []) {
+      const c = typeof row.contact_email === "string"
+        ? row.contact_email.toLowerCase().trim()
+        : "";
+      if (c) suppressed.add(c);
+    }
+  }
+
+  return suppressed;
+}
+
+async function buildUnsubscribeHeaders(
+  recipientEmail: string,
+): Promise<Record<string, string> | null> {
+  try {
+    const token = await signUnsubscribeToken({
+      campaign_id: ADMIN_BLAST_CAMPAIGN_ID,
+      recipient_email: recipientEmail.toLowerCase().trim(),
+      brand_id: ADMIN_BLAST_BRAND_ID,
+    });
+    const url = `${getUnsubscribeOrigin()}/${token}?scope=global`;
+    return {
+      "List-Unsubscribe": `<${url}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    };
+  } catch (err) {
+    // Missing UNSUBSCRIBE_TOKEN_SECRET must not silently send without headers.
+    console.error(
+      "[admin-send-email] unsubscribe token failed",
+      err instanceof Error ? err.message : String(err),
+    );
+    return null;
+  }
+}
+
 interface SendOptions {
   to: string;
   subject: string;
@@ -46,6 +164,8 @@ interface SendOptions {
   fromEmail?: string;
   useBrandShell?: boolean;
   cta?: { label: string; url: string };
+  /** When true (bulk), attach List-Unsubscribe headers. */
+  marketingHeaders?: boolean;
 }
 
 async function sendViaResend(opts: SendOptions): Promise<{
@@ -62,6 +182,18 @@ async function sendViaResend(opts: SendOptions): Promise<{
     };
   }
 
+  let headers: Record<string, string> | undefined;
+  if (opts.marketingHeaders) {
+    const built = await buildUnsubscribeHeaders(opts.to);
+    if (!built) {
+      return {
+        ok: false,
+        error: "unsubscribe_headers_unavailable",
+      };
+    }
+    headers = built;
+  }
+
   let resendBody: Record<string, unknown>;
   if (opts.useBrandShell === false) {
     resendBody = {
@@ -69,7 +201,7 @@ async function sendViaResend(opts: SendOptions): Promise<{
       to: [opts.to],
       subject: opts.subject,
       text: opts.body,
-      // no-attachment: admin compose plain-text mode.
+      ...(headers ? { headers } : {}),
     };
   } else {
     let rendered;
@@ -97,13 +229,11 @@ async function sendViaResend(opts: SendOptions): Promise<{
       subject: rendered.subject,
       html: rendered.html,
       text: rendered.text,
-      // no-attachment: admin compose has no PDF.
+      ...(headers ? { headers } : {}),
     };
   }
 
   try {
-    // no-attachment: admin compose (both brand-shell and plain-text modes)
-    // ships subject + body only; PDFs are exclusive to ticket confirmation.
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -157,20 +287,43 @@ serve(async (req) => {
 
     if (action === "estimate") {
       const { segment } = body;
-      let query = supabase.from("profiles").select("id", { count: "exact", head: true });
-
-      if (segment?.type === "country") {
-        query = query.eq("country", segment.country);
-      } else if (segment?.type === "onboarding") {
-        query = query.eq("has_completed_onboarding", segment.onboarding === "completed");
-      } else if (segment?.type === "status") {
-        if (segment.status === "banned") query = query.eq("is_banned", true);
-        else if (segment.status === "active") query = query.eq("is_banned", false);
+      const unsupported = assertSupportedSegment(segment);
+      if (unsupported) {
+        return jsonResponse({ error: unsupported }, 400);
       }
 
-      const { count, error } = await query;
+      // Same 500 cap as send_bulk so estimate.will_receive matches what send
+      // will actually attempt (minus live opt-outs among that window).
+      let query = supabase.from("profiles").select("id, email", { count: "exact" })
+        .not("email", "is", null);
+      query = applySegmentFilter(query, segment ?? { type: "all" });
+
+      const { data: rows, count, error } = await query.limit(500);
       if (error) return jsonResponse({ error: error.message }, 400);
-      return jsonResponse({ will_receive: count || 0 });
+
+      const windowRows = rows ?? [];
+      const totalMatched = count ?? windowRows.length;
+      let optedOut = 0;
+      try {
+        const suppressed = await loadSuppressedEmails(supabase);
+        for (const r of windowRows) {
+          const email = typeof r.email === "string"
+            ? r.email.toLowerCase().trim()
+            : "";
+          if (email && suppressed.has(email)) optedOut += 1;
+        }
+      } catch (err) {
+        return jsonResponse({
+          error: err instanceof Error ? err.message : String(err),
+        }, 500);
+      }
+
+      const windowSize = windowRows.length;
+      return jsonResponse({
+        total: totalMatched,
+        opted_out: optedOut,
+        will_receive: Math.max(windowSize - optedOut, 0),
+      });
     }
 
     if (action === "send") {
@@ -187,6 +340,8 @@ serve(async (req) => {
         return jsonResponse({ error: "to, subject, body are required" }, 400);
       }
 
+      // Individual admin compose is operational (may reach opted-out contacts);
+      // still attach List-Unsubscribe so recipients can leave marketing lists.
       const result = await sendViaResend({
         to,
         subject,
@@ -195,6 +350,7 @@ serve(async (req) => {
         fromEmail: fromEmail || EMAIL_SENDERS.admin.address,
         useBrandShell: useBrandShell !== false,
         cta: cta && cta.label && cta.url ? { label: cta.label, url: cta.url } : undefined,
+        marketingHeaders: true,
       });
 
       await supabase.from("admin_email_log").insert({
@@ -231,27 +387,46 @@ serve(async (req) => {
       if (!subject || !emailBody) {
         return jsonResponse({ error: "subject, body are required" }, 400);
       }
-
-      let query = supabase.from("profiles").select("id, email, first_name").not("email", "is", null);
-
-      if (segment?.type === "country") {
-        query = query.eq("country", segment.country);
-      } else if (segment?.type === "onboarding") {
-        query = query.eq("has_completed_onboarding", segment.onboarding === "completed");
-      } else if (segment?.type === "status") {
-        if (segment.status === "banned") query = query.eq("is_banned", true);
-        else if (segment.status === "active") query = query.eq("is_banned", false);
+      const unsupported = assertSupportedSegment(segment);
+      if (unsupported) {
+        return jsonResponse({ error: unsupported }, 400);
       }
+
+      let query = supabase.from("profiles").select("id, email, first_name")
+        .not("email", "is", null);
+      query = applySegmentFilter(query, segment ?? { type: "all" });
 
       const { data: recipients, error } = await query.limit(500);
       if (error) return jsonResponse({ error: error.message }, 400);
 
+      let suppressed: Set<string>;
+      try {
+        suppressed = await loadSuppressedEmails(supabase);
+      } catch (err) {
+        return jsonResponse({
+          error: err instanceof Error ? err.message : String(err),
+        }, 500);
+      }
+
       let sent = 0;
       let failed = 0;
+      let skippedOptOut = 0;
       const errors: string[] = [];
+      const eligible = (recipients || []).filter((r) => {
+        const email = typeof r.email === "string" ? r.email.toLowerCase().trim() : "";
+        if (!email) return false;
+        if (suppressed.has(email)) {
+          skippedOptOut += 1;
+          return false;
+        }
+        return true;
+      });
 
-      for (const r of recipients || []) {
-        if (!r.email) { failed++; continue; }
+      for (const r of eligible) {
+        if (!r.email) {
+          failed++;
+          continue;
+        }
         const personalizedBody = emailBody.replace(/\{name\}/g, r.first_name || "there");
         const result = await sendViaResend({
           to: r.email,
@@ -260,7 +435,10 @@ serve(async (req) => {
           fromName: fromName || EMAIL_SENDERS.admin.name,
           fromEmail: fromEmail || EMAIL_SENDERS.admin.address,
           useBrandShell: useBrandShell !== false,
-          cta: cta && cta.label && cta.url ? { label: cta.label, url: cta.url } : undefined,
+          cta: cta && cta.label && cta.url
+            ? { label: cta.label, url: cta.url }
+            : undefined,
+          marketingHeaders: true,
         });
         if (result.ok) sent++;
         else {
@@ -269,6 +447,7 @@ serve(async (req) => {
         }
       }
 
+      // Single writer — edge only (#3720 bug 6). Client must not insert.
       await supabase.from("admin_email_log").insert({
         subject,
         body: emailBody,
@@ -276,19 +455,25 @@ serve(async (req) => {
         from_email: fromEmail || EMAIL_SENDERS.admin.address,
         recipient_type: "bulk",
         segment_filter: segment || null,
-        recipient_count: (recipients || []).length,
+        recipient_count: eligible.length,
         sent_count: sent,
         failed_count: failed,
         status: failed === 0 ? "sent" : sent === 0 ? "failed" : "partial",
         sent_by: user.id,
       });
 
-      return jsonResponse({ sent, failed, errors });
+      return jsonResponse({
+        sent,
+        failed,
+        skipped_opt_out: skippedOptOut,
+        errors,
+      });
     }
 
     return jsonResponse({ error: `Unknown action: ${action}` }, 400);
-
   } catch (err) {
-    return jsonResponse({ error: err instanceof Error ? err.message : String(err) }, 500);
+    return jsonResponse({
+      error: err instanceof Error ? err.message : String(err),
+    }, 500);
   }
 });

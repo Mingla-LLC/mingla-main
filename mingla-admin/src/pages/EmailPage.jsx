@@ -32,26 +32,13 @@ const SUB_TABS = [
   { id: "preferences", label: "Preferences" },
 ];
 
+// #3720 Slice B — only segments the edge actually filters. City / tier /
+// last_active were UI-only and silently sent to everyone (bug 4).
 const SEGMENT_TYPES = [
   { id: "all", label: "All Users" },
   { id: "country", label: "By Country" },
   { id: "onboarding", label: "By Onboarding" },
   { id: "status", label: "By Status" },
-  { id: "city", label: "By City" },
-  { id: "tier", label: "By Subscription Tier" },
-  { id: "last_active", label: "By Last Active" },
-];
-
-const TIER_OPTIONS = [
-  { value: "free", label: "Free" },
-  { value: "mingla_plus", label: "Mingla+" },
-];
-
-const LAST_ACTIVE_OPTIONS = [
-  { value: "7d_active", label: "Active in last 7 days" },
-  { value: "30d_active", label: "Active in last 30 days" },
-  { value: "90d_active", label: "Active in last 90 days" },
-  { value: "30d_inactive", label: "Inactive 30+ days" },
 ];
 
 const DAILY_EMAIL_LIMIT = 100;
@@ -64,9 +51,6 @@ function segmentLabel(seg) {
   if (seg.type === "country") return `Country: ${seg.country || "—"}`;
   if (seg.type === "onboarding") return `Onboarding: ${seg.onboarding || "—"}`;
   if (seg.type === "status") return `Status: ${seg.status || "—"}`;
-  if (seg.type === "city") return `City: ${seg.city || "—"}`;
-  if (seg.type === "tier") return `Tier: ${seg.tier || "—"}`;
-  if (seg.type === "last_active") return `Last Active: ${seg.last_active || "—"}`;
   return "Custom";
 }
 
@@ -168,7 +152,7 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
   // wraps subject+body in the Mingla shared shell (logo + footer). OFF sends
   // raw plain text for operator test pings.
   const [useBrandShell, setUseBrandShell] = useState(true);
-  const [segment, setSegment] = useState({ type: "all", country: "", onboarding: "", status: "", city: "", tier: "", last_active: "" });
+  const [segment, setSegment] = useState({ type: "all", country: "", onboarding: "", status: "" });
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [estimate, setEstimate] = useState(null);
@@ -190,8 +174,6 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
   const limitReached = remainingToday <= 0;
 
   // City options for segment
-  const [cityOptions, setCityOptions] = useState([]);
-
   // Send confirmation modal
   const [sendConfirmModal, setSendConfirmModal] = useState(false);
 
@@ -227,24 +209,8 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
     }
   }, []);
 
-  // Fetch distinct cities for segment
-  const fetchCities = useCallback(async () => {
-    try {
-      const { data } = await supabase
-        .from("profiles")
-        .select("city")
-        .not("city", "is", null)
-        .limit(500);
-      const unique = [...new Set((data || []).map(d => d.city).filter(Boolean))].sort();
-      if (mountedRef.current) setCityOptions(unique);
-    } catch {
-      // Silently fail
-    }
-  }, []);
-
   useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
   useEffect(() => { fetchTodayCount(); }, [fetchTodayCount]);
-  useEffect(() => { fetchCities(); }, [fetchCities]);
 
   // Auto-estimate when segment changes in bulk mode
   const handleEstimate = useCallback(async (seg) => {
@@ -267,11 +233,8 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
         if (segment.type === "country" && segment.country) seg.country = segment.country;
         if (segment.type === "onboarding" && segment.onboarding) seg.onboarding = segment.onboarding;
         if (segment.type === "status" && segment.status) seg.status = segment.status;
-        if (segment.type === "city" && segment.city) seg.city = segment.city;
-        if (segment.type === "tier" && segment.tier) seg.tier = segment.tier;
-        if (segment.type === "last_active" && segment.last_active) seg.last_active = segment.last_active;
 
-        const needsSubField = ["country", "onboarding", "status", "city", "tier", "last_active"];
+        const needsSubField = ["country", "onboarding", "status"];
         if (needsSubField.includes(segment.type) && !segment[segment.type]) {
           setEstimate(null);
           setEstimating(false);
@@ -365,11 +328,6 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
       if (segment.type === "country") seg.country = segment.country;
       if (segment.type === "onboarding") seg.onboarding = segment.onboarding;
       if (segment.type === "status") seg.status = segment.status;
-      if (segment.type === "city") seg.city = segment.city;
-      if (segment.type === "tier") seg.tier = segment.tier;
-      if (segment.type === "last_active") seg.last_active = segment.last_active;
-
-      const estimatedRecipients = estimate?.will_receive || 0;
 
       const payload = mode === "individual"
         ? { action: "send", to: toEmail.trim(), subject, body, fromName, fromEmail, useBrandShell }
@@ -377,27 +335,8 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
 
       const result = await callEdgeFunction(payload);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const { error: logError } = await supabase.from("admin_email_log").insert({
-        subject,
-        body,
-        from_name: fromName,
-        from_email: fromEmail,
-        recipient_type: mode,
-        recipient_email: mode === "individual" ? toEmail.trim() : null,
-        segment_filter: mode === "bulk" ? seg : null,
-        recipient_count: mode === "individual" ? 1 : estimatedRecipients,
-        sent_count: result.sent || 0,
-        failed_count: result.failed || 0,
-        status: (result.failed || 0) === 0 ? "sent" : (result.sent || 0) > 0 ? "partial" : "failed",
-        template_used: selectedTemplate || null,
-        sent_by: session?.user?.id,
-      });
-
-      if (logError) {
-        console.error("Failed to log email:", logError);
-        addToast({ variant: "warning", title: "Email sent but log failed", description: logError.message });
-      }
+      // #3720 bug 6 — admin_email_log is written only by admin-send-email (edge).
+      // Do not insert a second client row here.
 
       await logAdminAction("email.send", "email", null, {
         mode,
@@ -580,51 +519,6 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
                 </div>
               )}
 
-              {segment.type === "city" && (
-                <div>
-                  <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">City</label>
-                  {cityOptions.length > 0 ? (
-                    <select
-                      value={segment.city}
-                      onChange={(e) => setSegment({ ...segment, city: e.target.value })}
-                      className="w-full text-sm px-3 py-2 rounded-lg border bg-transparent"
-                      style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)", backgroundColor: "var(--color-background-primary)" }}
-                    >
-                      <option value="">Select a city...</option>
-                      {cityOptions.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  ) : (
-                    <Input placeholder="e.g. Lagos" value={segment.city} onChange={(e) => setSegment({ ...segment, city: e.target.value })} />
-                  )}
-                </div>
-              )}
-
-              {segment.type === "tier" && (
-                <div>
-                  <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">Subscription Tier</label>
-                  <div className="flex gap-2">
-                    {TIER_OPTIONS.map(t => (
-                      <Button key={t.value} variant={segment.tier === t.value ? "primary" : "ghost"} size="sm" onClick={() => setSegment({ ...segment, tier: t.value })}>
-                        {t.label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {segment.type === "last_active" && (
-                <div>
-                  <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1.5">Last Active</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {LAST_ACTIVE_OPTIONS.map(opt => (
-                      <Button key={opt.value} variant={segment.last_active === opt.value ? "primary" : "ghost"} size="sm" onClick={() => setSegment({ ...segment, last_active: opt.value })}>
-                        {opt.label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Estimate */}
               <div className="text-sm text-[var(--color-text-secondary)]">
                 {estimating ? (
@@ -678,7 +572,7 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
           {/* Body */}
           <Textarea label="Body" placeholder="Write your email content here..." value={body} onChange={(e) => setBody(e.target.value)} className="!min-h-[200px]" />
           <p className="text-xs text-[var(--color-text-tertiary)] -mt-3">
-            Available placeholders: {"{name}"}, {"{email}"}, {"{city}"}, {"{tier}"}
+            Available placeholders: {"{name}"}
           </p>
 
           {/* Actions */}
