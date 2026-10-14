@@ -51,8 +51,8 @@ mingla-admin/
 │   │   ├── InviteSetupScreen.jsx     ← Password setup for invited admins (magic link)
 │   │   ├── layout/
 │   │   │   ├── AppShell.jsx          ← Sidebar + Header + Content wrapper
-│   │   │   ├── Sidebar.jsx           ← Collapsible nav, always dark
-│   │   │   └── Header.jsx            ← Breadcrumbs, theme toggle, live indicator
+│   │   │   ├── Sidebar.jsx           ← Menu grouped by job, follows the theme, collapses to an icon rail
+│   │   │   └── Header.jsx            ← Menu toggle, "Group › Page" breadcrumb, search, live indicator, theme toggle
 │   │   └── ui/
 │   │       ├── Avatar.jsx            ← Image/initials, 4 sizes, groups
 │   │       ├── Badge.jsx             ← 7 variants + category badges
@@ -62,6 +62,7 @@ mingla-admin/
 │   │       ├── Dropdown.jsx          ← Click-outside close, keyboard nav
 │   │       ├── Input.jsx             ← Text, password toggle, textarea, toggle switch
 │   │       ├── Modal.jsx             ← Overlay, ESC close, focus management
+│   │       ├── PageHeader.jsx        ← The one page header: title, description, actions, back, tabs
 │   │       ├── SearchInput.jsx       ← Icon + clear button
 │   │       ├── Skeleton.jsx          ← Shimmer loading placeholders
 │   │       ├── Spinner.jsx           ← 3 sizes + full-page loader
@@ -104,7 +105,7 @@ The dashboard implements a comprehensive design token system in `globals.css`, d
 - **Brand color:** Orange `#f97316` (matching the Mingla mobile app)
 - **Typography:** Geist Sans (body) / Geist Mono (code), with system font fallbacks
 - **Border radius:** 8px (sm), 12px (md), 16px (lg), 24px (xl) — matches mobile card styling
-- **Sidebar:** Always dark regardless of theme — intentional for visual anchoring
+- **Sidebar:** Follows the theme through `--sidebar-*` tokens (light menu in light mode, ink menu in dark mode)
 - **Dark mode:** Toggled via `data-theme="dark"` on `<html>`, respects `prefers-color-scheme` on first visit, persists to localStorage
 - **Spacing:** Uses Tailwind's default scale which maps exactly to the spec (4px, 8px, 16px, 24px, 32px, 48px, 64px)
 - **Page transitions:** Framer Motion `AnimatePresence mode="wait"` crossfade + slide (200ms ease-out) on every tab change
@@ -115,7 +116,6 @@ The dashboard implements a comprehensive design token system in `globals.css`, d
 - **Press feedback:** `active:scale-[0.98]` on all interactive buttons for tactile feel
 - **Focus rings:** `focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2` on all interactive elements
 - **Theme flash prevention:** Inline `<script>` in `<head>` applies dark mode before CSS/React loads — no white flash on reload
-- **Sidebar label transitions:** CSS `max-width` + `opacity` transitions for smooth collapse/expand (no snap)
 - **Favicon:** Mingla logo in browser tab (replaces default Vite icon)
 - **Warm backgrounds:** Page background uses warm-tinted `#faf8f6` (not cold gray) for clear card/page contrast
 - **Visible shadows:** Shadow tokens moved into Tailwind v4 `@theme` block so `shadow-sm`/`shadow-md` utilities use the custom values (multi-layer, visible on light backgrounds)
@@ -300,13 +300,17 @@ The dashboard implements a comprehensive design token system in `globals.css`, d
 - **Adding new admins:** Use the Admin Users tab to invite new admins (stores in Supabase `admin_users` table). The hardcoded `ALLOWED_ADMIN_EMAILS` in `constants.js` serves as a fallback so the owner can always log in even if the table doesn't exist. New admins also need a Supabase Auth account with matching email.
 
 ### Layout
-- Collapsible sidebar (260px expanded, 72px collapsed) with smooth CSS label transitions
-- Custom tooltips on collapsed sidebar items (replaces native `title` attribute)
-- Sidebar active state: `bg-white/10` background with visible orange accent bar
-- Mobile: sidebar becomes a slide-over overlay with fade-in backdrop animation
-- Sticky header with functional breadcrumbs (chevron separators, click "Admin" to navigate to Dashboard), dark mode toggle, live indicator
+One frame for every page (issue #3802, invariant `I-3802-ADMIN-SHELL-ONE-FRAME`). Sizes are tokens in `globals.css`: header 56px, menu 248px (64px as an icon rail), page gutter 24px (16px under 640px), page width 1600px.
+- Menu (`NAV_GROUPS` in `lib/constants.js`), eight groups in this order: top (Dashboard, Support), Pipeline, Business, Money, Explorer app, Growth, Company, System. Who sees which item is decided only by `lib/access.js`
+- Named groups fold; the choice is remembered in the browser and the group holding the current page is always open
+- One icon per menu item, registered in `ICON_MAP` in `Sidebar.jsx`; there is no fallback icon, and a name that is not registered fails the admin shell test
+- Menu rows are 34px with 16px icons; the current page has a soft fill and a 3px marker on the menu's edge. The collapsed rail names each icon with a native tooltip
+- The logo row is as tall as the header; logo, menu icons and the footer avatar share one left edge, header content and page content share the gutter edge
+- Menu footer: one row with initials, email, role and a Sign out button
+- Mobile: the menu becomes a slide-over with a backdrop; it closes when a page is chosen, on Escape and on the backdrop
+- Sticky header: menu toggle, a words-only "Group › Page" breadcrumb, a search button that opens the command palette (also Cmd/Ctrl+K), live indicator, dark mode toggle
+- Every page starts with `components/ui/PageHeader.jsx` and sets no outer padding, width or centring of its own; the shell sets the gutter on all sides, left-aligned
 - Framer Motion page transitions (`AnimatePresence mode="wait"`) on every tab change
-- Content area: max-width 1280px, centered
 - Responsive breakpoints: 640px / 768px / 1024px / 1280px / 1536px
 
 ### Dark Mode
@@ -316,7 +320,7 @@ The dashboard implements a comprehensive design token system in `globals.css`, d
 - Explicit-choice tracking: once user toggles manually, system theme changes are ignored (tracked via `EXPLICIT_KEY` localStorage flag)
 - Persists preference to localStorage
 - Login screen fully dark-mode-aware (all colors use CSS variables with light-mode fallbacks)
-- Sidebar stays dark in both themes
+- The sidebar follows the theme like everything else
 - All UI components use CSS variables for colors — no hardcoded hex values in dark mode
 
 ---
@@ -403,7 +407,6 @@ The dashboard implements a comprehensive design token system in `globals.css`, d
 - AlertCard uses `<div>` (not `<p>`) for children to allow block-level content (lists, nested elements)
 - Theme flash prevention script runs in `<head>` before any CSS or JS loads
 - System `prefers-color-scheme` changes are listened for at runtime (only when user hasn't explicitly toggled, tracked via `EXPLICIT_KEY` localStorage flag)
-- Sidebar labels always exist in DOM — CSS transitions handle visibility (no layout thrash from mount/unmount)
 - Toast container always renders (even when empty) so `AnimatePresence` can animate exit of last toast
 - `prefers-reduced-motion: reduce` disables skeleton shimmer and other animations for accessibility
 
