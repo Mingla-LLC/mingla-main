@@ -2057,6 +2057,20 @@ jobs:
           node --experimental-strip-types --test --test-concurrency=1 \
             supabase/functions/team-agent/__tests__/draftProtocol.issue3802.implementor.happy.test.ts
 
+      # Issue #3802 (Connector part 3) — INDEPENDENT TESTER guard. It attacks
+      # cross-person text access, request-key reuse across tools and changed
+      # arguments, agent calls to person-only actions, and concurrent marking.
+      # Its own step keeps the harness's temporary sign-in column isolated.
+      - name: "Issue #3802 — Drafts to send refuses borrowed text and duplicate effects"
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: supabase_admin
+          PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
+        run: |
+          node --experimental-strip-types --test --test-concurrency=1 \
+            supabase/functions/team-agent/__tests__/draftProtocol.issue3802.tester.adversarial.test.ts
+
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
       # "hide the address until someone buys" had that address served to an
