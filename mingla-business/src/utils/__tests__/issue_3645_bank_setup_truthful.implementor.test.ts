@@ -22,12 +22,15 @@ import {
 } from "../bankConnectRail";
 import {
   CANCEL_EVENT_NOTHING_SOLD_DESCRIPTION,
+  CANCEL_NOTHING_PAID_DESCRIPTION,
+  cancelDialogDescription,
   cancelDoneToast,
   cancelEventDialogDescription,
   cancelRsvpDescription,
   cancelWithSalesDescription,
   countPaidOrders,
   knownPaidOrderCount,
+  nothingToRefundIsKnown,
 } from "../cancelEventCopy";
 import {
   RSVP_UNPUBLISH_FAILED_COPY,
@@ -41,7 +44,13 @@ import {
   emptyStop,
   stopPriceEntryIsValid,
 } from "../../components/experience/experienceWizardTypes";
-import { rememberBrandPayoutCountry } from "../../services/brandPayoutCountryService";
+import {
+  fetchBrandCardAccountCountry,
+  healRememberedPayoutCountry,
+  rememberBrandPayoutCountry,
+} from "../../services/brandPayoutCountryService";
+import { menuPriceNeedsCurrency } from "../../components/venue/menuMoneyDraft";
+import { countPaidRsvpChipIns } from "../../services/rsvpLifecycleService";
 import { mapBrandRowToUi, type BrandRow } from "../../services/brandMapping";
 
 describe("#3645 — the country bank setup opens on", () => {
@@ -253,12 +262,91 @@ describe("#3645 — remembering the pick never fails the pick", () => {
 });
 
 describe("#3645 — cancelling something that has sold", () => {
-  const paid = { status: "paid" };
-  const partly = { status: "refunded_partial" };
-  const refunded = { status: "refunded_full" };
+  const paid = { status: "paid", totalCents: 2500, refundedAmountCents: 0 };
+  const partly = { status: "refunded_partial", totalCents: 2500, refundedAmountCents: 1000 };
+  const refunded = { status: "refunded_full", totalCents: 2500, refundedAmountCents: 2500 };
+  // A free ticket is an order stored as paid with a total of 0.
+  const free = { status: "paid", totalCents: 0, refundedAmountCents: 0 };
 
-  it("counts the orders the cancel queues: paid and partly refunded", () => {
-    expect(countPaidOrders([paid, partly, refunded, { status: "pending" }])).toBe(2);
+  it("counts the orders the cancel queues: paid or partly refunded, with money left to refund", () => {
+    expect(
+      countPaidOrders([paid, partly, refunded, { status: "pending", totalCents: 900 }]),
+    ).toBe(2);
+  });
+
+  it("a free order is not a paid order: free-only counts none, mixed counts only the paid", () => {
+    expect(countPaidOrders([free, free, free])).toBe(0);
+    expect(countPaidOrders([free, paid, free, partly])).toBe(2);
+    expect(knownPaidOrderCount("ready", [free, free])).toBeNull();
+    expect(knownPaidOrderCount("ready", [free, paid])).toBe(1);
+    // Marked partly refunded but nothing left to give back: not queued.
+    expect(
+      countPaidOrders([{ status: "refunded_partial", totalCents: 500, refundedAmountCents: 500 }]),
+    ).toBe(0);
+    // Rows that carry only major units are read the same way.
+    expect(countPaidOrders([{ status: "paid", totalAtPurchase: 12.5, refundedAmount: 0 }])).toBe(1);
+    expect(countPaidOrders([{ status: "paid", totalAtPurchase: 0 }])).toBe(0);
+    expect(countPaidOrders([{ status: "paid" }])).toBe(0);
+  });
+
+  it("a free-only event is told there is nothing to refund, never that orders are queued", () => {
+    const known = (orders: readonly { status: string; totalCents: number }[]) =>
+      nothingToRefundIsKnown({
+        ordersStatus: "ready",
+        orders,
+        doorSoldCount: 0,
+        doorSalesEnabled: false,
+      });
+    expect(known([free, free])).toBe(true);
+    const body = cancelDialogDescription({
+      nothingSold: false,
+      nothingToRefund: known([free, free]),
+      paidOrderCount: knownPaidOrderCount("ready", [free, free]),
+    });
+    expect(body).toBe(CANCEL_NOTHING_PAID_DESCRIPTION);
+    expect(body).toBe("No one has paid, so there is nothing to refund. You can't undo this.");
+    expect(body).not.toMatch(/queued|review/i);
+    expect(cancelDoneToast(knownPaidOrderCount("ready", [free, free]))).toBe("Event cancelled.");
+
+    // Mixed: only the paid order is counted, and refunds are mentioned.
+    expect(known([free, paid])).toBe(false);
+    expect(
+      cancelDialogDescription({
+        nothingSold: false,
+        nothingToRefund: known([free, paid]),
+        paidOrderCount: knownPaidOrderCount("ready", [free, paid]),
+      }),
+    ).toContain("The 1 paid order is queued for a full refund");
+  });
+
+  it("'nothing to refund' is never claimed while it is not known", () => {
+    for (const ordersStatus of ["loading", "error", "stale-error", null]) {
+      expect(
+        nothingToRefundIsKnown({ ordersStatus, orders: [], doorSoldCount: 0, doorSalesEnabled: false }),
+      ).toBe(false);
+    }
+    // Money may have been taken at the door, on another device.
+    expect(
+      nothingToRefundIsKnown({ ordersStatus: "ready", orders: [free], doorSoldCount: 0, doorSalesEnabled: true }),
+    ).toBe(false);
+    expect(
+      nothingToRefundIsKnown({ ordersStatus: "ready", orders: [free], doorSoldCount: 2, doorSalesEnabled: false }),
+    ).toBe(false);
+    expect(
+      cancelDialogDescription({ nothingSold: false, nothingToRefund: false, paidOrderCount: null }),
+    ).toContain("Any paid orders are queued");
+    // Nothing sold at all keeps its own sentence, and an experience its own.
+    expect(
+      cancelDialogDescription({ nothingSold: true, nothingToRefund: true, paidOrderCount: null }),
+    ).toBe(CANCEL_EVENT_NOTHING_SOLD_DESCRIPTION);
+    expect(
+      cancelDialogDescription({
+        nothingSold: true,
+        nothingSoldDescription: "No one has booked, so there is nothing to refund. You can't undo this.",
+        nothingToRefund: true,
+        paidOrderCount: null,
+      }),
+    ).toContain("No one has booked");
   });
 
   it("a count is known only when the orders read completed, and zero is not a count", () => {
@@ -376,5 +464,108 @@ describe("#3645 — an empty per-stop price means free", () => {
     for (const bad of ["abc", "-1", "1,50", "1.2.3", "£5", ".", "1e3", "5 "+"x"]) {
       expect(stopPriceEntryIsValid(bad)).toBe(false);
     }
+  });
+});
+
+describe("#3645 — a menu price on a brand with no currency", () => {
+  const noCurrency = { brandHasCurrency: false };
+
+  it("a NEW positive price is held back until a payout country is chosen", () => {
+    expect(menuPriceNeedsCurrency({ ...noCurrency, nextPriceCents: 1490, savedPriceCents: null })).toBe(true);
+    expect(menuPriceNeedsCurrency({ ...noCurrency, nextPriceCents: 1490, savedPriceCents: undefined })).toBe(true);
+    expect(menuPriceNeedsCurrency({ ...noCurrency, nextPriceCents: 1490, savedPriceCents: 0 })).toBe(true);
+  });
+
+  it("a CHANGED price is held back too", () => {
+    expect(menuPriceNeedsCurrency({ ...noCurrency, nextPriceCents: 1600, savedPriceCents: 1490 })).toBe(true);
+  });
+
+  it("an existing priced item saves for an unrelated edit: its untouched price is not a new price", () => {
+    expect(menuPriceNeedsCurrency({ ...noCurrency, nextPriceCents: 1490, savedPriceCents: 1490 })).toBe(false);
+  });
+
+  it("free, blank and price-removed items are never held back", () => {
+    for (const nextPriceCents of [0, null, undefined]) {
+      expect(menuPriceNeedsCurrency({ ...noCurrency, nextPriceCents, savedPriceCents: 1490 })).toBe(false);
+      expect(menuPriceNeedsCurrency({ ...noCurrency, nextPriceCents, savedPriceCents: null })).toBe(false);
+    }
+  });
+
+  it("a brand WITH a currency is never held back", () => {
+    expect(menuPriceNeedsCurrency({ brandHasCurrency: true, nextPriceCents: 1600, savedPriceCents: 1490 })).toBe(false);
+    expect(menuPriceNeedsCurrency({ brandHasCurrency: true, nextPriceCents: 1600, savedPriceCents: null })).toBe(false);
+  });
+});
+
+describe("#3645 — the remembered country is corrected to the real account's", () => {
+  const writes = (): unknown[] => {
+    const update = jest.fn(() => ({
+      eq: () => ({ is: () => ({ select: async () => ({ data: [{ id: "x" }], error: null }) }) }),
+    }));
+    mockUpdate.mockReturnValue({ update });
+    return update.mock.calls as unknown[];
+  };
+  beforeEach(() => mockUpdate.mockReset());
+
+  it("writes the account's country when the remembered one differs or is missing, once per brand and country", () => {
+    const calls = writes();
+    healRememberedPayoutCountry({ brandId: "heal-1", rememberedCountry: "IE", accountCountry: "fr" });
+    healRememberedPayoutCountry({ brandId: "heal-1", rememberedCountry: "IE", accountCountry: "FR" });
+    healRememberedPayoutCountry({ brandId: "heal-2", rememberedCountry: null, accountCountry: "US" });
+    expect(calls).toEqual([[{ payout_country: "FR" }], [{ payout_country: "US" }]]);
+  });
+
+  it("writes nothing when they already agree, or when no account country is known", () => {
+    const calls = writes();
+    healRememberedPayoutCountry({ brandId: "heal-3", rememberedCountry: "ie", accountCountry: "IE" });
+    healRememberedPayoutCountry({ brandId: "heal-4", rememberedCountry: "IE", accountCountry: null });
+    healRememberedPayoutCountry({ brandId: "heal-5", rememberedCountry: "IE", accountCountry: "IRL" });
+    healRememberedPayoutCountry({ brandId: null, rememberedCountry: "IE", accountCountry: "FR" });
+    expect(calls).toEqual([]);
+  });
+
+  const accountRead = (result: unknown): void => {
+    const maybeSingle = jest.fn(async () => result);
+    mockUpdate.mockReturnValue({
+      select: () => ({ eq: () => ({ order: () => ({ limit: () => ({ maybeSingle }) }) }) }),
+    });
+  };
+
+  it("reads the live account's country, and answers null for anything else without throwing", async () => {
+    accountRead({ data: { country: "ie", detached_at: null }, error: null });
+    await expect(fetchBrandCardAccountCountry("b1")).resolves.toBe("IE");
+    expect(mockUpdate).toHaveBeenCalledWith("stripe_connect_accounts");
+    accountRead({ data: { country: "IE", detached_at: "2026-10-01T00:00:00Z" }, error: null });
+    await expect(fetchBrandCardAccountCountry("b1")).resolves.toBeNull();
+    accountRead({ data: null, error: null });
+    await expect(fetchBrandCardAccountCountry("b1")).resolves.toBeNull();
+    accountRead({ data: null, error: { code: "42501" } });
+    await expect(fetchBrandCardAccountCountry("b1")).resolves.toBeNull();
+    mockUpdate.mockImplementation(() => {
+      throw new Error("network down");
+    });
+    await expect(fetchBrandCardAccountCountry("b1")).resolves.toBeNull();
+  });
+});
+
+describe("#3645 — chip-ins the cancel queues for refund", () => {
+  it("counts only chip-ins with money left to refund, the server's own rule", async () => {
+    const rows = [
+      { buyer_total_cents: 500, refunded_amount_cents: 0 },
+      { buyer_total_cents: 500, refunded_amount_cents: 200 },
+      { buyer_total_cents: 500, refunded_amount_cents: 500 },
+      { buyer_total_cents: 0, refunded_amount_cents: 0 },
+    ];
+    mockUpdate.mockReturnValue({
+      select: () => ({ eq: () => ({ in: async () => ({ data: rows, error: null }) }) }),
+    });
+    await expect(countPaidRsvpChipIns("e1")).resolves.toBe(2);
+  });
+
+  it("a failed read throws, so the dialog says 'any chip-ins' and never 'nothing to refund'", async () => {
+    mockUpdate.mockReturnValue({
+      select: () => ({ eq: () => ({ in: async () => ({ data: null, error: { code: "42501" } }) }) }),
+    });
+    await expect(countPaidRsvpChipIns("e1")).rejects.toBeTruthy();
   });
 });

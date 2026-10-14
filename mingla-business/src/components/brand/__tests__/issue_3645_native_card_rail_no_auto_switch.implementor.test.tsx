@@ -686,3 +686,138 @@ describe("#3645 native — the add-bank state says exactly what the Payments car
     queryClient.clear();
   });
 });
+
+// ---------------------------------------------------------------------------
+// #3645 review follow-up — appended.
+// ---------------------------------------------------------------------------
+describe("#3645 native — review follow-up: lock-aware country list, and an Add bank that never fails silently", () => {
+  let tree: TestTree | null = null;
+  let queryClient: QueryClient;
+
+  async function mount(
+    brand: Brand,
+    props: { countryChoiceRequested?: boolean } = {},
+  ): Promise<TestTree> {
+    let mounted: TestTree | null = null;
+    await TestRenderer.act(async () => {
+      mounted = TestRenderer.create(
+        <QueryClientProvider client={queryClient}>
+          <BrandOnboardView
+            brand={brand}
+            onCancel={jest.fn()}
+            onAfterDone={jest.fn()}
+            {...props}
+          />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+    if (mounted === null) throw new Error("BrandOnboardView did not mount.");
+    return mounted;
+  }
+
+  beforeEach(() => {
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue({ data: {}, error: null });
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+  });
+
+  afterEach(() => {
+    if (tree !== null) {
+      TestRenderer.act(() => tree?.unmount());
+      tree = null;
+    }
+    queryClient.clear();
+  });
+
+  test("F1: a host who came to choose a country is not shown the list until the lock state is known", async () => {
+    mockStripeStatus = STATUS_LOADING;
+    tree = await mount(brandOf({ countryCode: undefined }), {
+      countryChoiceRequested: true,
+    });
+    // Still reading: the normal loading state, no country row to open.
+    expect(count(tree, "onboard-awaiting-lock-state")).toBe(1);
+    expect(count(tree, "country-picker")).toBe(0);
+    expect(textOf(tree.root)).toContain("Checking your payout status");
+  });
+
+  test("F2: once the status is known the row appears; opened by an ordinary visit it never waited", async () => {
+    mockStripeStatus = STATUS_NO_ACCOUNT;
+    tree = await mount(brandOf({ countryCode: undefined }), {
+      countryChoiceRequested: true,
+    });
+    expect(count(tree, "onboard-awaiting-lock-state")).toBe(0);
+    expect(count(tree, "country-picker")).toBe(1);
+    TestRenderer.act(() => tree?.unmount());
+
+    // An ordinary visit (no request to choose) shows the row while loading,
+    // exactly as before.
+    mockStripeStatus = STATUS_LOADING;
+    tree = await mount(brandOf({ countryCode: undefined }));
+    expect(count(tree, "onboard-awaiting-lock-state")).toBe(0);
+    expect(count(tree, "country-picker")).toBe(1);
+  });
+
+  test("F3: when Add bank cannot open, the host is told so in plain words and can try again", async () => {
+    mockStripeStatus = {
+      ...STATUS_LIVE_ACCOUNT,
+      data: { ...STATUS_LIVE_ACCOUNT.data, payouts_enabled: false },
+    };
+    // The request answers with nothing usable (the same path a refused
+    // browser window takes: the open throws and is caught).
+    const quiet = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    tree = await mount(brandOf({ countryCode: "GB", stripeStatus: "active" }));
+    expect(count(tree, "onboard-add-bank-error")).toBe(0);
+
+    await TestRenderer.act(async () => {
+      await (only(tree as TestTree, "onboard-add-bank-cta").props.onPress as () =>
+        Promise<void> | void)();
+    });
+    await flush();
+
+    const error = only(tree, "onboard-add-bank-error");
+    expect(textOf(error)).toBe("We couldn't open bank setup. Try again.");
+    expect(error.props.accessibilityRole).toBe("alert");
+    // Still on the add-bank state, with its button, not "all set".
+    expect(count(tree, "onboard-add-bank-cta")).toBe(1);
+    expect(textOf(tree.root)).not.toContain("all set");
+    quiet.mockRestore();
+  });
+
+  test("F4: a browser that refuses to open the window is a visible failure too", async () => {
+    mockStripeStatus = {
+      ...STATUS_LIVE_ACCOUNT,
+      data: { ...STATUS_LIVE_ACCOUNT.data, payouts_enabled: false },
+    };
+    mockInvoke.mockResolvedValue({
+      data: {
+        client_secret: "cs_test",
+        account_id: "acct_test",
+        target_url: "https://host.usemingla.com/connect-account-management?x=1",
+      },
+      error: null,
+    });
+    const browser = jest.requireMock("expo-web-browser") as {
+      openAuthSessionAsync: jest.Mock;
+    };
+    browser.openAuthSessionAsync.mockRejectedValueOnce(
+      Object.assign(new Error("Popup window was blocked by the browser"), {
+        code: "ERR_WEB_BROWSER_BLOCKED",
+      }),
+    );
+    tree = await mount(brandOf({ countryCode: "GB", stripeStatus: "active" }));
+
+    await TestRenderer.act(async () => {
+      await (only(tree as TestTree, "onboard-add-bank-cta").props.onPress as () =>
+        Promise<void> | void)();
+    });
+    await flush();
+
+    expect(browser.openAuthSessionAsync).toHaveBeenCalledTimes(1);
+    expect(textOf(only(tree, "onboard-add-bank-error"))).toBe(
+      "We couldn't open bank setup. Try again.",
+    );
+  });
+});

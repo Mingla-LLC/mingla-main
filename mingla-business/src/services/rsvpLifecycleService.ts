@@ -35,14 +35,20 @@ export const unpublishRsvpToDraft = async (
  * so the caller can say "not known" instead of "none".
  */
 export const countPaidRsvpChipIns = async (eventId: string): Promise<number> => {
-  const { count, error } = await supabase
+  const { data, error } = await supabase
     .from("event_rsvp_contributions")
-    .select("id", { count: "exact", head: true })
+    .select("buyer_total_cents, refunded_amount_cents")
     .eq("event_id", eventId)
     .in("status", ["paid", "partially_refunded"]);
   if (error !== null) throw error;
-  if (typeof count !== "number") {
+  if (!Array.isArray(data)) {
     throw new Error("rsvp_chip_in_count_unavailable");
   }
-  return count;
+  // The server's own rule: only a chip-in with money left to refund is queued.
+  return (data as {
+    buyer_total_cents: number | null;
+    refunded_amount_cents: number | null;
+  }[]).filter(
+    (row) => (row.buyer_total_cents ?? 0) > (row.refunded_amount_cents ?? 0),
+  ).length;
 };

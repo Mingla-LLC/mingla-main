@@ -87,12 +87,42 @@ export const cancelEventDoneToast = (
 // at cancel time is not established.
 // ---------------------------------------------------------------------------
 
-/** Paid (or partly refunded) orders: the ones the cancel queues for refund. */
-export const countPaidOrders = (
-  orders: readonly { status: string }[],
-): number =>
+/** What the count needs to know about an order. */
+export interface RefundableOrder {
+  status: string;
+  /** Order total in minor units, when the row carries it. */
+  totalCents?: number | null;
+  /** Order total in major units (older rows carry only this). */
+  totalAtPurchase?: number | null;
+  /** Already refunded, minor units. */
+  refundedAmountCents?: number | null;
+  /** Already refunded, major units. */
+  refundedAmount?: number | null;
+}
+
+/** Money still refundable on one order, in minor units; 0 for a free order. */
+const refundableCents = (order: RefundableOrder): number => {
+  const total = typeof order.totalCents === "number"
+    ? order.totalCents
+    : Math.round((order.totalAtPurchase ?? 0) * 100);
+  const refunded = typeof order.refundedAmountCents === "number"
+    ? order.refundedAmountCents
+    : Math.round((order.refundedAmount ?? 0) * 100);
+  const left = total - refunded;
+  return Number.isFinite(left) && left > 0 ? left : 0;
+};
+
+/**
+ * The orders the cancel queues for refund: paid (or partly refunded) AND with
+ * money left to refund. This is the server's own rule (the cancel prepare step
+ * lists orders whose total minus refunded amount is above zero). A FREE order
+ * is stored as paid with a total of 0; it is not queued and is not counted.
+ */
+export const countPaidOrders = (orders: readonly RefundableOrder[]): number =>
   orders.filter(
-    (order) => order.status === "paid" || order.status === "refunded_partial",
+    (order) =>
+      (order.status === "paid" || order.status === "refunded_partial") &&
+      refundableCents(order) > 0,
   ).length;
 
 /**
@@ -102,7 +132,7 @@ export const countPaidOrders = (
  */
 export const knownPaidOrderCount = (
   ordersStatus: string | null | undefined,
-  orders: readonly { status: string }[],
+  orders: readonly RefundableOrder[],
 ): number | null => {
   if (ordersStatus !== "ready") return null;
   const count = countPaidOrders(orders);
@@ -165,4 +195,48 @@ export const cancelRsvpDescription = (paidChipInCount: number | null): string =>
   return paidChipInCount === 1
     ? `Guests can no longer respond. The 1 chip-in a guest paid is ${REVIEW_TAIL}`
     : `Guests can no longer respond. The ${paidChipInCount} chip-ins guests paid are ${REVIEW_TAIL}`;
+};
+
+// ---------------------------------------------------------------------------
+// #3645 — tickets are held, but nobody PAID. Free tickets are orders with a
+// total of 0: nothing is queued for refund, so the host is not told about
+// refunds or a review.
+// ---------------------------------------------------------------------------
+
+export const CANCEL_NOTHING_PAID_DESCRIPTION =
+  "No one has paid, so there is nothing to refund. You can't undo this.";
+
+/**
+ * True only when it is KNOWN that no money is refundable: the orders read
+ * completed, no order has money left to refund, and no payment could have been
+ * taken at the door (door sales live on the device that took them).
+ */
+export const nothingToRefundIsKnown = (input: {
+  ordersStatus: string | null | undefined;
+  orders: readonly RefundableOrder[];
+  doorSoldCount: number;
+  doorSalesEnabled: boolean;
+}): boolean =>
+  input.ordersStatus === "ready" &&
+  countPaidOrders(input.orders) === 0 &&
+  input.doorSoldCount === 0 &&
+  !input.doorSalesEnabled;
+
+/**
+ * The cancel dialog body for an event or an experience, decided in one place:
+ *   1. nothing sold (known)            -> the caller's "nothing sold" sentence
+ *   2. sold, but nothing paid (known)  -> "No one has paid…"
+ *   3. otherwise                       -> what the cancel does with paid orders
+ */
+export const cancelDialogDescription = (input: {
+  nothingSold: boolean;
+  nothingSoldDescription?: string;
+  nothingToRefund: boolean;
+  paidOrderCount: number | null;
+}): string => {
+  if (input.nothingSold) {
+    return input.nothingSoldDescription ?? CANCEL_EVENT_NOTHING_SOLD_DESCRIPTION;
+  }
+  if (input.nothingToRefund) return CANCEL_NOTHING_PAID_DESCRIPTION;
+  return cancelWithSalesDescription(input.paidOrderCount);
 };

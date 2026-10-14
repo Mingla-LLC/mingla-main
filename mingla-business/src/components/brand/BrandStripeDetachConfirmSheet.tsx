@@ -136,20 +136,23 @@ export const BrandStripeDetachConfirmSheet: React.FC<
               <View style={styles.warnTextCol}>
                 <Text style={styles.warnTitle}>This stops incoming payments</Text>
                 <Text style={styles.warnBody}>
-                  Disconnecting stops {brandName} from taking payments.
-                  Existing buyers keep their bookings. Refunds for
-                  completed sales remain visible under your refund
-                  history.
+                  This disconnects your payout account from {brandName}.
+                  You won{"’"}t be able to take payments until you connect
+                  a bank again. Existing buyers keep their bookings.
+                  Refunds for completed sales remain visible under your
+                  refund history.
                 </Text>
               </View>
             </View>
             <View style={[styles.warnCard, styles.warnCardWarn]}>
               <Icon name="flag" size={18} color={accent.warm} />
               <View style={styles.warnTextCol}>
-                <Text style={styles.warnTitleWarn}>Reconnect requires KYC</Text>
+                <Text style={styles.warnTitleWarn}>
+                  Reconnecting means starting again
+                </Text>
                 <Text style={styles.warnBody}>
-                  You can reconnect later, but it requires re-onboarding
-                  from scratch including KYC verification.
+                  You can reconnect later, but bank setup starts from
+                  scratch, including identity verification.
                 </Text>
               </View>
             </View>

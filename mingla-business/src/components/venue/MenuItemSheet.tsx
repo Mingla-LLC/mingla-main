@@ -55,6 +55,7 @@ import {
   menuMoneyFractionDigits,
   parseMenuMoneyDraft,
   type MenuMoneyDraftResult,
+  menuPriceNeedsCurrency,
 } from "./menuMoneyDraft";
 import { MenuTextCounter } from "./MenuTextCounter";
 import {
@@ -277,11 +278,16 @@ export function MenuItemSheet({
     fractionDigits,
   );
   const moneyPlaceholder = fractionDigits === 0 ? "0" : "0.00";
-  // #3645 — a price above zero on a brand with no currency. The item's
-  // currency cannot be left empty in the database and must not be made up, so
-  // the price is not saved until the host has chosen a payout country.
-  const pricedWithoutCurrency =
-    !brandHasCurrency && priceResult.kind === "valid" && priceResult.cents > 0;
+  // #3645 — a price above zero being SET OR CHANGED on a brand with no
+  // currency. The item's currency cannot be left empty in the database and
+  // must not be made up, so a new price is not saved until the host has chosen
+  // a payout country. A price the item already has is left alone: editing its
+  // name, description or anything else saves exactly as before.
+  const pricedWithoutCurrency = menuPriceNeedsCurrency({
+    brandHasCurrency,
+    nextPriceCents: priceResult.kind === "valid" ? priceResult.cents : null,
+    savedPriceCents: item?.priceCents ?? null,
+  });
   const nameValidation = useMemo(
     () => validateMenuText("itemName", name),
     [name],

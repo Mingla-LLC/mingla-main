@@ -90,12 +90,12 @@ import {
 } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import {
+  cancelDialogDescription,
   cancelDoneToast,
-  cancelEventDialogDescription,
   cancelEventDoneToast,
-  cancelWithSalesDescription,
   knownPaidOrderCount,
   nothingSoldIsKnown,
+  nothingToRefundIsKnown,
 } from "../../../src/utils/cancelEventCopy";
 import { useOfferingPayoutMoney } from "../../../src/hooks/useOfferingPayoutMoney";
 import { canPerformAction } from "../../../src/utils/permissionGates";
@@ -505,6 +505,12 @@ export default function EventDetailScreen(): React.ReactElement {
     eventOrdersQuery.status,
     allOrderEntries,
   );
+  const nothingToRefund = nothingToRefundIsKnown({
+    ordersStatus: eventOrdersQuery.status,
+    orders: allOrderEntries,
+    doorSoldCount,
+    doorSalesEnabled: event?.inPersonPaymentsEnabled === true,
+  });
   useEffect(() => {
     nothingSoldRef.current = nothingSold;
     paidOrderCountRef.current = paidOrderCount;
@@ -1157,10 +1163,12 @@ export default function EventDetailScreen(): React.ReactElement {
         }}
         onConfirm={handleCancelConfirm}
         title="Cancel this event?"
-        description={cancelEventDialogDescription(
+        description={cancelDialogDescription({
           nothingSold,
-          cancelWithSalesDescription(paidOrderCount),
-        )}
+          // Free tickets are orders with nothing to refund: never "queued".
+          nothingToRefund,
+          paidOrderCount,
+        })}
         variant="typeToConfirm"
         confirmText={event.name.trim().length > 0 ? event.name : event.eventSlug}
         confirmLabel="Cancel event"

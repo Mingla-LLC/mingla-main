@@ -78,9 +78,10 @@ import { unpublishExperienceToDraft } from "../../../src/services/experienceDeta
 // event, so the same true wording applies.
 import {
   CANCEL_EXPERIENCE_NOTHING_SOLD_DESCRIPTION,
+  cancelDialogDescription,
   cancelDoneToast,
-  cancelWithSalesDescription,
   knownPaidOrderCount,
+  nothingToRefundIsKnown,
 } from "../../../src/utils/cancelEventCopy";
 // issue #3237 — the one-shot "Published. It's live." banner after a publish,
 // and the rule that keeps a draft from offering links that open "not found".
@@ -262,6 +263,13 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
     ordersQuery.status,
     experienceOrders,
   );
+  // A free experience's bookings are orders with nothing to refund.
+  const cancelNothingToRefund = nothingToRefundIsKnown({
+    ordersStatus: ordersQuery.status,
+    orders: experienceOrders,
+    doorSoldCount: 0,
+    doorSalesEnabled: false,
+  });
   const cancelNothingSold =
     ordersQuery.status === "ready" &&
     experienceOrders.every(
@@ -710,11 +718,12 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           }
         }}
         title="Cancel this experience?"
-        description={
-          cancelNothingSold
-            ? CANCEL_EXPERIENCE_NOTHING_SOLD_DESCRIPTION
-            : cancelWithSalesDescription(cancelPaidOrderCount)
-        }
+        description={cancelDialogDescription({
+          nothingSold: cancelNothingSold,
+          nothingSoldDescription: CANCEL_EXPERIENCE_NOTHING_SOLD_DESCRIPTION,
+          nothingToRefund: cancelNothingToRefund,
+          paidOrderCount: cancelPaidOrderCount,
+        })}
         variant="typeToConfirm"
         confirmText={experience.title.length > 0 ? experience.title : experience.slug}
         confirmLabel="Cancel experience"

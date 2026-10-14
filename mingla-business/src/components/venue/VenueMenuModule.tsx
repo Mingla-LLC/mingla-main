@@ -86,6 +86,7 @@ import { MenuCategorySheet } from "./MenuCategorySheet";
 import type { MenuCategorySheetSaveInput } from "./MenuCategorySheet";
 import { MenuItemSheet } from "./MenuItemSheet";
 import type { MenuItemSheetSaveInput } from "./MenuItemSheet";
+import { menuPriceNeedsCurrency } from "./menuMoneyDraft";
 import { serviceWindowSummary } from "./menuDepth";
 import {
   classifyMenuTextSaveFailure,
@@ -444,11 +445,20 @@ export function VenueMenuModule({
       setSaveError(false);
       setItemSaveFailure(null);
       // #3645 — `menu_items.currency` cannot be empty, and `currency` here is
-      // only a crash-guard value (pounds) for a brand with none. A PRICED item
-      // is therefore not saved until the brand has a real currency; the sheet
-      // shows the payout-country prompt and keeps Save off, and this is the
-      // belt behind it. A free or "price on request" item saves as before.
-      if (!brandHasCurrency && (input.priceCents ?? 0) > 0) return;
+      // only a crash-guard value (pounds) for a brand with none. A NEW or
+      // CHANGED positive price is therefore not saved until the brand has a
+      // real currency; the sheet shows the payout-country prompt and keeps
+      // Save off, and this is the belt behind it. Free and "price on request"
+      // items, and an item whose existing price is untouched, save as before.
+      if (
+        menuPriceNeedsCurrency({
+          brandHasCurrency,
+          nextPriceCents: input.priceCents,
+          savedPriceCents: editingItem?.priceCents ?? null,
+        })
+      ) {
+        return;
+      }
       const parentMenu = menus.find((m) => m.id === itemSheetMenuId) ?? null;
       const nextSort =
         editingItem !== null

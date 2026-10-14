@@ -177,3 +177,20 @@ export const parseSignedMenuMoneyDraft = (
     cents: magnitude.cents === 0 ? 0 : -magnitude.cents,
   };
 };
+
+/**
+ * #3645 — does this save put a NEW positive price on a brand with no currency?
+ * True only when the price is above zero and differs from the price the item
+ * already has (a new item has none). An untouched existing price is not a new
+ * price, and neither is a free or blank one.
+ */
+export function menuPriceNeedsCurrency(input: {
+  brandHasCurrency: boolean;
+  nextPriceCents: number | null | undefined;
+  savedPriceCents: number | null | undefined;
+}): boolean {
+  if (input.brandHasCurrency) return false;
+  const next = input.nextPriceCents ?? null;
+  if (next === null || next <= 0) return false;
+  return next !== (input.savedPriceCents ?? null);
+}

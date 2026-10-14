@@ -55,14 +55,14 @@ import {
 import type { LiveEvent } from "../../../src/store/liveEventStore";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import {
+  cancelDialogDescription,
   cancelDoneToast,
-  cancelEventDialogDescription,
   cancelEventDoneToast,
   cancelRsvpDescription,
-  cancelWithSalesDescription,
   countSoldTickets,
   knownPaidOrderCount,
   nothingSoldIsKnown,
+  nothingToRefundIsKnown,
 } from "../../../src/utils/cancelEventCopy";
 
 import {
@@ -249,6 +249,15 @@ export default function EventsTab(): React.ReactElement {
     cancelEventOrders.status,
     cancelEventOrders.data ?? [],
   );
+  // Free tickets are orders with nothing to refund: never "queued".
+  const cancelNothingToRefund =
+    cancelEvent !== null &&
+    nothingToRefundIsKnown({
+      ordersStatus: cancelEventOrders.status,
+      orders: cancelEventOrders.data ?? [],
+      doorSoldCount: 0,
+      doorSalesEnabled: cancelEvent.inPersonPaymentsEnabled === true,
+    });
   // An RSVP sells no tickets: the only money in it is chip-ins, and this
   // screen does not read them, so its dialog never says "nothing to refund".
   const cancellingRsvp =
@@ -595,12 +604,16 @@ export default function EventsTab(): React.ReactElement {
           visible: true,
           // #3645 — "Refunds are with Mingla for review" only when paid
           // orders are known to exist.
-          message: cancelDoneToast(cancellingRsvp ? null : cancelPaidOrderCount),
+          message: cancellingRsvp
+            ? cancelDoneToast(null, "RSVP")
+            : cancelDoneToast(cancelPaidOrderCount),
         });
       } catch {
         setToast({
           visible: true,
-          message: "Could not cancel event. Try again.",
+          message: cancellingRsvp
+            ? "Couldn't cancel this RSVP. Try again."
+            : "Could not cancel event. Try again.",
         });
       } finally {
         setCancelSubmitting(false);
@@ -1024,14 +1037,15 @@ export default function EventsTab(): React.ReactElement {
           setCancelEvent(null);
         }}
         onConfirm={handleCancelEventConfirm}
-        title="Cancel this event?"
+        title={cancellingRsvp ? "Cancel this RSVP?" : "Cancel this event?"}
         description={
           cancellingRsvp
             ? cancelRsvpDescription(null)
-            : cancelEventDialogDescription(
-              cancelNothingSold,
-              cancelWithSalesDescription(cancelPaidOrderCount),
-            )
+            : cancelDialogDescription({
+              nothingSold: cancelNothingSold,
+              nothingToRefund: cancelNothingToRefund,
+              paidOrderCount: cancelPaidOrderCount,
+            })
         }
         variant="typeToConfirm"
         confirmText={
@@ -1041,8 +1055,8 @@ export default function EventsTab(): React.ReactElement {
               : cancelEvent.eventSlug
             : ""
         }
-        confirmLabel="Cancel event"
-        cancelLabel="Keep event live"
+        confirmLabel={cancellingRsvp ? "Cancel RSVP" : "Cancel event"}
+        cancelLabel={cancellingRsvp ? "Keep it live" : "Keep event live"}
         destructive
       />
 

@@ -92,6 +92,7 @@ import { useBrandStripeAccountSession } from "../../hooks/useBrandStripeAccountS
 // moves all of it into the start-up chunk every visitor downloads (+7.9 KB,
 // measured). The copy is pinned to its owner by the #3645 bank-setup suite.
 const SELLING_ADD_BANK_CTA = "Add bank";
+const ADD_BANK_OPEN_FAILED_COPY = "We couldn't open bank setup. Try again.";
 const SELLING_ADD_BANK_SUB =
   "You can keep selling. Your money waits until you add a bank.";
 
@@ -134,7 +135,10 @@ import {
   resolveBankConnectRailForCountry,
   resolveBankSetupSeedCountry,
 } from "../../utils/bankConnectRail";
-import { rememberBrandPayoutCountry } from "../../services/brandPayoutCountryService";
+import {
+  healRememberedPayoutCountry,
+  rememberBrandPayoutCountry,
+} from "../../services/brandPayoutCountryService";
 import { SignedInNotFoundNotice } from "../auth/SignedInNotFoundNotice";
 // #3259 — names the signed-in account on the settled-null brand branch below.
 import { useSwitchAccount } from "../../hooks/useSwitchAccount";
@@ -461,6 +465,23 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   }, [brand?.id, selectPaystackProvider]);
 
   const savedStripeCountry = statusQuery.data?.country ?? null;
+  // #3645 — the remembered pick is never authoritative over a real account:
+  // once the account's country is known, a different remembered one is
+  // corrected (fire-and-forget).
+  const brandIdForHeal = brand?.id ?? null;
+  const rememberedPayoutCountry = brand?.payoutCountry ?? null;
+  useEffect(() => {
+    healRememberedPayoutCountry({
+      brandId: brandIdForHeal,
+      rememberedCountry: rememberedPayoutCountry,
+      accountCountry: savedStripeCountry,
+    });
+  }, [brandIdForHeal, rememberedPayoutCountry, savedStripeCountry]);
+  // #3645 — a host who came to choose a different country is not shown the
+  // country list until it is known whether the row is locked (a brand with a
+  // submitted payment account keeps its country). A status read that is not
+  // running (or has answered, or failed) is "known".
+  const awaitingLockState = countryChoiceRequested && statusQuery.isLoading;
 
   // #3645 — the brand's ADDRESS says Nigeria but the saved brand is not on the
   // Nigerian rail yet. Perform the same switch a manual pick does, once — but
@@ -705,9 +726,11 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         returnUrl,
         country: selectedCountry,
       });
-      // #3645 — remember the country setup was started in (display-only,
-      // best-effort; on web this must finish before the browser leaves).
-      await rememberBrandPayoutCountry(brand.id, selectedCountry);
+      // #3645 — remember the country setup was started in. A display-only
+      // convenience: fired, never awaited, so it can neither delay nor block
+      // what follows. If the browser leaves first, the pick is corrected from
+      // the account's own country the next time a screen reads it.
+      void rememberBrandPayoutCountry(brand.id, selectedCountry);
 
       setViewState("in-flight");
       announceForAccessibility(
@@ -775,6 +798,22 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       // §4.6 still holds: a 403 is decided before any fallback.
       const failure = classifyBrandOnboardingStartError(err);
       if (failure === "country-locked") {
+        // #3645 — the row moves to the account's country instead of keeping
+        // the stale one, and the remembered pick is corrected.
+        const existing = (err as { existingCountry?: unknown }).existingCountry;
+        if (typeof existing === "string") {
+          const lockedRail = resolveBankConnectRailForCountry(existing);
+          if (lockedRail !== null && lockedRail.provider === "stripe") {
+            countryTouchedRef.current = true;
+            setCountryTouched(true);
+            setSelectedCountry(lockedRail.countryCode);
+            healRememberedPayoutCountry({
+              brandId: brand.id,
+              rememberedCountry: brand.payoutCountry,
+              accountCountry: lockedRail.countryCode,
+            });
+          }
+        }
         setViewState("failed-stripe");
         setErrorMessage(message);
         fireHaptic("warning");
@@ -838,8 +877,13 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     statusQuery.data?.charges_enabled === true &&
     statusQuery.data?.payouts_enabled === false;
   const accountSession = useBrandStripeAccountSession();
+  // True when the last attempt to open payout account management failed, for
+  // ANY reason: the request, or the browser refusing to open the window (a
+  // popup blocker refuses a window opened after a request). Never silent.
+  const [addBankFailed, setAddBankFailed] = useState(false);
   const handleAddBank = useCallback(async (): Promise<void> => {
     if (brand === null || accountSession.isPending) return;
+    setAddBankFailed(false);
     try {
       const result = await accountSession.mutateAsync({
         brandId: brand.id,
@@ -848,7 +892,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       await WebBrowser.openAuthSessionAsync(result.targetUrl, RETURN_DEEP_LINK);
       await statusQuery.refetch();
     } catch {
-      // The hook logs the failure; the card below shows it and offers a retry.
+      setAddBankFailed(true);
+      fireHaptic("error");
+      announceForAccessibility(ADD_BANK_OPEN_FAILED_COPY);
     }
   }, [accountSession, brand, statusQuery]);
 
@@ -1133,10 +1179,17 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               </View>
               <Text style={styles.stateTitle}>Add your bank to get paid</Text>
               <Text style={styles.stateSub}>
-                {accountSession.isError
-                  ? "We couldn’t open your payout account. Try again."
-                  : SELLING_ADD_BANK_SUB}
+                {SELLING_ADD_BANK_SUB}
               </Text>
+              {addBankFailed ? (
+                <Text
+                  style={[styles.stateSub, styles.addBankError]}
+                  accessibilityRole="alert"
+                  testID="onboard-add-bank-error"
+                >
+                  {ADD_BANK_OPEN_FAILED_COPY}
+                </Text>
+              ) : null}
             </View>
             <View style={styles.actionsCol}>
               <Button
@@ -1211,7 +1264,14 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           />
         ) : null}
 
-        {viewState === "idle" ? (
+        {viewState === "idle" && awaitingLockState ? (
+          <View style={styles.stateBlock} testID="onboard-awaiting-lock-state">
+            <Spinner size={48} color={accent.warm} />
+            <Text style={styles.stateTitle}>Checking your payout status…</Text>
+          </View>
+        ) : null}
+
+        {viewState === "idle" && !awaitingLockState ? (
           <>
             <View style={styles.stateBlock}>
               <Text style={styles.stateTitle}>
@@ -1697,6 +1757,9 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     textAlign: "center",
     paddingHorizontal: spacing.md,
+  },
+  addBankError: {
+    color: semantic.error,
   },
   bold: {
     fontWeight: "600",

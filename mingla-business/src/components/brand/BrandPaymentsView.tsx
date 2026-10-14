@@ -20,7 +20,7 @@
  * Per J-A10 spec §3.5.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, StyleSheet, Text, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 // #1834 [keyboard-blocks-bank-field] — the body ScrollViews route through the
@@ -65,7 +65,10 @@ import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 import { BrandStripeDetachConfirmSheet } from "./BrandStripeDetachConfirmSheet";
 // META-ORCH-1076 Phase 2 — Paystack (NG) payout onboarding surface.
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
-import { rememberBrandPayoutCountry } from "../../services/brandPayoutCountryService";
+import {
+  healRememberedPayoutCountry,
+  rememberBrandPayoutCountry,
+} from "../../services/brandPayoutCountryService";
 // #1180 — held-payout receipt + release history (both rails) + explainer sheet.
 import { BrandPayoutBreakdown } from "./BrandPayoutBreakdown";
 import { BrandPayoutTimelineExplainer } from "./BrandPayoutTimelineExplainer";
@@ -407,8 +410,18 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     bannerConfig !== stripeBannerBase;
   const refetchStripeStatus = stripeStatusQuery.refetch;
   const refetchPayoutVisibility = payoutVisibilityQuery.refetch;
+  // True when the last "Add bank" could not open payout account management,
+  // for ANY reason: the request, or the browser refusing to open the window
+  // (a popup blocker refuses a window opened after a request). Never silent.
+  const [addBankFailed, setAddBankFailed] = useState(false);
   const handleCardRailAddBank = useCallback(async (): Promise<void> => {
-    await handleOpenAccountManagement();
+    setAddBankFailed(false);
+    try {
+      await handleOpenAccountManagement();
+    } catch {
+      setAddBankFailed(true);
+      return;
+    }
     void refetchStripeStatus();
     void refetchPayoutVisibility();
   }, [
@@ -416,6 +429,19 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     refetchPayoutVisibility,
     refetchStripeStatus,
   ]);
+  // #3645 — the remembered payout country is never authoritative over a real
+  // account: this screen knows the account's country, so a different
+  // remembered one is corrected (fire-and-forget).
+  const brandIdForHeal = brand?.id ?? null;
+  const rememberedPayoutCountry = brand?.payoutCountry ?? null;
+  const liveAccountCountry = stripeStatusQuery.data?.country ?? null;
+  useEffect(() => {
+    healRememberedPayoutCountry({
+      brandId: brandIdForHeal,
+      rememberedCountry: rememberedPayoutCountry,
+      accountCountry: liveAccountCountry,
+    });
+  }, [brandIdForHeal, liveAccountCountry, rememberedPayoutCountry]);
 
   // #1863 §4.10 — the server has refused this caller. Derived once, from the
   // real classified errors, for BOTH twins. When true the whole body is
@@ -832,6 +858,23 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
             />
           )
           : null}
+        {cardRailAddBank && addBankFailed
+          ? (
+            <GlassCard
+              variant="base"
+              padding={spacing.md}
+              style={styles.statusRefreshWarning}
+            >
+              <Text
+                style={styles.statusRefreshTitle}
+                accessibilityRole="alert"
+                testID="payments-add-bank-error"
+              >
+                We couldn{"’"}t open bank setup. Try again.
+              </Text>
+            </GlassCard>
+          )
+          : null}
 
         {stripeStatusQuery.isError
           ? (
@@ -1033,8 +1076,9 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               <Text style={styles.dangerZoneTitle}>DANGER ZONE</Text>
               <GlassCard variant="base" padding={spacing.md}>
                 <Text style={styles.dangerZoneBody}>
-                  Disconnecting stops {brand.displayName}{" "}
-                  from taking payments. Existing buyers keep their bookings;
+                  Disconnecting closes {brand.displayName}{"’"}s payout
+                  account. It won{"’"}t be able to take payments until you
+                  connect a bank again. Existing buyers keep their bookings;
                   refunds remain visible under your refund history.
                 </Text>
                 <View style={styles.dangerZoneBtnRow}>

@@ -636,3 +636,222 @@ describe("#3645 web — bank setup opens on the chosen country, never on a defau
     expect(pickerValue(tree)).toBe("");
   });
 });
+
+// ---------------------------------------------------------------------------
+// #3645 review follow-up — appended.
+//   * A brand that already has a card payment account is never asked to
+//     "Choose a country": the account's own country is read and used.
+//   * A "this account is in another country" reply moves the row to that
+//     country instead of leaving the stale one selected.
+//   * Remembering the pick never delays the move to hosted setup.
+// ---------------------------------------------------------------------------
+describe("#3645 web — a brand with a payment account is not asked to choose its country", () => {
+  let tree: TestTree | null = null;
+  let queryClient: QueryClient;
+
+  type AccountSeed = BrandSeed & {
+    stripeStatus?: string;
+    defaultCurrency?: string | null;
+    payoutCountry?: string | null;
+  };
+  const withAccount = (patch: Partial<AccountSeed> = {}): BrandSeed =>
+    ({
+      id: BRAND_ID,
+      displayName: "Harbour Supper Club",
+      countryCode: null,
+      paymentProvider: "stripe",
+      stripeStatus: "onboarding",
+      ...patch,
+    }) as BrandSeed;
+
+  const supabaseFrom = (): jest.Mock =>
+    (jest.requireMock("../../../services/supabase") as {
+      supabase: { from: jest.Mock };
+    }).supabase.from;
+  const startCard = (): jest.Mock =>
+    (jest.requireMock("../../../utils/bankConnectFunnel") as {
+      startStripeWebBankConnect: jest.Mock;
+    }).startStripeWebBankConnect;
+
+  /** The account row read, and the remembered-country write, on one mock. */
+  const writes: unknown[] = [];
+  function accountRowAnswers(country: string | null): void {
+    supabaseFrom().mockImplementation((table: string) => {
+      if (table === "stripe_connect_accounts") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({
+                  maybeSingle: async () => ({
+                    data: country === null ? null : { country, detached_at: null },
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      return {
+        update: (values: unknown) => {
+          writes.push(values);
+          return { eq: () => ({ is: () => ({ select: async () => ({ data: [{ id: BRAND_ID }], error: null }) }) }) };
+        },
+      };
+    });
+  }
+
+  async function mountBody(): Promise<TestTree> {
+    let mounted: TestTree | null = null;
+    await TestRenderer.act(async () => {
+      mounted = TestRenderer.create(
+        <QueryClientProvider client={queryClient}>
+          <BrandBankConnectBody />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+    if (mounted === null) throw new Error("Bank-connect body did not mount.");
+    return mounted;
+  }
+
+  const pickerValue = (target: TestTree): string =>
+    (only(target, "country-picker").props.accessibilityValue as { text: string })
+      .text;
+
+  beforeEach(() => {
+    params = { id: BRAND_ID };
+    writes.length = 0;
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue({ data: {}, error: null });
+    startCard().mockReset();
+    supabaseFrom().mockReset();
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: { location: { assign: jest.fn(), origin: ORIGIN } },
+      writable: true,
+    });
+  });
+
+  afterEach(() => {
+    if (tree !== null) {
+      TestRenderer.act(() => tree?.unmount());
+      tree = null;
+    }
+    queryClient.clear();
+    supabaseFrom().mockReset();
+  });
+
+  test("W1: the account's own country is shown and usable; the host is never asked to choose", async () => {
+    // A euro brand: the currency alone cannot name the country.
+    brandSeed = withAccount({ defaultCurrency: "EUR" });
+    accountRowAnswers("FR");
+    tree = await mountBody();
+
+    expect(pickerValue(tree)).toBe("FR");
+    expect(only(tree, "bank-connect-primary").props.disabled).toBe(false);
+    expect(count(tree, "bank-connect-account-country-unknown")).toBe(0);
+    // The remembered pick is corrected to the real account's country.
+    expect(writes).toEqual([{ payout_country: "FR" }]);
+  });
+
+  test("W2: a stale remembered pick does not outrank the real account", async () => {
+    brandSeed = withAccount({ defaultCurrency: "EUR", payoutCountry: "IE" });
+    accountRowAnswers("DE");
+    tree = await mountBody();
+    expect(pickerValue(tree)).toBe("DE");
+    expect(writes).toEqual([{ payout_country: "DE" }]);
+  });
+
+  test("W3: when the account's country cannot be read, nothing is guessed and nothing is asked", async () => {
+    brandSeed = withAccount({ defaultCurrency: "EUR" });
+    accountRowAnswers(null);
+    tree = await mountBody();
+
+    // No "Choose a country" row, no button gated on a pick: a plain message.
+    expect(count(tree, "country-picker")).toBe(0);
+    expect(count(tree, "bank-connect-primary")).toBe(0);
+    const message = textOf(only(tree, "bank-connect-account-country-unknown"));
+    expect(message).toContain("load this brand");
+    expect(message).not.toMatch(/stripe|paystack|choose a country/i);
+    expect(startCard()).not.toHaveBeenCalled();
+
+    // Try again reads it again.
+    accountRowAnswers("FR");
+    await TestRenderer.act(async () => {
+      (only(tree as TestTree, "bank-connect-account-country-retry").props.onPress as () => void)();
+    });
+    await flush();
+    expect(pickerValue(tree)).toBe("FR");
+    expect(only(tree, "bank-connect-primary").props.disabled).toBe(false);
+  });
+
+  test("W4: a brand with NO payment account still chooses for itself (the read is not even made)", async () => {
+    brandSeed = withAccount({ stripeStatus: "not_connected" });
+    accountRowAnswers("FR");
+    tree = await mountBody();
+    expect(pickerValue(tree)).toBe("");
+    expect(supabaseFrom()).not.toHaveBeenCalledWith("stripe_connect_accounts");
+  });
+
+  test("W5: 'this account is in another country' shows the sentence and moves the row to the account's country", async () => {
+    brandSeed = withAccount({ stripeStatus: "not_connected", defaultCurrency: "USD" });
+    accountRowAnswers(null);
+    startCard().mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          "A payment account is already set up for ES. To use a different country or currency, create a new brand.",
+        ),
+        { code: "country_locked", existingCountry: "ES" },
+      ),
+    );
+    // (Spain: the correction is written once per brand and country per page,
+    // and an earlier test already corrected this brand to France.)
+    tree = await mountBody();
+    expect(pickerValue(tree)).toBe("US");
+
+    await TestRenderer.act(async () => {
+      await (only(tree as TestTree, "bank-connect-primary").props.onPress as () => Promise<void>)();
+    });
+    await flush();
+
+    expect(textOf(only(tree, "bank-connect-error"))).toContain(
+      "A payment account is already set up for ES",
+    );
+    expect(pickerValue(tree)).toBe("ES");
+    expect(writes).toEqual([{ payout_country: "ES" }]);
+  });
+
+  test("W6: remembering the pick never delays the move to hosted setup", async () => {
+    brandSeed = withAccount({ stripeStatus: "not_connected", defaultCurrency: "USD" });
+    // The remembered-country write never answers.
+    supabaseFrom().mockImplementation(() => ({
+      update: () => ({ eq: () => ({ is: () => ({ select: () => new Promise(() => undefined) }) }) }),
+    }));
+    (jest.requireMock("../../../services/brandStripeService") as {
+      startBrandStripeOnboarding: jest.Mock;
+    }).startBrandStripeOnboarding.mockResolvedValue({ onboarding_url: `${ORIGIN}/connect-onboarding?session=s` });
+    let minted: unknown = null;
+    startCard().mockImplementation(
+      async (input: { mintOnboarding: (i: unknown) => Promise<unknown> }) => {
+        minted = await input.mintOnboarding({
+          brandId: BRAND_ID,
+          returnUrl: `${ORIGIN}/brand/${BRAND_ID}/payments`,
+          country: "US",
+        });
+      },
+    );
+    tree = await mountBody();
+
+    await TestRenderer.act(async () => {
+      await (only(tree as TestTree, "bank-connect-primary").props.onPress as () => Promise<void>)();
+    });
+    await flush();
+
+    expect(minted).toEqual({ onboarding_url: `${ORIGIN}/connect-onboarding?session=s` });
+  });
+});
