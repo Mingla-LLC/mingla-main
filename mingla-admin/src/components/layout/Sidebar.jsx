@@ -126,6 +126,12 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
   const [foldedGroups, setFoldedGroups] = useState(() => readFoldedGroups(browserStorage()));
   const [signingOut, setSigningOut] = useState(false);
 
+  // Remember the folded groups in this browser. A browser that refuses is fine:
+  // the fold still works until the page is reloaded (lib/shellNav.js).
+  useEffect(() => {
+    writeFoldedGroups(browserStorage(), foldedGroups);
+  }, [foldedGroups]);
+
   // Escape closes the phone menu.
   useEffect(() => {
     if (!mobileOpen) return undefined;
@@ -152,9 +158,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
   };
 
   const toggleGroup = (label) => {
-    const next = toggleFoldedGroup(foldedGroups, label);
-    setFoldedGroups(next);
-    writeFoldedGroups(browserStorage(), next);
+    setFoldedGroups((prev) => toggleFoldedGroup(prev, label));
   };
 
   const openPage = (id) => {
