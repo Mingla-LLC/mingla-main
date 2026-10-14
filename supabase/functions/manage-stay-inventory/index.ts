@@ -181,6 +181,10 @@ function errorResponse(
     "stay_dst_fold",
     "fx_snapshot_stale",
     "fx_unavailable",
+    // issue #3645 — biz_publish_stay refuses a member who has not accepted the
+    // current Organiser Terms. Last in the list so every older code keeps the
+    // match it had; the Host app opens the acceptance sheet on this code.
+    "mingla_tos_not_accepted",
   ].find((code) => raw.includes(code));
   const code = known ?? "internal_error";
   const status = code === "unauthorized"
@@ -201,6 +205,7 @@ function errorResponse(
         "stay_live_cover_required",
         "stay_authoring_disabled",
         "stay_venue_not_approved",
+        "mingla_tos_not_accepted",
       ].includes(code)
     ? 409
     : code === "fx_unavailable"
@@ -222,6 +227,8 @@ function errorResponse(
     code,
     message: status === 500
       ? "We couldn’t update this Stay. Try again."
+      : code === "mingla_tos_not_accepted"
+      ? "Accept the Organiser Terms to publish this Stay."
       : code.replaceAll("_", " "),
     requestId,
   });

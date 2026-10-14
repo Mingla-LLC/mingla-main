@@ -368,6 +368,13 @@ const BOUNDARY: Record<string, () => unknown> = {
   }),
   paidPublishGuards: () => ({
     describeUnmappedPublishGuard: () => null,
+    // #3645 — the event creator now asks the shared money test and the
+    // Organiser Terms refusal test from this module. This harness publishes a
+    // free listing and never reaches a refusal.
+    eventPublishCarriesMoney: () => false,
+    isOrganiserTermsRefusalMessage: () => false,
+    ORGANISER_TERMS_UNCONFIRMED_COPY: "",
+    organiserTermsUnresolvedCopy: () => "",
     resolveProviderNeutralPaidPublishGuardCopy: () => null,
     resolvePaidPublishGuardCopy: () => null,
     brandPaymentOnboardingRoute: () => "/payments",

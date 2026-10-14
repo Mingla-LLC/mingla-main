@@ -297,3 +297,94 @@ export const brandStripeOnboardingRoute = (brandId: string): string =>
 /** #1919 provider-neutral name for the existing Payments onboarding route. */
 export const brandPaymentOnboardingRoute = (brandId: string): string =>
   `/brand/${brandId}/payments/onboard`;
+
+/**
+ * Issue #3645 — the Organiser Terms refusal, and the `accept_terms` action.
+ *
+ * A paid publish by a member who has not accepted the current Organiser Terms
+ * is refused by the server with `mingla_tos_not_accepted` (events, trips,
+ * experiences and stays). It is not a payment-setup problem and not a date
+ * problem, so it is NOT folded into the two unions above: every existing
+ * `switch` on their actions stays exhaustive. A publish surface asks
+ * `resolveOrganiserTermsRefusalCopy` FIRST; on a match it opens the acceptance
+ * sheet (`useOrganiserTermsPublishGate().acceptTermsAfterServerRefusal`) and the
+ * refused publish resumes once the terms are accepted. The server code itself is
+ * never shown.
+ */
+export const ORGANISER_TERMS_REFUSAL_CODE = "mingla_tos_not_accepted" as const;
+
+export type PublishRefusalAction =
+  | ProviderNeutralPaidPublishGuardAction
+  | "accept_terms";
+
+export interface OrganiserTermsRefusalCopy {
+  reason: "organiser_terms_required";
+  title: string;
+  body: string;
+  actionLabel: string;
+  action: Extract<PublishRefusalAction, "accept_terms">;
+}
+
+export const ORGANISER_TERMS_REFUSAL_COPY: OrganiserTermsRefusalCopy = {
+  reason: "organiser_terms_required",
+  title: "Accept the Organiser Terms",
+  body: "Accept the Organiser Terms to publish a paid listing. Your draft is saved.",
+  actionLabel: "Review and accept",
+  action: "accept_terms",
+};
+
+/**
+ * Shown when the server keeps asking for the terms although this account
+ * already reads as having accepted them, so the sheet has nothing to offer.
+ * It does not invite a retry and does not show a code.
+ */
+export const ORGANISER_TERMS_UNCONFIRMED_COPY =
+  "We couldn't confirm your Organiser Terms, so this wasn't published. Your draft is saved. Contact support@usemingla.com and we'll sort it out.";
+
+/**
+ * Shown when the server asked for the terms and acceptance could not be read
+ * (offline, or the read failed). Nothing was published and nothing is retried
+ * automatically; pressing Publish again is the host's choice.
+ */
+export const ORGANISER_TERMS_UNREADABLE_COPY =
+  "We couldn't check your Organiser Terms just now, so this wasn't published. Your draft is saved. Check your connection, then press Publish again.";
+
+/** The sentence for each way a server terms refusal can be left unresolved. */
+export const organiserTermsUnresolvedCopy = (
+  reason: "already_accepted" | "unreadable" | "unavailable",
+): string =>
+  reason === "unreadable"
+    ? ORGANISER_TERMS_UNREADABLE_COPY
+    : ORGANISER_TERMS_UNCONFIRMED_COPY;
+
+/**
+ * True when a raw server message (a publish RPC's `error.message`, or the code a
+ * Stay publish answers with) is the Organiser Terms refusal. The token is
+ * matched whole, so a longer token that merely contains it does not count.
+ */
+export const isOrganiserTermsRefusalMessage = (
+  raw: string | null | undefined,
+): boolean =>
+  typeof raw === "string" &&
+  /(?:^|[^a-z0-9_])mingla_tos_not_accepted(?:$|[^a-z0-9_])/.test(raw);
+
+/** The acceptance copy for a raw server message, or null when it is not this refusal. */
+export const resolveOrganiserTermsRefusalCopy = (
+  raw: string | null | undefined,
+): OrganiserTermsRefusalCopy | null =>
+  isOrganiserTermsRefusalMessage(raw) ? ORGANISER_TERMS_REFUSAL_COPY : null;
+
+/**
+ * The server's test for "this event publish carries money", mirrored: ANY
+ * ticket priced above zero, online or door, whatever its free flag says
+ * (`business_publish_event_draft` rounds price x 100 and ignores `isFree`).
+ * The event creator asks for the Organiser Terms in exactly these cases, so the
+ * app and the server never disagree about who must accept.
+ */
+export const eventPublishCarriesMoney = (
+  tickets: readonly { priceGbp: number | null | undefined }[],
+): boolean =>
+  tickets.some((ticket) => {
+    const price = ticket.priceGbp;
+    return typeof price === "number" && Number.isFinite(price) && Math.round(price * 100) > 0;
+  });

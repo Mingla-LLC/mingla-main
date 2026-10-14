@@ -125,6 +125,8 @@ import {
 } from "./TripCreatorStep5Review";
 import {
   brandPaymentOnboardingRoute,
+  isOrganiserTermsRefusalMessage,
+  organiserTermsUnresolvedCopy,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 // issue #3801 — `supabase.rpc()` rejects with a PostgREST PLAIN OBJECT, and
@@ -585,6 +587,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   // #3645 PR11c — Organiser Terms before first paid listing publish.
   const {
     blockPaidPublishUntilAccepted,
+    acceptTermsAfterServerRefusal,
     gateElement: organiserTermsGateElement,
   } = useOrganiserTermsPublishGate(trip.brandId);
   const [step, setStep] = useState<StepIndex>(() =>
@@ -1607,6 +1610,20 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     } catch (e) {
       const err = e as TripPublishValidationError;
       setPublishConfirmVisible(false);
+      // #3645 — the server asks for the Organiser Terms. Offer the acceptance
+      // sheet and resume this publish once accepted. Handled before the error
+      // banner, which would otherwise print the server's code.
+      if (
+        isOrganiserTermsRefusalMessage(err?.message) ||
+        isOrganiserTermsRefusalMessage(readRpcFailureMessage(e))
+      ) {
+        setInvitePublishConfirmVisible(false);
+        acceptTermsAfterServerRefusal(
+          () => resumePublishRef.current(),
+          (reason) => showToast(organiserTermsUnresolvedCopy(reason)),
+        );
+        return;
+      }
       setPublishError(mapPublishErrorToState(err.code ?? "publish_failed", err.message));
       // ORCH-1075 — a paid trip on a Stripe-unready brand can't publish; route
       // the operator to the brand's Stripe Connect onboarding to finish setup.
@@ -1615,7 +1632,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         router.push(bankSetupRoute as never);
       }
     }
-  }, [publishMutation, router, step1Draft, step5Draft, trip.id, trip.brandId, trip.timezone, onPublished, showToast, invitePlan, bankSetupRoute]);
+  }, [publishMutation, router, step1Draft, step5Draft, trip.id, trip.brandId, trip.timezone, onPublished, showToast, invitePlan, bankSetupRoute,
+    acceptTermsAfterServerRefusal]);
 
   // Suppress autosave-error toast surfacing via setPublishError; show via
   // the persistent banner in Step 5. Show toast for discard errors only.

@@ -458,6 +458,11 @@ export function mapLegacyAriErrorCode(legacy: string): AriErrorCode {
       return "RECONCILIATION_REQUIRED";
     case "EXECUTION_FAILED":
       return "RESULT_UNKNOWN";
+    // issue #3645 — the Organiser Terms refusal. Deliberately mapped onto an
+    // envelope code every installed app already knows: an unknown code fails
+    // the app's envelope check and reads as a broken connection. The exact
+    // sentence reaches the thread through the stored failure reason.
+    case "ORGANISER_TERMS_REQUIRED":
     case "EDGE_FAILED":
     case "RPC_FAILED":
       // #1981 — Host/domain refusals arrive as EDGE_FAILED/RPC_FAILED; do not
