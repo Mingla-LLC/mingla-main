@@ -326,21 +326,45 @@ def exercise_freeze_matrix(guard: ModuleType) -> int:
         )
         check(mode == "transition", "approved transition patch was rejected")
 
-    for bad_id in ("f" * 40, "e" * 40):
+    mutated_ids: list[str] = []
+    for patch_id in exact:
+        replacement = "0" if patch_id[-1] != "0" else "1"
+        mutated = patch_id[:-1] + replacement
+        mutated_ids.append(mutated)
         expect_failure(
-            lambda bad_id=bad_id: guard.classify_freeze(
+            lambda mutated=mutated: guard.classify_freeze(
                 FreezeGit(
                     guard.REGISTRY_PATH,
                     body,
-                    body + b"mutated",
-                    patch_output=f"{bad_id} {'0' * 40}\n".encode(),
+                    body + b"one-byte mutation",
+                    patch_output=f"{mutated} {'0' * 40}\n".encode(),
                 ),
                 "base",
                 "head",
                 "merge",
             ),
-            "unrecognized pre-freeze registry patch identity",
+            f"unrecognized pre-freeze registry patch identity: {mutated}",
         )
+    unknown_patch = "f" * 40
+    check(
+        unknown_patch not in guard.TRANSITION_PATCH_IDS
+        and unknown_patch not in mutated_ids,
+        "unknown-patch fixture overlaps an approved or one-byte-mutated identity",
+    )
+    expect_failure(
+        lambda: guard.classify_freeze(
+            FreezeGit(
+                guard.REGISTRY_PATH,
+                body,
+                body + b"unknown transition",
+                patch_output=f"{unknown_patch} {'0' * 40}\n".encode(),
+            ),
+            "base",
+            "head",
+            "merge",
+        ),
+        f"unrecognized pre-freeze registry patch identity: {unknown_patch}",
+    )
     expect_failure(
         lambda: guard.classify_freeze(
             FreezeGit(
@@ -372,7 +396,7 @@ def exercise_freeze_matrix(guard: ModuleType) -> int:
     expect_failure(
         lambda: unique_transition([("a", "b"), ("c", "d")]), "found 2"
     )
-    return len(mutations) + 12
+    return len(mutations) + 13
 
 
 def declaration_line(guard: ModuleType, invariant_id: str, rule: str) -> str:
@@ -385,9 +409,27 @@ def exercise_declaration_matrix(guard: ModuleType) -> int:
     valid = declaration_line(guard, invariant_id, valid_rule)
 
     malformed = [
+        (
+            "scripts/check.mjs",
+            1,
+            valid.replace(f"{invariant_id} ", ""),
+            "malformed invariant declaration",
+        ),
+        (
+            "scripts/check.mjs",
+            1,
+            valid.replace(invariant_id, "I-" + "bad_identifier"),
+            "malformed invariant declaration",
+        ),
         ("scripts/check.mjs", 1, valid.replace("issue #3643", "issue #0"), "malformed"),
         ("scripts/check.mjs", 1, valid.replace("issue #3643", "issue #03643"), "malformed"),
         ("scripts/check.mjs", 1, valid.replace("issue #3643 | ", ""), "malformed"),
+        (
+            "scripts/check.mjs",
+            1,
+            valid.replace(valid_rule, ""),
+            "malformed invariant declaration",
+        ),
         ("scripts/check.mjs", 1, valid.replace(valid_rule, "too short"), "20–500"),
         ("scripts/check.mjs", 1, valid + " ", "trimmed"),
         ("scripts/check.mjs", 1, valid.replace(valid_rule, valid_rule + " | extra"), "malformed"),
@@ -396,6 +438,21 @@ def exercise_declaration_matrix(guard: ModuleType) -> int:
         ("src/check.mjs", 1, valid, "unsupported invariant owner"),
         ("scripts/check.mjs", 1, valid.replace("// ", "# ", 1), "comment syntax"),
     ]
+    multiline = valid.replace(
+        valid_rule,
+        "First physical rule line remains incomplete.\n"
+        "// A second physical line cannot extend the declaration rule.",
+    )
+    check(
+        guard.DECLARATION_RE.fullmatch(multiline) is None,
+        "multiline declaration unexpectedly matched the one-line grammar",
+    )
+    expect_failure(
+        lambda: guard.collect_declarations(
+            DeclarationGit([("scripts/check.mjs", 1, multiline)]), "head", []
+        ),
+        "git grep returned a malformed declaration location",
+    )
     workflow_owner = str(PurePosixPath(".github") / "workflows" / ("synthetic" + ".yml"))
     malformed.append(
         (workflow_owner, 1, valid.replace("// ", "# ", 1), "unsupported invariant owner")
@@ -463,7 +520,7 @@ def exercise_declaration_matrix(guard: ModuleType) -> int:
         ),
         "new frozen-history references outside policy surfaces",
     )
-    return len(malformed) + 4
+    return len(malformed) + 5
 
 
 def commit_paths(root: Path, message: str, *paths: str) -> str:
