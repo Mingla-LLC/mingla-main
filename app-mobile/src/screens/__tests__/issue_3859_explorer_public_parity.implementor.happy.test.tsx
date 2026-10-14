@@ -149,6 +149,7 @@ jest.mock("../../components/profile/BrandsYouFollowManageSheet", () => ({
 
 import ConsumerBrandProfileScreen from "../ConsumerBrandProfileScreen";
 import {
+  resolveExplorerCalendarOrderPath,
   resolveExplorerContentShareDestination,
   resolveExplorerPublicPath,
 } from "../../services/publicParityNativeAdapter";
@@ -279,6 +280,23 @@ describe("issue #3859 — Explorer native public-page parity", () => {
     expect(resolveExplorerPublicPath({ kind: "creator" } as never, context)).toBeNull();
   });
 
+  test("purchased-ticket recovery resolves every offering family natively and fails closed", () => {
+    const context = { platform: "ios", authState: "signed-in" } as const;
+    const base = {
+      eventId: "offering_01",
+      brandSlug: "slow-burn",
+      eventSlug: "late-night-jazz",
+    };
+    expect(resolveExplorerCalendarOrderPath({ ...base, eventType: "event" }, context)).toBe("/e/slow-burn/late-night-jazz");
+    expect(resolveExplorerCalendarOrderPath({ ...base, eventType: "rsvp" }, context)).toBe("/e/slow-burn/late-night-jazz");
+    expect(resolveExplorerCalendarOrderPath({ ...base, eventType: "trip" }, context)).toBe("/t/slow-burn/late-night-jazz");
+    expect(resolveExplorerCalendarOrderPath({ ...base, eventType: "experience" }, context)).toBe("/exp/slow-burn/late-night-jazz");
+    expect(resolveExplorerCalendarOrderPath({ ...base, eventType: "unknown" }, context)).toBeNull();
+    expect(resolveExplorerCalendarOrderPath({ ...base, eventType: "event", eventSlug: "Unsafe Slug" }, context)).toBeNull();
+    expect(resolveExplorerCalendarOrderPath({ ...base, eventType: "event" }, { ...context, platform: "web" })).toBeNull();
+    expect(resolveExplorerCalendarOrderPath(null as never, context)).toBeNull();
+  });
+
   test("populated brand content remains mounted during refresh and refresh error", () => {
     mockBrandQuery.isLoading = true;
     mockBrandQuery.isFetching = true;
@@ -374,5 +392,18 @@ describe("issue #3859 — Explorer native public-page parity", () => {
     expect(event).toContain("router.push(`/b/${slug}` as never)");
     expect(trip).toContain("router.push(`/b/${brandSlug}` as never)");
     expect(experience).toContain("router.push(`/b/${seed.brandSlug}` as never)");
+  });
+
+  test("ticket PDF error recovery stays inside Explorer instead of opening Host web", () => {
+    const ticketSheet = read("src/components/activity/TicketPdfSheet.tsx");
+    const calendarService = read("src/services/calendarService.ts");
+
+    expect(calendarService).toContain('eventSlug: event?.slug ?? ""');
+    expect(calendarService).toContain("eventType: event?.event_type ?? null");
+    expect(ticketSheet).toContain("resolveExplorerCalendarOrderPath(entry");
+    expect(ticketSheet).toContain("router.push(nativeBuyerPath as never)");
+    expect(ticketSheet).toContain("View in Mingla");
+    expect(ticketSheet).not.toContain("openBrowserAsync(entry.publicBuyerUrl)");
+    expect(ticketSheet).not.toContain("View on web");
   });
 });

@@ -206,6 +206,60 @@ const matchesKeys = (
     expected.every((key) => Object.prototype.hasOwnProperty.call(row, key));
 };
 
+export interface ExplorerCalendarOrderTarget {
+  eventId: unknown;
+  eventType: unknown;
+  brandSlug: unknown;
+  eventSlug: unknown;
+}
+
+/**
+ * Turn the canonical event facts already loaded for a purchased ticket into
+ * the matching native Explorer destination. Unknown types or incomplete
+ * identity fail closed; this recovery path never guesses or opens Host web.
+ */
+export function resolveExplorerCalendarOrderPath(
+  entry: ExplorerCalendarOrderTarget,
+  context: ExplorerPublicPathContext,
+): string | null {
+  if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+    return null;
+  }
+  const { eventId, eventType, brandSlug, eventSlug } = entry;
+  if (
+    typeof eventId !== "string" || typeof brandSlug !== "string" ||
+    typeof eventSlug !== "string"
+  ) return null;
+
+  switch (eventType) {
+    case "event":
+    case "rsvp":
+      return resolveExplorerPublicPath({
+        kind: "event",
+        entityKind: eventType,
+        entityId: eventId,
+        brandSlug,
+        eventSlug,
+      }, context);
+    case "trip":
+      return resolveExplorerPublicPath({
+        kind: "trip",
+        entityId: eventId,
+        brandSlug,
+        tripSlug: eventSlug,
+      }, context);
+    case "experience":
+      return resolveExplorerPublicPath({
+        kind: "experience",
+        entityId: eventId,
+        brandSlug,
+        experienceSlug: eventSlug,
+      }, context);
+    default:
+      return null;
+  }
+}
+
 /**
  * Accept only the canonical internal continuation returned by the share
  * service. The kind, route fields, and server webPath must agree exactly; the

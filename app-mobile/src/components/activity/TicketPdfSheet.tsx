@@ -24,6 +24,7 @@ import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
+  Platform,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Pressable,
@@ -40,10 +41,11 @@ import QRCode from "react-native-qrcode-svg";
 // `cacheDirectory` constant + `downloadAsync` helper we need.
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
-import * as WebBrowser from "expo-web-browser";
+import { useRouter } from "expo-router";
 
 import { Icon } from "../ui/Icon";
 import type { BusinessEventCalendarRow } from "../../services/calendarService";
+import { resolveExplorerCalendarOrderPath } from "../../services/publicParityNativeAdapter";
 import { TicketService } from "../../services/ticketService";
 // ORCH-0877 — centralized consumer-side date formatter.
 import { formatEventDateLine } from "../../utils/eventDateDisplay";
@@ -104,6 +106,7 @@ export const TicketPdfSheet: React.FC<TicketPdfSheetProps> = ({
   onClose,
   entry,
 }) => {
+  const router = useRouter();
   const [state, setState] = useState<SheetState>(initialState);
   const [carouselPage, setCarouselPage] = useState<number>(0);
   const { width: windowWidth } = useWindowDimensions();
@@ -173,12 +176,16 @@ export const TicketPdfSheet: React.FC<TicketPdfSheetProps> = ({
     void Linking.openURL(entry.venue.onlineUrl).catch(() => undefined);
   }, [entry.venue.onlineUrl]);
 
-  const handleOpenOnWeb = useCallback((): void => {
-    if (!entry.publicBuyerUrl) return;
-    void WebBrowser.openBrowserAsync(entry.publicBuyerUrl).catch(
-      () => undefined,
-    );
-  }, [entry.publicBuyerUrl]);
+  const nativeBuyerPath = resolveExplorerCalendarOrderPath(entry, {
+    platform: Platform.OS,
+    authState: "signed-in",
+  });
+
+  const handleOpenInMingla = useCallback((): void => {
+    if (nativeBuyerPath === null) return;
+    onClose();
+    router.push(nativeBuyerPath as never);
+  }, [nativeBuyerPath, onClose, router]);
 
   const dateLine = formatEventDateLine({
     masterDateUtc: entry.masterDateUtc,
@@ -390,15 +397,15 @@ export const TicketPdfSheet: React.FC<TicketPdfSheetProps> = ({
                 >
                   <Text style={styles.errorButtonLabel}>Try again</Text>
                 </Pressable>
-                {entry.publicBuyerUrl ? (
+                {nativeBuyerPath !== null ? (
                   <Pressable
                     style={[styles.errorButton, styles.errorButtonSecondary]}
-                    onPress={handleOpenOnWeb}
+                    onPress={handleOpenInMingla}
                     accessibilityRole="button"
-                    accessibilityLabel="View ticket on web"
+                    accessibilityLabel="View booking in Mingla"
                     hitSlop={8}
                   >
-                    <Text style={styles.errorButtonLabel}>View on web</Text>
+                    <Text style={styles.errorButtonLabel}>View in Mingla</Text>
                   </Pressable>
                 ) : null}
               </View>

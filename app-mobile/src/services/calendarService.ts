@@ -113,6 +113,8 @@ export interface BusinessEventCalendarRow {
   orderId: string;
   eventId: string;
   eventTitle: string;
+  eventSlug: string;
+  eventType: string | null;
   brandName: string;
   brandSlug: string;
   coverMediaUrl: string | null;
@@ -585,6 +587,8 @@ export class CalendarService {
             orderId: order.id,
             eventId: event?.id ?? order.event_id,
             eventTitle: event?.title ?? "Event",
+            eventSlug: event?.slug ?? "",
+            eventType: event?.event_type ?? null,
             brandName: brand?.name ?? "",
             brandSlug: brand?.slug ?? "",
             coverMediaUrl: event?.cover_media_url ?? null,
