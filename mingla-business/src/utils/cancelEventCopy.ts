@@ -154,6 +154,26 @@ export const cancelWithSalesDescription = (
     : `Sales stop straight away. The ${paidOrderCount} paid orders are ${REVIEW_TAIL}`;
 };
 
+export const CANCEL_TRIP_NOTHING_PAID_DESCRIPTION =
+  "Sales and bookings stop straight away. No one has paid, so there is nothing to refund. You can't undo this.";
+
+/**
+ * Trips stop both the public sale and new bookings. The paid-order branch is
+ * otherwise the same held-for-review refund flow as Events and Experiences.
+ */
+export const cancelTripDialogDescription = (input: {
+  nothingToRefund: boolean;
+  paidOrderCount: number | null;
+}): string => {
+  if (input.nothingToRefund) return CANCEL_TRIP_NOTHING_PAID_DESCRIPTION;
+  if (input.paidOrderCount === null || input.paidOrderCount <= 0) {
+    return `Sales and bookings stop straight away. Any paid orders are ${REVIEW_TAIL}`;
+  }
+  return input.paidOrderCount === 1
+    ? `Sales and bookings stop straight away. The 1 paid order is ${REVIEW_TAIL}`
+    : `Sales and bookings stop straight away. The ${input.paidOrderCount} paid orders are ${REVIEW_TAIL}`;
+};
+
 /** The experience dashboard's "nothing to refund" body (it sells bookings). */
 export const CANCEL_EXPERIENCE_NOTHING_SOLD_DESCRIPTION =
   "No one has booked, so there is nothing to refund. You can't undo this.";
@@ -168,7 +188,7 @@ export const CANCEL_EVENT_WITH_SALES_TOAST =
  */
 export const cancelDoneToast = (
   paidOrderCount: number | null,
-  kind: "Event" | "Experience" | "RSVP" = "Event",
+  kind: "Event" | "Experience" | "RSVP" | "Trip" = "Event",
 ): string =>
   paidOrderCount !== null && paidOrderCount > 0
     ? `${kind} cancelled. Refunds are with Mingla for review.`
