@@ -160,7 +160,7 @@ export function IdentifiersField({ value, disabled = false, saving = false, onCh
               add();
             }
           }}
-          className={`${CONTROL_CLASS} min-w-0 flex-1`}
+          className={`${CONTROL_CLASS} min-w-0 max-sm:min-h-11 sm:flex-1`}
         />
         <Button type="button" variant="secondary" className="shrink-0 max-sm:h-11" loading={busy} disabled={disabled || full || saving} onClick={add}>
           Add

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { PageHeader } from "../components/ui/PageHeader";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useCrmConfig } from "../hooks/useCrmConfig";
@@ -162,19 +163,17 @@ export function TeamDashboardPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="break-words text-2xl font-bold text-[var(--color-text-primary)]">Team dashboard</h1>
-          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            {name ? `Hi ${name}. Here is the team.` : "Here is the team."}
-          </p>
-        </div>
-        {canOpenPage(access, "admin") ? (
-          <a href="#/admin" className={LINK_BUTTON_CLASS}>
-            Team and roles
-          </a>
-        ) : null}
-      </div>
+      <PageHeader
+        title="Team dashboard"
+        description={name ? `Hi ${name}. Here is the team.` : "Here is the team."}
+        actions={
+          canOpenPage(access, "admin") ? (
+            <a href="#/admin" className={LINK_BUTTON_CLASS}>
+              Team and roles
+            </a>
+          ) : null
+        }
+      />
 
       {!online && <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>}
 
