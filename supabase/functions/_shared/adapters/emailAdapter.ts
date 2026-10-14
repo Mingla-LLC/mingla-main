@@ -6,8 +6,10 @@
 // in marketing-send (Sub-B); this adapter is the TRANSACTIONAL leg only.
 
 import {
+  assertNotResendSandbox,
   formatSenderHeader,
   renderTransactionalEmail,
+  type SenderIdentity,
 } from "../email/index.ts";
 import type { AdapterResult } from "./smsAdapter.ts";
 import { notificationHttpSafeCode } from "../notificationSafeError.ts";
@@ -20,6 +22,19 @@ export interface EmailSendInput {
   idempotencyKey?: string;
   beforeProviderIo?: () => Promise<void>;
   attachments?: Array<{ filename: string; content: string }>;
+  /**
+   * Issue #3827 — a message already rendered through `renderShell` by its own
+   * module. When given it is sent as is and `title` / `body` / `cta` are not
+   * rendered. Absent, the generic body is rendered exactly as before.
+   */
+  rendered?: {
+    subject: string;
+    html: string;
+    text: string;
+    from: SenderIdentity;
+  };
+  /** Issue #3827 — Reply-To header. Absent, none is set (as before). */
+  replyTo?: string;
 }
 
 export const emailAdapter = {
@@ -45,7 +60,8 @@ export const emailAdapter = {
 
     let rendered;
     try {
-      rendered = renderTransactionalEmail({
+      if (input.rendered) assertNotResendSandbox(input.rendered.from);
+      rendered = input.rendered ?? renderTransactionalEmail({
         variant: "generic_notification",
         recipient: { name: null, email: to },
         body: {
@@ -81,6 +97,9 @@ export const emailAdapter = {
           subject: rendered.subject,
           html: rendered.html,
           text: rendered.text,
+          ...(input.replyTo && input.replyTo.trim().length > 0
+            ? { reply_to: input.replyTo.trim() }
+            : {}),
           ...(input.attachments && input.attachments.length > 0
             ? { attachments: input.attachments }
             : {}),

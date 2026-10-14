@@ -163,10 +163,7 @@ import { RsvpStep5Setup } from "../rsvp/RsvpStep5Setup";
 import { rsvpEditNoticeCopy } from "../../utils/rsvpHubMetrics";
 import { businessEventKeys } from "../../hooks/useBusinessEvents";
 import { publicEventKeys } from "../../hooks/usePublicEvents";
-import {
-  useEventHasWebPurchases,
-  useEventReconciliation,
-} from "../../hooks/useEventOrders";
+import { useEventReconciliation } from "../../hooks/useEventOrders";
 // ORCH-1172 — the section model lives in a pure sibling module so the
 // ticketed-vs-RSVP section-list logic is unit-testable without importing this
 // react-native component. Re-exported below for back-compat.
@@ -372,6 +369,26 @@ export interface EditPublishedScreenProps {
    * changes sheet that this screen keeps open.
    */
   onReasonRefused?: () => void;
+  /**
+   * issue #3827 — whether buyer emails are on for this brand and how many
+   * people a material change reaches, read by the route with
+   * `useEventBuyerNoticeStatus`. `null` / omitted means "not known" and the
+   * Review changes sheet then says buyer emails are not switched on.
+   */
+  buyerNoticeStatus?: React.ComponentProps<
+    typeof ChangeSummaryModal
+  >["buyerNoticeStatus"];
+  /**
+   * issue #3827 — turns the `buyer_notice` a save answered with into the
+   * success toast ("Saved. We'll email 254 buyers in about 5 minutes."), or
+   * null when the server scheduled no email. Supplied by the route, so this
+   * screen promises nothing the server did not schedule.
+   */
+  savedToastFor?: (buyerNotice: unknown) => string | null;
+  /** issue #3827 — how the last buyer email went, for the banner. */
+  lastBuyerNotice?: React.ComponentProps<
+    typeof EditAfterPublishBanner
+  >["lastNotice"];
 }
 
 // issue #3827 — shown when a blank reason is refused because a buyer arrived
@@ -436,6 +453,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   rsvpMode = false,
   buyerCount = null,
   onReasonRefused,
+  buyerNoticeStatus,
+  savedToastFor,
+  lastBuyerNotice,
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -1066,6 +1086,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       // every going guest (SPEC §5.2). Then the local Zustand mutation keeps
       // the cache in sync. No StripeBlockedCard, no EndSalesSheet, no ticket diff.
       if (rsvpMode) {
+        // issue #3827 — what the server answered about telling guests.
+        let rsvpSaved: Awaited<ReturnType<typeof updateLiveRsvp>> | null = null;
         if (liveEvent.serverEventId === null) {
           setSubmitting(false);
           setModal((prev) => ({ ...prev, visible: false }));
@@ -1083,7 +1105,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           // hideRemainingCount). With the diff, omitted toggles keep their stored
           // value server-side. (B1 also fixes the root hydration drop so the
           // loaded `liveEvent` now carries the TRUE saved rsvp_* values.)
-          await updateLiveRsvp(
+          rsvpSaved = await updateLiveRsvp(
             liveEvent.serverEventId,
             buildRsvpUpdatePayloadDiff(liveEvent, editState),
             reason,
@@ -1160,7 +1182,16 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         invalidateServerEventCaches();
         const localMirrorRequired = disableLocalSaveReason === undefined;
         if (rsvpResult.ok || !localMirrorRequired) {
-          showToast("Saved. Going guests will be notified.");
+          // issue #3827 — the toast says what the server did: an email it
+          // scheduled, the alert it queued for going guests, or just "saved".
+          const rsvpNoticeToast = savedToastFor?.(rsvpSaved?.buyerNotice) ?? null;
+          if (rsvpNoticeToast !== null) {
+            showToast(rsvpNoticeToast);
+          } else if ((rsvpSaved?.notifiedCount ?? 0) > 0) {
+            showToast("Saved. Going guests will be notified.");
+          } else {
+            showToast("Saved. Live now.");
+          }
           setTimeout(() => router.back(), TOAST_NAV_DELAY_MS);
         } else {
           showToast("Couldn't save your changes. Tap to try again.");
@@ -1201,6 +1232,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         return;
       }
       const atomicPatch: AtomicPublishedEventPatch = { core: corePatch };
+      // issue #3827 — the toast for an email the server scheduled on this save.
+      let buyerNoticeToast: string | null = null;
       const explicitCoverSet =
         patch.coverMediaUrl !== undefined && patch.coverMediaUrl !== null;
       const explicitCoverClear = patch.coverMediaUrl === null;
@@ -1442,12 +1475,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           );
           atomicPatch.cover = { selectionRef: attested.selectionRef };
         }
-        await patchPublishedEventAtomically(
+        const atomicSaved = await patchPublishedEventAtomically(
           liveEvent.serverEventId,
           atomicPatch,
           validation.trimmedReason,
           (liveEvent.clientRevision ?? 0) + 1,
         );
+        buyerNoticeToast = savedToastFor?.(atomicSaved.buyer_notice) ?? null;
         invalidateServerEventCaches();
       } catch (error) {
         setSubmitting(false);
@@ -1557,7 +1591,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         // ORCH-0980 pins the literal `showToast("Saved. Live now.");` in this
         // path, so both branches are spelled out rather than collapsed into a
         // `??`. issue #2009 SPEC §6: a visibility-ONLY save names the label.
-        if (issue2009VisibilitySuccessToast !== null) {
+        if (buyerNoticeToast !== null) {
+          // issue #3827 — an email was scheduled: say so, with the count.
+          showToast(buyerNoticeToast);
+        } else if (issue2009VisibilitySuccessToast !== null) {
           showToast(issue2009VisibilitySuccessToast);
         } else {
           showToast("Saved. Live now.");
@@ -1590,7 +1627,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         // ORCH-0980 pins the literal `showToast("Saved. Live now.");` in this
         // path, so both branches are spelled out rather than collapsed into a
         // `??`. issue #2009 SPEC §6: a visibility-ONLY save names the label.
-        if (issue2009VisibilitySuccessToast !== null) {
+        if (buyerNoticeToast !== null) {
+          // issue #3827 — an email was scheduled: say so, with the count.
+          showToast(buyerNoticeToast);
+        } else if (issue2009VisibilitySuccessToast !== null) {
           showToast(issue2009VisibilitySuccessToast);
         } else {
           showToast("Saved. Live now.");
@@ -1819,10 +1859,6 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     return out;
   }, [fieldDiffs]);
 
-  // ---- webPurchasePresent ----
-  const webPurchaseRead = useEventHasWebPurchases(rsvpMode ? null : liveEvent.id);
-  const webPurchasePresent = webPurchaseRead.data ?? false;
-
   // ---- Render ----
   return (
     <View
@@ -1854,7 +1890,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
-        <EditAfterPublishBanner />
+        <EditAfterPublishBanner
+          // issue #3827 — the outcome of the last buyer email, when there is one.
+          lastNotice={lastBuyerNotice ?? null}
+        />
 
         {/* ORCH-1150 — RSVP edit notice: every going guest is notified when a
             material detail (date/time/venue) changes. Replaces the ticketed
@@ -1982,7 +2021,6 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         diffs={modal.fieldDiffs}
         ticketDiffs={modal.ticketDiffs}
         severity={modal.severity}
-        webPurchasePresent={webPurchasePresent}
         onClose={handleModalClose}
         onConfirm={handleConfirmSave}
         submitting={submitting}
@@ -1992,6 +2030,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         buyerCount={
           rsvpMode ? undefined : reasonOptional ? 0 : buyerCount === 0 ? null : buyerCount
         }
+        // issue #3827 — the footer and the tag follow the server: `null`
+        // (unknown) reads as "buyer emails are not switched on".
+        buyerNoticeStatus={buyerNoticeStatus ?? null}
+        buyerNoticeNoun={rsvpMode ? "guests" : "buyers"}
+        // issue #3827 — with tickets sold the server refuses a date or time
+        // change on this save, so those rows are never promised an email.
+        whenChangeRefused={!rsvpMode && soldCountCtx.soldCountForEvent > 0}
       />
 
       {/* #1035 — Theme picker sheet, hoisted OUT of the memoized

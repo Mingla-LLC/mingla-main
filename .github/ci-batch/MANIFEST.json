@@ -13131,7 +13131,7 @@
       "providerWorkflow": ".github/workflows/issue-1447-rsvp-admission-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "26ab7d3ee19e136ba13266747b5d457060d52d63f74e1dd4bdcff9a8548c7de6",
+        "sourceSha256": "f41218c775df936563ec88933ad55780a455e6b238644353b596ede6f06ad27f",
         "triggers": [
           "pull_request",
           "push"
@@ -13154,7 +13154,9 @@
           "mingla-business/src/services/rsvpPassRecoveryService.ts",
           "mingla-business/src/services/scanRsvpService.ts",
           "packages/offering-rendering/**",
+          "supabase/functions/_shared/adapters/emailAdapter.ts",
           "supabase/functions/_shared/adapters/pushAdapter.ts",
+          "supabase/functions/_shared/email/eventUpdatedEmail.ts",
           "supabase/functions/_shared/notifyV2.ts",
           "supabase/functions/_shared/push-utils.ts",
           "supabase/functions/_shared/rsvpPass.ts",

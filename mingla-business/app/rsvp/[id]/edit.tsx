@@ -65,6 +65,12 @@ import {
   PromotionSourceMissingError,
 } from "../../../src/utils/draftPromotion";
 import { useAuth } from "../../../src/context/AuthContext";
+// issue #3827 — whether going guests are emailed about a live edit, and the words.
+import { useEventBuyerNoticeStatus } from "../../../src/hooks/useEventBuyerNoticeStatus";
+import {
+  lastNoticeLine,
+  rsvpSavedToast,
+} from "../../../src/utils/buyerNoticeCopy";
 import { fetchServerDraftCover } from "../../../src/services/eventDrafts";
 import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 // ORCH-0893 [Eager server-draft on creator entry — replace with client-id + lazy autosave]:
@@ -91,6 +97,10 @@ const safeEventsExitRoute = (): "/home#hub-events" | "/(tabs)/hub/events" =>
   Platform.OS === "web" ? "/home#hub-events" : "/(tabs)/hub/events";
 
 const MISSING_DRAFT_TIMEOUT_MS = 6000;
+
+// issue #3827 — the toast after a live RSVP save, from the save's own answer.
+const savedToastForGuests = (notice: unknown): string | null =>
+  rsvpSavedToast(notice);
 
 export default function RsvpEditRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -220,6 +230,11 @@ export default function RsvpEditRoute(): React.ReactElement {
   const editorLiveEvent = isEditPublished
     ? serverLiveEvent ?? (serverEventSettled ? liveEvent : null)
     : null;
+  // issue #3827 — read beside the event the editor is seeded from; disabled
+  // (and null) until a published RSVP with a server id is on screen.
+  const guestNoticeStatus = useEventBuyerNoticeStatus(
+    isEditPublished ? (editorLiveEvent?.serverEventId ?? null) : null,
+  );
   const resolvedLiveEvent = serverLiveEvent ?? liveEvent;
   // Issue #3645 — the brand's currency as this device holds it. A FALLBACK
   // only: every draft save reads the brand's current currency from the server
@@ -879,6 +894,11 @@ export default function RsvpEditRoute(): React.ReactElement {
     return (
       <EditPublishedScreen
         liveEvent={editorLiveEvent}
+        // issue #3827 — what the server will do about telling going guests.
+        // Unknown (null) reads as "not switched on".
+        buyerNoticeStatus={guestNoticeStatus}
+        savedToastFor={savedToastForGuests}
+        lastBuyerNotice={lastNoticeLine(guestNoticeStatus, "guests")}
         // ORCH-1150 — RSVP edit-published: drop the Tickets section + the
         // sold-ticket refund gate; show the "N guests are going" notice (§12).
         rsvpMode

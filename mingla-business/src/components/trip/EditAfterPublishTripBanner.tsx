@@ -3,9 +3,9 @@
  * sections on the EditPublishedTripScreen (ORCH-0876).
  *
  * Orange-tinted card with warning icon + headline + body copy.
- * Communicates: changes go live immediately + material changes notify
- * buyers + some destructive changes require refunding existing buyers
- * first.
+ * Communicates: changes go live immediately + some destructive changes
+ * require refunding existing buyers first. issue #3827 — travellers are NOT
+ * emailed about edits yet, and the banner says so.
  *
  * Mirror of `EditAfterPublishBanner.tsx` (events side) with trip-specific
  * copy substitution (spot / reservation in place of ticket).
@@ -32,9 +32,9 @@ export const EditAfterPublishTripBanner: React.FC = () => (
       <Text style={styles.heading}>You're editing a live trip</Text>
       <Text style={styles.body}>
         Changes save immediately. Existing travelers stay protected — their
-        spots and prices won't change. Material changes (dates, destination,
-        capacity) notify your travelers via email + SMS. Some destructive
-        changes require refunding existing travelers first.
+        spots and prices won't change. Edits are logged in the edit history
+        of this trip; travelers are not emailed about edits yet. Some
+        destructive changes require refunding existing travelers first.
       </Text>
     </View>
   </View>

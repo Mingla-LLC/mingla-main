@@ -2,7 +2,8 @@
  * tripChangeNotifier — multi-channel notification stack for published-trip
  * edits (ORCH-0876).
  *
- * Mirror of `mingla-business/src/services/eventChangeNotifier.ts`. Routes
+ * The trip-side edit logger (the event-side stub it mirrored was removed by
+ * issue #3827, when the server took over the buyer email). Routes
  * through 4 channels per `NotificationChannelFlags`:
  *   - banner: in-app banner data lives in the DB `trip_edit_log` table
  *     (RPC writes; owner reads via `useTripEditLog`); future consumer-side
@@ -119,7 +120,7 @@ export const notifyTripChanged = async (
     try {
       // [TRANSITIONAL] — B-cycle replaces with Resend send.
       // Exit condition: real email pipe wired for trips (same B-cycle as
-      // events' eventChangeNotifier email).
+      // events' former edit-email stub).
       const email = composeTripEmailPayload(payload);
       // eslint-disable-next-line no-console
       console.info("[tripChangeNotifier] email stub", {

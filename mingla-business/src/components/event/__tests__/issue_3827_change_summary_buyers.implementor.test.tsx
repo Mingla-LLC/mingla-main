@@ -109,9 +109,9 @@ const ADDITIVE_DIFF: FieldDiff = {
 
 const NOTIFY_TAG = "NOTIFIES BUYERS";
 const EMAIL_FOOTER =
-  "Material changes notify your buyers by email. Your reason will be included in the message.";
+  "Buyer emails are not switched on yet. This change is saved and logged; buyers are not emailed.";
 const SMS_FOOTER =
-  "Material changes notify your buyers by email and SMS. Your reason will be included in the message.";
+  "Buyer emails are not switched on yet. This change is saved and logged; buyers are not emailed.";
 const LOG_FOOTER =
   "Changes will be logged in your event's edit history. No buyer notification.";
 const REQUIRED_LABEL = "Why are you making this change? *";

@@ -1751,7 +1751,9 @@
     },
     "rsvp-notify": {
       "migration_fallback_top_level": [],
-      "optional_top_level": [],
+      "optional_top_level": [
+        "BUSINESS_WEB_ORIGIN"
+      ],
       "required_bundle_fields": {},
       "required_top_level": [
         "AD_CONVERSION_TOKENS",
