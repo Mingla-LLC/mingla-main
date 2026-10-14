@@ -103,121 +103,102 @@ export const SEED_SCRIPTS = [
 ];
 
 // ─── Grouped Sidebar Navigation ──────────────────────────────────────────────
-// ORCH-1008: flat single-group sidebar. Six pages deleted (Seed,
-//   ContentModeration, Analytics, Reports, BetaFeedback, TableBrowser).
-//   Settings + Users promoted out of System dropdown to top-level rail.
-//   Invariant I-PROPOSED-ADMIN-SHELL-FLAT-NAVIGATION (PROPOSED) — single
-//   group with label:null + no collapsible:true. See SPEC §3 Phase 1 + §5.
-// ORCH-1014: photo-labeling + photo-scorer deleted (DEC-099 Cut 1 cleanup);
-//   NAV is now 10 items.
+// Issue #3802 (admin shell): the menu is grouped by the job a person came to
+// do, from daily work down to rarely touched settings. Every page id appears
+// exactly once. Invariant I-3802-ADMIN-SHELL-ONE-FRAME
+// (docs/INVARIANT_REGISTRY.md).
+//
+//   - Who may open what is NOT decided here: lib/access.js owns it, per page
+//     id, and prepends the role Home group. Moving an item between groups
+//     never changes who sees it.
+//   - A group with a label can be folded in the menu; the first group has no
+//     label and is always shown.
+//   - `icon` is a key of ICON_MAP in components/layout/Sidebar.jsx. One icon
+//     per item, no two items share one, and a name that is not registered
+//     there fails src/__tests__/admin_shell_issue3802.implementor.happy.test.js
+//     (there is no fallback icon).
+//   - Slots held for pages the other #3802 waves add: Pipeline (after creators,
+//     and after tool-leads), Company (after careers), System (after agent).
+//
+// History: ORCH-1008 pruned six pages and ORCH-1014 two more; ORCH-1271..1274
+// added the Business console; ISSUE-862 / #3697 the ads pages; ISSUE-3534
+// Refund operations (a separate page from the read-only Money ledger: it
+// retries, escalates and resolves); #3802 Waves 1 and 4 the pipelines, the
+// Team dashboard (owner and admin only) and My agent.
 
 export const NAV_GROUPS = [
   {
     label: null,
     items: [
       { id: "overview",                  label: "Dashboard",          icon: "LayoutDashboard" },
-      { id: "subscriptions",             label: "Subscriptions",      icon: "CreditCard" },
-      { id: "admin",                     label: "Team and roles",     icon: "Shield" },
-      { id: "placepool",                 label: "Place Pool",         icon: "Globe" },
-      // ORCH-1027: operator switch to declare cities live for consumer onboarding
-      // (the ORCH-1028 location gate). Sits next to Place Pool — the consumer-facing
-      // counterpart to the seeding/place tooling.
-      { id: "launch-cities",             label: "Launch Cities",      icon: "Rocket" },
-      { id: "signals",                   label: "Signal Library",     icon: "Activity" },
-      // ORCH-1066: deck score tuner — search a live venue → set/pin its 16
-      // category scores + preview its deck card + read its rank. Serving/ranking
-      // tool, sits next to Signal Library + Intelligence Trial.
-      { id: "deck-tuner",                label: "Deck tuner",         icon: "SlidersHorizontal" },
-      { id: "place-intelligence-trial",  label: "Intelligence Trial", icon: "Microscope" },
-      { id: "email",                     label: "Email",              icon: "Mail" },
-      // ORCH-1045: read-only list of "Get Beta Access" leads from the organiser
-      // marketing site. Operator growth tooling — sits next to Email.
-      { id: "beta-leads",                label: "Beta Leads",         icon: "Inbox" },
-      // ISSUE-1354: all free-tool submissions (tool_leads) + report detail. The
-      // Wrench icon MUST be registered in Sidebar.jsx ICON_MAP or the nav item
-      // silently falls back to LayoutDashboard (the documented ICON_MAP footgun).
-      { id: "tool-leads",                label: "Tool Leads",         icon: "Wrench" },
-      // META-ORCH-1222: careers applications + role manager. The Briefcase icon
-      // MUST be registered in Sidebar.jsx ICON_MAP or the nav item silently
-      // falls back to LayoutDashboard.
-      { id: "careers",                   label: "Careers",            icon: "Briefcase" },
-      // ORCH-1006: Mingla take-rate admin screen (global default + per-brand override).
-      { id: "pricing",                   label: "Pricing",            icon: "Percent" },
-      { id: "claims",                    label: "Venue claims",       icon: "ClipboardList" },
-      // META-ORCH-1104 Phase 2 — admin support desk (tickets + agents). The
-      // LifeBuoy icon MUST be registered in Sidebar.jsx ICON_MAP or the nav
-      // item silently falls back to LayoutDashboard (Lane B finding).
       { id: "support",                   label: "Support",            icon: "LifeBuoy" },
-      { id: "users",                     label: "Users",              icon: "Users" },
-      // ORCH-1056: unified Stripe mode dashboard — verifies the three Stripe
-      // signals (Supabase backend / web client pk / Vercel env) agree.
-      { id: "stripe-mode",               label: "Stripe mode",        icon: "Wallet" },
-      // ORCH-1201: API-health hub — live status of every external service Mingla
-      // depends on (3-layer probe + email alerts). Ops tooling, sits with
-      // stripe-mode/settings. The Activity icon is already in Sidebar ICON_MAP.
-      { id: "api-health",                label: "API health",         icon: "Activity" },
-      { id: "settings",                  label: "Settings",           icon: "Settings" },
     ],
   },
-  // ORCH-1271: "Business" nav group — the META-ORCH-1237 admin full-visibility
-  // console lives here. ORCH-1272 replaces the foundation scaffolding placeholder
-  // with the first two real domain pages (People + Brands). Offerings / Venues
-  // arrive in 1273; money arrives in 1274 as sibling entries.
-  // ORCH-1273: Offerings (CalendarDays) + Venues (Store) — both icons MUST be
-  // registered in Sidebar.jsx ICON_MAP or the item silently falls back to
-  // LayoutDashboard.
-  // ORCH-1274 [Admin Money console — READ-ONLY]: appends Payments / Orders /
-  //   Money ledger. `CreditCard` is already in Sidebar.jsx ICON_MAP; `Receipt`
-  //   and `Landmark` MUST be registered there too or they silently fall back to
-  //   LayoutDashboard (the documented Careers/Support ICON_MAP footgun).
+  {
+    label: "Pipeline",
+    items: [
+      { id: "hosts",                     label: "Hosts",              icon: "Handshake" },
+      { id: "creators",                  label: "Creators",           icon: "Sparkles" },
+      { id: "beta-leads",                label: "Beta Leads",         icon: "Inbox" },
+      { id: "tool-leads",                label: "Tool Leads",         icon: "Wrench" },
+      { id: "team-dashboard",            label: "Team dashboard",     icon: "BarChart3" },
+    ],
+  },
   {
     label: "Business",
     items: [
       { id: "business-people",           label: "People",             icon: "Users" },
       { id: "business-brands",           label: "Brands",             icon: "Building2" },
       { id: "brand-sites",               label: "Brand Sites",        icon: "Globe" },
-      { id: "business-offerings",        label: "Offerings",          icon: "CalendarDays" },
       { id: "business-venues",           label: "Venues",             icon: "Store" },
+      { id: "business-offerings",        label: "Offerings",          icon: "CalendarDays" },
+      { id: "claims",                    label: "Venue claims",       icon: "ClipboardList" },
+    ],
+  },
+  {
+    label: "Money",
+    items: [
       { id: "business-payments",         label: "Payments",           icon: "CreditCard" },
       { id: "business-orders",           label: "Orders",             icon: "Receipt" },
       { id: "business-money-ledger",     label: "Money ledger",       icon: "Landmark" },
-      // ISSUE-3534 — Refund operations was route-only (App.jsx) with NO nav entry,
-      // so the stuck-refund work queue was reachable only by typing the URL. It sits
-      // next to Money ledger because that is where refunds live, but it is a SEPARATE
-      // item rather than a Money-ledger tab: that page is documented READ-ONLY and this
-      // one retries, escalates and resolves. `RotateCcw` MUST be in Sidebar ICON_MAP.
       { id: "refund-operations",         label: "Refund operations",  icon: "RotateCcw" },
+      { id: "subscriptions",             label: "Subscriptions",      icon: "Repeat" },
+      { id: "pricing",                   label: "Pricing",            icon: "Percent" },
     ],
   },
-  // ISSUE-862 WP1 + toward #3697 Wave 3: Growth = Ads console hub (connections),
-  // Campaign Builder, Campaigns. Megaphone/Rocket/ClipboardList MUST stay in
-  // Sidebar.jsx ICON_MAP or the nav item silently falls back to LayoutDashboard.
+  {
+    label: "Explorer app",
+    items: [
+      { id: "users",                     label: "Users",              icon: "CircleUser" },
+      { id: "placepool",                 label: "Place Pool",         icon: "Map" },
+      { id: "launch-cities",             label: "Launch Cities",      icon: "Rocket" },
+      { id: "signals",                   label: "Signal Library",     icon: "Activity" },
+      { id: "deck-tuner",                label: "Deck tuner",         icon: "SlidersHorizontal" },
+      { id: "place-intelligence-trial",  label: "Intelligence Trial", icon: "Microscope" },
+    ],
+  },
   {
     label: "Growth",
     items: [
       { id: "ad-engine",                 label: "Ads console",        icon: "Megaphone" },
-      { id: "campaign-builder",          label: "Campaign Builder",   icon: "Rocket" },
-      { id: "campaigns",                 label: "Campaigns",          icon: "ClipboardList" },
+      { id: "campaign-builder",          label: "Campaign Builder",   icon: "PencilRuler" },
+      { id: "campaigns",                 label: "Campaigns",          icon: "Flag" },
+      { id: "email",                     label: "Email",              icon: "Mail" },
     ],
   },
-  // Issue #3802 (Wave 1): the team's Hosts and Creators pipelines. Opened by
-  // the `crm` area (lib/access.js), so all four team roles see this group.
-  // The Team dashboard has no entry in lib/access.js, so it is owner and admin
-  // only. BarChart3, Store and Sparkles are already in Sidebar.jsx ICON_MAP.
   {
-    label: "Team",
+    label: "Company",
     items: [
-      { id: "team-dashboard",            label: "Team dashboard",     icon: "BarChart3" },
-      { id: "hosts",                     label: "Hosts",              icon: "Store" },
-      { id: "creators",                  label: "Creators",           icon: "Sparkles" },
+      { id: "admin",                     label: "Team and roles",     icon: "Shield" },
+      { id: "careers",                   label: "Careers",            icon: "Briefcase" },
     ],
   },
-  // Issue #3802 (Wave 4): Help, below Team. My agent is opened by the `crm`
-  // area (lib/access.js), so all four team roles see this group. Bot is in
-  // Sidebar.jsx ICON_MAP.
   {
-    label: "Help",
+    label: "System",
     items: [
+      { id: "stripe-mode",               label: "Stripe mode",        icon: "Wallet" },
+      { id: "api-health",                label: "API health",         icon: "HeartPulse" },
+      { id: "settings",                  label: "Settings",           icon: "Settings" },
       { id: "agent",                     label: "My agent",           icon: "Bot" },
     ],
   },

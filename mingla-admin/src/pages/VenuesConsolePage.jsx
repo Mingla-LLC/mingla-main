@@ -13,6 +13,7 @@ import { Badge } from "../components/ui/Badge";
 import { listVenues, listVenueBrands } from "../services/venuesService";
 import { VenueDetailView } from "./VenueDetailView";
 import { timeAgo } from "../lib/formatters";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const CATEGORY_VARIANT = { restaurant: "info", play: "brand", creative_and_arts: "warning", stay: "success" };
 const CLAIM_VARIANT = {
@@ -150,26 +151,18 @@ export function VenuesConsolePage() {
 
   if (selectedId) {
     return (
-      <div className="py-8">
+      <div>
         <VenueDetailView venueId={selectedId} onBack={backToList} />
       </div>
     );
   }
 
   return (
-    <div className="py-8 flex flex-col gap-6">
-      <div className="flex items-start gap-3 flex-wrap">
-        <div className="w-10 h-10 rounded-full bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
-          <Store className="w-5 h-5 text-[var(--color-brand-500)]" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Venues</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            Every venue across all brands. Open one for the full record — profile, claim state,
-            category-specific inventory, readiness, reservations, and support state.
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Venues"
+        description="Every venue across all brands. Open one for the full record — profile, claim state, category-specific inventory, readiness, reservations, and support state."
+      />
 
       <EntityListView
         title="All venues"

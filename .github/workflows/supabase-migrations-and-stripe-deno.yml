@@ -219,6 +219,16 @@ on:
       - "mingla-admin/src/lib/agentConnect.js"
       - "mingla-admin/src/services/teamAgentService.js"
       - "mingla-admin/src/hooks/useAgentKeys.js"
+      # #3802 (admin shell): both suites and the files they read that are not
+      # already listed here (every page, the fold and breadcrumb module, the
+      # one page header, and the stepper whose width sum the tester suite redoes).
+      - "mingla-admin/src/__tests__/admin_shell_issue3802.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/admin_shell_issue3802.tester.adversarial.test.js"
+      - "mingla-admin/src/pages/**"
+      - "mingla-admin/src/lib/shellNav.js"
+      - "mingla-admin/src/components/ui/PageHeader.jsx"
+      - "mingla-admin/src/components/ui/Breadcrumbs.jsx"
+      - "mingla-admin/src/components/campaign-builder/stepperResponsive.js"
       - "mingla-admin/src/pages/RoleHomePage.jsx"
       - "mingla-admin/src/pages/TeamDashboardPage.jsx"
       - "mingla-admin/src/pages/BetaLeadsPage.jsx"
@@ -432,6 +442,16 @@ on:
       - "mingla-admin/src/lib/agentConnect.js"
       - "mingla-admin/src/services/teamAgentService.js"
       - "mingla-admin/src/hooks/useAgentKeys.js"
+      # #3802 (admin shell): both suites and the files they read that are not
+      # already listed here (every page, the fold and breadcrumb module, the
+      # one page header, and the stepper whose width sum the tester suite redoes).
+      - "mingla-admin/src/__tests__/admin_shell_issue3802.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/admin_shell_issue3802.tester.adversarial.test.js"
+      - "mingla-admin/src/pages/**"
+      - "mingla-admin/src/lib/shellNav.js"
+      - "mingla-admin/src/components/ui/PageHeader.jsx"
+      - "mingla-admin/src/components/ui/Breadcrumbs.jsx"
+      - "mingla-admin/src/components/campaign-builder/stepperResponsive.js"
       - "mingla-admin/src/pages/RoleHomePage.jsx"
       - "mingla-admin/src/pages/TeamDashboardPage.jsx"
       - "mingla-admin/src/pages/BetaLeadsPage.jsx"
@@ -597,6 +617,12 @@ jobs:
       - name: "Issue #3802 — My agent: independent tester adversarial proof (the pasted lines run in a real shell, hostile keys and addresses, every combination of areas, broken dates and unknown reasons, no raw error on screen, where the key on screen can go)"
         working-directory: mingla-admin
         run: node --test src/__tests__/agent_connector_issue3802.tester.adversarial.test.js
+      - name: "Issue #3802 — admin shell: the eight menu groups in the approved order, every page once, who may open what unchanged, every menu icon registered, one frame and one page header"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/admin_shell_issue3802.implementor.happy.test.js
+      - name: "Issue #3802 — admin shell: independent tester adversarial proof (every combination of areas against every address, hostile ids, storage that throws, stacking computed from the stylesheet, class names that do nothing, the stepper beside the new menu)"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/admin_shell_issue3802.tester.adversarial.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}

@@ -19,6 +19,7 @@ import { useAuth } from "../context/AuthContext";
 import { timeAgo, formatDate, formatDateTime, truncate, escapeLike } from "../lib/formatters";
 import { logAdminAction } from "../lib/auditLog";
 import { exportCsv } from "../lib/exportCsv";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
@@ -397,9 +398,7 @@ export function SubscriptionManagementPage() {
   if (setupNeeded) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Subscriptions</h1>
-        </div>
+        <PageHeader title="Subscriptions" />
         <SectionCard title="Setup Required" subtitle="Run the migration to enable subscription management">
           <div className="space-y-4">
             <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: "var(--color-warning-50, #fffbeb)" }}>
@@ -547,15 +546,14 @@ export function SubscriptionManagementPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Subscriptions</h1>
-        </div>
-        <Button variant="secondary" size="sm" icon={Download} onClick={handleExport}>
-          Export
-        </Button>
-      </div>
+      <PageHeader
+        title="Subscriptions"
+        actions={
+          <Button variant="secondary" size="sm" icon={Download} onClick={handleExport}>
+            Export
+          </Button>
+        }
+      />
 
       {/* Global Plus Toggle */}
       {!globalPlusLoading && (

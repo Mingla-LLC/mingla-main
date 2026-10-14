@@ -13,7 +13,7 @@
 // via the ?userId= deep-link.
 
 import { useState, useEffect, useCallback } from "react";
-import { Users, Building2 } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { EntityListView } from "../components/entity/EntityListView";
 import { EntityDetailView } from "../components/entity/EntityDetailView";
 import { EntityEditModal } from "../components/entity/EntityEditModal";
@@ -29,6 +29,7 @@ import {
 } from "../services/identityWriteService";
 import { useToast } from "../context/ToastContext";
 import { timeAgo, formatDate, formatDateTime } from "../lib/formatters";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // ── Shared badge maps (read-only) ─────────────────────────────────────────────
 
@@ -466,7 +467,7 @@ export function PeopleConsolePage() {
     };
 
     return (
-      <div className="py-8 flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
         {bundle && !loading && !error && (
           <div className="flex flex-wrap items-center justify-end gap-2">
             {account && (
@@ -531,19 +532,11 @@ export function PeopleConsolePage() {
 
   // ── Accounts list view ──────────────────────────────────────────────────────
   return (
-    <div className="py-8 flex flex-col gap-6">
-      <div className="flex items-start gap-3 flex-wrap">
-        <div className="w-10 h-10 rounded-full bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
-          <Users className="w-5 h-5 text-[var(--color-brand-500)]" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">People</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            Business accounts. Open one for the unified person view — consumer profile, business account,
-            brands, subscription, and support tickets.
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="People"
+        description="Business accounts. Open one for the unified person view — consumer profile, business account, brands, subscription, and support tickets."
+      />
 
       <EntityListView
         title="Business accounts"

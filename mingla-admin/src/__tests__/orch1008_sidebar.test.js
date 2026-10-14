@@ -21,6 +21,16 @@
 // the primary flat group carrying the locked order. Primary-group count 17 -> 19.
 // The 6-deleted-pages invariant is unchanged. (Discovery flagged: retire
 // I-PROPOSED-ADMIN-SHELL-FLAT-NAVIGATION in the registry.)
+//
+// [TEST-MOD-APPROVED ISSUE-3802] 2026-10-13: Seth approved the admin shell
+// revamp (issue #3802, "one frame for every page, menu grouped by job"). The
+// menu is now eight groups in a new order, so the assertions that pinned the
+// OLD order are replaced, and only those: the 19-item primary-group snapshot,
+// its count, and "Settings / Email / Users sit in the primary group". They now
+// pin the approved order across all groups. Unchanged: group[0] has no label
+// and does not fold, the 6 deleted ids stay out of the menu, the 6 page files
+// stay deleted, App.jsx never imports them. I-PROPOSED-ADMIN-SHELL-FLAT-
+// NAVIGATION is retired in the registry by the same change.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -44,29 +54,54 @@ const DELETED_PAGES = [
 
 const DELETED_IDS = ["content", "analytics", "reports", "feedback", "seed", "tables"];
 
+// [TEST-MOD-APPROVED ISSUE-3802] the approved menu order, every group, top to
+// bottom. The first two ids are the unlabelled primary group.
 const EXPECTED_IDS = [
+  // no label
   "overview",
+  "support",
+  // Pipeline
+  "hosts",
+  "creators",
+  "beta-leads",
+  "tool-leads",
+  "team-dashboard",
+  // Business
+  "business-people",
+  "business-brands",
+  "brand-sites",
+  "business-venues",
+  "business-offerings",
+  "claims",
+  // Money
+  "business-payments",
+  "business-orders",
+  "business-money-ledger",
+  "refund-operations",
   "subscriptions",
-  "admin",
+  "pricing",
+  // Explorer app
+  "users",
   "placepool",
   "launch-cities",
   "signals",
   "deck-tuner",
   "place-intelligence-trial",
+  // Growth
+  "ad-engine",
+  "campaign-builder",
+  "campaigns",
   "email",
-  "beta-leads",
-  // [TEST-MOD-APPROVED ISSUE-1354] tool-leads (this issue) + careers (pre-existing
-  // META-ORCH-1222 drift) reconciled into the locked order after beta-leads.
-  "tool-leads",
+  // Company
+  "admin",
   "careers",
-  "pricing",
-  "claims",
-  "support",
-  "users",
+  // System
   "stripe-mode",
   "api-health",
   "settings",
+  "agent",
 ];
+const PRIMARY_IDS = ["overview", "support"];
 
 describe("ORCH-1008 Phase 1 — sidebar prune + flatten", () => {
   it("the primary nav group has label:null and is not collapsible", () => {
@@ -77,9 +112,10 @@ describe("ORCH-1008 Phase 1 — sidebar prune + flatten", () => {
     assert.notEqual(NAV_GROUPS[0].collapsible, true, "the primary group must not be collapsible");
   });
 
-  it("the primary nav group has exactly 19 items in the locked SPEC order", () => {
-    const ids = NAV_GROUPS[0].items.map((i) => i.id);
-    assert.deepEqual(ids, EXPECTED_IDS);
+  it("the menu holds every page in the approved order (issue #3802)", () => {
+    // [TEST-MOD-APPROVED ISSUE-3802] was: the primary group is the 19-item list.
+    assert.deepEqual(NAV_GROUPS[0].items.map((i) => i.id), PRIMARY_IDS);
+    assert.deepEqual(NAV_GROUPS.flatMap((g) => g.items).map((i) => i.id), EXPECTED_IDS);
   });
 
   it("NAV_GROUPS does NOT contain any of the 6 deleted ids", () => {
@@ -89,25 +125,23 @@ describe("ORCH-1008 Phase 1 — sidebar prune + flatten", () => {
     }
   });
 
-  it("the primary group is the flat 19-item list in the locked order", () => {
-    // [TEST-MOD-APPROVED ISSUE-1354] NAV_ITEMS now spans all 3 groups, so the
-    // "flat list" snapshot is the primary group (group[0]). NAV_ITEMS (all
-    // groups) must still contain every primary id.
-    assert.equal(NAV_GROUPS[0].items.length, 19);
-    assert.deepEqual(NAV_GROUPS[0].items.map((i) => i.id), EXPECTED_IDS);
-    const flatIds = new Set(NAV_ITEMS.map((i) => i.id));
-    for (const id of EXPECTED_IDS) {
-      assert.equal(flatIds.has(id), true, `NAV_ITEMS must include primary id '${id}'`);
-    }
+  it("NAV_ITEMS is the same list, flat, with every id once", () => {
+    // [TEST-MOD-APPROVED ISSUE-3802] was: group[0] holds 19 items and NAV_ITEMS
+    // contains each of them.
+    assert.deepEqual(NAV_ITEMS.map((i) => i.id), EXPECTED_IDS);
+    assert.equal(new Set(EXPECTED_IDS).size, EXPECTED_IDS.length);
   });
 
-  it("Settings is a top-level item (not nested under a System dropdown)", () => {
-    const settingsRow = NAV_GROUPS[0].items.find((i) => i.id === "settings");
-    assert.ok(settingsRow, "settings entry must exist in the single top-level group");
+  it("Settings is still in the menu, once", () => {
+    // [TEST-MOD-APPROVED ISSUE-3802] was: Settings sits in the primary group.
+    // Seth moved it into the System group; it must still be reachable.
+    assert.equal(NAV_ITEMS.filter((i) => i.id === "settings").length, 1);
+    assert.equal(NAV_GROUPS.find((g) => g.items.some((i) => i.id === "settings")).label, "System");
   });
 
-  it("Email + Users survive at top-level", () => {
-    const ids = NAV_GROUPS[0].items.map((i) => i.id);
+  it("Email + Users survive in the menu", () => {
+    // [TEST-MOD-APPROVED ISSUE-3802] was: both sit in the primary group.
+    const ids = NAV_ITEMS.map((i) => i.id);
     assert.ok(ids.includes("email"), "email must remain in nav");
     assert.ok(ids.includes("users"), "users must remain in nav");
   });

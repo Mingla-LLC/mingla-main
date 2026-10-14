@@ -3,12 +3,18 @@
  *
  * Root cause (ISSUE-977 Lane A F-6, live in the codebase): the 10-step
  * stepper needs roughly 1,070-1,100px at full size, but common laptop
- * viewports don't have that much room once the sidebar (--sidebar-width:
- * 260px, globals.css) and AppShell's `px-16` (128px total, AppShell.jsx) are
- * subtracted — a 1366x768 laptop leaves ~978px, a 1440x900 laptop leaves
- * ~1052px. Below that, the container's `overflow-x-auto` silently kicks in
- * and steps toward the end ("Policy check", "Review") sit off-screen at
- * first paint — "crammed at the top" (Seth, issue #977 finding #1).
+ * viewports did not have that much room once the menu and the page padding
+ * were subtracted. When this was written the frame took 388px (a 260px menu
+ * plus 128px of page padding): a 1366x768 laptop was left ~978px and a
+ * 1440x900 laptop ~1052px. Below the needed width the container's
+ * `overflow-x-auto` silently kicks in and steps toward the end ("Policy
+ * check", "Review") sit off-screen at first paint — "crammed at the top"
+ * (Seth, issue #977 finding #1).
+ *
+ * The frame today (issue #3802, tokens in globals.css) takes 296px:
+ * --sidebar-width 248px plus --page-gutter 24px on each side. That leaves
+ * 1,070px at 1366 and 1,144px at 1440, so a 1366px laptop is still at the
+ * edge and compact density is still what keeps it from overflowing.
  *
  * Fix: below COMPACT_BREAKPOINT_PX, Stepper renders in "compact" density —
  * tighter pill padding, a narrower connector, a smaller step-number chip,
@@ -21,9 +27,10 @@
  * compaction means it should never be needed at ordinary laptop widths.
  */
 
-// Tailwind's own `2xl` value — the first width where even the WORST-case
-// 1440px-laptop math (1052px available < ~1070-1100px full requirement) is
-// comfortably behind us (at 1536px: 1536 - 260 - 128 = 1148px available).
+// Tailwind's own `2xl` value. It was chosen against the old 388px frame
+// (1536 - 260 - 128 = 1148px available). With today's 296px frame the full
+// stepper has 1536 - 248 - 48 = 1240px here, so the breakpoint is safe with
+// room to spare; it is deliberately left where it was.
 export const COMPACT_BREAKPOINT_PX = 1536;
 
 /**

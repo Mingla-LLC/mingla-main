@@ -1,6 +1,12 @@
 // ORCH-1008 Phase 2 regression test — Place Intelligence Trial page wrapper
 // matches peer pages (no max-w / mx-auto / px-* at the root return).
 // Fails on revert (verified at commit hash recorded in implementation report).
+//
+// [TEST-MOD-APPROVED ISSUE-3802] 2026-10-13: Seth approved the admin shell
+// revamp (issue #3802). The shell now sets the space around every page, so the
+// peer-page root wrapper no longer carries `py-6`. Only CANONICAL_ROOT changes
+// (it loses `py-6`); the rule this test guards is the same and is now stricter
+// in the shell's favour: the page root adds no width, centring or padding.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +21,8 @@ const ADMIN_ROOT = path.resolve(__dirname, "..", "..");
 const PAGE = path.join(ADMIN_ROOT, "src", "pages", "PlaceIntelligenceTrialPage.jsx");
 
 // The canonical peer-page root wrapper (from SignalLibraryPage convention)
-const CANONICAL_ROOT = '<div className="py-6 flex flex-col gap-6">';
+// [TEST-MOD-APPROVED ISSUE-3802] was: '<div className="py-6 flex flex-col gap-6">'.
+const CANONICAL_ROOT = '<div className="flex flex-col gap-6">';
 const FORBIDDEN_AT_ROOT = [
   "max-w-[var(--content-max-width)]",
   "mx-auto",

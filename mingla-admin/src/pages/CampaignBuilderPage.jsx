@@ -59,6 +59,7 @@ import {
 import { areAllExpectedCreatePairsSuccessful } from "../lib/adBuilder/createProgress";
 import { loadFeatureFlags } from "../lib/featureFlags";
 import { AlertCard } from "../components/ui/Card";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const STEPS = [
   { id: "lane", label: "Lane" },
@@ -880,16 +881,20 @@ export function CampaignBuilderPage() {
 
   if (adsConsoleReady && !adsConsoleEnabled) {
     return (
-      <AlertCard variant="info" title="Ads console is off">
-        Campaign Builder is gated by <code className="text-xs">enable_ads_console</code>.
-        Turn it on in admin_config, or use{" "}
-        <a className="underline" href="#/ad-engine">Ad Engine</a> for connections.
-      </AlertCard>
+      <div className="space-y-6">
+        <PageHeader title="Campaign Builder" />
+        <AlertCard variant="info" title="Ads console is off">
+          Campaign Builder is gated by <code className="text-xs">enable_ads_console</code>.
+          Turn it on in admin_config, or use{" "}
+          <a className="underline" href="#/ad-engine">Ad Engine</a> for connections.
+        </AlertCard>
+      </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <PageHeader title="Campaign Builder" />
       <Stepper
         steps={STEPS}
         activeIndex={activeIndex}
