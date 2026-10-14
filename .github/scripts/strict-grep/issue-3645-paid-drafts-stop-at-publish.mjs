@@ -371,8 +371,8 @@ const RULES = [
     "setStep(7);",
   ], "a host returning to Review lands on Review once the invite step is known"),
   count("D2-experience-resumes-publish", F.experienceWizard,
-    "() => resumePublishRef.current(),", 2,
-    "both Organiser Terms checks hand over the publish to resume"),
+    "() => resumePublishRef.current(),", 3,
+    "both Organiser Terms checks, and the server's own terms refusal, hand over the publish to resume"),
   lacks("D2-experience-no-retry-toast", F.experienceWizard, "ORGANISER_TERMS_PUBLISH_RETRY_TOAST",
     "no 'tap Publish again' after accepting"),
   has("D2-trip-resumes-publish", F.tripWizard, "resumePublishRef.current()",
@@ -493,11 +493,20 @@ const RULES = [
   has("Eh-copy", F.creationFlow,
     'consequenceSellBeforeBank: "You can start selling now. Your money waits until you add a bank.",',
     "approved copy"),
-  ordered("Eh-picked-from-the-brand-row", F.creationFlow, [
-    "{brandSellsBeforeBank(payoutCanonicalBrand)",
+  // The line was first chosen from the brand row alone. Straight after the host
+  // picks Nigeria that row does not carry the server's stamp yet, so the generic
+  // line stayed on screen (seen live, 2026-10-14). The country picked in the
+  // step decides first; the brand row decides when nothing was picked.
+  ordered("Eh-picked-from-the-chosen-country-then-the-brand-row", F.creationFlow, [
+    "{payoutStepSellsBeforeBank(",
+    "pickedPayoutRail,",
+    "payoutCanonicalBrand,",
     "? BRAND_CREATION_COPY.step4.consequenceSellBeforeBank",
     ": BRAND_CREATION_COPY.step4.consequence}",
-  ], "the line is chosen from the canonical brand row; other brands keep the existing copy"),
+  ], "the line follows the country just picked, then the canonical brand row; other brands keep the existing copy"),
+  count("Eh-not-from-the-brand-row-alone", F.creationFlow,
+    "brandSellsBeforeBank(payoutCanonicalBrand)", 0,
+    "the brand row alone does not know Nigeria was just picked"),
 
   // E-i. Event publish confirmation by visibility.
   ordered("Ei-copy-by-visibility", F.eventWizard, [

@@ -216,6 +216,14 @@ jobs:
           # taxonomy function only.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
             -f supabase/migrations/20270828003827_issue_3827_live_edit_location_one_owner.sql
+          # Issue #3645 re-emits `business_publish_event_draft` again (it asks the
+          # shared currency source instead of carrying its own list) and now owns
+          # its final definition on a full replay, so the re-apply set must end
+          # with it: re-applying 20270731003645 alone rewinds the function to the
+          # body with the hand-written list. This file refuses to run when a
+          # function it depends on is missing, which a full replay always has.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270830003645_issue_3645_offering_functions_use_shared_currency_source.sql
           after="$(snapshot)"
           test "$before" = "$after"
           echo "OK — replay is definition- and grant-equivalent."

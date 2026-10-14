@@ -1,4 +1,12 @@
 import { supabase } from "./supabase";
+import { adoptBrandCurrencyForDraft } from "../utils/draftFollowsBrandCurrency";
+import {
+  getPricesClearedNote,
+  pricesClearedNoteFromTheme,
+  recordPricesClearedNote,
+  setPricesClearedNote,
+  type PricesClearedNote,
+} from "../utils/draftPricesClearedNote";
 import {
   buildDraftEvent,
   type DraftEvent,
@@ -81,6 +89,22 @@ export class ServerDraftLifecycleError extends Error {
 // wizard's monotonic ref — adopts the server's revision, and the NEXT edit
 // saves. It is a reconcile, never a force-write: if another device really did
 // move ahead, its content is what lands in the store.
+/**
+ * Issue #3645 — this device's copy of a draft is priced in another currency
+ * than the server row, the server did not clear it, and the server's copy
+ * could not be read. Nothing was written. Unlike a revision conflict this is a
+ * real save failure and is shown as one.
+ */
+export class DraftCurrencyCopyUnreadableError extends Error {
+  readonly draftId: string;
+
+  constructor(draftId: string) {
+    super("draft_currency_copy_unreadable");
+    this.name = "DraftCurrencyCopyUnreadableError";
+    this.draftId = draftId;
+  }
+}
+
 export class DraftRevisionConflictError extends Error {
   draftId: string;
   serverDraft: DraftEvent | null;
@@ -152,8 +176,13 @@ const requireUserId = async (): Promise<string> => {
   return userId;
 };
 
-const rowToDraft = (row: unknown): DraftEvent =>
-  serverRowToDraft(row as ServerDraftEventRow);
+const rowToDraft = (row: unknown): DraftEvent => {
+  const draft = serverRowToDraft(row as ServerDraftEventRow);
+  // Issue #3645 — keep the server's "prices were cleared" note beside the
+  // draft (it is a one-time message, not a draft field).
+  recordPricesClearedNote(draft.id, (row as { theme?: unknown } | null)?.theme);
+  return draft;
+};
 
 const createRsvpRequestId = (): string => {
   const maybeCrypto = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
@@ -421,17 +450,120 @@ const toRevisionConflictError = async (
   return new DraftRevisionConflictError(draftId, serverDraft);
 };
 
+export interface AutosaveServerDraftOptions {
+  /**
+   * Issue #3645 — the brand's CURRENT currency, FRESH from the server (the
+   * autosave hook reads it just before the save; see useServerDraftEvents).
+   * When it is a currency the draft is saved in it. Never pass a value from a
+   * list cached on the device here: it can be older than the draft row, and
+   * trusting one let a second device clear a correctly re-priced draft.
+   * Null or absent means "not known".
+   */
+  brandCurrency?: string | null;
+  /**
+   * Issue #3645 — set by the wizard's save path. The SERVER ROW's currency,
+   * read by this save, outranks everything: this device's copy, the brand
+   * currency passed (it may be a few seconds old) and the cached one. A save
+   * therefore never writes a currency different from the row it just read,
+   * unless that row has none. Off (the default) keeps the order every other
+   * caller has always had.
+   */
+  serverRowWins?: boolean;
+  /**
+   * Issue #3645 — the brand currency this device holds (possibly stale). Used
+   * ONLY with `serverRowWins`, and only when neither a fresh brand currency
+   * nor a row currency exists.
+   */
+  cachedBrandCurrency?: string | null;
+}
+
 export const autosaveServerDraft = async (
   draft: DraftEvent,
+  options: AutosaveServerDraftOptions = {},
 ): Promise<DraftEvent> => {
   const existing = await fetchExistingDraftSaveContext(draft.id);
-  const effectiveCurrency = await resolveDraftCurrencyForSave(draft, existing.currency);
-  const normalizedDraft = { ...draft, currency: effectiveCurrency };
-  const updatePayload = draftToServerUpdate(
+  // Issue #3645 — the currency this draft must follow. For a wizard save
+  // (`serverRowWins`) the ROW the server holds right now, read a moment ago,
+  // is the owner: a save never sends a currency different from that row. Only
+  // a row with no currency takes the brand's (as the hook read it, possibly a
+  // few seconds old), and failing that the one cached on this device. Other
+  // callers follow the brand currency they pass. Null = nothing to follow, and
+  // the usual order (this draft, the server row, the brand) decides.
+  const followCurrency =
+    options.serverRowWins === true
+      ? existing.currency ??
+        nullableCurrency(options.brandCurrency) ??
+        nullableCurrency(options.cachedBrandCurrency)
+      : nullableCurrency(options.brandCurrency);
+  // INVARIANT (issue #3645): this device clears its own prices ONLY when the
+  // server row it just read carries the cleared state (the server's note),
+  // never because two currencies differ. A wizard save whose copy is in
+  // another currency than a row the server did NOT clear is a copy of a draft
+  // someone has since re-priced: nothing is written, and the server's copy is
+  // handed back to be adopted, exactly as for a revision conflict.
+  // (A copy in another currency that holds NO price has nothing to clear: it
+  // simply takes the row's currency and saves.)
+  if (
+    options.serverRowWins === true &&
+    existing.currency !== null &&
+    adoptBrandCurrencyForDraft(draft, existing.currency).pricesCleared &&
+    pricesClearedNoteFromTheme(existing.theme) === null
+  ) {
+    let serverDraft: DraftEvent | null = null;
+    try {
+      serverDraft = await fetchDraftById(draft.id);
+    } catch (readError) {
+      // The server's copy could not be read, so there is nothing to adopt and
+      // nothing may be written. This is NOT a quiet resync: it is a failed
+      // save, and it must look like one (the usual save-failed state), so the
+      // host knows their edit is not stored. The next edit tries again.
+      console.warn("[autosaveServerDraft] could not read the server's copy of a draft in another currency", {
+        draftId: draft.id,
+        message: readError instanceof Error ? readError.message : String(readError),
+      });
+      throw new DraftCurrencyCopyUnreadableError(draft.id);
+    }
+    if (serverDraft === null) throw new DraftCurrencyCopyUnreadableError(draft.id);
+    throw new DraftRevisionConflictError(draft.id, serverDraft);
+  }
+  const effectiveCurrency =
+    followCurrency ?? (await resolveDraftCurrencyForSave(draft, existing.currency));
+  const brandCurrency = followCurrency;
+  // A draft that still carries ANOTHER currency is moved to the one it follows
+  // with its paid prices and chip-in amounts cleared, so a number typed in
+  // pounds is never saved as naira. A draft with no currency yet only takes the
+  // currency and keeps its prices.
+  const adoption = adoptBrandCurrencyForDraft(draft, brandCurrency);
+  const normalizedDraft = { ...adoption.draft, currency: effectiveCurrency };
+  const builtPayload = draftToServerUpdate(
     normalizedDraft,
     existing.theme,
     draft.clientRevision ?? 0,
   );
+  // Issue #3645 — the server's "prices were cleared" note is a one-time
+  // message. Once this device has shown it (nothing is waiting in the note
+  // registry) the save writes the note back as JSON null, which reads as "no
+  // note". The RSVP owner MERGES the draft JSON, so leaving the key out would
+  // keep the note for ever; while a note is still waiting to be shown the key
+  // is left out, so a merge keeps it.
+  const updatePayload =
+    getPricesClearedNote(draft.id) === null
+      ? {
+          ...builtPayload,
+          theme: {
+            ...builtPayload.theme,
+            business_draft: {
+              ...(builtPayload.theme.business_draft as Record<string, unknown>),
+              pricesClearedForCurrencyChange: null,
+            },
+          },
+        }
+      : builtPayload;
+  // What to tell the host if THIS save is the one that cleared the prices.
+  const clearedBySave: PricesClearedNote | null =
+    adoption.pricesCleared && effectiveCurrency !== null
+      ? { from: nullableCurrency(draft.currency), to: effectiveCurrency }
+      : null;
 
   if (draft.isRsvp === true) {
     const { data, error } = await supabase.rpc("business_update_rsvp_graph", {
@@ -448,7 +580,9 @@ export const autosaveServerDraft = async (
       p_client_request_id: createRsvpRequestId(),
     });
     if (error !== null) throw await toRevisionConflictError(error, draft.id);
-    return eventFromRsvpGraph(data, "autosaveServerDraft");
+    const savedRsvp = eventFromRsvpGraph(data, "autosaveServerDraft");
+    if (clearedBySave !== null) setPricesClearedNote(savedRsvp.id, clearedBySave);
+    return savedRsvp;
   }
 
   // ORCH-0859 REWORK 3 (events-type-filter audit): draft UPDATE must not
@@ -466,7 +600,9 @@ export const autosaveServerDraft = async (
   if (data === null) {
     throw new ServerDraftLifecycleError("draft_not_editable", draft.id);
   }
-  return rowToDraft(eventRowFromDraftRpc(data, "autosaveServerDraft"));
+  const saved = rowToDraft(eventRowFromDraftRpc(data, "autosaveServerDraft"));
+  if (clearedBySave !== null) setPricesClearedNote(saved.id, clearedBySave);
+  return saved;
 };
 
 export const discardServerDraft = async (draftId: string): Promise<void> => {

@@ -543,3 +543,89 @@ describe("#3645 the inline prompt a creator shows for a price with no currency",
     expect(brandNeedsPayoutCountry(null)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// #3645 — the Payouts card's consequence line. "You can start selling now" is
+// true only for a brand that completed a pick of Nigeria. It must not survive a
+// later change of country, least of all one that failed part-way after the
+// server had already moved the brand off the Nigerian rail.
+// ---------------------------------------------------------------------------
+describe("#3645 the Payouts card says 'start selling now' only after a completed Nigeria pick", () => {
+  const SELL_NOW = BRAND_CREATION_COPY.step4.consequenceSellBeforeBank;
+  const CONNECT_FIRST = BRAND_CREATION_COPY.step4.consequence;
+  const line = (tree: Renderer): string => {
+    const text = allText(tree.root);
+    const sellNow = text.includes(SELL_NOW);
+    const connectFirst = text.includes(CONNECT_FIRST);
+    if (sellNow === connectFirst) {
+      throw new Error(`expected exactly one consequence line; sell-now=${sellNow} connect-first=${connectFirst}`);
+    }
+    return sellNow ? SELL_NOW : CONNECT_FIRST;
+  };
+
+  test("before any pick: connect a bank first", async () => {
+    const tree = await mountAtPayouts(BRAND);
+    expect(line(tree)).toBe(CONNECT_FIRST);
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("straight after picking Nigeria: start selling now", async () => {
+    const tree = await mountAtPayouts(BRAND);
+    await pick(tree, NIGERIA);
+    expect(line(tree)).toBe(SELL_NOW);
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("a Nigeria pick that fails never says it", async () => {
+    selectProvider.mockRejectedValueOnce(new Error("brand-paystack-onboard: internal_error"));
+    const tree = await mountAtPayouts(BRAND);
+    await pick(tree, NIGERIA);
+    expect(line(tree)).toBe(CONNECT_FIRST);
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("Nigeria, then another country that completes: connect a bank first", async () => {
+    const tree = await mountAtPayouts(BRAND);
+    await pick(tree, NIGERIA);
+    await pick(tree, "DE");
+    expect(line(tree)).toBe(CONNECT_FIRST);
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("Nigeria, then another country whose currency save fails after the rail was cleared: no longer 'start selling now'", async () => {
+    const tree = await mountAtPayouts(BRAND);
+    await pick(tree, NIGERIA);
+    expect(line(tree)).toBe(SELL_NOW);
+
+    // The server takes the brand off the Nigerian rail, then the currency
+    // write fails. The brand is no longer one that sells before a bank.
+    updateBrand.mockRejectedValueOnce(new Error("network down"));
+    await pick(tree, "DE");
+    expect(clearProvider).toHaveBeenCalledWith(BRAND.id);
+    expect(allText(tree.root)).toContain(PAYOUT_COUNTRY_SWITCH_FAILED_COPY);
+    expect(line(tree)).toBe(CONNECT_FIRST);
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("Nigeria, then another country where clearing the rail itself fails: still not claimed", async () => {
+    const tree = await mountAtPayouts(BRAND);
+    await pick(tree, NIGERIA);
+    clearProvider.mockRejectedValueOnce(new Error("brand-paystack-onboard: internal_error"));
+    await pick(tree, "DE");
+    // Unknown which side of the switch the server is on: say the safe thing.
+    expect(line(tree)).toBe(CONNECT_FIRST);
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("picking Nigeria again after a failed change brings the line back", async () => {
+    const tree = await mountAtPayouts(BRAND);
+    await pick(tree, NIGERIA);
+    updateBrand.mockRejectedValueOnce(new Error("network down"));
+    await pick(tree, "DE");
+    expect(line(tree)).toBe(CONNECT_FIRST);
+    await pick(tree, NIGERIA);
+    expect(line(tree)).toBe(SELL_NOW);
+    await TestRenderer.act(async () => tree.unmount());
+  });
+});
+

@@ -31,6 +31,12 @@ export interface ValidatedPackage {
   name: string;
   priceMajor: string;
   capacity: number | null;
+  /**
+   * Issue #3645 — true when this package's price was cleared because the
+   * brand's currency changed. For such a package an empty price is NOT "free":
+   * the host has to type one (0 included).
+   */
+  priceNeedsReentry?: boolean;
   paymentPlan: {
     deposit_pct: number;
     installments: ValidatedInstallment[];
@@ -65,6 +71,12 @@ export function validateTripPackages(
       p.name.trim().length > 0 ? `"${p.name.trim()}"` : `Package ${i + 1}`;
     if (p.name.trim().length === 0) {
       return { ok: false, reason: `Give ${label} a name.` };
+    }
+    if (p.priceNeedsReentry === true && p.priceMajor.trim().length === 0) {
+      return {
+        ok: false,
+        reason: `Your brand's currency changed. Enter the price for ${label} again before publishing.`,
+      };
     }
     const price = parseFloat(p.priceMajor);
     // Empty string → treated as free (0), valid. Any parsed value must be ≥ 0.
