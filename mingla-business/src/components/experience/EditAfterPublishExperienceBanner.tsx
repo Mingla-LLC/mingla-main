@@ -36,13 +36,18 @@ export interface EditAfterPublishExperienceBannerProps {
    * server's human-readable reason copy, or "Add a reason"). Null = no error.
    */
   errorMessage?: string | null;
+  /**
+   * issue #3827 — one truthful line under the reason field: whether buyers
+   * will be emailed about this change. Absent or empty = no line.
+   */
+  buyerNoticeLine?: string | null;
 }
 
 const REASON_MAX = 200;
 
 export const EditAfterPublishExperienceBanner: React.FC<
   EditAfterPublishExperienceBannerProps
-> = ({ reason, onReasonChange, errorMessage }) => (
+> = ({ reason, onReasonChange, errorMessage, buyerNoticeLine }) => (
   <View style={styles.host}>
     <View style={styles.headerRow}>
       <View style={styles.iconBadge}>
@@ -73,6 +78,11 @@ export const EditAfterPublishExperienceBanner: React.FC<
     {errorMessage != null && errorMessage.length > 0 ? (
       <Text style={styles.error} testID="experience-live-edit-error">
         {errorMessage}
+      </Text>
+    ) : null}
+    {buyerNoticeLine != null && buyerNoticeLine.length > 0 ? (
+      <Text style={styles.notice} testID="experience-live-edit-buyer-notice">
+        {buyerNoticeLine}
       </Text>
     ) : null}
   </View>
@@ -144,6 +154,11 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
     color: semantic.error,
+  },
+  notice: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
   },
 });
 

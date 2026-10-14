@@ -47,6 +47,12 @@ import {
   eventBuyerCountKeys,
   useEventBuyerCount,
 } from "../../../src/hooks/useEventBuyerCount";
+// issue #3827 — whether buyers are emailed about a live edit, and the words.
+import { useEventBuyerNoticeStatus } from "../../../src/hooks/useEventBuyerNoticeStatus";
+import {
+  buyerNoticeSavedToast,
+  lastNoticeLine,
+} from "../../../src/utils/buyerNoticeCopy";
 import { useBrandList } from "../../../src/store/currentBrandStore";
 import {
   useDraftById,
@@ -127,6 +133,39 @@ function EditPublishedEventWithBuyerCount(
   const props = { ...routeProps, onReasonRefused };
   const buyerCount = useEventBuyerCount(props.liveEvent.serverEventId);
   return <EditPublishedScreen {...props} buyerCount={buyerCount} />;
+}
+
+// issue #3827 — the same editor, told what the server will do about buyers.
+// The status is read HERE, beside the buyer count, for the same reason: the
+// editor stays free of the read. `null` (loading, failed, or the server
+// function not applied yet) reads as "buyer emails are not switched on", so
+// not knowing can never promise an email. The toast after a save comes from
+// the `buyer_notice` that save answered with, never from this read.
+const savedToastForBuyers = (buyerNotice: unknown): string | null =>
+  buyerNoticeSavedToast(buyerNotice, "buyers");
+
+function EditPublishedEventWithBuyerNotice(
+  routeProps: Omit<
+    EditPublishedScreenProps,
+    | "buyerCount"
+    | "rsvpMode"
+    | "onReasonRefused"
+    | "buyerNoticeStatus"
+    | "savedToastFor"
+    | "lastBuyerNotice"
+  >,
+): React.ReactElement {
+  const buyerNoticeStatus = useEventBuyerNoticeStatus(
+    routeProps.liveEvent.serverEventId,
+  );
+  return (
+    <EditPublishedEventWithBuyerCount
+      {...routeProps}
+      buyerNoticeStatus={buyerNoticeStatus}
+      savedToastFor={savedToastForBuyers}
+      lastBuyerNotice={lastNoticeLine(buyerNoticeStatus)}
+    />
+  );
 }
 
 export default function EventEditRoute(): React.ReactElement {
@@ -839,7 +878,7 @@ export default function EventEditRoute(): React.ReactElement {
       );
     }
     return (
-      <EditPublishedEventWithBuyerCount
+      <EditPublishedEventWithBuyerNotice
         liveEvent={resolvedLiveEvent}
         disableLocalSaveReason={
           liveEvent === null

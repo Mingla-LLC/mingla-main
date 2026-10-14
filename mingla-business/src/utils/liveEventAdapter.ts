@@ -267,8 +267,10 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
 };
 
 /**
- * Material fields — when changed, fire notification stack with banner +
- * email + SMS (per `deriveChannelFlags`). Buyer-protection-significant.
+ * Material fields — buyer-protection-significant: a change classifies the
+ * edit as `material` in Review changes. This list sends nothing. Whether
+ * buyers are emailed is decided by the server on save (issue #3827), for a
+ * narrower set: when, where and how they attend.
  */
 export const MATERIAL_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "format",
@@ -289,8 +291,8 @@ export const MATERIAL_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
 ];
 
 /**
- * Safe fields — additive / cosmetic / forward-only. When changed alone,
- * fire banner + email but no SMS (additive severity).
+ * Safe fields — additive / cosmetic / forward-only. When changed alone the
+ * edit is `additive`: logged, and no buyer is told.
  */
 export const SAFE_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "name",

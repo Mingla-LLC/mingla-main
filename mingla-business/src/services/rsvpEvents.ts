@@ -81,6 +81,8 @@ export interface UpdateLiveRsvpResult {
   reason?: string;
   goingCount?: number;
   notifiedCount?: number;
+  /** issue #3827 — the server's `buyer_notice`, as answered (unparsed). */
+  buyerNotice?: unknown;
 }
 
 export const updateLiveRsvp = async (
@@ -109,12 +111,15 @@ export const updateLiveRsvp = async (
     reason?: string;
     going_count?: number;
     notified_count?: number;
+    buyer_notice?: unknown;
   };
   return {
     ok: res.ok ?? false,
     reason: res.reason,
     goingCount: res.going_count,
     notifiedCount: res.notified_count,
+    // issue #3827 — what the server decided about telling going guests.
+    buyerNotice: res.buyer_notice,
   };
 };
 

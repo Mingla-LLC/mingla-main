@@ -49,11 +49,6 @@ import {
   computeDiffSummary,
 } from "../utils/liveEventAdapter";
 import { validateLiveEventFieldUpdate } from "../utils/publishedEventEditGuards";
-import {
-  deriveChannelFlags,
-  notifyEventChanged,
-} from "../services/eventChangeNotifier";
-import { getBrandFromCache } from "../hooks/brandCache";
 
 export type LiveEventStatus = "scheduled" | "live" | "cancelled" | "ended";
 
@@ -403,7 +398,8 @@ export interface LiveEventState {
    *   - Recurrence rule change that drops occurrences with sales: rejected
    *
    * On success: applies patch, bumps `updatedAt`, records edit log entry,
-   * fires notification stack via `eventChangeNotifier.notifyEventChanged`.
+   * records the edit locally. It tells buyers nothing: the server decides
+   * that on save (issue #3827).
    *
    * Per ORCH-0704 v2 spec §3.2.1.
    */
@@ -587,7 +583,11 @@ export const useLiveEventStore = create<LiveEventState>()(
           ),
         }));
 
-        // ---- 6. Severity classification + edit log + notification stack ----
+        // ---- 6. Severity classification + edit log ----
+        // issue #3827 — nothing here tells a buyer anything. Whether buyers are
+        // emailed about a live edit is decided by the server when it saves
+        // (`buyer_notice` in the save's answer); this store only keeps the
+        // local edit log.
         const changedFieldKeys = (
           Object.keys(patch) as (keyof EditableLiveEventFields)[]
         ).filter((k) => {
@@ -598,17 +598,11 @@ export const useLiveEventStore = create<LiveEventState>()(
         const severity = classifySeverity(changedFieldKeys);
         const diffSummary = computeDiffSummary(event, patch);
 
-        // Cycle 9c — populate affectedOrderIds + hasWebPurchaseOrders from useOrderStore
-        const ordersForEvent = useOrderStore
+        // Cycle 9c — populate affectedOrderIds from useOrderStore
+        const affectedOrderIds = useOrderStore
           .getState()
-          .getOrdersForEvent(id);
-        const affectedOrderIds = ordersForEvent.map((o) => o.id);
-        const hasWebPurchaseOrders = ordersForEvent.some(
-          (o) =>
-            o.paymentMethod === "card" ||
-            o.paymentMethod === "apple_pay" ||
-            o.paymentMethod === "google_pay",
-        );
+          .getOrdersForEvent(id)
+          .map((o) => o.id);
 
         const entry = useEventEditLogStore.getState().recordEdit({
           eventId: id,
@@ -619,30 +613,6 @@ export const useLiveEventStore = create<LiveEventState>()(
           diffSummary,
           affectedOrderIds,
         });
-
-        // Resolve brand display name for notification copy.
-        // Cycle 2 / ORCH-0742: outside-component context reads the live Brand
-        // record from the React Query cache by ID. Empty string on cache miss
-        // — best-effort, fire-and-forget notification.
-        const cachedBrand = getBrandFromCache(event.brandId);
-        const brandName = cachedBrand?.displayName ?? "";
-
-        // Fire notification stack (fire-and-forget)
-        void notifyEventChanged(
-          {
-            eventId: id,
-            eventName: event.name,
-            brandName,
-            brandSlug: event.brandSlug,
-            eventSlug: event.eventSlug,
-            reason: trimmedReason,
-            diffSummary,
-            severity,
-            affectedOrderIds,
-            occurredAt: now,
-          },
-          deriveChannelFlags(severity, hasWebPurchaseOrders),
-        );
 
         return { ok: true, editLogEntryId: entry.id };
       },

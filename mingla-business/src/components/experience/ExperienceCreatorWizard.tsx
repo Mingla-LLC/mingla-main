@@ -195,6 +195,18 @@ export interface ExperienceCreatorWizardProps {
    * existing Publish / Save-as-draft flow unchanged.
    */
   liveExperience?: ExperienceDetail;
+  /**
+   * issue #3827 — LIVE-edit only. One truthful line under the reason field:
+   * whether buyers will be emailed about this change. Supplied by the route,
+   * which reads `business_event_buyer_notice_status`; absent = no line.
+   */
+  liveBuyerNoticeLine?: string | null;
+  /**
+   * issue #3827 — LIVE-edit only. Turns the `buyer_notice` the save answered
+   * with into the success toast, or null when the server scheduled no email.
+   * Supplied by the route, so the wizard promises nothing by itself.
+   */
+  savedToastFor?: (buyerNotice: unknown) => string | null;
   /** Total confirmed (paid) order quantity for the live experience (refund-gate input). */
   liveSoldCount?: number;
   /**
@@ -344,6 +356,8 @@ export const ExperienceCreatorWizard: React.FC<
   liveExperience,
   liveSoldCount,
   initialStep,
+  liveBuyerNoticeLine,
+  savedToastFor,
 }) => {
   const isLiveEdit = liveExperience !== undefined;
   const { user, signOut } = useAuth();
@@ -1521,6 +1535,8 @@ export const ExperienceCreatorWizard: React.FC<
         reason?: string;
         affected_order_count?: number;
         event?: { id?: string };
+        // issue #3827 — what the server decided about emailing buyers.
+        buyer_notice?: unknown;
       } | null;
       // ORCH-1075 — Stripe-readiness / past-date guard (structured return).
       if (
@@ -1557,6 +1573,13 @@ export const ExperienceCreatorWizard: React.FC<
           "Couldn't save guest privacy — check Settings after publishing.",
         );
       }
+      // issue #3827 — an email was scheduled: say so, with the count, and
+      // leave it on screen long enough to read before the editor closes.
+      const buyerNoticeToast = savedToastFor?.(result?.buyer_notice) ?? null;
+      if (buyerNoticeToast !== null) {
+        setToast(buyerNoticeToast);
+        await new Promise<void>((resolve) => setTimeout(resolve, 1600));
+      }
       onComplete(savedId);
     } catch (e) {
       setToast(
@@ -1579,6 +1602,7 @@ export const ExperienceCreatorWizard: React.FC<
     liveExperience,
     liveSoldCount,
     onComplete,
+    savedToastFor,
     pricingMode,
     pricingValid,
     refundValid,
@@ -1654,6 +1678,7 @@ export const ExperienceCreatorWizard: React.FC<
               if (liveEditError !== null) setLiveEditError(null);
             }}
             errorMessage={liveEditError}
+            buyerNoticeLine={liveBuyerNoticeLine ?? null}
           />
         ) : null}
         {step === 1 ? (

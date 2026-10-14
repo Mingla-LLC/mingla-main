@@ -5,6 +5,10 @@
  * Orange-tinted GlassCard with warning icon + headline + body copy.
  * Communicates: changes go live immediately + most fields are locked.
  *
+ * issue #3827 — it promises no message. When buyer emails are on, the route
+ * passes the outcome of the last one ("Last update: sent to 249 of 254 …");
+ * a failed delivery is shown in red with "Contact support".
+ *
  * Per Cycle 9 spec §3.B.2 J-E11.
  */
 
@@ -13,6 +17,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import {
   accent,
+  semantic,
   radius as radiusTokens,
   spacing,
   text as textTokens,
@@ -20,7 +25,14 @@ import {
 
 import { Icon } from "../ui/Icon";
 
-export const EditAfterPublishBanner: React.FC = () => (
+export interface EditAfterPublishBannerProps {
+  /** issue #3827 — how the last buyer email went; null or absent: no line. */
+  lastNotice?: { text: string; failed: boolean } | null;
+}
+
+export const EditAfterPublishBanner: React.FC<EditAfterPublishBannerProps> = ({
+  lastNotice = null,
+}) => (
   <View style={styles.host}>
     <View style={styles.iconBadge}>
       <Icon name="flag" size={18} color={accent.warm} />
@@ -29,10 +41,18 @@ export const EditAfterPublishBanner: React.FC = () => (
       <Text style={styles.heading}>You're editing a live event</Text>
       <Text style={styles.body}>
         Changes save immediately. Existing buyers stay protected — their
-        tickets and prices won't change. Material changes (date, venue,
-        format) notify your buyers via email + SMS. Some destructive
-        changes require refunding existing buyers first.
+        tickets and prices won't change. Review changes tells you whether
+        buyers will be emailed about a new date, venue or format. Some
+        destructive changes require refunding existing buyers first.
       </Text>
+      {lastNotice !== null ? (
+        <Text
+          style={[styles.lastNotice, lastNotice.failed ? styles.lastNoticeFailed : null]}
+          accessibilityRole={lastNotice.failed ? "alert" : undefined}
+        >
+          {lastNotice.text}
+        </Text>
+      ) : null}
     </View>
   </View>
 );
@@ -75,6 +95,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: textTokens.secondary,
+  },
+  lastNotice: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: textTokens.secondary,
+    marginTop: 6,
+    fontVariant: ["tabular-nums"],
+  },
+  lastNoticeFailed: {
+    color: semantic.error,
+    fontWeight: "600",
   },
 });
 
