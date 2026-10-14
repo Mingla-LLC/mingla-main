@@ -42,6 +42,18 @@ export interface BuyerNoticeStatus {
     failed: number;
     noEmail: number;
     held: number;
+    /** Kept from the new email while emails are being tested. */
+    heldTesting?: number;
+    /** Not sent because buyer emails were switched off. */
+    heldSwitchedOff?: number;
+    /** RSVP guests given the usual alert instead. */
+    alerted?: number;
+    /** A waiting email: the people it can reach now. */
+    emailable?: number;
+    /** Emails are being tested now. */
+    testing?: boolean;
+    /** A waiting email while testing: how many recipients are test addresses. */
+    testAddresses?: number;
   } | null;
 }
 
@@ -81,18 +93,26 @@ export const parseBuyerNotice = (raw: unknown): BuyerNotice | null => {
 /** Null for anything that is not a usable status answer. */
 export const parseBuyerNoticeStatus = (raw: unknown): BuyerNoticeStatus | null => {
   if (!isRecord(raw) || typeof raw.live !== "boolean") return null;
-  const last = isRecord(raw.last) && typeof raw.last.state === "string"
-    ? {
-        state: raw.last.state,
-        holdCode: typeof raw.last.holdCode === "string" ? raw.last.holdCode : null,
-        audience: count(raw.last.audience),
-        sent: count(raw.last.sent),
-        pending: count(raw.last.pending),
-        failed: count(raw.last.failed),
-        noEmail: count(raw.last.noEmail),
-        held: count(raw.last.held),
-      }
-    : null;
+  let last: BuyerNoticeStatus["last"] = null;
+  if (isRecord(raw.last) && typeof raw.last.state === "string") {
+    const source = raw.last;
+    const parsed: NonNullable<BuyerNoticeStatus["last"]> = {
+      state: source.state as string,
+      holdCode: typeof source.holdCode === "string" ? source.holdCode : null,
+      audience: count(source.audience),
+      sent: count(source.sent),
+      pending: count(source.pending),
+      failed: count(source.failed),
+      noEmail: count(source.noEmail),
+      held: count(source.held),
+    };
+    // Optional facts are present only when the server sent them.
+    for (const key of ["heldTesting", "heldSwitchedOff", "alerted", "emailable", "testAddresses"] as const) {
+      if (typeof source[key] === "number") parsed[key] = count(source[key]);
+    }
+    if (typeof source.testing === "boolean") parsed.testing = source.testing;
+    last = parsed;
+  }
   const status: BuyerNoticeStatus = { live: raw.live, audience: count(raw.audience), last };
   // Optional facts are present only when the server says so.
   const noEmail = count(raw.noEmail);
@@ -349,34 +369,64 @@ export const lastNoticeLine = (
 ): LastNoticeLine | null => {
   const last = status?.last ?? null;
   if (last === null) return null;
+  const one = noun.slice(0, -1);
+  const addresses = (n: number): string => `${n} test ${n === 1 ? "address" : "addresses"}`;
   if (last.state === "scheduled") {
+    if (last.testing === true) {
+      return {
+        text: `Last update: waiting to go out to ${addresses(last.testAddresses ?? 0)}. Your ${noun} are not emailed while emails are being tested.`,
+        failed: false,
+      };
+    }
     return {
-      text: `Last update: an email to ${people(last.audience, noun)} is waiting to go out.`,
+      text: `Last update: an email to ${people(last.emailable ?? last.audience, noun)} is waiting to go out.`,
       failed: false,
     };
   }
   if (last.state === "held") {
     return last.holdCode === "refund_all"
       ? {
-          text: `Last update: no email was sent, because that change refunds every ${noun.slice(0, -1)}.`,
+          text: `Last update: no email was sent, because that change refunds every ${one}.`,
           failed: false,
         }
       : null;
   }
   if (last.state !== "fanned_out") return null;
-  const parts = [
-    `Last update: sent to ${last.sent} of ${last.audience}${noun === "guests" ? " guests" : ""}`,
-  ];
-  if (last.pending > 0) parts.push(`${last.pending} still sending`);
-  parts.push(
-    `${last.noEmail} ${last.noEmail === 1 ? "has" : "have"} no email address`,
-  );
-  if (last.held > 0) parts.push(`${last.held} held back while emails are being tested`);
-  parts.push(`${last.failed} failed`);
-  return {
-    text: last.failed > 0
-      ? `${parts.join(" · ")}. Contact support.`
-      : parts.join(" · "),
-    failed: last.failed > 0,
+  const heldOff = last.heldSwitchedOff ?? 0;
+  const heldTesting = last.heldTesting ?? (last.heldSwitchedOff === undefined ? last.held : 0);
+  const alerted = last.alerted ?? 0;
+  const reached = last.sent + last.pending + last.failed;
+  const failedPart = last.failed > 0 ? `${last.failed} failed` : null;
+  const finish = (parts: Array<string | null>): LastNoticeLine => {
+    const text = `Last update: ${parts.filter((part): part is string => part !== null).join(" · ")}`;
+    return last.failed > 0 ? { text: `${text}. Contact support.`, failed: true } : { text, failed: false };
   };
+  if (reached === 0 && heldOff > 0 && heldTesting === 0 && alerted === 0) {
+    return {
+      text: `Last update: not sent, because ${one} emails were switched off. ${people(heldOff, noun)} ${
+        heldOff === 1 ? "was" : "were"
+      } not emailed.`,
+      failed: false,
+    };
+  }
+  if (heldTesting > 0 || (alerted > 0 && heldOff === 0)) {
+    // Emails were being tested: only test addresses had the new email.
+    return finish([
+      alerted > 0 ? `${people(alerted, noun)} alerted the usual way` : null,
+      `${addresses(last.sent)} emailed`,
+      last.pending > 0 ? `${last.pending} still sending` : null,
+      heldTesting > 0 ? `${people(heldTesting, noun)} not emailed while emails are being tested` : null,
+      heldOff > 0 ? `${heldOff} not sent because emails were switched off` : null,
+      failedPart,
+    ]);
+  }
+  return finish([
+    `sent to ${last.sent} of ${last.audience}${noun === "guests" ? " guests" : ""}`,
+    last.pending > 0 ? `${last.pending} still sending` : null,
+    `${last.noEmail} ${last.noEmail === 1 ? "has" : "have"} no email address`,
+    heldOff > 0 ? `${heldOff} not sent because emails were switched off` : null,
+    alerted > 0 ? `${people(alerted, noun)} alerted the usual way` : null,
+    `${last.failed} failed`,
+  ]);
 };
+

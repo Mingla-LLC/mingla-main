@@ -365,6 +365,46 @@ describe("issue #3827 rework — testing, people without an address, refused dat
   });
 });
 
+describe("issue #3827 rework D3 — the last-update line in every state", () => {
+  const base = { holdCode: null, audience: 260, sent: 0, pending: 0, failed: 0, noEmail: 6, held: 0 };
+  test("LU-1: waiting while emails are being tested names the test addresses, not the buyers", () => {
+    expect(lastNoticeLine({ live: true, audience: 254, last: {
+      ...base, state: "scheduled", emailable: 254, testing: true, testAddresses: 3,
+    } })?.text).toBe(
+      "Last update: waiting to go out to 3 test addresses. Your buyers are not emailed while emails are being tested.",
+    );
+    // Not testing: the people it can reach, not those without an address.
+    expect(lastNoticeLine({ live: true, audience: 254, last: {
+      ...base, state: "scheduled", emailable: 254, testing: false, testAddresses: 0,
+    } })?.text).toBe("Last update: an email to 254 buyers is waiting to go out.");
+  });
+
+  test("LU-2: copies stopped because emails were switched off say so", () => {
+    expect(lastNoticeLine({ live: false, audience: 254, last: {
+      ...base, state: "fanned_out", audience: 260, held: 254, heldSwitchedOff: 254, heldTesting: 0, alerted: 0,
+    } })?.text).toBe(
+      "Last update: not sent, because buyer emails were switched off. 254 buyers were not emailed.",
+    );
+    expect(lastNoticeLine({ live: true, audience: 254, last: {
+      ...base, state: "fanned_out", audience: 260, sent: 200, held: 54, heldSwitchedOff: 54, heldTesting: 0, alerted: 0,
+    } })?.text).toBe(
+      "Last update: sent to 200 of 260 · 6 have no email address · 54 not sent because emails were switched off · 0 failed",
+    );
+  });
+
+  test("LU-3: an RSVP under test counts guests alerted the usual way once, not as held", () => {
+    expect(lastNoticeLine({ live: true, audience: 3, last: {
+      ...base, state: "fanned_out", audience: 3, noEmail: 0, sent: 1, held: 0, heldTesting: 0, heldSwitchedOff: 0, alerted: 2,
+    } }, "guests")?.text).toBe("Last update: 2 guests alerted the usual way · 1 test address emailed");
+    const parsed = parseBuyerNoticeStatus({ live: true, audience: 3, last: {
+      state: "fanned_out", holdCode: null, audience: 3, sent: 1, pending: 0, failed: 0, noEmail: 0,
+      held: 0, heldTesting: 0, heldSwitchedOff: 0, alerted: 2, emailable: 2, testing: true, testAddresses: 1,
+    } });
+    expect(parsed?.last?.alerted).toBe(2);
+    expect(parsed?.last?.testing).toBe(true);
+  });
+});
+
 describe("issue #3827 — the NOTIFIES BUYERS tag", () => {
   test("TAG-1: only on rows the server emails about, and only when buyers will be told", async () => {
     const diffs = [ADDRESS, DATE, TICKETS, REFUND, DESCRIPTION];
@@ -490,7 +530,7 @@ describe("issue #3827 — the live-edit banners", () => {
     });
     expect(failing).toEqual({
       text:
-        "Last update: sent to 240 of 254 · 6 still sending · 1 has no email address · 4 held back while emails are being tested · 3 failed. Contact support.",
+        "Last update: 240 test addresses emailed · 6 still sending · 4 buyers not emailed while emails are being tested · 3 failed. Contact support.",
       failed: true,
     });
     const alerting = await mount(<EditAfterPublishBanner lastNotice={failing} />);
