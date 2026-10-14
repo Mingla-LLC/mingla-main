@@ -23,6 +23,7 @@ import type {
 import type { EditSeverity } from "../store/eventEditLogStore";
 import type { ThemeInput } from "@mingla/offering-rendering";
 import { normalizeThemeOverrides } from "../services/offeringTheme";
+import { DIFF_CHANGED_SUMMARY } from "./changeSummaryRows";
 import type {
   EditableLiveEventFields,
   LiveEvent,
@@ -582,7 +583,16 @@ export interface FieldDiff {
   oldValue: string;
   newValue: string;
   severity?: "safe" | "material";
+  /**
+   * issue #3827 — shown on its own instead of `oldValue → newValue` when the
+   * two values are not something a host can read (a map pin is two
+   * coordinates, a theme is a settings object): "Moved", "Changed".
+   */
+  summary?: string;
 }
+
+// issue #3827 — the one-word row for a value that is not readable text.
+export { DIFF_CHANGED_SUMMARY };
 
 const TRUNCATE_AT = 80;
 
@@ -639,7 +649,32 @@ const formatValueForKey = (
   if (key === "recurrenceRule") {
     return formatRecurrenceSummary(value as RecurrenceRule | null);
   }
-  return truncate(JSON.stringify(value));
+  // issue #3827 — a list of words reads as words ("rooftop, house"), never as
+  // `["rooftop","house"]`.
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return value.length === 0 ? "(empty)" : truncate(value.join(", "));
+  }
+  // issue #3827 — anything else (a settings object, a coordinate pair) has no
+  // readable text form. The row shows DIFF_CHANGED_SUMMARY instead; see
+  // computeRichFieldDiffs. Never JSON.
+  return DIFF_CHANGED_SUMMARY;
+};
+
+/** issue #3827 — values whose row is a one-word summary, not old → new. */
+const hasNoTextForm = (
+  key: keyof EditableLiveEventFields,
+  value: unknown,
+): boolean =>
+  value !== null &&
+  value !== undefined &&
+  typeof value === "object" &&
+  formatValueForKey(key, value) === DIFF_CHANGED_SUMMARY;
+
+/** issue #3827 — "Added" / "Removed" / "Moved" for the map pin. Never coordinates. */
+const mapPinSummary = (before: unknown, after: unknown): string => {
+  if (before === null || before === undefined) return "Added";
+  if (after === null || after === undefined) return "Removed";
+  return "Moved";
 };
 
 /** issue #3284 — "Flexible" / "No refunds" / "Custom (3 tiers)" / "No policy". */
@@ -706,7 +741,35 @@ export const computeRichFieldDiffs = (
       ) {
         continue;
       }
+    } else if (key === "locationGeo") {
+      // issue #3827 — the same pin test the save uses (editableDraftToPatch),
+      // and a row a host can read: "Map pin · Moved", never the coordinates.
+      const before = a as { lat: number; lng: number } | null | undefined;
+      const after = b as { lat: number; lng: number } | null | undefined;
+      if (sameGeoPoint(before, after)) continue;
+      diffs.push({
+        fieldKey: String(key),
+        fieldLabel: "Map pin",
+        oldValue: "",
+        newValue: "",
+        summary: mapPinSummary(before, after),
+        severity: MATERIAL_KEYS.includes(key) ? "material" : "safe",
+      });
+      continue;
     } else if (deepEqual(a, b)) continue;
+    if (key !== "refundPolicy" && (hasNoTextForm(key, a) || hasNoTextForm(key, b))) {
+      // issue #3827 — a settings object (theme, who covers costs) has no
+      // readable old/new text: one word, never JSON.
+      diffs.push({
+        fieldKey: String(key),
+        fieldLabel: FIELD_LABELS[key],
+        oldValue: "",
+        newValue: "",
+        summary: DIFF_CHANGED_SUMMARY,
+        severity: MATERIAL_KEYS.includes(key) ? "material" : "safe",
+      });
+      continue;
+    }
     diffs.push({
       fieldKey: String(key),
       fieldLabel: FIELD_LABELS[key],
