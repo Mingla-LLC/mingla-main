@@ -36,6 +36,9 @@ interface BrandSeed {
   displayName: string;
   countryCode: string | null;
   paymentProvider: string | null;
+  // #3645 — the brand's own currency and its remembered payout-country pick.
+  defaultCurrency?: string | null;
+  payoutCountry?: string | null;
 }
 
 let brandSeed: BrandSeed;
@@ -449,16 +452,27 @@ describe("#3645 web — tester adversarial: payout-country switch", () => {
   });
 
   test("A4: a brand-row refetch never overwrites the country the organiser picked, but does seed an untouched picker", async () => {
+    // [TEST-MOD-APPROVED #3645] This seeded the picker from the brand's
+    // ADDRESS country (and from the United Kingdom when there was none). The
+    // picker is now seeded from the payout country the brand SAVED, and from
+    // nothing when it saved none; its address never moves it. The property
+    // under test is unchanged: a refetch seeds an untouched picker and never
+    // overwrites a pick.
     tree = await mountBody();
-    expect(pickerValue(tree)).toBe("GB");
+    expect(pickerValue(tree)).toBe("");
 
-    // Untouched: the saved brand row is the truth.
+    // An address is not a choice: it seeds nothing.
     brandSeed = { ...brandSeed, countryCode: "FR" };
+    await rerender(tree);
+    expect(pickerValue(tree)).toBe("");
+
+    // Untouched: the saved brand row's own pick is the truth.
+    brandSeed = { ...brandSeed, defaultCurrency: "EUR", payoutCountry: "FR" };
     await rerender(tree);
     expect(pickerValue(tree)).toBe("FR");
 
     await pickCountry(tree, "US");
-    brandSeed = { ...brandSeed, countryCode: "DE" };
+    brandSeed = { ...brandSeed, countryCode: "DE", payoutCountry: "DE" };
     await rerender(tree);
 
     expect(pickerValue(tree)).toBe("US");

@@ -36,7 +36,7 @@ export interface KycRemediationMessage {
 
 const FALLBACK: KycRemediationMessage = {
   title: "More information needed",
-  body: "Stripe is asking for more details before payouts can resume. Open the secure onboarding flow to provide them.",
+  body: "A few more details are needed before payouts can resume. Open the secure setup flow to provide them.",
   ctaLabel: "Continue verification",
   severity: "warning",
 };
@@ -45,13 +45,13 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
   // disabled_reason values
   "requirements.past_due": {
     title: "Verification overdue",
-    body: "Stripe has paused your payouts because verification details are past due. Complete them now to restore payouts.",
+    body: "Your payouts are paused because verification details are past due. Complete them now to restore payouts.",
     ctaLabel: "Resume verification",
     severity: "blocking",
   },
   "requirements.pending_verification": {
     title: "Verification in progress",
-    body: "Stripe is reviewing the details you submitted. Nothing is needed from you — we'll email you when it's done.",
+    body: "The details you submitted are being reviewed. Nothing is needed from you — we'll email you when it's done.",
     // Issue #3258: was "Check back later", wired to onResolve → onboarding.
     // Nothing is due, so there is nothing to resolve and no button to show.
     ctaLabel: null,
@@ -59,30 +59,30 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
   },
   "rejected.fraud": {
     title: "Account verification rejected",
-    body: "Stripe could not verify your account due to suspected fraud. Contact Mingla support to discuss next steps.",
+    body: "This account could not be verified because of suspected fraud. Contact Mingla support to discuss next steps.",
     ctaLabel: "Contact support",
     severity: "blocking",
   },
   "rejected.terms_of_service": {
     title: "Terms of service issue",
-    body: "Stripe has rejected this account because of a terms-of-service issue. Contact Mingla support to resolve.",
+    body: "This account was rejected because of a terms-of-service issue. Contact Mingla support to resolve.",
     ctaLabel: "Contact support",
     severity: "blocking",
   },
   "rejected.listed": {
     title: "Account not eligible",
-    body: "Stripe cannot accept this account at this time. Contact Mingla support if you believe this is a mistake.",
+    body: "This account cannot be accepted at this time. Contact Mingla support if you believe this is a mistake.",
     ctaLabel: "Contact support",
     severity: "blocking",
   },
   "rejected.other": {
     title: "Account not accepted",
-    body: "Stripe cannot enable payments on this account. Contact Mingla support.",
+    body: "Payments cannot be enabled on this account. Contact Mingla support.",
     ctaLabel: "Contact support",
     severity: "blocking",
   },
   "listed": {
-    title: "Awaiting Stripe review",
+    title: "Awaiting review",
     body: "This account is being checked against compliance lists. We'll let you know when it clears.",
     // Issue #3258: was "Check back later", wired to `onResolve` → onboarding.
     // A button that says "later" and navigates NOW is a false affordance
@@ -100,7 +100,7 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
   },
   "under_review": {
     title: "Under review",
-    body: "Stripe is reviewing this account. No action needed from you right now.",
+    body: "This account is being reviewed. No action needed from you right now.",
     // Issue #3258 — identical reasoning to "listed" above.
     ctaLabel: null,
     severity: "info",
@@ -114,7 +114,7 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
   // currently_due item codes (most common)
   "individual.id_number": {
     title: "ID number needed",
-    body: "Stripe needs the last 4 digits of the account holder's government ID number to verify identity.",
+    body: "The last 4 digits of the account holder's government ID number are needed to verify identity.",
     ctaLabel: "Provide ID number",
     severity: "blocking",
   },
@@ -126,7 +126,7 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
   },
   "individual.verification.additional_document": {
     title: "Additional document needed",
-    body: "Stripe needs one more document to confirm identity. This is often a proof of address (utility bill, bank statement).",
+    body: "One more document is needed to confirm identity. This is often a proof of address (utility bill, bank statement).",
     ctaLabel: "Upload document",
     severity: "blocking",
   },
@@ -138,7 +138,7 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
   },
   "individual.dob.day": {
     title: "Date of birth needed",
-    body: "Stripe needs the account holder's date of birth to complete verification.",
+    body: "The account holder's date of birth is needed to complete verification.",
     ctaLabel: "Add date of birth",
     severity: "blocking",
   },
@@ -156,7 +156,7 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
   },
   "individual.email": {
     title: "Email needed",
-    body: "Add the account holder's email so Stripe can send verification updates.",
+    body: "Add the account holder's email so verification updates can be sent.",
     ctaLabel: "Add email",
     severity: "blocking",
   },
@@ -198,25 +198,25 @@ const MESSAGES: Record<string, KycRemediationMessage> = {
   },
   "external_account": {
     title: "Bank account needed",
-    body: "Add a bank account so Stripe knows where to send your payouts.",
+    body: "Add a bank account so your payouts have somewhere to go.",
     ctaLabel: "Add bank account",
     severity: "blocking",
   },
   "tos_acceptance.date": {
-    title: "Accept Stripe terms",
-    body: "Accept Stripe's connected account terms of service to enable payouts.",
+    title: "Accept the payment terms",
+    body: "Accept our payment partner's terms of service to enable payouts.",
     ctaLabel: "Accept terms",
     severity: "blocking",
   },
   "tos_acceptance.ip": {
-    title: "Accept Stripe terms",
-    body: "Accept Stripe's connected account terms of service from the device you're signing up on.",
+    title: "Accept the payment terms",
+    body: "Accept our payment partner's terms of service from the device you're signing up on.",
     ctaLabel: "Accept terms",
     severity: "blocking",
   },
   "business_profile.url": {
     title: "Business URL needed",
-    body: "Add your business website URL so Stripe can verify your operations.",
+    body: "Add your business website URL so your business can be verified.",
     ctaLabel: "Add URL",
     severity: "warning",
   },

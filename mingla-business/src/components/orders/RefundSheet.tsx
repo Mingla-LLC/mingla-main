@@ -257,7 +257,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
     // ORCH-0787 migration. Surface a clear error instead of calling the edge fn.
     if (lines.some((l) => !l.orderLineItemId)) {
       setErrorMessage(
-        "This order can't be refunded in-app. It may pre-date the refund system. Refund it from the Stripe dashboard instead.",
+        "This order can't be refunded in the app. It may pre-date the refund system. Email support@usemingla.com and we'll help you refund it.",
       );
       return;
     }

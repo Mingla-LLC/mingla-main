@@ -77,6 +77,7 @@ export function defaultCurrencyForCountry(code: string): string {
   const entry = getStripeSupportedCountry(code);
   if (!entry) {
     throw new Error(
+      // orch-strict-grep-allow provider-name-host-copy — developer invariant: a caller passed a country outside the constant.
       `defaultCurrencyForCountry: country "${code}" is not in the Mingla Stripe-supported allowlist.`,
     );
   }

@@ -103,7 +103,7 @@ export const BrandStripeDetachConfirmSheet: React.FC<
       setSubmitError(
         error instanceof Error
           ? `Couldn't disconnect: ${error.message}`
-          : "Couldn't disconnect. Tap Disconnect Stripe to try again.",
+          : "Couldn't disconnect. Tap Disconnect bank to try again.",
       );
     }
   }, [canConfirm, brandId, detachMutation, step]);
@@ -129,7 +129,7 @@ export const BrandStripeDetachConfirmSheet: React.FC<
         {step === "confirm" ? (
           <View>
             <Text style={styles.title}>
-              Disconnect Stripe from {brandName}?
+              Disconnect bank from {brandName}?
             </Text>
             <View style={styles.warnCard}>
               <Icon name="bank" size={18} color={textTokens.tertiary} />
@@ -172,7 +172,7 @@ export const BrandStripeDetachConfirmSheet: React.FC<
                 autoCorrect={false}
                 style={styles.input}
                 accessibilityLabel={`Type ${brandName} to confirm`}
-                accessibilityHint="Type the brand name exactly to confirm disconnecting Stripe"
+                accessibilityHint="Type the brand name exactly to confirm disconnecting the bank"
               />
             </View>
             {submitError !== null ? (
@@ -190,13 +190,13 @@ export const BrandStripeDetachConfirmSheet: React.FC<
               </View>
               <View style={styles.actionCell}>
                 <Button
-                  label="Disconnect Stripe"
+                  label="Disconnect bank"
                   variant="primary"
                   size="md"
                   onPress={handleSubmit}
                   disabled={!canConfirm}
                   fullWidth
-                  accessibilityLabel={`Disconnect Stripe from ${brandName}`}
+                  accessibilityLabel={`Disconnect bank from ${brandName}`}
                 />
               </View>
             </View>
@@ -207,7 +207,7 @@ export const BrandStripeDetachConfirmSheet: React.FC<
           <View style={styles.submittingWrap}>
             <Text style={styles.title}>Disconnecting…</Text>
             <Text style={styles.confirmHelper}>
-              Severing the Stripe connection for {brandName}.
+              Disconnecting the bank for {brandName}.
             </Text>
           </View>
         ) : null}
@@ -219,19 +219,19 @@ export const BrandStripeDetachConfirmSheet: React.FC<
               <Text style={styles.title}>Disconnected</Text>
             </View>
             <Text style={styles.confirmHelper}>
-              Stripe is disconnected for {brandName}.
+              The bank is disconnected for {brandName}.
             </Text>
             {detachResult?.stripeDeleteStatus === "rejected" ? (
               <View style={[styles.warnCard, styles.warnCardWarn]}>
                 <Icon name="flag" size={18} color={accent.warm} />
                 <View style={styles.warnTextCol}>
                   <Text style={styles.warnTitleWarn}>
-                    Stripe account not fully closed
+                    Payment account not fully closed
                   </Text>
                   <Text style={styles.warnBody}>
                     {detachResult.rejectionReason !== null
-                      ? `Stripe couldn't fully close the account (${detachResult.rejectionReason}). Your payouts are still disconnected.`
-                      : "Stripe couldn't fully close the account. Your payouts are still disconnected."}
+                      ? `The payment account couldn't be fully closed (${detachResult.rejectionReason}). Your payouts are still disconnected.`
+                      : "The payment account couldn't be fully closed. Your payouts are still disconnected."}
                   </Text>
                 </View>
               </View>

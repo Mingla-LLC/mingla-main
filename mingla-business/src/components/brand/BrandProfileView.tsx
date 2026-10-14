@@ -548,7 +548,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       {
         icon: "chart",
         label: "Finance reports",
-        sub: "Stripe-ready CSVs",
+        sub: "Accounting-ready CSVs",
         onPress: () => {
           if (brand !== null) onReports(brand.id);
         },

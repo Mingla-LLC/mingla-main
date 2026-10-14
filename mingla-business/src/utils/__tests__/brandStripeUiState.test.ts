@@ -46,12 +46,13 @@ describe("brandStripeUiState", () => {
   });
 
   it("returns the required country replacement and locked copy", () => {
-    expect(ACTIVE_STRIPE_BANNER_TITLE).toBe("You're connected to Stripe");
+    // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
+    expect(ACTIVE_STRIPE_BANNER_TITLE).toBe("Your bank is connected");
     expect(getStripeCountryReplaceableCopy("US")).toBe(
-      "You can still change country because Stripe setup is not complete. We'll create a new Stripe setup for US.",
+      "You can still change country because bank setup is not complete. We'll start a new setup for US.",
     );
     expect(getStripeCountryLockedCopy("GB")).toBe(
-      "Stripe is connected for GB. To use a different country or currency, create a new brand.",
+      "A payment account is already set up for GB. To use a different country or currency, create a new brand.",
     );
   });
 
@@ -74,7 +75,8 @@ describe("brandStripeUiState", () => {
 
     expect(getBrandProfileStripeBannerCopy(effectiveStatus)).toEqual({
       title: "Onboarding submitted — verifying",
-      sub: "We'll email you when Stripe finishes verifying your details.",
+      // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
+      sub: "We'll email you when your details have been verified.",
     });
     expect(getBrandProfileStripeOperationsSub(effectiveStatus)).toBe(
       "Onboarding…",

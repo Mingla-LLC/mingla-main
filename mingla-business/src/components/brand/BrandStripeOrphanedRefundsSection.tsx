@@ -76,7 +76,7 @@ export function BrandStripeOrphanedRefundsSection({
     <GlassCard variant="base" padding={spacing.md} style={styles.card}>
       <Text style={styles.title}>Refund history (post-detach)</Text>
       <Text style={styles.subtitle}>
-        {refunds.length} refund{refunds.length === 1 ? "" : "s"} processed by Stripe since this account was disconnected.
+        {refunds.length} refund{refunds.length === 1 ? "" : "s"} processed since this account was disconnected.
       </Text>
 
       <View style={styles.list}>

@@ -467,7 +467,8 @@ function respondForbidden(): void {
  */
 const PAYMENT_CONTROL_MATCHERS: readonly RegExp[] = [
   /DANGER ZONE/,
-  /Disconnect Stripe/,
+  // [TEST-MOD-APPROVED #3645] was /Disconnect Stripe/: host copy no longer names the payment provider.
+  /Disconnect bank/,
   /Manage payouts & tax/,
   /Tax & registrations/,
   /Export finance report/,
@@ -481,7 +482,8 @@ const PAYMENT_CONTROL_MATCHERS: readonly RegExp[] = [
 /** Live when the brand's Stripe account is active. */
 const LIVE_WHEN_ACTIVE: readonly RegExp[] = [
   /DANGER ZONE/,
-  /Disconnect Stripe/,
+  // [TEST-MOD-APPROVED #3645] was /Disconnect Stripe/: host copy no longer names the payment provider.
+  /Disconnect bank/,
   /Manage payouts & tax/,
   /Tax & registrations/,
   /Export finance report/,
@@ -754,7 +756,8 @@ describe("#1863 — the brand payments routes are gated on the server's role pre
     // The lie that used to render instead: "Check your connection and try
     // again" on a caller whose connection was fine.
     expect(present(tree, /Check your connection/)).toBe(false);
-    expect(present(tree, /Couldn’t reach Stripe|Couldn't reach Stripe/)).toBe(
+    // [TEST-MOD-APPROVED #3645] was "Couldn’t reach Stripe": the title now reads "Couldn’t reach bank setup".
+    expect(present(tree, /Couldn’t reach bank setup|Couldn't reach bank setup/)).toBe(
       false,
     );
     // No escape back into the bank-connect journey — there is nothing to retry.
@@ -775,8 +778,9 @@ describe("#1863 — the brand payments routes are gated on the server's role pre
       expect(tree.queryAllByText(BRAND_PAYMENTS_DENIED_TITLE).length)
         .toBeGreaterThan(0);
     });
-    expect(present(tree, /Couldn’t refresh Stripe status/)).toBe(false);
-    expect(present(tree, /Couldn’t refresh Stripe balance/)).toBe(false);
+    // [TEST-MOD-APPROVED #3645] were "Couldn’t refresh Stripe status" / "…Stripe balance": reworded without the provider's name.
+    expect(present(tree, /Couldn’t refresh your payout status/)).toBe(false);
+    expect(present(tree, /Couldn’t refresh your balance/)).toBe(false);
     expect(present(tree, /DANGER ZONE/)).toBe(false);
   });
 

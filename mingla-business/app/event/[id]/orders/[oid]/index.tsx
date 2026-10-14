@@ -134,7 +134,7 @@ const statusBannerSpec = (
         borderColor: "rgba(34, 197, 94, 0.32)",
         iconName: "check",
         iconColor: "#34c759",
-        copy: currency === null ? "Free order · confirmed" : "Paid · Stripe will settle in 3–5 days",
+        copy: currency === null ? "Free order · confirmed" : "Paid · settles in 3–5 days",
       };
     case "refunded_full":
       return {

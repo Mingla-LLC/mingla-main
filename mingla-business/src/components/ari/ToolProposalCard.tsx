@@ -935,7 +935,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                   <Text style={styles.fieldValue}>{cascade.data.teamMemberCount}</Text>
                 </View>
                 <View style={styles.fieldRow}>
-                  <Text style={styles.fieldLabel}>Stripe Connect</Text>
+                  <Text style={styles.fieldLabel}>Payout account</Text>
                   <Text style={styles.fieldValue}>
                     {cascade.data.hasStripeConnect ? "Linked (will unlink)" : "Not linked"}
                   </Text>

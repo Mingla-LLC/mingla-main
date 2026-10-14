@@ -70,6 +70,7 @@ export function resolveBankConnectRail(
     supported ??
       getStripeSupportedCountry(DEFAULT_STRIPE_COUNTRY) ??
       (() => {
+        // orch-strict-grep-allow provider-name-host-copy — developer invariant: thrown only if the country constant itself is broken.
         throw new Error("The canonical Stripe country list is missing GB.");
       })(),
   );
@@ -106,6 +107,11 @@ interface SavedPayoutCountryInput {
   defaultCurrency?: string | null;
   /** The brand's ADDRESS country: only ever a tie-breaker, never a choice. */
   addressCountryCode?: string | null;
+  /**
+   * `brands.payout_country`: the country the organiser PICKED, remembered for
+   * display. Trusted only while it agrees with the brand's currency.
+   */
+  payoutCountry?: string | null;
 }
 
 /**
@@ -135,6 +141,20 @@ export function resolveSavedPayoutCountry(
     : "";
   if (currency.length === 0) return null;
 
+  // #3645 — the remembered pick comes before any derivation: a euro brand that
+  // picked Ireland is Ireland, whatever its address says. It is display-only,
+  // so it is believed only while it matches the currency the brand actually
+  // has (a stale pick never names a country the brand is not paid in), and it
+  // never puts a brand on the Nigerian rail: only the provider does that.
+  const rememberedRail = resolveBankConnectRailForCountry(input.payoutCountry);
+  if (
+    rememberedRail !== null &&
+    rememberedRail.provider === "stripe" &&
+    rememberedRail.currency === currency
+  ) {
+    return rememberedRail;
+  }
+
   const addressRail = resolveBankConnectRailForCountry(input.addressCountryCode);
   if (addressRail !== null && addressRail.currency === currency) {
     // A Nigerian address with naira but no Nigerian rail is not a saved pick.
@@ -144,4 +164,35 @@ export function resolveSavedPayoutCountry(
     (country) => country.defaultCurrency === currency,
   );
   return matches.length === 1 ? stripeRail(matches[0]!) : null;
+}
+
+interface BankSetupSeedInput extends SavedPayoutCountryInput {
+  /** An explicit `?country=` hint from the screen that sent the host here. */
+  countryHint?: string | null;
+}
+
+/**
+ * #3645 — the country a bank-setup screen opens on, or null for "nothing
+ * chosen yet". One order, for every entry:
+ *
+ *   1. an explicit country hint (a card-rail country the previous screen named);
+ *   2. the country of the brand's payment account, when one exists;
+ *   3. the payout country the brand has saved or its currency implies
+ *      (`resolveSavedPayoutCountry`, which reads the remembered pick first).
+ *
+ * There is no fourth step. The brand's address is never a choice and there is
+ * no default country: with none of the above the screen shows "Choose a
+ * country" and its primary button stays disabled.
+ */
+export function resolveBankSetupSeedCountry(
+  input: BankSetupSeedInput,
+): BankConnectRail | null {
+  const provider = typeof input.paymentProvider === "string"
+    ? input.paymentProvider.trim().toLowerCase()
+    : null;
+  // A brand on the Nigerian rail is on the Nigerian rail; a hint cannot move it.
+  if (provider === "paystack") return PAYSTACK_RAIL;
+  const hintRail = resolveBankConnectRailForCountry(input.countryHint);
+  if (hintRail !== null && hintRail.provider === "stripe") return hintRail;
+  return resolveSavedPayoutCountry(input);
 }

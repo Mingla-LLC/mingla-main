@@ -86,7 +86,7 @@ const PAYMENTS_CHILDREN: readonly ChildType[] = [
   { type: "business.dispute_opened", label: "Disputes opened", description: "When a buyer disputes a charge" },
   { type: "business.dispute_action_needed", label: "Evidence due", description: "When you must submit dispute evidence" },
   { type: "business.payout_paid", label: "Payouts", description: "When money lands in your bank" },
-  { type: "business.account_status_changed", label: "Account status", description: "When Stripe pauses or restores payments" },
+  { type: "business.account_status_changed", label: "Account status", description: "When payments are paused or restored" },
 ];
 
 const AUDIENCE_CHILDREN: readonly ChildType[] = [

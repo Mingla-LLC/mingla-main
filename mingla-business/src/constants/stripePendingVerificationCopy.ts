@@ -88,8 +88,8 @@ const PENDING_VERIFICATION_SUBJECTS: Record<string, string> = {
     "the extra document you uploaded",
   "owners.0.verification.document": "the owner ID you uploaded",
   "directors.0.verification.document": "the director ID you uploaded",
-  "tos_acceptance.date": "your acceptance of Stripe's terms",
-  "tos_acceptance.ip": "your acceptance of Stripe's terms",
+  "tos_acceptance.date": "your acceptance of the payment terms",
+  "tos_acceptance.ip": "your acceptance of the payment terms",
 };
 
 /**
@@ -188,9 +188,9 @@ export function describeStripePendingVerification(
 
   const others = codes.length - 1;
   if (others > 0) {
-    return `Stripe is checking ${subject} and ${others} other ${
+    return `We're checking ${subject} and ${others} other ${
       others === 1 ? "detail" : "details"
     }. Nothing to do — we'll email you when everything is verified.`;
   }
-  return `Stripe is checking ${subject}. Nothing to do — we'll email you when it's verified.`;
+  return `We're checking ${subject}. Nothing to do — we'll email you when it's verified.`;
 }

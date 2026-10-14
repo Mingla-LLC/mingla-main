@@ -70,8 +70,10 @@ import {
 import {
   resolveBankConnectRail,
   resolveBankConnectRailForCountry,
+  resolveBankSetupSeedCountry,
   type BankConnectProvider,
 } from "../../utils/bankConnectRail";
+import { rememberBrandPayoutCountry } from "../../services/brandPayoutCountryService";
 import { isInviteFunnelValue } from "../../utils/inviteFunnelSignal";
 import { sanitizeBankSetupReturnPath } from "../../utils/bankSetupReturn";
 import { refreshBrandPaymentState } from "../../hooks/brandPaymentStateRefresh";
@@ -190,7 +192,12 @@ export default function BrandBankConnectBody(): React.ReactElement {
   const acceptTermsMutation = useAcceptMinglaToS();
   const onboardMutation = useStartBankConnectOnboarding();
   const submitInProgressRef = useRef(false);
-  const [selectedCountry, setSelectedCountry] = useState("GB");
+  // #3645 — null = nothing chosen. There is no default country: the row reads
+  // "Choose a country" and "Add bank details" stays disabled until one is.
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
+  // Bumped to remount the country row with its list already open ("Choose a
+  // different country").
+  const [pickerOpenNonce, setPickerOpenNonce] = useState(0);
   const [selectedProvider, setSelectedProvider] =
     useState<BankConnectProvider>("stripe");
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -206,7 +213,8 @@ export default function BrandBankConnectBody(): React.ReactElement {
   const [railMutationPending, setRailMutationPending] = useState(false);
   const [railSwitchError, setRailSwitchError] = useState<{
     message: string;
-    countryCode: string;
+    /** null = the failed action was "Choose a different country". */
+    countryCode: string | null;
     retryable: boolean;
   } | null>(null);
   // `isPending` is one render behind: two picks in the same tick both saw it
@@ -239,12 +247,36 @@ export default function BrandBankConnectBody(): React.ReactElement {
 
   const brandOnNigeriaRail =
     brand?.paymentProvider?.trim().toLowerCase() === "paystack";
+  // #3645 — the country this screen opens on: an explicit `?country=` hint,
+  // then the payout country the brand saved (the remembered pick) or its
+  // currency implies; otherwise NOTHING. The brand's address is never a choice
+  // and there is no default country. This screen has no payment-account status
+  // query (the brand row is its only evidence), so an existing account's
+  // country reaches it through the brand's currency and remembered pick.
+  const seedRail = useMemo(
+    () =>
+      brand === null ? null : resolveBankSetupSeedCountry({
+        countryHint: chosenCountryHint,
+        paymentProvider: brand.paymentProvider,
+        defaultCurrency: brand.defaultCurrency,
+        addressCountryCode: brand.countryCode,
+        payoutCountry: brand.payoutCountry,
+      }),
+    [brand, chosenCountryHint],
+  );
+  const seedCountryCode = seedRail?.countryCode ?? null;
+  const seedProvider = seedRail?.provider ?? null;
+  const providerHintIsNigeria =
+    providerHint?.trim().toLowerCase() === "paystack";
   // #3645 — the screen resolves to Nigeria (from the brand's address, or a
-  // `?provider=` hint) but the saved brand is not on the Nigerian rail.
+  // `?provider=` hint) but the saved brand is not on the Nigerian rail. An
+  // ADDRESS only counts while the brand has chosen nothing: a brand that
+  // already picked a payout country is never moved to naira by its address.
   const resolvesToNigeriaUnswitched =
     brand !== null &&
     canonicalRail.provider === "paystack" &&
-    !brandOnNigeriaRail;
+    !brandOnNigeriaRail &&
+    (providerHintIsNigeria || seedRail === null);
   // The brand row's own card-rail status (`Brand.stripeStatus`, derived by
   // useBrand from the brands.stripe_* cache). Anything but "not_connected" —
   // onboarding, restricted, active — means a card-rail account exists. This
@@ -289,23 +321,21 @@ export default function BrandBankConnectBody(): React.ReactElement {
       // row and either the automatic switch or an explicit confirm.
       setSelectedCountry(
         railSwitchLocked
-          ? resolveBankConnectRail({
-            countryCode: null,
-            paymentProvider: "stripe",
-          }).countryCode
+          ? (seedProvider === "stripe" ? seedCountryCode : null)
           : canonicalRail.countryCode,
       );
       setSelectedProvider("stripe");
       return;
     }
-    setSelectedCountry(canonicalRail.countryCode);
-    setSelectedProvider(canonicalRail.provider);
+    setSelectedCountry(seedCountryCode);
+    setSelectedProvider(seedProvider ?? "stripe");
   }, [
     brand,
     canonicalRail.countryCode,
-    canonicalRail.provider,
     railSwitchLocked,
     resolvesToNigeriaUnswitched,
+    seedCountryCode,
+    seedProvider,
   ]);
 
   const handleBack = useCallback((): void => {
@@ -368,7 +398,10 @@ export default function BrandBankConnectBody(): React.ReactElement {
       selectNigeriaRail
         .mutateAsync(brand.id)
         // The bank form only appears once the brand really is on the rail.
-        .then(() => setSelectedProvider("paystack"))
+        .then(() => {
+          setSelectedProvider("paystack");
+          void rememberBrandPayoutCountry(brand.id, next.countryCode);
+        })
         .catch((error: unknown) => {
           setSelectedProvider("stripe");
           setRailSwitchError({
@@ -398,6 +431,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
       .then(() => {
         requestedRailRef.current = "not-ng";
         setSelectedProvider("stripe");
+        void rememberBrandPayoutCountry(brand.id, null);
       })
       .catch((error: unknown) => {
         setRailSwitchError({
@@ -417,6 +451,39 @@ export default function BrandBankConnectBody(): React.ReactElement {
     selectNigeriaRail,
     selectedProvider,
   ]);
+
+  // #3645 — "Choose a different country" on the Nigerian bank form. The brand
+  // leaves the Nigerian rail and the country list opens with NOTHING chosen;
+  // it used to be reset to the United Kingdom.
+  const handleChooseDifferentCountry = useCallback((): void => {
+    if (brand === null || railMutationPending || railSwitchInFlightRef.current) {
+      return;
+    }
+    countryTouchedRef.current = true;
+    setSubmitError(null);
+    setRailSwitchError(null);
+    railSwitchInFlightRef.current = true;
+    setRailMutationPending(true);
+    clearNigeriaRail
+      .mutateAsync(brand.id)
+      .then(() => {
+        requestedRailRef.current = "not-ng";
+        setSelectedProvider("stripe");
+        setSelectedCountry(null);
+        setPickerOpenNonce((nonce) => nonce + 1);
+        void rememberBrandPayoutCountry(brand.id, null);
+      })
+      .catch((error: unknown) => {
+        setRailSwitchError({
+          ...describePayoutCountrySwitchFailure(error),
+          countryCode: null,
+        });
+      })
+      .finally(() => {
+        railSwitchInFlightRef.current = false;
+        setRailMutationPending(false);
+      });
+  }, [brand, clearNigeriaRail, railMutationPending]);
 
   // Same code path as a manual Nigeria pick, fired once.
   const handleCountryChangeRef = useRef(handleCountryChange);
@@ -456,6 +523,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
     if (
       brand === null ||
       user === null ||
+      selectedCountry === null ||
       submitInProgressRef.current
     ) {
       return;
@@ -471,7 +539,12 @@ export default function BrandBankConnectBody(): React.ReactElement {
         origin: window.location.origin,
         tosVersion: CURRENT_MINGLA_TOS_VERSION,
         acceptTerms: (input) => acceptTermsMutation.mutateAsync(input),
-        mintOnboarding: (input) => onboardMutation.mutateAsync(input),
+        mintOnboarding: async (input) => {
+          const minted = await onboardMutation.mutateAsync(input);
+          // #3645 — remembered before the browser leaves for hosted setup.
+          await rememberBrandPayoutCountry(brand.id, selectedCountry);
+          return minted;
+        },
         assign: (url) => window.location.assign(url),
         destination: isBrandCreateFunnel ? "brand-create" : "payments",
         returnPath: resumePath,
@@ -636,12 +709,14 @@ export default function BrandBankConnectBody(): React.ReactElement {
           </Text>
 
           <BrandStripeCountryPicker
+            key={`bank-connect-country-${pickerOpenNonce}`}
             value={selectedCountry}
             onChange={handleCountryChange}
             extraOptions={railSwitchLocked ? NO_EXTRA_OPTIONS : PAYSTACK_PICKER_OPTIONS}
             helperText={railSwitchLocked ? PAYMENT_ACCOUNT_LOCKED_COPY : null}
             presentation="payout-confirm"
             disabled={railSwitchPending}
+            defaultOpen={pickerOpenNonce > 0}
           />
 
           {railSwitchPending ? (
@@ -668,9 +743,13 @@ export default function BrandBankConnectBody(): React.ReactElement {
               {railSwitchError.retryable ? (
                 <Button
                   label="Try again"
-                  onPress={(): void =>
-                    handleCountryChange(railSwitchError.countryCode)
-                  }
+                  onPress={(): void => {
+                    if (railSwitchError.countryCode === null) {
+                      handleChooseDifferentCountry();
+                    } else {
+                      handleCountryChange(railSwitchError.countryCode);
+                    }
+                  }}
                   variant="secondary"
                   size="lg"
                   fullWidth
@@ -685,7 +764,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
               brandName={brand.displayName}
               mode="create"
               onConnected={handlePaystackConnected}
-              onCancel={(): void => handleCountryChange("GB")}
+              onCancel={handleChooseDifferentCountry}
             />
           ) : selectedCountry === NIGERIA_COUNTRY ? (
             // Nigeria is showing in the country row but the brand has not been
@@ -743,9 +822,14 @@ export default function BrandBankConnectBody(): React.ReactElement {
                   acceptTermsMutation.isPending || onboardMutation.isPending
                 }
                 disabled={
+                  selectedCountry === null ||
                   acceptTermsMutation.isPending || onboardMutation.isPending
                 }
-                accessibilityLabel="Add bank details and continue to secure Stripe setup"
+                accessibilityLabel={
+                  selectedCountry === null
+                    ? "Choose a country first, then add bank details"
+                    : "Add bank details and continue to secure bank setup"
+                }
                 testID="bank-connect-primary"
               />
 
@@ -757,8 +841,8 @@ export default function BrandBankConnectBody(): React.ReactElement {
               >
                 <Text style={styles.legal}>
                   By connecting your bank you agree to Mingla{"’"}s{" "}
-                  <Text style={styles.legalLink}>Organiser Terms</Text>. Powered
-                  by Stripe — your data is encrypted.
+                  <Text style={styles.legalLink}>Organiser Terms</Text>. Your
+                  data is encrypted.
                 </Text>
               </Pressable>
             </>

@@ -103,7 +103,8 @@ describe("#3258 — the Stripe banner's boot-path module graph", () => {
         accountBusinessUrl: "https://www.rambleawaypod.com",
       });
       expect(banner?.sub).toBe(
-        "Stripe is checking your website (www.rambleawaypod.com). Nothing to do — we'll email you when it's verified.",
+        // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
+        "We're checking your website (www.rambleawaypod.com). Nothing to do — we'll email you when it's verified.",
       );
       expect(banner?.ctaLabel).toBeNull();
       expect(banner?.destructive).toBe(false);
@@ -129,7 +130,8 @@ describe("#3258 — the Stripe banner's boot-path module graph", () => {
       // The brand page is NOT guessed back in: no host.usemingla.com, no
       // parenthetical at all.
       expect(banner?.sub).toBe(
-        "Stripe is checking your website. Nothing to do — we'll email you when it's verified.",
+        // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
+        "We're checking your website. Nothing to do — we'll email you when it's verified.",
       );
       expect(banner?.sub).not.toContain("usemingla.com");
       expect(banner?.sub).not.toContain("(");

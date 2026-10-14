@@ -111,7 +111,7 @@ interface ExportRowConfig {
 }
 
 const EXPORT_ROWS: ExportRowConfig[] = [
-  { label: "Stripe payouts CSV", sub: "For Xero / QuickBooks" },
+  { label: "Payouts CSV", sub: "For Xero / QuickBooks" },
   { label: "Tax-ready (UK VAT)", sub: "Quarterly summary" },
   { label: "All transactions", sub: "Itemised CSV" },
 ];
@@ -361,7 +361,7 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
               </View>
               <View style={styles.bannerTextCol}>
                 <Text style={styles.bannerTitle}>
-                  Stripe restricted — historical only
+                  Payments restricted — historical only
                 </Text>
                 <Text style={styles.bannerSub}>
                   Resolve the restriction in payments to see live data.
@@ -470,7 +470,7 @@ export const BrandFinanceReportsView: React.FC<BrandFinanceReportsViewProps> = (
                 value={`−${formatCurrency(minglaFee, currency)}`}
               />
               <BreakdownRow
-                label="Stripe processing"
+                label="Payment processing"
                 value={`−${formatCurrency(stripeFee, currency)}`}
               />
               <BreakdownRow label="Net to bank" value={formatCurrency(netToBank, currency)} last />

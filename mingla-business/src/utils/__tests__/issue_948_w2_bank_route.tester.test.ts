@@ -33,6 +33,9 @@ interface BrandSeed {
   displayName: string;
   countryCode: string | null;
   paymentProvider: "stripe" | "paystack";
+  // #3645 — the brand's own currency. Bank setup opens on the country the
+  // brand CHOSE (its currency), never on its address country.
+  defaultCurrency?: string | null;
 }
 
 interface BrandQuerySeed {
@@ -299,6 +302,7 @@ describe("#948 W2 tester — rendered route failures and races", () => {
         displayName: "Adversarial Brand",
         countryCode: "US",
         paymentProvider: "stripe",
+        defaultCurrency: "USD",
       },
       isError: false,
       isFetched: true,
@@ -447,6 +451,7 @@ describe("#948 W2 tester — rendered route failures and races", () => {
         displayName: "Adversarial Brand",
         countryCode: "US",
         paymentProvider: "stripe",
+        defaultCurrency: "USD",
       },
     };
     userSeed = null;
@@ -466,8 +471,10 @@ describe("#948 W2 tester — rendered route failures and races", () => {
     ).toBe("link");
     expect(
       tree.root.findByProps({
+        // [TEST-MOD-APPROVED #3645] host copy no longer names the payment
+        // provider: "secure Stripe setup" became "secure bank setup".
         accessibilityLabel:
-          "Add bank details and continue to secure Stripe setup",
+          "Add bank details and continue to secure bank setup",
         accessibilityRole: "button",
         testID: "bank-connect-primary",
       }),

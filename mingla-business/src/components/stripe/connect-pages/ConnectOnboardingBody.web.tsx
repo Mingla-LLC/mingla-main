@@ -122,7 +122,7 @@ export default function ConnectOnboardingBody(): React.ReactElement {
     const publishableKey = fromExtra ?? fromProcessEnv;
     if (publishableKey === undefined || publishableKey.length === 0) {
       setInitError(
-        "Stripe publishable key is not configured. Contact support@usemingla.com.",
+        "Bank setup is not configured. Contact support@usemingla.com.",
       );
       return null;
     }
@@ -138,7 +138,7 @@ export default function ConnectOnboardingBody(): React.ReactElement {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setInitError(`Couldn't initialize Stripe: ${message}`);
+      setInitError(`Couldn't open bank setup: ${message}`);
       return null;
     }
   }, [sessionClientSecret]);
@@ -208,7 +208,7 @@ export default function ConnectOnboardingBody(): React.ReactElement {
         )
         : "";
     setLoadError(
-      message.length > 0 ? message : "Stripe couldn't load onboarding.",
+      message.length > 0 ? message : "Bank setup couldn't be loaded.",
     );
   };
 
@@ -299,8 +299,8 @@ export default function ConnectOnboardingBody(): React.ReactElement {
       </main>
       <footer style={connectEmbeddedPageStyles.footerStyle}>
         <p style={connectEmbeddedPageStyles.footerTextStyle}>
-          Powered by Stripe. Your bank details go directly to Stripe — Mingla
-          never sees them.
+          Your bank details go straight to our payment partner — Mingla never
+          sees them.
         </p>
       </footer>
     </div>

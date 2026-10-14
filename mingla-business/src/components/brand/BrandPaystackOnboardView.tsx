@@ -17,6 +17,7 @@ import React, {
 } from "react";
 import {
   AccessibilityInfo,
+  findNodeHandle,
   Modal,
   Platform,
   Pressable,
@@ -79,6 +80,12 @@ interface Props {
   onConnected?: () => void;
   /** Optional cancel affordance (shown in update mode). */
   onCancel?: () => void;
+  /**
+   * #3645 — bump this number to move focus to the form's first field (the
+   * "Bank" row). The screen's own "Add bank" button uses it after scrolling
+   * the form into view. 0 / undefined = do nothing.
+   */
+  focusFirstFieldSignal?: number;
 }
 
 const ACCOUNT_LEN = 10;
@@ -94,6 +101,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   mode = "create",
   onConnected,
   onCancel,
+  focusFirstFieldSignal = 0,
 }) => {
   const isUpdate = mode === "update";
   const { isAuthReady, user } = useAuth();
@@ -140,6 +148,20 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   const [resolvedName, setResolvedName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pickerOpenerRef = useRef<React.ElementRef<typeof Pressable>>(null);
+  // #3645 — "Add bank" on the status card lands the host on the first field.
+  // Web moves keyboard focus; native moves the screen reader's focus (a
+  // pressable row has no keyboard focus there). Waits for the Terms step.
+  useEffect(() => {
+    if (focusFirstFieldSignal <= 0 || !showBankForm) return;
+    const opener = pickerOpenerRef.current;
+    if (opener === null) return;
+    if (Platform.OS === "web") {
+      opener.focus();
+      return;
+    }
+    const node = findNodeHandle(opener);
+    if (node !== null) AccessibilityInfo.setAccessibilityFocus(node);
+  }, [focusFirstFieldSignal, showBankForm]);
   const lastAnnouncementRef = useRef<string | null>(null);
   const lastReportedBankErrorRef = useRef<unknown>(null);
   const bankRetryInFlightRef = useRef(false);
@@ -398,7 +420,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
             {isUpdate ? "Change payout bank" : "Get paid in Nigeria"}
           </Text>
           <Text style={styles.subtitle}>
-            Accept the Organiser Terms to continue with Paystack bank setup.
+            Accept the Organiser Terms to continue with bank setup.
           </Text>
         </>
       ) : (
