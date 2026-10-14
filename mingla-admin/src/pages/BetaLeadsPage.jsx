@@ -18,6 +18,7 @@ import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { DataTable } from "../components/ui/Table";
 import { Skeleton } from "../components/ui/Skeleton";
+import { PageHeader } from "../components/ui/PageHeader";
 import { useToast } from "../context/ToastContext";
 import { useCrmSummary } from "../hooks/useCrmSummary";
 import { useHashQuery } from "../hooks/useHashQuery";
@@ -316,22 +317,19 @@ export function BetaLeadsPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Beta Leads</h1>
-          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            Everyone who asked for early access from the business site. Add a lead to Hosts to start working it.
-          </p>
-        </div>
-        {loading ? (
-          <Skeleton width={72} height={22} rounded="full" className="mt-1 shrink-0" />
-        ) : error ? null : (
-          <Badge variant={newCount > 0 ? "warning" : "success"} dot className="mt-1 shrink-0">
-            {newCount > 0 ? `${newCount} new` : "All in Hosts"}
-          </Badge>
-        )}
-      </div>
+      <PageHeader
+        title="Beta Leads"
+        description="Everyone who asked for early access from the business site. Add a lead to Hosts to start working it."
+        meta={
+          loading ? (
+            <Skeleton width={72} height={22} rounded="full" className="shrink-0" />
+          ) : error ? null : (
+            <Badge variant={newCount > 0 ? "warning" : "success"} dot className="shrink-0">
+              {newCount > 0 ? `${newCount} new` : "All in Hosts"}
+            </Badge>
+          )
+        }
+      />
 
       {!online && <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>}
 

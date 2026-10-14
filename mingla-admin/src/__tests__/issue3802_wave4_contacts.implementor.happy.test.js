@@ -451,7 +451,8 @@ describe("#3802 C-5: the contactable check, in the Add form's words", () => {
     assert.deepEqual([none.id, none.rule, none.byIdentifier, none.others], ["c1", "", true, 0]);
     // The Add form says a rule whichever way the match came, and never only for a shared detail.
     const FORM = read("components/crm/AddRecordForm.jsx");
-    assert.ok(FORM.includes("const ruleNote = hit && hit.rule && !shared ? hit : null;"));
+    // The rule line is chosen by addFormRuleNote, which says it once (its truth table is in the follow-up suite).
+    assert.ok(FORM.includes("const ruleNote = addFormRuleNote(hit, shared, lookalikes);"));
     assert.ok(/\{ruleNote && \([\s\S]{0,420}<b>\{ruleNote\.name\}<\/b> is marked \{ruleNote\.rule\}\./.test(FORM));
     assert.ok(/onClick=\{\(\) => onOpenExisting\(ruleNote\.id\)\}>\s*Open it\s*<\/Button>/.test(FORM));
     assert.ok(FORM.includes("{shared.rule ? `. Marked ${shared.rule}.` : \".\"}"));

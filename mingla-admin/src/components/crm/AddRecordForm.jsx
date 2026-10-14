@@ -4,7 +4,7 @@ import { CONTROL_CLASS, Field, MISSING_CITY, MISSING_CITY_LABEL, Select } from "
 import { IdentifiersField } from "./IdentifiersField";
 import { MissingCityLayer } from "./MissingCityLayer";
 import { OwnersField } from "./OwnersField";
-import { contactHit, contactRuleView, displayOwners, findDuplicates, identifiersToSend, stageLabel } from "../../lib/crmModel";
+import { addFormRuleNote, contactHit, contactRuleView, displayOwners, findDuplicates, identifiersToSend, stageLabel } from "../../lib/crmModel";
 import { contactCheck, newRequestKey } from "../../services/crmService";
 
 /** How long after the last key press the contactable check is asked. */
@@ -117,8 +117,8 @@ export function AddRecordForm({
   const shared = hit && hit.byIdentifier && !exact && !lookalikes.some((r) => r.id === hit.id) ? hit : null;
   const blockedByShared = !!shared && !addAnyway;
   // A contact rule on any record this one matches is always said, whichever
-  // way it matched.
-  const ruleNote = hit && hit.rule && !shared ? hit : null;
+  // way it matched, and once: not again when the name warning already says it.
+  const ruleNote = addFormRuleNote(hit, shared, lookalikes);
   const submitRef = useRef(null);
   useEffect(() => {
     if (addAnyway) submitRef.current?.focus();

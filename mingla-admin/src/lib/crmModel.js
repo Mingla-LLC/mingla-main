@@ -207,7 +207,7 @@ export function ownerLabel(email, team) {
 export function filterRecords(records, { q = "", icp = "", regionId = "", mine = false, me = "" } = {}) {
   const needle = String(q || "").trim().toLowerCase();
   const needleKey = nameKey(needle);
-  const ident = identNeedles(needle);
+  const ident = identNeedles(needle, String(q || "").trim());
   return (Array.isArray(records) ? records : []).filter((r) => {
     if (icp && r.icp !== icp) return false;
     if (regionId === NO_REGION ? !!r.region_id : regionId && r.region_id !== regionId) return false;
@@ -883,6 +883,8 @@ const IDENT_HIDDEN = /[\u0000-\u0008\u000E-\u001F\u007F-\u0084\u0086-\u009F\u00A
 const IDENT_SPACE = /[\u0009-\u000D\u0020\u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+/gu;
 /* eslint-enable no-misleading-character-class, no-control-regex */
 const IDENT_NAME = /^[a-z0-9._-]{2,60}$/;
+// A YouTube video id, as typed: its letter case is part of it.
+const IDENT_VIDEO = "[A-Za-z0-9_-]{6,20}";
 // Country codes of two digits; 1 and 7 are one digit; every other is three.
 const PHONE_CC2 = ["20", "27", "30", "31", "32", "33", "34", "36", "39", "40", "41", "43", "44", "45", "46", "47",
   "48", "49", "51", "52", "53", "54", "55", "56", "57", "58", "60", "61", "62", "63", "64", "65",
@@ -945,14 +947,16 @@ function countryLength(digits) {
  *   email:  A to Z lower-cased; a name, an @ and a domain
  *   phone:  an extension at the end is dropped; written with its country
  *           code (a leading + or 00, or a WhatsApp link): "+", the code and
- *           the national number without a "(0)" or a trunk 0 after the code;
- *           otherwise its digits; 7 to 15 digits
+ *           the national number without a "(0)" or a trunk 0 after the code,
+ *           and without the mobile 9 after +54 or the mobile 1 after +52 when
+ *           ten digits follow it; otherwise its digits; 7 to 15 digits
  *   handle: written plainly (alice, @alice): 2 to 60 of a-z 0-9 . _ -, A to
  *           Z lower-cased; a link site, or "name.com" with no @, is not one.
  *           Written as a link: on a known profile site, the name in the
  *           address (or the name after a word that introduces one); any other
- *           page of those sites names no one; a YouTube video is
- *           youtube.com/watch?v=<id>; a link-in-bio or short-link site is
+ *           page of those sites names no one; a YouTube video, written
+ *           youtube.com/watch?v=<id> or youtu.be/<id>, is
+ *           youtube.com/watch?v=<id> with the id as typed; a link-in-bio or short-link site is
  *           site/path with the path as typed; any other site is site/path,
  *           lower-cased. A site with no path, and a WhatsApp link, are not
  *           handles.
@@ -977,6 +981,18 @@ export function identKey(kind, value) {
     if (t.startsWith("+")) {
       const cc = countryLength(t.slice(1));
       t = t.slice(0, 1 + cc) + t.slice(1 + cc).replace(/^0/, "");
+      // The mobile digit: Argentina's 9 after +54, Mexico's 1 after +52,
+      // when the ten digits of a national number follow it.
+      if (/^[+]549[0-9]{10}$/.test(t) || /^[+]521[0-9]{10}$/.test(t)) t = t.slice(0, 3) + t.slice(4);
+      // Argentina's other mobile marker, 15 after the area code, when an area
+      // code, 15 and the number make twelve digits: area 11 first, else a
+      // three-digit area, else a four-digit one (both begin with 2 or 3).
+      if (/^[+]54[0-9]{12}$/.test(t)) {
+        const nat = t.slice(3);
+        if (/^1115/.test(nat)) t = `+5411${nat.slice(4)}`;
+        else if (/^[23][0-9]{2}15/.test(nat)) t = `+54${nat.slice(0, 3)}${nat.slice(5)}`;
+        else if (/^[23][0-9]{3}15/.test(nat)) t = `+54${nat.slice(0, 4)}${nat.slice(6)}`;
+      }
     }
     const n = t.replace(/[^0-9]/g, "").length;
     return n >= 7 && n <= 15 ? t : null;
@@ -1005,20 +1021,34 @@ export function identKey(kind, value) {
   if (!/^[a-z0-9-]+([.][a-z0-9-]+)+$/.test(site) || IDENT_NEVER.includes(site)) return null;
   const pathOf = (text) => /^[^?#]*/.exec(text)[0].replace(/\/+/g, "/").replace(/^\/+|\/+$/g, "");
   let path = pathOf(rest);
-  const queryOf = () => {
-    const q = /^[^?#]*[?]([^#]*)/.exec(rest);
+  // The path as typed, in the same segments as the lower-cased one.
+  const osegs = pathOf(orig) === "" ? [] : pathOf(orig).split("/");
+  const videoId = new RegExp(`^${IDENT_VIDEO}$`);
+  const queryOf = (text = rest) => {
+    const q = /^[^?#]*[?]([^#]*)/.exec(text);
     return `&${q ? q[1] : ""}`;
   };
   const idMatch = /&id=([a-z0-9._-]{2,60})(?:&|$)/.exec(queryOf());
   const id = idMatch ? idMatch[1] : null;
+
+  // YouTube Music plays the same videos: its watch page is the video's.
+  if (site === "music.youtube.com" && path === "watch") site = "youtube.com";
+  // A video embedded without cookies is the same video.
+  if (site === "youtube-nocookie.com" && /^embed\/[^/]+$/.test(path) && videoId.test(osegs[1] ?? "")) {
+    return `youtube.com/watch?v=${osegs[1]}`;
+  }
 
   if (IDENT_SITES.includes(site)) {
     if (path === "") return null;
     const segs = path.split("/");
     const one = segs[0].replace(/^@/, "");
     if (site === "youtube.com" && one === "watch" && segs.length === 1) {
-      const v = /&v=([a-z0-9_-]{6,20})(?:&|$)/.exec(queryOf());
+      const v = new RegExp(`&[Vv]=(${IDENT_VIDEO})(?:&|$)`).exec(queryOf(orig));
       return v ? `youtube.com/watch?v=${v[1]}` : null;
+    }
+    // A short, an embed and a live page name their video the same way.
+    if (site === "youtube.com" && ["shorts", "embed", "live"].includes(one) && segs.length === 2 && videoId.test(osegs[1] ?? "")) {
+      return `youtube.com/watch?v=${osegs[1]}`;
     }
     if (!IDENT_WORDS.has(one)) return IDENT_NAME.test(one) ? one : null;
     if (one === "profile.php") return segs.length === 1 ? id : null;
@@ -1027,10 +1057,16 @@ export function identKey(kind, value) {
       return segs[2];
     }
     const two = (segs[1] || "").replace(/^@/, "");
+    // A YouTube channel id, like a video id, keeps its case.
+    if (site === "youtube.com" && one === "channel" && IDENT_NAME.test(two) && !IDENT_WORDS.has(two)) return osegs[1].replace(/^@/, "");
     return IDENT_NAME.test(two) && !IDENT_WORDS.has(two) ? two : null;
   }
   if (path === "" && !id) return null;
-  if (IDENT_LINKS.includes(site)) path = pathOf(orig);
+  if (IDENT_LINKS.includes(site)) {
+    path = pathOf(orig);
+    // A YouTube short link names the same video as its long form.
+    if (site === "youtu.be" && videoId.test(path)) return `youtube.com/watch?v=${path}`;
+  }
   const key = `${site}${path !== "" ? `/${path}` : ""}${id ? `?id=${id}` : ""}`;
   return key.includes(" ") ? null : key;
 }
@@ -1047,8 +1083,11 @@ function phoneNational(key) {
  * a country code and, without leading zeros, the shorter (at least seven
  * digits) ends the longer, or when one carries one and the other's digits
  * without leading zeros (at least seven) end its national part or are its
- * own digits written without the +; "" otherwise. Two numbers that both carry a
- * country code match only when they are equal.
+ * own digits written without the +, or read in its country (after its
+ * country code) give the same normal form, which is how a national number
+ * written with a mobile digit or marker ("9 11 ...", "011 15 ...",
+ * "1 55 ...") finds the number stored with its country code; "" otherwise.
+ * Two numbers that both carry a country code match only when they are equal.
  */
 export function phoneMatch(a, b) {
   const ka = identKey("phone", String(a ?? ""));
@@ -1066,7 +1105,9 @@ export function phoneMatch(a, b) {
   }
   const [intlKey, intl, national] = ia ? [ka, na, nb] : [kb, nb, na];
   if (national.length >= 7 && intl.endsWith(national)) return "national_number";
-  return identKey("phone", `+${national}`) === intlKey ? "national_number" : "";
+  if (identKey("phone", `+${national}`) === intlKey) return "national_number";
+  const cc = intlKey.slice(0, intlKey.length - intl.length);
+  return identKey("phone", `${cc}${national}`) === intlKey ? "national_number" : "";
 }
 
 /**
@@ -1140,14 +1181,18 @@ export function addIdentifier(list, { kind, value, platform = "" }) {
   return { list: [...current, item] };
 }
 
-/** What a typed search could match among identifiers. */
-function identNeedles(needle) {
+/**
+ * What a typed search could match among identifiers. The normal forms are
+ * read from the text as typed (`typed`), as the server reads them: a YouTube
+ * video id or a short link's path keeps its case.
+ */
+function identNeedles(needle, typed = needle) {
   const part = needle.replace(/^@/, "");
   const digits = needle.replace(/[^0-9]/g, "");
   return {
     part: part.length >= 3 ? part : "",
     digits: digits.length >= 7 ? digits : "",
-    keys: needle ? [identKey("email", needle), identKey("phone", needle), identKey("handle", needle)] : [],
+    keys: needle ? [identKey("email", typed), identKey("phone", typed), identKey("handle", typed)] : [],
   };
 }
 
@@ -1162,7 +1207,9 @@ function identifierMatches(identifiers, n) {
     if (i.kind === "phone") {
       return !!n.digits && (key.includes(n.digits) || (n.digits.length >= 9 && key.endsWith(n.digits.slice(-9))));
     }
-    return !!n.part && key.includes(n.part);
+    // A part of an email or a handle, whatever its case: a YouTube id or a
+    // link-in-bio name is stored as typed.
+    return !!n.part && (key.toLowerCase().includes(n.part) || String(i.value ?? "").toLowerCase().includes(n.part));
   });
 }
 
@@ -1251,6 +1298,19 @@ export function contactHit(result) {
     rule: rule ? `${rule.label}${rule.reason ? `: ${rule.reason}` : ""}` : "",
     others: Math.max(0, matches.length > 0 ? matches.length - 1 : Number(result.other_matches) || 0),
   };
+}
+
+/**
+ * The Add form's own line about a contact rule: the record the contactable
+ * check matched, when it carries a rule that nothing else on the form says.
+ * null when there is no rule, when the shared-detail warning (`shared`)
+ * already says it, or when the record is already shown under the name with
+ * its rule (`lookalikes`): one record, one sentence, one Open it.
+ */
+export function addFormRuleNote(hit, shared, lookalikes) {
+  if (!hit || !hit.rule || shared) return null;
+  const shownWithRule = (Array.isArray(lookalikes) ? lookalikes : []).some((r) => r && r.id === hit.id && contactRuleView(r));
+  return shownWithRule ? null : hit;
 }
 
 /**

@@ -10,6 +10,7 @@ import { AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Drawer } from "../components/ui/Drawer";
 import { Skeleton } from "../components/ui/Skeleton";
+import { PageHeader } from "../components/ui/PageHeader";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { useHashQuery } from "../hooks/useHashQuery";
@@ -476,17 +477,12 @@ function PipelinePage({ pipeline, onTabChange }) {
   );
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">{title}</h1>
-          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-            {canDrag ? "Drag a card to move it, or use the arrow on the card." : "Use the arrow on a card to move it."}{" "}
-            Click a card to see and edit everything about it.
-          </p>
-        </div>
-        {addButton("primary", "md", addButtonRef)}
-      </div>
+    <div className="flex min-w-0 flex-col gap-6">
+      <PageHeader
+        title={title}
+        description={`${canDrag ? "Drag a card to move it, or use the arrow on the card." : "Use the arrow on a card to move it."} Click a card to see and edit everything about it.`}
+        actions={addButton("primary", "md", addButtonRef)}
+      />
 
       {!online && (
         <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>
