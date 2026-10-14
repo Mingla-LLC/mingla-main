@@ -570,3 +570,42 @@ export type {
   ThemeFontSlug,
   ThemeInput,
 } from "./designTokens";
+
+// Issue #3859 — provider/transport-free semantic contract for every existing
+// public-page family. Host adapters own reads and effects; this module only
+// validates identity/state/capability/action meaning and derives safe context.
+export {
+  createPublicAuthReturnIntent,
+  createPublicInstallmentCapability,
+  createPublicParityContract,
+  PUBLIC_PARITY_ANALYTICS_EVENTS,
+  PUBLIC_PARITY_CAPABILITY_KINDS,
+  PUBLIC_PARITY_DISABLED_REASONS,
+  PUBLIC_PARITY_LIFECYCLE_STATES,
+  PUBLIC_PARITY_PAGE_KINDS,
+} from "./publicParityContract";
+export type {
+  PublicParityAccessibilitySemantics,
+  PublicParityAction,
+  PublicParityActionTarget,
+  PublicParityAnalyticsContext,
+  PublicParityAnalyticsEvent,
+  PublicParityAuthReturnIntent,
+  PublicParityAuthState,
+  PublicParityCanonicalIdentity,
+  PublicParityCapability,
+  PublicParityCapabilityKind,
+  PublicParityContract,
+  PublicParityContractResult,
+  PublicParityDisabledReason,
+  PublicParityExternalOwner,
+  PublicParityFailureReason,
+  PublicParityLifecycleState,
+  PublicParityPageKind,
+  PublicParityRouteIdentity,
+  PublicParitySelection,
+  PublicParitySelectionKind,
+  PublicParitySurface,
+  PublicParityTerminalExpectation,
+  PublicParityVisibility,
+} from "./publicParityContract";
