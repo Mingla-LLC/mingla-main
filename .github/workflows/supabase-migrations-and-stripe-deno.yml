@@ -730,6 +730,19 @@ jobs:
           # ordinary spaces always did. A real address keeps its storage rule.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3827_live_edit_blank_address.implementor.happy.pg17.test.sql
+          # Issue #3827 — the buyer email on a material live change. Every live
+          # edit writes one `event_edit_notices` row with the actor, the reason
+          # and the old and new values; a material change with buyers schedules
+          # ONE notice and the fan-out writes one email row per distinct
+          # address, once. Flag off (as shipped) records `held / feature_off`
+          # and a live RSVP edit still queues the rows it queues today;
+          # allowlist-only keeps an off-list buyer out; a hide-address event and
+          # an experience never have a street or a place name stored; an
+          # experience re-saved with the same values records nothing material; a
+          # draft edit records nothing; a plain table write to a live event is
+          # recorded once at commit; a broken recorder never loses the save.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.implementor.happy.pg17.test.sql
           # Issue #3645 — an unpublished draft with nothing sold follows its
           # brand's currency. Changed currency (GBP to NGN, fired by
           # service_role): event, RSVP and trip drafts move in every copy, paid
