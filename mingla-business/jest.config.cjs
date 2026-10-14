@@ -407,6 +407,15 @@ module.exports = {
     // not cover that subpath, so Jest fails suites that mount PublicEventPage.
     "^@mingla/offering-rendering/themePalette$":
       "<rootDir>/../packages/offering-rendering/themePalette.ts",
+    // #3380 — resolution repair, NOT a mock, same shape as #1559 below. Suites
+    // deep-import `@mingla/offering-rendering/<sub>` (RsvpOfferingBody,
+    // themeResolver, rsvpGuestSnapshot, …). Inside a git worktree whose
+    // node_modules is linked to the anchor checkout, that specifier resolved
+    // the ANCHOR's copy, so a worktree run tested somebody else's branch (or
+    // crashed ts-jest loading two copies). This maps the subpath form to THIS
+    // tree; in CI the workspace symlink already points here, so it is the
+    // identity. The bare barrel keeps its manual mock above.
+    "^@mingla/offering-rendering/(.+)$": "<rootDir>/../packages/offering-rendering/$1",
     // #1559 — resolution repair, NOT a mock. `node_modules/@mingla/*` is a
     // workspace symlink; inside a git worktree it points at the ANCHOR
     // checkout, so a DEEP `@mingla/brand-rendering/<sub>` specifier resolved
