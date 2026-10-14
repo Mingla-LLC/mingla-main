@@ -14,7 +14,6 @@ import { useAuth } from "../context/AuthContext";
 import {
   createSupportTicket,
   listOwnSupportTickets,
-  notifyNewSupportTicket,
   type SupportTicket,
 } from "../services/supportService";
 
@@ -69,10 +68,9 @@ export const useCreateSupportTicket = (): UseCreateSupportTicketResult => {
   const mutation = useMutation<string, Error, { subject: string; brandId?: string | null }>({
     mutationFn: async ({ subject, brandId }): Promise<string> => {
       if (user === null) throw new Error("Not signed in");
-      const ticketId = await createSupportTicket(subject, brandId);
-      // Best-effort push fan-out — no-ops until notify-support is deployed.
-      void notifyNewSupportTicket(ticketId);
-      return ticketId;
+      // #3720: staff push is fired server-side from create_support_ticket
+      // (tg_support_ticket_notify_staff). Do not call notify-support from the client.
+      return createSupportTicket(subject, brandId);
     },
     onSuccess: (): void => {
       if (user !== null) {

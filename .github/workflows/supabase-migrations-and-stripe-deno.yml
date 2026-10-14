@@ -224,6 +224,9 @@ on:
       # one page header, and the stepper whose width sum the tester suite redoes).
       - "mingla-admin/src/__tests__/admin_shell_issue3802.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/admin_shell_issue3802.tester.adversarial.test.js"
+      # #3720 Slice B — Email page segments / single log writer pin
+      - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
+      - "supabase/functions/admin-send-email/**"
       - "mingla-admin/src/pages/**"
       - "mingla-admin/src/lib/shellNav.js"
       - "mingla-admin/src/components/ui/PageHeader.jsx"
@@ -447,6 +450,9 @@ on:
       # one page header, and the stepper whose width sum the tester suite redoes).
       - "mingla-admin/src/__tests__/admin_shell_issue3802.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/admin_shell_issue3802.tester.adversarial.test.js"
+      # #3720 Slice B — Email page segments / single log writer pin
+      - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
+      - "supabase/functions/admin-send-email/**"
       - "mingla-admin/src/pages/**"
       - "mingla-admin/src/lib/shellNav.js"
       - "mingla-admin/src/components/ui/PageHeader.jsx"
@@ -623,6 +629,9 @@ jobs:
       - name: "Issue #3802 — admin shell: independent tester adversarial proof (every combination of areas against every address, hostile ids, storage that throws, stacking computed from the stylesheet, class names that do nothing, the stepper beside the new menu)"
         working-directory: mingla-admin
         run: node --test src/__tests__/admin_shell_issue3802.tester.adversarial.test.js
+      - name: "#3720 Slice B — email segments + single log writer (admin node:test)"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_3720_email_segments.implementor.happy.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
@@ -2167,6 +2176,11 @@ jobs:
             supabase/functions/_shared/__tests__/issue_3682_manage_follows.happy.test.ts
             # #3682 Wave 2.7 — blast caps + week warning wiring.
             supabase/functions/_shared/__tests__/issue_3682_blast_caps.happy.test.ts
+            # #3720 Phase 0 — Veronica host-facing push title contract
+            supabase/functions/_shared/__tests__/issue_3720_support_veronica_title.test.ts
+            # #3720 Phase 0 Slice B — quiet-hours defer + admin email segments/opt-out
+            supabase/functions/_shared/__tests__/issue_3720_quiet_hours_defer.test.ts
+            supabase/functions/admin-send-email/issue_3720_email_segments_optout.implementor.happy.test.ts
             # #3682 Wave 2.8 — Show me as going / Who's going privacy migration pins.
             supabase/migrations/__tests__/issue_3682_show_me_as_going.happy.test.ts
             # #3682 Wave 2.8b — wizard invite Followers / Friends of followers migration pins.
