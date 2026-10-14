@@ -452,7 +452,7 @@ const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
   // folded into the note above. Review found the alert was hosted on a
   // paths-gated push trigger, so it could only report `main` red on commits
   // matching its globs: MEASURED at 32 of 40 consecutive `main` commits: the
-  // other eight -- root REPORTS.md/COMMS.md, the mingla-site-cms tree, and one
+  // other eight -- root process-record edits, the mingla-site-cms tree, and one
   // baseline-only commit -- would have alerted nobody. An alert that fires on
   // four commits in five is a sampling scheme, so a `**` catch-all was appended
   // LAST to that lane's PUSH paths only. Re-measured after the change: 40/40.

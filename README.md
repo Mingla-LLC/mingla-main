@@ -2,7 +2,7 @@
 
 Mingla helps people discover experiences, plan with friends, and run the operational surfaces that keep the ecosystem healthy. Both apps are live on the App Store and Google Play.
 
-README is a snapshot front door. The truth system is small and lives in two places: **work** is tracked as issues on the Mingla Avengers board, and **durable knowledge** lives in the three canonical docs plus `docs/`.
+README is a snapshot front door. The truth system is small and lives in two places: **work** is tracked as issues on the Mingla Avengers board, and **durable knowledge** lives in the canonical repo docs plus `docs/`.
 
 ## How We Work
 
@@ -36,7 +36,7 @@ All work lives as GitHub issues on the [Mingla Avengers board](https://github.co
 | 3. Sprint planning | **Sprint Planning** view | **Taofeek** | Taofeek picks what ships this sprint and sets the **Sprint** field |
 | 4. In progress | **Sprint** view · Status = **In Progress** | **Taofeek** | Set when work starts. The branch is `<issue#>-short-slug` in its own worktree |
 | 5. In review | Status = **In Review** | **Taofeek** | Set when the pull request is open. The PR says `Fixes #<issue#>` (or `Refs` for partial work) |
-| 6. Done | Status = **Done** (auto-closes) | **Taofeek** | Merged with **every check green**, deployed and verified. The PR added its line to [`REPORTS.md`](REPORTS.md) |
+| 6. Done | Status = **Done** (auto-closes) | **Taofeek** | Merged with **every check green**, deployed and verified as applicable. The only current release record is a complete release-record comment on the shipping issue naming the PR, merge commit, migrations applied, deploy, and live check |
 
 **Rules that always apply:**
 - Merge only when every check is green; never merge red.
@@ -56,7 +56,7 @@ The pre-2026-07-19 operating system (`Mingla_Artifacts/`, `Mingla_Roadmap/`, per
 | Product, positioning, roadmap, strategy | [`PRODUCT_AND_STRATEGY.md`](PRODUCT_AND_STRATEGY.md) |
 | Marketing channels, attribution, motions | [`MARKETING.md`](MARKETING.md) |
 | Cross-session coordination and standing holds | [`AGENTS.md`](AGENTS.md) |
-| What shipped, when | [`REPORTS.md`](REPORTS.md) |
+| What shipped, when | [Mingla Avengers board](https://github.com/orgs/Mingla-LLC/projects/4) and its shipping issues |
 | Engineering invariants that must hold | [`docs/INVARIANT_REGISTRY.md`](docs/INVARIANT_REGISTRY.md) |
 | Stack conventions + Constitution detail | [`docs/MINGLA_ENGINEERING_HANDBOOK.md`](docs/MINGLA_ENGINEERING_HANDBOOK.md) |
 | Worktree / branch discipline | [`docs/WORKTREE_STRATEGY.md`](docs/WORKTREE_STRATEGY.md) |
