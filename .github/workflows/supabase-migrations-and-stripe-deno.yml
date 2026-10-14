@@ -2782,6 +2782,14 @@ jobs:
             # bare domains, addresses) arrives as inert quoted text; replies go
             # to the brand's contact address when well formed, else support.
             supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.test.ts
+            # Issue #3827 — tester adversarial proof for the same email: hostile
+            # reasons, names and timezones add no tag, link or live scheme and
+            # never reach the subject; Reply-To falls back to support for
+            # anything but one plain address; times in Lagos, New York (both
+            # sides of daylight saving) and Kiritimati name their zone; a wrong
+            # row still prints no withheld street, stop detail or online link;
+            # only a missing fan-out function reads as "nothing to do".
+            supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.tester.adversarial.test.ts
             # issue #2695 — the sweeper's OWN contract suite, which ran in no lane
             # at all and had therefore been red on main since #2218 moved its
             # constants into `logic.ts`. Nothing was broken; the assertions were
