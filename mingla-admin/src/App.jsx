@@ -348,7 +348,7 @@ export default function App() {
 
   return (
     <>
-      <AppShell activeTab={route.pageId} onTabChange={handleTabChange}>
+      <AppShell activeTab={route.pageId} onTabChange={handleTabChange} onOpenSearch={() => setCommandPaletteOpen(true)}>
         <AnimatePresence mode="wait">
           <motion.div
             key={route.pageId}

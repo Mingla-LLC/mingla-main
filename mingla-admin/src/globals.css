@@ -91,15 +91,26 @@
   --z-modal:    40;
   --z-toast:    50;
 
-  --sidebar-width:           260px;
-  --sidebar-collapsed-width: 72px;
-  --sidebar-bg:              var(--gray-900);
-  --sidebar-text:            var(--gray-300);
-  --sidebar-text-active:     var(--color-text-inverse);
-  --sidebar-hover:           rgba(255, 255, 255, 0.08);
-  --sidebar-active:          #f97316;
+  /* Issue #3802 (admin shell): the one frame every page sits in.
+     Invariant I-3802-ADMIN-SHELL-ONE-FRAME. The logo row is as tall as the
+     header, so their bottom rules read as one line. --page-gutter is the
+     space the shell puts around every page; pages add none of their own. */
+  --sidebar-width:           248px;
+  --sidebar-collapsed-width: 64px;
+  --header-height: 56px;
+  --page-gutter:   24px;
+  --content-max-width: 1600px;
 
-  --header-height: 64px;
+  /* The menu follows the theme: light here, ink under [data-theme="dark"]. */
+  --sidebar-bg:          var(--color-background-primary);
+  --sidebar-text:        var(--color-text-secondary);
+  --sidebar-text-dim:    var(--color-text-tertiary);
+  --sidebar-text-active: var(--color-text-primary);
+  --sidebar-border:      var(--gray-200);
+  --sidebar-hover:       var(--gray-100);
+  --sidebar-active-bg:   var(--color-brand-50);
+  --sidebar-accent:      var(--color-brand-600);
+
   --header-bg:     var(--color-background-primary);
   --header-border: var(--gray-200);
 
@@ -109,8 +120,6 @@
   --space-lg:  24px;
   --space-xl:  32px;
   --space-2xl: 48px;
-
-  --content-max-width: 1280px;
 
   --table-header-bg:  var(--gray-50);
   --table-border:     var(--gray-200);
@@ -155,7 +164,14 @@
   --shadow-lg:  0 12px 24px rgba(0, 0, 0, 0.3), 0 4px 8px rgba(0, 0, 0, 0.2);
   --shadow-xl:  0 20px 40px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.2);
 
-  --sidebar-bg:    #0a0c12;
+  --sidebar-bg:          #0a0c12;
+  --sidebar-text:        #c5c9d2;
+  --sidebar-text-dim:    #8b93a1;
+  --sidebar-text-active: #ffffff;
+  --sidebar-border:      rgba(255, 255, 255, 0.08);
+  --sidebar-hover:       rgba(255, 255, 255, 0.06);
+  --sidebar-active-bg:   rgba(255, 255, 255, 0.1);
+  --sidebar-accent:      var(--color-brand-500);
   --header-bg:     #0f1117;
   --header-border: #2d3241;
 
@@ -163,6 +179,12 @@
   --table-border:    #2d3241;
   --table-row-hover: #1a1d27;
   --table-stripe:    #141720;
+}
+
+/* The page gutter narrows on phones. One rule, used by the header and the
+   page area alike. */
+@media (max-width: 639px) {
+  :root { --page-gutter: 16px; }
 }
 
 /* ─── Global Reset & Base ─── */
