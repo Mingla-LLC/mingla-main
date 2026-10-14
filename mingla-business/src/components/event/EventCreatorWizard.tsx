@@ -92,6 +92,7 @@ import {
   type ValidationError,
 } from "../../utils/draftEventValidation";
 import { isDraftEventPristine } from "../../utils/draftEventPristine";
+import type { TurnoutInputSource } from "../../utils/turnoutInput";
 import { payoutGateStatus } from "../../utils/brandPayout";
 import {
   describeUnmappedPublishGuard,
@@ -472,6 +473,14 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // useKeyboardIsVisible() preserves dock-hide UX (line ~915). KAS via
   // SmartScrollView handles focused-input scroll.
   const keyboardVisible = useKeyboardIsVisible();
+  const turnoutSource = useMemo<TurnoutInputSource>(
+    () => ({
+      kind: "event",
+      draft: liveDraft,
+      brandDefaultCurrency: brand?.defaultCurrency ?? null,
+    }),
+    [brand?.defaultCurrency, liveDraft],
+  );
   const latestDraftRef = useRef<DraftEvent>(liveDraft);
   const clientRevisionRef = useRef<number>(liveDraft.clientRevision ?? 0);
   const lastStepSyncKeyRef = useRef<string | null>(null);
@@ -1328,11 +1337,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
 
   return (
     <LazyTurnoutIntelProvider
-      source={{
-        kind: "event",
-        draft: liveDraft,
-        brandDefaultCurrency: brand?.defaultCurrency ?? null,
-      }}
+      source={turnoutSource}
       brandId={liveDraft.brandId}
       wizard="event"
       surface={

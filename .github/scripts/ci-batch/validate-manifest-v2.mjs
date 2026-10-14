@@ -283,6 +283,10 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
     workflow: "issue-1486-dormant-render-suites.yml",
     referenceFiles: Object.freeze([
       ".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs",
+      // #3827's dedicated render config names this retained workflow as its
+      // CI provider. One workflow has one additive declaration, so the later
+      // consumer joins #2774's existing exact reference-file delta here.
+      "mingla-business/jest.issue3827.web.render.cjs",
     ]),
   }),
   Object.freeze({

@@ -17,9 +17,11 @@
 // Worktree trap: `node_modules` (and its `@mingla/*` workspace links) may be a
 // link to the anchor checkout. Every workspace package this suite executes is
 // mapped to THIS tree, so a worktree run tests this branch's code.
+// CI: .github/workflows/issue-1486-dormant-render-suites.yml invokes this
+// dedicated render config with the repository's two-worker ceiling.
 //
 // Run (from mingla-business/):
-//   npx jest --config jest.issue3827.web.render.cjs --runInBand --ci
+//   npx jest --config jest.issue3827.web.render.cjs --ci --maxWorkers=2
 const path = require("path");
 
 const businessRoot = __dirname;
@@ -28,11 +30,18 @@ const packagesRoot = path.join(businessRoot, "..", "packages");
 module.exports = {
   rootDir: businessRoot,
   testEnvironment: "node",
+  // Two real wizard/view mounts share the two-worker CI ceiling; give each
+  // synchronous 120-keystroke proof the same contention allowance as the
+  // repository's main Jest config.
+  testTimeout: 20000,
   globals: { __DEV__: true },
   transform: {
     "^.+\\.(js|jsx|ts|tsx)$": [
       "babel-jest",
-      { configFile: path.join(businessRoot, "jest.orch1118.babel.cjs") },
+      // The shared render-proof transform plus #2323's lowering of dynamic
+      // import() to require (Metro does the same lowering for the real app).
+      // The creator loads its turnout runtime through React.lazy(import(...)).
+      { configFile: path.join(businessRoot, "jest.issue2323.babel.cjs") },
     ],
   },
   testMatch: ["**/__tests__/issue_3827_*.web.render.test.tsx"],
