@@ -551,7 +551,8 @@ describe("#3802 C-7: City missing?", () => {
   it("every button does something, and focus comes back to the menu", () => {
     const LAYER = read("components/crm/MissingCityLayer.jsx");
     // Place Pool opens beside this page: nothing typed in the form behind it is lost.
-    assert.ok(LAYER.includes('window.open(`${window.location.pathname}${window.location.search}#/placepool`, "_blank", "noopener");'));
+    assert.ok(LAYER.includes("openExternal(`${window.location.pathname}${window.location.search}#/placepool`);"));
+    assert.ok(LAYER.includes('import { openExternal } from "../../lib/openExternal";'), "through the package's one owner of a new tab");
     assert.equal(/window\.location\.hash\s*=|window\.location\.assign|window\.location\.href\s*=/.test(LAYER), false, "this page is never navigated away from");
     assert.ok(LAYER.includes("onClick={onRefresh}") && LAYER.includes("onClick={onClose}"));
     assert.equal((LAYER.match(/<Button/g) || []).length, 4);

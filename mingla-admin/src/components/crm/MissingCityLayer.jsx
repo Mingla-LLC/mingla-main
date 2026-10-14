@@ -7,6 +7,7 @@
 import { useEffect, useRef } from "react";
 import { Button } from "../ui/Button";
 import { missingCityWords } from "../../lib/crmModel";
+import { openExternal } from "../../lib/openExternal";
 
 export function MissingCityLayer({ canAddRegion, onClose, onRefresh }) {
   const words = missingCityWords(canAddRegion);
@@ -37,7 +38,7 @@ export function MissingCityLayer({ canAddRegion, onClose, onRefresh }) {
               className="max-sm:h-11"
               onClick={() => {
                 // A new tab: the form behind this keeps everything typed in it.
-                window.open(`${window.location.pathname}${window.location.search}#/placepool`, "_blank", "noopener");
+                openExternal(`${window.location.pathname}${window.location.search}#/placepool`);
               }}
             >
               {words.primary}
