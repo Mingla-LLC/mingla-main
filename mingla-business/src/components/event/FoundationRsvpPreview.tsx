@@ -59,6 +59,7 @@ import {
   type RsvpInlineDecisionPosition,
 } from "@mingla/offering-rendering/rsvpFloatingDecision";
 import type { RsvpGuestSnapshot } from "@mingla/offering-rendering/rsvpGuestSnapshot";
+import { useOwnProfilePhoneOnFile } from "../../hooks/useOwnProfilePhoneOnFile";
 
 /** How often the inline-decision visibility is re-measured between scroll events. */
 const VISIBILITY_POLL_MS = 400;
@@ -237,6 +238,16 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     }
   }, []);
 
+  // #3380 — whether the signed-in guest's account has a phone. The server fills
+  // name, email and phone from the account and refuses without a phone, so a
+  // known-missing phone is asked for in the Going step. null = not known (signed
+  // out, loading, read failed, or no viewer id such as the host preview): the
+  // shared body then reveals the field only if the server refuses.
+  const accountPhoneOnFile = useOwnProfilePhoneOnFile(
+    isLoggedIn ? replyIdentity ?? null : null,
+    true,
+  );
+
   // Lift the ONE decision/submit/dialog state machine; share it with body + dock.
   const state = useRsvpOfferingState({
     event,
@@ -245,6 +256,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     theme,
     config,
     isLoggedIn,
+    accountPhoneOnFile,
     replyIdentity,
     recoveryNotice,
     onSubmit,

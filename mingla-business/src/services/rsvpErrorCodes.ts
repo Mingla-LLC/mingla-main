@@ -37,3 +37,42 @@ export const parseRsvpErrorCode = (error: RsvpInvokeError | null): string => {
   }
   return code;
 };
+
+/**
+ * #3380 — the real error code of a failed `public-submit-rsvp` call.
+ *
+ * supabase-js puts the raw fetch `Response` in `error.context`, so the `{ error }`
+ * code lives in its unread body (`context.body` is a stream, never the JSON).
+ * `parseRsvpErrorCode` alone therefore returned the generic
+ * "Edge Function returned a non-2xx status code", and every refusal showed
+ * "Couldn't save your RSVP. Try again." — including `rsvp_contact_required`,
+ * the one a signed-in guest with no phone can fix.
+ *
+ * Reads the body (a clone when possible, so nothing else loses it) and falls
+ * back to `parseRsvpErrorCode` when there is no readable body or it is not the
+ * `{ error }` JSON.
+ */
+export const readRsvpErrorCode = async (
+  error: RsvpInvokeError | null,
+): Promise<string> => {
+  const context = (error as { context?: unknown } | null)?.context;
+  if (context !== null && typeof context === "object") {
+    const response = context as {
+      clone?: () => { text?: () => Promise<string> };
+      text?: () => Promise<string>;
+    };
+    const readable =
+      typeof response.clone === "function" ? response.clone() : response;
+    if (typeof readable.text === "function") {
+      try {
+        const parsed = JSON.parse(await readable.text()) as { error?: unknown };
+        if (typeof parsed.error === "string" && parsed.error.length > 0) {
+          return parsed.error;
+        }
+      } catch {
+        // Unreadable or non-JSON body: the synchronous parse below decides.
+      }
+    }
+  }
+  return parseRsvpErrorCode(error);
+};
