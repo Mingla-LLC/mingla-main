@@ -140,6 +140,12 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "paystack.subaccount_disconnected",
   "paystack.provider_selected",
   "paystack.provider_cleared",
+  // #3645 — brand Nigerian bank recipient lifecycle and the sell-before-bank
+  // hold switch; seen in production but previously unlabelled.
+  "paystack.recipient_created",
+  "paystack.recipient_deactivated",
+  "payout_hold.paystack_provider_select_flipped",
+  "payout_hold.paystack_provider_select_skipped_already_stamped",
   // ORCH-1331 [partner Paystack payout rail] — partner recipient lifecycle
   // (partner-paystack-onboard) + split reversal/refund-state audits
   // (_shared/paystackPartnerSplits + paystack-webhook routing).
@@ -162,8 +168,23 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "payout_hold.rollback",
 ];
 
+// #3645 — host-facing titles never name the payment provider. The generic
+// fallback turns an unrecognised action code into words, so provider words in
+// the code are rewritten to plain terms first.
+const PROVIDER_WORDS: readonly (readonly [RegExp, string])[] = [
+  [/\bpartner stripe connect\b/gi, "partner payout account"],
+  [/\bstripe connect\b/gi, "payout account"],
+  [/\bstripe tax\b/gi, "tax tools"],
+  [/\bpartner paystack\b/gi, "partner Nigerian payout"],
+  [/\bpaystack\b/gi, "Nigerian payout"],
+  [/\bstripe\b/gi, "card payment"],
+];
+
 const humanizeSlug = (slug: string): string => {
-  const cleaned = slug.replace(/[._]+/g, " ").trim();
+  let cleaned = slug.replace(/[._]+/g, " ").trim();
+  for (const [pattern, plain] of PROVIDER_WORDS) {
+    cleaned = cleaned.replace(pattern, plain);
+  }
   if (cleaned.length === 0) return "Event";
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 };
@@ -280,6 +301,34 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
         detail: "The brand chose to get paid in Nigeria; bank connection is the next step.",
         category: "ops",
         iconHint: "shield",
+      };
+    case "paystack.recipient_created":
+      return {
+        title: "Nigerian bank details saved",
+        detail: "The brand's Nigerian bank account was verified and saved; the payout account is set up next.",
+        category: "ops",
+        iconHint: "shield",
+      };
+    case "paystack.recipient_deactivated":
+      return {
+        title: "Previous Nigerian bank details retired",
+        detail: "An earlier Nigerian bank account was retired, usually because the brand saved a new one.",
+        category: "ops",
+        iconHint: "shield",
+      };
+    case "payout_hold.paystack_provider_select_flipped":
+      return {
+        title: "Selling before a bank switched on",
+        detail: "Choosing Nigeria switched this brand to selling before a bank is connected; money waits until a bank is added.",
+        category: "payouts_refunds",
+        iconHint: "pound",
+      };
+    case "payout_hold.paystack_provider_select_skipped_already_stamped":
+      return {
+        title: "Selling before a bank already on",
+        detail: "Nigeria was chosen again; this brand was already set to sell before a bank is connected, so nothing changed.",
+        category: "payouts_refunds",
+        iconHint: "pound",
       };
     case "paystack.provider_cleared":
       return {
@@ -665,7 +714,7 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
   // ----- Unknown fallback. Raw slug in detail for debugging. -----
   return {
     title: humanizeSlug(action),
-    detail: action,
+    detail: /stripe|paystack/i.test(action) ? undefined : action,
     category: "other",
     iconHint: "flag",
   };

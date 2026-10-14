@@ -208,3 +208,58 @@ describe("#3645 — the activity log never names the payment provider", () => {
     );
   });
 });
+
+// #3645 — action codes recorded in production that the activity log did not
+// recognise, so the generic fallback showed "Paystack recipient created".
+// Every one now has its own label, and the fallback itself can never show a
+// provider name (an unknown future code is rewritten, and its raw code is not
+// echoed as the detail).
+describe("#3645 — production actions that used to fall through", () => {
+  const PROVIDER_WORDS = /stripe|paystack/i;
+  const SEEN_IN_PRODUCTION = [
+    "paystack.recipient_created",
+    "paystack.recipient_deactivated",
+    "payout_hold.paystack_provider_select_flipped",
+    "payout_hold.paystack_provider_select_skipped_already_stamped",
+  ] as const;
+
+  for (const slug of SEEN_IN_PRODUCTION) {
+    test(`${slug} has its own label and names no provider`, () => {
+      const out = resolveAuditActionLabel(slug);
+      expect(out.category).not.toBe("other");
+      expect(out.title).not.toMatch(PROVIDER_WORDS);
+      if (out.detail !== undefined) expect(out.detail).not.toMatch(PROVIDER_WORDS);
+    });
+  }
+
+  test("Nigerian bank details saved is not the same entry as the payout account being connected", () => {
+    expect(resolveAuditActionLabel("paystack.recipient_created").title).toBe(
+      "Nigerian bank details saved",
+    );
+    expect(resolveAuditActionLabel("paystack.recipient_created").title).not.toBe(
+      resolveAuditActionLabel("paystack.subaccount_created").title,
+    );
+  });
+
+  test("an unknown provider action code is rewritten and its raw code is not shown", () => {
+    for (const slug of [
+      "paystack.some_future_event",
+      "stripe.some_future_event",
+      "partner_paystack.some_future_event",
+      "stripe_tax.some_future_event",
+    ]) {
+      const out = resolveAuditActionLabel(slug);
+      expect(out.title).not.toMatch(PROVIDER_WORDS);
+      if (out.detail !== undefined) expect(out.detail).not.toMatch(PROVIDER_WORDS);
+    }
+    expect(resolveAuditActionLabel("paystack.some_future_event").title).toBe(
+      "Nigerian payout some future event",
+    );
+  });
+
+  test("an unknown non-provider action still shows its raw code for support", () => {
+    expect(resolveAuditActionLabel("brand_owner_demoted_on_handover").detail).toBe(
+      "brand_owner_demoted_on_handover",
+    );
+  });
+});
