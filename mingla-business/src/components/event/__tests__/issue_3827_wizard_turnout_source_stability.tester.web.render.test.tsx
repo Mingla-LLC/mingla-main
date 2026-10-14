@@ -302,10 +302,12 @@ const queryClient = (): QueryClient =>
   new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 describe("#3827 wizard turnout sources stay stable across unrelated rerenders", () => {
-  test.each([
+  const wizardCases: ["event" | "rsvp", string][] = [
     ["event", "11111111-1111-4111-8111-111111113827"],
     ["rsvp", "33333333-3333-4333-8333-333333333827"],
-  ] as const)("%s keeps the exact source object", async (wizard, draftId) => {
+  ];
+
+  test.each(wizardCases)("%s keeps the exact source object", async (wizard, draftId) => {
     const base = buildDraftEvent(BRAND_ID, draftId);
     useDraftEventStore.getState().upsertDraft(base as DraftEvent);
     const draft = useDraftEventStore.getState().getDraft(draftId) as DraftEvent;
