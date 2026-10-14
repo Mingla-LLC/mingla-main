@@ -312,9 +312,9 @@ Deno.test("H-03 bidi overrides, zero-width characters and line breaks are stripp
   for (const code of [0x202e, 0x202c, 0x2066, 0x200b, 0x200d, 0xfeff, 0x2028, 0x0a, 0x0d, 0x09]) {
     assertFalse(cleaned.includes(ch(code)), `U+${code.toString(16)} survived`);
   }
-  // With the override gone, "movedgnp.exe" reads as a host name and is removed
-  // too: a spoofed file name never reaches the email.
-  assertEquals(cleaned, `Venue ${LINK_REMOVED} hidden Bcc: ${LINK_REMOVED} Second line third`);
+  // With the override gone the spoof reads plainly ("movedgnp.exe"); ".exe"
+  // is not a top-level domain, so it is prose (rework D4).
+  assertEquals(cleaned, `Venue movedgnp.exe hidden Bcc: ${LINK_REMOVED} Second line third`);
   const out = renderEventUpdatedEmail(eventInput({ reason: hostile }));
   for (const code of [0x202e, 0x2066, 0x200b, 0x200d, 0xfeff, 0x2028]) {
     assertFalse(out.html.includes(ch(code)), `U+${code.toString(16)} reached the HTML`);
@@ -390,7 +390,7 @@ Deno.test("H-05 (rework) any scheme, any host, IP addresses and IDN are removed;
     ["Try xn--80ak6aa92e.com instead", "xn--80ak6aa92e"],
     ["See пример.рф for details", "пример.рф"],
     ["Open ftp://files.example/now quickly", "ftp://"],
-    ["Use custom-app:open?id=1 on your phone", "custom-app:"],
+    ["Use custom-app://open?id=1 on your phone", "custom-app:"],
     ["Open intent:#Intent;end now", "intent:"],
     ["Book via evil.travel", "evil.travel"],
     ["Visit sub.domain.co.uk/path?x=1 soon", "domain.co.uk"],
@@ -434,4 +434,45 @@ Deno.test("Z-01 (rework) every time string is printed with plain spaces, whateve
       assertFalse(part.includes(ch(code)), `U+${code.toString(16)} reached the email`);
     }
   }
+});
+
+Deno.test("H-07 (rework D4) a missing space after a full stop or colon is prose, not a link", () => {
+  for (const reason of [
+    "Venue:Lantern Room is the new place",
+    "Ask for Mr.Smith at the door",
+    "Now at St.Mary's hall",
+    "Update:moved to the hall",
+    "Re:Venue change for Friday",
+    "Time:7pm sharp",
+    "Meet in Room 4.Bring your ticket",
+    "Upstairs at Café.Bar tonight",
+    "We moved from Lagos.See you there",
+    "Bring ID e.g. a passport, U.S. guests welcome",
+  ]) {
+    assertEquals(sanitiseEditReason(reason), reason, `ordinary prose was changed: ${reason}`);
+  }
+  // Still removed: real schemes, real top-level domains, wide dots.
+  const wideDot = String.fromCharCode(0x3002);
+  const fullWidthDot = String.fromCharCode(0xff0e);
+  for (const [reason, leak] of [
+    [`Pay at evil${wideDot}com now`, "evil"],
+    [`Pay at evil${fullWidthDot}co${fullWidthDot}uk now`, "evil"],
+    ["Pay at EVIL.COM now", "EVIL"],
+    ["Open mailto:refunds@x.example please", "mailto"],
+    ["Open my-app://pay now", "my-app"],
+    ["Pay at evil.zip/now", "evil.zip"],
+    ["Pay at tix.example:8443 now", "tix.example"],
+  ] as const) {
+    const cleaned = sanitiseEditReason(reason) ?? "";
+    assertFalse(cleaned.includes(leak), `"${leak}" survived in: ${cleaned}`);
+    assertStringIncludes(cleaned, LINK_REMOVED);
+  }
+});
+
+Deno.test("H-08 (rework) a zero-width joiner inside an emoji is kept; anywhere else it goes", () => {
+  const zwj = String.fromCharCode(0x200d);
+  const family = String.fromCodePoint(0x1f469) + zwj + String.fromCodePoint(0x1f4bb);
+  assertEquals(sanitiseEditReason(`See you there ${family} soon`), `See you there ${family} soon`);
+  assertFalse((sanitiseEditReason(`Go to http${zwj}s://evil.example`) ?? "").includes(zwj));
+  assertFalse((sanitiseEditReason(`Plain${zwj}text here`) ?? "").includes(zwj));
 });

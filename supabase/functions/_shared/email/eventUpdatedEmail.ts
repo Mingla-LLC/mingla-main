@@ -78,21 +78,60 @@ const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/g;
 const BIDI_CHARS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
 // Zero-width and invisible joiners, soft hyphen, byte-order mark, tag block.
 const INVISIBLE_CHARS =
-  /[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u200B-\u200D\u2060-\u2064\u206A-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0]|\uDB40[\uDC00-\uDC7F]/g;
+  /[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u200B\u200C\u2060-\u2064\u206A-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0]|\uDB40[\uDC00-\uDC7F]/g;
 const EMAIL_LIKE = /[^\s@<>()]+@[^\s@<>()]+\.[^\s@<>()]+/gu;
-// A scheme of ANY kind followed by something: https://, javascript:, data:,
-// mailto:, tel:, intent:, a made-up one. Two letters at least, so "a:b" in a
-// sentence is left alone; a colon followed by a space never matches.
-const SCHEME_LIKE = /(?<![\p{L}\p{N}])[a-z][a-z0-9+.-]{1,31}:(?:\/\/)?[^\s]+/giu;
+// A zero-width joiner is kept only where it joins two emoji (a family, a
+// profession with a skin tone); anywhere else it hides a link and goes.
+const LONE_ZWJ = new RegExp(
+  `(?<![\\p{Extended_Pictographic}\\p{Emoji_Modifier}${String.fromCharCode(0xfe0f)}])${
+    String.fromCharCode(0x200d)
+  }|${String.fromCharCode(0x200d)}(?!\\p{Extended_Pictographic})`,
+  "gu",
+);
+// Full-width and ideographic full stops read as dots before matching, so
+// "evil<U+3002>com" is treated like "evil.com".
+const WIDE_DOTS = new RegExp(`[${String.fromCharCode(0x3002, 0xff0e, 0xff61)}]`, "g");
+// Only real URI schemes count. "Venue:Lantern Room", "Re:Venue" and
+// "Time:7pm" are prose; "javascript:", "mailto:" and anything with "//" are not.
+const SCHEME_LIKE =
+  /(?<![\p{L}\p{N}])(?:(?:https?|ftps?|mailto|tel|sms|data|javascript|vbscript|file|intent|whatsapp|tg|blob):[^\s]+|[a-z][a-z0-9+.-]{1,31}:\/\/[^\s]*)/giu;
 const WWW_LIKE = /(?<![\p{L}\p{N}])www\.[^\s]+/giu;
 // IPv4 addresses, with an optional port and path.
 const IP_LIKE = /(?<![\p{N}.])\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?(?:[/?#][^\s]*)?/gu;
-// A host name: labels joined by a dot BETWEEN two word characters, ending in a
-// 2 to 24 letter top-level label (any script) or a punycode one, then an
-// optional port and path. "Lagos. We" (a dot followed by a space), "e.g." and
-// "3.5km" are sentences, not hosts, and stay.
-const HOST_LIKE =
-  /(?<![\p{L}\p{N}@-])(?:[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,62})\.)+(?:\p{L}{2,24}|xn--[a-z0-9-]{2,59})(?![\p{L}\p{N}-])(?::\d{1,5})?(?:[/?#][^\s]*)?/giu;
+
+// Top-level domains a host name can end in: every two-letter country code, the
+// common generic ones, the reserved example names, and the internationalised
+// country codes a buyer is likely to meet. Lower-case; a label is compared in
+// lower case only when it is written all lower or all upper case, so a
+// capitalised word after a dot ("Mr.Smith", "Lagos.See", "Cafe.Bar") is prose.
+const COUNTRY_CODES =
+  "ac ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bm bn bo bq br bs bt bw by bz ca cc cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg er es et eu fi fj fk fm fo fr ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu id ie il im in io iq ir is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg sh si sk sl sm sn so sr ss st su sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua ug uk us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw";
+const GENERIC_TLDS =
+  "com net org info biz edu gov mil int arpa app dev io ai xyz online site shop store club live link page blog tech top vip fun art bio events tickets ticket travel zip mov museum name pro mobi asia tel jobs cat coop aero news media agency studio space website email cloud host digital world today life love party bar restaurant cafe music film game games bet casino money pay finance bank loan click download work works group global africa london nyc paris berlin tokyo inc llc ltd company services solutions support help center network systems social chat team one fyi icu cyou buzz rest wiki gay pics photo photos video tube porn sex xxx adult dating date men best cool guru ninja rocks lol wtf ooo onl uno review reviews market markets trade exchange crypto nft wallet example test invalid localhost";
+const IDN_TLDS = "рф рус бел укр қаз срб мкд мон бг ею орг ком онлайн сайт 中国 中國 香港 台灣 台湾 新加坡 한국 ελ भारत இந்தியா ไทย السعودية امارات مصر ایران عمان قطر";
+const KNOWN_TLDS: ReadonlySet<string> = new Set(
+  `${COUNTRY_CODES} ${GENERIC_TLDS} ${IDN_TLDS}`.split(/\s+/).filter((tld) => tld.length > 0),
+);
+// A candidate host: labels joined by a dot between two word characters, a
+// final label, then an optional port and path. Whether it IS a host is decided
+// by its final label (isHostTld).
+const HOST_CANDIDATE =
+  /(?<![\p{L}\p{N}@-])((?:[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,62})\.)+)([\p{L}][\p{L}\p{N}-]{1,62})(?![\p{L}\p{N}-])((?::\d{1,5})?(?:[/?#][^\s]*)?)/gu;
+
+function isHostTld(label: string): boolean {
+  if (/^xn--[a-z0-9-]{2,59}$/i.test(label)) return true;
+  const lower = label.toLowerCase();
+  const upper = label.toUpperCase();
+  // Capitalised ("Smith", "See", "Bar"): a word after a missing space.
+  if (label !== lower && label !== upper) return false;
+  return KNOWN_TLDS.has(lower);
+}
+
+function removeHosts(text: string): string {
+  return text.replace(HOST_CANDIDATE, (match: string, _labels: string, tld: string) =>
+    isHostTld(tld) ? LINK_REMOVED : match
+  );
+}
 
 /**
  * At most `max` UTF-16 units, cut between whole characters as a reader sees
@@ -133,6 +172,7 @@ export function cleanLine(raw: unknown, max = 200): string {
       .replace(CONTROL_CHARS, " ")
       .replace(BIDI_CHARS, "")
       .replace(INVISIBLE_CHARS, "")
+      .replace(LONE_ZWJ, "")
       .replace(/\s+/g, " ")
       .trim(),
     max,
@@ -147,12 +187,14 @@ export function sanitiseEditReason(raw: unknown): string | null {
   const line = cleanLine(raw, 2000);
   if (line.length === 0 || line === NO_REASON_CONSTANT) return null;
   const cleaned = truncateText(
-    line
-      .replace(EMAIL_LIKE, LINK_REMOVED)
-      .replace(SCHEME_LIKE, LINK_REMOVED)
-      .replace(WWW_LIKE, LINK_REMOVED)
-      .replace(IP_LIKE, LINK_REMOVED)
-      .replace(HOST_LIKE, LINK_REMOVED)
+    removeHosts(
+      line
+        .replace(WIDE_DOTS, ".")
+        .replace(EMAIL_LIKE, LINK_REMOVED)
+        .replace(SCHEME_LIKE, LINK_REMOVED)
+        .replace(WWW_LIKE, LINK_REMOVED)
+        .replace(IP_LIKE, LINK_REMOVED),
+    )
       .replace(/\s+/g, " ")
       .trim(),
     REASON_MAX,
