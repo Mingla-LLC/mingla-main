@@ -22,7 +22,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LifeBuoy, Send, UserCheck, RefreshCw, Shield, UserPlus, UserX, Users,
 } from "lucide-react";
-import { supabase } from "../lib/supabase";
+import {
+  supabase,
+  invokeWithRefresh,
+  isSessionExpiredError,
+  SESSION_EXPIRED_MESSAGE,
+} from "../lib/supabase";
 import { SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
@@ -73,12 +78,14 @@ const PRIORITY_OPTIONS = ["low", "normal", "high", "urgent"];
 
 /**
  * Invoke a support-* edge function and normalize the result to
- * { ok, error }. A 404 (function not deployed yet) surfaces a clear,
- * non-alarming message instead of a crash. Never throws.
+ * { ok, error, sessionExpired? }. Uses invokeWithRefresh (#3512 / #3720) so an
+ * idle tab gets one refresh+retry before we ask the admin to sign in again.
+ * A 404 (function not deployed yet) surfaces a clear, non-alarming message.
+ * Never throws.
  */
 async function invokeSupportFn(fnName, body) {
   try {
-    const { data, error } = await supabase.functions.invoke(fnName, { body });
+    const { data, error } = await invokeWithRefresh(fnName, { body });
     if (error) {
       const status = error?.context?.status ?? error?.status;
       if (status === 404) {
@@ -87,11 +94,21 @@ async function invokeSupportFn(fnName, body) {
           error: `Support actions aren't live yet — "${fnName}" isn't deployed. The queue + thread are read-only until the support functions ship.`,
         };
       }
+      if (isSessionExpiredError(error) || status === 401) {
+        return {
+          ok: false,
+          sessionExpired: true,
+          error: SESSION_EXPIRED_MESSAGE,
+        };
+      }
       const msg = await extractFunctionError(error, `${fnName} failed`);
       return { ok: false, error: msg };
     }
     return { ok: true, data };
   } catch (err) {
+    if (isSessionExpiredError(err)) {
+      return { ok: false, sessionExpired: true, error: SESSION_EXPIRED_MESSAGE };
+    }
     return { ok: false, error: err?.message ?? `${fnName} failed` };
   }
 }
@@ -107,7 +124,7 @@ function profileLabel(p) {
 
 export function SupportDeskPage() {
   const { addToast } = useToast();
-  const { session } = useAuth();
+  const { session, signOut } = useAuth();
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -115,6 +132,16 @@ export function SupportDeskPage() {
   }, []);
 
   const myUserId = session?.user?.id ?? null;
+  // #3720 bug 10 — after invokeWithRefresh already retried once, offer re-sign-in.
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  function noteInvokeResult(res) {
+    if (res?.sessionExpired) {
+      setSessionExpired(true);
+      return true;
+    }
+    return false;
+  }
 
   // Queue state
   const [tickets, setTickets] = useState([]);
@@ -274,12 +301,13 @@ export function SupportDeskPage() {
     setActing(true);
     const res = await invokeSupportFn("support-claim", { ticketId: selectedTicket.id });
     if (res.ok) {
+      setSessionExpired(false);
       addToast({ variant: "success", title: "Ticket claimed" });
       await logAdminAction("support.claim", "support_ticket", selectedTicket.id);
       // Optimistic local reflect; realtime + reload settle the rest.
       setSelectedTicket((t) => (t ? { ...t, assigned_staff_id: myUserId, status: t.status === "new" ? "open" : t.status } : t));
       await loadQueue();
-    } else {
+    } else if (!noteInvokeResult(res)) {
       addToast({ variant: "error", title: "Couldn't claim ticket", description: res.error });
     }
     if (mountedRef.current) setActing(false);
@@ -300,8 +328,10 @@ export function SupportDeskPage() {
         content: body,
       });
       if (!sideEffect.ok) {
+        if (noteInvokeResult(sideEffect)) return;
         throw new Error(sideEffect.error || "Couldn't send reply");
       }
+      setSessionExpired(false);
       await logAdminAction("support.reply", "support_ticket", selectedTicket.id);
       if (!mountedRef.current) return;
       setReply("");
@@ -322,11 +352,12 @@ export function SupportDeskPage() {
       status: nextStatus,
     });
     if (res.ok) {
+      setSessionExpired(false);
       addToast({ variant: "success", title: `Status → ${nextStatus}` });
       await logAdminAction("support.set_status", "support_ticket", selectedTicket.id, { status: nextStatus });
       setSelectedTicket((t) => (t ? { ...t, status: nextStatus } : t));
       await loadQueue();
-    } else {
+    } else if (!noteInvokeResult(res)) {
       addToast({ variant: "error", title: "Couldn't change status", description: res.error });
     }
     if (mountedRef.current) setActing(false);
@@ -340,11 +371,12 @@ export function SupportDeskPage() {
       priority: nextPriority,
     });
     if (res.ok) {
+      setSessionExpired(false);
       addToast({ variant: "success", title: `Priority → ${nextPriority}` });
       await logAdminAction("support.set_priority", "support_ticket", selectedTicket.id, { priority: nextPriority });
       setSelectedTicket((t) => (t ? { ...t, priority: nextPriority } : t));
       await loadQueue();
-    } else {
+    } else if (!noteInvokeResult(res)) {
       addToast({ variant: "error", title: "Couldn't change priority", description: res.error });
     }
     if (mountedRef.current) setActing(false);
@@ -394,11 +426,12 @@ export function SupportDeskPage() {
     setGranting(true);
     const res = await invokeSupportFn("support-grant-staff", { email, enabled: true });
     if (res.ok) {
+      setSessionExpired(false);
       addToast({ variant: "success", title: "Support access granted", description: email });
       await logAdminAction("support.grant_staff", "support_staff", email, { enabled: true });
       setGrantEmail("");
       await loadStaff();
-    } else {
+    } else if (!noteInvokeResult(res)) {
       addToast({ variant: "error", title: "Couldn't grant access", description: res.error });
     }
     if (mountedRef.current) setGranting(false);
@@ -411,10 +444,11 @@ export function SupportDeskPage() {
       enabled: false,
     });
     if (res.ok) {
+      setSessionExpired(false);
       addToast({ variant: "success", title: "Support access revoked", description: profileLabel(member.profile) });
       await logAdminAction("support.revoke_staff", "support_staff", member.user_id, { enabled: false });
       await loadStaff();
-    } else {
+    } else if (!noteInvokeResult(res)) {
       addToast({ variant: "error", title: "Couldn't revoke access", description: res.error });
     }
     if (mountedRef.current) setGranting(false);
@@ -449,6 +483,22 @@ export function SupportDeskPage() {
           </>
         }
       />
+
+      {sessionExpired && (
+        <div
+          role="alert"
+          className="rounded-lg border border-[var(--color-warning-300)] bg-[var(--color-warning-50)] px-4 py-3 text-sm text-[var(--color-text-primary)]"
+        >
+          {SESSION_EXPIRED_MESSAGE}{" "}
+          <button
+            type="button"
+            className="underline font-medium"
+            onClick={() => void signOut()}
+          >
+            Sign in again
+          </button>
+        </div>
+      )}
 
       {/* Status filter tabs + unassigned toggle */}
       <div className="flex flex-wrap items-center gap-2">

@@ -2041,6 +2041,9 @@ function checkNoNewBackendFiles() {
     "supabase/functions/admin-send-email/index.ts",
     "supabase/functions/admin-send-email/issue_3720_email_segments_optout.implementor.happy.test.ts",
     "supabase/functions/notify-outbox-drain/index.ts",
+    // #3720 Phase 0 Slice C — grant-by-email + preserve fields
+    "supabase/functions/support-grant-staff/index.ts",
+    "supabase/functions/support-grant-staff/issue_3720_grant_email_preserve.implementor.happy.test.ts",
   ];
   const ALLOWLIST = [
     ...META_ORCH_1104_BACKEND_ALLOWLIST,

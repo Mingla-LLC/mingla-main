@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { supabase } from "../lib/supabase";
+import {
+  supabase,
+  SESSION_EXPIRED_MESSAGE,
+} from "../lib/supabase";
 import { SectionCard, StatCard, AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input, Textarea, Toggle } from "../components/ui/Input";
@@ -10,6 +13,7 @@ import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { Tabs } from "../components/ui/Tabs";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
 import {
   timeAgo, formatDate, formatDateTime, formatRelativeTime, formatFullDate, truncate, escapeLike,
 } from "../lib/formatters";
@@ -20,6 +24,14 @@ import {
   AlertTriangle, Eye, User, Plus, Pencil, Trash2, Download,
 } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
+
+class SessionExpiredError extends Error {
+  constructor(message = SESSION_EXPIRED_MESSAGE) {
+    super(message);
+    this.name = "SessionExpiredError";
+    this.status = 401;
+  }
+}
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -56,14 +68,31 @@ function segmentLabel(seg) {
 
 async function getAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) throw new Error("Not authenticated");
+  if (!session?.access_token) throw new SessionExpiredError();
+  // #3720 / #3512 — pre-refresh near expiry (same buffer as invokeWithRefresh).
+  if (session.expires_at) {
+    const timeLeft = session.expires_at * 1000 - Date.now();
+    if (timeLeft < 60_000) {
+      try {
+        await supabase.auth.refreshSession();
+      } catch {
+        // Fall through; the request may still succeed with the current token.
+      }
+      const { data: { session: refreshed } } = await supabase.auth.getSession();
+      if (!refreshed?.access_token) throw new SessionExpiredError();
+      return {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${refreshed.access_token}`,
+      };
+    }
+  }
   return {
     "Content-Type": "application/json",
     "Authorization": `Bearer ${session.access_token}`,
   };
 }
 
-async function callEdgeFunction(payload) {
+async function callEdgeFunction(payload, { retried = false } = {}) {
   const headers = await getAuthHeaders();
   const response = await fetch(EDGE_FUNCTION_URL, {
     method: "POST",
@@ -78,6 +107,16 @@ async function callEdgeFunction(payload) {
   }
   if (!response.ok) {
     if (result.code === "NO_PROVIDER") return { _noProvider: true };
+    // #3720 bug 10 — one refresh + retry on 401, then force re-sign-in.
+    if (response.status === 401 && !retried) {
+      try {
+        await supabase.auth.refreshSession();
+      } catch {
+        throw new SessionExpiredError();
+      }
+      return callEdgeFunction(payload, { retried: true });
+    }
+    if (response.status === 401) throw new SessionExpiredError();
     throw new Error(result.error || `HTTP ${response.status}`);
   }
   return result;
@@ -86,9 +125,11 @@ async function callEdgeFunction(payload) {
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export function EmailPage() {
+  const { signOut } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState("compose");
   const [providerConfigured, setProviderConfigured] = useState(true);
   const [providerChecked, setProviderChecked] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -104,8 +145,12 @@ export function EmailPage() {
         if (!cancelled) {
           if (result._noProvider) setProviderConfigured(false);
           setProviderChecked(true);
+          setSessionExpired(false);
         }
-      } catch {
+      } catch (err) {
+        if (!cancelled && err?.name === "SessionExpiredError") {
+          setSessionExpired(true);
+        }
         if (!cancelled) {
           setProviderConfigured(false);
           setProviderChecked(true);
@@ -122,8 +167,27 @@ export function EmailPage() {
         title="Email"
         tabs={<Tabs tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />}
       />
+      {sessionExpired && (
+        <div
+          role="alert"
+          className="rounded-lg border border-[var(--color-warning-300)] bg-[var(--color-warning-50)] px-4 py-3 text-sm text-[var(--color-text-primary)]"
+        >
+          {SESSION_EXPIRED_MESSAGE}{" "}
+          <button
+            type="button"
+            className="underline font-medium"
+            onClick={() => void signOut()}
+          >
+            Sign in again
+          </button>
+        </div>
+      )}
       {activeSubTab === "compose" && (
-        <ComposeSubView providerConfigured={providerConfigured} providerChecked={providerChecked} />
+        <ComposeSubView
+          providerConfigured={providerConfigured}
+          providerChecked={providerChecked}
+          onSessionExpired={() => setSessionExpired(true)}
+        />
       )}
       {activeSubTab === "history" && <HistorySubView />}
       {activeSubTab === "preferences" && <PreferencesSubView />}
@@ -133,7 +197,7 @@ export function EmailPage() {
 
 // ─── Compose ────────────────────────────────────────────────────────────────
 
-function ComposeSubView({ providerConfigured, providerChecked }) {
+function ComposeSubView({ providerConfigured, providerChecked, onSessionExpired }) {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
 
@@ -364,7 +428,11 @@ function ComposeSubView({ providerConfigured, providerChecked }) {
       setSelectedTemplate("");
       fetchTodayCount();
     } catch (err) {
-      addToast({ variant: "error", title: "Failed to send email", description: err.message });
+      if (err?.name === "SessionExpiredError") {
+        onSessionExpired?.();
+      } else {
+        addToast({ variant: "error", title: "Failed to send email", description: err.message });
+      }
     } finally {
       if (mountedRef.current) setSending(false);
     }

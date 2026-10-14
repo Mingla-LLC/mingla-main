@@ -229,6 +229,9 @@ on:
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
+      # #3720 Slice C — grant-by-email + session refresh
+      - "mingla-admin/src/__tests__/issue_3720_support_grant_session.implementor.happy.test.js"
+      - "supabase/functions/support-grant-staff/**"
       - "mingla-admin/src/pages/**"
       - "mingla-admin/src/lib/shellNav.js"
       - "mingla-admin/src/components/ui/PageHeader.jsx"
@@ -457,6 +460,9 @@ on:
       # #3720 Slice B — Email page segments / single log writer pin
       - "mingla-admin/src/__tests__/issue_3720_email_segments.implementor.happy.test.js"
       - "supabase/functions/admin-send-email/**"
+      # #3720 Slice C — grant-by-email + session refresh
+      - "mingla-admin/src/__tests__/issue_3720_support_grant_session.implementor.happy.test.js"
+      - "supabase/functions/support-grant-staff/**"
       - "mingla-admin/src/pages/**"
       - "mingla-admin/src/lib/shellNav.js"
       - "mingla-admin/src/components/ui/PageHeader.jsx"
@@ -642,6 +648,9 @@ jobs:
       - name: "#3720 Slice B — email segments + single log writer (admin node:test)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_3720_email_segments.implementor.happy.test.js
+      - name: "#3720 Slice C — grant email + session refresh (admin node:test)"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_3720_support_grant_session.implementor.happy.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
@@ -2290,6 +2299,8 @@ jobs:
             # #3720 Phase 0 Slice B — quiet-hours defer + admin email segments/opt-out
             supabase/functions/_shared/__tests__/issue_3720_quiet_hours_defer.test.ts
             supabase/functions/admin-send-email/issue_3720_email_segments_optout.implementor.happy.test.ts
+            # #3720 Phase 0 Slice C — grant email resolve + preserve fields
+            supabase/functions/support-grant-staff/issue_3720_grant_email_preserve.implementor.happy.test.ts
             # #3682 Wave 2.8 — Show me as going / Who's going privacy migration pins.
             supabase/migrations/__tests__/issue_3682_show_me_as_going.happy.test.ts
             # #3682 Wave 2.8b — wizard invite Followers / Friends of followers migration pins.
