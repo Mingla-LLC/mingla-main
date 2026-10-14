@@ -769,6 +769,20 @@ jobs:
           # recorded once at commit; a broken recorder never loses the save.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.implementor.happy.pg17.test.sql
+          # Issue #3827 — tester adversarial proof for the buyer email. A save is
+          # never blocked (malformed, wrong-typed and 3 MB themes, missing switch
+          # rows, every notice table refusing writes); drafts, trips and
+          # unwatched columns are never captured; unpublish and re-publish
+          # leave nothing sendable; one record per edit through the atomic
+          # function, a leaf called directly, a signed-in table write and the
+          # RSVP graph function; added dates, put-back changes, refunded-only
+          # buyers, an ended event and refund-all send nothing; the exact edges
+          # of the 5 / 15 / 20 minute rule; no street of a hide-address event
+          # and no stop address or place name stored or queued; no client role
+          # reaches a table, a switch or an internal function; one row per
+          # lower-cased address; repeated fan-outs and retries add nothing.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.tester.adversarial.pg17.test.sql
           # Issue #3645 — an unpublished draft with nothing sold follows its
           # brand's currency. Changed currency (GBP to NGN, fired by
           # service_role): event, RSVP and trip drafts move in every copy, paid
