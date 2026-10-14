@@ -39,14 +39,9 @@ function canonicalWorkflowSource() {
   const paths = [...new Set(suites.flatMap((suite) => suite.originPaths.map(decode)))];
   return `on:\n  pull_request:\n    paths:\n${paths.map((item) => `      - "${item}"`).join("\n")}\n  push:\n    paths:\n${paths.map((item) => `      - "${item}"`).join("\n")}\njobs:\n  gate:\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: "20.19.4"\n      - name: tester\n        run: ${TEST_COMMAND}\n      - name: self-test\n        run: ${SELF_TEST_COMMAND}\n      - name: real-run\n        run: ${REAL_COMMAND}\n`;
 }
-// #2199: was `historical: { occurrences: 5, files: 5 }` — one REPORTS.md line
-// plus four `.mtmp/metro-cache/*` blobs that happened to contain this string.
-// Those blobs were Metro's bundler cache, committed by 40cab4082 (#1709) and
-// untracked by #2199, so only the REPORTS.md line remains. The blob-hash
-// classifier they needed went with them.
 const EXPECTED_INVENTORY = {
   guard: { occurrences: 10, files: 3 },
-  historical: { occurrences: 1, files: 1 },
+  historical: { occurrences: 0, files: 0 },
   stale: { occurrences: 0, files: 0 },
   unclassified: { occurrences: 0, files: 0 },
 };
@@ -82,8 +77,8 @@ const GUARD_CONTEXTS = new Map([
     ],
   ],
 ]);
-const HISTORICAL_REPORT_LINE =
-  `- 2026-08-10 — \`expo config --json\` hides config errors: it exits non-zero with nothing on either stream when ${STALE_CONFIG_ROOT} throws, while the same command without \`--json\` prints the real message. Documented in the handbook with the reason it bites — both apps carry guards that fire only under a release build profile, so a silent exit 1 is indistinguishable from a guard working correctly, and it briefly passed for proof that a newly-added guard worked when a different guard had thrown. (#1748, PR #1766)`;
+const CLOSED_HISTORY_BANNER =
+  "> **Closed 2026-10-14.** Historical record only; do not add new entries. Current release records live on the shipping GitHub issue.";
 
 function indentation(line) {
   return line.match(/^\s*/)?.[0].length ?? 0;
@@ -301,13 +296,6 @@ function classifyOccurrence(relativePath, line) {
   const allowedGuardLines = GUARD_CONTEXTS.get(relativePath) ?? [];
   if (allowedGuardLines.includes(trimmed)) return "guard";
 
-  if (
-    relativePath === "REPORTS.md" &&
-    trimmed === HISTORICAL_REPORT_LINE
-  ) {
-    return "historical";
-  }
-
   // #2199: the blob-hash escape hatch here existed only to whitelist four
   // committed Metro cache files. The cache is untracked now, so every remaining
   // occurrence outside a named guard context is genuinely stale.
@@ -328,6 +316,10 @@ function auditTrackedInventory() {
     const buffer = readFileSync(absolutePath);
     if (buffer.includes(0)) continue;
     const source = buffer.toString("utf8");
+    // #3643: closed historical Markdown is not active runtime or OTA guidance.
+    // The exact banner, rather than a path allowlist, makes the exclusion apply
+    // only to files that visibly declare the closed-history contract.
+    if (relativePath.endsWith(".md") && source.startsWith(`${CLOSED_HISTORY_BANNER}\n`)) continue;
     for (const [lineIndex, line] of source.split(/\r?\n/).entries()) {
       let offset = line.indexOf(STALE_CONFIG_ROOT);
       while (offset !== -1) {
@@ -499,7 +491,7 @@ test("#2062 tester: precedence, exact normalization, Host replacement, and fail-
 test("#2062 tester: active runtime and OTA guidance has no stale TypeScript-root path", () => {
   const inventory = auditTrackedInventory();
   assert.equal(inventory.guard.length, 10);
-  assert.equal(inventory.historical.length, 1);
+  assert.equal(inventory.historical.length, 0);
   assert.equal(inventory.stale.length, 0);
   assert.equal(inventory.unclassified.length, 0);
 

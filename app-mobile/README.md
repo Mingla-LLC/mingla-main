@@ -110,6 +110,5 @@ This file should not duplicate global backend counts, migration inventories, or 
 - [`../README.md`](../README.md)
 - The [Mingla Avengers board](https://github.com/orgs/Mingla-LLC/projects/4) (work items and their state)
 - [`../PRODUCT_AND_STRATEGY.md`](../PRODUCT_AND_STRATEGY.md)
-- [`../REPORTS.md`](../REPORTS.md)
 
 When app-local behavior changes, update this README only for mobile setup, app architecture, commands, and local contracts.

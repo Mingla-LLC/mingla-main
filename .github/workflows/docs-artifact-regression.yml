@@ -11,7 +11,6 @@ on:
       - "MARKETING.md"
       - "COMMS.md"
       - "COMMS_LEDGER.md"
-      - "REPORTS.md"
       - "docs/**"
       - "scripts/docs/**"
       - ".github/workflows/docs-artifact-regression.yml"
@@ -27,7 +26,6 @@ on:
       - "MARKETING.md"
       - "COMMS.md"
       - "COMMS_LEDGER.md"
-      - "REPORTS.md"
       - "docs/**"
       - "scripts/docs/**"
       - ".github/workflows/docs-artifact-regression.yml"
@@ -70,3 +68,6 @@ jobs:
 
       - name: Check README snapshot
         run: python3 scripts/docs/check_readme_snapshot.py
+
+      - name: Check issue release-record authority
+        run: python3 scripts/docs/__tests__/issue_3643_reports_retirement.implementor.happy.test.py --repo-root .
