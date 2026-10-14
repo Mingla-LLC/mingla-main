@@ -47,7 +47,7 @@
 
 \set ON_ERROR_STOP on
 \getenv t3802h_pw PGPASSWORD
-\set t3802h_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20270823003802_issue_3802_wave1_homes_targets_beta.sql`
+\set t3802h_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
 \set t3802h_rekey `sed -n '/^-- issue-3802-pr3 rekey: begin/,/^-- issue-3802-pr3 rekey: end/p' supabase/migrations/20270823003802_issue_3802_wave1_homes_targets_beta.sql`
 \set t3802h_oldkey `sed -n '/^CREATE FUNCTION public.crm_name_key/,/^\$\$;/p' supabase/migrations/20270820003802_issue_3802_wave1_crm_pipelines.sql`
 
@@ -907,7 +907,7 @@ begin
     '0/1/H6 Today Creator');
   perform pg_temp.t3802h_check('H-6', 'a due row carries exactly the named keys',
     (select string_agg(k, ',' order by k) from jsonb_object_keys(j #> '{due,mine,hosts,rows,0}') k),
-    'due_on,icp,id,name,next_action,owners,pipeline,region_id,stage');
+    'contact_rule,due_on,icp,id,name,next_action,owners,pipeline,region_id,stage');
   perform pg_temp.t3802h_check('H-6', 'the team''s numbers are counts only, and equal a direct count',
     (j #>> '{due,team,hosts,overdue}') || '/' || (j #>> '{due,team,hosts,today}') || '/' || jsonb_array_length(j #> '{due,team,hosts,rows}')::text,
     (select count(*) filter (where due_on < c_today)::text || '/' || count(*) filter (where due_on = c_today)::text || '/0'
@@ -1245,7 +1245,7 @@ begin
       (array['club_nightlife'],                'venue_gallery',   'set',     'Club / Nightlife'),
       (array['venue_space'],                   'venue_gallery',   'set',     'Venue / Space'),
       (array['event_organiser'],               'event_organizer', 'set',     'Event organiser'),
-      (array['experience_tour'],               'trip_stay_host',  'set',     'Experience / Tour'),
+      (array['experience_tour'],               'experience_host', 'set',     'Experience / Tour'),
       (array['other'],                         null,              'none',    'Other'),
       (array['restaurant', 'cafe_bar'],        'restaurant_bar',  'set',     U&'Caf\00E9 / Bar, Restaurant'),
       (array['club_nightlife', 'venue_space', 'other'], 'venue_gallery', 'set', 'Club / Nightlife, Other, Venue / Space'),

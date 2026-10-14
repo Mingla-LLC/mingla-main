@@ -678,7 +678,7 @@ begin
     (v_j #>> '{due,team,creators,overdue}') || '/' || (v_j #>> '{due,mine,creators,overdue}'), '1/0');
   perform pg_temp.y_eq('XB-6', 'a row carries what the screen needs and no bookkeeping',
     (select string_agg(k, ',' order by k) from jsonb_object_keys(v_j #> '{due,mine,hosts,rows,0}') k),
-    'due_on,icp,id,name,next_action,owners,pipeline,region_id,stage');
+    'contact_rule,due_on,icp,id,name,next_action,owners,pipeline,region_id,stage');
 
   -- A day more than one away from the server's is not believed.
   for r in select * from (values ((v_utc + 2)::text), ((v_utc - 2)::text), ('0001-01-01'), ('9999-12-31'), ('infinity'), ('-infinity')) as t(d) loop
@@ -838,7 +838,7 @@ $xb7$;
 do $xb8$
 declare
   c_types constant text[] := array['restaurant', 'cafe_bar', 'club_nightlife', 'venue_space', 'event_organiser', 'experience_tour', 'other'];
-  c_icps  constant text[] := array['restaurant_bar', 'restaurant_bar', 'venue_gallery', 'venue_gallery', 'event_organizer', 'trip_stay_host', null];
+  c_icps  constant text[] := array['restaurant_bar', 'restaurant_bar', 'venue_gallery', 'venue_gallery', 'event_organizer', 'experience_host', null];
   v_mask int;
   v_chosen text[];
   v_icps text[];
