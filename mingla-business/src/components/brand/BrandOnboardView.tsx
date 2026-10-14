@@ -86,10 +86,14 @@ import {
 } from "../../hooks/useBrandStripeStatus";
 import { useQueryClient } from "@tanstack/react-query";
 import { useBrandStripeAccountSession } from "../../hooks/useBrandStripeAccountSession";
-import {
-  SELLING_ADD_BANK_CTA,
-  SELLING_ADD_BANK_SUB,
-} from "../../utils/brandPayoutVisibility";
+// The two "add a bank" strings are restated here on purpose: importing them
+// from utils/brandPayoutVisibility makes that module (and the payout breakdown
+// it pulls in) shared between two lazily loaded screens, and the bundler then
+// moves all of it into the start-up chunk every visitor downloads (+7.9 KB,
+// measured). The copy is pinned to its owner by the #3645 bank-setup suite.
+const SELLING_ADD_BANK_CTA = "Add bank";
+const SELLING_ADD_BANK_SUB =
+  "You can keep selling. Your money waits until you add a bank.";
 
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";

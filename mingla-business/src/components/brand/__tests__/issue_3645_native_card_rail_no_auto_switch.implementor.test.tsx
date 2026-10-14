@@ -647,3 +647,42 @@ describe("#3645 native — the country row opens on the brand's choice, and a ho
     expect(allText(tree)).toContain("all set");
   });
 });
+
+// #3645 — BrandOnboardView restates the two "add a bank" strings instead of
+// importing them (importing them moves the payout modules into the start-up
+// chunk). This pins the restated copy to its owner so the two cannot drift.
+describe("#3645 native — the add-bank state says exactly what the Payments card says", () => {
+  test("N12: the sentence and the button label are the Payments card's own", async () => {
+    const owner = jest.requireActual("../../../utils/brandPayoutVisibility") as {
+      SELLING_ADD_BANK_CTA: string;
+      SELLING_ADD_BANK_SUB: string;
+    };
+    mockStripeStatus = {
+      ...STATUS_LIVE_ACCOUNT,
+      data: { ...STATUS_LIVE_ACCOUNT.data, payouts_enabled: false },
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    let mounted: TestTree | null = null;
+    await TestRenderer.act(async () => {
+      mounted = TestRenderer.create(
+        <QueryClientProvider client={queryClient}>
+          <BrandOnboardView
+            brand={brandOf({ countryCode: "GB", stripeStatus: "active" })}
+            onCancel={jest.fn()}
+            onAfterDone={jest.fn()}
+          />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+    const tree = mounted as unknown as TestTree;
+    expect(textOf(tree.root)).toContain(owner.SELLING_ADD_BANK_SUB);
+    expect(only(tree, "onboard-add-bank-cta").props.accessibilityLabel).toBe(
+      owner.SELLING_ADD_BANK_CTA,
+    );
+    TestRenderer.act(() => tree.unmount());
+    queryClient.clear();
+  });
+});

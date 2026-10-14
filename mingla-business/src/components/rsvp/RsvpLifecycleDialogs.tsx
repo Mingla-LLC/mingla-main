@@ -25,12 +25,18 @@ import {
   useCancelBusinessEvent,
 } from "../../hooks/useBusinessEvents";
 import { eventDraftKeys } from "../../hooks/useServerDraftEvents";
-import {
-  countPaidRsvpChipIns,
-  unpublishRsvpToDraft,
-} from "../../services/rsvpLifecycleService";
 import { cancelDoneToast, cancelRsvpDescription } from "../../utils/cancelEventCopy";
-import { rsvpUnpublishFailureCopy } from "../../utils/rsvpUnpublishFailureCopy";
+
+// Loaded on demand, here and in Hub's "Unpublish to draft": a module that two
+// separately loaded screens import statically is moved by the bundler into the
+// start-up chunk every visitor downloads. Imported this way from both, the
+// lifecycle service and its failure copy stay out of it.
+const loadRsvpLifecycleService = (): Promise<
+  typeof import("../../services/rsvpLifecycleService")
+> => import("../../services/rsvpLifecycleService");
+const loadRsvpUnpublishFailureCopy = (): Promise<
+  typeof import("../../utils/rsvpUnpublishFailureCopy")
+> => import("../../utils/rsvpUnpublishFailureCopy");
 
 export const RSVP_RETURN_TO_DRAFT_COPY = {
   title: "Return this RSVP to draft?",
@@ -90,7 +96,8 @@ export const RsvpLifecycleDialogs: React.FC<RsvpLifecycleDialogsProps> = ({
     if (open !== "cancel") return;
     let current = true;
     setPaidChipIns(null);
-    countPaidRsvpChipIns(eventId)
+    loadRsvpLifecycleService()
+      .then(({ countPaidRsvpChipIns }) => countPaidRsvpChipIns(eventId))
       .then((count) => {
         if (current) setPaidChipIns(count);
       })
@@ -113,6 +120,7 @@ export const RsvpLifecycleDialogs: React.FC<RsvpLifecycleDialogsProps> = ({
     setSubmitting(true);
     setErrorMessage(null);
     try {
+      const { unpublishRsvpToDraft } = await loadRsvpLifecycleService();
       await unpublishRsvpToDraft(eventId);
       // The RSVP is a draft now: Hub's lists and tab counts are re-read, and
       // the cached published copy is marked stale (not refetched under this
@@ -136,6 +144,7 @@ export const RsvpLifecycleDialogs: React.FC<RsvpLifecycleDialogsProps> = ({
       if (!mountedRef.current) return;
       onReturnedToDraft(RSVP_RETURN_TO_DRAFT_COPY.done);
     } catch (error) {
+      const { rsvpUnpublishFailureCopy } = await loadRsvpUnpublishFailureCopy();
       if (mountedRef.current) setErrorMessage(rsvpUnpublishFailureCopy(error));
     } finally {
       if (mountedRef.current) setSubmitting(false);
