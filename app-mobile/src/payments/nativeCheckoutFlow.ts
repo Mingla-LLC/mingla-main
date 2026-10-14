@@ -48,6 +48,8 @@ import {
   clearNativeCheckoutRecovery,
   createNativeCheckoutRecoveryPointer,
   isNativeCheckoutRecoveryAvailable,
+  NATIVE_CHECKOUT_PENDING_BODY,
+  NATIVE_CHECKOUT_PENDING_TITLE,
   persistNativeCheckoutRecovery,
   reconcileNativeCheckout,
   recoverNativeCheckout,
@@ -230,6 +232,8 @@ const PAYSTACK_POLL_MAX_ATTEMPTS = 17;
 type PaystackPollOutcome =
   /** The order exists. The only success. */
   | { kind: "finalized"; orderId: string }
+  /** Money/order exists, but issued tickets are not yet server-visible. */
+  | { kind: "order_pending" }
   /** The server reached a terminal verdict; `code` is its bounded token. */
   | { kind: "terminal"; code: string | null }
   /**
@@ -258,9 +262,14 @@ type CheckoutStatusReading = Exclude<PaystackPollOutcome, { kind: "timeout" }> |
 async function readCheckoutStatusOnce(
   checkoutSessionId: string,
   buyerStatusToken: string,
+  requireIssuedTicket: boolean,
 ): Promise<CheckoutStatusReading> {
   let data:
-    | { status?: string; order: { orderId: string } | null; error?: string }
+    | {
+        status?: string;
+        order: { orderId: string; tickets?: unknown[] } | null;
+        error?: string;
+      }
     | null
     | undefined;
   let error: unknown = null;
@@ -270,7 +279,7 @@ async function readCheckoutStatusOnce(
     // the server was sending.
     ({ data, error } = await supabase.functions.invoke<{
       status?: string;
-      order: { orderId: string } | null;
+      order: { orderId: string; tickets?: unknown[] } | null;
       error?: string;
     }>("ticket-checkout-status", {
       body: { checkoutSessionId, buyerStatusToken },
@@ -285,7 +294,15 @@ async function readCheckoutStatusOnce(
   // A finalized order OUTRANKS any status string: if the order exists, the
   // money moved and the tickets are real, whatever else the body says.
   const orderId = data?.order?.orderId;
-  if (orderId) return { kind: "finalized", orderId };
+  if (orderId) {
+    if (
+      !requireIssuedTicket ||
+      (Array.isArray(data?.order?.tickets) && data.order.tickets.length > 0)
+    ) {
+      return { kind: "finalized", orderId };
+    }
+    return { kind: "order_pending" };
+  }
   // #2264 — the server ALREADY answered this. ticket-checkout-status runs
   // #2198's Paystack verify on every poll and returns
   // { status:"failed", order:null, error:"paystack_charge_abandoned" } at HTTP 200
@@ -323,11 +340,13 @@ async function readCheckoutStatusOnce(
 async function pollPaystackOrder(
   checkoutSessionId: string,
   buyerStatusToken: string,
+  requireIssuedTicket: boolean,
 ): Promise<PaystackPollOutcome> {
   for (let attempt = 0; attempt < PAYSTACK_POLL_MAX_ATTEMPTS; attempt++) {
     const reading = await readCheckoutStatusOnce(
       checkoutSessionId,
       buyerStatusToken,
+      requireIssuedTicket,
     );
     if (reading.kind !== "no_answer") return reading;
     await new Promise((resolve) => setTimeout(resolve, PAYSTACK_POLL_INTERVAL_MS));
@@ -493,12 +512,14 @@ async function followPaystackHandoff(
     // shown. The buyer cannot have paid, so do NOT walk into a 25-second poll
     // they cannot win: tell them now.
     console.warn("[nativeCheckoutFlow] paystack browser did not open", err);
+    if (includeProvider) await clearNativeCheckoutRecovery();
     return { outcome: "failed", message: CHECKOUT_NO_HANDOFF_MESSAGE };
   }
 
   // iOS refuses to present when another in-app browser session is already open.
   // Same fact as a throw: the buyer never saw Paystack. Never poll on it.
   if (opened.type === WebBrowser.WebBrowserResultType.LOCKED) {
+    if (includeProvider) await clearNativeCheckoutRecovery();
     return { outcome: "failed", message: CHECKOUT_NO_HANDOFF_MESSAGE };
   }
 
@@ -514,13 +535,29 @@ async function followPaystackHandoff(
   // terminal token until the browser is confirmed closed.
   // Invariant: I-PROPOSED-PAYSTACK-ABANDONED-ONLY-AFTER-BROWSER-CLOSES.
   emitPhase(onPhase, "confirming_payment");
-  const poll = await pollPaystackOrder(checkoutSessionId, buyerStatusToken);
+  const poll = await pollPaystackOrder(
+    checkoutSessionId,
+    buyerStatusToken,
+    includeProvider,
+  );
   if (poll.kind === "finalized") {
     clearHeldHandoff(eventId);
+    if (includeProvider) await clearNativeCheckoutRecovery();
     return {
       outcome: "succeeded",
       orderId: poll.orderId,
       ...(includeProvider ? { provider: "paystack" as const } : {}),
+    };
+  }
+  if (poll.kind === "order_pending") {
+    // A real order without issued tickets is not success. It is also unsafe to
+    // reopen the provider page: money may already have moved. Keep the minimal
+    // recovery pointer so restart/server reconciliation can finish the booking.
+    clearHeldHandoff(eventId);
+    return {
+      outcome: "pending",
+      title: NATIVE_CHECKOUT_PENDING_TITLE,
+      message: NATIVE_CHECKOUT_PENDING_BODY,
     };
   }
   // #2264 — the held page is DELIBERATELY kept on both remaining arms. The
@@ -531,6 +568,7 @@ async function followPaystackHandoff(
   // clearHeldHandoff here would make that sentence a lie and force a second
   // create the server would refuse with 409 `checkout_in_progress`.
   if (poll.kind === "terminal") {
+    if (includeProvider) await clearNativeCheckoutRecovery();
     return {
       outcome: "failed",
       message: nativePaystackReturnMessage(poll.code),
@@ -543,10 +581,18 @@ async function followPaystackHandoff(
   // tap starts fresh.
   if (poll.kind === "refused") {
     clearHeldHandoff(eventId);
+    if (includeProvider) await clearNativeCheckoutRecovery();
     return {
       outcome: "failed",
       message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
       token: poll.code,
+    };
+  }
+  if (includeProvider) {
+    return {
+      outcome: "pending",
+      title: NATIVE_CHECKOUT_PENDING_TITLE,
+      message: NATIVE_CHECKOUT_PENDING_BODY,
     };
   }
   return {
@@ -650,6 +696,29 @@ export const useNativeCheckoutFlow = (): ((
     // (#2188's property, carried onto native).
     const heldForCart = readHeldHandoff(input.eventId);
     if (heldForCart !== null && heldForCart.fingerprint === fingerprint) {
+      if (input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION) {
+        if (!input.accountId || !isNativeCheckoutRecoveryAvailable()) {
+          return {
+            outcome: "failed",
+            message:
+              "Update Mingla before paying so your booking can be recovered safely.",
+          };
+        }
+        const pointer = createNativeCheckoutRecoveryPointer({
+          checkoutSessionId: heldForCart.checkoutSessionId,
+          buyerStatusToken: heldForCart.buyerStatusToken,
+          accountId: input.accountId,
+          eventId: input.eventId,
+          provider: "paystack",
+        });
+        if (!(await persistNativeCheckoutRecovery(pointer))) {
+          return {
+            outcome: "failed",
+            message:
+              "Payment could not start safely. Try again after reopening Mingla.",
+          };
+        }
+      }
       // The replay path skips `ticket-checkout-create` entirely, so it never
       // emits "creating" — `followPaystackHandoff` opens with
       // "opening_payment_page", which is the honest first phase here.
@@ -1033,6 +1102,29 @@ export const useNativeCheckoutFlow = (): ((
     // 2c. META-ORCH-1076 — Paystack (NGN). Open Paystack's hosted checkout in
     // an in-app browser, then poll the server for the finalized order.
     if (data.kind === "requires_paystack_redirect") {
+      if (input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION) {
+        if (!input.accountId || !isNativeCheckoutRecoveryAvailable()) {
+          return {
+            outcome: "failed",
+            message:
+              "Update Mingla before paying so your booking can be recovered safely.",
+          };
+        }
+        const pointer = createNativeCheckoutRecoveryPointer({
+          checkoutSessionId: data.checkoutSessionId,
+          buyerStatusToken: data.buyerStatusToken,
+          accountId: input.accountId,
+          eventId: input.eventId,
+          provider: "paystack",
+        });
+        if (!(await persistNativeCheckoutRecovery(pointer))) {
+          return {
+            outcome: "failed",
+            message:
+              "Payment could not start safely. Try again after reopening Mingla.",
+          };
+        }
+      }
       // Hold the page BEFORE opening it: if the browser cannot present, or the
       // buyer closes it and taps again, the next tap re-opens THIS page instead
       // of creating a second checkout the server would refuse.

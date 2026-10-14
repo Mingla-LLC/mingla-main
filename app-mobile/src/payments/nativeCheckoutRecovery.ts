@@ -16,7 +16,7 @@ const RECOVERY_KEY = "mingla:checkout-recovery:v1";
 const RECOVERY_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_TOKEN_LENGTH = 1024;
 
-export type NativeCheckoutRecoveryProvider = "stripe";
+export type NativeCheckoutRecoveryProvider = "stripe" | "paystack";
 
 export interface NativeCheckoutRecoveryPointer {
   version: 1;
@@ -121,7 +121,7 @@ export const parseNativeCheckoutRecoveryPointer = (
     !isBoundedString(row.buyerStatusToken, MAX_TOKEN_LENGTH) ||
     !isBoundedString(row.accountId, 128) ||
     !isBoundedString(row.eventId, 128) ||
-    row.provider !== "stripe" ||
+    (row.provider !== "stripe" && row.provider !== "paystack") ||
     typeof row.createdAt !== "number" ||
     !Number.isFinite(row.createdAt) ||
     typeof row.expiresAt !== "number" ||
@@ -139,6 +139,7 @@ export const createNativeCheckoutRecoveryPointer = (input: {
   buyerStatusToken: string;
   accountId: string;
   eventId: string;
+  provider?: NativeCheckoutRecoveryProvider;
   now?: number;
 }): NativeCheckoutRecoveryPointer => {
   const createdAt = input.now ?? Date.now();
@@ -148,7 +149,7 @@ export const createNativeCheckoutRecoveryPointer = (input: {
     buyerStatusToken: input.buyerStatusToken,
     accountId: input.accountId,
     eventId: input.eventId,
-    provider: "stripe",
+    provider: input.provider ?? "stripe",
     createdAt,
     expiresAt: createdAt + RECOVERY_TTL_MS,
   };
@@ -326,7 +327,9 @@ export const reconcileNativeCheckout = async (
   let error: unknown = null;
   try {
     ({ data, error } = await supabase.functions.invoke<ConfirmationResponse>(
-      "ticket-checkout-confirm",
+      pointer.provider === "paystack"
+        ? "ticket-checkout-status"
+        : "ticket-checkout-confirm",
       {
         body: {
           checkoutSessionId: pointer.checkoutSessionId,

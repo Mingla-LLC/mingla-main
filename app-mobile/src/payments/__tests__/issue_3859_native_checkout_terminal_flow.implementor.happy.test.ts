@@ -273,7 +273,13 @@ test("#3859 v2 Paystack behavior is preserved and success names its provider", a
   mockInvoke
     .mockResolvedValueOnce(paystackCreate())
     .mockResolvedValueOnce({
-      data: { order: { orderId: "paystack-order-3859" } },
+      data: {
+        status: "paid",
+        order: {
+          orderId: "paystack-order-3859",
+          tickets: [{ ticketId: "paystack-ticket-3859" }],
+        },
+      },
       error: null,
     });
 
