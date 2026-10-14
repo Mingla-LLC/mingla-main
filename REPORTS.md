@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-14 — Main is green again after #3849: the admin email send keeps its no-attachment note, and the upsert audit counts the new quiet-hours outbox write (same safe key the refund notices already use). No behaviour change. (toward #3720, PR #TBD)
 - 2026-10-14 — Admin bulk email no longer pretends City/Tier/Last Active work (those options are gone; the server refuses unknown segments), skips opted-out addresses, and sends List-Unsubscribe headers; each send is logged once on the server; quiet-hours pushes are parked until morning instead of dropped — web admin `[deploy]` (toward #3720, PR #3849)
 - 2026-10-13 — Host support finally notifies people: a new ticket pushes available staff (server-side), admin and host replies go through one send path so the other side gets a push, hosts see replies as "Veronica from Mingla", and Help & Support has a Help Centre videos link — web admin `[deploy]` (toward #3720, PR #3840)
 - 2026-10-13 — Mingla Admin has one frame for every page: the menu is grouped by job (Pipeline, Business, Money, Explorer app, Growth, Company, System) with the real Mingla wordmark and follows light and dark mode, the breadcrumb reads "Group › Page", every page title sits in the same place at the same size, and pages no longer set their own spacing or width; Stripe mode shows its own icon; no screen was added, removed or renamed and who can open what is unchanged — web `[deploy]` (toward #3802, PR #3846)
