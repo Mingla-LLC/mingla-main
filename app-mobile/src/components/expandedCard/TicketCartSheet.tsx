@@ -117,9 +117,12 @@ import {
 } from "@mingla/phone-input";
 import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
 import {
+  EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY,
+  explorerCheckoutContactSeedDecision,
   explorerCheckoutContactFieldsForEditor,
   validateExplorerCheckoutContact,
   type ExplorerCheckoutContactField,
+  type ExplorerCheckoutContactSeedAuthority,
   type ExplorerCheckoutContactSnapshot,
 } from "../../payments/explorerCheckoutContact.mjs";
 import {
@@ -475,7 +478,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     createIntakeUploadSessionId(),
   );
   const lastOpenSeedRef = React.useRef<string | null>(null);
-  const contactOpenSeededRef = React.useRef<boolean>(false);
+  const contactSeedAuthorityRef = React.useRef<
+    ExplorerCheckoutContactSeedAuthority
+  >(EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY.awaitingAccount);
   const initialContactValidation = useMemo(
     () =>
       validateExplorerCheckoutContact({
@@ -680,22 +685,23 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   );
 
   useEffect(() => {
-    if (!visible) {
-      contactOpenSeededRef.current = false;
-      return;
-    }
-    if (contactOpenSeededRef.current) return;
-
     const validation = validateExplorerCheckoutContact({
       name: buyerName,
       email: buyerEmail,
       phone: buyerPhone,
     });
+    const seedDecision = explorerCheckoutContactSeedDecision(
+      contactSeedAuthorityRef.current,
+      visible,
+      validation.isValid,
+    );
+    contactSeedAuthorityRef.current = seedDecision.nextAuthority;
+    if (!seedDecision.shouldApply) return;
+
     const phoneCountry = resolveContactPhoneCountry(
       validation.normalized.phone,
       buyerCountryCode,
     );
-    contactOpenSeededRef.current = true;
     setContactSnapshot(validation.normalized);
     setContactDraft(validation.normalized);
     setContactEditorVisible(!validation.isValid);
@@ -703,11 +709,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     setContactFieldsToEdit(
       explorerCheckoutContactFieldsForEditor(validation, false),
     );
-    setContactTouched(
-      Object.fromEntries(
-        validation.invalidFields.map((field) => [field, true]),
-      ) as Partial<Record<ExplorerCheckoutContactField, boolean>>,
-    );
+    // Account/profile hydration is not a buyer validation attempt. Missing
+    // fields render for completion, but stay neutral until blur, Save, or the
+    // checkout CTA makes validation actionable.
+    setContactTouched({});
     setContactPhoneCountry(phoneCountry);
     setContactPhoneLocal(
       splitContactPhone(validation.normalized.phone, phoneCountry),
@@ -794,6 +799,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   }, [isSubmitting, onCancel]);
 
   const handleContactChange = useCallback((): void => {
+    contactSeedAuthorityRef.current =
+      EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY.buyerOwned;
     const phoneCountry = resolveContactPhoneCountry(
       contactSnapshot.phone,
       buyerCountryCode,
@@ -1398,9 +1405,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                   <Text style={styles.contactFieldLabel}>Full name</Text>
                   <TextInput
                     value={contactDraft.name}
-                    onChangeText={(name) =>
-                      setContactDraft((current) => ({ ...current, name }))
-                    }
+                    onChangeText={(name) => {
+                      contactSeedAuthorityRef.current =
+                        EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY.buyerOwned;
+                      setContactDraft((current) => ({ ...current, name }));
+                    }}
                     onBlur={() =>
                       setContactTouched((current) => ({
                         ...current,
@@ -1431,9 +1440,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                   <Text style={styles.contactFieldLabel}>Email</Text>
                   <TextInput
                     value={contactDraft.email}
-                    onChangeText={(email) =>
-                      setContactDraft((current) => ({ ...current, email }))
-                    }
+                    onChangeText={(email) => {
+                      contactSeedAuthorityRef.current =
+                        EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY.buyerOwned;
+                      setContactDraft((current) => ({ ...current, email }));
+                    }}
                     onBlur={() =>
                       setContactTouched((current) => ({
                         ...current,
@@ -1469,6 +1480,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                     value={contactPhoneLocal}
                     countryCode={contactPhoneCountry}
                     onChangePhone={(phone) => {
+                      contactSeedAuthorityRef.current =
+                        EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY.buyerOwned;
                       setContactPhoneLocal(phone);
                       setContactDraft((current) => ({
                         ...current,
@@ -1477,6 +1490,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                       }));
                     }}
                     onChangeCountry={(countryCode) => {
+                      contactSeedAuthorityRef.current =
+                        EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY.buyerOwned;
                       setContactPhoneCountry(countryCode);
                       setContactDraft((current) => ({
                         ...current,

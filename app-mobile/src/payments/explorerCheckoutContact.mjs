@@ -13,6 +13,11 @@ import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONTACT_FIELDS = /** @type {const} */ (["name", "email", "phone"]);
+const CONTACT_SEED_AUTHORITY = /** @type {const} */ ({
+  awaitingAccount: "awaiting_account",
+  resolvedAccount: "resolved_account",
+  buyerOwned: "buyer_owned",
+});
 
 /** @param {unknown} value */
 const trimmedString = (value) =>
@@ -49,6 +54,42 @@ function validateExplorerCheckoutContact(input) {
  */
 function explorerCheckoutContactFieldsForEditor(validation, editAll) {
   return editAll ? [...CONTACT_FIELDS] : [...validation.invalidFields];
+}
+
+/**
+ * Decide whether a newly rendered account snapshot may replace the booking
+ * contact shown in an open cart.
+ *
+ * The auth user and profile load on separate asynchronous rails. An invalid
+ * first render therefore is not authoritative: keep accepting account updates
+ * until a complete contact arrives. Once the account is complete, or the buyer
+ * starts editing, freeze the booking-local snapshot so a late background load
+ * can never overwrite buyer input.
+ *
+ * @param {"awaiting_account" | "resolved_account" | "buyer_owned"} authority
+ * @param {boolean} visible
+ * @param {boolean} accountContactIsValid
+ */
+function explorerCheckoutContactSeedDecision(
+  authority,
+  visible,
+  accountContactIsValid,
+) {
+  if (!visible) {
+    return {
+      shouldApply: false,
+      nextAuthority: CONTACT_SEED_AUTHORITY.awaitingAccount,
+    };
+  }
+  if (authority !== CONTACT_SEED_AUTHORITY.awaitingAccount) {
+    return { shouldApply: false, nextAuthority: authority };
+  }
+  return {
+    shouldApply: true,
+    nextAuthority: accountContactIsValid
+      ? CONTACT_SEED_AUTHORITY.resolvedAccount
+      : CONTACT_SEED_AUTHORITY.awaitingAccount,
+  };
 }
 
 /**
@@ -94,6 +135,8 @@ function resolveExplorerCheckoutContact(input) {
 
 export {
   CONTACT_FIELDS as EXPLORER_CHECKOUT_CONTACT_FIELDS,
+  CONTACT_SEED_AUTHORITY as EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY,
+  explorerCheckoutContactSeedDecision,
   explorerCheckoutContactFieldsForEditor,
   resolveExplorerCheckoutContact,
   validateExplorerCheckoutContact,

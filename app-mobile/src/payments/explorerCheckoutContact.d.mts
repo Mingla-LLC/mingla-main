@@ -1,4 +1,8 @@
 export type ExplorerCheckoutContactField = "name" | "email" | "phone";
+export type ExplorerCheckoutContactSeedAuthority =
+  | "awaiting_account"
+  | "resolved_account"
+  | "buyer_owned";
 
 export interface ExplorerCheckoutContactSnapshot {
   name: string;
@@ -23,6 +27,20 @@ export interface ExplorerCheckoutContactResolution
 }
 
 export const EXPLORER_CHECKOUT_CONTACT_FIELDS: readonly ExplorerCheckoutContactField[];
+export const EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY: {
+  readonly awaitingAccount: "awaiting_account";
+  readonly resolvedAccount: "resolved_account";
+  readonly buyerOwned: "buyer_owned";
+};
+
+export function explorerCheckoutContactSeedDecision(
+  authority: ExplorerCheckoutContactSeedAuthority,
+  visible: boolean,
+  accountContactIsValid: boolean,
+): {
+  shouldApply: boolean;
+  nextAuthority: ExplorerCheckoutContactSeedAuthority;
+};
 
 export function explorerCheckoutContactFieldsForEditor(
   validation: Pick<ExplorerCheckoutContactValidation, "invalidFields">,
