@@ -48,6 +48,8 @@ import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 import { formatCurrency, normalizeCurrency } from "../../utils/currency";
 import type { MenuItem } from "../../services/menusService";
+import type { Brand } from "../../types/brand";
+import { LazyPayoutCountryInlinePrompt } from "../brand/LazyPayoutCountryInlinePrompt";
 import {
   formatMenuMoneyDraftFromMinor,
   menuMoneyFractionDigits,
@@ -92,6 +94,13 @@ export interface MenuItemSheetProps {
    * brand never SEES a fabricated £. The stored value + math are untouched.
    */
   brandHasCurrency: boolean;
+  /**
+   * #3645 — the brand, for the "choose your payout country" card shown under
+   * the price when a price is typed on a brand with no currency. Without it
+   * the sheet still refuses to save such a price; it just cannot offer the
+   * picker in place.
+   */
+  payoutCountryBrand?: Brand | null;
   onSave: (input: MenuItemSheetSaveInput) => void;
   saving: boolean;
   /** Typed save failure owned by the parent mutation integration. */
@@ -177,6 +186,7 @@ export function MenuItemSheet({
   item,
   currency,
   brandHasCurrency,
+  payoutCountryBrand = null,
   onSave,
   saving,
   saveFailure = null,
@@ -267,6 +277,11 @@ export function MenuItemSheet({
     fractionDigits,
   );
   const moneyPlaceholder = fractionDigits === 0 ? "0" : "0.00";
+  // #3645 — a price above zero on a brand with no currency. The item's
+  // currency cannot be left empty in the database and must not be made up, so
+  // the price is not saved until the host has chosen a payout country.
+  const pricedWithoutCurrency =
+    !brandHasCurrency && priceResult.kind === "valid" && priceResult.cents > 0;
   const nameValidation = useMemo(
     () => validateMenuText("itemName", name),
     [name],
@@ -306,7 +321,9 @@ export function MenuItemSheet({
     costResult.kind !== "invalid" &&
     // #3572 — appended, never folded into the line above: the exact text of the
     // #3563 terms is a merged source-string contract.
-    !optionsDirty;
+    !optionsDirty &&
+    // #3645 — appended for the same reason.
+    !pricedWithoutCurrency;
 
   // #3655 P2 — dish-field dirty (price/name/etc.) must prompt on dismiss.
   // Options-group dirty stays on the #3572 hold path (dismissDisabled).
@@ -572,6 +589,14 @@ export function MenuItemSheet({
           <Text style={styles.helper}>
             Leave blank to show “Price on request”.
           </Text>
+          {pricedWithoutCurrency ? (
+            <LazyPayoutCountryInlinePrompt
+              brand={payoutCountryBrand}
+              priced
+              reason="A price needs a currency. Pick the country your bank account is in and we'll use its currency for this brand. Free and “price on request” items don't need one."
+              testID="menu-item-price-payout-country"
+            />
+          ) : null}
 
           {/*
             Issue #1789 (P-12) — the venue's own food cost. Opt-in, never
