@@ -29,5 +29,8 @@ module.exports = {
     // issue #3321 — no undeclared name / missing property in the three consumer
     // detail screens (a scoped type check; app-mobile has no typecheck gate).
     "**/__tests__/consumerDetailScreens.issue3321.namesExist.test.cjs",
+    // issue #3682 — mounts the consumer brand page and presses its X: with no
+    // history (app opened by a brand link) it must land on the Explorer home.
+    "**/__tests__/issue_3682_brand_close_fallback.render.test.tsx",
   ],
 };
