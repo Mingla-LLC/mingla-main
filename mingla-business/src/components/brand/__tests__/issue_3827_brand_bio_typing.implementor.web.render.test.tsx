@@ -26,7 +26,7 @@
  * are lost and the update-depth error is thrown.
  *
  * Run (from mingla-business/):
- *   npx jest --config jest.issue3827.web.render.cjs --runInBand --ci
+ *   npx jest --config jest.issue3827.web.render.cjs --ci --maxWorkers=2
  */
 
 import fs from "node:fs";
@@ -199,10 +199,10 @@ const bioField = (renderer: Renderer): Node => {
 };
 
 describe("#3827 Edit brand Bio keeps every letter typed back to back", () => {
-  test("the cover under test is this checkout's EventCoverMedia", () => {
+  test("120 back-to-back characters into Bio, beside an image cover: all land, no update-depth error", async () => {
     // Worktree trap: node_modules (and its @mingla/* links) may point at the
     // anchor checkout. The component executed here must come from the SAME
-    // checkout as this test file.
+    // checkout as this behavior proof.
     const checkoutRoot = fs.realpathSync(path.resolve(__dirname, "../../../../.."));
     const executed = fs.realpathSync(
       require.resolve("../../../../../packages/offering-rendering/EventCoverMedia"),
@@ -211,9 +211,7 @@ describe("#3827 Edit brand Bio keeps every letter typed back to back", () => {
       path.join(checkoutRoot, "packages/offering-rendering/EventCoverMedia.tsx"),
     );
     expect(typeof PackageEventCoverMedia).toBe("function");
-  });
 
-  test("120 back-to-back characters into Bio, beside an image cover: all land, no update-depth error", async () => {
     Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
     let renderer: Renderer | null = null;
     await TestRenderer.act(async () => {
