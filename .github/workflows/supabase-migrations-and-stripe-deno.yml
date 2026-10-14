@@ -2815,6 +2815,10 @@ jobs:
             # bare domains, addresses) arrives as inert quoted text; replies go
             # to the brand's contact address when well formed, else support.
             supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.test.ts
+            # Issue #3827 round 4 — the reason filter: a real top-level domain is a
+            # host in any capitalisation, with or without a path; a host after "-"
+            # or "@" is removed; every dot look-alike reads as a dot.
+            supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.implementor.round4.test.ts
             # Issue #3827 — tester adversarial proof for the same email: hostile
             # reasons, names and timezones add no tag, link or live scheme and
             # never reach the subject; Reply-To falls back to support for
