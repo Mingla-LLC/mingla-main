@@ -335,6 +335,20 @@ async function processClaim(
       return;
     }
     if (check !== "ok") {
+      // Rework D1/D2 — a going guest this copy will not reach gets today's
+      // alert instead (the database gives it at most once per change).
+      const rsvpId = text(p.rsvp_id) ?? text(p.rsvpId);
+      if (rsvpId && check !== "notice_missing") {
+        const { error: alertError } = await admin.rpc("event_edit_notice_legacy_alert", {
+          p_notice_id: noticeId,
+          p_rsvp_id: rsvpId,
+        });
+        if (alertError) {
+          // Keep the copy for a retry rather than leave the guest with nothing.
+          await complete(admin, claim, "failed_retryable", null, "event_notice_alert_unavailable");
+          return;
+        }
+      }
       await complete(
         admin,
         claim,

@@ -513,9 +513,9 @@ GRANT EXECUTE ON FUNCTION public.event_edit_notice_audience(uuid) TO service_rol
 
 -- ---------------------------------------------------------------------------
 -- 6b. Withholding an address after the fact. A host can switch "hide address
--- until ticket" on while an email is waiting, or after it was fanned out but
--- before every copy went. From that moment no street may be printed: every
--- notice of the event that can still be sent loses its street values (the
+-- until ticket" on while an email is waiting, or after it was fanned out. From
+-- that moment no street may be printed: every waiting, superseded or
+-- fanned-out notice of the event loses its street values (the
 -- venue name stays, and the email says "The address has changed."), and a
 -- venue known only through the label loses its value too. Notices that are
 -- fully sent, logged or held are history and are left as they were.
@@ -562,14 +562,9 @@ BEGIN
          base_snapshot = public.event_edit_notice_scrub(n.base_snapshot, true),
          after_snapshot = public.event_edit_notice_scrub(n.after_snapshot, true)
    WHERE n.event_id = p_event_id
-     AND (n.state IN ('scheduled', 'superseded')
-          OR (n.state = 'fanned_out' AND EXISTS (
-                SELECT 1
-                  FROM public.rsvp_notifications AS r
-                  JOIN public.rsvp_notification_deliveries AS d ON d.notification_id = r.id
-                 WHERE r.payload ? 'noticeId'
-                   AND r.payload ->> 'noticeId' = n.id::text
-                   AND d.status IN ('pending', 'processing', 'failed_retryable'))));
+     -- Every notice that is or was on its way: a fanned-out one is scrubbed
+     -- whatever its deliveries say, so no retry or late claim can print it.
+     AND n.state IN ('scheduled', 'superseded', 'fanned_out');
   GET DIAGNOSTICS v_count = ROW_COUNT;
   RETURN v_count;
 END;
@@ -578,7 +573,7 @@ $fn$;
 REVOKE ALL ON FUNCTION public.event_edit_notice_withhold_unsent(uuid) FROM PUBLIC, anon, authenticated;
 
 COMMENT ON FUNCTION public.event_edit_notice_withhold_unsent(uuid) IS
-  '#3827 removes street values from every edit notice of an event that can still be sent (waiting, superseded, or fanned out with an undelivered copy), once the event hides its address.';
+  '#3827 removes street values from every edit notice of an event that is waiting, superseded or fanned out, once the event hides its address.';
 
 -- ---------------------------------------------------------------------------
 -- 7. The recorder. Always writes one row, and decides the email.
@@ -989,6 +984,65 @@ CREATE CONSTRAINT TRIGGER issue_3827_settle_edit_notice
   EXECUTE FUNCTION public.event_edit_notice_commit_trg();
 
 -- ---------------------------------------------------------------------------
+-- 10b. Today's alert for a guest the email will not reach. When an RSVP edit
+-- notice ends up not emailing a going guest (the switch went off, the brand
+-- left the pilot, or emails are being tested and the guest is not on the
+-- list), that guest gets exactly the row biz_update_live_rsvp queues today:
+-- template rsvp_event_updated, the same payload, and the same key shape,
+-- stamped with the save that made the notice. A guest already given an alert
+-- for this change, by this or any earlier path, is never given a second.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.event_edit_notice_legacy_alert(p_notice_id uuid, p_rsvp_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_notice public.event_edit_notices%ROWTYPE;
+  v_id uuid;
+BEGIN
+  SELECT * INTO v_notice FROM public.event_edit_notices AS n WHERE n.id = p_notice_id;
+  IF NOT FOUND OR p_rsvp_id IS NULL THEN
+    RETURN false;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.event_rsvps AS r
+                  WHERE r.id = p_rsvp_id AND r.event_id = v_notice.event_id
+                    AND r.rsvp_status = 'going' AND r.approval_status = 'approved') THEN
+    RETURN false;
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.rsvp_notifications AS legacy
+              WHERE legacy.event_id = v_notice.event_id
+                AND legacy.rsvp_id = p_rsvp_id
+                AND legacy.template_key = 'rsvp_event_updated'
+                AND NOT (legacy.payload ? 'noticeId')
+                AND legacy.created_at >= COALESCE(v_notice.first_unsent_at, v_notice.created_at)
+                                         - interval '1 second') THEN
+    RETURN false;
+  END IF;
+  INSERT INTO public.rsvp_notifications
+    (event_id, rsvp_id, channel, recipient, status, template_key, payload,
+     idempotency_key, attempt_count)
+  VALUES
+    (v_notice.event_id, p_rsvp_id, NULL, NULL, 'pending', 'rsvp_event_updated',
+     jsonb_build_object('template_key', 'rsvp_event_updated',
+                        'rsvp_id', p_rsvp_id, 'event_id', v_notice.event_id),
+     'rsvp_update:' || v_notice.event_id::text || ':'
+       || extract(epoch FROM v_notice.created_at)::bigint::text || ':' || p_rsvp_id::text,
+     0)
+  ON CONFLICT (idempotency_key) DO NOTHING
+  RETURNING id INTO v_id;
+  RETURN v_id IS NOT NULL;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.event_edit_notice_legacy_alert(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.event_edit_notice_legacy_alert(uuid, uuid) TO service_role;
+
+COMMENT ON FUNCTION public.event_edit_notice_legacy_alert(uuid, uuid) IS
+  '#3827 gives a going RSVP guest the edit email will not reach exactly the rsvp_event_updated row queued before this work, once per change. Service role only (rsvp-notify calls it when a send is held).';
+
+-- ---------------------------------------------------------------------------
 -- 11. Fan-out. Called by rsvp-notify at the start of each tick. For every
 -- notice that is due it re-checks the switches and the listing, then writes
 -- one row per recipient into the existing RSVP delivery ledger:
@@ -1034,13 +1088,24 @@ BEGIN
      LIMIT LEAST(GREATEST(COALESCE(p_limit, 20), 1), 100)
      FOR UPDATE SKIP LOCKED
   LOOP
-    SELECT e.id, e.status, e.deleted_at, e.brand_id INTO v_event
+    -- The same per-event lock as the recorder: an address hidden while this
+    -- notice is being fanned out waits, then scrubs what was queued.
+    PERFORM pg_advisory_xact_lock(hashtext('issue_3827_event_edit_notice'), hashtext(v_notice.event_id::text));
+    SELECT e.id, e.status, e.deleted_at, e.brand_id, e.event_type INTO v_event
       FROM public.events AS e WHERE e.id = v_notice.event_id;
 
     IF NOT public.event_edit_notice_brand_live(v_notice.brand_id) THEN
       UPDATE public.event_edit_notices
          SET state = 'held', hold_code = 'feature_off', send_after = NULL
        WHERE id = v_notice.id;
+      -- Switched off (or out of the pilot) before the send: going guests get
+      -- the alert they would have had without the email.
+      IF v_event.event_type = 'rsvp' THEN
+        PERFORM public.event_edit_notice_legacy_alert(v_notice.id, r.id)
+           FROM public.event_rsvps AS r
+          WHERE r.event_id = v_notice.event_id
+            AND r.rsvp_status = 'going' AND r.approval_status = 'approved';
+      END IF;
       CONTINUE;
     END IF;
     IF v_event.id IS NULL OR v_event.status NOT IN ('scheduled', 'live')
@@ -1071,6 +1136,11 @@ BEGIN
     LOOP
       IF v_allowlist_only AND NOT public.event_edit_notice_on_allowlist(v_recipient.email) THEN
         v_held := v_held + 1;
+        -- A guest kept from the new email while it is being tested gets the
+        -- usual alert instead (at most once for this change).
+        IF v_recipient.rsvp_id IS NOT NULL THEN
+          PERFORM public.event_edit_notice_legacy_alert(v_notice.id, v_recipient.rsvp_id);
+        END IF;
         CONTINUE;
       END IF;
       -- A going guest who was already given the earlier alert for this change
@@ -1202,20 +1272,25 @@ AS $fn$
 DECLARE
   v_uid uuid := auth.uid();
   v_brand_id uuid;
+  v_event_type text;
   v_recipients integer;
   v_no_email integer;
+  v_testing boolean := public.event_edit_notice_allowlist_only();
+  v_test_addresses integer := 0;
   v_last public.event_edit_notices%ROWTYPE;
   v_sent integer := 0;
   v_pending integer := 0;
   v_failed integer := 0;
-  -- Copies stopped at send time by a switch (not failures).
-  v_held_at_send integer := 0;
+  v_held_testing integer := 0;
+  v_held_off integer := 0;
+  v_alerted integer := 0;
+  v_last_no_email integer := 0;
   v_last_json jsonb := NULL;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'not_authenticated';
   END IF;
-  SELECT e.brand_id INTO v_brand_id
+  SELECT e.brand_id, e.event_type INTO v_brand_id, v_event_type
     FROM public.events AS e
    WHERE e.id = p_event_id AND e.deleted_at IS NULL;
   IF NOT FOUND THEN
@@ -1228,25 +1303,68 @@ BEGIN
 
   SELECT a.recipients, a.no_email INTO v_recipients, v_no_email
     FROM public.event_edit_notice_audience(p_event_id) AS a;
+  IF v_testing THEN
+    SELECT count(DISTINCT lower(b.email))::integer INTO v_test_addresses
+      FROM public.business_event_buyer_rows(p_event_id) AS b
+     WHERE b.email IS NOT NULL AND public.event_edit_notice_on_allowlist(b.email);
+  END IF;
 
   SELECT * INTO v_last FROM public.event_edit_notices AS n
    WHERE n.event_id = p_event_id AND n.state IN ('scheduled', 'fanned_out', 'held')
    ORDER BY n.created_at DESC, n.id DESC
    LIMIT 1;
   IF FOUND THEN
+    v_last_no_email := v_last.no_email_count;
     IF v_last.state = 'fanned_out' THEN
-      SELECT count(*) FILTER (WHERE d.status = 'sent'),
-             count(*) FILTER (WHERE d.status IN ('pending', 'processing', 'failed_retryable')),
-             count(*) FILTER (WHERE d.status IN ('failed_terminal', 'ambiguous')
-                                AND COALESCE(d.safe_error_code, '') NOT LIKE 'held\_%'),
-             count(*) FILTER (WHERE d.status = 'failed_terminal'
-                                AND COALESCE(d.safe_error_code, '') LIKE 'held\_%')
-        INTO v_sent, v_pending, v_failed, v_held_at_send
-        FROM public.rsvp_notifications AS n
-        JOIN public.rsvp_notification_deliveries AS d ON d.notification_id = n.id
-       WHERE n.payload ->> 'noticeId' = v_last.id::text
-         AND n.payload ? 'noticeId'
-         AND d.channel = 'email';
+      -- Each person once. Precedence: alerted the usual way (RSVP guests), then
+      -- the outcome of their copy of the new email, then held at fan-out.
+      WITH alerted AS (
+        SELECT DISTINCT legacy.rsvp_id
+          FROM public.rsvp_notifications AS legacy
+         WHERE legacy.event_id = p_event_id
+           AND legacy.template_key = 'rsvp_event_updated'
+           AND legacy.rsvp_id IS NOT NULL
+           AND NOT (legacy.payload ? 'noticeId')
+           AND legacy.created_at >= COALESCE(v_last.first_unsent_at, v_last.created_at) - interval '1 second'
+      ), copies AS (
+        SELECT n.id, n.rsvp_id,
+               COALESCE(bool_or(d.channel = 'email' AND d.status = 'sent'), false) AS sent,
+               bool_or(d.status IN ('pending', 'processing', 'failed_retryable')) AS pending,
+               bool_or(d.status IN ('failed_terminal', 'ambiguous')
+                       AND COALESCE(d.safe_error_code, '') NOT LIKE 'held\_%') AS failed,
+               COALESCE(bool_or(COALESCE(d.safe_error_code, '') = 'held_feature_off'), false) AS held_off,
+               COALESCE(bool_or(COALESCE(d.safe_error_code, '') = 'held_allowlist'), false) AS held_testing
+          FROM public.rsvp_notifications AS n
+          JOIN public.rsvp_notification_deliveries AS d ON d.notification_id = n.id
+         WHERE n.payload ? 'noticeId' AND n.payload ->> 'noticeId' = v_last.id::text
+         GROUP BY n.id, n.rsvp_id
+      ), per_copy AS (
+        SELECT c.*,
+               (c.rsvp_id IS NOT NULL AND c.rsvp_id IN (SELECT rsvp_id FROM alerted)) AS was_alerted
+          FROM copies AS c
+      )
+      SELECT count(*) FILTER (WHERE NOT was_alerted AND held_off),
+             count(*) FILTER (WHERE NOT was_alerted AND NOT held_off AND held_testing),
+             count(*) FILTER (WHERE NOT was_alerted AND NOT held_off AND NOT held_testing AND sent),
+             count(*) FILTER (WHERE NOT was_alerted AND NOT held_off AND NOT held_testing AND NOT sent AND pending),
+             count(*) FILTER (WHERE NOT was_alerted AND NOT held_off AND NOT held_testing AND NOT sent AND NOT pending AND failed)
+        INTO v_held_off, v_held_testing, v_sent, v_pending, v_failed
+        FROM per_copy;
+      SELECT count(*) INTO v_alerted FROM (
+        SELECT DISTINCT legacy.rsvp_id
+          FROM public.rsvp_notifications AS legacy
+         WHERE legacy.event_id = p_event_id
+           AND legacy.template_key = 'rsvp_event_updated'
+           AND legacy.rsvp_id IS NOT NULL
+           AND NOT (legacy.payload ? 'noticeId')
+           AND legacy.created_at >= COALESCE(v_last.first_unsent_at, v_last.created_at) - interval '1 second') AS a;
+      IF v_event_type = 'rsvp' THEN
+        -- Guests held at fan-out were given the usual alert: never "held".
+        -- A guest with no email is reached by text or the app, or alerted.
+        v_last_no_email := 0;
+      ELSE
+        v_held_testing := v_held_testing + v_last.held_count;
+      END IF;
     END IF;
     v_last_json := jsonb_build_object(
       'state', v_last.state,
@@ -1256,8 +1374,16 @@ BEGIN
       'sent', v_sent,
       'pending', v_pending,
       'failed', v_failed,
-      'noEmail', v_last.no_email_count,
-      'held', v_last.held_count + v_held_at_send);
+      'noEmail', v_last_no_email,
+      'held', v_held_testing + v_held_off,
+      'heldTesting', v_held_testing,
+      'heldSwitchedOff', v_held_off,
+      'alerted', v_alerted,
+      -- A waiting email: who it can reach now, and how many of them are test
+      -- addresses while emails are being tested.
+      'emailable', v_recipients,
+      'testing', v_testing,
+      'testAddresses', v_test_addresses);
   END IF;
 
   RETURN jsonb_build_object(
@@ -1265,7 +1391,7 @@ BEGIN
     -- Emailable people (distinct addresses); those with none apart.
     'audience', v_recipients,
     'noEmail', v_no_email,
-    'allowlistOnly', public.event_edit_notice_allowlist_only(),
+    'allowlistOnly', v_testing,
     'last', v_last_json);
 END;
 $fn$;
@@ -2453,7 +2579,8 @@ BEGIN
     'public.event_edit_notice_withhold_unsent(uuid)',
     'public.event_edit_notice_allowlist_only()',
     'public.event_edit_notice_on_allowlist(text)',
-    'public.event_edit_notice_send_check(uuid, text)']
+    'public.event_edit_notice_send_check(uuid, text)',
+    'public.event_edit_notice_legacy_alert(uuid, uuid)']
   LOOP
     IF pg_catalog.has_function_privilege('anon', v_fn, 'EXECUTE')
        OR pg_catalog.has_function_privilege('authenticated', v_fn, 'EXECUTE') THEN

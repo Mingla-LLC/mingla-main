@@ -1304,4 +1304,174 @@ BEGIN
 END $u01$;
 ROLLBACK;
 
+-- Today's alert, as biz_update_live_rsvp queued it before this work: one row
+-- per going guest, template rsvp_event_updated, payload {template_key,
+-- rsvp_id, event_id}, key rsvp_update:<event>:<epoch>:<rsvp>, no notice id.
+CREATE OR REPLACE FUNCTION pg_temp.e3827_legacy_rows(p_event uuid, p_rsvp uuid)
+RETURNS integer LANGUAGE sql AS $legacy$
+  SELECT count(*)::integer FROM public.rsvp_notifications AS n
+   WHERE n.event_id = p_event AND n.rsvp_id = p_rsvp
+     AND n.template_key = 'rsvp_event_updated'
+     AND n.idempotency_key ~ ('^rsvp_update:' || p_event::text || ':[0-9]+:' || p_rsvp::text || '$')
+     AND (n.payload - 'entityId' - 'recipientName' - 'recipientEmail' - 'recipientPhone'
+                    - 'primaryUserId' - 'recoveryCreatedAt')
+         = jsonb_build_object('template_key', 'rsvp_event_updated', 'rsvp_id', p_rsvp, 'event_id', p_event)
+$legacy$;
+
+-- ─── R-05 (rework D1): allowlist-only OFF at the save, back ON before the send:
+--     the off-list guest gets today's alert, once ─────────────────────────────
+BEGIN;
+DO $r05$
+DECLARE
+  f record;
+BEGIN
+  SELECT * INTO f FROM pg_temp.e3827_rsvp('r05');
+  PERFORM pg_temp.e3827_go_live(f.v_brand, false);
+  PERFORM public.biz_update_live_rsvp(f.v_event, pg_temp.e3827_rsvp_payload('The Bedford Hall'),
+    'Moving to a bigger room for everyone');
+  IF EXISTS (SELECT 1 FROM public.rsvp_notifications WHERE event_id = f.v_event) THEN
+    RAISE EXCEPTION 'R-05 FIXTURE: with emails fully on, the save itself queued a row';
+  END IF;
+  UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'event_update_buyer_email_allowlist_only';
+  UPDATE public.event_edit_notices SET send_after = now() - interval '1 second' WHERE event_id = f.v_event;
+  PERFORM public.event_edit_notice_fanout(20);
+  PERFORM public.event_edit_notice_fanout(20);
+  IF pg_temp.e3827_legacy_rows(f.v_event, f.v_guest) <> 1
+     OR (SELECT count(*) FROM public.rsvp_notifications WHERE event_id = f.v_event) <> 1 THEN
+    RAISE EXCEPTION 'R-05 FAIL: the off-list guest must get exactly one usual alert (rows %)',
+      (SELECT jsonb_agg(idempotency_key) FROM public.rsvp_notifications WHERE event_id = f.v_event);
+  END IF;
+  RAISE NOTICE 'R-05 PASS: allowlist-only switched on after the save still gives the off-list guest today''s alert, once';
+END $r05$;
+ROLLBACK;
+
+-- ─── R-06 (rework D2): the master switch OFF between the save and the send:
+--     every going guest gets today's alert, once ─────────────────────────────
+BEGIN;
+DO $r06$
+DECLARE
+  f record;
+  v_other uuid := gen_random_uuid();
+BEGIN
+  SELECT * INTO f FROM pg_temp.e3827_rsvp('r06');
+  INSERT INTO public.event_rsvps(id, event_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
+  VALUES (v_other, f.v_event, 'Second Guest', 'e3827-second-' || v_other || '@example.test', '+15550003829',
+          'going', 'approved');
+  PERFORM pg_temp.e3827_go_live(f.v_brand, false);
+  PERFORM public.biz_update_live_rsvp(f.v_event, pg_temp.e3827_rsvp_payload('The Bedford Hall'),
+    'Moving to a bigger room for everyone');
+  UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'event_update_buyer_email';
+  UPDATE public.event_edit_notices SET send_after = now() - interval '1 second' WHERE event_id = f.v_event;
+  PERFORM public.event_edit_notice_fanout(20);
+  PERFORM public.event_edit_notice_fanout(20);
+  IF (SELECT state || '/' || hold_code FROM public.event_edit_notices WHERE event_id = f.v_event) <> 'held/feature_off'
+     OR pg_temp.e3827_legacy_rows(f.v_event, f.v_guest) <> 1
+     OR pg_temp.e3827_legacy_rows(f.v_event, v_other) <> 1
+     OR (SELECT count(*) FROM public.rsvp_notifications WHERE event_id = f.v_event) <> 2 THEN
+    RAISE EXCEPTION 'R-06 FAIL: switched off before the send, each guest must get one usual alert (rows %)',
+      (SELECT jsonb_agg(idempotency_key) FROM public.rsvp_notifications WHERE event_id = f.v_event);
+  END IF;
+  RAISE NOTICE 'R-06 PASS: switched off between save and send, every going guest gets today''s alert, once';
+END $r06$;
+ROLLBACK;
+
+-- ─── R-07 (rework D1/D2 at the send check): a copy held at send time gives
+--     the guest today's alert once; switched back on, nothing more ────────────
+BEGIN;
+DO $r07$
+DECLARE
+  f record;
+  v_notice uuid;
+BEGIN
+  SELECT * INTO f FROM pg_temp.e3827_rsvp('r07');
+  PERFORM pg_temp.e3827_go_live(f.v_brand, false);
+  PERFORM public.biz_update_live_rsvp(f.v_event, pg_temp.e3827_rsvp_payload('The Bedford Hall'),
+    'Moving to a bigger room for everyone');
+  UPDATE public.event_edit_notices SET send_after = now() - interval '1 second' WHERE event_id = f.v_event;
+  PERFORM public.event_edit_notice_fanout(20);
+  SELECT id INTO v_notice FROM public.event_edit_notices WHERE event_id = f.v_event AND state = 'fanned_out';
+  -- Switched off after the fan-out: what the worker does when the check holds.
+  UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'event_update_buyer_email';
+  IF public.event_edit_notice_send_check(v_notice, 'whoever@example.test') <> 'held_feature_off' THEN
+    RAISE EXCEPTION 'R-07 FIXTURE: the send check did not hold';
+  END IF;
+  IF NOT public.event_edit_notice_legacy_alert(v_notice, f.v_guest)
+     OR public.event_edit_notice_legacy_alert(v_notice, f.v_guest)
+     OR pg_temp.e3827_legacy_rows(f.v_event, f.v_guest) <> 1 THEN
+    RAISE EXCEPTION 'R-07 FAIL: a held copy must give exactly one usual alert';
+  END IF;
+  -- A guest who is no longer going is not alerted.
+  UPDATE public.event_rsvps SET rsvp_status = 'not_going' WHERE id = f.v_guest;
+  DELETE FROM public.rsvp_notifications WHERE event_id = f.v_event AND NOT (payload ? 'noticeId');
+  IF public.event_edit_notice_legacy_alert(v_notice, f.v_guest) THEN
+    RAISE EXCEPTION 'R-07 FAIL: a guest who is not going was alerted';
+  END IF;
+  RAISE NOTICE 'R-07 PASS: a copy held at send time gives one usual alert; nobody twice, nobody not going';
+END $r07$;
+ROLLBACK;
+
+-- ─── S-05 (rework D3): the host status counts each person once, by reason ───
+BEGIN;
+DO $s05$
+DECLARE
+  f record;
+  r record;
+  v_status jsonb;
+  v_listed uuid := gen_random_uuid();
+  v_phone uuid := gen_random_uuid();
+BEGIN
+  -- (a) waiting while emails are being tested: who it reaches, and the test addresses.
+  SELECT * INTO f FROM pg_temp.e3827_event('s05');
+  PERFORM pg_temp.e3827_buyer(f.v_event, f.v_tier, 'ada@example.test');
+  PERFORM pg_temp.e3827_buyer(f.v_event, f.v_tier, 'ben@example.test');
+  PERFORM pg_temp.e3827_buyer(f.v_event, f.v_tier, NULL);
+  PERFORM pg_temp.e3827_go_live(f.v_brand, true);
+  INSERT INTO public.event_update_email_allowlist(email) VALUES ('ada@example.test');
+  PERFORM public.business_update_live_event_atomic(f.v_event,
+    jsonb_build_object('core', jsonb_build_object('venueName', 'The Bedford Hall')),
+    'The first room has a power fault', f.v_revision + 1);
+  v_status := public.business_event_buyer_notice_status(f.v_event);
+  IF v_status #>> '{last,state}' <> 'scheduled' OR (v_status #>> '{last,testing}')::boolean IS DISTINCT FROM true
+     OR (v_status #>> '{last,testAddresses}')::integer <> 1 OR (v_status #>> '{last,emailable}')::integer <> 2 THEN
+    RAISE EXCEPTION 'S-05 FAIL (a): %', v_status -> 'last';
+  END IF;
+  -- (b) fanned out, then switched off before the copies went: held as switched off, not as testing.
+  UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'event_update_buyer_email_allowlist_only';
+  UPDATE public.event_edit_notices SET send_after = now() - interval '1 second' WHERE event_id = f.v_event;
+  PERFORM public.event_edit_notice_fanout(20);
+  UPDATE public.rsvp_notification_deliveries AS d SET status = 'failed_terminal', safe_error_code = 'held_feature_off'
+    FROM public.rsvp_notifications AS n WHERE n.id = d.notification_id AND n.event_id = f.v_event;
+  v_status := public.business_event_buyer_notice_status(f.v_event);
+  IF (v_status #>> '{last,heldSwitchedOff}')::integer <> 2 OR (v_status #>> '{last,heldTesting}')::integer <> 0
+     OR (v_status #>> '{last,failed}')::integer <> 0 OR (v_status #>> '{last,noEmail}')::integer <> 1 THEN
+    RAISE EXCEPTION 'S-05 FAIL (b): %', v_status -> 'last';
+  END IF;
+
+  -- (c) an RSVP under test: off-list guests (one with a phone and no email)
+  -- count as alerted the usual way, once each; the listed guest as emailed.
+  SELECT * INTO r FROM pg_temp.e3827_rsvp('s05r');
+  INSERT INTO auth.users(id, email) VALUES (v_phone, 'e3827-app-' || v_phone || '@example.test');
+  INSERT INTO public.event_rsvps(id, event_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
+  VALUES (v_listed, r.v_event, 'Listed', 'e3827-listed-' || v_listed || '@example.test', '+15550003830', 'going', 'approved');
+  -- A guest with no email address (an app user).
+  INSERT INTO public.event_rsvps(event_id, user_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
+  VALUES (r.v_event, v_phone, 'App user', NULL, NULL, 'going', 'approved');
+  UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'event_update_buyer_email_allowlist_only';
+  INSERT INTO public.event_update_email_pilot_brands(brand_id) VALUES (r.v_brand);
+  INSERT INTO public.event_update_email_allowlist(email) VALUES ('e3827-listed-' || v_listed || '@example.test');
+  PERFORM public.biz_update_live_rsvp(r.v_event, pg_temp.e3827_rsvp_payload('The Bedford Hall'),
+    'Moving to a bigger room for everyone');
+  UPDATE public.event_edit_notices SET send_after = now() - interval '1 second' WHERE event_id = r.v_event;
+  PERFORM public.event_edit_notice_fanout(20);
+  UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'event_update_buyer_email';
+  PERFORM set_config('request.jwt.claim.sub', r.v_user::text, true);
+  v_status := public.business_event_buyer_notice_status(r.v_event);
+  IF (v_status #>> '{last,alerted}')::integer <> 2 OR (v_status #>> '{last,heldTesting}')::integer <> 0
+     OR (v_status #>> '{last,pending}')::integer <> 1 OR (v_status #>> '{last,noEmail}')::integer <> 0 THEN
+    RAISE EXCEPTION 'S-05 FAIL (c): %', v_status -> 'last';
+  END IF;
+  RAISE NOTICE 'S-05 PASS: waiting-under-test, switched-off and RSVP-under-test states each count every person once, by reason';
+END $s05$;
+ROLLBACK;
+
 \echo 'issue_3827_live_edit_buyer_email.implementor.happy: all cases passed'
