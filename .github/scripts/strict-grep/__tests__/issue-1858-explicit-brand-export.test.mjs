@@ -7,7 +7,8 @@ const valid = {
   edge: 'if (input.scope === "brand_book") brand_id_required brand_id_invalid input.scope === "offering_guest_roster" p_brand_id: input.brandId ?? null',
   workflow: "issue_1858_explicit_brand_export.test.sql issue_1858_explicit_brand_export.test.ts issue-1858-explicit-brand-export.mjs " + "--self" + "-test",
   // [TEST-MOD-APPROVED #1858] CLOSE advances the guarded lifecycle state.
-  invariant: "I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 (ACTIVE)",
+  // [TEST-MOD-APPROVED #3643] #3643 [freeze invariant registry]
+  gate: "// MINGLA-INVARIANT: I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 | issue #1858 | Every Brand People export carries one explicit selected brand target authorized before any job or audit mutation.",
 };
 
 test("#1858 guard accepts the binding contract", () => assert.deepEqual(inspect(valid), []));
@@ -15,7 +16,7 @@ test("#1858 guard rejects ownership fallback and overload resurrection", () => {
   const drift = { ...valid, migration: valid.migration.replace("WHERE b.id=p_brand_id AND b.deleted_at IS NULL", "WHERE b.account_id=v_actor ORDER BY b.created_at LIMIT 1").replace("DROP FUNCTION public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid);", "") };
   assert.ok(inspect(drift).length >= 2);
 });
-test("#1858 guard rejects invariant lifecycle regression", () => {
-  const drift = { ...valid, invariant: "I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 (DRAFT)" };
-  assert.deepEqual(inspect(drift), ["missing ACTIVE invariant"]);
+test("#1858 guard rejects local invariant declaration removal", () => {
+  const drift = { ...valid, gate: "brand-export declaration removed" };
+  assert.deepEqual(inspect(drift), ["missing local invariant declaration"]);
 });

@@ -4,7 +4,11 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
+// MINGLA-INVARIANT: I-PROPOSED-PERSON-SUPPRESSION-1 | issue #1773 | Reservation and confirmed-stay identity sources preserve pre-existing suppression across every linked contact method.
+// MINGLA-INVARIANT: I-PROPOSED-SOURCE-FAILOPEN-1 | issue #1773 | Reservation and confirmed-stay source writes remain authoritative when asynchronous Brand People ingestion is unavailable.
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const LOCAL_DECLARATION_PREFIX = "// MINGLA-" + "INVARIANT: ";
 const APPROVED_PHONE_LOGIC_SHA256 = "6c3a054d92c93e9bcebc001a188fa4c2eebe711dbc98c68d65d2006956c2ec35";
 const files = {
   migration: "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql",
@@ -14,7 +18,7 @@ const files = {
   phoneAuthoritySuccessor: "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
   artifactTest: "supabase/functions/brand-person-ingest-worker/issue_1773_worker_cjs_artifact.test.ts",
   workflow: ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml",
-  invariant: "docs/INVARIANT_REGISTRY.md",
+  gate: ".github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs",
 };
 
 export function inspect(source) {
@@ -94,7 +98,8 @@ export function inspect(source) {
   need("workflow", "supabase/setup-cli@v1", "Supabase CLI setup");
   need("workflow", "version: 2.98.2", "Supabase CLI 2.98.2 workflow pin");
   need("workflow", "issue-1773-reservation-stay-ingest.mjs --self-test", "gate self-test wiring");
-  need("invariant", "#1773 ACTIVE extension", "ACTIVE invariant extension");
+  need("gate", `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-PERSON-SUPPRESSION-1 | issue #1773 |`, "local suppression declaration");
+  need("gate", `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-SOURCE-FAILOPEN-1 | issue #1773 |`, "local fail-open declaration");
   return failures;
 }
 
@@ -146,7 +151,7 @@ function selfTest(source) {
     ["union", { ...source, worker: source.worker.replace('| "stay_reservation"', '| "reservation"') }],
     ["revision", { ...source, migration: source.migration.replace("'phoneCountryIso',NEW.guest_phone_country_iso", "'status',NEW.status") }],
     ["backfill", { ...source, migration: source.migration.replace("FROM public.reservations r ON CONFLICT DO NOTHING", "FROM public.reservations r WHERE false ON CONFLICT DO NOTHING") }],
-    ["invariant activation", { ...source, invariant: source.invariant.replaceAll("#1773 ACTIVE extension", "#1773 DRAFT extension") }],
+    ["local declaration", { ...source, gate: source.gate.replace(`${LOCAL_DECLARATION_PREFIX}I-PROPOSED-PERSON-SUPPRESSION-1 | issue #1773 |`, "person suppression declaration removed") }],
   ];
   for (const [label, mutation] of mutations) {
     if (inspect(mutation).length === 0) throw new Error(`self-test did not catch ${label}`);

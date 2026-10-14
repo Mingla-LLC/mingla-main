@@ -1,0 +1,499 @@
+#!/usr/bin/env python3
+"""Implementor proof for #3643 Phase 2 invariant-history freeze."""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import hashlib
+import importlib.util
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+from types import ModuleType
+
+
+EXPECTED_OWNERS = {
+    "I-PROPOSED-1436-SECRET-CAPACITY-EXIT": ".github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs",
+    "I-PROPOSED-1772-IDENTITY-MAINTENANCE-ATOMIC": ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
+    "I-PROPOSED-1772-NONUSER-ERASURE-TOMBSTONED": ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
+    "I-PROPOSED-1772-NO-ERASURE-UI": ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
+    "I-PROPOSED-PERSON-SUPPRESSION-1": ".github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs",
+    "I-PROPOSED-SOURCE-FAILOPEN-1": ".github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs",
+    "I-PROPOSED-1777-CIRCLE-FRESHNESS-FAILS-CLOSED": ".github/scripts/strict-grep/issue-1777-brand-circle-reach.mjs",
+    "I-PROPOSED-1777-CIRCLE-CONSENT-AND-BLOCKS": ".github/scripts/strict-grep/issue-1777-brand-circle-reach.mjs",
+    "I-876-CIRCLE-NO-CONTACT-FIELDS": ".github/scripts/strict-grep/issue-1777-brand-circle-reach.mjs",
+    "I-OFFERING-PROVIDER-ACCEPTANCE-1": ".github/scripts/strict-grep/issue-1817-free-plan-invite-send.mjs",
+    "I-PROPOSED-OFFERING-EMAIL-SMS-ACCEPTANCE-1": ".github/scripts/strict-grep/issue-1821-accepted-email-sms-invites.mjs",
+    "I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1": ".github/scripts/strict-grep/issue-1857-phone-country-authority.mjs",
+    "I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1": ".github/scripts/strict-grep/issue-1858-explicit-brand-export.mjs",
+    "I-PROPOSED-1863-CLIENT-PAYMENTS-PERMISSION-PARITY": ".github/scripts/strict-grep/issue-1863-payments-permission-gate.mjs",
+    "I-RSVP-WRITE-MASTER-END-GATED": ".github/scripts/strict-grep/issue-1902-rsvp-backend-safety.mjs",
+    "I-PUBLIC-BRAND-UPCOMING-INCLUDES-RSVP": ".github/scripts/strict-grep/issue-1902-rsvp-backend-safety.mjs",
+    "I-ARI-LOGICAL-TURN-ONCE": ".github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs",
+    "I-ARI-EXECUTION-ONCE": ".github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs",
+    "I-ARI-RESULT-HONESTY": ".github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs",
+    "I-ARI-RECOVERY-PARITY": ".github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs",
+    "I-ARI-CORRELATED-RELEASE-TRUTH": ".github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs",
+    "I-ARI-LEDGER-CERTIFICATION": ".github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs",
+    "I-2714-CAMPAIGN-OPEN-TRUTH": ".github/scripts/strict-grep/issue-2714-campaign-open-truth.mjs",
+    "I-2719-CURRENCY-IS-NOT-PAYOUT-READINESS": ".github/scripts/strict-grep/issue-2719-brand-payout-first.mjs",
+    "I-2719-FREE-CREATORS-ALWAYS-OPEN": ".github/scripts/strict-grep/issue-2719-brand-payout-first.mjs",
+    "I-PROPOSED-2830-SITES-LAST-GOOD-TENANT-BOUNDARY": ".github/scripts/strict-grep/issue-2830-sites-foundation.mjs",
+    "I-PROPOSED-2981-MARKETING-ORIGIN-ONE-OWNER": ".github/scripts/strict-grep/issue-2981-marketing-search-foundation.mjs",
+    "I-PROPOSED-2981-SEARCH-LIFECYCLE-ONE-OWNER": ".github/scripts/strict-grep/issue-2981-marketing-search-foundation.mjs",
+    "I-PROPOSED-2981-ENTITY-GRAPH-FACTUAL": ".github/scripts/strict-grep/issue-2981-marketing-search-foundation.mjs",
+    "I-PROPOSED-3060-NONCUSTOMER-CLOSURE-EXACT-AND-NONSENDING": ".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs",
+    "I-PROPOSED-1579-GESTURE-LEASE-RELEASE-COMPLETENESS": "app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.adversarial.test.mjs",
+    "I-PROPOSED-1272-IDENTITY-ADMIN-READ": ".github/scripts/strict-grep/i-1272-identity-admin-read.mjs",
+    "I-PROPOSED-1273-OFFERINGS-READ-ONLY": ".github/scripts/strict-grep/i-offerings-read-only.mjs",
+    "I-PROPOSED-1273-OFFERINGS-ADMIN-READ-CROSSBRAND": ".github/scripts/strict-grep/i-offerings-read-only.mjs",
+    "I-PROPOSED-CREATOR-ENTRY-IS-INSTANT": ".github/scripts/strict-grep/i-proposed-creator-entry-is-instant.mjs",
+}
+
+STRICT_READER_SCRIPTS = {
+    ".github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs",
+    ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
+    ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.self-test.mjs",
+    ".github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs",
+    ".github/scripts/strict-grep/issue-1777-brand-circle-reach.mjs",
+    ".github/scripts/strict-grep/issue-1817-free-plan-invite-send.mjs",
+    ".github/scripts/strict-grep/issue-1821-accepted-email-sms-invites.mjs",
+    ".github/scripts/strict-grep/issue-1857-phone-country-authority.mjs",
+    ".github/scripts/strict-grep/issue-1858-explicit-brand-export.mjs",
+    ".github/scripts/strict-grep/issue-1863-payments-permission-gate.mjs",
+    ".github/scripts/strict-grep/issue-1902-rsvp-backend-safety.mjs",
+    ".github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs",
+    ".github/scripts/strict-grep/issue-2714-campaign-open-truth.mjs",
+    ".github/scripts/strict-grep/issue-2719-brand-payout-first.mjs",
+    ".github/scripts/strict-grep/issue-2830-sites-foundation.mjs",
+    ".github/scripts/strict-grep/issue-2981-marketing-search-foundation.mjs",
+    ".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs",
+}
+
+RETAINED_FIXTURES = {
+    "supabase/migrations/20260605000002_orch_0829b_d1_checkout_expiry_tombstone.sql",
+    ".github/scripts/ci-batch/__tests__/issue-2439-deno-wave-shadow-parity.implementor.test.mjs",
+    "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
+    "docs/design/948-949-EXECUTION-SPEC.md",
+}
+
+DERIVED_TRIGGER_SUITES = {
+    "issue-1902-public-event-lifecycle-tests",
+    "issue-2230-consumer-multiday-tests",
+}
+
+
+def fail(message: str) -> None:
+    raise AssertionError(message)
+
+
+def check(condition: bool, message: str) -> None:
+    if not condition:
+        fail(message)
+
+
+def git(root: Path, *args: str) -> bytes:
+    proc = subprocess.run(
+        ["git", *args], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    if proc.returncode != 0:
+        fail(proc.stderr.decode("utf-8", errors="replace").strip() or "git command failed")
+    return proc.stdout
+
+
+def load_guard(root: Path) -> ModuleType:
+    path = root / "scripts/docs/check_invariant_declarations.py"
+    spec = importlib.util.spec_from_file_location("issue_3643_invariant_guard", path)
+    check(spec is not None and spec.loader is not None, "cannot load invariant guard")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def blob(root: Path, commit: str, path: str) -> bytes:
+    return git(root, "show", f"{commit}:{path}")
+
+
+def workflow_name(text: str) -> str:
+    for line in text.splitlines():
+        match = re.fullmatch(r"name:\s*(.+?)\s*", line)
+        if match:
+            return match.group(1).strip('"\'')
+    fail("workflow display name missing")
+    return ""
+
+
+def workflows(root: Path, commit: str) -> dict[str, tuple[str, str]]:
+    paths = [
+        item.decode()
+        for item in git(root, "ls-tree", "-r", "--name-only", "-z", commit).split(b"\0")
+        if item and item.startswith(b".github/workflows/") and item.endswith((b".yml", b".yaml"))
+    ]
+    result: dict[str, tuple[str, str]] = {}
+    for path in paths:
+        text = blob(root, commit, path).decode()
+        name = workflow_name(text)
+        check(name not in result, f"duplicate workflow display name: {name}")
+        result[name] = (path, text)
+    return result
+
+
+def noncomment_registry_lines(text: str, registry_path: str) -> list[str]:
+    return [
+        line
+        for line in text.splitlines()
+        if registry_path in line and not line.lstrip().startswith("#")
+    ]
+
+
+def without_registry_lines(text: str, registry_path: str) -> str:
+    return "\n".join(line for line in text.splitlines() if registry_path not in line)
+
+
+def manifest_counts(value: object, registry_path: str) -> tuple[int, int, int]:
+    origin_suites = trigger_refs = path_scopes = 0
+    if not isinstance(value, dict):
+        fail("CI-batch manifest root must be an object")
+    for suite in value.get("suites", []):
+        if registry_path in suite.get("originPaths", []):
+            origin_suites += 1
+        trigger = suite.get("triggerContract") or {}
+        for event in ("pullRequest", "push"):
+            contract = trigger.get(event) or {}
+            trigger_refs += contract.get("paths", []).count(registry_path)
+    for origin in value.get("legacyOrigins", []):
+        metadata = origin.get("workflowMetadata") or {}
+        path_scopes += metadata.get("pathScope", []).count(registry_path)
+    return origin_suites, trigger_refs, path_scopes
+
+
+def strip_manifest_registry(
+    value: object, registry_path: str, live_digest_origins: set[str]
+) -> object:
+    clone = copy.deepcopy(value)
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for child in node.values():
+                walk(child)
+        elif isinstance(node, list):
+            node[:] = [child for child in node if child != registry_path]
+            for child in node:
+                walk(child)
+
+    walk(clone)
+    if not isinstance(clone, dict):
+        fail("CI-batch manifest root must be an object")
+    for suite in clone.get("suites", []):
+        if suite.get("id") in DERIVED_TRIGGER_SUITES:
+            suite["shadowContract"]["triggerSha256"] = json_sha256(
+                suite["triggerContract"]
+            )
+    for origin in clone.get("legacyOrigins", []):
+        name = f"{origin.get('stem')}.{origin.get('extension')}"
+        if name in live_digest_origins:
+            origin["workflowMetadata"]["sourceSha256"] = "<derived-workflow-source>"
+    phase3b = [
+        {
+            "id": suite["id"],
+            "origin": suite["origin"],
+            "hostClass": suite["hostClass"],
+            "executionClass": suite["executionClass"],
+            "runtime": suite["runtime"],
+            "setupProfile": suite["setupProfile"],
+            "timeoutSeconds": suite["timeoutSeconds"],
+            "triggerContract": suite["triggerContract"],
+            "shadowContract": suite["shadowContract"],
+        }
+        for suite in clone.get("suites", [])
+        if suite.get("migrationWave") == "phase3b-postgres-wave"
+    ]
+    clone["phase3bContractSha256"] = json_sha256(phase3b)
+    phase3c_suites = [
+        suite
+        for suite in clone.get("suites", [])
+        if suite.get("migrationWave") == "phase3c-deno-wave"
+    ]
+    terminal = {
+        suite.get("lifecycle") for suite in phase3c_suites
+    } == {"batched-historical"}
+    phase3c = [
+        {
+            "id": suite["id"],
+            "origin": suite["origin"],
+            "lifecycle": "shadow-active" if terminal else suite["lifecycle"],
+            "executionClass": suite["executionClass"],
+            "hostClass": suite["hostClass"],
+            "timeoutSeconds": suite["timeoutSeconds"],
+            "shadowContract": suite["shadowContract"],
+        }
+        for suite in phase3c_suites
+    ]
+    clone["phase3cContractSha256"] = json_sha256(phase3c)
+    return clone
+
+
+def json_sha256(value: object) -> str:
+    compact = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(compact.encode()).hexdigest()
+
+
+class TransitionGit:
+    def __init__(self, registry_path: str, patch_id: str) -> None:
+        self.registry_path = registry_path
+        self.patch_id = patch_id
+
+    def blob(self, commit: str, path: str) -> bytes:
+        del commit
+        check(path == self.registry_path, "transition classifier read an unexpected path")
+        return b"pre-freeze history\n"
+
+    def diff(self, base: str, head: str, *paths: str) -> bytes:
+        del base, head
+        check(paths == (self.registry_path,), "transition classifier diffed an unexpected path")
+        return b"synthetic nonempty patch"
+
+    def run(self, *args: str, input_bytes: bytes | None = None) -> bytes:
+        check(args == ("patch-id", "--stable"), "transition classifier ran an unexpected command")
+        check(input_bytes == b"synthetic nonempty patch", "transition patch input changed")
+        return f"{self.patch_id} {'0' * 40}\n".encode()
+
+
+class NewIdGit:
+    def __init__(self, changed_path: str) -> None:
+        self.changed_path = changed_path
+
+    def run(self, *args: str, input_bytes: bytes | None = None) -> bytes:
+        del input_bytes
+        check(args[:3] == ("diff", "--name-only", "-z"), "new-ID check ran an unexpected command")
+        return (self.changed_path + "\0").encode()
+
+
+def exercise_contract_helpers(guard: ModuleType) -> None:
+    marker = "MINGLA-" + "INVARIANT"
+    unit_id = "I-" + "UNIT-LOCAL-OWNER"
+    samples = (
+        ("scripts/check.py", f"# {marker}: {unit_id} | issue #1 | Python owners use hash comment declarations."),
+        ("scripts/check.sh", f"# {marker}: {unit_id} | issue #1 | Shell owners use hash comment declarations."),
+        (
+            "scripts/__tests__/check.test.sql",
+            f"-- {marker}: {unit_id} | issue #1 | SQL test owners use double-dash declarations.",
+        ),
+        (
+            ".github/scripts/strict-grep/check.mjs",
+            f"// {marker}: {unit_id} | issue #1 | JavaScript owners use slash comment declarations.",
+        ),
+    )
+    for path, line in samples:
+        match = guard.DECLARATION_RE.fullmatch(line)
+        check(match is not None, f"supported declaration syntax rejected for {path}")
+        check(guard.is_supported_owner(path), f"supported owner rejected: {path}")
+        check(match.group("comment") == guard.owner_comment(path), f"comment mismatch for {path}")
+
+    for patch_id in sorted(guard.TRANSITION_PATCH_IDS):
+        mode, _, _ = guard.classify_freeze(
+            TransitionGit(guard.REGISTRY_PATH, patch_id), "base", "head", "merge-base"
+        )
+        check(mode == "transition", f"approved transition patch was rejected: {patch_id}")
+
+    changed_path = "scripts/check.py"
+    declaration = guard.Declaration(unit_id, 1, "A sufficiently long local rule.", changed_path, 1)
+    original = guard.invariant_ids
+    try:
+        guard.invariant_ids = lambda _git, commit, _files: set() if commit == "base" else {unit_id}
+        guard.check_new_ids(
+            NewIdGit(changed_path), "base", "head", [], [], {unit_id: declaration}
+        )
+        try:
+            guard.check_new_ids(NewIdGit(changed_path), "base", "head", [], [], {})
+        except guard.GuardFailure:
+            pass
+        else:
+            fail("new invariant-like ID without an owner was accepted")
+    finally:
+        guard.invariant_ids = original
+
+
+def strict_entries(manifest: object) -> dict[str, object]:
+    check(isinstance(manifest, dict), "strict manifest root must be an object")
+    result = {
+        gate.get("script"): gate
+        for gate in manifest.get("gates", [])
+        if isinstance(gate, dict) and gate.get("script") in STRICT_READER_SCRIPTS
+    }
+    check(set(result) == STRICT_READER_SCRIPTS, "one or more strict-reader registrations are missing")
+    return result
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo-root", required=True, type=Path)
+    parser.add_argument("--base-sha", required=True)
+    parser.add_argument("--head-sha", required=True)
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    root = args.repo_root.resolve()
+    guard = load_guard(root)
+    base = guard.GitTree(root).commit(args.base_sha, "base SHA")
+    head = guard.GitTree(root).commit(args.head_sha, "head SHA")
+    merge_base = guard.GitTree(root).merge_base(base, head)
+
+    mode, base_registry, head_registry = guard.classify_freeze(
+        guard.GitTree(root), base, head, merge_base
+    )
+    check(mode == "bootstrap", f"Phase 2 proof expected bootstrap mode, got {mode}")
+    check(
+        head_registry == (guard.BANNER + "\n\n").encode() + base_registry,
+        "bootstrap changed historical registry body bytes",
+    )
+
+    validated_mode, declarations = guard.validate(root, base, head)
+    check(validated_mode == "bootstrap", "full guard did not validate bootstrap mode")
+    actual_owners = {key: value.path for key, value in declarations.items()}
+    check(len(actual_owners) == 35, f"expected 35 migrated declarations, found {len(actual_owners)}")
+    check(actual_owners == EXPECTED_OWNERS, "migrated invariant owner map changed")
+    check(
+        sum(owner == ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs" for owner in actual_owners.values()) == 3,
+        "multiple declarations in one gate are not preserved",
+    )
+    exercise_contract_helpers(guard)
+
+    base_workflows = workflows(root, base)
+    head_workflows = workflows(root, head)
+    check(set(base_workflows) == set(head_workflows), "workflow inventory changed")
+    functional_names = {
+        name
+        for name, (_, text) in base_workflows.items()
+        if noncomment_registry_lines(text, guard.REGISTRY_PATH)
+        and name not in {"Strict Grep Gates (Mingla Host)", "Docs Artifact Regression"}
+    }
+    check(len(functional_names) == 19, f"expected 19 functional workflow readers, found {len(functional_names)}")
+    for name in sorted(functional_names):
+        base_text = base_workflows[name][1]
+        head_text = head_workflows[name][1]
+        check(
+            not noncomment_registry_lines(head_text, guard.REGISTRY_PATH),
+            f"functional workflow still routes on the registry: {name}",
+        )
+        check(
+            without_registry_lines(base_text, guard.REGISTRY_PATH)
+            == without_registry_lines(head_text, guard.REGISTRY_PATH),
+            f"non-registry routing changed in functional workflow: {name}",
+        )
+
+    base_batch = json.loads(blob(root, base, ".github/ci-batch/MANIFEST.json"))
+    head_batch = json.loads(blob(root, head, ".github/ci-batch/MANIFEST.json"))
+    check(
+        manifest_counts(base_batch, guard.REGISTRY_PATH) == (9, 3, 26),
+        "base CI-batch registry-routing census changed",
+    )
+    check(
+        manifest_counts(head_batch, guard.REGISTRY_PATH) == (0, 0, 0),
+        "head CI-batch routing still selects suites for a registry-only path",
+    )
+    base_origins = {
+        f"{origin['stem']}.{origin['extension']}": origin
+        for origin in base_batch.get("legacyOrigins", [])
+    }
+    head_origins = {
+        f"{origin['stem']}.{origin['extension']}": origin
+        for origin in head_batch.get("legacyOrigins", [])
+    }
+    changed_source_digests = {
+        name
+        for name in base_origins
+        if base_origins[name].get("workflowMetadata", {}).get("sourceSha256")
+        != head_origins[name].get("workflowMetadata", {}).get("sourceSha256")
+    }
+    expected_source_digests = {
+        name
+        for name, origin in base_origins.items()
+        if origin.get("disposition") == "database-special"
+        and guard.REGISTRY_PATH
+        in origin.get("workflowMetadata", {}).get("pathScope", [])
+    }
+    check(
+        len(expected_source_digests) == 18,
+        "expected 18 live workflow source digests to require reconciliation",
+    )
+    check(
+        changed_source_digests == expected_source_digests,
+        "live workflow source-digest reconciliation changed the wrong origins",
+    )
+    for name in sorted(expected_source_digests):
+        expected = hashlib.sha256(blob(root, head, f".github/workflows/{name}")).hexdigest()
+        actual = head_origins[name]["workflowMetadata"]["sourceSha256"]
+        check(actual == expected, f"live workflow source digest is stale: {name}")
+
+    base_suites = {suite["id"]: suite for suite in base_batch.get("suites", [])}
+    head_suites = {suite["id"]: suite for suite in head_batch.get("suites", [])}
+    changed_trigger_digests = {
+        suite_id
+        for suite_id in base_suites
+        if base_suites[suite_id].get("shadowContract", {}).get("triggerSha256")
+        != head_suites[suite_id].get("shadowContract", {}).get("triggerSha256")
+    }
+    check(
+        changed_trigger_digests == DERIVED_TRIGGER_SUITES,
+        "trigger-digest reconciliation changed the wrong suites",
+    )
+    for suite_id in sorted(DERIVED_TRIGGER_SUITES):
+        suite = head_suites[suite_id]
+        check(
+            suite["shadowContract"]["triggerSha256"]
+            == json_sha256(suite["triggerContract"]),
+            f"derived trigger digest is stale: {suite_id}",
+        )
+    normalized_base = strip_manifest_registry(
+        base_batch, guard.REGISTRY_PATH, expected_source_digests
+    )
+    normalized_head = strip_manifest_registry(
+        head_batch, guard.REGISTRY_PATH, expected_source_digests
+    )
+    check(
+        head_batch.get("phase3bContractSha256")
+        == normalized_head.get("phase3bContractSha256"),
+        "Phase 3B contract digest is stale after trigger reconciliation",
+    )
+    check(
+        head_batch.get("phase3cContractSha256")
+        == normalized_head.get("phase3cContractSha256"),
+        "Phase 3C contract digest is stale after trigger reconciliation",
+    )
+    check(
+        normalized_base == normalized_head,
+        "CI-batch non-registry routing or suite metadata changed",
+    )
+
+    base_strict = json.loads(blob(root, base, ".github/scripts/strict-grep/MANIFEST.json"))
+    head_strict = json.loads(blob(root, head, ".github/scripts/strict-grep/MANIFEST.json"))
+    check(
+        strict_entries(base_strict) == strict_entries(head_strict),
+        "strict-reader enforcement, invocation, modes, self-test, or job keys changed",
+    )
+
+    for path in RETAINED_FIXTURES:
+        check(blob(root, base, path) == blob(root, head, path), f"retained historical fixture changed: {path}")
+
+    print(
+        "PASS: banner-only freeze; 21 readers removed; 35 owners localized; "
+        "19 workflow and 9 batch routes removed; declarations and registrations preserved"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        if isinstance(exc, SystemExit):
+            raise
+        print(f"FAIL: {exc}", file=sys.stderr)
+        raise SystemExit(1)

@@ -21,7 +21,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// MINGLA-INVARIANT: I-PROPOSED-1863-CLIENT-PAYMENTS-PERMISSION-PARITY | issue #1863 | Client payment visibility and mutation controls mirror canonical server authorization and treat permission denial as terminal.
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const LOCAL_DECLARATION_PREFIX = "// MINGLA-" + "INVARIANT: ";
 
 const PATHS = {
   authGate: "mingla-business/src/hooks/brandStripeStatusAuthGate.ts",
@@ -37,12 +40,12 @@ const PATHS = {
   statusService: "mingla-business/src/services/brandStripeService.ts",
   balancesService: "mingla-business/src/services/brandStripeBalancesService.ts",
   onboardView: "mingla-business/src/components/brand/BrandOnboardView.tsx",
-  invariant: "docs/INVARIANT_REGISTRY.md",
   renderTest:
     "mingla-business/src/components/brand/__tests__/issue_1863_payments_permission_gate.render.test.tsx",
   adversarialTest:
     "mingla-business/src/config/__tests__/issue_1863_permission_denied_terminal.tester_adversarial.test.ts",
   renderWorkflow: ".github/workflows/issue-1486-dormant-render-suites.yml",
+  gate: ".github/scripts/strict-grep/issue-1863-payments-permission-gate.mjs",
 };
 
 // #3660 — exact mutate / view arrays (pinned separately so C-6 cannot go vacuous).
@@ -100,7 +103,6 @@ export function violations(files) {
   const statusService = files.statusService ?? "";
   const balancesService = files.balancesService ?? "";
   const onboardView = files.onboardView ?? "";
-  const invariant = files.invariant ?? "";
   const renderTest = files.renderTest ?? "";
   const adversarialTest = files.adversarialTest ?? "";
 
@@ -240,11 +242,11 @@ export function violations(files) {
     );
   }
 
-  // ── C-11 — the invariant is registered.
+  // ── C-11 — the declaration stays beside the enforcing gate.
   need(
-    invariant,
-    "I-PROPOSED-1863-CLIENT-PAYMENTS-PERMISSION-PARITY (DRAFT)",
-    "C-11 invariant",
+    files.gate ?? "",
+    `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-1863-CLIENT-PAYMENTS-PERMISSION-PARITY | issue #1863 |`,
+    "C-11 local invariant declaration",
     failures,
   );
 
@@ -343,9 +345,9 @@ function selfTest() {
     ["onboardView", 'setViewState("permission-denied");\n        setErrorMessage(null);',
       'setViewState("failed-network");\n        setErrorMessage(null);',
       "C-10 the dead ViewState is un-wired"],
-    ["invariant", "I-PROPOSED-1863-CLIENT-PAYMENTS-PERMISSION-PARITY (DRAFT)",
-      "I-PROPOSED-1863-REMOVED",
-      "C-11 the invariant is deleted"],
+    ["gate", `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-1863-CLIENT-PAYMENTS-PERMISSION-PARITY | issue #1863 |`,
+      "payments-permission declaration removed",
+      "C-11 the local invariant declaration is corrupted"],
     ["renderTest", "  it(\"0. the matcher", "  it.skip(\"0. the matcher",
       "C-12 the render suite is silently skipped"],
     ["adversarialTest", "toHaveBeenCalledTimes(3)", "toHaveBeenCalledTimes(9)",

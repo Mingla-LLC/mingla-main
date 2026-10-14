@@ -47,7 +47,6 @@ on:
       - "app-mobile/src/services/attendanceClaimService.ts"
       - "app-mobile/app/index.tsx"
       - ".github/workflows/issue-2217-confirmation-app-cta-tests.yml"
-      - "docs/INVARIANT_REGISTRY.md"
   push:
     branches: [main]
     paths: *issue_2217_paths

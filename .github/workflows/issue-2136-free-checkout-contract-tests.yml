@@ -39,7 +39,6 @@ on:
       # #2148 — this suite now gets its database from a shared composite action;
       # without this path a change to that action would not re-run it.
       - ".github/actions/migrated-postgres/**"
-      - "docs/INVARIANT_REGISTRY.md"
   push:
     branches: [main]
     paths: *issue_2136_paths

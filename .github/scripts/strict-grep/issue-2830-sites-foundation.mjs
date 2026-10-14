@@ -4,6 +4,8 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// MINGLA-INVARIANT: I-PROPOSED-2830-SITES-LAST-GOOD-TENANT-BOUNDARY | issue #2830 | Sites serves only exact-host immutable digest-verified publications while Core retains identity, commerce, rank, and last-good authority.
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PATHS = {
   migration: "supabase/migrations/20270609002830_issue_2830_mingla_sites_foundation.sql",
@@ -73,7 +75,6 @@ const PATHS = {
   publicObservability: "mingla-sites/src/lib/observability.ts",
   manifest: "supabase/secrets.manifest.json",
   runbook: "docs/runbooks/MINGLA_SITES_PILOT.md",
-  invariant: "docs/INVARIANT_REGISTRY.md",
   // Assemble workflow paths so this gate reads existing providers without
   // being misclassified as a new external workflow authority by the CI
   // provider-inventory scanner's intentional literal-reference contract.
@@ -1025,7 +1026,6 @@ export function violations(files) {
     "tenant escape",
     "last-good pointer recovery",
   ]) need(files.runbook ?? "", token, "Sites operations runbook", failures);
-  need(files.invariant ?? "", "I-PROPOSED-2830-SITES-LAST-GOOD-TENANT-BOUNDARY (DRAFT)", "invariant registry", failures);
   need(files.denoHappy ?? "", "slot-88 import closure stays exact and value-blind", "implementor regression", failures);
   for (const token of [
     "readiness callback accepts only the two exact v1 bodies",

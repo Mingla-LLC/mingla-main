@@ -43,7 +43,6 @@ const tracked = [
   "mingla-business/src/components/people/__tests__/PersonMaintenanceFlow.issue1772.happy.test.tsx",
   ".github/workflows/postgres-contract-suites.yml",
   ".github/workflows/supabase-migrations-and-stripe-deno.yml",
-  "docs/INVARIANT_REGISTRY.md",
   "docs/runbooks/B2_GDPR_ERASURE_RUNBOOK.md",
   "docs/runbooks/SUPABASE_SECRET_CAPACITY.md",
   ".github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs",

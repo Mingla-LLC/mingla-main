@@ -37,7 +37,6 @@ on:
       - "supabase/functions/attendance-claim-link/**"
       - "supabase/config.toml"
       - ".github/workflows/issue-2269-verified-phone-claim-tests.yml"
-      - "docs/INVARIANT_REGISTRY.md"
   push:
     branches: [main]
     paths: *issue_2269_paths

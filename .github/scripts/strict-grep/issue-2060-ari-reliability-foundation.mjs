@@ -4,7 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// MINGLA-INVARIANT: I-ARI-LOGICAL-TURN-ONCE | issue #2060 | One logical Ari turn owns one durable identity and cannot be duplicated by retry, replay, or recovery.
+// MINGLA-INVARIANT: I-ARI-EXECUTION-ONCE | issue #2060 | Ari side-effect execution is claimed exactly once and replay cannot perform the deed twice.
+// MINGLA-INVARIANT: I-ARI-RESULT-HONESTY | issue #2060 | Ari reports success only from durable execution truth and preserves unknown outcomes for reconciliation.
+// MINGLA-INVARIANT: I-ARI-RECOVERY-PARITY | issue #2060 | Recovery reaches the same terminal truth as the original Ari execution path without inventing a parallel owner.
+// MINGLA-INVARIANT: I-ARI-CORRELATED-RELEASE-TRUTH | issue #2060 | Ari release evidence remains correlated across code, capability, runtime, and deployed verification.
+// MINGLA-INVARIANT: I-ARI-LEDGER-CERTIFICATION | issue #2060 | Ari capability-ledger certification is complete, immutable, independently derived, and fails closed on drift.
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const LOCAL_DECLARATION_PREFIX = "// MINGLA-" + "INVARIANT: ";
 const FILES = {
   edge: "supabase/functions/_shared/agentReliability.ts",
   edgeHttp: "supabase/functions/_shared/agentReliabilityHttp.ts",
@@ -30,12 +38,12 @@ const FILES = {
   census1980Migration: "supabase/migrations/20270621001980_issue_1980_ari_cert_capability_census.sql",
   census1981Migration: "supabase/migrations/20270625001981_issue_1981_ari_cert_capability_census.sql",
   setDigestMigration: "supabase/migrations/20270610002060_issue_2060_ari_cert_requirements_set_digest_post_2830.sql",
-  invariants: "docs/INVARIANT_REGISTRY.md",
   rollback: "docs/runbooks/ARI_RELIABILITY_ROLLBACK.md",
   workflow: ".github/workflows/issue-2060-ari-reliability.yml",
   crossRuntimeGuard: "supabase/migrations/__tests__/issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
   independentVerdictGuard: "supabase/migrations/__tests__/issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql",
   unicodeBoundaryGuard: "supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql",
+  gate: ".github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs",
 };
 
 function readLive() {
@@ -145,6 +153,14 @@ function checkBacklogRepair(fixture) {
 }
 
 export function checkContract(fixture) {
+  need(fixture.gate, [
+    `${LOCAL_DECLARATION_PREFIX}I-ARI-LOGICAL-TURN-ONCE | issue #2060 |`,
+    `${LOCAL_DECLARATION_PREFIX}I-ARI-EXECUTION-ONCE | issue #2060 |`,
+    `${LOCAL_DECLARATION_PREFIX}I-ARI-RESULT-HONESTY | issue #2060 |`,
+    `${LOCAL_DECLARATION_PREFIX}I-ARI-RECOVERY-PARITY | issue #2060 |`,
+    `${LOCAL_DECLARATION_PREFIX}I-ARI-CORRELATED-RELEASE-TRUTH | issue #2060 |`,
+    `${LOCAL_DECLARATION_PREFIX}I-ARI-LEDGER-CERTIFICATION | issue #2060 |`,
+  ], "local invariant declarations");
   assert.equal(fixture.ledger.capabilities.length, 145, "canonical ledger must stay exactly 145 rows");
   assert.equal(new Set(fixture.ledger.capabilities.map((row) => row.id)).size, 145, "capability IDs must be unique");
   for (const row of fixture.ledger.capabilities) {
@@ -367,14 +383,6 @@ export function checkContract(fixture) {
   assert.ok(!fixture.migration.includes("CREATE TABLE public.agent_operation_receipts"), "must not duplicate #1972 receipt");
   assert.ok(!fixture.migration.includes("CREATE TABLE public.agent_task_state"), "must not duplicate #1985 state");
 
-  for (const invariant of [
-    "I-ARI-LOGICAL-TURN-ONCE (DRAFT)",
-    "I-ARI-EXECUTION-ONCE (DRAFT)",
-    "I-ARI-RESULT-HONESTY (DRAFT)",
-    "I-ARI-RECOVERY-PARITY (DRAFT)",
-    "I-ARI-CORRELATED-RELEASE-TRUTH (DRAFT)",
-    "I-ARI-LEDGER-CERTIFICATION (DRAFT)",
-  ]) need(fixture.invariants, [invariant], "invariant registry");
   need(fixture.rollback, [
     "Never roll back one",
     "Do not down-migrate additive #2060 tables",
@@ -439,7 +447,6 @@ function selfTest() {
   bad(good, (x) => { x.business = x.business.replaceAll('reason: "offline"', 'reason: "terminal"'); }, "offline gate");
   bad(good, (x) => { x.certifier = x.certifier.replace("ledger.capabilities.length !== 145", "false"); }, "row completeness");
   bad(good, (x) => { x.migration = x.migration.replace("ari_cert_evidence_is_immutable", "evidence_is_mutable"); }, "immutable evidence");
-  bad(good, (x) => { x.invariants = x.invariants.replace("I-ARI-RESULT-HONESTY (DRAFT)", "I-ARI-RESULT-HONESTY (REMOVED)"); }, "result honesty invariant");
   bad(good, (x) => { x.rollback = x.rollback.replace("Do not down-migrate additive #2060 tables", "Down-migrate #2060 tables"); }, "forward rollback");
   bad(good, (x) => { x.workflow = x.workflow.replaceAll("agentReliability.issue2060.test.ts", "missing.test.ts"); }, "CI wiring");
   bad(good, (x) => { x.workflow = x.workflow.replaceAll("issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql", "missing-cross-runtime.test.sql"); }, "cross-runtime CI wiring");
@@ -461,6 +468,7 @@ function selfTest() {
   bad(good, (x) => { x.unicodeBoundaryGuard = x.unicodeBoundaryGuard.replace("issue_2060_unicode_value_not_bound", "unicode_values_unbound"); }, "Unicode bound-field guard removed");
   bad(good, (x) => { x.agentChat = x.agentChat.replaceAll("agentReliabilityHttp", "agentReliabilityMissing"); }, "agent-chat wire removed");
   bad(good, (x) => { x.agentConfirm = x.agentConfirm.replaceAll("decideAriFinalization", "decideNothing"); }, "confirm finalization removed");
+  bad(good, (x) => { x.gate = x.gate.replace(`${LOCAL_DECLARATION_PREFIX}I-ARI-RESULT-HONESTY | issue #2060 |`, "result-honesty declaration removed"); }, "result honesty local declaration");
   // #3055 — the reachable backlog repair.
   bad(good, (x) => { x.census3055Migration = x.census3055Migration.replace("v_requirements_digest := private.ari_cert_requirements_set_digest_v1();", "v_requirements_digest := private.ari_cert_requirements_set_digest_v1(); -- drift"); }, "#3055 repair function drift from #1981");
   bad(good, (x) => { x.census3055Migration = x.census3055Migration.replace("  ('ari.growth.read_report', 'read')\nON CONFLICT", "  ('ari.growth.read_report', 'write')\nON CONFLICT"); }, "#3055 repair #1980 INSERT not verbatim");
@@ -468,7 +476,7 @@ function selfTest() {
   bad(good, (x) => { x.census3055Migration = x.census3055Migration.replace("('ari.order.refund_preview',       '#1981', NULL,          'read')", "('ari.order.refund_preview',       '#1981', NULL,          'write')"); }, "#3055 guard disagrees with copied INSERT");
   bad(good, (x) => { x.census3055Migration = x.census3055Migration.replace("IF v_rows <> v_denominators[1]::integer THEN", "IF v_rows <> 132 THEN"); }, "#3055 absolute count guard");
   bad(good, (x) => { x.census3055Migration = x.census3055Migration.replace(/^COMMIT;$/m, ""); }, "#3055 repair not self-wrapped");
-  console.log("issue-2060 self-test: 1 GOOD + 37 BAD fixtures passed");
+  console.log("issue-2060 self-test: 1 GOOD + 38 BAD fixtures passed");
 }
 
 if (process.argv.includes("--self-test")) selfTest();

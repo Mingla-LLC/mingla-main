@@ -44,7 +44,6 @@ on:
       - ".github/scripts/strict-grep/issue-2150-free-completed-session-returned-not-tombstoned.mjs"
       - ".github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs"
       - ".github/workflows/issue-2150-free-resubmit-idempotent-tests.yml"
-      - "docs/INVARIANT_REGISTRY.md"
   push:
     branches: [main]
     paths: *issue_2150_paths

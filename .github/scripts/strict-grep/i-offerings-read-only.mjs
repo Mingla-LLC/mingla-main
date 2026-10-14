@@ -17,10 +17,13 @@
  * Adding any write call to a 1273 service/page → (c) FAILS.
  * `--self-test` proves FAIL-on-revert with GOOD/BAD fixtures.
  *
- * DRAFT until CLOSE (orchestrator flips the two invariants ACTIVE).
+ * Lifecycle and release evidence are owned by issue #1273.
  */
 import fs from "node:fs";
 import path from "node:path";
+
+// MINGLA-INVARIANT: I-PROPOSED-1273-OFFERINGS-READ-ONLY | issue #1273 | The admin Offerings and Venues console remains read-only from migration through service and page boundaries.
+// MINGLA-INVARIANT: I-PROPOSED-1273-OFFERINGS-ADMIN-READ-CROSSBRAND | issue #1273 | Admin offering reads cross brand and visibility boundaries only through guarded read policies and least-privilege RPCs.
 
 const MIGRATIONS_DIR = path.join(process.cwd(), "supabase/migrations");
 

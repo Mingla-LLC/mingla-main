@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// MINGLA-INVARIANT: I-PROPOSED-OFFERING-EMAIL-SMS-ACCEPTANCE-1 | issue #1821 | Accepted email and SMS provider responses remain durable per-recipient truth and cannot be erased by later rollups.
+
 const ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
@@ -16,7 +18,6 @@ const PATHS = {
   sender: "supabase/functions/marketing-send/index.ts",
   denoTest:
     "supabase/functions/marketing-send/issue-1821-accepted-email-sms-invites.test.ts",
-  invariant: "docs/INVARIANT_REGISTRY.md",
 };
 
 function need(source, token, label, failures) {
@@ -37,7 +38,6 @@ export function violations(files) {
   const sqlTest = files.sqlTest ?? "";
   const sender = files.sender ?? "";
   const denoTest = files.denoTest ?? "";
-  const invariant = files.invariant ?? "";
 
   for (
     const token of [
@@ -243,16 +243,6 @@ export function violations(files) {
       "#1821 two database failures expose only the safe error code",
     ]
   ) need(denoTest, token, "Deno acceptance/write matrix", failures);
-
-  for (
-    const token of [
-      "I-PROPOSED-OFFERING-EMAIL-SMS-ACCEPTANCE-1 (ACTIVE)",
-      "documented successful Resend/Twilio/Termii send response",
-      "serialized group rollup",
-      "may never erase acceptance",
-      "depend on a paid receipt feature",
-    ]
-  ) need(invariant, token, "ACTIVE invariant", failures);
 
   const runtime = `${migration}\n${sender}`.toLowerCase();
   for (

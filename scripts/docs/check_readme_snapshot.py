@@ -78,6 +78,14 @@ def main() -> int:
     for field in ("PR", "merge commit", "migrations applied", "deploy", "live check"):
         require(field in text, f"README release record must name `{field}`", failures)
 
+    require(
+        "Historical engineering invariant record" in text
+        and "(frozen)" in text
+        and "current declarations live beside their enforcing gates or tests" in text,
+        "README must describe the invariant registry as frozen history and route current declarations locally",
+        failures,
+    )
+
     repo_map = repo_map_block(text)
     require(repo_map, "README must contain a fenced Repo Map block", failures)
     if repo_map:
@@ -103,6 +111,7 @@ def main() -> int:
     print("- README declares itself a snapshot")
     print("- source-of-truth links point to the Avengers board, shipping issues and canonical docs")
     print("- the Done contract requires all five release-record fields")
+    print("- invariant guidance points to frozen history plus local enforcing declarations")
     print("- docs lock-in commands are present")
     print("- repo map lists only active roots")
     return 0

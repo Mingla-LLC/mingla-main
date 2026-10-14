@@ -2,9 +2,12 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// MINGLA-INVARIANT: I-PROPOSED-3060-NONCUSTOMER-CLOSURE-EXACT-AND-NONSENDING | issue #3060 | Noncustomer attendance closure requires the exact proven order population and never contacts anyone or fabricates delivery.
+
 const root = process.cwd().endsWith(".github")
   ? path.resolve(process.cwd(), "..")
   : process.cwd();
+const LOCAL_DECLARATION_PREFIX = "// MINGLA-" + "INVARIANT: ";
 
 const files = {
   migration:
@@ -13,8 +16,8 @@ const files = {
     "supabase/migrations/__tests__/issue_3060_attendance_noncustomer_closure.implementor.happy.test.sql",
   adversarial:
     "supabase/migrations/__tests__/issue_3060_attendance_noncustomer_closure.tester.adversarial.test.sql",
-  invariant: "docs/INVARIANT_REGISTRY.md",
   workflow: ".github/workflows/issue-871-attendance-entitlement-tests.yml",
+  gate: ".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs",
 };
 
 function between(source, startToken, endToken) {
@@ -50,14 +53,10 @@ export function violations(sources) {
     }
   }
 
-  for (const token of [
-    "I-PROPOSED-3060-NONCUSTOMER-CLOSURE-EXACT-AND-NONSENDING (ACTIVE)",
-    "identified by an exact row count and SHA-256 of sorted order IDs",
-    "The ordinary delivery-safe path still requires 72 hours",
-  ]) {
-    if (!sources.invariant.includes(token)) {
-      failures.push(`ISSUE3060_INVARIANT:missing:${token}`);
-    }
+  if (!sources.gate.includes(
+    `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-3060-NONCUSTOMER-CLOSURE-EXACT-AND-NONSENDING | issue #3060 |`,
+  )) {
+    failures.push("ISSUE3060_INVARIANT:missing:local declaration");
   }
 
   for (const token of [
@@ -188,7 +187,7 @@ if (process.argv.includes("--self-test")) {
     ["receipt", "migration", "v_operator_sha <> v_operator_receipt.set_sha256", "false"],
     ["grace", "migration", "interval '72 hours'", "interval '1 second'"],
     ["adversarial", "adversarial", "prior provider activity was not refused", "provider check removed"],
-    ["invariant", "invariant", "The ordinary delivery-safe path still requires 72 hours", "ordinary path weakened"],
+    ["local declaration", "gate", `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-3060-NONCUSTOMER-CLOSURE-EXACT-AND-NONSENDING | issue #3060 |`, "noncustomer-closure declaration removed"],
     ["workflow test", "workflow", "issue_3060_attendance_noncustomer_closure.tester.adversarial.test.sql", "tester_removed.sql"],
     ["workflow gate", "workflow", "node .github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs --self-test", "gate_removed"],
   ];

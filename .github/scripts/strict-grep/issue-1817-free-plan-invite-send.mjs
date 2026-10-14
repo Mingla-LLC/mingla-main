@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// MINGLA-INVARIANT: I-OFFERING-PROVIDER-ACCEPTANCE-1 | issue #1817 | A canonical provider message ID is durable provider-acceptance truth and is never represented as device-delivery truth.
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PATHS = {
   migration:
@@ -14,7 +16,6 @@ const PATHS = {
   adapter: "supabase/functions/_shared/adapters/pushAdapter.ts",
   denoTest:
     "supabase/functions/_shared/adapters/pushAdapter.issue1817.test.ts",
-  invariant: "docs/INVARIANT_REGISTRY.md",
 };
 
 function need(source, token, label, failures) {
@@ -36,7 +37,6 @@ export function violations(files) {
   const push = files.push ?? "";
   const adapter = files.adapter ?? "";
   const denoTest = files.denoTest ?? "";
-  const invariant = files.invariant ?? "";
 
   need(
     push,
@@ -129,14 +129,6 @@ export function violations(files) {
     'safeCode: "provider_outcome_unknown"',
     'assertEquals(result.safeCode, "provider_config_missing")',
   ]) need(denoTest, token, "Deno result matrix", failures);
-
-  for (const token of [
-    "I-OFFERING-PROVIDER-ACCEPTANCE-1 (ACTIVE)",
-    "canonical OneSignal Create Message ID is durable Sent/provider-accepted truth",
-    "never device-delivery truth",
-    "without Event Streams",
-    "may never erase provider acceptance",
-  ]) need(invariant, token, "DRAFT invariant", failures);
 
   const runtime = `${migration}\n${push}\n${adapter}`.toLowerCase();
   for (const forbidden of [

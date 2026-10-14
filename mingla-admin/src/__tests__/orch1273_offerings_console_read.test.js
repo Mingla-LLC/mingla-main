@@ -17,7 +17,7 @@
 //   5. Nav: the "Business" group gains Offerings + Venues; App.jsx routes them;
 //      Sidebar ICON_MAP registers CalendarDays + Store (else silent fallback).
 //   6. The strict-grep gate + workflow job exist; the 6 RPCs are in the gate-first
-//      registry; the two DRAFT invariants are registered.
+//      registry; both invariants are declared beside their enforcing gate.
 //
 // Fails-on-revert target = the RLS/RPC migration + the service RPC calls: deleting
 // any policy line, an RPC guard, or an rpc("admin_...") call makes this suite RED.
@@ -234,7 +234,7 @@ describe("ORCH-1273 — nav + routing", () => {
   });
 });
 
-describe("ORCH-1273 — gate + workflow + registry", () => {
+describe("ORCH-1273 — gate + workflow + local declarations", () => {
   it("i-offerings-read-only.mjs exists and supports --self-test", () => {
     const g = read(".github/scripts/strict-grep/i-offerings-read-only.mjs");
     assert.match(g, /--self-test/);
@@ -252,15 +252,9 @@ describe("ORCH-1273 — gate + workflow + registry", () => {
     const writeGate = read(".github/scripts/strict-grep/i-admin-write-audited.mjs");
     for (const n of READ_RPCS) assert.doesNotMatch(writeGate, new RegExp(n), `${n} NOT in write-RPC registry`);
   });
-  it("both invariants are registered (ACTIVE after META-ORCH-1237 CLOSE)", () => {
-    // Issue #974 [TEST-MOD-APPROVED ORCH-0974]: the invariant registry moved to
-    // docs/INVARIANT_REGISTRY.md when the artifact system retired (tag pre-avengers-archive).
-    const reg = read("docs/INVARIANT_REGISTRY.md");
-    // ORCH-1293 [TEST-MOD-APPROVED ORCH-1293]: META-ORCH-1237 CLOSE flipped these
-    // two ORCH-1273 invariants DRAFT -> ACTIVE in INVARIANT_REGISTRY.md (PR #743)
-    // but did not update this assertion, leaving main red on any strict-grep-
-    // triggering PR. Assert the current, correct ACTIVE status.
-    assert.match(reg, /I-PROPOSED-1273-OFFERINGS-ADMIN-READ-CROSSBRAND \(ACTIVE\)/);
-    assert.match(reg, /I-PROPOSED-1273-OFFERINGS-READ-ONLY \(ACTIVE\)/);
+  it("both invariants are declared beside the enforcing gate", () => {
+    const gate = read(".github/scripts/strict-grep/i-offerings-read-only.mjs");
+    assert.match(gate, /MINGLA-INVARIANT: I-PROPOSED-1273-OFFERINGS-ADMIN-READ-CROSSBRAND \| issue #1273 \|/);
+    assert.match(gate, /MINGLA-INVARIANT: I-PROPOSED-1273-OFFERINGS-READ-ONLY \| issue #1273 \|/);
   });
 });

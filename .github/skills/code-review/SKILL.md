@@ -151,8 +151,10 @@ even when the hunk itself looks local:
 - **Subtract before add** — replacement must remove the stale path, not leave
   two live ones.
 
-Point at existing docs (`README.md` Architecture Constitution,
-`docs/INVARIANT_REGISTRY.md`, domain ADRs) instead of inventing new policy.
+Point at the `README.md` Architecture Constitution, the local invariant
+declaration beside the enforcing gate/test, its issue evidence, and domain
+ADRs instead of inventing new policy. The historical invariant registry is
+frozen and is not a current lifecycle authority.
 
 ## Review workflow (high effort)
 

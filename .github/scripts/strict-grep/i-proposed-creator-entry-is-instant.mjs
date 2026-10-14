@@ -40,6 +40,8 @@
  * Established by: ORCH-0893 implementation, 2026-05-20.
  */
 
+// MINGLA-INVARIANT: I-PROPOSED-CREATOR-ENTRY-IS-INSTANT | issue #893 | Creator entry routes mount immediately from client state and defer server record creation until meaningful editing or resume migration.
+
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";

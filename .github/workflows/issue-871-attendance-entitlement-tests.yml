@@ -34,7 +34,6 @@ on:
       - "supabase/config.toml"
       - ".github/scripts/strict-grep/issue-2050-host-route-ownership.mjs"
       - ".github/scripts/strict-grep/__tests__/i-aasa-claims-match-native-routes.test.mjs"
-      - "docs/INVARIANT_REGISTRY.md"
       - ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs"
       - ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs"
       - ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs"

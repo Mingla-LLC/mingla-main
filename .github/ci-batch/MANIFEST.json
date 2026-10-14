@@ -2347,7 +2347,6 @@
         "mingla-business/src/services/publicEventsService.ts",
         "mingla-business/src/utils/publicEventOccurrenceTruth.ts",
         "packages/offering-rendering/EventOfferingBody.tsx",
-        "docs/INVARIANT_REGISTRY.md",
         ".github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs",
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
@@ -2614,8 +2613,7 @@
         "app-mobile/src/components/swipeDeck/**",
         "app-mobile/src/contexts/RecommendationsContext.tsx",
         "app-mobile/src/store/appStore.ts",
-        "app-mobile/src/store/deckSessionHistoryStore.ts",
-        "docs/INVARIANT_REGISTRY.md"
+        "app-mobile/src/store/deckSessionHistoryStore.ts"
       ],
       "steps": [
         {
@@ -2931,8 +2929,7 @@
         ".github/workflows/issue-1576-deck-promoted-card.yml",
         "app-mobile/src/components/SwipeableCards.tsx",
         "app-mobile/src/components/swipeDeck/**",
-        "app-mobile/src/utils/swipeCommit.ts",
-        "docs/INVARIANT_REGISTRY.md"
+        "app-mobile/src/utils/swipeCommit.ts"
       ],
       "steps": [
         {
@@ -3013,8 +3010,7 @@
       "originVariant": "default",
       "originPaths": [
         ".github/workflows/issue-1579-deck-tap-expand.yml",
-        "app-mobile/src/components/swipeDeck/**",
-        "docs/INVARIANT_REGISTRY.md"
+        "app-mobile/src/components/swipeDeck/**"
       ],
       "steps": [
         {
@@ -3096,8 +3092,7 @@
       "originPaths": [
         ".github/workflows/issue-1593-deck-layer-geometry.yml",
         "app-mobile/src/components/SwipeableCards.tsx",
-        "app-mobile/src/components/swipeDeck/**",
-        "docs/INVARIANT_REGISTRY.md"
+        "app-mobile/src/components/swipeDeck/**"
       ],
       "steps": [
         {
@@ -3313,7 +3308,6 @@
         "app-mobile/src/components/deckHeroConstants.ts",
         "app-mobile/src/components/swipeDeck/__tests__/**",
         "app-mobile/src/constants/designSystem.ts",
-        "docs/INVARIANT_REGISTRY.md",
         "mingla-business/server/cardIdentityRenderer.js",
         "mingla-business/server/socialPreview.js",
         "packages/card-identity/**"
@@ -5123,7 +5117,6 @@
       "originPaths": [
         ".github/workflows/issue-2004-share-click-canonical-destination.yml",
         "app-mobile/app/s/[code].tsx",
-        "docs/INVARIANT_REGISTRY.md",
         "mingla-business/api/content-share.js",
         "mingla-business/server/socialPreview.js",
         "mingla-business/vercel.json",
@@ -6812,8 +6805,7 @@
         "app-mobile/src/hooks/useBrandBySlug.ts",
         "app-mobile/src/screens/ConsumerBrandProfileScreen.tsx",
         ".github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs",
-        ".github/workflows/issue-1902-public-event-lifecycle-tests.yml",
-        "docs/INVARIANT_REGISTRY.md"
+        ".github/workflows/issue-1902-public-event-lifecycle-tests.yml"
       ],
       "triggerContract": {
         "push": null,
@@ -6828,8 +6820,7 @@
             "app-mobile/src/hooks/useBrandBySlug.ts",
             "app-mobile/src/screens/ConsumerBrandProfileScreen.tsx",
             ".github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs",
-            ".github/workflows/issue-1902-public-event-lifecycle-tests.yml",
-            "docs/INVARIANT_REGISTRY.md"
+            ".github/workflows/issue-1902-public-event-lifecycle-tests.yml"
           ]
         },
         "concurrency": {
@@ -7124,7 +7115,7 @@
         "workflowSha256": "ee303de029f2ff1abe129f42c8fbbcefca17287bfa8536cc60ee7c1f10c8b900",
         "assertionSha256": "5db448019c46d179f6fbe8f46beffa1091fcca4a65d7e184cf8866db84e74ebf",
         "setupSha256": "9d7a9ba3ee07d53cb46f61deb58cf2c9b6ac353e0b742636a1c2e4d39bc4c164",
-        "triggerSha256": "259e8b85eb48568ab95c034104afdb8aa60d9d9f2aa04c8eb07de91c46dbbd21"
+        "triggerSha256": "867607be80a2d604d15df781c5254c7790bebc87769720b98c9f12eb3734207e"
       },
       "executionClass": "phase3b-lifecycle-node20-deno2"
     },
@@ -10606,7 +10597,6 @@
         ".github/scripts/strict-grep/issue-2230-consumer-carries-occurrences.mjs",
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/workflows/issue-2230-consumer-multiday-tests.yml",
-        "docs/INVARIANT_REGISTRY.md",
         ".github/scripts/strict-grep/orch-1138-experience-checkout-byte-identical.mjs",
         "app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source.test.ts",
         "app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source.tester_adversarial.test.ts",
@@ -10633,8 +10623,7 @@
             "packages/offering-rendering/QuantityRow.tsx",
             ".github/scripts/strict-grep/issue-2230-consumer-carries-occurrences.mjs",
             ".github/scripts/strict-grep/MANIFEST.json",
-            ".github/workflows/issue-2230-consumer-multiday-tests.yml",
-            "docs/INVARIANT_REGISTRY.md"
+            ".github/workflows/issue-2230-consumer-multiday-tests.yml"
           ]
         },
         "pullRequest": {
@@ -10655,8 +10644,7 @@
             "packages/offering-rendering/QuantityRow.tsx",
             ".github/scripts/strict-grep/issue-2230-consumer-carries-occurrences.mjs",
             ".github/scripts/strict-grep/MANIFEST.json",
-            ".github/workflows/issue-2230-consumer-multiday-tests.yml",
-            "docs/INVARIANT_REGISTRY.md"
+            ".github/workflows/issue-2230-consumer-multiday-tests.yml"
           ]
         },
         "workflowDispatch": false,
@@ -10919,7 +10907,7 @@
         "workflowSha256": "bfa6db45a36eec0cf1654a8948e0693a9c4ae216a3692d51180196876ec4140f",
         "assertionSha256": "cd73bcdaf7a2a47729a16f7e066d651e6b5018f5701080290c08be822a3aef5b",
         "setupSha256": "df7afa7efdf0b451321d08a22255d9b183fff4a8882704d35f342ab6185db8ba",
-        "triggerSha256": "d83cbe09d9789b29ca2d067aa09ca3a0370d9ed5c5cbc3e3087e1f5453501f5d"
+        "triggerSha256": "24924f064b9f153df10c88157060946bff2d5f3afd99fb20c3435836f508fd6b"
       }
     },
     {
@@ -13547,8 +13535,7 @@
           "app-mobile/src/components/swipeDeck/**",
           "app-mobile/src/contexts/RecommendationsContext.tsx",
           "app-mobile/src/store/appStore.ts",
-          "app-mobile/src/store/deckSessionHistoryStore.ts",
-          "docs/INVARIANT_REGISTRY.md"
+          "app-mobile/src/store/deckSessionHistoryStore.ts"
         ],
         "jobKeys": [
           "issue-1481-deck-contract"
@@ -14167,8 +14154,7 @@
           ".github/workflows/issue-1576-deck-promoted-card.yml",
           "app-mobile/src/components/SwipeableCards.tsx",
           "app-mobile/src/components/swipeDeck/**",
-          "app-mobile/src/utils/swipeCommit.ts",
-          "docs/INVARIANT_REGISTRY.md"
+          "app-mobile/src/utils/swipeCommit.ts"
         ],
         "jobKeys": [
           "issue-1576-swap-key-parity"
@@ -14211,8 +14197,7 @@
         ],
         "pathScope": [
           ".github/workflows/issue-1579-deck-tap-expand.yml",
-          "app-mobile/src/components/swipeDeck/**",
-          "docs/INVARIANT_REGISTRY.md"
+          "app-mobile/src/components/swipeDeck/**"
         ],
         "jobKeys": [
           "issue-1579-tap-expand-admission"
@@ -14256,8 +14241,7 @@
         "pathScope": [
           ".github/workflows/issue-1593-deck-layer-geometry.yml",
           "app-mobile/src/components/SwipeableCards.tsx",
-          "app-mobile/src/components/swipeDeck/**",
-          "docs/INVARIANT_REGISTRY.md"
+          "app-mobile/src/components/swipeDeck/**"
         ],
         "jobKeys": [
           "issue-1593-layer-geometry-single-source"
@@ -14364,7 +14348,6 @@
           "app-mobile/src/components/deckHeroConstants.ts",
           "app-mobile/src/components/swipeDeck/__tests__/**",
           "app-mobile/src/constants/designSystem.ts",
-          "docs/INVARIANT_REGISTRY.md",
           "mingla-business/server/cardIdentityRenderer.js",
           "mingla-business/server/socialPreview.js",
           "packages/card-identity/**"
@@ -15235,7 +15218,7 @@
       "providerWorkflow": ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e082b80a7c67fcee6aff693da2a2f442f3b8ead0cd5c231ffab7601090413ed1",
+        "sourceSha256": "7d28201209be1bf736fe3c7fee61b0db4b187d61a2dbd08f126a8f911205b83c",
         "triggers": [
           "pull_request",
           "push"
@@ -15244,7 +15227,6 @@
           ".github/scripts/strict-grep/MANIFEST.json",
           ".github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs",
           ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "packages/card-identity/phone.d.mts",
           "packages/card-identity/phone.mjs",
           "supabase/functions/brand-person-ingest-worker/**",
@@ -15760,7 +15742,7 @@
       "providerWorkflow": ".github/workflows/issue-1857-phone-country-authority-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "4b702edcd322fccbcc220d382a8bc4da11ee0739efdbafe72ad72839840ae197",
+        "sourceSha256": "5424ce6d0e4bd8d4cec59578a6d6f818561e6f91c1daeac00e5bfee658510e57",
         "triggers": [
           "pull_request",
           "push"
@@ -15775,7 +15757,6 @@
           "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
           "app-mobile/src/services/rsvpDeckService.ts",
           "app-mobile/src/services/venueReservationService.ts",
-          "docs/INVARIANT_REGISTRY.md",
           "mingla-business/scripts/ci/bundle-baseline.json",
           "mingla-business/src/components/event/**",
           "mingla-business/src/components/stay/BuyerStayGuestExperience.tsx",
@@ -16041,7 +16022,6 @@
           ".github/workflows/issue-1902-public-event-lifecycle-tests.yml",
           "app-mobile/src/hooks/useBrandBySlug.ts",
           "app-mobile/src/screens/ConsumerBrandProfileScreen.tsx",
-          "docs/INVARIANT_REGISTRY.md",
           "mingla-business/src/components/brand/NextEventTeaser.tsx",
           "mingla-business/src/components/brand/PublicBrandPage.tsx",
           "mingla-business/src/components/event/**",
@@ -16085,7 +16065,7 @@
       "providerWorkflow": ".github/workflows/issue-1902-rsvp-backend-safety-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "ec91919ec52b5dd47dbee5bc6a1b8b3346f3e6589a57353cbb76355090ce4e9f",
+        "sourceSha256": "920591a7bbd126340084d240a6d111a8f77cf6ad7d619f6ab2381b5e69c11827",
         "triggers": [
           "pull_request",
           "push"
@@ -16093,7 +16073,6 @@
         "pathScope": [
           ".github/scripts/strict-grep/issue-1902-rsvp-backend-safety.mjs",
           ".github/workflows/issue-1902-rsvp-backend-safety-tests.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "supabase/functions/public-submit-rsvp/**",
           "supabase/migrations/**issue_1902_public_event_lifecycle*"
         ],
@@ -16255,7 +16234,7 @@
       "providerWorkflow": ".github/workflows/issue-1930-checkout-current-truth.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0e02f88ea26a96ef159d5d2bbed1327b04ac85905987003b959c69f1de9c4b28",
+        "sourceSha256": "14cf9ce9e710319d0a69198196a6390d24598a9d0ec6c29f0c4a400627a7c38f",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -16264,7 +16243,6 @@
           ".github/scripts/strict-grep/MANIFEST.json",
           ".github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs",
           ".github/workflows/issue-1930-checkout-current-truth.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "supabase/functions/_shared/*WebhookRouter.ts",
           "supabase/functions/_shared/__tests__/issue_1930_ci_integration_regressions.test.ts",
           "supabase/functions/_shared/__tests__/issue_1930_legacy_checkout_protections.implementor.test.ts",
@@ -17089,7 +17067,6 @@
         "pathScope": [
           ".github/workflows/issue-2004-share-click-canonical-destination.yml",
           "app-mobile/app/s/[code].tsx",
-          "docs/INVARIANT_REGISTRY.md",
           "mingla-business/api/content-share.js",
           "mingla-business/server/socialPreview.js",
           "mingla-business/vercel.json",
@@ -17487,7 +17464,7 @@
       "providerWorkflow": ".github/workflows/issue-2063-ari-brand-management.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a17c5912c96e32322fe05afbd45ecab600e80f57b54f9d43f40891206f036077",
+        "sourceSha256": "c9276202079ee18c5ab7a5ec6bd64c50b1ffbc6b90eb024ab9ae98a6800dbe9c",
         "triggers": [
           "pull_request",
           "push"
@@ -17496,7 +17473,6 @@
           ".github/scripts/strict-grep/MANIFEST.json",
           ".github/scripts/strict-grep/issue-2063-ari-brand-management.mjs",
           ".github/workflows/issue-2063-ari-brand-management.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "docs/contracts/ari-capability-ledger.json",
           "mingla-business/src/components/ari/ToolEditForm.tsx",
           "mingla-business/src/components/ari/ToolProposalCard.tsx",
@@ -17638,7 +17614,7 @@
       "providerWorkflow": ".github/workflows/issue-2079-paystack-late-refund-identity-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "1830b7007b800534758d40adc062673139f18b92009a8f650a63e01f892b0ea7",
+        "sourceSha256": "124f0c5b3a06beb359de4cdc8a6f0233f6f24cc76236f6577d0660c6c883530e",
         "triggers": [
           "pull_request",
           "push",
@@ -17648,7 +17624,6 @@
           ".github/scripts/strict-grep/MANIFEST.json",
           ".github/scripts/strict-grep/issue-2079-paystack-late-refund-identity.mjs",
           ".github/workflows/issue-2079-paystack-late-refund-identity-tests.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "supabase/functions/_shared/__tests__/issue_2079_evidence_hold_completes_sale.happy.test.ts",
           "supabase/functions/_shared/__tests__/issue_2079_evidence_hold_completes_sale.tester.adversarial.test.ts",
           "supabase/functions/_shared/__tests__/issue_2079_paystack_late_refund_identity.happy.test.ts",
@@ -17893,7 +17868,7 @@
       "providerWorkflow": ".github/workflows/issue-2101-named-buyer-checkout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "155425417349184981763f006798aee2db8b403a1b4f859a922168733a8f8d8b",
+        "sourceSha256": "02eeb918be43c1151fa6dfdb0d08c01b7532229bc47f2ea3b6eb253607b38305",
         "triggers": [
           "pull_request",
           "push",
@@ -17902,7 +17877,6 @@
         "pathScope": [
           ".github/actions/migrated-postgres/**",
           ".github/workflows/issue-2101-named-buyer-checkout-tests.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "docs/QUERY_KEY_REGISTRY.md",
           "mingla-business/app/accept-brand-invitation.tsx",
           "mingla-business/app/auth/**",
@@ -18038,14 +18012,13 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "6acad4f9243162da61237be6b2f4663ab916e29a3470eae9489f1c7c0d5e22af",
+        "sourceSha256": "94a8a540ab89cc662424629526b9be45e23ea38999e94bd0cc4d25c21a8d6338",
         "triggers": [
           "pull_request",
           "push"
         ],
         "pathScope": [
           ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "supabase/functions/_shared/businessNotifyTriggers.ts",
           "supabase/functions/_shared/contentShare.ts",
           "supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql",
@@ -18088,7 +18061,7 @@
       "providerWorkflow": ".github/workflows/issue-2136-free-checkout-contract-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "964f8b468ae0a110dba7cbde2d88fd6a4ba7b5cd6ffdcb6851c7a5ecadf13761",
+        "sourceSha256": "1e93228d10165103d26e0da6b14db31ac56b8cc09cd957e4f9f575965a89698c",
         "triggers": [
           "pull_request",
           "push",
@@ -18097,7 +18070,6 @@
         "pathScope": [
           ".github/actions/migrated-postgres/**",
           ".github/workflows/issue-2136-free-checkout-contract-tests.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "mingla-business/app/checkout/**",
           "mingla-business/src/services/__tests__/issue_2136_free_checkout_client_guard.test.ts",
           "mingla-business/src/services/ticketCheckoutService.ts",
@@ -18147,7 +18119,7 @@
       "providerWorkflow": ".github/workflows/issue-2150-free-resubmit-idempotent-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "45a363aeb1fdc82dde27429d2f6ae56fff09930ea56eb40ebe77d3142f7420d1",
+        "sourceSha256": "b9497285c41830003a06e375bbc1a1ba81c9bd7ccd2c9f5184dee0bdaa064df9",
         "triggers": [
           "pull_request",
           "push",
@@ -18157,7 +18129,6 @@
           ".github/scripts/strict-grep/issue-2150-free-completed-session-returned-not-tombstoned.mjs",
           ".github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs",
           ".github/workflows/issue-2150-free-resubmit-idempotent-tests.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "mingla-business/app/checkout/**",
           "mingla-business/src/components/checkout/checkoutPersistence.ts",
           "mingla-business/src/services/__tests__/issue_2150_free_resubmit_client_guard.test.ts",
@@ -18208,7 +18179,7 @@
       "providerWorkflow": ".github/workflows/issue-2160-multiday-multiselect-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "c698f5d23d400b129ef0fd793247eea86c54669d6bdc577e7ee7ace85225b6c7",
+        "sourceSha256": "11c4e053a76c8146a8d3b8c1851dca9d5aa9f6c4355437180610a109d2058050",
         "triggers": [
           "pull_request",
           "push",
@@ -18220,7 +18191,6 @@
           ".github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs",
           ".github/workflows/issue-2160-multiday-multiselect-tests.yml",
           "app-mobile/src/services/calendarService.ts",
-          "docs/INVARIANT_REGISTRY.md",
           "mingla-business/app/checkout/**",
           "mingla-business/app/event/[id]/guests/**",
           "mingla-business/src/components/checkout/CartContext.tsx",
@@ -18542,7 +18512,7 @@
       "providerWorkflow": ".github/workflows/issue-2217-confirmation-app-cta-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "ceac117df16f20084e00d2858a4bfcd0e60f1673a2378d35318d64814d092e83",
+        "sourceSha256": "79a54dfa7b7ab6849466fb5cd30dd9fb903401fb21e64135bbf60d729e63cb12",
         "triggers": [
           "pull_request",
           "push",
@@ -18552,7 +18522,6 @@
           ".github/workflows/issue-2217-confirmation-app-cta-tests.yml",
           "app-mobile/app/index.tsx",
           "app-mobile/src/services/attendanceClaimService.ts",
-          "docs/INVARIANT_REGISTRY.md",
           "mingla-business/app/checkout-experience/**",
           "mingla-business/app/checkout-trip/**",
           "mingla-business/app/checkout/**",
@@ -18674,7 +18643,6 @@
           "app-mobile/src/screens/Event/__tests__/issue_2230_*",
           "app-mobile/src/screens/Event/__tests__/orch_1342_cold_seed_landing.test.ts",
           "app-mobile/src/utils/eventDateDisplay.ts",
-          "docs/INVARIANT_REGISTRY.md",
           "packages/offering-rendering/QuantityRow.tsx"
         ],
         "jobKeys": [
@@ -18715,7 +18683,7 @@
       "providerWorkflow": ".github/workflows/issue-2240-email-app-link-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "c5da8d285b8ac8bfabe1bea6a096575278996f72d9992f6f2249d8aaf0147c75",
+        "sourceSha256": "dd00b5568af74dfa13d5251ec43d51818b86aebb33b6191b7236ea4b982ff80c",
         "triggers": [
           "pull_request",
           "push",
@@ -18724,7 +18692,6 @@
         "pathScope": [
           ".github/scripts/strict-grep/i-2240-email-app-link-sole-owner.mjs",
           ".github/workflows/issue-2240-email-app-link-tests.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "mingla-business/src/constants/storeLinks.ts",
           "mingla-business/src/services/guestFunnelLink.ts",
           "mingla-marketing/app/download/**",
@@ -18952,7 +18919,7 @@
       "providerWorkflow": ".github/workflows/issue-2269-verified-phone-claim-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "d41edc9b7c00f4aacbfaea095dbb45bfa684513c1b36dad781ff2400e8e03fce",
+        "sourceSha256": "e7f054a132f0a1d3ab5c2efe5590455c3d5f89fd6ed93855e8a0d051f1071e04",
         "triggers": [
           "pull_request",
           "push",
@@ -18960,7 +18927,6 @@
         ],
         "pathScope": [
           ".github/workflows/issue-2269-verified-phone-claim-tests.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "supabase/config.toml",
           "supabase/functions/_shared/seedReviewerAccount.ts",
           "supabase/functions/attendance-claim-identity/**",
@@ -19114,7 +19080,7 @@
       "providerWorkflow": ".github/workflows/issue-2305-conflict-resolution-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "626d640f98545f78c1726fb74fa307ea8f059c1b37394e720d72ab05ec130fff",
+        "sourceSha256": "f1def9867de28a4694eeb580550189fc486a56f55cbbde52be674cae5f358a08",
         "triggers": [
           "pull_request",
           "push",
@@ -19125,7 +19091,6 @@
           ".github/scripts/strict-grep/__tests__/issue-2305-status-table-has-a-resolver.test.mjs",
           ".github/scripts/strict-grep/issue-2305-status-table-has-a-resolver.mjs",
           ".github/workflows/issue-2305-conflict-resolution-tests.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "supabase/migrations/20270305001770_issue_1770_ring1_brand_people_foundation.sql",
           "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql",
           "supabase/migrations/20270328001775_issue_1775_csv_contact_import.sql",
@@ -19397,7 +19362,7 @@
       "providerWorkflow": ".github/workflows/issue-2337-free-409-honest-copy-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0b56470aaf729ec60d53ef627f8d366d8d26cdae2a51a57352936f0c78028ae7",
+        "sourceSha256": "3b4d20c12594e0f1af613f08cf92921646c561e7fa1031328a1719cd43885d9e",
         "triggers": [
           "pull_request",
           "push",
@@ -19405,7 +19370,6 @@
         ],
         "pathScope": [
           ".github/workflows/issue-2337-free-409-honest-copy-tests.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "mingla-business/app/checkout-trip/**",
           "mingla-business/app/checkout/**",
           "mingla-business/src/components/checkout/checkoutPersistence.ts",
@@ -19733,7 +19697,7 @@
       "providerWorkflow": ".github/workflows/issue-2395-manual-contact-groups-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "bf886b446ccc0ccb225e8954b2c78d391c96152e90efbc017140e35116d87955",
+        "sourceSha256": "efbe52c3ebb5a81cd267dc5eb24d95218a99759ce4c4cdecfa090358c5e63de9",
         "triggers": [
           "pull_request",
           "push",
@@ -19743,7 +19707,6 @@
           ".github/scripts/strict-grep/MANIFEST.json",
           ".github/scripts/strict-grep/issue-2395-manual-contact-groups*.mjs",
           ".github/workflows/issue-2395-manual-contact-groups-tests.yml",
-          "docs/INVARIANT_REGISTRY.md",
           "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx",
           "mingla-business/app/(tabs)/people/groups/**",
           "mingla-business/app/(tabs)/people/import.tsx",
@@ -20000,7 +19963,7 @@
       "providerWorkflow": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "4c85dd78c9c5b4e02654c7450052aa6e85e3bd631aaccbd1cfabb9907282ba8f",
+        "sourceSha256": "a44118abfa87d7388d37acd3cc4c7a60282e8975eb8ae38f319fbfc86939e600",
         "triggers": [
           "pull_request"
         ],
@@ -20016,7 +19979,6 @@
           ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs",
           ".github/workflows/issue-871-attendance-entitlement-tests.yml",
           "app-mobile/**",
-          "docs/INVARIANT_REGISTRY.md",
           "mingla-business/**",
           "supabase/config.toml",
           "supabase/functions/_shared/attendanceClaim.ts",
@@ -21937,7 +21899,7 @@
     ],
     "registrySha256": "76d627f1f117923c41dc2a4b928d606a134c2a3a0d948010e565828fa91be89d"
   },
-  "phase3bContractSha256": "8b3a94d67e1e32b7cb5580bbab84db525ad196769608d42cc0607652a3c6cad9",
+  "phase3bContractSha256": "ed21e7fa388d9eb7ab66feb2f578c617d2b2d5977c7f954471003fc2522efb87",
   "workflowProviders": [
     {
       "workflow": "bundle-baseline-provenance-guard.yml",
@@ -27156,5 +27118,5 @@
     "issue-2321-account-deletion-tests": "business-node20-2",
     "orch-1371-1372-tester-adversarial": "business-node20-1"
   },
-  "phase3cContractSha256": "caaed7cab03f977c040a68e884b2c2dfb4316f832756de8e10943179d2e5abe5"
+  "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849"
 }

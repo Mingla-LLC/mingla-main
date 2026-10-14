@@ -6,7 +6,6 @@ on:
     paths:
       - "supabase/migrations/**issue_1902_public_event_lifecycle*"
       - "supabase/functions/public-submit-rsvp/**"
-      - "docs/INVARIANT_REGISTRY.md"
       - ".github/scripts/strict-grep/issue-1902-rsvp-backend-safety.mjs"
       - ".github/workflows/issue-1902-rsvp-backend-safety-tests.yml"
   pull_request:
@@ -15,7 +14,6 @@ on:
     paths:
       - "supabase/migrations/**issue_1902_public_event_lifecycle*"
       - "supabase/functions/public-submit-rsvp/**"
-      - "docs/INVARIANT_REGISTRY.md"
       - ".github/scripts/strict-grep/issue-1902-rsvp-backend-safety.mjs"
       - ".github/workflows/issue-1902-rsvp-backend-safety-tests.yml"
 
