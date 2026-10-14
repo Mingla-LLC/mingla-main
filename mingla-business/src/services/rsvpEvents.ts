@@ -10,7 +10,11 @@
  */
 
 import { supabase } from "./supabase";
-import { parseRsvpErrorCode, type RsvpInvokeError } from "./rsvpErrorCodes";
+import {
+  parseRsvpErrorCode,
+  readRsvpErrorCode,
+  type RsvpInvokeError,
+} from "./rsvpErrorCodes";
 import { RsvpRpcError } from "./rsvpRpcFailure";
 import {
   eventFromPublishResponse,
@@ -183,7 +187,8 @@ export const submitPublicRsvp = async (
   // context.body carries the { error } code — bubble the code so the UI can
   // show the right inline message (rsvp_contact_required / rsvp_full / …).
   if (error !== null) {
-    throw new Error(parseRsvpErrorCode(error as RsvpInvokeError));
+    // #3380 — read the code from the response body (see readRsvpErrorCode).
+    throw new Error(await readRsvpErrorCode(error as RsvpInvokeError));
   }
   const res = (data ?? {}) as {
     status?: "going" | "not_going" | "waitlisted" | "maybe";

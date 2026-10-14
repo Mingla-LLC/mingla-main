@@ -259,6 +259,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #3660 — biz_my_host_account_deletion_blockers answers for auth.uid() only
   // and raises without one; the blockers query folds isAuthReady into enabled.
   "useAccountDeletion.ts",
+  // #3380 — reads the viewer's own `profiles.phone` (RLS auth.uid() = id); an
+  // early read returns no row and would read as "no phone", so it folds
+  // isAuthReady into enabled. Signed-out viewers never run it.
+  "useOwnProfilePhoneOnFile.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads
