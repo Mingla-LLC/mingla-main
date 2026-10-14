@@ -54,6 +54,7 @@ import {
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { currencyCodeOrNull } from "../../../src/utils/currency";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
+import { useCancelBusinessEvent } from "../../../src/hooks/useBusinessEvents";
 import { useOfferingPayoutMoney } from "../../../src/hooks/useOfferingPayoutMoney";
 import { TripManageMenu } from "../../../src/components/trip/TripManageMenu";
 import {
@@ -94,6 +95,12 @@ import {
   resolveTripTierSoldCount,
   tripDashboardBundleProofTestID,
 } from "../../../src/utils/tripDashboardDisplay";
+import {
+  cancelDoneToast,
+  cancelTripDialogDescription,
+  knownPaidOrderCount,
+  nothingToRefundIsKnown,
+} from "../../../src/utils/cancelEventCopy";
 // #3372 — naira shows "₦", not "NGN", on the host trip screen (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 
@@ -157,14 +164,13 @@ function normalizeCoverMediaType(value: string | null): EventCoverMediaType | nu
   return null;
 }
 
-// #3645 — what cancelling a trip really does. It takes the trip down, and only
-// when nobody has booked: with any booking the server refuses and nothing
-// changes. No refund is started here and no buyer is contacted, so the copy
-// promises neither.
-const TRIP_CANCEL_DESCRIPTION =
+// Draft deletion remains on biz_soft_delete_trip. Published Trips use the
+// canonical event cancellation path below, which can cancel booked Trips.
+const TRIP_DRAFT_DELETE_DESCRIPTION =
   "This takes the trip down for good. A trip that has bookings can't be cancelled here: nothing will change. You can't undo this.";
-const TRIP_CANCEL_HAS_BOOKINGS_COPY =
+const TRIP_DRAFT_DELETE_HAS_BOOKINGS_COPY =
   "This trip has bookings, so it wasn't cancelled. Nothing was changed. Email support@usemingla.com for help.";
+const TRIP_CANCEL_ERROR = "Could not cancel trip. Try again.";
 
 export default function TripDashboardRoute(): React.ReactElement {
   const router = useRouter();
@@ -211,7 +217,9 @@ export default function TripDashboardRoute(): React.ReactElement {
   const [manageMenuVisible, setManageMenuVisible] = useState<boolean>(false);
   const [cancelDialogVisible, setCancelDialogVisible] = useState<boolean>(false);
   const [cancelSubmitting, setCancelSubmitting] = useState<boolean>(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const softDeleteMutation = useSoftDeleteTrip();
+  const cancelMutation = useCancelBusinessEvent();
   // issue #3237 — true once, straight after this trip was published.
   // #3645 — and no longer once it is returned to draft or cancelled.
   const publishedArrival = useJustPublishedArrival(
@@ -454,6 +462,20 @@ export default function TripDashboardRoute(): React.ReactElement {
     if (canOpenPublic) {
       router.push(`/t/${trip.brandSlug}/${trip.slug}` as never);
     }
+  };
+  const cancelPaidOrderCount = knownPaidOrderCount(
+    recordOrdersQuery.status,
+    recordOrdersQuery.data ?? [],
+  );
+  const cancelNothingToRefund = nothingToRefundIsKnown({
+    ordersStatus: recordOrdersQuery.status,
+    orders: recordOrdersQuery.data ?? [],
+    doorSoldCount: 0,
+    doorSalesEnabled: false,
+  });
+  const handleCancelDialogOpen = (): void => {
+    setCancelError(null);
+    setCancelDialogVisible(true);
   };
 
   return (
@@ -712,7 +734,7 @@ export default function TripDashboardRoute(): React.ReactElement {
               label="Cancel trip"
               variant="ghost"
               size="md"
-              onPress={() => setCancelDialogVisible(true)}
+              onPress={handleCancelDialogOpen}
               fullWidth
               testID="trip-dashboard-cancel-cta"
             />
@@ -721,20 +743,25 @@ export default function TripDashboardRoute(): React.ReactElement {
       </ScrollView>
 
       {/* ORCH-0874: TripManageMenu (right-slot moreH opens this) */}
-      <TripManageMenu
-        visible={manageMenuVisible}
-        onClose={() => setManageMenuVisible(false)}
-        onShare={handleShareOpen}
-        onEdit={() => router.push(`/trip/${trip.id}/edit` as never)}
-        onViewPublic={handleViewPublic}
-        canOpenPublicPage={canOpenPublic}
-        onCancelTrip={() => setCancelDialogVisible(true)}
-        canCancelTrip={
-          trip.status !== "draft" &&
-          trip.status !== "ended" &&
-          trip.status !== "cancelled"
-        }
-      />
+      {manageMenuVisible ? (
+        <TripManageMenu
+          visible
+          onClose={() => setManageMenuVisible(false)}
+          onShare={handleShareOpen}
+          onEdit={() => router.push(`/trip/${trip.id}/edit` as never)}
+          onViewPublic={handleViewPublic}
+          canOpenPublicPage={canOpenPublic}
+          onCancelTrip={() => {
+            setManageMenuVisible(false);
+            handleCancelDialogOpen();
+          }}
+          canCancelTrip={
+            trip.status !== "draft" &&
+            trip.status !== "ended" &&
+            trip.status !== "cancelled"
+          }
+        />
+      ) : null}
 
       {/* ORCH-0874: ShareModal — opened from header share IconChrome or
           TripManageMenu share row */}
@@ -759,50 +786,63 @@ export default function TripDashboardRoute(): React.ReactElement {
         visible={cancelDialogVisible}
         onClose={() => {
           if (cancelSubmitting) return;
+          setCancelError(null);
           setCancelDialogVisible(false);
         }}
         onConfirm={async () => {
+          setCancelError(null);
           setCancelSubmitting(true);
           try {
-            const result = await softDeleteMutation.mutateAsync({
-              eventId: trip.id,
-              brandId: trip.brandId,
-            });
-            // #3645 — the server refuses to cancel a trip that has bookings
-            // and changes nothing. This screen used to say "Trip cancelled."
-            // and leave anyway.
-            if (result.rejected) {
+            if (trip.status === "draft") {
+              const result = await softDeleteMutation.mutateAsync({
+                eventId: trip.id,
+                brandId: trip.brandId,
+              });
+              if (result.rejected) {
+                setCancelDialogVisible(false);
+                setToast({
+                  visible: true,
+                  kind: "warn",
+                  message: TRIP_DRAFT_DELETE_HAS_BOOKINGS_COPY,
+                });
+                return;
+              }
               setCancelDialogVisible(false);
               setToast({
                 visible: true,
-                kind: "warn",
-                message: TRIP_CANCEL_HAS_BOOKINGS_COPY,
+                kind: "info",
+                message: "Trip cancelled.",
               });
+              setTimeout(() => router.back(), 300);
               return;
             }
+
+            await cancelMutation.cancelEvent({
+              eventId: trip.id,
+              brandId: trip.brandId,
+            });
+            await tripQuery.refetch();
             setCancelDialogVisible(false);
             setToast({
               visible: true,
               kind: "info",
-              message: "Trip cancelled.",
+              message: cancelDoneToast(cancelPaidOrderCount, "Trip"),
             });
-            // Route back so the operator sees the updated list.
-            setTimeout(() => router.back(), 300);
-          } catch (e) {
-            setToast({
-              visible: true,
-              kind: "error",
-              message:
-                e instanceof Error
-                  ? e.message
-                  : "Couldn't cancel trip. Try again.",
-            });
+          } catch {
+            setCancelError(TRIP_CANCEL_ERROR);
           } finally {
             setCancelSubmitting(false);
           }
         }}
         title="Cancel this trip?"
-        description={TRIP_CANCEL_DESCRIPTION}
+        description={
+          trip.status === "draft"
+            ? TRIP_DRAFT_DELETE_DESCRIPTION
+            : cancelTripDialogDescription({
+                nothingToRefund: cancelNothingToRefund,
+                paidOrderCount: cancelPaidOrderCount,
+              })
+        }
         variant="typeToConfirm"
         confirmText={trip.title.length > 0 ? trip.title : trip.slug}
         confirmLabel="Cancel trip"
@@ -810,6 +850,9 @@ export default function TripDashboardRoute(): React.ReactElement {
         confirmLoading={cancelSubmitting}
         confirmDisabled={cancelSubmitting}
         closeDisabled={cancelSubmitting}
+        errorMessage={cancelError}
+        errorTestID="trip-dashboard-cancel-error"
+        initialFocus="cancel"
         destructive
         testID="trip-dashboard-cancel-dialog"
       />
