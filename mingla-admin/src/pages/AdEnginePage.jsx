@@ -32,6 +32,7 @@ import {
   runPreflight,
   syncCampaigns,
 } from "../services/adEngineService";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const OBJECTIVES = [
   "OUTCOME_TRAFFIC",
@@ -316,24 +317,22 @@ export function AdEnginePage() {
   return (
     <div className="space-y-6">
       {/* toward #3697 Wave 3 — Ads console hub: connections stay here; create/launch live on Builder + Campaigns. */}
-      <section aria-labelledby="ads-console-heading" className="space-y-3">
-        <div>
-          <h1 id="ads-console-heading" className="text-xl font-semibold flex items-center gap-2">
-            <Megaphone size={22} aria-hidden="true" /> Ads console
-          </h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-            Connect platforms and check channel health here. Build campaigns in the wizard;
-            launch, pause, and watch spend vs hard cap on Campaigns.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" icon={Rocket} onClick={() => { window.location.hash = "#/campaign-builder"; }}>
-            Campaign Builder
-          </Button>
-          <Button size="sm" variant="secondary" onClick={() => { window.location.hash = "#/campaigns"; }}>
-            Open Campaigns
-          </Button>
-        </div>
+      <section aria-labelledby="ads-console-heading">
+        <PageHeader
+          titleId="ads-console-heading"
+          title="Ads console"
+          description="Connect platforms and check channel health here. Build campaigns in the wizard; launch, pause, and watch spend vs hard cap on Campaigns."
+          actions={
+            <>
+              <Button size="sm" icon={Rocket} onClick={() => { window.location.hash = "#/campaign-builder"; }}>
+                Campaign Builder
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => { window.location.hash = "#/campaigns"; }}>
+                Open Campaigns
+              </Button>
+            </>
+          }
+        />
       </section>
 
       {/* ── ISSUE-978 [Ad Connections panel] — all 5 platforms, one-click

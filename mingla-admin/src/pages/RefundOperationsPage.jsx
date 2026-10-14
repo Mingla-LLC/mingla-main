@@ -9,6 +9,7 @@ import {
   SESSION_EXPIRED_MESSAGE,
 } from "../services/refundOperationsService";
 import { useAuth } from "../context/AuthContext";
+import { PageHeader } from "../components/ui/PageHeader";
 
 function money(cents, currency) {
   try {
@@ -211,18 +212,16 @@ export function RefundOperationsPage() {
     : [];
 
   if (!view && !error) {
-    return <div className="p-8">Loading refund operations…</div>;
+    return <div>Loading refund operations…</div>;
   }
   return (
-    <main className="p-8 space-y-5">
-      <header>
-        <h1 className="text-2xl font-semibold">Refund operations</h1>
-        <p className="text-sm text-gray-500">
-          Queue captured at {view?.snapshot_created_at
-            ? new Date(view.snapshot_created_at).toLocaleTimeString()
-            : "—"}
-        </p>
-      </header>
+    <div className="space-y-6">
+      <PageHeader
+        title="Refund operations"
+        description={`Queue captured at ${view?.snapshot_created_at
+          ? new Date(view.snapshot_created_at).toLocaleTimeString()
+          : "—"}`}
+      />
       {error && (
         <div role="alert" className="rounded border border-red-300 p-4">
           {error}{" "}
@@ -462,6 +461,6 @@ export function RefundOperationsPage() {
           )}
         </aside>
       )}
-    </main>
+    </div>
   );
 }

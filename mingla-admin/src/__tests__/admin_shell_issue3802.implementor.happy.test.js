@@ -359,3 +359,111 @@ describe("#3802 S-7: the frame", () => {
     assert.equal((code.match(/<main\b/g) || []).length, 1);
   });
 });
+
+describe("#3802 S-8: one page header, and no page setting its own frame", () => {
+  const PAGES_DIR = path.join(SRC, "pages");
+  // Every page that starts with the one header.
+  const MIGRATED = [
+    "AdEnginePage.jsx", "AdminPage.jsx", "ApiHealthPage.jsx", "BrandSitesPage.jsx", "BrandsConsolePage.jsx",
+    "BusinessMoneyLedgerPage.jsx", "BusinessOrdersPage.jsx", "BusinessPaymentsPage.jsx", "CampaignBuilderPage.jsx",
+    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "DeckScoreTunerPage.jsx", "EmailPage.jsx",
+    "LaunchCitiesPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx",
+    "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "RefundOperationsPage.jsx",
+    "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
+    "SupportDeskPage.jsx", "ToolLeadsPage.jsx", "UserManagementPage.jsx", "VenuesConsolePage.jsx",
+  ];
+  // The five pages another piece of #3802 work is editing. They move to the
+  // one header in a follow-up; until then they are named here, so a page can
+  // never be in neither list.
+  const FOLLOW_UP = ["AgentPage.jsx", "BetaLeadsPage.jsx", "PipelinePage.jsx", "RoleHomePage.jsx", "TeamDashboardPage.jsx"];
+  const page = (file) => stripComments(fs.readFileSync(path.join(PAGES_DIR, file), "utf8"));
+  // The classes that make a frame of a page's own: padding, a width, centring.
+  const OWN_FRAME = /(?:^|\s)(?:p|px|py|pt|pb|pl|pr)-(?:\d|\[)|(?:^|\s)max-w-|(?:^|\s)mx-auto(?:\s|$)/;
+
+  // The outermost element a <PageHeader> is drawn in: the first tag after the
+  // `return (` that precedes it.
+  function rootsHoldingHeader(source) {
+    const roots = [];
+    let at = source.indexOf("<PageHeader");
+    while (at !== -1) {
+      const ret = source.lastIndexOf("return (", at);
+      assert.ok(ret !== -1, "a <PageHeader> must sit inside a returned element");
+      const tag = source.slice(ret, at).match(/<([A-Za-z][\w.]*)([^>]*)>/);
+      assert.ok(tag, "the element holding <PageHeader> was not found");
+      roots.push({ name: tag[1], className: (tag[2].match(/className="([^"]*)"/) || [])[1] ?? "" });
+      at = source.indexOf("<PageHeader", at + 1);
+    }
+    return roots;
+  }
+
+  it("every page is either on the one header or named for the follow-up", () => {
+    const all = fs.readdirSync(PAGES_DIR).filter((f) => /Page\.jsx$/.test(f)).sort();
+    assert.deepEqual([...MIGRATED, ...FOLLOW_UP].sort(), all);
+    assert.equal(MIGRATED.length, 30);
+  });
+
+  it("every migrated page draws the one header", () => {
+    for (const file of MIGRATED) {
+      const source = page(file);
+      assert.ok(source.includes('import { PageHeader } from "../components/ui/PageHeader";'), `${file} must import PageHeader`);
+      assert.ok(/<PageHeader\b/.test(source), `${file} must draw <PageHeader>`);
+    }
+  });
+
+  it("the title is the header's: no migrated page writes an <h1> or a <main> of its own", () => {
+    for (const file of MIGRATED) {
+      const source = page(file);
+      assert.equal(/<h1\b/.test(source), false, `${file} has its own <h1>`);
+      assert.equal(/<main\b/.test(source), false, `${file} has its own <main> inside the shell's`);
+    }
+    assert.equal((stripComments(PAGE_HEADER).match(/<h1\b/g) || []).length, 1);
+  });
+
+  it("no migrated page sets its own outer padding, width or centring", () => {
+    for (const file of MIGRATED) {
+      for (const root of rootsHoldingHeader(page(file))) {
+        assert.equal(OWN_FRAME.test(root.className), false, `${file}: the page root sets its own frame ("${root.className}")`);
+      }
+    }
+  });
+
+  it("the old page wrappers are gone from every page", () => {
+    const old = ['<div className="py-8', '<div className="py-6 ', "space-y-4 py-6", "max-w-6xl mx-auto", '<div className="p-8', '<main className="p-8', '<div className="p-6 space-y-6'];
+    for (const file of [...MIGRATED, ...FOLLOW_UP]) {
+      const source = page(file);
+      for (const wrapper of old) assert.equal(source.includes(wrapper), false, `${file} still has ${wrapper}`);
+    }
+  });
+
+  it("one spacing scale: 24px between a page's sections", () => {
+    for (const file of MIGRATED) {
+      for (const root of rootsHoldingHeader(page(file))) {
+        if (root.name === "section") continue;
+        assert.ok(/(?:^|\s)(?:gap-6|space-y-6)(?:\s|$)/.test(root.className), `${file}: "${root.className}" is not the 24px scale`);
+      }
+    }
+  });
+
+  it("the header itself: one title style, a description, actions, a way back, tabs on the divider", () => {
+    const code = stripComments(PAGE_HEADER);
+    assert.ok(code.includes("export function PageHeader({ title, description, meta, actions, back, tabs, titleId })"));
+    const h1 = code.match(/<h1[\s\S]*?className="([^"]*)"/);
+    assert.ok(h1);
+    for (const cls of ["text-[22px]", "leading-7", "font-semibold", "tracking-[-0.02em]"]) {
+      assert.ok(h1[1].split(/\s+/).includes(cls), `the title must be ${cls}`);
+    }
+    assert.ok(code.includes("onClick={back.onClick}"), "a back control always does something");
+    assert.ok(/\{tabs && <div[^>]*>\{tabs\}<\/div>\}/.test(code));
+    const root = code.match(/<header className="([^"]*)"/);
+    assert.ok(root);
+    assert.equal(OWN_FRAME.test(root[1]), false, "the header adds no frame of its own either");
+  });
+
+  it("the pages that had no title have one", () => {
+    assert.ok(page("EmailPage.jsx").includes('title="Email"'));
+    assert.ok(page("CampaignsPage.jsx").includes('title="Campaigns"'));
+    assert.ok(page("CampaignBuilderPage.jsx").includes('<PageHeader title="Campaign Builder" />'));
+    // Campaigns: the card's own heading moved up; it is not written twice.
+    assert.equal((page("CampaignsPage.jsx").match(/title="Campaigns"/g) || []).length, 1);
+  });
+});

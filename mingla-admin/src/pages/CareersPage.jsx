@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Briefcase, Download, ExternalLink, Plus } from "lucide-react";
+import { Download, ExternalLink, Plus } from "lucide-react";
 import { SectionCard, AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
@@ -32,6 +32,7 @@ import {
   slugify,
   upsertPosting,
 } from "../services/careersService";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const APP_STATUS_TABS = [
   { id: null, label: "All" },
@@ -256,16 +257,10 @@ export function CareersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex items-start gap-3">
-        <Briefcase className="h-8 w-8 text-[var(--color-brand-500)]" />
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Careers</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-            Applications from career.usemingla.com + the open-role manager.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Careers"
+        description="Applications from career.usemingla.com + the open-role manager."
+      />
 
       {/* Section switch */}
       <div className="flex flex-wrap gap-2">

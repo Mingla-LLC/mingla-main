@@ -20,6 +20,7 @@ import {
   refundOrder,
 } from "../services/adminMoneyActService";
 import { timeAgo, formatDateTime } from "../lib/formatters";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // Order payment_status values (DB enum) an admin may refund.
 const REFUNDABLE_STATUSES = ["paid", "partial_refund"];
@@ -513,7 +514,7 @@ export function BusinessOrdersPage() {
     }
 
     return (
-      <div className="py-8">
+      <div>
         <EntityDetailView
           loading={loading}
           error={error}
@@ -554,19 +555,11 @@ export function BusinessOrdersPage() {
 
   // ── List view ─────────────────────────────────────────────────────────────
   return (
-    <div className="py-8 flex flex-col gap-6">
-      <div className="flex items-start gap-3 flex-wrap">
-        <div className="w-10 h-10 rounded-full bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
-          <Receipt className="w-5 h-5 text-[var(--color-brand-500)]" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Orders</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            Every order across the platform — buyer, offering, brand, amount, and status. Open one for the
-            full money record. Read-only.
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Orders"
+        description="Every order across the platform — buyer, offering, brand, amount, and status. Open one for the full money record. Read-only."
+      />
 
       <EntityListView
         title="All orders"

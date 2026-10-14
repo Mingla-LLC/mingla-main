@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft,
-  Globe,
   RefreshCw,
   Search,
   ShieldAlert,
@@ -18,6 +17,7 @@ import {
   listBrandSites,
   runBrandSiteAction,
 } from "../services/brandSitesAdminService";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const STATUS_VARIANT = {
   published: "success",
@@ -110,19 +110,12 @@ function BrandSitesList({ onSelect }) {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="mb-1 flex items-center gap-2">
-            <Globe className="h-6 w-6 text-[var(--color-brand-500)]" />
-            <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Brand Sites</h1>
-          </div>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            Operational health, publication state, and safe recovery controls.
-          </p>
-        </div>
-        <Button variant="secondary" icon={RefreshCw} onClick={load} loading={state.loading}>Refresh</Button>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Brand Sites"
+        description="Operational health, publication state, and safe recovery controls."
+        actions={<Button variant="secondary" icon={RefreshCw} onClick={load} loading={state.loading}>Refresh</Button>}
+      />
 
       <AlertCard variant="info" title="Customer-facing systems stay provider-neutral">
         This console shows operational signals and immutable publication identifiers. It does not expose credentials or draft content.
@@ -209,14 +202,14 @@ function BrandSiteDetail({ siteId, onBack }) {
   const canReconcile = ambiguousReceipt !== null;
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <Button variant="ghost" icon={ArrowLeft} onClick={onBack} aria-label="Back to all sites" />
-          <div><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-bold text-[var(--color-text-primary)]">{site.brand_name}</h1><Badge dot variant={STATUS_VARIANT[site.status] || "default"}>{site.status}</Badge>{readiness.pilot_enabled ? <Badge variant="brand">Pilot</Badge> : null}</div><p className="font-mono text-xs text-[var(--color-text-tertiary)]">{site.site_id}</p></div>
-        </div>
-        <Button variant="secondary" icon={RefreshCw} onClick={load}>Refresh</Button>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        back={{ label: "Back to all sites", onClick: onBack }}
+        title={site.brand_name}
+        meta={<><Badge dot variant={STATUS_VARIANT[site.status] || "default"}>{site.status}</Badge>{readiness.pilot_enabled ? <Badge variant="brand">Pilot</Badge> : null}</>}
+        description={<span className="font-mono text-xs text-[var(--color-text-tertiary)]">{site.site_id}</span>}
+        actions={<Button variant="secondary" icon={RefreshCw} onClick={load}>Refresh</Button>}
+      />
 
       {site.safe_error_code ? <AlertCard variant="error" title="Safe error code">{site.safe_error_code}. The last successful publication remains intact.</AlertCard> : null}
 

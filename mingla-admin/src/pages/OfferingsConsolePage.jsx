@@ -16,6 +16,7 @@ import { Badge } from "../components/ui/Badge";
 import { listOfferings, listOfferingBrands } from "../services/offeringsService";
 import { OfferingDetailView } from "./OfferingDetailView";
 import { formatDateTime, timeAgo } from "../lib/formatters";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // ── Badge maps ────────────────────────────────────────────────────────────────
 
@@ -179,7 +180,7 @@ export function OfferingsConsolePage() {
   // ── Detail view ───────────────────────────────────────────────────────────
   if (selectedId) {
     return (
-      <div className="py-8">
+      <div>
         <OfferingDetailView eventId={selectedId} onBack={backToList} />
       </div>
     );
@@ -187,19 +188,11 @@ export function OfferingsConsolePage() {
 
   // ── List view ─────────────────────────────────────────────────────────────
   return (
-    <div className="py-8 flex flex-col gap-6">
-      <div className="flex items-start gap-3 flex-wrap">
-        <div className="w-10 h-10 rounded-full bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
-          <CalendarDays className="w-5 h-5 text-[var(--color-brand-500)]" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Offerings</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            Every event, RSVP, trip, and experience across all brands — including drafts, private, and
-            deleted. Open one for the type-aware detail: tiers, orders, guest list, itinerary.
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Offerings"
+        description="Every event, RSVP, trip, and experience across all brands — including drafts, private, and deleted. Open one for the type-aware detail: tiers, orders, guest list, itinerary."
+      />
 
       <EntityListView
         title="All offerings"

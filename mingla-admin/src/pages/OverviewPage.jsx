@@ -15,6 +15,7 @@ import { Button } from "../components/ui/Button";
 import { timeAgo, formatDate, formatDateTime, truncate, escapeLike } from "../lib/formatters";
 import { logAdminAction, ACTION_LABELS } from "../lib/auditLog";
 import { exportCsv } from "../lib/exportCsv";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const ICON_MAP = { Users, Sparkles, Layers, Handshake, LayoutDashboard, Star, MessageSquare, Flag };
 
@@ -276,11 +277,8 @@ export function OverviewPage({ onTabChange }) {
   const hasAlerts = alerts.pendingReports > 0 || alerts.expiredCaches > 0 || alerts.expiringOverrides > 0;
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Dashboard</h1>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Dashboard" />
 
       {/* Alerts Bar */}
       {hasAlerts && (

@@ -19,6 +19,7 @@ import { AlertCard } from "../components/ui/Card";
 import { listBrandStripeStatus, getBrandStripeStatus } from "../services/adminMoneyService";
 import { connectAction } from "../services/adminMoneyActService";
 import { formatDateTime } from "../lib/formatters";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // Map admin-stripe-connect-action edge-fn error codes → user-facing copy.
 function connectErrorCopy(code) {
@@ -341,7 +342,7 @@ export function BusinessPaymentsPage() {
     }
 
     return (
-      <div className="py-8">
+      <div>
         <EntityDetailView
           loading={loading}
           error={error}
@@ -415,19 +416,11 @@ export function BusinessPaymentsPage() {
 
   // ── List view ─────────────────────────────────────────────────────────────
   return (
-    <div className="py-8 flex flex-col gap-6">
-      <div className="flex items-start gap-3 flex-wrap">
-        <div className="w-10 h-10 rounded-full bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
-          <CreditCard className="w-5 h-5 text-[var(--color-brand-500)]" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Payments</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            Every brand's payout readiness — Stripe Connect or Paystack status, what's blocking KYC, and the
-            bank accounts on file. Read-only.
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Payments"
+        description="Every brand's payout readiness — Stripe Connect or Paystack status, what's blocking KYC, and the bank accounts on file. Read-only."
+      />
 
       <EntityListView
         title="Payment providers"

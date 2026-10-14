@@ -59,6 +59,7 @@ import {
 import { areAllExpectedCreatePairsSuccessful } from "../lib/adBuilder/createProgress";
 import { loadFeatureFlags } from "../lib/featureFlags";
 import { AlertCard } from "../components/ui/Card";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const STEPS = [
   { id: "lane", label: "Lane" },
@@ -889,7 +890,8 @@ export function CampaignBuilderPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <PageHeader title="Campaign Builder" />
       <Stepper
         steps={STEPS}
         activeIndex={activeIndex}
