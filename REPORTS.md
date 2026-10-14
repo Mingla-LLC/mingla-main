@@ -20,6 +20,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-10-13 — Connecting your own agent to Mingla Admin is now one pasted message, and a connected agent can add, update, move and log on the Hosts and Creators boards under your name; hosts gain an Experience host type, records gain searchable emails, phones and handles and a Do not contact mark — web `[deploy]`, migration applied before merge (toward #3802, PR #TBD)
 - 2026-10-13 — When a host asks Ari to run a Meta ad, Mingla creates the real Meta campaign from a READY image creative (no more placeholder IDs), launches and pauses it on Meta, and returns Ads credit if Meta activate fails — web `[deploy]` (toward #3697, PR #3836)
 - 2026-10-13 — Hosts can Cancel an ad before any spend (full credit back) or End it after spend — never both on one card — filter Ads by Live/Paused/Ended, and every Host or Admin launch attempt emails the ops inbox — web `[deploy]` (toward #3697, PR #3834)
 - 2026-10-13 — Host web: a cover video that runs a few frames over 15 seconds (a phone "15 second" clip is really 15.015 s) is now accepted instead of being refused with "Choose a video that is 15 seconds or shorter"; anything over 15.5 seconds is still refused, and the phone apps still open the trimmer (toward #3040, PR #3828)
