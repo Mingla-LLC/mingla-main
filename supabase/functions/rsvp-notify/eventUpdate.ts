@@ -114,7 +114,9 @@ async function loadNotice(
 
     const eventRead = await admin.from("events")
       .select(
-        "id,title,slug,timezone,event_type,status,deleted_at,brands(name,slug,contact_email,deleted_at)",
+        // The address-hiding switch is read as it is NOW, not as it was when
+        // the notice was recorded (issue #3827 rework M1).
+        "id,title,slug,timezone,event_type,status,deleted_at,address_withheld:theme->business_event->>hideAddressUntilTicket,brands(name,slug,contact_email,deleted_at)",
       )
       .eq("id", notice.event_id).maybeSingle();
     if (eventRead.error) return { state: "unavailable" };
@@ -125,6 +127,7 @@ async function loadNotice(
       event_type?: string | null;
       status?: string | null;
       deleted_at?: string | null;
+      address_withheld?: unknown;
       brands?: unknown;
     } | null;
     const brand = (Array.isArray(event?.brands) ? event?.brands[0] : event?.brands) as {
@@ -143,12 +146,18 @@ async function loadNotice(
     if (!brandSlug || !eventSlug) return { state: "not_live" };
 
     const kind = event.event_type as EventUpdateKind;
-    const changes = Array.isArray(notice.notice_changes)
+    const recorded = Array.isArray(notice.notice_changes)
       ? notice.notice_changes.filter((entry): entry is EventUpdateChange =>
         !!entry && typeof entry === "object" &&
         typeof (entry as EventUpdateChange).field === "string"
       )
       : [];
+    // An address hidden NOW is never printed, whatever the notice holds.
+    const changes = withholdIfHiddenNow(
+      recorded,
+      isAddressWithheldNow(event.address_withheld),
+      notice.after_snapshot?.venue_from_label === true,
+    );
     return {
       state: "ready",
       context: {
@@ -167,6 +176,31 @@ async function loadNotice(
   } catch {
     return { state: "unavailable" };
   }
+}
+
+/** The stored switch, as PostgREST hands back a `->>` read: text or null. */
+export function isAddressWithheldNow(raw: unknown): boolean {
+  return raw === true || (typeof raw === "string" && raw.trim().toLowerCase() === "true");
+}
+
+/**
+ * Issue #3827 rework M1. When the event hides its address now, every street
+ * value in the notice is dropped: the address row says only that it changed,
+ * and a venue that was only ever the label (which can hold the street) loses
+ * its values too. The venue name of a structured location stays: the public
+ * page shows it.
+ */
+export function withholdIfHiddenNow(
+  changes: EventUpdateChange[],
+  withheldNow: boolean,
+  venueFromLabel: boolean,
+): EventUpdateChange[] {
+  if (!withheldNow) return changes;
+  return changes.map((change) => {
+    if (change.field === "address") return { field: "address", withheld: true };
+    if (change.field === "venue" && venueFromLabel) return { field: "venue", withheld: true };
+    return change;
+  });
 }
 
 /** One read per notice per invocation, however many recipients share it. */

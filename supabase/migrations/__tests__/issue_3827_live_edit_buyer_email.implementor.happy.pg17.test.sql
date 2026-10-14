@@ -991,4 +991,124 @@ BEGIN
 END $s02$;
 ROLLBACK;
 
+-- ─── P-01 (rework M1): hide-address switched on while an email is WAITING ────
+-- Before the fix the waiting notice kept both streets and was sent with them.
+BEGIN;
+DO $p01$
+DECLARE
+  f record;
+  v_text text;
+  v_result jsonb;
+BEGIN
+  SELECT * INTO f FROM pg_temp.e3827_event('p01');
+  PERFORM pg_temp.e3827_buyer(f.v_event, f.v_tier, 'ada@example.test');
+  PERFORM pg_temp.e3827_go_live(f.v_brand);
+  PERFORM public.business_update_live_event_atomic(f.v_event,
+    jsonb_build_object('core', '{}'::jsonb, 'taxonomy', jsonb_build_object(
+      'city', 'Brooklyn', 'partyTypes', jsonb_build_array('festival'),
+      'vibeTags', jsonb_build_array('social'), 'musicGenres', '[]'::jsonb,
+      'locationGeo', jsonb_build_object('lat', 40.7081, 'lng', -73.9571),
+      'locationText', '250 Bedford Avenue, Brooklyn', 'coordinatePrecision', 'approximate')),
+    'Moving the night to the new room', f.v_revision + 1);
+  SELECT string_agg(row_to_json(n)::text, ' ') INTO v_text FROM public.event_edit_notices AS n
+   WHERE n.event_id = f.v_event AND n.state = 'scheduled';
+  IF v_text IS NULL OR v_text NOT LIKE '%Bedford Avenue%' THEN
+    RAISE EXCEPTION 'P-01 FIXTURE: the waiting notice does not carry the new street (%)', v_text;
+  END IF;
+
+  -- The host now hides the address. Nothing material changed for buyers.
+  v_result := public.business_update_live_event_atomic(f.v_event,
+    jsonb_build_object('core', jsonb_build_object('hideAddressUntilTicket', true)),
+    'Hiding the address until people have a ticket', f.v_revision + 2);
+  SELECT string_agg(row_to_json(n)::text, ' ') INTO v_text FROM public.event_edit_notices AS n
+   WHERE n.event_id = f.v_event AND n.state IN ('scheduled', 'superseded');
+  IF v_text ~ 'Wythe|Bedford Avenue' THEN
+    RAISE EXCEPTION 'P-01 FAIL: a waiting notice still holds a street after the address was hidden: %', v_text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.event_edit_notices AS n
+                  WHERE n.event_id = f.v_event AND n.state = 'scheduled'
+                    AND n.notice_changes @> '[{"field": "address", "withheld": true}]'::jsonb) THEN
+    RAISE EXCEPTION 'P-01 FAIL: the waiting notice no longer says the address changed';
+  END IF;
+  RAISE NOTICE 'P-01 PASS: hiding the address while an email waits removes both streets and keeps "the address has changed"';
+END $p01$;
+ROLLBACK;
+
+-- ─── P-02 (rework M1): switched on after fan-out, before every copy went ──────
+BEGIN;
+DO $p02$
+DECLARE
+  f record;
+  v_text text;
+BEGIN
+  SELECT * INTO f FROM pg_temp.e3827_event('p02');
+  PERFORM pg_temp.e3827_buyer(f.v_event, f.v_tier, 'ada@example.test');
+  PERFORM pg_temp.e3827_go_live(f.v_brand);
+  PERFORM public.business_update_live_event_atomic(f.v_event,
+    jsonb_build_object('core', '{}'::jsonb, 'taxonomy', jsonb_build_object(
+      'city', 'Brooklyn', 'partyTypes', jsonb_build_array('festival'),
+      'vibeTags', jsonb_build_array('social'), 'musicGenres', '[]'::jsonb,
+      'locationGeo', jsonb_build_object('lat', 40.7081, 'lng', -73.9571),
+      'locationText', '250 Bedford Avenue, Brooklyn', 'coordinatePrecision', 'approximate')),
+    'Moving the night to the new room', f.v_revision + 1);
+  UPDATE public.event_edit_notices SET send_after = now() - interval '1 second' WHERE event_id = f.v_event;
+  PERFORM public.event_edit_notice_fanout(20);
+  IF NOT EXISTS (SELECT 1 FROM public.event_edit_notices WHERE event_id = f.v_event AND state = 'fanned_out') THEN
+    RAISE EXCEPTION 'P-02 FIXTURE: the notice was not fanned out';
+  END IF;
+  -- The host hides the address with a plain write (an older build's path).
+  UPDATE public.events
+     SET theme = jsonb_set(theme, '{business_event,hideAddressUntilTicket}', 'true'::jsonb)
+   WHERE id = f.v_event;
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  SELECT string_agg(row_to_json(n)::text, ' ') INTO v_text FROM public.event_edit_notices AS n
+   WHERE n.event_id = f.v_event AND n.state = 'fanned_out';
+  IF v_text ~ 'Wythe|Bedford Avenue' THEN
+    RAISE EXCEPTION 'P-02 FAIL: a fanned-out notice with an unsent copy still holds a street: %', v_text;
+  END IF;
+  RAISE NOTICE 'P-02 PASS: hiding the address after fan-out removes the streets from the notice the unsent copies are rendered from';
+END $p02$;
+ROLLBACK;
+
+-- ─── P-03 (rework M1): hidden by the SAME edit that moves the address ────────
+BEGIN;
+DO $p03$
+DECLARE
+  f record;
+  v_text text;
+BEGIN
+  SELECT * INTO f FROM pg_temp.e3827_event('p03');
+  PERFORM pg_temp.e3827_buyer(f.v_event, f.v_tier, 'ada@example.test');
+  PERFORM pg_temp.e3827_go_live(f.v_brand);
+  -- A first move is waiting with both streets in clear.
+  PERFORM public.business_update_live_event_atomic(f.v_event,
+    jsonb_build_object('core', jsonb_build_object('venueName', 'Room Two')),
+    'The first room has a power fault', f.v_revision + 1);
+  -- One save: a new street and hide-address on.
+  PERFORM public.business_update_live_event_atomic(f.v_event,
+    jsonb_build_object(
+      'core', jsonb_build_object('hideAddressUntilTicket', true),
+      'taxonomy', jsonb_build_object(
+        'city', 'Brooklyn', 'partyTypes', jsonb_build_array('festival'),
+        'vibeTags', jsonb_build_array('social'), 'musicGenres', '[]'::jsonb,
+        'locationGeo', jsonb_build_object('lat', 40.7081, 'lng', -73.9571),
+        'locationText', '250 Bedford Avenue, Brooklyn', 'coordinatePrecision', 'approximate')),
+    'Moving and hiding the address', f.v_revision + 2);
+  SELECT string_agg(row_to_json(n)::text, ' ') INTO v_text FROM public.event_edit_notices AS n
+   WHERE n.event_id = f.v_event;
+  IF v_text ~ 'Wythe|Bedford Avenue' THEN
+    RAISE EXCEPTION 'P-03 FAIL: a street was stored for an edit that hid the address: %', v_text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.event_edit_notices AS n
+                  WHERE n.event_id = f.v_event AND n.state = 'scheduled'
+                    AND n.notice_changes @> '[{"field": "address", "withheld": true}]'::jsonb
+                    AND n.notice_changes @> '[{"field": "venue", "old": "Lantern Room", "new": "Room Two"}]'::jsonb) THEN
+    RAISE EXCEPTION 'P-03 FAIL: the merged notice should keep the venue names and say the address changed (%)',
+      (SELECT jsonb_agg(notice_changes) FROM public.event_edit_notices WHERE event_id = f.v_event AND state = 'scheduled');
+  END IF;
+  RAISE NOTICE 'P-03 PASS: an edit that moves and hides the address stores the venue names and no street, on every row';
+END $p03$;
+ROLLBACK;
+
 \echo 'issue_3827_live_edit_buyer_email.implementor.happy: all cases passed'

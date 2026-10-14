@@ -504,3 +504,43 @@ test("D-08 a going guest keeps the text channel, with real wording", async () =>
   same(seen.categoryReads, ["rsvp_acknowledgement"], "the guest category is unchanged");
   same(seen.completions.map((c) => c.p_status), ["sent"], "completed as sent");
 });
+
+test("D-09 an address hidden after the notice was recorded is never printed", async () => {
+  // The notice was recorded while the address was public: both streets in it.
+  const notice = baseNotice();
+  notice.notice_changes = [
+    { field: "venue", old: "Waterside Event Centre", new: "The Deck at Landmark" },
+    {
+      field: "address",
+      old: "5 Admiralty Road, Lekki Phase 1",
+      new: "Water Corporation Drive, Victoria Island",
+    },
+  ];
+  // The event hides its address NOW (PostgREST returns the `->>` read as text).
+  const hidden = baseEvent();
+  hidden.address_withheld = "true";
+  reset({ claims: [buyerClaim(1)], notice, event: hidden });
+  await runTick();
+  same(seen.emails.length, 1, "the email still goes, without the street");
+  const body = seen.emails[0].body;
+  for (const part of [String(body.html), String(body.text), String(body.subject)]) {
+    assert(!part.includes("Admiralty"), "old street printed after the address was hidden");
+    assert(!part.includes("Water Corporation"), "new street printed after the address was hidden");
+  }
+  assert(String(body.html).includes("The address has changed."), "the email says the address changed");
+  assert(String(body.html).includes("The Deck at Landmark"), "the venue name is still shown");
+
+  // A venue that was only ever the label (it can hold the street) is withheld too.
+  const labelNotice = baseNotice();
+  labelNotice.notice_changes = [{ field: "venue", old: "5 Admiralty Road", new: "9 Marina Street" }];
+  labelNotice.after_snapshot = { venue: null, venue_from_label: true };
+  reset({ claims: [buyerClaim(2)], notice: labelNotice, event: hidden });
+  await runTick();
+  const labelled = String(seen.emails[0]?.body.html ?? "");
+  assert(!labelled.includes("Admiralty") && !labelled.includes("Marina Street"), "a label venue printed while hidden");
+
+  // Not hidden now: the recorded values print as before.
+  reset({ claims: [buyerClaim(3)], notice: baseNotice() });
+  await runTick();
+  assert(String(seen.emails[0]?.body.html).includes("Waterside Event Centre"), "public values still print");
+});

@@ -483,6 +483,75 @@ REVOKE ALL ON FUNCTION public.event_edit_notice_audience(uuid) FROM PUBLIC, anon
 GRANT EXECUTE ON FUNCTION public.event_edit_notice_audience(uuid) TO service_role;
 
 -- ---------------------------------------------------------------------------
+-- 6b. Withholding an address after the fact. A host can switch "hide address
+-- until ticket" on while an email is waiting, or after it was fanned out but
+-- before every copy went. From that moment no street may be printed: every
+-- notice of the event that can still be sent loses its street values (the
+-- venue name stays, and the email says "The address has changed."), and a
+-- venue known only through the label loses its value too. Notices that are
+-- fully sent, logged or held are history and are left as they were.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.event_edit_notice_withhold_changes(
+  p_changes jsonb, p_venue_from_label boolean)
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+SET search_path = pg_catalog
+AS $fn$
+  SELECT COALESCE(jsonb_agg(
+    CASE
+      WHEN c.entry ->> 'field' = 'address'
+        THEN jsonb_build_object('field', 'address', 'withheld', true)
+      WHEN c.entry ->> 'field' = 'venue' AND COALESCE(p_venue_from_label, false)
+        THEN jsonb_build_object('field', 'venue', 'withheld', true)
+      ELSE c.entry
+    END ORDER BY c.ord), '[]'::jsonb)
+  FROM jsonb_array_elements(
+    CASE WHEN jsonb_typeof(p_changes) = 'array' THEN p_changes ELSE '[]'::jsonb END
+  ) WITH ORDINALITY AS c(entry, ord)
+$fn$;
+
+REVOKE ALL ON FUNCTION public.event_edit_notice_withhold_changes(jsonb, boolean)
+  FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.event_edit_notice_withhold_unsent(p_event_id uuid)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_count integer;
+BEGIN
+  UPDATE public.event_edit_notices AS n
+     SET notice_changes = public.event_edit_notice_withhold_changes(n.notice_changes,
+           COALESCE((n.base_snapshot ->> 'venue_from_label')::boolean, false)
+           OR COALESCE((n.after_snapshot ->> 'venue_from_label')::boolean, false)),
+         changes = public.event_edit_notice_withhold_changes(n.changes,
+           COALESCE((n.base_snapshot ->> 'venue_from_label')::boolean, false)
+           OR COALESCE((n.after_snapshot ->> 'venue_from_label')::boolean, false)),
+         base_snapshot = public.event_edit_notice_scrub(n.base_snapshot, true),
+         after_snapshot = public.event_edit_notice_scrub(n.after_snapshot, true)
+   WHERE n.event_id = p_event_id
+     AND (n.state IN ('scheduled', 'superseded')
+          OR (n.state = 'fanned_out' AND EXISTS (
+                SELECT 1
+                  FROM public.rsvp_notifications AS r
+                  JOIN public.rsvp_notification_deliveries AS d ON d.notification_id = r.id
+                 WHERE r.payload ? 'noticeId'
+                   AND r.payload ->> 'noticeId' = n.id::text
+                   AND d.status IN ('pending', 'processing', 'failed_retryable'))));
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.event_edit_notice_withhold_unsent(uuid) FROM PUBLIC, anon, authenticated;
+
+COMMENT ON FUNCTION public.event_edit_notice_withhold_unsent(uuid) IS
+  '#3827 removes street values from every edit notice of an event that can still be sent (waiting, superseded, or fanned out with an undelivered copy), once the event hides its address.';
+
+-- ---------------------------------------------------------------------------
 -- 7. The recorder. Always writes one row, and decides the email.
 --   Nothing material changed            -> logged
 --   Material, nobody booked             -> logged
@@ -549,6 +618,13 @@ BEGIN
   v_changes := public.event_edit_notice_diff(v_before, v_after);
   v_merged := v_changes;
   v_live := public.event_edit_notice_brand_live(v_brand_id);
+
+  -- The address is withheld NOW: nothing still waiting to go out may print a
+  -- street, whatever it was recorded with.
+  IF COALESCE((p_after ->> 'address_withheld')::boolean, false) THEN
+    PERFORM pg_advisory_xact_lock(hashtext('issue_3827_event_edit_notice'), hashtext(p_event_id::text));
+    PERFORM public.event_edit_notice_withhold_unsent(p_event_id);
+  END IF;
 
   IF jsonb_array_length(v_changes) > 0 THEN
     -- One recorder at a time per event: the waiting notice is read, replaced
@@ -850,6 +926,9 @@ BEGIN
     IF jsonb_array_length(public.event_edit_notice_diff(v_before, v_after)) > 0 THEN
       PERFORM public.business_event_record_edit_notice(
         NEW.event_id, v_actor, NULL, v_before, v_after, 'direct', false);
+    ELSIF COALESCE((v_after ->> 'address_withheld')::boolean, false) THEN
+      -- Nothing to tell buyers, but the address may have just become hidden.
+      PERFORM public.event_edit_notice_withhold_unsent(NEW.event_id);
     END IF;
   EXCEPTION WHEN OTHERS THEN
     PERFORM public.event_edit_notice_record_failure(NEW.event_id, v_actor, NULL, 'direct');
@@ -2263,7 +2342,9 @@ BEGIN
     'public.event_edit_notice_record_failure(uuid, uuid, text, text)',
     'public.event_edit_notice_capture(uuid)',
     'public.event_edit_notice_flush(uuid, text, text, boolean)',
-    'public.event_edit_notice_fanout(integer)']
+    'public.event_edit_notice_fanout(integer)',
+    'public.event_edit_notice_withhold_changes(jsonb, boolean)',
+    'public.event_edit_notice_withhold_unsent(uuid)']
   LOOP
     IF pg_catalog.has_function_privilege('anon', v_fn, 'EXECUTE')
        OR pg_catalog.has_function_privilege('authenticated', v_fn, 'EXECUTE') THEN
