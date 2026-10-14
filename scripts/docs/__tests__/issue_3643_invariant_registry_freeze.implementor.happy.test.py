@@ -441,12 +441,21 @@ def exercise_future_states(root: Path, head: str) -> None:
         )
 
         git(clone, "switch", "--quiet", "--detach", head)
-        future_path = "scripts/docs/__tests__/issue_3643_future_owner.test.mjs"
+        future_path = EXPECTED_OWNERS["I-PROPOSED-1772-IDENTITY-MAINTENANCE-ATOMIC"]
         future_id = "I-" + "3643-FUTURE-LOCAL-OWNER"
-        (clone / future_path).write_text(
-            f"// MINGLA-INVARIANT: {future_id} | issue #3643 | "
-            "Future invariants remain locally owned by their enforcing tests.\n"
-            f'export const FUTURE_INVARIANT = "{future_id}";\n'
+        future_file = clone / future_path
+        future_source = future_file.read_text()
+        insertion_point = "\nconst repoRoot ="
+        check(insertion_point in future_source, "shared-owner insertion point changed")
+        future_file.write_text(
+            future_source.replace(
+                insertion_point,
+                "\n"
+                f"// MINGLA-INVARIANT: {future_id} | issue #3643 | "
+                "Future invariants remain locally owned by their enforcing tests.\n"
+                + insertion_point,
+                1,
+            )
         )
         future_head = commit_paths(clone, "future local invariant", future_path)
         check(
@@ -528,9 +537,14 @@ def validate_proof(
             f"bootstrap expected 35 migrated declarations, found {len(actual_owners)}",
         )
         check(actual_owners == EXPECTED_OWNERS, "bootstrap owner map changed")
+    shared_owner = ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs"
+    historical_shared_ids = {
+        key for key, expected in EXPECTED_OWNERS.items() if expected == shared_owner
+    }
     check(
-        sum(owner == ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs" for owner in actual_owners.values()) == 3,
-        "multiple declarations in one gate are not preserved",
+        len(historical_shared_ids) == 3
+        and all(actual_owners.get(key) == shared_owner for key in historical_shared_ids),
+        "historical declarations sharing one gate are not preserved",
     )
     exercise_contract_helpers(guard)
 
