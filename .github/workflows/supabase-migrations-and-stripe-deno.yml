@@ -811,6 +811,14 @@ jobs:
           # address is hidden.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.tester.retest3.pg17.test.sql
+          # Issue #3827 round 4 (implementor) — a guest whose copy already went out
+          # on one channel is never also given the usual alert; an alert for an
+          # earlier change does not stand for a later one; the fan-out locks the
+          # event before the notice row; the host status counts guests reached by
+          # text or the app, and "no email address" only for guests reached by
+          # nothing.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.implementor.round4.pg17.test.sql
           # Issue #3645 — an unpublished draft with nothing sold follows its
           # brand's currency. Changed currency (GBP to NGN, fired by
           # service_role): event, RSVP and trip drafts move in every copy, paid

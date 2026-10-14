@@ -1016,8 +1016,20 @@ BEGIN
                 AND legacy.rsvp_id = p_rsvp_id
                 AND legacy.template_key = 'rsvp_event_updated'
                 AND NOT (legacy.payload ? 'noticeId')
-                AND legacy.created_at >= COALESCE(v_notice.first_unsent_at, v_notice.created_at)
-                                         - interval '1 second') THEN
+                -- Compared with the save of the newest change this notice tells,
+                -- not the first unsent one it merged: an alert for an earlier
+                -- change does not stand for a later one.
+                AND legacy.created_at >= v_notice.created_at - interval '1 second') THEN
+    RETURN false;
+  END IF;
+  -- Never a second message to a guest whose copy of this notice already went
+  -- out on any channel.
+  IF EXISTS (SELECT 1 FROM public.rsvp_notifications AS copy
+               JOIN public.rsvp_notification_deliveries AS d ON d.notification_id = copy.id
+              WHERE copy.payload ? 'noticeId'
+                AND copy.payload ->> 'noticeId' = v_notice.id::text
+                AND copy.rsvp_id = p_rsvp_id
+                AND d.status = 'sent') THEN
     RETURN false;
   END IF;
   INSERT INTO public.rsvp_notifications
@@ -1062,6 +1074,7 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $fn$
 DECLARE
+  v_due record;
   v_notice public.event_edit_notices%ROWTYPE;
   v_event record;
   v_allowlist_only boolean;
@@ -1081,16 +1094,23 @@ BEGIN
   -- A capture that outlived its transaction is debris from a failed settle.
   DELETE FROM public.event_edit_notice_pending WHERE created_at < now() - interval '1 day';
 
-  FOR v_notice IN
-    SELECT * FROM public.event_edit_notices AS n
+  FOR v_due IN
+    SELECT n.id, n.event_id FROM public.event_edit_notices AS n
      WHERE n.state = 'scheduled' AND n.send_after <= now()
      ORDER BY n.send_after
      LIMIT LEAST(GREATEST(COALESCE(p_limit, 20), 1), 100)
-     FOR UPDATE SKIP LOCKED
   LOOP
-    -- The same per-event lock as the recorder: an address hidden while this
-    -- notice is being fanned out waits, then scrubs what was queued.
-    PERFORM pg_advisory_xact_lock(hashtext('issue_3827_event_edit_notice'), hashtext(v_notice.event_id::text));
+    -- The same lock order as the recorder: the per-event lock first, then the
+    -- row, re-read and re-checked (it may have been replaced, held or fanned
+    -- out by the time the lock is ours). An address hidden while this notice
+    -- is being fanned out waits, then scrubs what was queued.
+    PERFORM pg_advisory_xact_lock(hashtext('issue_3827_event_edit_notice'), hashtext(v_due.event_id::text));
+    SELECT * INTO v_notice FROM public.event_edit_notices AS n
+     WHERE n.id = v_due.id AND n.state = 'scheduled' AND n.send_after <= now()
+     FOR UPDATE SKIP LOCKED;
+    IF NOT FOUND THEN
+      CONTINUE;
+    END IF;
     SELECT e.id, e.status, e.deleted_at, e.brand_id, e.event_type INTO v_event
       FROM public.events AS e WHERE e.id = v_notice.event_id;
 
@@ -1151,8 +1171,7 @@ BEGIN
               AND legacy.rsvp_id = v_recipient.rsvp_id
               AND legacy.template_key = 'rsvp_event_updated'
               AND NOT (legacy.payload ? 'noticeId')
-              AND legacy.created_at >= COALESCE(v_notice.first_unsent_at, v_notice.created_at)
-                                       - interval '1 second') THEN
+              AND legacy.created_at >= v_notice.created_at - interval '1 second') THEN
         CONTINUE;
       END IF;
 
@@ -1284,6 +1303,8 @@ DECLARE
   v_held_testing integer := 0;
   v_held_off integer := 0;
   v_alerted integer := 0;
+  -- Guests with no email address whose copy went by text or the app.
+  v_reached_other integer := 0;
   v_last_no_email integer := 0;
   v_last_json jsonb := NULL;
 BEGIN
@@ -1325,10 +1346,12 @@ BEGIN
            AND legacy.template_key = 'rsvp_event_updated'
            AND legacy.rsvp_id IS NOT NULL
            AND NOT (legacy.payload ? 'noticeId')
-           AND legacy.created_at >= COALESCE(v_last.first_unsent_at, v_last.created_at) - interval '1 second'
+           AND legacy.created_at >= v_last.created_at - interval '1 second'
       ), copies AS (
         SELECT n.id, n.rsvp_id,
                COALESCE(bool_or(d.channel = 'email' AND d.status = 'sent'), false) AS sent,
+               COALESCE(bool_or(d.channel = 'email'), false) AS has_email,
+               COALESCE(bool_or(d.channel <> 'email' AND d.status = 'sent'), false) AS sent_other,
                bool_or(d.status IN ('pending', 'processing', 'failed_retryable')) AS pending,
                bool_or(d.status IN ('failed_terminal', 'ambiguous')
                        AND COALESCE(d.safe_error_code, '') NOT LIKE 'held\_%') AS failed,
@@ -1346,9 +1369,13 @@ BEGIN
       SELECT count(*) FILTER (WHERE NOT was_alerted AND held_off),
              count(*) FILTER (WHERE NOT was_alerted AND NOT held_off AND held_testing),
              count(*) FILTER (WHERE NOT was_alerted AND NOT held_off AND NOT held_testing AND sent),
-             count(*) FILTER (WHERE NOT was_alerted AND NOT held_off AND NOT held_testing AND NOT sent AND pending),
-             count(*) FILTER (WHERE NOT was_alerted AND NOT held_off AND NOT held_testing AND NOT sent AND NOT pending AND failed)
-        INTO v_held_off, v_held_testing, v_sent, v_pending, v_failed
+             count(*) FILTER (WHERE NOT was_alerted AND NOT held_off AND NOT held_testing AND NOT sent
+                                AND NOT has_email AND sent_other),
+             count(*) FILTER (WHERE NOT was_alerted AND NOT held_off AND NOT held_testing AND NOT sent
+                                AND NOT (NOT has_email AND sent_other) AND pending),
+             count(*) FILTER (WHERE NOT was_alerted AND NOT held_off AND NOT held_testing AND NOT sent
+                                AND NOT (NOT has_email AND sent_other) AND NOT pending AND failed)
+        INTO v_held_off, v_held_testing, v_sent, v_reached_other, v_pending, v_failed
         FROM per_copy;
       SELECT count(*) INTO v_alerted FROM (
         SELECT DISTINCT legacy.rsvp_id
@@ -1357,11 +1384,25 @@ BEGIN
            AND legacy.template_key = 'rsvp_event_updated'
            AND legacy.rsvp_id IS NOT NULL
            AND NOT (legacy.payload ? 'noticeId')
-           AND legacy.created_at >= COALESCE(v_last.first_unsent_at, v_last.created_at) - interval '1 second') AS a;
+           AND legacy.created_at >= v_last.created_at - interval '1 second') AS a;
       IF v_event_type = 'rsvp' THEN
         -- Guests held at fan-out were given the usual alert: never "held".
-        -- A guest with no email is reached by text or the app, or alerted.
-        v_last_no_email := 0;
+        -- "No email address" counts the going guests with none who were
+        -- reached by nothing at all: no copy of this notice and no alert.
+        SELECT count(*)::integer INTO v_last_no_email
+          FROM public.event_rsvps AS r
+         WHERE r.event_id = p_event_id
+           AND r.rsvp_status = 'going' AND r.approval_status = 'approved'
+           AND NULLIF(btrim(r.guest_email), '') IS NULL
+           AND NOT EXISTS (SELECT 1 FROM public.rsvp_notifications AS copy
+                            WHERE copy.payload ? 'noticeId'
+                              AND copy.payload ->> 'noticeId' = v_last.id::text
+                              AND copy.rsvp_id = r.id)
+           AND NOT EXISTS (SELECT 1 FROM public.rsvp_notifications AS legacy
+                            WHERE legacy.event_id = p_event_id AND legacy.rsvp_id = r.id
+                              AND legacy.template_key = 'rsvp_event_updated'
+                              AND NOT (legacy.payload ? 'noticeId')
+                              AND legacy.created_at >= v_last.created_at - interval '1 second');
       ELSE
         v_held_testing := v_held_testing + v_last.held_count;
       END IF;
@@ -1379,6 +1420,7 @@ BEGIN
       'heldTesting', v_held_testing,
       'heldSwitchedOff', v_held_off,
       'alerted', v_alerted,
+      'reachedOther', v_reached_other,
       -- A waiting email: who it can reach now, and how many of them are test
       -- addresses while emails are being tested.
       'emailable', v_recipients,
