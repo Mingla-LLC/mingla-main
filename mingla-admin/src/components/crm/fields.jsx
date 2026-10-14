@@ -38,6 +38,10 @@ export function Field({ label, htmlFor, helper, error, full = false, children })
   );
 }
 
+/** The last row of every region menu: it opens "City missing?", and is never a value. */
+export const MISSING_CITY = "__city_missing__";
+export const MISSING_CITY_LABEL = "City missing?";
+
 /** options: [{ value, label, disabled }]. `placeholder` is the empty choice. */
 export function Select({ options, placeholder, className = "", ...props }) {
   return (

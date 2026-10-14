@@ -877,7 +877,7 @@ describe("#3802 TA-13: every #3802 admin suite is run by the workflow", () => {
   const suites = fs.readdirSync(path.join(SRC, "__tests__")).filter((f) => /^issue3802_.*\.test\.js$/.test(f)).sort();
 
   it("there are nine of them, and each has a step that runs it", () => {
-    assert.equal(suites.length, 10, suites.join(", "));
+    assert.equal(suites.length, 12, suites.join(", "));
     for (const file of suites) {
       const run = new RegExp(`\\n\\s+run: node --test src/__tests__/${file.replace(/\./g, "\\.")}\\n`);
       assert.match(WORKFLOW, run, `${file} is listed for triggering but no step runs it`);

@@ -214,6 +214,8 @@ on:
       # #3802 Wave 4 (My agent): the client suite and the files it reads.
       - "mingla-admin/src/__tests__/issue3802_wave4_agent.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/agent_connector_issue3802.tester.adversarial.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave4_setup.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js"
       - "mingla-admin/src/pages/AgentPage.jsx"
       - "mingla-admin/src/components/agent/**"
       - "mingla-admin/src/lib/agentConnect.js"
@@ -440,6 +442,8 @@ on:
       # #3802 Wave 4 (My agent): the client suite and the files it reads.
       - "mingla-admin/src/__tests__/issue3802_wave4_agent.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/agent_connector_issue3802.tester.adversarial.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave4_setup.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js"
       - "mingla-admin/src/pages/AgentPage.jsx"
       - "mingla-admin/src/components/agent/**"
       - "mingla-admin/src/lib/agentConnect.js"
@@ -623,6 +627,12 @@ jobs:
       - name: "Issue #3802 — My agent: independent tester adversarial proof (the pasted lines run in a real shell, hostile keys and addresses, every combination of areas, broken dates and unknown reasons, no raw error on screen, where the key on screen can go)"
         working-directory: mingla-admin
         run: node --test src/__tests__/agent_connector_issue3802.tester.adversarial.test.js
+      - name: "Issue #3802 — My agent, one-message setup: the four messages (one command, the code once, never a key), run in a real shell with stand-ins; the hand-typed lines never hold a key; every state of the setup card; the repeated check only while visible, with an end"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave4_setup.implementor.happy.test.js
+      - name: "Issue #3802 — Hosts and Creators: emails, phones and handles in the server's own normal form, search by them, the contact rule on every surface, the contactable check in the Add form, City missing by role"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js
       - name: "Issue #3802 — admin shell: the eight menu groups in the approved order, every page once, who may open what unchanged, every menu icon registered, one frame and one page header"
         working-directory: mingla-admin
         run: node --test src/__tests__/admin_shell_issue3802.implementor.happy.test.js
@@ -1435,6 +1445,23 @@ jobs:
           # `supabase_admin` from the repository root.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave4_agent_keys_gateway.tester.adversarial.pg17.test.sql
+          # Issue #3802 (Wave 4, second part) -- one-time setup codes, the
+          # tools an agent uses to add and change, Experience host, searchable
+          # identifiers and the contact rule. A code is stored as a digest,
+          # used once, for its maker's key only, and every refusal is one
+          # answer; the normal form of an email, a phone number and a handle
+          # (the table the admin web's twin is held to); what an agent may log,
+          # as a truth table of 36 cases; 50 records added in the caller's
+          # order with a repeat that changes nothing; request keys that never
+          # replay across tools; one refused item never stops the rest and a
+          # fault on the server saves nothing; the daily limit on records
+          # written; both self-check blocks against deliberate mistakes. Part
+          # 2 opens real sessions: one code used twice at once, the first
+          # touch logged twice at once, one handle added twice at once, and a
+          # request that waits for its key's turn. Runs as `supabase_admin`
+          # from the repository root, like the suites above.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_wave4_agent_write_setup.implementor.happy.pg17.test.sql
 
           # toward #3697 Wave 6 — Ads credit FIFO withdraw, idempotency, immutability.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
@@ -1899,6 +1926,25 @@ jobs:
           node --experimental-strip-types --test --test-concurrency=1 \
             supabase/functions/team-agent/__tests__/hostile.issue3802.tester.adversarial.test.ts
 
+      # Issue #3802 (Wave 4, second part) — an agent set up by one message,
+      # then adding and changing, over real HTTP into the real handler against
+      # the database replayed above: a setup code made by the real function is
+      # exchanged once for a key, and with that key the agent checks who is
+      # contactable, adds, moves, logs, records a reply and adds-or-finds;
+      # every change is the key owner's, via the key's agent; a request that
+      # waits for its key's turn is answered 429. Its own step, because each
+      # of these files adds and removes the one sign-in column this image
+      # lacks.
+      - name: "Issue #3802 — the agent connector writes: a real exchange of a setup code, then every write tool over HTTP as the key's owner"
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: supabase_admin
+          PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
+        run: |
+          node --experimental-strip-types --test --test-concurrency=1 \
+            supabase/functions/team-agent/__tests__/writeProtocol.issue3802.test.ts
+
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
       # "hide the address until someone buys" had that address served to an
@@ -2209,6 +2255,14 @@ jobs:
             # stand-in gateway, and source contracts on the function and its
             # migration (hermetic: no network, no database).
             supabase/functions/_shared/__tests__/teamAgentMcp.issue3802.test.ts
+            # toward #3802 Wave 4 part 2 — the exchange of a one-time setup
+            # code for a key (one answer for every code that cannot be used),
+            # and the tools that add and change: schemas checked item by
+            # item, refusals in plain words, the list of screen functions
+            # with their agent tool or a written reason, and the manifest
+            # against the gateway's own list.
+            supabase/functions/_shared/__tests__/teamAgentSetup.issue3802.test.ts
+            supabase/functions/_shared/__tests__/teamAgentWriteTools.issue3802.test.ts
             # ISSUE-996 — implementor source guard: A5 keeps its local fetch
             # declaration + fireAdConversion injection (no network execution).
             supabase/functions/_shared/__tests__/issue_996_a5_hermetic_fetch.test.ts

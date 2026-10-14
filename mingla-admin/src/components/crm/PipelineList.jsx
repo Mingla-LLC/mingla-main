@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { DataTable } from "../ui/Table";
 import { StageBadge } from "./StageBadge";
 import { DueBadge } from "./DueBadge";
-import { displayOwners, icpLabel, regionName, sortForList } from "../../lib/crmModel";
+import { Badge } from "../ui/Badge";
+import { contactRuleView, displayOwners, icpLabel, recordOpenLabel, regionName, sortForList } from "../../lib/crmModel";
 
 const MUTED = "text-[var(--color-text-muted)]";
 
@@ -20,17 +21,28 @@ export function PipelineList({ def, records, regions, team, today, loading = fal
       {
         key: "name",
         label: singular,
-        render: (_v, row) => (
-          <button
-            type="button"
-            data-open-record={row.id}
-            onClick={() => onOpen(row)}
-            title={row.name}
-            className="flex min-h-11 w-full max-w-full cursor-pointer items-center truncate rounded text-left font-semibold text-[var(--color-text-primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
-          >
-            {row.name}
-          </button>
-        ),
+        render: (_v, row) => {
+          const rule = contactRuleView(row, team);
+          return (
+            <span className="flex min-w-0 flex-col items-start">
+              <button
+                type="button"
+                data-open-record={row.id}
+                onClick={() => onOpen(row)}
+                title={row.name}
+                aria-label={rule ? recordOpenLabel(row, team) : undefined}
+                className="flex min-h-11 w-full max-w-full cursor-pointer items-center truncate rounded text-left font-semibold text-[var(--color-text-primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+              >
+                {row.name}
+              </button>
+              {rule && (
+                <span className="mb-1" title={rule.reason || undefined}>
+                  <Badge variant={rule.variant}>{rule.label}</Badge>
+                </span>
+              )}
+            </span>
+          );
+        },
       },
       { key: "icp", label: "ICP", render: (_v, row) => icpLabel(def, row.icp) || <span className={MUTED}>None</span> },
       {

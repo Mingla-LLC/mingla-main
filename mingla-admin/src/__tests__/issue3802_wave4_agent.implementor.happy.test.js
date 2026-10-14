@@ -85,7 +85,7 @@ const LIB = read("lib/agentConnect.js");
 const SIDEBAR = read("components/layout/Sidebar.jsx");
 const PALETTE = read("components/CommandPalette.jsx");
 const SHELL = read("components/layout/AppShell.jsx");
-const PARTS = ["AgentKeyCard.jsx", "AgentConnectSteps.jsx", "AgentTeamList.jsx", "CopyBlock.jsx"].map((f) => [f, read(path.join("components", "agent", f))]);
+const PARTS = ["AgentKeyCard.jsx", "AgentConnectSteps.jsx", "AgentTeamList.jsx", "CopyBlock.jsx", "AgentSetupCard.jsx", "AgentAdvanced.jsx"].map((f) => [f, read(path.join("components", "agent", f))]);
 const ALL_AGENT_SRC = [["AgentPage", PAGE], ["teamAgentService", SERVICE], ["useAgentKeys", HOOK], ["agentConnect", LIB], ...PARTS];
 
 describe("#3802 A-1: who may open My agent, and where it sits", () => {
@@ -292,12 +292,12 @@ describe("#3802 A-4: what it can do is what the connector offers", () => {
     assert.deepEqual(tools("owner"), offered);
     assert.deepEqual(tools("admin"), offered);
     assert.deepEqual(tools(undefined), tools("growth"));
-    assert.deepEqual(abilitiesFor("owner").map((g) => g.group), ["Your day", "Find and check", "Beta leads", "Team"]);
+    assert.deepEqual(abilitiesFor("owner").map((g) => g.group), ["Your day", "Find and check", "Beta leads", "Team", "Add and change", "Log"]);
   });
   it("nothing that is not built yet is offered as something to use", () => {
     const shown = ALL_AGENT_SRC.map(([, src]) => stripComments(src)).join("\n");
     // No tool of a later part is named anywhere on the page.
-    for (const later of ["add_records", "move_stage", "log_activity", "save_drafts", "record_reply", "check_contactable", "set_target", "update_records"]) {
+    for (const later of ["save_drafts", "mark_sent", "undo_move", "set_target", "add_beta_leads_to_hosts", "delete_record"]) {
       assert.equal(shown.includes(later), false, later);
     }
     for (const promise of ["Drafts to send", "See what it wrote for me", "morning sweep", "Copy prompt", "What my agent did"]) {
@@ -308,9 +308,14 @@ describe("#3802 A-4: what it can do is what the connector offers", () => {
     assert.equal(AGENT_NOT_YET.length, 3);
     assert.ok(AGENT_NOT_YET.some((l) => /drafts for you to send\. You always send\./.test(l)));
     assert.ok(AGENT_NOT_YET.some((l) => /in the browser or on your phone/.test(l)));
-    assert.ok(AGENT_GUARDRAILS.includes("Right now it reads. It cannot change a card yet."));
-    assert.ok(AGENT_GUARDRAILS.includes("It never sends an email, DM or WhatsApp. A person sends."));
-    assert.ok(PAGE.includes("Right now it can"));
+    assert.ok(AGENT_NOT_YET.some((l) => /^Undo a move, add beta leads to Hosts, and set targets: do these in Mingla Admin for now\.$/.test(l)));
+    assert.ok(AGENT_GUARDRAILS.includes("It may log the first message to someone new. A follow-up or an answer is yours."));
+    assert.ok(AGENT_GUARDRAILS.includes("It cannot message a record marked Do not contact or Warm intro only, and it cannot lift that mark."));
+    assert.ok(AGENT_GUARDRAILS.includes("It never sends an email, DM or WhatsApp for you."));
+    assert.ok(AGENT_GUARDRAILS.includes("It cannot delete, manage keys or manage the team."));
+    assert.equal(AGENT_GUARDRAILS.length, 7);
+    assert.ok(PAGE.includes("It can read and"));
+    assert.ok(/it never deletes, and a follow-up or an answer is always yours\s+to send\./.test(PAGE));
   });
 });
 
@@ -386,7 +391,7 @@ describe("#3802 A-7: source contracts", () => {
     const callers = files.filter((f) => /rpc\(\s*["'`]team_agent_/.test(fs.readFileSync(f, "utf8")));
     assert.deepEqual(callers.map((f) => path.relative(SRC, f)), [path.join("services", "teamAgentService.js")]);
     const called = [...SERVICE.matchAll(/rpc\(\s*"([a-z_]+)"/g)].map((m) => m[1]).sort();
-    assert.deepEqual(called, ["team_agent_guide", "team_agent_key_create", "team_agent_key_revoke", "team_agent_keys_mine", "team_agent_keys_overview", "team_agent_my_activity"]);
+    assert.deepEqual(called, ["team_agent_guide", "team_agent_key_create", "team_agent_key_revoke", "team_agent_keys_mine", "team_agent_keys_overview", "team_agent_my_activity", "team_agent_setup_create"]);
     assert.equal(/rpc\(\s*["'`]crm_/.test(SERVICE), false);
     assert.equal(/\.from\(|functions\.invoke|\bfetch\(/.test(stripComments(SERVICE)), false);
     // No file of the page reaches the gateway or anything internal.
@@ -419,7 +424,7 @@ describe("#3802 A-7: source contracts", () => {
     // The key lives in one piece of page state and is dropped on Done and on Disconnect.
     assert.ok(PAGE.includes("const [fresh, setFresh] = useState({});"));
     assert.ok(/const done = useCallback\(\(agentId\) => \{\s*setFresh\(\(f\) => \(\{ \.\.\.f, \[agentId\]: null \}\)\);/.test(PAGE));
-    assert.equal((PAGE.match(/setFresh\(/g) || []).length, 4, "set on create; cleared on Done, on Disconnect, and when the key was ended elsewhere");
+    assert.equal((PAGE.match(/setFresh\(/g) || []).length, 5, "set on create; cleared on Done, on Disconnect, when the key was ended elsewhere, and after 10 minutes on screen");
     assert.equal(/\bfresh/.test(HOOK) || /\bfresh/.test(SERVICE), false, "the hook and the service never hold a key");
     // It is shown through the copy box only, as text.
     assert.equal(/dangerouslySetInnerHTML/.test(ALL_AGENT_SRC.map(([, s]) => s).join("")), false);
@@ -483,7 +488,15 @@ describe("#3802 A-7: source contracts", () => {
     assert.ok(card.includes('status.state === "unused"') && card.includes("Not working?"));
     const steps = PARTS.find(([f]) => f === "AgentConnectSteps.jsx")[1];
     assert.ok(steps.includes("The connector's address isn't set up"));
-    assert.ok(steps.includes("Create your {agent.label} key in step 1 first."));
+    assert.ok(steps.includes("Paste these into the Terminal app on your own computer, one at a time."));
+    // The setup card draws every state from one view-model, and the advanced way sits in a closed disclosure.
+    const setupCard = PARTS.find(([f]) => f === "AgentSetupCard.jsx")[1];
+    assert.ok(setupCard.includes("view.lines.map((line) => (") && setupCard.includes("view.buttons.map((b) => ("));
+    assert.ok(setupCard.includes('role="status"') && setupCard.includes("{view.showMessage && message && ("));
+    const advanced = PARTS.find(([f]) => f === "AgentAdvanced.jsx")[1];
+    assert.ok(/<details className="[^"]*">\s*<summary className=\{DISCLOSURE_CLASS\}>Advanced: add the key yourself<\/summary>/.test(advanced));
+    assert.equal(/<details[^>]*\bopen\b/.test(advanced), false, "closed by default");
+    assert.ok(PAGE.includes("setupCardView({") && PAGE.includes("<AgentAdvanced"));
     // Touch targets on a phone.
     for (const [name, src] of [["AgentPage", PAGE], ...PARTS]) {
       const buttons = src.split("<Button").slice(1).map((rest) => rest.slice(0, rest.indexOf("</Button>")));
@@ -554,7 +567,7 @@ describe("#3802 A-8: what the page says after a create or replace that did not a
     assert.ok(body.includes('timer = setTimeout(() => reject({ token: "network", message: "" }), CREATE_WAIT_MS);'), "the wait is really armed");
     assert.equal(/No key was created/.test(body.replace(/"No key was created\. Try again once you're back\."/, "")), false, "the page itself never decides that nothing was made");
     // The hook hands back what it read, or null when it could not read.
-    assert.ok(HOOK.includes("return Array.isArray(data?.mine?.keys) ? data.mine.keys : [];"));
+    assert.ok(HOOK.includes("keys: Array.isArray(data?.mine?.keys) ? data.mine.keys : [],") && HOOK.includes("return latest.current.keys;"));
     assert.ok(/if \(quiet\) return null;/.test(HOOK));
     const card = PARTS.find(([f]) => f === "AgentKeyCard.jsx")[1];
     assert.ok(card.includes('{replaceAgain ? "Replace again" : "Replace key"}'));
@@ -583,10 +596,14 @@ describe("#3802 A-8: a key that was ended somewhere else does not stay on screen
   it("the page hides it, says why, and learns of the change whenever the tab is looked at again", () => {
     assert.ok(/verdict === "hide"\) \{\s*setFresh\(\(f\) => \(\{ \.\.\.f, \[a\.id\]: null \}\)\);\s*setShownIds\(\(m\) => \(\{ \.\.\.m, \[a\.id\]: null \}\)\);\s*setNotice\(\(n\) => \(\{ \.\.\.n, \[a\.id\]: REPLACED_ELSEWHERE_WORDS \}\)\);/.test(PAGE));
     assert.equal(REPLACED_ELSEWHERE_WORDS, "This key was replaced or disconnected somewhere else, so it no longer works and is hidden here.");
-    // While a key is on screen the page checks every five seconds that it still works.
-    assert.ok(PAGE.includes("const SHOWN_KEY_REFRESH_MS = 5_000;"));
-    assert.ok(/const showingKey = AGENTS\.some\(\(a\) => !!shownIds\[a\.id\]\);\s*useEffect\(\(\) => \{\s*if \(!showingKey\) return undefined;\s*const timer = setInterval\(\(\) => \{[\s\S]*?refetch\(\{ quiet: true \}\);\s*\}, SHOWN_KEY_REFRESH_MS\);/.test(PAGE));
-    assert.ok(PAGE.includes("setShownIds((m) => ({ ...m, [agentId]: { keyId: made.key_id, listed: false } }));"));
+    // While a key is on screen the page checks every five seconds that it still works: only while the
+    // tab is visible and online, and for at most ten minutes, after which the key is hidden.
+    assert.ok(PAGE.includes("const WATCH_EVERY_MS = 5_000;"));
+    assert.ok(/const showingKey = AGENTS\.some\(\(a\) => !!shownIds\[a\.id\]\);\s*const lastShownAt = Math\.max\(0, \.\.\.AGENTS\.map\(\(a\) => shownIds\[a\.id\]\?\.shownAt \|\| 0\)\);\s*useWatch\(showingKey, \(\) => \{\s*hideOldKeys\(Date\.now\(\)\);\s*refetch\(\{ quiet: true \}\);\s*\}, \{\s*until: lastShownAt \+ SHOWN_KEY_MAX_MS,/.test(PAGE));
+    assert.ok(/function useWatch\(active, onTick, \{ everyMs = WATCH_EVERY_MS, until, onEnd \} = \{\}\) \{/.test(PAGE));
+    assert.ok(/isVisible: \(\) => document\.visibilityState === "visible",\s*isOnline: \(\) => navigator\.onLine !== false,/.test(PAGE));
+    assert.equal(/setInterval\(/.test(PAGE), false, "no timer that runs in a hidden tab or without an end");
+    assert.ok(PAGE.includes("setShownIds((m) => ({ ...m, [agentId]: { keyId: made.key_id, listed: false, shownAt: Date.now() } }));"));
     assert.ok(HOOK.includes('document.addEventListener("visibilitychange", onFocus);') && HOOK.includes('window.addEventListener("focus", onFocus);'));
     // Only an id is remembered beside the key, and nothing is sent to another tab or kept in storage.
     const all = ALL_AGENT_SRC.map(([, src]) => stripComments(src)).join("\n");
@@ -674,7 +691,9 @@ describe("#3802 A-8: where a key ends up, lines that were not tested, touch targ
     const shown = ALL_AGENT_SRC.map(([, src]) => stripComments(src)).join("\n");
     assert.equal(/not in a file an agent can read back|file an agent can read/.test(shown), false);
     const steps = PARTS.find(([f]) => f === "AgentConnectSteps.jsx")[1];
-    assert.ok(steps.includes("note={line.where}") && steps.includes("note={lines.simpler.where}"));
+    assert.ok(steps.includes("note={line.where}"));
+    assert.equal(steps.includes("simpler"), false, "the one-paste line that held the key is not drawn");
+    assert.ok(steps.includes("advancedLines({ agent: agentId, os, endpoint })"));
   });
   it("lines that were not run on Windows say so, on the page and in the notes", () => {
     for (const agent of AGENTS) {
@@ -697,7 +716,9 @@ describe("#3802 A-8: where a key ends up, lines that were not tested, touch targ
     assert.equal(/ui\/Tabs/.test(steps + card + PAGE), false);
     assert.ok(/role="tab"[\s\S]{0,400}min-h-11/.test(steps), "each tab is at least 44px tall");
     assert.ok(/export const DISCLOSURE_CLASS = \[\s*"flex min-h-11 /.test(steps));
-    assert.equal((steps.match(/<summary className=\{DISCLOSURE_CLASS\}>/g) || []).length, 1);
+    assert.equal((steps.match(/<summary className=\{DISCLOSURE_CLASS\}>/g) || []).length, 0);
+    assert.equal((PARTS.find(([f]) => f === "AgentAdvanced.jsx")[1].match(/<summary className=\{DISCLOSURE_CLASS\}>/g) || []).length, 1);
+    assert.equal((PAGE.match(/<summary className=\{DISCLOSURE_CLASS\}>/g) || []).length, 1);
     assert.equal((card.match(/<summary className=\{DISCLOSURE_CLASS\}>/g) || []).length, 1);
     assert.equal(/<summary className="/.test(steps + card), false, "no disclosure with its own, smaller, class");
     // The tabs keep the keyboard: arrows, Home and End, one tab stop.

@@ -1,15 +1,15 @@
-// Issue #3802 (Wave 4) — "Add Mingla to your agent": the exact lines to
-// paste, for Claude Code or Codex, on macOS / Linux or Windows.
+// Issue #3802 (Wave 4) — the two lines for adding the key by hand, for
+// Claude Code or Codex, on macOS / Linux or Windows.
 //
-// The recommended lines keep the key in an environment variable, so the line
-// that names the connector never holds the key. The simpler way is one paste.
-// Under every line the page says where the key ends up and how to take it
-// out again. Lines that were not run on that kind of computer say so.
+// No line here contains a key. Line 1 asks for the key in the terminal and
+// hides what is pasted; line 2 names the variable only. Under every line the
+// page says where the key ends up and how to take it out again. Lines that
+// were not run on that kind of computer say so.
 import { useRef } from "react";
 import { AlertCard } from "../ui/Card";
 import { Segmented } from "../crm/fields";
 import { CopyBlock } from "./CopyBlock";
-import { AGENTS, OS_OPTIONS, connectLines } from "../../lib/agentConnect";
+import { AGENTS, OS_OPTIONS, advancedLines } from "../../lib/agentConnect";
 
 /** Summary of a disclosure: a full 44px target, at every width. */
 export const DISCLOSURE_CLASS = [
@@ -66,9 +66,8 @@ function AgentTabs({ agentId, onAgent }) {
   );
 }
 
-export function AgentConnectSteps({ agentId, onAgent, os, onOs, endpoint, freshKey, hasKey }) {
-  const lines = connectLines({ agent: agentId, os, endpoint, key: freshKey });
-  const agent = AGENTS.find((a) => a.id === agentId) || AGENTS[0];
+export function AgentConnectSteps({ agentId, onAgent, os, onOs, endpoint }) {
+  const lines = advancedLines({ agent: agentId, os, endpoint });
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -85,20 +84,13 @@ export function AgentConnectSteps({ agentId, onAgent, os, onOs, endpoint, freshK
             {lines.untested && (
               <AlertCard variant="warning" title="Not tested on Windows">
                 We have not run these lines on a Windows computer. They follow the documented forms. If one is refused, use
-                the simpler way at the bottom and tell an admin what happened.
+                the setup message in step 1 and tell an admin what happened.
               </AlertCard>
             )}
-            {!hasKey && (
-              <AlertCard variant="info">
-                Create your {agent.label} key in step 1 first. The lines below are filled in with it while it is on screen.
-              </AlertCard>
-            )}
-            {hasKey && !freshKey && (
-              <AlertCard variant="info">
-                Your key was shown once and isn&apos;t kept here, so the lines show {"<your key>"} where it goes. Lost it? Replace
-                the key in step 1.
-              </AlertCard>
-            )}
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              Paste these into the Terminal app on your own computer, one at a time. Wait for line 1 to finish before
+              line 2, then restart your agent.
+            </p>
             {lines.steps.map((line) => (
               <CopyBlock
                 key={`${agentId}-${os}-${line.id}`}
@@ -113,18 +105,6 @@ export function AgentConnectSteps({ agentId, onAgent, os, onOs, endpoint, freshK
                 <li key={n}>{n}</li>
               ))}
             </ul>
-            <details className="min-w-0 rounded-lg border border-[var(--gray-200)] px-3">
-              <summary className={DISCLOSURE_CLASS}>Simpler</summary>
-              <div className="pb-3">
-                <CopyBlock
-                  key={`${agentId}-${os}-simple`}
-                  label={lines.simpler.label}
-                  text={lines.simpler.text}
-                  copyLabel={lines.simpler.text.includes("\n") ? "Copy lines" : "Copy line"}
-                  note={lines.simpler.where}
-                />
-              </div>
-            </details>
           </>
         )}
       </div>

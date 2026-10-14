@@ -2,6 +2,7 @@ import { useId, useRef, useState } from "react";
 import { Button } from "../ui/Button";
 import { CONTROL_CLASS, Field, LABEL_CLASS, Segmented, Select, TEXTAREA_CLASS } from "./fields";
 import { newRequestKey } from "../../services/crmService";
+import { logRuleWarning } from "../../lib/crmModel";
 
 const KINDS = [
   { value: "note", label: "Note" },
@@ -167,6 +168,11 @@ export function LogForm({ record, config, disabled = false, onSubmit }) {
             </Field>
           )}
         </div>
+      )}
+      {logRuleWarning(record, { kind, direction }) && (
+        <p role="status" className="rounded-lg bg-[var(--color-warning-50)] p-2.5 text-xs text-[var(--color-warning-700)]">
+          {logRuleWarning(record, { kind, direction })}
+        </p>
       )}
       {error && (
         <p role="alert" className="text-xs text-[var(--color-error-700)]">

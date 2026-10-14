@@ -348,7 +348,7 @@ test("#3802 S-6: keys that poison an object in careless code are refused, and po
   assert.equal(({} as Record<string, unknown>).role, undefined);
   assert.equal(({} as Record<string, unknown>).adminOnly, undefined);
   const after = await s.rpc(s.keys["growth.claude"], "tools/list");
-  assert.equal(after.json.result.tools.length, 7);
+  assert.equal(after.json.result.tools.length, 15);
 });
 
 test("#3802 S-7: a web page cannot call this from a visitor's browser", async () => {
@@ -565,25 +565,23 @@ test("#3802 S-11: the keys cannot be listed, made or ended through the connector
   assert.equal(/crm_|team_agent_|admin_team_/.test(all), false);
 });
 
-test("#3802 S-12: thirty wrong keys from one network address, and that address waits", async () => {
+test("#3802 S-12: any number of wrong keys from one network address are each refused the same way, and nobody waits", async () => {
   const from = { "x-forwarded-for": "203.0.113.50" };
   const body = { jsonrpc: "2.0", id: 1, method: "ping" };
-  for (let i = 0; i < 30; i++) {
+  let first = "";
+  for (let i = 0; i < 90; i++) {
     const r = await s.send({
       key: "mgla_c_" + String(i).padStart(43, "g"),
       headers: from,
       body,
     });
     assert.equal(r.status, 401, `guess ${i + 1}`);
+    assert.equal(r.headers["retry-after"], undefined);
+    const seen = JSON.stringify([r.status, r.headers, r.body]);
+    if (i === 0) first = seen;
+    assert.equal(seen, first, `guess ${i + 1}`);
   }
-  const blocked = await s.send({
-    key: "mgla_c_" + "h".repeat(43),
-    headers: from,
-    body,
-  });
-  assert.equal(blocked.status, 429);
-  assert.equal(blocked.headers["retry-after"], "60");
-  // A working key from that same address is answered: only wrong keys wait.
+  // A working key from that same address is answered.
   assert.equal(
     (await s.send({ key: s.keys["growth.claude"], headers: from, body }))
       .status,
@@ -613,59 +611,36 @@ test("#3802 S-13: wrong keys never make a working key wait, whatever the sender 
   const from = { "x-forwarded-for": "203.0.113.77" };
   for (let i = 0; i < 60; i++) {
     const r = await s.send({ key: wrong(i), headers: from, body });
-    assert.equal(r.status, i < 30 ? 401 : 429, `wrong key ${i + 1}`);
+    assert.equal(r.status, 401, `wrong key ${i + 1}`);
     if (i % 10 === 9) {
       const ok = await s.send({ key: good, headers: from, body });
       assert.equal(ok.status, 200, `the working key after ${i + 1} wrong ones`);
       assert.equal(ok.json.result.structuredContent.me.email, s.emails.admin);
     }
   }
-  // A key that was ended is a wrong key like any other: it waits with the rest from its address.
+  // A key that was ended is a wrong key like any other.
   const ended = await s.send({
     key: s.keys["partner.claude"],
     headers: from,
     body,
   });
-  assert.equal(ended.status, 429);
-  // The sender writes another person's address in front of its own: that person is not made to wait.
-  for (let i = 0; i < 40; i++) {
-    await s.send({
-      key: wrong(100 + i),
-      headers: { "x-forwarded-for": "198.51.100.200, 203.0.113.78" },
-      body,
-    });
-  }
-  assert.equal(
-    (await s.send({
-      key: wrong(200),
-      headers: { "x-forwarded-for": "198.51.100.200" },
-      body,
-    })).status,
-    401,
-    "an address only named by someone else was never counted",
-  );
-  assert.equal(
-    (await s.send({
-      key: wrong(201),
-      headers: { "x-forwarded-for": "9.9.9.9, 203.0.113.78" },
-      body,
-    })).status,
-    429,
-    "the real sender is, whatever it writes in front",
-  );
-  // No header, a header that is not an address, an over-long one: no bucket anyone can fill for others.
+  assert.equal(ended.status, 401);
+  // Whatever a sender writes about where it came from, the answer is the same.
   for (
-    const headers of [{ "x-forwarded-for": "" }, {
-      "x-forwarded-for": "unknown",
-    }, { "x-forwarded-for": "x".repeat(300) }]
+    const headers of [
+      { "x-forwarded-for": "198.51.100.200, 203.0.113.78" },
+      { "x-forwarded-for": "198.51.100.200" },
+      { "x-forwarded-for": "9.9.9.9, 203.0.113.78" },
+      { "x-forwarded-for": "" },
+      { "x-forwarded-for": "unknown" },
+      { "x-forwarded-for": "x".repeat(300) },
+    ]
   ) {
     for (let i = 0; i < 35; i++) {
-      await s.send({ key: wrong(300 + i), headers, body });
+      const r = await s.send({ key: wrong(300 + i), headers, body });
+      assert.equal(r.status, 401);
+      assert.equal(r.body, ended.body);
     }
-    assert.equal(
-      (await s.send({ key: wrong(400), headers, body })).status,
-      401,
-    );
     assert.equal((await s.send({ key: good, headers, body })).status, 200);
   }
   // None of it counted against the working key.

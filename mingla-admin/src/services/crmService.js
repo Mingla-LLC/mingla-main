@@ -181,3 +181,12 @@ export function listBetaLeads() {
 export function betaLeadToHost(leadId) {
   return call(() => supabase.rpc("crm_beta_lead_to_host", { p_lead_id: leadId }));
 }
+
+/**
+ * Whether each of 1 to 50 candidates ({ name?, identifiers? }) is new, already
+ * in the pipeline, or marked with a contact rule. Returns
+ * { pipeline, results, counts }. Reads only.
+ */
+export function contactCheck(pipeline, candidates) {
+  return call(() => supabase.rpc("crm_contact_check", { p_pipeline: pipeline, p_candidates: candidates }));
+}

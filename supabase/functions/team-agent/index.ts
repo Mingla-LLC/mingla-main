@@ -3,9 +3,10 @@
 // One address, one kind of request (a POST carrying one JSON-RPC message),
 // one answer. A teammate creates a personal key on the My agent page of
 // Mingla Admin and gives it to their agent; from then on the agent can read
-// the Hosts and Creators pipelines and Beta leads as that teammate, with
-// their role and nothing more. This first part is read-only: nothing here
-// adds, changes, sends or deletes.
+// the Hosts and Creators pipelines and Beta leads, and add, update, move and
+// log on them, as that teammate, with their role and nothing more. Nothing
+// here sends a message or deletes. The same address with `/setup` at its end
+// exchanges a one-time setup code for that teammate's key.
 //
 // This file is only the wiring. Every rule about the wire format is in
 // `_shared/teamAgentMcp.ts`, and every rule about who may do what is in the
