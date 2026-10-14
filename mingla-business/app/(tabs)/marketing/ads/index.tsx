@@ -274,7 +274,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
           </Text>
           <Text style={styles.sub}>
             Top-ups keep 15% as Mingla&apos;s fee. Withdraw unused credit any time.
-            USD/GBP by card; Naira via Paystack.
+            USD/GBP by card; Naira through our Nigerian payment partner.
           </Text>
           <View style={styles.actions}>
             <Pressable

@@ -20,8 +20,9 @@
  * Per J-A10 spec §3.5.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, StyleSheet, Text, View } from "react-native";
+import type { LayoutChangeEvent } from "react-native";
 // #1834 [keyboard-blocks-bank-field] — the body ScrollViews route through the
 // canonical SmartScrollView wrapper (ORCH-0892-B: native = the keyboard
 // library's KeyboardAwareScrollView with the inherited DEFAULT_BOTTOM_OFFSET —
@@ -64,6 +65,10 @@ import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 import { BrandStripeDetachConfirmSheet } from "./BrandStripeDetachConfirmSheet";
 // META-ORCH-1076 Phase 2 — Paystack (NG) payout onboarding surface.
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
+import {
+  healRememberedPayoutCountry,
+  rememberBrandPayoutCountry,
+} from "../../services/brandPayoutCountryService";
 // #1180 — held-payout receipt + release history (both rails) + explainer sheet.
 import { BrandPayoutBreakdown } from "./BrandPayoutBreakdown";
 import { BrandPayoutTimelineExplainer } from "./BrandPayoutTimelineExplainer";
@@ -146,6 +151,13 @@ export interface BrandPaymentsViewProps {
    * the finance reports surface. NEW in J-A12.
    */
   onOpenReports: () => void;
+  /**
+   * #3645 — opens bank setup for a host who asked for a DIFFERENT country
+   * (the Nigerian form's "Choose a different country"). Bank setup then opens
+   * its country list with nothing chosen instead of sending a brand with a
+   * Nigerian address straight back to Nigeria. Falls back to `onOpenOnboard`.
+   */
+  onChooseDifferentCountry?: () => void;
 }
 
 /**
@@ -202,8 +214,20 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   onBack,
   onOpenOnboard,
   onOpenReports,
+  onChooseDifferentCountry,
 }) => {
   const insets = useSafeAreaInsets();
+  // #3645 — the Nigerian status card's "Add bank" scrolls to the bank form
+  // below it and focuses its first field.
+  const paystackScrollRef = useRef<ScrollView | null>(null);
+  const paystackFormYRef = useRef(0);
+  const [paystackFormFocusSignal, setPaystackFormFocusSignal] = useState(0);
+  const handlePaystackFormLayout = useCallback(
+    (event: LayoutChangeEvent): void => {
+      paystackFormYRef.current = event.nativeEvent.layout.y;
+    },
+    [],
+  );
   // #3660 — index is view-gated; bank mutate CTAs stay owner-only.
   const { allowed: canMutatePayouts } = useCanManageBrandPayments(
     brand?.id ?? null,
@@ -369,9 +393,55 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
   );
   // Paystack: there is no Stripe banner; the same card carries the payout state
   // with no CTA (the bank form is already on screen below it).
+  // #3645 — "Selling, add a bank to get paid" keeps its "Add bank" button
+  // while the form is on screen: the button takes the host to the form. The
+  // other states (next payout, paused) offer no action.
   const paystackStatusBanner = payoutStatus === null
     ? null
-    : payoutStatusToBannerConfig(payoutStatus, { withCta: false });
+    : payoutStatusToBannerConfig(payoutStatus, {
+      withCta: payoutStatus.kind === "selling_add_bank",
+    });
+  // #3645 — card rail. A brand that can sell but whose payouts are not enabled
+  // gets "Add bank" on the status card. Bank setup has nothing left to ask
+  // such a brand (it answers "You're all set"), so the button opens payout
+  // account management, which is where a bank account is entered.
+  const cardRailAddBank = payoutStatus !== null &&
+    payoutStatus.kind === "selling_add_bank" &&
+    bannerConfig !== stripeBannerBase;
+  const refetchStripeStatus = stripeStatusQuery.refetch;
+  const refetchPayoutVisibility = payoutVisibilityQuery.refetch;
+  // True when the last "Add bank" could not open payout account management,
+  // for ANY reason: the request, or the browser refusing to open the window
+  // (a popup blocker refuses a window opened after a request). Never silent.
+  const [addBankFailed, setAddBankFailed] = useState(false);
+  const handleCardRailAddBank = useCallback(async (): Promise<void> => {
+    setAddBankFailed(false);
+    try {
+      await handleOpenAccountManagement();
+    } catch {
+      setAddBankFailed(true);
+      return;
+    }
+    void refetchStripeStatus();
+    void refetchPayoutVisibility();
+  }, [
+    handleOpenAccountManagement,
+    refetchPayoutVisibility,
+    refetchStripeStatus,
+  ]);
+  // #3645 — the remembered payout country is never authoritative over a real
+  // account: this screen knows the account's country, so a different
+  // remembered one is corrected (fire-and-forget).
+  const brandIdForHeal = brand?.id ?? null;
+  const rememberedPayoutCountry = brand?.payoutCountry ?? null;
+  const liveAccountCountry = stripeStatusQuery.data?.country ?? null;
+  useEffect(() => {
+    healRememberedPayoutCountry({
+      brandId: brandIdForHeal,
+      rememberedCountry: rememberedPayoutCountry,
+      accountCountry: liveAccountCountry,
+    });
+  }, [brandIdForHeal, liveAccountCountry, rememberedPayoutCountry]);
 
   // #1863 §4.10 — the server has refused this caller. Derived once, from the
   // real classified errors, for BOTH twins. When true the whole body is
@@ -515,9 +585,29 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         return;
       }
       clearPaystackMutation.mutate(brand.id, {
-        // Revert to Stripe, then open the country picker to re-pick.
-        onSuccess: () => handleMutatePayouts(),
+        // Leave the Nigerian rail, then open the country list to re-pick.
+        // #3645 — the choice is cleared, so the remembered country is too, and
+        // bank setup is told the host came to choose (nothing preselected, no
+        // automatic move back to Nigeria).
+        onSuccess: () => {
+          void rememberBrandPayoutCountry(brand.id, null);
+          (onChooseDifferentCountry ?? onOpenOnboard)();
+        },
       });
+    };
+    // #3645 — "Add bank" on the status card: the bank form is further down
+    // this same screen. Scroll to it and focus its first field.
+    const handleGoToBankForm = (): void => {
+      if (!canMutatePayouts) {
+        Alert.alert(BRAND_PAYMENTS_DENIED_TITLE, BRAND_PAYMENTS_DENIED_BODY);
+        return;
+      }
+      if (connected) setPaystackEditing(true);
+      paystackScrollRef.current?.scrollTo({
+        y: Math.max(0, paystackFormYRef.current - spacing.md),
+        animated: true,
+      });
+      setPaystackFormFocusSignal((signal) => signal + 1);
     };
     return (
       <View style={styles.host}>
@@ -530,6 +620,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           />
         </View>
         <ScrollView
+          ref={paystackScrollRef}
           contentContainerStyle={[
             styles.scroll,
             { paddingBottom: spacing.xl + Math.max(insets.bottom, spacing.md) },
@@ -546,7 +637,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
             ? (
               <PaymentsStatusCard
                 config={paystackStatusBanner}
-                onCta={handleMutatePayouts}
+                onCta={handleGoToBankForm}
               />
             )
             : null}
@@ -629,18 +720,24 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               </>
             )
             : (
-              <BrandPaystackOnboardView
-                brandId={brand.id}
-                brandName={brand.displayName}
-                mode={connected ? "update" : "create"}
-                onConnected={() => {
-                  setPaystackEditing(false);
-                  paystackStatusQuery.refetch();
-                }}
-                onCancel={connected
-                  ? () => setPaystackEditing(false)
-                  : handleClearProvider}
-              />
+              <View
+                onLayout={handlePaystackFormLayout}
+                testID="payments-nigeria-bank-form"
+              >
+                <BrandPaystackOnboardView
+                  brandId={brand.id}
+                  brandName={brand.displayName}
+                  mode={connected ? "update" : "create"}
+                  onConnected={() => {
+                    setPaystackEditing(false);
+                    paystackStatusQuery.refetch();
+                  }}
+                  onCancel={connected
+                    ? () => setPaystackEditing(false)
+                    : handleClearProvider}
+                  focusFirstFieldSignal={paystackFormFocusSignal}
+                />
+              </View>
             )}
         </ScrollView>
         {/* #1180 — explainer sheet mounted outside the ScrollView so the modal
@@ -754,7 +851,29 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         {/* SECTION A — Status Banner (the ONE status card; #3645 PR10 payout
             states are overlaid on it, never a second card) */}
         {bannerConfig !== null
-          ? <PaymentsStatusCard config={bannerConfig} onCta={handleMutatePayouts} />
+          ? (
+            <PaymentsStatusCard
+              config={bannerConfig}
+              onCta={cardRailAddBank ? handleCardRailAddBank : handleMutatePayouts}
+            />
+          )
+          : null}
+        {cardRailAddBank && addBankFailed
+          ? (
+            <GlassCard
+              variant="base"
+              padding={spacing.md}
+              style={styles.statusRefreshWarning}
+            >
+              <Text
+                style={styles.statusRefreshTitle}
+                accessibilityRole="alert"
+                testID="payments-add-bank-error"
+              >
+                We couldn{"’"}t open bank setup. Try again.
+              </Text>
+            </GlassCard>
+          )
           : null}
 
         {stripeStatusQuery.isError
@@ -765,11 +884,11 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               style={styles.statusRefreshWarning}
             >
               <Text style={styles.statusRefreshTitle}>
-                Couldn{"’"}t refresh Stripe status
+                Couldn{"’"}t refresh your payout status
               </Text>
               <Text style={styles.statusRefreshBody}>
-                Showing the last saved status. Continue verification will create
-                a fresh Stripe link.
+                Showing the last saved status. Continue verification will open
+                a fresh setup link.
               </Text>
             </GlassCard>
           )
@@ -783,10 +902,10 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               style={styles.statusRefreshWarning}
             >
               <Text style={styles.statusRefreshTitle}>
-                Couldn{"’"}t refresh Stripe balance
+                Couldn{"’"}t refresh your balance
               </Text>
               <Text style={styles.statusRefreshBody}>
-                Balance unavailable until Stripe balance refresh works.
+                Balance unavailable until it can be refreshed.
               </Text>
             </GlassCard>
           )
@@ -856,7 +975,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           <KpiTile
             label="Pending"
             value={pendingDisplay}
-            sub={liveBalances ? "In Stripe escrow" : "Balance unavailable"}
+            sub={liveBalances ? "Still clearing" : "Balance unavailable"}
             style={styles.kpiCell}
           />
           <KpiTile
@@ -890,14 +1009,14 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                 <View style={styles.taxCtaTextCol}>
                   <Text style={styles.taxCtaTitle}>Tax & registrations</Text>
                   <Text style={styles.taxCtaBody}>
-                    Manage tax registrations and settings in Stripe. Stripe Tax
-                    adds about 0.5% on top of Stripe fees. You're the merchant
-                    of record.
+                    Manage your tax registrations and settings here. Automatic
+                    tax calculation adds about 0.5% on top of processing fees.
+                    You're the merchant of record.
                   </Text>
                   {taxAccountSession.isError
                     ? (
                       <Text style={styles.taxCtaError}>
-                        Couldn't open Stripe. Try again.
+                        Couldn't open tax settings. Try again.
                       </Text>
                     )
                     : null}
@@ -906,7 +1025,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               <View style={styles.taxCtaBtnRow}>
                 <Button
                   label={taxAccountSession.isPending
-                    ? "Opening Stripe..."
+                    ? "Opening..."
                     : "Manage tax registrations"}
                   onPress={handleOpenTaxDashboard}
                   variant="secondary"
@@ -957,18 +1076,19 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               <Text style={styles.dangerZoneTitle}>DANGER ZONE</Text>
               <GlassCard variant="base" padding={spacing.md}>
                 <Text style={styles.dangerZoneBody}>
-                  Disconnecting stops {brand.displayName}{" "}
-                  from taking payments. Existing buyers keep their bookings;
+                  Disconnecting closes {brand.displayName}{"’"}s payout
+                  account. It won{"’"}t be able to take payments until you
+                  connect a bank again. Existing buyers keep their bookings;
                   refunds remain visible under your refund history.
                 </Text>
                 <View style={styles.dangerZoneBtnRow}>
                   <Button
-                    label="Disconnect Stripe"
+                    label="Disconnect bank"
                     onPress={handleOpenDetach}
                     variant="destructive"
                     size="md"
                     leadingIcon="bank"
-                    accessibilityLabel={`Disconnect Stripe from ${brand.displayName}`}
+                    accessibilityLabel={`Disconnect bank from ${brand.displayName}`}
                   />
                 </View>
               </GlassCard>

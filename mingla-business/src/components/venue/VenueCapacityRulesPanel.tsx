@@ -39,7 +39,9 @@ import {
   majorFromMinor,
   minorFromMajor,
   normalizeCurrency,
+  currencyCodeOrNull,
 } from "../../utils/currency";
+import { LazyPayoutCountryInlinePrompt } from "../brand/LazyPayoutCountryInlinePrompt";
 import {
   brandStripeOnboardingRoute,
   paidPublishGuardCopy,
@@ -113,6 +115,10 @@ export function VenueCapacityRulesPanel({
   const router = useRouter();
   const brand = useCurrentBrand();
   const currency = normalizeCurrency(brand?.defaultCurrency);
+  // #3645 — `currency` is a crash-guard value (pounds) when the brand has
+  // none; such a brand is never shown pounds. The deposit amount field is
+  // replaced by the payout-country prompt until a currency exists.
+  const brandHasCurrency = currencyCodeOrNull(brand?.defaultCurrency) !== null;
   const settingsQuery = useVenueReservationSettings(brandId, venueId);
   const reservationFeeCents = settingsQuery.data?.feeAmountCents ?? null;
   const reservationFeeActive = paidFeeIsActive(
@@ -327,23 +333,34 @@ export function VenueCapacityRulesPanel({
                     testID="venue-rule-deposit-input"
                   />
                 </View>
-                <Text style={styles.fieldLabel}>
-                  Deposit amount ({currency})
-                </Text>
+                {brandHasCurrency ? (
+                  <Text style={styles.fieldLabel}>
+                    Deposit amount ({currency})
+                  </Text>
+                ) : (
+                  <LazyPayoutCountryInlinePrompt
+                    brand={brand}
+                    priced
+                    reason="A deposit amount needs a currency. Pick the country your bank account is in and we'll use its currency for this brand."
+                    testID="venue-rule-deposit-payout-country"
+                  />
+                )}
                 <View style={styles.depositRow}>
-                  <View style={styles.depositInput}>
-                    <Input
-                      value={amountDraft}
-                      onChangeText={(next) => {
-                        setAmountDraft(next);
-                        setDepositProblem(null);
-                      }}
-                      variant="number"
-                      placeholder="0.00"
-                      accessibilityLabel="Deposit amount"
-                      testID="venue-rule-deposit-amount"
-                    />
-                  </View>
+                  {brandHasCurrency ? (
+                    <View style={styles.depositInput}>
+                      <Input
+                        value={amountDraft}
+                        onChangeText={(next) => {
+                          setAmountDraft(next);
+                          setDepositProblem(null);
+                        }}
+                        variant="number"
+                        placeholder="0.00"
+                        accessibilityLabel="Deposit amount"
+                        testID="venue-rule-deposit-amount"
+                      />
+                    </View>
+                  ) : null}
                   <Pressable
                     onPress={saveDeposit}
                     disabled={!canMutate || upsert.isPending}
@@ -358,7 +375,9 @@ export function VenueCapacityRulesPanel({
                     <Text style={styles.depositSaveLabel}>Save</Text>
                   </Pressable>
                 </View>
-                {reservationFeeActive && reservationFeeCents !== null ? (
+                {reservationFeeActive &&
+                reservationFeeCents !== null &&
+                brandHasCurrency ? (
                   <Text style={styles.ruleSummary}>
                     Leave the amount blank to use your{" "}
                     {formatCurrency(reservationFeeCents, currency, true)}{" "}

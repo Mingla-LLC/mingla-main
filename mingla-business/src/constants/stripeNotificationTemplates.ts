@@ -55,39 +55,39 @@ export const STRIPE_NOTIFICATION_TEMPLATES: Record<
     type: "stripe.kyc_deadline_warning_7d",
     emailSubject: "Action needed within 7 days for {brandName}",
     emailBody:
-      "Stripe needs you to complete a few verification steps for {brandName} within 7 days. Without this, payouts will pause. Tap the link below to finish.",
+      "A few verification steps for {brandName} need completing within 7 days. Without this, payouts will pause. Tap the link below to finish.",
     pushTitle: "Action needed in 7 days",
     pushBody:
-      "{brandName} has a Stripe verification step due in 7 days. Tap to finish.",
+      "{brandName} has a verification step due in 7 days. Tap to finish.",
     inAppTitle: "Verification due in 7 days",
     inAppBody:
-      "Finish your Stripe verification for {brandName} to keep payouts running.",
+      "Finish verification for {brandName} to keep payouts running.",
     severity: "warning",
   },
   "stripe.kyc_deadline_warning_3d": {
     type: "stripe.kyc_deadline_warning_3d",
     emailSubject: "Action needed within 3 days for {brandName}",
     emailBody:
-      "Stripe needs verification details for {brandName} in the next 3 days. After that, payouts pause until details are provided.",
+      "Verification details for {brandName} are needed in the next 3 days. After that, payouts pause until details are provided.",
     pushTitle: "3 days left for {brandName}",
     pushBody:
       "Verification details due in 3 days. Tap to finish before payouts pause.",
     inAppTitle: "Verification due in 3 days",
     inAppBody:
-      "{brandName} payouts will pause if Stripe doesn't get the requested details.",
+      "{brandName} payouts will pause if the requested details aren't provided.",
     severity: "warning",
   },
   "stripe.kyc_deadline_warning_1d": {
     type: "stripe.kyc_deadline_warning_1d",
     emailSubject: "Last day — verify {brandName} now",
     emailBody:
-      "{brandName} has 24 hours left before Stripe pauses payouts. Open the verification flow to finish.",
+      "{brandName} has 24 hours left before payouts pause. Open the verification flow to finish.",
     pushTitle: "24 hours left for {brandName}",
     pushBody:
-      "Stripe will pause payouts tomorrow unless you finish verification. Tap to fix now.",
+      "Payouts will pause tomorrow unless you finish verification. Tap to fix now.",
     inAppTitle: "Last day to verify {brandName}",
     inAppBody:
-      "Stripe pauses payouts in 24 hours. Finish verification to keep them running.",
+      "Payouts pause in 24 hours. Finish verification to keep them running.",
     severity: "blocking",
   },
   "stripe.payout_failed": {
@@ -104,13 +104,13 @@ export const STRIPE_NOTIFICATION_TEMPLATES: Record<
   },
   "stripe.account_deauthorized": {
     type: "stripe.account_deauthorized",
-    emailSubject: "{brandName} disconnected from Stripe",
+    emailSubject: "{brandName}: bank disconnected",
     emailBody:
-      "{brandName} is no longer connected to Stripe. New payments can't be accepted until you reconnect. Tap to reconnect now.",
+      "{brandName} no longer has a connected bank. New payments can't be accepted until you reconnect. Tap to reconnect now.",
     pushTitle: "{brandName} disconnected",
     pushBody:
-      "{brandName} can't accept new payments until you reconnect to Stripe.",
-    inAppTitle: "{brandName} disconnected from Stripe",
+      "{brandName} can't accept new payments until you reconnect your bank.",
+    inAppTitle: "{brandName}: bank disconnected",
     inAppBody:
       "Reconnect to resume payments. Existing payouts already in flight will still complete.",
     severity: "blocking",
@@ -119,10 +119,10 @@ export const STRIPE_NOTIFICATION_TEMPLATES: Record<
     type: "stripe.bank_verification_required",
     emailSubject: "Verify your bank for {brandName}",
     emailBody:
-      "Stripe needs to verify the bank account on file for {brandName} before sending the next payout. Tap to verify.",
+      "The bank account on file for {brandName} needs verifying before the next payout can be sent. Tap to verify.",
     pushTitle: "Bank verification needed",
     pushBody:
-      "{brandName}: confirm your bank account so Stripe can send your next payout.",
+      "{brandName}: confirm your bank account so your next payout can be sent.",
     inAppTitle: "Bank verification required",
     inAppBody:
       "Confirm the bank account on {brandName} so payouts can continue.",
@@ -132,21 +132,21 @@ export const STRIPE_NOTIFICATION_TEMPLATES: Record<
     type: "stripe.account_restricted",
     emailSubject: "{brandName} payouts paused",
     emailBody:
-      "Stripe has paused payouts on {brandName}. {reason} Tap to resolve.",
+      "Payouts are paused on {brandName}. {reason} Tap to resolve.",
     pushTitle: "Payouts paused for {brandName}",
     pushBody: "{reason} Tap to resolve.",
     inAppTitle: "Payouts paused",
     inAppBody:
-      "Stripe paused {brandName} payouts. {reason} Resolve to resume.",
+      "{brandName} payouts are paused. {reason} Resolve to resume.",
     severity: "blocking",
   },
   "stripe.reactivation_complete": {
     type: "stripe.reactivation_complete",
     emailSubject: "{brandName} is back online",
     emailBody:
-      "Great news — {brandName} can accept payments again. Stripe finished verifying everything.",
+      "Great news — {brandName} can accept payments again. Verification is complete.",
     pushTitle: "{brandName} reactivated",
-    pushBody: "Stripe verification cleared — payments are back on.",
+    pushBody: "Verification cleared — payments are back on.",
     inAppTitle: "{brandName} is back online",
     inAppBody:
       "Payments and payouts are working again. Nothing more for you to do.",

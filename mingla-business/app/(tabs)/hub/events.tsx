@@ -55,10 +55,14 @@ import {
 import type { LiveEvent } from "../../../src/store/liveEventStore";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import {
-  cancelEventDialogDescription,
+  cancelDialogDescription,
+  cancelDoneToast,
   cancelEventDoneToast,
+  cancelRsvpDescription,
   countSoldTickets,
+  knownPaidOrderCount,
   nothingSoldIsKnown,
+  nothingToRefundIsKnown,
 } from "../../../src/utils/cancelEventCopy";
 
 import {
@@ -239,6 +243,26 @@ export default function EventsTab(): React.ReactElement {
       doorSoldCount: 0,
       doorSalesEnabled: cancelEvent.inPersonPaymentsEnabled === true,
     });
+  // #3645 — how many paid orders the cancel will queue for refund, when the
+  // orders read has answered; null = not known.
+  const cancelPaidOrderCount = knownPaidOrderCount(
+    cancelEventOrders.status,
+    cancelEventOrders.data ?? [],
+  );
+  // Free tickets are orders with nothing to refund: never "queued".
+  const cancelNothingToRefund =
+    cancelEvent !== null &&
+    nothingToRefundIsKnown({
+      ordersStatus: cancelEventOrders.status,
+      orders: cancelEventOrders.data ?? [],
+      doorSoldCount: 0,
+      doorSalesEnabled: cancelEvent.inPersonPaymentsEnabled === true,
+    });
+  // An RSVP sells no tickets: the only money in it is chip-ins, and this
+  // screen does not read them, so its dialog never says "nothing to refund".
+  const cancellingRsvp =
+    cancelEvent !== null &&
+    (cancelEvent as { event_type?: string }).event_type === "rsvp";
   const [cancelSubmitting, setCancelSubmitting] = useState<boolean>(false);
   const [deleteDraftCtx, setDeleteDraftCtx] = useState<{
     id: string;
@@ -496,7 +520,28 @@ export default function EventsTab(): React.ReactElement {
       return;
     }
     const eventId = manageCtx.event.id;
+    // #3645 — an RSVP has its own return-to-draft function; the event one
+    // refuses it. Loaded on demand: only a host returning an RSVP needs it.
+    const unpublishingRsvp =
+      (manageCtx.event as { isRsvp?: boolean }).isRsvp === true ||
+      (manageCtx.event as { event_type?: string }).event_type === "rsvp";
     setManageCtx(null);
+    if (unpublishingRsvp) {
+      try {
+        const { unpublishRsvpToDraft } = await import(
+          "../../../src/services/rsvpLifecycleService"
+        );
+        const result = await unpublishRsvpToDraft(eventId);
+        setToast({ visible: true, message: "RSVP returned to draft." });
+        router.push(`/rsvp/${result.eventId}/edit` as never);
+      } catch (error) {
+        const { rsvpUnpublishFailureCopy } = await import(
+          "../../../src/utils/rsvpUnpublishFailureCopy"
+        );
+        setToast({ visible: true, message: rsvpUnpublishFailureCopy(error) });
+      }
+      return;
+    }
     try {
       const result = await unpublishBusinessEventToDraft(eventId);
       setToast({ visible: true, message: "Event moved back to drafts." });
@@ -557,12 +602,18 @@ export default function EventsTab(): React.ReactElement {
         setCancelEvent(null);
         setToast({
           visible: true,
-          message: "Event cancelled.",
+          // #3645 — "Refunds are with Mingla for review" only when paid
+          // orders are known to exist.
+          message: cancellingRsvp
+            ? cancelDoneToast(null, "RSVP")
+            : cancelDoneToast(cancelPaidOrderCount),
         });
       } catch {
         setToast({
           visible: true,
-          message: "Could not cancel event. Try again.",
+          message: cancellingRsvp
+            ? "Couldn't cancel this RSVP. Try again."
+            : "Could not cancel event. Try again.",
         });
       } finally {
         setCancelSubmitting(false);
@@ -578,15 +629,21 @@ export default function EventsTab(): React.ReactElement {
     });
     setCancelSubmitting(false);
     setCancelEvent(null);
-    // [TRANSITIONAL] Buyer email cascade is a no-op stub — B-cycle wires Resend.
+    // #3645 — an event that only exists on this device has no orders on
+    // Mingla, so there is nothing to refund and nothing more to say.
     setToast({
       visible: true,
-      message: cancelEventDoneToast(
-        cancelNothingSold,
-        "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
-      ),
+      message: cancelEventDoneToast(cancelNothingSold, "Event cancelled."),
     });
-  }, [cancelEvent, serverBackedEventIds, updateLifecycle, cancelServerEvent, cancelNothingSold]);
+  }, [
+    cancelEvent,
+    serverBackedEventIds,
+    updateLifecycle,
+    cancelServerEvent,
+    cancelNothingSold,
+    cancelPaidOrderCount,
+    cancellingRsvp,
+  ]);
 
   const handleManageDeleteDraft = useCallback((): void => {
     if (manageCtx === null || manageCtx.kind !== "draft") return;
@@ -980,11 +1037,16 @@ export default function EventsTab(): React.ReactElement {
           setCancelEvent(null);
         }}
         onConfirm={handleCancelEventConfirm}
-        title="Cancel this event?"
-        description={cancelEventDialogDescription(
-          cancelNothingSold,
-          "This is serious. Buyers will be notified by email and refunded automatically when those wire up (B-cycle). You can't undo this.",
-        )}
+        title={cancellingRsvp ? "Cancel this RSVP?" : "Cancel this event?"}
+        description={
+          cancellingRsvp
+            ? cancelRsvpDescription(null)
+            : cancelDialogDescription({
+              nothingSold: cancelNothingSold,
+              nothingToRefund: cancelNothingToRefund,
+              paidOrderCount: cancelPaidOrderCount,
+            })
+        }
         variant="typeToConfirm"
         confirmText={
           cancelEvent !== null
@@ -993,8 +1055,8 @@ export default function EventsTab(): React.ReactElement {
               : cancelEvent.eventSlug
             : ""
         }
-        confirmLabel="Cancel event"
-        cancelLabel="Keep event live"
+        confirmLabel={cancellingRsvp ? "Cancel RSVP" : "Cancel event"}
+        cancelLabel={cancellingRsvp ? "Keep it live" : "Keep event live"}
         destructive
       />
 

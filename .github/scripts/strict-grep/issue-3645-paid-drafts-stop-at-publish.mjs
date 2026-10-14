@@ -68,10 +68,12 @@ const F = {
   eventHooks: `${B}src/hooks/useBusinessEvents.ts`,
 };
 
-const SOLD_DIALOG =
-  "This is serious. Buyers will be notified by email and refunded automatically when those wire up (B-cycle). You can't undo this.";
-const SOLD_TOAST =
-  "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).";
+// #3645 (bank setup and truthful copy): the sold-tickets dialog and toast used
+// to carry internal wording ("when those wire up (B-cycle)"). They now say what
+// the code does: sales stop, paid orders are queued for a full refund, Mingla
+// reviews the batch. The rules below pin that the screens use the shared
+// helper and that the internal wording cannot come back.
+const INTERNAL_WORDING = "B-cycle";
 
 // ---------------------------------------------------------------------------
 // Rule constructors. Every rule knows how to BREAK the thing it protects, so
@@ -532,12 +534,17 @@ const RULES = [
     "doorSalesEnabled: event?.inPersonPaymentsEnabled === true,",
   ], "'nothing to refund' is only said when it is known"),
   has("Ej-event-screen-dialog", F.eventManage,
-    "description={cancelEventDialogDescription(\n          nothingSold,",
+    "description={cancelDialogDescription({\n          nothingSold,",
     "the dialog uses the rule"),
-  has("Ej-event-screen-sold-dialog-untouched", F.eventManage, SOLD_DIALOG,
-    "the sold-tickets dialog copy is deliberately unchanged by this work"),
-  has("Ej-event-screen-sold-toast-untouched", F.eventManage, SOLD_TOAST,
-    "the sold-tickets toast copy is deliberately unchanged by this work"),
+  has("Ej-event-screen-sold-dialog-is-the-reviewed-refund-copy", F.eventManage,
+    "nothingToRefund,\n          paidOrderCount,\n        })}",
+    "with sales, the dialog says what the cancel does; free tickets are never 'queued for refund'"),
+  has("Ej-event-screen-sold-toast-is-known-before-said", F.eventManage,
+    "showToast(cancelDoneToast(paidOrderCountRef.current));",
+    "'Refunds are with Mingla' is only said when paid orders are known to exist"),
+  lacks("Ej-event-screen-no-internal-wording", F.eventManage,
+    `(${INTERNAL_WORDING})`,
+    "internal wording is never shown to a host"),
   ordered("Ej-hub-knows-before-it-says", F.hubEvents, [
     "const cancelEventOrders = useEventOrders(",
     "cancelEvent !== null && serverBackedEventIds.has(cancelEvent.id)",
@@ -545,12 +552,23 @@ const RULES = [
     "doorSalesEnabled: cancelEvent.inPersonPaymentsEnabled === true,",
   ], "the hub reads the event's orders while its cancel dialog is open"),
   has("Ej-hub-dialog", F.hubEvents,
-    "description={cancelEventDialogDescription(\n          cancelNothingSold,",
-    "the hub dialog uses the rule"),
-  has("Ej-hub-sold-dialog-untouched", F.hubEvents, SOLD_DIALOG,
-    "the sold-tickets dialog copy is deliberately unchanged by this work"),
-  has("Ej-hub-sold-toast-untouched", F.hubEvents, SOLD_TOAST,
-    "the sold-tickets toast copy is deliberately unchanged by this work"),
+    "cancelDialogDescription({\n              nothingSold: cancelNothingSold,\n              nothingToRefund: cancelNothingToRefund,\n              paidOrderCount: cancelPaidOrderCount,",
+    "the hub dialog uses the rule, and with sales says what the cancel does"),
+  has("Ej-hub-rsvp-dialog-never-says-nothing-to-refund", F.hubEvents,
+    "? cancelRsvpDescription(null)",
+    "the hub does not read chip-ins, so an RSVP's dialog never claims there is nothing to refund"),
+  has("Ej-hub-sold-toast-is-known-before-said", F.hubEvents,
+    ": cancelDoneToast(cancelPaidOrderCount),",
+    "'Refunds are with Mingla' is only said when paid orders are known to exist"),
+  has("Ej-hub-rsvp-dialog-says-rsvp", F.hubEvents,
+    'title={cancellingRsvp ? "Cancel this RSVP?" : "Cancel this event?"}',
+    "an RSVP row's cancel dialog says RSVP, not event"),
+  has("Ej-hub-rsvp-toast-says-rsvp", F.hubEvents,
+    '? cancelDoneToast(null, "RSVP")',
+    "an RSVP row's cancel toast says RSVP, not event"),
+  lacks("Ej-hub-no-internal-wording", F.hubEvents,
+    `(${INTERNAL_WORDING})`,
+    "internal wording is never shown to a host"),
 
   // E-k. A cancelled event says CANCELLED and keeps its date.
   //      (issue_3645_cancelled_event_keeps_date_and_badge…)

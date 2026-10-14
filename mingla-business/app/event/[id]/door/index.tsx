@@ -429,7 +429,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
           <Text style={styles.bannerTitle}>TESTING MODE</Text>
           <Text style={styles.bannerBody}>
             Only Cash and Manual payments work today. Card reader and NFC
-            tap-to-pay land when the backend ships in B-cycle.
+            tap-to-pay are not available yet.
           </Text>
         </View>
 
@@ -456,7 +456,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
             <View style={styles.reconLabelCol}>
               <Text style={styles.reconLabel}>Card reader</Text>
               <Text style={styles.reconLabelHint}>
-                ({fmtDoor(totalsByMethod.card_reader)} — B-cycle)
+                ({fmtDoor(totalsByMethod.card_reader)} — not available yet)
               </Text>
             </View>
           </View>
@@ -464,7 +464,7 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
             <View style={styles.reconLabelCol}>
               <Text style={styles.reconLabel}>NFC tap</Text>
               <Text style={styles.reconLabelHint}>
-                ({fmtDoor(totalsByMethod.nfc)} — B-cycle)
+                ({fmtDoor(totalsByMethod.nfc)} — not available yet)
               </Text>
             </View>
           </View>

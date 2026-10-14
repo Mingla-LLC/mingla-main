@@ -55,6 +55,36 @@ interface InvokeResult {
 
 const mockInvoke = jest.fn<Promise<InvokeResult>, [string, { body: Record<string, unknown> }]>();
 
+// [TEST-MOD-APPROVED #3645] Bank setup no longer opens on the United Kingdom by
+// default, nor on the brand's ADDRESS country. It opens on the country the
+// brand CHOSE, which for a brand with a card-rail account is the country of
+// that account's currency, and on nothing at all when nothing was chosen.
+// The fixtures below describe brands WITH a card-rail account but gave them no
+// currency, which no real brand with an account has. The row handed to the
+// screen is completed here, so every assertion keeps its meaning: such a brand
+// stays on its own card-rail country and is never moved to Nigeria.
+const mockAccountCurrencyRows = new WeakMap<object, object>();
+function mockWithAccountCurrency<
+  T extends {
+    countryCode: string | null;
+    stripeStatus?: string;
+    defaultCurrency?: string | null;
+  },
+>(seed: T | null): T | null {
+  if (seed === null) return null;
+  const hasCardAccount =
+    seed.stripeStatus !== undefined && seed.stripeStatus !== "not_connected";
+  if (!hasCardAccount || seed.defaultCurrency !== undefined) return seed;
+  const known = mockAccountCurrencyRows.get(seed);
+  if (known !== undefined) return known as T;
+  const completed = {
+    ...seed,
+    defaultCurrency: seed.countryCode === "US" ? "USD" : "GBP",
+  };
+  mockAccountCurrencyRows.set(seed, completed);
+  return completed;
+}
+
 jest.mock("expo-router", () => ({
   useLocalSearchParams: () => params,
   useRouter: () => router,
@@ -72,7 +102,7 @@ jest.mock("../../../hooks/useBrands", () => {
   return {
     brandKeys,
     useBrand: () => ({
-      data: brandSeed,
+      data: mockWithAccountCurrency(brandSeed),
       isError: false,
       isFetched: true,
       isLoading: false,

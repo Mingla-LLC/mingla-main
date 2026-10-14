@@ -217,7 +217,8 @@ describe("#3258 AC-4 — the blocking field is named in plain English", () => {
       pendingVerification: ["business_profile.url"],
     });
     expect(sentence).toBe(
-      "Stripe is checking your website. Nothing to do — we'll email you when it's verified.",
+      // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
+      "We're checking your website. Nothing to do — we'll email you when it's verified.",
     );
   });
 
@@ -230,14 +231,16 @@ describe("#3258 AC-4 — the blocking field is named in plain English", () => {
         ],
       }),
     ).toBe(
-      "Stripe is checking the ID document you uploaded and 1 other detail. Nothing to do — we'll email you when everything is verified.",
+      // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
+      "We're checking the ID document you uploaded and 1 other detail. Nothing to do — we'll email you when everything is verified.",
     );
     expect(
       describeStripePendingVerification({
         pendingVerification: ["external_account", "company.tax_id", "individual.id_number"],
       }),
     ).toBe(
-      "Stripe is checking your payout bank account and 2 other details. Nothing to do — we'll email you when everything is verified.",
+      // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
+      "We're checking your payout bank account and 2 other details. Nothing to do — we'll email you when everything is verified.",
     );
   });
 
@@ -302,7 +305,8 @@ describe("#3258 AC-1b — the brand-profile row stops saying 'Action required'",
     });
     expect(getBrandProfileStripeBannerCopy(presentation)).toEqual({
       title: "Action required",
-      sub: "Stripe has limited your account. Tap to resolve.",
+      // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
+      sub: "Your payment account is limited. Tap to resolve.",
     });
     expect(getBrandProfileStripeOperationsSub(presentation)).toBe(
       "Action required",
@@ -317,7 +321,8 @@ describe("#3258 AC-1b — the brand-profile row stops saying 'Action required'",
     );
     expect(getBrandProfileStripeBannerCopy("onboarding")).toEqual({
       title: "Onboarding submitted — verifying",
-      sub: "We'll email you when Stripe finishes verifying your details.",
+      // [TEST-MOD-APPROVED #3645] host copy no longer names the payment provider.
+      sub: "We'll email you when your details have been verified.",
     });
   });
 });

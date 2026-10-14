@@ -161,8 +161,8 @@ export const issueOrderRefund = async (
           : "The buyer money has not moved.";
       const feeTruth =
         code === "refund_reconciliation_pending"
-          ? "Mingla is still confirming the Stripe fee refund."
-          : "The Stripe fee evidence needs review; no amount has been guessed.";
+          ? "Mingla is still confirming the processing fee refund."
+          : "The processing fee evidence needs review; no amount has been guessed.";
       const rawFeeAmount = payload?.application_fee_refunded_cents;
       const applicationFeeRefundedCents =
         typeof rawFeeAmount === "number" &&
@@ -201,7 +201,7 @@ export const issueOrderRefund = async (
     throw refundOrderError(
       "refund_reconciliation_pending",
       buyerRefundStatus === "succeeded"
-        ? "The buyer refund was issued. Mingla is still confirming the Stripe fee refund."
+        ? "The buyer refund was issued. Mingla is still confirming the processing fee refund."
         : "The buyer money has not moved. Mingla is still preparing the refund.",
       feeStatus,
       202,
@@ -220,7 +220,7 @@ export const issueOrderRefund = async (
     throw refundOrderError(
       "refund_evidence_conflict",
       buyerRefundStatus === "succeeded"
-        ? "The buyer refund was issued. The Stripe fee evidence needs review; no amount has been guessed."
+        ? "The buyer refund was issued. The processing fee evidence needs review; no amount has been guessed."
         : "The buyer money has not moved. The refund needs review before Mingla can proceed.",
       feeStatus,
       409,
@@ -268,9 +268,9 @@ const userMessageFor = (code: string): string => {
     case "missing_payment_intent":
       return "This order has no payment record. It may be a free order.";
     case "stripe_declined":
-      return "Stripe declined the refund. Try again in a moment.";
+      return "The refund was declined. Try again in a moment.";
     case "commit_failed_after_stripe_success":
-      return "Refund was issued by Stripe but we couldn't update the app. Refresh to confirm.";
+      return "The refund was issued but we couldn't update the app. Refresh to confirm.";
     case "unauthenticated":
       return "You're signed out. Please sign in and try again.";
     case "idempotency_key_required":

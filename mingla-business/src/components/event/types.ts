@@ -43,6 +43,19 @@ export interface StepBodyProps {
    */
   scrollToBottom: () => void;
   /**
+   * #3645 — bumped by the wizard each time Continue is pressed on an invalid
+   * step. A step that reads it moves the host to its FIRST invalid field
+   * (scrolls it into view and focuses it), so a refused Continue is never
+   * silent. Optional: steps that ignore it behave as before.
+   */
+  focusFirstErrorSignal?: number;
+  /**
+   * #3645 — scrolls the wizard body so the given offset (measured from the top
+   * of the step body) is in view. Used for invalid fields that cannot take
+   * keyboard focus, such as a row of chips.
+   */
+  scrollToStepOffset?: (y: number) => void;
+  /**
    * When provided, the step body is in edit-after-publish mode (ORCH-0704 v2).
    * Currently only Step 5 reads this for tier price/capacity/delete lock UX.
    * Other steps ignore it transparently.

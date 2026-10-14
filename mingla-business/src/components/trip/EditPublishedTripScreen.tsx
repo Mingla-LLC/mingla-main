@@ -1192,7 +1192,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         // we surface a hint that orders are managed via Stripe dashboard.
         // Exit condition: trip orders route ships.
         showToast(
-          "Trip orders ledger is coming soon. Refund existing buyers via your Stripe dashboard first.",
+          "Trip orders ledger is coming soon. To refund existing buyers first, email support@usemingla.com.",
         );
       };
       switch (result.reason) {

@@ -74,6 +74,15 @@ import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { offeringActivityFromOrders } from "../../../src/utils/offeringActivityFromOrders";
 import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
 import { unpublishExperienceToDraft } from "../../../src/services/experienceDetailService";
+// #3645 — cancelling an experience goes through the same cancel function as an
+// event, so the same true wording applies.
+import {
+  CANCEL_EXPERIENCE_NOTHING_SOLD_DESCRIPTION,
+  cancelDialogDescription,
+  cancelDoneToast,
+  knownPaidOrderCount,
+  nothingToRefundIsKnown,
+} from "../../../src/utils/cancelEventCopy";
 // issue #3237 — the one-shot "Published. It's live." banner after a publish,
 // and the rule that keeps a draft from offering links that open "not found".
 import { useJustPublishedArrival } from "../../../src/hooks/useJustPublishedArrival";
@@ -244,6 +253,28 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
     () => withListingInsights(buildOfferingDashboardTiles("experience")),
     [],
   );
+  // #3645 — what the cancel dialog may truthfully say. "Nothing to refund"
+  // only when the orders read has completed and no order is paid; a count
+  // only when it is known.
+  const experienceOrders = experience === null
+    ? []
+    : allOrders.filter((o) => o.eventId === experience.id);
+  const cancelPaidOrderCount = knownPaidOrderCount(
+    ordersQuery.status,
+    experienceOrders,
+  );
+  // A free experience's bookings are orders with nothing to refund.
+  const cancelNothingToRefund = nothingToRefundIsKnown({
+    ordersStatus: ordersQuery.status,
+    orders: experienceOrders,
+    doorSoldCount: 0,
+    doorSalesEnabled: false,
+  });
+  const cancelNothingSold =
+    ordersQuery.status === "ready" &&
+    experienceOrders.every(
+      (o) => o.status !== "paid" && o.status !== "refunded_partial",
+    );
 
   if (typeof eventId !== "string" || eventId.length === 0) {
     return (
@@ -670,7 +701,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
             setToast({
               visible: true,
               kind: "info",
-              message: "Experience cancelled.",
+              message: cancelDoneToast(cancelPaidOrderCount, "Experience"),
             });
             setTimeout(() => router.back(), 300);
           } catch (e) {
@@ -687,7 +718,12 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           }
         }}
         title="Cancel this experience?"
-        description="Buyers will be notified and refunds processed in a future release. This can't be undone."
+        description={cancelDialogDescription({
+          nothingSold: cancelNothingSold,
+          nothingSoldDescription: CANCEL_EXPERIENCE_NOTHING_SOLD_DESCRIPTION,
+          nothingToRefund: cancelNothingToRefund,
+          paidOrderCount: cancelPaidOrderCount,
+        })}
         variant="typeToConfirm"
         confirmText={experience.title.length > 0 ? experience.title : experience.slug}
         confirmLabel="Cancel experience"

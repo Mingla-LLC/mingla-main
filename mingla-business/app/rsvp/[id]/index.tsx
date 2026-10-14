@@ -45,6 +45,7 @@ import { computeMasterStartAtUtc } from "../../../src/utils/eventDateMath";
 import { eventPublicUrl } from "../../../src/constants/publicUrls";
 import { formatRsvpGoingLabel } from "../../../src/utils/rsvpHubMetrics";
 
+import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -63,6 +64,10 @@ import { useBusinessEventsForBrand } from "../../../src/hooks/useBusinessEvents"
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
+// #3645 — a published RSVP can be returned to draft or cancelled. The dialogs
+// (and everything they need) load only when the host first opens one.
+import { LazyRsvpLifecycleDialogs } from "../../../src/components/rsvp/LazyRsvpLifecycleDialogs";
+import { canPerformAction } from "../../../src/utils/permissionGates";
 
 // ----- Status derivation (mirrors event/[id]/index.tsx) ---------------
 type EventStatus = "live" | "upcoming" | "past";
@@ -145,6 +150,44 @@ export default function RsvpDetailScreen(): React.ReactElement {
     visible: false,
     message: "",
   });
+  // #3645 — which lifecycle dialog is open, and whether either has ever been
+  // opened (the lazy dialogs mount on first use and then stay mounted).
+  const [lifecycleDialog, setLifecycleDialog] = useState<
+    "return-to-draft" | "cancel" | null
+  >(null);
+  const [lifecycleDialogsLoaded, setLifecycleDialogsLoaded] = useState(false);
+  const openLifecycleDialog = useCallback(
+    (which: "return-to-draft" | "cancel"): void => {
+      setLifecycleDialogsLoaded(true);
+      setLifecycleDialog(which);
+    },
+    [],
+  );
+  const closeLifecycleDialog = useCallback((): void => {
+    setLifecycleDialog(null);
+  }, []);
+  const handleReturnedToDraft = useCallback(
+    (message: string): void => {
+      setLifecycleDialog(null);
+      setToast({ visible: true, message });
+      // Let the dialog finish closing before the screen changes (the same
+      // short wait the experience dashboard uses after a cancel).
+      if (id !== null) {
+        setTimeout(() => router.replace(`/rsvp/${id}/edit` as never), 300);
+      }
+    },
+    [id, router],
+  );
+  // No navigation after a cancel: the screen re-renders in place with the
+  // cancelled status, exactly as the event dashboard does.
+  const handleRsvpCancelled = useCallback((message: string): void => {
+    setLifecycleDialog(null);
+    setToast({ visible: true, message });
+  }, []);
+  const canManageLifecycle = canPerformAction(
+    currentBrandRole.rank,
+    "EDIT_EVENT",
+  );
 
   const event = resolvedLiveEvent;
   useSuccessfulBusinessRecentOpen({
@@ -463,7 +506,53 @@ export default function RsvpDetailScreen(): React.ReactElement {
             />
           ) : null}
         </View>
+
+        {/* #3645 — same two controls, in the same place, as the experience
+            dashboard. Return to draft is offered before the RSVP starts;
+            Cancel while it is upcoming or live. Event managers and above. */}
+        {status === "upcoming" &&
+        event.status !== "cancelled" &&
+        canManageLifecycle ? (
+          <View style={styles.lifecycleCtaWrap}>
+            <Button
+              label="Return RSVP to draft"
+              variant="ghost"
+              size="md"
+              onPress={() => openLifecycleDialog("return-to-draft")}
+              fullWidth
+              testID="rsvp-dashboard-unpublish-cta"
+            />
+          </View>
+        ) : null}
+        {(status === "live" || status === "upcoming") &&
+        event.status !== "cancelled" &&
+        canManageLifecycle ? (
+          <View style={styles.lifecycleCtaWrap}>
+            <Button
+              label="Cancel RSVP"
+              variant="ghost"
+              size="md"
+              onPress={() => openLifecycleDialog("cancel")}
+              fullWidth
+              testID="rsvp-dashboard-cancel-cta"
+            />
+          </View>
+        ) : null}
       </ScrollView>
+
+      {lifecycleDialogsLoaded ? (
+        <LazyRsvpLifecycleDialogs
+          eventId={event.serverEventId ?? event.id}
+          brandId={event.brandId}
+          confirmText={
+            event.name.trim().length > 0 ? event.name : event.eventSlug
+          }
+          open={lifecycleDialog}
+          onClose={closeLifecycleDialog}
+          onReturnedToDraft={handleReturnedToDraft}
+          onCancelled={handleRsvpCancelled}
+        />
+      ) : null}
 
       {/* Share modal — #2589: mounted only when the offering is publicly
           resolvable, so the sheet is never offered for something that provably
@@ -584,6 +673,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  lifecycleCtaWrap: {
+    marginTop: spacing.xs,
   },
   toastWrap: {
     position: "absolute",

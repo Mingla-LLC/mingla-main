@@ -23,8 +23,16 @@
  * Mingla_Artifacts/reports/QA_ORCH-0823_EVENT_WIZARD_SPACE_CAPSLOCK_GLITCH_REPORT.md.
  */
 
-import React, { useCallback, useRef } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useCallback, useEffect, useRef } from "react";
+import {
+  AccessibilityInfo,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import type { LayoutChangeEvent } from "react-native";
 
 import {
   accent,
@@ -117,6 +125,15 @@ const TaxonomyPill: React.FC<TaxonomyPillProps> = ({
   </Pressable>
 );
 
+// #3645 — this step's fields in the order they appear on screen.
+const STEP_1_FIELD_ORDER = [
+  "name",
+  "partyTypes",
+  "vibeTags",
+  "musicGenres",
+  "description",
+] as const;
+
 const toggleInArray = (arr: string[], slug: string): string[] =>
   arr.includes(slug) ? arr.filter((s) => s !== slug) : [...arr, slug];
 
@@ -126,8 +143,51 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
   errors,
   showErrors,
   scrollToBottom,
+  focusFirstErrorSignal = 0,
+  scrollToStepOffset,
 }) => {
   const nameRef = useRef<TextInput>(null);
+  const descriptionRef = useRef<TextInput>(null);
+  // #3645 — where each chip section sits in this step, for "go to the first
+  // invalid field" (a row of chips cannot take keyboard focus).
+  const sectionYRef = useRef<Record<string, number>>({});
+  const rememberSectionY = useCallback(
+    (key: string) =>
+      (event: LayoutChangeEvent): void => {
+        sectionYRef.current[key] = event.nativeEvent.layout.y;
+      },
+    [],
+  );
+  const errorsRef = useRef(errors);
+  errorsRef.current = errors;
+  // #3645 — Continue was pressed on an invalid step. Go to the first invalid
+  // field in screen order: a text field takes focus (which also scrolls it
+  // into view on web and native); a chip section is scrolled to and its
+  // message is read out.
+  useEffect(() => {
+    if (focusFirstErrorSignal <= 0) return;
+    const first = STEP_1_FIELD_ORDER.find(
+      (key) => errorForKey(errorsRef.current, key) !== undefined,
+    );
+    if (first === undefined) return;
+    if (first === "name") {
+      nameRef.current?.focus();
+      return;
+    }
+    if (first === "description") {
+      descriptionRef.current?.focus();
+      return;
+    }
+    scrollToStepOffset?.(sectionYRef.current[first] ?? 0);
+    const message = errorForKey(errorsRef.current, first);
+    if (message !== undefined) {
+      try {
+        AccessibilityInfo.announceForAccessibility(message);
+      } catch {
+        // No screen-reader support on this platform: the scroll is enough.
+      }
+    }
+  }, [focusFirstErrorSignal, scrollToStepOffset]);
   const focusName = useCallback(() => nameRef.current?.focus(), []);
   const nameHighlighted = useTurnoutFocusTarget("name", focusName);
   const nameError = showErrors ? errorForKey(errors, "name") : undefined;
@@ -208,7 +268,7 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
       </View>
 
       {/* Party Type — required, multi-select */}
-      <View style={styles.field}>
+      <View style={styles.field} onLayout={rememberSectionY("partyTypes")}>
         <Text style={styles.fieldLabel}>Party Type *</Text>
         <View style={styles.taxonomyGrid}>
           {PARTY_TYPES.map((opt) => (
@@ -227,7 +287,7 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
       </View>
 
       {/* Vibe Tags — optional, multi-select */}
-      <View style={styles.field}>
+      <View style={styles.field} onLayout={rememberSectionY("vibeTags")}>
         <Text style={styles.fieldLabel}>Vibe Tags (Select all that apply)</Text>
         <View style={styles.taxonomyGrid}>
           {VIBE_TAGS.map((opt) => (
@@ -247,7 +307,7 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
       </View>
 
       {/* Music Genre — optional, multi-select */}
-      <View style={styles.field}>
+      <View style={styles.field} onLayout={rememberSectionY("musicGenres")}>
         <Text style={styles.fieldLabel}>
           Music Genre (Select all that will be played)
         </Text>
@@ -277,6 +337,7 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
           ]}
         >
           <TextInput
+            ref={descriptionRef}
             value={draft.description}
             onChangeText={(v) => updateDraft({ description: v })}
             // issue #1027 (Thread A) — the description is the bottom-most field in

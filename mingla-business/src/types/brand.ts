@@ -252,6 +252,13 @@ export type Brand = {
   paymentProvider?: "stripe" | "paystack";
   /** ISO-2 payout country code (Nigeria) set when the brand picks Paystack. */
   paymentCountry?: string;
+  /**
+   * #3645 — `brands.payout_country`: the ISO-2 country the organiser PICKED as
+   * their payout country. Display-only: it tells the payout-country picker
+   * which row to show. Never an input to tax, rails, currency or address.
+   * Undefined/null = no recorded pick.
+   */
+  payoutCountry?: string | null;
   /** Paystack subaccount code (`ACCT_…`); non-null once a bank is connected. */
   paystackSubaccountCode?: string;
   /**
