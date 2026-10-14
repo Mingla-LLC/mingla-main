@@ -288,6 +288,14 @@ check(
   "Support threads belong on the business support inbox only (#668). Mirror useNotifications business.% exclusion.",
 );
 
+const useMessagesSrc = read("app-mobile/src/hooks/useMessages.ts");
+check(
+  "T-668-02 [FAILS-ON-REVERT KEY] deprecated useMessages also excludes linked_entity_type=support",
+  useMessagesSrc !== null &&
+    /\.neq\(\s*['"]linked_entity_type['"]\s*,\s*['"]support['"]\s*\)/.test(useMessagesSrc),
+  "#3720 Slice D1: even the unused useMessages hook must not leak support into a consumer list if re-wired.",
+);
+
 // ─── Report ────────────────────────────────────────────────────────────────────
 
 console.log("\nORCH-0901 regression check (happy-path, structural)\n");

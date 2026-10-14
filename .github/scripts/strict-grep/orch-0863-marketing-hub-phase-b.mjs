@@ -2044,6 +2044,9 @@ function checkNoNewBackendFiles() {
     // #3720 Phase 0 Slice C — grant-by-email + preserve fields
     "supabase/functions/support-grant-staff/index.ts",
     "supabase/functions/support-grant-staff/issue_3720_grant_email_preserve.implementor.happy.test.ts",
+    // #3720 Phase 0 Slice D1 — support conversations excluded from base participant SELECT
+    "supabase/migrations/20271016003720_issue_3720_support_conversation_isolation.sql",
+    "supabase/migrations/__tests__/issue_3720_support_conversation_isolation.implementor.happy.test.ts",
   ];
   const ALLOWLIST = [
     ...META_ORCH_1104_BACKEND_ALLOWLIST,
