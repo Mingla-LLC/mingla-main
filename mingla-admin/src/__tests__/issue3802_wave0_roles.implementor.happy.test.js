@@ -1,5 +1,11 @@
 // Issue #3802 (Wave 0) — implementor suite for roles in the admin app.
 //
+// [TEST-MOD-APPROVED ISSUE-3802] 2026-10-13: Seth approved the admin shell
+// revamp (issue #3802, "one frame for every page, menu grouped by job").
+// Changed here, and only this: C-9 "title and breadcrumb follow the person's
+// own home" pinned the old header markup (a clickable root crumb). The approved
+// breadcrumb is "Group › Page" in plain words. See the note on that test.
+//
 //   C-1  a page nobody listed is owner/admin-only: the two non-admin roles can
 //        open none of the existing pages (every page id parsed from App.jsx)
 //   C-2  named money, ads and people pages
@@ -413,9 +419,15 @@ describe("#3802 C-9: source contracts — auth, menu, palette, routes", () => {
 
   it("title and breadcrumb follow the person's own home", () => {
     assert.ok(APP_SHELL.includes("pageTitle(activeTab, access, NAV_ITEMS)"));
-    assert.ok(APP_SHELL.includes("homeId={homePageFor(access)}"));
-    assert.ok(HEADER.includes("onNavigate?.(homeId)"));
+    // [TEST-MOD-APPROVED ISSUE-3802] was: the header got a `homeId` and drew a
+    // root crumb that went to it. The approved shell's breadcrumb is words only
+    // ("Group › Page"), so there is no root crumb to send anyone anywhere. What
+    // is kept: the crumb is built from the title the shell resolved for THIS
+    // person (so a role home reads "My day"), and it never names the dashboard.
+    assert.ok(APP_SHELL.includes("title={currentTitle}"));
+    assert.ok(HEADER.includes("items={breadcrumbFor(activeTab, title, NAV_GROUPS)}"));
     assert.equal(HEADER.includes('onNavigate?.("overview")'), false);
+    assert.equal(/["']overview["']|["']Admin["']/.test(HEADER), false);
   });
 
   it("the role home reads nothing from the database and offers a next step", () => {

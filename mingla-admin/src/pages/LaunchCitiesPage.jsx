@@ -32,6 +32,7 @@ import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
 import { logAdminAction } from "../lib/auditLog";
 import { supabase } from "../lib/supabase";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // ─── Local presentational helper: summary metric chip (DESIGN §4) ────────────
 function SummaryChip({ icon: Icon, label, value, accent = "muted" }) {
@@ -408,22 +409,19 @@ export function LaunchCitiesPage({ onTabChange }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Launch Cities</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-            Flip a city live to let people there start onboarding.
-          </p>
-        </div>
-        {loading ? (
-          <Skeleton width={56} height={22} rounded="full" className="mt-1 shrink-0" />
-        ) : (
-          <Badge variant={liveCount > 0 ? "success" : "outline"} dot className="mt-1 shrink-0">
-            {liveCount} live
-          </Badge>
-        )}
-      </div>
+      <PageHeader
+        title="Launch Cities"
+        description="Flip a city live to let people there start onboarding."
+        actions={
+          loading ? (
+            <Skeleton width={56} height={22} rounded="full" className="shrink-0" />
+          ) : (
+            <Badge variant={liveCount > 0 ? "success" : "outline"} dot className="shrink-0">
+              {liveCount} live
+            </Badge>
+          )
+        }
+      />
 
       {/* Load error */}
       {loadError && (

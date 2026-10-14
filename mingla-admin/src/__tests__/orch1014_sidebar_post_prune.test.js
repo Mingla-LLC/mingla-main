@@ -19,6 +19,13 @@
 // (verified: 5 subtests red). Both "tool-leads" and "careers" now sit after
 // "beta-leads". Nav count 17 -> 19. The load-bearing photo-* invariant is
 // unchanged.
+//
+// [TEST-MOD-APPROVED ISSUE-3802] 2026-10-13: Seth approved the admin shell
+// revamp (issue #3802). The menu is now eight groups in a new order, so the
+// 19-item primary-group snapshot and its count are replaced by the approved
+// order across all groups. The load-bearing photo-* invariant is unchanged:
+// the two photo ids, the two page files, the photoLabeling folder and its
+// constants file stay deleted, and PhotoLightbox stays.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -31,28 +38,51 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ADMIN_ROOT = path.resolve(__dirname, "..", "..");
 
+// [TEST-MOD-APPROVED ISSUE-3802] the approved menu order, every group.
 const EXPECTED_IDS_POST_1014 = [
+  // no label
   "overview",
+  "support",
+  // Pipeline
+  "hosts",
+  "creators",
+  "beta-leads",
+  "tool-leads",
+  "team-dashboard",
+  // Business
+  "business-people",
+  "business-brands",
+  "brand-sites",
+  "business-venues",
+  "business-offerings",
+  "claims",
+  // Money
+  "business-payments",
+  "business-orders",
+  "business-money-ledger",
+  "refund-operations",
   "subscriptions",
-  "admin",
+  "pricing",
+  // Explorer app
+  "users",
   "placepool",
   "launch-cities",
   "signals",
   "deck-tuner",
   "place-intelligence-trial",
+  // Growth
+  "ad-engine",
+  "campaign-builder",
+  "campaigns",
   "email",
-  "beta-leads",
-  // [TEST-MOD-APPROVED ISSUE-1354] tool-leads (this issue) + careers (pre-existing
-  // META-ORCH-1222 drift) reconciled into the locked order after beta-leads.
-  "tool-leads",
+  // Company
+  "admin",
   "careers",
-  "pricing",
-  "claims",
-  "support",
-  "users",
+  // System
   "stripe-mode",
   "api-health",
   "settings",
+  "agent",
 ];
 
 const ORCH_1014_DELETED_IDS = ["photo-labeling", "photo-scorer"];
@@ -63,25 +93,15 @@ const ORCH_1014_DELETED_PAGES = [
 ];
 
 describe("ORCH-1014 Finding A — photo pages pruned + locked sidebar order", () => {
-  it("the primary nav group has exactly 19 items in the locked post-ORCH-1014 (ISSUE-1354-reconciled) order", () => {
-    // [TEST-MOD-APPROVED ISSUE-1354] The flat-single-group assertion
-    // (NAV_GROUPS.length === 1) is SUPERSEDED: ORCH-1271 added a "Business"
-    // group and ISSUE-862 added a "Growth" group, so the shipped sidebar now has
-    // 3 groups. group[0] remains the primary flat group (label:null) carrying the
-    // locked order below. (Discovery flagged: retire I-PROPOSED-ADMIN-SHELL-FLAT-
-    // NAVIGATION in the registry.)
-    assert.equal(NAV_GROUPS[0].label, null, "group[0] must remain the primary flat group (label:null)");
-    const ids = NAV_GROUPS[0].items.map((i) => i.id);
-    assert.equal(ids.length, 19, "expected exactly 19 items in the primary nav group");
-    assert.deepEqual(ids, EXPECTED_IDS_POST_1014);
+  it("the menu holds every page in the approved order (issue #3802)", () => {
+    // [TEST-MOD-APPROVED ISSUE-3802] was: group[0] holds the 19-item snapshot.
+    assert.equal(NAV_GROUPS[0].label, null, "group[0] must remain the primary group (label:null)");
+    assert.deepEqual(NAV_ITEMS.map((i) => i.id), EXPECTED_IDS_POST_1014);
   });
 
   it("NAV_ITEMS never includes the ORCH-1014-deleted photo ids", () => {
-    // [TEST-MOD-APPROVED ISSUE-1354] NAV_ITEMS now spans all 3 groups (no longer
-    // a flat single list), so the brittle exact-count assertion is replaced by
-    // the load-bearing invariant: the deleted photo ids stay absent, and the
-    // primary group holds the locked 19-item snapshot.
-    assert.equal(NAV_GROUPS[0].items.length, 19, "primary group must hold the locked 19-item snapshot");
+    // [TEST-MOD-APPROVED ISSUE-3802] the count of the primary group is no longer
+    // pinned here (it is two items now); the deleted photo ids stay absent.
     const ids = NAV_ITEMS.map((i) => i.id);
     for (const dead of ORCH_1014_DELETED_IDS) {
       assert.equal(

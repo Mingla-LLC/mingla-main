@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Activity, ChevronRight, ChevronDown, RefreshCw, Play, AlertTriangle, Sparkles,
+  ChevronRight, ChevronDown, RefreshCw, Play, AlertTriangle, Sparkles,
 } from "lucide-react";
 import { supabase, invokeWithRefresh } from "../lib/supabase";
 import { extractFunctionError } from "../lib/edgeFunctionError";
@@ -23,6 +23,7 @@ import { SectionCard, AlertCard } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Spinner } from "../components/ui/Spinner";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1097,25 +1098,41 @@ export function SignalLibraryPage() {
     };
   }, [selectedCityId, showToast]);
 
+  // Issue #3802: the page says what it is in every state, not only when its
+  // data has loaded. The same header is drawn by each return below.
+  const pageHeader = (
+    <PageHeader
+      title="Signal Library"
+      description="Per-city Bouncer + signal scoring. Pick a city, run Bouncer, then run scorer for each signal."
+    />
+  );
+
   if (loading) {
     return (
-      <div className="py-16 flex items-center justify-center">
-        <Spinner /> <span className="ml-2 text-sm text-[--color-text-secondary]">Loading signals…</span>
+      <div className="flex flex-col gap-6">
+        {pageHeader}
+        <div className="py-16 flex items-center justify-center">
+          <Spinner /> <span className="ml-2 text-sm text-[--color-text-secondary]">Loading signals…</span>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <AlertCard kind="error" icon={AlertTriangle} title="Couldn't load signal_definitions">
-        {error}
-      </AlertCard>
+      <div className="flex flex-col gap-6">
+        {pageHeader}
+        <AlertCard kind="error" icon={AlertTriangle} title="Couldn't load signal_definitions">
+          {error}
+        </AlertCard>
+      </div>
     );
   }
 
   if (signals.length === 0) {
     return (
-      <div className="py-12">
+      <div className="flex flex-col gap-6">
+        {pageHeader}
         <AlertCard kind="info" icon={Sparkles} title="No signals defined yet">
           Add via the <code>signal_definitions</code> table. Slice 1 seeded only{" "}
           <code>fine_dining</code> — Slices 2-13 will add the rest.
@@ -1129,18 +1146,8 @@ export function SignalLibraryPage() {
   const selectedCityName = selectedCity?.city_name ?? null;
 
   return (
-    <div className="py-6 flex flex-col gap-6">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Activity className="w-6 h-6 text-[--color-accent]" />
-          <div>
-            <h1 className="text-2xl font-bold">Signal Library</h1>
-            <p className="text-sm text-[--color-text-secondary]">
-              Per-city Bouncer + signal scoring. Pick a city, run Bouncer, then run scorer for each signal.
-            </p>
-          </div>
-        </div>
-      </header>
+    <div className="flex flex-col gap-6">
+      {pageHeader}
 
       {/* ORCH-0598.11: city picker */}
       <SectionCard

@@ -19,6 +19,7 @@ import { useToast } from "../context/ToastContext";
 import { timeAgo, formatDateTime } from "../lib/formatters";
 import { getApiHealth, getApiHealthIncidents } from "../services/apiHealthService";
 import { signalLabel, statusDotClass, worstOfLayers } from "../lib/apiHealthStatus";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const LAYER_ORDER = [
   ["status_page", "Status page"],
@@ -311,18 +312,15 @@ export function ApiHealthPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">API health</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-            Live status of every external service Mingla depends on.
-            {lastProbeAt ? ` Last probe ${timeAgo(lastProbeAt)}.` : " No probe has run yet."}
-          </p>
-        </div>
-        <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => load(true)}>
-          Refresh
-        </Button>
-      </div>
+      <PageHeader
+        title="API health"
+        description={`Live status of every external service Mingla depends on.${lastProbeAt ? ` Last probe ${timeAgo(lastProbeAt)}.` : " No probe has run yet."}`}
+        actions={
+          <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => load(true)}>
+            Refresh
+          </Button>
+        }
+      />
 
       {loadError ? (
         <AlertCard
