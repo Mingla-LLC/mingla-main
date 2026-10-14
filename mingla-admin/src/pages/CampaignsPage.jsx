@@ -241,11 +241,14 @@ export function CampaignsPage() {
 
   if (adsConsoleReady && !adsConsoleEnabled) {
     return (
-      <AlertCard variant="info" title="Ads console is off">
-        Campaigns is gated by <code className="text-xs">enable_ads_console</code>.
-        Turn it on in admin_config, or use{" "}
-        <a className="underline" href="#/ad-engine">Ad Engine</a> for connections.
-      </AlertCard>
+      <div className="space-y-6">
+        <PageHeader title="Campaigns" />
+        <AlertCard variant="info" title="Ads console is off">
+          Campaigns is gated by <code className="text-xs">enable_ads_console</code>.
+          Turn it on in admin_config, or use{" "}
+          <a className="underline" href="#/ad-engine">Ad Engine</a> for connections.
+        </AlertCard>
+      </div>
     );
   }
 

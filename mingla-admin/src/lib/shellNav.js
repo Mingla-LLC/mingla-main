@@ -65,9 +65,23 @@ export function toggleFoldedGroup(folded, label) {
  *   - otherwise it is open unless it was folded
  */
 export function isGroupOpen(group, folded, activePageId) {
-  if (!group || typeof group.label !== "string" || group.label === "") return true;
-  if ((group.items || []).some((item) => item.id === activePageId)) return true;
+  if (!canFoldGroup(group, activePageId)) return true;
   return !(Array.isArray(folded) && folded.includes(group.label));
+}
+
+/** Does this group hold this page? Never throws on a broken group. */
+export function groupHoldsPage(group, pageId) {
+  return Array.isArray(group?.items) && group.items.some((item) => item?.id === pageId);
+}
+
+/**
+ * May this group's heading fold it right now? Only a group with a label that
+ * does NOT hold the page you are on. The group you are in is always open, so
+ * its heading is words, not a switch: a click there would change nothing on
+ * screen, and must not quietly change what is remembered either.
+ */
+export function canFoldGroup(group, activePageId) {
+  return typeof group?.label === "string" && group.label !== "" && !groupHoldsPage(group, activePageId);
 }
 
 /**
@@ -78,9 +92,7 @@ export function isGroupOpen(group, folded, activePageId) {
  * The group is words only: it carries no action.
  */
 export function breadcrumbFor(pageId, title, navGroups) {
-  const group = (Array.isArray(navGroups) ? navGroups : []).find((g) =>
-    (g.items || []).some((item) => item.id === pageId)
-  );
+  const group = (Array.isArray(navGroups) ? navGroups : []).find((g) => groupHoldsPage(g, pageId));
   const page = { label: title };
   return group && typeof group.label === "string" && group.label !== "" ? [{ label: group.label }, page] : [page];
 }

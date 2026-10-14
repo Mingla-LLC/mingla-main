@@ -11,6 +11,10 @@
 //   S-7  the frame: one set of sizes, the menu follows the theme, the shell
 //        sets the page gutter once
 //   S-8  the one page header, and no page setting its own outer frame
+//   S-9  rework after the tester's verdict: every state of a page carries its
+//        title; the heading of the group you are in is not a switch; the
+//        wordmark takes you home; the rail keeps the menu's left edge; a
+//        broken menu never breaks the breadcrumb
 //
 // Invariant: I-3802-ADMIN-SHELL-ONE-FRAME (docs/INVARIANT_REGISTRY.md).
 //
@@ -23,10 +27,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { NAV_GROUPS, NAV_ITEMS } from "../lib/constants.js";
-import { AREA, PAGE_AREA_OVERRIDES, TEAM_NAV_GROUP, areaForPage, visibleNavGroups } from "../lib/access.js";
+import { AREA, PAGE_AREA_OVERRIDES, TEAM_NAV_GROUP, areaForPage, homePageFor, visibleNavGroups } from "../lib/access.js";
 import {
   NAV_FOLD_STORAGE_KEY,
   breadcrumbFor,
+  canFoldGroup,
+  groupHoldsPage,
   isGroupOpen,
   readFoldedGroups,
   toggleFoldedGroup,
@@ -382,16 +388,19 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
 
   // The outermost element a <PageHeader> is drawn in: the first tag after the
   // `return (` that precedes it.
+  // A page with several returns may build its header once
+  // (`const pageHeader = (<PageHeader … />)`) and draw `{pageHeader}` in each;
+  // both spellings count as drawing it, and the definition itself is skipped.
   function rootsHoldingHeader(source) {
     const roots = [];
-    let at = source.indexOf("<PageHeader");
-    while (at !== -1) {
+    for (const m of source.matchAll(/<PageHeader\b|\{pageHeader\}/g)) {
+      const at = m.index;
+      if (/const pageHeader = \(\s*$/.test(source.slice(0, at))) continue;
       const ret = source.lastIndexOf("return (", at);
       assert.ok(ret !== -1, "a <PageHeader> must sit inside a returned element");
       const tag = source.slice(ret, at).match(/<([A-Za-z][\w.]*)([^>]*)>/);
       assert.ok(tag, "the element holding <PageHeader> was not found");
       roots.push({ name: tag[1], className: (tag[2].match(/className="([^"]*)"/) || [])[1] ?? "" });
-      at = source.indexOf("<PageHeader", at + 1);
     }
     return roots;
   }
@@ -463,7 +472,198 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     assert.ok(page("EmailPage.jsx").includes('title="Email"'));
     assert.ok(page("CampaignsPage.jsx").includes('title="Campaigns"'));
     assert.ok(page("CampaignBuilderPage.jsx").includes('<PageHeader title="Campaign Builder" />'));
-    // Campaigns: the card's own heading moved up; it is not written twice.
-    assert.equal((page("CampaignsPage.jsx").match(/title="Campaigns"/g) || []).length, 1);
+    // Campaigns: the card's own heading moved up; the card no longer repeats it.
+    assert.equal(/<SectionCard\s+title="Campaigns"/.test(page("CampaignsPage.jsx")), false);
+  });
+});
+
+describe("#3802 S-9: rework after the tester's verdict", () => {
+  const PAGES_DIR = path.join(SRC, "pages");
+  const raw = (file) => fs.readFileSync(path.join(PAGES_DIR, file), "utf8");
+  const FOLLOW_UP = ["AgentPage.jsx", "BetaLeadsPage.jsx", "PipelinePage.jsx", "RoleHomePage.jsx", "TeamDashboardPage.jsx"];
+  const MIGRATED = fs.readdirSync(PAGES_DIR).filter((f) => /Page\.jsx$/.test(f) && !FOLLOW_UP.includes(f)).sort();
+
+  // Every `return` of the exported page component that returns markup, with
+  // whether that markup draws the page header. Found by indentation: the page
+  // component's own returns sit 4 or 6 spaces in.
+  // A page whose exported component only chooses between two views: the
+  // views are where its states live, so they are the ones walked.
+  const VIEWS = { "BrandSitesPage.jsx": ["BrandSitesList", "BrandSiteDetail"] };
+
+  function pageReturns(file) {
+    const names = VIEWS[file] ?? [null];
+    return names.flatMap((name) => returnsOf(file, name));
+  }
+
+  function returnsOf(file, name) {
+    const lines = raw(file).split("\n");
+    const found = [];
+    const opener = name ? new RegExp(`^(export )?function ${name}\\b`) : /^export (default )?function \w+Page\b/;
+    let start = lines.findIndex((l) => opener.test(l));
+    assert.ok(start !== -1, `${file}: the page component was not found`);
+    let end = start + 1;
+    while (end < lines.length && !/^}/.test(lines[end])) end += 1;
+    for (let k = start; k < end; k += 1) {
+      const indent = lines[k].match(/^ */)[0].length;
+      if (indent < 2 || indent > 6 || !/^\s*(?:if \(.*\) )?return\b/.test(lines[k])) continue;
+      const opensBlock = /return \($/.test(lines[k].trim());
+      const head = opensBlock ? `${lines[k].trim()} ${(lines[k + 1] || "").trim()}` : lines[k];
+      if (!/return \(? ?</.test(head)) continue;
+      let last = k;
+      if (/return \($/.test(lines[k].trim())) {
+        last = k + 1;
+        while (last < end && !lines[last].startsWith(`${" ".repeat(indent)});`)) last += 1;
+      }
+      const body = lines.slice(k, last + 1).join("\n");
+      found.push({ line: k + 1, hasHeader: /<PageHeader\b|\{pageHeader\}/.test(body), body });
+    }
+    return found;
+  }
+
+  // Returns that are NOT a state of the page, counted per file, with why.
+  // Anything else that returns markup without the header fails this suite.
+  const NOT_A_PAGE_STATE = {
+    // Two small renderers inside the page (a status line, a table row).
+    "AdminPage.jsx": 2,
+    // An opened record. Each draws the record's own title and a way back
+    // (EntityDetailView, OfferingDetailView, VenueDetailView, or its own bar).
+    "BrandsConsolePage.jsx": 1,
+    "BusinessMoneyLedgerPage.jsx": 1,
+    "BusinessOrdersPage.jsx": 1,
+    "BusinessPaymentsPage.jsx": 1,
+    "OfferingsConsolePage.jsx": 1,
+    "PeopleConsolePage.jsx": 1,
+    "VenuesConsolePage.jsx": 1,
+    // The opened person, and the read-only preview of that person.
+    "UserManagementPage.jsx": 2,
+  };
+
+  it("every state of every migrated page draws the page header", () => {
+    assert.equal(MIGRATED.length, 30);
+    for (const file of MIGRATED) {
+      const without = pageReturns(file).filter((r) => !r.hasHeader);
+      assert.equal(
+        without.length,
+        NOT_A_PAGE_STATE[file] ?? 0,
+        `${file}: a state without the page header at line ${without.map((r) => r.line).join(", ")}`,
+      );
+      assert.ok(pageReturns(file).some((r) => r.hasHeader), `${file}: no return draws the header`);
+    }
+  });
+
+  it("the states that had no title now have one, and add no padding of their own", () => {
+    const states = (file) => pageReturns(file).filter((r) => r.hasHeader);
+    // Signal Library: loading, could not load, nothing defined, and the page itself.
+    assert.equal(states("SignalLibraryPage.jsx").length, 4);
+    assert.equal((raw("SignalLibraryPage.jsx").match(/\{pageHeader\}/g) || []).length, 4);
+    assert.equal((raw("SignalLibraryPage.jsx").match(/<PageHeader\b/g) || []).length, 1, "one header, drawn four times");
+    // "Ads console is off" on both pages, and Refund operations while it loads.
+    for (const [file, title, words] of [
+      ["CampaignBuilderPage.jsx", '<PageHeader title="Campaign Builder" />', "Ads console is off"],
+      ["CampaignsPage.jsx", '<PageHeader title="Campaigns" />', "Ads console is off"],
+      ["RefundOperationsPage.jsx", '<PageHeader title="Refund operations" />', "Loading refund operations"],
+    ]) {
+      const state = states(file).find((r) => r.body.includes(words));
+      assert.ok(state, `${file}: the "${words}" state must draw the header`);
+      assert.ok(state.body.includes(title), `${file}: ${title}`);
+    }
+    // Brand Sites: an opened site that is still loading, or could not be loaded.
+    assert.equal(states("BrandSitesPage.jsx").length, 4, "the list, the site, the site loading, the site not loaded");
+    assert.equal((raw("BrandSitesPage.jsx").match(/<PageHeader title="Brand Sites" back=\{\{ label: "Back to all sites", onClick: onBack \}\} \/>/g) || []).length, 2);
+    // Users: an opened person that is still loading, or was not found.
+    assert.equal((raw("UserManagementPage.jsx").match(/<PageHeader title="Users" back=\{\{ label: "Back to Users", onClick: backToList \}\} \/>/g) || []).length, 2);
+    // None of these states wraps itself in padding: the first element of each is the plain 24px column.
+    for (const file of MIGRATED) {
+      for (const r of states(file)) {
+        const root = r.body.match(/return \(?\s*<[A-Za-z]+(?: className="([^"]*)")?/);
+        assert.ok(root, `${file}:${r.line}`);
+        assert.equal(/(?:^|\s)(?:p|px|py|pt|pb)-(?:\d|\[)|max-w-|mx-auto/.test(root[1] ?? ""), false, `${file}:${r.line} "${root[1]}"`);
+      }
+    }
+    assert.equal(/<div className="py-12">\s*<AlertCard kind="info"/.test(raw("SignalLibraryPage.jsx")), false);
+  });
+
+  it("Email already drew its header in every state: its spinner and setup card sit under it", () => {
+    const email = pageReturns("EmailPage.jsx");
+    assert.equal(email.length, 1, "the Email page has one return, and the sub-views render inside it");
+    assert.ok(email[0].hasHeader);
+    assert.ok(email[0].body.indexOf("<PageHeader") < email[0].body.indexOf("<ComposeSubView"));
+  });
+
+  it("the heading of the group you are in is not a switch", () => {
+    const money = NAV_GROUPS.find((g) => g.label === "Money");
+    assert.equal(canFoldGroup(money, "business-orders"), false);
+    assert.equal(canFoldGroup(money, "overview"), true);
+    assert.equal(canFoldGroup(NAV_GROUPS[0], "users"), false, "the group with no label never folds");
+    for (const broken of [null, undefined, {}, { label: "" }, { label: 7, items: [] }, "Money"]) assert.equal(canFoldGroup(broken, "x"), false);
+    for (const group of NAV_GROUPS.slice(1)) {
+      for (const item of group.items) {
+        assert.equal(canFoldGroup(group, item.id), false, item.id);
+        assert.equal(groupHoldsPage(group, item.id), true);
+      }
+    }
+    const code = stripComments(SIDEBAR);
+    assert.ok(code.includes("const foldable = canFoldGroup(group, activeTab);"));
+    // The button, the arrow and the click exist only for a group that can fold.
+    const button = code.match(/\{hasLabel && !rail && foldable && \(\s*<button[\s\S]*?<\/button>\s*\)\}/);
+    assert.ok(button, "the fold button is drawn only when the group can fold");
+    assert.ok(button[0].includes("onClick={() => toggleGroup(group.label)}") && button[0].includes("<ChevronDown"));
+    const words = code.match(/\{hasLabel && !rail && !foldable && \(\s*<div className="([^"]*)">\s*\{group\.label\}\s*<\/div>\s*\)\}/);
+    assert.ok(words, "otherwise the heading is plain words");
+    assert.equal(/cursor-pointer|hover:/.test(words[1]), false, "and does not look clickable");
+    // toggleGroup is reached from that one button and nowhere else, so the
+    // heading of the current group cannot change what is remembered.
+    assert.equal((code.match(/toggleGroup\(/g) || []).length, 1);
+    assert.equal((code.match(/<ChevronDown\b/g) || []).length, 1);
+  });
+
+  it("the wordmark is a way home, and a plain picture for someone with no home", () => {
+    const code = stripComments(SIDEBAR);
+    assert.ok(code.includes("const homeId = homePageFor(access);"));
+    const home = code.match(/\{homeId \? \(\s*<button([\s\S]*?)>\s*\{renderLogo\(rail\)\}\s*<\/button>\s*\) : \(\s*renderLogo\(rail\)\s*\)\}/);
+    assert.ok(home, "a button when there is a home, the bare logo when there is not");
+    assert.ok(home[1].includes('aria-label="Mingla Admin home"'));
+    assert.ok(home[1].includes("onClick={() => openPage(homeId)}"), "it goes through openPage, which also closes the phone menu");
+    assert.ok(/focus-visible:outline-2/.test(home[1]) && home[1].includes("focus-visible:outline-[var(--sidebar-accent)]"), "a visible focus ring");
+    assert.ok(home[1].includes('type="button"'));
+    // One logo, drawn by both copies of the menu (phone and desktop, rail or not).
+    assert.equal((code.match(/const renderLogo = \(rail\) =>/g) || []).length, 1);
+    assert.equal((code.match(/<img\b/g) || []).length, 1);
+    // Where it goes, per person.
+    assert.equal(homePageFor(owner), "overview");
+    assert.equal(homePageFor(growth), "home");
+    assert.equal(homePageFor(null), null);
+    assert.equal(homePageFor(person("growth", ["crm"])), null);
+    // The breadcrumb stays as approved: still words only, still no root crumb.
+    assert.deepEqual(breadcrumbFor("business-orders", "Orders", NAV_GROUPS), [{ label: "Money" }, { label: "Orders" }]);
+    assert.equal(/onNavigate|onClick:/.test(stripComments(HEADER)), false);
+  });
+
+  it("the icon rail keeps the menu's left edge: the M and every icon start 24px in", () => {
+    const code = stripComments(SIDEBAR);
+    // Logo row: 24px of padding in both forms.
+    assert.ok(code.includes('rail ? "pl-6 pr-0" : "px-6",'));
+    // Menu rows: 12px of menu padding + 12px inside the row, in both forms.
+    assert.ok(code.includes('<nav className="flex-1 overflow-y-auto px-3 pb-4 pt-2.5"'));
+    assert.ok(code.includes('rail ? "pl-3 pr-0" : "px-3",'));
+    assert.equal(/rail \? "justify-center/.test(code), false, "nothing in the rail is centred to a different edge");
+  });
+
+  it("a broken menu never breaks the breadcrumb", () => {
+    const broken = [null, undefined, 7, "Money", {}, { label: "A" }, { items: null }, { items: [null, 3, {}] }, { label: null, items: [{ id: "x" }] }];
+    assert.deepEqual(breadcrumbFor("x", "Title", broken), [{ label: "Title" }]);
+    assert.deepEqual(breadcrumbFor("y", "Title", [null, { label: "Real", items: [null, { id: "y" }] }]), [{ label: "Real" }, { label: "Title" }]);
+    for (const menu of [null, undefined, 7, "x", {}, [null], [[]]]) assert.deepEqual(breadcrumbFor("x", "Title", menu), [{ label: "Title" }]);
+    assert.equal(isGroupOpen(null, null, "x"), true);
+    assert.equal(groupHoldsPage(null, "x"), false);
+    assert.equal(groupHoldsPage({ items: "nope" }, "x"), false);
+  });
+
+  it("the stepper's note does its sum with today's frame, and its breakpoint did not move", () => {
+    const stepper = fs.readFileSync(path.join(SRC, "components/campaign-builder/stepperResponsive.js"), "utf8");
+    assert.ok(stepper.includes("export const COMPACT_BREAKPOINT_PX = 1536;"));
+    assert.ok(stepper.includes("--sidebar-width 248px plus --page-gutter 24px on each side"));
+    assert.ok(stepper.includes("1536 - 248 - 48 = 1240px"));
+    assert.equal(/AppShell's `px-16`/.test(stepper), false, "the old padding is no longer described as current");
   });
 });

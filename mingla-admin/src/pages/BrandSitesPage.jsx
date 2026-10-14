@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  ArrowLeft,
   RefreshCw,
   Search,
   ShieldAlert,
@@ -193,8 +192,8 @@ function BrandSiteDetail({ siteId, onBack }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, [load]);
 
-  if (state.loading) return <div className="space-y-4"><Skeleton className="h-12" /><Skeleton className="h-48" /><Skeleton className="h-48" /></div>;
-  if (state.error) return <div className="space-y-4"><Button variant="ghost" icon={ArrowLeft} onClick={onBack}>All sites</Button><AlertCard variant="error" title="Site could not be loaded" action={<Button size="sm" variant="secondary" onClick={load}>Retry</Button>}>{state.error}</AlertCard></div>;
+  if (state.loading) return <div className="flex flex-col gap-6"><PageHeader title="Brand Sites" back={{ label: "Back to all sites", onClick: onBack }} /><Skeleton className="h-48" /><Skeleton className="h-48" /></div>;
+  if (state.error) return <div className="flex flex-col gap-6"><PageHeader title="Brand Sites" back={{ label: "Back to all sites", onClick: onBack }} /><AlertCard variant="error" title="Site could not be loaded" action={<Button size="sm" variant="secondary" onClick={load}>Retry</Button>}>{state.error}</AlertCard></div>;
 
   const { site, hosts, publications, receipts, audit, health, readiness } = state.data;
   const config = action ? ACTIONS[action] : null;

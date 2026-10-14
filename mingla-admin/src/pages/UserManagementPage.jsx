@@ -1196,7 +1196,7 @@ export function UserManagementPage() {
     if (detailLoading && !userDetail) {
       return (
         <div className="flex flex-col gap-6">
-          <Button variant="ghost" size="sm" icon={ChevronLeft} onClick={backToList}>Back to Users</Button>
+          <PageHeader title="Users" back={{ label: "Back to Users", onClick: backToList }} />
           <div className="flex items-center justify-center py-20">
             <Spinner size="lg" />
           </div>
@@ -1207,7 +1207,7 @@ export function UserManagementPage() {
     if (!userDetail) {
       return (
         <div className="flex flex-col gap-6">
-          <Button variant="ghost" size="sm" icon={ChevronLeft} onClick={backToList}>Back to Users</Button>
+          <PageHeader title="Users" back={{ label: "Back to Users", onClick: backToList }} />
           <div className="flex flex-col items-center justify-center py-20 gap-2">
             <Users className="h-10 w-10 text-[var(--gray-300)]" />
             <p className="text-sm text-[var(--color-text-tertiary)]">User not found</p>

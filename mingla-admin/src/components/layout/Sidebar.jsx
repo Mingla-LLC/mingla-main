@@ -43,9 +43,10 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { NAV_GROUPS } from "../../lib/constants";
-import { ROLE_LABELS, visibleNavGroups } from "../../lib/access";
+import { ROLE_LABELS, homePageFor, visibleNavGroups } from "../../lib/access";
 import {
   browserStorage,
+  canFoldGroup,
   isGroupOpen,
   readFoldedGroups,
   toggleFoldedGroup,
@@ -113,7 +114,9 @@ function initialsFor(email) {
 // Issue #3802 (admin shell). Geometry, from the approved frame:
 //   - the logo row is as tall as the header (--header-height)
 //   - logo, menu icons and the footer avatar share one left edge, 24px in
-//     (12px of menu padding + 12px inside each row)
+//     (12px of menu padding + 12px inside each row). The icon rail keeps that
+//     same edge: the wordmark's M and every icon start 24px in, so nothing
+//     moves sideways when the menu collapses.
 //   - rows are 34px tall with 16px icons; the page you are on has a soft fill
 //     and a 3px marker on the menu's edge
 //   - every colour is a --sidebar-* token, so the menu follows the theme
@@ -123,6 +126,9 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
   const { addToast } = useToast();
   // Issue #3802 — the menu holds only what this person may open.
   const groups = visibleNavGroups(NAV_GROUPS, access);
+  // Where the wordmark takes this person: their own home, or nowhere if they
+  // have none (then it is a picture, not a button).
+  const homeId = homePageFor(access);
   const [foldedGroups, setFoldedGroups] = useState(() => readFoldedGroups(browserStorage()));
   const [signingOut, setSigningOut] = useState(false);
 
@@ -180,7 +186,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
           className={[
             "relative flex h-[34px] w-full items-center gap-2.5 rounded-lg text-left text-[13.5px] font-medium",
             "transition-colors duration-150 cursor-pointer",
-            rail ? "justify-center px-0" : "px-3",
+            rail ? "pl-3 pr-0" : "px-3",
             isActive
               ? "bg-[var(--sidebar-active-bg)] text-[var(--sidebar-text-active)]"
               : "text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text-active)]",
@@ -206,6 +212,13 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
     );
   };
 
+  // The wordmark. The rail shows its own M: the same image, clipped.
+  const renderLogo = (rail) => (
+    <span className={["block h-[26px] shrink-0 overflow-hidden", rail ? "w-[21px]" : ""].join(" ")}>
+      <img src={minglaLogo} alt="Mingla" className="block h-[26px] w-auto max-w-none" />
+    </span>
+  );
+
   // `idPrefix` keeps the two copies of the menu (phone, desktop) from sharing ids.
   const renderContent = (rail, idPrefix) => (
     <div className="flex h-full flex-col">
@@ -213,13 +226,22 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
       <div
         className={[
           "flex h-[var(--header-height)] shrink-0 items-center gap-2.5 border-b border-[var(--sidebar-border)]",
-          rail ? "justify-center px-0" : "px-6",
+          rail ? "pl-6 pr-0" : "px-6",
         ].join(" ")}
       >
-        {/* The rail shows the wordmark's own M: the same image, clipped. */}
-        <span className={["block h-[26px] shrink-0 overflow-hidden", rail ? "w-[21px]" : ""].join(" ")}>
-          <img src={minglaLogo} alt="Mingla" className="block h-[26px] w-auto max-w-none" />
-        </span>
+        {homeId ? (
+          <button
+            type="button"
+            onClick={() => openPage(homeId)}
+            aria-label="Mingla Admin home"
+            title="Home"
+            className="block shrink-0 rounded-md cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--sidebar-accent)]"
+          >
+            {renderLogo(rail)}
+          </button>
+        ) : (
+          renderLogo(rail)
+        )}
         {!rail && (
           <span className="text-[10.5px] font-medium uppercase tracking-[0.06em] text-[var(--sidebar-text-dim)]">
             Admin
@@ -234,10 +256,18 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
             // The rail has no group headings to click, so it never hides a page.
             const open = rail || isGroupOpen(group, foldedGroups, activeTab);
             const listId = `${idPrefix}-group-${gi}`;
+            // The group you are in cannot fold, so its heading is words, not a
+            // switch: no button, no arrow, nothing to remember.
+            const foldable = canFoldGroup(group, activeTab);
 
             return (
               <li key={group.label || `group-${gi}`}>
-                {hasLabel && !rail && (
+                {hasLabel && !rail && !foldable && (
+                  <div className="px-3 pb-1.5 pt-3.5 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-[var(--sidebar-text-dim)]">
+                    {group.label}
+                  </div>
+                )}
+                {hasLabel && !rail && foldable && (
                   <button
                     type="button"
                     onClick={() => toggleGroup(group.label)}
@@ -275,7 +305,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
       <div
         className={[
           "flex h-[60px] shrink-0 items-center gap-2.5 border-t border-[var(--sidebar-border)]",
-          rail ? "justify-center px-0" : "px-6",
+          rail ? "pl-4 pr-0" : "px-6",
         ].join(" ")}
       >
         {!rail && session?.user && (

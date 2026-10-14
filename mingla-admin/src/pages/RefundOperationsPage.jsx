@@ -212,7 +212,12 @@ export function RefundOperationsPage() {
     : [];
 
   if (!view && !error) {
-    return <div>Loading refund operations…</div>;
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Refund operations" />
+        <p>Loading refund operations…</p>
+      </div>
+    );
   }
   return (
     <div className="space-y-6">
