@@ -792,6 +792,16 @@ jobs:
           # lower-cased address; repeated fan-outs and retries add nothing.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.tester.adversarial.pg17.test.sql
+          # Issue #3827 — tester retest for the buyer email rework. The address
+          # hidden after an email was recorded (waiting, fanned out, same edit,
+          # table write, taxonomy leaf, label-only venue, RSVP, hidden then
+          # shown) leaves no street in anything that can still be sent; under
+          # allowlist-only, off-list RSVP guests get exactly today's alert and
+          # nobody is told twice; the send check holds a fanned-out copy for
+          # every switch; the host's counts equal what is queued; unpublish,
+          # cancel and delete record nothing.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.tester.retest.pg17.test.sql
           # Issue #3645 — an unpublished draft with nothing sold follows its
           # brand's currency. Changed currency (GBP to NGN, fired by
           # service_role): event, RSVP and trip drafts move in every copy, paid
@@ -2804,6 +2814,13 @@ jobs:
             # row still prints no withheld street, stop detail or online link;
             # only a missing fan-out function reads as "nothing to do".
             supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.tester.adversarial.test.ts
+            # Issue #3827 — tester retest of the rework: an address hidden NOW is
+            # never printed whatever the stored notice holds; the send check
+            # passes only known answers and treats anything unreadable as
+            # retry-never-send; one failing copy never stops the rest; IDN,
+            # punycode, IP, data: and vbscript: links are removed while prose
+            # survives; a long reason is cut between whole characters.
+            supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.tester.retest.test.ts
             # issue #2695 — the sweeper's OWN contract suite, which ran in no lane
             # at all and had therefore been red on main since #2218 moved its
             # constants into `logic.ts`. Nothing was broken; the assertions were
