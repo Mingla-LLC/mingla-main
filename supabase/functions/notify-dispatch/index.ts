@@ -32,6 +32,11 @@ import {
 // #3392 — the booking confirmation email's "Manage or cancel" button. Accepted
 // only from the service role, for that category, for that reservation.
 import { trustedReservationManageCta } from "../_shared/venueReservationManageLink.ts";
+import {
+  isQuietHours,
+  LEGACY_QUIET_HOURS_CATEGORY,
+  nextQuietHoursEnd,
+} from "../_shared/quietHours.ts";
 
 // Phase-A compatibility reader for NOTIFICATION_RECIPIENT_HMAC_SECRET is
 // owned by resolveNotificationRecipientHmacSecret; the direct name remains
@@ -427,19 +432,6 @@ export function resolveBusinessNotificationChannels(
   return resolved;
 }
 
-// ── Quiet hours check ───────────────────────────────────────────────────────
-function isQuietHours(timezone: string | null): boolean {
-  const tz = timezone || "America/New_York"; // conservative default
-  const now = new Date();
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    hour12: false,
-    timeZone: tz,
-  });
-  const hour = parseInt(formatter.format(now), 10);
-  return hour >= 22 || hour < 8; // 10 PM - 8 AM
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -613,6 +605,8 @@ serve(async (req) => {
       skipPush = false,
       emailVariant,
       emailCta,
+      // #3720 Slice B — outbox drain re-drive after quiet-hours deferral.
+      quietHoursRetry = false,
     } = payload;
 
     if ((!userId && !emailTo) || !type || !title || !body) {
@@ -740,7 +734,9 @@ serve(async (req) => {
 
       if (existing) {
         notificationId = existing.id;
-        if (!emailTo) {
+        // #3720: a quiet-hours retry MUST fall through to the push path —
+        // returning "duplicate" here is what made deferred pushes undeliverable.
+        if (!emailTo && quietHoursRetry !== true) {
           return jsonResponse({
             success: true,
             notificationId: existing.id,
@@ -984,17 +980,68 @@ serve(async (req) => {
     const userTimezone = userProfile?.timezone || null;
 
     if (isQuietHours(userTimezone)) {
-      // ORCH-0407: Removed dead dm_bypass_quiet_hours check — column never existed
-      // in notification_preferences. Was always false. If this feature is wanted,
-      // add the column first, then re-add the bypass logic.
-      // Revert: re-add `prefs?.dm_bypass_quiet_hours === true` check for DMs.
+      // #3720 Slice B — defer (do not drop). Park a legacy-payload outbox row
+      // with next_attempt_at ≈ next local 08:00; notify-outbox-drain re-drives
+      // with quietHoursRetry=true. In-app row above already exists.
+      const nextAttemptAt = nextQuietHoursEnd(userTimezone);
+      const quietKey = idempotencyKey
+        ? `quiet_hours:${idempotencyKey}`
+        : (notificationId
+          ? `quiet_hours:notif:${notificationId}`
+          : null);
+      if (quietKey && userId && skipPush !== true) {
+        const legacyPayload = {
+          userId,
+          type,
+          title,
+          body,
+          data,
+          brandId: brandId || null,
+          deepLink: deepLink || null,
+          actorId: actorId || null,
+          relatedId: relatedId || null,
+          relatedType: relatedType || null,
+          idempotencyKey: idempotencyKey || null,
+          expiresAt: expiresAt || null,
+          pushOverrides,
+          skipPush: false,
+          emailVariant: emailVariant || null,
+          emailCta: emailCta || null,
+          quietHoursRetry: true,
+        };
+        const { error: outboxErr } = await adminClient
+          .from("notification_outbox")
+          .upsert(
+            {
+              category_key: LEGACY_QUIET_HOURS_CATEGORY,
+              user_id: userId,
+              brand_id: brandId || null,
+              payload: { legacy: legacyPayload },
+              idempotency_key: quietKey,
+              status: "retry_wait",
+              next_attempt_at: nextAttemptAt,
+              last_error: "quiet_hours",
+            },
+            { onConflict: "idempotency_key" },
+          );
+        if (outboxErr) {
+          console.error({
+            event: "quiet_hours_outbox_enqueue_failed",
+            code: typeof outboxErr.code === "string"
+              ? outboxErr.code
+              : "unknown",
+          });
+        }
+      }
       return jsonResponse({
         success: true,
         notificationId,
         pushSent: false,
         emailSent,
         providerAccepted: emailSent,
+        retryPending: true,
         reason: "quiet_hours",
+        next_attempt_at: nextAttemptAt,
       });
     }
 

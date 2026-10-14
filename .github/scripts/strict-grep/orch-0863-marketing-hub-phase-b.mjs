@@ -2034,6 +2034,13 @@ function checkNoNewBackendFiles() {
     "supabase/migrations/20270829003720_issue_3720_support_new_ticket_notify.sql",
     "supabase/functions/_shared/supportHostFacing.ts",
     "supabase/functions/_shared/__tests__/issue_3720_support_veronica_title.test.ts",
+    // #3720 Phase 0 Slice B — quiet-hours defer + admin email opt-out / segments
+    "supabase/migrations/20271014003720_issue_3720_quiet_hours_outbox_defer.sql",
+    "supabase/functions/_shared/quietHours.ts",
+    "supabase/functions/_shared/__tests__/issue_3720_quiet_hours_defer.test.ts",
+    "supabase/functions/admin-send-email/index.ts",
+    "supabase/functions/admin-send-email/issue_3720_email_segments_optout.implementor.happy.test.ts",
+    "supabase/functions/notify-outbox-drain/index.ts",
   ];
   const ALLOWLIST = [
     ...META_ORCH_1104_BACKEND_ALLOWLIST,
