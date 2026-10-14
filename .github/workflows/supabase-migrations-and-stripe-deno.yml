@@ -826,6 +826,11 @@ jobs:
           # once in the host's status (emailed, reached by text, or no email).
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.tester.retest4.pg17.test.sql
+          # Issue #3827 — tester retest 5: a sent notice is described by the
+          # testing switch at its fan-out, not the switch now, across flips
+          # before and after the send and across merged edits.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.tester.retest5.pg17.test.sql
           # Issue #3827 round 5 — the fan-out locks the event row, then the
           # per-event lock, then the notice row (the editors' order, so a save
           # racing the fan-out cannot deadlock); the host status says a notice
@@ -2869,6 +2874,10 @@ jobs:
             # links in any capitalisation, hosts glued to punctuation, the leader
             # dots with zero-width characters, and no foreign href in the email.
             supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.tester.retest4.test.ts
+            # Issue #3827 — tester retest 5: the ".bar" venue exception never
+            # spares a host with a tail, a third label, a scheme, a spoofed dot
+            # or a non-capitalised spelling; "Café.Bar" stays.
+            supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.tester.retest5.test.ts
             # issue #2695 — the sweeper's OWN contract suite, which ran in no lane
             # at all and had therefore been red on main since #2218 moved its
             # constants into `logic.ts`. Nothing was broken; the assertions were
