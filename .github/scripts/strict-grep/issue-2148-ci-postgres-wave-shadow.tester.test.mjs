@@ -88,8 +88,14 @@ const PARTIAL_REFERENCE_DELTAS = [{
   workflow: "issue-871-attendance-entitlement-tests.yml",
   referenceFiles: [".github/scripts/strict-grep/issue-3060-attendance-noncustomer-closure.mjs"],
 }, {
+  // #3827 independently mirrors both exact additions to this retained provider.
+  // Removing either path or widening the set remains RED while the frozen
+  // c0813… provider digest stays unchanged.
   workflow: "issue-1486-dormant-render-suites.yml",
-  referenceFiles: [".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs"],
+  referenceFiles: [
+    ".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs",
+    "mingla-business/jest.issue3827.web.render.cjs",
+  ],
 }, {
   workflow: "issue-2099-pending-venue-identity-correction-tests.yml",
   referenceFiles: [

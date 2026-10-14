@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   AppState,
@@ -10,6 +10,7 @@ import {
   View,
   type DimensionValue,
   type ImageErrorEventData,
+  type ImageLoadEventData,
   type NativeSyntheticEvent,
   type StyleProp,
   type ViewStyle,
@@ -718,6 +719,37 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
     setHasMediaError(true);
   };
 
+  // #3827 — react-native-web's <Image> re-runs its load effect whenever its
+  // onLoad / onError identity changes, and that effect sets LOADING (a second
+  // state update). Fresh inline handlers did that on EVERY parent render, so
+  // each keystroke in a form beside a cover chained an extra update; typed back
+  // to back, React's nested-update limit (50) threw and the next letter was
+  // lost (Sentry MINGLA-BUSINESS-22). The image gets handlers whose identity
+  // never changes and which always call the latest closures, so a real load or
+  // error behaves exactly as before. Declared above the early return below
+  // (rules of hooks).
+  const latestImageHandlersRef = useRef({ handleMediaError, onAspectRatio });
+  latestImageHandlersRef.current = { handleMediaError, onAspectRatio };
+  const handleImageError = useCallback(
+    (event: NativeSyntheticEvent<ImageErrorEventData>): void => {
+      latestImageHandlersRef.current.handleMediaError("image", event.nativeEvent);
+    },
+    [],
+  );
+  // ORCH-0992: report image aspect ratio so an adaptive hero fits square /
+  // vertical image covers the same way it fits videos.
+  const handleImageLoad = useCallback(
+    (event: NativeSyntheticEvent<ImageLoadEventData>): void => {
+      const reportAspectRatio = latestImageHandlersRef.current.onAspectRatio;
+      if (reportAspectRatio === undefined) return;
+      const src = event.nativeEvent?.source;
+      if (src !== undefined && src.width > 0 && src.height > 0) {
+        reportAspectRatio(src.width / src.height);
+      }
+    },
+    [],
+  );
+
   // Render heavy media only when there IS media AND (native OR the card is at/
   // near the viewport on web). Off-screen web cards show the lightweight
   // EventCover placeholder until scrolled into view — bounding concurrent
@@ -796,25 +828,10 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
             source={{ uri: mediaUrl }}
             style={StyleSheet.absoluteFill}
             resizeMode="cover"
-            // ORCH-0992: report image aspect ratio so an adaptive hero fits
-            // square / vertical image covers the same way it fits videos.
-            onLoad={
-              onAspectRatio === undefined
-                ? undefined
-                : (event) => {
-                    const src = event.nativeEvent?.source;
-                    if (
-                      src !== undefined &&
-                      src.width > 0 &&
-                      src.height > 0
-                    ) {
-                      onAspectRatio(src.width / src.height);
-                    }
-                  }
-            }
-            onError={(event: NativeSyntheticEvent<ImageErrorEventData>) =>
-              handleMediaError("image", event.nativeEvent)
-            }
+            // #3827: stable handlers (see handleImageLoad / handleImageError).
+            // onLoad stays absent when no caller wants the aspect ratio.
+            onLoad={onAspectRatio === undefined ? undefined : handleImageLoad}
+            onError={handleImageError}
           />
         )}
       </View>

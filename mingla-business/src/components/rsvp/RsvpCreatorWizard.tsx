@@ -113,6 +113,7 @@ import {
 import type { WizardInvitePlan, WizardInviteQuote } from "../../services/offeringInvitePlanService";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
+import type { TurnoutInputSource } from "../../utils/turnoutInput";
 
 /*
  * Desktop web wizard contract restored after regression:
@@ -437,6 +438,14 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   // useKeyboardIsVisible() preserves dock-hide UX (line ~915). KAS via
   // SmartScrollView handles focused-input scroll.
   const keyboardVisible = useKeyboardIsVisible();
+  const turnoutSource = useMemo<TurnoutInputSource>(
+    () => ({
+      kind: "rsvp",
+      draft: liveDraft,
+      brandDefaultCurrency: brand?.defaultCurrency ?? null,
+    }),
+    [brand?.defaultCurrency, liveDraft],
+  );
   const latestDraftRef = useRef<DraftEvent>(liveDraft);
   const clientRevisionRef = useRef<number>(liveDraft.clientRevision ?? 0);
   const lastStepSyncKeyRef = useRef<string | null>(null);
@@ -1318,11 +1327,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
 
   return (
     <LazyTurnoutIntelProvider
-      source={{
-        kind: "rsvp",
-        draft: liveDraft,
-        brandDefaultCurrency: brand?.defaultCurrency ?? null,
-      }}
+      source={turnoutSource}
       brandId={liveDraft.brandId}
       wizard="rsvp"
       surface={

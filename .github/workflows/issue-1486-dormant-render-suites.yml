@@ -211,3 +211,10 @@ jobs:
       - name: "#2726 — Restaurant Hub responsive system (web happy path)"
         if: always()
         run: npx jest --config jest.issue2726.web.render.cjs --runInBand --ci
+      # #3827 guards the two real Host inputs reported dropping letters on web:
+      # Edit brand Bio beside an image cover, and the event Description inside
+      # the deferred turnout-intelligence provider. Both suites drive 120
+      # browser-style synchronous keystrokes through react-native-web.
+      - name: "#3827 — Host web typing keeps every letter"
+        if: always()
+        run: npx jest --config jest.issue3827.web.render.cjs --ci --maxWorkers=2

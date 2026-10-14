@@ -3,6 +3,7 @@ import React, {
   type ComponentType,
   type ReactNode,
   Suspense,
+  useCallback,
   useState,
 } from "react";
 
@@ -47,6 +48,17 @@ export const createDeferredTurnoutIntelProvider = <RuntimeProps extends object>(
     ...runtimeProps
   }: RuntimeProps & { children: ReactNode }): React.JSX.Element => {
     const [value, setValue] = useState<TurnoutIntelContextValue | null>(null);
+    const handleValue = useCallback(
+      (nextValue: TurnoutIntelContextValue | null): void => {
+        // #3827 — intelligence is ambient, not part of the keystroke's urgent
+        // state. Keeping this publication in a transition prevents its effect
+        // from chaining a second synchronous update onto every typed letter.
+        React.startTransition(() => {
+          setValue(nextValue);
+        });
+      },
+      [],
+    );
 
     return (
       <TurnoutIntelContext.Provider value={value}>
@@ -55,7 +67,7 @@ export const createDeferredTurnoutIntelProvider = <RuntimeProps extends object>(
           <Suspense fallback={null}>
             <LazyRuntime
               {...(runtimeProps as RuntimeProps)}
-              onValue={setValue}
+              onValue={handleValue}
             />
           </Suspense>
         </TurnoutIntelLoadBoundary>
