@@ -37,6 +37,8 @@ import {
 } from "../../constants/designSystem";
 import type { EditSeverity } from "../../store/eventEditLogStore";
 import type { FieldDiff, TicketDiff } from "../../utils/liveEventAdapter";
+// issue #3827 — the rows a host reads: no raw data, no duplicate pin row.
+import { changeSummaryRows } from "../../utils/changeSummaryRows";
 // ORCH-0876 [Trip CRUD + Purchase Flow Completion]: generalized to render
 // trip-shape diffs (days / inclusions / pricing tiers) alongside events'
 // existing ticket diffs. All new props are optional + backward-compatible.
@@ -173,6 +175,7 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
     whenRefused: whenChangeRefused,
   });
   const footerCopy = notice.footer;
+  const rows = changeSummaryRows(diffs);
   // The footer is styled for what it SAYS, not for the severity.
   const footerIsMaterial = notice.footerIsNotice;
 
@@ -192,11 +195,11 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
           showsVerticalScrollIndicator={false}
         >
           {/* Diff list */}
-          {diffs.length === 0 ? (
+          {rows.length === 0 ? (
             <Text style={styles.emptyCopy}>No changes to review.</Text>
           ) : (
             <View style={styles.diffsList}>
-              {diffs.map((diff) => {
+              {rows.map((diff) => {
                 const isMaterial = diff.severity === "material";
                 const isTicketsRow = diff.fieldKey === "tickets";
                 // ORCH-0876: trip-shape sub-renderer dispatch keys.
@@ -247,6 +250,16 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
                         <TripPricingTierDiffSubRenderer
                           tripPricingTierDiffs={tripPricingTierDiffs}
                         />
+                      ) : diff.summary !== undefined && diff.summary.length > 0 ? (
+                        <View style={styles.diffValuesRow}>
+                          <Text
+                            style={styles.newValue}
+                            numberOfLines={1}
+                            testID={`change-summary-${diff.fieldKey}-summary`}
+                          >
+                            {diff.summary}
+                          </Text>
+                        </View>
                       ) : (
                         <View style={styles.diffValuesRow}>
                           <Text style={styles.oldValue} numberOfLines={2}>
