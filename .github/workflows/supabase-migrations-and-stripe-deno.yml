@@ -2732,6 +2732,16 @@ jobs:
             supabase/functions/_shared/ngSmsEmbargo.issue2218.test.ts
             supabase/functions/_shared/adapters/smsAdapter.issue2218.test.ts
             supabase/functions/notification-retry-sweeper/issue2218.deferred.test.ts
+            # Issue #3827 — the email a buyer gets when a host materially changes
+            # a live listing. Renders the real module: the subject is fixed
+            # vocabulary plus the listing name and the host's reason can never
+            # reach it; times are in the listing's timezone with the zone named;
+            # a hide-address event prints venue names and never a street; an
+            # experience prints no stop detail; a hostile reason (markup, script
+            # and data links, bidi overrides, zero-width characters, line breaks,
+            # bare domains, addresses) arrives as inert quoted text; replies go
+            # to the brand's contact address when well formed, else support.
+            supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.test.ts
             # issue #2695 — the sweeper's OWN contract suite, which ran in no lane
             # at all and had therefore been red on main since #2218 moved its
             # constants into `logic.ts`. Nothing was broken; the assertions were

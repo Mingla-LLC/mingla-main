@@ -19,6 +19,16 @@ import {
   sha256Hex,
 } from "../_shared/rsvpPass.ts";
 import { attendanceClaimUrls } from "../_shared/attendanceClaim.ts";
+// Issue #3827 — buyers and guests are told when a live listing changes.
+import {
+  buildEventUpdateDispatch,
+  createNoticeLoader,
+  type EventUpdateDispatch,
+  fanOutEventEditNotices,
+  inGroupsOf,
+  type NoticeAdminClient,
+  type NoticeLoader,
+} from "./eventUpdate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,6 +42,8 @@ type TemplateKey =
   | "rsvp_acknowledgement"
   | "rsvp_pass"
   | "rsvp_event_updated"
+  // Issue #3827 — a ticket or experience buyer told about a live edit.
+  | "buyer_event_updated"
   | "rsvp_waitlist_promoted"
   | "rsvp_approved"
   | "rsvp_denied"
@@ -97,6 +109,14 @@ function copyFor(
         title: `Plans changed: ${event}`,
         body: "The host updated this event.",
         sms: `${brand}: ${event} was updated. ${link}`,
+      };
+    // Issue #3827 — only reached without a notice, which the worker refuses
+    // before sending; the case keeps the switch exhaustive.
+    case "buyer_event_updated":
+      return {
+        title: `Details changed: ${event}`,
+        body: "The host changed the details of this event.",
+        sms: `${brand}: ${event} has changed. ${link}`,
       };
     case "rsvp_waitlist_promoted":
       return {
@@ -280,8 +300,47 @@ async function classifyFailure(
   }
 }
 
-async function processClaim(admin: AdminClient, claim: Claim): Promise<void> {
+async function processClaim(
+  admin: AdminClient,
+  claim: Claim,
+  loadNotice: NoticeLoader,
+): Promise<void> {
   const p = claim.payload ?? {};
+  // Issue #3827 — a row that carries a notice id is rendered from the notice.
+  // A buyer row with no notice has nothing truthful to say and is not sent.
+  // Legacy `rsvp_event_updated` rows (no notice id) skip this block entirely.
+  const noticeId = text(p.noticeId);
+  let update: EventUpdateDispatch | null = null;
+  if (noticeId) {
+    const loaded = await loadNotice(noticeId);
+    if (loaded.state === "unavailable") {
+      await complete(admin, claim, "failed_retryable", null, "event_notice_unavailable");
+      return;
+    }
+    if (loaded.state === "not_live") {
+      await complete(admin, claim, "failed_terminal", null, "event_not_live");
+      return;
+    }
+    try {
+      update = buildEventUpdateDispatch(loaded.context, p);
+    } catch (error) {
+      // Nothing printable in the notice is final. Anything else (for example
+      // a missing footer address) is configuration: keep the row and retry.
+      const empty = error instanceof Error &&
+        error.message === "event_update_email_nothing_to_say";
+      await complete(
+        admin,
+        claim,
+        empty ? "failed_terminal" : "failed_retryable",
+        null,
+        empty ? "event_notice_empty" : "event_notice_render_failed",
+      );
+      return;
+    }
+  } else if (claim.template_key === "buyer_event_updated") {
+    await complete(admin, claim, "failed_terminal", null, "event_notice_missing");
+    return;
+  }
   const pass = claim.template_key === "rsvp_pass"
     ? await passStillEligible(admin, p)
     : null;
@@ -319,8 +378,10 @@ async function processClaim(admin: AdminClient, claim: Claim): Promise<void> {
       encodeURIComponent(text(p.rsvpId) ?? text(p.rsvp_id) ?? "")
     }`
     : defaultLink;
-  const link = recoveryLink?.passUrl ?? authenticatedPassLink;
-  const copy = copyFor(claim.template_key, p, link);
+  const link = update?.link ?? recoveryLink?.passUrl ?? authenticatedPassLink;
+  const copy = update
+    ? { title: update.title, body: update.body, sms: update.sms }
+    : copyFor(claim.template_key, p, link);
   if (claim.template_key === "rsvp_pass" && recoveryLink?.attendanceClaimUrl) {
     copy.body =
       `${copy.body}\n\nConnect this RSVP to your Mingla account to see who’s going: ${recoveryLink.attendanceClaimUrl}`;
@@ -358,6 +419,8 @@ async function processClaim(admin: AdminClient, claim: Claim): Promise<void> {
         contact,
         category_key: claim.template_key === "rsvp_pass"
           ? "rsvp_pass"
+          : claim.template_key === "buyer_event_updated"
+          ? "buyer_event_updated"
           : "rsvp_acknowledgement",
         payload: p,
         idempotency_key: claim.idempotency_key,
@@ -366,6 +429,9 @@ async function processClaim(admin: AdminClient, claim: Claim): Promise<void> {
         sms_body: copy.sms,
         deep_link: link,
         attachment,
+        ...(update && claim.channel === "email"
+          ? { email_override: update.emailOverride }
+          : {}),
         delivery_id: claim.delivery_id,
         lease_id: claim.lease_id,
       },
@@ -412,6 +478,12 @@ serve(async (req: Request): Promise<Response> => {
   const admin = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false },
   });
+  // Issue #3827 — on the every-minute tick (no single notification asked for),
+  // turn due edit notices into delivery rows before claiming. A database that
+  // does not have the function yet is "nothing to do".
+  if (!notificationId) {
+    await fanOutEventEditNotices(admin as unknown as NoticeAdminClient);
+  }
   const { data, error } = await admin.rpc(
     "claim_rsvp_notification_deliveries",
     {
@@ -421,6 +493,19 @@ serve(async (req: Request): Promise<Response> => {
   );
   if (error) return json(500, { error: "delivery_claim_failed" });
   const claims = (data ?? []) as Claim[];
-  await Promise.all(claims.map((claim) => processClaim(admin, claim)));
+  // Issue #3827 — edit-notice rows go out five at a time, so a large audience
+  // never opens fifty provider calls at once. Every other row is processed
+  // exactly as before.
+  const loadNotice = createNoticeLoader(admin as unknown as NoticeAdminClient);
+  const isEditNotice = (claim: Claim): boolean => text(claim.payload?.noticeId) !== null;
+  await Promise.all([
+    ...claims.filter((claim) => !isEditNotice(claim))
+      .map((claim) => processClaim(admin, claim, loadNotice)),
+    inGroupsOf(
+      claims.filter(isEditNotice),
+      5,
+      (claim) => processClaim(admin, claim, loadNotice),
+    ),
+  ]);
   return json(200, { ok: true, claimed: claims.length });
 });
