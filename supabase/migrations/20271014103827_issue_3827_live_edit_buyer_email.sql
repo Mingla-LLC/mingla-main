@@ -90,6 +90,9 @@ CREATE TABLE IF NOT EXISTS public.event_edit_notices (
   no_email_count  integer NOT NULL DEFAULT 0,
   -- Recipients kept back because the allowlist-only guard is on.
   held_count      integer NOT NULL DEFAULT 0,
+  -- Whether emails were being tested (allowlist-only) when this notice was
+  -- fanned out: what the host is told about it, whatever the switch says now.
+  tested_at_fanout boolean,
   -- The values before the first unsent edit, and after this one. Addresses are
   -- already removed when the address is withheld on either side.
   base_snapshot   jsonb,
@@ -1100,10 +1103,16 @@ BEGIN
      ORDER BY n.send_after
      LIMIT LEAST(GREATEST(COALESCE(p_limit, 20), 1), 100)
   LOOP
-    -- The same lock order as the recorder: the per-event lock first, then the
-    -- row, re-read and re-checked (it may have been replaced, held or fanned
-    -- out by the time the lock is ours). An address hidden while this notice
-    -- is being fanned out waits, then scrubs what was queued.
+    -- One lock order everywhere: the event row, then the per-event lock, then
+    -- the notice row. Every live editor locks the event row before the
+    -- recorder takes the per-event lock, and the delivery rows inserted below
+    -- need a key-share lock on the event row; taking that first means the
+    -- fan-out waits for a running edit instead of holding the per-event lock
+    -- the edit needs (a deadlock). The notice row is re-read and re-checked:
+    -- it may have been replaced, held or fanned out meanwhile. An address
+    -- hidden while this notice is being fanned out waits, then scrubs what was
+    -- queued.
+    PERFORM 1 FROM public.events AS e WHERE e.id = v_due.event_id FOR KEY SHARE;
     PERFORM pg_advisory_xact_lock(hashtext('issue_3827_event_edit_notice'), hashtext(v_due.event_id::text));
     SELECT * INTO v_notice FROM public.event_edit_notices AS n
      WHERE n.id = v_due.id AND n.state = 'scheduled' AND n.send_after <= now()
@@ -1224,7 +1233,8 @@ BEGIN
        SET state = 'fanned_out', fanned_out_at = now(), send_after = NULL,
            audience_count = v_recipients + v_no_email,
            no_email_count = v_no_email,
-           held_count = v_held
+           held_count = v_held,
+           tested_at_fanout = v_allowlist_only
      WHERE id = v_notice.id;
     v_notices := v_notices + 1;
   END LOOP;
@@ -1424,7 +1434,10 @@ BEGIN
       -- A waiting email: who it can reach now, and how many of them are test
       -- addresses while emails are being tested.
       'emailable', v_recipients,
-      'testing', v_testing,
+      -- A sent notice reports whether it was being tested when it went out;
+      -- a waiting one, whether emails are being tested now.
+      'testing', CASE WHEN v_last.state = 'fanned_out'
+                      THEN COALESCE(v_last.tested_at_fanout, false) ELSE v_testing END,
       'testAddresses', v_test_addresses);
   END IF;
 
