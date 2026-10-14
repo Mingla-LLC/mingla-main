@@ -561,7 +561,8 @@ export function setupCommand({ agent, os, endpoint, code }) {
   // it stays a link); no working copy ever holds it.
   return [
     `F="$HOME/.codex/config.toml"; N=""; R=0;`,
-    `if [ -e "$F" ]; then if [ -w "$F" ]; then N="$(awk 'function n(s){gsub(/[ \\t\\r"\\047]/,"",s);return s}function d(s){return gsub(/[[{]/,"&",s)-gsub(/[]}]/,"&",s)}{l=$0;if(m){if(gsub(/"""|\\047\\047\\047/,"&",l)%2)m=0;if(!k)print;next}if(a>0){a+=d(l);if(a<0)a=0;if(!k)print;next}s=l;sub(/^[ \\t]+/,"",s);if(s~/^\\[\\[?[A-Za-z0-9_."\\047 \\t-]+\\]\\]?[ \\t]*(#.*)?\\r?$/){r=s;sub(/#.*$/,"",r);gsub(/[ \\t\\r]/,"",r);t=n(r);gsub(/[][]/,"",t);k=(t~/^mcp_servers\\.mingla(\\.|$)/);if(k&&r!~/^\\[\\[?("mcp_servers"|\\047mcp_servers\\047|mcp_servers)\\.("mingla"|\\047mingla\\047|mingla)(\\.[^]]*)?\\]\\]?$/)b=1}else if(s~/^\\[/){if(k)b=1;k=0;t="?"}else if(!k&&s!~/^#/&&s~/=/){q=s;sub(/=.*$/,"",q);v=s;sub(/^[^=]*=/,"",v);f=(t==""?n(q):t"."n(q));if(f~/^mcp_servers\\.mingla(\\.|$)/){if(q~/["\\047]/||d(v)!=0||v~/"""|\\047\\047\\047/)b=1;else next}else{if(f=="mcp_servers"&&v~/mingla/)b=1;x=d(v);if(x>0)a=x;if(gsub(/"""|\\047\\047\\047/,"&",l)%2)m=1}}if(!k)print}END{if(b)exit 3}' "$F" 2>/dev/null)"; R=$?; [ "$R" -eq 0 ] && { printf '%s\\n' "$N" | awk '{s=$0;gsub(/[ \\t\\r"\\047]/,"",s)}s~/^\\[\\[?mcp_servers\\.mingla[].]/||s~/^mcp_servers\\.mingla[.=]/{f=1}END{exit f?3:0}'; R=$?; }; else R=1; fi; fi;`,
+    `if [ -e "$F" ]; then if [ -w "$F" ]; then N="$(awk 'function n(s){gsub(/[ \\t\\r"\\047]/,"",s);return s}function d(s){return gsub(/[[{]/,"&",s)-gsub(/[]}]/,"&",s)}{l=$0;if(m){if(gsub(/"""|\\047\\047\\047/,"&",l)%2)m=0;if(!k)print;next}if(a>0){a+=d(l);if(a<0)a=0;if(!k)print;next}s=l;sub(/^[ \\t]+/,"",s);if(s~/^\\[\\[?[A-Za-z0-9_."\\047 \\t-]+\\]\\]?[ \\t]*(#.*)?\\r?$/){r=s;sub(/#.*$/,"",r);gsub(/[ \\t\\r]/,"",r);t=n(r);gsub(/[][]/,"",t);k=(t~/^mcp_servers\\.mingla(\\.|$)/);if(k&&r!~/^\\[\\[?("mcp_servers"|\\047mcp_servers\\047|mcp_servers)\\.("mingla"|\\047mingla\\047|mingla)(\\.[^]]*)?\\]\\]?$/)b=1}else if(s~/^\\[/){if(k)b=1;k=0;t="?"}else if(!k&&s!~/^#/&&s~/=/){q=s;sub(/=.*$/,"",q);v=s;sub(/^[^=]*=/,"",v);f=(t==""?n(q):t"."n(q));if(f~/^mcp_servers\\.mingla(\\.|$)/){if(q~/["\\047]/||d(v)!=0||v~/"""|\\047\\047\\047/)b=1;else next}else{if(f=="mcp_servers"&&v~/mingla/)b=1;x=d(v);if(x>0)a=x;if(gsub(/"""|\\047\\047\\047/,"&",l)%2)m=1}}if(!k)print}END{if(b)exit 3}' "$F" 2>/dev/null)"; R=$?; [ "$R" -eq 0 ] && { printf '%s\\n' "$N" | awk '{s=$0;gsub(/[ \\t\\r"\\047]/,"",s)}s~/^\\[\\[?mcp_servers\\.mingla[].]/||s~/^mcp_servers\\.mingla[.=]/{f=1}END{exit f?3:0}'; R=$?; }; else R=1; fi;`,
+    `elif [ -d "$HOME/.codex" ]; then [ -w "$HOME/.codex" ] || R=1; else [ -w "$HOME" ] || R=1; fi;`,
     `if [ "$R" -eq 3 ]; then printf '%s\\n' "Setup did not start: ~/.codex/config.toml already has a mingla entry this command cannot safely replace. Nothing was changed and the setup code was not used. Remove that entry by hand, then paste this message again.";`,
     `elif [ "$R" -ne 0 ]; then printf '%s\\n' "Setup did not start: this command could not read or write ~/.codex/config.toml. Nothing was changed and the setup code was not used.";`,
     `else K="$(curl -sS -X POST -H 'Authorization: Bearer ${code}' '${url}')";`,
@@ -773,7 +774,7 @@ export function pendingSetup(setup, agentId, now = Date.now()) {
  * Returns { state, tone, lines, showMessage, buttons }. `buttons` is never
  * empty unless the card is busy or offline says why: no state is a dead end.
  */
-export function setupCardView({ agentId, activeKey: key = null, stoppedKey = null, local: held = null, pending = null, offline = false, idleDays = 90, now = Date.now() }) {
+export function setupCardView({ agentId, activeKey: key = null, stoppedKey = null, local: held = null, pending = null, offline = false, idleDays = 90, now = Date.now(), os = "" }) {
   // A message this tab says was used, whose key is no longer the working one
   // (replaced or disconnected since), has nothing left to say.
   const local = held?.phase === "used" && (!key || key.key_id !== held.keyId) ? null : held;
@@ -806,6 +807,18 @@ export function setupCardView({ agentId, activeKey: key = null, stoppedKey = nul
   if (phase === "ready" || phase === "blocked") {
     const left = minutesLeftWords(local.expiresAt, now);
     const ends = `Works once. Stops working at ${clockWords(local.expiresAt)}${left ? ` (${left})` : ""}.`;
+    // What was copied was for another computer than the one chosen now: the
+    // card never says "Copied" over text the clipboard does not hold.
+    if (phase === "ready" && os && local.copiedOs && local.copiedOs !== os) {
+      const label = OS_OPTIONS.find((o) => o.value === os)?.label || "other";
+      return finish({
+        state: "changed",
+        tone: "warning",
+        lines: [`Your computer choice changed. Press Copy message to copy the ${label} version.`, ends, "Waiting for your agent…"],
+        showMessage: true,
+        buttons: [{ id: "again", label: "Copy message", variant: "primary" }, done],
+      });
+    }
     return finish({
       state: phase,
       tone: phase === "ready" ? "success" : "warning",

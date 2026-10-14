@@ -158,7 +158,7 @@ const IDENTIFIERS: ArgSchema = {
         minLength: 1,
         maxLength: 200,
         hint:
-          "Send the email, phone number or handle as you found it; a handle may be a link to a profile or page, never a site with nothing after it",
+          "Send the email, phone number or handle as you found it; a handle may be a link to a profile, never a site on its own, a post or a share link; a WhatsApp link is a phone number",
       },
       platform: {
         type: "string",
@@ -543,7 +543,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "check_contactable",
     title: "Check who is contactable",
     description:
-      "Before any outreach and before adding anyone: for each of 1 to 50 candidates (a name, identifiers, or both) say whether they are new, already in the pipeline, or marked Do not contact or Warm intro only. A name is matched the way an add matches it; an email, a phone number or a handle is matched in its normal form, so a handle written as a profile address finds the record that stores it with an @, and a phone number is also matched by its last nine digits when one of the two was written without its country code. Every record a candidate matches is weighed: the verdict is the strictest contact rule on any of them, record is that record (with its stage, owners, contact rule and reason, last touch and last reply), and matches lists each match with its own rule and what it matched on, beside close names. A verdict of invalid means that one candidate could not be read; the others are still answered. Reads only. " +
+      "Before any outreach and before adding anyone: for each of 1 to 50 candidates (a name, identifiers, or both) say whether they are new, already in the pipeline, or marked Do not contact or Warm intro only. A name is matched the way an add matches it; an email, a phone number or a handle is matched in its normal form, so a handle written as a profile address finds the record that stores it with an @, and a phone number written without its country code is also matched to the same national number written with one; two numbers that both carry a country code match only when they are equal. Every record a candidate matches is weighed: the verdict is the strictest contact rule on any of them, record is that record (with its stage, owners, contact rule and reason, last touch and last reply), and matches lists each match with its own rule and what it matched on, beside close names. A verdict of invalid means that one candidate could not be read; the others are still answered. Reads only. " +
       CONTACT_RULES + " " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({

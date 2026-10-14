@@ -255,6 +255,7 @@ begin
       ('public.crm_ident_key(text,text)', false),
       ('public.crm_clean_identifiers(jsonb)', false),
       ('public.crm_identifier_hits(text,jsonb,uuid)', false),
+      ('public.crm_phone_national(text)', false),
       ('public.crm_identifier_matches(text,jsonb,uuid)', false),
       ('public.crm_request_claim(text,text,jsonb)', false),
       ('public.crm_identifiers_json(uuid)', false),
@@ -299,9 +300,9 @@ begin
     perform pg_temp.t3802b_like('B-1', 'an anonymous caller cannot run ' || split_part(t, '(', 1),
       pg_temp.t3802b_as('anon', 'select public.' || t || '::text'), 'ERR:42501:%');
   end loop;
-  perform pg_temp.t3802b_check('B-1', 'there are exactly 16 team_agent_ functions and 50 crm_ functions',
+  perform pg_temp.t3802b_check('B-1', 'there are exactly 16 team_agent_ functions and 51 crm_ functions',
     (select count(*) filter (where p.proname like 'team\_agent\_%')::text || '/' || count(*) filter (where p.proname like 'crm\_%')
-       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '16/50');
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '16/51');
   perform pg_temp.t3802b_check('B-1', 'no agent function takes a person from its caller',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'team\_agent\_%'
@@ -599,7 +600,7 @@ $b3$;
 -- crm_ident_key is asserted against (kind | value | normal form, "-" = not
 -- usable); keep the two in step. A value written E'...' carries characters
 -- nobody can see, as \uXXXX. The second table is the pairs of phone numbers
--- both sides match the same way (exact, last_9_digits or none).
+-- both sides match the same way (exact, national_number or none).
 -- ---------------------------------------------------------------------------
 create temp table t3802b_forms (kind text, value text, want text) on commit drop;
 insert into t3802b_forms values
@@ -611,14 +612,14 @@ insert into t3802b_forms values
   ('email', 'has space@example.com', '-'),
   ('email', '@example.com', '-'),
   ('email', 'a@b.c', 'a@b.c'),
-  ('phone', '+234 (803) 555-0101', '2348035550101'),
-  ('phone', '00 44 20 7946 0958', '442079460958'),
+  ('phone', '+234 (803) 555-0101', '+2348035550101'),
+  ('phone', '00 44 20 7946 0958', '+442079460958'),
   ('phone', '0803 555 0101', '08035550101'),
   ('phone', '555-0101', '5550101'),
   ('phone', '12345', '-'),
   ('phone', '1234567890123456', '-'),
   ('phone', 'call me', '-'),
-  ('phone', '+1 (919) 555.0103 ext', '19195550103'),
+  ('phone', '+1 (919) 555.0103 ext', '+19195550103'),
   ('handle', 'https://www.instagram.com/Palm.Court/?hl=en', 'palm.court'),
   ('handle', '@Palm.Court', 'palm.court'),
   ('handle', 'palm.court', 'palm.court'),
@@ -630,7 +631,7 @@ insert into t3802b_forms values
   ('handle', 'linkedin.com/in/jane-doe/', 'jane-doe'),
   ('handle', 'linkedin.com/company/mingla', 'mingla'),
   ('handle', 'facebook.com/PalmCourt', 'palmcourt'),
-  ('handle', 'wa.me/2348035550101', '2348035550101'),
+  ('handle', 'wa.me/2348035550101', '-'),
   ('handle', 'has space', '-'),
   ('handle', 'name@example.com', '-'),
   ('handle', 'https://example.com/someone', 'example.com/someone'),
@@ -640,27 +641,27 @@ insert into t3802b_forms values
   ('handle', 'https://linktr.ee/', '-'),
   ('handle', 'https://www.facebook.com/profile.php?id=100001', '100001'),
   ('handle', 'https://www.facebook.com/profile.php?id=100002', '100002'),
-  ('handle', 'facebook.com/profile.php', 'facebook.com/profile.php'),
+  ('handle', 'facebook.com/profile.php', '-'),
   ('handle', 'https://m.facebook.com/aliceskitchen', 'aliceskitchen'),
   ('handle', 'https://mobile.twitter.com/alice', 'alice'),
   ('handle', 'https://www.youtube.com/channel/UCabc123', 'ucabc123'),
   ('handle', 'https://www.youtube.com/channel/UCxyz789', 'ucxyz789'),
   ('handle', 'https://youtube.com/c/AliceCooks', 'alicecooks'),
   ('handle', 'https://www.youtube.com/user/alice', 'alice'),
-  ('handle', 'https://www.instagram.com/p/Cabc123/', 'cabc123'),
-  ('handle', 'https://www.instagram.com/reel/Cxyz/', 'cxyz'),
+  ('handle', 'https://www.instagram.com/p/Cabc123/', '-'),
+  ('handle', 'https://www.instagram.com/reel/Cxyz/', '-'),
   ('handle', 'https://instagram.com/stories/alice/123', 'alice'),
-  ('handle', 'https://www.instagram.com/explore', 'instagram.com/explore'),
+  ('handle', 'https://www.instagram.com/explore', '-'),
   ('handle', 'https://www.instagram.com/', '-'),
   ('handle', 'instagram.com', '-'),
   ('handle', 'https://www.facebook.com/pages/Alice-Kitchen/12345', '12345'),
   ('handle', 'https://www.facebook.com/people/Alice/1000', '1000'),
   ('handle', 'https://www.facebook.com/groups/raleighfood', 'raleighfood'),
   ('handle', 'https://www.tiktok.com/@alice/video/123', 'alice'),
-  ('handle', 'https://vm.tiktok.com/ZMabc/', 'vm.tiktok.com/zmabc'),
+  ('handle', 'https://vm.tiktok.com/ZMabc/', 'vm.tiktok.com/ZMabc'),
   ('handle', 'https://t.me/alice', 't.me/alice'),
   ('handle', 'm.me/alice', 'm.me/alice'),
-  ('handle', 'https://wa.me/2348035550101', '2348035550101'),
+  ('handle', 'https://wa.me/2348035550101', '-'),
   ('handle', 'https://www.threads.net/@alice', 'threads.net/@alice'),
   ('handle', 'https://threads.net/@bob', 'threads.net/@bob'),
   ('handle', 'https://alicekitchen.com/contact', 'alicekitchen.com/contact'),
@@ -690,29 +691,70 @@ insert into t3802b_forms values
   ('email', E'a\u200B@b.co', 'a@b.co'),
   ('email', E'a@b.co\u00A0', 'a@b.co'),
   ('email', E'a\u2028b@c.co', '-'),
-  ('phone', E'\u00A0+1\u00A0919\u00A0555\u00A00142', '19195550142'),
+  ('phone', E'\u00A0+1\u00A0919\u00A0555\u00A00142', '+19195550142'),
+  ('phone', '+44 (0)20 7745 7222', '+442077457222'),
+  ('phone', '+234 0803 510 4237', '+2348035104237'),
+  ('phone', '0044 20 9183 2907', '+442091832907'),
+  ('phone', '44 20 5978 1961', '442059781961'),
+  ('phone', '+1 919 528 3273 ext 7', '+19195283273'),
+  ('phone', '919-555-0142 x 12', '9195550142'),
+  ('phone', 'https://wa.me/2348035550101', '+2348035550101'),
+  ('phone', 'https://api.whatsapp.com/send?phone=2348035550101', '+2348035550101'),
+  ('handle', 'linktr.ee', '-'),
+  ('handle', 'bit.ly', '-'),
+  ('handle', 'alicekitchen.com', '-'),
+  ('handle', '@palm.co', 'palm.co'),
+  ('handle', 'https://bit.ly/3AbC', 'bit.ly/3AbC'),
+  ('handle', 'https://bit.ly/3abc', 'bit.ly/3abc'),
+  ('handle', 'https://linktr.ee/AliceCooks', 'linktr.ee/AliceCooks'),
+  ('handle', 'https://beacons.ai/Alice', 'beacons.ai/Alice'),
+  ('handle', 'https://www.youtube.com/watch?v=AbC_123xyz', 'youtube.com/watch?v=abc_123xyz'),
+  ('handle', 'https://www.youtube.com/watch?v=bbbbbbb&t=10', 'youtube.com/watch?v=bbbbbbb'),
+  ('handle', 'https://www.youtube.com/watch', '-'),
+  ('handle', 'https://x.com/i/status/1', '-'),
+  ('handle', 'https://www.facebook.com/sharer.php?u=a', '-'),
+  ('handle', 'https://www.facebook.com/pages', '-'),
+  ('handle', 'https://www.instagram.com/explore/tags/food/', '-'),
+  ('handle', 'https://api.whatsapp.com/send?phone=234803', '-'),
+  ('handle', 'https://l.facebook.com/l.php?u=x', '-'),
+  ('handle', 'https://t.co/abc', '-'),
+  ('handle', 'https://xn--caf-dma.com/a', 'xn--caf-dma.com/a'),
   ('handle', repeat('a', 61), '-'),
   ('handle', repeat('a', 60), repeat('a', 60)),
   ('handle', '', '-');
 
 create temp table t3802b_phones (a text, b text, want text) on commit drop;
 insert into t3802b_phones values
+  ('+44 (0)20 7745 7222', '+44 20 7745 7222', 'exact'),
+  ('+234 0803 510 4237', '+234 803 510 4237', 'exact'),
+  ('0044 20 9183 2907', '+44 20 9183 2907', 'exact'),
+  ('44 20 5978 1961', '+44 20 5978 1961', 'none'),
+  ('234 803 531 4648', '0803 531 4648', 'none'),
+  ('1 919 556 9276', '(919) 556-9276', 'none'),
+  ('+1 919 516 8305', '919 516 8305', 'national_number'),
+  ('+234 803 559 3198', '0803 559 3198', 'national_number'),
+  ('+44 20 8436 8694', '020 8436 8694', 'national_number'),
+  ('803 576 5827', '0803 576 5827', 'national_number'),
+  ('+44 7911 1745635', '07911 1745635', 'national_number'),
+  ('+1 919 528 3273', '+1 919 528 3273 ext 7', 'exact'),
+  ('+1 919 557 7821', '(219) 557-7821', 'none'),
+  ('(919) 544-5600', '(219) 544-5600', 'none'),
+  ('+44 7911 1691240', '+234 7911 1691240', 'none'),
+  ('07911 1457280', '+234 7911 1457280', 'national_number'),
+  ('0803 586 4839', '+44 803 586 4839', 'national_number'),
   ('+1 (219) 555-0142', '+1 (919) 555-0142', 'none'),
-  ('(219) 555-0142', '(919) 555-0142', 'none'),
-  ('+44 7911 123456', '+234 7911 123456', 'none'),
   ('+49 30 12345678', '+33 30 12345678', 'none'),
   ('+61 412 345 678', '+64 412 345 678', 'none'),
-  ('+234 803 555 0101', '0803 555 0101', 'last_9_digits'),
-  ('+234 803 555 0101', '803 555 0101', 'last_9_digits'),
-  ('0803 555 0101', '803 555 0101', 'last_9_digits'),
-  ('+44 7911 123456', '07911 123456', 'last_9_digits'),
-  ('+1 919 555 0142', '919-555-0142 ext 7', 'none'),
+  ('+234 803 555 0101', '00234 803 555 0101', 'exact'),
+  ('+1 919 555 0142', '919-555-0142 ext 7', 'national_number'),
   ('555-0142', '919 555 0142', 'none'),
   ('+1 919 555 0142', '+1 919 555 0143', 'none'),
-  ('+234 803 555 0101', '00234 803 555 0101', 'exact'),
-  ('+234 803 555 0101', '234 803 555 0101', 'exact'),
-  ('00 44 7911 123456', '+1 44 7911 123456', 'none'),
-  ('(919) 555-0142', '919.555.0142', 'exact');
+  ('(919) 555-0142', '919.555.0142', 'exact'),
+  ('https://wa.me/2348035550101', '+234 803 555 0101', 'exact'),
+  ('https://api.whatsapp.com/send?phone=447911123456', '07911 123456', 'national_number'),
+  ('+44 7911 123456', '555 3456', 'none'),
+  ('+44 7911 123456', '0123456', 'none'),
+  ('+44 7911 123456', '1123456', 'national_number');
 
 do $b4$
 declare
@@ -746,13 +788,22 @@ begin
     delete from public.crm_records where id = v_c;
   end loop;
   perform pg_temp.t3802b_check('B-4', 'every pair of phone numbers matches as documented, both ways round',
-    (select count(*)::text from t3802b_phones) || ' ' || v_bad, '16 ');
+    (select count(*)::text from t3802b_phones) || ' ' || v_bad, '30 ');
   perform pg_temp.t3802b_check('B-4', 'a value of 200 characters is usable and one of 201 is not',
     (public.crm_ident_key('email', repeat('a', 195) || '@b.co') is not null)::text
       || '/' || (public.crm_ident_key('email', repeat('a', 196) || '@b.co') is null)::text, 'true/true');
   perform pg_temp.t3802b_like('B-4', 'a site with nothing after it is refused as a handle, in words that say why',
     pg_temp.t3802b_as('service', $q$select public.crm_clean_identifiers('[{"kind": "handle", "value": "https://linktr.ee/"}]')::text$q$),
-    'ERR:22023:invalid_identifier: "https://linktr.ee/" is not a usable handle. A handle is 2 to 60 letters, digits, dots or underscores, with or without @, or the link to a profile or page (a site with nothing after it is not one).');
+    'ERR:22023:invalid_identifier: "https://linktr.ee/" is not a usable handle. A handle is 2 to 60 letters, digits, dots or underscores, with or without @, or the link to a profile. A site on its own, a post, a search or a share link names no one.');
+  perform pg_temp.t3802b_like('B-4', 'a share link is refused in words that say to paste the profile instead',
+    pg_temp.t3802b_as('service', $q$select public.crm_clean_identifiers('[{"kind": "handle", "value": "https://www.facebook.com/sharer.php?u=https://palm.example"}]')::text$q$),
+    'ERR:22023:invalid_identifier: "https://www.facebook.com/sharer.php?u=https://palm.example" is a link that shares or forwards a page, not a profile. Paste the link to the profile itself instead.');
+  perform pg_temp.t3802b_check('B-4', 'a WhatsApp link sent as a handle is kept as the phone number it is',
+    public.crm_clean_identifiers('[{"kind": "handle", "value": "https://wa.me/2348035550101"}, {"kind": "handle", "value": "https://api.whatsapp.com/send?phone=447911123456"}]')::text,
+    '[{"kind": "phone", "value": "https://wa.me/2348035550101", "platform": null, "value_key": "+2348035550101"}, {"kind": "phone", "value": "https://api.whatsapp.com/send?phone=447911123456", "platform": null, "value_key": "+447911123456"}]');
+  perform pg_temp.t3802b_check('B-4', 'two people who each gave a short link of one site, differing only in case, are two keys',
+    (public.crm_ident_key('handle', 'https://bit.ly/3AbC') <> public.crm_ident_key('handle', 'https://bit.ly/3abc'))::text
+      || '/' || (public.crm_ident_key('handle', 'https://Instagram.com/Palm.Court') = public.crm_ident_key('handle', 'instagram.com/palm.court'))::text, 'true/true');
   perform pg_temp.t3802b_check('B-4', 'the platform is read from the address whatever its prefix',
     (select string_agg(coalesce(e ->> 'platform', '-'), ',' order by e ->> 'value_key')
        from jsonb_array_elements(public.crm_clean_identifiers('[{"kind": "handle", "value": "https://m.facebook.com/a1"}, {"kind": "handle", "value": "https://uk.linkedin.com/in/a2"}, {"kind": "handle", "value": "https://mobile.twitter.com/a3"}, {"kind": "handle", "value": "https://linktr.ee/a4"}]')) e),
@@ -768,7 +819,7 @@ begin
   perform pg_temp.t3802b_check('B-4', 'the cleaner drops repeats, orders by kind then key, and reads the platform from a profile address',
     public.crm_clean_identifiers('[{"kind": "handle", "value": "https://instagram.com/Palm.Court"}, {"kind": "handle", "value": "@palm.court"},
                                     {"kind": "email", "value": " Hello@Palm.co "}, {"kind": "phone", "value": "+1 919 555 0100"}]')::text,
-    '[{"kind": "email", "value": "Hello@Palm.co", "platform": null, "value_key": "hello@palm.co"}, {"kind": "handle", "value": "https://instagram.com/Palm.Court", "platform": "instagram", "value_key": "palm.court"}, {"kind": "phone", "value": "+1 919 555 0100", "platform": null, "value_key": "19195550100"}]');
+    '[{"kind": "email", "value": "Hello@Palm.co", "platform": null, "value_key": "hello@palm.co"}, {"kind": "handle", "value": "https://instagram.com/Palm.Court", "platform": "instagram", "value_key": "palm.court"}, {"kind": "phone", "value": "+1 919 555 0100", "platform": null, "value_key": "+19195550100"}]');
   perform pg_temp.t3802b_check('B-4', 'nothing in gives nothing out',
     coalesce(public.crm_clean_identifiers(null)::text, 'null') || '/' || coalesce(public.crm_clean_identifiers('null')::text, 'null')
       || '/' || public.crm_clean_identifiers('[]')::text, 'null/null/[]');
@@ -792,7 +843,7 @@ begin
   v_a := (v::jsonb #>> '{record,id}')::uuid;
   perform pg_temp.t3802b_check('B-4', 'a record is created with its three identifiers, as typed and in their normal form',
     pg_temp.t3802b_get(v, 'status') || '/' || (v::jsonb #> '{record,identifiers}')::text,
-    'created/[{"key": "hello@palmcourt.example", "kind": "email", "value": "hello@palmcourt.example", "platform": null}, {"key": "palm.court", "kind": "handle", "value": "@Palm.Court", "platform": "instagram"}, {"key": "2348035550101", "kind": "phone", "value": "+234 803 555 0101", "platform": null}]');
+    'created/[{"key": "hello@palmcourt.example", "kind": "email", "value": "hello@palmcourt.example", "platform": null}, {"key": "palm.court", "kind": "handle", "value": "@Palm.Court", "platform": "instagram"}, {"key": "+2348035550101", "kind": "phone", "value": "+234 803 555 0101", "platform": null}]');
   perform pg_temp.t3802b_check('B-4', 'the audit row counts the identifiers and holds none of them',
     (select (a.metadata ->> 'identifiers') || '/' || (a.metadata::text !~* 'palm\.court|5550101|hello@')::text
        from public.admin_audit_log a where a.action = 'crm.record_create' and a.target_id = v_a::text), '3/true');
@@ -804,9 +855,9 @@ begin
     'duplicate/identifier/' || v_a || '/exact/0');
   v := pg_temp.t3802b_person('growth2', $q$select public.crm_record_create('hosts',
     '{"name": "B4 Local Phone", "identifiers": [{"kind": "phone", "value": "0803 555 0101"}]}', 'b4-create-0003')::text$q$);
-  perform pg_temp.t3802b_check('B-4', 'a phone number in its local form matches by its last nine digits',
+  perform pg_temp.t3802b_check('B-4', 'a phone number in its local form matches by its national number',
     pg_temp.t3802b_get(v, 'status') || '/' || pg_temp.t3802b_get(v, 'reason') || '/' || pg_temp.t3802b_get(v, 'matched_on', '0', 'rule'),
-    'duplicate/identifier/last_9_digits');
+    'duplicate/identifier/national_number');
   v := pg_temp.t3802b_person('growth2', $q$select public.crm_record_create('hosts', '{"name": "b4 palm  court"}', 'b4-create-0004')::text$q$);
   perform pg_temp.t3802b_check('B-4', 'a duplicate by name says so', pg_temp.t3802b_get(v, 'status') || '/' || pg_temp.t3802b_get(v, 'reason'), 'duplicate/name');
   perform pg_temp.t3802b_check('B-4', 'none of those made a record',
@@ -1075,6 +1126,10 @@ begin
     'do_not_contact/"B6 Clean Twin" shares a contact detail with "B6 Marked Twin", which is marked Do not contact: Asked us to stop. Nothing was logged. Do not message them; tell your person./logged/0');
   v := pg_temp.t3802b_person('growth', format($q$select public.crm_record_log(%L, '{"kind": "touch", "channel": "email", "direction": "outbound", "body": "The person wrote"}', 'b6-twin-00004')::text$q$, v_id));
   perform pg_temp.t3802b_check('B-6', 'the person is not held to that', (v::jsonb #>> '{activity,body}'), 'The person wrote');
+  perform pg_temp.t3802b_like('B-6', 'a refused shared detail names the rule of the record that holds it',
+    pg_temp.t3802b_person('growth', format($q$select public.crm_record_update(%L, '{"identifiers": [{"kind": "email", "value": "TWIN@b6.example"}]}')::text$q$,
+      pg_temp.t3802b_rec('hosts', 'B6 Third Twin'))),
+    'ERR:22023:duplicate_identifier: "twin@b6.example" already belongs to "B6 Marked Twin" in Hosts, which is marked Do not contact: Asked us to stop. Open that record instead.');
 
   -- A candidate whose name is one record and whose contact detail is on
   -- another: every match is weighed, and the strictest rule is the verdict.
@@ -1150,9 +1205,9 @@ begin
   perform pg_temp.t3802b_check('B-7', 'a repeated email says so, with what matched',
     (r #>> '{results,46,reason}') || '/' || (r #>> '{results,46,existing,name}') || '/' || (r #>> '{results,46,matched_on,0,kind}') || '/' || (r #>> '{results,46,matched_on,0,rule}'),
     'identifier/B7 Host 3/email/exact');
-  perform pg_temp.t3802b_check('B-7', 'a phone number in its local form matches by its last nine digits',
+  perform pg_temp.t3802b_check('B-7', 'a phone number in its local form matches by its national number',
     (r #>> '{results,47,reason}') || '/' || (r #>> '{results,47,existing,name}') || '/' || (r #>> '{results,47,matched_on,0,rule}'),
-    'identifier/B7 Host 4/last_9_digits');
+    'identifier/B7 Host 4/national_number');
   perform pg_temp.t3802b_check('B-7', 'an invalid item explains itself with a token and words',
     (r #>> '{results,48,error,token}') || '/' || (r #>> '{results,49,error,token}') || '/' || ((r #>> '{results,49,error,message}') like '"nope" is not a usable email.%')::text,
     'invalid_icp/invalid_identifier/true');
@@ -1335,7 +1390,7 @@ begin
   perform pg_temp.t3802b_check('B-8', 'check_contactable: a local phone number finds the record that stores it internationally; a name and an identifier of two records say both',
     (v::jsonb #>> '{result,results,0,verdict}') || '/' || (v::jsonb #>> '{result,results,0,record,name}') || '/' || (v::jsonb #>> '{result,results,0,matched_on,0,rule}')
       || '/' || (v::jsonb #>> '{result,results,1,match}') || '/' || (v::jsonb #>> '{result,results,1,record,name}') || '/' || (v::jsonb #>> '{result,results,1,other_matches}'),
-    'exists/B7 Host 7/last_9_digits/both/B7 Host 10/1');
+    'exists/B7 Host 7/national_number/both/B7 Host 10/1');
   perform pg_temp.t3802b_check('B-8', 'check_contactable: the browser gets the same answer from the same function',
     (pg_temp.t3802b_person('growth', $q$select public.crm_contact_check('hosts', '[{"name": "Unknown Venue", "identifiers": [{"kind": "phone", "value": "0803 555 1007"}]}]')::text$q$)::jsonb #>> '{results,0,record,name}'), 'B7 Host 7');
   perform pg_temp.t3802b_like('B-8', 'check_contactable: fifty-one candidates are refused whole',

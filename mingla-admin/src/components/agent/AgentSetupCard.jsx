@@ -21,7 +21,7 @@ const TONE_CLASS = {
   default: "text-[var(--color-text-secondary)]",
 };
 
-export function AgentSetupCard({ agent, view, message, busy, onCopy, onCopyAgain, onDone, onKeep, onDisconnect }) {
+export function AgentSetupCard({ agent, view, message, busy, againBusy = false, onCopy, onCopyAgain, onDone, onKeep, onDisconnect }) {
   const [asking, setAsking] = useState(false); // the Disconnect question
   const statusRef = useRef(null);
   const boxRef = useRef(null);
@@ -197,8 +197,8 @@ export function AgentSetupCard({ agent, view, message, busy, onCopy, onCopyAgain
               ref={b.id === "copy" ? copyRef : b.id === "keep" ? keepRef : b.id === "disconnect" ? disconnectRef : undefined}
               type="button"
               variant={b.variant === "primary" ? undefined : b.variant}
-              loading={!!b.busy || (busy && b.id === "copy")}
-              disabled={!!b.disabled || (busy && b.id !== "copy")}
+              loading={!!b.busy || (busy && b.id === "copy") || (againBusy && b.id === "again")}
+              disabled={!!b.disabled || (busy && b.id !== "copy") || (againBusy && b.id !== "again")}
               title={b.disabled ? view.offlineWords : undefined}
               onClick={() => press(b.id)}
               className="max-sm:h-11"

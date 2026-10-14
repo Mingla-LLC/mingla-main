@@ -527,14 +527,31 @@ describe("#3802 S-2b: what the command does with every answer, and with every se
     each((shell, home) => {
       const bin = standIns(home, `${KEY.codex}\n`);
       const command = setupCommand({ agent: "codex", os: "mac", endpoint: ENDPOINT, code: CODE.codex });
-      // No file yet, and a folder that cannot take one: the key arrives and cannot be saved.
+      const STOPPED = "Setup did not start: this command could not read or write ~/.codex/config.toml. Nothing was changed and the setup code was not used.\n";
+      // No file yet, and a folder that cannot take one: nothing is asked.
       fs.mkdirSync(path.join(home, ".codex"));
       fs.chmodSync(path.join(home, ".codex"), 0o500);
+      const folder = runIn(shell, home, bin, command);
+      assert.equal(folder.stdout, STOPPED, `${shell}: a folder it cannot write`);
+      assert.equal(fs.existsSync(path.join(home, "curl-args.txt")), false, `${shell}: the setup code was not sent`);
+      fs.chmodSync(path.join(home, ".codex"), 0o700);
+      // No folder yet, and a home folder that cannot take one: nothing is asked either.
+      fs.rmSync(path.join(home, ".codex"), { recursive: true });
+      fs.chmodSync(home, 0o500);
+      const homeLocked = runIn(shell, home, bin, command);
+      fs.chmodSync(home, 0o700);
+      assert.equal(homeLocked.stdout, STOPPED, `${shell}: a home folder it cannot write`);
+      assert.equal(fs.existsSync(path.join(home, "curl-args.txt")), false, `${shell}: the setup code was not sent`);
+      assert.equal(fs.existsSync(path.join(home, ".codex")), false);
+      // A link to a place that cannot be written: the key arrives and cannot be saved.
+      fs.mkdirSync(path.join(home, ".codex"));
+      fs.symlinkSync(path.join(home, "nowhere", "config.toml"), path.join(home, ".codex", "config.toml"));
       const out = runIn(shell, home, bin, command);
       assert.equal(out.stdout, SAVE_FAILED, shell);
       assert.equal(out.stderr, "", shell);
+      fs.rmSync(path.join(home, ".codex"), { recursive: true });
+      fs.mkdirSync(path.join(home, ".codex"));
       // A file that is there and cannot be written: nothing is asked.
-      fs.chmodSync(path.join(home, ".codex"), 0o700);
       const file = path.join(home, ".codex", "config.toml");
       fs.writeFileSync(file, 'model = "gpt"\n');
       fs.chmodSync(file, 0o400);
@@ -800,6 +817,27 @@ describe("#3802 S-5: every state of the setup card has words and a next step", (
     const ended = view({ local: { phase: "ended" } });
     assert.deepEqual(ended.lines, ["This setup message no longer works: it was ended before it was used. Your agent is unchanged by it."]);
     assert.deepEqual(labels(ended), ["Copy a new setup message", "Done"]);
+  });
+  it("a copy for one computer never sits as 'Copied' under the other computer's message, whichever came first", () => {
+    const expiresAt = new Date(NOW + 9 * 60_000).toISOString();
+    // Copied for macOS, then the toggle moved to Windows (or it moved while the message was being made).
+    const moved = view({ local: { phase: "ready", expiresAt, copiedOs: "mac" }, os: "windows" });
+    assert.equal(moved.state, "changed");
+    assert.equal(moved.lines[0], "Your computer choice changed. Press Copy message to copy the Windows version.");
+    assert.equal(moved.lines.some((l) => /Copied/.test(l)), false);
+    assert.equal(moved.showMessage, true);
+    assert.deepEqual(labels(moved), ["Copy message", "Done"]);
+    const back = view({ local: { phase: "ready", expiresAt, copiedOs: "windows" }, os: "mac" });
+    assert.equal(back.lines[0], "Your computer choice changed. Press Copy message to copy the macOS or Linux version.");
+    // The same computer as was copied: Copied.
+    assert.equal(view({ local: { phase: "ready", expiresAt, copiedOs: "windows" }, os: "windows" }).lines[0], "Copied. Paste it into Claude Code now.");
+    // The copy records the computer chosen when the button was pressed, not when the answer came.
+    const PAGE = read("pages/AgentPage.jsx");
+    const body = PAGE.slice(PAGE.indexOf("const copySetup = useCallback("), PAGE.indexOf("const messageFor"));
+    assert.ok(body.includes("const built = setupMessage({ agent: agentId, os, endpoint: ENDPOINT, code: answer?.code });"));
+    assert.ok(body.includes("copiedOs: ok ? os : null"));
+    assert.match(body, /\[addToast, online, os, refetch\]/, "a press is bound to the computer chosen at that moment");
+    assert.match(PAGE, /now,\s*os,\s*\}\)\}/, "the card is told the computer chosen now");
   });
   it("each press of Copy message that still does not copy changes what the card says", () => {
     const first = view({ local: { phase: "blocked", expiresAt: new Date(NOW + 9 * 60_000).toISOString(), tries: 0 } });
@@ -1166,7 +1204,11 @@ describe("#3802 S-8: where the setup message and its code may go", () => {
     assert.match(PAGE, /if \(!ok\) ok = copySelected\(node\);/);
     assert.match(PAGE, /return typeof document\.execCommand === "function" && document\.execCommand\("copy"\) === true;/);
     // Whatever happens, the card changes: Copied, or one more counted try.
-    assert.match(PAGE, /phase: ok \? "ready" : "blocked", tries: ok \? 0 : \(m\[agentId\]\.tries \|\| 0\) \+ 1/);
+    assert.match(PAGE, /phase: ok \? "ready" : "blocked",\s*tries: ok \? 0 : \(m\[agentId\]\.tries \|\| 0\) \+ 1,\s*copiedOs: ok \? os : m\[agentId\]\.copiedOs,/);
+    // While the browser is asked, the button is busy and another press does nothing.
+    assert.match(PAGE, /if \(againBusyRef\.current\[agentId\]\) return;\s*againBusyRef\.current = \{ \.\.\.againBusyRef\.current, \[agentId\]: true \};\s*setAgainBusy\(againBusyRef\.current\);/);
+    assert.match(PAGE, /againBusy=\{!!againBusy\[a\.id\]\}/);
+    assert.match(CARD, /loading=\{!!b\.busy \|\| \(busy && b\.id === "copy"\) \|\| \(againBusy && b\.id === "again"\)\}/);
     assert.match(CARD, /else if \(id === "again"\) onCopyAgain\(agent\.id, boxRef\.current\);/);
     assert.match(CARD, /if \(!view\.selectMessage \|\| !message\) return;[\s\S]*range\.selectNodeContents\(node\);/);
     assert.match(CARD, /if \(firstLine\.includes\("still didn't copy"\)\) node\?\.focus\(\);/);
@@ -1180,7 +1222,7 @@ describe("#3802 S-8: where the setup message and its code may go", () => {
     assert.match(body, /err\?\.token === "no_answer" \? \{ phase: "lost" \} : \{ phase: "failed", words: agentErrorWords\(err\) \}/);
     assert.match(body, /timer = setTimeout\(\(\) => reject\(\{ token: "no_answer", message: "" \}\), CREATE_WAIT_MS\);/);
     // The message's own id is kept with it, so what became of it can be asked.
-    assert.match(body, /\{ phase: ok \? "ready" : "blocked", id: answer\.id \|\| null, expiresAt: answer\.expires_at, tries: 0 \}/);
+    assert.match(body, /\{ phase: ok \? "ready" : "blocked", id: answer\.id \|\| null, expiresAt: answer\.expires_at, tries: 0, copiedOs: ok \? os : null \}/);
   });
   it("the waiting check runs to a time on the clock, so drawing the page again never starts it again", () => {
     // What the watch waits for is a time, worked out without reading the clock.
@@ -1189,6 +1231,8 @@ describe("#3802 S-8: where the setup message and its code may go", () => {
     assert.equal(/Date\.now\(\)/.test(until[0]), false, "the end of the wait does not move with the clock");
     assert.match(until[0], /return \(Date\.parse\(st\.expiresAt\) \|\| 0\) \+ SETUP_GRACE_MS;/);
     assert.match(until[0], /if \(st\?\.phase === "used" && !st\.connectedSaid\) return \(Date\.parse\(st\.usedAt\) \|\| 0\) \+ SETUP_FIRST_USE_WATCH_MS;/);
+    // A message copied in another tab and still waiting is watched here too, to its end.
+    assert.match(until[0], /const elsewhere = st \? null : pendingSetup\(setup, a\.id, now\);\s*if \(elsewhere\) return \(Date\.parse\(elsewhere\.expires_at\) \|\| 0\) \+ SETUP_GRACE_MS;/);
     assert.match(PAGE, /useWatch\(watchUntil > 0, \(\) => \{\s*setNow\(Date\.now\(\)\);\s*refetch\(\{ quiet: true \}\);\s*\}, \{\s*until: watchUntil,/);
     assert.match(PAGE, /\}, \[active, everyMs, until\]\);/, "the watch starts again only when its end changes");
     assert.equal(/forMs|restart/.test(PAGE), false);

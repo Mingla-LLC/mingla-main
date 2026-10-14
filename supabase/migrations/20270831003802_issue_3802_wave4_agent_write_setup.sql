@@ -103,6 +103,7 @@
 --   DROP TABLE IF EXISTS public.team_agent_setup_codes;
 --   DROP TABLE IF EXISTS public.crm_record_identifiers;
 --   DROP FUNCTION IF EXISTS public.crm_ident_key(text, text);
+--   DROP FUNCTION IF EXISTS public.crm_phone_national(text);
 --   ALTER TABLE public.crm_records
 --     DROP CONSTRAINT IF EXISTS crm_records_contact_rule_set,
 --     DROP CONSTRAINT IF EXISTS crm_records_contact_rule_check,
@@ -165,21 +166,29 @@ ALTER TABLE public.crm_records
 --
 -- First, for every kind: the text is put in its composed form (NFC),
 -- characters nobody can see are removed, every kind of space becomes one
--- plain space, spaces at the ends are removed and the letters A to Z are
--- lower-cased. A value longer than 200 characters is not usable.
---   email:  it needs a name, an @ and a domain.
---   phone:  digits only; a leading 00 is dropped; 7 to 15 digits remain.
---   handle: written plainly (alice, @alice): 2 to 60 of a-z 0-9 . _ -.
+-- plain space and spaces at the ends are removed. A value longer than 200
+-- characters is not usable.
+--   email:  the letters A to Z lower-cased; it needs a name, an @ and a domain.
+--   phone:  an extension at the end is dropped. A number written with its
+--           country code (a leading + or 00, or a WhatsApp link) is "+",
+--           the country code and the national number, where a "(0)" and a
+--           trunk 0 right after the country code are removed. Any other
+--           number is its digits. 7 to 15 digits.
+--   handle: written plainly (alice, @alice): 2 to 60 of a-z 0-9 . _ -, A to
+--           Z lower-cased; a link site, or a site name with no @, is not one.
 --           Written as a link, it depends on the site.
 --           A known profile site (Instagram, TikTok, X, Facebook, YouTube,
---           LinkedIn, wa.me): the name in the address. A path word that is
---           not a name (profile.php, channel, pages, in, ...) means the id
---           that follows it; when nothing usable follows, the whole address.
---           Any other site: the whole address, as site/path, without
---           http(s)://, www. or m., without a trailing /, without the query
---           (an id= value is kept) and without the fragment. A site with no
---           path is not a handle.
--- The admin web has a twin of this function, held to it by a shared table of
+--           LinkedIn): the name in the address, lower-cased. A path word that
+--           introduces a name (channel, in, pages, ...) means the name or id
+--           that follows it; any other page of those sites (a post, a reel,
+--           search, a share link, ...) names no one and is not a handle. A
+--           YouTube video is youtube.com/watch?v=<id>.
+--           A link-in-bio or short-link site: site/path, the path as typed.
+--           Any other site: site/path, lower-cased. Without http(s)://, www.
+--           or m., a trailing /, the query (an id= value is kept) or the
+--           fragment. A site with no path is not a handle. A WhatsApp link
+--           is a phone number, not a handle.
+-- The admin web has a twin of this function, held to it by shared tables of
 -- examples that both test suites assert.
 -- ---------------------------------------------------------------------------
 CREATE FUNCTION public.crm_ident_key(p_kind text, p_value text) RETURNS text
@@ -189,19 +198,43 @@ DECLARE
   c_hidden constant text := '[\u0000-\u0008\u000E-\u001F\u007F-\u0084\u0086-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF9-\uFFFB\U000E0000-\U000E0FFF]';
   c_space  constant text := '[\u0009-\u000D \u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]';
   c_name   constant text := '^[a-z0-9._-]{2,60}$';
+  -- Country codes of two digits; 1 and 7 are one digit; every other is three.
+  c_cc2    constant text[] := ARRAY['20','27','30','31','32','33','34','36','39','40','41','43','44','45','46','47',
+                                    '48','49','51','52','53','54','55','56','57','58','60','61','62','63','64','65',
+                                    '66','81','82','84','86','90','91','92','93','94','95','98'];
   c_sites  constant text[] := ARRAY['instagram.com', 'tiktok.com', 'x.com', 'twitter.com', 'facebook.com',
-                                    'youtube.com', 'linkedin.com', 'wa.me'];
-  -- Path words of those sites that are never a person's name.
+                                    'youtube.com', 'linkedin.com'];
+  -- Link-in-bio and short-link sites: the path is the person, as typed.
+  c_links  constant text[] := ARRAY['linktr.ee', 'bit.ly', 'beacons.ai', 't.me', 'lnk.bio', 'linkin.bio',
+                                    'taplink.cc', 'tinyurl.com', 'stan.store', 'solo.to', 'carrd.co', 'bio.link',
+                                    'hoo.be', 'allmylinks.com', 'msha.ke', 'flow.page', 'linkpop.com',
+                                    'campsite.bio', 'koji.to', 'snipfeed.co', 'tr.ee', 'vm.tiktok.com',
+                                    'youtu.be', 'fb.me', 'm.me', 'threads.net', 'goo.gl', 'ow.ly', 'rebrand.ly'];
+  -- Never a handle: WhatsApp (a phone number), and pages that forward to others.
+  c_never  constant text[] := ARRAY['wa.me', 'api.whatsapp.com', 'whatsapp.com', 'l.facebook.com',
+                                    'lm.facebook.com', 'l.instagram.com', 't.co'];
+  -- The ends of a site name, so a plain "name.com" is read as a site.
+  c_ends   constant text[] := ARRAY['com', 'net', 'org', 'io', 'co', 'ai', 'me', 'ly', 'ee', 'to', 'cc', 'bio',
+                                    'link', 'page', 'store', 'app', 'site', 'uk', 'us', 'ng', 'de', 'fr', 'info',
+                                    'biz', 'xyz', 'online', 'shop'];
+  -- Path words of the known sites that introduce the name or id after them.
+  c_lead   constant text[] := ARRAY['channel', 'c', 'user', 'in', 'company', 'school', 'pub', 'showcase',
+                                    'groups', 'people', 'pages', 'stories'];
+  -- Path words of the known sites that are never a person's name.
   c_words  constant text[] := ARRAY[
     'profile.php', 'channel', 'c', 'user', 'pages', 'people', 'groups', 'reel', 'reels', 'stories', 'p',
     'share', 'sharer', 'sharer.php', 'in', 'company', 'school', 'pub', 'showcase', 'explore', 'tv', 'watch',
     'shorts', 'playlist', 'hashtag', 'tag', 'tags', 'intent', 'i', 'home', 'search', 'video', 'videos',
     'events', 'photo', 'photos', 'posts', 'status', 'embed', 'live', 'feed', 'results', 'story.php',
     'permalink.php', 'login', 'signup', 'accounts', 'about', 'help', 'settings', 'discover', 'foryou',
-    'following', 'music', 't', 'gaming', 'marketplace', 'profile'];
+    'following', 'music', 't', 'gaming', 'marketplace', 'profile', 'dialog', 'l.php', 'direct', 'messages'];
+  o      text;
   t      text;
+  v_plus text;
+  v_cc   integer;
   v_site text;
   v_rest text;
+  v_orig text;
   v_path text;
   v_id   text;
   v_segs text[];
@@ -209,9 +242,9 @@ DECLARE
   v_two  text;
   v_key  text;
 BEGIN
-  t := regexp_replace(normalize(p_value, NFC), c_hidden, '', 'g');
-  t := btrim(regexp_replace(t, c_space || '+', ' ', 'g'), ' ');
-  t := translate(t, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz');
+  o := regexp_replace(normalize(p_value, NFC), c_hidden, '', 'g');
+  o := btrim(regexp_replace(o, c_space || '+', ' ', 'g'), ' ');
+  t := translate(o, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz');
   IF char_length(t) > 200 THEN
     RETURN NULL;
   END IF;
@@ -221,8 +254,26 @@ BEGIN
   END IF;
 
   IF p_kind = 'phone' THEN
-    t := regexp_replace(regexp_replace(t, '[^0-9]', '', 'g'), '^00', '');
-    RETURN CASE WHEN char_length(t) BETWEEN 7 AND 15 THEN t END;
+    -- A WhatsApp link holds the number with its country code, without the +.
+    v_plus := COALESCE(substring(t from '(?:^|[/.])wa[.]me/[+]?([0-9]{7,15})(?:[/?#]|$)'),
+                       substring(t from 'whatsapp[.]com/send/?[?](?:[^#]*&)?phone=[+]?([0-9]{7,15})(?:[&#]|$)'));
+    IF v_plus IS NOT NULL THEN
+      t := '+' || v_plus;
+    ELSE
+      t := regexp_replace(t, ' *(?:ext|extension|x|#)[.]? *[0-9]{1,6} *$', '');
+      t := regexp_replace(t, '[(] *0 *[)]', '', 'g');
+      t := regexp_replace(t, '[^0-9+]', '', 'g');
+      IF t ~ '^00' THEN
+        t := '+' || substr(t, 3);
+      END IF;
+      t := CASE WHEN t ~ '^[+]' THEN '+' ELSE '' END || regexp_replace(t, '[^0-9]', '', 'g');
+    END IF;
+    IF t ~ '^[+]' THEN
+      v_cc := CASE WHEN substr(t, 2, 1) IN ('1', '7') THEN 1
+                   WHEN substr(t, 2, 2) = ANY (c_cc2) THEN 2 ELSE 3 END;
+      t := left(t, 1 + v_cc) || regexp_replace(substr(t, 2 + v_cc), '^0', '');
+    END IF;
+    RETURN CASE WHEN char_length(regexp_replace(t, '[^0-9]', '', 'g')) BETWEEN 7 AND 15 THEN t END;
   END IF;
 
   IF p_kind <> 'handle' THEN
@@ -232,13 +283,22 @@ BEGIN
   -- Written plainly.
   IF t !~ '^https?://' AND t !~ '^www[.]' AND t !~ '[/?#]' THEN
     v_key := regexp_replace(t, '^@', '');
-    RETURN CASE WHEN v_key ~ c_name AND NOT (v_key = ANY (c_sites)) THEN v_key END;
+    IF v_key = ANY (c_sites) OR v_key = ANY (c_links) OR v_key = ANY (c_never) THEN
+      RETURN NULL;
+    END IF;
+    -- "name.com" with no @ is a site, not a name.
+    IF t !~ '^@' AND v_key ~ '[.]' AND split_part(v_key, '.', array_length(string_to_array(v_key, '.'), 1)) = ANY (c_ends) THEN
+      RETURN NULL;
+    END IF;
+    RETURN CASE WHEN v_key ~ c_name THEN v_key END;
   END IF;
 
   -- Written as a link.
+  o := regexp_replace(o, '^[Hh][Tt][Tt][Pp][Ss]?://', '');
   t := regexp_replace(t, '^https?://', '');
   v_site := substring(t from '^[^/?#]*');
   v_rest := substr(t, char_length(v_site) + 1);
+  v_orig := substr(o, char_length(v_site) + 1);
   IF v_site !~ '[.]' THEN
     -- Not a site: a name with something after it.
     v_key := regexp_replace(v_site, '^@', '');
@@ -246,7 +306,7 @@ BEGIN
   END IF;
   v_site := regexp_replace(v_site, '^(www|m|mobile)[.](?=.*[.])', '');
   v_site := regexp_replace(v_site, '^[a-z]{2}[.]linkedin[.]com$', 'linkedin.com');
-  IF v_site !~ '^[a-z0-9-]+([.][a-z0-9-]+)+$' THEN
+  IF v_site !~ '^[a-z0-9-]+([.][a-z0-9-]+)+$' OR v_site = ANY (c_never) THEN
     RETURN NULL;
   END IF;
   v_path := btrim(regexp_replace(substring(v_rest from '^[^?#]*'), '/+', '/', 'g'), '/');
@@ -259,24 +319,36 @@ BEGIN
     END IF;
     v_segs := string_to_array(v_path, '/');
     v_one := regexp_replace(v_segs[1], '^@', '');
+    -- A YouTube video names that video.
+    IF v_site = 'youtube.com' AND v_one = 'watch' AND cardinality(v_segs) = 1 THEN
+      v_id := substring('&' || COALESCE(substring(v_rest from '^[^?#]*[?]([^#]*)'), '')
+                        from '&v=([a-z0-9_-]{6,20})(?:&|$)');
+      RETURN CASE WHEN v_id IS NOT NULL THEN 'youtube.com/watch?v=' || v_id END;
+    END IF;
     IF NOT (v_one = ANY (c_words)) THEN
       RETURN CASE WHEN v_one ~ c_name THEN v_one END;
     END IF;
-    IF cardinality(v_segs) = 1 AND v_id IS NOT NULL THEN
-      RETURN v_id;
+    IF v_one = 'profile.php' THEN
+      RETURN CASE WHEN cardinality(v_segs) = 1 THEN v_id END;
+    END IF;
+    IF NOT (v_one = ANY (c_lead)) THEN
+      RETURN NULL;
     END IF;
     IF v_site = 'facebook.com' AND v_one IN ('pages', 'people') AND cardinality(v_segs) = 3
        AND v_segs[3] ~ '^[0-9]{2,60}$' THEN
       RETURN v_segs[3];
     END IF;
     v_two := regexp_replace(COALESCE(v_segs[2], ''), '^@', '');
-    IF v_two ~ c_name AND NOT (v_two = ANY (c_words)) THEN
-      RETURN v_two;
-    END IF;
-  ELSIF v_path = '' AND v_id IS NULL THEN
-    RETURN NULL;
+    RETURN CASE WHEN v_two ~ c_name AND NOT (v_two = ANY (c_words)) THEN v_two END;
   END IF;
 
+  IF v_path = '' AND v_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF v_site = ANY (c_links) THEN
+    -- The path as typed: on these sites it is the whole of the person.
+    v_path := btrim(regexp_replace(substring(v_orig from '^[^?#]*'), '/+', '/', 'g'), '/');
+  END IF;
   v_key := v_site || CASE WHEN v_path <> '' THEN '/' || v_path ELSE '' END
                   || CASE WHEN v_id IS NOT NULL THEN '?id=' || v_id ELSE '' END;
   RETURN CASE WHEN v_key !~ ' ' THEN v_key END;
@@ -287,6 +359,28 @@ GRANT EXECUTE ON FUNCTION public.crm_ident_key(text, text) TO service_role;
 COMMENT ON FUNCTION public.crm_ident_key(text, text) IS
   'Issue #3802. Internal: the one normal form of an email, a phone number or a handle, or NULL when the value is not usable as that kind.';
 
+
+-- The national part of a phone number in its normal form: after "+" and the
+-- country code for one written with its code, else its digits without
+-- leading zeros. Two numbers that may be the same are compared on it.
+CREATE FUNCTION public.crm_phone_national(p_key text) RETURNS text
+LANGUAGE sql IMMUTABLE STRICT SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN p_key ~ '^[+]' THEN substr(p_key, 2 + CASE
+      WHEN substr(p_key, 2, 1) IN ('1', '7') THEN 1
+      WHEN substr(p_key, 2, 2) = ANY (ARRAY['20','27','30','31','32','33','34','36','39','40','41','43','44','45',
+                                            '46','47','48','49','51','52','53','54','55','56','57','58','60','61',
+                                            '62','63','64','65','66','81','82','84','86','90','91','92','93','94',
+                                            '95','98']) THEN 2
+      ELSE 3 END)
+    ELSE ltrim(p_key, '0') END
+$$;
+REVOKE EXECUTE ON FUNCTION public.crm_phone_national(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.crm_phone_national(text) TO service_role;
+COMMENT ON FUNCTION public.crm_phone_national(text) IS
+  'Issue #3802. Internal: the national part of a phone number in its normal form.';
+
 CREATE TABLE public.crm_record_identifiers (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   record_id  uuid NOT NULL REFERENCES public.crm_records(id) ON DELETE CASCADE,
@@ -295,8 +389,8 @@ CREATE TABLE public.crm_record_identifiers (
   value      text NOT NULL,                 -- as typed, after the shared text clean-up
   value_key  text NOT NULL,                 -- the normal form
   tail9      text GENERATED ALWAYS AS (CASE WHEN kind = 'phone' AND char_length(value_key) >= 9 THEN right(value_key, 9) END) STORED,
-  -- A phone number typed with its country code (a leading + or 00).
-  intl       boolean GENERATED ALWAYS AS (kind = 'phone' AND regexp_replace(value, '[^0-9+]', '', 'g') ~ '^([+]|00)') STORED,
+  -- A phone number's national part, which two forms of one number share.
+  national   text GENERATED ALWAYS AS (CASE WHEN kind = 'phone' THEN public.crm_phone_national(value_key) END) STORED,
   created_by text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT crm_record_identifiers_kind_check CHECK (kind IN ('email','phone','handle')),
@@ -309,6 +403,7 @@ CREATE TABLE public.crm_record_identifiers (
 );
 CREATE INDEX crm_record_identifiers_by_key  ON public.crm_record_identifiers (kind, value_key);
 CREATE INDEX crm_record_identifiers_by_tail ON public.crm_record_identifiers (tail9) WHERE tail9 IS NOT NULL;
+CREATE INDEX crm_record_identifiers_by_national ON public.crm_record_identifiers (right(national, 7)) WHERE national IS NOT NULL;
 
 ALTER TABLE public.crm_record_identifiers ENABLE ROW LEVEL SECURITY;
 -- No policies on purpose: every read and write goes through the crm_* functions.
@@ -360,17 +455,26 @@ BEGIN
         v_txt := NULL;
       END;
     END IF;
+    -- A WhatsApp link is a phone number, whichever kind it was sent as.
+    IF v_kind = 'handle' AND v_txt IS NOT NULL AND v_txt ~* '((^|[/.])wa[.]me/[+]?[0-9]{7,15}([/?#]|$)|whatsapp[.]com/send/?[?]([^#]*&)?phone=[+]?[0-9]{7,15}([&#]|$))'
+       AND public.crm_ident_key('phone', v_txt) IS NOT NULL THEN
+      v_kind := 'phone';
+    END IF;
     IF v_txt IS NOT NULL AND char_length(v_txt) <= 200 THEN
       v_key := public.crm_ident_key(v_kind, v_txt);
     ELSE
       v_key := NULL;
+    END IF;
+    IF v_key IS NULL AND v_kind = 'handle' AND v_txt ~* '(facebook[.]com/(sharer|share|dialog)|sharer[.]php|(twitter|x)[.]com/intent|linkedin[.]com/(share|sharing)|(^|[/.])(l|lm)[.]facebook[.]com|l[.]instagram[.]com|(^|//)t[.]co/|google[.][a-z.]+/url)' THEN
+      RAISE EXCEPTION '%', format('invalid_identifier: "%s" is a link that shares or forwards a page, not a profile. Paste the link to the profile itself instead.',
+        left(v_txt, 60)) USING ERRCODE = '22023';
     END IF;
     IF v_key IS NULL THEN
       RAISE EXCEPTION '%', format('invalid_identifier: "%s" is not a usable %s. %s',
         left(COALESCE(v_txt, regexp_replace(left(v_raw, 60), '[[:cntrl:]]', '', 'g')), 60), v_kind,
         CASE v_kind WHEN 'email' THEN 'An email needs a name, an @ and a domain.'
                     WHEN 'phone' THEN 'A phone number needs 7 to 15 digits.'
-                    ELSE 'A handle is 2 to 60 letters, digits, dots or underscores, with or without @, or the link to a profile or page (a site with nothing after it is not one).' END)
+                    ELSE 'A handle is 2 to 60 letters, digits, dots or underscores, with or without @, or the link to a profile. A site on its own, a post, a search or a share link names no one.' END)
         USING ERRCODE = '22023';
     END IF;
 
@@ -412,20 +516,20 @@ COMMENT ON FUNCTION public.crm_clean_identifiers(jsonb) IS
 
 -- Which stored identifiers of one pipeline's live records match any of these
 -- (the cleaner's output), on a record other than p_exclude. A row matches
--- when kind and normal form are equal ("exact"). Two phone numbers also match
--- on their last nine digits ("last_9_digits") when at least one of them was
--- written without a country code and they are not the same length: one is
--- then the other without its prefix. Two numbers that both carry a country
--- code match only when they are equal.
+-- when kind and normal form are equal ("exact"). Two phone numbers that are
+-- not equal also match ("national_number") when neither carries a country
+-- code and they are equal without their leading zeros; or when one carries
+-- one, and the other's digits without leading zeros (at least seven of them)
+-- end its national part. Two numbers that both carry a country code match
+-- only when they are equal.
 CREATE FUNCTION public.crm_identifier_hits(p_pipeline text, p_idents jsonb, p_exclude uuid)
 RETURNS TABLE (record_id uuid, kind text, platform text, value text, value_key text, rule text)
 LANGUAGE sql STABLE SET search_path = ''
 AS $$
   WITH want AS (
     SELECT e->>'kind' AS kind, e->>'value_key' AS value_key,
-           CASE WHEN e->>'kind' = 'phone' AND char_length(e->>'value_key') >= 9 THEN right(e->>'value_key', 9) END AS tail9,
-           (e->>'kind' = 'phone'
-            AND regexp_replace(COALESCE(e->>'value', ''), '[^0-9+]', '', 'g') ~ '^([+]|00)') AS intl
+           CASE WHEN e->>'kind' = 'phone' THEN public.crm_phone_national(e->>'value_key') END AS national,
+           (e->>'value_key') ~ '^[+]' AS intl
     FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_idents) = 'array' THEN p_idents ELSE '[]'::jsonb END) AS e
   ),
   hit AS (
@@ -433,12 +537,18 @@ AS $$
     FROM want w
     JOIN public.crm_record_identifiers i ON i.kind = w.kind AND i.value_key = w.value_key
     UNION
-    SELECT i.record_id, i.kind, i.platform, i.value, i.value_key, 'last_9_digits'::text
+    SELECT i.record_id, i.kind, i.platform, i.value, i.value_key, 'national_number'::text
     FROM want w
-    JOIN public.crm_record_identifiers i ON i.tail9 = w.tail9 AND i.kind = 'phone' AND i.value_key <> w.value_key
-    WHERE w.tail9 IS NOT NULL
-      AND NOT (i.intl AND w.intl)
-      AND char_length(i.value_key) <> char_length(w.value_key)
+    JOIN public.crm_record_identifiers i
+      ON i.kind = 'phone' AND w.kind = 'phone' AND i.value_key <> w.value_key
+     AND right(i.national, 7) = right(w.national, 7)
+    WHERE i.national IS NOT NULL AND w.national IS NOT NULL
+      AND CASE
+            WHEN i.value_key ~ '^[+]' AND w.intl THEN false
+            WHEN NOT (i.value_key ~ '^[+]') AND NOT w.intl THEN i.national = w.national
+            WHEN w.intl THEN char_length(i.national) >= 7 AND right(w.national, char_length(i.national)) = i.national
+            ELSE char_length(w.national) >= 7 AND right(i.national, char_length(w.national)) = w.national
+          END
   )
   SELECT h.record_id, h.kind, h.platform, h.value, h.value_key, h.rule
   FROM hit h
@@ -986,8 +1096,8 @@ BEGIN
   FOR v_id IN SELECT e FROM jsonb_array_elements(v_idents) AS e ORDER BY e->>'kind', e->>'value_key' LOOP
     PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
       'crm_ident:' || p_pipeline || ':' || (v_id->>'kind') || ':'
-      || CASE WHEN v_id->>'kind' = 'phone' AND char_length(v_id->>'value_key') >= 9
-              THEN right(v_id->>'value_key', 9) ELSE v_id->>'value_key' END, 0));
+      || CASE WHEN v_id->>'kind' = 'phone'
+              THEN right(public.crm_phone_national(v_id->>'value_key'), 7) ELSE v_id->>'value_key' END, 0));
   END LOOP;
 
   -- An exact duplicate is an answer, not an error. Nothing is written.
@@ -1233,8 +1343,8 @@ BEGIN
     FOR v_id IN SELECT e FROM jsonb_array_elements(v_idents) AS e ORDER BY e->>'kind', e->>'value_key' LOOP
       PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
         'crm_ident:' || v_rec.pipeline || ':' || (v_id->>'kind') || ':'
-        || CASE WHEN v_id->>'kind' = 'phone' AND char_length(v_id->>'value_key') >= 9
-                THEN right(v_id->>'value_key', 9) ELSE v_id->>'value_key' END, 0));
+        || CASE WHEN v_id->>'kind' = 'phone'
+                THEN right(public.crm_phone_national(v_id->>'value_key'), 7) ELSE v_id->>'value_key' END, 0));
     END LOOP;
     v_hits := public.crm_identifier_matches(v_rec.pipeline,
       COALESCE((SELECT jsonb_agg(e) FROM jsonb_array_elements(v_idents) AS e
@@ -1243,8 +1353,12 @@ BEGIN
                                       AND i.value_key = e->>'value_key')), '[]'::jsonb),
       v_rec.id);
     IF jsonb_array_length(v_hits) > 0 AND NOT v_share THEN
-      RAISE EXCEPTION '%', format('duplicate_identifier: "%s" already belongs to "%s" in %s. Open that record instead.',
-          v_hits->0->'matched_on'->0->>'value', v_hits->0->'record'->>'name', v_label)
+      RAISE EXCEPTION '%', format('duplicate_identifier: "%s" already belongs to "%s" in %s%s. Open that record instead.',
+          v_hits->0->'matched_on'->0->>'value', v_hits->0->'record'->>'name', v_label,
+          CASE v_hits->0->'record'->>'contact_rule'
+            WHEN 'do_not_contact' THEN ', which is marked Do not contact: ' || (v_hits->0->'record'->>'contact_rule_reason')
+            WHEN 'warm_intro_only' THEN ', which is marked Warm intro only: ' || (v_hits->0->'record'->>'contact_rule_reason')
+            ELSE '' END)
         USING ERRCODE = '22023', DETAIL = v_hits->0->'record'->>'id';
     END IF;
   END IF;
@@ -3662,6 +3776,7 @@ DECLARE
     'public.crm_city_region(text)',
     'public.admin_team_invite_address_verdict(text)',
     'public.crm_ident_key(text,text)',
+    'public.crm_phone_national(text)',
     'public.crm_clean_identifiers(jsonb)',
     'public.crm_identifier_hits(text,jsonb,uuid)',
     'public.crm_identifier_matches(text,jsonb,uuid)',
@@ -4329,7 +4444,7 @@ BEGIN
 
   -- 11.14 the normal form of an identifier behaves as written.
   IF public.crm_ident_key('email', ' A@B.co ') IS DISTINCT FROM 'a@b.co'
-     OR public.crm_ident_key('phone', '+234 (803) 555-0101') IS DISTINCT FROM '2348035550101'
+     OR public.crm_ident_key('phone', '+234 (0)803 555-0101') IS DISTINCT FROM '+2348035550101'
      OR public.crm_ident_key('handle', 'https://www.instagram.com/Palm.Court/?hl=en') IS DISTINCT FROM 'palm.court'
      OR public.crm_ident_key('handle', '@x') IS NOT NULL THEN
     RAISE EXCEPTION 'issue 3802 wave 4 self-check: crm_ident_key() does not give the normal form it is documented to give';

@@ -1509,7 +1509,8 @@ declare
     'crm_beta_icp(text[])', 'crm_city_region(text)', 'crm_due_json(text,date,integer)',
     'crm_stage_counts_json()', 'crm_targets_json(date)',
     'crm_ident_key(text,text)', 'crm_clean_identifiers(jsonb)', 'crm_identifier_matches(text,jsonb,uuid)',
-    'crm_identifiers_json(uuid)', 'crm_identifier_hits(text,jsonb,uuid)', 'crm_request_claim(text,text,jsonb)'];
+    'crm_identifiers_json(uuid)', 'crm_identifier_hits(text,jsonb,uuid)', 'crm_request_claim(text,text,jsonb)',
+    'crm_phone_national(text)'];
   v_fn text;
   v_tbl text;
   v_role text;

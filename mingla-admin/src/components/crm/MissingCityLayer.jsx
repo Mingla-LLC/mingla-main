@@ -4,7 +4,7 @@
 // Pool (it is added as not live, and shows here straight away); everyone
 // else is told who can. Nothing on the pipeline pages creates a city. Place
 // Pool opens in a new tab, so nothing typed on this page is lost.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../ui/Button";
 import { missingCityWords } from "../../lib/crmModel";
 import { openExternal } from "../../lib/openExternal";
@@ -12,6 +12,13 @@ import { openExternal } from "../../lib/openExternal";
 export function MissingCityLayer({ canAddRegion, onClose, onRefresh }) {
   const words = missingCityWords(canAddRegion);
   const firstRef = useRef(null);
+  const linkRef = useRef(null);
+  // The browser refused the new tab: this page stays where it is, and says so.
+  const [blocked, setBlocked] = useState(false);
+  const placePool = `${window.location.pathname}${window.location.search}#/placepool`;
+  useEffect(() => {
+    if (blocked) linkRef.current?.focus();
+  }, [blocked]);
   useEffect(() => {
     firstRef.current?.focus();
   }, []);
@@ -29,6 +36,20 @@ export function MissingCityLayer({ canAddRegion, onClose, onRefresh }) {
     >
       <p className="text-[13px] font-semibold text-[var(--color-text-primary)]">City missing?</p>
       <p className="text-[13px] text-[var(--color-text-secondary)]">{words.text}</p>
+      {blocked && (
+        <p role="alert" className="text-[13px] text-[var(--color-warning-700)]">
+          {words.blocked}{" "}
+          <a
+            ref={linkRef}
+            href={placePool}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-[var(--color-brand-500)] underline"
+          >
+            Open Place Pool
+          </a>
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         {canAddRegion ? (
           <>
@@ -38,7 +59,17 @@ export function MissingCityLayer({ canAddRegion, onClose, onRefresh }) {
               className="max-sm:h-11"
               onClick={() => {
                 // A new tab: the form behind this keeps everything typed in it.
-                openExternal(`${window.location.pathname}${window.location.search}#/placepool`);
+                // When the browser blocks it, this tab is never sent there instead.
+                let refused = false;
+                openExternal(placePool, {
+                  open: (url, target) => window.open(url, target),
+                  location: {
+                    assign: () => {
+                      refused = true;
+                    },
+                  },
+                });
+                setBlocked(refused);
               }}
             >
               {words.primary}

@@ -308,6 +308,10 @@ export function AgentPage() {
     const st = setups[a.id];
     if (st?.phase === "ready" || st?.phase === "blocked") return (Date.parse(st.expiresAt) || 0) + SETUP_GRACE_MS;
     if (st?.phase === "used" && !st.connectedSaid) return (Date.parse(st.usedAt) || 0) + SETUP_FIRST_USE_WATCH_MS;
+    // A message copied in another tab and still waiting: what becomes of it
+    // shows here too, without waiting for the half-minute refresh.
+    const elsewhere = st ? null : pendingSetup(setup, a.id, now);
+    if (elsewhere) return (Date.parse(elsewhere.expires_at) || 0) + SETUP_GRACE_MS;
     return 0;
   });
   const watchUntil = Math.max(0, ...watched);
@@ -383,7 +387,7 @@ export function AgentPage() {
         setCodes((m) => ({ ...m, [agentId]: answer.code }));
         setSetups((m) => ({
           ...m,
-          [agentId]: { phase: ok ? "ready" : "blocked", id: answer.id || null, expiresAt: answer.expires_at, tries: 0 },
+          [agentId]: { phase: ok ? "ready" : "blocked", id: answer.id || null, expiresAt: answer.expires_at, tries: 0, copiedOs: ok ? os : null },
         }));
         setNow(Date.now());
       } catch (err) {
@@ -412,10 +416,16 @@ export function AgentPage() {
   // Copy again (or Copy message, when the browser blocked the first copy).
   // A press always shows something: "Copied", or a line that counts the try
   // with the message selected for Ctrl or Cmd + C.
+  const [againBusy, setAgainBusy] = useState({});
+  const againBusyRef = useRef({});
   const copySetupAgain = useCallback(
     async (agentId, node) => {
       const message = messageFor(agentId);
       if (!message) return;
+      // A press while the browser is still being asked does nothing.
+      if (againBusyRef.current[agentId]) return;
+      againBusyRef.current = { ...againBusyRef.current, [agentId]: true };
+      setAgainBusy(againBusyRef.current);
       let ok = false;
       try {
         if (navigator.clipboard?.writeText) ok = await within(navigator.clipboard.writeText(message).then(() => true, () => false), COPY_WAIT_MS, false);
@@ -423,13 +433,25 @@ export function AgentPage() {
         console.error("[agent] copy was blocked:", err?.name || "error");
       }
       if (!ok) ok = copySelected(node);
+      againBusyRef.current = { ...againBusyRef.current, [agentId]: false };
       if (!mountedRef.current) return;
+      setAgainBusy(againBusyRef.current);
       setSetups((m) =>
-        m[agentId] ? { ...m, [agentId]: { ...m[agentId], phase: ok ? "ready" : "blocked", tries: ok ? 0 : (m[agentId].tries || 0) + 1 } } : m
+        m[agentId]
+          ? {
+            ...m,
+            [agentId]: {
+              ...m[agentId],
+              phase: ok ? "ready" : "blocked",
+              tries: ok ? 0 : (m[agentId].tries || 0) + 1,
+              copiedOs: ok ? os : m[agentId].copiedOs,
+            },
+          }
+          : m
       );
       if (ok) addToast({ variant: "success", title: "Copied", description: "Paste it into your agent as your next message." });
     },
-    [addToast, messageFor]
+    [addToast, messageFor, os]
   );
 
   const doneSetup = useCallback((agentId) => {
@@ -681,9 +703,11 @@ export function AgentPage() {
                     offline: !online || !ENDPOINT,
                     idleDays,
                     now,
+                    os,
                   })}
                   message={messageFor(a.id)}
                   busy={!!setupBusy[a.id] || !!busy[a.id]}
+                  againBusy={!!againBusy[a.id]}
                   onCopy={copySetup}
                   onCopyAgain={copySetupAgain}
                   onDone={doneSetup}

@@ -229,6 +229,13 @@ export function AddRecordForm({
                   <span className="min-w-0 break-words">
                     Already in the pipeline: <b>{r.name}</b> ({stageLabel(def, r.stage)},{" "}
                     {displayOwners(r, config.team)}).
+                    {contactRuleView(r) && (
+                      <>
+                        {" "}
+                        <b>{r.name}</b> is marked {contactRuleView(r).label}
+                        {contactRuleView(r).reason ? `: ${contactRuleView(r).reason}` : ""}.
+                      </>
+                    )}
                   </span>
                   <Button
                     type="button"

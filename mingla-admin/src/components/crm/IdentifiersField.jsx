@@ -22,6 +22,7 @@ import {
   detectPlatform,
   identLabel,
   sharedDetailHolder,
+  sharedDetailRule,
 } from "../../lib/crmModel";
 
 const ICONS = { email: Mail, phone: Phone, handle: AtSign };
@@ -223,6 +224,11 @@ export function IdentifiersField({ value, disabled = false, saving = false, onCh
             </b>
             {sharedDetailHolder(problem.message) ? ". Nothing was saved." : ""}
           </p>
+          {sharedDetailRule(problem.message) && (
+            <p className="min-w-0 break-words">
+              <b>{sharedDetailHolder(problem.message)}</b> is marked {sharedDetailRule(problem.message)}.
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             {onOpenRecord && (
               <Button type="button" variant="secondary" size="sm" className="max-sm:h-11" onClick={() => onOpenRecord(problem.existingId)}>

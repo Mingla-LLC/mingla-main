@@ -32,8 +32,9 @@ export function ContactRuleField({ record, disabled = false, onSave }) {
   useEffect(() => {
     if (asking) keepRef.current?.focus();
   }, [asking]);
-  // After the rule is lifted (or kept), focus is back on the rule menu: only
-  // once the save has ended, because a control that is still busy cannot take it.
+  // After the rule is saved, lifted or kept, and after a save that was
+  // refused, focus is back on the rule menu: only once the save has ended,
+  // because a control that is still busy cannot take it.
   useEffect(() => {
     if (busy || asking || !focusRule.current) return;
     focusRule.current = false;
@@ -62,6 +63,7 @@ export function ContactRuleField({ record, disabled = false, onSave }) {
       setAsking(true);
       return;
     }
+    focusRule.current = true;
     send({ contact_rule: rule, contact_rule_reason: reason.trim() });
   };
   const lift = async () => {

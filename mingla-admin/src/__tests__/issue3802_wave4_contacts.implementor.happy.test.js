@@ -42,6 +42,7 @@ import {
   phoneMatch,
   recordOpenLabel,
   sharedDetailHolder,
+  sharedDetailRule,
 } from "../lib/crmModel.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -70,7 +71,7 @@ describe("#3802 C-1: one normal form, on the server and on the page", () => {
   }));
   const pairs = [
     ...SQL.slice(SQL.indexOf("insert into t3802b_phones values"), SQL.indexOf("do $b4$")).matchAll(
-      /^\s*\('([^']*)', '([^']*)', '(exact|last_9_digits|none)'\)[,;]$/gm
+      /^\s*\('([^']*)', '([^']*)', '(exact|national_number|none)'\)[,;]$/gm
     ),
   ].map((m) => ({ a: m[1], b: m[2], want: m[3] }));
   it("the shared table was read: every row of it, of all three kinds", () => {
@@ -84,7 +85,7 @@ describe("#3802 C-1: one normal form, on the server and on the page", () => {
     // The four examples the migration checks itself against are in it.
     for (const [kind, value, want] of [
       ["email", " A@B.co ", "a@b.co"],
-      ["phone", "+234 (803) 555-0101", "2348035550101"],
+      ["phone", "+234 (803) 555-0101", "+2348035550101"],
       ["handle", "https://www.instagram.com/Palm.Court/?hl=en", "palm.court"],
       ["handle", "@x", "-"],
     ]) {
@@ -138,7 +139,7 @@ describe("#3802 C-1: one normal form, on the server and on the page", () => {
     }
   });
   it("two phone numbers match here the way they match on the server", () => {
-    assert.equal(pairs.length, 16);
+    assert.equal(pairs.length, 30);
     for (const p of pairs) {
       assert.equal(phoneMatch(p.a, p.b) || "none", p.want, `${p.a} ~ ${p.b}`);
       assert.equal(phoneMatch(p.b, p.a) || "none", p.want, `${p.b} ~ ${p.a}`);
@@ -154,7 +155,17 @@ describe("#3802 C-1: one normal form, on the server and on the page", () => {
     const sqlSites = list(/c_sites\s+constant text\[\] := ARRAY\[([\s\S]*?)\];/.exec(fn)[1]);
     const jsSites = list(/const IDENT_SITES = \[([\s\S]*?)\];/.exec(LIB)[1]);
     assert.deepEqual(jsSites, sqlSites);
-    assert.equal(sqlSites.length, 8);
+    assert.equal(sqlSites.length, 7);
+    // The same link sites, sites that are never a handle, site-name ends, words that lead to a name, and country codes.
+    for (const [sqlName, jsName] of [["c_links", "IDENT_LINKS"], ["c_never", "IDENT_NEVER"], ["c_ends", "IDENT_ENDS"], ["c_lead", "IDENT_LEAD"], ["c_cc2", "PHONE_CC2"]]) {
+      const fromSql = list(new RegExp(`${sqlName}\\s+constant text\\[\\] := ARRAY\\[([\\s\\S]*?)\\];`).exec(fn)[1]);
+      const fromJs = list(new RegExp(`const ${jsName} = \\[([\\s\\S]*?)\\];`).exec(LIB)[1]);
+      assert.deepEqual(fromJs, fromSql, sqlName);
+      assert.ok(fromSql.length >= 5, sqlName);
+    }
+    // The national part uses the same country codes.
+    const nat = /CREATE FUNCTION public\.crm_phone_national\([\s\S]*?\n\$\$;/.exec(MIG)[0];
+    assert.deepEqual(list(/ARRAY\[([\s\S]*?)\]/.exec(nat)[1]), list(/const PHONE_CC2 = \[([\s\S]*?)\];/.exec(LIB)[1]));
     const sqlWords = list(/c_words\s+constant text\[\] := ARRAY\[([\s\S]*?)\];/.exec(fn)[1]);
     const jsWords = list(/const IDENT_WORDS = new Set\(\[([\s\S]*?)\]\);/.exec(LIB)[1]);
     assert.deepEqual(jsWords, sqlWords);
@@ -166,7 +177,7 @@ describe("#3802 C-1: one normal form, on the server and on the page", () => {
     assert.equal(points(/c_space\s+constant text := '\[([^']*)\]';/.exec(fn)[1]), points(/const IDENT_SPACE = \/\[([^\]]*)\]\+\/gu;/.exec(LIB)[1]));
     // The same limits.
     assert.ok(fn.includes("BETWEEN 7 AND 15") && fn.includes("char_length(t) > 200") && fn.includes("{2,60}"));
-    assert.ok(LIB.includes("v.length >= 7 && v.length <= 15") && LIB.includes("[...t].length > 200") && LIB.includes("{2,60}"));
+    assert.ok(LIB.includes("n >= 7 && n <= 15") && LIB.includes("[...t].length > 200") && LIB.includes("{2,60}"));
     // Only A to Z are lower-cased, on both sides, so the two cannot differ by locale.
     assert.ok(fn.includes("'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'"));
     assert.ok(LIB.includes("const asciiLower = (text) => text.replace(/[A-Z]/g, (c) => c.toLowerCase());"));
@@ -227,7 +238,21 @@ describe("#3802 C-2: what was typed, and adding it", () => {
     assert.equal(addIdentifier([{ kind: "phone", value: "+44 7911 123456", key: "447911123456" }], { value: "+234 7911 123456" }).list.length, 2);
     // A link keeps what tells two people apart; a site alone is not a handle.
     assert.equal(addIdentifier([], { value: "https://linktr.ee/alice" }).list[0].key, "linktr.ee/alice");
-    assert.match(addIdentifier([], { value: "https://linktr.ee/" }).message, /a site with nothing after it is not one/);
+    assert.match(addIdentifier([], { value: "https://linktr.ee/" }).message, /A site on its own, a post, a search or a share link names no one\./);
+    assert.match(addIdentifier([], { value: "linktr.ee" }).message, /A site on its own/);
+    // A share link says what to paste instead.
+    assert.equal(
+      addIdentifier([], { value: "https://www.facebook.com/sharer.php?u=https://palm.example" }).message,
+      "That is a link that shares or forwards a page, not a profile. Paste the link to the profile itself instead."
+    );
+    // A WhatsApp link is a phone number, typed as anything.
+    for (const kind of ["", "handle", "phone"]) {
+      const wa = addIdentifier([], { kind, value: "https://wa.me/2348035550101" }).list[0];
+      assert.deepEqual([wa.kind, wa.key, wa.platform], ["phone", "+2348035550101", null], kind || "guessed");
+    }
+    assert.equal(detectIdentKind("https://api.whatsapp.com/send?phone=447911123456"), "phone");
+    // A number with its trunk 0 or a (0) is the same number.
+    assert.equal(addIdentifier([{ kind: "phone", value: "+44 20 7745 7222", key: "+442077457222" }], { value: "+44 (0)20 7745 7222" }).message, "That one is already on this record.");
     assert.equal(addIdentifier([], { kind: "email", value: "not-an-email" }).message, "An email needs a name, an @ and a domain.");
     assert.equal(addIdentifier([], { kind: "phone", value: "12" }).message, "A phone number needs 7 to 15 digits.");
     assert.match(addIdentifier([], { kind: "handle", value: "has space" }).message, /^A handle is 2 to 60 letters/);
@@ -366,7 +391,7 @@ describe("#3802 C-5: the contactable check, in the Add form's words", () => {
   it("a match by identifier says which, and can be opened or added anyway", () => {
     const hit = contactHit({ verdict: "exists", match: "identifier", record, matched_on: [{ kind: "email", value: "a@b.co", rule: "exact" }] });
     assert.deepEqual(hit, { id: "r1", name: "Palm Court Kitchen", byIdentifier: true, line: "Looks like Palm Court Kitchen (same email)", rule: "", others: 0 });
-    assert.equal(contactHit({ verdict: "exists", match: "identifier", record, matched_on: [{ kind: "phone", rule: "last_9_digits" }] }).line, "Looks like Palm Court Kitchen (same phone number)");
+    assert.equal(contactHit({ verdict: "exists", match: "identifier", record, matched_on: [{ kind: "phone", rule: "national_number" }] }).line, "Looks like Palm Court Kitchen (same phone number)");
     assert.equal(
       contactHit({ verdict: "exists", match: "both", record, matched_on: [{ kind: "handle" }, { kind: "email" }, { kind: "handle" }] }).line,
       "Looks like Palm Court Kitchen (same handle and email)"
@@ -397,7 +422,7 @@ describe("#3802 C-5: the contactable check, in the Add form's words", () => {
       other_matches: 2,
       matches: [
         { record: blocked, name_match: true, matched_on: [] },
-        { record: warm, name_match: false, matched_on: [{ kind: "phone", rule: "last_9_digits" }] },
+        { record: warm, name_match: false, matched_on: [{ kind: "phone", rule: "national_number" }] },
         { record: clean, name_match: false, matched_on: [{ kind: "email", rule: "exact" }] },
       ],
     };
@@ -409,6 +434,10 @@ describe("#3802 C-5: the contactable check, in the Add form's words", () => {
       rule: "Do not contact: Asked us to stop",
       others: 2,
     });
+    // A near name that carries a rule says so, with its reason, beside Open it.
+    const FORM_SRC = read("components/crm/AddRecordForm.jsx");
+    assert.ok(/\{contactRuleView\(r\) && \([\s\S]{0,160}<b>\{r\.name\}<\/b> is marked \{contactRuleView\(r\)\.label\}\s*\{contactRuleView\(r\)\.reason \? `: \$\{contactRuleView\(r\)\.reason\}` : ""\}\./.test(FORM_SRC));
+    assert.ok(FORM_SRC.indexOf("{lookalikes.map((r) => (") < FORM_SRC.indexOf("{contactRuleView(r) && ("));
     // Even if the record named first were the clean one, the rule found on another match is the one shown.
     const cleanFirst = contactHit({ ...answer, verdict: "exists", record: clean, matched_on: [{ kind: "email" }], matches: [answer.matches[2], answer.matches[1], answer.matches[0]] });
     assert.equal(cleanFirst.id, "b1");
@@ -520,6 +549,18 @@ describe("#3802 C-6: every new answer from the server becomes a sentence", () =>
     assert.ok(FIELD.includes("Change") && FIELD.includes('aria-label="Where the handle is from"'));
     for (const b of FIELD.split("<Button").slice(1)) assert.ok(/max-sm:h-11/.test(b.slice(0, b.indexOf("</Button>"))));
   });
+  it("a shared detail held by a record that carries a rule says so, from the server's sentence", () => {
+    const said = '"twin@b6.example" already belongs to "B6 Marked Twin" in Hosts, which is marked Do not contact: Asked us to stop. Open that record instead.';
+    assert.equal(sharedDetailHolder(said), "B6 Marked Twin");
+    assert.equal(sharedDetailRule(said), "Do not contact: Asked us to stop");
+    assert.equal(sharedDetailRule('"x" already belongs to "Plain" in Creators. Open that record instead.'), "");
+    assert.equal(sharedDetailRule('"x" already belongs to "Warm" in Creators, which is marked Warm intro only: Knows Tunde. Open that record instead.'), "Warm intro only: Knows Tunde");
+    const FIELD = read("components/crm/IdentifiersField.jsx");
+    assert.ok(/\{sharedDetailRule\(problem\.message\) && \([\s\S]{0,200}<b>\{sharedDetailHolder\(problem\.message\)\}<\/b> is marked \{sharedDetailRule\(problem\.message\)\}\./.test(FIELD));
+    // The server's sentence names the rule: the same words reach an agent.
+    const MIG = fs.readFileSync(path.join(REPO, "supabase", "migrations", "20270831003802_issue_3802_wave4_agent_write_setup.sql"), "utf8");
+    assert.ok(MIG.includes("WHEN 'do_not_contact' THEN ', which is marked Do not contact: ' || (v_hits->0->'record'->>'contact_rule_reason')"));
+  });
   it("the record a refusal names is read from the server's own sentence", () => {
     assert.equal(sharedDetailHolder('"https://linktr.ee/alice" already belongs to "T H2 Alice" in Creators. Open that record instead.'), "T H2 Alice");
     assert.equal(sharedDetailHolder('"@Palm.Court" already belongs to "Palm "Court" Kitchen" in Hosts. Open that record instead.'), 'Palm "Court" Kitchen');
@@ -527,6 +568,8 @@ describe("#3802 C-6: every new answer from the server becomes a sentence", () =>
   });
   it("lifting a contact rule puts focus back on the rule menu once the save has ended", () => {
     const RULE = read("components/crm/ContactRuleField.jsx");
+    // A save (Enter or the button), refused or not, does the same.
+    assert.ok(/focusRule\.current = true;\s*send\(\{ contact_rule: rule, contact_rule_reason: reason\.trim\(\) \}\);/.test(RULE));
     assert.ok(/useEffect\(\(\) => \{\s*if \(busy \|\| asking \|\| !focusRule\.current\) return;\s*focusRule\.current = false;\s*selectRef\.current\?\.focus\(\);\s*\}, \[busy, asking\]\);/.test(RULE));
     assert.ok(/const lift = async \(\) => \{\s*focusRule\.current = true;\s*setAsking\(false\);\s*await send\(\{ contact_rule: null \}\);\s*\};/.test(RULE));
     assert.ok(/const keep = \(\) => \{\s*focusRule\.current = true;/.test(RULE));
@@ -542,6 +585,7 @@ describe("#3802 C-7: City missing?", () => {
       primary: "Open Place Pool",
       secondary: "Cancel",
       refresh: "Refresh regions",
+      blocked: "Your browser blocked the new tab. Allow pop-ups for this site, or open Place Pool yourself:",
     });
     const other = missingCityWords(false);
     assert.equal(other.text, "Cities come from Launch Cities, which an owner or admin manages. Ask one of them to add it. Until then, leave the region empty and put the city in a note.");
@@ -550,8 +594,13 @@ describe("#3802 C-7: City missing?", () => {
   });
   it("every button does something, and focus comes back to the menu", () => {
     const LAYER = read("components/crm/MissingCityLayer.jsx");
+    // A browser that blocks the new tab never sends this tab there: the panel says so and offers a link.
+    assert.ok(LAYER.includes("assign: () => {\n                      refused = true;"));
+    assert.ok(LAYER.includes("setBlocked(refused);"));
+    assert.ok(/\{blocked && \([\s\S]{0,200}\{words\.blocked\}\{" "\}\s*<a\s+ref=\{linkRef\}\s+href=\{placePool\}\s+target="_blank"/.test(LAYER));
+    assert.equal(missingCityWords(true).blocked, "Your browser blocked the new tab. Allow pop-ups for this site, or open Place Pool yourself:");
     // Place Pool opens beside this page: nothing typed in the form behind it is lost.
-    assert.ok(LAYER.includes("openExternal(`${window.location.pathname}${window.location.search}#/placepool`);"));
+    assert.ok(LAYER.includes("const placePool = `${window.location.pathname}${window.location.search}#/placepool`;") && LAYER.includes("openExternal(placePool, {"));
     assert.ok(LAYER.includes('import { openExternal } from "../../lib/openExternal";'), "through the package's one owner of a new tab");
     assert.equal(/window\.location\.hash\s*=|window\.location\.assign|window\.location\.href\s*=/.test(LAYER), false, "this page is never navigated away from");
     assert.ok(LAYER.includes("onClick={onRefresh}") && LAYER.includes("onClick={onClose}"));
