@@ -2956,8 +2956,7 @@ BEGIN
               v_id := (v_item->>'id')::uuid;
               v_row := jsonb_build_object('index', v_idx, 'id', v_id);
 
-              CASE v_tool
-                WHEN 'update_records' THEN
+              IF v_tool = 'update_records' THEN
                   IF EXISTS (SELECT 1 FROM jsonb_object_keys(v_item) AS k WHERE k NOT IN ('id', 'changes')) THEN
                     RAISE EXCEPTION 'unknown_field: An update takes id and changes, nothing else.' USING ERRCODE = '22023';
                   END IF;
@@ -2970,7 +2969,7 @@ BEGIN
                     v_c2 := v_c2 + 1;
                   END IF;
 
-                WHEN 'move_stage' THEN
+                ELSIF v_tool = 'move_stage' THEN
                   IF EXISTS (SELECT 1 FROM jsonb_object_keys(v_item) AS k WHERE k NOT IN ('id', 'to', 'expected_from', 'reason')) THEN
                     RAISE EXCEPTION 'unknown_field: A move takes id, to, expected_from and reason, nothing else.' USING ERRCODE = '22023';
                   END IF;
@@ -2987,7 +2986,7 @@ BEGIN
                     v_c2 := v_c2 + 1;
                   END IF;
 
-                WHEN 'set_owners' THEN
+                ELSIF v_tool = 'set_owners' THEN
                   IF EXISTS (SELECT 1 FROM jsonb_object_keys(v_item) AS k WHERE k NOT IN ('id', 'owner_emails'))
                      OR jsonb_typeof(v_item->'owner_emails') IS DISTINCT FROM 'array'
                      OR jsonb_array_length(v_item->'owner_emails') > 10
@@ -3003,7 +3002,7 @@ BEGIN
                     v_c2 := v_c2 + 1;
                   END IF;
 
-                WHEN 'log_activity' THEN
+                ELSIF v_tool = 'log_activity' THEN
                   v_one := public.crm_record_log(v_id, v_item - 'id', v_rk || '-l' || v_idx);
                   IF COALESCE((v_one->>'replayed')::boolean, false) THEN
                     v_row := v_row || jsonb_build_object('status', 'replayed', 'activity', v_one->'activity', 'record', v_one->'record');
@@ -3069,7 +3068,7 @@ BEGIN
                       || jsonb_strip_nulls(jsonb_build_object('move_note', v_note));
                     v_c1 := v_c1 + 1;
                   END IF;
-              END CASE;
+              END IF;
             EXCEPTION
               WHEN invalid_parameter_value OR no_data_found OR insufficient_privilege THEN
                 v_m := regexp_match(SQLERRM, '^([a-z_]+): (.+)$');

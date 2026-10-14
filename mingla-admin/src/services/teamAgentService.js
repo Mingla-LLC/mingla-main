@@ -84,3 +84,13 @@ export function fetchAgentGuide() {
 export function fetchMyAgentActivity(limit = 20, before = null) {
   return call(() => supabase.rpc("team_agent_my_activity", { p_limit: limit, p_before: before }));
 }
+
+/**
+ * Make a one-time setup code for one agent. Returns
+ * { code, agent, created_at, expires_at, replaces_key }. The code is in this
+ * answer once and is never stored or returned again; nothing changes for the
+ * person's agent until the code is used.
+ */
+export function createSetupCode(agent, timeZone) {
+  return call(() => supabase.rpc("team_agent_setup_create", { p_agent: agent, p_time_zone: timeZone ?? null }));
+}
