@@ -450,6 +450,27 @@ const raiseMessageIn = (haystack: string): string | undefined => {
   return undefined;
 };
 
+/**
+ * issue #3281 — the same raise sentences, for the business app's NATIVE paid
+ * checkout (`src/payments/nativeCheckoutFlow.native.ts`).
+ *
+ * Every raise in FREE_CHECKOUT_MESSAGE_BY_RAISE fires inside the create-session
+ * RPC BEFORE any row exists and before any provider is contacted, so each
+ * sentence ("nothing was reserved") is equally true on the paid rail. Returns
+ * `undefined` when no known token is present, so the caller falls through to
+ * its own total paid mapper — a raw token is never the answer.
+ */
+export const checkoutRefusalRaiseMessage = (
+  ...candidates: ReadonlyArray<string | null | undefined>
+): string | undefined => {
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const found = raiseMessageIn(candidate);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+};
+
 export const freeCheckoutErrorMessage = (error: unknown): string => {
   const code = codeOf(error);
   const detail = detailOf(error) ?? "";
