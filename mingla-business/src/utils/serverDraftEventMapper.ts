@@ -1034,8 +1034,11 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     // #3288 — a row WITHOUT the column yields `undefined` (unknown), never [].
     // Mapping "absent" to [] is what emptied drafts on every server re-read.
     coverGallery: coverGalleryFromRow(row),
+    // Issue #3645 — the row's own column is the truth. The copy inside the
+    // draft JSON is only what a client last wrote, and reading it first let a
+    // stale copy outrank the currency the server had since moved the draft to.
     currency:
-      asStringOrNull(businessDraft.currency) ?? asStringOrNull(row.currency) ?? null,
+      asStringOrNull(row.currency) ?? asStringOrNull(businessDraft.currency) ?? null,
     // ORCH-1006 — read pricing switches from top-level columns. null = inherit.
     pricingSwitches: {
       passTax: row.pass_tax ?? null,

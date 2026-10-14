@@ -15,6 +15,11 @@
  * Spec: Mingla_Artifacts/specs/SPEC_ORCH-0859_TR2_MINIMUM_VIABLE_TRIP.md §4.6
  */
 
+import {
+  TRIP_PRICE_REENTRY_REQUIRED_CODE,
+  tierMetadataHasPriceClearedMarker,
+  withoutPriceClearedMarker,
+} from "../utils/tripPriceReentry";
 import { supabase } from "./supabase";
 import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-rendering";
 import { themeOverridesFromColumns } from "./offeringTheme";
@@ -445,6 +450,13 @@ export interface TripPricingPatch {
    * preserved (mirrors the installmentSchedule "present vs absent" semantics).
    */
   description?: string | null;
+  /**
+   * Issue #3645 — true when the host has typed a price (any price, 0 included)
+   * into a package whose price was cleared by a brand currency change. The
+   * save then removes tier_metadata.price_cleared_for_currency_change so the
+   * package can publish. Absent/false keeps the marker.
+   */
+  priceEntered?: boolean;
 }
 
 export class SlugCollisionError extends Error {
@@ -1279,6 +1291,36 @@ export async function updateTripPricing(
       desc.length > 0
         ? { ...metadataWithoutDescription, description: desc }
         : metadataWithoutDescription;
+  }
+
+  // Issue #3645 — the host entered a price again: the "price was cleared" marker
+  // has done its job. The draft owner replaces tier_metadata with what it is
+  // sent, so leaving the key out removes it.
+  if (patch.priceEntered === true) {
+    nextMetadata = withoutPriceClearedMarker(nextMetadata);
+  } else if (
+    tierMetadataHasPriceClearedMarker(existingMetadata) &&
+    patch.priceCents !== undefined &&
+    patch.priceCents > 0
+  ) {
+    // The marker is on the server row read a moment ago, yet this save carries
+    // a price the host did NOT type after the clear (a form left open across
+    // the currency change still holds the old number). Ask the server what
+    // the package costs now: if it is still cleared, refuse, so an old number
+    // can never be saved under the new currency. If it already has a price,
+    // the marker is a left-over and is dropped.
+    const { data: ticketRow, error: ticketError } = await supabase
+      .from("ticket_types")
+      .select("price_cents")
+      .eq("id", tierRow.ticket_type_id)
+      .maybeSingle();
+    if (ticketError) throw ticketError;
+    const currentPriceCents =
+      (ticketRow as { price_cents?: number } | null)?.price_cents ?? 0;
+    if (currentPriceCents === 0) {
+      throw new Error(TRIP_PRICE_REENTRY_REQUIRED_CODE);
+    }
+    nextMetadata = withoutPriceClearedMarker(nextMetadata);
   }
 
   // issue #1971 — the ticket_types write and the trip_pricing_tiers write were

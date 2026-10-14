@@ -730,6 +730,91 @@ jobs:
           # ordinary spaces always did. A real address keeps its storage rule.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3827_live_edit_blank_address.implementor.happy.pg17.test.sql
+          # Issue #3645 — an unpublished draft with nothing sold follows its
+          # brand's currency. Changed currency (GBP to NGN, fired by
+          # service_role): event, RSVP and trip drafts move in every copy, paid
+          # prices are cleared, free stays free, a cleared trip package cannot
+          # publish until a price is entered, then it does. First currency
+          # (none to NGN): drafts are stamped and typed prices are kept. An
+          # experience draft and a once-published draft are untouched.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.implementor.happy.pg17.test.sql
+          # Issue #3645 rework — a currency change made in TWO writes (the
+          # payout-country picker clears the currency, then sets the new one)
+          # clears prices like a direct change; a brand that never had a
+          # currency keeps typed prices; coming back to the same currency
+          # changes nothing; a row already moved whose JSON copy was not is
+          # aligned and cleared; the remembered currency is not a client surface;
+          # a cleared trip package cannot be saved with a price it did not get
+          # after the clear (stale form, older build, direct write all refused
+          # at commit, as is metadata replaced by JSON null; the clear,
+          # free-after-clear and a correct re-price pass); the check has its index.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency_rework.implementor.happy.pg17.test.sql
+          # Issue #3645 retest 2 — a draft out of step with its brand cannot be
+          # published, and its host is never at a dead end. Through the real
+          # owners: publish, a buyer starts a checkout and leaves, unpublish,
+          # GBP to NGN; Publish is refused with price_reentry_required;
+          # biz_sync_draft_currency moves and clears the draft (an abandoned
+          # checkout does not stop it; one in progress or completed does); a
+          # written-back or stale pound publish is refused before the re-stamp;
+          # free-only and matching-currency publishes are unaffected.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency_publish_stop.implementor.happy.pg17.test.sql
+          # Issue #3645 — tester adversarial proof for the same change. Prices
+          # survive on a draft with a checkout session, an order, a chip-in or
+          # a door sale, on a published or deleted event, on another brand, on
+          # a brand set to no currency or to the currency it already has, and
+          # on a brand's FIRST currency (event, RSVP, trip with a deposit
+          # plan). On a real change the all-in price copy is cleared too, two
+          # brands changed in one statement both move, and a cleared trip
+          # package cannot be moved to scheduled or live by a plain status
+          # update, while one the host then sets free does publish.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.tester.adversarial.pg17.test.sql
+          # Issue #3645 — tester RETEST of the rework. Two writes: NGN to none
+          # to USD clears event, RSVP and trip prices and names NGN in the
+          # notice, while drafts priced during the gap with no currency keep
+          # every number; a first currency keeps prices; none to the same
+          # currency changes nothing and uses up what was remembered; "none"
+          # written twice loses nothing; two brands interleaved never share a
+          # remembered currency; the Stripe account mirror counts as a writer;
+          # the remembered currency is refused to anon and signed-in hosts for
+          # every verb. A cleared trip package: the old number is refused as
+          # the signed-in host in every shape it can arrive (with the marker,
+          # with no metadata, price alone, odd marker, a new package), nothing
+          # is left behind, a correct re-price and an explicit free pass, and
+          # ordinary ticket and never-cleared package price changes are
+          # untouched.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.tester.retest.pg17.test.sql
+          # Issue #3645 — tester RETEST 2. The app now follows the draft ROW, so
+          # what the database does with a draft it did not move is pinned: a
+          # brand moved to a currency no offering may use leaves the draft
+          # exactly as it was and Publish is refused; a draft the trigger
+          # skips (a checkout was started on it) on a dollar brand that moves
+          # to naira is untouched and cannot go on sale at the old number. A
+          # cleared trip package: metadata replaced by JSON null with the old
+          # number is refused, and the old number from a form that read the
+          # trip before the clear is a revision conflict. The commit-time
+          # check finds a package among 3,000 through its index.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.tester.retest2.pg17.test.sql
+          # Issue #3645 — tester RETEST 3. The stop at Publish and the host's
+          # way out of it, from other angles: the retest-2 scenario through
+          # the real owners; the old number relabelled with the brand's
+          # currency, and a caller that declares its own publish free-only,
+          # are both refused; a checkout still open, a payment in flight and
+          # an order each stop the sync and nothing is changed; every rank
+          # below event manager, a host of another brand, a removed member
+          # and a signed-out caller are refused, and it cannot reach a
+          # published event, an experience or a deleted draft; a draft in
+          # step is left byte for byte and one with no currency keeps its
+          # typed price; free-only, no-currency and untouched republish
+          # paths are unchanged; an RSVP with old amounts written back
+          # cannot go live.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.tester.retest3.pg17.test.sql
           # Issue #1977 — canonical RSVP draft/guest/contribution owners and
           # the Ari receipt seam. Behavioural against the applied schema.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
