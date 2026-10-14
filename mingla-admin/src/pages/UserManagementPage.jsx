@@ -23,6 +23,7 @@ import { useAuth } from "../context/AuthContext";
 import { timeAgo, formatDate, formatDateTime, truncate, escapeLike } from "../lib/formatters";
 import { logAdminAction } from "../lib/auditLog";
 import { exportCsv } from "../lib/exportCsv";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 400;
@@ -1022,13 +1023,10 @@ export function UserManagementPage() {
 
     return (
       <div className="flex flex-col gap-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Users</h1>
-          </div>
-          <Button variant="secondary" size="sm" icon={Download} onClick={handleExport}>Export</Button>
-        </div>
+        <PageHeader
+          title="Users"
+          actions={<Button variant="secondary" size="sm" icon={Download} onClick={handleExport}>Export</Button>}
+        />
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
@@ -1198,7 +1196,7 @@ export function UserManagementPage() {
     if (detailLoading && !userDetail) {
       return (
         <div className="flex flex-col gap-6">
-          <Button variant="ghost" size="sm" icon={ChevronLeft} onClick={backToList}>Back to Users</Button>
+          <PageHeader title="Users" back={{ label: "Back to Users", onClick: backToList }} />
           <div className="flex items-center justify-center py-20">
             <Spinner size="lg" />
           </div>
@@ -1209,7 +1207,7 @@ export function UserManagementPage() {
     if (!userDetail) {
       return (
         <div className="flex flex-col gap-6">
-          <Button variant="ghost" size="sm" icon={ChevronLeft} onClick={backToList}>Back to Users</Button>
+          <PageHeader title="Users" back={{ label: "Back to Users", onClick: backToList }} />
           <div className="flex flex-col items-center justify-center py-20 gap-2">
             <Users className="h-10 w-10 text-[var(--gray-300)]" />
             <p className="text-sm text-[var(--color-text-tertiary)]">User not found</p>

@@ -43,6 +43,7 @@ import {
   adminDiscoveryRangeErrorMessage,
   buildAdminDiscoveryRangeUpdate,
 } from "../lib/deckCardPreviewRules";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -3230,23 +3231,21 @@ export function PlacePoolManagementPage({ onTabChange }) {
   };
 
   return (
-    <div className="space-y-4 py-6">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Place Pool Management</h2>
-            <p className="text-sm text-[var(--color-text-secondary)]">{scopeLabel} · {totalServable.toLocaleString()} servable places</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <CityPicker cities={pickerCities} scope={scope} onScopeChange={setScope} />
-          {scope.cityId && registeredCity && (
-            <Button icon={RefreshCw} size="sm" variant="secondary" onClick={() => setUpdateCityOpen(true)}
-              disabled={seedingActive}>Update Bbox</Button>
-          )}
-          <Button icon={Plus} size="sm" onClick={() => setAddCityOpen(true)}>Add City</Button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Place Pool Management"
+        description={`${scopeLabel} · ${totalServable.toLocaleString()} servable places`}
+        actions={
+          <>
+            <CityPicker cities={pickerCities} scope={scope} onScopeChange={setScope} />
+            {scope.cityId && registeredCity && (
+              <Button icon={RefreshCw} size="sm" variant="secondary" onClick={() => setUpdateCityOpen(true)}
+                disabled={seedingActive}>Update Bbox</Button>
+            )}
+            <Button icon={Plus} size="sm" onClick={() => setAddCityOpen(true)}>Add City</Button>
+          </>
+        }
+      />
 
       {/* Photo backfill job status bar — visible across all tabs */}
       {activePhotoRuns.length > 0 && (

@@ -25,6 +25,7 @@ import { SectionCard, AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Spinner } from "../components/ui/Spinner";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -166,21 +167,16 @@ export function StripeModePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--gray-900)]">
-            Stripe mode
-          </h1>
-          <p className="text-sm text-[var(--gray-600)] mt-1">
-            ORCH-1056 unified-mode dashboard — verifies the three Stripe-mode
-            signals agree before live cutover.
-          </p>
-        </div>
-        <Button onClick={refresh} disabled={loading} variant="ghost">
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          <span className="ml-2">Refresh</span>
-        </Button>
-      </div>
+      <PageHeader
+        title="Stripe mode"
+        description="ORCH-1056 unified-mode dashboard — verifies the three Stripe-mode signals agree before live cutover."
+        actions={
+          <Button onClick={refresh} disabled={loading} variant="ghost">
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <span className="ml-2">Refresh</span>
+          </Button>
+        }
+      />
 
       {loading ? (
         <div className="flex items-center justify-center py-12">

@@ -17,6 +17,7 @@ import { useToast } from "../context/ToastContext";
 import { useTheme } from "../context/ThemeContext";
 import { logAdminAction } from "../lib/auditLog";
 import { formatDate } from "../lib/formatters";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const SUB_TABS = [
   { id: "appearance", label: "Appearance" },
@@ -664,9 +665,10 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Settings</h1>
-
-      <Tabs tabs={SUB_TABS} activeTab={activeTab} onChange={setActiveTab} />
+      <PageHeader
+        title="Settings"
+        tabs={<Tabs tabs={SUB_TABS} activeTab={activeTab} onChange={setActiveTab} />}
+      />
 
       {activeTab === "appearance" && <AppearanceView />}
       {activeTab === "flags" && <FeatureFlagsView />}

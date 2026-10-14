@@ -19,6 +19,7 @@ import { listRefunds, listDisputes, getDispute, listPayouts, listRevenueLog, lis
 import { annotateDispute } from "../services/adminMoneyActService";
 import { reconcileTicketRefund } from "../services/adminRefundReconciliationService";
 import { timeAgo, formatDateTime, formatDate } from "../lib/formatters";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // ── Money formatter (cents + currency → string; never throws — I-1152 lesson) ──
 
@@ -365,7 +366,7 @@ export function BusinessMoneyLedgerPage() {
       badges.push({ label: d.status || "dispute", variant });
     }
     return (
-      <div className="py-8">
+      <div>
         <EntityDetailView
           loading={disputeLoading}
           error={disputeError}
@@ -495,20 +496,13 @@ export function BusinessMoneyLedgerPage() {
   }
 
   return (
-    <div className="py-8 flex flex-col gap-6">
-      <div className="flex items-start gap-3 flex-wrap">
-        <div className="w-10 h-10 rounded-full bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
-          <Landmark className="w-5 h-5 text-[var(--color-brand-500)]" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Money ledger</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            Refunds, disputes, payouts, platform-fee revenue, and provider-evidence Stay reconciliation across every brand.
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Money ledger"
+        description="Refunds, disputes, payouts, platform-fee revenue, and provider-evidence Stay reconciliation across every brand."
+        tabs={<Tabs tabs={TABS} activeTab={activeTab} onChange={changeTab} />}
+      />
 
-      <Tabs tabs={TABS} activeTab={activeTab} onChange={changeTab} />
       {listView}
     </div>
   );

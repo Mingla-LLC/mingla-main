@@ -36,6 +36,7 @@ import { SearchInput } from "../components/ui/SearchInput";
 import { Tabs } from "../components/ui/Tabs";
 import { useToast } from "../context/ToastContext";
 import { supabase } from "../lib/supabase";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const PAGE_SIZE = 100;
 
@@ -353,27 +354,25 @@ export function ToolLeadsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Tool Leads</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-            Every submission from the free marketing tools — anonymous runs and email-captured leads.
-          </p>
-        </div>
-        {loading ? (
-          <Skeleton width={72} height={22} rounded="full" className="mt-1 shrink-0" />
-        ) : (
-          <Badge variant="brand" dot className="mt-1 shrink-0">
-            {totalCount} leads
-          </Badge>
-        )}
-      </div>
-
-      <Tabs
-        tabs={[{ id: "leads", label: "Tool leads" }, { id: "competitor-ops", label: "Competitor Ops" }]}
-        activeTab={activeTab}
-        onChange={setActiveTab}
+      <PageHeader
+        title="Tool Leads"
+        description="Every submission from the free marketing tools — anonymous runs and email-captured leads."
+        actions={
+          loading ? (
+            <Skeleton width={72} height={22} rounded="full" className="shrink-0" />
+          ) : (
+            <Badge variant="brand" dot className="shrink-0">
+              {totalCount} leads
+            </Badge>
+          )
+        }
+        tabs={
+          <Tabs
+            tabs={[{ id: "leads", label: "Tool leads" }, { id: "competitor-ops", label: "Competitor Ops" }]}
+            activeTab={activeTab}
+            onChange={setActiveTab}
+          />
+        }
       />
 
       {activeTab === "leads" ? <div id="tabpanel-tool-leads" role="tabpanel" className="contents">

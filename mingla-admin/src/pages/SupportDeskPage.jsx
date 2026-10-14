@@ -35,6 +35,7 @@ import { useAuth } from "../context/AuthContext";
 import { logAdminAction } from "../lib/auditLog";
 import { extractFunctionError } from "../lib/edgeFunctionError";
 import { timeAgo, formatDateTime } from "../lib/formatters";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -444,25 +445,21 @@ export function SupportDeskPage() {
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <LifeBuoy className="h-8 w-8 text-[var(--color-brand-500)]" />
-        <div>
-          <h1 className="text-2xl font-semibold text-[var(--color-text-primary)]">Support</h1>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            Answer business support tickets. {unassignedCount} unassigned.
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <Button variant="secondary" size="sm" icon={Shield} onClick={openAgents}>
-            Agents
-          </Button>
-          <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void loadQueue()}>
-            Refresh
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Support"
+        description={`Answer business support tickets. ${unassignedCount} unassigned.`}
+        actions={
+          <>
+            <Button variant="secondary" size="sm" icon={Shield} onClick={openAgents}>
+              Agents
+            </Button>
+            <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void loadQueue()}>
+              Refresh
+            </Button>
+          </>
+        }
+      />
 
       {/* Status filter tabs + unassigned toggle */}
       <div className="flex flex-wrap items-center gap-2">
