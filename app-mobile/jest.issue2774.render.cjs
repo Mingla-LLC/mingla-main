@@ -32,5 +32,8 @@ module.exports = {
     // issue #3682 — mounts the consumer brand page and presses its X: with no
     // history (app opened by a brand link) it must land on the Explorer home.
     "**/__tests__/issue_3682_brand_close_fallback.render.test.tsx",
+    // issue #3682 (tester) — mounts both brand link routes against a history
+    // model: X ends on Home with nothing underneath, never a dead back().
+    "**/__tests__/issue_3682_brand_close_fallback.tester_adversarial.render.test.tsx",
   ],
 };
