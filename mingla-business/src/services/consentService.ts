@@ -16,12 +16,16 @@
 
 import { supabase } from "./supabase";
 
+export type ConsentScope = "transactional" | "marketing";
+
 export interface RecordConsentInput {
   source: "checkout" | "onboarding";
   /** EXACT §1b disclosure string the buyer saw (CONSENT_DISCLOSURE_TEXT). */
   disclosureText: string;
   /** Pins the disclosure wording version (DISCLOSURE_VERSION). */
   disclosureVersion: string;
+  /** Omitted preserves the existing bundled onboarding/legacy grant. */
+  scopes?: readonly ConsentScope[];
   /** E.164 phone — produces the 'sms' consent rows. */
   phone?: string | null;
   /** Email — produces the 'email' consent rows. */
@@ -62,6 +66,7 @@ export const recordConsent = async (
       source: input.source,
       disclosureText: input.disclosureText,
       disclosureVersion: input.disclosureVersion,
+      scopes: input.scopes,
       phone: input.phone ?? null,
       email: input.email ?? null,
       countryCode: input.countryCode ?? null,
