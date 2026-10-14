@@ -27,9 +27,11 @@ async function loadAll(isOwner) {
 }
 
 /**
- * Returns { keys, setup, idleDays, guide, overview, loading, error, refetch }.
- * `setup` lists the setup messages still waiting to be used (which agent,
- * when made, when it ends): never a code.
+ * Returns { keys, setup, idleDays, guide, overview, loading, error, refetch, latest }.
+ * `setup` lists the setup messages made in the last half hour and what became
+ * of each (waiting, used, ended, expired): never a code.
+ * `latest` is a ref to the last answer as read, for a check that cannot wait
+ * for the next draw.
  * `refetch()` resolves to the keys as just read, or null when the read failed.
  * Loads on mount; refreshes quietly when the window is focused again, when
  * the browser comes back online, and every 30 seconds while the page is
@@ -41,6 +43,8 @@ export function useAgentKeys() {
   const key = keyFor(access?.email);
   const [state, setState] = useState({ key, data: null, error: null, loaded: false });
   const seq = useRef(0);
+  // The last answer as read, before the page has drawn it: { keys, setup }.
+  const latest = useRef({ keys: [], setup: [] });
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -55,8 +59,12 @@ export function useAgentKeys() {
       try {
         const data = await loadAll(isOwner);
         if (!mounted.current || mine !== seq.current) return null;
+        latest.current = {
+          keys: Array.isArray(data?.mine?.keys) ? data.mine.keys : [],
+          setup: Array.isArray(data?.mine?.setup) ? data.mine.setup : [],
+        };
         setState({ key, data, error: null, loaded: true });
-        return Array.isArray(data?.mine?.keys) ? data.mine.keys : [];
+        return latest.current.keys;
       } catch (error) {
         if (!mounted.current || mine !== seq.current) return null;
         if (quiet) return null;
@@ -84,7 +92,12 @@ export function useAgentKeys() {
     const mine = ++seq.current;
     loadAll(isOwner).then(
       (data) => {
-        if (mounted.current && mine === seq.current) setState({ key, data, error: null, loaded: true });
+        if (!mounted.current || mine !== seq.current) return;
+        latest.current = {
+          keys: Array.isArray(data?.mine?.keys) ? data.mine.keys : [],
+          setup: Array.isArray(data?.mine?.setup) ? data.mine.setup : [],
+        };
+        setState({ key, data, error: null, loaded: true });
       },
       (error) => {
         if (mounted.current && mine === seq.current) setState({ key, data: null, error, loaded: true });
@@ -122,5 +135,6 @@ export function useAgentKeys() {
     error: current ? state.error : null,
     loading: !current || !state.loaded,
     refetch,
+    latest,
   };
 }

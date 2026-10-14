@@ -38,9 +38,11 @@ import {
   AGENT_GUARDRAILS,
   AGENT_NOT_YET,
   AGENT_OFFLINE_WORDS,
+  COPY_WAIT_MS,
   KEY_HIDDEN_AFTER_WORDS,
   NOT_WORKING_CHECKS,
   OS_OPTIONS,
+  SETUP_FIRST_USE_WATCH_MS,
   SETUP_GRACE_MS,
   SHOWN_KEY_MAX_MS,
   abilitiesFor,
@@ -56,6 +58,7 @@ import {
   lastStoppedKey,
   overviewRows,
   createWatch,
+  keysToHide,
   pendingSetup,
   setupCardView,
   setupMessage,
@@ -70,12 +73,13 @@ const CREATE_WAIT_MS = 20_000;
 
 /**
  * Repeats a check while something is on screen: every `everyMs`, only while
- * this tab is visible and the browser is online, for at most `forMs`, then
- * `onEnd` once. A hidden tab makes no request; when it is shown again the
- * page's own refresh reads once and this starts ticking again. `restart`
- * starts the count again when it changes.
+ * this tab is visible and the browser is online, until the clock reads
+ * `until`, then `onEnd` once. A hidden tab makes no request; when it is shown
+ * again the page's own refresh reads once and this starts ticking again.
+ * `until` is a time on the clock, so drawing the page again never starts the
+ * count again; only a different `until` does.
  */
-function useWatch(active, onTick, { everyMs = WATCH_EVERY_MS, forMs, onEnd, restart = "" } = {}) {
+function useWatch(active, onTick, { everyMs = WATCH_EVERY_MS, until, onEnd } = {}) {
   const tick = useRef(onTick);
   const end = useRef(onEnd);
   useEffect(() => {
@@ -88,7 +92,7 @@ function useWatch(active, onTick, { everyMs = WATCH_EVERY_MS, forMs, onEnd, rest
       onTick: () => tick.current?.(),
       onEnd: () => end.current?.(),
       everyMs,
-      forMs,
+      until,
       isVisible: () => document.visibilityState === "visible",
       isOnline: () => navigator.onLine !== false,
     });
@@ -103,7 +107,36 @@ function useWatch(active, onTick, { everyMs = WATCH_EVERY_MS, forMs, onEnd, rest
       document.removeEventListener("visibilitychange", onVisibility);
       watch.stop();
     };
-  }, [active, everyMs, forMs, restart]);
+  }, [active, everyMs, until]);
+}
+
+/** The first of these that answers; `ms` later, `otherwise`. Never waits for ever. */
+function within(promise, ms, otherwise) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve(otherwise), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Copy text when the browser's own way is missing or refused: select what is
+ * on screen and ask the older way. True only if the browser says it copied.
+ */
+function copySelected(node) {
+  try {
+    if (!node || typeof window.getSelection !== "function") return false;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return typeof document.execCommand === "function" && document.execCommand("copy") === true;
+  } catch {
+    return false;
+  }
 }
 
 const ENDPOINT = agentEndpoint(import.meta.env.VITE_SUPABASE_URL);
@@ -136,13 +169,14 @@ export function AgentPage() {
   const { addToast } = useToast();
   const { access } = useAuth();
   const online = useOnline();
-  const { keys, setup, idleDays, guide, overview, isOwner, loading, error, refetch } = useAgentKeys();
+  const { keys, setup, idleDays, guide, overview, isOwner, loading, error, refetch, latest } = useAgentKeys();
 
   // The key just created, per agent. In memory only; never stored, never
   // logged, never sent to another tab. Leaving the page drops it.
   const [fresh, setFresh] = useState({});
-  // Which key that is, per agent: { keyId, listed }. An id is not a secret;
-  // it lets the page notice when the key on screen has been ended elsewhere.
+  // Which key that is, per agent: { keyId, listed, shownAt }. An id is not a
+  // secret; it lets the page notice when the key on screen has been ended
+  // elsewhere, and `shownAt` is when THAT key was shown.
   const [shownIds, setShownIds] = useState({});
   const [busy, setBusy] = useState({});
   const [problem, setProblem] = useState({});
@@ -159,16 +193,16 @@ export function AgentPage() {
   );
   const busyRef = useRef({});
   // One-message setup, per agent. `setups` says where each card is
-  // ({ phase, expiresAt, beforeKeyId, words }); `messages` holds the message
-  // itself while it is on screen. Both are this tab's memory only.
+  // ({ phase, id, expiresAt, tries, keyId, usedAt, words }); `codes` holds the
+  // one-time code while its message is on screen. Both are this tab's memory
+  // only. The message is built from the code for the computer chosen above,
+  // so the text on screen always matches the toggle.
   const [setups, setSetups] = useState({});
-  const [messages, setMessages] = useState({});
+  const [codes, setCodes] = useState({});
   const [setupBusy, setSetupBusy] = useState({});
   const setupBusyRef = useRef({});
   const setupsRef = useRef({});
   const [now, setNow] = useState(() => Date.now());
-  // When each key on screen was shown, so it can be hidden after 10 minutes.
-  const [shownAt, setShownAt] = useState(0);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -208,55 +242,85 @@ export function AgentPage() {
   useEffect(() => {
     setupsRef.current = setups;
   }, [setups]);
+  const shownRef = useRef({});
+  useEffect(() => {
+    shownRef.current = shownIds;
+  }, [shownIds]);
 
   // While a key is on screen (Advanced), read again every few seconds so a
   // key ended in another tab or window does not stay here; and never leave a
-  // key on screen with nothing checking it: after 10 minutes it is hidden.
+  // key on screen with nothing checking it: each is hidden ten minutes after
+  // IT was shown.
+  const hideOldKeys = useCallback((at) => {
+    const old = keysToHide(shownRef.current, at);
+    if (old.length === 0) return;
+    const cleared = Object.fromEntries(old.map((id) => [id, null]));
+    shownRef.current = { ...shownRef.current, ...cleared };
+    setFresh((f) => ({ ...f, ...cleared }));
+    setShownIds((m) => ({ ...m, ...cleared }));
+    setNotice((n) => ({ ...n, ...Object.fromEntries(old.map((id) => [id, KEY_HIDDEN_AFTER_WORDS])) }));
+  }, []);
   const showingKey = AGENTS.some((a) => !!shownIds[a.id]);
-  useWatch(showingKey, () => refetch({ quiet: true }), {
-    forMs: SHOWN_KEY_MAX_MS,
-    restart: String(shownAt),
-    onEnd: () => {
-      for (const a of AGENTS) {
-        if (!shownIds[a.id]) continue;
-        setFresh((f) => ({ ...f, [a.id]: null }));
-        setShownIds((m) => ({ ...m, [a.id]: null }));
-        setNotice((n) => ({ ...n, [a.id]: KEY_HIDDEN_AFTER_WORDS }));
-      }
-    },
+  const lastShownAt = Math.max(0, ...AGENTS.map((a) => shownIds[a.id]?.shownAt || 0));
+  useWatch(showingKey, () => {
+    hideOldKeys(Date.now());
+    refetch({ quiet: true });
+  }, {
+    until: lastShownAt + SHOWN_KEY_MAX_MS,
+    onEnd: () => hideOldKeys(Date.now() + 1),
   });
+  // A tab that was in the background reads when it is shown again: hide then too.
+  useEffect(() => {
+    hideOldKeys(Date.now());
+  }, [keys, hideOldKeys]);
 
   // While a setup message waits for an agent, read again every few seconds
-  // until it is used or its time (plus a moment) has run out.
-  const waiting = AGENTS.filter((a) => ["ready", "blocked"].includes(setups[a.id]?.phase));
-  const lastEnd = Math.max(0, ...waiting.map((a) => Date.parse(setups[a.id].expiresAt) || 0));
-  const settle = useCallback((list, at) => {
+  // until it is used, ended or its time (plus a moment) has run out; and once
+  // it is used, until the key it made is used for the first time.
+  const settle = useCallback((list, keyList, at) => {
     for (const a of AGENTS) {
       const st = setupsRef.current[a.id];
-      if (!st || !["ready", "blocked"].includes(st.phase)) continue;
-      const verdict = setupVerdict({ keys: list, agentId: a.id, beforeKeyId: st.beforeKeyId, expiresAt: st.expiresAt, now: at });
-      if (verdict === "wait") continue;
-      setMessages((m) => ({ ...m, [a.id]: null }));
-      setSetups((m) => ({ ...m, [a.id]: { phase: verdict } }));
-      if (verdict === "used") {
-        addToast({ variant: "success", title: `${a.product} is set up`, description: `Restart ${a.product}, then ask: What is on my plate in Mingla?` });
+      if (!st) continue;
+      if (st.phase === "ready" || st.phase === "blocked") {
+        const result = setupVerdict({ setup: list, id: st.id, agentId: a.id, expiresAt: st.expiresAt, now: at });
+        if (result.verdict === "wait") continue;
+        setCodes((m) => ({ ...m, [a.id]: null }));
+        setSetups((m) => ({
+          ...m,
+          [a.id]: result.verdict === "used" ? { phase: "used", keyId: result.keyId, usedAt: result.usedAt || new Date(at).toISOString() } : { phase: result.verdict },
+        }));
+        if (result.verdict === "used") {
+          addToast({ variant: "success", title: `A key was made for ${a.product}`, description: `Your agent should have printed "Mingla added to ${a.product}." Restart it, then ask: What is on my plate in Mingla?` });
+        }
+      } else if (st.phase === "used" && !st.connectedSaid) {
+        const key = activeKey(keyList, a.id);
+        if (key && key.key_id === st.keyId && key.last_used_at) {
+          setSetups((m) => (m[a.id]?.phase === "used" ? { ...m, [a.id]: { ...m[a.id], connectedSaid: true } } : m));
+          addToast({ variant: "success", title: `${a.product} is connected`, description: "It has used its key." });
+        }
       }
     }
   }, [addToast]);
   useEffect(() => {
-    if (!loading && !error) settle(keys, Date.now());
-  }, [keys, loading, error, settle]);
-  useWatch(waiting.length > 0, () => {
+    if (!loading && !error) settle(setup, keys, Date.now());
+  }, [keys, setup, loading, error, settle]);
+  const watched = AGENTS.map((a) => {
+    const st = setups[a.id];
+    if (st?.phase === "ready" || st?.phase === "blocked") return (Date.parse(st.expiresAt) || 0) + SETUP_GRACE_MS;
+    if (st?.phase === "used" && !st.connectedSaid) return (Date.parse(st.usedAt) || 0) + SETUP_FIRST_USE_WATCH_MS;
+    return 0;
+  });
+  const watchUntil = Math.max(0, ...watched);
+  useWatch(watchUntil > 0, () => {
     setNow(Date.now());
     refetch({ quiet: true });
   }, {
-    forMs: lastEnd > 0 ? Math.max(0, lastEnd - Date.now()) + SETUP_GRACE_MS : 0,
-    restart: String(lastEnd),
+    until: watchUntil,
     onEnd: async () => {
-      const list = await refetch({ quiet: true });
+      await refetch({ quiet: true });
       if (!mountedRef.current) return;
       setNow(Date.now());
-      settle(Array.isArray(list) ? list : keysRef.current, Date.now() + 1);
+      settle(latest.current.setup, latest.current.keys, Date.now() + 1);
     },
   });
 
@@ -284,7 +348,7 @@ export function AgentPage() {
         return;
       }
       markSetup(agentId, true);
-      setMessages((m) => ({ ...m, [agentId]: null }));
+      setCodes((m) => ({ ...m, [agentId]: null }));
       setSetups((m) => ({ ...m, [agentId]: { phase: "asking" } }));
       let timer;
       const asked = Promise.race([
@@ -311,13 +375,15 @@ export function AgentPage() {
       }
       try {
         const answer = await asked;
-        const built = await text;
-        const ok = await copied;
+        await text;
+        // The browser is given a moment to say whether it copied. One that
+        // never answers counts as not copied: the card can never wait for ever.
+        const ok = await within(copied, COPY_WAIT_MS, false);
         if (!mountedRef.current) return;
-        setMessages((m) => ({ ...m, [agentId]: built }));
+        setCodes((m) => ({ ...m, [agentId]: answer.code }));
         setSetups((m) => ({
           ...m,
-          [agentId]: { phase: ok ? "ready" : "blocked", expiresAt: answer.expires_at, beforeKeyId: current?.key_id || null },
+          [agentId]: { phase: ok ? "ready" : "blocked", id: answer.id || null, expiresAt: answer.expires_at, tries: 0 },
         }));
         setNow(Date.now());
       } catch (err) {
@@ -336,27 +402,38 @@ export function AgentPage() {
     [addToast, online, os, refetch]
   );
 
+  // The message on screen for an agent: built from its code for the computer
+  // chosen now, so switching the toggle swaps the text and never the code.
+  const messageFor = useCallback(
+    (agentId) => (codes[agentId] ? setupMessage({ agent: agentId, os, endpoint: ENDPOINT, code: codes[agentId] }) : null),
+    [codes, os]
+  );
+
   // Copy again (or Copy message, when the browser blocked the first copy).
+  // A press always shows something: "Copied", or a line that counts the try
+  // with the message selected for Ctrl or Cmd + C.
   const copySetupAgain = useCallback(
-    async (agentId) => {
-      const message = messages[agentId];
+    async (agentId, node) => {
+      const message = messageFor(agentId);
       if (!message) return;
       let ok = false;
       try {
-        await navigator.clipboard.writeText(message);
-        ok = true;
+        if (navigator.clipboard?.writeText) ok = await within(navigator.clipboard.writeText(message).then(() => true, () => false), COPY_WAIT_MS, false);
       } catch (err) {
         console.error("[agent] copy was blocked:", err?.name || "error");
       }
+      if (!ok) ok = copySelected(node);
       if (!mountedRef.current) return;
-      setSetups((m) => (m[agentId] ? { ...m, [agentId]: { ...m[agentId], phase: ok ? "ready" : "blocked" } } : m));
+      setSetups((m) =>
+        m[agentId] ? { ...m, [agentId]: { ...m[agentId], phase: ok ? "ready" : "blocked", tries: ok ? 0 : (m[agentId].tries || 0) + 1 } } : m
+      );
       if (ok) addToast({ variant: "success", title: "Copied", description: "Paste it into your agent as your next message." });
     },
-    [addToast, messages]
+    [addToast, messageFor]
   );
 
   const doneSetup = useCallback((agentId) => {
-    setMessages((m) => ({ ...m, [agentId]: null }));
+    setCodes((m) => ({ ...m, [agentId]: null }));
     setSetups((m) => ({ ...m, [agentId]: null }));
   }, []);
 
@@ -385,12 +462,10 @@ export function AgentPage() {
         if (!mountedRef.current) return;
         if (typeof made?.key !== "string" || made.key === "") throw new Error("no key in the answer");
         setFresh((f) => ({ ...f, [agentId]: made.key }));
-        setShownIds((m) => ({ ...m, [agentId]: { keyId: made.key_id, listed: false } }));
-        setShownAt(Date.now());
-        // A key made by hand takes the place of a setup message that was
-        // still waiting: the card must not say an agent used it.
-        setMessages((m) => ({ ...m, [agentId]: null }));
-        setSetups((m) => ({ ...m, [agentId]: null }));
+        setShownIds((m) => ({ ...m, [agentId]: { keyId: made.key_id, listed: false, shownAt: Date.now() } }));
+        // A setup message that is still waiting stays as it is: what became of
+        // it is read from the server by its own id, so a key made by hand is
+        // never taken for the message having been used.
         setUnseen((u) => ({ ...u, [agentId]: false }));
         setTab(agentId);
         addToast({
@@ -441,7 +516,7 @@ export function AgentPage() {
         setShownIds((m) => ({ ...m, [agentId]: null }));
         setNotice((n) => ({ ...n, [agentId]: "" }));
         setUnseen((u) => ({ ...u, [agentId]: false }));
-        setMessages((m) => ({ ...m, [agentId]: null }));
+        setCodes((m) => ({ ...m, [agentId]: null }));
         setSetups((m) => ({ ...m, [agentId]: null }));
         addToast({
           variant: "success",
@@ -607,7 +682,7 @@ export function AgentPage() {
                     idleDays,
                     now,
                   })}
-                  message={messages[a.id] || null}
+                  message={messageFor(a.id)}
                   busy={!!setupBusy[a.id] || !!busy[a.id]}
                   onCopy={copySetup}
                   onCopyAgain={copySetupAgain}

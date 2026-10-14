@@ -2155,6 +2155,7 @@ GRANT EXECUTE ON FUNCTION public.team_agent_key_create(text, text) TO authentica
 -- as creating a key. The ONLY place a code exists in readable form: it is
 -- returned once and never stored. A newer code for the same agent ends the
 -- one before it. Nothing changes for the caller's agent until a code is used.
+-- "id" names the code's row, so the page can later ask what became of it.
 CREATE FUNCTION public.team_agent_setup_create(p_agent text, p_time_zone text DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -2208,7 +2209,7 @@ BEGIN
     jsonb_build_object('agent', p_agent));
 
   RETURN jsonb_build_object(
-    'code', v_code, 'agent', p_agent, 'created_at', v_now, 'expires_at', v_ends,
+    'id', v_id, 'code', v_code, 'agent', p_agent, 'created_at', v_now, 'expires_at', v_ends,
     'replaces_key', EXISTS (SELECT 1 FROM public.team_agent_keys t
                              WHERE t.owner_email = v.actor_email AND t.agent = p_agent AND t.revoked_at IS NULL));
 END;
@@ -2492,8 +2493,10 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.admin_team_set_member(text, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_team_set_member(text, text, text) TO authenticated, service_role;
 
--- The caller's keys. Added: "setup", the setup codes that are still waiting
--- to be used (which agent, when made, when it ends). Never a code or a digest.
+-- The caller's keys. Added: "setup", the setup codes this person made in the
+-- last 30 minutes and what became of each: waiting, used (when, and which key
+-- it made), ended (a newer one was made, the agent was disconnected, or it
+-- was refused) or expired. Never a code or a digest.
 CREATE OR REPLACE FUNCTION public.team_agent_keys_mine() RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -2525,11 +2528,18 @@ BEGIN
           LIMIT 5)) x;
   RETURN jsonb_build_object('keys', v_rows, 'idle_days', public.team_agent_limits()->'idle_days',
     'setup', COALESCE((
-      SELECT jsonb_agg(jsonb_build_object('agent', c.agent, 'created_at', c.created_at, 'expires_at', c.expires_at)
+      SELECT jsonb_agg(jsonb_build_object(
+               'id', c.id, 'agent', c.agent, 'created_at', c.created_at, 'expires_at', c.expires_at,
+               'state', CASE WHEN c.consumed_at IS NOT NULL AND c.consumed_key_id IS NOT NULL THEN 'used'
+                             WHEN c.consumed_at IS NOT NULL OR c.voided_at IS NOT NULL THEN 'ended'
+                             WHEN c.expires_at <= clock_timestamp() THEN 'expired'
+                             ELSE 'waiting' END,
+               'used_at', CASE WHEN c.consumed_key_id IS NOT NULL THEN c.consumed_at END,
+               'key_id', c.consumed_key_id)
                        ORDER BY c.created_at DESC, c.id)
       FROM public.team_agent_setup_codes c
-      WHERE c.owner_email = v.actor_email AND c.consumed_at IS NULL AND c.voided_at IS NULL
-        AND c.expires_at > clock_timestamp()), '[]'::jsonb));
+      WHERE c.owner_email = v.actor_email
+        AND c.created_at > clock_timestamp() - interval '30 minutes'), '[]'::jsonb));
 END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.team_agent_keys_mine() FROM PUBLIC, anon, authenticated;

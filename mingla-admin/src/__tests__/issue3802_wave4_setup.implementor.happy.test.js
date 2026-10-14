@@ -29,9 +29,12 @@ import { fileURLToPath } from "node:url";
 import {
   AGENTS,
   AGENT_ABILITIES,
+  COPY_WAIT_MS,
   KEY_HIDDEN_AFTER_WORDS,
   NOT_WORKING_CHECKS,
+  SETUP_FIRST_USE_WATCH_MS,
   SETUP_GRACE_MS,
+  SETUP_UNUSED_WARN_MS,
   SHOWN_KEY_MAX_MS,
   advancedLines,
   agentEndpoint,
@@ -39,6 +42,7 @@ import {
   clockWords,
   createWatch,
   isSetupCode,
+  keysToHide,
   minutesLeftWords,
   pendingSetup,
   setupCardView,
@@ -150,6 +154,8 @@ const file = path.join(process.env.HOME, ".claude.json");
 const cfg = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
 cfg.mcpServers = cfg.mcpServers || {};
 const a = process.argv.slice(2);
+fs.appendFileSync(path.join(process.env.HOME, "claude-calls.txt"), a.slice(0, 2).join(" ") + "\\n");
+if (a[0] === "mcp" && a[1] === "add-json" && fs.existsSync(path.join(process.env.HOME, "fail-add"))) { console.error("error: could not add server"); process.exit(1); }
 if (a[0] === "mcp" && a[1] === "remove") {
   const name = a[2];
   if (cfg.mcpServers[name]) { delete cfg.mcpServers[name]; console.log("Removed MCP server " + name); }
@@ -317,6 +323,245 @@ describe("#3802 S-2: the macOS and Linux messages, run in a real shell", () => {
         fs.rmSync(home, { recursive: true, force: true });
       }
     }
+  });
+});
+
+// What a server answer that is not a key may look like.
+const MARK = "issue3802-ran-something";
+const NOT_A_KEY = (letter) => [
+  ["text after the prefix that a shell would run", `mgla_${letter}_aaa$(touch ${MARK})`],
+  ["backticks", `mgla_${letter}_\`touch ${MARK}\``],
+  ["quotes and braces", `mgla_${letter}_x","command":"/bin/sh","args":["-c","touch ${MARK}"],"z":{"a":"b`],
+  ["a key and a second line", `mgla_${letter}_${tail("a")}\n[mcp_servers.other]\ncommand = "/bin/sh"`],
+  ["a second line that is a key", `not a key\nmgla_${letter}_${tail("a")}`],
+  ["a key with one character too many", `mgla_${letter}_${tail("a")}a`],
+  ["a key with one character too few", `mgla_${letter}_${"a".repeat(42)}`],
+  ["a key with a character outside its alphabet", `mgla_${letter}_${"a".repeat(42)}+`],
+  ["a key with a space in front", ` mgla_${letter}_${tail("a")}`],
+  ["the other agent's key", `mgla_${letter === "c" ? "x" : "c"}_${tail("a")}`],
+  ["printf directives", `mgla_${letter}_%s%n%d \\n \\x41`],
+  ["terminal control characters", `not a key \u001b]0;title\u0007 \u001b[2J \r\n $(touch ${MARK}) \`touch ${MARK}\``],
+  ["letters outside plain text", "clé refusée ‮ ​ fin"],
+  ["300 characters", "x".repeat(300)],
+];
+/** What the command may print of a server answer: printable plain characters, at most 200. */
+const shown = (answer) => answer.replace(/[^\x20-\x7e]/g, "").slice(0, 200);
+const SAVE_FAILED = "Mingla made your key but could not save it on this computer. Copy a new setup message from My agent and try again.\n";
+
+describe("#3802 S-2b: what the command does with every answer, and with every settings file", () => {
+  const each = (fn) => {
+    for (const shell of SHELLS) {
+      const home = fs.mkdtempSync(path.join(os.tmpdir(), "issue3802-setup-"));
+      try {
+        fn(shell, home);
+      } finally {
+        fs.chmodSync(home, 0o700);
+        for (const d of [".codex", "dotfiles"]) if (fs.existsSync(path.join(home, d))) fs.chmodSync(path.join(home, d), 0o700);
+        fs.rmSync(home, { recursive: true, force: true });
+      }
+    }
+  };
+  const calls = (home) => (fs.existsSync(path.join(home, "claude-calls.txt")) ? fs.readFileSync(path.join(home, "claude-calls.txt"), "utf8").trim().split("\n") : []);
+  const marked = (home) => fs.existsSync(path.join(home, MARK));
+  const runIn = (shell, home, bin, command) =>
+    spawnSync(shell, ["-c", command], { cwd: home, env: { HOME: home, PATH: `${bin}:${process.env.PATH}` }, encoding: "utf8" });
+
+  it("Claude Code: an answer that is not exactly a key is never run, never saved, and never costs the earlier entry", () => {
+    each((shell, home) => {
+      const before = JSON.stringify({ mcpServers: { mingla: { type: "http", url: "https://old.example" } } });
+      const command = setupCommand({ agent: "claude", os: "mac", endpoint: ENDPOINT, code: CODE.claude });
+      for (const [what, answer] of NOT_A_KEY("c")) {
+        const bin = standIns(home, answer);
+        fs.writeFileSync(path.join(home, ".claude.json"), before);
+        fs.rmSync(path.join(home, "claude-calls.txt"), { force: true });
+        const out = runIn(shell, home, bin, command);
+        assert.equal(out.stdout, `Setup did not work: ${shown(answer)}\n`, `${shell}: ${what}`);
+        assert.equal(out.stderr, "", `${shell}: ${what}`);
+        assert.equal(/[^\x20-\x7e\n]/.test(out.stdout), false, `${shell}: ${what}: only plain characters are printed`);
+        assert.ok(out.stdout.length <= "Setup did not work: ".length + 201, `${shell}: ${what}: at most 200 characters of the answer`);
+        assert.deepEqual(calls(home), [], `${shell}: ${what}: the agent's own command was never called, not even to remove`);
+        assert.equal(fs.readFileSync(path.join(home, ".claude.json"), "utf8"), before, `${shell}: ${what}: the earlier entry is as it was`);
+        assert.equal(marked(home), false, `${shell}: ${what}: nothing in the answer was run`);
+      }
+    });
+  });
+  it("Claude Code: the key is asked for first, and the earlier entry is removed only once a key is in hand", () => {
+    each((shell, home) => {
+      const bin = standIns(home, `${KEY.claude}\n`);
+      fs.writeFileSync(path.join(home, ".claude.json"), JSON.stringify({ mcpServers: { mingla: { type: "http", url: "https://old.example" } } }));
+      const command = setupCommand({ agent: "claude", os: "mac", endpoint: ENDPOINT, code: CODE.claude });
+      assert.ok(command.indexOf("curl -sS") < command.indexOf("claude mcp remove"), "the exchange is written before the removal");
+      assert.ok(command.indexOf("grep -Eqx 'mgla_c_[A-Za-z0-9_-]{43}'") < command.indexOf("claude mcp remove"), "and so is the check of what came back");
+      assert.equal(runIn(shell, home, bin, command).stdout, "Mingla added to Claude Code.\n", shell);
+      assert.deepEqual(calls(home), ["mcp remove", "mcp add-json"], shell);
+    });
+  });
+  it("Claude Code: a key that could not be saved is said in exactly one line; no claude command means nothing is asked", () => {
+    each((shell, home) => {
+      const bin = standIns(home, `${KEY.claude}\n`);
+      fs.writeFileSync(path.join(home, "fail-add"), "");
+      const command = setupCommand({ agent: "claude", os: "mac", endpoint: ENDPOINT, code: CODE.claude });
+      const out = runIn(shell, home, bin, command);
+      assert.equal(out.stdout, SAVE_FAILED, shell);
+      assert.equal(out.stderr, "", shell);
+      // Without the agent's command the code is not spent.
+      fs.rmSync(path.join(bin, "claude"));
+      fs.rmSync(path.join(home, "curl-args.txt"), { force: true });
+      const none = spawnSync(shell, ["-c", command], { cwd: home, env: { HOME: home, PATH: `${bin}:/usr/bin:/bin` }, encoding: "utf8" });
+      if (spawnSync(shell, ["-c", "command -v claude"], { env: { HOME: home, PATH: `${bin}:/usr/bin:/bin` } }).status !== 0) {
+        assert.equal(none.stdout, "Setup did not start: the claude command was not found in this shell. Nothing was changed and the setup code was not used.\n", shell);
+        assert.equal(fs.existsSync(path.join(home, "curl-args.txt")), false, `${shell}: the setup code was not sent`);
+      }
+    });
+  });
+  it("Codex: an answer that is not exactly a key is never run and never written", () => {
+    each((shell, home) => {
+      const existing = 'model = "gpt"\n\n[mcp_servers.mingla]\nurl = "https://old.example"\n';
+      const command = setupCommand({ agent: "codex", os: "mac", endpoint: ENDPOINT, code: CODE.codex });
+      fs.mkdirSync(path.join(home, ".codex"));
+      const file = path.join(home, ".codex", "config.toml");
+      for (const [what, answer] of NOT_A_KEY("x")) {
+        const bin = standIns(home, answer);
+        fs.writeFileSync(file, existing);
+        const out = runIn(shell, home, bin, command);
+        assert.equal(out.stdout, `Setup did not work: ${shown(answer)}\n`, `${shell}: ${what}`);
+        assert.equal(out.stderr, "", `${shell}: ${what}`);
+        assert.equal(fs.readFileSync(file, "utf8"), existing, `${shell}: ${what}: the file is as it was`);
+        assert.deepEqual(fs.readdirSync(path.join(home, ".codex")), ["config.toml"], `${shell}: ${what}`);
+        assert.equal(marked(home), false, `${shell}: ${what}: nothing in the answer was run`);
+      }
+    });
+  });
+  it("Codex: every way an earlier mingla entry can be written is replaced, and everything else is kept", () => {
+    const block = (key) => ["", "[mcp_servers.mingla]", `url = "${ENDPOINT}"`, `http_headers = { "Authorization" = "Bearer ${key}" }`, ""];
+    const CASES = [
+      ["a quoted name", ['a = 1', '[mcp_servers."mingla"]', 'url = "https://old.example"', "[x]", "b = 2"], ["a = 1", "[x]", "b = 2"]],
+      ["a name in single quotes", ["[mcp_servers.'mingla']", 'url = "https://old.example"', "[x]", "b = 2"], ["[x]", "b = 2"]],
+      ["both parts quoted", ['["mcp_servers"."mingla"]', 'url = "https://old.example"', "[x]", "b = 2"], ["[x]", "b = 2"]],
+      ["spaces inside the brackets", ["[ mcp_servers . mingla ]", 'url = "https://old.example"', "[x]", "b = 2"], ["[x]", "b = 2"]],
+      ["an indented header", ["  [mcp_servers.mingla]", '  url = "https://old.example"', "[x]", "b = 2"], ["[x]", "b = 2"]],
+      ["a header with a comment", ["[mcp_servers.mingla] # mine", 'url = "https://old.example"', "[x]", "b = 2"], ["[x]", "b = 2"]],
+      ["its own sub-tables", ["[mcp_servers.mingla]", 'url = "https://old.example"', "[mcp_servers.mingla.env]", 'FOO = "1"', '[mcp_servers."mingla".http_headers]', 'A = "old"', "[x]", "b = 2"], ["[x]", "b = 2"]],
+      ["dotted keys at the top", ['mcp_servers.mingla.url = "https://old.example"', 'mcp_servers.mingla.bearer_token_env_var = "OLD"', "a = 1", "[x]", "b = 2"], ["a = 1", "[x]", "b = 2"]],
+      ["dotted keys under the servers table", ["[mcp_servers]", 'mingla.url = "https://old.example"', 'other.command = "npx"', "[x]", "b = 2"], ["[mcp_servers]", 'other.command = "npx"', "[x]", "b = 2"]],
+      ["one inline table", ["[mcp_servers]", 'mingla = { url = "https://old.example", http_headers = { "Authorization" = "Bearer old" } }', 'other = { command = "npx" }'], ["[mcp_servers]", 'other = { command = "npx" }']],
+      ["a list on several lines inside it", ["[mcp_servers.mingla]", 'command = "old"', "args = [", '  "a",', '  "[not.a.table]",', "]", "[x]", "b = 2"], ["[x]", "b = 2"]],
+      ["neighbours whose names only begin the same", ["[mcp_servers.mingla_staging]", 'url = "https://s.example"', "[mcp_servers.minglax]", 'url = "https://x.example"', 'mcp_like = "mcp_servers.mingla"'], ["[mcp_servers.mingla_staging]", 'url = "https://s.example"', "[mcp_servers.minglax]", 'url = "https://x.example"', 'mcp_like = "mcp_servers.mingla"']],
+    ];
+    each((shell, home) => {
+      const bin = standIns(home, `${KEY.codex}\n`);
+      const command = setupCommand({ agent: "codex", os: "mac", endpoint: ENDPOINT, code: CODE.codex });
+      fs.mkdirSync(path.join(home, ".codex"));
+      const file = path.join(home, ".codex", "config.toml");
+      for (const [what, before, kept] of CASES) {
+        for (const eol of ["\n", "\r\n"]) {
+          fs.writeFileSync(file, before.join(eol) + eol);
+          const out = runIn(shell, home, bin, command);
+          assert.equal(out.stdout, "Mingla added to Codex.\n", `${shell}: ${what}`);
+          assert.equal(out.stderr, "", `${shell}: ${what}`);
+          const want = kept.join(eol) + eol + block(KEY.codex).join("\n");
+          const got = fs.readFileSync(file, "utf8");
+          assert.equal(got, want, `${shell}: ${what} (${eol === "\n" ? "LF" : "CRLF"})`);
+          assert.equal(got.split("\n").filter((l) => l === "[mcp_servers.mingla]").length, 1, `${shell}: ${what}: one mingla table`);
+          assert.equal(got.includes("old"), false, `${shell}: ${what}: nothing of the earlier entry is left`);
+        }
+      }
+    });
+  });
+  it("Codex: a mingla entry it cannot remove with certainty stops it before the code is used, and nothing is changed", () => {
+    const UNSURE = [
+      ["a value of the entry that runs over several lines", ['mcp_servers.mingla.args = [', '  "a",', "]", "[x]", "b = 2"]],
+      ["the servers written as one inline table", ['mcp_servers = { mingla = { url = "https://old.example" } }']],
+      ["a quoted dotted key", ['"mcp_servers".mingla.url = "https://old.example"']],
+      ["a long string as a value of the entry", ["[mcp_servers]", 'mingla.note = """', "text", '"""']],
+      ["a quoted name that holds a dot", ['[mcp_servers."mingla.eu"]', 'url = "https://eu.example"']],
+      ["text that only looks like an entry, inside a long string", ['notes = """', "[mcp_servers.mingla]", 'url = "this is text"', '"""', "[x]", "b = 2"]],
+    ];
+    each((shell, home) => {
+      const bin = standIns(home, `${KEY.codex}\n`);
+      const command = setupCommand({ agent: "codex", os: "mac", endpoint: ENDPOINT, code: CODE.codex });
+      fs.mkdirSync(path.join(home, ".codex"));
+      const file = path.join(home, ".codex", "config.toml");
+      for (const [what, lines] of UNSURE) {
+        fs.writeFileSync(file, lines.join("\n") + "\n");
+        fs.rmSync(path.join(home, "curl-args.txt"), { force: true });
+        const out = runIn(shell, home, bin, command);
+        assert.equal(
+          out.stdout,
+          "Setup did not start: ~/.codex/config.toml already has a mingla entry this command cannot safely replace. Nothing was changed and the setup code was not used. Remove that entry by hand, then paste this message again.\n",
+          `${shell}: ${what}`
+        );
+        assert.equal(out.stderr, "", `${shell}: ${what}`);
+        assert.equal(fs.readFileSync(file, "utf8"), lines.join("\n") + "\n", `${shell}: ${what}: the file is as it was`);
+        assert.equal(fs.existsSync(path.join(home, "curl-args.txt")), false, `${shell}: ${what}: the setup code was not sent`);
+        assert.deepEqual(fs.readdirSync(path.join(home, ".codex")), ["config.toml"], `${shell}: ${what}`);
+      }
+    });
+  });
+  it("Codex: a link to the file stays a link, a new file is the owner's only, and no working copy ever holds the key", () => {
+    each((shell, home) => {
+      const bin = standIns(home, `${KEY.codex}\n`);
+      const command = setupCommand({ agent: "codex", os: "mac", endpoint: ENDPOINT, code: CODE.codex });
+      fs.mkdirSync(path.join(home, ".codex"));
+      fs.mkdirSync(path.join(home, "dotfiles"));
+      const real = path.join(home, "dotfiles", "codex.toml");
+      fs.writeFileSync(real, 'model = "gpt"\n[mcp_servers.mingla]\nurl = "https://old.example"\n');
+      const link = path.join(home, ".codex", "config.toml");
+      fs.symlinkSync(real, link);
+      assert.equal(runIn(shell, home, bin, command).stdout, "Mingla added to Codex.\n", shell);
+      assert.equal(fs.lstatSync(link).isSymbolicLink(), true, `${shell}: still a link`);
+      assert.equal(fs.readFileSync(real, "utf8"), `model = "gpt"\n\n[mcp_servers.mingla]\nurl = "${ENDPOINT}"\nhttp_headers = { "Authorization" = "Bearer ${KEY.codex}" }\n`, shell);
+      assert.deepEqual(fs.readdirSync(path.join(home, ".codex")), ["config.toml"]);
+      assert.deepEqual(fs.readdirSync(path.join(home, "dotfiles")), ["codex.toml"]);
+      // A file made by the command is readable by its owner only, whatever the shell's own setting.
+      fs.rmSync(path.join(home, ".codex"), { recursive: true });
+      const made = spawnSync(shell, ["-c", `umask 022; ${command}`], { cwd: home, env: { HOME: home, PATH: `${bin}:${process.env.PATH}` }, encoding: "utf8" });
+      assert.equal(made.stdout, "Mingla added to Codex.\n", shell);
+      assert.equal((fs.statSync(path.join(home, ".codex", "config.toml")).mode & 0o777).toString(8), "600", shell);
+      // The command names no working copy at all.
+      assert.equal(/\.tmp|mktemp|\bmv\b/.test(command), false);
+    });
+  });
+  it("Codex: a key that could not be saved is said in exactly one line; a file it cannot write stops it before the code is used", () => {
+    if (process.getuid && process.getuid() === 0) return; // a superuser can write anywhere
+    each((shell, home) => {
+      const bin = standIns(home, `${KEY.codex}\n`);
+      const command = setupCommand({ agent: "codex", os: "mac", endpoint: ENDPOINT, code: CODE.codex });
+      // No file yet, and a folder that cannot take one: the key arrives and cannot be saved.
+      fs.mkdirSync(path.join(home, ".codex"));
+      fs.chmodSync(path.join(home, ".codex"), 0o500);
+      const out = runIn(shell, home, bin, command);
+      assert.equal(out.stdout, SAVE_FAILED, shell);
+      assert.equal(out.stderr, "", shell);
+      // A file that is there and cannot be written: nothing is asked.
+      fs.chmodSync(path.join(home, ".codex"), 0o700);
+      const file = path.join(home, ".codex", "config.toml");
+      fs.writeFileSync(file, 'model = "gpt"\n');
+      fs.chmodSync(file, 0o400);
+      fs.rmSync(path.join(home, "curl-args.txt"), { force: true });
+      const stopped = runIn(shell, home, bin, command);
+      assert.equal(stopped.stdout, "Setup did not start: this command could not read or write ~/.codex/config.toml. Nothing was changed and the setup code was not used.\n", shell);
+      assert.equal(stopped.stderr, "", shell);
+      assert.equal(fs.existsSync(path.join(home, "curl-args.txt")), false, `${shell}: the setup code was not sent`);
+      assert.equal(fs.readFileSync(file, "utf8"), 'model = "gpt"\n');
+    });
+  });
+  it("the Windows forms follow the same order and the same rules, as written", () => {
+    const claude = setupCommand({ agent: "claude", os: "windows", endpoint: ENDPOINT, code: CODE.claude });
+    const codex = setupCommand({ agent: "codex", os: "windows", endpoint: ENDPOINT, code: CODE.codex });
+    // The whole answer is a key, case and all, or it is not used.
+    assert.ok(claude.includes("-cmatch '\\Amgla_c_[A-Za-z0-9_-]{43}\\z'") && codex.includes("-cmatch '\\Amgla_x_[A-Za-z0-9_-]{43}\\z'"));
+    assert.equal(/-like "mgla_/.test(claude + codex), false);
+    // Asked for first; the earlier entry goes only after the check.
+    assert.ok(claude.indexOf("curl.exe -sS") < claude.indexOf("-cmatch") && claude.indexOf("-cmatch") < claude.indexOf("claude mcp remove"));
+    assert.ok(codex.indexOf("Get-Content $f") < codex.indexOf("curl.exe -sS") && codex.indexOf("-cmatch") < codex.indexOf("WriteAllLines"));
+    for (const c of [claude, codex]) {
+      assert.ok(c.includes("-replace '[^\\x20-\\x7E]', ''") && c.includes("$s.Substring(0, 200)") && c.includes('"Setup did not work: $s"'));
+      assert.ok(c.includes(SAVE_FAILED.trim()));
+      assert.equal(/Setup did not work: \$k/.test(c), false, "the answer itself is never printed as it came");
+    }
+    assert.ok(claude.includes("$LASTEXITCODE = 1; claude mcp add-json") && claude.includes("if ($LASTEXITCODE -eq 0)"));
+    assert.ok(codex.includes("cannot safely replace") && codex.includes("$bad = $true"));
   });
 });
 
@@ -508,12 +753,63 @@ describe("#3802 S-5: every state of the setup card has words and a next step", (
     assert.deepEqual(labels(v), ["Copy message", "Done"]);
     assert.equal(v.buttons[0].variant, "primary");
   });
-  it("the agent used it: Connected, the message is gone, and what to do next", () => {
-    const v = view({ activeKey: unused, local: { phase: "used" } });
+  it("the message was used: a key was made, and the card says Connected only once that key has been used", () => {
+    const usedAt = new Date(NOW - 20_000).toISOString();
+    const made = { ...unused, key_id: "made" };
+    const v = view({ activeKey: made, local: { phase: "used", keyId: "made", usedAt } });
     assert.equal(v.state, "used");
     assert.equal(v.showMessage, false);
-    assert.deepEqual(v.lines, ["Connected: the key is saved in Claude Code's settings on that computer. Restart Claude Code, then ask: What is on my plate in Mingla?"]);
+    assert.deepEqual(v.lines, [
+      'Your message was used: a key was made for Claude Code. Your agent should have printed "Mingla added to Claude Code."',
+      "Restart Claude Code, then ask: What is on my plate in Mingla?",
+    ]);
     assert.deepEqual(labels(v), ["Done"]);
+    assert.equal(v.status.text, "Key created · not used yet");
+    assert.equal(/connected/i.test(v.lines.join(" ")), false, "nothing claims the agent is connected yet");
+    // The key has been used: now it says Connected.
+    const live = view({ activeKey: { ...key, key_id: "made" }, local: { phase: "used", keyId: "made", usedAt } });
+    assert.equal(live.state, "used_connected");
+    assert.deepEqual(live.lines, ["Connected: Claude Code is using its key. Ask it: What is on my plate in Mingla?"]);
+    assert.deepEqual(labels(live), ["Done"]);
+  });
+  it("a key that stays unused for two minutes is said so, with the way forward", () => {
+    assert.equal(SETUP_UNUSED_WARN_MS, 2 * 60_000);
+    const made = { ...unused, key_id: "made" };
+    const at = (ms) => view({ activeKey: made, local: { phase: "used", keyId: "made", usedAt: new Date(NOW - ms).toISOString() } });
+    assert.equal(at(SETUP_UNUSED_WARN_MS - 1).state, "used");
+    const late = at(SETUP_UNUSED_WARN_MS);
+    assert.equal(late.state, "used_unused");
+    assert.equal(late.tone, "warning");
+    assert.deepEqual(late.lines, ["Your agent has not used the key yet. If it printed an error, copy a new setup message."]);
+    assert.deepEqual(labels(late), ["Copy a new setup message", "Done"]);
+  });
+  it("a used message whose key is no longer the working one says nothing of it", () => {
+    const local = { phase: "used", keyId: "made", usedAt: new Date(NOW - 20_000).toISOString() };
+    // Another key took its place (made by hand, or by a newer message), or none is left.
+    assert.equal(view({ activeKey: { ...unused, key_id: "another" }, local }).state, "unused");
+    assert.equal(view({ activeKey: { ...key, key_id: "another" }, local }).state, "connected");
+    assert.equal(view({ activeKey: null, local }).state, "none");
+  });
+  it("a newer message copied elsewhere, or one ended before it was used, says so and offers a new one", () => {
+    const superseded = view({ local: { phase: "superseded" } });
+    assert.equal(superseded.state, "superseded");
+    assert.deepEqual(superseded.lines, ["A newer setup message was copied elsewhere; this one no longer works."]);
+    assert.equal(superseded.showMessage, false);
+    assert.equal(superseded.focus, "copy");
+    assert.deepEqual(labels(superseded), ["Copy a new setup message", "Done"]);
+    const ended = view({ local: { phase: "ended" } });
+    assert.deepEqual(ended.lines, ["This setup message no longer works: it was ended before it was used. Your agent is unchanged by it."]);
+    assert.deepEqual(labels(ended), ["Copy a new setup message", "Done"]);
+  });
+  it("each press of Copy message that still does not copy changes what the card says", () => {
+    const first = view({ local: { phase: "blocked", expiresAt: new Date(NOW + 9 * 60_000).toISOString(), tries: 0 } });
+    assert.equal(first.lines[0], "Your browser didn't copy it. Press Copy message, or Ctrl or Cmd + C.");
+    const second = view({ local: { phase: "blocked", expiresAt: new Date(NOW + 9 * 60_000).toISOString(), tries: 1 } });
+    assert.equal(second.lines[0], "Your browser still didn't copy it (tried 2 times). The message below is selected: press Ctrl or Cmd + C now.");
+    const third = view({ local: { phase: "blocked", expiresAt: new Date(NOW + 9 * 60_000).toISOString(), tries: 2 } });
+    assert.notEqual(third.lines[0], second.lines[0]);
+    assert.equal(second.selectMessage, true);
+    assert.deepEqual(labels(second), ["Copy message", "Done"]);
   });
   it("used and working: the status pill, a new message or Disconnect", () => {
     const v = view({ activeKey: key });
@@ -607,25 +903,48 @@ describe("#3802 S-5: every state of the setup card has words and a next step", (
   });
 });
 
-describe("#3802 S-6: used, run out, or still waiting", () => {
+describe("#3802 S-6: what became of one setup message, by its own id", () => {
   const NOW = Date.parse("2026-10-14T10:05:00Z");
   const later = "2026-10-14T10:12:00Z";
-  const k = (id, agent = "claude", revoked = null) => ({ key_id: id, agent, revoked_at: revoked });
-  it("a new active key for that agent means the agent used the message", () => {
-    assert.equal(setupVerdict({ keys: [k("new")], agentId: "claude", beforeKeyId: null, expiresAt: later, now: NOW }), "used");
-    assert.equal(setupVerdict({ keys: [k("new"), k("old", "claude", "2026-10-14T10:04:00Z")], agentId: "claude", beforeKeyId: "old", expiresAt: later, now: NOW }), "used");
-    // Even just after its time: a key that appeared is a key that works.
-    assert.equal(setupVerdict({ keys: [k("new")], agentId: "claude", beforeKeyId: "old", expiresAt: later, now: Date.parse(later) + 5_000 }), "used");
+  const row = (id, state, extra = {}) => ({ id, agent: "claude", created_at: "2026-10-14T10:02:00Z", expires_at: later, state, used_at: null, key_id: null, ...extra });
+  const ask = (setup, extra = {}) => setupVerdict({ setup, id: "mine", agentId: "claude", expiresAt: later, now: NOW, ...extra });
+  it("used means the server says THIS message made a key, and says which and when", () => {
+    assert.deepEqual(ask([row("mine", "used", { key_id: "k9", used_at: "2026-10-14T10:04:00Z" })]), { verdict: "used", keyId: "k9", usedAt: "2026-10-14T10:04:00Z" });
+    // Even just after its time: a message that was used was used.
+    assert.equal(ask([row("mine", "used", { key_id: "k9", used_at: "2026-10-14T10:11:59Z" })], { now: Date.parse(later) + 5_000 }).verdict, "used");
   });
-  it("the same key as before, or the other agent's key, is not 'used'", () => {
-    assert.equal(setupVerdict({ keys: [k("old")], agentId: "claude", beforeKeyId: "old", expiresAt: later, now: NOW }), "wait");
-    assert.equal(setupVerdict({ keys: [k("other", "codex")], agentId: "claude", beforeKeyId: null, expiresAt: later, now: NOW }), "wait");
-    assert.equal(setupVerdict({ keys: [], agentId: "claude", beforeKeyId: null, expiresAt: later, now: NOW }), "wait");
+  it("a key that appears any other way is never taken for the message having been used", () => {
+    // A key made by hand in another tab: the list of keys is not even asked.
+    assert.deepEqual(ask([row("mine", "waiting")], { keys: [{ key_id: "by-hand", agent: "claude", revoked_at: null }] }), { verdict: "wait" });
+    // Another message of this person's was used: not this one.
+    assert.deepEqual(ask([row("mine", "waiting"), row("other", "used", { key_id: "k1", created_at: "2026-10-14T10:00:00Z" })]), { verdict: "wait" });
+    // The other agent's message was used.
+    assert.deepEqual(ask([row("mine", "waiting"), row("x", "used", { agent: "codex", key_id: "k2", created_at: "2026-10-14T10:03:00Z" })]), { verdict: "wait" });
+    assert.equal(/beforeKeyId|activeKey\(keys/.test(/export function setupVerdict[\s\S]*?\n}\n/.exec(read("lib/agentConnect.js"))[0]), false, "it never reasons from the keys");
   });
-  it("past its time with no new key, it has run out; a time that cannot be read counts as run out", () => {
-    assert.equal(setupVerdict({ keys: [k("old")], agentId: "claude", beforeKeyId: "old", expiresAt: later, now: Date.parse(later) }), "expired");
-    assert.equal(setupVerdict({ keys: [], agentId: "claude", beforeKeyId: null, expiresAt: "nope", now: NOW }), "expired");
-    assert.equal(setupVerdict({ keys: null, agentId: "claude", beforeKeyId: null, expiresAt: later, now: NOW }), "wait");
+  it("a newer message for the same agent ends this one, and this tab says so", () => {
+    const newer = row("newer", "waiting", { created_at: "2026-10-14T10:04:00Z" });
+    assert.deepEqual(ask([newer, row("mine", "ended")]), { verdict: "superseded" });
+    // Even if this tab's own entry has not caught up yet.
+    assert.deepEqual(ask([newer, row("mine", "waiting")]), { verdict: "superseded" });
+    // Ended with nothing newer (the agent was disconnected, or the use was refused).
+    assert.deepEqual(ask([row("mine", "ended")]), { verdict: "ended" });
+    // An older message, or the other agent's newer one, ends nothing.
+    assert.deepEqual(ask([row("older", "ended", { created_at: "2026-10-14T10:00:00Z" }), row("mine", "waiting")]), { verdict: "wait" });
+    assert.deepEqual(ask([row("x", "waiting", { agent: "codex", created_at: "2026-10-14T10:04:00Z" }), row("mine", "waiting")]), { verdict: "wait" });
+  });
+  it("past its time unused, it has run out; a time that cannot be read counts as run out; otherwise it waits", () => {
+    assert.deepEqual(ask([row("mine", "expired")]), { verdict: "expired" });
+    assert.deepEqual(ask([row("mine", "waiting")], { now: Date.parse(later) }), { verdict: "expired" });
+    assert.deepEqual(ask([], { expiresAt: "nope" }), { verdict: "expired" });
+    assert.deepEqual(ask([row("mine", "waiting")]), { verdict: "wait" });
+    // A list that could not be read, or does not hold this message yet: wait for its time.
+    for (const none of [null, undefined, [], [null, 7], [row("someone-else", "used", { key_id: "k" })]]) assert.deepEqual(ask(none), { verdict: "wait" });
+  });
+  it("only a message that is still waiting is listed as waiting after a reload", () => {
+    const at = Date.parse("2026-10-14T10:05:00Z");
+    assert.equal(pendingSetup([row("a", "used", { key_id: "k" }), row("b", "ended"), row("c", "expired")], "claude", at), null);
+    assert.equal(pendingSetup([row("a", "ended"), row("b", "waiting", { created_at: "2026-10-14T10:04:00Z" })], "claude", at).id, "b");
   });
 });
 
@@ -656,6 +975,34 @@ describe("#3802 S-7: the repeated check runs only while the page is visible and 
       },
     };
   }
+  it("a watch that runs to a time on the clock is not set back by being started again", () => {
+    const c = clock();
+    const until = 30_000;
+    let ticks = 0;
+    let ended = 0;
+    const make = () => createWatch({ onTick: () => ticks++, onEnd: () => ended++, everyMs: 5_000, until, now: c.now, setTimer: c.setTimer, clearTimer: c.clearTimer });
+    // The page draws again every two seconds for a while (a press, a new line): each time the
+    // watch is stopped and made anew. A count that started again each time would never tick.
+    let watch = make();
+    for (let i = 0; i < 6; i++) {
+      c.advance(2_000);
+      watch.stop();
+      watch = make();
+    }
+    assert.equal(ticks, 0, "twelve seconds of drawing again");
+    c.advance(5_000);
+    assert.equal(ticks, 1, "left alone for five seconds, it ticks");
+    c.advance(20_000);
+    assert.equal(ended, 1, "and it ends at the time it was given, not later");
+    assert.equal(c.now() >= until && watch.running === false, true);
+    // Started after its time: it ends at once, with no tick.
+    const late = createWatch({ onTick: () => ticks++, onEnd: () => ended++, everyMs: 5_000, until, now: c.now, setTimer: c.setTimer, clearTimer: c.clearTimer });
+    const before = ticks;
+    c.advance(1);
+    assert.equal(ended, 2);
+    assert.equal(ticks, before);
+    assert.equal(late.running, false);
+  });
   it("ticks every five seconds for at most its time, then ends once and stops", () => {
     const c = clock();
     let ticks = 0;
@@ -777,46 +1124,118 @@ describe("#3802 S-8: where the setup message and its code may go", () => {
       assert.equal(/(title|aria-label|href)=\{(message\b|messages\[|[^}]*\$\{(message|code)\b)/.test(src), false, name);
     }
   });
-  it("the page keeps the message in one piece of state and drops it on Done, when used, when it runs out and on Disconnect", () => {
-    assert.match(PAGE, /const \[messages, setMessages\] = useState\(\{\}\);/);
-    assert.equal(/useState\(\(\) =>[^)]*messages|useRef\([^)]*messages|createContext/.test(PAGE), false);
-    const drops = PAGE.match(/setMessages\(\(m\) => \(\{ \.\.\.m, \[(a\.id|agentId)\]: null \}\)\);/g) ?? [];
-    assert.equal(drops.length, 5, "before a new one is made; when it is used or runs out; on Done; on Disconnect; when a key is made by hand instead");
-    assert.match(PAGE, /const doneSetup = useCallback\(\(agentId\) => \{\s*setMessages\(\(m\) => \(\{ \.\.\.m, \[agentId\]: null \}\)\);\s*setSetups\(\(m\) => \(\{ \.\.\.m, \[agentId\]: null \}\)\);/);
-    assert.equal((PAGE.match(/setMessages\(/g) ?? []).length, 6, "set once (when made), dropped in five places");
-    // The code itself is read once, to build the message, and kept nowhere.
-    assert.equal((PAGE.match(/answer\?\.code/g) ?? []).length, 1);
-    assert.equal(/\.code\b/.test(PAGE.replace(/answer\?\.code/g, "")), false);
+  it("the page keeps the code in one piece of state and drops it on Done, when used, ended or run out, and on Disconnect", () => {
+    assert.match(PAGE, /const \[codes, setCodes\] = useState\(\{\}\);/);
+    assert.equal(/useState\(\(\) =>[^)]*codes|useRef\([^)]*codes|createContext/.test(PAGE), false);
+    const drops = PAGE.match(/setCodes\(\(m\) => \(\{ \.\.\.m, \[(a\.id|agentId)\]: null \}\)\);/g) ?? [];
+    assert.equal(drops.length, 4, "before a new one is made; when it is used, ended or runs out; on Done; on Disconnect");
+    assert.match(PAGE, /const doneSetup = useCallback\(\(agentId\) => \{\s*setCodes\(\(m\) => \(\{ \.\.\.m, \[agentId\]: null \}\)\);\s*setSetups\(\(m\) => \(\{ \.\.\.m, \[agentId\]: null \}\)\);/);
+    assert.equal((PAGE.match(/setCodes\(/g) ?? []).length, 5, "set once (when made), dropped in four places");
+    // The code is read from the answer in two places only: to build the copy, and to keep it for the card.
+    assert.equal((PAGE.match(/answer\??\.code/g) ?? []).length, 2);
+    assert.equal(/\.code\b/.test(PAGE.replace(/answer\??\.code/g, "")), false);
+    // The message is never state: it is built from the code for the computer chosen now.
+    assert.equal(/setMessages|useState\([^)]*message/.test(PAGE), false);
+    assert.match(PAGE, /const messageFor = useCallback\(\s*\(agentId\) => \(codes\[agentId\] \? setupMessage\(\{ agent: agentId, os, endpoint: ENDPOINT, code: codes\[agentId\] \}\) : null\),\s*\[codes, os\]\s*\);/);
+    assert.match(PAGE, /message=\{messageFor\(a\.id\)\}/);
     assert.equal(/\bcode\b|setup_create|messages/.test(HOOK), false, "the hook never holds a code or a message");
     assert.match(HOOK, /setup: Array\.isArray\(data\?\.mine\?\.setup\) \? data\.mine\.setup : \[\],/);
   });
-  it("the copy belongs to the press, and a blocked copy is never silent", () => {
+  it("switching the computer swaps the text on screen and never the code", () => {
+    for (const agent of ["claude", "codex"]) {
+      const mac = setupMessage({ agent, os: "mac", endpoint: ENDPOINT, code: CODE[agent] });
+      const win = setupMessage({ agent, os: "windows", endpoint: ENDPOINT, code: CODE[agent] });
+      assert.notEqual(mac, win);
+      assert.ok(win.includes("PowerShell") && !mac.includes("PowerShell"));
+      for (const m of [mac, win]) assert.equal(m.split(CODE[agent]).length - 1, 1, "the same code, once");
+    }
+    // Copy again copies what is on screen for the computer chosen now.
+    assert.match(PAGE, /const copySetupAgain = useCallback\(\s*async \(agentId, node\) => \{\s*const message = messageFor\(agentId\);/);
+  });
+  it("the copy belongs to the press, can never wait for ever, and a blocked copy is never silent", () => {
     assert.match(PAGE, /navigator\.clipboard\s*\.write\(\[new ClipboardItem\(\{ "text\/plain": text\.then\(\(t\) => new Blob\(\[t\], \{ type: "text\/plain" \}\)\) \}\)\]\)\s*\.then\(\(\) => true, \(\) => false\);/);
     assert.match(PAGE, /if \(navigator\.clipboard\?\.write && typeof ClipboardItem === "function"\) \{/);
     assert.match(PAGE, /phase: ok \? "ready" : "blocked"/);
-    assert.match(PAGE, /await navigator\.clipboard\.writeText\(message\);/);
+    // The browser gets two seconds to say whether it copied; a browser that never answers counts as not copied.
+    assert.equal(COPY_WAIT_MS, 2_000);
+    assert.match(PAGE, /const ok = await within\(copied, COPY_WAIT_MS, false\);/);
+    assert.equal(/await copied\b/.test(PAGE), false, "nothing waits on the browser without a limit");
+    assert.match(PAGE, /function within\(promise, ms, otherwise\) \{\s*let timer;\s*return Promise\.race\(\[\s*promise,\s*new Promise\(\(resolve\) => \{\s*timer = setTimeout\(\(\) => resolve\(otherwise\), ms\);/);
+    // Copy message again: the browser's way within the same limit, then the older way on what is selected.
+    assert.match(PAGE, /if \(navigator\.clipboard\?\.writeText\) ok = await within\(navigator\.clipboard\.writeText\(message\)\.then\(\(\) => true, \(\) => false\), COPY_WAIT_MS, false\);/);
+    assert.match(PAGE, /if \(!ok\) ok = copySelected\(node\);/);
+    assert.match(PAGE, /return typeof document\.execCommand === "function" && document\.execCommand\("copy"\) === true;/);
+    // Whatever happens, the card changes: Copied, or one more counted try.
+    assert.match(PAGE, /phase: ok \? "ready" : "blocked", tries: ok \? 0 : \(m\[agentId\]\.tries \|\| 0\) \+ 1/);
+    assert.match(CARD, /else if \(id === "again"\) onCopyAgain\(agent\.id, boxRef\.current\);/);
     assert.match(CARD, /if \(!view\.selectMessage \|\| !message\) return;[\s\S]*range\.selectNodeContents\(node\);/);
+    assert.match(CARD, /if \(firstLine\.includes\("still didn't copy"\)\) node\?\.focus\(\);/);
+    assert.match(CARD, /\}, \[view\.selectMessage, message, firstLine\]\);/, "each failed press selects it again");
     // A second press while the first is on its way sends nothing; offline says so.
     assert.match(PAGE, /if \(setupBusyRef\.current\[agentId\]\) return;/);
     assert.match(PAGE, /addToast\(\{ variant: "warning", title: "You're offline", description: "No setup message was made\. Try again once you're back\." \}\);/);
     // Already connected: the question comes before anything is made.
-    const body = PAGE.slice(PAGE.indexOf("const copySetup = useCallback("), PAGE.indexOf("const copySetupAgain"));
+    const body = PAGE.slice(PAGE.indexOf("const copySetup = useCallback("), PAGE.indexOf("const messageFor"));
     assert.ok(body.indexOf('setSetups((m) => ({ ...m, [agentId]: { phase: "confirm" } }));') < body.indexOf("createSetupCode(agentId, browserTimeZone())"));
     assert.match(body, /err\?\.token === "no_answer" \? \{ phase: "lost" \} : \{ phase: "failed", words: agentErrorWords\(err\) \}/);
     assert.match(body, /timer = setTimeout\(\(\) => reject\(\{ token: "no_answer", message: "" \}\), CREATE_WAIT_MS\);/);
+    // The message's own id is kept with it, so what became of it can be asked.
+    assert.match(body, /\{ phase: ok \? "ready" : "blocked", id: answer\.id \|\| null, expiresAt: answer\.expires_at, tries: 0 \}/);
   });
-  it("the waiting check stops when the message is used or has run out, and makes no read in a hidden tab", () => {
-    assert.match(PAGE, /const waiting = AGENTS\.filter\(\(a\) => \["ready", "blocked"\]\.includes\(setups\[a\.id\]\?\.phase\)\);/);
-    assert.match(PAGE, /useWatch\(waiting\.length > 0, \(\) => \{\s*setNow\(Date\.now\(\)\);\s*refetch\(\{ quiet: true \}\);\s*\}, \{\s*forMs: lastEnd > 0 \? Math\.max\(0, lastEnd - Date\.now\(\)\) \+ SETUP_GRACE_MS : 0,/);
+  it("the waiting check runs to a time on the clock, so drawing the page again never starts it again", () => {
+    // What the watch waits for is a time, worked out without reading the clock.
+    const until = /const watched = AGENTS\.map\(\(a\) => \{[\s\S]*?\}\);\s*const watchUntil = Math\.max\(0, \.\.\.watched\);/.exec(PAGE);
+    assert.ok(until, "the end of the wait is worked out in one place");
+    assert.equal(/Date\.now\(\)/.test(until[0]), false, "the end of the wait does not move with the clock");
+    assert.match(until[0], /return \(Date\.parse\(st\.expiresAt\) \|\| 0\) \+ SETUP_GRACE_MS;/);
+    assert.match(until[0], /if \(st\?\.phase === "used" && !st\.connectedSaid\) return \(Date\.parse\(st\.usedAt\) \|\| 0\) \+ SETUP_FIRST_USE_WATCH_MS;/);
+    assert.match(PAGE, /useWatch\(watchUntil > 0, \(\) => \{\s*setNow\(Date\.now\(\)\);\s*refetch\(\{ quiet: true \}\);\s*\}, \{\s*until: watchUntil,/);
+    assert.match(PAGE, /\}, \[active, everyMs, until\]\);/, "the watch starts again only when its end changes");
+    assert.equal(/forMs|restart/.test(PAGE), false);
     assert.match(PAGE, /if \(document\.visibilityState === "visible"\) watch\.visible\(false\);\s*else watch\.hidden\(\);/);
     assert.match(HOOK, /const onFocus = \(\) => \{\s*if \(document\.visibilityState === "visible"\) refetch\(\{ quiet: true \}\);/, "the one read when the tab is shown again");
-    assert.match(PAGE, /if \(verdict === "wait"\) continue;\s*setMessages\(\(m\) => \(\{ \.\.\.m, \[a\.id\]: null \}\)\);\s*setSetups\(\(m\) => \(\{ \.\.\.m, \[a\.id\]: \{ phase: verdict \} \}\)\);/);
-    assert.match(PAGE, /title: `\$\{a\.product\} is set up`/);
+    // What became of the message is asked by its own id, on every read.
+    assert.match(PAGE, /const result = setupVerdict\(\{ setup: list, id: st\.id, agentId: a\.id, expiresAt: st\.expiresAt, now: at \}\);\s*if \(result\.verdict === "wait"\) continue;\s*setCodes\(\(m\) => \(\{ \.\.\.m, \[a\.id\]: null \}\)\);/);
+    assert.match(PAGE, /useEffect\(\(\) => \{\s*if \(!loading && !error\) settle\(setup, keys, Date\.now\(\)\);\s*\}, \[keys, setup, loading, error, settle\]\);/);
+    assert.match(PAGE, /settle\(latest\.current\.setup, latest\.current\.keys, Date\.now\(\) \+ 1\);/);
+    // "Connected" is said once, when the key the message made has been used.
+    assert.match(PAGE, /title: `A key was made for \$\{a\.product\}`/);
+    assert.match(PAGE, /if \(key && key\.key_id === st\.keyId && key\.last_used_at\) \{[\s\S]{0,220}title: `\$\{a\.product\} is connected`/);
+    assert.equal(/is set up`/.test(PAGE), false);
+    // A key made by hand no longer touches a waiting message.
+    const create = PAGE.slice(PAGE.indexOf("const create = useCallback("), PAGE.indexOf("const revoke = useCallback("));
+    assert.equal(/setCodes|setSetups/.test(create), false);
+    assert.equal(SETUP_FIRST_USE_WATCH_MS, 10 * 60_000);
   });
-  it("the card moves focus when its state changes, and the three steps say where, what and what next", () => {
+  it("each key on screen is hidden ten minutes after IT was shown", () => {
+    const t0 = 1_000_000;
+    const shown = { claude: { keyId: "a", shownAt: t0 }, codex: { keyId: "b", shownAt: t0 + 9 * 60_000 } };
+    assert.deepEqual(keysToHide(shown, t0 + SHOWN_KEY_MAX_MS - 1), []);
+    assert.deepEqual(keysToHide(shown, t0 + SHOWN_KEY_MAX_MS), ["claude"], "the first key goes at its own ten minutes");
+    assert.deepEqual(keysToHide(shown, t0 + 11 * 60_000), ["claude"], "a second key shown later does not keep the first");
+    assert.deepEqual(keysToHide(shown, t0 + 19 * 60_000), ["claude", "codex"]);
+    assert.deepEqual(keysToHide({ claude: null, codex: { keyId: "b" } }, t0 + 99 * 60_000), [], "nothing shown, or no time for it, hides nothing by itself");
+    assert.deepEqual(keysToHide(null, t0), []);
+    assert.match(PAGE, /setShownIds\(\(m\) => \(\{ \.\.\.m, \[agentId\]: \{ keyId: made\.key_id, listed: false, shownAt: Date\.now\(\) \} \}\)\);/);
+    assert.match(PAGE, /const old = keysToHide\(shownRef\.current, at\);/);
+    assert.match(PAGE, /useWatch\(showingKey, \(\) => \{\s*hideOldKeys\(Date\.now\(\)\);\s*refetch\(\{ quiet: true \}\);\s*\}, \{\s*until: lastShownAt \+ SHOWN_KEY_MAX_MS,\s*onEnd: \(\) => hideOldKeys\(Date\.now\(\) \+ 1\),/);
+    assert.match(PAGE, /useEffect\(\(\) => \{\s*hideOldKeys\(Date\.now\(\)\);\s*\}, \[keys, hideOldKeys\]\);/, "a tab shown again hides what is past its time");
+    assert.equal(/setShownAt|shownAt, setShownAt/.test(PAGE), false, "there is no one clock for every key");
+  });
+  it("the card moves focus when its state changes and after each press that removes its button; the three steps say where, what and what next", () => {
     assert.match(CARD, /role="status"\s+aria-live="polite"\s+tabIndex=\{-1\}/);
     assert.match(CARD, /if \(view\.focus === "copy"\) copyRef\.current\?\.focus\(\);/);
     assert.match(CARD, /statusRef\.current\?\.focus\(\);/);
+    // Done, Keep and Disconnect: once the card has settled, focus is on its way forward.
+    assert.match(CARD, /else if \(id === "done"\) \{\s*afterPress\.current = true;\s*onDone\(agent\.id\);/);
+    assert.match(CARD, /else if \(id === "keep"\) \{\s*afterPress\.current = true;\s*onKeep\(agent\.id\);/);
+    assert.match(CARD, /onClick=\{\(\) => \{\s*afterPress\.current = true;\s*setAsking\(false\);\s*onDisconnect\(agent\.id\);/);
+    assert.match(CARD, /if \(afterPress\.current\) \{\s*afterPress\.current = false;\s*\(copyRef\.current \|\| statusRef\.current\)\?\.focus\(\);\s*return;\s*\}/);
+    // The Disconnect question closed without an answer: back to the button that opened it.
+    assert.match(CARD, /if \(afterPress\.current\) statusRef\.current\?\.focus\(\);\s*else disconnectRef\.current\?\.focus\(\);/);
+    assert.match(CARD, /b\.id === "disconnect" \? disconnectRef : undefined/);
+    // A change nobody pressed for, minutes later, moves nothing.
+    assert.match(CARD, /if \(from === "used" && \(view\.state === "used_connected" \|\| view\.state === "used_unused"\)\) return;/);
     const RAW = read("pages/AgentPage.jsx");
     assert.match(RAW, /<StepHeading n=\{1\}>Copy your setup message<\/StepHeading>/);
     assert.match(RAW, /subtitle="One per agent\. Works once, for 10 minutes\."/);
@@ -825,9 +1244,11 @@ describe("#3802 S-8: where the setup message and its code may go", () => {
     assert.match(RAW, /<StepHeading n=\{3\}>Restart your agent, then just ask<\/StepHeading>/);
     assert.match(RAW, /Close and reopen your agent so it sees Mingla\. Then ask:/);
     assert.deepEqual(NOT_WORKING_CHECKS, [
-      "Did your agent run the command? It should have answered 'Mingla added'.",
+      "Did your agent run the command? It should have printed 'Mingla added'.",
       "Restart the agent after it says so.",
       "A message works once. If you pasted it twice or waited more than 10 minutes, copy a new one.",
+      "It printed 'Setup did not start'? Nothing was changed and the code was not used: fix what it names, then paste the same message again.",
+      "It printed 'Mingla made your key but could not save it'? Copy a new setup message and try again.",
       "Agent refused to run it? Paste the command from the message into the Terminal app yourself.",
     ]);
     // Every button on the two new parts is a full-height target on a phone.

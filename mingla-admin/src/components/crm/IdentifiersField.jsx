@@ -9,7 +9,7 @@
 // `onChange(list)` is given the whole new list. It may return a promise of
 // { ok } or { message, existingId }: on a refusal nothing is added and the
 // server's sentence is shown under the input.
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AtSign, Mail, Phone, X } from "lucide-react";
 import { Button } from "../ui/Button";
 import { CONTROL_CLASS, LABEL_CLASS, Select } from "./fields";
@@ -21,6 +21,7 @@ import {
   detectIdentKind,
   detectPlatform,
   identLabel,
+  sharedDetailHolder,
 } from "../../lib/crmModel";
 
 const ICONS = { email: Mail, phone: Phone, handle: AtSign };
@@ -32,39 +33,61 @@ export function IdentifiersField({ value, disabled = false, saving = false, onCh
   const [kind, setKind] = useState("");
   const [platform, setPlatform] = useState("");
   const [choosing, setChoosing] = useState(false);
-  const [problem, setProblem] = useState({ message: "", existingId: "" });
+  // `shared` is the list that was refused because another record holds one of
+  // its details: the person can open that record, or keep the detail anyway.
+  const [problem, setProblem] = useState({ message: "", existingId: "", shared: null });
   const [busy, setBusy] = useState(false);
+  const focusInput = useRef(false);
   const list = Array.isArray(value) ? value : [];
   const guess = kind || detectIdentKind(typed);
   const full = list.length >= MAX_IDENTIFIERS;
   const locked = disabled || busy || saving;
 
-  const send = async (next) => {
+  const send = async (next, options) => {
     setBusy(true);
     let result;
     try {
-      result = await onChange(next);
+      result = await onChange(next, options);
     } finally {
       setBusy(false);
     }
     if (result && result.message) {
-      setProblem({ message: result.message, existingId: result.existingId || "" });
+      setProblem({ message: result.message, existingId: result.existingId || "", shared: result.existingId ? next : null });
       return false;
     }
-    setProblem({ message: "", existingId: "" });
+    setProblem({ message: "", existingId: "", shared: null });
     return true;
+  };
+
+  // Once a save has ended and its button is gone, focus is back in the box.
+  useEffect(() => {
+    if (busy || !focusInput.current) return;
+    focusInput.current = false;
+    inputRef.current?.focus();
+  }, [busy]);
+
+  // Add anyway: the same list again, with the person's say-so.
+  const addAnyway = async () => {
+    if (locked || !problem.shared) return;
+    focusInput.current = true;
+    if (await send(problem.shared, { allowShared: true })) {
+      setTyped("");
+      setKind("");
+      setPlatform("");
+      setChoosing(false);
+    }
   };
 
   const add = async () => {
     if (locked) return;
     if (!typed.trim()) {
-      setProblem({ message: "Type an email, a phone number or a handle first.", existingId: "" });
+      setProblem({ message: "Type an email, a phone number or a handle first.", existingId: "", shared: null });
       inputRef.current?.focus();
       return;
     }
     const made = addIdentifier(list, { kind: guess, value: typed, platform: platform || detectPlatform(typed) });
     if (made.message) {
-      setProblem({ message: made.message, existingId: "" });
+      setProblem({ message: made.message, existingId: "", shared: null });
       inputRef.current?.focus();
       return;
     }
@@ -128,7 +151,7 @@ export function IdentifiersField({ value, disabled = false, saving = false, onCh
           aria-describedby={`${id}-help`}
           onChange={(e) => {
             setTyped(e.target.value);
-            if (problem.message) setProblem({ message: "", existingId: "" });
+            if (problem.message) setProblem({ message: "", existingId: "", shared: null });
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -182,14 +205,34 @@ export function IdentifiersField({ value, disabled = false, saving = false, onCh
           )}
         </div>
       )}
-      {problem.message && (
+      {problem.message && !problem.shared && (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-error-700)]">
           <span className="min-w-0 break-words">{problem.message}</span>
-          {problem.existingId && onOpenRecord && (
-            <Button type="button" variant="secondary" size="sm" className="max-sm:h-11" onClick={() => onOpenRecord(problem.existingId)}>
-              Open that record
+        </div>
+      )}
+      {problem.shared && (
+        <div
+          role="alert"
+          className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--color-warning-500)] bg-[var(--color-warning-50)] p-2.5 text-sm text-[var(--color-warning-700)]"
+        >
+          <p className="min-w-0 break-words">
+            <b>
+              {sharedDetailHolder(problem.message)
+                ? `Looks like ${sharedDetailHolder(problem.message)} (same contact detail)`
+                : problem.message}
+            </b>
+            {sharedDetailHolder(problem.message) ? ". Nothing was saved." : ""}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {onOpenRecord && (
+              <Button type="button" variant="secondary" size="sm" className="max-sm:h-11" onClick={() => onOpenRecord(problem.existingId)}>
+                Open it
+              </Button>
+            )}
+            <Button type="button" variant="ghost" size="sm" className="max-sm:h-11" loading={busy} disabled={disabled || saving} onClick={addAnyway}>
+              Add anyway
             </Button>
-          )}
+          </div>
         </div>
       )}
     </div>

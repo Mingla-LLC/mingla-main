@@ -796,7 +796,13 @@ export function RecordDrawer({
           <IdentifiersField
             value={record.identifiers}
             disabled={locked}
-            onChange={(list) => saveExtra({ identifiers: identifiersToSend(list) })}
+            onChange={(list, options) =>
+              saveExtra(
+                options?.allowShared
+                  ? { identifiers: identifiersToSend(list), allow_shared_identifier: true }
+                  : { identifiers: identifiersToSend(list) }
+              )
+            }
             onOpenRecord={onOpenCard}
           />
           <ContactRuleField record={record} disabled={locked} onSave={saveExtra} />

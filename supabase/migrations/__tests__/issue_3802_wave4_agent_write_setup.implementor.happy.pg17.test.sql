@@ -351,7 +351,9 @@ begin
     (((v::jsonb ->> 'expires_at')::timestamptz - (v::jsonb ->> 'created_at')::timestamptz) = interval '10 minutes')::text
       || '/' || (v::jsonb ->> 'replaces_key') || '/' || (v::jsonb ->> 'agent'), 'true/true/claude');
   perform pg_temp.t3802b_check('B-2', 'the answer carries exactly the named keys',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(v::jsonb) k), 'agent,code,created_at,expires_at,replaces_key');
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(v::jsonb) k), 'agent,code,created_at,expires_at,id,replaces_key');
+  perform pg_temp.t3802b_check('B-2', 'its id is the row''s, and is neither the code nor its digest',
+    (select (c.id::text = v::jsonb ->> 'id')::text from public.team_agent_setup_codes c where c.code_hash = pg_temp.t3802b_digest(v_code)), 'true');
   perform pg_temp.t3802b_check('B-2', 'the table holds its digest and nothing readable',
     (select count(*)::text from public.team_agent_setup_codes c where c.code_hash = pg_temp.t3802b_digest(v_code))
       || '/' || (select count(*) from public.team_agent_setup_codes c where to_jsonb(c)::text like '%' || v_code || '%'), '1/0');
@@ -366,7 +368,11 @@ begin
     (pg_temp.t3802b_person('growth', 'select public.team_agent_keys_mine()::text')::jsonb -> 'setup' -> 0 ->> 'agent')
       || '/' || (select string_agg(k, ',' order by k)
                    from jsonb_object_keys(pg_temp.t3802b_person('growth', 'select public.team_agent_keys_mine()::text')::jsonb -> 'setup' -> 0) k),
-    'claude/agent,created_at,expires_at');
+    'claude/agent,created_at,expires_at,id,key_id,state,used_at');
+  perform pg_temp.t3802b_check('B-2', 'that entry is this code, waiting, with no key yet',
+    (select (e ->> 'id' = v::jsonb ->> 'id')::text || '/' || (e ->> 'state') || '/' || coalesce(e ->> 'key_id', 'none') || '/' || coalesce(e ->> 'used_at', 'none')
+       from jsonb_array_elements(pg_temp.t3802b_person('growth', 'select public.team_agent_keys_mine()::text')::jsonb -> 'setup') e limit 1),
+    'true/waiting/none/none');
 
   -- Refusals that never reach the row.
   perform pg_temp.t3802b_check('B-2', 'a digest that is not a digest is refused',
@@ -406,6 +412,21 @@ begin
     (select (consumed_at is not null)::text || '/' || (consumed_key_id = (select id from public.team_agent_keys where key_hash = pg_temp.t3802b_digest(v_key)))::text
        from public.team_agent_setup_codes where code_hash = pg_temp.t3802b_digest(v_code)), 'true/true');
   perform pg_temp.t3802b_keep('growth.claude', v_key);
+  perform pg_temp.t3802b_check('B-2', 'the person now sees that code as used, when, and which key it made; no code or digest is in the list',
+    (select (e ->> 'state') || '/' || ((e ->> 'used_at') is not null)::text
+              || '/' || (e ->> 'key_id' = (select id::text from public.team_agent_keys where key_hash = pg_temp.t3802b_digest(v_key)))::text
+              || '/' || (m.x::text !~ 'mgls_|[0-9a-f]{64}')::text
+       from (select pg_temp.t3802b_person('growth', 'select public.team_agent_keys_mine()::text')::jsonb -> 'setup' as x) m,
+            jsonb_array_elements(m.x) e where e ->> 'id' = (select c.id::text from public.team_agent_setup_codes c where c.code_hash = pg_temp.t3802b_digest(v_code))),
+    'used/true/true/true');
+  -- A key made by hand afterwards is not that code's doing: the entry does not move.
+  perform pg_temp.t3802b_newkey('growth', 'claude', 'growth.claude.byhand');
+  perform pg_temp.t3802b_check('B-2', 'a key made by hand later is not reported as that message having been used again',
+    (select (e ->> 'state') || '/' || (e ->> 'key_id' = pg_temp.t3802b_id('growth.claude.byhand.id'))::text
+       from jsonb_array_elements(pg_temp.t3802b_person('growth', 'select public.team_agent_keys_mine()::text')::jsonb -> 'setup') e
+      where e ->> 'id' = (select c.id::text from public.team_agent_setup_codes c where c.code_hash = pg_temp.t3802b_digest(v_code))),
+    'used/false');
+  perform pg_temp.t3802b_keep('growth.claude', pg_temp.t3802b_id('growth.claude.byhand'));
   perform pg_temp.t3802b_check('B-2', 'the key from the exchange works',
     pg_temp.t3802b_get(pg_temp.t3802b_gw('growth.claude', 'get_started'), 'result', 'me', 'email'), 'issue3802b-growth@test.local');
   perform pg_temp.t3802b_check('B-2', 'no request row was written for an exchange',
@@ -420,11 +441,17 @@ begin
    where code_hash = pg_temp.t3802b_digest(v_code);
   perform pg_temp.t3802b_check('B-2', 'a code past its ten minutes is refused',
     pg_temp.t3802b_redeem(v_code), v_refusal);
+  perform pg_temp.t3802b_check('B-2', 'the person sees it as expired',
+    pg_temp.t3802b_person('growth2', 'select public.team_agent_keys_mine()::text')::jsonb #>> '{setup,0,state}', 'expired');
 
   v_code := pg_temp.t3802b_person('growth2', $q$select public.team_agent_setup_create('codex')::text$q$)::jsonb ->> 'code';
   v_code2 := pg_temp.t3802b_person('growth2', $q$select public.team_agent_setup_create('codex')::text$q$)::jsonb ->> 'code';
   perform pg_temp.t3802b_check('B-2', 'a newer code for the same agent ends the one before it',
     pg_temp.t3802b_redeem(v_code), v_refusal);
+  perform pg_temp.t3802b_check('B-2', 'the person sees the newest one as waiting and the ones before it as ended',
+    (select string_agg(e ->> 'state', ',' order by e ->> 'created_at' desc)
+       from jsonb_array_elements(pg_temp.t3802b_person('growth2', 'select public.team_agent_keys_mine()::text')::jsonb -> 'setup') e),
+    'waiting,ended,ended');
   perform pg_temp.t3802b_check('B-2', 'through all of that growth2''s key was never replaced',
     (select (revoked_at is null)::text from public.team_agent_keys where id = pg_temp.t3802b_id('growth2.codex.id')::uuid), 'true');
   -- Disconnecting ends the code that is waiting.

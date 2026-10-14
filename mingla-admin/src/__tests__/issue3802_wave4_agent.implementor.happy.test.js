@@ -567,7 +567,7 @@ describe("#3802 A-8: what the page says after a create or replace that did not a
     assert.ok(body.includes('timer = setTimeout(() => reject({ token: "network", message: "" }), CREATE_WAIT_MS);'), "the wait is really armed");
     assert.equal(/No key was created/.test(body.replace(/"No key was created\. Try again once you're back\."/, "")), false, "the page itself never decides that nothing was made");
     // The hook hands back what it read, or null when it could not read.
-    assert.ok(HOOK.includes("return Array.isArray(data?.mine?.keys) ? data.mine.keys : [];"));
+    assert.ok(HOOK.includes("keys: Array.isArray(data?.mine?.keys) ? data.mine.keys : [],") && HOOK.includes("return latest.current.keys;"));
     assert.ok(/if \(quiet\) return null;/.test(HOOK));
     const card = PARTS.find(([f]) => f === "AgentKeyCard.jsx")[1];
     assert.ok(card.includes('{replaceAgain ? "Replace again" : "Replace key"}'));
@@ -599,11 +599,11 @@ describe("#3802 A-8: a key that was ended somewhere else does not stay on screen
     // While a key is on screen the page checks every five seconds that it still works: only while the
     // tab is visible and online, and for at most ten minutes, after which the key is hidden.
     assert.ok(PAGE.includes("const WATCH_EVERY_MS = 5_000;"));
-    assert.ok(/const showingKey = AGENTS\.some\(\(a\) => !!shownIds\[a\.id\]\);\s*useWatch\(showingKey, \(\) => refetch\(\{ quiet: true \}\), \{\s*forMs: SHOWN_KEY_MAX_MS,/.test(PAGE));
-    assert.ok(/function useWatch\(active, onTick, \{ everyMs = WATCH_EVERY_MS, forMs, onEnd, restart = "" \} = \{\}\) \{/.test(PAGE));
+    assert.ok(/const showingKey = AGENTS\.some\(\(a\) => !!shownIds\[a\.id\]\);\s*const lastShownAt = Math\.max\(0, \.\.\.AGENTS\.map\(\(a\) => shownIds\[a\.id\]\?\.shownAt \|\| 0\)\);\s*useWatch\(showingKey, \(\) => \{\s*hideOldKeys\(Date\.now\(\)\);\s*refetch\(\{ quiet: true \}\);\s*\}, \{\s*until: lastShownAt \+ SHOWN_KEY_MAX_MS,/.test(PAGE));
+    assert.ok(/function useWatch\(active, onTick, \{ everyMs = WATCH_EVERY_MS, until, onEnd \} = \{\}\) \{/.test(PAGE));
     assert.ok(/isVisible: \(\) => document\.visibilityState === "visible",\s*isOnline: \(\) => navigator\.onLine !== false,/.test(PAGE));
     assert.equal(/setInterval\(/.test(PAGE), false, "no timer that runs in a hidden tab or without an end");
-    assert.ok(PAGE.includes("setShownIds((m) => ({ ...m, [agentId]: { keyId: made.key_id, listed: false } }));"));
+    assert.ok(PAGE.includes("setShownIds((m) => ({ ...m, [agentId]: { keyId: made.key_id, listed: false, shownAt: Date.now() } }));"));
     assert.ok(HOOK.includes('document.addEventListener("visibilitychange", onFocus);') && HOOK.includes('window.addEventListener("focus", onFocus);'));
     // Only an id is remembered beside the key, and nothing is sent to another tab or kept in storage.
     const all = ALL_AGENT_SRC.map(([, src]) => stripComments(src)).join("\n");

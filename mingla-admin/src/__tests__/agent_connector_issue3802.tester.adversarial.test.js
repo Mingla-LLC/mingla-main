@@ -727,7 +727,7 @@ describe("#3802 TG-11: a key on screen stays only while it is listed as active",
     const PAGE = stripComments(read("pages/AgentPage.jsx"));
     assert.match(PAGE, /\} else if \(verdict === "hide"\) \{\s*setFresh\(\(f\) => \(\{ \.\.\.f, \[a\.id\]: null \}\)\);\s*setShownIds\(\(m\) => \(\{ \.\.\.m, \[a\.id\]: null \}\)\);\s*setNotice\(\(n\) => \(\{ \.\.\.n, \[a\.id\]: REPLACED_ELSEWHERE_WORDS \}\)\);/);
     assert.equal(more.REPLACED_ELSEWHERE_WORDS, "This key was replaced or disconnected somewhere else, so it no longer works and is hidden here.");
-    assert.match(PAGE, /setShownIds\(\(m\) => \(\{ \.\.\.m, \[agentId\]: \{ keyId: made\.key_id, listed: false \} \}\)\);/, "what is remembered is the key's id, never the key");
+    assert.match(PAGE, /setShownIds\(\(m\) => \(\{ \.\.\.m, \[agentId\]: \{ keyId: made\.key_id, listed: false, shownAt: Date\.now\(\) \} \}\)\);/, "what is remembered is the key's id and when it was shown, never the key");
     assert.equal(/setShownIds\([^)]*made\.key\b(?!_id)/.test(PAGE), false);
   });
 });
@@ -808,12 +808,18 @@ describe("#3802 TG-14: the checks on a shown key start and stop with the key", (
   it("they run only while a key is on screen, read and send nothing but the ordinary list, and are cleared", () => {
     assert.match(PAGE, /const WATCH_EVERY_MS = 5_000;/);
     assert.match(PAGE, /const showingKey = AGENTS\.some\(\(a\) => !!shownIds\[a\.id\]\);/);
-    const at = PAGE.indexOf("useWatch(showingKey, () => refetch({ quiet: true }), {");
+    const at = PAGE.indexOf("useWatch(showingKey, () => {");
     assert.ok(at > 0);
     const watch = PAGE.slice(at, PAGE.indexOf("\n  });", at));
-    assert.match(watch, /forMs: SHOWN_KEY_MAX_MS,/);
-    assert.match(watch, /onEnd: \(\) => \{[\s\S]*setFresh\(\(f\) => \(\{ \.\.\.f, \[a\.id\]: null \}\)\);[\s\S]*KEY_HIDDEN_AFTER_WORDS/);
-    assert.equal(/made|key\b/.test(watch.replace(/showingKey|shownIds|KEY_HIDDEN_AFTER_WORDS|SHOWN_KEY_MAX_MS/g, "")), false, "the check carries no key");
+    assert.match(watch, /^useWatch\(showingKey, \(\) => \{\s*hideOldKeys\(Date\.now\(\)\);\s*refetch\(\{ quiet: true \}\);\s*\}, \{/);
+    assert.match(watch, /until: lastShownAt \+ SHOWN_KEY_MAX_MS,/);
+    assert.match(watch, /onEnd: \(\) => hideOldKeys\(Date\.now\(\) \+ 1\),/);
+    assert.equal(/fresh|made|key\b/.test(watch.replace(/showingKey/g, "")), false, "the check carries no key");
+    // What hides a key: it is dropped from the page's memory, by its agent, and the card says why.
+    const hide = PAGE.slice(PAGE.indexOf("const hideOldKeys = useCallback("), PAGE.indexOf("const showingKey"));
+    assert.match(hide, /const old = keysToHide\(shownRef\.current, at\);\s*if \(old\.length === 0\) return;\s*const cleared = Object\.fromEntries\(old\.map\(\(id\) => \[id, null\]\)\);/);
+    assert.match(hide, /setFresh\(\(f\) => \(\{ \.\.\.f, \.\.\.cleared \}\)\);\s*setShownIds\(\(m\) => \(\{ \.\.\.m, \.\.\.cleared \}\)\);[\s\S]*KEY_HIDDEN_AFTER_WORDS/);
+    assert.equal(/made|\bkey\b/.test(hide), false, "hiding names agents, never a key");
     // The helper: only while this tab is visible and online, with an end, and cleared with the key.
     const helper = PAGE.slice(PAGE.indexOf("function useWatch("), PAGE.indexOf("const ENDPOINT"));
     assert.match(helper, /if \(!active\) return undefined;/);

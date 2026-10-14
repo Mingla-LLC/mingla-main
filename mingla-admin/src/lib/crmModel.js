@@ -876,41 +876,118 @@ export const IDENT_PLATFORMS = [
 export const MAX_IDENTIFIERS = 20;
 
 const asciiLower = (text) => text.replace(/[A-Z]/g, (c) => c.toLowerCase());
-const trimSpaces = (text) => text.replace(/^ +| +$/g, "");
-const HANDLE_HOSTS =
-  /^(instagram\.com\/|tiktok\.com\/@|tiktok\.com\/|x\.com\/|twitter\.com\/|facebook\.com\/|youtube\.com\/@|youtube\.com\/|linkedin\.com\/in\/|linkedin\.com\/company\/|wa\.me\/)/;
+// Characters nobody can see, and every kind of space: the same two lists the
+// server's crm_ident_key() uses, written as code points on purpose.
+/* eslint-disable no-misleading-character-class, no-control-regex */
+const IDENT_HIDDEN = /[\u0000-\u0008\u000E-\u001F\u007F-\u0084\u0086-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF9-\uFFFB\u{E0000}-\u{E0FFF}]/gu;
+const IDENT_SPACE = /[\u0009-\u000D\u0020\u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+/gu;
+/* eslint-enable no-misleading-character-class, no-control-regex */
+const IDENT_NAME = /^[a-z0-9._-]{2,60}$/;
+const IDENT_SITES = ["instagram.com", "tiktok.com", "x.com", "twitter.com", "facebook.com", "youtube.com", "linkedin.com", "wa.me"];
+// Path words of those sites that are never a person's name.
+const IDENT_WORDS = new Set([
+  "profile.php", "channel", "c", "user", "pages", "people", "groups", "reel", "reels", "stories", "p",
+  "share", "sharer", "sharer.php", "in", "company", "school", "pub", "showcase", "explore", "tv", "watch",
+  "shorts", "playlist", "hashtag", "tag", "tags", "intent", "i", "home", "search", "video", "videos",
+  "events", "photo", "photos", "posts", "status", "embed", "live", "feed", "results", "story.php",
+  "permalink.php", "login", "signup", "accounts", "about", "help", "settings", "discover", "foryou",
+  "following", "music", "t", "gaming", "marketplace", "profile",
+]);
+
+/** The text every kind is read from: composed, nothing hidden, plain single spaces, a to z lower-cased. */
+function identText(value) {
+  return asciiLower(value.normalize("NFC").replace(IDENT_HIDDEN, "").replace(IDENT_SPACE, " ").replace(/^ +| +$/g, ""));
+}
+
+/** A site as it is compared: without www., m. or mobile., and LinkedIn without its country. */
+function identSite(site) {
+  return site.replace(/^(www|m|mobile)[.](?=.*[.])/, "").replace(/^[a-z]{2}[.]linkedin[.]com$/, "linkedin.com");
+}
 
 /**
  * The normal form of an email, a phone number or a handle, or null when the
  * value is not usable as that kind. A twin of the server's own function: the
  * two are held together by one table of examples that both suites assert.
- *   email:  A to Z lower-cased, spaces at the ends removed; a name, an @ and
- *           a domain; at most 254 characters
+ * First, for every kind, the text is composed (NFC), characters nobody can
+ * see are removed, every kind of space becomes one plain space, the ends are
+ * trimmed and A to Z are lower-cased; more than 200 characters is not usable.
+ *   email:  a name, an @ and a domain
  *   phone:  digits only; a leading 00 is dropped; 7 to 15 digits
- *   handle: lower-cased; http(s)://, then www., then one known profile
- *           address removed; then everything from the first /, ? or #; then a
- *           leading @; 2 to 60 of a-z 0-9 . _ -
+ *   handle: written plainly (alice, @alice): 2 to 60 of a-z 0-9 . _ -
+ *           written as a link: on a known profile site, the name in the
+ *           address, or the id after a path word that is not a name; on any
+ *           other site, site/path (an id= value is kept). A site with no
+ *           path is not a handle.
  */
 export function identKey(kind, value) {
   if (typeof kind !== "string" || typeof value !== "string") return null;
-  if (kind === "email") {
-    const v = asciiLower(trimSpaces(value));
-    return /^[^@\s]+@[^@\s]+[.][^@\s]+$/.test(v) && [...v].length <= 254 ? v : null;
-  }
+  let t = identText(value);
+  if ([...t].length > 200) return null;
+  if (kind === "email") return /^[^@ ]+@[^@ ]+[.][^@ ]+$/u.test(t) ? t : null;
   if (kind === "phone") {
-    const v = value.replace(/[^0-9]/g, "").replace(/^00/, "");
+    const v = t.replace(/[^0-9]/g, "").replace(/^00/, "");
     return v.length >= 7 && v.length <= 15 ? v : null;
   }
-  if (kind === "handle") {
-    const v = asciiLower(trimSpaces(value))
-      .replace(/^https?:\/\//, "")
-      .replace(/^www[.]/, "")
-      .replace(HANDLE_HOSTS, "")
-      .replace(/[/?#][\s\S]*$/, "")
-      .replace(/^@/, "");
-    return /^[a-z0-9._-]{2,60}$/.test(v) ? v : null;
+  if (kind !== "handle") return null;
+
+  // Written plainly.
+  if (!/^https?:\/\//.test(t) && !/^www[.]/.test(t) && !/[/?#]/.test(t)) {
+    const name = t.replace(/^@/, "");
+    return IDENT_NAME.test(name) && !IDENT_SITES.includes(name) ? name : null;
   }
-  return null;
+
+  // Written as a link.
+  t = t.replace(/^https?:\/\//, "");
+  let site = /^[^/?#]*/.exec(t)[0];
+  const rest = t.slice(site.length);
+  if (!site.includes(".")) {
+    const name = site.replace(/^@/, "");
+    return IDENT_NAME.test(name) ? name : null;
+  }
+  site = identSite(site);
+  if (!/^[a-z0-9-]+([.][a-z0-9-]+)+$/.test(site)) return null;
+  const path = /^[^?#]*/.exec(rest)[0].replace(/\/+/g, "/").replace(/^\/+|\/+$/g, "");
+  const query = /^[^?#]*[?]([^#]*)/.exec(rest);
+  const idMatch = /&id=([a-z0-9._-]{2,60})(?:&|$)/.exec(`&${query ? query[1] : ""}`);
+  const id = idMatch ? idMatch[1] : null;
+
+  if (IDENT_SITES.includes(site)) {
+    if (path === "") return null;
+    const segs = path.split("/");
+    const one = segs[0].replace(/^@/, "");
+    if (!IDENT_WORDS.has(one)) return IDENT_NAME.test(one) ? one : null;
+    if (segs.length === 1 && id) return id;
+    if (site === "facebook.com" && (one === "pages" || one === "people") && segs.length === 3 && /^[0-9]{2,60}$/.test(segs[2])) {
+      return segs[2];
+    }
+    const two = (segs[1] || "").replace(/^@/, "");
+    if (IDENT_NAME.test(two) && !IDENT_WORDS.has(two)) return two;
+  } else if (path === "" && !id) {
+    return null;
+  }
+  const key = `${site}${path !== "" ? `/${path}` : ""}${id ? `?id=${id}` : ""}`;
+  return key.includes(" ") ? null : key;
+}
+
+/** Whether a phone number was typed with its country code (a leading + or 00). */
+function phoneHasCountry(value) {
+  return /^([+]|00)/.test(String(value || "").replace(/[^0-9+]/g, ""));
+}
+
+/**
+ * How two phone numbers match, the way the server matches them: "exact" when
+ * their digits are equal; "last_9_digits" when their last nine digits are
+ * equal, at least one was typed without a country code, and they are not the
+ * same length (one is then the other without its prefix); "" otherwise.
+ */
+export function phoneMatch(a, b) {
+  const ka = identKey("phone", String(a ?? ""));
+  const kb = identKey("phone", String(b ?? ""));
+  if (!ka || !kb) return "";
+  if (ka === kb) return "exact";
+  if (ka.length < 9 || kb.length < 9 || ka.slice(-9) !== kb.slice(-9)) return "";
+  if (phoneHasCountry(a) && phoneHasCountry(b)) return "";
+  return ka.length !== kb.length ? "last_9_digits" : "";
 }
 
 /**
@@ -928,7 +1005,9 @@ export function detectIdentKind(text) {
 
 /** The platform a handle was written as a profile address of, or "". */
 export function detectPlatform(text) {
-  const v = asciiLower(String(text || "").trim()).replace(/^https?:\/\//, "").replace(/^www[.]/, "");
+  const typed = identText(String(text || "")).replace(/^https?:\/\//, "");
+  const host = /^[^/?#]*/.exec(typed)[0];
+  const v = identSite(host) + typed.slice(host.length);
   if (v.startsWith("instagram.com/")) return "instagram";
   if (v.startsWith("tiktok.com/")) return "tiktok";
   if (v.startsWith("x.com/") || v.startsWith("twitter.com/")) return "x";
@@ -961,10 +1040,14 @@ export function addIdentifier(list, { kind, value, platform = "" }) {
           ? "An email needs a name, an @ and a domain."
           : k === "phone"
             ? "A phone number needs 7 to 15 digits."
-            : "A handle is 2 to 60 letters, digits, dots or underscores, with or without @ or its profile address.",
+            : "A handle is 2 to 60 letters, digits, dots or underscores, with or without @, or the link to a profile or page (a site with nothing after it is not one).",
     };
   }
-  if (current.some((i) => i.kind === k && (i.key || identKey(i.kind, i.value)) === key)) {
+  if (
+    current.some(
+      (i) => i.kind === k && ((i.key || identKey(i.kind, i.value)) === key || (k === "phone" && phoneMatch(i.value, typed) !== ""))
+    )
+  ) {
     return { message: "That one is already on this record." };
   }
   if (current.length >= MAX_IDENTIFIERS) return { message: `A record holds at most ${MAX_IDENTIFIERS} of these.` };
@@ -1051,29 +1134,54 @@ export function logRuleWarning(record, entry) {
 
 /**
  * What the Add form says about one answer of the contactable check, or null
- * when the candidate is new: { id, name, line, rule }.
+ * when the candidate is new: { id, name, byIdentifier, line, rule, others }.
+ * Every record the candidate matches is weighed by the server; the one named
+ * here is the one with the strictest contact rule, so a rule on ANY match is
+ * the rule shown.
  *   line  "Looks like Palm Court Kitchen (same email)"
+ *   rule  "Do not contact: asked us to stop", or "" when no match has one
  */
 export function contactHit(result) {
   if (!result || !result.record || !["exists", "do_not_contact", "warm_intro_only"].includes(result.verdict)) return null;
-  const on = Array.isArray(result.matched_on) ? result.matched_on : [];
+  const matches = Array.isArray(result.matches) ? result.matches.filter((m) => m && m.record) : [];
+  // The strictest rule on any match: the first record when the server sent its
+  // list in that order, and looked for here in case it did not.
+  const ruled =
+    matches.find((m) => m.record.contact_rule === "do_not_contact") ||
+    matches.find((m) => m.record.contact_rule === "warm_intro_only") ||
+    null;
+  const own = matches.find((m) => m.record.id === result.record.id) || null;
+  const chosen = ruled && !contactRuleView(result.record) ? ruled : own;
+  const record = chosen ? chosen.record : result.record;
+  const on = chosen ? (Array.isArray(chosen.matched_on) ? chosen.matched_on : []) : Array.isArray(result.matched_on) ? result.matched_on : [];
+  const byName = chosen ? !!chosen.name_match && on.length === 0 : result.match === "name";
   const what = [...new Set(on.map((m) => (m.kind === "phone" ? "phone number" : m.kind)))];
-  const same = result.match === "name" ? "same name" : what.length ? `same ${what.join(" and ")}` : "same details";
-  const rule = contactRuleView(result.record);
+  const same = byName ? "same name" : what.length ? `same ${what.join(" and ")}` : "same details";
+  const rule = contactRuleView(record);
   return {
-    id: result.record.id,
-    name: result.record.name,
-    byIdentifier: result.match === "identifier" || result.match === "both",
-    line: `Looks like ${result.record.name} (${same})`,
+    id: record.id,
+    name: record.name,
+    byIdentifier: !byName,
+    line: `Looks like ${record.name} (${same})`,
     rule: rule ? `${rule.label}${rule.reason ? `: ${rule.reason}` : ""}` : "",
+    others: Math.max(0, matches.length > 0 ? matches.length - 1 : Number(result.other_matches) || 0),
   };
+}
+
+/**
+ * The record a refusal names, from the server's own sentence, or "":
+ *   '"x" already belongs to "Palm Court Kitchen" in Hosts. Open that record instead.'
+ */
+export function sharedDetailHolder(message) {
+  const m = /already belongs to "(.+)" in (Hosts|Creators)\./.exec(String(message || ""));
+  return m ? m[1] : "";
 }
 
 /** The two texts of "City missing?", by role. */
 export function missingCityWords(canAddRegion) {
   return canAddRegion
     ? {
-      text: "Cities come from Launch Cities. Add the city in Place Pool; it is added as not live, and appears here straight away.",
+      text: "Cities come from Launch Cities. Add the city in Place Pool: it opens in a new tab, so what you have typed here stays. The city is added as not live; press Refresh regions here afterwards.",
       primary: "Open Place Pool",
       secondary: "Cancel",
       refresh: "Refresh regions",

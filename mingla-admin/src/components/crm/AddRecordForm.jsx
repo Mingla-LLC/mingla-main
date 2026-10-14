@@ -4,7 +4,7 @@ import { CONTROL_CLASS, Field, MISSING_CITY, MISSING_CITY_LABEL, Select } from "
 import { IdentifiersField } from "./IdentifiersField";
 import { MissingCityLayer } from "./MissingCityLayer";
 import { OwnersField } from "./OwnersField";
-import { contactHit, displayOwners, findDuplicates, identifiersToSend, stageLabel } from "../../lib/crmModel";
+import { contactHit, contactRuleView, displayOwners, findDuplicates, identifiersToSend, stageLabel } from "../../lib/crmModel";
 import { contactCheck, newRequestKey } from "../../services/crmService";
 
 /** How long after the last key press the contactable check is asked. */
@@ -116,6 +116,13 @@ export function AddRecordForm({
   // Someone who holds the same email, phone or handle under another name.
   const shared = hit && hit.byIdentifier && !exact && !lookalikes.some((r) => r.id === hit.id) ? hit : null;
   const blockedByShared = !!shared && !addAnyway;
+  // A contact rule on any record this one matches is always said, whichever
+  // way it matched.
+  const ruleNote = hit && hit.rule && !shared ? hit : null;
+  const submitRef = useRef(null);
+  useEffect(() => {
+    if (addAnyway) submitRef.current?.focus();
+  }, [addAnyway]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -163,7 +170,11 @@ export function AddRecordForm({
           name: result.duplicate.name,
           byIdentifier: true,
           line: `Looks like ${result.duplicate.name} (same contact detail)`,
-          rule: "",
+          rule: (() => {
+            const rule = contactRuleView(result.duplicate);
+            return rule ? `${rule.label}${rule.reason ? `: ${rule.reason}` : ""}` : "";
+          })(),
+          others: 0,
         },
       });
       setAddAnyway(false);
@@ -278,6 +289,21 @@ export function AddRecordForm({
             return { ok: true };
           }}
         />
+        {ruleNote && (
+          <div
+            role="status"
+            className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--color-warning-500)] bg-[var(--color-warning-50)] p-2.5 text-sm text-[var(--color-warning-700)] sm:col-span-2"
+          >
+            <p className="min-w-0 break-words">
+              <b>{ruleNote.name}</b> is marked {ruleNote.rule}.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="secondary" size="sm" className="max-sm:h-11" onClick={() => onOpenExisting(ruleNote.id)}>
+                Open it
+              </Button>
+            </div>
+          </div>
+        )}
         {shared && (
           <div
             role="status"
@@ -347,7 +373,7 @@ export function AddRecordForm({
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" loading={busy} disabled={disabled || !!exact}>
+        <Button ref={submitRef} type="submit" loading={busy} disabled={disabled || !!exact}>
           Add {singular}
         </Button>
         <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>

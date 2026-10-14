@@ -22,6 +22,7 @@ export function ContactRuleField({ record, disabled = false, onSave }) {
   const [message, setMessage] = useState("");
   const keepRef = useRef(null);
   const selectRef = useRef(null);
+  const focusRule = useRef(false);
 
   // What the server holds changed (saved here, or by someone else): follow it.
   useEffect(() => {
@@ -31,6 +32,13 @@ export function ContactRuleField({ record, disabled = false, onSave }) {
   useEffect(() => {
     if (asking) keepRef.current?.focus();
   }, [asking]);
+  // After the rule is lifted (or kept), focus is back on the rule menu: only
+  // once the save has ended, because a control that is still busy cannot take it.
+  useEffect(() => {
+    if (busy || asking || !focusRule.current) return;
+    focusRule.current = false;
+    selectRef.current?.focus();
+  }, [busy, asking]);
 
   const changed = rule !== stored || (rule !== "" && reason.trim() !== storedReason);
   const ready = rule === "" ? stored !== "" : reason.trim() !== "" && changed;
@@ -57,15 +65,15 @@ export function ContactRuleField({ record, disabled = false, onSave }) {
     send({ contact_rule: rule, contact_rule_reason: reason.trim() });
   };
   const lift = async () => {
+    focusRule.current = true;
     setAsking(false);
     await send({ contact_rule: null });
-    selectRef.current?.focus();
   };
   const keep = () => {
+    focusRule.current = true;
     setAsking(false);
     setRule(stored);
     setReason(storedReason);
-    selectRef.current?.focus();
   };
 
   return (

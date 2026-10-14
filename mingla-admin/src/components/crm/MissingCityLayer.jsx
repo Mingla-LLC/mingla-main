@@ -2,7 +2,8 @@
 //
 // Regions are the Launch Cities list. An owner or admin adds a city in Place
 // Pool (it is added as not live, and shows here straight away); everyone
-// else is told who can. Nothing on the pipeline pages creates a city.
+// else is told who can. Nothing on the pipeline pages creates a city. Place
+// Pool opens in a new tab, so nothing typed on this page is lost.
 import { useEffect, useRef } from "react";
 import { Button } from "../ui/Button";
 import { missingCityWords } from "../../lib/crmModel";
@@ -35,7 +36,8 @@ export function MissingCityLayer({ canAddRegion, onClose, onRefresh }) {
               type="button"
               className="max-sm:h-11"
               onClick={() => {
-                window.location.hash = "#/placepool";
+                // A new tab: the form behind this keeps everything typed in it.
+                window.open(`${window.location.pathname}${window.location.search}#/placepool`, "_blank", "noopener");
               }}
             >
               {words.primary}

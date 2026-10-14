@@ -27,23 +27,37 @@ export function AgentSetupCard({ agent, view, message, busy, onCopy, onCopyAgain
   const boxRef = useRef(null);
   const copyRef = useRef(null);
   const keepRef = useRef(null);
+  const disconnectRef = useRef(null);
   const headingId = `agent-setup-${agent.id}`;
   const lastState = useRef(view.state);
+  // Set by a press that removes the pressed button (Done, Keep, Disconnect):
+  // when the card has settled, focus goes to its way forward.
+  const afterPress = useRef(false);
+  const wasAsking = useRef(false);
 
   // When the card changes state, focus follows: to the button that makes a
-  // new message once one has run out, otherwise to the line that says what
-  // happened, so a keyboard and a screen reader are never left behind.
+  // new message once one has run out or after Done, otherwise to the line
+  // that says what happened, so a keyboard and a screen reader are never
+  // left behind. A change nobody pressed for, minutes later, moves nothing.
   useEffect(() => {
     if (lastState.current === view.state) return;
     const from = lastState.current;
     lastState.current = view.state;
+    if (afterPress.current) {
+      afterPress.current = false;
+      (copyRef.current || statusRef.current)?.focus();
+      return;
+    }
     if (from === "asking" && view.state !== "ready" && view.state !== "blocked" && view.state !== "failed" && view.state !== "lost") return;
+    if (from === "used" && (view.state === "used_connected" || view.state === "used_unused")) return;
     if (view.focus === "copy") copyRef.current?.focus();
     else if (view.state === "confirm") keepRef.current?.focus();
     else if (["ready", "blocked", "used", "failed", "lost"].includes(view.state)) statusRef.current?.focus();
   }, [view.state, view.focus]);
 
   // The browser did not copy: the message is selected, so one key press does.
+  // Each press that still did not copy selects it again and puts focus on it.
+  const firstLine = view.lines[0] || "";
   useEffect(() => {
     if (!view.selectMessage || !message) return;
     const node = boxRef.current;
@@ -54,18 +68,34 @@ export function AgentSetupCard({ agent, view, message, busy, onCopy, onCopyAgain
       selection.removeAllRanges();
       selection.addRange(range);
     }
-  }, [view.selectMessage, message]);
+    if (firstLine.includes("still didn't copy")) node?.focus();
+  }, [view.selectMessage, message, firstLine]);
 
+  // The Disconnect question: focus goes to Keep when it opens; back to the
+  // Disconnect button when it is closed without an answer; to the line that
+  // says what is happening when Disconnect was pressed.
   useEffect(() => {
-    if (asking) keepRef.current?.focus();
+    if (asking) {
+      wasAsking.current = true;
+      keepRef.current?.focus();
+      return;
+    }
+    if (!wasAsking.current) return;
+    wasAsking.current = false;
+    if (afterPress.current) statusRef.current?.focus();
+    else disconnectRef.current?.focus();
   }, [asking]);
 
   const press = (id) => {
     if (id === "copy") onCopy(agent.id);
-    else if (id === "again") onCopyAgain(agent.id);
-    else if (id === "done") onDone(agent.id);
-    else if (id === "keep") onKeep(agent.id);
-    else if (id === "disconnect") setAsking(true);
+    else if (id === "again") onCopyAgain(agent.id, boxRef.current);
+    else if (id === "done") {
+      afterPress.current = true;
+      onDone(agent.id);
+    } else if (id === "keep") {
+      afterPress.current = true;
+      onKeep(agent.id);
+    } else if (id === "disconnect") setAsking(true);
   };
   const onKeyDown = (event) => {
     if (event.key !== "Escape") return;
@@ -74,6 +104,7 @@ export function AgentSetupCard({ agent, view, message, busy, onCopy, onCopyAgain
       setAsking(false);
     } else if (view.state === "confirm") {
       event.stopPropagation();
+      afterPress.current = true;
       onKeep(agent.id);
     }
   };
@@ -145,6 +176,7 @@ export function AgentSetupCard({ agent, view, message, busy, onCopy, onCopyAgain
               disabled={!!view.offlineWords}
               title={view.offlineWords || undefined}
               onClick={() => {
+                afterPress.current = true;
                 setAsking(false);
                 onDisconnect(agent.id);
               }}
@@ -162,7 +194,7 @@ export function AgentSetupCard({ agent, view, message, busy, onCopy, onCopyAgain
           {view.buttons.map((b) => (
             <Button
               key={b.id}
-              ref={b.id === "copy" ? copyRef : b.id === "keep" ? keepRef : undefined}
+              ref={b.id === "copy" ? copyRef : b.id === "keep" ? keepRef : b.id === "disconnect" ? disconnectRef : undefined}
               type="button"
               variant={b.variant === "primary" ? undefined : b.variant}
               loading={!!b.busy || (busy && b.id === "copy")}
