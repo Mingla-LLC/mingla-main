@@ -527,7 +527,7 @@ test("#3802 H-3: every refusal of a key takes the fixed wait, whatever the cause
   assert.equal(slept.length, 0);
 });
 
-test("#3802 H-4: the wrong-key count is per network address, and a key that works never adds to it", async () => {
+test("#3802 H-4: wrong keys are never counted: each is the same refusal, from any address, and a key that works is never slowed", async () => {
   handle = newHandler();
   const json: [string, string] = ["content-type", "application/json"];
   const good = s.keys["admin.claude"];
@@ -545,34 +545,22 @@ test("#3802 H-4: the wrong-key count is per network address, and a key that work
       k: s.ids["admin.claude"],
     });
   }
-  // Twenty-nine wrong keys there, then the working key: still served.
-  for (let i = 0; i < 29; i++) {
-    assert.equal(
-      (await ask([bearer(strangerKey()), json], PING, { from: "203.0.113.9" }))
-        .status,
-      401,
-    );
+  // A hundred wrong keys there: each one the same plain refusal, never a wait.
+  let first = "";
+  for (let i = 0; i < 100; i++) {
+    const r = await ask([bearer(strangerKey()), json], PING, {
+      from: "203.0.113.9",
+    });
+    assert.equal(r.status, 401, `wrong key ${i + 1}`);
+    assert.equal(r.headers["retry-after"], undefined);
+    if (i === 0) first = r.body;
+    assert.equal(r.body, first);
   }
+  // The working key there is still served, and so is everyone elsewhere.
   assert.equal(
     (await ask([bearer(good), json], PING, { from: "203.0.113.9" })).status,
     200,
   );
-  // The thirtieth wrong key there starts the wait for that address...
-  assert.equal(
-    (await ask([bearer(strangerKey()), json], PING, { from: "203.0.113.9" }))
-      .status,
-    401,
-  );
-  const waiting = await ask([bearer(strangerKey()), json], PING, {
-    from: "203.0.113.9",
-  });
-  assert.equal(waiting.status, 429);
-  assert.equal(waiting.headers["retry-after"], "60");
-  assert.match(
-    waiting.json.error.message,
-    /^Too many requests with a key that cannot be used\. Wait 60 seconds, then try again\.$/,
-  );
-  // ...and for no other address.
   assert.equal(
     (await ask([bearer(good), json], PING, { from: "203.0.113.10" })).status,
     200,
@@ -582,25 +570,13 @@ test("#3802 H-4: the wrong-key count is per network address, and a key that work
       .status,
     401,
   );
-  // The wait ends by itself.
+  // Time passing changes nothing either way.
   clock += 61_000;
   assert.equal(
     (await ask([bearer(strangerKey()), json], PING, { from: "203.0.113.9" }))
       .status,
     401,
   );
-  // Wrong keys spread thinly never trip it: twenty-nine a minute, for five minutes.
-  for (let minute = 0; minute < 5; minute++) {
-    for (let i = 0; i < 29; i++) {
-      assert.equal(
-        (await ask([bearer(strangerKey()), json], PING, {
-          from: "203.0.113.11",
-        })).status,
-        401,
-      );
-    }
-    clock += 60_000;
-  }
 });
 
 test("#3802 H-5: text other people wrote reaches the agent as data and cannot shape what the connector says", async () => {
@@ -736,8 +712,8 @@ test("#3802 H-6: every tool, and the connector's first words, tell the agent tha
     );
     assert.equal(
       t.annotations.readOnlyHint,
-      true,
-      `${t.name}: this part only reads`,
+      !TEAM_AGENT_TOOLS.find((x) => x.name === t.name)!.writes,
+      `${t.name}: says whether it reads or writes`,
     );
     assert.equal(t.annotations.destructiveHint, false, t.name);
     assert.equal(t.annotations.openWorldHint, false, t.name);
@@ -763,10 +739,10 @@ test("#3802 H-6: every tool, and the connector's first words, tell the agent tha
     said.slice(0, 300),
     /You act as the person whose key this is, with their role and nothing more\./,
   );
-  assert.match(said, /You never send a message, and you cannot delete\./);
+  assert.match(said, /You never send a message and you never delete\./);
   assert.match(
     said,
-    /You cannot add, change, move, log, draft, send or delete here yet\./,
+    /A record marked Do not contact or Warm intro only is not yours to message: say so and stop\./,
   );
   // It promises no tool that is not there.
   const names = new Set(TEAM_AGENT_TOOLS.map((t) => t.name));
@@ -774,7 +750,7 @@ test("#3802 H-6: every tool, and the connector's first words, tell the agent tha
     TEAM_AGENT_TOOLS.flatMap((t) => Object.keys(t.inputSchema.properties)),
   );
   const named = said.match(/\b[a-z]+_[a-z_]+\b/g) ?? [];
-  assert.ok(named.length >= 7);
+  assert.ok(named.length >= 3);
   for (const word of named) {
     assert.ok(
       names.has(word) || argNames.has(word),
@@ -1145,7 +1121,7 @@ test("#3802 H-9: six keys used at once, sixty requests: every answer is for the 
 //         refused in plain words
 // ---------------------------------------------------------------------------
 
-test("#3802 H-10: wrong keys never make a working key wait, and a sender cannot choose which count it lands in", async () => {
+test("#3802 H-10: wrong keys never make a working key wait, and nothing a sender writes changes how a wrong key is answered", async () => {
   // Requests in a flood arrive together, so here the clock stands still
   // while a refusal waits: every wait is recorded, none moves the minute on.
   clock = 5_000_000;
@@ -1168,81 +1144,50 @@ test("#3802 H-10: wrong keys never make a working key wait, and a sender cannot 
   const right = (from: string | null) =>
     ask([bearer(good), json], PING, { from });
 
-  // Thirty-five wrong keys from one address: that address is told to wait.
-  let last = 0;
-  for (let i = 0; i < 35; i++) last = (await wrong("203.0.113.40")).status;
-  assert.equal(last, 429);
+  // Thirty-five wrong keys from one address: each is the plain refusal.
+  for (let i = 0; i < 35; i++) {
+    assert.equal((await wrong("203.0.113.40")).status, 401);
+  }
   // The working key from that very address is served, at once.
   const waits = slept.length;
   const served = await right("203.0.113.40");
   assert.equal(served.status, 200);
   assert.deepEqual(served.json, { jsonrpc: "2.0", id: 1, result: {} });
   assert.equal(slept.length, waits, "and is not made to wait");
-  assert.equal(
-    (await wrong("203.0.113.40")).status,
-    429,
-    "a wrong key there still waits",
-  );
 
-  // What a sender writes in front of the platform's entry changes nothing:
-  // thirty wrong keys with thirty different first entries are one address.
-  for (let i = 0; i < 29; i++) {
-    assert.equal((await wrong(`198.51.100.${i}, 203.0.113.41`)).status, 401);
-  }
-  assert.equal((await wrong("198.51.100.99, 203.0.113.41")).status, 401);
-  assert.equal((await wrong("198.51.100.100, 203.0.113.41")).status, 429);
-  // And naming someone else's address first puts nothing on their count.
-  for (let i = 0; i < 40; i++) {
-    const r = await wrong(`203.0.113.42, 198.51.101.${i}`);
-    assert.equal(r.status, 401, `first entry is never counted (${i})`);
-  }
-  assert.equal(
-    (await wrong("203.0.113.42")).status,
-    401,
-    "the named address has no count against it",
-  );
-  assert.equal((await right("203.0.113.42")).status, 200);
-
-  // No usable entry (none, or text that is not an address): no address
-  // count at all. Forty in a row are each simply refused.
-  for (const from of [null, "x".repeat(70), "unknown", "<script>", ""]) {
-    for (let i = 0; i < 8; i++) {
-      assert.equal((await wrong(from)).status, 401, String(from).slice(0, 12));
+  // Whatever a sender writes about where it came from, or nothing at all:
+  // the same refusal, byte for byte, and never an instruction to wait.
+  const plain = await wrong("203.0.113.40");
+  let sent = 0;
+  for (
+    const from of [
+      "198.51.100.1, 203.0.113.41",
+      "203.0.113.42, 198.51.101.7",
+      "203.0.113.42",
+      null,
+      "x".repeat(70),
+      "unknown",
+      "<script>",
+      "",
+    ]
+  ) {
+    for (let i = 0; i < 50; i++) {
+      const r = await wrong(from);
+      sent += 1;
+      assert.equal(r.status, 401, String(from).slice(0, 12));
+      assert.equal(r.body, plain.body);
+      assert.equal(r.headers["retry-after"], undefined);
     }
   }
-
-  // The overall ceiling: wrong keys from many addresses, until every wrong
-  // key is told to wait, whoever sends it.
-  let ceiling = 0;
-  let sent = 0;
-  for (let i = 0; i < 400 && ceiling !== 429; i++) {
-    ceiling = (await wrong(`10.90.${i >> 8}.${i & 255}`)).status;
-    sent += 1;
-  }
-  assert.equal(ceiling, 429, "the overall ceiling is reached");
-  assert.ok(
-    sent <= 300,
-    `within three hundred wrong keys in the minute (${sent} more were needed)`,
-  );
-  const fresh = await wrong("192.0.2.200");
-  assert.equal(
-    fresh.status,
-    429,
-    "a wrong key from an address never seen before waits too",
-  );
-  assert.equal(fresh.headers["retry-after"], "60");
-  assert.match(
-    fresh.json.error.message,
-    /^Too many requests with a key that cannot be used\. Wait \d+ seconds, then try again\.$/,
-  );
-  assert.equal(fresh.json.id, null);
-  // Told to wait, a refusal still takes the fixed time: the wait is not a
-  // faster way to learn anything.
+  assert.equal(sent, 400, "far past any count kept before");
+  // A refusal still takes the fixed time: nothing is learned from how fast
+  // it comes.
   const before = slept.length;
   await wrong("192.0.2.201");
   assert.deepEqual(slept.slice(before), [MIN_REFUSAL_MS]);
   const noKey = await ask([json], PING, { from: "192.0.2.202" });
-  assert.equal(noKey.status, 429);
+  assert.equal(noKey.status, 401);
+  assert.equal(noKey.body, plain.body);
 
   // Through all of it a working key is served, from anywhere, at once.
   await s.sql("delete from public.team_agent_calls where key_id = :'k';", {
@@ -1258,10 +1203,6 @@ test("#3802 H-10: wrong keys never make a working key wait, and a sender cannot 
   }
   const day = await tool(good, "my_day", {});
   assert.equal(day.json.result.isError, false);
-
-  // The ceiling lifts by itself.
-  clock += 61_000;
-  assert.equal((await wrong("192.0.2.203")).status, 401);
 });
 
 test("#3802 H-11: an answer that depends on the day says the day and the zone first; hostile dates and zones are refused in plain words", async () => {

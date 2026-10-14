@@ -9,7 +9,7 @@
  *   U-5   tools/list by role; what a tool listing carries
  *   U-6   tools/call: a result, a refusal in plain words, an unknown tool,
  *         arguments of the wrong shape
- *   U-7   limits: the key's own, and wrong keys from one network address
+ *   U-7   limits: the key's own; a wrong key is never counted or made to wait
  *   U-8   the guide and the routines
  *   U-9   nothing internal is named in anything that leaves
  *   U-10  the log: what a line holds and what it never holds
@@ -25,12 +25,9 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   createTeamAgentHandler,
-  FAILED_KEYS_OVERALL_PER_MINUTE,
-  FAILED_KEYS_PER_MINUTE,
   INSTRUCTIONS,
   MAX_BODY_BYTES,
   MIN_REFUSAL_MS,
-  platformAddress,
   renderGuideMarkdown,
   SUPPORTED_PROTOCOL_VERSIONS,
 } from "../teamAgentMcp.ts";
@@ -620,9 +617,9 @@ Deno.test("#3802 U-4: initialize carries the three capabilities, the server's na
   assert(INSTRUCTIONS.includes("You never send a message"));
   // It names only tools that exist.
   const named = (INSTRUCTIONS.match(/\b[a-z]+_[a-z_]+\b/g) ?? []).filter((n) =>
-    n !== "count_by"
+    n !== "count_by" && n !== "request_key"
   );
-  assert(named.length >= 7);
+  assert(named.length >= 3);
   for (const n of named) {
     assert(findTool(n), `the instructions name ${n}, which is not a tool`);
   }
@@ -726,8 +723,21 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     "check_names",
     "find_mingla_link",
     "list_beta_leads",
+    "check_contactable",
+    "add_records",
+    "upsert_record",
+    "update_records",
+    "move_stage",
+    "set_owners",
+    "log_activity",
+    "record_reply",
   ]);
-  assertEquals(names(owner), [...names(growth), "team_summary"]);
+  assertEquals(growth.length, 15);
+  assertEquals(owner.length, 16);
+  assertEquals(
+    [...names(owner)].sort(),
+    [...names(growth), "team_summary"].sort(),
+  );
   for (const t of owner) {
     assertEquals(Object.keys(t).sort(), [
       "annotations",
@@ -737,7 +747,12 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
       "title",
     ]);
     assertMatch(t.name, /^[a-z][a-z_]*$/);
-    assertEquals(t.annotations.readOnlyHint, true);
+    assertEquals(
+      t.annotations.readOnlyHint,
+      !TEAM_AGENT_TOOLS.find((x) => x.name === t.name)!.writes,
+      t.name,
+    );
+    assertEquals(t.annotations.idempotentHint, true, t.name);
     assertEquals(t.annotations.destructiveHint, false);
     assertEquals(t.annotations.openWorldHint, false);
     assert(t.description.length < 1900, `${t.name} description is too long`);
@@ -748,12 +763,20 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     assertEquals(t.inputSchema.type, "object");
     assertEquals(t.inputSchema.additionalProperties, false);
   }
-  // Nothing in the manifest writes, deletes, sends or manages keys in this part.
+  // Seven tools write; nothing in the manifest deletes, sends or manages keys.
+  assertEquals(TEAM_AGENT_TOOLS.filter((t) => t.writes).map((t) => t.name), [
+    "add_records",
+    "upsert_record",
+    "update_records",
+    "move_stage",
+    "set_owners",
+    "log_activity",
+    "record_reply",
+  ]);
   for (const t of TEAM_AGENT_TOOLS) {
-    assertEquals(t.writes, false, t.name);
     for (const fn of t.reaches) {
       assert(
-        !/delete|restore|mark_sent|unsend|key_create|key_revoke|keys_mine|keys_overview|set_member|invite/
+        !/delete|restore|mark_sent|unsend|key_create|key_revoke|key_issue|keys_mine|keys_overview|setup_|set_member|invite/
           .test(fn),
         `${t.name} reaches ${fn}`,
       );
@@ -828,8 +851,8 @@ Deno.test("#3802 U-6: a tool that does not exist is an error, is never passed on
   for (
     const name of [
       "delete_record",
-      "add_records",
-      "move_stage",
+      "setup:redeem",
+      "undo_move",
       "save_drafts",
       "team_agent_key_create",
       "__proto__",
@@ -1120,48 +1143,34 @@ Deno.test("#3802 U-7: a key over its limit is told how long to wait", async () =
   );
 });
 
-Deno.test("#3802 U-7: thirty wrong keys from one address in a minute, and that address waits a minute", async () => {
+Deno.test("#3802 U-7: any number of wrong keys from one address get the same refusal, and nobody is made to wait", async () => {
   const h = harness();
   const from = (addr: string, key: string | null) =>
     post(rpc("ping"), {
       key,
       headers: { "x-forwarded-for": `10.0.0.1, ${addr}` },
     });
-  assertEquals(FAILED_KEYS_PER_MINUTE, 30);
-  for (let i = 0; i < 30; i++) {
-    const r = await h.handler(from("203.0.113.9", i % 2 ? KEY_UNKNOWN : null));
+  let first = "";
+  for (let i = 0; i < 400; i++) {
+    const r = await shape(
+      await h.handler(from("203.0.113.9", i % 2 ? KEY_UNKNOWN : null)),
+    );
     assertEquals(r.status, 401, `attempt ${i + 1}`);
-    await r.body?.cancel();
+    assertEquals(r.headers["retry-after"], undefined);
+    assert(!r.body.includes("203.0.113.9"));
+    if (i === 0) first = JSON.stringify(r);
+    assertEquals(JSON.stringify(r), first, `attempt ${i + 1}`);
   }
-  const blocked = await shape(
-    await h.handler(from("203.0.113.9", KEY_UNKNOWN)),
-  );
-  assertEquals(blocked.status, 429);
-  assertEquals(blocked.headers["retry-after"], "60");
-  assert(!blocked.body.includes("203.0.113.9"));
   const calls = h.seen.length;
-  // Another address is not affected.
+  // The same address with a working key is answered at once.
+  const same = await h.handler(from("203.0.113.9", KEY_GROWTH));
+  assertEquals(same.status, 200);
+  await same.body?.cancel();
+  // Another address is not affected either.
   const other = await h.handler(from("198.51.100.4", KEY_GROWTH));
   assertEquals(other.status, 200);
   await other.body?.cancel();
-  assertEquals(h.seen.length, calls + 1);
-  // A minute later the first address is served again.
-  h.tick(60_001);
-  const later = await h.handler(from("203.0.113.9", KEY_GROWTH));
-  assertEquals(later.status, 200);
-  await later.body?.cancel();
-  // Twenty-nine in a minute, then a pause, never blocks.
-  const h2 = harness();
-  for (let i = 0; i < 29; i++) {
-    await (await h2.handler(from("203.0.113.9", null))).body?.cancel();
-  }
-  h2.tick(60_001);
-  for (let i = 0; i < 29; i++) {
-    await (await h2.handler(from("203.0.113.9", null))).body?.cancel();
-  }
-  const fine = await h2.handler(from("203.0.113.9", KEY_GROWTH));
-  assertEquals(fine.status, 200);
-  await fine.body?.cancel();
+  assertEquals(h.seen.length, calls + 2);
 });
 
 // --------------------------------------------------------------------------
@@ -1534,7 +1543,7 @@ const INDEX = code(read("../../team-agent/index.ts"));
 const MCP = code(read("../teamAgentMcp.ts"));
 const TOOLS = code(read("../teamAgentTools.ts"));
 const MIGRATION = read(
-  "../../../migrations/20270825003802_issue_3802_wave4_agent_keys_gateway.sql",
+  "../../../migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql",
 );
 
 Deno.test("#3802 U-11: the function reaches one thing, reads two settings and logs one shaped line", () => {
@@ -1620,8 +1629,9 @@ Deno.test("#3802 U-11: the tools here and the gateway's list are the same list, 
     }
   }
   // Every function a tool reaches is named inside the gateway.
-  const gateway = /CREATE FUNCTION public\.team_agent_call\([\s\S]*?\n\$\$;/
-    .exec(MIGRATION);
+  const gateway =
+    /CREATE OR REPLACE FUNCTION public\.team_agent_call\([\s\S]*?\n\$\$;/
+      .exec(MIGRATION);
   assert(gateway);
   for (const t of TEAM_AGENT_TOOLS) {
     for (const fn of t.reaches) {
@@ -1633,7 +1643,15 @@ Deno.test("#3802 U-11: the tools here and the gateway's list are the same list, 
   }
 });
 
-Deno.test("#3802 U-11: nothing in this part sends, and the function's platform sign-in check is off on purpose", () => {
+Deno.test("#3802 U-11: no tool deletes, sends, or reaches a key function, and the function's platform sign-in check is off on purpose", () => {
+  for (const t of TEAM_AGENT_TOOLS) {
+    for (const fn of t.reaches) {
+      assert(
+        !/delete|restore|send|key_|keys_|setup_|set_member/.test(fn),
+        `${t.name} reaches ${fn}`,
+      );
+    }
+  }
   const withoutChecks = MIGRATION.replace(
     /^DO \$w4check\$[\s\S]*?^\$w4check\$;/m,
     "",
@@ -1658,8 +1676,9 @@ Deno.test("#3802 U-11: nothing in this part sends, and the function's platform s
 });
 
 // --------------------------------------------------------------------------
-// U-12 (rework): a working key is never made to wait by someone else's wrong
-// keys, and the address that is counted is one the sender cannot choose.
+// U-12: a wrong key is refused the same way however many came before it and
+// whatever the request says about where it came from; a working key is never
+// slowed down by anyone's wrong keys.
 // --------------------------------------------------------------------------
 const bad = (n: number) => "mgla_c_" + String(n).padStart(43, "b");
 const sendFrom = (forwarded: string | null, key: string | null) =>
@@ -1672,7 +1691,7 @@ Deno.test("#3802 U-12: after any number of wrong keys from an address, a working
   const h = harness({ minRefusalMs: MIN_REFUSAL_MS });
   for (let i = 0; i < 45; i++) {
     const r = await h.handler(sendFrom("198.51.100.7", bad(i)));
-    assertEquals(r.status, i < 30 ? 401 : 429, `wrong key ${i + 1}`);
+    assertEquals(r.status, 401, `wrong key ${i + 1}`);
     await r.body?.cancel();
   }
   const sleptBefore = h.slept.length;
@@ -1686,25 +1705,22 @@ Deno.test("#3802 U-12: after any number of wrong keys from an address, a working
     sleptBefore,
     "a working key is not slowed down either",
   );
-  // The wrong keys from there are still told to wait, in the same time class as any refusal.
+  // A wrong key from there is still a plain refusal, held for the minimum time.
   const sleptBeforeWait = h.slept.length;
   const still = await shape(await h.handler(sendFrom("198.51.100.7", bad(99))));
   assertEquals(
     h.slept.length,
     sleptBeforeWait + 1,
-    "a wrong key that must wait is held for the minimum time too",
+    "a wrong key is held for the minimum time",
   );
-  assertEquals(still.status, 429);
+  assertEquals(still.status, 401);
   assertEquals(h.slept.at(-1), MIN_REFUSAL_MS);
-  assert(
-    Number(still.headers["retry-after"]) >= 1 &&
-      Number(still.headers["retry-after"]) <= 60,
-  );
+  assertEquals(still.headers["retry-after"], undefined);
   assert(
     !still.body.includes("198.51.100.7"),
     "the answer never repeats an address",
   );
-  // Every working key reached the gateway; a working key is looked up before any count is consulted.
+  // Every working key reached the gateway.
   assertEquals(
     h.seen.filter((s) => s.hash === HASH_GROWTH || s.hash === HASH_OWNER)
       .length,
@@ -1712,115 +1728,55 @@ Deno.test("#3802 U-12: after any number of wrong keys from an address, a working
   );
 });
 
-Deno.test("#3802 U-12: the address that is counted is the last one in the list, which the sender cannot choose", async () => {
-  assertEquals(platformAddress(sendFrom("203.0.113.5", null)), "203.0.113.5");
-  assertEquals(
-    platformAddress(sendFrom("1.1.1.1, 2.2.2.2, 203.0.113.5", null)),
-    "203.0.113.5",
-  );
-  assertEquals(
-    platformAddress(sendFrom("  spoofed , 203.0.113.5  ", null)),
-    "203.0.113.5",
-  );
-  assertEquals(
-    platformAddress(sendFrom("2001:db8::1, 2001:db8::2", null)),
-    "2001:db8::2",
-  );
-  for (
-    const none of [
-      null,
-      "",
-      " ",
-      ",",
-      "203.0.113.5,",
-      "unknown",
-      "x".repeat(70),
-      "203.0.113.5, " + "9".repeat(60),
-      "a b",
-      "<script>",
-      "203.0.113.5; drop",
-    ]
-  ) {
-    assertEquals(platformAddress(sendFrom(none, null)), null, String(none));
-  }
-  // Changing what the sender writes in front changes nothing: 30 and it waits.
+Deno.test("#3802 U-12: what a request says about where it came from changes nothing about a refusal", async () => {
   const h = harness();
-  for (let i = 0; i < 30; i++) {
-    const r = await h.handler(
-      sendFrom(`10.9.${i}.1, made-up-${i}, 203.0.113.5`, bad(i)),
-    );
-    assertEquals(r.status, 401, `wrong key ${i + 1}`);
-    await r.body?.cancel();
-  }
-  const waits = await h.handler(sendFrom("172.16.0.1, 203.0.113.5", bad(31)));
-  assertEquals(waits.status, 429);
-  await waits.body?.cancel();
-  // Writing someone else's address in FRONT does not make them wait.
-  const victim = await h.handler(sendFrom("192.0.2.44", bad(32)));
-  assertEquals(
-    victim.status,
-    401,
-    "an address only named by another sender was never counted",
-  );
-  await victim.body?.cancel();
-  const h2 = harness();
-  for (let i = 0; i < 40; i++) {
-    await (await h2.handler(sendFrom("192.0.2.44, 203.0.113.5", bad(i)))).body
-      ?.cancel();
-  }
-  const real = await h2.handler(sendFrom("192.0.2.44", bad(41)));
-  assertEquals(
-    real.status,
-    401,
-    "the address written in front by someone else is not waiting",
-  );
-  await real.body?.cancel();
-});
-
-Deno.test("#3802 U-12: with no address to go by there is no shared bucket to fill, only an overall ceiling on wrong keys", async () => {
-  assertEquals(FAILED_KEYS_OVERALL_PER_MINUTE, 300);
-  const h = harness();
-  // Far more than 30 wrong keys with no usable address: nobody is made to wait by them.
-  for (const forwarded of [null, "x".repeat(70), "unknown"]) {
-    for (let i = 0; i < 40; i++) {
-      const r = await h.handler(sendFrom(forwarded, bad(i)));
-      assertEquals(r.status, 401, `${String(forwarded).slice(0, 8)} ${i + 1}`);
-      await r.body?.cancel();
+  let first = "";
+  const forwards = [
+    null,
+    "",
+    " ",
+    ",",
+    "203.0.113.5",
+    "1.1.1.1, 2.2.2.2, 203.0.113.5",
+    "  spoofed , 203.0.113.5  ",
+    "2001:db8::1, 2001:db8::2",
+    "unknown",
+    "x".repeat(70),
+    "a b",
+    "<script>",
+    "203.0.113.5; drop",
+  ];
+  for (let round = 0; round < 40; round++) {
+    for (const f of forwards) {
+      const r = await shape(await h.handler(sendFrom(f, bad(round))));
+      if (first === "") first = JSON.stringify(r);
+      assertEquals(JSON.stringify(r), first, `${String(f).slice(0, 12)}`);
+      assertEquals(r.status, 401);
     }
   }
-  // 120 so far. At 300 wrong keys in a minute from anywhere, wrong keys wait; working keys never do.
-  for (let i = 120; i < 300; i++) {
-    const r = await h.handler(sendFrom(`198.51.${i % 250}.${i % 200}`, bad(i)));
+  // The source reads no forwarded-for header and keeps no count of wrong keys.
+  assert(
+    !/x-forwarded-for|forwarded/i.test(MCP),
+    "no forwarded header is read",
+  );
+  assert(!/FAILED_KEYS|countFailure|address_limited/.test(MCP));
+  assert(!/429[\s\S]{0,200}key that cannot be used/.test(MCP));
+});
+
+Deno.test("#3802 U-12: far more wrong keys than any earlier ceiling, and a working key is answered throughout", async () => {
+  const h = harness();
+  for (let i = 0; i < 700; i++) {
+    const r = await h.handler(
+      sendFrom(i % 3 ? `198.51.${i % 250}.${i % 200}` : null, bad(i)),
+    );
     assertEquals(r.status, 401, `wrong key ${i + 1}`);
     await r.body?.cancel();
+    if (i % 100 === 99) {
+      const good = await h.handler(sendFrom(null, KEY_GROWTH));
+      assertEquals(good.status, 200, "a working key is answered throughout");
+      await good.body?.cancel();
+    }
   }
-  const over = await h.handler(sendFrom(null, bad(301)));
-  assertEquals(over.status, 429);
-  await over.body?.cancel();
-  const overFresh = await h.handler(sendFrom("192.0.2.200", bad(302)));
-  assertEquals(
-    overFresh.status,
-    429,
-    "the overall ceiling covers every wrong key",
-  );
-  await overFresh.body?.cancel();
-  for (const forwarded of [null, "192.0.2.200", "x".repeat(70)]) {
-    const good = await h.handler(sendFrom(forwarded, KEY_GROWTH));
-    assertEquals(
-      good.status,
-      200,
-      "a working key is answered through the overall ceiling",
-    );
-    await good.body?.cancel();
-  }
-  h.tick(60_001);
-  const later = await h.handler(sendFrom(null, bad(303)));
-  assertEquals(
-    later.status,
-    401,
-    "a minute later wrong keys are plain refusals again",
-  );
-  await later.body?.cancel();
 });
 
 Deno.test("#3802 U-12: a date-relative answer starts by saying the date and time zone it used", async () => {

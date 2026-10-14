@@ -12,7 +12,7 @@
 //         start again with the handshake
 //   P-7   what the server keeps about a request, and what it never keeps
 //   P-8   the per-minute limit, end to end
-//   P-9   nothing here writes: the tools that arrive later do not exist yet
+//   P-9   the tools that arrive later, and the ones that never will, do not exist
 //   P-10  an agent's today is the date on its person's screen
 //
 // Run: node --experimental-strip-types --test --test-concurrency=1 <this file>
@@ -88,8 +88,20 @@ test("#3802 P-1: an agent connects: initialize, the initialized notice, then its
     "check_names",
     "find_mingla_link",
     "list_beta_leads",
+    "check_contactable",
+    "add_records",
+    "upsert_record",
+    "update_records",
+    "move_stage",
+    "set_owners",
+    "log_activity",
+    "record_reply",
   ]);
-  assert.deepEqual(names(admin), [...names(growth), "team_summary"]);
+  assert.equal(names(growth).length, 15);
+  assert.deepEqual(
+    [...names(admin)].sort(),
+    [...names(growth), "team_summary"].sort(),
+  );
   assert.equal(
     (await s.rpc(s.keys["growth.claude"], "ping")).json.result !== undefined,
     true,
@@ -245,7 +257,7 @@ test("#3802 P-3: the guide and the routines come from the server's one definitio
   assert.equal(got.messages[0].content.text, started.routines[0].text);
   for (const r of started.routines) {
     assert.equal(
-      /save_drafts|add_records|move_stage|log_activity|record_reply|check_contactable/
+      /save_drafts|mark_sent|undo_move|set_target|add_beta_leads_to_hosts|delete_record/
         .test(r.text),
       false,
       "a routine names a tool that does not exist yet",
@@ -523,27 +535,21 @@ test("#3802 P-8: the 121st request in a minute is told to wait, and the next min
   });
 });
 
-test("#3802 P-9: nothing here writes: the tools that arrive later do not exist yet, and nothing changed", async () => {
+test("#3802 P-9: the tools that arrive later, and the ones that never will, do not exist, and asking for them changes nothing", async () => {
   const before = await s.sql(
     "select count(*) || '/' || coalesce(max(updated_at)::text, '') from public.crm_records where created_by like 'issue3802p-%'; select count(*) from public.crm_activity where record_id = :'id';",
     { id: s.ids.alpha },
   );
   for (
     const name of [
-      "add_records",
-      "update_records",
-      "move_stage",
       "undo_move",
-      "set_owners",
-      "log_activity",
-      "record_reply",
       "add_beta_leads_to_hosts",
       "set_target",
       "save_drafts",
       "update_draft",
       "withdraw_drafts",
       "list_drafts",
-      "check_contactable",
+      "setup:redeem2",
       "delete_record",
       "restore_record",
       "send_message",
