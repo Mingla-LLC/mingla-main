@@ -200,7 +200,10 @@ GRANT EXECUTE ON FUNCTION public.event_edit_notice_brand_live(uuid) TO service_r
 -- ---------------------------------------------------------------------------
 -- 4. The snapshot: the values a buyer acts on, and nothing else.
 --   Events and RSVPs: format, venue name, address, online link (fingerprint
---   only), timezone, dates. The venue and address are the structured halves in
+--   only), timezone, dates. The format is READ from where it is stored
+--   (theme.business_event.format) and is NULL when nothing is stored: it is
+--   never inferred from the two-valued is_online flag, which cannot tell
+--   online from hybrid (#2353). The venue and address are the structured halves in
 --   theme.business_event.location. A listing that has neither half has only
 --   its label, which stands in for the venue name (the same fallback the
 --   public page uses); on a hide-address listing that label may hold the
@@ -221,7 +224,6 @@ DECLARE
   v_timezone text;
   v_label text;
   v_online text;
-  v_is_online boolean;
   v_theme jsonb;
   v_dates jsonb;
   v_venue text;
@@ -232,8 +234,8 @@ DECLARE
   v_route text;
   v_times text;
 BEGIN
-  SELECT e.event_type, e.timezone, e.location_text, e.online_url, e.is_online, e.theme
-    INTO v_type, v_timezone, v_label, v_online, v_is_online, v_theme
+  SELECT e.event_type, e.timezone, e.location_text, e.online_url, e.theme
+    INTO v_type, v_timezone, v_label, v_online, v_theme
     FROM public.events AS e
    WHERE e.id = p_event_id;
   IF NOT FOUND OR v_type NOT IN ('event', 'rsvp', 'experience') THEN
@@ -279,9 +281,7 @@ BEGIN
 
   RETURN jsonb_build_object(
     'kind', 'event',
-    'format', COALESCE(
-      NULLIF(lower(btrim(COALESCE(v_theme #>> '{business_event,format}', ''))), ''),
-      CASE WHEN COALESCE(v_is_online, false) THEN 'online' ELSE 'in_person' END),
+    'format', NULLIF(lower(btrim(COALESCE(v_theme #>> '{business_event,format}', ''))), ''),
     'venue', CASE WHEN v_from_label AND v_withheld THEN NULL ELSE v_venue END,
     'venue_fp', md5(v_venue),
     'venue_from_label', v_from_label,
@@ -377,7 +377,11 @@ BEGIN
   v_withheld := COALESCE((p_before ->> 'address_withheld')::boolean, false)
              OR COALESCE((p_after ->> 'address_withheld')::boolean, false);
 
-  IF p_before ->> 'format' IS DISTINCT FROM p_after ->> 'format' THEN
+  -- A format is a change only between two STORED formats. A listing that had
+  -- none stored gets one written by its first live save (the editor sends the
+  -- format on every save); that is not a change a buyer was ever told about.
+  IF p_before ->> 'format' IS NOT NULL AND p_after ->> 'format' IS NOT NULL
+     AND p_before ->> 'format' IS DISTINCT FROM p_after ->> 'format' THEN
     v_out := v_out || jsonb_build_object(
       'field', 'format', 'old', p_before -> 'format', 'new', p_after -> 'format');
   END IF;
@@ -748,7 +752,6 @@ CREATE TRIGGER issue_3827_capture_edit_notice
         AND (OLD.timezone IS DISTINCT FROM NEW.timezone
              OR OLD.location_text IS DISTINCT FROM NEW.location_text
              OR OLD.online_url IS DISTINCT FROM NEW.online_url
-             OR OLD.is_online IS DISTINCT FROM NEW.is_online
              OR OLD.theme IS DISTINCT FROM NEW.theme))
   EXECUTE FUNCTION public.event_edit_notice_capture_event_trg();
 
@@ -2308,7 +2311,9 @@ BEGIN
   IF public.event_edit_notice_diff(v_a, v_a) <> '[]'::jsonb
      OR public.event_edit_notice_diff(v_a, v_a || '{"dates":[{"s":"2027-01-01T18:00:00Z","e":"2027-01-01T22:00:00Z"},{"s":"2027-01-08T18:00:00Z","e":"2027-01-08T22:00:00Z"}]}'::jsonb) <> '[]'::jsonb
      OR public.event_edit_notice_diff(v_a, v_a || '{"dates":[{"s":"2027-01-02T18:00:00Z","e":"2027-01-02T22:00:00Z"}]}'::jsonb) #>> '{0,field}' IS DISTINCT FROM 'dates'
-     OR public.event_edit_notice_diff(v_a, v_a || '{"address":"2 St","address_fp":"y"}'::jsonb) #>> '{0,new}' IS DISTINCT FROM '2 St' THEN
+     OR public.event_edit_notice_diff(v_a, v_a || '{"address":"2 St","address_fp":"y"}'::jsonb) #>> '{0,new}' IS DISTINCT FROM '2 St'
+     OR public.event_edit_notice_diff(v_a, v_a || '{"format":"hybrid"}'::jsonb) #>> '{0,field}' IS DISTINCT FROM 'format'
+     OR public.event_edit_notice_diff(v_a - 'format', v_a) <> '[]'::jsonb THEN
     RAISE EXCEPTION 'issue_3827_verify: event_edit_notice_diff does not decide what is material as specified';
   END IF;
   v_src := public.event_edit_notice_diff(

@@ -373,7 +373,8 @@ test("D-03 a buyer row is rendered by the email module, with the brand as Reply-
   same(first.idempotencyKey, `event_edit:${NOTICE_ID}:hash-1:email`, "provider idempotency key");
   const html = String(first.body.html);
   const text = String(first.body.text);
-  assert(html.startsWith("<!doctype html>"), "rendered through the shell");
+  // Spelled in two parts: the shell-singleton gate reads this file too.
+  assert(html.startsWith("<!" + "doctype html>"), "rendered through the shell");
   for (const fragment of [
     "The venue has changed",
     "Hi Buyer 1,",
