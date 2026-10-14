@@ -81,6 +81,7 @@ interface World {
   event: Record<string, unknown> | null;
   resendStatus: number;
   sendCheck: string | "error";
+  legacyAlert: "ok" | "error";
 }
 
 interface Seen {
@@ -92,6 +93,7 @@ interface Seen {
   completions: Array<Record<string, unknown>>;
   categoryReads: string[];
   sendChecks: unknown[];
+  legacyAlerts: unknown[];
   noticeReads: number;
   eventReads: number;
   inFlight: number;
@@ -133,6 +135,7 @@ const world: World = {
   event: baseEvent(),
   resendStatus: 200,
   sendCheck: "ok",
+  legacyAlert: "ok",
 };
 const seen: Seen = {
   order: [],
@@ -143,6 +146,7 @@ const seen: Seen = {
   completions: [],
   categoryReads: [],
   sendChecks: [],
+  legacyAlerts: [],
   noticeReads: 0,
   eventReads: 0,
   inFlight: 0,
@@ -158,6 +162,7 @@ function reset(next: Partial<World> = {}): void {
     event: baseEvent(),
     resendStatus: 200,
     sendCheck: "ok",
+    legacyAlert: "ok",
   }, next);
   Object.assign(seen, {
     order: [],
@@ -168,6 +173,7 @@ function reset(next: Partial<World> = {}): void {
     completions: [],
     categoryReads: [],
     sendChecks: [],
+    legacyAlerts: [],
     noticeReads: 0,
     eventReads: 0,
     inFlight: 0,
@@ -217,6 +223,13 @@ globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => 
         return jsonResponse({ code: "57014", message: "canceling statement" }, 500);
       }
       return jsonResponse(world.sendCheck);
+    }
+    if (leaf === "event_edit_notice_legacy_alert") {
+      seen.legacyAlerts.push(body);
+      if (world.legacyAlert === "error") {
+        return jsonResponse({ code: "57014", message: "canceling statement" }, 500);
+      }
+      return jsonResponse(true);
     }
     if (leaf === "claim_rsvp_notification_deliveries") {
       seen.order.push("claim");
@@ -604,4 +617,43 @@ test("D-11 one copy that throws never stops the groups after it", async () => {
     console.error = previousError;
   }
   same(done.sort((a, b) => a - b), [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11], "every other item ran");
+});
+
+test("D-12 a guest whose copy is held gets today's alert instead; if that cannot be queued the copy waits", async () => {
+  const guest = (): ClaimRow => ({
+    delivery_id: "delivery-guest",
+    notification_id: "notification-guest",
+    channel: "email",
+    attempt_count: 1,
+    lease_id: "lease-guest",
+    template_key: "rsvp_event_updated",
+    idempotency_key: `event_edit:${NOTICE_ID}:hash-guest`,
+    payload: {
+      template_key: "rsvp_event_updated",
+      rsvp_id: RSVP_ID,
+      event_id: EVENT_ID,
+      noticeId: NOTICE_ID,
+      recipientEmail: "guest@example.invalid",
+    },
+  });
+  const rsvpEvent = baseEvent();
+  rsvpEvent.event_type = "rsvp";
+  reset({ claims: [guest()], event: rsvpEvent, sendCheck: "held_feature_off" });
+  await runTick();
+  same(seen.emails.length, 0, "no provider call");
+  same(seen.legacyAlerts, [{ p_notice_id: NOTICE_ID, p_rsvp_id: RSVP_ID }], "today's alert asked for, once");
+  same(seen.completions[0]?.p_safe_error_code, "held_feature_off", "the copy is held");
+
+  reset({ claims: [guest()], event: rsvpEvent, sendCheck: "held_allowlist", legacyAlert: "error" });
+  await runTick();
+  same(
+    [seen.completions[0]?.p_status, seen.completions[0]?.p_safe_error_code],
+    ["failed_retryable", "event_notice_alert_unavailable"],
+    "the copy waits when the alert cannot be queued",
+  );
+
+  // A buyer has no usual alert: nothing is asked for.
+  reset({ claims: [buyerClaim(1)], sendCheck: "held_feature_off" });
+  await runTick();
+  same(seen.legacyAlerts.length, 0, "no alert for a ticket buyer");
 });
