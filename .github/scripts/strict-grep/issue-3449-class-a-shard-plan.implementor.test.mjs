@@ -95,13 +95,13 @@ const costs = () => loadShardCosts(path.join(HERE, "class-a-shard-costs.json"));
  * the purity test at the bottom of this file for why.
  */
 const EXPECTED_PLAN = Object.freeze({
-  // issue #3526 re-derived these after registering ONE new batch:A gate
-  // (i-3526-gemini-model-single-source.mjs, modes [self-test, plain] = +2
-  // executions), exactly as the note above instructs. Read off
+  // issue #3645 re-derived these after registering ONE new batch:A gate
+  // (issue-3645-audit-target-labels.tester.mjs [plain] = +1 execution),
+  // exactly as the note above instructs. Read off
   // `node .github/scripts/strict-grep/issue-3449-class-a-shard-plan.mjs`.
-  executions: 1035,
-  loadsSeconds: [168.9, 168.9, 168.8],
-  counts: [341, 352, 342],
+  executions: 1036,
+  loadsSeconds: [168.9, 168.9, 168.9],
+  counts: [341, 352, 343],
 });
 
 const tempDir = (label) => fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), `issue-3449-${label}-`));
@@ -205,9 +205,11 @@ test("SC-5 an execution with no cost entry is costed at the default and still pl
   const key = executionKey({ script, mode: "plain" });
   const owners = keysOf(after).map((shard, index) => (shard.includes(key) ? index + 1 : null)).filter((value) => value !== null);
   assert.deepEqual(owners.length, 1, "an untabled execution must still be placed exactly once — a missing cost can never drop a row");
-  // And the shard it landed in grew by exactly the committed default.
-  const shard = owners[0] - 1;
-  assert.equal(after.loadsMs[shard] - before.loadsMs[shard], table.defaultCostMs);
+  // The whole plan grew by exactly the committed default. Corpus growth may
+  // legitimately rebalance equal-cost rows between shards, so a single shard's
+  // net delta is not an invariant even though the new row has exactly one owner.
+  const totalLoad = (plan) => plan.loadsMs.reduce((sum, load) => sum + load, 0);
+  assert.equal(totalLoad(after) - totalLoad(before), table.defaultCostMs);
 });
 
 test("SC-6 shardCount is a registry field: raising it keeps the union exactly the whole class", () => {
