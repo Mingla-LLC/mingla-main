@@ -19,6 +19,7 @@ import {
   Mail, Send, Users, Clock, CheckCircle, XCircle,
   AlertTriangle, Eye, User, Plus, Pencil, Trash2, Download,
 } from "lucide-react";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -133,7 +134,10 @@ export function EmailPage() {
 
   return (
     <div className="space-y-6">
-      <Tabs tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />
+      <PageHeader
+        title="Email"
+        tabs={<Tabs tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />}
+      />
       {activeSubTab === "compose" && (
         <ComposeSubView providerConfigured={providerConfigured} providerChecked={providerChecked} />
       )}

@@ -162,10 +162,14 @@ describe("ORCH-1274 money console — money containment on the UI (SC-5.4)", () 
 });
 
 describe("ORCH-1274 money console — nav wiring", () => {
-  const businessGroup = NAV_GROUPS.find((g) => g.label === "Business");
+  // [TEST-MOD-APPROVED ISSUE-3802] 2026-10-13: the approved admin shell revamp
+  // (issue #3802) moves the three money pages from the "Business" group into
+  // their own "Money" group. Only the group label changes here; the three ids
+  // and their icons are asserted exactly as before.
+  const businessGroup = NAV_GROUPS.find((g) => g.label === "Money");
 
-  it("constants: Business group has Payments / Orders / Money ledger", () => {
-    assert.ok(businessGroup, "a Business nav group exists");
+  it("constants: Money group has Payments / Orders / Money ledger", () => {
+    assert.ok(businessGroup, "a Money nav group exists");
     const byId = Object.fromEntries(businessGroup.items.map((i) => [i.id, i]));
     assert.equal(byId["business-payments"]?.icon, "CreditCard");
     assert.equal(byId["business-orders"]?.icon, "Receipt");

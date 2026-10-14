@@ -43,6 +43,7 @@ import type {
   TripPricingTier,
 } from "../services/tripsService";
 import { coerceTripDayMedia } from "../services/tripsService";
+import { sumTripPackageSpots } from "../services/tripPackages";
 
 // ORCH-1138 B1 — map raw brand/trip theme columns into a guarded ThemeInput.
 // Mirrors publicEventsService.asThemeInput EXACTLY (reuses the package guards;
@@ -323,9 +324,16 @@ export const usePublicTripBySlug = (
 
       const tripStartAt = p.startAt;
       const tripEndAt = p.endAt;
-      // Capacity = the first tier's total (mirrors the prior canonical
-      // ticket-type quantity source; theme mirror is folded into the RPC).
-      const firstTierQty = p.tiers[0]?.quantityTotal ?? null;
+      // Issue #3801 — the trip's capacity is the SUM of its packages' spots,
+      // not the first package's. `sumTripPackageSpots` owns the rule for every
+      // trip read: null when there are no packages or any package has no
+      // limit (rule 9 — never a number that leaves a package out).
+      const tripCapacity = sumTripPackageSpots(
+        (p.tiers ?? []).map((t) => ({
+          quantity_total: t.quantityTotal ?? null,
+          is_unlimited: t.isUnlimited === true,
+        })),
+      );
 
       const trip: Trip = {
         id: p.id,
@@ -362,7 +370,7 @@ export const usePublicTripBySlug = (
           departureLocationText: strOrNull(p.departureText),
           departureLat: numOrNull(p.departureLat),
           departureLng: numOrNull(p.departureLng),
-          capacity: firstTierQty,
+          capacity: tripCapacity,
         },
         days: (p.days ?? []).map(
           (d): TripDay => ({

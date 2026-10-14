@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ClipboardList, MessageSquarePlus, X } from "lucide-react";
+import { MessageSquarePlus, X } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { SectionCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -36,6 +36,7 @@ import { ScoreTunerPanel } from "../components/ScoreTunerPanel";
 import { getActiveSignals } from "../services/deckTunerService";
 import { collectClaimPhotos } from "../lib/claimPhotos";
 import { formatDateTime } from "../lib/formatters";
+import { PageHeader } from "../components/ui/PageHeader";
 
 const CAT_LABELS = {
   restaurant: "Restaurant",
@@ -588,21 +589,16 @@ export function ClaimsPage() {
       : [];
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto">
-      <div className="flex items-center gap-3">
-        <ClipboardList className="h-8 w-8 text-[var(--color-brand-500)]" />
-        <div>
-          <h1 className="text-2xl font-semibold text-[var(--color-text-primary)]">
-            Venue Claims
-          </h1>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            Review venue claims by status.
-          </p>
-        </div>
-        <Button variant="secondary" className="ml-auto" onClick={() => void load()}>
-          Refresh
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Venue Claims"
+        description="Review venue claims by status."
+        actions={
+          <Button variant="secondary" onClick={() => void load()}>
+            Refresh
+          </Button>
+        }
+      />
 
       <div className="flex flex-wrap gap-2">
         {CLAIM_TABS.map((tab) => (

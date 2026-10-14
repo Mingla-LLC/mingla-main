@@ -11,7 +11,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { SlidersHorizontal, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { SectionCard } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Spinner } from "../components/ui/Spinner";
@@ -23,6 +23,7 @@ import {
   getActiveSignals,
   getPlaceScores,
 } from "../services/deckTunerService";
+import { PageHeader } from "../components/ui/PageHeader";
 
 export function DeckScoreTunerPage() {
   const { addToast } = useToast();
@@ -125,15 +126,10 @@ export function DeckScoreTunerPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <SlidersHorizontal className="text-[var(--color-brand-500)]" style={{ width: 22, height: 22 }} aria-hidden="true" />
-        <div>
-          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Deck tuner</h1>
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            Tune any live venue's category scores, preview its deck card, and see where it ranks.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Deck tuner"
+        description="Tune any live venue's category scores, preview its deck card, and see where it ranks."
+      />
 
       <SectionCard>
         <div className="relative">

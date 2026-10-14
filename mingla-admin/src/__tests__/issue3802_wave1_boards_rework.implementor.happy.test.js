@@ -1,6 +1,12 @@
 // Issue #3802 (Wave 1, boards rework) — regression tests for the seven
 // findings in the tester's verdict on the Hosts and Creators boards.
 //
+// [TEST-MOD-APPROVED ISSUE-3802] 2026-10-13: Seth approved the admin shell
+// revamp (issue #3802, "one frame for every page, menu grouped by job").
+// Changed here, and only this: R-8 "the breadcrumb root is the role's own
+// home" pinned the old header markup (a clickable root crumb). The approved
+// breadcrumb is "Group › Page" in plain words. See the note on that test.
+//
 //   R-1  F-1  every unsent field is remembered; never "Saved" while one is;
 //             Try again sends all of them
 //   R-2  F-2  a card with unsent edits is not let go quietly
@@ -19,6 +25,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+// [TEST-MOD-APPROVED ISSUE-3802] the breadcrumb is now a pure function (see R-8).
+import { breadcrumbFor } from "../lib/shellNav.js";
+import { NAV_GROUPS } from "../lib/constants.js";
 import {
   BOARD_REFRESH_MS,
   TEXT_FIELDS,
@@ -434,9 +443,16 @@ describe("#3802 R-8: the smaller items", () => {
     assert.match(LIST, /className="flex min-h-11 w-full /);
   });
 
-  it("the breadcrumb root is the role's own home, not 'Admin', for the two non-admin roles", () => {
-    assert.match(HEADER, /const rootLabel = homeId === "home" \? pageTitle\("home", access, \[\]\) : "Admin";/);
-    assert.ok(HEADER.includes("onNavigate?.(homeId)"));
+  it("the breadcrumb never reads 'Admin' for the two non-admin roles, and names their own home", () => {
+    // [TEST-MOD-APPROVED ISSUE-3802] was: a root crumb labelled with the role's
+    // home (or "Admin") that went there when clicked. The approved shell has no
+    // root crumb: the breadcrumb is "Group › Page" in plain words, built from
+    // the page title the shell resolved for this person. So "Admin" is never
+    // written, and a role home reads its own name.
+    assert.ok(HEADER.includes("items={breadcrumbFor(activeTab, title, NAV_GROUPS)}"));
+    assert.equal(/["']Admin["']/.test(HEADER), false);
+    assert.deepEqual(breadcrumbFor("home", "My day", NAV_GROUPS), [{ label: "My day" }]);
+    assert.deepEqual(breadcrumbFor("hosts", "Hosts", NAV_GROUPS), [{ label: "Pipeline" }, { label: "Hosts" }]);
   });
 
   it("both keys in the key factory are used", () => {

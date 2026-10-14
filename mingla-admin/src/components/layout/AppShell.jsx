@@ -3,9 +3,14 @@ import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { NAV_ITEMS } from "../../lib/constants";
 import { useAuth } from "../../context/AuthContext";
-import { homePageFor, pageTitle } from "../../lib/access";
+import { pageTitle } from "../../lib/access";
 
-export function AppShell({ activeTab, onTabChange, children }) {
+// Issue #3802 (admin shell): the one frame every page sits in. The shell, and
+// only the shell, sets the space around a page: the gutter on all four sides,
+// left-aligned, one maximum width. A page starts with <PageHeader> and adds no
+// outer padding, width or centring of its own.
+// Invariant: I-3802-ADMIN-SHELL-ONE-FRAME (docs/INVARIANT_REGISTRY.md).
+export function AppShell({ activeTab, onTabChange, onOpenSearch, children }) {
   const { access } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -25,26 +30,27 @@ export function AppShell({ activeTab, onTabChange, children }) {
   const currentTitle = pageTitle(activeTab, access, NAV_ITEMS);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[--color-background-secondary]">
+    <div className="flex h-screen overflow-hidden bg-[var(--color-background-secondary)]">
       <Sidebar
         activeTab={activeTab}
         onTabChange={onTabChange}
         collapsed={sidebarCollapsed}
-        onToggleCollapsed={handleToggleCollapsed}
         mobileOpen={mobileMenuOpen}
         onMobileClose={handleMobileClose}
       />
 
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header
+          activeTab={activeTab}
           title={currentTitle}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={handleToggleCollapsed}
           onMobileMenuOpen={handleMobileOpen}
-          onNavigate={onTabChange}
-          homeId={homePageFor(access)}
+          onOpenSearch={onOpenSearch}
         />
 
         <main className="flex-1 overflow-y-auto">
-          <div className="w-full min-w-0 max-w-[--content-max-width] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
+          <div className="w-full min-w-0 max-w-[var(--content-max-width)] p-[var(--page-gutter)]">
             {children}
           </div>
         </main>

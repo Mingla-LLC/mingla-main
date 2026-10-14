@@ -37,6 +37,7 @@ import {
   formatPct,
   validatePctInput,
 } from "../lib/pricing";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // ── helpers ──────────────────────────────────────────────────────────────
 // Resolve an updated_by auth uid to a friendly label (design §8). The seed
@@ -420,14 +421,7 @@ export function PricingPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">
-          Pricing
-        </h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-          Set Mingla's cut of every transaction.
-        </p>
-      </div>
+      <PageHeader title="Pricing" description="Set Mingla's cut of every transaction." />
 
       {loadError ? (
         <AlertCard

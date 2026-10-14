@@ -33,6 +33,7 @@ import {
 } from "../services/identityWriteService";
 import { getBrandPayoutConsole } from "../services/adminMoneyService";
 import { timeAgo, formatDate, formatDateTime } from "../lib/formatters";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // Money formatter (cents + currency → string; never throws).
 function formatMoney(cents, currency) {
@@ -813,7 +814,7 @@ export function BrandsConsolePage() {
     const memberPhrase = activeMember?.member_email || activeMember?.user_id || "";
 
     return (
-      <div className="py-8 flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
         {detail && !loading && !error && (
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Button variant="secondary" size="md" onClick={() => setEditProfileOpen(true)}>
@@ -960,19 +961,11 @@ export function BrandsConsolePage() {
 
   // ── Brands list view ────────────────────────────────────────────────────────
   return (
-    <div className="py-8 flex flex-col gap-6">
-      <div className="flex items-start gap-3 flex-wrap">
-        <div className="w-10 h-10 rounded-full bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
-          <Building2 className="w-5 h-5 text-[var(--color-brand-500)]" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Brands</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            Every brand across the platform. Open one for the full record — profile, claim state, money,
-            owner, team, invites, and support.
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Brands"
+        description="Every brand across the platform. Open one for the full record — profile, claim state, money, owner, team, invites, and support."
+      />
 
       <EntityListView
         title="All brands"

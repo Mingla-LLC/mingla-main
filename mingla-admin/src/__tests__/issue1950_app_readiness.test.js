@@ -48,7 +48,10 @@ test("#1950 Admin IA, a11y, responsive, disabled boundary, and web behavior stay
   assert.match(page,/Create web traffic campaign/); assert.match(page,/Web traffic preflight/);
   assert.match(panel,/aria-live="polite"/); assert.match(panel,/aria-busy/); assert.match(panel,/visibilitychange/); assert.match(panel,/window\.setInterval/); assert.match(selector,/role="tablist"/); assert.match(selector,/type="radio"/); assert.match(row,/aria-expanded/); assert.match(evidence,/<dl/);
   assert.match(boundary,/<button type="button" disabled aria-describedby=/); assert.doesNotMatch(boundary,/onClick=/);
-  assert.match(shell,/px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12/); assert.doesNotMatch(shell,/px-16/);
+  // [TEST-MOD-APPROVED ISSUE-3802] 2026-10-13: the approved admin shell (issue #3802) replaces the five per-width
+  // gutters (px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12) with ONE gutter token on all sides. Still pinned: the shell,
+  // not the page, sets the gutter, and the old px-16 never comes back.
+  assert.match(shell,/p-\[var\(--page-gutter\)\]/); assert.doesNotMatch(shell,/px-16/);
   assert.match(card,/sm:flex-wrap/); assert.match(card,/break-words/);
   for (const name of ["loadAppReadiness","checkAppReadiness","recordAppReadinessEvent"]) assert.match(service,new RegExp(`export async function ${name}`));
   for (const unchanged of ["createCampaign","campaignAction","syncCampaigns"]) assert.match(service,new RegExp(`export async function ${unchanged}`));

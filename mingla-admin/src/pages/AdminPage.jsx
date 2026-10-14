@@ -13,6 +13,7 @@ import { useToast } from "../context/ToastContext";
 import { formatRelativeTime } from "../lib/formatters";
 import { INVITABLE_ROLES, ROLE_LABELS } from "../lib/access";
 import { INVITE_STATE_COPY, findInviteState, inviteRowState } from "../lib/inviteLink";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // Issue #3802 — Team and roles (owner only).
 //
@@ -732,14 +733,11 @@ export function AdminPage() {
     );
 
   return (
-    <div className="flex flex-col gap-8">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Team and roles</h1>
-        </div>
-        <Badge variant="outline">{`${withAccess.length} with access`}</Badge>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Team and roles"
+        actions={<Badge variant="outline">{`${withAccess.length} with access`}</Badge>}
+      />
 
       {/* Invite */}
       <SectionCard

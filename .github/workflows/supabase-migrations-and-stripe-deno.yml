@@ -221,6 +221,16 @@ on:
       - "mingla-admin/src/lib/agentConnect.js"
       - "mingla-admin/src/services/teamAgentService.js"
       - "mingla-admin/src/hooks/useAgentKeys.js"
+      # #3802 (admin shell): both suites and the files they read that are not
+      # already listed here (every page, the fold and breadcrumb module, the
+      # one page header, and the stepper whose width sum the tester suite redoes).
+      - "mingla-admin/src/__tests__/admin_shell_issue3802.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/admin_shell_issue3802.tester.adversarial.test.js"
+      - "mingla-admin/src/pages/**"
+      - "mingla-admin/src/lib/shellNav.js"
+      - "mingla-admin/src/components/ui/PageHeader.jsx"
+      - "mingla-admin/src/components/ui/Breadcrumbs.jsx"
+      - "mingla-admin/src/components/campaign-builder/stepperResponsive.js"
       - "mingla-admin/src/pages/RoleHomePage.jsx"
       - "mingla-admin/src/pages/TeamDashboardPage.jsx"
       - "mingla-admin/src/pages/BetaLeadsPage.jsx"
@@ -436,6 +446,16 @@ on:
       - "mingla-admin/src/lib/agentConnect.js"
       - "mingla-admin/src/services/teamAgentService.js"
       - "mingla-admin/src/hooks/useAgentKeys.js"
+      # #3802 (admin shell): both suites and the files they read that are not
+      # already listed here (every page, the fold and breadcrumb module, the
+      # one page header, and the stepper whose width sum the tester suite redoes).
+      - "mingla-admin/src/__tests__/admin_shell_issue3802.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/admin_shell_issue3802.tester.adversarial.test.js"
+      - "mingla-admin/src/pages/**"
+      - "mingla-admin/src/lib/shellNav.js"
+      - "mingla-admin/src/components/ui/PageHeader.jsx"
+      - "mingla-admin/src/components/ui/Breadcrumbs.jsx"
+      - "mingla-admin/src/components/campaign-builder/stepperResponsive.js"
       - "mingla-admin/src/pages/RoleHomePage.jsx"
       - "mingla-admin/src/pages/TeamDashboardPage.jsx"
       - "mingla-admin/src/pages/BetaLeadsPage.jsx"
@@ -607,6 +627,12 @@ jobs:
       - name: "Issue #3802 — Hosts and Creators: emails, phones and handles in the server's own normal form, search by them, the contact rule on every surface, the contactable check in the Add form, City missing by role"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js
+      - name: "Issue #3802 — admin shell: the eight menu groups in the approved order, every page once, who may open what unchanged, every menu icon registered, one frame and one page header"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/admin_shell_issue3802.implementor.happy.test.js
+      - name: "Issue #3802 — admin shell: independent tester adversarial proof (every combination of areas against every address, hostile ids, storage that throws, stacking computed from the stylesheet, class names that do nothing, the stepper beside the new menu)"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/admin_shell_issue3802.tester.adversarial.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
@@ -825,6 +851,21 @@ jobs:
           # cannot go live.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3645_drafts_follow_brand_currency.tester.retest3.pg17.test.sql
+          # Issue #3801 — the public trip page (web and the Explorer app) receives
+          # a trip's packages in the order the host authored them. Three packages
+          # stored in the opposite physical order come back in authored order,
+          # equal positions fall back to oldest first, and the shape of a package
+          # is unchanged. Behavioural against the applied schema.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3801_public_trip_tiers_ordered.implementor.happy.pg17.test.sql
+          # Issue #3801 — independent tester adversarial proof for the same reader:
+          # a full tie falls to the tier id, fifty packages stored scrambled and
+          # rewritten in place read the same twenty times, removed and hidden
+          # packages leave no ghost, an anonymous buyer gets the authored order,
+          # and unpublished, private, hidden, deleted and non-trip offerings are
+          # still not returned. Behavioural against the applied schema.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3801_public_trip_tiers_ordered.tester.adversarial.pg17.test.sql
           # Issue #1977 — canonical RSVP draft/guest/contribution owners and
           # the Ari receipt seam. Behavioural against the applied schema.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \

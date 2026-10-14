@@ -23,13 +23,13 @@
  */
 
 import { useState } from "react";
-import { Microscope } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Tabs } from "../components/ui/Tabs";
 import { TrialResultsTab } from "../components/placeIntelligenceTrial/TrialResultsTab";
 import { IntelligenceOverviewTab } from "../components/placeIntelligenceTrial/IntelligenceOverviewTab";
 // ORCH-1013 Finding B — shared control tower for parallel city backfills.
 import { ActiveRunsControlTower } from "../components/placeIntelligenceTrial/ActiveRunsControlTower";
+import { PageHeader } from "../components/ui/PageHeader";
 
 // ORCH-1008 — Overview is the operator's landing tab; Trial Results follows.
 const TABS = [
@@ -48,21 +48,11 @@ export function PlaceIntelligenceTrialPage({ onTabChange }) {
   const [activeTab, setActiveTab] = useState("overview");
 
   return (
-    <div className="py-6 flex flex-col gap-6">
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-full bg-[var(--color-brand-50)] flex items-center justify-center shrink-0">
-          <Microscope className="w-5 h-5 text-[var(--color-brand-500)]" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-semibold text-[var(--color-text-primary)]">
-            Place Intelligence Trial
-          </h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            Pick a city + sample size, score servable places with Gemini against
-            Mingla's 16 signals. Research-only — output never feeds card ranking.
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Place Intelligence Trial"
+        description="Pick a city + sample size, score servable places with Gemini against Mingla's 16 signals. Research-only — output never feeds card ranking."
+      />
 
       {/* ORCH-1013 Finding B — pinned active-runs panel. Auto-hides when no
           active or terminal runs are in the poller buffer. Cancelled-card

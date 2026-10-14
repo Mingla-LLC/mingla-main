@@ -1,6 +1,12 @@
 // Issue #3802 (Wave 4, first part) — the My agent page: its pure decisions and
 // its source contracts.
 //
+// [TEST-MOD-APPROVED ISSUE-3802] 2026-10-13: Seth approved the admin shell
+// revamp (issue #3802, "one frame for every page, menu grouped by job").
+// Changed here, and only this: A-1 pinned My agent in its own "Help" group,
+// last, after "Team". It now pins the approved place: the last item of the
+// "System" group, which is the last group. Who may open it is unchanged.
+//
 //   A-1  who may open My agent, and its own Help group in the menu
 //   A-2  the lines to paste, for each agent and each kind of computer; where
 //        the key appears and where it never does
@@ -98,22 +104,25 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
     assert.deepEqual(resolveRoute("agent", growth, ["home", "agent"]), { pageId: "agent", denied: false, requestedId: "agent" });
     assert.deepEqual(resolveRoute("agent", person("growth", ["role_home"]), ["home", "agent"]), { pageId: "home", denied: true, requestedId: "agent" });
   });
-  it("sits in its own Help group, below Team, in the menu each role is shown", () => {
+  it("sits last in the System group, the last group, in the menu each role is shown", () => {
+    // [TEST-MOD-APPROVED ISSUE-3802] was: its own "Help" group, after "Team".
     const groups = (a) => visibleNavGroups(NAV_GROUPS, a);
     for (const a of [growth, partner]) {
-      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "beta-leads", "hosts", "creators", "agent"], a.role);
+      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "beta-leads", "agent"], a.role);
     }
     for (const a of [owner, admin, growth, partner]) {
       const shown = groups(a);
-      const help = shown.at(-1);
-      assert.equal(help.label, "Help", a.role);
-      assert.deepEqual(help.items.map((i) => `${i.id}:${i.label}:${i.icon}`), ["agent:My agent:Bot"]);
-      assert.equal(shown.at(-2).label, "Team", "Help comes straight after Team");
-      assert.equal(shown.at(-2).items.some((i) => i.id === "agent"), false);
+      const system = shown.at(-1);
+      assert.equal(system.label, "System", a.role);
+      assert.equal(`${system.items.at(-1).id}:${system.items.at(-1).label}:${system.items.at(-1).icon}`, "agent:My agent:Bot");
+      assert.equal(shown.slice(0, -1).some((g) => g.items.some((i) => i.id === "agent")), false);
     }
-    assert.equal(NAV_GROUPS.at(-1).label, "Help");
-    assert.equal(NAV_GROUPS.filter((g) => g.label === "Help").length, 1);
-    // Someone with no pipelines area is shown no Help group at all.
+    // The two non-admin roles are shown nothing else from System.
+    for (const a of [growth, partner]) assert.deepEqual(groups(a).at(-1).items.map((i) => i.id), ["agent"]);
+    assert.equal(NAV_GROUPS.at(-1).label, "System");
+    assert.equal(NAV_GROUPS.filter((g) => g.label === "System").length, 1);
+    assert.equal(NAV_GROUPS.some((g) => g.label === "Help"), false);
+    // Someone with no pipelines area is shown no System group at all.
     assert.deepEqual(groups(person("growth", ["role_home"])).map((g) => g.label), [null]);
   });
   it("the menu, the title and the command palette all know it", () => {

@@ -44,6 +44,7 @@ import {
   spendCapProgress,
 } from "../lib/adSpendCap";
 import { loadFeatureFlags } from "../lib/featureFlags";
+import { PageHeader } from "../components/ui/PageHeader";
 
 function formatMinor(currency, minor) {
   const value = Number(minor);
@@ -240,20 +241,23 @@ export function CampaignsPage() {
 
   if (adsConsoleReady && !adsConsoleEnabled) {
     return (
-      <AlertCard variant="info" title="Ads console is off">
-        Campaigns is gated by <code className="text-xs">enable_ads_console</code>.
-        Turn it on in admin_config, or use{" "}
-        <a className="underline" href="#/ad-engine">Ad Engine</a> for connections.
-      </AlertCard>
+      <div className="space-y-6">
+        <PageHeader title="Campaigns" />
+        <AlertCard variant="info" title="Ads console is off">
+          Campaigns is gated by <code className="text-xs">enable_ads_console</code>.
+          Turn it on in admin_config, or use{" "}
+          <a className="underline" href="#/ad-engine">Ad Engine</a> for connections.
+        </AlertCard>
+      </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <SectionCard
+      <PageHeader
         title="Campaigns"
-        subtitle="Everything is created paused — launching is the explicit act that starts spend. Meta hard caps pause at 98% via the hourly spend feed; other platforms follow end-date rules until their spend adapters land."
-        action={
+        description="Everything is created paused — launching is the explicit act that starts spend. Meta hard caps pause at 98% via the hourly spend feed; other platforms follow end-date rules until their spend adapters land."
+        actions={
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" icon={RefreshCw} loading={rowBusy.all === "sync"} onClick={() => handleSync()}>
               Sync all
@@ -263,7 +267,8 @@ export function CampaignsPage() {
             </Button>
           </div>
         }
-      >
+      />
+      <SectionCard>
         {loading ? (
           <div className="flex items-center gap-2 py-4"><Spinner size="sm" /> Loading campaigns…</div>
         ) : !campaigns || campaigns.length === 0 ? (

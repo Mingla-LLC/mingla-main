@@ -3,6 +3,13 @@
 // decision once with tidy input; this one feeds the same decisions hostile
 // and broken input, and checks what the pasted lines really do in a shell.
 //
+// [TEST-MOD-APPROVED ISSUE-3802] 2026-10-13: Seth approved the admin shell
+// revamp (issue #3802, "one frame for every page, menu grouped by job").
+// Changed here, and only this: TG-3 pinned My agent in its own "Help" group,
+// last, after "Team". It now pins the approved place: the last item of the
+// "System" group, which is the last group. Every combination of areas is still
+// walked, and the page is still in the menu exactly when it may be opened.
+//
 //   TG-1  the lines to paste, run for real: a shell reads them back, and the
 //         key lands where the page says and nowhere else
 //   TG-2  nothing but a real key and a plain address is ever put in a line
@@ -277,7 +284,7 @@ describe("#3802 TG-2: nothing but a real key and a plain address is ever put in 
 describe("#3802 TG-3: who may open My agent, for every combination of areas", () => {
   const AREAS = Object.values(AREA);
   const KNOWN = ["home", "agent", "hosts", "creators", "beta-leads", "admin", "overview"];
-  it("the pipelines area, and only it, opens the page and shows Help", () => {
+  it("the pipelines area, and only it, opens the page and puts it in the menu", () => {
     assert.ok(AREAS.length >= 5 && AREAS.includes("crm"));
     assert.equal(PAGE_AREA_OVERRIDES.agent, "crm");
     let combos = 0;
@@ -291,11 +298,14 @@ describe("#3802 TG-3: who may open My agent, for every combination of areas", ()
           // (Someone with no home page at all is shown no page, whatever else they hold.)
           assert.equal(resolveRoute("agent", who, KNOWN).pageId === "agent", may && homePageFor(who) !== null, `${role}/${status}/${areas.join("+")}: the address shows the page only to someone who may open it`);
           const groups = visibleNavGroups(NAV_GROUPS, who);
-          const help = groups.filter((g) => g.label === "Help");
-          assert.equal(help.length, may ? 1 : 0, `${role}/${status}/${areas.join("+")}: Help is shown only with the page`);
+          // [TEST-MOD-APPROVED ISSUE-3802] was: a "Help" group is shown only with
+          // the page and holds only it. My agent is now the last item of System.
+          const holders = groups.filter((g) => g.items.some((i) => i.id === "agent"));
+          assert.equal(holders.length, may ? 1 : 0, `${role}/${status}/${areas.join("+")}: My agent is in the menu only with the page`);
           if (may) {
-            assert.equal(groups.at(-1).label, "Help");
-            assert.deepEqual(help[0].items.map((i) => i.id), ["agent"]);
+            assert.equal(groups.at(-1).label, "System");
+            assert.equal(holders[0], groups.at(-1));
+            assert.equal(holders[0].items.at(-1).id, "agent");
           }
           assert.equal(groups.some((g) => g.items.length === 0), false, "no empty group is ever shown");
           assert.equal(groups.flatMap((g) => g.items).filter((i) => i.id === "agent").length, may ? 1 : 0);
@@ -308,15 +318,17 @@ describe("#3802 TG-3: who may open My agent, for every combination of areas", ()
   it("someone who is nobody is shown nothing", () => {
     for (const nobody of [null, undefined, {}, { role: "owner" }, { areas: ["crm"] }, { role: "growth", status: "active" }, { role: "growth", status: "active", areas: "crm" }]) {
       assert.equal(canOpenPage(nobody, "agent"), false, JSON.stringify(nobody));
-      assert.equal(visibleNavGroups(NAV_GROUPS, nobody).some((g) => g.label === "Help"), false, JSON.stringify(nobody));
+      // [TEST-MOD-APPROVED ISSUE-3802] was: no "Help" group. Now: no group at all.
+      assert.deepEqual(visibleNavGroups(NAV_GROUPS, nobody), [], JSON.stringify(nobody));
     }
   });
-  it("Help is one group in the one menu list, straight after Team, holding only My agent", () => {
+  it("My agent is in the one menu list once, the last item of System, the last group", () => {
+    // [TEST-MOD-APPROVED ISSUE-3802] was: a "Help" group, last, after "Team".
     const labels = NAV_GROUPS.map((g) => g.label);
-    assert.equal(labels.filter((l) => l === "Help").length, 1);
-    assert.equal(labels.at(-1), "Help");
-    assert.equal(labels.at(-2), "Team");
-    assert.deepEqual(NAV_GROUPS.at(-1).items, [{ id: "agent", label: "My agent", icon: "Bot" }]);
+    assert.equal(labels.filter((l) => l === "System").length, 1);
+    assert.equal(labels.at(-1), "System");
+    assert.equal(labels.includes("Help"), false);
+    assert.deepEqual(NAV_GROUPS.at(-1).items.at(-1), { id: "agent", label: "My agent", icon: "Bot" });
     assert.equal(NAV_GROUPS.slice(0, -1).some((g) => g.items.some((i) => i.id === "agent")), false);
     const CONSTANTS = stripComments(read("lib/constants.js"));
     assert.equal(/TEAM_AGENT_NAV_ITEMS|teamNavGroups|teamAgentTitle/.test(CONSTANTS), false, "no second list of menu items exists beside the one list");
