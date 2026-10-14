@@ -31,11 +31,36 @@ const MAP_PIN_KEY = "locationGeo";
 /** The address row that already describes a pin move. */
 const ADDRESS_KEY = "address";
 
+/** The mark the diff formatters (live event, trip) put on a cut-short value. */
+const TRUNCATION_MARK = "…";
+
+/** A JSON string literal, e.g. `"lat"` or `"a \"quoted\" word"`. */
+const JSON_STRING = String.raw`"(?:[^"\\]|\\.)*"`;
+/** A JSON number or keyword, e.g. `-73.98`, `1e3`, `true`, `null`. */
+const JSON_SCALAR = String.raw`(?:-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)`;
+
+/**
+ * Openings only serialized data has. Each needs a structural token AFTER the
+ * first value (a key's ":", a list's "," or a nested "{" / "["), so prose such
+ * as "[21+] Rooftop night", "[2026] NYE", "[1] Doors at eight" or
+ * `{"Best"} night` never matches.
+ */
+const TRUNCATED_DATA_OPENING = new RegExp(
+  [
+    String.raw`^\{\s*${JSON_STRING}\s*:`, // {"key":
+    String.raw`^\[\s*\{\s*${JSON_STRING}`, // [{"key"
+    String.raw`^\[\s*\[\s*(?:${JSON_STRING}|${JSON_SCALAR}|\[|\{)`, // [[1  [["a"
+    String.raw`^\[\s*${JSON_STRING}\s*,`, // ["x",
+    String.raw`^\[\s*${JSON_SCALAR}\s*,`, // [1,2  [true,
+  ].join("|"),
+);
+
 /**
  * True when `value` is serialized data rather than words: it parses as a JSON
- * object or array, or it is one cut short (the diff formatter truncates long
- * values with "…", which no longer parses). Plain text that merely starts with
- * a bracket ("[Updated] Rooftop night") is left alone.
+ * object or array, or it is one cut short by a diff formatter (ends with "…")
+ * AND opens the way only data does (`{"key":`, `[{"`, `["x",`, `[1,2`).
+ * Real text always shows, including text that starts with a bracket
+ * ("[21+] Rooftop night", "[2026] NYE party", "[Updated] Rooftop night").
  */
 export const looksLikeSerializedData = (value: string): boolean => {
   const text = value.trim();
@@ -46,8 +71,9 @@ export const looksLikeSerializedData = (value: string): boolean => {
     const parsed: unknown = JSON.parse(text);
     return parsed !== null && typeof parsed === "object";
   } catch {
-    // Not complete JSON: data only if it opens like data does.
-    return /^(\{\s*("|\})|\[\s*("|\{|\[|\]|-?\d|true\b|false\b|null\b))/.test(text);
+    // Not complete JSON: data only if a formatter cut it short and it opens
+    // with a structure prose does not have.
+    return text.endsWith(TRUNCATION_MARK) && TRUNCATED_DATA_OPENING.test(text);
   }
 };
 
