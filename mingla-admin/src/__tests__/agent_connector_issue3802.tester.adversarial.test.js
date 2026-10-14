@@ -489,8 +489,8 @@ describe("#3802 TG-6: every failure becomes a sentence a person can act on", () 
       'console.error("[agent] server refused:", result.error.code);',
     ], "the only two log lines: a fixed label, then an error's kind or its code, never its words");
     assert.equal(/throw (err|result\.error)\b/.test(SERVICE), false, "a raw error never leaves the service");
-    assert.equal((SERVICE.match(/supabase\.rpc\("([a-z_]+)"/g) ?? []).every((c) => /"team_agent_(keys_mine|key_create|key_revoke|keys_overview|guide|my_activity)"/.test(c)), true);
-    assert.equal(/\.from\(|\.storage|functions\.invoke|fetch\(/.test(SERVICE), false, "the service only calls the six functions");
+    assert.equal((SERVICE.match(/supabase\.rpc\("([a-z_]+)"/g) ?? []).every((c) => /"team_agent_(keys_mine|key_create|key_revoke|keys_overview|guide|my_activity|setup_create)"/.test(c)), true);
+    assert.equal(/\.from\(|\.storage|functions\.invoke|fetch\(/.test(SERVICE), false, "the service only calls the seven functions");
   });
 });
 
@@ -538,16 +538,15 @@ describe("#3802 TG-8: where the key on screen goes", () => {
   const COPY = stripComments(read("components/agent/CopyBlock.jsx"));
   const HOOK = stripComments(read("hooks/useAgentKeys.js"));
   const LIB = stripComments(read("lib/agentConnect.js"));
-  it("the page keeps it in one piece of state and hands it to exactly two places", () => {
+  it("the page keeps it in one piece of state and hands it to exactly one place", () => {
     const uses = PAGE.split("\n").filter((l) => /\bfresh\b/.test(l)).map((l) => l.trim());
     assert.deepEqual(
       uses,
       [
         "const [fresh, setFresh] = useState({});",
-        "freshKey={fresh[a.id] || null}",
-        "freshKey={fresh[tab] || null}",
+        "freshKey: fresh[a.id] || null,",
       ],
-      "the key is read in two places: the key card and the lines"
+      "the key is read in one place: the key card (the lines take no key)"
     );
     const made = PAGE.match(/\bmade\b[^\n]*/g) ?? [];
     for (const m of made) assert.equal(/console|addToast|setProblem|localStorage|sessionStorage|location|navigator\.|fetch\(|JSON\.stringify/.test(m) && /made\.key|made\)/.test(m), false, m);
@@ -571,8 +570,8 @@ describe("#3802 TG-8: where the key on screen goes", () => {
     assert.match(COPY, /\{text\}\s*<\/pre>/);
     assert.match(CARD, /<CopyBlock\s+id=\{`agent-fresh-key-\$\{agent\.id\}`\}\s+text=\{freshKey\}\s+copyLabel="Copy key"\s+note="Shown once\. Copy it now: you will not see this key again\."/);
     assert.match(CARD, /\{freshKey \? \(/);
-    assert.match(STEPS, /connectLines\(\{ agent: agentId, os, endpoint, key: freshKey \}\)/);
-    assert.equal((STEPS.match(/freshKey/g) ?? []).length, 3, "taken in, given to the line builder, and asked 'is it on screen?'");
+    assert.match(STEPS, /advancedLines\(\{ agent: agentId, os, endpoint \}\)/);
+    assert.equal((STEPS.match(/freshKey|\bkey:/g) ?? []).length, 0, "the lines are built without the key and never see it");
   });
   it("Done, a disconnect, and leaving the page each drop it", () => {
     assert.match(PAGE, /const done = useCallback\(\(agentId\) => \{\s*setFresh\(\(f\) => \(\{ \.\.\.f, \[agentId\]: null \}\)\);\s*\}, \[\]\);/);
@@ -785,7 +784,7 @@ describe("#3802 TG-13: where a key ends up, and lines that were not run", () => 
   it("the page shows that text under each line and a warning above lines that were not run", () => {
     const STEPS = stripComments(read("components/agent/AgentConnectSteps.jsx"));
     assert.match(STEPS, /note=\{line\.where\}/);
-    assert.match(STEPS, /note=\{lines\.simpler\.where\}/);
+    assert.equal(/simpler/.test(STEPS), false, "no line that carries the key is drawn");
     assert.match(STEPS, /\{lines\.untested && \(\s*<AlertCard variant="warning" title="Not tested on Windows">/);
     assert.match(STEPS, /We have not run these lines on a Windows computer\./);
     assert.equal((STEPS.match(/min-h-11/g) ?? []).length >= 2, true, "tabs and disclosures are full-height targets");
@@ -795,16 +794,23 @@ describe("#3802 TG-13: where a key ends up, and lines that were not run", () => 
 describe("#3802 TG-14: the checks on a shown key start and stop with the key", () => {
   const PAGE = stripComments(read("pages/AgentPage.jsx"));
   it("they run only while a key is on screen, read and send nothing but the ordinary list, and are cleared", () => {
-    assert.match(PAGE, /const SHOWN_KEY_REFRESH_MS = 5_000;/);
+    assert.match(PAGE, /const WATCH_EVERY_MS = 5_000;/);
     assert.match(PAGE, /const showingKey = AGENTS\.some\(\(a\) => !!shownIds\[a\.id\]\);/);
-    const at = PAGE.indexOf("if (!showingKey) return undefined;");
+    const at = PAGE.indexOf("useWatch(showingKey, () => refetch({ quiet: true }), {");
     assert.ok(at > 0);
-    const effect = PAGE.slice(at, PAGE.indexOf("}, [showingKey, refetch]);", at));
-    assert.match(effect, /const timer = setInterval\(\(\) => \{\s*if \(navigator\.onLine === false\) return;\s*refetch\(\{ quiet: true \}\);\s*\}, SHOWN_KEY_REFRESH_MS\);\s*return \(\) => clearInterval\(timer\);/);
-    assert.equal(/fresh|made|key\b/.test(effect.replace(/showingKey/g, "")), false, "the check carries no key");
-    assert.equal((PAGE.match(/setInterval\(/g) ?? []).length, 1);
+    const watch = PAGE.slice(at, PAGE.indexOf("\n  });", at));
+    assert.match(watch, /forMs: SHOWN_KEY_MAX_MS,/);
+    assert.match(watch, /onEnd: \(\) => \{[\s\S]*setFresh\(\(f\) => \(\{ \.\.\.f, \[a\.id\]: null \}\)\);[\s\S]*KEY_HIDDEN_AFTER_WORDS/);
+    assert.equal(/made|key\b/.test(watch.replace(/showingKey|shownIds|KEY_HIDDEN_AFTER_WORDS|SHOWN_KEY_MAX_MS/g, "")), false, "the check carries no key");
+    // The helper: only while this tab is visible and online, with an end, and cleared with the key.
+    const helper = PAGE.slice(PAGE.indexOf("function useWatch("), PAGE.indexOf("const ENDPOINT"));
+    assert.match(helper, /if \(!active\) return undefined;/);
+    assert.match(helper, /isVisible: \(\) => document\.visibilityState === "visible",/);
+    assert.match(helper, /isOnline: \(\) => navigator\.onLine !== false,/);
+    assert.match(helper, /document\.removeEventListener\("visibilitychange", onVisibility\);\s*watch\.stop\(\);/);
+    assert.equal((PAGE.match(/setInterval\(/g) ?? []).length, 0, "nothing on this page ticks without an end or in a hidden tab");
     assert.match(PAGE, /const doneAndForget = useCallback\(\s*\(agentId\) => \{\s*done\(agentId\);\s*setShownIds\(\(m\) => \(\{ \.\.\.m, \[agentId\]: null \}\)\);/);
-    assert.match(PAGE, /onDone=\{doneAndForget\}/);
+    assert.match(PAGE, /onDone: doneAndForget,/);
   });
   it("nothing passes between tabs: no channel, no storage event, no shared worker", () => {
     for (const f of ["pages/AgentPage.jsx", "hooks/useAgentKeys.js", "lib/agentConnect.js", "components/agent/AgentKeyCard.jsx", "components/agent/AgentConnectSteps.jsx", "components/agent/AgentTeamList.jsx", "components/agent/CopyBlock.jsx", "services/teamAgentService.js"]) {
