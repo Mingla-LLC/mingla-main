@@ -1230,7 +1230,9 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
                   helperText={countryPickerHelper}
                   warningText={countryPickerWarning}
                   extraOptions={PAYSTACK_PICKER_OPTIONS}
-                  defaultOpen={reopenPickerOnReturn}
+                  // Never opened over a locked row (a brand with a payment
+                  // account keeps its country).
+                  defaultOpen={reopenPickerOnReturn && !countryPickerLocked}
                 />
               </View>
 
