@@ -214,6 +214,8 @@ on:
       # #3802 Wave 4 (My agent): the client suite and the files it reads.
       - "mingla-admin/src/__tests__/issue3802_wave4_agent.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/agent_connector_issue3802.tester.adversarial.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave4_setup.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js"
       - "mingla-admin/src/pages/AgentPage.jsx"
       - "mingla-admin/src/components/agent/**"
       - "mingla-admin/src/lib/agentConnect.js"
@@ -427,6 +429,8 @@ on:
       # #3802 Wave 4 (My agent): the client suite and the files it reads.
       - "mingla-admin/src/__tests__/issue3802_wave4_agent.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/agent_connector_issue3802.tester.adversarial.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave4_setup.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js"
       - "mingla-admin/src/pages/AgentPage.jsx"
       - "mingla-admin/src/components/agent/**"
       - "mingla-admin/src/lib/agentConnect.js"
@@ -597,6 +601,12 @@ jobs:
       - name: "Issue #3802 — My agent: independent tester adversarial proof (the pasted lines run in a real shell, hostile keys and addresses, every combination of areas, broken dates and unknown reasons, no raw error on screen, where the key on screen can go)"
         working-directory: mingla-admin
         run: node --test src/__tests__/agent_connector_issue3802.tester.adversarial.test.js
+      - name: "Issue #3802 — My agent, one-message setup: the four messages (one command, the code once, never a key), run in a real shell with stand-ins; the hand-typed lines never hold a key; every state of the setup card; the repeated check only while visible, with an end"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave4_setup.implementor.happy.test.js
+      - name: "Issue #3802 — Hosts and Creators: emails, phones and handles in the server's own normal form, search by them, the contact rule on every surface, the contactable check in the Add form, City missing by role"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}

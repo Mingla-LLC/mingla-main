@@ -378,7 +378,7 @@ function PipelinePage({ pipeline, onTabChange }) {
       } catch (err) {
         return { message: errorWords(err) };
       }
-      if (res?.status === "duplicate") return { duplicate: res.existing };
+      if (res?.status === "duplicate") return { duplicate: res.existing, reason: res.reason || "name" };
       const record = res.record;
       openCard(record.id, { replace: true });
       addToast({
@@ -512,6 +512,8 @@ function PipelinePage({ pipeline, onTabChange }) {
             regions={config?.regions}
             hasNoRegion={pipe.records.some((r) => !r.region_id)}
             disabled={!ready}
+            canAddRegion={!!config?.me?.can_add_region}
+            onRefreshRegions={cfg.retry}
             onChange={patch}
           />
 
@@ -608,6 +610,8 @@ function PipelinePage({ pipeline, onTabChange }) {
                   records={pipe.records}
                   defaults={{ icp: state.icp, regionId: regionId === NO_REGION ? "" : regionId, me }}
                   disabled={!online}
+                  canAddRegion={!!config?.me?.can_add_region}
+                  onRefreshRegions={cfg.retry}
                   onCreate={handleCreate}
                   onOpenExisting={(id) => openCard(id, { replace: true })}
                   onCancel={closeCard}
@@ -635,6 +639,7 @@ function PipelinePage({ pipeline, onTabChange }) {
               onRequestMove={requestMove}
               onDelete={handleDelete}
               onOpenCard={(id) => openCard(id, { replace: true })}
+              onRefreshRegions={cfg.retry}
             />
           ) : null
         }

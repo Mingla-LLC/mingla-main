@@ -2478,8 +2478,8 @@ AS $$
 DECLARE
   c_tools constant text[] := ARRAY[
     'get_started', 'my_day', 'find_records', 'get_record', 'check_names',
-    'find_mingla_link', 'list_beta_leads', 'team_summary',
-    'check_contactable', 'add_records', 'upsert_record', 'update_records',
+    'find_mingla_link', 'check_contactable', 'list_beta_leads', 'team_summary',
+    'add_records', 'upsert_record', 'update_records',
     'move_stage', 'set_owners', 'log_activity', 'record_reply'];
   c_writes constant text[] := ARRAY[
     'add_records', 'upsert_record', 'update_records',

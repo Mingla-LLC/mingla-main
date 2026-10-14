@@ -539,43 +539,6 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     group: "Find and check",
   },
   {
-    name: "list_beta_leads",
-    title: "List beta leads",
-    description:
-      "Businesses that asked to join Mingla, newest first, each with the type and city it gave, the ICP and region it would carry over to Hosts, and the host it already is, if any. Shows only leads that are not hosts yet unless only_new is false. Carries a contact name and email only, never a phone number. " +
-      DATA_NOT_INSTRUCTIONS,
-    inputSchema: schema({
-      only_new: { type: "boolean", hint: "Send true or false" },
-      limit: {
-        type: "integer",
-        minimum: 1,
-        maximum: 100,
-        hint: "Send a whole number from 1 to 100",
-      },
-    }),
-    annotations: READ,
-    reaches: ["crm_beta_leads_list"],
-    writes: false,
-    adminOnly: false,
-    peopleText: true,
-    group: "Beta leads",
-  },
-  {
-    name: "team_summary",
-    title: "Team summary",
-    description:
-      "Owner and admin only: the team's numbers this week by person (touches, stage moves, records added, overdue), everything due across the team, stage counts and targets with progress. Anyone else is refused. " +
-      DATES + " " +
-      DATA_NOT_INSTRUCTIONS,
-    inputSchema: schema({ today: TODAY, time_zone: TIME_ZONE }),
-    annotations: READ,
-    reaches: ["crm_team_summary"],
-    writes: false,
-    adminOnly: true,
-    peopleText: true,
-    group: "Team",
-  },
-  {
     name: "check_contactable",
     title: "Check who is contactable",
     description:
@@ -611,6 +574,43 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     adminOnly: false,
     peopleText: true,
     group: "Find and check",
+  },
+  {
+    name: "list_beta_leads",
+    title: "List beta leads",
+    description:
+      "Businesses that asked to join Mingla, newest first, each with the type and city it gave, the ICP and region it would carry over to Hosts, and the host it already is, if any. Shows only leads that are not hosts yet unless only_new is false. Carries a contact name and email only, never a phone number. " +
+      DATA_NOT_INSTRUCTIONS,
+    inputSchema: schema({
+      only_new: { type: "boolean", hint: "Send true or false" },
+      limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 100,
+        hint: "Send a whole number from 1 to 100",
+      },
+    }),
+    annotations: READ,
+    reaches: ["crm_beta_leads_list"],
+    writes: false,
+    adminOnly: false,
+    peopleText: true,
+    group: "Beta leads",
+  },
+  {
+    name: "team_summary",
+    title: "Team summary",
+    description:
+      "Owner and admin only: the team's numbers this week by person (touches, stage moves, records added, overdue), everything due across the team, stage counts and targets with progress. Anyone else is refused. " +
+      DATES + " " +
+      DATA_NOT_INSTRUCTIONS,
+    inputSchema: schema({ today: TODAY, time_zone: TIME_ZONE }),
+    annotations: READ,
+    reaches: ["crm_team_summary"],
+    writes: false,
+    adminOnly: true,
+    peopleText: true,
+    group: "Team",
   },
   {
     name: "add_records",

@@ -4,7 +4,11 @@ import { Drawer } from "../ui/Drawer";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { useToast } from "../../context/ToastContext";
-import { CONTROL_CLASS, Field, Select } from "./fields";
+import { Badge } from "../ui/Badge";
+import { CONTROL_CLASS, Field, MISSING_CITY, MISSING_CITY_LABEL, Select } from "./fields";
+import { IdentifiersField } from "./IdentifiersField";
+import { ContactRuleField } from "./ContactRuleField";
+import { MissingCityLayer } from "./MissingCityLayer";
 import { OwnersField } from "./OwnersField";
 import { MinglaLinkField } from "./MinglaLinkField";
 import { LogForm } from "./LogForm";
@@ -13,10 +17,12 @@ import {
   MOVE_BLOCK_COPY,
   TEXT_FIELDS,
   clockTime,
+  contactRuleView,
   editsToSend,
   errorWords,
   fieldLabel,
   hasUnsavedEdits,
+  identifiersToSend,
   loadErrorWords,
   nextStage,
   normalizeTyped,
@@ -81,6 +87,7 @@ export function RecordDrawer({
   onRequestMove,
   onDelete,
   onOpenCard,
+  onRefreshRegions,
 }) {
   const { addToast } = useToast();
   const uid = useId();
@@ -95,6 +102,8 @@ export function RecordDrawer({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [closeBlocked, setCloseBlocked] = useState(false);
+  const [cityMissing, setCityMissing] = useState(false);
+  const regionRef = useRef(null);
   const askDeleteRef = useRef(null);
   const keepRef = useRef(null);
   const mounted = useRef(true);
@@ -254,6 +263,31 @@ export function RecordDrawer({
       }
     },
     [pipe, addToast, markMissing, keepForLater]
+  );
+
+  /**
+   * Save the identifiers or the contact rule (each is saved the moment it is
+   * changed, with its own answer). Resolves to { ok } or to the server's
+   * sentence, with the record that already holds a contact detail when the
+   * answer names one.
+   */
+  const saveExtra = useCallback(
+    async (changes) => {
+      const before = live.current.record;
+      if (!before) return { message: "This card is no longer here." };
+      setSavingCount((n) => n + 1);
+      try {
+        await pipe.update(before.id, changes);
+        if (mounted.current) setSavedAt(clockTime());
+        return { ok: true };
+      } catch (err) {
+        if (err?.token === "not_found" && mounted.current) markMissing();
+        return { message: errorWords(err), existingId: err?.token === "duplicate_identifier" ? err.detail || "" : "" };
+      } finally {
+        if (mounted.current) setSavingCount((n) => Math.max(0, n - 1));
+      }
+    },
+    [pipe, markMissing]
   );
 
   /** Save one field. Returns true when the server took it. */
@@ -534,6 +568,8 @@ export function RecordDrawer({
   if (record.region_id && !regionOptions.some((r) => r.value === record.region_id)) {
     regionOptions.push({ value: record.region_id, label: "A region no longer in the list" });
   }
+  regionOptions.push({ value: MISSING_CITY, label: MISSING_CITY_LABEL });
+  const rule = contactRuleView(record, config.team);
   const stageOptions = def.stages.map((s) => ({
     value: s.id,
     label: s.label,
@@ -665,6 +701,20 @@ export function RecordDrawer({
             You&apos;re offline. You can read this card, but changes won&apos;t save until you&apos;re back.
           </p>
         )}
+        {rule && (
+          <p
+            role="status"
+            className={[
+              "flex min-w-0 flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-[13px]",
+              rule.variant === "error"
+                ? "bg-[var(--color-error-50)] text-[var(--color-error-700)]"
+                : "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]",
+            ].join(" ")}
+          >
+            <Badge variant={rule.variant}>{rule.label}</Badge>
+            <span className="min-w-0 break-words">{rule.banner.slice(rule.label.length).replace(/^ \u00b7 /, "")}</span>
+          </p>
+        )}
         {next && (
           <div>
             <Button
@@ -707,8 +757,27 @@ export function RecordDrawer({
             <Select {...selectProps("icp")} placeholder="None yet" options={opt(def.icps)} />
           </Field>
           <Field label="Region" htmlFor={fid("region_id")} error={fieldError("region_id")}>
-            <Select {...selectProps("region_id")} placeholder="None yet" options={regionOptions} />
+            <Select
+              {...selectProps("region_id")}
+              ref={regionRef}
+              placeholder="None yet"
+              options={regionOptions}
+              onChange={(e) => {
+                if (e.target.value === MISSING_CITY) setCityMissing(true);
+                else save("region_id", e.target.value);
+              }}
+            />
           </Field>
+          {cityMissing && (
+            <MissingCityLayer
+              canAddRegion={!!config.me?.can_add_region}
+              onRefresh={onRefreshRegions}
+              onClose={() => {
+                setCityMissing(false);
+                regionRef.current?.focus();
+              }}
+            />
+          )}
           <OwnersField
             labelId={fid("owners")}
             team={config.team}
@@ -724,6 +793,13 @@ export function RecordDrawer({
           <Field label={isHosts ? "Contact" : "Handle and reach"} htmlFor={fid("contact")} full error={fieldError("contact")}>
             <input type="text" maxLength={300} placeholder="Who to talk to" {...textProps("contact")} />
           </Field>
+          <IdentifiersField
+            value={record.identifiers}
+            disabled={locked}
+            onChange={(list) => saveExtra({ identifiers: identifiersToSend(list) })}
+            onOpenRecord={onOpenCard}
+          />
+          <ContactRuleField record={record} disabled={locked} onSave={saveExtra} />
           <Field label="Channel" htmlFor={fid("channel")} error={fieldError("channel")}>
             <Select {...selectProps("channel")} placeholder="None yet" options={opt(config.channels)} />
           </Field>

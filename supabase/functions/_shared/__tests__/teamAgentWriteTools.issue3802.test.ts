@@ -73,8 +73,19 @@ function accepted(name: string, args: unknown): Record<string, unknown> {
   return r.args;
 }
 
-Deno.test("#3802 W-1: sixteen tools, the eight new ones after the eight that read, each saying what it is", () => {
-  assertEquals(TEAM_AGENT_TOOLS.map((t) => t.name).slice(8), NEW_TOOLS);
+Deno.test("#3802 W-1: sixteen tools, each group together, each saying what it is", () => {
+  assertEquals(TEAM_AGENT_TOOLS.map((t) => t.name), [
+    "get_started",
+    "my_day",
+    "find_records",
+    "get_record",
+    "check_names",
+    "find_mingla_link",
+    "check_contactable",
+    "list_beta_leads",
+    "team_summary",
+    ...WRITES,
+  ]);
   assertEquals(TEAM_AGENT_TOOLS.length, 16);
   assertEquals(
     TEAM_AGENT_TOOLS.filter((t) => t.writes).map((t) => t.name),

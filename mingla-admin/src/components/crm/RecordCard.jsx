@@ -1,7 +1,8 @@
 import { ArrowRight } from "lucide-react";
 import { Button } from "../ui/Button";
 import { DueBadge } from "./DueBadge";
-import { displayOwners, icpLabel, nextStage, regionName } from "../../lib/crmModel";
+import { Badge } from "../ui/Badge";
+import { contactRuleView, displayOwners, icpLabel, nextStage, recordOpenLabel, regionName } from "../../lib/crmModel";
 
 /**
  * One card on the board. The whole card is a button (Enter or Space opens
@@ -29,12 +30,13 @@ export function RecordCard({
   const where = [icp, region].filter(Boolean).join(" · ") || "No ICP or region yet";
   const owners = displayOwners(record, team);
   const draggable = canDrag && !disabled && !pending;
+  const rule = contactRuleView(record, team);
 
   return (
     <div
       role="button"
       tabIndex={0}
-      aria-label={`Open ${record.name}`}
+      aria-label={recordOpenLabel(record, team)}
       aria-busy={pending || undefined}
       draggable={draggable}
       onDragStart={draggable ? (e) => onDragStart?.(e, record) : undefined}
@@ -57,6 +59,11 @@ export function RecordCard({
       ].join(" ")}
     >
       <p className="break-words text-sm font-semibold text-[var(--color-text-primary)]">{record.name}</p>
+      {rule && (
+        <p className="mt-1" title={rule.reason || undefined}>
+          <Badge variant={rule.variant}>{rule.label}</Badge>
+        </p>
+      )}
       <p className="mt-0.5 break-words text-xs text-[var(--color-text-secondary)]">{where}</p>
       <p className="mt-0.5 break-words text-xs text-[var(--color-text-tertiary)]">
         {owners}

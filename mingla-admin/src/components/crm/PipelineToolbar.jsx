@@ -1,5 +1,7 @@
+import { useRef, useState } from "react";
 import { SearchInput } from "../ui/SearchInput";
-import { Segmented, Select } from "./fields";
+import { MISSING_CITY, MISSING_CITY_LABEL, Segmented, Select } from "./fields";
+import { MissingCityLayer } from "./MissingCityLayer";
 import { NO_REGION, regionSlug } from "../../lib/crmModel";
 
 const VIEWS = [
@@ -17,13 +19,29 @@ const WHOSE = [
  * to the address through onChange(patch, { replace }): typing and filters
  * replace the address; switching view adds a history entry.
  */
-export function PipelineToolbar({ state, def, regions, hasNoRegion = false, disabled = false, onChange }) {
+export function PipelineToolbar({
+  state,
+  def,
+  regions,
+  hasNoRegion = false,
+  disabled = false,
+  canAddRegion = false,
+  onRefreshRegions,
+  onChange,
+}) {
+  const [cityMissing, setCityMissing] = useState(false);
+  const regionRef = useRef(null);
+  const closeCityMissing = () => {
+    setCityMissing(false);
+    regionRef.current?.focus();
+  };
   const icpOptions = (def?.icps || []).map((i) => ({ value: i.id, label: i.label }));
   const regionOptions = (regions || []).map((r) => ({
     value: regionSlug(r.name),
     label: r.is_live ? r.name : `${r.name} (not live yet)`,
   }));
   if (hasNoRegion || state.region === NO_REGION) regionOptions.push({ value: NO_REGION, label: "No region yet" });
+  regionOptions.push({ value: MISSING_CITY, label: MISSING_CITY_LABEL });
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -31,7 +49,7 @@ export function PipelineToolbar({ state, def, regions, hasNoRegion = false, disa
         className="w-full sm:w-64"
         value={state.q}
         disabled={disabled}
-        placeholder="Search by name"
+        placeholder="Search by name, email, phone or handle"
         aria-label="Search"
         maxLength={80}
         onChange={(e) => onChange({ q: e.target.value }, { replace: true })}
@@ -48,12 +66,17 @@ export function PipelineToolbar({ state, def, regions, hasNoRegion = false, disa
       />
       <Select
         aria-label="Region"
+        ref={regionRef}
         className="!w-full sm:!w-auto"
         value={state.region}
         disabled={disabled}
         placeholder="All regions"
         options={regionOptions}
-        onChange={(e) => onChange({ region: e.target.value }, { replace: true })}
+        onChange={(e) => {
+          // "City missing?" is a question, not a filter: the filter stays.
+          if (e.target.value === MISSING_CITY) setCityMissing(true);
+          else onChange({ region: e.target.value }, { replace: true });
+        }}
       />
       <Segmented
         label="Whose records"
@@ -69,6 +92,9 @@ export function PipelineToolbar({ state, def, regions, hasNoRegion = false, disa
         disabled={disabled}
         onChange={(view) => onChange({ view }, { replace: false })}
       />
+      {cityMissing && (
+        <MissingCityLayer canAddRegion={canAddRegion} onClose={closeCityMissing} onRefresh={onRefreshRegions} />
+      )}
     </div>
   );
 }

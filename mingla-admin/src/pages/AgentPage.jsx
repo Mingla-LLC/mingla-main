@@ -2,14 +2,17 @@
  * MY AGENT PAGE (#/agent) — connect your own Claude or Codex to Mingla
  * (issue #3802, Wave 4).
  *
- * A person creates one key per agent here. The key is shown once, in this
- * tab's memory only: it is never written to browser storage, never sent
- * anywhere by this page, and gone on Done, on reload or on leaving the page.
- * The server keeps only a digest of it, so nobody (this page included) can
- * show it again.
+ * A person copies one setup message per agent here and pastes it into that
+ * agent; the agent connects itself. The message holds a one-time code and
+ * never a key. It lives in this tab's memory only: it is never written to
+ * browser storage, an address or a cookie, and it is gone on Done, once it
+ * is used, when it runs out, on reload and on leaving the page.
  *
- * This first part connects an agent that READS. The page says so in plain
- * words and lists what arrives next; it never offers something the connector
+ * The hand-typed way stays under Advanced: a key is created and shown once,
+ * in memory only, and hidden by itself after 10 minutes.
+ *
+ * A connected agent reads and writes. The page says what it can do, what it
+ * cannot, and what arrives next; it never offers something the connector
  * cannot do yet.
  *
  * This file never talks to the database itself: it reads through
@@ -24,15 +27,22 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useOnline } from "../hooks/useCrmPipeline";
 import { useAgentKeys } from "../hooks/useAgentKeys";
-import { createKey, revokeKey } from "../services/teamAgentService";
-import { AgentKeyCard } from "../components/agent/AgentKeyCard";
-import { AgentConnectSteps } from "../components/agent/AgentConnectSteps";
+import { createKey, createSetupCode, revokeKey } from "../services/teamAgentService";
+import { AgentSetupCard } from "../components/agent/AgentSetupCard";
+import { AgentAdvanced } from "../components/agent/AgentAdvanced";
+import { DISCLOSURE_CLASS } from "../components/agent/AgentConnectSteps";
+import { Segmented } from "../components/crm/fields";
 import { AgentTeamList } from "../components/agent/AgentTeamList";
 import {
   AGENTS,
   AGENT_GUARDRAILS,
   AGENT_NOT_YET,
   AGENT_OFFLINE_WORDS,
+  KEY_HIDDEN_AFTER_WORDS,
+  NOT_WORKING_CHECKS,
+  OS_OPTIONS,
+  SETUP_GRACE_MS,
+  SHOWN_KEY_MAX_MS,
   abilitiesFor,
   activeKey,
   agentEndpoint,
@@ -45,14 +55,56 @@ import {
   createOutcome,
   lastStoppedKey,
   overviewRows,
+  createWatch,
+  pendingSetup,
+  setupCardView,
+  setupMessage,
+  setupVerdict,
   shownKeyVerdict,
 } from "../lib/agentConnect";
 
-/** While a key is on screen the page checks this often that it still works. */
-const SHOWN_KEY_REFRESH_MS = 5_000;
+/** While a key or a setup message is on screen the page checks this often. */
+const WATCH_EVERY_MS = 5_000;
 /** How long a create waits for its answer before the page stops waiting. */
 const CREATE_WAIT_MS = 20_000;
 
+/**
+ * Repeats a check while something is on screen: every `everyMs`, only while
+ * this tab is visible and the browser is online, for at most `forMs`, then
+ * `onEnd` once. A hidden tab makes no request; when it is shown again the
+ * page's own refresh reads once and this starts ticking again. `restart`
+ * starts the count again when it changes.
+ */
+function useWatch(active, onTick, { everyMs = WATCH_EVERY_MS, forMs, onEnd, restart = "" } = {}) {
+  const tick = useRef(onTick);
+  const end = useRef(onEnd);
+  useEffect(() => {
+    tick.current = onTick;
+    end.current = onEnd;
+  });
+  useEffect(() => {
+    if (!active) return undefined;
+    const watch = createWatch({
+      onTick: () => tick.current?.(),
+      onEnd: () => end.current?.(),
+      everyMs,
+      forMs,
+      isVisible: () => document.visibilityState === "visible",
+      isOnline: () => navigator.onLine !== false,
+    });
+    const onVisibility = () => {
+      // Shown again: hooks/useAgentKeys.js makes the one read of that moment;
+      // this only starts the timer again.
+      if (document.visibilityState === "visible") watch.visible(false);
+      else watch.hidden();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      watch.stop();
+    };
+  }, [active, everyMs, forMs, restart]);
+}
 
 const ENDPOINT = agentEndpoint(import.meta.env.VITE_SUPABASE_URL);
 
@@ -84,7 +136,7 @@ export function AgentPage() {
   const { addToast } = useToast();
   const { access } = useAuth();
   const online = useOnline();
-  const { keys, idleDays, guide, overview, isOwner, loading, error, refetch } = useAgentKeys();
+  const { keys, setup, idleDays, guide, overview, isOwner, loading, error, refetch } = useAgentKeys();
 
   // The key just created, per agent. In memory only; never stored, never
   // logged, never sent to another tab. Leaving the page drops it.
@@ -106,6 +158,17 @@ export function AgentPage() {
     typeof navigator !== "undefined" && /win/i.test(navigator.platform || "") ? "windows" : "mac"
   );
   const busyRef = useRef({});
+  // One-message setup, per agent. `setups` says where each card is
+  // ({ phase, expiresAt, beforeKeyId, words }); `messages` holds the message
+  // itself while it is on screen. Both are this tab's memory only.
+  const [setups, setSetups] = useState({});
+  const [messages, setMessages] = useState({});
+  const [setupBusy, setSetupBusy] = useState({});
+  const setupBusyRef = useRef({});
+  const setupsRef = useRef({});
+  const [now, setNow] = useState(() => Date.now());
+  // When each key on screen was shown, so it can be hidden after 10 minutes.
+  const [shownAt, setShownAt] = useState(0);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -142,18 +205,160 @@ export function AgentPage() {
     }
   }, [keys, shownIds, loading, error]);
 
-  // While a key is on screen, read again every few seconds, in the
-  // background too, so a key ended in another tab or window is already gone
-  // from this one when somebody next looks at it.
-  const showingKey = AGENTS.some((a) => !!shownIds[a.id]);
   useEffect(() => {
-    if (!showingKey) return undefined;
-    const timer = setInterval(() => {
-      if (navigator.onLine === false) return;
-      refetch({ quiet: true });
-    }, SHOWN_KEY_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [showingKey, refetch]);
+    setupsRef.current = setups;
+  }, [setups]);
+
+  // While a key is on screen (Advanced), read again every few seconds so a
+  // key ended in another tab or window does not stay here; and never leave a
+  // key on screen with nothing checking it: after 10 minutes it is hidden.
+  const showingKey = AGENTS.some((a) => !!shownIds[a.id]);
+  useWatch(showingKey, () => refetch({ quiet: true }), {
+    forMs: SHOWN_KEY_MAX_MS,
+    restart: String(shownAt),
+    onEnd: () => {
+      for (const a of AGENTS) {
+        if (!shownIds[a.id]) continue;
+        setFresh((f) => ({ ...f, [a.id]: null }));
+        setShownIds((m) => ({ ...m, [a.id]: null }));
+        setNotice((n) => ({ ...n, [a.id]: KEY_HIDDEN_AFTER_WORDS }));
+      }
+    },
+  });
+
+  // While a setup message waits for an agent, read again every few seconds
+  // until it is used or its time (plus a moment) has run out.
+  const waiting = AGENTS.filter((a) => ["ready", "blocked"].includes(setups[a.id]?.phase));
+  const lastEnd = Math.max(0, ...waiting.map((a) => Date.parse(setups[a.id].expiresAt) || 0));
+  const settle = useCallback((list, at) => {
+    for (const a of AGENTS) {
+      const st = setupsRef.current[a.id];
+      if (!st || !["ready", "blocked"].includes(st.phase)) continue;
+      const verdict = setupVerdict({ keys: list, agentId: a.id, beforeKeyId: st.beforeKeyId, expiresAt: st.expiresAt, now: at });
+      if (verdict === "wait") continue;
+      setMessages((m) => ({ ...m, [a.id]: null }));
+      setSetups((m) => ({ ...m, [a.id]: { phase: verdict } }));
+      if (verdict === "used") {
+        addToast({ variant: "success", title: `${a.product} is set up`, description: `Restart ${a.product}, then ask: What is on my plate in Mingla?` });
+      }
+    }
+  }, [addToast]);
+  useEffect(() => {
+    if (!loading && !error) settle(keys, Date.now());
+  }, [keys, loading, error, settle]);
+  useWatch(waiting.length > 0, () => {
+    setNow(Date.now());
+    refetch({ quiet: true });
+  }, {
+    forMs: lastEnd > 0 ? Math.max(0, lastEnd - Date.now()) + SETUP_GRACE_MS : 0,
+    restart: String(lastEnd),
+    onEnd: async () => {
+      const list = await refetch({ quiet: true });
+      if (!mountedRef.current) return;
+      setNow(Date.now());
+      settle(Array.isArray(list) ? list : keysRef.current, Date.now() + 1);
+    },
+  });
+
+  const markSetup = (agentId, on) => {
+    setupBusyRef.current = { ...setupBusyRef.current, [agentId]: on };
+    setSetupBusy(setupBusyRef.current);
+  };
+
+  // Copy setup message. The clipboard write belongs to this press: it is
+  // handed a promise of the message, so the copy still counts as the
+  // person's own action although the code is fetched first.
+  const copySetup = useCallback(
+    async (agentId) => {
+      // A second press while the first is on its way sends nothing.
+      if (setupBusyRef.current[agentId]) return;
+      if (!online) {
+        addToast({ variant: "warning", title: "You're offline", description: "No setup message was made. Try again once you're back." });
+        return;
+      }
+      const current = activeKey(keysRef.current, agentId);
+      const phase = setupsRef.current[agentId]?.phase;
+      // Already connected: say what a new message does before making one.
+      if (current && phase !== "confirm") {
+        setSetups((m) => ({ ...m, [agentId]: { phase: "confirm" } }));
+        return;
+      }
+      markSetup(agentId, true);
+      setMessages((m) => ({ ...m, [agentId]: null }));
+      setSetups((m) => ({ ...m, [agentId]: { phase: "asking" } }));
+      let timer;
+      const asked = Promise.race([
+        createSetupCode(agentId, browserTimeZone()),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject({ token: "no_answer", message: "" }), CREATE_WAIT_MS);
+        }),
+      ]);
+      const text = asked.then((answer) => {
+        const built = setupMessage({ agent: agentId, os, endpoint: ENDPOINT, code: answer?.code });
+        if (!built) throw new Error("no message could be built");
+        return built;
+      });
+      text.catch(() => {});
+      let copied = Promise.resolve(false);
+      try {
+        if (navigator.clipboard?.write && typeof ClipboardItem === "function") {
+          copied = navigator.clipboard
+            .write([new ClipboardItem({ "text/plain": text.then((t) => new Blob([t], { type: "text/plain" })) })])
+            .then(() => true, () => false);
+        }
+      } catch {
+        copied = Promise.resolve(false);
+      }
+      try {
+        const answer = await asked;
+        const built = await text;
+        const ok = await copied;
+        if (!mountedRef.current) return;
+        setMessages((m) => ({ ...m, [agentId]: built }));
+        setSetups((m) => ({
+          ...m,
+          [agentId]: { phase: ok ? "ready" : "blocked", expiresAt: answer.expires_at, beforeKeyId: current?.key_id || null },
+        }));
+        setNow(Date.now());
+      } catch (err) {
+        if (!mountedRef.current) return;
+        console.error("[agent] setup message failed:", err?.token || err?.name || "error");
+        setSetups((m) => ({
+          ...m,
+          [agentId]: err?.token === "no_answer" ? { phase: "lost" } : { phase: "failed", words: agentErrorWords(err) },
+        }));
+        refetch({ quiet: true });
+      } finally {
+        clearTimeout(timer);
+        if (mountedRef.current) markSetup(agentId, false);
+      }
+    },
+    [addToast, online, os, refetch]
+  );
+
+  // Copy again (or Copy message, when the browser blocked the first copy).
+  const copySetupAgain = useCallback(
+    async (agentId) => {
+      const message = messages[agentId];
+      if (!message) return;
+      let ok = false;
+      try {
+        await navigator.clipboard.writeText(message);
+        ok = true;
+      } catch (err) {
+        console.error("[agent] copy was blocked:", err?.name || "error");
+      }
+      if (!mountedRef.current) return;
+      setSetups((m) => (m[agentId] ? { ...m, [agentId]: { ...m[agentId], phase: ok ? "ready" : "blocked" } } : m));
+      if (ok) addToast({ variant: "success", title: "Copied", description: "Paste it into your agent as your next message." });
+    },
+    [addToast, messages]
+  );
+
+  const doneSetup = useCallback((agentId) => {
+    setMessages((m) => ({ ...m, [agentId]: null }));
+    setSetups((m) => ({ ...m, [agentId]: null }));
+  }, []);
 
   const create = useCallback(
     async (agentId) => {
@@ -181,6 +386,11 @@ export function AgentPage() {
         if (typeof made?.key !== "string" || made.key === "") throw new Error("no key in the answer");
         setFresh((f) => ({ ...f, [agentId]: made.key }));
         setShownIds((m) => ({ ...m, [agentId]: { keyId: made.key_id, listed: false } }));
+        setShownAt(Date.now());
+        // A key made by hand takes the place of a setup message that was
+        // still waiting: the card must not say an agent used it.
+        setMessages((m) => ({ ...m, [agentId]: null }));
+        setSetups((m) => ({ ...m, [agentId]: null }));
         setUnseen((u) => ({ ...u, [agentId]: false }));
         setTab(agentId);
         addToast({
@@ -231,10 +441,12 @@ export function AgentPage() {
         setShownIds((m) => ({ ...m, [agentId]: null }));
         setNotice((n) => ({ ...n, [agentId]: "" }));
         setUnseen((u) => ({ ...u, [agentId]: false }));
+        setMessages((m) => ({ ...m, [agentId]: null }));
+        setSetups((m) => ({ ...m, [agentId]: null }));
         addToast({
           variant: "success",
           title: `${label} is disconnected`,
-          description: "Its key stopped working. Create a new key whenever you want it back.",
+          description: "Its key stopped working. Copy a new setup message whenever you want it back.",
         });
         await refetch({ quiet: true });
       } catch (err) {
@@ -289,6 +501,28 @@ export function AgentPage() {
     [done]
   );
 
+  const disconnectAgent = useCallback(
+    (agentId) => {
+      const key = activeKey(keysRef.current, agentId);
+      if (key) revoke(key.key_id, agentId);
+    },
+    [revoke]
+  );
+  const keyCardProps = (a) => ({
+    activeKey: activeKey(keys, a.id),
+    stoppedKey: lastStoppedKey(keys, a.id),
+    freshKey: fresh[a.id] || null,
+    idleDays,
+    busy: !!busy[a.id],
+    offline: !online,
+    problem: problem[a.id] || "",
+    notice: notice[a.id] || "",
+    replaceAgain: !!unseen[a.id],
+    onCreate: create,
+    onRevoke: revoke,
+    onDone: doneAndForget,
+  });
+
   const abilities = useMemo(() => abilitiesFor(access?.role), [access?.role]);
   const teamRows = useMemo(() => overviewRows(overview), [overview]);
   const connected = AGENTS.filter((a) => agentStatus(activeKey(keys, a.id), a.id).state === "connected");
@@ -300,8 +534,9 @@ export function AgentPage() {
         <div className="min-w-0">
           <h1 className="break-words text-2xl font-bold text-[var(--color-text-primary)]">My agent</h1>
           <p className="mt-1 max-w-2xl text-sm text-[var(--color-text-secondary)]">
-            Connect your own Claude or Codex. It works under your name, with your role and nothing more. Right now it can
-            read your pipelines; it cannot change a card, send a message or delete.
+            Connect your own Claude or Codex. It works under your name, with your role and nothing more. It can read and
+            update your pipelines and log what happened; it never deletes, and a follow-up or an answer is always yours
+            to send.
           </p>
         </div>
         {!loading && !error && (
@@ -337,50 +572,87 @@ export function AgentPage() {
         </AlertCard>
       ) : (
         <>
-          <SectionCard title={<StepHeading n={1}>Your key</StepHeading>} subtitle="One per agent. Shown once.">
+          <SectionCard
+            title={<StepHeading n={1}>Copy your setup message</StepHeading>}
+            subtitle="One per agent. Works once, for 10 minutes."
+          >
+            <div className="mb-4 min-w-0">
+              <Segmented label="Your computer" options={OS_OPTIONS} value={os} onChange={setOs} />
+              {os === "windows" && (
+                <AlertCard variant="warning" title="Not tested on Windows" className="mt-3">
+                  The Windows message was not run on Windows here. If your agent runs commands in Git Bash (Claude
+                  Code&apos;s default on Windows), choose macOS or Linux instead: that message works there. If the Windows
+                  one is refused, tell an admin what happened.
+                </AlertCard>
+              )}
+              {!ENDPOINT && (
+                <AlertCard variant="error" title="The connector's address isn't set up" className="mt-3">
+                  This copy of Mingla Admin doesn&apos;t know its server address, so a setup message can&apos;t be built. Tell
+                  an admin.
+                </AlertCard>
+              )}
+            </div>
             <div className="grid min-w-0 gap-4 lg:grid-cols-2">
               {AGENTS.map((a) => (
-                <AgentKeyCard
+                <AgentSetupCard
                   key={a.id}
                   agent={a}
-                  activeKey={activeKey(keys, a.id)}
-                  stoppedKey={lastStoppedKey(keys, a.id)}
-                  freshKey={fresh[a.id] || null}
-                  idleDays={idleDays}
-                  busy={!!busy[a.id]}
-                  offline={!online}
-                  problem={problem[a.id] || ""}
-                  notice={notice[a.id] || ""}
-                  replaceAgain={!!unseen[a.id]}
-                  onCreate={create}
-                  onRevoke={revoke}
-                  onDone={doneAndForget}
+                  view={setupCardView({
+                    agentId: a.id,
+                    activeKey: activeKey(keys, a.id),
+                    stoppedKey: lastStoppedKey(keys, a.id),
+                    local: setups[a.id] || null,
+                    pending: pendingSetup(setup, a.id, now),
+                    offline: !online || !ENDPOINT,
+                    idleDays,
+                    now,
+                  })}
+                  message={messages[a.id] || null}
+                  busy={!!setupBusy[a.id] || !!busy[a.id]}
+                  onCopy={copySetup}
+                  onCopyAgain={copySetupAgain}
+                  onDone={doneSetup}
+                  onKeep={doneSetup}
+                  onDisconnect={disconnectAgent}
                 />
               ))}
             </div>
-            <p className="mt-3 text-xs text-[var(--color-text-secondary)]">
-              A key that isn&apos;t used for {idleDays} days turns itself off. If you leave the team, your keys stop at once.
+          </SectionCard>
+
+          <SectionCard title={<StepHeading n={2}>Paste it into your agent</StepHeading>}>
+            <p className="max-w-2xl text-sm text-[var(--color-text-secondary)]">
+              Open Claude Code (or Codex) on your own computer, paste the message as your next message, and let it run the
+              one command it contains. If it asks permission to run a command or to use the network, say yes: the message
+              explains each part.
             </p>
           </SectionCard>
 
-          <SectionCard title={<StepHeading n={2}>Add Mingla to your agent</StepHeading>} subtitle="Paste these on your own computer.">
-            <AgentConnectSteps
-              agentId={tab}
-              onAgent={setTab}
-              os={os}
-              onOs={setOs}
-              endpoint={ENDPOINT}
-              freshKey={fresh[tab] || null}
-              hasKey={!!activeKey(keys, tab)}
-            />
-          </SectionCard>
-
-          <SectionCard title={<StepHeading n={3}>Just ask</StepHeading>} subtitle="The connector teaches your agent the stages and the rules.">
-            <p className="text-sm text-[var(--color-text-secondary)]">
-              Start with: <span className="font-medium text-[var(--color-text-primary)]">What is on my plate in Mingla?</span>
+          <SectionCard title={<StepHeading n={3}>Restart your agent, then just ask</StepHeading>}>
+            <p className="max-w-2xl text-sm text-[var(--color-text-secondary)]">
+              Close and reopen your agent so it sees Mingla. Then ask:{" "}
+              <span className="font-medium text-[var(--color-text-primary)]">What is on my plate in Mingla?</span>
             </p>
             {statusLine && <p className="mt-2 text-[13px] text-[var(--color-text-secondary)]">{statusLine}</p>}
+            <details className="mt-2 text-[13px] text-[var(--color-text-secondary)]">
+              <summary className={DISCLOSURE_CLASS}>Not working?</summary>
+              <ul className="list-disc space-y-1 pl-5">
+                {NOT_WORKING_CHECKS.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </details>
           </SectionCard>
+
+          <AgentAdvanced
+            agents={AGENTS}
+            cardProps={keyCardProps}
+            tab={tab}
+            onTab={setTab}
+            os={os}
+            onOs={setOs}
+            endpoint={ENDPOINT}
+            idleDays={idleDays}
+          />
 
           <div className="grid min-w-0 gap-6 lg:grid-cols-2">
             <SectionCard title="What it can do now" noPadding>

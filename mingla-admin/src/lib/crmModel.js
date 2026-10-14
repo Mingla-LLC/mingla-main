@@ -207,13 +207,18 @@ export function ownerLabel(email, team) {
 export function filterRecords(records, { q = "", icp = "", regionId = "", mine = false, me = "" } = {}) {
   const needle = String(q || "").trim().toLowerCase();
   const needleKey = nameKey(needle);
+  const ident = identNeedles(needle);
   return (Array.isArray(records) ? records : []).filter((r) => {
     if (icp && r.icp !== icp) return false;
     if (regionId === NO_REGION ? !!r.region_id : regionId && r.region_id !== regionId) return false;
     if (mine && !(Array.isArray(r.owners) && r.owners.includes(me))) return false;
     if (!needle) return true;
     const name = String(r.name || "").toLowerCase();
-    return name.includes(needle) || (needleKey.length >= 2 && nameKey(name).includes(needleKey));
+    return (
+      name.includes(needle) ||
+      (needleKey.length >= 2 && nameKey(name).includes(needleKey)) ||
+      identifierMatches(r.identifiers, ident)
+    );
   });
 }
 
@@ -343,6 +348,12 @@ const SERVER_WORDS = new Set([
   "too_many_owners",
   "stage_changed",
   "lead_name_unusable",
+  "do_not_contact",
+  "warm_intro_only",
+  "needs_a_person",
+  "contact_rule_locked",
+  "duplicate_identifier",
+  "invalid_identifier",
 ]);
 
 // Tokens whose server message is written for a caller of the function (it
@@ -385,6 +396,11 @@ const OWN_WORDS = {
   invalid_owners: STALE,
   unknown_owner: "One of those people is no longer on the team. Reload the page and pick again.",
   invalid_target: "A monthly target is a whole number from 1 to 1000.",
+  invalid_identifiers: STALE,
+  invalid_candidates: STALE,
+  field_not_for_agents: STALE,
+  invalid_contact_rule: "Pick None, Warm intro only or Do not contact, and say why in one line.",
+  invalid_contact_rule_reason: "Keep the reason to 300 characters or fewer.",
 };
 
 const FORBIDDEN_DEFAULT = "Your account can't use Hosts and Creators. Ask the owner to give you team access.";
@@ -407,6 +423,12 @@ const WORDS_WHEN_SERVER_SENT_NONE = {
     "Someone moved this card while you were looking at it, so nothing was moved. The board is up to date now: move it again if you still want to.",
   lead_name_unusable:
     "This lead's business name can't be used as a host name. Add the host by hand from Hosts.",
+  do_not_contact: "This record is marked Do not contact, so nothing was logged.",
+  warm_intro_only: "This record is marked Warm intro only, so nothing was logged.",
+  needs_a_person: "This record has already been contacted, so a follow-up is a person's to log.",
+  contact_rule_locked: "Only a person can lift or loosen a contact rule.",
+  duplicate_identifier: "That email, phone or handle already belongs to another record. Open that record instead.",
+  invalid_identifier: "That isn't a usable email, phone number or handle. Check it and try again.",
 };
 
 /** A sentence, not a bare word or a token: at least two words. */
@@ -833,4 +855,233 @@ export function parseTarget(typed) {
   if (!/^\d{1,4}$/.test(text)) return null;
   const n = Number(text);
   return n >= 1 && n <= 1000 ? n : null;
+}
+
+// ── Emails, phone numbers and handles ───────────────────────────────────────
+
+export const IDENT_KINDS = [
+  { id: "email", label: "Email" },
+  { id: "phone", label: "Phone" },
+  { id: "handle", label: "Handle" },
+];
+export const IDENT_PLATFORMS = [
+  { id: "instagram", label: "Instagram" },
+  { id: "tiktok", label: "TikTok" },
+  { id: "x", label: "X" },
+  { id: "facebook", label: "Facebook" },
+  { id: "youtube", label: "YouTube" },
+  { id: "linkedin", label: "LinkedIn" },
+  { id: "other", label: "Other" },
+];
+export const MAX_IDENTIFIERS = 20;
+
+const asciiLower = (text) => text.replace(/[A-Z]/g, (c) => c.toLowerCase());
+const trimSpaces = (text) => text.replace(/^ +| +$/g, "");
+const HANDLE_HOSTS =
+  /^(instagram\.com\/|tiktok\.com\/@|tiktok\.com\/|x\.com\/|twitter\.com\/|facebook\.com\/|youtube\.com\/@|youtube\.com\/|linkedin\.com\/in\/|linkedin\.com\/company\/|wa\.me\/)/;
+
+/**
+ * The normal form of an email, a phone number or a handle, or null when the
+ * value is not usable as that kind. A twin of the server's own function: the
+ * two are held together by one table of examples that both suites assert.
+ *   email:  A to Z lower-cased, spaces at the ends removed; a name, an @ and
+ *           a domain; at most 254 characters
+ *   phone:  digits only; a leading 00 is dropped; 7 to 15 digits
+ *   handle: lower-cased; http(s)://, then www., then one known profile
+ *           address removed; then everything from the first /, ? or #; then a
+ *           leading @; 2 to 60 of a-z 0-9 . _ -
+ */
+export function identKey(kind, value) {
+  if (typeof kind !== "string" || typeof value !== "string") return null;
+  if (kind === "email") {
+    const v = asciiLower(trimSpaces(value));
+    return /^[^@\s]+@[^@\s]+[.][^@\s]+$/.test(v) && [...v].length <= 254 ? v : null;
+  }
+  if (kind === "phone") {
+    const v = value.replace(/[^0-9]/g, "").replace(/^00/, "");
+    return v.length >= 7 && v.length <= 15 ? v : null;
+  }
+  if (kind === "handle") {
+    const v = asciiLower(trimSpaces(value))
+      .replace(/^https?:\/\//, "")
+      .replace(/^www[.]/, "")
+      .replace(HANDLE_HOSTS, "")
+      .replace(/[/?#][\s\S]*$/, "")
+      .replace(/^@/, "");
+    return /^[a-z0-9._-]{2,60}$/.test(v) ? v : null;
+  }
+  return null;
+}
+
+/**
+ * Which kind a typed value looks like: an @ with a dot after it is an email;
+ * 7 or more digits with only + ( ) - . and spaces is a phone number; anything
+ * else is a handle. "" for nothing typed.
+ */
+export function detectIdentKind(text) {
+  const v = String(text || "").trim();
+  if (!v) return "";
+  if (/^[^@\s/]+@[^@\s/]+[.][^@\s/]+$/.test(v)) return "email";
+  if (/^[0-9+()\-. ]+$/.test(v) && v.replace(/[^0-9]/g, "").length >= 7) return "phone";
+  return "handle";
+}
+
+/** The platform a handle was written as a profile address of, or "". */
+export function detectPlatform(text) {
+  const v = asciiLower(String(text || "").trim()).replace(/^https?:\/\//, "").replace(/^www[.]/, "");
+  if (v.startsWith("instagram.com/")) return "instagram";
+  if (v.startsWith("tiktok.com/")) return "tiktok";
+  if (v.startsWith("x.com/") || v.startsWith("twitter.com/")) return "x";
+  if (v.startsWith("facebook.com/")) return "facebook";
+  if (v.startsWith("youtube.com/")) return "youtube";
+  if (v.startsWith("linkedin.com/")) return "linkedin";
+  return "";
+}
+
+/** A record's identifiers as the server takes them back: kind, value, platform. */
+export function identifiersToSend(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter((i) => i && typeof i.kind === "string" && typeof i.value === "string")
+    .map((i) => (i.platform ? { kind: i.kind, value: i.value, platform: i.platform } : { kind: i.kind, value: i.value }));
+}
+
+/**
+ * Add one typed identifier to a list. Returns { list } or { message } when it
+ * is not usable, is already there, or the list is full.
+ */
+export function addIdentifier(list, { kind, value, platform = "" }) {
+  const current = Array.isArray(list) ? list : [];
+  const typed = String(value || "").trim().replace(/\s+/g, " ");
+  const k = kind || detectIdentKind(typed);
+  const key = identKey(k, typed);
+  if (!key) {
+    return {
+      message:
+        k === "email"
+          ? "An email needs a name, an @ and a domain."
+          : k === "phone"
+            ? "A phone number needs 7 to 15 digits."
+            : "A handle is 2 to 60 letters, digits, dots or underscores, with or without @ or its profile address.",
+    };
+  }
+  if (current.some((i) => i.kind === k && (i.key || identKey(i.kind, i.value)) === key)) {
+    return { message: "That one is already on this record." };
+  }
+  if (current.length >= MAX_IDENTIFIERS) return { message: `A record holds at most ${MAX_IDENTIFIERS} of these.` };
+  const item = { kind: k, value: typed, key, platform: k === "handle" ? platform || detectPlatform(typed) || null : null };
+  return { list: [...current, item] };
+}
+
+/** What a typed search could match among identifiers. */
+function identNeedles(needle) {
+  const part = needle.replace(/^@/, "");
+  const digits = needle.replace(/[^0-9]/g, "");
+  return {
+    part: part.length >= 3 ? part : "",
+    digits: digits.length >= 7 ? digits : "",
+    keys: needle ? [identKey("email", needle), identKey("phone", needle), identKey("handle", needle)] : [],
+  };
+}
+
+function identifierMatches(identifiers, n) {
+  if (!Array.isArray(identifiers) || identifiers.length === 0) return false;
+  return identifiers.some((i) => {
+    const key = typeof i?.key === "string" ? i.key : "";
+    if (!key) return false;
+    if (i.kind === "email" && n.keys[0] === key) return true;
+    if (i.kind === "phone" && n.keys[1] === key) return true;
+    if (i.kind === "handle" && n.keys[2] === key) return true;
+    if (i.kind === "phone") {
+      return !!n.digits && (key.includes(n.digits) || (n.digits.length >= 9 && key.endsWith(n.digits.slice(-9))));
+    }
+    return !!n.part && key.includes(n.part);
+  });
+}
+
+/** How one identifier reads on a chip: "Email", "Phone", "Instagram", "Handle". */
+export function identLabel(item) {
+  if (!item) return "";
+  if (item.kind === "handle") return IDENT_PLATFORMS.find((p) => p.id === item.platform)?.label || "Handle";
+  return IDENT_KINDS.find((k) => k.id === item.kind)?.label || "";
+}
+
+// ── The contact rule ────────────────────────────────────────────────────────
+
+export const CONTACT_RULES = [
+  { id: "warm_intro_only", label: "Warm intro only", variant: "warning" },
+  { id: "do_not_contact", label: "Do not contact", variant: "error" },
+];
+
+/**
+ * What a record's contact rule shows: null when it has none, otherwise
+ * { id, label, variant, reason, banner, aria }.
+ *   banner  "Do not contact · <reason> · set by Tunde on 14 Oct"
+ *   aria    ", do not contact" (added to the card's accessible name)
+ */
+export function contactRuleView(record, team = [], now = Date.now()) {
+  const rule = CONTACT_RULES.find((r) => r.id === record?.contact_rule);
+  if (!rule) return null;
+  const reason = typeof record.contact_rule_reason === "string" ? record.contact_rule_reason : "";
+  const parts = [rule.label];
+  if (reason) parts.push(reason);
+  const by = typeof record.contact_rule_by === "string" && record.contact_rule_by ? ownerLabel(record.contact_rule_by, team) : "";
+  const at = record.contact_rule_at ? new Date(record.contact_rule_at) : null;
+  if (by || (at && !Number.isNaN(at.getTime()))) {
+    let when = "";
+    if (at && !Number.isNaN(at.getTime())) {
+      const sameYear = at.getFullYear() === new Date(now).getFullYear();
+      when = ` on ${at.getDate()} ${MONTHS[at.getMonth()]}${sameYear ? "" : ` ${at.getFullYear()}`}`;
+    }
+    parts.push(`set${by ? ` by ${by}` : ""}${when}`);
+  }
+  return { id: rule.id, label: rule.label, variant: rule.variant, reason, banner: parts.join(" \u00b7 "), aria: `, ${rule.label.toLowerCase()}` };
+}
+
+/** The card's accessible name: "Open Palm Court Kitchen, do not contact". */
+export function recordOpenLabel(record, team = []) {
+  return `Open ${record?.name || ""}${contactRuleView(record, team)?.aria || ""}`;
+}
+
+/** The warning above Save when a person logs an outbound touch on a marked record, or "". */
+export function logRuleWarning(record, entry) {
+  const rule = contactRuleView(record);
+  if (!rule || entry?.kind !== "touch" || entry?.direction !== "outbound") return "";
+  return `This record is marked ${rule.label}. Log this only if it really happened.`;
+}
+
+/**
+ * What the Add form says about one answer of the contactable check, or null
+ * when the candidate is new: { id, name, line, rule }.
+ *   line  "Looks like Palm Court Kitchen (same email)"
+ */
+export function contactHit(result) {
+  if (!result || !result.record || !["exists", "do_not_contact", "warm_intro_only"].includes(result.verdict)) return null;
+  const on = Array.isArray(result.matched_on) ? result.matched_on : [];
+  const what = [...new Set(on.map((m) => (m.kind === "phone" ? "phone number" : m.kind)))];
+  const same = result.match === "name" ? "same name" : what.length ? `same ${what.join(" and ")}` : "same details";
+  const rule = contactRuleView(result.record);
+  return {
+    id: result.record.id,
+    name: result.record.name,
+    byIdentifier: result.match === "identifier" || result.match === "both",
+    line: `Looks like ${result.record.name} (${same})`,
+    rule: rule ? `${rule.label}${rule.reason ? `: ${rule.reason}` : ""}` : "",
+  };
+}
+
+/** The two texts of "City missing?", by role. */
+export function missingCityWords(canAddRegion) {
+  return canAddRegion
+    ? {
+      text: "Cities come from Launch Cities. Add the city in Place Pool; it is added as not live, and appears here straight away.",
+      primary: "Open Place Pool",
+      secondary: "Cancel",
+      refresh: "Refresh regions",
+    }
+    : {
+      text: "Cities come from Launch Cities, which an owner or admin manages. Ask one of them to add it. Until then, leave the region empty and put the city in a note.",
+      primary: "OK",
+      secondary: "",
+      refresh: "",
+    };
 }

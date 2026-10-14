@@ -27,7 +27,9 @@ async function loadAll(isOwner) {
 }
 
 /**
- * Returns { keys, idleDays, guide, overview, loading, error, refetch }.
+ * Returns { keys, setup, idleDays, guide, overview, loading, error, refetch }.
+ * `setup` lists the setup messages still waiting to be used (which agent,
+ * when made, when it ends): never a code.
  * `refetch()` resolves to the keys as just read, or null when the read failed.
  * Loads on mount; refreshes quietly when the window is focused again, when
  * the browser comes back online, and every 30 seconds while the page is
@@ -112,6 +114,7 @@ export function useAgentKeys() {
   const data = current ? state.data : null;
   return {
     keys: Array.isArray(data?.mine?.keys) ? data.mine.keys : [],
+    setup: Array.isArray(data?.mine?.setup) ? data.mine.setup : [],
     idleDays: Number.isFinite(data?.mine?.idle_days) ? data.mine.idle_days : 90,
     guide: data?.guide || null,
     overview: data?.overview || null,

@@ -346,12 +346,20 @@ export const REPLACED_ELSEWHERE_WORDS =
 export const AGENT_ABILITIES = [
   { tool: "get_started", group: "Your day", title: "Learns the pipelines", detail: "Stages, ICPs, regions, the team and the house rules, so nobody has to explain them." },
   { tool: "my_day", group: "Your day", title: "Reads your day", detail: "What is due today or overdue, stage counts, targets and new beta leads." },
-  { tool: "find_records", group: "Find and check", title: "Finds hosts and creators", detail: "By name, stage, ICP, region, owner or due date, with the last touch and the last reply. Counts by stage, ICP, region or owner." },
+  { tool: "find_records", group: "Find and check", title: "Finds hosts and creators", detail: "By name, email, phone or handle, stage, ICP, region, owner or due date, with the last touch and the last reply. Counts by stage, ICP, region or owner." },
   { tool: "get_record", group: "Find and check", title: "Opens a card", detail: "One host or creator with its links and its log." },
   { tool: "check_names", group: "Find and check", title: "Checks names", detail: "Whether up to 50 names are already in a pipeline, exactly or nearly." },
   { tool: "find_mingla_link", group: "Find and check", title: "Finds a Mingla brand or place", detail: "To see whether a host already has an account or a listing." },
+  { tool: "check_contactable", group: "Find and check", title: "Checks who is contactable", detail: "Whether up to 50 people are new, already in a pipeline, or marked Do not contact or Warm intro only." },
   { tool: "list_beta_leads", group: "Beta leads", title: "Reads beta leads", detail: "Who asked to join, and which are already hosts. A contact name and email, never a phone number." },
   { tool: "team_summary", group: "Team", title: "Reads the team's numbers", detail: "This week by person, everything due and targets.", adminOnly: true },
+  { tool: "add_records", group: "Add and change", title: "Adds hosts and creators", detail: "Up to 50 at once. A name, an email, a phone or a handle that is already there is skipped, never doubled." },
+  { tool: "upsert_record", group: "Add and change", title: "Adds or finds one, with its first touch", detail: "One host or creator and the message that went with it. A record that is already there is found, never changed." },
+  { tool: "update_records", group: "Add and change", title: "Updates cards", detail: "Fields, contact details and the next action, on up to 50 cards." },
+  { tool: "move_stage", group: "Add and change", title: "Moves cards", detail: "Always from the stage it saw; Live sets itself." },
+  { tool: "set_owners", group: "Add and change", title: "Sets owners", detail: "Who on the team owns each card." },
+  { tool: "log_activity", group: "Log", title: "Logs notes and touches", detail: "A note, a reply, or the first message to someone never contacted." },
+  { tool: "record_reply", group: "Log", title: "Records replies", detail: "Word for word, and moves the card to Replied." },
 ];
 
 /** The abilities this role is offered, grouped in page order. */
@@ -372,24 +380,26 @@ export function abilitiesFor(role) {
 
 /** What arrives next. Shown as "not yet", never as something to try. */
 export const AGENT_NOT_YET = [
-  "Add hosts and creators, update them, move stages and log touches.",
   "Write drafts for you to send. You always send.",
+  "Undo a move, add beta leads to Hosts, and set targets: do these in Mingla Admin for now.",
   "Claude in the browser or on your phone signs in a different way. That is coming; for now use Claude Code or Codex.",
 ];
 
 export const AGENT_GUARDRAILS = [
-  "It never sends an email, DM or WhatsApp. A person sends.",
+  "It never sends an email, DM or WhatsApp for you.",
   "It sees only what your role sees.",
   "It cannot delete, manage keys or manage the team.",
-  "Right now it reads. It cannot change a card yet.",
-  "Every request it makes is recorded under your name, with the agent it came through.",
+  "It may log the first message to someone new. A follow-up or an answer is yours.",
+  "It cannot message a record marked Do not contact or Warm intro only, and it cannot lift that mark.",
+  "Every change it makes is recorded under your name, with the agent it came through.",
   "If it is refused, it is told why in plain words, so it can tell you.",
 ];
 
 export const NOT_WORKING_CHECKS = [
-  "Open a new terminal window, so it picks up the key.",
-  "Paste each line whole, on one line.",
-  "Restart your agent after adding Mingla.",
+  "Did your agent run the command? It should have answered 'Mingla added'.",
+  "Restart the agent after it says so.",
+  "A message works once. If you pasted it twice or waited more than 10 minutes, copy a new one.",
+  "Agent refused to run it? Paste the command from the message into the Terminal app yourself.",
 ];
 
 // ── Server answers in plain words ───────────────────────────────────────────
@@ -402,6 +412,7 @@ const AGENT_WORDS = {
   not_ready: "My agent isn't switched on yet. Try again in a few minutes, or tell an admin.",
   not_found: "That key is no longer here. Nothing was changed.",
   invalid_agent: "Choose Claude or Codex.",
+  too_many_codes: "You have copied 10 setup messages in the last hour. Paste the last one into your agent, or try again in a few minutes.",
   try_again: "Something else changed at the same moment, so nothing was saved. Try again.",
   unknown: AGENT_GENERIC,
 };
@@ -437,7 +448,7 @@ export function agentLoadErrorWords(err) {
 }
 
 export const AGENT_OFFLINE_WORDS =
-  "You're offline. You can read this page, but a key can't be created, replaced or disconnected until you're back.";
+  "You're offline. You can read this page, but a setup message can't be copied and a key can't be created, replaced or disconnected until you're back.";
 
 // ── The owner's view ────────────────────────────────────────────────────────
 
@@ -465,4 +476,427 @@ export function overviewRows(overview, now = Date.now()) {
     }
   }
   return rows;
+}
+
+// ── One-message setup ───────────────────────────────────────────────────────
+
+/** A one-time setup code as the server makes it, for that agent. */
+export function isSetupCode(value, agentId) {
+  const def = agentDef(agentId);
+  return !!def && typeof value === "string" && new RegExp(`^mgls_${def.letter}_[A-Za-z0-9_-]{43}$`).test(value);
+}
+
+/** Where each agent keeps the connector, in the words of the page. */
+export const AGENT_SETTINGS_FILE = {
+  claude: { mac: "~/.claude.json", windows: "~/.claude.json" },
+  codex: { mac: "~/.codex/config.toml", windows: "%USERPROFILE%\\.codex\\config.toml" },
+};
+
+/**
+ * The ONE command a setup message asks an agent to run, on one line. It
+ * holds the one-time code and never a key: the key is fetched by the command
+ * and goes straight into the agent's own settings.
+ * Returns "" unless the address and the code are exactly what they must be,
+ * so nothing that could break out of the quotes is ever put in a command.
+ */
+export function setupCommand({ agent, os, endpoint, code }) {
+  const def = agentDef(agent);
+  if (!def || !endpoint || agentEndpoint(endpoint.replace(/\/functions\/v1\/team-agent$/, "")) !== endpoint) return "";
+  if (!isSetupCode(code, agent)) return "";
+  const windows = os === "windows";
+  const url = `${endpoint}/setup`;
+  if (def.id === "claude") {
+    if (windows) {
+      // Windows PowerShell 5.1 and PowerShell before 7.3 drop the quotes of a
+      // JSON argument unless each is escaped; 7.3 and later pass it as it is.
+      return [
+        "claude mcp remove mingla -s user *> $null;",
+        `$k = (curl.exe -sS -X POST -H "Authorization: Bearer ${code}" "${url}");`,
+        `if ($k -like "mgla_c_*") { $j = @{ type = "http"; url = "${endpoint}"; headers = @{ Authorization = "Bearer $k" } } | ConvertTo-Json -Compress;`,
+        "if ($PSVersionTable.PSVersion -lt [version]'7.3' -or $PSNativeCommandArgumentPassing -eq 'Legacy') { $j = $j -replace '\"', '\\\"' };",
+        'claude mcp add-json -s user mingla $j *> $null; "Mingla added to Claude Code." } else { "Setup did not work: $k" };',
+        "Remove-Variable k, j -ErrorAction SilentlyContinue",
+      ].join(" ");
+    }
+    return [
+      "claude mcp remove mingla -s user >/dev/null 2>&1;",
+      `K="$(curl -sS -X POST -H 'Authorization: Bearer ${code}' '${url}')";`,
+      `case "$K" in mgla_c_*) claude mcp add-json -s user mingla "{\\"type\\":\\"http\\",\\"url\\":\\"${endpoint}\\",\\"headers\\":{\\"Authorization\\":\\"Bearer $K\\"}}" >/dev/null && echo "Mingla added to Claude Code.";;`,
+      '*) echo "Setup did not work: $K";; esac; unset K',
+    ].join(" ");
+  }
+  if (windows) {
+    return [
+      `$k = (curl.exe -sS -X POST -H "Authorization: Bearer ${code}" "${url}");`,
+      'if ($k -like "mgla_x_*") { $f = Join-Path $HOME ".codex\\config.toml"; New-Item -ItemType Directory -Force (Split-Path $f) *> $null;',
+      "if (-not (Test-Path $f)) { New-Item -ItemType File $f *> $null };",
+      "$skip = $false; $out = foreach ($l in Get-Content $f) { if ($l -match '^\\[') { $skip = $l -match '^\\[mcp_servers\\.mingla[\\].]' }; if (-not $skip) { $l } };",
+      `$out = @($out) + '' + '[mcp_servers.mingla]' + 'url = "${endpoint}"' + ('http_headers = { "Authorization" = "Bearer ' + $k + '" }');`,
+      '[IO.File]::WriteAllLines($f, $out); "Mingla added to Codex." } else { "Setup did not work: $k" };',
+      "Remove-Variable k, f, out, skip, l -ErrorAction SilentlyContinue",
+    ].join(" ");
+  }
+  return [
+    `K="$(curl -sS -X POST -H 'Authorization: Bearer ${code}' '${url}')";`,
+    'case "$K" in mgla_x_*) F="$HOME/.codex/config.toml"; mkdir -p "$HOME/.codex"; touch "$F";',
+    `awk '/^\\[/{skip=($0 ~ /^\\[mcp_servers\\.mingla[].]/)} !skip' "$F" > "$F.mingla.tmp" &&`,
+    `printf '\\n[mcp_servers.mingla]\\nurl = "%s"\\nhttp_headers = { "Authorization" = "Bearer %s" }\\n' '${endpoint}' "$K" >> "$F.mingla.tmp" &&`,
+    'mv "$F.mingla.tmp" "$F" && chmod 600 "$F" && echo "Mingla added to Codex.";;',
+    '*) echo "Setup did not work: $K";; esac; unset K',
+  ].join(" ");
+}
+
+/**
+ * The message a person pastes into their agent, for one agent on one kind
+ * of computer, or null when it cannot be built. It carries the one-time code
+ * once, inside the one command, and never a key.
+ */
+export function setupMessage({ agent, os, endpoint, code }) {
+  const command = setupCommand({ agent, os, endpoint, code });
+  if (!command) return null;
+  const windows = os === "windows";
+  if (agent === "claude") {
+    return [
+      "Please connect yourself to Mingla Admin, my team's pipeline tool. I am asking you to do this on my own computer.",
+      "",
+      "Only do this if you are Claude Code running on my computer (the terminal, an editor extension, or the Code tab of the desktop app). If you are Cowork, Claude in a browser or on a phone, or you run in a cloud or sandboxed session, run nothing and tell me to paste this into Claude Code instead.",
+      "",
+      windows
+        ? "Run this one command in PowerShell exactly as written, and do not print, read back or summarise anything it handles:"
+        : "Run this one command exactly as written, and do not print, read back or summarise anything it handles:",
+      "",
+      command,
+      "",
+      "What it does, so you can check it before you run it:",
+      ...(windows
+        ? ["If your shell is Git Bash (Claude Code's default on Windows), use the macOS or Linux message instead: it works there."]
+        : []),
+      '1. Removes any earlier "mingla" entry from Claude Code\'s settings (it is fine if there was none).',
+      "2. Sends the one-time setup code in this message to Mingla's own server and receives my personal key. The code works once and expires 10 minutes after I copied it. It is not a password and is useless afterwards.",
+      '3. Saves that key in Claude Code\'s own settings file on this computer (~/.claude.json) as a connector named "mingla". The key goes straight into the file: it is not shown on screen and is not written to shell history.',
+      '4. Prints "Mingla added to Claude Code." or one line saying why it did not work.',
+      "",
+      "Afterwards:",
+      '- If it printed "Mingla added to Claude Code.", tell me: "Mingla is added. Quit and reopen Claude Code (or run /exit and then claude --resume), then ask me: What is on my plate in Mingla?" A session that is already open does not see a new connector.',
+      '- If it printed "Setup did not work", tell me exactly that line and that I need to copy a new setup message from My agent in Mingla Admin. Do not retry: the code is spent.',
+      '- Do not run "claude mcp get mingla" and do not open ~/.claude.json to check: both show the key. "claude mcp list" is safe.',
+      "- If you would rather not run it, say so, and I will paste the command into the Terminal app myself.",
+    ].join("\n");
+  }
+  const file = windows ? "%USERPROFILE%\\.codex\\config.toml" : "~/.codex/config.toml";
+  return [
+    "Please connect yourself to Mingla Admin, my team's pipeline tool. I am asking you to do this on my own computer.",
+    "",
+    "Only do this if you are Codex running on my computer (the command line, the editor extension, or the desktop app working on local files). If you run in the cloud or cannot reach my home folder, run nothing and tell me to paste the command into the Terminal app myself.",
+    "",
+    `Run this one command ${windows ? "in PowerShell " : ""}exactly as written, and do not print, read back or summarise anything it handles. It needs network access and writes one file outside this project (${file}), so ask me to approve it if your sandbox requires that:`,
+    "",
+    command,
+    "",
+    "What it does, so you can check it before you run it:",
+    "1. Sends the one-time setup code in this message to Mingla's own server and receives my personal key. The code works once and expires 10 minutes after I copied it.",
+    `2. Rewrites ${file} without any earlier "mingla" connector, and adds a new one that holds the key. Every other setting in that file is kept. The key goes straight into the file: it is not shown on screen and is not written to shell history.`,
+    windows
+      ? '3. Prints "Mingla added to Codex." or one line saying why it did not work.'
+      : '3. Makes that file readable by me only, and prints "Mingla added to Codex." or one line saying why it did not work.',
+    "",
+    "Afterwards:",
+    '- If it printed "Mingla added to Codex.", tell me: "Mingla is added. Quit and reopen Codex (in the desktop app or the editor extension, use Restart), then ask me: What is on my plate in Mingla?"',
+    '- If it printed "Setup did not work", tell me exactly that line and that I need to copy a new setup message from My agent in Mingla Admin. Do not retry: the code is spent.',
+    `- Do not open or print ${file} to check: it holds the key.`,
+    "- If you would rather not run it, say so, and I will paste the command into the Terminal app myself.",
+  ].join("\n");
+}
+
+/**
+ * The lines for adding the key by hand. It takes NO key: no line it returns
+ * can contain one. Line 1 asks for the key and hides what is pasted; line 2
+ * names the variable only.
+ * Returns { steps, notes, untested } or null when there is no address.
+ */
+export function advancedLines({ agent, os, endpoint }) {
+  const def = agentDef(agent);
+  if (!def || !endpoint || agentEndpoint(endpoint.replace(/\/functions\/v1\/team-agent$/, "")) !== endpoint) return null;
+  const windows = os === "windows";
+  const keep = windows
+    ? {
+      id: "keep",
+      label: "1. In PowerShell: save the key as a variable for your Windows account. It asks for the key: paste it and press Enter (nothing shows)",
+      text: `$k = Read-Host 'Paste your key, then press Enter' -AsSecureString; [Environment]::SetEnvironmentVariable('${def.envVar}', [Net.NetworkCredential]::new('', $k).Password, 'User'); Remove-Variable k`,
+      where: `The key is saved in your Windows account's environment variables, readable by any program you run. Nothing you pasted is kept in your shell's history. To remove it: reg delete HKCU\\Environment /v ${def.envVar} /f`,
+    }
+    : {
+      id: "keep",
+      label: "1. Save the key in your shell profile. It asks for the key: paste it and press Enter (nothing shows)",
+      text: `printf 'Paste your key, then press Enter (it stays hidden): '; stty -echo; IFS= read -r MINGLA_K; stty echo; echo; printf 'export ${def.envVar}="%s"\\n' "$MINGLA_K" >> ~/.zshrc; unset MINGLA_K; source ~/.zshrc`,
+      where: "The key ends up as one line in ~/.zshrc, readable by any program you run. Nothing you pasted is kept in your shell's history. To remove it, delete that line. On Linux with bash, write ~/.bashrc in place of ~/.zshrc.",
+    };
+  const desktop = "Using a desktop app? An app opened from the Dock or the Start menu may not see the variable. Use the setup message instead.";
+  if (def.id === "claude") {
+    const json = JSON.stringify({ type: "http", url: endpoint, headers: { Authorization: `Bearer \${${def.envVar}}` } });
+    return {
+      untested: windows,
+      steps: [
+        keep,
+        {
+          id: "add",
+          label: windows
+            ? "2. In a NEW Command Prompt window (cmd, not PowerShell), add Mingla to Claude Code"
+            : "2. Add Mingla to Claude Code, for every project",
+          text: windows
+            ? `claude mcp remove mingla --scope user & claude mcp add-json --scope user mingla "${json.replace(/"/g, '\\"')}"`
+            : `claude mcp remove mingla --scope user; claude mcp add-json --scope user mingla '${json}'`,
+          where: "This line names the variable and holds no key. It removes any earlier Mingla entry first. To remove Mingla from Claude Code: claude mcp remove mingla --scope user",
+        },
+      ],
+      notes: [
+        desktop,
+        "Then check it: run claude mcp list. Mingla should say Connected. Do not run claude mcp get mingla where others can see your screen: it prints the key.",
+      ],
+    };
+  }
+  const file = windows ? "%USERPROFILE%\\.codex\\config.toml" : "~/.codex/config.toml";
+  return {
+    untested: windows,
+    steps: [
+      keep,
+      {
+        id: "add",
+        label: `2. Add these lines to ${file}`,
+        text: `[mcp_servers.mingla]\nurl = "${endpoint}"\nbearer_token_env_var = "${def.envVar}"`,
+        where: "These lines name the variable and hold no key. To remove Mingla from Codex, delete them.",
+      },
+    ],
+    notes: [
+      "The Codex command line, its editor extension and the desktop app all read that one file. Start Codex again afterwards.",
+      desktop,
+    ],
+  };
+}
+
+export const KEY_HIDDEN_AFTER_WORDS = "Hidden after 10 minutes. Lost it? Replace the key.";
+/** A key stays on screen at most this long. */
+export const SHOWN_KEY_MAX_MS = 10 * 60_000;
+/** After a setup message ends, the page looks once more for this long. */
+export const SETUP_GRACE_MS = 15_000;
+
+/** "10:12" on this person's clock. */
+export function clockWords(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** "in 9 min", "in under a minute", or "" once it has passed. */
+export function minutesLeftWords(iso, now = Date.now()) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t) || t <= now) return "";
+  const m = Math.floor((t - now) / 60_000);
+  return m < 1 ? "in under a minute" : `in ${m} min`;
+}
+
+/** The setup message still waiting for an agent, as the server lists it, or null. */
+export function pendingSetup(setup, agentId, now = Date.now()) {
+  const rows = (Array.isArray(setup) ? setup : []).filter(
+    (s) => s && s.agent === agentId && Number.isFinite(Date.parse(s.expires_at)) && Date.parse(s.expires_at) > now
+  );
+  rows.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  return rows[0] || null;
+}
+
+/**
+ * What one agent's setup card shows: every state of the card, as data.
+ *   local    what this tab holds for the agent, or null:
+ *            { phase: "confirm" | "asking" | "ready" | "blocked" | "used" |
+ *                     "expired" | "failed" | "lost", expiresAt, words }
+ *   pending  the waiting message the server lists (after a reload), or null
+ * Returns { state, tone, lines, showMessage, buttons }. `buttons` is never
+ * empty unless the card is busy or offline says why: no state is a dead end.
+ */
+export function setupCardView({ agentId, activeKey: key = null, stoppedKey = null, local = null, pending = null, offline = false, idleDays = 90, now = Date.now() }) {
+  const def = agentDef(agentId) || AGENTS[0];
+  const product = def.product;
+  const status = agentStatus(key, agentId, now);
+  const copy = { id: "copy", label: "Copy setup message", variant: "primary" };
+  const copyNew = { id: "copy", label: "Copy a new setup message", variant: key ? "secondary" : "primary" };
+  const disconnect = { id: "disconnect", label: "Disconnect", variant: "ghost" };
+  const done = { id: "done", label: "Done", variant: "secondary" };
+  const finish = (view) => ({
+    ...view,
+    status,
+    buttons: view.buttons.map((b) => ({ ...b, disabled: offline && b.id !== "done" && b.id !== "keep" })),
+    offlineWords: offline ? "You're offline. This works again once you're back." : "",
+  });
+  const phase = local?.phase || "";
+  if (phase === "asking") {
+    return finish({ state: "asking", tone: "info", lines: ["Making your setup message…"], showMessage: false, buttons: [{ ...copy, busy: true }] });
+  }
+  if (phase === "confirm") {
+    return finish({
+      state: "confirm",
+      tone: "warning",
+      lines: ["Your agent's current key keeps working until the new message is used. When it is, the old key stops at once."],
+      showMessage: false,
+      buttons: [copy, { id: "keep", label: "Keep", variant: "secondary" }],
+    });
+  }
+  if (phase === "ready" || phase === "blocked") {
+    const left = minutesLeftWords(local.expiresAt, now);
+    const ends = `Works once. Stops working at ${clockWords(local.expiresAt)}${left ? ` (${left})` : ""}.`;
+    return finish({
+      state: phase,
+      tone: phase === "ready" ? "success" : "warning",
+      lines:
+        phase === "ready"
+          ? [`Copied. Paste it into ${product} now.`, ends, "Waiting for your agent…"]
+          : ["Your browser didn't copy it. Press Copy message, or Ctrl or Cmd + C.", ends, "Waiting for your agent…"],
+      showMessage: true,
+      selectMessage: phase === "blocked",
+      buttons: phase === "ready" ? [{ id: "again", label: "Copy again", variant: "secondary" }, done] : [{ id: "again", label: "Copy message", variant: "primary" }, done],
+    });
+  }
+  if (phase === "used") {
+    return finish({
+      state: "used",
+      tone: "success",
+      lines: [`Connected: the key is saved in ${product}'s settings on that computer. Restart ${product}, then ask: What is on my plate in Mingla?`],
+      showMessage: false,
+      buttons: [done],
+    });
+  }
+  if (phase === "expired") {
+    return finish({
+      state: "expired",
+      tone: "warning",
+      lines: ["That message has expired and can no longer be used. Your agent is unchanged."],
+      showMessage: false,
+      focus: "copy",
+      buttons: [{ ...copyNew, variant: "primary" }],
+    });
+  }
+  if (phase === "failed") {
+    return finish({
+      state: "failed",
+      tone: "error",
+      lines: [`No setup message was made, and nothing changed. ${local.words || ""}`.trim()],
+      showMessage: false,
+      buttons: [{ id: "copy", label: "Try again", variant: "primary" }],
+    });
+  }
+  if (phase === "lost") {
+    return finish({
+      state: "lost",
+      tone: "error",
+      lines: ["We couldn't tell whether a setup message was made. Nothing has changed for your agent: a message only matters once it is used. Try again."],
+      showMessage: false,
+      buttons: [{ id: "copy", label: "Try again", variant: "primary" }],
+    });
+  }
+  if (pending) {
+    return finish({
+      state: "pending",
+      tone: "info",
+      lines: [
+        `A setup message was copied at ${clockWords(pending.created_at)} and has not been used. It stops working at ${clockWords(pending.expires_at)}. The message itself is not kept here.`,
+      ],
+      showMessage: false,
+      buttons: key ? [copyNew, disconnect] : [{ ...copyNew, variant: "primary" }],
+    });
+  }
+  if (key) {
+    return finish({
+      state: status.state === "connected" ? "connected" : "unused",
+      tone: "default",
+      lines:
+        status.state === "connected"
+          ? []
+          : [`The key is in place but ${product} has not used it yet. Restart ${product}, then ask: What is on my plate in Mingla?`],
+      showMessage: false,
+      buttons: [copyNew, disconnect],
+    });
+  }
+  return finish({
+    state: stoppedKey ? "stopped" : "none",
+    tone: "default",
+    lines: stoppedKey ? [stoppedWords(stoppedKey, idleDays, now)] : [],
+    showMessage: false,
+    buttons: [copy],
+  });
+}
+
+/**
+ * What the page does with a setup message once the server's keys are read:
+ *   "used"     a new active key for that agent appeared (the agent ran it)
+ *   "expired"  its time ran out, and no new key appeared
+ *   "wait"     neither yet
+ * `beforeKeyId` is the active key's id when the message was made (or null).
+ */
+export function setupVerdict({ keys, agentId, beforeKeyId = null, expiresAt, now = Date.now() }) {
+  const current = activeKey(keys, agentId)?.key_id || null;
+  if (current && current !== beforeKeyId) return "used";
+  const t = Date.parse(expiresAt);
+  if (!Number.isFinite(t) || now >= t) return "expired";
+  return "wait";
+}
+
+/**
+ * The timing behind every check the page repeats while something is on
+ * screen. It ticks every `everyMs`, only while the page is visible and
+ * online, for at most `forMs`; then it calls `onEnd` once and stops. Going to
+ * the background stops the timer; `visible()` (called when the page is shown
+ * again) runs one check at once, unless told another read is already on its
+ * way, and starts it again.
+ * Everything it needs is passed in, so it runs under a fake clock.
+ */
+export function createWatch({ onTick, onEnd, everyMs = 5_000, forMs, now = () => Date.now(), setTimer = setTimeout, clearTimer = clearTimeout, isVisible = () => true, isOnline = () => true }) {
+  const startedAt = now();
+  let timer = null;
+  let stopped = false;
+  const over = () => Number.isFinite(forMs) && now() - startedAt >= forMs;
+  const end = () => {
+    if (stopped) return;
+    stopped = true;
+    if (timer !== null) clearTimer(timer);
+    timer = null;
+    onEnd?.();
+  };
+  const arm = () => {
+    if (stopped || timer !== null) return;
+    if (!isVisible()) return;
+    const left = Number.isFinite(forMs) ? Math.max(0, forMs - (now() - startedAt)) : everyMs;
+    timer = setTimer(() => {
+      timer = null;
+      if (stopped) return;
+      if (over()) return end();
+      if (isVisible() && isOnline()) onTick();
+      arm();
+    }, Math.min(everyMs, left));
+  };
+  arm();
+  return {
+    /** The page was hidden: nothing runs until it is shown again. */
+    hidden() {
+      if (timer !== null) clearTimer(timer);
+      timer = null;
+    },
+    /**
+     * The page is shown again: one check at once, then the timer. Pass false
+     * when something else already reads at that moment, so it is one read
+     * and not two.
+     */
+    visible(readNow = true) {
+      if (stopped) return;
+      if (over()) return end();
+      if (readNow && isOnline()) onTick();
+      arm();
+    },
+    stop() {
+      stopped = true;
+      if (timer !== null) clearTimer(timer);
+      timer = null;
+    },
+    get running() {
+      return !stopped;
+    },
+  };
 }
