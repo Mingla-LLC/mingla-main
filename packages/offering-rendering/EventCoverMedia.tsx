@@ -732,10 +732,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
   latestImageHandlersRef.current = { handleMediaError, onAspectRatio };
   const handleImageError = useCallback(
     (event: NativeSyntheticEvent<ImageErrorEventData>): void => {
-      latestImageHandlersRef.current.handleMediaError(
-        "image",
-        event.nativeEvent,
-      );
+      latestImageHandlersRef.current.handleMediaError("image", event.nativeEvent);
     },
     [],
   );
