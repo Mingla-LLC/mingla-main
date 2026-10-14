@@ -515,6 +515,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     (input: { eventId: string; surface: "web" | "mobile-web" }): string =>
       checkoutAttemptTrackerRef.current.idFor({
         eventId: input.eventId,
+        purchaseTermsAccepted: state.buyer.termsAccepted === true,
         buyer: {
           name: state.buyer.name,
           email: state.buyer.email,

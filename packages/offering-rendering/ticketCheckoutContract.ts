@@ -19,6 +19,7 @@ export interface CheckoutV2Line {
 
 export interface CheckoutClientAttemptInput {
   eventId: string;
+  purchaseTermsAccepted: boolean;
   buyer: {
     name: string;
     email: string;
@@ -173,6 +174,7 @@ export function checkoutClientAttemptFingerprint(
   return canonicalJson({
     contractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
     eventId: input.eventId,
+    purchaseTermsAccepted: input.purchaseTermsAccepted,
     buyer: {
       name: input.buyer.name.trim(),
       email: input.buyer.email.trim().toLowerCase(),
@@ -226,6 +228,7 @@ export function checkoutV2IdempotencyKey(input: {
 export function canonicalCheckoutV2FingerprintInput(input: {
   eventId: string;
   checkoutAttemptId: string;
+  purchaseTermsAccepted: boolean;
   buyer: {
     userId: string | null;
     name: string;
@@ -259,6 +262,7 @@ export function canonicalCheckoutV2FingerprintInput(input: {
     contractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
     eventId: input.eventId,
     checkoutAttemptId: input.checkoutAttemptId,
+    purchaseTermsAccepted: input.purchaseTermsAccepted,
     buyer: input.buyer,
     providerInput: input.providerInput,
     lines,

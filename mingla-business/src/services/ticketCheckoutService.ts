@@ -696,6 +696,9 @@ export const createTicketCheckout = async (
   if (isCheckoutV2 && !isCheckoutAttemptId(input.checkoutAttemptId)) {
     throw new Error("checkout_attempt_invalid");
   }
+  if (isCheckoutV2 && input.buyer.termsAccepted !== true) {
+    throw new Error("purchase_terms_required");
+  }
   if (
     (input.intakeFormData?.length ?? 0) > 0 &&
     !isCheckoutAttemptId(input.intakeUploadSessionId)
@@ -733,6 +736,7 @@ export const createTicketCheckout = async (
       ? {
         checkoutContractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
         checkoutAttemptId: input.checkoutAttemptId,
+        purchaseTermsAccepted: true,
       }
       : {}),
     buyer: input.buyer,

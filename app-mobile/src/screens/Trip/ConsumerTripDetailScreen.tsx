@@ -789,6 +789,7 @@ export default function ConsumerTripDetailScreen({
       try {
         result = await runNativeCheckout({
           checkoutContractVersion: 2,
+          purchaseTermsAccepted: payload.purchaseTermsAccepted,
           accountId: user.id,
           eventId: detail.tripId,
           lines: payload.lines,

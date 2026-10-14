@@ -279,6 +279,8 @@ export interface TicketCartCheckoutPayload {
     paymentPlanChoice: "full" | "installments";
   }>;
   marketingOptIn: boolean;
+  /** Explicit purchase-terms act carried independently of marketing consent. */
+  purchaseTermsAccepted: boolean;
   /** Booking-local contact snapshot; editing never writes the account profile. */
   buyer: ExplorerCheckoutContactSnapshot;
   /**
@@ -940,8 +942,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       disclosureVersion: signedInBuyer
         ? DISCLOSURE_VERSION
         : GUEST_CHECKOUT_DISCLOSURE_VERSION,
-      phone: buyerPhone,
-      email: buyerEmail,
+      phone: contactValidation.normalized.phone,
+      email: contactValidation.normalized.email,
       userId: signedInBuyer ? buyerUserId : null,
       eventId,
     }).catch(() => undefined);
@@ -966,6 +968,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
               : "full",
         })),
       marketingOptIn,
+      purchaseTermsAccepted: termsAccepted,
       buyer: contactValidation.normalized,
       totalCents: pricing.allInCents,
       intakeFormData,
@@ -989,8 +992,6 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     signedInBuyer,
     brandName,
     buyerUserId,
-    buyerPhone,
-    buyerEmail,
     eventId,
     selectedSchemaTiers,
     intakeAnswers,

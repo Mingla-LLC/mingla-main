@@ -722,6 +722,9 @@ export const createTicketCheckoutCreateHandler = (
       if (!parsedLines.ok) {
         return jsonResponse({ error: parsedLines.error }, 400);
       }
+      if (body.purchaseTermsAccepted !== true) {
+        return jsonResponse({ error: "purchase_terms_required" }, 400);
+      }
       checkoutAttemptId = body.checkoutAttemptId;
       checkoutV2Lines = parsedLines.lines;
     }
@@ -1494,6 +1497,7 @@ export const createTicketCheckoutCreateHandler = (
         canonicalCheckoutV2FingerprintInput({
           eventId,
           checkoutAttemptId: checkoutAttemptId!,
+          purchaseTermsAccepted: true,
           buyer: {
             userId,
             name: buyerName,

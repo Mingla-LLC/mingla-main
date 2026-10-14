@@ -970,6 +970,7 @@ export default function ConsumerEventDetailScreen({
       try {
         result = await runNativeCheckout({
           checkoutContractVersion: 2,
+          purchaseTermsAccepted: payload.purchaseTermsAccepted,
           accountId: user.id,
           eventId: seed.eventId,
           lines: payload.lines,

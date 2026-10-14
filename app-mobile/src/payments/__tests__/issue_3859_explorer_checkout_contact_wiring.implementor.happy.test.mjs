@@ -23,6 +23,11 @@ test("#3859 real Explorer cart owns recap, Change, and missing-only contact edit
   assert.match(cartSource, /explorerCheckoutContactFieldsForEditor\(validation, false\)/);
   assert.match(cartSource, /We’ll send booking updates and receipts here\./);
   assert.match(cartSource, /buyer: contactValidation\.normalized/);
+  assert.match(cartSource, /purchaseTermsAccepted: termsAccepted/);
+  assert.match(
+    cartSource,
+    /void recordConsent\(\{[\s\S]*?phone: contactValidation\.normalized\.phone,[\s\S]*?email: contactValidation\.normalized\.email,/,
+  );
 });
 
 test("#3859 contact edits are booking-local and preserve cart authority", () => {

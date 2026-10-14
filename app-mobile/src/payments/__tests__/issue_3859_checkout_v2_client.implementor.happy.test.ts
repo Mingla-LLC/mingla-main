@@ -56,6 +56,7 @@ test("#3859 Explorer v2 keeps one attempt for a retry and rotates after a line c
   const checkout = useNativeCheckoutFlow();
   const input = {
     checkoutContractVersion: 2 as const,
+    purchaseTermsAccepted: true,
     eventId: EVENT,
     buyer,
     lines: [
@@ -85,6 +86,7 @@ test("#3859 Explorer v2 keeps one attempt for a retry and rotates after a line c
   const bodies = mockInvoke.mock.calls.map((call) => call[1].body);
   expect(bodies).toHaveLength(3);
   expect(bodies[0].checkoutAttemptId).toBe(bodies[1].checkoutAttemptId);
+  expect(bodies[0].purchaseTermsAccepted).toBe(true);
   expect(bodies[2].checkoutAttemptId).not.toBe(bodies[0].checkoutAttemptId);
   expect(bodies[0].lines.map(
     (line: { paymentPlanChoice: string }) => line.paymentPlanChoice,
@@ -92,9 +94,26 @@ test("#3859 Explorer v2 keeps one attempt for a retry and rotates after a line c
   expect(bodies[0]).not.toHaveProperty("payment_plan_choice");
 });
 
+test("#3859 Explorer v2 refuses missing purchase terms before transport", async () => {
+  const result = await useNativeCheckoutFlow()({
+    checkoutContractVersion: 2,
+    eventId: EVENT,
+    buyer,
+    lines: [{
+      ticketTypeId: STANDARD,
+      quantity: 1,
+      paymentPlanChoice: "full",
+    }],
+  });
+
+  expect(result.outcome).toBe("failed");
+  expect(mockInvoke).not.toHaveBeenCalled();
+});
+
 test("#3859 Explorer v2 refuses a missing per-line choice before transport", async () => {
   const result = await useNativeCheckoutFlow()({
     checkoutContractVersion: 2,
+    purchaseTermsAccepted: true,
     eventId: EVENT,
     buyer,
     lines: [{ ticketTypeId: STANDARD, quantity: 1 }],

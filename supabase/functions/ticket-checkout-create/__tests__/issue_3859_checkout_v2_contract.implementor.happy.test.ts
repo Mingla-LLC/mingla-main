@@ -89,6 +89,46 @@ Deno.test("#3859 real create handler rejects checkout-wide scalar before auth or
   assertEquals(rpcCalls, ["issue_2579_record_checkout_refusal"]);
 });
 
+Deno.test("#3859 real create handler requires purchase terms before auth or provider I/O", async () => {
+  const rpcCalls: string[] = [];
+  const handler = createTicketCheckoutCreateHandler({
+    userIdFromAuthHeader: () => {
+      throw new Error("auth_must_not_run");
+    },
+    serviceClient: (() => ({
+      rpc: (name: string) => {
+        rpcCalls.push(name);
+        if (name !== "issue_2579_record_checkout_refusal") {
+          throw new Error("commerce_rpc_must_not_run");
+        }
+        return Promise.resolve({ data: null, error: null });
+      },
+    })) as never,
+    paystackInitializeTransaction: (() => {
+      throw new Error("provider_must_not_run");
+    }) as never,
+  });
+  const response = await handler(
+    new Request("https://example.test/checkout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        checkoutContractVersion: 2,
+        checkoutAttemptId: ATTEMPT,
+        eventId: EVENT,
+        lines: [{
+          ticketTypeId: STANDARD,
+          quantity: 1,
+          paymentPlanChoice: "full",
+        }],
+      }),
+    }),
+  );
+  assertEquals(response.status, 400);
+  assertEquals(await response.json(), { error: "purchase_terms_required" });
+  assertEquals(rpcCalls, ["issue_2579_record_checkout_refusal"]);
+});
+
 Deno.test("#3859 mixed lines conserve money without a checkout-wide override", () => {
   const plan = computeMultiLineInstallmentPlan({
     bookedAt: new Date("2030-01-01T00:00:00Z"),
@@ -147,6 +187,7 @@ Deno.test("#3859 fingerprint is reorder-stable and binds contact, consent, intak
   const base = {
     eventId: EVENT,
     checkoutAttemptId: ATTEMPT,
+    purchaseTermsAccepted: true,
     buyer: {
       userId: null,
       name: "Buyer",
@@ -201,6 +242,12 @@ Deno.test("#3859 fingerprint is reorder-stable and binds contact, consent, intak
       intakeFormData: [...base.intakeFormData].reverse(),
     }),
     canonical,
+  );
+  assert(
+    canonicalCheckoutV2FingerprintInput({
+      ...base,
+      purchaseTermsAccepted: false,
+    }) !== canonical,
   );
   assert(
     canonicalCheckoutV2FingerprintInput({

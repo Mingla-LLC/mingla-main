@@ -21,6 +21,7 @@ const buyer = {
   email: "buyer@example.test",
   phone: "+15555550123",
   marketingOptIn: false,
+  termsAccepted: true,
 };
 const lines = [
   {
@@ -63,9 +64,22 @@ test("#3859 web v2 sends mixed line choices and no checkout-wide scalar", async 
   const body = invoke.mock.calls[0][1].body;
   expect(body.checkoutContractVersion).toBe(2);
   expect(body.checkoutAttemptId).toBe(ATTEMPT);
+  expect(body.purchaseTermsAccepted).toBe(true);
   expect(body.lines.map((line: { paymentPlanChoice: string }) =>
     line.paymentPlanChoice)).toEqual(["installments", "full"]);
   expect(body).not.toHaveProperty("payment_plan_choice");
+});
+
+test("#3859 v2 refuses missing purchase terms before transport", async () => {
+  await expect(createTicketCheckout({
+    eventId: EVENT_ID,
+    buyer: { ...buyer, termsAccepted: false },
+    lines,
+    surface: "web",
+    checkoutContractVersion: 2,
+    checkoutAttemptId: ATTEMPT,
+  })).rejects.toThrow("purchase_terms_required");
+  expect(invoke).not.toHaveBeenCalled();
 });
 
 test("#3859 v2 refuses a checkout-wide scalar before transport", async () => {

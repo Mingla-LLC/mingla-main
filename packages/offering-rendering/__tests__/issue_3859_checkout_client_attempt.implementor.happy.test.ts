@@ -16,6 +16,7 @@ const ATTEMPT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const base = {
   eventId: EVENT,
+  purchaseTermsAccepted: true,
   buyer: {
     name: "Buyer",
     email: "Buyer@Example.test",
@@ -66,6 +67,16 @@ Deno.test("#3859 one logical retry retains its UUID and a changed line choice ro
         paymentPlanChoice: "full" as const,
       })),
     }),
+    ATTEMPT_B,
+  );
+});
+
+Deno.test("#3859 changing purchase-terms acceptance rotates the logical attempt", () => {
+  const ids = [ATTEMPT_A, ATTEMPT_B];
+  const tracker = createCheckoutAttemptTracker(() => ids.shift()!);
+  assertEquals(tracker.idFor(base), ATTEMPT_A);
+  assertEquals(
+    tracker.idFor({ ...base, purchaseTermsAccepted: false }),
     ATTEMPT_B,
   );
 });

@@ -39,6 +39,7 @@ import { buildApplePayCartItems } from "./applePayCartItem";
 // that on a screen.
 import {
   CHECKOUT_AWAITING_CONFIRMATION_MESSAGE,
+  CHECKOUT_DETAILS_INCOMPLETE_MESSAGE,
   CHECKOUT_NO_HANDOFF_MESSAGE,
   CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
   nativeCheckoutErrorMessage,
@@ -94,6 +95,8 @@ const emitPhase = (
 export interface NativeCheckoutInput {
   /** #3859 — omitted callers stay on the legacy v1 request contract. */
   checkoutContractVersion?: typeof TICKET_CHECKOUT_CONTRACT_VERSION;
+  /** #3859 — explicit purchase-terms act; required by checkout v2. */
+  purchaseTermsAccepted?: boolean;
   /** Signed-in Explorer account that owns v2 restart recovery. */
   accountId?: string;
   eventId: string;
@@ -415,6 +418,7 @@ const checkoutFingerprint = (input: NativeCheckoutInput): string => {
         : [line.ticketTypeId, line.quantity, line.paymentPlanChoice]
     ),
     paymentPlanChoice: input.paymentPlanChoice ?? null,
+    purchaseTermsAccepted: input.purchaseTermsAccepted === true,
     intakeFormData: input.intakeFormData ?? null,
     idempotencyKey: input.idempotencyKey ?? null,
   });
@@ -734,6 +738,12 @@ export const useNativeCheckoutFlow = (): ((
 
     let checkoutAttemptId: string | undefined;
     if (input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION) {
+      if (input.purchaseTermsAccepted !== true) {
+        return {
+          outcome: "failed",
+          message: CHECKOUT_DETAILS_INCOMPLETE_MESSAGE,
+        };
+      }
       // V2 has no scalar escape hatch: malformed or missing line choices fail
       // before ticket-checkout-create can reach a provider.
       if (input.paymentPlanChoice !== undefined) {
@@ -754,6 +764,7 @@ export const useNativeCheckoutFlow = (): ((
       try {
         checkoutAttemptId = checkoutAttemptTracker.idFor({
           eventId: input.eventId,
+          purchaseTermsAccepted: true,
           buyer: {
             name: input.buyer.name,
             email: input.buyer.email,
@@ -793,6 +804,7 @@ export const useNativeCheckoutFlow = (): ((
             ? {
               checkoutContractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
               checkoutAttemptId,
+              purchaseTermsAccepted: true,
             }
             : {}),
           buyer: {
