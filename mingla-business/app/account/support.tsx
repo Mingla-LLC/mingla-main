@@ -22,6 +22,7 @@
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
@@ -38,6 +39,10 @@ import {
   spacing,
   text as textTokens,
 } from "../../src/constants/designSystem";
+import {
+  HELP_CENTRE_URL,
+  SUPPORT_HOST_FACING_AGENT,
+} from "../../src/constants/supportHostFacing";
 import {
   useCreateSupportTicket,
   useSupportTickets,
@@ -115,6 +120,15 @@ export default function SupportRoute(): React.ReactElement {
     [router],
   );
 
+  const handleOpenHelpCentre = useCallback((): void => {
+    void Linking.openURL(HELP_CENTRE_URL).catch(() => {
+      setToast({
+        visible: true,
+        message: "Couldn't open the Help Centre. Try again in a moment.",
+      });
+    });
+  }, []);
+
   const canStart = subject.trim().length > 0 && !creating;
 
   return (
@@ -149,12 +163,32 @@ export default function SupportRoute(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* Guides — Help Centre videos (#3720 P0-8) */}
+        <Pressable
+          onPress={handleOpenHelpCentre}
+          accessibilityRole="link"
+          accessibilityLabel="Help Centre videos"
+          style={({ pressed }) => [pressed && styles.rowPressed]}
+        >
+          <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+            <View style={styles.rowTop}>
+              <Text style={styles.rowSubject} numberOfLines={1}>
+                Help Centre videos
+              </Text>
+              <Icon name="chevR" size={16} color={textTokens.tertiary} />
+            </View>
+            <Text style={styles.rowMeta} numberOfLines={2}>
+              Short guides for hosting on Mingla
+            </Text>
+          </GlassCard>
+        </Pressable>
+
         {/* Start a chat */}
         <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
           <Text style={styles.cardTitle}>Need a hand?</Text>
           <Text style={styles.cardBody}>
-            Start a chat and the Mingla team will reply right here. Add a short
-            subject so we know what you need.
+            Start a chat and {SUPPORT_HOST_FACING_AGENT} will reply right here.
+            Add a short subject so we know what you need.
           </Text>
           <TextInput
             value={subject}

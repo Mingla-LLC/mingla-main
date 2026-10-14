@@ -19,8 +19,8 @@
 //      (admin=1 / business=13 / explorer=24 — admin precedence holds).
 //   D. The support-* edge functions are undeployed at build time. Assert the
 //      desk degrades gracefully on a 404 (a clear message, never a crash) and
-//      that the reply still persists via the direct message INSERT even when the
-//      side-effect fn is missing.
+//      that reply goes only through support-send with content (#3720 — the old
+//      direct INSERT + notifyOnly path never pushed the host).
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -98,6 +98,7 @@ describe("META-ORCH-1104 Phase 2 — adversarial", () => {
     assert.equal(PRECEDENCE[0], "admin", "admin is evaluated first in derive_user_segment");
   });
 
+  // [TEST-MOD-APPROVED #3720] reply must not use messages.insert / notifyOnly.
   it("D. support actions degrade gracefully when the edge fns are undeployed (404)", () => {
     const page = read("src/pages/SupportDeskPage.jsx");
     // The invoke helper must special-case 404 and return a clear message, never throw.
@@ -109,13 +110,15 @@ describe("META-ORCH-1104 Phase 2 — adversarial", () => {
     assert.ok(helperMatch, "invokeSupportFn must be defined");
     assert.match(helperMatch[0], /try\s*\{/, "invokeSupportFn must be wrapped in try/catch");
     assert.match(helperMatch[0], /catch\s*\(/);
-    // The reply persists via the direct messages INSERT BEFORE the side-effect
-    // edge fn, so an undeployed support-send doesn't lose the message.
+    // #3720: handleReply sends content through support-send only; a failed
+    // invoke surfaces as an error toast (message is not half-written client-side).
     const replyMatch = page.match(/const handleReply[\s\S]*?\}, \[/);
     assert.ok(replyMatch, "handleReply must exist");
-    const insertIdx = replyMatch[0].indexOf('from("messages")');
-    const sideEffectIdx = replyMatch[0].indexOf("support-send");
-    assert.ok(insertIdx !== -1 && sideEffectIdx !== -1, "both the insert and the side-effect call exist");
-    assert.ok(insertIdx < sideEffectIdx, "the message INSERT must run before the support-send side-effect");
+    assert.match(replyMatch[0], /support-send/);
+    assert.match(replyMatch[0], /content:\s*body/);
+    assert.equal(replyMatch[0].includes('from("messages")'), false,
+      "handleReply must not insert messages directly");
+    assert.equal(replyMatch[0].includes("notifyOnly"), false,
+      "handleReply must not use notifyOnly");
   });
 });

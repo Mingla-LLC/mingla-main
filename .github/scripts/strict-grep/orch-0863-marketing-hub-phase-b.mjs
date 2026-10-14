@@ -2030,6 +2030,10 @@ function checkNoNewBackendFiles() {
     // MODIFIED existing fn — C7 flags modified backend files too (D6 dead-gate fix).
     "supabase/functions/notify-dispatch/index.ts",
     "supabase/functions/notify-dispatch/__tests__/meta_orch_1104_d6_pref_gate.test.ts",
+    // #3720 Phase 0 — server-side new-ticket notify + Veronica host-facing name
+    "supabase/migrations/20270829003720_issue_3720_support_new_ticket_notify.sql",
+    "supabase/functions/_shared/supportHostFacing.ts",
+    "supabase/functions/_shared/__tests__/issue_3720_support_veronica_title.test.ts",
   ];
   const ALLOWLIST = [
     ...META_ORCH_1104_BACKEND_ALLOWLIST,
