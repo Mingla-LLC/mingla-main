@@ -60,12 +60,16 @@ export interface MultiLineInstallmentLine {
   lineTotalCents: number;
   /** The package's payment plan; null/undefined ⇒ this line charges full now. */
   template: InstallmentTemplate | null | undefined;
+  /** #3859 v2: explicit per-line authority. Omitted preserves v1 semantics. */
+  paymentPlanChoice?: "full" | "installments";
 }
 
 export interface ComputedScheduledPayment {
   /** Sequential across the WHOLE union, 1..M. */
   ordinal: number;
   amountCents: number;
+  /** Percentage from the line-local template (informational receipt parity). */
+  pct: number;
   /** ISO-8601 UTC instant the cron charges this installment. */
   dueAt: string;
   /** Provenance — which line this entry came from (audit / debugging only). */
@@ -197,6 +201,7 @@ function computeLineSchedule(
     entries.push({
       ordinal: i + 1, // line-local; re-numbered after the union
       amountCents: amount,
+      pct,
       dueAt: toUtcInstant(dueDate),
       sourceTicketTypeId: line.ticketTypeId,
       sourceOrdinal: i + 1,
@@ -226,7 +231,11 @@ export function computeMultiLineInstallmentPlan(input: {
     if (!(line.lineTotalCents >= 0)) {
       throw new MultiLineInstallmentError("line_total_invalid");
     }
-    const hasTemplate = !payInFull && line.template != null &&
+    if (line.paymentPlanChoice === "installments" && line.template == null) {
+      throw new MultiLineInstallmentError("installment_plan_unavailable");
+    }
+    const hasTemplate = !payInFull && line.paymentPlanChoice !== "full" &&
+      line.template != null &&
       Array.isArray(line.template.installments) &&
       line.template.installments.length > 0;
 
