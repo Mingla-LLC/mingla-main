@@ -107,12 +107,14 @@ const IP_LIKE = /(?<![\p{N}.])\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?(?:[/?#][^\s]*
 // country codes a buyer is likely to meet. Compared case-insensitively: a host
 // ending in one of these is removed however it is capitalised ("Evil.Com",
 // "Bit.Ly/abc"). A word after a missing space that is not one of these
-// ("Mr.Smith", "Lagos.See", "Room 4.Bring") is prose. ".bar" is left out on
-// purpose: "Café.Bar" is a venue far more often than a link.
+// ("Mr.Smith", "Lagos.See", "Room 4.Bring") is prose. A few endings are also
+// ordinary words for a venue ("Café.Bar"): written capitalised, as two labels
+// with nothing after them, they are prose; all lower case, or followed by a
+// path or a port ("evil.bar/x"), they are hosts.
 const COUNTRY_CODES =
   "ac ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bm bn bo bq br bs bt bw by bz ca cc cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg er es et eu fi fj fk fm fo fr ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu id ie il im in io iq ir is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg sh si sk sl sm sn so sr ss st su sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua ug uk us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw";
 const GENERIC_TLDS =
-  "com net org info biz edu gov mil int arpa app dev io ai xyz online site shop store club live link page blog tech top vip fun art bio events tickets ticket travel zip mov museum name pro mobi asia tel jobs cat coop aero news media agency studio space website email cloud host digital world today life love party restaurant cafe music film game games bet casino money pay finance bank loan click download work works group global africa london nyc paris berlin tokyo inc llc ltd company services solutions support help center network systems social chat team one fyi icu cyou buzz rest wiki gay pics photo photos video tube porn sex xxx adult dating date men best cool guru ninja rocks lol wtf ooo onl uno review reviews market markets trade exchange crypto nft wallet example test invalid localhost";
+  "com net org info biz edu gov mil int arpa app dev io ai xyz online site shop store club live link page blog tech top vip fun art bio events tickets ticket travel zip mov museum name pro mobi asia tel jobs cat coop aero news media agency studio space website email cloud host digital world today life love party bar restaurant cafe music film game games bet casino money pay finance bank loan click download work works group global africa london nyc paris berlin tokyo inc llc ltd company services solutions support help center network systems social chat team one fyi icu cyou buzz rest wiki gay pics photo photos video tube porn sex xxx adult dating date men best cool guru ninja rocks lol wtf ooo onl uno review reviews market markets trade exchange crypto nft wallet example test invalid localhost";
 const IDN_TLDS = "рф рус бел укр қаз срб мкд мон бг ею орг ком онлайн сайт 中国 中國 香港 台灣 台湾 新加坡 한국 ελ भारत இந்தியா ไทย السعودية امارات مصر ایران عمان قطر";
 const KNOWN_TLDS: ReadonlySet<string> = new Set(
   `${COUNTRY_CODES} ${GENERIC_TLDS} ${IDN_TLDS}`.split(/\s+/).filter((tld) => tld.length > 0),
@@ -125,14 +127,25 @@ const KNOWN_TLDS: ReadonlySet<string> = new Set(
 const HOST_CANDIDATE =
   /(?<![\p{L}\p{M}\p{N}])((?:[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}-]{0,62})\.)+)([\p{L}][\p{L}\p{M}\p{N}-]{1,62})(?![\p{L}\p{M}\p{N}-])((?::\d{1,5})?(?:[/?#][^\s]*)?)/gu;
 
+const VENUE_WORD_TLDS: ReadonlySet<string> = new Set(["bar"]);
+
 function isHostTld(label: string): boolean {
   if (/^xn--[a-z0-9-]{2,59}$/i.test(label)) return true;
   return KNOWN_TLDS.has(label.toLowerCase());
 }
 
 function removeHosts(text: string): string {
-  return text.replace(HOST_CANDIDATE, (match: string, _labels: string, tld: string) =>
-    isHostTld(tld) ? LINK_REMOVED : match
+  return text.replace(
+    HOST_CANDIDATE,
+    (match: string, labels: string, tld: string, tail: string) => {
+      if (!isHostTld(tld)) return match;
+      const capitalised = tld !== tld.toLowerCase() && tld !== tld.toUpperCase();
+      const twoLabels = labels.split(".").length === 2;
+      if (VENUE_WORD_TLDS.has(tld.toLowerCase()) && capitalised && twoLabels && tail === "") {
+        return match;
+      }
+      return LINK_REMOVED;
+    },
   );
 }
 

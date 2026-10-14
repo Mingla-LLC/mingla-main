@@ -826,6 +826,12 @@ jobs:
           # once in the host's status (emailed, reached by text, or no email).
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.tester.retest4.pg17.test.sql
+          # Issue #3827 round 5 — the fan-out locks the event row, then the
+          # per-event lock, then the notice row (the editors' order, so a save
+          # racing the fan-out cannot deadlock); the host status says a notice
+          # went out under test only when it did, whatever the switch says now.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3827_live_edit_buyer_email.implementor.round5.pg17.test.sql
           # Issue #3645 — an unpublished draft with nothing sold follows its
           # brand's currency. Changed currency (GBP to NGN, fired by
           # service_role): event, RSVP and trip drafts move in every copy, paid
@@ -2834,6 +2840,9 @@ jobs:
             # host in any capitalisation, with or without a path; a host after "-"
             # or "@" is removed; every dot look-alike reads as a dot.
             supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.implementor.round4.test.ts
+            # Issue #3827 round 5 — a ".bar" host goes unless it reads as a
+            # capitalised venue name with nothing after it ("Café.Bar").
+            supabase/functions/_shared/email/__tests__/issue_3827_event_updated_email.implementor.round5.test.ts
             # Issue #3827 — tester adversarial proof for the same email: hostile
             # reasons, names and timezones add no tag, link or live scheme and
             # never reach the subject; Reply-To falls back to support for
