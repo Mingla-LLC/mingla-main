@@ -197,6 +197,35 @@ $fn$;
 REVOKE ALL ON FUNCTION public.event_edit_notice_brand_live(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.event_edit_notice_brand_live(uuid) TO service_role;
 
+-- Allowlist-only is on (a missing switch row counts as on: fail closed).
+CREATE OR REPLACE FUNCTION public.event_edit_notice_allowlist_only()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT COALESCE((SELECT f.is_enabled FROM public.feature_flags AS f
+                    WHERE f.flag_key = 'event_update_buyer_email_allowlist_only'), true)
+$fn$;
+
+-- The whole address, lower-cased and trimmed, is on the allowlist.
+CREATE OR REPLACE FUNCTION public.event_edit_notice_on_allowlist(p_email text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT EXISTS (SELECT 1 FROM public.event_update_email_allowlist AS a
+                  WHERE a.email = lower(btrim(p_email)))
+$fn$;
+
+REVOKE ALL ON FUNCTION public.event_edit_notice_allowlist_only() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.event_edit_notice_on_allowlist(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.event_edit_notice_allowlist_only() TO service_role;
+GRANT EXECUTE ON FUNCTION public.event_edit_notice_on_allowlist(text) TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- 4. The snapshot: the values a buyer acts on, and nothing else.
 --   Events and RSVPs: format, venue name, address, online link (fingerprint
@@ -980,8 +1009,7 @@ DECLARE
   v_rows integer := 0;
 BEGIN
   -- Fail closed: a missing switch row means allowlist-only.
-  v_allowlist_only := COALESCE((SELECT f.is_enabled FROM public.feature_flags AS f
-    WHERE f.flag_key = 'event_update_buyer_email_allowlist_only'), true);
+  v_allowlist_only := public.event_edit_notice_allowlist_only();
 
   -- A capture that outlived its transaction is debris from a failed settle.
   DELETE FROM public.event_edit_notice_pending WHERE created_at < now() - interval '1 day';
@@ -1028,10 +1056,20 @@ BEGIN
        WHERE b.email IS NULL AND b.rsvp_id IS NOT NULL
       ORDER BY 1, 3
     LOOP
-      IF v_allowlist_only AND NOT EXISTS (
-           SELECT 1 FROM public.event_update_email_allowlist AS a
-            WHERE a.email = v_recipient.email) THEN
+      IF v_allowlist_only AND NOT public.event_edit_notice_on_allowlist(v_recipient.email) THEN
         v_held := v_held + 1;
+        CONTINUE;
+      END IF;
+      -- A going guest who was already given the earlier alert for this change
+      -- (queued while emails were being tested) is not told twice.
+      IF v_recipient.rsvp_id IS NOT NULL AND EXISTS (
+           SELECT 1 FROM public.rsvp_notifications AS legacy
+            WHERE legacy.event_id = v_notice.event_id
+              AND legacy.rsvp_id = v_recipient.rsvp_id
+              AND legacy.template_key = 'rsvp_event_updated'
+              AND NOT (legacy.payload ? 'noticeId')
+              AND legacy.created_at >= COALESCE(v_notice.first_unsent_at, v_notice.created_at)
+                                       - interval '1 second') THEN
         CONTINUE;
       END IF;
 
@@ -1619,15 +1657,21 @@ BEGIN
     p_event_id, NULLIF(v_trimmed_reason, ''), 'rsvp', false);
 
   -- Enqueue rsvp_event_updated for every going+approved guest on material change.
-  -- issue #3827 buyer email — unchanged whenever the edit notice does not own
-  -- this change (the feature is off, the brand is outside the pilot, or the
-  -- recorder saw nothing a guest acts on): the rows below are queued exactly
-  -- as before, so nothing that alerts a guest today goes silent.
-  IF v_material_change AND COALESCE(v_notice->>'handled', 'false') <> 'true' THEN
+  IF v_material_change THEN
     FOR v_guest IN
       SELECT r.id FROM public.event_rsvps r
        WHERE r.event_id = p_event_id
          AND r.rsvp_status = 'going' AND r.approval_status = 'approved'
+         -- issue #3827 buyer email — every guest the edit notice cannot reach
+         -- yet gets exactly the row queued before this work: all of them when
+         -- the notice does not own the change (the feature is off, the brand
+         -- is outside the pilot, or the recorder saw nothing a guest acts on),
+         -- and, while emails are being tested (allowlist-only), every guest
+         -- who is not on the allowlist. Nothing that alerts a guest today goes
+         -- silent.
+         AND (COALESCE(v_notice->>'handled', 'false') <> 'true'
+              OR (public.event_edit_notice_allowlist_only()
+                  AND NOT public.event_edit_notice_on_allowlist(r.guest_email)))
     LOOP
       INSERT INTO public.rsvp_notifications
         (event_id, rsvp_id, channel, recipient, status, template_key, payload,
@@ -1642,12 +1686,14 @@ BEGIN
       ON CONFLICT (idempotency_key) DO NOTHING;
       v_notified_count := v_notified_count + 1;
     END LOOP;
-  ELSIF v_material_change THEN
-    -- issue #3827 buyer email — the edit notice reaches these guests;
-    -- notified_count keeps its meaning (going and approved guests).
-    SELECT count(*) INTO v_notified_count FROM public.event_rsvps r
-     WHERE r.event_id = p_event_id
-       AND r.rsvp_status = 'going' AND r.approval_status = 'approved';
+    -- issue #3827 buyer email — when the edit notice owns the change it
+    -- reaches the rest; notified_count keeps its meaning (going and approved
+    -- guests on a material change).
+    IF COALESCE(v_notice->>'handled', 'false') = 'true' THEN
+      SELECT count(*) INTO v_notified_count FROM public.event_rsvps r
+       WHERE r.event_id = p_event_id
+         AND r.rsvp_status = 'going' AND r.approval_status = 'approved';
+    END IF;
   END IF;
 
   SELECT * INTO v_event FROM public.events WHERE id = p_event_id;
@@ -2344,7 +2390,9 @@ BEGIN
     'public.event_edit_notice_flush(uuid, text, text, boolean)',
     'public.event_edit_notice_fanout(integer)',
     'public.event_edit_notice_withhold_changes(jsonb, boolean)',
-    'public.event_edit_notice_withhold_unsent(uuid)']
+    'public.event_edit_notice_withhold_unsent(uuid)',
+    'public.event_edit_notice_allowlist_only()',
+    'public.event_edit_notice_on_allowlist(text)']
   LOOP
     IF pg_catalog.has_function_privilege('anon', v_fn, 'EXECUTE')
        OR pg_catalog.has_function_privilege('authenticated', v_fn, 'EXECUTE') THEN

@@ -1111,4 +1111,87 @@ BEGIN
 END $p03$;
 ROLLBACK;
 
+-- ─── R-03 (rework F1): allowlist-only in the pilot. A guest NOT on the list
+--     still gets exactly today's alert; only a listed guest gets the new email ─
+BEGIN;
+DO $r03$
+DECLARE
+  f record;
+  v_listed uuid := gen_random_uuid();
+  v_result jsonb;
+  v_notice public.event_edit_notices%ROWTYPE;
+  v_listed_email text;
+  v_legacy_keys text[];
+BEGIN
+  SELECT * INTO f FROM pg_temp.e3827_rsvp('r03');
+  v_listed_email := 'e3827-listed-' || v_listed || '@example.test';
+  INSERT INTO public.event_rsvps(id, event_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
+  VALUES (v_listed, f.v_event, 'Listed Guest', v_listed_email, '+15550003828', 'going', 'approved');
+  PERFORM pg_temp.e3827_go_live(f.v_brand, true);
+  INSERT INTO public.event_update_email_allowlist(email) VALUES (v_listed_email);
+
+  v_result := public.biz_update_live_rsvp(f.v_event, pg_temp.e3827_rsvp_payload('The Bedford Hall'),
+    'Moving to a bigger room for everyone');
+  IF v_result #>> '{buyer_notice,state}' IS DISTINCT FROM 'scheduled'
+     OR (v_result ->> 'notified_count')::integer <> 2 THEN
+    RAISE EXCEPTION 'R-03 FAIL: expected a scheduled notice and notified_count 2 (%)', v_result - 'event';
+  END IF;
+  -- The off-list guest: the same row main queues today, and only that.
+  SELECT array_agg(n.idempotency_key) INTO v_legacy_keys FROM public.rsvp_notifications AS n
+   WHERE n.event_id = f.v_event;
+  IF array_length(v_legacy_keys, 1) IS DISTINCT FROM 1
+     OR NOT EXISTS (SELECT 1 FROM public.rsvp_notifications AS n
+                     WHERE n.event_id = f.v_event AND n.rsvp_id = f.v_guest
+                       AND n.template_key = 'rsvp_event_updated'
+                       AND n.idempotency_key LIKE 'rsvp_update:' || f.v_event::text || ':%:' || f.v_guest::text
+                       AND n.payload = jsonb_build_object('template_key', 'rsvp_event_updated',
+                             'rsvp_id', f.v_guest, 'event_id', f.v_event)
+                             || (n.payload - 'template_key' - 'rsvp_id' - 'event_id')
+                       AND NOT (n.payload ? 'noticeId')) THEN
+    RAISE EXCEPTION 'R-03 FAIL: the off-list guest did not get exactly today''s alert (keys %)', v_legacy_keys;
+  END IF;
+  IF (SELECT count(*) FROM public.rsvp_notification_deliveries AS d
+        JOIN public.rsvp_notifications AS n ON n.id = d.notification_id
+       WHERE n.event_id = f.v_event AND d.channel IN ('email', 'sms')) <> 2 THEN
+    RAISE EXCEPTION 'R-03 FAIL: the off-list guest lost a channel they have today';
+  END IF;
+
+  -- Fan-out: the listed guest gets the notice-backed row; the other gets nothing more.
+  UPDATE public.event_edit_notices SET send_after = now() - interval '1 second' WHERE event_id = f.v_event;
+  PERFORM public.event_edit_notice_fanout(20);
+  SELECT * INTO v_notice FROM public.event_edit_notices WHERE event_id = f.v_event AND state = 'fanned_out';
+  IF (SELECT count(*) FROM public.rsvp_notifications WHERE event_id = f.v_event AND payload ? 'noticeId') <> 1
+     OR NOT EXISTS (SELECT 1 FROM public.rsvp_notifications WHERE event_id = f.v_event
+                     AND payload ->> 'noticeId' = v_notice.id::text AND rsvp_id = v_listed)
+     OR v_notice.held_count <> 1 THEN
+    RAISE EXCEPTION 'R-03 FAIL: fan-out did not give the listed guest (only) the new message (held %)', v_notice.held_count;
+  END IF;
+  RAISE NOTICE 'R-03 PASS: allowlist-only keeps today''s alert for an off-list guest and gives only the listed guest the new email';
+END $r03$;
+ROLLBACK;
+
+-- ─── R-04 (rework F1): a guest already alerted while emails were being tested
+--     is not told twice when allowlist-only is switched off before fan-out ────
+BEGIN;
+DO $r04$
+DECLARE
+  f record;
+BEGIN
+  SELECT * INTO f FROM pg_temp.e3827_rsvp('r04');
+  PERFORM pg_temp.e3827_go_live(f.v_brand, true);
+  PERFORM public.biz_update_live_rsvp(f.v_event, pg_temp.e3827_rsvp_payload('The Bedford Hall'),
+    'Moving to a bigger room for everyone');
+  IF (SELECT count(*) FROM public.rsvp_notifications WHERE event_id = f.v_event) <> 1 THEN
+    RAISE EXCEPTION 'R-04 FIXTURE: the off-list guest was not alerted';
+  END IF;
+  UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'event_update_buyer_email_allowlist_only';
+  UPDATE public.event_edit_notices SET send_after = now() - interval '1 second' WHERE event_id = f.v_event;
+  PERFORM public.event_edit_notice_fanout(20);
+  IF (SELECT count(*) FROM public.rsvp_notifications WHERE event_id = f.v_event) <> 1 THEN
+    RAISE EXCEPTION 'R-04 FAIL: the guest was alerted twice for one change';
+  END IF;
+  RAISE NOTICE 'R-04 PASS: a guest given the earlier alert for this change is not told twice';
+END $r04$;
+ROLLBACK;
+
 \echo 'issue_3827_live_edit_buyer_email.implementor.happy: all cases passed'
