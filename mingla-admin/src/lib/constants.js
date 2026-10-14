@@ -212,6 +212,15 @@ export const NAV_GROUPS = [
       { id: "creators",                  label: "Creators",           icon: "Sparkles" },
     ],
   },
+  // Issue #3802 (Wave 4): Help, below Team. My agent is opened by the `crm`
+  // area (lib/access.js), so all four team roles see this group. Bot is in
+  // Sidebar.jsx ICON_MAP.
+  {
+    label: "Help",
+    items: [
+      { id: "agent",                     label: "My agent",           icon: "Bot" },
+    ],
+  },
 ];
 
 // Backward-compatible flat list (used by AppShell.currentTitle)

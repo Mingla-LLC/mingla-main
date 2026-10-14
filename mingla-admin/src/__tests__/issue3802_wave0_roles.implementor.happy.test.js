@@ -117,7 +117,7 @@ describe("#3802 C-1: a page nobody listed is owner/admin-only", () => {
   });
 
   it("only two pages are listed as exceptions, and neither loosens the default", () => {
-    assert.deepEqual(PAGE_AREA_OVERRIDES, { home: "role_home", admin: "team_manage", hosts: "crm", creators: "crm", "beta-leads": "beta_leads" });
+    assert.deepEqual(PAGE_AREA_OVERRIDES, { home: "role_home", admin: "team_manage", hosts: "crm", creators: "crm", "beta-leads": "beta_leads", agent: "crm" });
     for (const id of PAGE_IDS) {
       if (Object.hasOwn(PAGE_AREA_OVERRIDES, id)) continue;
       assert.equal(areaForPage(id), "admin_console", `'${id}' must need admin_console`);

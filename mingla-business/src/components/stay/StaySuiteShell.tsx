@@ -71,6 +71,10 @@ import type {
   StayPropertyKind,
   StaySettingsInput,
 } from "../../types/stayInventory";
+import {
+  isOrganiserTermsRefusalMessage,
+  organiserTermsUnresolvedCopy,
+} from "../../utils/paidPublishGuards";
 import type { SuiteDesktopModule } from "../suite/SuiteDesktopShell";
 import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
@@ -161,8 +165,19 @@ const splitTags = (value: string): string[] =>
 const joinTags = (value: string[] | undefined): string =>
   (value ?? []).join(", ");
 
-function publishErrorCopy(error: Error | null): string | null {
+function publishErrorCopy(
+  error: Error | null,
+  termsUnresolved: string | null = null,
+): string | null {
   if (error === null) return null;
+  // #3645 — the server asks for the Organiser Terms. The acceptance sheet
+  // opens for this (see handlePublishStay); the line under the button says the
+  // same thing in plain words, never the server's code. When the sheet has
+  // nothing to offer (the terms already read as accepted, or could not be
+  // read) the line says that instead of asking for something already done.
+  if (isOrganiserTermsRefusalMessage(error.message)) {
+    return termsUnresolved ?? "Accept the Organiser Terms to publish this Stay.";
+  }
   if (error.message.includes("stay_authoring_disabled")) {
     return "Stay publishing is not active yet.";
   }
@@ -306,9 +321,13 @@ function StayOverview({
   // #3645 PR11c — stays that can publish always have a current price (paid).
   const {
     blockPaidPublishUntilAccepted,
+    acceptTermsAfterServerRefusal,
     gateElement: organiserTermsGateElement,
   } = useOrganiserTermsPublishGate(brandId);
   const [organiserTermsToast, setOrganiserTermsToast] = useState(false);
+  // #3645 — set when the server refused for the terms and the sheet could not
+  // help; cleared by the next press of Publish.
+  const [termsUnresolved, setTermsUnresolved] = useState<string | null>(null);
   const snapshot = inventory.data ?? null;
   const settings = snapshot?.settings ?? null;
   const offerings = snapshot?.offerings ?? [];
@@ -365,8 +384,28 @@ function StayOverview({
       setOrganiserTermsToast(true);
       return;
     }
-    publish.mutate({ expectedVersion: settings.version });
-  }, [settings, blockPaidPublishUntilAccepted, publish]);
+    setTermsUnresolved(null);
+    publish.mutate(
+      { expectedVersion: settings.version },
+      {
+        // #3645 — the server refused for want of the Organiser Terms although
+        // the app thought they were accepted. Open the acceptance sheet and
+        // publish again once accepted.
+        onError: (error) => {
+          if (!isOrganiserTermsRefusalMessage(error.message)) return;
+          acceptTermsAfterServerRefusal(
+            () => resumePublishStayRef.current(),
+            (reason) => setTermsUnresolved(organiserTermsUnresolvedCopy(reason)),
+          );
+        },
+      },
+    );
+  }, [
+    settings,
+    blockPaidPublishUntilAccepted,
+    acceptTermsAfterServerRefusal,
+    publish,
+  ]);
   React.useEffect(() => {
     resumePublishStayRef.current = handlePublishStay;
   }, [handlePublishStay]);
@@ -638,7 +677,9 @@ function StayOverview({
         </View>
       ) : null}
       {publish.isError ? (
-        <Text style={styles.error}>{publishErrorCopy(publish.error)}</Text>
+        <Text style={styles.error}>
+          {publishErrorCopy(publish.error, termsUnresolved)}
+        </Text>
       ) : null}
       {!isActive && isWideDesktop ? (
         <Button

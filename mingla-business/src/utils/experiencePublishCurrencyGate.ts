@@ -1,11 +1,19 @@
 /**
- * #3645 — an experience cannot leave draft on a brand with no currency.
+ * #3645 — a PAID experience cannot leave draft on a brand with no currency.
  *
- * The server refuses that publish with `event_currency_required`, free or
- * priced, because the experience publish path does not declare "free only".
- * Until the server does, the creator stops Publish on the client and asks for
- * the payout country in place, and a refusal that still gets through (stale
- * brand state) lands on the same sentence instead of a generic error.
+ * Money needs a currency, and a brand gets one by choosing its payout country.
+ * So the creator stops a paid Publish on the client and asks for the country in
+ * place.
+ *
+ * A FREE experience is not stopped here. Whether it may publish with no
+ * currency is the server's answer, and that answer changes when migration
+ * 20270830003645 is applied:
+ *  - before: the server refuses it with `event_currency_required`. The creator
+ *    turns that refusal into the same sentence and the same in-place country
+ *    prompt (`isEventCurrencyRequiredRefusal`), so the host sees what they saw
+ *    when the client stopped it;
+ *  - after: the server publishes it, stored with no currency.
+ * Stopping a free publish on the client would hide the second answer for ever.
  *
  * Pure: no react-native and no supabase import.
  */
@@ -19,13 +27,18 @@ export const EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY =
 
 /**
  * True when Publish must NOT reach the server: this is a publish (never a
- * draft save) and the brand has no currency.
+ * draft save) of a PAID experience and the brand has no currency.
+ *
+ * `isPaid` left out means "treat as paid": a caller that cannot say is stopped,
+ * never waved through.
  */
 export function experiencePublishNeedsPayoutCountry(input: {
   publish: boolean;
   brandDefaultCurrency: string | null | undefined;
+  isPaid?: boolean;
 }): boolean {
-  return input.publish && currencyCodeOrNull(input.brandDefaultCurrency) === null;
+  if (!input.publish || input.isPaid === false) return false;
+  return currencyCodeOrNull(input.brandDefaultCurrency) === null;
 }
 
 /**

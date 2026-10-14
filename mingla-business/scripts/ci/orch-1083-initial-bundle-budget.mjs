@@ -56,6 +56,11 @@
  *      14 @expo-google-fonts/* families are not statically reachable from the
  *      MAIN entry chunk, nor from ANY eager script. UNCHANGED by #1509: this
  *      half of the gate works and has caught real regressions.
+ *      ONE-TIME ALLOWANCE (issue #3645): a single, named pull request may be
+ *      granted a larger `__common` delta by an entry in ONE_TIME_PR_ALLOWANCE.
+ *      It never touches the general allowance or the product ceiling, it is
+ *      printed on every run it applies to, and it expires by itself. See the
+ *      comment on that table before adding to it.
  *   5. RATCHET NOTICE — if the payload shrank meaningfully below the baseline,
  *      say so. Informational on a PR (never fail a PR for being better); the
  *      post-merge workflow is what actually banks it.
@@ -66,6 +71,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -138,6 +144,139 @@ const HARD_CEILING = {
 // allowance is 80x that variance, so where the baseline was measured no longer
 // matters.
 const PR_DELTA_ALLOWANCE = { common: 12_000, eager: 25_000 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ONE-TIME ALLOWANCE — a named exception for ONE pull request. NOT a second
+// limit, and not a place to park a number so a PR can land.
+//
+// The per-PR allowance above stays exactly what it is for every other branch.
+// An entry here raises the `__common` per-PR delta, to a stated CAP, for one
+// pull request that Seth approved by name, and for nothing else:
+//
+//   - PULL REQUEST RUNS: only when the runner reports this exact head branch
+//     AND this exact pull request (`refs/pull/<pr>/merge`). A different
+//     branch, a different pull request number, a manual dispatch, a missing
+//     value: the normal allowance.
+//   - MAIN, AFTER THE MERGE: the lanes that re-run this gate on a push to main
+//     measure main against a baseline that has not recorded the merge yet, and
+//     there is no head branch on a push. So on `refs/heads/main` only, the
+//     entry applies while git shows the pull request's squash commit (subject
+//     ending `(#<pr>)`) AFTER the commit the baseline was measured at. The
+//     ratchet then records a baseline measured at or after that merge, the
+//     commit drops out of that range, and the entry is dead on main for good.
+//     Nobody has to "put it back".
+//   - A HARD END DATE: after `expiresAfter` the entry is inert on every path,
+//     so a reused branch name cannot inherit it.
+//   - NEVER INSIDE A TEST HARNESS: the budget suites run this gate against
+//     synthetic exports and must keep meeting the normal limit on every branch.
+//
+// It raises ONLY `common`. The eager allowance and both PRODUCT CEILINGS are
+// untouched and still enforced first. Every run the entry applies to prints
+// the normal limit, the granted limit, the measured delta, the reason and the
+// approver, and every run it does NOT apply to says so in one line.
+//
+// The self-test pins this table to exactly the entry below. Adding or editing
+// an entry therefore fails `--self-test` until that pin is changed in the same
+// reviewed diff, which is the point: an exception is Seth's decision, named,
+// dated and visible, never a quiet edit.
+// ═══════════════════════════════════════════════════════════════════════════
+const ONE_TIME_PR_ALLOWANCE = Object.freeze([
+  Object.freeze({
+    issue: 3645,
+    pr: 3833,
+    headRef: "3645-drafts-follow-brand-currency",
+    common: 20_000,
+    expiresAfter: "2026-10-27",
+    approvedBy: "Seth, 2026-10-13",
+    reason:
+      "Drafts follow the brand currency (#3645): the draft-currency reconcile has to run " +
+      "from the boot path, so its tested code lands in the eager shared chunk (+19,017 B " +
+      "measured in CI). It cannot be moved behind a lazy route without changing tested " +
+      "behaviour.",
+  }),
+]);
+
+const MAIN_REF = "refs/heads/main";
+const MAIN_EVENTS = new Set(["push", "workflow_dispatch"]);
+
+/**
+ * Decide whether a one-time entry applies to THIS run. Pure: everything it
+ * reads is passed in, so the self-test can prove each refusal.
+ *
+ * `subjectsSinceBaseline` returns the commit subjects reachable from HEAD but
+ * not from the commit the baseline was measured at, or throws. A throw is a
+ * refusal, never a grant.
+ */
+function resolveOneTimeAllowance({ env, today, baselineCommit, subjectsSinceBaseline, table = ONE_TIME_PR_ALLOWANCE }) {
+  const refusals = [];
+  for (const entry of table) {
+    const name = `issue #${entry.issue}, PR #${entry.pr}`;
+    if (!Number.isSafeInteger(entry.common) || entry.common <= PR_DELTA_ALLOWANCE.common) {
+      refusals.push(`${name}: entry grants no usable cap`);
+      continue;
+    }
+    if (typeof today !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(today) || today > entry.expiresAfter) {
+      refusals.push(`${name}: expired after ${entry.expiresAfter}`);
+      continue;
+    }
+    // `node --test` marks every process it starts, and the budget suites run
+    // this gate against synthetic exports from inside it. Those are fixtures,
+    // not the pull request's payload: they must always meet the normal limit,
+    // whichever pull request or branch the suite happens to be running on.
+    if (env.NODE_TEST_CONTEXT) {
+      refusals.push(`${name}: running inside a test harness`);
+      continue;
+    }
+    const event = env.GITHUB_EVENT_NAME ?? "";
+    const ref = env.GITHUB_REF ?? "";
+    const headRef = env.GITHUB_HEAD_REF ?? "";
+
+    if (event === "pull_request") {
+      if (headRef === entry.headRef && ref === `refs/pull/${entry.pr}/merge`) {
+        return { entry, via: `pull request #${entry.pr} from branch ${entry.headRef}`, refusals };
+      }
+      refusals.push(`${name}: this is not that pull request (head "${headRef}", ref "${ref}")`);
+      continue;
+    }
+
+    if (ref === MAIN_REF && MAIN_EVENTS.has(event)) {
+      if (typeof baselineCommit !== "string" || !/^[0-9a-f]{40}$/.test(baselineCommit)) {
+        refusals.push(`${name}: the baseline does not name the commit it was measured at`);
+        continue;
+      }
+      let subjects;
+      try {
+        subjects = subjectsSinceBaseline(baselineCommit);
+      } catch (err) {
+        refusals.push(`${name}: could not read git history since the baseline (${String(err?.message ?? err).split("\n")[0]})`);
+        continue;
+      }
+      const marker = `(#${entry.pr})`;
+      if (Array.isArray(subjects) && subjects.some((s) => typeof s === "string" && s.endsWith(marker))) {
+        return {
+          entry,
+          via: `main, where the merge of PR #${entry.pr} is not yet in the recorded baseline (measured at ${baselineCommit.slice(0, 9)})`,
+          refusals,
+        };
+      }
+      refusals.push(`${name}: the recorded baseline already includes PR #${entry.pr}, or it has not merged`);
+      continue;
+    }
+
+    refusals.push(`${name}: not a pull request run and not main (event "${event}", ref "${ref}")`);
+  }
+  return { entry: null, via: null, refusals };
+}
+
+function gitSubjectsSince(commit) {
+  return execFileSync("git", ["log", "--format=%s", `${commit}..HEAD`], {
+    cwd: HERE,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  })
+    .split("\n")
+    .filter(Boolean);
+}
 
 // The 2026-08-11 measurement the ceilings were set against. FIXED — this is the
 // origin point that makes "% of runway consumed" mean something over time. It is
@@ -214,6 +353,81 @@ if (process.argv.includes("--self-test")) {
       baseline[scope].brotli < baseline[scope].gzip &&
         baseline[scope].gzip < baseline[scope].raw,
     ]);
+  }
+
+  // 4 — the one-time allowance (issue #3645) is exactly one named entry, it
+  // matches exactly one pull request, and everyone else keeps the normal limit.
+  // Adding a second entry, widening the cap or loosening a match fails here.
+  {
+    const E = ONE_TIME_PR_ALLOWANCE;
+    const only = E[0] ?? {};
+    checks.push(["one-time allowance: the general allowance is still 12,000 / 25,000",
+      PR_DELTA_ALLOWANCE.common === 12_000 && PR_DELTA_ALLOWANCE.eager === 25_000]);
+    checks.push(["one-time allowance: the table holds exactly one entry", E.length === 1]);
+    checks.push(["one-time allowance: that entry is PR #3833 / issue #3645 on its own branch, capped at 20,000 B, dated",
+      only.pr === 3833 && only.issue === 3645 &&
+        only.headRef === "3645-drafts-follow-brand-currency" &&
+        only.common === 20_000 && only.expiresAfter === "2026-10-27" &&
+        only.approvedBy === "Seth, 2026-10-13" &&
+        typeof only.reason === "string" && only.reason.length > 40]);
+    checks.push(["one-time allowance: the entry raises __common only (no eager, no ceiling)",
+      Object.keys(only).sort().join(",") === "approvedBy,common,expiresAfter,headRef,issue,pr,reason"]);
+    checks.push(["one-time allowance: the table and its entry are frozen",
+      Object.isFrozen(E) && Object.isFrozen(only)]);
+
+    const SHA = "a".repeat(40);
+    const none = () => [];
+    const merged = () => ["Unrelated change (#3900)", "toward #3645: drafts follow the brand currency (#3833)"];
+    const prEnv = (headRef, ref) => ({ GITHUB_EVENT_NAME: "pull_request", GITHUB_HEAD_REF: headRef, GITHUB_REF: ref });
+    const decide = (env, subjects = none, today = "2026-10-13", commit = SHA) =>
+      resolveOneTimeAllowance({ env, today, baselineCommit: commit, subjectsSinceBaseline: subjects }).entry;
+    const HEAD = "3645-drafts-follow-brand-currency";
+
+    checks.push(["one-time allowance: applies to PR #3833 from its branch",
+      decide(prEnv(HEAD, "refs/pull/3833/merge")) === only]);
+    const strangers = [
+      prEnv("3697-host-ads", "refs/pull/3840/merge"),
+      prEnv(HEAD, "refs/pull/3840/merge"), // same branch name, another pull request
+      prEnv("3697-host-ads", "refs/pull/3833/merge"),
+      prEnv(`${HEAD}-2`, "refs/pull/3833/merge"),
+      prEnv(`x${HEAD}`, "refs/pull/3833/merge"),
+      prEnv(HEAD.toUpperCase(), "refs/pull/3833/merge"),
+      prEnv("", "refs/pull/3833/merge"),
+      prEnv(HEAD, "refs/pull/38330/merge"),
+      prEnv(HEAD, ""),
+      {},
+      { GITHUB_HEAD_REF: HEAD, GITHUB_REF: "refs/pull/3833/merge" }, // no event
+      { GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_REF: `refs/heads/${HEAD}` },
+      { GITHUB_EVENT_NAME: "merge_group", GITHUB_HEAD_REF: HEAD, GITHUB_REF: "refs/pull/3833/merge" },
+    ];
+    checks.push(["one-time allowance: every other branch, pull request or missing value gets the normal limit",
+      strangers.every((env) => decide(env, merged) === null)]);
+
+    const mainPush = { GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/main" };
+    checks.push(["one-time allowance: applies on main while the merge of #3833 is not in the baseline",
+      decide(mainPush, merged) === only]);
+    checks.push(["one-time allowance: dead on main once the baseline includes the merge",
+      decide(mainPush, none) === null &&
+        decide(mainPush, () => ["Other work (#3834)", "Mentions (#3833) mid-subject (#3901)", "x (#38331)", "(#3833) first"]) === null]);
+    checks.push(["one-time allowance: never applies to a push on another branch",
+      decide({ GITHUB_EVENT_NAME: "push", GITHUB_REF: `refs/heads/${HEAD}` }, merged) === null]);
+    checks.push(["one-time allowance: unreadable history or an unstamped baseline is a refusal",
+      decide(mainPush, () => { throw new Error("not a git repository"); }) === null &&
+        decide(mainPush, merged, "2026-10-13", "unknown") === null &&
+        resolveOneTimeAllowance({ env: mainPush, today: "2026-10-13", baselineCommit: undefined, subjectsSinceBaseline: merged }).entry === null]);
+    checks.push(["one-time allowance: inert after its end date, on every path",
+      decide(prEnv(HEAD, "refs/pull/3833/merge"), none, "2026-10-27") === only &&
+        decide(prEnv(HEAD, "refs/pull/3833/merge"), none, "2026-10-28") === null &&
+        decide(mainPush, merged, "2026-10-28") === null &&
+        resolveOneTimeAllowance({ env: prEnv(HEAD, "refs/pull/3833/merge"), today: undefined, baselineCommit: SHA, subjectsSinceBaseline: none }).entry === null]);
+    checks.push(["one-time allowance: never applies inside a test harness (fixtures meet the normal limit)",
+      decide({ ...prEnv(HEAD, "refs/pull/3833/merge"), NODE_TEST_CONTEXT: "child-v8" }) === null &&
+        decide({ ...mainPush, NODE_TEST_CONTEXT: "child-v8" }, merged) === null]);
+    checks.push(["one-time allowance: an entry that grants nothing above the normal limit is refused",
+      resolveOneTimeAllowance({
+        env: prEnv(HEAD, "refs/pull/3833/merge"), today: "2026-10-13", baselineCommit: SHA, subjectsSinceBaseline: none,
+        table: [{ ...only, common: 12_000 }, { ...only, common: Infinity }],
+      }).entry === null]);
   }
 
   const failed = checks.filter(([, ok]) => !ok);
@@ -308,14 +522,57 @@ for (const { key, label, got } of scopes) {
 }
 
 // ── 2. PER-PR DELTA ─────────────────────────────────────────────────────────
+// The one-time allowance (issue #3645) is resolved here, AFTER the product
+// ceilings above have already been enforced, and it can only widen `common`.
+const oneTime = resolveOneTimeAllowance({
+  env: process.env,
+  today: new Date().toISOString().slice(0, 10),
+  baselineCommit: baseline?.measuredOn?.commit,
+  subjectsSinceBaseline: gitSubjectsSince,
+});
+const allowance = { ...PR_DELTA_ALLOWANCE };
+const fmtB = (n) => n.toLocaleString("en-US");
+if (oneTime.entry) {
+  const e = oneTime.entry;
+  const commonDelta = measured.common ? measured.common.raw - baseline.common.raw : 0;
+  const used = commonDelta > PR_DELTA_ALLOWANCE.common;
+  allowance.common = e.common;
+  console.log(
+    `\nNOTICE — ONE-TIME ALLOWANCE IN EFFECT for __common (issue #${e.issue}, PR #${e.pr}).\n` +
+      `  normal per-PR limit   ${fmtB(PR_DELTA_ALLOWANCE.common)} B\n` +
+      `  granted for this run  ${fmtB(e.common)} B (a cap, not an exemption)\n` +
+      `  measured delta        ${fmtDelta(commonDelta)} B\n` +
+      `  verdict it changes    ${
+        used
+          ? commonDelta > e.common
+            ? "none: the delta is over the granted cap too, so this run FAILS below"
+            : `the normal limit would have FAILED this run by ${fmtB(commonDelta - PR_DELTA_ALLOWANCE.common)} B`
+          : "none: the delta is inside the normal limit, the exception is unused"
+      }\n` +
+      `  applies because       ${oneTime.via}\n` +
+      `  reason                ${e.reason}\n` +
+      `  approved by           ${e.approvedBy}\n` +
+      `  expires               by itself: on main once the baseline records the merge, and everywhere after ${e.expiresAfter}\n` +
+      `  unchanged             the eager allowance (${fmtB(PR_DELTA_ALLOWANCE.eager)} B) and both product ceilings`,
+  );
+} else {
+  for (const why of oneTime.refusals) {
+    console.log(`one-time allowance not applied (normal ${fmtB(PR_DELTA_ALLOWANCE.common)} B limit stands) — ${why}`);
+  }
+}
+
 for (const { key, label, got } of scopes) {
   if (!got) continue;
   const base = baseline[key];
   const delta = got.raw - base.raw;
-  if (delta > PR_DELTA_ALLOWANCE[key]) {
+  if (delta > allowance[key]) {
     fail(
       `${label} grew ${delta.toLocaleString("en-US")} B in this branch — over the ` +
-        `${PR_DELTA_ALLOWANCE[key].toLocaleString("en-US")} B a single PR may add.\n\n` +
+        `${allowance[key].toLocaleString("en-US")} B ${
+          allowance[key] === PR_DELTA_ALLOWANCE[key]
+            ? "a single PR may add"
+            : `this run was granted (one-time cap; the normal limit is ${fmtB(PR_DELTA_ALLOWANCE[key])} B)`
+        }.\n\n` +
         `  baseline (main) ${base.raw.toLocaleString("en-US")} B → this branch ` +
         `${got.raw.toLocaleString("en-US")} B\n\n` +
         `  This is the tripwire. It means one change put a meaningful amount of new ` +

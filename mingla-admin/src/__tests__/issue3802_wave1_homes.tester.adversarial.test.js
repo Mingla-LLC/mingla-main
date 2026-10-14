@@ -293,7 +293,7 @@ describe("#3802 TA-3: access for every combination of areas", () => {
   it("a role with the pipelines but not Beta leads sees no Beta Leads in the menu and is sent home from its address", () => {
     const p = person(["role_home", "crm"]);
     const ids = visibleNavGroups(NAV_GROUPS, p).flatMap((g) => g.items.map((i) => i.id));
-    assert.deepEqual(ids, ["home", "hosts", "creators"]);
+    assert.deepEqual(ids, ["home", "hosts", "creators", "agent"]);
     const known = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.id));
     assert.deepEqual(resolveRoute("beta-leads", p, known), { pageId: homePageFor(p), denied: true, requestedId: "beta-leads" });
     assert.deepEqual(resolveRoute("team-dashboard", p, known), { pageId: "home", denied: true, requestedId: "team-dashboard" });
@@ -877,7 +877,7 @@ describe("#3802 TA-13: every #3802 admin suite is run by the workflow", () => {
   const suites = fs.readdirSync(path.join(SRC, "__tests__")).filter((f) => /^issue3802_.*\.test\.js$/.test(f)).sort();
 
   it("there are nine of them, and each has a step that runs it", () => {
-    assert.equal(suites.length, 9, suites.join(", "));
+    assert.equal(suites.length, 10, suites.join(", "));
     for (const file of suites) {
       const run = new RegExp(`\\n\\s+run: node --test src/__tests__/${file.replace(/\./g, "\\.")}\\n`);
       assert.match(WORKFLOW, run, `${file} is listed for triggering but no step runs it`);

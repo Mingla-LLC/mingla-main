@@ -358,8 +358,10 @@ beforeEach(() => {
 });
 
 describe("#3645 an experience on a brand with no currency cannot reach the publish RPC", () => {
+  // The free row was removed on purpose (#3645, approved): a free experience is
+  // no longer stopped on the client. See the describe block at the end of this
+  // file for what a free experience does on both server answers.
   test.each([
-    ["free", false],
     ["priced", true],
   ])("a %s experience: Publish stops on the client with the plain reason and the country prompt", async (_label, priced) => {
     const onComplete = jest.fn();
@@ -384,7 +386,8 @@ describe("#3645 an experience on a brand with no currency cannot reach the publi
 
   test("a blank currency counts as none", async () => {
     mockBrandBox.current = { ...BASE_BRAND, defaultCurrency: "   " };
-    const tree = await mountAtPublish(jest.fn(), false);
+    // Priced: the client stop is for paid experiences only (#3645).
+    const tree = await mountAtPublish(jest.fn(), true);
     await pressButton(tree, "Publish");
     await settle();
     expect(rpcNames()).not.toContain(PUBLISH_RPC);
@@ -405,16 +408,18 @@ describe("#3645 an experience on a brand with no currency cannot reach the publi
 
   test("after a country is chosen, Publish proceeds from the same screen with the draft intact", async () => {
     const onComplete = jest.fn();
-    const tree = await mountAtPublish(onComplete, false);
+    // Priced: the client stop is for paid experiences only (#3645).
+    const tree = await mountAtPublish(onComplete, true);
     await pressButton(tree, "Publish");
     await settle();
     expect(rpcNames()).not.toContain(PUBLISH_RPC);
 
-    // The organiser picks a country in the prompt: the brand now has a currency.
-    mockBrandBox.current = { ...BASE_BRAND, defaultCurrency: "EUR" };
+    // The organiser picks a country in the prompt: the brand now has a currency
+    // (and, being paid, can collect).
+    mockBrandBox.current = { ...BASE_BRAND, defaultCurrency: "EUR", stripeStatus: "active" };
     await act(async () => {
       (prompt(tree)[0].props.onCountryChosen as () => void)();
-      tree.update(element(onComplete, false));
+      tree.update(element(onComplete, true));
     });
     await settle();
     // The prompt is gone; the draft is still the one being published (below).
@@ -530,3 +535,99 @@ describe("#3645 no dollars are shown for a brand with no currency", () => {
     expect(EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY).not.toMatch(/Stripe|Paystack/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// #3645 — a FREE experience on a brand with no payout country is the server's
+// call, and the server's answer changes when migration 20270830003645 is
+// applied. The creator no longer stops it on the client; it handles both
+// answers.
+// ---------------------------------------------------------------------------
+describe("#3645 a free experience on a brand with no currency goes to the server", () => {
+  test("nothing asks for a country before Publish is pressed", async () => {
+    const tree = await mountAtPublish(jest.fn(), false);
+    expect(prompt(tree)).toHaveLength(0);
+    expect(textOf(tree)).not.toContain(EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY);
+    await act(async () => tree.unmount());
+  });
+
+  test("the server publishes it (after the migration is applied): it is published, with no country asked", async () => {
+    const onComplete = jest.fn();
+    const tree = await mountAtPublish(onComplete, false);
+    await pressButton(tree, "Publish");
+    await settle();
+    const call = mockRpc.mock.calls.find((c) => c[0] === PUBLISH_RPC);
+    expect(call).toBeDefined();
+    expect(call?.[1].p_publish).toBe(true);
+    expect((call?.[1].p_payload as { is_free?: boolean }).is_free).toBe(true);
+    expect(onComplete).toHaveBeenCalledWith("exp-3645");
+    expect(toasts(tree)).not.toContain(EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY);
+    expect(prompt(tree)).toHaveLength(0);
+    expect(mockRouter.push).not.toHaveBeenCalled();
+    await act(async () => tree.unmount());
+  });
+
+  test("the server refuses it (today): the same sentence and the same in-place prompt as before, then it publishes once a country is chosen", async () => {
+    mockRpc.mockImplementation(async (name, args) =>
+      name === PUBLISH_RPC && args.p_publish === true
+        ? { data: null, error: { code: "P0001", message: "event_currency_required" } }
+        : { data: { event: { id: "exp-3645" } }, error: null },
+    );
+    const onComplete = jest.fn();
+    const tree = await mountAtPublish(onComplete, false);
+    await pressButton(tree, "Publish");
+    await settle();
+
+    expect(rpcNames()).toContain(PUBLISH_RPC);
+    expect(onComplete).not.toHaveBeenCalled();
+    // Exactly what the host read when the client stopped it.
+    expect(toasts(tree)).toContain(EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY);
+    expect(prompt(tree)).toHaveLength(1);
+    expect(textOf(tree)).toContain(EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY);
+    expect(toasts(tree).join("\n")).not.toMatch(
+      /event_currency_required|Couldn't publish|payment setup|\[object Object\]/,
+    );
+    expect(mockRouter.push).not.toHaveBeenCalled();
+    expect(textOf(tree)).not.toMatch(/Stripe|Paystack/);
+
+    // The organiser picks a country in the prompt and publishes from there.
+    mockBrandBox.current = { ...BASE_BRAND, defaultCurrency: "NGN" };
+    mockRpc.mockImplementation(async () => ({
+      data: { event: { id: "exp-3645" } },
+      error: null,
+    }));
+    await act(async () => {
+      (prompt(tree)[0].props.onCountryChosen as () => void)();
+      tree.update(element(onComplete, false));
+    });
+    await settle();
+    expect(prompt(tree)).toHaveLength(0);
+    await pressButton(tree, "Publish");
+    await settle();
+    expect(onComplete).toHaveBeenCalledWith("exp-3645");
+    await act(async () => tree.unmount());
+  });
+
+  test("a priced experience on the same brand is still stopped before the server", async () => {
+    const tree = await mountAtPublish(jest.fn(), true);
+    expect(prompt(tree)).toHaveLength(1);
+    await pressButton(tree, "Publish");
+    await settle();
+    expect(rpcNames()).not.toContain(PUBLISH_RPC);
+    expect(toasts(tree)).toContain(EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY);
+    await act(async () => tree.unmount());
+  });
+
+  test("the guard is paid-only, and a caller that cannot say is treated as paid", () => {
+    const none = { publish: true, brandDefaultCurrency: null };
+    expect(experiencePublishNeedsPayoutCountry({ ...none, isPaid: false })).toBe(false);
+    expect(experiencePublishNeedsPayoutCountry({ ...none, isPaid: true })).toBe(true);
+    expect(experiencePublishNeedsPayoutCountry(none)).toBe(true);
+    expect(
+      experiencePublishNeedsPayoutCountry({ publish: false, brandDefaultCurrency: null, isPaid: true }),
+    ).toBe(false);
+    expect(
+      experiencePublishNeedsPayoutCountry({ publish: true, brandDefaultCurrency: "NGN", isPaid: true }),
+    ).toBe(false);
+  });
+});
+

@@ -298,6 +298,10 @@ export function toolErrorHttpStatus(code: string): number {
   if (code === "PAID_ORDER_MUST_REFUND") return 409;
   if (code === "REFUND_PREVIEW_UNPRICED") return 409;
   if (code === "DOMAIN_ACTION_REFUSED") return 409;
+  // issue #3645 — a paid publish by a member who has not accepted the Organiser
+  // Terms. Refused before any write; the member clears it by accepting in the
+  // app. A conflict the user resolves elsewhere, never a 500 (safe_to_retry).
+  if (code === "ORGANISER_TERMS_REQUIRED") return 409;
   // issue #2592 — an optimistic-concurrency conflict. The resource moved under
   // the caller, so the request is CORRECTLY refused and the caller resolves it
   // by re-reading the current version. That is the same 409 the Edge-owned

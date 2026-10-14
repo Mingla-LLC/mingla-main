@@ -16,6 +16,9 @@ import {
   isDraftRevisionConflictError,
   isServerDraftLifecycleError,
 } from "../services/eventDrafts";
+import { fetchDraftBrandCurrency } from "../services/draftCurrencyTruth";
+import { replaceLocalDraftWithServer } from "../services/draftServerReconcile";
+import { setDraftServerCurrency } from "../utils/draftServerCurrency";
 import {
   useDraftEventStore,
   type DraftEvent,
@@ -276,7 +279,57 @@ export interface ServerDraftAutosaveState {
   lastError: Error | null;
 }
 
-export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
+// Issue #3645 — the brand's current currency for a draft, asked of the server
+// just before a save. Autosaves come in bursts while the host types, so an
+// answer is reused for a few seconds; a failed or brand-less answer is never
+// reused and yields null ("not known").
+const FRESH_BRAND_CURRENCY_TTL_MS = 5_000;
+const freshBrandCurrencyByDraft = new Map<
+  string,
+  { at: number; currency: string | null }
+>();
+const readFreshBrandCurrency = async (draftId: string): Promise<string | null> => {
+  const cached = freshBrandCurrencyByDraft.get(draftId);
+  if (cached !== undefined && Date.now() - cached.at < FRESH_BRAND_CURRENCY_TTL_MS) {
+    return cached.currency;
+  }
+  try {
+    const currency = await fetchDraftBrandCurrency(draftId);
+    if (currency === undefined) return null;
+    freshBrandCurrencyByDraft.set(draftId, { at: Date.now(), currency });
+    return currency;
+  } catch (error) {
+    console.warn("[useServerDraftAutosave] could not read the brand's current currency", {
+      draftId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+};
+
+const rememberSavedDraftCurrency = (saved: DraftEvent): void => {
+  setDraftServerCurrency(saved.id, saved.currency);
+  const reused = freshBrandCurrencyByDraft.get(saved.id);
+  if (reused !== undefined && reused.currency !== (saved.currency ?? null)) {
+    freshBrandCurrencyByDraft.delete(saved.id);
+  }
+};
+
+export interface ServerDraftAutosaveOptions {
+  /**
+   * Issue #3645 — the currency of the brand the wizard is editing for, as this
+   * device holds it, kept in a ref the route updates on every render. A LAST
+   * RESORT only: every save asks the server for the brand's current currency
+   * and, failing that, follows the server row. Every wizard route must pass it
+   * (source-scanned by issue_3645_drafts_follow_brand_currency.implementor.test.ts).
+   */
+  brandCurrencyRef?: { readonly current: string | null | undefined };
+}
+
+export const useServerDraftAutosave = (
+  options: ServerDraftAutosaveOptions = {},
+): ServerDraftAutosaveState => {
+  const brandCurrencyRef = options.brandCurrencyRef;
   const { authStatus, isAuthReady, session } = useAuth();
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -286,7 +339,21 @@ export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
   const mutation = useMutation<DraftEvent, Error, DraftEvent>({
     mutationFn: async (draft) => {
       requireBusinessAuthReady(authStatus, session);
-      return autosaveServerDraft(draft);
+      // Issue #3645 — the save follows the server ROW it reads. The brand's
+      // currency (asked of the server, reused for a few seconds) only stamps a
+      // row that has none, and the value cached on this device is the last
+      // resort after that. A brand list held here is never believed over the
+      // server.
+      const saved = await autosaveServerDraft(draft, {
+        brandCurrency: await readFreshBrandCurrency(draft.id),
+        serverRowWins: true,
+        cachedBrandCurrency: brandCurrencyRef?.current ?? null,
+      });
+      // The save's result is the freshest server truth there is: it becomes
+      // what every reader believes about this draft's currency, and a reused
+      // brand answer that disagrees with it is thrown away.
+      rememberSavedDraftCurrency(saved);
+      return saved;
     },
     onSuccess: (draft) => {
       const accepted = upsertServerDraft(draft);
@@ -315,7 +382,25 @@ export const useServerDraftAutosave = (): ServerDraftAutosaveState => {
       if (isDraftRevisionConflictError(error)) {
         const serverDraft = error.serverDraft;
         if (serverDraft !== null) {
-          upsertServerDraft(serverDraft);
+          const inAnotherCurrency =
+            (serverDraft.currency ?? null) !== (draft.currency ?? null) &&
+            (serverDraft.currency ?? null) !== null &&
+            (draft.currency ?? null) !== null;
+          if (inAnotherCurrency) {
+            // #3645 — this device's copy is priced in a currency the server
+            // row is not in. An ordinary upsert is refused when this device
+            // holds the higher revision (unsaved offline edits), and every
+            // later save would then write nothing for the rest of the visit.
+            // The server's currency and prices are put in place by force; the
+            // host's other unsaved edits are kept and saved now.
+            const owedSave = replaceLocalDraftWithServer(serverDraft);
+            if (owedSave !== null) mutation.mutate(owedSave);
+          } else {
+            upsertServerDraft(serverDraft);
+          }
+          // #3645 — the server's copy is the newest word on this draft's
+          // currency; the adopt-on-open hook acts on it.
+          setDraftServerCurrency(serverDraft.id, serverDraft.currency);
           queryClient.setQueryData(
             eventDraftKeys.detail(serverDraft.id),
             serverDraft,
