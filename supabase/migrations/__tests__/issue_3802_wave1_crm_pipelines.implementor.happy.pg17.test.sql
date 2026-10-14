@@ -48,7 +48,7 @@
 
 \set ON_ERROR_STOP on
 \getenv t3802w_pw PGPASSWORD
-\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20270823003802_issue_3802_wave1_homes_targets_beta.sql`
+\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
 
 -- ===========================================================================
 -- PART 1 — one transaction, rolled back.
@@ -410,7 +410,7 @@ begin
   r := pg_temp.t3802w_as('growth2', $q$select public.crm_config()::text$q$);
   perform pg_temp.t3802w_check('W1-1', 'config: me',
     pg_temp.t3802w_get(r, 'me'),
-    '{"role": "growth", "email": "tunde.a@issue3802w.test.local", "can_delete": false, "display_name": "Tunde"}');
+    '{"role": "growth", "email": "tunde.a@issue3802w.test.local", "can_delete": false, "display_name": "Tunde", "can_add_region": false}');
   perform pg_temp.t3802w_check('W1-1', 'config: an owner can delete',
     pg_temp.t3802w_get(pg_temp.t3802w_as('owner', $q$select public.crm_config()::text$q$), 'me', 'can_delete'), 'true');
   perform pg_temp.t3802w_check('W1-1', 'config: host stages in order',
@@ -423,7 +423,7 @@ begin
     (pg_temp.t3802w_jb(r) #>> '{pipelines,hosts,stages,5,auto}') || '/' || (pg_temp.t3802w_jb(r) #>> '{pipelines,hosts,stages,6,terminal}'), 'true/true');
   perform pg_temp.t3802w_check('W1-1', 'config: host ICPs',
     (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) #> '{pipelines,hosts,icps}') with ordinality x(s, o)),
-    'restaurant_bar,venue_gallery,event_organizer,community_host,trip_stay_host,partner_org');
+    'restaurant_bar,venue_gallery,event_organizer,community_host,trip_stay_host,experience_host,partner_org');
   perform pg_temp.t3802w_check('W1-1', 'config: creator ICPs and reached stages',
     (select string_agg(s->>'id', ',' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) #> '{pipelines,creators,icps}') with ordinality x(s, o))
       || '|' || (pg_temp.t3802w_jb(r) #>> '{pipelines,creators,reached_stages}') || '|' || (pg_temp.t3802w_jb(r) #>> '{pipelines,hosts,reached_stages}'),
@@ -458,7 +458,7 @@ begin
     'pipeline,records,truncated');
   perform pg_temp.t3802w_check('W1-1', 'record: exactly the documented keys',
     (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(pg_temp.t3802w_as('partner', format($q$select public.crm_record_get(%L)::text$q$, pg_temp.t3802w_id('base')))) -> 'record') k),
-    'agreement,beta_lead_id,brand_id,brand_name,channel,contact,created_at,created_by,due_on,followers,icp,id,last_touch_at,name,next_action,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,went_live_at');
+    'agreement,beta_lead_id,brand_id,brand_name,channel,contact,contact_rule,contact_rule_at,contact_rule_by,contact_rule_reason,created_at,created_by,due_on,followers,icp,id,identifiers,last_touch_at,name,next_action,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,went_live_at');
 end;
 $w1$;
 
@@ -729,7 +729,7 @@ begin
     '48:invalid_name,49:invalid_icp');
   perform pg_temp.t3802w_check('W1-6', 'an invalid item explains itself',
     pg_temp.t3802w_jb(r) #>> '{invalid,1,error}',
-    'invalid_icp: ambassador is not an ICP for hosts. Use one of: restaurant_bar, venue_gallery, event_organizer, community_host, trip_stay_host, partner_org.');
+    'invalid_icp: ambassador is not an ICP for hosts. Use one of: restaurant_bar, venue_gallery, event_organizer, community_host, trip_stay_host, experience_host, partner_org.');
   perform pg_temp.t3802w_check('W1-6', 'created items keep their position and are owned by the sender',
     (pg_temp.t3802w_jb(r) #>> '{created,0,index}') || '/' || (pg_temp.t3802w_jb(r) #>> '{created,44,index}') || '/' || (pg_temp.t3802w_jb(r) #>> '{created,44,record,name}')
       || '/' || (pg_temp.t3802w_jb(r) #>> '{created,44,record,owners}') || '/' || (pg_temp.t3802w_jb(r) #>> '{created,44,record,icp}'),
@@ -1498,7 +1498,7 @@ declare
     'crm_record_set_owners(uuid,text[])', 'crm_record_undo_stage_move(uuid)', 'crm_record_update(uuid,jsonb)',
     'crm_records_bulk_create(text,jsonb,text)', 'crm_records_list(text)',
     'crm_beta_lead_to_host(uuid)', 'crm_beta_leads_list()', 'crm_home_summary(date)',
-    'crm_target_set(uuid,text,integer)', 'crm_team_summary(date)'];
+    'crm_target_set(uuid,text,integer)', 'crm_team_summary(date)', 'crm_contact_check(text,jsonb)'];
   c_internal constant text[] := array[
     'admin_team_directory()', 'crm_activity_json(crm_activity)', 'crm_apply_brand_link(uuid)',
     'crm_audit(text,text,text,text,jsonb)', 'crm_brand_is_live(uuid)', 'crm_clean_owners(jsonb)', 'crm_ctx()',
@@ -1507,7 +1507,10 @@ declare
     'crm_request_begin(text,text,text)', 'crm_request_finish(text,text,text,jsonb)', 'crm_stage_def(text,text)',
     'crm_undoable_activity(uuid,text)', 'crm_validate_fields(text,jsonb,text)', 'crm_vocab()',
     'crm_beta_icp(text[])', 'crm_city_region(text)', 'crm_due_json(text,date,integer)',
-    'crm_stage_counts_json()', 'crm_targets_json(date)'];
+    'crm_stage_counts_json()', 'crm_targets_json(date)',
+    'crm_ident_key(text,text)', 'crm_clean_identifiers(jsonb)', 'crm_identifier_matches(text,jsonb,uuid)',
+    'crm_identifiers_json(uuid)', 'crm_identifier_hits(text,jsonb,uuid)', 'crm_request_claim(text,text,jsonb)',
+    'crm_phone_national(text)'];
   v_fn text;
   v_tbl text;
   v_role text;
@@ -1569,8 +1572,9 @@ begin
     select * from (values
       ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update'),
       ('crm_record_owners', 'public.crm_record_create_core,public.crm_record_set_owners'),
+      ('crm_record_identifiers', 'public.crm_record_create_core,public.crm_record_update'),
       ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move'),
-      ('crm_request_keys',  'public.crm_reconcile_live,public.crm_request_finish')
+      ('crm_request_keys',  'public.crm_reconcile_live,public.crm_request_claim,public.crm_request_finish')
     ) as v(tbl, want)
   loop
     perform pg_temp.t3802w_check('W1-12', 'functions that write ' || w.tbl,

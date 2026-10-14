@@ -105,7 +105,8 @@ export function AgentKeyCard({
               Done
             </Button>
             <p className="text-xs text-[var(--color-text-secondary)]">
-              Done hides the key. The lines in step 2 are filled in with it until then.
+              Done hides the key. It is also hidden by itself after 10 minutes. The lines below ask for it; they never
+              contain it.
             </p>
           </div>
           <p className="text-xs text-[var(--color-text-secondary)]">{zoneWords(activeKey)}</p>
@@ -178,7 +179,7 @@ export function AgentKeyCard({
             {NOT_WORKING_CHECKS.map((line) => (
               <li key={line}>{line}</li>
             ))}
-            <li>Still nothing? Replace the key and paste the lines again.</li>
+            <li>Added the key by hand? Open a new terminal window, paste each line whole, then restart your agent.</li>
           </ul>
         </details>
       )}

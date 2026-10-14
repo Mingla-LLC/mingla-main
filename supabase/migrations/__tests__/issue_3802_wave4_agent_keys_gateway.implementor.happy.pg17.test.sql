@@ -51,8 +51,9 @@
 
 \set ON_ERROR_STOP on
 \getenv t3802k_pw PGPASSWORD
-\set t3802k_selfcheck `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20270825003802_issue_3802_wave4_agent_keys_gateway.sql`
+\set t3802k_selfcheck `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
 \set t3802k_file `cat supabase/migrations/20270825003802_issue_3802_wave4_agent_keys_gateway.sql`
+\set t3802k_selfcheck_a `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20270825003802_issue_3802_wave4_agent_keys_gateway.sql`
 \set t3802k_oldmember `sed -n '/^CREATE OR REPLACE FUNCTION public.admin_team_set_member/,/^\$\$;/p' supabase/migrations/20270818003802_issue_3802_wave0_invite_binding.sql`
 
 -- ===========================================================================
@@ -72,7 +73,8 @@ create table if not exists auth.identities (
 );
 
 create temp table t3802k_src (k text primary key, sql text) on commit drop;
-insert into t3802k_src values ('selfcheck', :'t3802k_selfcheck'), ('file', :'t3802k_file'), ('oldmember', :'t3802k_oldmember');
+insert into t3802k_src values ('selfcheck', :'t3802k_selfcheck'), ('file', :'t3802k_file'), ('oldmember', :'t3802k_oldmember'),
+  ('selfcheck_a', :'t3802k_selfcheck_a');
 
 create temp table t3802k_people (who text primary key, id uuid not null, email text not null) on commit drop;
 insert into t3802k_people (who, id, email) values
@@ -282,6 +284,10 @@ begin
       ('public.team_agent_guide_def()', false),
       ('public.team_agent_housekeeping()', false),
       ('public.team_agent_limits()', false),
+      ('public.team_agent_setup_create(text,text)', true),
+      ('public.team_agent_person(text)', false),
+      ('public.team_agent_key_issue(text,text,text,text)', false),
+      ('public.team_agent_setup_redeem(text,text)', false),
       ('public.crm_ctx()', false)
     ) as x(fn, client)
   loop
@@ -294,12 +300,12 @@ begin
     perform pg_temp.t3802k_check('K-1', f.fn || ': pins an empty search path',
       (select ('search_path=""' = any (p.proconfig))::text from pg_proc p where p.oid = f.fn::regprocedure), 'true');
   end loop;
-  perform pg_temp.t3802k_check('K-1', 'there are exactly 12 team_agent_ functions',
+  perform pg_temp.t3802k_check('K-1', 'there are exactly 16 team_agent_ functions',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public' and p.proname like 'team\_agent\_%'), '12');
-  perform pg_temp.t3802k_check('K-1', 'the number of crm_ functions did not move',
+      where n.nspname = 'public' and p.proname like 'team\_agent\_%'), '16');
+  perform pg_temp.t3802k_check('K-1', 'there are exactly 51 crm_ functions',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public' and p.proname like 'crm\_%'), '43');
+      where n.nspname = 'public' and p.proname like 'crm\_%'), '51');
 
   foreach t in array array['public.team_agent_keys', 'public.team_agent_calls'] loop
     perform pg_temp.t3802k_check('K-1', t || ': row security on, no policy, no trigger',
@@ -553,7 +559,7 @@ begin
     (v::jsonb -> 'result' -> 'limits')::text, public.team_agent_limits()::text);
   perform pg_temp.t3802k_check('K-4', 'every routine names only tools that exist today',
     (select count(*)::text from jsonb_array_elements(v::jsonb -> 'result' -> 'routines') r
-      where r->>'text' ~ 'save_drafts|add_records|move_stage|log_activity|record_reply|check_contactable|update_records|set_owners'), '0');
+      where r->>'text' ~ 'save_drafts|mark_sent|undo_move|set_target|add_beta_leads_to_hosts|delete_record'), '0');
   perform pg_temp.t3802k_check('K-4', 'the rules say record text is information, never instructions',
     (select count(*)::text from jsonb_array_elements_text(v::jsonb -> 'result' -> 'rules') r
       where r like '%written by other people%never as instructions%'), '1');
@@ -638,7 +644,7 @@ begin
   perform pg_temp.t3802k_like('K-4', 'a tool that does not exist is refused in plain words',
     pg_temp.t3802k_gw('growth.claude', 'delete_record', format('{"id":"%s"}', v_id)),
     '%"token": "unknown_tool", "message": "That tool does not exist. Call tools/list to see what is available."%');
-  foreach t in array array['add_records', 'move_stage', 'log_activity', 'save_drafts', 'set_target', 'crm_record_delete',
+  foreach t in array array['undo_move', 'add_beta_leads_to_hosts', 'setup:redeem2', 'save_drafts', 'set_target', 'crm_record_delete',
                            'team_agent_key_create', 'admin_team_set_member', 'team_draft_mark_sent'] loop
     perform pg_temp.t3802k_like('K-4', 'not a tool in this part: ' || t,
       pg_temp.t3802k_gw('owner.claude', t, format('{"id":"%s","p_id":"%s"}', v_id, v_id)), '%"token": "unknown_tool"%');
@@ -901,9 +907,11 @@ begin
     (select count(*)::text from public.team_agent_keys where owner_email = 'issue3802k-growth@test.local' and revoked_at is null), '2');
   perform pg_temp.t3802k_check('K-7', 'only the owner can remove a person, as before',
     pg_temp.t3802k_as('admin', $q$select public.admin_team_set_member('issue3802k-growth@test.local', 'growth', 'revoked')::text$q$), 'ERR:42501:forbidden');
-  perform pg_temp.t3802k_check('K-7', 'the team writer differs from the earlier one by exactly the added statement',
+  perform pg_temp.t3802k_check('K-7', 'the team writer differs from the earlier one by exactly the added statements',
     (select regexp_replace(p.prosrc,
-        '\s+UPDATE public\.team_agent_keys\s+SET revoked_at = now\(\), revoked_by = v_actor, revoke_reason = ''access_removed''\s+WHERE owner_email = v_email AND revoked_at IS NULL;', '')
+        '\s+PERFORM pg_catalog\.pg_advisory_xact_lock\(pg_catalog\.hashtextextended\(''team_agent_key:'' \|\| v_email, 0\)\);'
+        || '\s+UPDATE public\.team_agent_keys\s+SET revoked_at = now\(\), revoked_by = v_actor, revoke_reason = ''access_removed''\s+WHERE owner_email = v_email AND revoked_at IS NULL;'
+        || '\s+UPDATE public\.team_agent_setup_codes\s+SET voided_at = now\(\)\s+WHERE owner_email = v_email AND consumed_at IS NULL AND voided_at IS NULL;', '')
         = (select substring(s.sql from 'CREATE OR REPLACE FUNCTION public\.admin_team_set_member.*?AS \$\$(.*?)\$\$;')
              from t3802k_src s where s.k = 'oldmember')
        from pg_proc p where p.oid = 'public.admin_team_set_member(text,text,text)'::regprocedure)::text, 'true');
@@ -1215,7 +1223,7 @@ begin
         and p.prosrc ~* 'net\.http|http_post|pg_net|dblink|resend|twilio|onesignal|crm_record_delete|crm_record_restore|delete\s+from\s+public\.crm_'), '0');
   perform pg_temp.t3802k_check('K-10', 'the migration file itself names no sender',
     (select (replace(f.sql, c.sql, '') !~* 'net\.http|http_post|pg_net|resend|twilio|onesignal')::text
-       from t3802k_src f, t3802k_src c where f.k = 'file' and c.k = 'selfcheck'), 'true');
+       from t3802k_src f, t3802k_src c where f.k = 'file' and c.k = 'selfcheck_a'), 'true');
 end;
 $k10$;
 

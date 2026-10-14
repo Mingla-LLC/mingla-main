@@ -438,12 +438,13 @@ describe("#3802 P-8: source contracts", () => {
     const callers = files.filter((f) => /rpc\(\s*["'`]crm_/.test(fs.readFileSync(f, "utf8")));
     assert.deepEqual(callers.map((f) => path.relative(SRC, f)), [path.join("services", "crmService.js")]);
   });
-  it("crmService.js calls exactly eighteen of the nineteen client functions (never bulk add)", () => {
+  it("crmService.js calls exactly nineteen of the twenty client functions (never bulk add)", () => {
     const called = [...SERVICE.matchAll(/rpc\(\s*"(crm_[a-z_]+)"/g)].map((m) => m[1]).sort();
     assert.deepEqual(called, [
       "crm_beta_lead_to_host",
       "crm_beta_leads_list",
       "crm_config",
+      "crm_contact_check",
       "crm_duplicate_check",
       "crm_home_summary",
       "crm_link_search",

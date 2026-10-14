@@ -309,7 +309,8 @@ declare
   c_client constant text[] := array['crm_config','crm_records_list','crm_record_get','crm_duplicate_check',
     'crm_link_search','crm_record_create','crm_records_bulk_create','crm_record_update','crm_record_move_stage',
     'crm_record_undo_stage_move','crm_record_set_owners','crm_record_log','crm_record_delete','crm_record_restore',
-    'crm_home_summary','crm_team_summary','crm_target_set','crm_beta_leads_list','crm_beta_lead_to_host'];
+    'crm_home_summary','crm_team_summary','crm_target_set','crm_beta_leads_list','crm_beta_lead_to_host',
+    'crm_contact_check'];
   r record;
   v_n int;
 begin
@@ -332,10 +333,10 @@ begin
   end loop;
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname like 'crm\_%';
-  perform pg_temp.x_eq('XA-1', 'number of crm_ functions', v_n::text, '43');
+  perform pg_temp.x_eq('XA-1', 'number of crm_ functions', v_n::text, '51');
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = any (c_client) and p.prosecdef;
-  perform pg_temp.x_eq('XA-1', 'client functions that run with owner rights', v_n::text, '19');
+  perform pg_temp.x_eq('XA-1', 'client functions that run with owner rights', v_n::text, '20');
 
   -- Every other function with owner rights in this migration is pinned too.
   perform pg_temp.x_ok('XA-1', 'admin_beta_leads_list keeps a pinned search path',
@@ -362,7 +363,7 @@ begin
   end loop;
   perform pg_temp.x_eq('XA-1', 'number of crm_ tables',
     (select count(*)::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'crm\_%'), '5');
+      where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'crm\_%'), '6');
   perform pg_temp.x_eq('XA-1', 'no view, sequence or materialised view named crm_',
     (select count(*)::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind in ('v','m','S') and c.relname like 'crm\_%'), '0');
@@ -1293,7 +1294,7 @@ $t$;
 -- ---------------------------------------------------------------------------
 do $t$
 declare
-  c_record_keys constant text := 'agreement,beta_lead_id,brand_id,brand_name,channel,contact,created_at,created_by,due_on,followers,icp,id,last_touch_at,name,next_action,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,went_live_at';
+  c_record_keys constant text := 'agreement,beta_lead_id,brand_id,brand_name,channel,contact,contact_rule,contact_rule_at,contact_rule_by,contact_rule_reason,created_at,created_by,due_on,followers,icp,id,identifiers,last_touch_at,name,next_action,owners,pipeline,place_name,place_pool_id,rate,region_id,source,stage,stage_reason,touch_count,updated_at,went_live_at';
   v_got jsonb;
   v_txt text;
   v_q text;

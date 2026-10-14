@@ -615,13 +615,13 @@ begin
    where n.nspname not in ('pg_catalog', 'information_schema', 'pg_temp') and n.nspname not like 'pg_temp%'
      and p2.prokind = 'f' and p2.prosrc ~* '\mteam_agent_keys\M';
   perform pg_temp.t3802ta_ok('TA-6', 'only the named functions mention the keys table',
-    v_list = 'admin_team_set_member,team_agent_call,team_agent_key_create,team_agent_key_revoke,team_agent_keys_mine,team_agent_keys_overview,team_agent_resolve', v_list);
+    v_list = 'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_keys_mine,team_agent_keys_overview,team_agent_person,team_agent_resolve,team_agent_setup_create,team_agent_setup_redeem', v_list);
   select coalesce(string_agg(p2.proname, ',' order by p2.proname), '') into v_list
     from pg_catalog.pg_proc p2 join pg_catalog.pg_namespace n on n.oid = p2.pronamespace
    where n.nspname not like 'pg_%' and n.nspname <> 'information_schema'
      and p2.prokind = 'f' and p2.prosrc ~* '\mkey_hash\M';
   perform pg_temp.t3802ta_ok('TA-6', 'only the function that makes a key and the one that resolves it read a digest',
-    v_list = 'team_agent_key_create,team_agent_resolve', v_list);
+    v_list = 'team_agent_key_issue,team_agent_person,team_agent_resolve', v_list);
   select coalesce(string_agg(p2.proname, ',' order by p2.proname), '') into v_list
     from pg_catalog.pg_proc p2 join pg_catalog.pg_namespace n on n.oid = p2.pronamespace
    where n.nspname not like 'pg_%' and n.nspname <> 'information_schema'
