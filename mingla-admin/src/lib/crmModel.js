@@ -1269,6 +1269,19 @@ export function contactHit(result) {
 }
 
 /**
+ * The Add form's own line about a contact rule: the record the contactable
+ * check matched, when it carries a rule that nothing else on the form says.
+ * null when there is no rule, when the shared-detail warning (`shared`)
+ * already says it, or when the record is already shown under the name with
+ * its rule (`lookalikes`): one record, one sentence, one Open it.
+ */
+export function addFormRuleNote(hit, shared, lookalikes) {
+  if (!hit || !hit.rule || shared) return null;
+  const shownWithRule = (Array.isArray(lookalikes) ? lookalikes : []).some((r) => r && r.id === hit.id && contactRuleView(r));
+  return shownWithRule ? null : hit;
+}
+
+/**
  * The record a refusal names, from the server's own sentence, or "":
  *   '"x" already belongs to "Palm Court Kitchen" in Hosts. Open that record instead.'
  */

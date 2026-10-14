@@ -370,18 +370,17 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   const PAGES_DIR = path.join(SRC, "pages");
   // Every page that starts with the one header.
   const MIGRATED = [
-    "AdEnginePage.jsx", "AdminPage.jsx", "ApiHealthPage.jsx", "BrandSitesPage.jsx", "BrandsConsolePage.jsx",
+    "AdEnginePage.jsx", "AdminPage.jsx", "AgentPage.jsx", "ApiHealthPage.jsx", "BetaLeadsPage.jsx", "BrandSitesPage.jsx", "BrandsConsolePage.jsx",
     "BusinessMoneyLedgerPage.jsx", "BusinessOrdersPage.jsx", "BusinessPaymentsPage.jsx", "CampaignBuilderPage.jsx",
     "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "DeckScoreTunerPage.jsx", "EmailPage.jsx",
-    "LaunchCitiesPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx",
+    "LaunchCitiesPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
     "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "RefundOperationsPage.jsx",
-    "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
-    "SupportDeskPage.jsx", "ToolLeadsPage.jsx", "UserManagementPage.jsx", "VenuesConsolePage.jsx",
+    "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
+    "SupportDeskPage.jsx", "TeamDashboardPage.jsx", "ToolLeadsPage.jsx", "UserManagementPage.jsx", "VenuesConsolePage.jsx",
   ];
-  // The five pages another piece of #3802 work is editing. They move to the
-  // one header in a follow-up; until then they are named here, so a page can
-  // never be in neither list.
-  const FOLLOW_UP = ["AgentPage.jsx", "BetaLeadsPage.jsx", "PipelinePage.jsx", "RoleHomePage.jsx", "TeamDashboardPage.jsx"];
+  // The five pages that moved later (My agent, Hosts and Creators, Beta Leads,
+  // Home, Team dashboard) are now in the list above; none is left to follow.
+  const FOLLOW_UP = [];
   const page = (file) => stripComments(fs.readFileSync(path.join(PAGES_DIR, file), "utf8"));
   // The classes that make a frame of a page's own: padding, a width, centring.
   const OWN_FRAME = /(?:^|\s)(?:p|px|py|pt|pb|pl|pr)-(?:\d|\[)|(?:^|\s)max-w-|(?:^|\s)mx-auto(?:\s|$)/;
@@ -408,7 +407,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   it("every page is either on the one header or named for the follow-up", () => {
     const all = fs.readdirSync(PAGES_DIR).filter((f) => /Page\.jsx$/.test(f)).sort();
     assert.deepEqual([...MIGRATED, ...FOLLOW_UP].sort(), all);
-    assert.equal(MIGRATED.length, 30);
+    assert.equal(MIGRATED.length, 35);
+    assert.equal(FOLLOW_UP.length, 0);
   });
 
   it("every migrated page draws the one header", () => {
@@ -480,7 +480,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
 describe("#3802 S-9: rework after the tester's verdict", () => {
   const PAGES_DIR = path.join(SRC, "pages");
   const raw = (file) => fs.readFileSync(path.join(PAGES_DIR, file), "utf8");
-  const FOLLOW_UP = ["AgentPage.jsx", "BetaLeadsPage.jsx", "PipelinePage.jsx", "RoleHomePage.jsx", "TeamDashboardPage.jsx"];
+  // Every page is on the one header now: none is left to follow.
+  const FOLLOW_UP = [];
   const MIGRATED = fs.readdirSync(PAGES_DIR).filter((f) => /Page\.jsx$/.test(f) && !FOLLOW_UP.includes(f)).sort();
 
   // Every `return` of the exported page component that returns markup, with
@@ -488,7 +489,8 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   // component's own returns sit 4 or 6 spaces in.
   // A page whose exported component only chooses between two views: the
   // views are where its states live, so they are the ones walked.
-  const VIEWS = { "BrandSitesPage.jsx": ["BrandSitesList", "BrandSiteDetail"] };
+  // Hosts and Creators: the two exported pages each draw the one board page.
+  const VIEWS = { "BrandSitesPage.jsx": ["BrandSitesList", "BrandSiteDetail"], "PipelinePage.jsx": ["PipelinePage"] };
 
   function pageReturns(file) {
     const names = VIEWS[file] ?? [null];
@@ -539,7 +541,7 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   };
 
   it("every state of every migrated page draws the page header", () => {
-    assert.equal(MIGRATED.length, 30);
+    assert.equal(MIGRATED.length, 35);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(

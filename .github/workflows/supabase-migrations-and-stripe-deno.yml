@@ -216,7 +216,7 @@ on:
       - "mingla-admin/src/__tests__/agent_connector_issue3802.tester.adversarial.test.js"
       - "mingla-admin/src/__tests__/issue3802_wave4_setup.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js"
-      - "mingla-admin/src/__tests__/issue3802_normal_form_followup.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/normal_form_followup_issue3802.implementor.happy.test.js"
       - "mingla-admin/src/pages/AgentPage.jsx"
       - "mingla-admin/src/components/agent/**"
       - "mingla-admin/src/lib/agentConnect.js"
@@ -445,7 +445,7 @@ on:
       - "mingla-admin/src/__tests__/agent_connector_issue3802.tester.adversarial.test.js"
       - "mingla-admin/src/__tests__/issue3802_wave4_setup.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js"
-      - "mingla-admin/src/__tests__/issue3802_normal_form_followup.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/normal_form_followup_issue3802.implementor.happy.test.js"
       - "mingla-admin/src/pages/AgentPage.jsx"
       - "mingla-admin/src/components/agent/**"
       - "mingla-admin/src/lib/agentConnect.js"
@@ -637,7 +637,7 @@ jobs:
         run: node --test src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js
       - name: "Issue #3802 — the normal form of a YouTube video link (its id keeps its case, in both link forms) and of an Argentine or Mexican mobile number, held to the server's table of examples"
         working-directory: mingla-admin
-        run: node --test src/__tests__/issue3802_normal_form_followup.implementor.happy.test.js
+        run: node --test src/__tests__/normal_form_followup_issue3802.implementor.happy.test.js
       - name: "Issue #3802 — admin shell: the eight menu groups in the approved order, every page once, who may open what unchanged, every menu icon registered, one frame and one page header"
         working-directory: mingla-admin
         run: node --test src/__tests__/admin_shell_issue3802.implementor.happy.test.js

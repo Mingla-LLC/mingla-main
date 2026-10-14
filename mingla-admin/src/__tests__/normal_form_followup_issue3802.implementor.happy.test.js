@@ -11,15 +11,17 @@
 //   F-3  the follow-up migration's function is written the way this one is
 //   F-4  the page: adding the same video or number twice is refused, and
 //        search finds a record by either way of writing it
+//   F-5  the Add form says a record's contact rule once: an exact name match
+//        on a Do-not-contact record is one sentence with one Open it
 //
-// Run: node --test src/__tests__/issue3802_normal_form_followup.implementor.happy.test.js
+// Run: node --test src/__tests__/normal_form_followup_issue3802.implementor.happy.test.js
 // (from mingla-admin). Hermetic: no network, no browser.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { addIdentifier, filterRecords, identKey, phoneMatch } from "../lib/crmModel.js";
+import { addFormRuleNote, addIdentifier, contactHit, filterRecords, findDuplicates, identKey, phoneMatch } from "../lib/crmModel.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "..");
@@ -139,5 +141,41 @@ describe("#3802 F-4: on the page", () => {
     assert.equal(ids("+54 11 1234 5678"), "b");
     assert.equal(ids("+52 1 55 1234 5678"), "c");
     assert.equal(ids("buenos"), "b", "a name still finds it");
+  });
+});
+
+describe("#3802 F-5: the Add form says a record's contact rule once", () => {
+  const FORM = fs.readFileSync(path.join(SRC, "components", "crm", "AddRecordForm.jsx"), "utf8");
+  const dnc = { id: "r1", name: "Namesake Grill", stage: "prospect", owners: [], contact_rule: "do_not_contact", contact_rule_reason: "Lawyer letter" };
+  const clean = { id: "r2", name: "Clean Email Cafe", stage: "prospect", owners: [] };
+
+  it("an exact name match on a Do-not-contact record: the name warning says the rule, and no second line does", () => {
+    // What the server answers for that name, read the way the form reads it.
+    const hit = contactHit({ verdict: "do_not_contact", match: "name", record: dnc, matches: [{ record: dnc, name_match: true, matched_on: [] }] });
+    assert.equal(hit.id, "r1");
+    assert.equal(hit.rule, "Do not contact: Lawyer letter");
+    const dupes = findDuplicates([dnc, clean], "Namesake Grill");
+    assert.equal(dupes.exact?.id, "r1");
+    const lookalikes = [dupes.exact];
+    assert.equal(addFormRuleNote(hit, null, lookalikes), null, "said once, in the name warning");
+    // A near name shows the record in the same block, with its rule: still once.
+    assert.equal(addFormRuleNote(hit, null, [dnc]), null);
+  });
+
+  it("the rule is still said when nothing else on the form says it", () => {
+    const hit = { id: "r1", name: "Namesake Grill", rule: "Do not contact: Lawyer letter", byIdentifier: false };
+    assert.equal(addFormRuleNote(hit, null, []), hit, "no name warning");
+    assert.equal(addFormRuleNote(hit, null, [clean]), hit, "the name warning shows another record");
+    assert.equal(addFormRuleNote(hit, null, [{ ...dnc, contact_rule: null, contact_rule_reason: null }]), hit, "the list on the page does not know the rule yet");
+    assert.equal(addFormRuleNote({ ...hit, rule: "" }, null, []), null, "no rule, nothing to say");
+    assert.equal(addFormRuleNote(hit, { ...hit, byIdentifier: true }, []), null, "the shared-detail warning says it");
+    assert.equal(addFormRuleNote(null, null, [dnc]), null);
+    assert.equal(addFormRuleNote(hit, null, undefined), hit);
+  });
+
+  it("the form uses that choice, and each block has one sentence and one Open it", () => {
+    assert.ok(FORM.includes("const ruleNote = addFormRuleNote(hit, shared, lookalikes);"));
+    assert.equal((FORM.match(/ is marked \{/g) || []).length, 2, "one in the name warning, one in the rule line");
+    assert.equal((FORM.match(/>\s*Open it\s*<\/Button>/g) || []).length, 3, "the name warning, the rule line, the shared detail");
   });
 });
