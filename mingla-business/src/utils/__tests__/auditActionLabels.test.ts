@@ -16,7 +16,8 @@ describe("resolveAuditActionLabel — static slugs", () => {
 
   test("stripe_connect.detach_completed resolves cleanly", () => {
     const out = resolveAuditActionLabel("stripe_connect.detach_completed");
-    expect(out.title).toBe("Disconnected Stripe account");
+    // [TEST-MOD-APPROVED #3645] was "Disconnected Stripe account": the activity log no longer names the payment provider.
+    expect(out.title).toBe("Disconnected payout account");
     expect(out.category).toBe("stripe_connect");
     expect(out.iconHint).toBe("bank");
   });
@@ -25,7 +26,8 @@ describe("resolveAuditActionLabel — static slugs", () => {
     const out = resolveAuditActionLabel(
       "stripe_connect.detach_local_success_stripe_rejected",
     );
-    expect(out.title).toBe("Disconnected locally — Stripe rejected");
+    // [TEST-MOD-APPROVED #3645] was "Disconnected locally — Stripe rejected": the activity log no longer names the payment provider.
+    expect(out.title).toBe("Disconnected locally — payment partner refused");
     expect(out.detail).toContain("Local state cleared");
     expect(out.category).toBe("stripe_connect");
   });
@@ -103,7 +105,8 @@ describe("resolveAuditActionLabel — dynamic patterns", () => {
 
   test("generic stripe_connect.<event.type> falls through to Connect category", () => {
     const out = resolveAuditActionLabel("stripe_connect.capability.updated");
-    expect(out.title).toBe("Stripe Connect: Capability updated");
+    // [TEST-MOD-APPROVED #3645] was "Stripe Connect: Capability updated": the activity log no longer names the payment provider.
+    expect(out.title).toBe("Payout account: Capability updated");
     expect(out.category).toBe("stripe_connect");
   });
 });
@@ -145,5 +148,63 @@ describe("AUDIT_CATEGORIES exposure", () => {
       "ops",
       "other",
     ]);
+  });
+});
+
+// #3645 — the brand activity log is host-facing copy: no title, detail or
+// filter label names the payment provider, including the titles built at
+// runtime for dynamic slugs. Entries that differed only by provider stay
+// distinguishable.
+describe("#3645 — the activity log never names the payment provider", () => {
+  const PROVIDER = /\b(?:stripe|paystack)\b/i;
+  const DYNAMIC_SLUGS = [
+    "stripe_connect.deadline_warning_7d_sent",
+    "stripe.charge.refund.updated.reconciled",
+    "stripe.refund.created.orphan",
+    "stripe.charge.refunded.failed",
+    "stripe_connect.capability.updated",
+  ];
+
+  test("filter labels name no provider", () => {
+    for (const category of AUDIT_CATEGORIES) {
+      expect(category.label).not.toMatch(PROVIDER);
+    }
+    expect(AUDIT_CATEGORIES.find((c) => c.id === "stripe_connect")?.label).toBe(
+      "Payout account",
+    );
+  });
+
+  for (const slug of [...KNOWN_STATIC_SLUGS, ...DYNAMIC_SLUGS]) {
+    test(`${slug} → title and detail name no provider`, () => {
+      const out = resolveAuditActionLabel(slug);
+      expect(out.title).not.toMatch(PROVIDER);
+      if (out.detail !== undefined) expect(out.detail).not.toMatch(PROVIDER);
+    });
+  }
+
+  test("every static slug keeps a distinct title", () => {
+    const titles = KNOWN_STATIC_SLUGS.map((slug) => resolveAuditActionLabel(slug).title);
+    expect(new Set(titles).size).toBe(titles.length);
+  });
+
+  test("card and Nigerian payout-account events stay distinguishable", () => {
+    expect(resolveAuditActionLabel("stripe_connect.detach_completed").title).toBe(
+      "Disconnected payout account",
+    );
+    expect(resolveAuditActionLabel("paystack.subaccount_disconnected").title).toBe(
+      "Nigerian payout account disconnected",
+    );
+    expect(resolveAuditActionLabel("paystack.subaccount_created").title).toBe(
+      "Nigerian payout account connected",
+    );
+    expect(resolveAuditActionLabel("stripe_connect.onboard_initiated").title).toBe(
+      "Started bank setup",
+    );
+    expect(resolveAuditActionLabel("paystack.provider_selected").detail).toBe(
+      "The brand chose to get paid in Nigeria; bank connection is the next step.",
+    );
+    expect(resolveAuditActionLabel("stripe_connect.webhook_unhandled").title).not.toBe(
+      resolveAuditActionLabel("paystack.webhook_unhandled_event").title,
+    );
   });
 });

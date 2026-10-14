@@ -16,8 +16,8 @@ import { NativeConnectWebOnlyFallback } from "../src/components/stripe/NativeCon
 export default function ConnectPartnerAccountManagementNativeRoute(): React.ReactElement {
   return (
     <NativeConnectWebOnlyFallback
-      title="Open Stripe account management in the browser"
-      body="Mingla opens Stripe account management in its hosted web page. Return to Partner Earnings and tap Manage Stripe account again to open it in the in-app browser."
+      title="Open payout account management in the browser"
+      body="Payout account management runs in Mingla's hosted web page. Return to Partner Earnings and tap Manage payout account again to open it in the in-app browser."
     />
   );
 }
