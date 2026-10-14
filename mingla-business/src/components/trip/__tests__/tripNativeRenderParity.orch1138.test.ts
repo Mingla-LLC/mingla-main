@@ -165,10 +165,8 @@ describe("RT-6 ORCH-1138 — native-only render parity", () => {
     // the RPC's per-tier rows carry the canonical ticket_types.quantity_total.
     expect(rpcMigration).toMatch(/tt\.quantity_total/);
     expect(rpcMigration).toMatch(/'quantityTotal',\s*tiers\.quantity_total/);
-    // the hook derives capacity from the first tier's RPC quantityTotal.
-    expect(hookSrc).toMatch(
-      /firstTierQty\s*=\s*p\.tiers\[0\]\?\.quantityTotal/,
-    );
-    expect(hookSrc).toMatch(/capacity:\s*firstTierQty/);
+    // Issue #3801: the two assertions here pinned the bug (capacity read from the first package only); the hook now sums every package's spots.
+    expect(hookSrc).toMatch(/tripCapacity\s*=\s*sumTripPackageSpots\(/);
+    expect(hookSrc).toMatch(/capacity:\s*tripCapacity/);
   });
 });
