@@ -424,3 +424,14 @@ Deno.test("H-06 (rework) the reason is cut between whole characters, never insid
   const flagged = sanitiseEditReason("a".repeat(198) + flag);
   assertEquals(flagged, "a".repeat(198), "a grapheme cluster was cut in half");
 });
+
+Deno.test("Z-01 (rework) every time string is printed with plain spaces, whatever the ICU build", () => {
+  // Fails on Deno 1.46 (CI) without the normalising step: its ICU puts
+  // U+202F before PM.
+  const out = renderEventUpdatedEmail(eventInput());
+  for (const part of [out.html, out.text, out.preheader, out.subject]) {
+    for (const code of [0x202f, 0x00a0, 0x2009]) {
+      assertFalse(part.includes(ch(code)), `U+${code.toString(16)} reached the email`);
+    }
+  }
+});

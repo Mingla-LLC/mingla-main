@@ -240,6 +240,20 @@ function datePairs(value: unknown): EventUpdateDatePair[] {
   );
 }
 
+// Older ICU builds (Deno 1.46, used by CI) put U+202F NARROW NO-BREAK SPACE
+// before "am"/"pm" and can use U+00A0 elsewhere; newer ones use a plain
+// space. Every time string this email prints goes through this, so the email
+// reads the same, byte for byte, wherever it is rendered.
+const ICU_SPACES = new RegExp(`[${String.fromCharCode(0x202f, 0x00a0, 0x2009)}]`, "g");
+export function plainSpaces(text: string): string {
+  return text.replace(ICU_SPACES, " ");
+}
+
+/** One start/end pair in the listing's zone, with plain spaces only. */
+function dateLine(startIso: string, endIso: string, timezone: string | null): string {
+  return plainSpaces(formatEventDateLine(startIso, endIso, timezone));
+}
+
 /** "Lagos time (GMT+1)" for the listing's zone at the given instant. */
 export function zoneLine(timezone: string | null, atIso: string | null): string {
   const tz = typeof timezone === "string" && timezone.length > 0 ? timezone : "UTC";
@@ -252,6 +266,7 @@ export function zoneLine(timezone: string | null, atIso: string | null): string 
   } catch {
     return "";
   }
+  offset = plainSpaces(offset);
   const city = cleanLine(tz.split("/").pop() ?? "", 60).replace(/_/g, " ");
   if (tz === "UTC" || city.length === 0) return offset ? `UTC (${offset})` : "UTC";
   return offset ? `${city} time (${offset})` : `${city} time`;
@@ -305,8 +320,8 @@ function buildBlocks(input: EventUpdatedEmailInput): Block[] {
         // lines can be compared; a zone change gets its own block.
         blocks.push({
           label: "Date and time",
-          was: oldPairs.map((pair) => formatEventDateLine(pair.s, pair.e, input.timezone)),
-          now: newPairs.map((pair) => formatEventDateLine(pair.s, pair.e, input.timezone)),
+          was: oldPairs.map((pair) => dateLine(pair.s, pair.e, input.timezone)),
+          now: newPairs.map((pair) => dateLine(pair.s, pair.e, input.timezone)),
           notes: [],
           foot: zoneLine(input.timezone, newPairs[0]?.s ?? oldPairs[0]?.s ?? null) || null,
         });
