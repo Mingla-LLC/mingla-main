@@ -139,7 +139,7 @@ describe("#3802 C-1: one normal form, on the server and on the page", () => {
     }
   });
   it("two phone numbers match here the way they match on the server", () => {
-    assert.equal(pairs.length, 30);
+    assert.equal(pairs.length, 37);
     for (const p of pairs) {
       assert.equal(phoneMatch(p.a, p.b) || "none", p.want, `${p.a} ~ ${p.b}`);
       assert.equal(phoneMatch(p.b, p.a) || "none", p.want, `${p.b} ~ ${p.a}`);

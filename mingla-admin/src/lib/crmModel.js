@@ -1044,9 +1044,10 @@ function phoneNational(key) {
 /**
  * How two phone numbers match, the way the server matches them: "exact"
  * when their normal forms are equal; "national_number" when neither carries
- * a country code and they are equal without their leading zeros, or when one
- * carries one and the other's digits without leading zeros (at least seven)
- * end its national part; "" otherwise. Two numbers that both carry a
+ * a country code and, without leading zeros, the shorter (at least seven
+ * digits) ends the longer, or when one carries one and the other's digits
+ * without leading zeros (at least seven) end its national part or are its
+ * own digits written without the +; "" otherwise. Two numbers that both carry a
  * country code match only when they are equal.
  */
 export function phoneMatch(a, b) {
@@ -1059,9 +1060,13 @@ export function phoneMatch(a, b) {
   const na = phoneNational(ka);
   const nb = phoneNational(kb);
   if (ia && ib) return "";
-  if (!ia && !ib) return na === nb ? "national_number" : "";
-  const [intl, national] = ia ? [na, nb] : [nb, na];
-  return national.length >= 7 && intl.endsWith(national) ? "national_number" : "";
+  if (!ia && !ib) {
+    const [short, long] = na.length <= nb.length ? [na, nb] : [nb, na];
+    return short.length >= 7 && long.endsWith(short) ? "national_number" : "";
+  }
+  const [intlKey, intl, national] = ia ? [ka, na, nb] : [kb, nb, na];
+  if (national.length >= 7 && intl.endsWith(national)) return "national_number";
+  return identKey("phone", `+${national}`) === intlKey ? "national_number" : "";
 }
 
 /**

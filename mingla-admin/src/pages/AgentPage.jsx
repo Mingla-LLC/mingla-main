@@ -454,10 +454,17 @@ export function AgentPage() {
     [addToast, messageFor, os]
   );
 
-  const doneSetup = useCallback((agentId) => {
-    setCodes((m) => ({ ...m, [agentId]: null }));
-    setSetups((m) => ({ ...m, [agentId]: null }));
-  }, []);
+  // Done returns the card to what a reload would show: the start, or a
+  // message still waiting elsewhere if the server says one is. It is read
+  // again at once, so a message used or ended in another tab is not shown.
+  const doneSetup = useCallback(
+    (agentId) => {
+      setCodes((m) => ({ ...m, [agentId]: null }));
+      setSetups((m) => ({ ...m, [agentId]: null }));
+      refetch({ quiet: true });
+    },
+    [refetch]
+  );
 
   const create = useCallback(
     async (agentId) => {

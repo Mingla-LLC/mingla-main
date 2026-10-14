@@ -731,9 +731,9 @@ insert into t3802b_phones values
   ('+44 (0)20 7745 7222', '+44 20 7745 7222', 'exact'),
   ('+234 0803 510 4237', '+234 803 510 4237', 'exact'),
   ('0044 20 9183 2907', '+44 20 9183 2907', 'exact'),
-  ('44 20 5978 1961', '+44 20 5978 1961', 'none'),
-  ('234 803 531 4648', '0803 531 4648', 'none'),
-  ('1 919 556 9276', '(919) 556-9276', 'none'),
+  ('44 20 5978 1961', '+44 20 5978 1961', 'national_number'),
+  ('234 803 531 4648', '0803 531 4648', 'national_number'),
+  ('1 919 556 9276', '(919) 556-9276', 'national_number'),
   ('+1 919 516 8305', '919 516 8305', 'national_number'),
   ('+234 803 559 3198', '0803 559 3198', 'national_number'),
   ('+44 20 8436 8694', '020 8436 8694', 'national_number'),
@@ -750,14 +750,21 @@ insert into t3802b_phones values
   ('+61 412 345 678', '+64 412 345 678', 'none'),
   ('+234 803 555 0101', '00234 803 555 0101', 'exact'),
   ('+1 919 555 0142', '919-555-0142 ext 7', 'national_number'),
-  ('555-0142', '919 555 0142', 'none'),
+  ('555-0142', '919 555 0142', 'national_number'),
   ('+1 919 555 0142', '+1 919 555 0143', 'none'),
   ('(919) 555-0142', '919.555.0142', 'exact'),
   ('https://wa.me/2348035550101', '+234 803 555 0101', 'exact'),
   ('https://api.whatsapp.com/send?phone=447911123456', '07911 123456', 'national_number'),
   ('+44 7911 123456', '555 3456', 'none'),
   ('+44 7911 123456', '0123456', 'none'),
-  ('+44 7911 123456', '1123456', 'national_number');
+  ('+44 7911 123456', '1123456', 'national_number'),
+  ('44 020 5978 1961', '+44 20 5978 1961', 'national_number'),
+  ('44 20 5978 1962', '+44 20 5978 1961', 'none'),
+  ('33 20 5978 1961', '+44 20 5978 1961', 'none'),
+  ('1 919 557 7821', '(919) 557-7821', 'national_number'),
+  ('(219) 557-7821', '(919) 557-7821', 'none'),
+  ('555 0142', '919 555 0143', 'none'),
+  ('0 919 556 9276', '1 919 556 9276', 'national_number');
 
 do $b4$
 declare
@@ -791,7 +798,7 @@ begin
     delete from public.crm_records where id = v_c;
   end loop;
   perform pg_temp.t3802b_check('B-4', 'every pair of phone numbers matches as documented, both ways round',
-    (select count(*)::text from t3802b_phones) || ' ' || v_bad, '30 ');
+    (select count(*)::text from t3802b_phones) || ' ' || v_bad, '37 ');
   perform pg_temp.t3802b_check('B-4', 'a value of 200 characters is usable and one of 201 is not',
     (public.crm_ident_key('email', repeat('a', 195) || '@b.co') is not null)::text
       || '/' || (public.crm_ident_key('email', repeat('a', 196) || '@b.co') is null)::text, 'true/true');

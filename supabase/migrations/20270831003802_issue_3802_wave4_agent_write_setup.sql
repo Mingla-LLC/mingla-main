@@ -518,10 +518,11 @@ COMMENT ON FUNCTION public.crm_clean_identifiers(jsonb) IS
 -- (the cleaner's output), on a record other than p_exclude. A row matches
 -- when kind and normal form are equal ("exact"). Two phone numbers that are
 -- not equal also match ("national_number") when neither carries a country
--- code and they are equal without their leading zeros; or when one carries
--- one, and the other's digits without leading zeros (at least seven of them)
--- end its national part. Two numbers that both carry a country code match
--- only when they are equal.
+-- code and, without leading zeros, the shorter (at least seven digits) ends
+-- the longer; or when one carries one, and the other's digits without
+-- leading zeros (at least seven) end its national part, or are its own
+-- digits written without the +. Two numbers that both carry a country code
+-- match only when they are equal.
 CREATE FUNCTION public.crm_identifier_hits(p_pipeline text, p_idents jsonb, p_exclude uuid)
 RETURNS TABLE (record_id uuid, kind text, platform text, value text, value_key text, rule text)
 LANGUAGE sql STABLE SET search_path = ''
@@ -545,9 +546,17 @@ AS $$
     WHERE i.national IS NOT NULL AND w.national IS NOT NULL
       AND CASE
             WHEN i.value_key ~ '^[+]' AND w.intl THEN false
-            WHEN NOT (i.value_key ~ '^[+]') AND NOT w.intl THEN i.national = w.national
-            WHEN w.intl THEN char_length(i.national) >= 7 AND right(w.national, char_length(i.national)) = i.national
-            ELSE char_length(w.national) >= 7 AND right(i.national, char_length(w.national)) = w.national
+            -- Neither has a country code: the shorter (at least seven digits) ends the longer.
+            WHEN NOT (i.value_key ~ '^[+]') AND NOT w.intl THEN
+              CASE WHEN char_length(i.national) <= char_length(w.national)
+                   THEN char_length(i.national) >= 7 AND right(w.national, char_length(i.national)) = i.national
+                   ELSE char_length(w.national) >= 7 AND right(i.national, char_length(w.national)) = w.national END
+            -- One has a country code: the other's digits end its national part, or are
+            -- its own digits written without the + (read the same way).
+            WHEN w.intl THEN (char_length(i.national) >= 7 AND right(w.national, char_length(i.national)) = i.national)
+                             OR public.crm_ident_key('phone', '+' || i.national) = w.value_key
+            ELSE (char_length(w.national) >= 7 AND right(i.national, char_length(w.national)) = w.national)
+                 OR public.crm_ident_key('phone', '+' || w.national) = i.value_key
           END
   )
   SELECT h.record_id, h.kind, h.platform, h.value, h.value_key, h.rule

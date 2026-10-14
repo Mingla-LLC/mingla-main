@@ -1167,7 +1167,10 @@ describe("#3802 S-8: where the setup message and its code may go", () => {
     assert.equal(/useState\(\(\) =>[^)]*codes|useRef\([^)]*codes|createContext/.test(PAGE), false);
     const drops = PAGE.match(/setCodes\(\(m\) => \(\{ \.\.\.m, \[(a\.id|agentId)\]: null \}\)\);/g) ?? [];
     assert.equal(drops.length, 4, "before a new one is made; when it is used, ended or runs out; on Done; on Disconnect");
-    assert.match(PAGE, /const doneSetup = useCallback\(\(agentId\) => \{\s*setCodes\(\(m\) => \(\{ \.\.\.m, \[agentId\]: null \}\)\);\s*setSetups\(\(m\) => \(\{ \.\.\.m, \[agentId\]: null \}\)\);/);
+    assert.match(PAGE, /const doneSetup = useCallback\(\s*\(agentId\) => \{\s*setCodes\(\(m\) => \(\{ \.\.\.m, \[agentId\]: null \}\)\);\s*setSetups\(\(m\) => \(\{ \.\.\.m, \[agentId\]: null \}\)\);\s*refetch\(\{ quiet: true \}\);/);
+    // After Done the card is what a reload shows: the start, or a message the server still lists as waiting.
+    assert.equal(setupCardView({ agentId: "claude", local: null, pending: null }).state, "none");
+    assert.equal(setupCardView({ agentId: "claude", local: null, pending: { agent: "claude", created_at: "2026-10-14T10:02:00Z", expires_at: "2099-10-14T10:12:00Z" } }).state, "pending");
     assert.equal((PAGE.match(/setCodes\(/g) ?? []).length, 5, "set once (when made), dropped in four places");
     // The code is read from the answer in two places only: to build the copy, and to keep it for the card.
     assert.equal((PAGE.match(/answer\??\.code/g) ?? []).length, 2);
