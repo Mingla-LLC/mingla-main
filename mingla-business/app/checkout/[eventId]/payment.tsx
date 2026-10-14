@@ -358,6 +358,10 @@ function CheckoutPaymentScreenContent({
             ticketTypeId: l.ticketTypeId,
             quantity: l.quantity,
           })),
+          // issue #3281 — the chosen day SET. A multi-date / recurring event
+          // refuses a no-day preview (`event_date_choice_required`), and a
+          // `per_day` event prices by the number of days. Empty => omitted.
+          ...(eventDateIds.length > 0 ? { eventDateIds: [...eventDateIds] } : {}),
         },
       });
       if (cancelled) return;
@@ -374,7 +378,15 @@ function CheckoutPaymentScreenContent({
     return () => {
       cancelled = true;
     };
-  }, [eventId, lines, buyer.name, buyer.email, buyer.phone, buyer.marketingOptIn]);
+  }, [
+    eventId,
+    lines,
+    buyer.name,
+    buyer.email,
+    buyer.phone,
+    buyer.marketingOptIn,
+    eventDateIds,
+  ]);
 
   // ----- Handlers -------------------------------------------------
   const handleBack = useCallback((): void => {

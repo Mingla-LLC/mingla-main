@@ -33,6 +33,8 @@ export interface NativeCheckoutInput {
   taxCalculationId?: string | null;
   /** ORCH-1138 Leg 3 — chosen experience occurrence (web stub never invokes). */
   eventDateId?: string;
+  /** issue #3281 — the chosen day SET (web stub never invokes; type parity). */
+  eventDateIds?: readonly string[];
   /**
    * ORCH-1246 (Apple 4.9) — on-screen event/trip/experience title threaded into
    * the native Apple Pay cartItem so the wallet sheet shows the PRODUCT, not the
