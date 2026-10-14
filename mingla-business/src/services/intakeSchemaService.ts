@@ -33,6 +33,8 @@
 
 import { supabase } from "./supabase";
 import { newTripOperationId, readTripRevision } from "./tripsService";
+import { createCheckoutAttemptId } from "@mingla/offering-rendering/ticketCheckoutContract";
+import { validateIntakeUploadCandidate } from "@mingla/offering-rendering/intakeUploadClaim";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -99,10 +101,13 @@ export type IntakeAnswerValue =
   | null;
 
 export interface IntakeFileAnswer {
-  path: string; // trip_intake_files/{event_id}/{order_id}/{question_id}/{filename}
-  filename: string;
+  /** #3859 accepted manifest. Legacy fields stay optional at the old type boundary. */
+  claim_id?: string;
   mime_type: string;
   size_bytes: number;
+  expires_at?: string;
+  path?: string;
+  filename?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -597,13 +602,145 @@ export function validateAnswerAgainstSchema(
 
 export interface UploadIntakeFileArgs {
   eventId: string;
-  orderId: string;
+  /** Legacy caller compatibility only; the hardened endpoint ignores it. */
+  orderId?: string;
+  ticketTypeId?: string;
+  schemaVersionId?: string;
+  uploadSessionId?: string;
   questionId: string;
   filename: string;
   mime_type: string;
   size_bytes: number;
   /** Raw file body (RN: from expo-image-picker / expo-document-picker; Web: File / Blob). */
   body: Blob | ArrayBuffer | Uint8Array;
+  replaceClaimId?: string;
+}
+
+export const createIntakeUploadSessionId = (): string =>
+  createCheckoutAttemptId();
+
+function intakeUploadBody(
+  body: Blob | ArrayBuffer | Uint8Array,
+  mimeType: string,
+): BodyInit {
+  if (body instanceof Blob || body instanceof ArrayBuffer) return body;
+  const bytes = body;
+  const buffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+  return new Blob([buffer], { type: mimeType });
+}
+
+async function uploadAcceptedIntakeClaim(
+  args: UploadIntakeFileArgs & {
+    ticketTypeId: string;
+    schemaVersionId: string;
+    uploadSessionId: string;
+  },
+): Promise<IntakeFileAnswer> {
+  const candidate = validateIntakeUploadCandidate({
+    filename: args.filename,
+    mimeType: args.mime_type,
+    sizeBytes: args.size_bytes,
+  });
+  if (!candidate.ok) {
+    throw makeError(
+      "schema_invalid",
+      candidate.reason === "file_too_large"
+        ? "File is too large. Each file must be 10 MB or less."
+        : "File type and extension must match.",
+    );
+  }
+  const { data: minted, error: mintError } = await supabase.functions.invoke(
+    "trip-intake-upload-signed-url",
+    {
+      body: {
+        action: "mint",
+        event_id: args.eventId,
+        ticket_type_id: args.ticketTypeId,
+        schema_version_id: args.schemaVersionId,
+        question_id: args.questionId,
+        upload_session_id: args.uploadSessionId,
+        filename: args.filename,
+        mime_type: candidate.mimeType,
+        size_bytes: candidate.sizeBytes,
+        ...(args.replaceClaimId
+          ? { replace_claim_id: args.replaceClaimId }
+          : {}),
+      },
+    },
+  );
+  if (
+    mintError !== null || typeof minted?.claim_id !== "string" ||
+    typeof minted?.signed_url !== "string"
+  ) {
+    throw makeError("network_error", "Couldn't prepare the file upload.");
+  }
+  let response: Response;
+  try {
+    response = await fetch(minted.signed_url, {
+      method: "PUT",
+      headers: { "Content-Type": candidate.mimeType },
+      body: intakeUploadBody(args.body, candidate.mimeType),
+    });
+  } catch {
+    void revokeIntakeFileClaim({
+      claimId: minted.claim_id,
+      uploadSessionId: args.uploadSessionId,
+    });
+    throw makeError("network_error", "Couldn't upload your file. Try again.");
+  }
+  if (!response.ok) {
+    void revokeIntakeFileClaim({
+      claimId: minted.claim_id,
+      uploadSessionId: args.uploadSessionId,
+    });
+    throw makeError("network_error", "Couldn't upload your file. Try again.");
+  }
+  const { data: accepted, error: acceptError } = await supabase.functions.invoke(
+    "trip-intake-upload-signed-url",
+    {
+      body: {
+        action: "accept",
+        claim_id: minted.claim_id,
+        upload_session_id: args.uploadSessionId,
+      },
+    },
+  );
+  if (
+    acceptError !== null || typeof accepted?.claim_id !== "string" ||
+    typeof accepted?.mime_type !== "string" ||
+    typeof accepted?.size_bytes !== "number" ||
+    typeof accepted?.expires_at !== "string"
+  ) {
+    throw makeError("schema_invalid", "The uploaded file couldn't be verified.");
+  }
+  return {
+    claim_id: accepted.claim_id,
+    mime_type: accepted.mime_type,
+    size_bytes: accepted.size_bytes,
+    expires_at: accepted.expires_at,
+  };
+}
+
+export async function revokeIntakeFileClaim(args: {
+  claimId: string;
+  uploadSessionId: string;
+}): Promise<void> {
+  const { data, error } = await supabase.functions.invoke(
+    "trip-intake-upload-signed-url",
+    {
+      body: {
+        action: "revoke",
+        claim_id: args.claimId,
+        upload_session_id: args.uploadSessionId,
+      },
+    },
+  );
+  if (error !== null || data?.revoked !== true) {
+    throw makeError("rpc_rejected", "That file couldn't be removed. Try again.");
+  }
 }
 
 /**
@@ -628,6 +765,17 @@ export interface UploadIntakeFileArgs {
 export async function uploadIntakeFile(
   args: UploadIntakeFileArgs,
 ): Promise<IntakeFileAnswer> {
+  if (
+    args.ticketTypeId !== undefined &&
+    args.schemaVersionId !== undefined &&
+    args.uploadSessionId !== undefined
+  ) {
+    return await uploadAcceptedIntakeClaim(args as UploadIntakeFileArgs & {
+      ticketTypeId: string;
+      schemaVersionId: string;
+      uploadSessionId: string;
+    });
+  }
   if (!args.eventId || !args.orderId || !args.questionId) {
     throw makeError("not_found", "Trip, order, or question not found.");
   }

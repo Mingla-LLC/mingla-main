@@ -87,6 +87,7 @@ import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 import { InstallmentScheduleDisplay } from "../../../src/components/trip/InstallmentScheduleDisplay";
 import {
+  revokeIntakeFileClaim,
   uploadIntakeFile,
   validateAnswerAgainstSchema,
   type IntakeAnswerValue,
@@ -122,6 +123,22 @@ interface DraftEnvelope {
   saved_at: number;
 }
 
+const intakeDraftWithoutFiles = (
+  schema: IntakeSchema,
+  answers: Record<string, IntakeAnswerValue>,
+): Record<string, IntakeAnswerValue> => {
+  const fileQuestionIds = new Set(
+    schema.questions
+      .filter((question) => question.type === "file_upload")
+      .map((question) => question.id),
+  );
+  return Object.fromEntries(
+    Object.entries(answers).filter(([questionId]) =>
+      !fileQuestionIds.has(questionId)
+    ),
+  );
+};
+
 function draftKey(eventId: string, ticketTypeId: string, buyerEmail: string): string {
   return `tr5_intake_draft_${eventId}_${ticketTypeId}_${buyerEmail.toLowerCase()}`;
 }
@@ -133,7 +150,13 @@ export default function TripIntakeScreen(): React.ReactElement {
   const tripEventId =
     typeof params.tripEventId === "string" ? params.tripEventId : null;
 
-  const { lines, buyer, intakeFormData, setIntakeTierData } = useCart();
+  const {
+    lines,
+    buyer,
+    intakeFormData,
+    intakeUploadSessionId,
+    setIntakeTierData,
+  } = useCart();
   const totals = useCartTotals();
 
   const schemasQuery = useTripIntakeSchemasByEvent(tripEventId ?? "", {
@@ -270,7 +293,10 @@ export default function TripIntakeScreen(): React.ReactElement {
             );
             continue;
           }
-          restored[t.ticketTypeId] = env.answers;
+          restored[t.ticketTypeId] = intakeDraftWithoutFiles(
+            t.schema,
+            env.answers,
+          );
           anyRestored = true;
         } catch {
           // Corrupted draft — drop silently.
@@ -339,29 +365,32 @@ export default function TripIntakeScreen(): React.ReactElement {
 
   const handleUploadForActiveTier = useCallback(
     async (file: {
+      questionId: string;
       filename: string;
       mime_type: string;
       size_bytes: number;
       body: Blob | ArrayBuffer | Uint8Array;
+      replaceClaimId?: string;
     }) => {
       if (tripEventId === null || activeTier === null) {
         throw new Error("Trip or tier not ready.");
       }
-      // Use a placeholder order_id (we don't have a real order yet — checkout
-      // hasn't created it). The signed-URL edge fn accepts the eventId +
-      // questionId path and stamps the buyer's email into a per-buyer scoped
-      // path. The order_id slot is reserved for post-payment file association.
       return uploadIntakeFile({
         eventId: tripEventId,
-        orderId: `pending-${buyer.email.toLowerCase()}-${activeTier.ticketTypeId}`,
-        questionId: "pending",
+        ticketTypeId: activeTier.ticketTypeId,
+        schemaVersionId: activeTier.schema.schema_version_id,
+        uploadSessionId: intakeUploadSessionId,
+        questionId: file.questionId,
         filename: file.filename,
         mime_type: file.mime_type,
         size_bytes: file.size_bytes,
         body: file.body,
+        ...(file.replaceClaimId
+          ? { replaceClaimId: file.replaceClaimId }
+          : {}),
       });
     },
-    [tripEventId, activeTier, buyer.email],
+    [tripEventId, activeTier, intakeUploadSessionId],
   );
 
   const handleContinue = useCallback(async (): Promise<void> => {
@@ -401,7 +430,7 @@ export default function TripIntakeScreen(): React.ReactElement {
         draftKey(tripEventId, activeTier.ticketTypeId, buyer.email),
         JSON.stringify({
           schema_version_id: activeTier.schema.schema_version_id,
-          answers,
+          answers: intakeDraftWithoutFiles(activeTier.schema, answers),
           saved_at: Date.now(),
         } satisfies DraftEnvelope),
       );
@@ -626,6 +655,10 @@ export default function TripIntakeScreen(): React.ReactElement {
           }}
           validationErrors={activeValidationErrors}
           onUpload={handleUploadForActiveTier}
+          onRemove={(claimId) => revokeIntakeFileClaim({
+            claimId,
+            uploadSessionId: intakeUploadSessionId,
+          })}
         />
       </ScrollView>
 

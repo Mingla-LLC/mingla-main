@@ -1,45 +1,18 @@
-// ORCH-0880 [Tr5 Traveler Intake Forms] — anon-tolerant multipart upload
-// signed-URL endpoint for the `trip_intake_files` storage bucket.
-//
-// Per SPEC_ORCH-0880 §5.1 + DESIGN §4.3.G. Buyer-fill UI requests a signed
-// URL for each file upload; this function validates the request (event lookup,
-// schema lookup, question lookup, MIME allowlist, size cap) and returns a
-// 1-hour signed upload URL the buyer can PUT the file to directly. No file
-// payload passes through the edge function (bandwidth + cold-start friendly).
-//
-// Auth: anon-tolerant (no JWT required). Buyer is anonymous per
-// `feedback_anon_buyer_routes.md`. Trip + schema + question lookups
-// authenticate the request by proving the buyer is uploading against a real
-// trip/question; storage RLS layer (anon-write-own per migration §4) is the
-// hard protection.
-//
-// Per I-PROPOSED-TR5-INTAKE-FILE-RLS-ANON-WRITE-PLANNER-READ enforcement:
-// the signed URL grants insert to one specific object path; the path is
-// derived from event_id + order_id + question_id + sanitised filename so the
-// buyer cannot upload outside their own scope.
+// #3859 slice 6 — one private upload-claim rail for anonymous buyer web and
+// signed-in Explorer. The client sees a signed URL only in memory; checkout
+// submits the opaque accepted claim id, never a path, filename, or credential.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  intakeUploadBytesMatch,
+  type IntakeUploadExtension,
+  isIntakeUploadUuid,
+  validateIntakeUploadCandidate,
+} from "../../../packages/offering-rendering/intakeUploadClaim.ts";
 
 const BUCKET = "trip_intake_files";
-
-// 10 MB per file. Matches SPEC §6.D6.
-const MAX_FILE_SIZE_BYTES = 10_485_760;
-
-// MIME allowlist per SPEC §6.D6.
-const ALLOWED_MIME_TYPES = new Set<string>([
-  // Images
-  "image/jpeg",
-  "image/png",
-  "image/heic",
-  "image/webp",
-  // PDFs
-  "application/pdf",
-  // Docs (Word + OpenDocument)
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.oasis.opendocument.text",
-]);
+const CLAIM_TTL_MS = 60 * 60 * 1000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,281 +21,343 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
 
-/**
- * Sanitise a filename for storage path use. Per `feedback_supabase_storage_
- * path_sanitization` (if memory exists): strip non-[A-Za-z0-9_.-] characters
- * and replace with `_`. Reject empty after sanitisation.
- */
-function sanitiseFilename(input: string): string | null {
-  // Strip any directory traversal attempts + path separators first
-  const collapsed = input.replace(/[\\/]/g, "_").trim();
-  if (collapsed.length === 0) return null;
-  // Replace anything outside the safe set with `_`
-  const safe = collapsed.replace(/[^A-Za-z0-9_.\-]/g, "_");
-  // Truncate at 200 chars (storage path limits)
-  const truncated = safe.length > 200 ? safe.slice(0, 200) : safe;
-  // Guard: must still have at least one char after truncation
-  return truncated.length > 0 ? truncated : null;
+function categoryAllowed(
+  mimeType: string,
+  question: {
+    allow_images?: boolean;
+    allow_pdfs?: boolean;
+    allow_docs?: boolean;
+  },
+): boolean {
+  if (mimeType.startsWith("image/")) return question.allow_images !== false;
+  if (mimeType === "application/pdf") return question.allow_pdfs !== false;
+  return question.allow_docs !== false;
 }
 
-interface UploadRequestBody {
-  event_id?: string;
-  ticket_type_id?: string;
-  order_id?: string;
-  question_id?: string;
-  filename?: string;
-  mime_type?: string;
-  file_size_bytes?: number;
+export async function authenticatedUserId(
+  req: Request,
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  anonKey: string | undefined,
+): Promise<{ bearerProvided: boolean; userId: string | null }> {
+  const header = req.headers.get("authorization") ?? "";
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  if (match === null) {
+    return { bearerProvided: header.trim().length > 0, userId: null };
+  }
+  const token = match[1].trim();
+  if (anonKey !== undefined && token === anonKey) {
+    return { bearerProvided: false, userId: null };
+  }
+  const { data, error } = await supabase.auth.getUser(token);
+  return {
+    bearerProvided: true,
+    userId: error === null && isIntakeUploadUuid(data?.user?.id)
+      ? data.user.id
+      : null,
+  };
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-  if (req.method !== "POST") {
-    return jsonResponse({ error: "method_not_allowed" }, 405);
-  }
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const payload = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+  const digest = await crypto.subtle.digest("SHA-256", payload);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
 
-  let body: UploadRequestBody;
+// deno-lint-ignore no-explicit-any
+async function rejectClaim(supabase: any, claimId: string, path: string) {
+  await supabase.from("trip_intake_upload_claims").update({
+    state: "rejected",
+    revoked_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", claimId).eq("state", "issued");
+  await supabase.storage.from(BUCKET).remove([path]);
+}
+
+// Opportunistic and bounded: expired unclaimed objects never become durable
+// evidence. Failure is intentionally silent and cannot block a fresh upload.
+// deno-lint-ignore no-explicit-any
+async function cleanupExpiredClaims(supabase: any): Promise<void> {
   try {
-    body = (await req.json()) as UploadRequestBody;
+    const { data } = await supabase.from("trip_intake_upload_claims")
+      .select("id, object_path")
+      .in("state", ["issued", "uploaded", "accepted"])
+      .lt("expires_at", new Date().toISOString())
+      .limit(20);
+    const rows = Array.isArray(data) ? data : [];
+    if (rows.length === 0) return;
+    const ids = rows.map((row) => row.id).filter(isIntakeUploadUuid);
+    const paths = rows.map((row) => row.object_path).filter((path) =>
+      typeof path === "string"
+    );
+    if (ids.length > 0) {
+      await supabase.from("trip_intake_upload_claims").update({
+        state: "orphaned",
+        revoked_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).in("id", ids).in("state", ["issued", "uploaded", "accepted"]);
+    }
+    if (paths.length > 0) await supabase.storage.from(BUCKET).remove(paths);
   } catch {
-    return jsonResponse({ error: "invalid_json" }, 400);
+    // Cleanup is defense-in-depth; claim expiry remains the authorization gate.
   }
+}
 
-  const eventId = typeof body.event_id === "string" ? body.event_id : "";
-  const ticketTypeId =
-    typeof body.ticket_type_id === "string" ? body.ticket_type_id : "";
-  const orderId = typeof body.order_id === "string" ? body.order_id : "";
-  const questionId =
-    typeof body.question_id === "string" ? body.question_id : "";
-  const rawFilename =
-    typeof body.filename === "string" ? body.filename : "";
-  const mimeType =
-    typeof body.mime_type === "string" ? body.mime_type : "";
-  const fileSizeBytes =
-    typeof body.file_size_bytes === "number" ? body.file_size_bytes : 0;
+export function createTripIntakeUploadHandler(): (
+  req: Request,
+) => Promise<Response> {
+  return async (req: Request): Promise<Response> => {
+    if (req.method === "OPTIONS") {
+      return new Response("ok", { headers: corsHeaders });
+    }
+    if (req.method !== "POST") {
+      return jsonResponse({ error: "method_not_allowed" }, 405);
+    }
 
-  if (!eventId) {
-    return jsonResponse({ error: "event_id_required" }, 400);
-  }
-  if (!ticketTypeId) {
-    return jsonResponse({ error: "ticket_type_id_required" }, 400);
-  }
-  if (!orderId) {
-    return jsonResponse({ error: "order_id_required" }, 400);
-  }
-  if (!questionId) {
-    return jsonResponse({ error: "question_id_required" }, 400);
-  }
-  if (!rawFilename) {
-    return jsonResponse({ error: "filename_required" }, 400);
-  }
-  if (!mimeType) {
-    return jsonResponse({ error: "mime_type_required" }, 400);
-  }
-  if (
-    !Number.isInteger(fileSizeBytes) ||
-    fileSizeBytes <= 0
-  ) {
-    return jsonResponse({ error: "file_size_bytes_required" }, 400);
-  }
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "invalid_json" }, 400);
+    }
 
-  // MIME allowlist
-  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-    return jsonResponse(
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!supabaseUrl || !serviceRoleKey) {
+      return jsonResponse({ error: "upload_service_unavailable" }, 503);
+    }
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const auth = await authenticatedUserId(req, supabase, anonKey);
+    if (auth.bearerProvided && auth.userId === null) {
+      return jsonResponse({ error: "upload_auth_invalid" }, 401);
+    }
+    const buyerUserId = auth.userId;
+    const action = body.action === "accept" || body.action === "revoke"
+      ? body.action
+      : "mint";
+    const uploadSessionId = body.upload_session_id;
+    if (!isIntakeUploadUuid(uploadSessionId)) {
+      return jsonResponse({ error: "upload_session_invalid" }, 400);
+    }
+
+    if (action === "revoke") {
+      if (!isIntakeUploadUuid(body.claim_id)) {
+        return jsonResponse({ error: "upload_claim_invalid" }, 400);
+      }
+      const { data: path, error } = await supabase.rpc(
+        "issue_3859_revoke_intake_upload_claim",
+        {
+          p_claim_id: body.claim_id,
+          p_upload_session_id: uploadSessionId,
+          p_buyer_user_id: buyerUserId,
+        },
+      );
+      if (error !== null || typeof path !== "string") {
+        return jsonResponse({ error: "upload_claim_not_removable" }, 409);
+      }
+      await supabase.storage.from(BUCKET).remove([path]);
+      return jsonResponse({ revoked: true });
+    }
+
+    if (action === "accept") {
+      if (!isIntakeUploadUuid(body.claim_id)) {
+        return jsonResponse({ error: "upload_claim_invalid" }, 400);
+      }
+      const { data: claim, error: claimError } = await supabase
+        .from("trip_intake_upload_claims")
+        .select(
+          "id, upload_session_id, buyer_user_id, object_path, file_extension, declared_mime_type, declared_size_bytes, state, expires_at",
+        )
+        .eq("id", body.claim_id)
+        .maybeSingle();
+      if (
+        claimError !== null || claim === null ||
+        claim.upload_session_id !== uploadSessionId ||
+        (claim.buyer_user_id !== null && claim.buyer_user_id !== buyerUserId) ||
+        new Date(claim.expires_at).getTime() <= Date.now() ||
+        (claim.state !== "issued" && claim.state !== "accepted")
+      ) {
+        return jsonResponse({ error: "upload_claim_invalid" }, 409);
+      }
+
+      const { data: blob, error: downloadError } = await supabase.storage
+        .from(BUCKET)
+        .download(claim.object_path);
+      if (downloadError !== null || blob === null) {
+        return jsonResponse({ error: "upload_not_found" }, 409);
+      }
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const extension = claim.file_extension as IntakeUploadExtension;
+      const contentMatches = blob.size === claim.declared_size_bytes &&
+        blob.type === claim.declared_mime_type &&
+        intakeUploadBytesMatch(bytes, extension);
+      if (!contentMatches) {
+        await rejectClaim(supabase, claim.id, claim.object_path);
+        return jsonResponse({ error: "upload_content_mismatch" }, 400);
+      }
+
+      const { data: accepted, error: acceptError } = await supabase.rpc(
+        "issue_3859_accept_intake_upload_claim",
+        {
+          p_claim_id: claim.id,
+          p_upload_session_id: uploadSessionId,
+          p_buyer_user_id: buyerUserId,
+          p_verified_mime_type: blob.type,
+          p_verified_size_bytes: blob.size,
+          p_content_sha256: await sha256Hex(bytes),
+        },
+      );
+      if (acceptError !== null || accepted === null) {
+        return jsonResponse({ error: "upload_accept_failed" }, 409);
+      }
+      if (typeof accepted.replaced_path === "string") {
+        await supabase.storage.from(BUCKET).remove([accepted.replaced_path]);
+      }
+      return jsonResponse({
+        claim_id: accepted.claim_id,
+        mime_type: accepted.mime_type,
+        size_bytes: accepted.size_bytes,
+        expires_at: accepted.expires_at,
+      });
+    }
+
+    await cleanupExpiredClaims(supabase);
+
+    const eventId = body.event_id;
+    const ticketTypeId = body.ticket_type_id;
+    const questionId = body.question_id;
+    const schemaVersionId = body.schema_version_id;
+    if (
+      !isIntakeUploadUuid(eventId) ||
+      !isIntakeUploadUuid(ticketTypeId) ||
+      !isIntakeUploadUuid(questionId) ||
+      !isIntakeUploadUuid(schemaVersionId)
+    ) {
+      return jsonResponse({ error: "upload_scope_invalid" }, 400);
+    }
+
+    const candidate = validateIntakeUploadCandidate({
+      filename: body.filename,
+      mimeType: body.mime_type,
+      sizeBytes: body.size_bytes,
+    });
+    if (!candidate.ok) {
+      return jsonResponse({ error: candidate.reason }, 400);
+    }
+
+    const { data: event, error: eventError } = await supabase.from("events")
+      .select("id, event_type, status, deleted_at")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (
+      eventError !== null || event === null || event.event_type !== "trip" ||
+      !["scheduled", "live"].includes(event.status) ||
+      event.deleted_at !== null
+    ) {
+      return jsonResponse({ error: "upload_scope_unavailable" }, 404);
+    }
+
+    const { data: schemaRow, error: schemaError } = await supabase
+      .from("trip_intake_schemas")
+      .select("schema, schema_version_id")
+      .eq("event_id", eventId)
+      .eq("ticket_type_id", ticketTypeId)
+      .maybeSingle();
+    const questions = schemaRow?.schema?.questions;
+    const question = Array.isArray(questions)
+      ? questions.find((entry) => entry?.id === questionId)
+      : undefined;
+    if (
+      schemaError !== null || schemaRow === null ||
+      schemaRow.schema_version_id !== schemaVersionId ||
+      question?.type !== "file_upload" ||
+      !categoryAllowed(candidate.mimeType, question)
+    ) {
+      return jsonResponse({ error: "upload_scope_unavailable" }, 409);
+    }
+
+    const replacementId = isIntakeUploadUuid(body.replace_claim_id)
+      ? body.replace_claim_id
+      : null;
+    const maxFiles = Number.isInteger(question.max_files)
+      ? question.max_files
+      : 1;
+
+    const claimId = crypto.randomUUID();
+    const path =
+      `${eventId}/${crypto.randomUUID()}/${crypto.randomUUID()}${candidate.extension}`;
+    const expiresAt = new Date(Date.now() + CLAIM_TTL_MS).toISOString();
+    const { data: minted, error: mintError } = await supabase.rpc(
+      "issue_3859_mint_intake_upload_claim",
       {
-        error: "mime_type_not_allowed",
-        allowed: Array.from(ALLOWED_MIME_TYPES),
+        p_claim_id: claimId,
+        p_upload_session_id: uploadSessionId,
+        p_buyer_user_id: buyerUserId,
+        p_event_id: eventId,
+        p_ticket_type_id: ticketTypeId,
+        p_question_id: questionId,
+        p_schema_version_id: schemaVersionId,
+        p_object_path: path,
+        p_file_extension: candidate.extension,
+        p_declared_mime_type: candidate.mimeType,
+        p_declared_size_bytes: candidate.sizeBytes,
+        p_replaces_claim_id: replacementId,
+        p_expires_at: expiresAt,
+        p_max_files: maxFiles,
       },
-      400,
     );
-  }
+    const orphanedPaths = Array.isArray(minted?.orphaned_paths)
+      ? minted.orphaned_paths.filter((value: unknown): value is string =>
+        typeof value === "string"
+      )
+      : [];
+    if (orphanedPaths.length > 0) {
+      await supabase.storage.from(BUCKET).remove(orphanedPaths);
+    }
+    if (mintError !== null || minted === null) {
+      return jsonResponse({ error: "upload_claim_create_failed" }, 409);
+    }
+    if (minted.ok !== true) {
+      const mintRefusal = minted.error === "upload_limit_reached" ||
+          minted.error === "upload_replacement_invalid"
+        ? minted.error
+        : "upload_claim_create_failed";
+      return jsonResponse({ error: mintRefusal }, 409);
+    }
 
-  // Size cap
-  if (fileSizeBytes > MAX_FILE_SIZE_BYTES) {
-    return jsonResponse(
-      {
-        error: "file_too_large",
-        max_bytes: MAX_FILE_SIZE_BYTES,
-        provided_bytes: fileSizeBytes,
-      },
-      400,
-    );
-  }
+    const { data: signed, error: signedError } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUploadUrl(path);
+    if (signedError !== null || signed === null) {
+      await rejectClaim(supabase, claimId, path);
+      return jsonResponse({ error: "upload_service_unavailable" }, 503);
+    }
 
-  // Filename sanitisation
-  const safeFilename = sanitiseFilename(rawFilename);
-  if (safeFilename === null) {
-    return jsonResponse({ error: "filename_invalid" }, 400);
-  }
+    return jsonResponse({
+      claim_id: claimId,
+      signed_url: signed.signedUrl,
+      mime_type: candidate.mimeType,
+      size_bytes: candidate.sizeBytes,
+      expires_at: expiresAt,
+    });
+  };
+}
 
-  // Service-role client (anon JWT not used; we authenticate at the trip lookup
-  // layer and grant a signed URL bound to a specific object path).
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceRoleKey) {
-    return jsonResponse(
-      { error: "edge_function_misconfigured", detail: "missing env" },
-      500,
-    );
-  }
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  // Event lookup: trip-typed + not soft-deleted
-  const { data: eventRow, error: eventErr } = await supabase
-    .from("events")
-    .select("id, event_type, deleted_at")
-    .eq("id", eventId)
-    .maybeSingle();
-  if (eventErr !== null) {
-    console.error(
-      "[trip-intake-upload-signed-url] event lookup failed",
-      eventErr,
-    );
-    return jsonResponse(
-      { error: "event_lookup_failed", detail: eventErr.message },
-      500,
-    );
-  }
-  if (eventRow === null) {
-    return jsonResponse({ error: "event_not_found" }, 404);
-  }
-  if (eventRow.event_type !== "trip") {
-    return jsonResponse({ error: "event_not_trip" }, 400);
-  }
-  if (eventRow.deleted_at !== null) {
-    return jsonResponse({ error: "event_deleted" }, 410);
-  }
-
-  // Schema lookup for the requested tier + verify the question exists +
-  // verify question type is file_upload + verify MIME aligns with question
-  // config (allow_images / allow_pdfs / allow_docs)
-  const { data: schemaRow, error: schemaErr } = await supabase
-    .from("trip_intake_schemas")
-    .select("schema")
-    .eq("event_id", eventId)
-    .eq("ticket_type_id", ticketTypeId)
-    .maybeSingle();
-  if (schemaErr !== null) {
-    console.error(
-      "[trip-intake-upload-signed-url] schema lookup failed",
-      schemaErr,
-    );
-    return jsonResponse(
-      { error: "schema_lookup_failed", detail: schemaErr.message },
-      500,
-    );
-  }
-  if (schemaRow === null) {
-    return jsonResponse({ error: "schema_not_present" }, 404);
-  }
-
-  const schema = schemaRow.schema as {
-    questions?: Array<{
-      id?: string;
-      type?: string;
-      allow_images?: boolean;
-      allow_pdfs?: boolean;
-      allow_docs?: boolean;
-      max_files?: number;
-    }>;
-  } | null;
-
-  if (schema === null || !Array.isArray(schema.questions)) {
-    return jsonResponse({ error: "schema_malformed" }, 500);
-  }
-
-  const question = schema.questions.find((q) => q.id === questionId);
-  if (question === undefined) {
-    return jsonResponse({ error: "question_not_found" }, 404);
-  }
-  if (question.type !== "file_upload") {
-    return jsonResponse({ error: "question_not_file_upload" }, 400);
-  }
-
-  // Per-question MIME alignment (planner-configured allowlist subset)
-  const isImage = mimeType.startsWith("image/");
-  const isPdf = mimeType === "application/pdf";
-  const isDoc =
-    mimeType === "application/msword" ||
-    mimeType ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    mimeType === "application/vnd.oasis.opendocument.text";
-
-  if (isImage && question.allow_images === false) {
-    return jsonResponse(
-      { error: "mime_not_allowed_for_question", category: "images" },
-      400,
-    );
-  }
-  if (isPdf && question.allow_pdfs === false) {
-    return jsonResponse(
-      { error: "mime_not_allowed_for_question", category: "pdfs" },
-      400,
-    );
-  }
-  if (isDoc && question.allow_docs === false) {
-    return jsonResponse(
-      { error: "mime_not_allowed_for_question", category: "docs" },
-      400,
-    );
-  }
-
-  // Build the storage object path. Format:
-  //   {event_id}/{order_id}/{question_id}/{timestamp}-{sanitised_filename}
-  // Timestamp prefix avoids collisions when buyer re-uploads same filename.
-  const path = [
-    eventId,
-    orderId,
-    questionId,
-    `${Date.now()}-${safeFilename}`,
-  ].join("/");
-
-  // Mint a signed upload URL via supabase-js storage API. The supabase-js v2
-  // client exposes createSignedUploadUrl which returns a URL the buyer PUTs
-  // the file body to. URL is valid for a short window (typically 2 hours,
-  // controlled by supabase storage service).
-  const { data: signedData, error: signErr } = await supabase
-    .storage
-    .from(BUCKET)
-    .createSignedUploadUrl(path);
-
-  if (signErr !== null || signedData === null) {
-    console.error(
-      "[trip-intake-upload-signed-url] signed URL generation failed",
-      signErr,
-    );
-    return jsonResponse(
-      {
-        error: "signed_url_generation_failed",
-        detail: signErr?.message ?? "unknown",
-      },
-      500,
-    );
-  }
-
-  // Response: signed URL + final object path so the client can store the path
-  // back into orders.intake_form_data.answers[questionId] without needing to
-  // reconstruct it.
-  return jsonResponse({
-    signed_url: signedData.signedUrl,
-    token: signedData.token,
-    path,
-    filename: safeFilename,
-    mime_type: mimeType,
-    size_bytes: fileSizeBytes,
-    // ISO timestamp ~1 hour from now (advisory; storage service decides the
-    // actual expiry of the signed URL token).
-    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-  });
-});
+if (import.meta.main) {
+  serve(createTripIntakeUploadHandler());
+}

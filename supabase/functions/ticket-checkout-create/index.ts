@@ -104,6 +104,7 @@ import {
   checkoutSelectionUsesTripInstallments,
   TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE,
 } from "../../../packages/offering-rendering/tripInstallmentCapability.ts";
+import { resolveIntakeUploadSessionId } from "./intakeUploadSession.ts";
 
 async function siteAttributionDigest(value: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -1061,10 +1062,11 @@ export const createTicketCheckoutCreateHandler = (
     //     { ticket_type_id, schema_version_id, answers: {[questionId]: value} }
     //   ]
     // Trip-only effect; single-event flow unchanged (no event-side intake forms).
-    if (tripGateRow?.event_type === "trip") {
-      const intakeBody = Array.isArray(body.intake_form_data)
+    let canonicalIntakeFormData: unknown[] = [];
+    const intakeBody = Array.isArray(body.intake_form_data)
         ? (body.intake_form_data as Array<Record<string, unknown>>)
         : [];
+    if (tripGateRow?.event_type === "trip") {
 
       // Pull schemas for every ticket_type_id present in the cart.
       const ticketTypeIds = Array.from(
@@ -1372,6 +1374,33 @@ export const createTicketCheckoutCreateHandler = (
     const checkoutSessionId = String(session.checkoutSessionId ?? "");
     let checkoutV2Fingerprint: string | null = null;
 
+    if (intakeBody.length > 0) {
+      const intakeUploadSessionId = resolveIntakeUploadSessionId(
+        body.intake_upload_session_id,
+      );
+      if (intakeUploadSessionId === null) {
+        return jsonResponse({ error: "intake_upload_claim_invalid" }, 409);
+      }
+      const attached = await supabase.rpc("issue_3859_attach_intake_snapshot", {
+        p_checkout_session_id: checkoutSessionId,
+        p_event_id: eventId,
+        p_buyer_user_id: userId,
+        p_upload_session_id: intakeUploadSessionId,
+        p_checkout_claim_key: idempotencyKey,
+        p_checkout_attempt_id: isCheckoutV2 ? checkoutAttemptId : null,
+        p_lines: lines,
+        p_intake_form_data: intakeBody,
+      });
+      if (attached.error !== null || !Array.isArray(attached.data)) {
+        const stale = attached.error?.message?.includes("intake_schema_stale");
+        return jsonResponse(
+          { error: stale ? "intake_schema_stale" : "intake_upload_claim_invalid" },
+          409,
+        );
+      }
+      canonicalIntakeFormData = attached.data;
+    }
+
     // #3859 checkout-v2 binds the normalized client intent to the canonical
     // server quote before any free finalization or provider I/O. The legacy
     // path never enters this block and remains byte-for-byte on its scalar
@@ -1478,7 +1507,7 @@ export const createTicketCheckoutCreateHandler = (
           ) => line),
           eventDateId: anchorEventDateId ?? eventDateId,
           eventDateIds: orderedEventDateIds,
-          intakeFormData: body.intake_form_data ?? [],
+          intakeFormData: canonicalIntakeFormData,
           quote: {
             currency,
             fullPriceCents,

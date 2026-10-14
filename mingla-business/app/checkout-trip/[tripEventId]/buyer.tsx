@@ -279,6 +279,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     lines,
     buyer,
     intakeFormData,
+    intakeUploadSessionId,
     setBuyer,
     recordResult,
     checkoutAttemptIdFor,
@@ -578,6 +579,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
           }
           : {}),
         ...(intakeArray.length > 0 ? { intakeFormData: intakeArray } : {}),
+        ...(intakeArray.length > 0 ? { intakeUploadSessionId } : {}),
       });
       if (result.kind !== "free_completed") {
         throw new Error("Free reservation unexpectedly required payment.");
@@ -623,6 +625,7 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   }, [
     tripEventId,
     intakeFormData,
+    intakeUploadSessionId,
     lines,
     buyer,
     checkoutAttemptIdFor,

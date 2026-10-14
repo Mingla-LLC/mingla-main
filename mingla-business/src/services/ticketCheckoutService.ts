@@ -74,6 +74,8 @@ export interface TicketCheckoutCreateInput {
    * trips without schemas.
    */
   intakeFormData?: unknown[];
+  /** #3859 private upload draft; required whenever intakeFormData is present. */
+  intakeUploadSessionId?: string;
   /**
    * ORCH-1138 Leg 3 — the chosen experience occurrence's event_dates.id, when
    * the buyer picked a slot from the adaptive Reserve picker
@@ -694,6 +696,12 @@ export const createTicketCheckout = async (
   if (isCheckoutV2 && !isCheckoutAttemptId(input.checkoutAttemptId)) {
     throw new Error("checkout_attempt_invalid");
   }
+  if (
+    (input.intakeFormData?.length ?? 0) > 0 &&
+    !isCheckoutAttemptId(input.intakeUploadSessionId)
+  ) {
+    throw new Error("intake_upload_session_invalid");
+  }
   if (isCheckoutV2 && input.paymentPlanChoice !== undefined) {
     throw new Error("checkout_scalar_plan_forbidden");
   }
@@ -747,7 +755,10 @@ export const createTicketCheckout = async (
     // schema-version freshness per Phase 2 ticket-checkout-create §164-256.
     // Omit when empty so non-intake flows preserve byte-identical request shape.
     ...(input.intakeFormData !== undefined && input.intakeFormData.length > 0
-      ? { intake_form_data: input.intakeFormData }
+      ? {
+        intake_form_data: input.intakeFormData,
+        intake_upload_session_id: input.intakeUploadSessionId,
+      }
       : {}),
     // ORCH-1138 Leg 3 — forward the chosen occurrence ONLY when present so the
     // single/no-date checkout request stays byte-identical to today. The edge fn

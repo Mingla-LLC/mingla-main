@@ -781,7 +781,10 @@ export default function ConsumerTripDetailScreen({
           // server-side from the venue. ORCH-1016 (D2) — per-tier trip intake
           // answers ride intakeFormData; empty array omitted (byte-identical).
           ...(payload.intakeFormData.length > 0
-            ? { intakeFormData: payload.intakeFormData }
+            ? {
+              intakeFormData: payload.intakeFormData,
+              intakeUploadSessionId: payload.intakeUploadSessionId,
+            }
             : {}),
           // #3859 — each selected tier carries its own explicit full-pay or
           // installment choice in payload.lines. No cart-wide scalar can

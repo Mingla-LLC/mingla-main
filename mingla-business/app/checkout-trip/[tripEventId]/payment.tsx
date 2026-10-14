@@ -150,6 +150,7 @@ function CheckoutTripPaymentScreenContent({
     lines,
     buyer,
     intakeFormData,
+    intakeUploadSessionId,
     setLineQuantity,
     setBuyer,
     // ORCH-1130 — the pay-full vs pay-over-time choice, pre-filled from the
@@ -493,6 +494,7 @@ function CheckoutTripPaymentScreenContent({
           ...(intakeFormDataArray.length > 0
             ? { intakeFormData: intakeFormDataArray }
             : {}),
+          ...(intakeFormDataArray.length > 0 ? { intakeUploadSessionId } : {}),
         });
         // issue #2190 — provider-neutral. Stripe brands answer with
         // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
@@ -689,6 +691,7 @@ function CheckoutTripPaymentScreenContent({
     tripEventId,
     lines,
     intakeFormDataArray,
+    intakeUploadSessionId,
     isPlanActive,
     nativeCheckout,
     paymentPlanChoice,

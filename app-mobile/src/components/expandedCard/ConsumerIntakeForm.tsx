@@ -5,13 +5,9 @@
  * + required-asterisk shell + per-question inline error, restyled for the
  * dark `#15181f` consumer cart sheet (accent `#eb7825`).
  *
- * Supports the 6 keyable question types: short_text, long_text, single_choice,
- * multi_choice, date, number. `file_upload` is NOT keyable on the consumer
- * surface (no signed-URL upload wiring in the consumer app); a file_upload
- * question renders an explanatory note. A REQUIRED file_upload question would
- * be a planner mis-configuration for the consumer surface — the edge fn still
- * gates it server-side (fail-closed), and `isTierBlocked` reports it so the
- * CTA stays disabled with a clear message rather than a silent 400.
+ * Supports every canonical intake question type, including private file
+ * upload claims. Raw filenames and signed upload credentials remain local to
+ * the active picker/upload request and never enter checkout answers.
  *
  * Android glass: this component uses opaque solid fills (no translucent blur),
  * consistent with ANDROID_GLASS_USES_OPAQUE_FALLBACK — it renders inside the
@@ -20,6 +16,7 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Platform,
   Pressable,
   StyleSheet,
@@ -30,10 +27,12 @@ import {
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
+import * as DocumentPicker from "expo-document-picker";
 
 import { Icon } from "../ui/Icon";
 import {
   type IntakeAnswerValue,
+  type IntakeFileAnswer,
   type IntakeQuestion,
   type IntakeQuestionType,
   type IntakeSchema,
@@ -59,9 +58,8 @@ const LONG_TEXT_MAX = 2000;
 // ---------------------------------------------------------------------------
 
 export function tierHasUnsupportedRequired(schema: IntakeSchema): boolean {
-  return schema.questions.some(
-    (q) => q.required && q.type === "file_upload",
-  );
+  void schema;
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -463,19 +461,165 @@ const DateRenderer: React.FC<RendererProps> = ({
   );
 };
 
-const FileUploadUnsupported: React.FC<{ question: IntakeQuestion }> = ({
+export interface ConsumerIntakeUploadInput {
+  questionId: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  body: Blob;
+  replaceClaimId?: string;
+}
+
+interface FileUploadRendererProps {
+  question: IntakeQuestion;
+  value: IntakeFileAnswer[];
+  onChange: (next: IntakeFileAnswer[]) => void;
+  onUpload: (input: ConsumerIntakeUploadInput) => Promise<IntakeFileAnswer>;
+  onRemove: (claimId: string) => Promise<void>;
+  error?: string;
+  disabled: boolean;
+}
+
+const FileUploadRenderer: React.FC<FileUploadRendererProps> = ({
   question,
-}) => (
-  <IntakeQuestionShell question={question}>
-    <View style={styles.unsupportedBox}>
-      <Icon name="alert-circle" size={16} color={TEXT_TERTIARY} strokeWidth={2} />
-      <Text style={styles.unsupportedText}>
-        File uploads aren’t supported in the app yet. Reserve on the web to
-        attach files.
-      </Text>
-    </View>
-  </IntakeQuestionShell>
-);
+  value,
+  onChange,
+  onUpload,
+  onRemove,
+  error,
+  disabled,
+}) => {
+  const [busy, setBusy] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const maxFiles = question.max_files ?? 1;
+  const allowedMimeTypes = useMemo(() => [
+    ...(question.allow_images === false
+      ? []
+      : ["image/jpeg", "image/png", "image/heic", "image/webp"]),
+    ...(question.allow_pdfs === false ? [] : ["application/pdf"]),
+    ...(question.allow_docs === false
+      ? []
+      : [
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.oasis.opendocument.text",
+      ]),
+  ], [question.allow_docs, question.allow_images, question.allow_pdfs]);
+  const uploadUnavailable = allowedMimeTypes.length === 0;
+
+  const chooseFile = useCallback(async (): Promise<void> => {
+    if (disabled || busy || uploadUnavailable) return;
+    const result = await DocumentPicker.getDocumentAsync({
+      type: allowedMimeTypes,
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (
+      asset === undefined ||
+      typeof asset.mimeType !== "string" ||
+      typeof asset.size !== "number"
+    ) {
+      setUploadError("This file type could not be verified. Choose another file.");
+      return;
+    }
+    setBusy(true);
+    setUploadError(null);
+    try {
+      const response = await fetch(asset.uri);
+      if (!response.ok) throw new Error("file_unreadable");
+      const uploaded = await onUpload({
+        questionId: question.id,
+        filename: asset.name,
+        mime_type: asset.mimeType,
+        size_bytes: asset.size,
+        body: await response.blob(),
+        ...(maxFiles === 1 && value[0]?.claim_id
+          ? { replaceClaimId: value[0].claim_id }
+          : {}),
+      });
+      onChange(maxFiles === 1 ? [uploaded] : [...value, uploaded]);
+    } catch (uploadFailure) {
+      setUploadError(
+        uploadFailure instanceof Error
+          ? uploadFailure.message
+          : "The file couldn’t be uploaded. Try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [allowedMimeTypes, busy, disabled, maxFiles, onChange, onUpload, question.id, uploadUnavailable, value]);
+
+  const removeFile = useCallback(async (file: IntakeFileAnswer): Promise<void> => {
+    if (disabled || busy || typeof file.claim_id !== "string") return;
+    setBusy(true);
+    setUploadError(null);
+    try {
+      await onRemove(file.claim_id);
+      onChange(value.filter((candidate) => candidate.claim_id !== file.claim_id));
+    } catch (removeFailure) {
+      setUploadError(
+        removeFailure instanceof Error
+          ? removeFailure.message
+          : "The file couldn’t be removed. Try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, disabled, onChange, onRemove, value]);
+
+  return (
+    <IntakeQuestionShell
+      question={question}
+      error={
+        error ?? uploadError ??
+        (uploadUnavailable
+          ? "File upload is unavailable for this question."
+          : undefined)
+      }
+    >
+      <View style={styles.uploadList}>
+        {value.map((file) => (
+          <View key={file.claim_id} style={styles.uploadRow}>
+            <Icon name="check" size={16} color={ACCENT} strokeWidth={2} />
+            <Text style={styles.uploadStatus}>Uploaded file · {Math.ceil(file.size_bytes / 1024)} KB</Text>
+            <Pressable
+              onPress={() => void removeFile(file)}
+              disabled={disabled || busy}
+              accessibilityRole="button"
+              accessibilityLabel="Remove uploaded file"
+              style={({ pressed }) => [styles.uploadRemove, pressed && styles.rowPressed]}
+            >
+              <Text style={styles.uploadRemoveText}>Remove</Text>
+            </Pressable>
+          </View>
+        ))}
+        {value.length < maxFiles || maxFiles === 1 ? (
+          <Pressable
+            onPress={() => void chooseFile()}
+            disabled={disabled || busy || uploadUnavailable}
+            accessibilityRole="button"
+            accessibilityLabel={value.length > 0 ? "Replace uploaded file" : "Choose a file to upload"}
+            style={({ pressed }) => [styles.uploadButton, pressed && styles.rowPressed]}
+          >
+            {busy ? <ActivityIndicator color={ACCENT} /> : null}
+            <Text style={styles.uploadButtonText}>
+              {uploadUnavailable
+                ? "File upload unavailable"
+                : busy
+                  ? "Uploading…"
+                  : value.length > 0 && maxFiles === 1
+                    ? "Replace file"
+                    : "Choose file"}
+            </Text>
+          </Pressable>
+        ) : null}
+        <Text style={styles.uploadHint}>Up to {maxFiles} {maxFiles === 1 ? "file" : "files"} · 10 MB each</Text>
+      </View>
+    </IntakeQuestionShell>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // Form orchestrator
@@ -489,6 +633,8 @@ export interface ConsumerIntakeFormProps {
   /** Per-question errors, e.g. from a Continue-tap validation pass. */
   validationErrors?: Record<string, string>;
   disabled?: boolean;
+  onUpload: (input: ConsumerIntakeUploadInput) => Promise<IntakeFileAnswer>;
+  onRemove: (claimId: string) => Promise<void>;
 }
 
 export const ConsumerIntakeForm: React.FC<ConsumerIntakeFormProps> = ({
@@ -498,6 +644,8 @@ export const ConsumerIntakeForm: React.FC<ConsumerIntakeFormProps> = ({
   onAnswersChange,
   validationErrors,
   disabled = false,
+  onUpload,
+  onRemove,
 }) => {
   const setAnswer = useCallback(
     (questionId: string, value: IntakeAnswerValue): void => {
@@ -589,7 +737,22 @@ export const ConsumerIntakeForm: React.FC<ConsumerIntakeFormProps> = ({
               />
             );
           case "file_upload":
-            return <FileUploadUnsupported key={q.id} question={q} />;
+            return (
+              <FileUploadRenderer
+                key={q.id}
+                question={q}
+                value={Array.isArray(value)
+                  ? value.filter((item): item is IntakeFileAnswer =>
+                    typeof item === "object" && item !== null &&
+                    typeof (item as IntakeFileAnswer).claim_id === "string")
+                  : []}
+                onChange={onChange}
+                onUpload={onUpload}
+                onRemove={onRemove}
+                error={error}
+                disabled={disabled}
+              />
+            );
           default: {
             const _never: IntakeQuestionType = q.type;
             void _never;
@@ -823,23 +986,38 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "600",
   },
-  unsupportedBox: {
+  uploadList: { gap: 8 },
+  uploadRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    padding: 12,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: FIELD_BORDER,
     backgroundColor: FIELD_BG,
   },
-  unsupportedText: {
+  uploadStatus: {
     flex: 1,
     fontSize: 13,
     lineHeight: 18,
-    color: TEXT_TERTIARY,
+    color: TEXT_SECONDARY,
   },
+  uploadRemove: { minHeight: 44, justifyContent: "center", paddingHorizontal: 4 },
+  uploadRemoveText: { color: ERROR, fontSize: 13, fontWeight: "600" },
+  uploadButton: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: ACCENT,
+    backgroundColor: "rgba(235, 120, 37, 0.12)",
+  },
+  uploadButtonText: { color: TEXT_PRIMARY, fontSize: 14, fontWeight: "600" },
+  uploadHint: { color: TEXT_TERTIARY, fontSize: 12, lineHeight: 16 },
 });
 
 export default ConsumerIntakeForm;

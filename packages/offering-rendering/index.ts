@@ -627,3 +627,22 @@ export type {
   PublicParityTerminalExpectation,
   PublicParityVisibility,
 } from "./publicParityContract";
+
+// #3859 — dependency-free private intake-upload claim contract. Platform
+// pickers/storage remain host effects; only bounded types and validation live
+// in the shared package.
+export {
+  INTAKE_UPLOAD_MAX_BYTES,
+  INTAKE_UPLOAD_MIME_BY_EXTENSION,
+  intakeUploadBytesMatch,
+  intakeUploadExtensionFromFilename,
+  isIntakeUploadClaimAnswer,
+  isIntakeUploadUuid,
+  validateIntakeUploadCandidate,
+} from "./intakeUploadClaim";
+export type {
+  IntakeUploadCandidateResult,
+  IntakeUploadClaimAnswer,
+  IntakeUploadExtension,
+  IntakeUploadMime,
+} from "./intakeUploadClaim";

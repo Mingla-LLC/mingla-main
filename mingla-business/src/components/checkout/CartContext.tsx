@@ -30,6 +30,7 @@ import React, {
 } from "react";
 import type { ReactNode } from "react";
 import {
+  createCheckoutAttemptId,
   createCheckoutAttemptTracker,
   type CheckoutLinePlanChoice,
 } from "@mingla/offering-rendering/ticketCheckoutContract";
@@ -426,6 +427,8 @@ export interface CartContextValue extends CartState {
   }) => string;
   /** Clears only attempt identity; reserved for an explicit server review reset. */
   resetCheckoutAttempt: () => void;
+  /** One private intake upload draft for this cart lifetime. */
+  intakeUploadSessionId: string;
   /**
    * ORCH-1138 Leg 3 — set/clear the chosen experience occurrence. Called by the
    * checkout-experience index's seed-from-route-param effect (the `eventDateId`
@@ -451,6 +454,7 @@ interface CartProviderProps {
 export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   const checkoutAttemptTrackerRef = useRef(createCheckoutAttemptTracker());
+  const intakeUploadSessionRef = useRef(createCheckoutAttemptId());
 
   const setLineQuantity = useCallback(
     (params: {
@@ -549,6 +553,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
 
   const reset = useCallback((): void => {
     resetCheckoutAttempt();
+    intakeUploadSessionRef.current = createCheckoutAttemptId();
     dispatch({ type: "RESET" });
   }, [resetCheckoutAttempt]);
 
@@ -564,6 +569,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       setLinePaymentPlanChoice,
       checkoutAttemptIdFor,
       resetCheckoutAttempt,
+      intakeUploadSessionId: intakeUploadSessionRef.current,
       setEventDateId,
       setEventDateIds,
       reset,

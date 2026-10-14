@@ -19,6 +19,7 @@
 import { useStripePaymentSheet } from "@mingla/payments-native";
 import {
   createCheckoutAttemptTracker,
+  isCheckoutAttemptId,
   TICKET_CHECKOUT_CONTRACT_VERSION,
 } from "@mingla/offering-rendering/ticketCheckoutContract";
 import { initStripe } from "@stripe/stripe-react-native";
@@ -121,6 +122,8 @@ export interface NativeCheckoutInput {
     schema_version_id: string;
     answers: Record<string, unknown>;
   }>;
+  /** #3859 private upload draft; required whenever intakeFormData is sent. */
+  intakeUploadSessionId?: string;
   // ORCH-1130 [public trip page payment-structure] / DISC-1130-A consent fix —
   // the buyer's explicit pay-full vs pay-over-time choice for a plan trip.
   // Forwarded as the `payment_plan_choice` body key (already accepted by
@@ -652,6 +655,15 @@ export const useNativeCheckoutFlow = (): ((
           message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
         };
       }
+      if (
+        (input.intakeFormData?.length ?? 0) > 0 &&
+        !isCheckoutAttemptId(input.intakeUploadSessionId)
+      ) {
+        return {
+          outcome: "failed",
+          message: CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
+        };
+      }
       try {
         checkoutAttemptId = checkoutAttemptTracker.idFor({
           eventId: input.eventId,
@@ -715,7 +727,10 @@ export const useNativeCheckoutFlow = (): ((
               : input.lines,
           // ORCH-1016: trip intake answers → orders.intake_form_data.
           ...(input.intakeFormData && input.intakeFormData.length > 0
-            ? { intake_form_data: input.intakeFormData }
+            ? {
+              intake_form_data: input.intakeFormData,
+              intake_upload_session_id: input.intakeUploadSessionId,
+            }
             : {}),
           ...(input.taxCalculationId ? { taxCalculationId: input.taxCalculationId } : {}),
           // ORCH-1072: forward the chosen occurrence only when present — the

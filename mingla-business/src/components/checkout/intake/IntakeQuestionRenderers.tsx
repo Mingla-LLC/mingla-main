@@ -617,10 +617,12 @@ export const IntakeQuestionNumber: React.FC<IntakeQuestionNumberProps> = ({
 // ---------------------------------------------------------------------------
 
 export type UploadIntakeFile = (file: {
+  questionId: string;
   filename: string;
   mime_type: string;
   size_bytes: number;
   body: Blob | ArrayBuffer | Uint8Array;
+  replaceClaimId?: string;
 }) => Promise<IntakeFileAnswer>;
 
 export interface IntakeQuestionFileUploadProps
@@ -629,6 +631,7 @@ export interface IntakeQuestionFileUploadProps
   onChange: (next: IntakeFileAnswer[]) => void;
   /** Upload callback the route wires to intakeSchemaService.uploadIntakeFile. */
   onUpload: UploadIntakeFile;
+  onRemove: (claimId: string) => Promise<void>;
 }
 
 interface UploadingFile {
@@ -636,6 +639,7 @@ interface UploadingFile {
   filename: string;
   mime_type: string;
   size_bytes: number;
+  body: Blob | ArrayBuffer | Uint8Array;
   status: "uploading" | "failed";
   errorMessage?: string;
 }
@@ -648,7 +652,7 @@ function formatBytes(n: number): string {
 
 export const IntakeQuestionFileUpload: React.FC<
   IntakeQuestionFileUploadProps
-> = ({ question, value, onChange, error, disabled = false, onUpload }) => {
+> = ({ question, value, onChange, error, disabled = false, onUpload, onRemove }) => {
   const maxFiles = question.max_files ?? 1;
   const allowImages = question.allow_images !== false;
   const allowPdfs = question.allow_pdfs !== false;
@@ -665,6 +669,7 @@ export const IntakeQuestionFileUpload: React.FC<
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const [uploading, setUploading] = useState<UploadingFile[]>([]);
   const [removeArmed, setRemoveArmed] = useState<Record<string, boolean>>({});
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const handlePicked = useCallback(
     async (picked: {
@@ -682,12 +687,19 @@ export const IntakeQuestionFileUpload: React.FC<
           filename: picked.filename,
           mime_type: picked.mime_type,
           size_bytes: picked.size_bytes,
+          body: picked.body,
           status: "uploading",
         },
       ]);
       try {
-        const result = await onUpload(picked);
-        onChange([...value, result]);
+        const result = await onUpload({
+          ...picked,
+          questionId: question.id,
+          ...(maxFiles === 1 && value[0]?.claim_id
+            ? { replaceClaimId: value[0].claim_id }
+            : {}),
+        });
+        onChange(maxFiles === 1 ? [result] : [...value, result]);
         setUploading((prev) => prev.filter((u) => u.tempId !== tempId));
       } catch (e) {
         setUploading((prev) =>
@@ -706,30 +718,72 @@ export const IntakeQuestionFileUpload: React.FC<
         );
       }
     },
-    [onUpload, onChange, value],
+    [maxFiles, onUpload, onChange, question.id, value],
   );
 
-  const handleRetry = useCallback((tempId: string) => {
-    setUploading((prev) => prev.filter((u) => u.tempId !== tempId));
-  }, []);
+  const handleRetry = useCallback(async (tempId: string): Promise<void> => {
+    const pending = uploading.find((item) => item.tempId === tempId);
+    if (pending === undefined) return;
+    setUploading((prev) => prev.map((item) =>
+      item.tempId === tempId
+        ? { ...item, status: "uploading", errorMessage: undefined }
+        : item
+    ));
+    try {
+      const result = await onUpload({
+        questionId: question.id,
+        filename: pending.filename,
+        mime_type: pending.mime_type,
+        size_bytes: pending.size_bytes,
+        body: pending.body,
+        ...(maxFiles === 1 && value[0]?.claim_id
+          ? { replaceClaimId: value[0].claim_id }
+          : {}),
+      });
+      onChange(maxFiles === 1 ? [result] : [...value, result]);
+      setUploading((prev) => prev.filter((item) => item.tempId !== tempId));
+    } catch (retryFailure) {
+      setUploading((prev) => prev.map((item) =>
+        item.tempId === tempId
+          ? {
+            ...item,
+            status: "failed",
+            errorMessage: retryFailure instanceof Error
+              ? retryFailure.message
+              : "Upload failed. Try again.",
+          }
+          : item
+      ));
+    }
+  }, [maxFiles, onChange, onUpload, question.id, uploading, value]);
 
   const handleRemoveTap = useCallback(
-    (path: string): void => {
-      if (!removeArmed[path]) {
-        setRemoveArmed({ [path]: true });
+    (claimId: string): void => {
+      if (!removeArmed[claimId]) {
+        setRemoveError(null);
+        setRemoveArmed({ [claimId]: true });
         return;
       }
-      onChange(value.filter((f) => f.path !== path));
-      setRemoveArmed({});
+      void onRemove(claimId).then(() => {
+        onChange(value.filter((f) => f.claim_id !== claimId));
+        setRemoveArmed({});
+        setRemoveError(null);
+      }).catch((removeFailure: unknown) => {
+        setRemoveError(
+          removeFailure instanceof Error
+            ? removeFailure.message
+            : "The file couldn’t be removed. Try again.",
+        );
+      });
     },
-    [removeArmed, onChange, value],
+    [removeArmed, onChange, onRemove, value],
   );
 
   const totalCount = value.length + uploading.length;
   const canAdd = totalCount < maxFiles;
 
   return (
-    <IntakeQuestionShell question={question} error={error}>
+    <IntakeQuestionShell question={question} error={error ?? removeError ?? undefined}>
       {totalCount === 0 ? (
         <GlassCard variant="base" padding={spacing.lg} radius="lg">
           <View style={styles.uploadEmpty}>
@@ -764,10 +818,11 @@ export const IntakeQuestionFileUpload: React.FC<
       ) : (
         <View style={styles.uploadFilled}>
           {value.map((file) => {
-            const armed = removeArmed[file.path] === true;
+            const claimId = file.claim_id ?? "";
+            const armed = removeArmed[claimId] === true;
             return (
               <GlassCard
-                key={file.path}
+                key={claimId}
                 variant="base"
                 padding={spacing.sm}
                 radius="md"
@@ -787,14 +842,14 @@ export const IntakeQuestionFileUpload: React.FC<
                       numberOfLines={1}
                       ellipsizeMode="middle"
                     >
-                      {file.filename}
+                      Uploaded file
                     </Text>
                     <Text style={styles.fileMeta}>
                       {formatBytes(file.size_bytes)} · uploaded
                     </Text>
                   </View>
                   <Pressable
-                    onPress={() => handleRemoveTap(file.path)}
+                    onPress={() => handleRemoveTap(claimId)}
                     disabled={disabled}
                     accessibilityRole="button"
                     accessibilityLabel={
@@ -859,7 +914,7 @@ export const IntakeQuestionFileUpload: React.FC<
                       : `${u.errorMessage ?? "Upload failed"} · `}
                     {u.status === "failed" ? (
                       <Text
-                        onPress={() => handleRetry(u.tempId)}
+                        onPress={() => void handleRetry(u.tempId)}
                         style={styles.retryLink}
                       >
                         Retry
@@ -920,6 +975,7 @@ export interface IntakeFormRendererProps {
   disabled?: boolean;
   /** Upload callback wired to intakeSchemaService.uploadIntakeFile by the route. */
   onUpload: UploadIntakeFile;
+  onRemove: (claimId: string) => Promise<void>;
 }
 
 export const IntakeFormRenderer: React.FC<IntakeFormRendererProps> = ({
@@ -931,6 +987,7 @@ export const IntakeFormRenderer: React.FC<IntakeFormRendererProps> = ({
   validationErrors,
   disabled = false,
   onUpload,
+  onRemove,
 }) => {
   void ticketTypeId;
   void tierName;
@@ -1031,8 +1088,7 @@ export const IntakeFormRenderer: React.FC<IntakeFormRendererProps> = ({
                   (x) =>
                     typeof x === "object" &&
                     x !== null &&
-                    "path" in x &&
-                    "filename" in x,
+                    "claim_id" in x,
                 ) as IntakeFileAnswer[])
               : [];
             return (
@@ -1044,6 +1100,7 @@ export const IntakeFormRenderer: React.FC<IntakeFormRendererProps> = ({
                 error={error}
                 disabled={disabled}
                 onUpload={onUpload}
+                onRemove={onRemove}
               />
             );
           }

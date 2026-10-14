@@ -121,13 +121,15 @@ import {
 } from "../../payments/explorerCheckoutContact.mjs";
 import {
   ConsumerIntakeForm,
-  tierHasUnsupportedRequired,
 } from "./ConsumerIntakeForm";
 import {
   buildIntakeFormData,
+  createIntakeUploadSessionId,
+  revokeTripIntakeFileClaim,
   type IntakeAnswerValue,
   type IntakeFormData,
   type IntakeSchema,
+  uploadTripIntakeFile,
   validateAnswerAgainstSchema,
 } from "../../services/tripIntakeSchemaService";
 
@@ -288,6 +290,8 @@ export interface TicketCartCheckoutPayload {
    * schema (the common case) so non-intake checkouts add nothing to the body.
    */
   intakeFormData: IntakeFormData[];
+  /** Private upload draft bound server-side to accepted file claims. */
+  intakeUploadSessionId?: string;
   /** #2230: omitted for every single-date/trip/experience checkout. */
   eventDateIds?: string[];
 }
@@ -458,6 +462,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const [intakeErrors, setIntakeErrors] = useState<
     Record<string, Record<string, string>>
   >({});
+  const intakeUploadSessionRef = React.useRef<string>(
+    createIntakeUploadSessionId(),
+  );
   const lastOpenSeedRef = React.useRef<string | null>(null);
   const contactOpenSeededRef = React.useRef<boolean>(false);
   const initialContactValidation = useMemo(
@@ -533,14 +540,6 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           t !== null,
       );
   }, [lines, intakeSchemasByTier]);
-
-  // True when a selected tier requires something this surface can't collect
-  // (a required file_upload) — keeps the CTA disabled with a clear message
-  // instead of letting the buyer hit a server-side 400.
-  const hasUnsupportedRequired = useMemo<boolean>(
-    () => selectedSchemaTiers.some((t) => tierHasUnsupportedRequired(t.schema)),
-    [selectedSchemaTiers],
-  );
 
   // ORCH-1025 — all-in pricing, derived ONLY from server data (G-1 WYSIWYP / G-3
   // no fabricated numbers). For each cart line we read the tier's server-computed
@@ -747,6 +746,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       setHighlightUnchosen(false);
       setIntakeAnswers({});
       setIntakeErrors({});
+      intakeUploadSessionRef.current = createIntakeUploadSessionId();
     }
   }, [
     visible,
@@ -857,7 +857,6 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       }
     }
     if (totals.isEmpty) return;
-    if (hasUnsupportedRequired) return;
     if (!contactValidation.isValid || contactEditorVisible) {
       const validation = contactEditorVisible
         ? contactDraftValidation
@@ -954,6 +953,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       buyer: contactValidation.normalized,
       totalCents: pricing.allInCents,
       intakeFormData,
+      ...(intakeFormData.length > 0
+        ? { intakeUploadSessionId: intakeUploadSessionRef.current }
+        : {}),
       // ⚠️ DELETE THIS AND every Explorer pass mints undated, admitting on
       // any day and inflating every day's roster (#2230 F-3/F-4).
       ...(selectedEventDateIds.length > 0
@@ -963,7 +965,6 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   }, [
     totals.isEmpty,
     isSubmitting,
-    hasUnsupportedRequired,
     contactValidation,
     contactDraftValidation,
     contactEditorVisible,
@@ -1027,8 +1028,6 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     ? "Pick at least one day above"
     : totals.isEmpty
     ? "Add tickets above"
-    : hasUnsupportedRequired
-    ? "Reserve on web to continue"
     : totals.isFree
     ? "Claim Free Ticket"
     : "Continue to Payment";
@@ -1036,12 +1035,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     dayTruthUnavailable ||
     (!missingRequiredDay && totals.isEmpty) ||
     isSubmitting ||
-    hasUnsupportedRequired ||
     contactEditorVisible ||
     !contactValidation.isValid ||
     !termsAccepted;
   const ctaPressDisabled =
-    isSubmitting || hasUnsupportedRequired || dayTruthUnavailable ||
+    isSubmitting || dayTruthUnavailable ||
     (!missingRequiredDay && totals.isEmpty);
 
   // issue #2265 — the pending vocabulary. The old treatment was a bare spinner
@@ -1523,6 +1521,17 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                 onAnswersChange={(next) => setTierAnswers(tier.tierId, next)}
                 validationErrors={intakeErrors[tier.tierId]}
                 disabled={isSubmitting}
+                onUpload={(file) => uploadTripIntakeFile({
+                  eventId,
+                  ticketTypeId: tier.tierId,
+                  schemaVersionId: tier.schema.schema_version_id,
+                  uploadSessionId: intakeUploadSessionRef.current,
+                  ...file,
+                })}
+                onRemove={(claimId) => revokeTripIntakeFileClaim({
+                  claimId,
+                  uploadSessionId: intakeUploadSessionRef.current,
+                })}
               />
             ))}
           </View>
