@@ -90,8 +90,11 @@ import {
 } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import {
+  cancelDoneToast,
   cancelEventDialogDescription,
   cancelEventDoneToast,
+  cancelWithSalesDescription,
+  knownPaidOrderCount,
   nothingSoldIsKnown,
 } from "../../../src/utils/cancelEventCopy";
 import { useOfferingPayoutMoney } from "../../../src/hooks/useOfferingPayoutMoney";
@@ -367,6 +370,8 @@ export default function EventDetailScreen(): React.ReactElement {
   // #3645 — "is it known that nothing was sold?" is worked out further down
   // (it needs the orders read); the cancel handler reads the latest answer.
   const nothingSoldRef = useRef<boolean>(false);
+  // #3645 — paid orders the cancel queues for refund; null = not known.
+  const paidOrderCountRef = useRef<number | null>(null);
   const handleCancelConfirm = useCallback(async (): Promise<void> => {
     if (id === null) return;
     if (isServerBackedEvent) {
@@ -378,7 +383,9 @@ export default function EventDetailScreen(): React.ReactElement {
           brandId: event.brandId,
         });
         setCancelDialogVisible(false);
-        showToast("Event cancelled.");
+        // #3645 — "Refunds are with Mingla for review" only when paid orders
+        // are known to exist; otherwise the plain confirmation.
+        showToast(cancelDoneToast(paidOrderCountRef.current));
         // ORCH-0862: do NOT navigate post-cancel. Re-rendering in place via
         // the cache-invalidate refetch avoids the iOS UIKit dismiss-race
         // freeze (the prior post-cancel route swap raced the 200ms Modal
@@ -399,14 +406,9 @@ export default function EventDetailScreen(): React.ReactElement {
       cancelledAt: new Date().toISOString(),
     });
     setCancelDialogVisible(false);
-    // [TRANSITIONAL] Buyer email cascade is a no-op stub — B-cycle
-    // wires Resend + auto-refund triggers.
-    showToast(
-      cancelEventDoneToast(
-        nothingSoldRef.current,
-        "Event cancelled. Buyers will be refunded when emails wire up (B-cycle).",
-      ),
-    );
+    // #3645 — an event that only exists on this device has no orders on
+    // Mingla, so there is nothing to refund and nothing more to say.
+    showToast(cancelEventDoneToast(nothingSoldRef.current, "Event cancelled."));
     // ORCH-0862: see comment above — no navigation; screen re-renders in place.
   }, [id, isServerBackedEvent, event, cancelServerEvent, updateLifecycle, showToast]);
 
@@ -499,9 +501,14 @@ export default function EventDetailScreen(): React.ReactElement {
     doorSoldCount,
     doorSalesEnabled: event?.inPersonPaymentsEnabled === true,
   });
+  const paidOrderCount = knownPaidOrderCount(
+    eventOrdersQuery.status,
+    allOrderEntries,
+  );
   useEffect(() => {
     nothingSoldRef.current = nothingSold;
-  }, [nothingSold]);
+    paidOrderCountRef.current = paidOrderCount;
+  }, [nothingSold, paidOrderCount]);
   const moneySummary = useMemo(
     () =>
       summarizeEventMoney({
@@ -1152,7 +1159,7 @@ export default function EventDetailScreen(): React.ReactElement {
         title="Cancel this event?"
         description={cancelEventDialogDescription(
           nothingSold,
-          "This is serious. Buyers will be notified by email and refunded automatically when those wire up (B-cycle). You can't undo this.",
+          cancelWithSalesDescription(paidOrderCount),
         )}
         variant="typeToConfirm"
         confirmText={event.name.trim().length > 0 ? event.name : event.eventSlug}

@@ -299,7 +299,7 @@ export const InviteScannerSheet: React.FC<InviteScannerSheetProps> = ({
             <View style={styles.toggleCol}>
               <Text style={styles.toggleLabel}>Accept payments at the door</Text>
               <Text style={styles.toggleSubline}>
-                Cash and manual payments. Card reader and NFC tap-to-pay land in B-cycle.
+                Cash and manual payments. Card reader and NFC tap-to-pay are not available yet.
               </Text>
             </View>
             <Pressable
