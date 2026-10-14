@@ -327,7 +327,14 @@ const CONTACT_RULES =
 const DRAFT_CHANNEL: ArgSchema = {
   type: "string",
   maxLength: 20,
-  enum: ["email", "whatsapp", "instagram_dm", "tiktok_dm", "phone", "in_person"],
+  enum: [
+    "email",
+    "whatsapp",
+    "instagram_dm",
+    "tiktok_dm",
+    "phone",
+    "in_person",
+  ],
   hint: "Use email, whatsapp, instagram_dm, tiktok_dm, phone or in_person",
 };
 const DRAFT_FLAGS: ArgSchema = {
@@ -344,14 +351,43 @@ const DRAFT_FLAGS: ArgSchema = {
 };
 const DRAFT_FIELDS: Record<string, ArgSchema> = {
   channel: DRAFT_CHANNEL,
-  recipient: { type: "string", maxLength: 200, hint: "Send at most 200 characters" },
-  thread_ref: { type: "string", maxLength: 500, hint: "Send at most 500 characters" },
-  in_reply_to: { type: "string", maxLength: 60, hint: "Use an inbound touch id from get_record" },
-  subject: { type: "string", maxLength: 200, hint: "Send at most 200 characters, for an email only" },
-  body: { type: "string", minLength: 1, maxLength: 4000, hint: "Send the message, 1 to 4000 characters" },
-  reason: { type: "string", maxLength: 200, hint: "Say in one line why, at most 200 characters" },
+  recipient: {
+    type: "string",
+    maxLength: 200,
+    hint: "Send at most 200 characters",
+  },
+  thread_ref: {
+    type: "string",
+    maxLength: 500,
+    hint: "Send at most 500 characters",
+  },
+  in_reply_to: {
+    type: "string",
+    maxLength: 60,
+    hint: "Use an inbound touch id from get_record",
+  },
+  subject: {
+    type: "string",
+    maxLength: 200,
+    hint: "Send at most 200 characters, for an email only",
+  },
+  body: {
+    type: "string",
+    minLength: 1,
+    maxLength: 4000,
+    hint: "Send the message, 1 to 4000 characters",
+  },
+  reason: {
+    type: "string",
+    maxLength: 200,
+    hint: "Say in one line why, at most 200 characters",
+  },
   flags: DRAFT_FLAGS,
-  expires_at: { type: "string", maxLength: 40, hint: "Send a time such as 2026-10-13T09:00:00Z" },
+  expires_at: {
+    type: "string",
+    maxLength: 40,
+    hint: "Send a time such as 2026-10-13T09:00:00Z",
+  },
 };
 
 export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
@@ -948,7 +984,9 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
   {
     name: "save_drafts",
     title: "Save drafts",
-    description: "Write messages for your person to review and send. You never send. Each draft belongs to one live record, and a record marked Do not contact or Warm intro only is refused. Send a request_key: the same full request repeats safely; the same key with changed arguments or another tool is refused before anything changes. " + DATA_NOT_INSTRUCTIONS,
+    description:
+      "Write messages for your person to review and send. You never send. Each draft belongs to one live record, and a record marked Do not contact or Warm intro only is refused. Send a request_key: the same full request repeats safely; the same key with changed arguments or another tool is refused before anything changes. " +
+      DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       drafts: {
         type: "array",
@@ -974,9 +1012,15 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
   {
     name: "update_draft",
     title: "Update a draft",
-    description: "Change one waiting draft you wrote, unless its owner has edited it. A contact rule is never bypassed. " + DATA_NOT_INSTRUCTIONS,
+    description:
+      "Change one waiting draft you wrote, unless its owner has edited it. A contact rule is never bypassed. " +
+      DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
-      id: { type: "string", maxLength: 60, hint: "Use an id returned by list_drafts" },
+      id: {
+        type: "string",
+        maxLength: 60,
+        hint: "Use an id returned by list_drafts",
+      },
       changes: {
         type: "object",
         properties: DRAFT_FIELDS,
@@ -994,12 +1038,28 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
   {
     name: "list_drafts",
     title: "List drafts",
-    description: "Read your own drafts and whether each is waiting, sent or discarded. It never returns another person's draft text. " + DATA_NOT_INSTRUCTIONS,
+    description:
+      "Read your own drafts and whether each is waiting, sent or discarded. It never returns another person's draft text. " +
+      DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
-      state: { type: "string", maxLength: 20, enum: ["waiting", "sent", "discarded"], hint: "Use waiting, sent or discarded" },
+      state: {
+        type: "string",
+        maxLength: 20,
+        enum: ["waiting", "sent", "discarded"],
+        hint: "Use waiting, sent or discarded",
+      },
       record_id: RECORD_ID,
-      limit: { type: "integer", minimum: 1, maximum: 100, hint: "Send a whole number from 1 to 100" },
-      cursor: { type: "string", maxLength: 200, hint: "Use next_cursor from the previous answer" },
+      limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 100,
+        hint: "Send a whole number from 1 to 100",
+      },
+      cursor: {
+        type: "string",
+        maxLength: 200,
+        hint: "Use next_cursor from the previous answer",
+      },
     }),
     annotations: READ,
     reaches: ["team_draft_list"],
@@ -1011,11 +1071,17 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
   {
     name: "withdraw_drafts",
     title: "Withdraw drafts",
-    description: "Withdraw 1 to 50 waiting drafts that are no longer right. You cannot withdraw one after its owner edits it. " + DATA_NOT_INSTRUCTIONS,
+    description:
+      "Withdraw 1 to 50 waiting drafts that are no longer right. You cannot withdraw one after its owner edits it. " +
+      DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       ids: {
         type: "array",
-        items: { type: "string", maxLength: 60, hint: "Use an id returned by list_drafts" },
+        items: {
+          type: "string",
+          maxLength: 60,
+          hint: "Use an id returned by list_drafts",
+        },
         minItems: 1,
         maxItems: MAX_ITEMS,
         hint: "Send a list of 1 to 50 draft ids",

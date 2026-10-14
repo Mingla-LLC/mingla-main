@@ -407,11 +407,36 @@ $ta3$;
 -- ---------------------------------------------------------------------------
 -- TA-4 — the agent reads exactly what the same person reads on screen.
 -- ---------------------------------------------------------------------------
+-- Give every role a distinct private waiting count. The connector summary may
+-- expose only that number for its own person, never a draft's text or another
+-- person's number.
+insert into public.team_drafts (
+  owner_email, record_id, channel, subject, body, original_body, created_via, request_key
+)
+select p.email,
+       ('38020000-0000-4000-f500-' || lpad(g::text, 12, '0'))::uuid,
+       'email',
+       'Issue3802ta private draft ' || p.who || ' ' || g,
+       'Issue3802ta private draft body ' || p.who || ' ' || g,
+       'Issue3802ta private draft body ' || p.who || ' ' || g,
+       'claude',
+       't3802ta-draft-' || p.who || '-' || g
+from (values
+  ('growth',  'issue3802ta-growth@test.local',  1),
+  ('partner', 'issue3802ta-partner@test.local', 2),
+  ('admin',   'issue3802ta-admin@test.local',   3),
+  ('owner',   'issue3802ta-owner@test.local',   4)
+) p(who, email, waiting),
+lateral generate_series(1, p.waiting) g;
+
 do $ta4$
 declare
   v text;
   v_screen jsonb;
   v_agent jsonb;
+  v_drafts integer;
+  v_other_drafts integer;
+  v_other text;
   v_ids text[];
   v_seen text[] := array[]::text[];
   v_cursor text;
@@ -440,10 +465,18 @@ begin
     perform pg_temp.t3802ta_ok('TA-4', w || ': no deleted record is found',
       not exists (select 1 from jsonb_array_elements(v_agent #> '{result,records}') a
                    join public.crm_records c on c.id = (a ->> 'id')::uuid where c.deleted_at is not null));
-    v_screen := pg_temp.t3802ta_as(w, $q$select public.crm_home_summary(null)::text$q$)::jsonb;
+    v_drafts := pg_temp.t3802ta_as(w, $q$select public.team_draft_counts() ->> 'waiting'$q$)::integer;
+    v_other := case w when 'growth' then 'partner' when 'partner' then 'admin' when 'admin' then 'owner' else 'growth' end;
+    v_other_drafts := pg_temp.t3802ta_as(v_other, $q$select public.team_draft_counts() ->> 'waiting'$q$)::integer;
+    v_screen := pg_temp.t3802ta_as(w, $q$select public.crm_home_summary(null)::text$q$)::jsonb
+      || jsonb_build_object('drafts_waiting', v_drafts);
     v_agent := pg_temp.t3802ta_gw(w || '.claude', 'my_day')::jsonb;
-    perform pg_temp.t3802ta_ok('TA-4', w || ': "my day" is the same answer the home screen gets',
-      v_agent -> 'result' = v_screen, left((v_agent -> 'error')::text, 200));
+    perform pg_temp.t3802ta_ok('TA-4', w || ': "my day" is the screen plus only this person''s draft count and no draft text',
+      v_agent -> 'result' = v_screen
+      and (v_agent #>> '{result,drafts_waiting}')::integer = v_drafts
+      and v_drafts <> v_other_drafts
+      and v_agent::text not like '%Issue3802ta private draft%',
+      left(coalesce((v_agent -> 'error')::text, v_agent::text), 200));
   end loop;
 
   -- Each filter against the same rule applied to what the screen lists.
@@ -853,6 +886,8 @@ declare
   d_west date := (clock_timestamp() at time zone 'Etc/GMT+12')::date;           -- 12 hours behind UTC
   d_utc  date := (clock_timestamp() at time zone 'UTC')::date;
   v_screen jsonb;
+  v_drafts integer;
+  v_other_drafts integer;
   z text;
 begin
   -- A record due on each of the three dates that can be "today" somewhere.
@@ -879,10 +914,22 @@ begin
     v_east -> 'dates' = jsonb_build_object('today', d_east, 'time_zone', 'Pacific/Kiritimati', 'zone_from', 'your key', 'date_from', 'the clock'),
     (v_east -> 'dates')::text);
   -- The same person, on screen, at this instant, in each of those places.
-  v_screen := pg_temp.t3802ta_as('partner', format('select public.crm_home_summary(%L)::text', d_east))::jsonb;
-  perform pg_temp.t3802ta_ok('TA-10', 'east of the date line the agent and the screen give one answer', v_east -> 'result' = v_screen);
-  v_screen := pg_temp.t3802ta_as('partner', format('select public.crm_home_summary(%L)::text', d_west))::jsonb;
-  perform pg_temp.t3802ta_ok('TA-10', 'west of it too', v_west -> 'result' = v_screen);
+  v_drafts := pg_temp.t3802ta_as('partner', $q$select public.team_draft_counts() ->> 'waiting'$q$)::integer;
+  v_other_drafts := pg_temp.t3802ta_as('owner', $q$select public.team_draft_counts() ->> 'waiting'$q$)::integer;
+  v_screen := pg_temp.t3802ta_as('partner', format('select public.crm_home_summary(%L)::text', d_east))::jsonb
+    || jsonb_build_object('drafts_waiting', v_drafts);
+  perform pg_temp.t3802ta_ok('TA-10', 'east of the date line the agent matches its person''s screen and private count only',
+    v_east -> 'result' = v_screen
+    and (v_east #>> '{result,drafts_waiting}')::integer = v_drafts
+    and v_drafts <> v_other_drafts
+    and v_east::text not like '%Issue3802ta private draft%');
+  v_screen := pg_temp.t3802ta_as('partner', format('select public.crm_home_summary(%L)::text', d_west))::jsonb
+    || jsonb_build_object('drafts_waiting', v_drafts);
+  perform pg_temp.t3802ta_ok('TA-10', 'west of it too, with no other person''s count or any draft text',
+    v_west -> 'result' = v_screen
+    and (v_west #>> '{result,drafts_waiting}')::integer = v_drafts
+    and v_drafts <> v_other_drafts
+    and v_west::text not like '%Issue3802ta private draft%');
   perform pg_temp.t3802ta_ok('TA-10', 'and the two answers differ, because the day differs', v_east -> 'result' <> v_west -> 'result');
 
   -- find_records measures "due" from the same date.

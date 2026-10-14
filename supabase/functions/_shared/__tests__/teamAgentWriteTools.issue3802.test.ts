@@ -55,8 +55,18 @@ const NEW_TOOLS = [
   "log_activity",
   "record_reply",
 ];
-const DRAFT_TOOLS = ["save_drafts", "update_draft", "list_drafts", "withdraw_drafts"];
-const WRITES = [...NEW_TOOLS.slice(1), "save_drafts", "update_draft", "withdraw_drafts"];
+const DRAFT_TOOLS = [
+  "save_drafts",
+  "update_draft",
+  "list_drafts",
+  "withdraw_drafts",
+];
+const WRITES = [
+  ...NEW_TOOLS.slice(1),
+  "save_drafts",
+  "update_draft",
+  "withdraw_drafts",
+];
 
 function tool(name: string) {
   const t = findTool(name);
@@ -629,7 +639,9 @@ Deno.test("#3802 W-4: every refusal a write tool can be given leaves in plain wo
 
 Deno.test("#3802 W-5: every function a screen calls has an agent tool, or a written reason it has none", () => {
   const called = new Set<string>();
-  for (const file of ["crmService.js", "teamAgentService.js", "draftService.js"]) {
+  for (
+    const file of ["crmService.js", "teamAgentService.js", "draftService.js"]
+  ) {
     const src = read(`../../../../mingla-admin/src/services/${file}`);
     for (const m of src.matchAll(/\.rpc\(\s*"([a-z_]+)"/g)) called.add(m[1]);
   }

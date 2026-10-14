@@ -1704,7 +1704,10 @@ Deno.test("#3802 U-11: no tool deletes, sends, or reaches a key function, and th
   }
   // This migration carries the earlier self-checks forward after PR-C's own
   // check. Only the implementation prefix is the delivery-surface contract.
-  const withoutChecks = MIGRATION.slice(0, MIGRATION.indexOf("DO $draftcheck$"));
+  const withoutChecks = MIGRATION.slice(
+    0,
+    MIGRATION.indexOf("DO $draftcheck$"),
+  );
   assert(
     !/net\.http|http_post|pg_net|resend|twilio|onesignal|sendgrid|smtp/i.test(
       withoutChecks,

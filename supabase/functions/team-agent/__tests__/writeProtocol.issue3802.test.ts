@@ -179,32 +179,32 @@ test("#3802 WP-2: with the key from the exchange an agent connects, checks, adds
   assert.equal(check.results[0].record.id, s.ids.alpha);
 
   const addRequest = {
-      pipeline: "hosts",
-      request_key: "issue3802w-add-01",
-      records: [
-        {
-          name: "issue3802w-Tour One",
-          icp: "experience_host",
-          identifiers: [
-            { kind: "handle", value: "@issue3802w.tour" },
-            { kind: "phone", value: "+1 919 555 0103" },
-          ],
-          first_touch: {
-            channel: "instagram_dm",
-            direction: "outbound",
-            body: "Hi, quick question about your tours.",
-          },
+    pipeline: "hosts",
+    request_key: "issue3802w-add-01",
+    records: [
+      {
+        name: "issue3802w-Tour One",
+        icp: "experience_host",
+        identifiers: [
+          { kind: "handle", value: "@issue3802w.tour" },
+          { kind: "phone", value: "+1 919 555 0103" },
+        ],
+        first_touch: {
+          channel: "instagram_dm",
+          direction: "outbound",
+          body: "Hi, quick question about your tours.",
         },
-        {
-          name: "issue3802w-Tour Two",
-          identifiers: [{
-            kind: "handle",
-            value: "instagram.com/Issue3802w.Tour",
-          }],
-        },
-        { name: "issue3802w-host alpha" },
-        { name: "issue3802w-Bad", icp: "ambassador" },
-      ],
+      },
+      {
+        name: "issue3802w-Tour Two",
+        identifiers: [{
+          kind: "handle",
+          value: "instagram.com/Issue3802w.Tour",
+        }],
+      },
+      { name: "issue3802w-host alpha" },
+      { name: "issue3802w-Bad", icp: "ambassador" },
+    ],
   };
   const added = out(await call(key, "add_records", addRequest));
   assert.deepEqual(added.counts, {
@@ -238,7 +238,10 @@ test("#3802 WP-2: with the key from the exchange an agent connects, checks, adds
     records: [{ name: "issue3802w-Tour Three" }],
   });
   assert.equal(reused.json.result.isError, true);
-  assert.equal(reused.json.result.structuredContent.error.token, "request_key_reused");
+  assert.equal(
+    reused.json.result.structuredContent.error.token,
+    "request_key_reused",
+  );
   assert.equal(
     reused.json.result.structuredContent.error.message,
     "That request_key was already used for a different request. Nothing was changed. Use a new key.",
