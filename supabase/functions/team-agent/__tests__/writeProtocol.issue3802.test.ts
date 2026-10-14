@@ -177,8 +177,7 @@ test("#3802 WP-2: with the key from the exchange an agent connects, checks, adds
   );
   assert.equal(check.results[0].record.id, s.ids.alpha);
 
-  const added = out(
-    await call(key, "add_records", {
+  const addRequest = {
       pipeline: "hosts",
       request_key: "issue3802w-add-01",
       records: [
@@ -205,8 +204,8 @@ test("#3802 WP-2: with the key from the exchange an agent connects, checks, adds
         { name: "issue3802w-host alpha" },
         { name: "issue3802w-Bad", icp: "ambassador" },
       ],
-    }),
-  );
+  };
+  const added = out(await call(key, "add_records", addRequest));
   assert.deepEqual(added.counts, {
     created: 1,
     exists: 2,
@@ -222,15 +221,33 @@ test("#3802 WP-2: with the key from the exchange an agent connects, checks, adds
   made.tour = added.results[0].record.id;
   assert.equal(added.results[0].record.icp, "experience_host");
 
+  // Every record this one matches is weighed, and each is listed.
+  assert.equal(added.results[1].verdict, "exists");
+  assert.equal(added.results[1].matches.length, 1);
+
   // The same request again adds nothing.
-  const replay = out(
-    await call(key, "add_records", {
-      pipeline: "hosts",
-      request_key: "issue3802w-add-01",
-      records: [{ name: "issue3802w-Tour One" }],
-    }),
-  );
+  const replay = out(await call(key, "add_records", addRequest));
   assert.equal(replay.replayed, true);
+  assert.equal(replay.results[0].touch.status, "replayed");
+
+  // The same key with another request is refused whole, and adds nothing.
+  const reused = await call(key, "add_records", {
+    pipeline: "hosts",
+    request_key: "issue3802w-add-01",
+    records: [{ name: "issue3802w-Tour Three" }],
+  });
+  assert.equal(reused.json.result.isError, true);
+  assert.equal(reused.json.result.structuredContent.error.token, "request_key_reused");
+  assert.equal(
+    reused.json.result.structuredContent.error.message,
+    "That request_key was already used for a different request. Nothing was changed. Use a new key.",
+  );
+  assert.deepEqual(
+    await s.sql(
+      "select count(*)::text from public.crm_records where name = 'issue3802w-Tour Three'",
+    ),
+    ["0"],
+  );
 
   const moved = out(
     await call(key, "move_stage", {

@@ -97,10 +97,28 @@ test("#3802 P-1: an agent connects: initialize, the initialized notice, then its
     "log_activity",
     "record_reply",
   ]);
-  assert.equal(names(growth).length, 15);
+  // An admin's list, in the order a client is shown it.
+  assert.deepEqual(names(admin), [
+    "get_started",
+    "my_day",
+    "find_records",
+    "get_record",
+    "check_names",
+    "find_mingla_link",
+    "check_contactable",
+    "list_beta_leads",
+    "team_summary",
+    "add_records",
+    "upsert_record",
+    "update_records",
+    "move_stage",
+    "set_owners",
+    "log_activity",
+    "record_reply",
+  ]);
   assert.deepEqual(
-    [...names(admin)].sort(),
-    [...names(growth), "team_summary"].sort(),
+    names(admin).filter((n: string) => n !== "team_summary"),
+    names(growth),
   );
   assert.equal(
     (await s.rpc(s.keys["growth.claude"], "ping")).json.result !== undefined,
@@ -540,6 +558,22 @@ test("#3802 P-9: the tools that arrive later, and the ones that never will, do n
     "select count(*) || '/' || coalesce(max(updated_at)::text, '') from public.crm_records where created_by like 'issue3802p-%'; select count(*) from public.crm_activity where record_id = :'id';",
     { id: s.ids.alpha },
   );
+  // The seven names this test once refused have arrived: each is a tool now.
+  const listed = (await s.rpc(s.keys["admin.claude"], "tools/list")).json.result
+    .tools.map((t: { name: string }) => t.name);
+  for (
+    const name of [
+      "add_records",
+      "update_records",
+      "move_stage",
+      "set_owners",
+      "log_activity",
+      "record_reply",
+      "check_contactable",
+    ]
+  ) {
+    assert.ok(listed.includes(name), `${name} is a tool now`);
+  }
   for (
     const name of [
       "undo_move",
@@ -549,12 +583,18 @@ test("#3802 P-9: the tools that arrive later, and the ones that never will, do n
       "update_draft",
       "withdraw_drafts",
       "list_drafts",
-      "setup:redeem2",
       "delete_record",
       "restore_record",
       "send_message",
+      "mark_sent",
+      "setup:redeem2",
+      "setup_redeem",
+      "setup",
+      "team_agent_setup_redeem",
+      "team_agent_key_create",
     ]
   ) {
+    assert.equal(listed.includes(name), false, name);
     const r = await call(s.keys["admin.claude"], name, {
       id: s.ids.alpha,
       pipeline: "hosts",
@@ -577,6 +617,62 @@ test("#3802 P-9: the tools that arrive later, and the ones that never will, do n
     { id: s.ids.alpha },
   );
   assert.deepEqual(after, before);
+
+  // The one name the gateway keeps for itself, asked for by its real name
+  // against the real database. It is not a tool: with a working key the
+  // connector refuses it like any other name that is not one.
+  const keysBefore = await s.sql(
+    "select count(*) || '/' || count(*) filter (where revoked_at is null) from public.team_agent_keys where owner_email = :'e'; select count(*) from public.team_agent_setup_codes where owner_email = :'e';",
+    { e: s.emails.admin },
+  );
+  const reserved = await call(s.keys["admin.claude"], "setup:redeem", {});
+  assert.equal(reserved.json.error.code, -32602);
+  assert.equal(
+    reserved.json.error.message,
+    "That tool does not exist. Call tools/list to see what is available.",
+  );
+  // Handed to the gateway itself with a key's digest, it makes nothing: a key
+  // is not a setup code.
+  assert.deepEqual(
+    await s.gateway(s.keys["admin.claude"], "setup:redeem", {}),
+    { setup: "invalid" },
+  );
+  // A real setup code presented as if it were a key, asking for that name:
+  // refused like any key that cannot be used, and the code is still unused.
+  const minted = JSON.parse(
+    await s.asPerson(
+      "admin",
+      "select public.team_agent_setup_create('codex')::text",
+    ),
+  );
+  const asKey = await s.rpc(minted.code, "tools/call", {
+    name: "setup:redeem",
+    arguments: {},
+  });
+  assert.equal(asKey.status, 401);
+  assert.deepEqual(
+    await s.sql(
+      "select (consumed_at is null)::text || '/' || (voided_at is null)::text from public.team_agent_setup_codes where id = :'id'; select count(*) from public.team_agent_keys where owner_email = :'e' and agent = 'codex';",
+      { id: minted.id, e: s.emails.admin },
+    ),
+    ["true/true", "0"],
+  );
+  // Through all of that the person's keys are as they were, and their key works.
+  await s.sql(
+    "delete from public.team_agent_setup_codes where id = :'id';",
+    { id: minted.id },
+  );
+  assert.deepEqual(
+    await s.sql(
+      "select count(*) || '/' || count(*) filter (where revoked_at is null) from public.team_agent_keys where owner_email = :'e'; select count(*) from public.team_agent_setup_codes where owner_email = :'e';",
+      { e: s.emails.admin },
+    ),
+    keysBefore,
+  );
+  assert.equal(
+    (await s.rpc(s.keys["admin.claude"], "ping")).json.result !== undefined,
+    true,
+  );
 });
 
 test("#3802 P-10: an agent's today is the date on its person's screen, and every date answer says which date and zone it used", async () => {

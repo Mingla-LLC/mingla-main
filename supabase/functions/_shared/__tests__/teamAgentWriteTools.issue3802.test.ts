@@ -542,7 +542,9 @@ Deno.test("#3802 W-4: every refusal a write tool can be given leaves in plain wo
     needs_a_person:
       '"Palm Court" has already been contacted, so a follow-up or an answer is your person\'s to send and log. Tell them what you would say.',
     contact_rule_locked:
-      "Only a person can lift or loosen a contact rule. Tell your person why you think it should change.",
+      '"Palm Court" carries a contact rule, so its name, its contact details, the rule and its reason are a person\'s to change. You can add a contact detail. Tell your person what you would change.',
+    request_key_reused:
+      "That request_key was already used for a different request. Nothing was changed. Use a new key.",
     duplicate_identifier:
       '"@palm.court" already belongs to "Palm Court" in Hosts. Open that record instead.',
     invalid_identifier:
@@ -554,7 +556,7 @@ Deno.test("#3802 W-4: every refusal a write tool can be given leaves in plain wo
     invalid_candidates:
       "Send 1 to 50 candidates, each with a name, identifiers, or both.",
     field_not_for_agents:
-      "Only a person can add a second record that shares a contact detail. Ask your person.",
+      "Only a person can keep a contact detail that another record also holds. Ask your person.",
     request_key_required:
       "Send a request_key (8 to 70 letters, digits, - or _) with this request, and the same one if you repeat it, so a repeat changes nothing.",
     try_again:
@@ -613,7 +615,7 @@ Deno.test("#3802 W-4: every refusal a write tool can be given leaves in plain wo
       "A record marked Do not contact or Warm intro only is not yours to message: say so and stop.",
       "a follow-up or an answer is your person's to send and log.",
       "Always pass the stage you saw when you move a card.",
-      "Send a request_key with every add and every log, and the same key if you repeat the request.",
+      "Send a request_key with every add and every log: a new one for each new request, and the same one only to repeat that same request.",
       "You never send a message and you never delete.",
     ]
   ) {
@@ -742,44 +744,107 @@ Deno.test("#3802 W-6: the manifest and the gateway's list in this migration are 
   assert(!list[1].includes("setup"));
 });
 
-Deno.test("#3802 W-7: when another request of the same key is still running, the agent is told to come back in two seconds", async () => {
-  const handler = createTeamAgentHandler({
-    gateway: () =>
-      Promise.resolve({
-        limited: {
-          retry_after_s: 2,
-          token: "busy",
-          message:
-            "Another request from your agent is still running. Wait 2 seconds, then send this one again. Nothing was lost.",
-        },
-        me: { role: "growth", agent: "claude" },
+Deno.test("#3802 W-7: an answer of 'wait' from the gateway becomes one 429 with the wait in its header, whatever the answer holds", async () => {
+  const FALLBACK =
+    "Your agent has made a lot of requests. Wait a little, then carry on. Nothing was lost.";
+  // What the gateway might answer, and what the handler must make of it. The
+  // sentences below are made up here: nothing is compared with the gateway's
+  // own words (the real ones are asserted against the real database).
+  const cases: {
+    limited: Record<string, unknown>;
+    wait: string;
+    outcome: string;
+    words: string;
+  }[] = [
+    {
+      limited: { retry_after_s: 2, token: "busy", message: "W7 sentence one." },
+      wait: "2",
+      outcome: "busy",
+      words: "W7 sentence one.",
+    },
+    // A part of a second is rounded up, never down to "now".
+    {
+      limited: { retry_after_s: 2.2, token: "busy", message: "" },
+      wait: "3",
+      outcome: "busy",
+      words: FALLBACK,
+    },
+    {
+      limited: { retry_after_s: 0, token: "rate_limited" },
+      wait: "1",
+      outcome: "rate_limited",
+      words: FALLBACK,
+    },
+    // Never more than a day, whatever arrives.
+    {
+      limited: {
+        retry_after_s: 999999999,
+        token: "daily_limit",
+        message: "W7 sentence two.",
+      },
+      wait: "86400",
+      outcome: "daily_limit",
+      words: "W7 sentence two.",
+    },
+    // A token this handler does not know, a wait that is not a number, and a
+    // message that is not text: still one plain answer.
+    {
+      limited: { retry_after_s: "soon", token: "something_new", message: 7 },
+      wait: "1",
+      outcome: "rate_limited",
+      words: FALLBACK,
+    },
+    {
+      limited: { retry_after_s: -5, token: null, message: null },
+      wait: "1",
+      outcome: "rate_limited",
+      words: FALLBACK,
+    },
+  ];
+  for (const c of cases) {
+    let asked = 0;
+    const logs: Record<string, unknown>[] = [];
+    const handler = createTeamAgentHandler({
+      gateway: () => {
+        asked += 1;
+        return Promise.resolve({
+          limited: c.limited,
+          me: { role: "growth", agent: "claude" },
+        });
+      },
+      minRefusalMs: 0,
+      log: (line) => logs.push(line),
+    });
+    const started = Date.now();
+    const res = await handler(
+      new Request(URL_, {
+        method: "POST",
+        headers: { authorization: `Bearer ${KEY}` },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 9,
+          method: "tools/call",
+          params: {
+            name: "set_owners",
+            arguments: { items: [{ id: ID, owner_emails: [] }] },
+          },
+        }),
       }),
-    minRefusalMs: 0,
-    log: (line) => logs.push(line),
-  });
-  const logs: Record<string, unknown>[] = [];
-  const res = await handler(
-    new Request(URL_, {
-      method: "POST",
-      headers: { authorization: `Bearer ${KEY}` },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 9,
-        method: "tools/call",
-        params: {
-          name: "set_owners",
-          arguments: { items: [{ id: ID, owner_emails: [] }] },
-        },
-      }),
-    }),
-  );
-  assertEquals(res.status, 429);
-  assertEquals(res.headers.get("retry-after"), "2");
-  const body = await res.json();
-  assertEquals(body.id, 9);
-  assertEquals(
-    body.error.message,
-    "Another request from your agent is still running. Wait 2 seconds, then send this one again. Nothing was lost.",
-  );
-  assertEquals(logs[0].outcome, "busy");
+    );
+    const label = JSON.stringify(c.limited);
+    assertEquals(res.status, 429, label);
+    assertEquals(res.headers.get("retry-after"), c.wait, label);
+    const body = await res.json();
+    assertEquals(body.id, 9, label);
+    assertEquals(body.result, undefined, label);
+    assertEquals(body.error.code, -32000, label);
+    assertEquals(body.error.message, c.words, label);
+    // The gateway is asked once: the handler neither waits nor asks again.
+    assertEquals(asked, 1, label);
+    assert(Date.now() - started < 1_000, label);
+    // One log line, with what happened and none of the words.
+    assertEquals(logs.length, 1, label);
+    assertEquals(logs[0].outcome, c.outcome, label);
+    assert(!JSON.stringify(logs).includes("W7 sentence"), label);
+  }
 });

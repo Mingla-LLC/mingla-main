@@ -157,7 +157,8 @@ const IDENTIFIERS: ArgSchema = {
         type: "string",
         minLength: 1,
         maxLength: 200,
-        hint: "Send the email, phone number or handle as you found it",
+        hint:
+          "Send the email, phone number or handle as you found it; a handle may be a link to a profile or page, never a site with nothing after it",
       },
       platform: {
         type: "string",
@@ -542,7 +543,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "check_contactable",
     title: "Check who is contactable",
     description:
-      "Before any outreach and before adding anyone: for each of 1 to 50 candidates (a name, identifiers, or both) say whether they are new, already in the pipeline, or marked Do not contact or Warm intro only. A name is matched the way an add matches it; an email, a phone number or a handle is matched in its normal form, so a handle written as a profile address finds the record that stores it with an @, and a phone number is also matched by its last nine digits. Each answer carries the record with its stage, owners, contact rule and reason, last touch and last reply, what matched, and close names. A verdict of invalid means that one candidate could not be read; the others are still answered. Reads only. " +
+      "Before any outreach and before adding anyone: for each of 1 to 50 candidates (a name, identifiers, or both) say whether they are new, already in the pipeline, or marked Do not contact or Warm intro only. A name is matched the way an add matches it; an email, a phone number or a handle is matched in its normal form, so a handle written as a profile address finds the record that stores it with an @, and a phone number is also matched by its last nine digits when one of the two was written without its country code. Every record a candidate matches is weighed: the verdict is the strictest contact rule on any of them, record is that record (with its stage, owners, contact rule and reason, last touch and last reply), and matches lists each match with its own rule and what it matched on, beside close names. A verdict of invalid means that one candidate could not be read; the others are still answered. Reads only. " +
       CONTACT_RULES + " " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
@@ -616,7 +617,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "add_records",
     title: "Add hosts or creators",
     description:
-      "Add 1 to 50 hosts or creators in one request. Each starts in the first stage, owned by your person unless owners says otherwise. A record whose name, email, phone number or handle is already in the pipeline is not added: its result says exists, with the reason (name or identifier), what matched and the record that is there. One item that cannot be read is answered as invalid and never stops the others. first_touch logs the first message your person already sent to a new record; it is logged only when the record was created. Run check_contactable first. Send a request_key: the same key again returns the same answer and adds nothing. " +
+      "Add 1 to 50 hosts or creators in one request. Each starts in the first stage, owned by your person unless owners says otherwise. A record whose name, email, phone number or handle is already in the pipeline is not added: its result says exists, with the reason (name or identifier), what matched and the record that is there; verdict is the strictest contact rule on any record it matches, and matches lists each one. One item that cannot be read is answered as invalid and never stops the others. first_touch logs the first message your person already sent to a new record; it is logged only when the record was created. Run check_contactable first. Send a request_key: the same request with the same key returns the same answer and adds nothing; the same key with anything else is refused whole (request_key_reused). " +
       CONTACT_RULES + " " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
@@ -646,7 +647,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "upsert_record",
     title: "Add or find one, with its touch",
     description:
-      "Add one host or creator, or find the one that is already there by name, email, phone number or handle, and log one touch on it. A record that already exists is never changed by this tool (use update_records); the answer says which record it acted on and why. An outbound touch is logged only as the first message to someone who has never been contacted and carries no contact rule; a reply (inbound) is always logged. Send a request_key: the same key again changes nothing. " +
+      "Add one host or creator, or find the one that is already there by name, email, phone number or handle, and log one touch on it. A record that already exists is never changed by this tool (use update_records); the answer says which record it acted on and why. An outbound touch is logged only as the first message to someone who has never been contacted, and never when any record this one matches carries a contact rule (verdict says which, matches lists them); a reply (inbound) is always logged. Send a request_key: the same request with the same key changes nothing; the same key with anything else is refused whole (request_key_reused). " +
       CONTACT_RULES + " " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
@@ -671,7 +672,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "update_records",
     title: "Update records",
     description:
-      "Change fields of 1 to 50 hosts or creators. Send only what changes; a value of null clears a field; identifiers replaces the whole list. Never the stage (use move_stage) and never the owners (use set_owners). An email, a phone number or a handle that another record holds is refused, naming that record. You may set a contact rule with its reason or make one stricter; only a person can lift or loosen one. Each item has its own answer, and one refused item never stops the others. " +
+      "Change fields of 1 to 50 hosts or creators. Send only what changes; a value of null clears a field; identifiers replaces the whole list. Never the stage (use move_stage) and never the owners (use set_owners). An email, a phone number or a handle that another record holds is refused, naming that record. You may put a contact rule, with its reason, on a record that has none. On a record that already carries one, its name, the contact details it holds, the rule and its reason are your person's to change (contact_rule_locked): you can still add a contact detail, by sending the whole list with the new one added. Each item has its own answer, and one refused item never stops the others. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       updates: {
@@ -781,7 +782,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "log_activity",
     title: "Log notes and touches",
     description:
-      "Add 1 to 50 entries to cards' logs: a note, or a touch (one message, with its channel and direction). Log only what really happened, word for word, one entry per message. You may log a note, a reply (inbound), and the first message your person sent to someone who has never been contacted. After that first message, a follow-up or an answer is your person's to send and log: you are told needs_a_person. An outbound touch on a record marked Do not contact or Warm intro only is refused with the reason. Send a request_key: the same key again logs nothing twice. Each item has its own answer. " +
+      "Add 1 to 50 entries to cards' logs: a note, or a touch (one message, with its channel and direction). Log only what really happened, word for word, one entry per message. You may log a note, a reply (inbound), and the first message your person sent to someone who has never been contacted. After that first message, a follow-up or an answer is your person's to send and log: you are told needs_a_person. An outbound touch on a record marked Do not contact or Warm intro only, or on one that shares an email, a phone number or a handle with a marked record, is refused with the reason. Send a request_key: the same request with the same key logs nothing twice; the same key with anything else is refused whole (request_key_reused). Each item has its own answer. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       entries: {
@@ -850,7 +851,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "record_reply",
     title: "Record replies",
     description:
-      "Record what 1 to 50 people answered, word for word, as an inbound touch on each card. A card that has not reached Replied yet moves there; a card in a later stage, or in Lost or Passed, stays where it is and the answer says so in move_note. To move it somewhere else, send move_to (and reason for Lost or Passed): if that move is refused, the reply is still recorded and move_note says why. Send a request_key: the same key again records nothing twice. Each item has its own answer. " +
+      "Record what 1 to 50 people answered, word for word, as an inbound touch on each card. A card that has not reached Replied yet moves there; a card in a later stage, or in Lost or Passed, stays where it is and the answer says so in move_note. To move it somewhere else, send move_to (and reason for Lost or Passed): if that move is refused, the reply is still recorded and move_note says why. Send a request_key: the same request with the same key records nothing twice; the same key with anything else is refused whole (request_key_reused). Each item has its own answer. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       replies: {

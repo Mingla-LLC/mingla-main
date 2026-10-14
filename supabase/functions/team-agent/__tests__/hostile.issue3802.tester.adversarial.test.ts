@@ -710,9 +710,28 @@ test("#3802 H-6: every tool, and the connector's first words, tell the agent tha
       t.description.length <= 1900,
       `${t.name}: fits what a client keeps`,
     );
+    // Written out here, tool by tool: what a client is told about each one
+    // is not read back from the list being checked.
     assert.equal(
       t.annotations.readOnlyHint,
-      !TEAM_AGENT_TOOLS.find((x) => x.name === t.name)!.writes,
+      ({
+        get_started: true,
+        my_day: true,
+        find_records: true,
+        get_record: true,
+        check_names: true,
+        find_mingla_link: true,
+        check_contactable: true,
+        list_beta_leads: true,
+        team_summary: true,
+        add_records: false,
+        upsert_record: false,
+        update_records: false,
+        move_stage: false,
+        set_owners: false,
+        log_activity: false,
+        record_reply: false,
+      } as Record<string, boolean>)[t.name],
       `${t.name}: says whether it reads or writes`,
     );
     assert.equal(t.annotations.destructiveHint, false, t.name);
@@ -750,7 +769,14 @@ test("#3802 H-6: every tool, and the connector's first words, tell the agent tha
     TEAM_AGENT_TOOLS.flatMap((t) => Object.keys(t.inputSchema.properties)),
   );
   const named = said.match(/\b[a-z]+_[a-z_]+\b/g) ?? [];
-  assert.ok(named.length >= 3);
+  // Exactly these, today: the floor has no slack.
+  assert.deepEqual(named, [
+    "get_started",
+    "check_contactable",
+    "request_key",
+    "find_records",
+    "count_by",
+  ]);
   for (const word of named) {
     assert.ok(
       names.has(word) || argNames.has(word),

@@ -619,7 +619,8 @@ Deno.test("#3802 U-4: initialize carries the three capabilities, the server's na
   const named = (INSTRUCTIONS.match(/\b[a-z]+_[a-z_]+\b/g) ?? []).filter((n) =>
     n !== "count_by" && n !== "request_key"
   );
-  assert(named.length >= 3);
+  // Exactly these, today: the floor has no slack.
+  assertEquals(named, ["get_started", "check_contactable", "find_records"]);
   for (const n of named) {
     assert(findTool(n), `the instructions name ${n}, which is not a tool`);
   }
@@ -732,12 +733,27 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     "log_activity",
     "record_reply",
   ]);
-  assertEquals(growth.length, 15);
-  assertEquals(owner.length, 16);
-  assertEquals(
-    [...names(owner)].sort(),
-    [...names(growth), "team_summary"].sort(),
-  );
+  // The owner's list, in the order a client is shown it: the same tools in
+  // the same order, with the team dashboard among the reads.
+  assertEquals(names(owner), [
+    "get_started",
+    "my_day",
+    "find_records",
+    "get_record",
+    "check_names",
+    "find_mingla_link",
+    "check_contactable",
+    "list_beta_leads",
+    "team_summary",
+    "add_records",
+    "upsert_record",
+    "update_records",
+    "move_stage",
+    "set_owners",
+    "log_activity",
+    "record_reply",
+  ]);
+  assertEquals(names(owner).filter((n) => n !== "team_summary"), names(growth));
   for (const t of owner) {
     assertEquals(Object.keys(t).sort(), [
       "annotations",
@@ -747,9 +763,28 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
       "title",
     ]);
     assertMatch(t.name, /^[a-z][a-z_]*$/);
+    // Written out here, tool by tool: what a client is told about each one
+    // is not read back from the list being checked.
     assertEquals(
       t.annotations.readOnlyHint,
-      !TEAM_AGENT_TOOLS.find((x) => x.name === t.name)!.writes,
+      ({
+        get_started: true,
+        my_day: true,
+        find_records: true,
+        get_record: true,
+        check_names: true,
+        find_mingla_link: true,
+        check_contactable: true,
+        list_beta_leads: true,
+        team_summary: true,
+        add_records: false,
+        upsert_record: false,
+        update_records: false,
+        move_stage: false,
+        set_owners: false,
+        log_activity: false,
+        record_reply: false,
+      } as Record<string, boolean>)[t.name],
       t.name,
     );
     assertEquals(t.annotations.idempotentHint, true, t.name);
