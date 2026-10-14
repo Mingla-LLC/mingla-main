@@ -224,6 +224,16 @@ begin
 end;
 $fn$;
 
+-- One use of a setup code, as the edge function makes it. Any key in the
+-- answer is masked, so a failed check never prints one.
+create function pg_temp.t3802b_redeem(p_code text) returns text
+language sql as $fn$
+  select regexp_replace(
+    pg_temp.t3802b_as('service', format('select public.team_agent_call(%L, %L, %L::jsonb, %L)::text',
+      pg_temp.t3802b_digest(p_code), 'setup:redeem', '{}', 'x')),
+    'mgla_[cx]_[A-Za-z0-9_-]{43}', '<a key>', 'g')
+$fn$;
+
 select pg_temp.t3802b_newkey('growth', 'claude', 'growth.claude') is not null as key_growth,
        pg_temp.t3802b_newkey('growth2', 'codex', 'growth2.codex') is not null as key_growth2,
        pg_temp.t3802b_newkey('partner', 'claude', 'partner.claude') is not null as key_partner,
@@ -393,24 +403,24 @@ begin
 
   -- A second use, and the other refusals, all one answer; none makes a key.
   perform pg_temp.t3802b_check('B-2', 'a second use of the same code is refused',
-    pg_temp.t3802b_as('service', format($q$select public.team_agent_call(%L, 'setup:redeem', '{}'::jsonb, 'x')::text$q$, pg_temp.t3802b_digest(v_code))), v_refusal);
+    pg_temp.t3802b_redeem(v_code), v_refusal);
 
   v_code := pg_temp.t3802b_person('growth2', $q$select public.team_agent_setup_create('codex')::text$q$)::jsonb ->> 'code';
   update public.team_agent_setup_codes set created_at = created_at - interval '11 minutes', expires_at = expires_at - interval '11 minutes'
    where code_hash = pg_temp.t3802b_digest(v_code);
   perform pg_temp.t3802b_check('B-2', 'a code past its ten minutes is refused',
-    pg_temp.t3802b_as('service', format($q$select public.team_agent_call(%L, 'setup:redeem', '{}'::jsonb, 'x')::text$q$, pg_temp.t3802b_digest(v_code))), v_refusal);
+    pg_temp.t3802b_redeem(v_code), v_refusal);
 
   v_code := pg_temp.t3802b_person('growth2', $q$select public.team_agent_setup_create('codex')::text$q$)::jsonb ->> 'code';
   v_code2 := pg_temp.t3802b_person('growth2', $q$select public.team_agent_setup_create('codex')::text$q$)::jsonb ->> 'code';
   perform pg_temp.t3802b_check('B-2', 'a newer code for the same agent ends the one before it',
-    pg_temp.t3802b_as('service', format($q$select public.team_agent_call(%L, 'setup:redeem', '{}'::jsonb, 'x')::text$q$, pg_temp.t3802b_digest(v_code))), v_refusal);
+    pg_temp.t3802b_redeem(v_code), v_refusal);
   perform pg_temp.t3802b_check('B-2', 'through all of that growth2''s key was never replaced',
     (select (revoked_at is null)::text from public.team_agent_keys where id = pg_temp.t3802b_id('growth2.codex.id')::uuid), 'true');
   -- Disconnecting ends the code that is waiting.
   perform pg_temp.t3802b_person('growth2', format('select public.team_agent_key_revoke(%L)::text', pg_temp.t3802b_id('growth2.codex.id')));
   perform pg_temp.t3802b_check('B-2', 'disconnecting ends the waiting code too',
-    pg_temp.t3802b_as('service', format($q$select public.team_agent_call(%L, 'setup:redeem', '{}'::jsonb, 'x')::text$q$, pg_temp.t3802b_digest(v_code2))), v_refusal);
+    pg_temp.t3802b_redeem(v_code2), v_refusal);
   perform pg_temp.t3802b_check('B-2', 'and no key was made for growth2',
     (select count(*)::text from public.team_agent_keys where owner_email = 'issue3802b-growth2@test.local' and revoked_at is null), '0');
 
@@ -418,11 +428,11 @@ begin
   v_code := pg_temp.t3802b_person('leaver', $q$select public.team_agent_setup_create('claude')::text$q$)::jsonb ->> 'code';
   perform pg_temp.t3802b_person('owner', $q$select public.admin_team_set_member('issue3802b-leaver@test.local', 'growth', 'revoked')::text$q$);
   perform pg_temp.t3802b_check('B-2', 'a code whose maker was removed is refused',
-    pg_temp.t3802b_as('service', format($q$select public.team_agent_call(%L, 'setup:redeem', '{}'::jsonb, 'x')::text$q$, pg_temp.t3802b_digest(v_code))), v_refusal);
+    pg_temp.t3802b_redeem(v_code), v_refusal);
   v_code := pg_temp.t3802b_person('social', $q$select public.team_agent_setup_create('claude')::text$q$)::jsonb ->> 'code';
   insert into auth.identities (user_id, provider) values ('38020000-0000-4000-b000-000000000006', 'google');
   perform pg_temp.t3802b_check('B-2', 'a code whose maker can now sign in another way is refused',
-    pg_temp.t3802b_as('service', format($q$select public.team_agent_call(%L, 'setup:redeem', '{}'::jsonb, 'x')::text$q$, pg_temp.t3802b_digest(v_code))), v_refusal);
+    pg_temp.t3802b_redeem(v_code), v_refusal);
   perform pg_temp.t3802b_check('B-2', 'neither refusal made a key, and both codes are used up',
     (select count(*)::text from public.team_agent_keys where owner_email in ('issue3802b-leaver@test.local', 'issue3802b-social@test.local'))
       || '/' || (select count(*) from public.team_agent_setup_codes
@@ -1270,6 +1280,7 @@ rollback;
 -- PART 2 -- real sessions. Two full admins, their keys and a few records are
 -- committed and removed. Keys and codes are made here at run time.
 -- ===========================================================================
+drop schema if exists t3802b_race cascade;
 create schema t3802b_race;
 select count(*) = 0 as t3802b_made_dblink from pg_extension where extname = 'dblink' \gset
 create extension if not exists dblink with schema t3802b_race;
@@ -1329,6 +1340,7 @@ declare
   v_code text;
   v_t timestamptz;
   v_ms numeric;
+  i int;
 begin
   begin
     foreach v_c in array array['t3802b_c1', 't3802b_c2', 't3802b_c3'] loop
@@ -1441,8 +1453,26 @@ begin
     v_ms := extract(epoch from (clock_timestamp() - v_t)) * 1000;
     insert into t3802b_race.results (label, ok, detail)
     values ('P-4 while one key''s request is open, another key is answered at once', v2 = 'true' and v_ms < 2000, coalesce(v2, '<null>') || ' in ' || round(v_ms) || ' ms');
-    select x into v2 from dblink_get_result('t3802b_c2') as t(x text);
-    perform * from dblink_get_result('t3802b_c2') as t(x text);
+    -- Wait for its answer for at most twelve seconds: a request that never
+    -- gives up is a failed check here, never a suite that never ends.
+    for i in 1..120 loop
+      exit when dblink_is_busy('t3802b_c2') = 0;
+      perform pg_sleep(0.1);
+    end loop;
+    if dblink_is_busy('t3802b_c2') = 1 then
+      perform dblink_cancel_query('t3802b_c2');
+      begin
+        perform * from dblink_get_result('t3802b_c2') as t(x text);
+      exception
+        when query_canceled then null;
+        when others then null;
+      end;
+      perform * from dblink_get_result('t3802b_c2') as t(x text);
+      v2 := '{"waited":"more than twelve seconds, and was stopped by this suite"}';
+    else
+      select x into v2 from dblink_get_result('t3802b_c2') as t(x text);
+      perform * from dblink_get_result('t3802b_c2') as t(x text);
+    end if;
     v_ms := extract(epoch from (clock_timestamp() - v_t)) * 1000;
     insert into t3802b_race.results (label, ok, detail)
     values ('P-4 the request that waited five seconds is told to come back in two, in plain words',
