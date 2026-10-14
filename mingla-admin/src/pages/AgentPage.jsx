@@ -23,6 +23,7 @@ import { SectionCard, AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { Skeleton } from "../components/ui/Skeleton";
+import { PageHeader } from "../components/ui/PageHeader";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import { useOnline } from "../hooks/useCrmPipeline";
@@ -634,18 +635,12 @@ export function AgentPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="break-words text-2xl font-bold text-[var(--color-text-primary)]">My agent</h1>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--color-text-secondary)]">
-            Connect your own Claude or Codex. It works under your name, with your role and nothing more. It can read and
-            update your pipelines and log what happened; it never deletes, and a follow-up or an answer is always yours
-            to send.
-          </p>
-        </div>
-        {!loading && !error && (
-          <div className="flex shrink-0 flex-wrap gap-2">
-            {connected.length === 0 ? (
+      <PageHeader
+        title="My agent"
+        description="Connect your own Claude or Codex. It works under your name, with your role and nothing more. It can read and update your pipelines and log what happened; it never deletes, and a follow-up or an answer is always yours to send."
+        meta={
+          !loading && !error ? (
+            connected.length === 0 ? (
               <Badge>No agent connected yet</Badge>
             ) : (
               connected.map((a) => (
@@ -653,10 +648,10 @@ export function AgentPage() {
                   Connected: {a.label}
                 </Badge>
               ))
-            )}
-          </div>
-        )}
-      </div>
+            )
+          ) : null
+        }
+      />
 
       {!online && <AlertCard variant="warning">{AGENT_OFFLINE_WORDS}</AlertCard>}
 

@@ -216,6 +216,7 @@ on:
       - "mingla-admin/src/__tests__/agent_connector_issue3802.tester.adversarial.test.js"
       - "mingla-admin/src/__tests__/issue3802_wave4_setup.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/normal_form_followup_issue3802.implementor.happy.test.js"
       - "mingla-admin/src/pages/AgentPage.jsx"
       - "mingla-admin/src/components/agent/**"
       - "mingla-admin/src/lib/agentConnect.js"
@@ -447,6 +448,7 @@ on:
       - "mingla-admin/src/__tests__/agent_connector_issue3802.tester.adversarial.test.js"
       - "mingla-admin/src/__tests__/issue3802_wave4_setup.implementor.happy.test.js"
       - "mingla-admin/src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js"
+      - "mingla-admin/src/__tests__/normal_form_followup_issue3802.implementor.happy.test.js"
       - "mingla-admin/src/pages/AgentPage.jsx"
       - "mingla-admin/src/components/agent/**"
       - "mingla-admin/src/lib/agentConnect.js"
@@ -639,6 +641,9 @@ jobs:
       - name: "Issue #3802 — Hosts and Creators: emails, phones and handles in the server's own normal form, search by them, the contact rule on every surface, the contactable check in the Add form, City missing by role"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue3802_wave4_contacts.implementor.happy.test.js
+      - name: "Issue #3802 — the normal form of a YouTube video link (its id keeps its case, in both link forms) and of an Argentine or Mexican mobile number, held to the server's table of examples"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/normal_form_followup_issue3802.implementor.happy.test.js
       - name: "Issue #3802 — admin shell: the eight menu groups in the approved order, every page once, who may open what unchanged, every menu icon registered, one frame and one page header"
         working-directory: mingla-admin
         run: node --test src/__tests__/admin_shell_issue3802.implementor.happy.test.js
@@ -1543,6 +1548,15 @@ jobs:
           # from the repository root, like the suites above.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3802_wave4_agent_write_setup.implementor.happy.pg17.test.sql
+          # Issue #3802 (follow-up) -- the normal form of a YouTube video link
+          # and of an Argentine or Mexican mobile number: the table the admin
+          # web's twin is held to, phone pairs both ways round, duplicate
+          # detection, the stored forms re-keyed with their id, author and
+          # time kept, and the follow-up self-check against deliberate
+          # mistakes. Runs as `supabase_admin` from the repository root (it
+          # reads two migration files). One transaction, rolled back.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3802_normal_form_followup.implementor.happy.pg17.test.sql
 
           # toward #3697 Wave 6 — Ads credit FIFO withdraw, idempotency, immutability.
           psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \

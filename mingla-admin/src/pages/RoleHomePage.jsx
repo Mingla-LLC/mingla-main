@@ -7,6 +7,7 @@
 // every empty section says what to do next.
 import { AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { PageHeader } from "../components/ui/PageHeader";
 import { useAuth } from "../context/AuthContext";
 import { useCrmConfig } from "../hooks/useCrmConfig";
 import { useCrmSummary } from "../hooks/useCrmSummary";
@@ -62,14 +63,10 @@ export function RoleHomePage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div className="min-w-0">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
-          {partner ? title : longDate(today) || title}
-        </p>
-        <h1 className="mt-1 break-words text-2xl font-bold text-[var(--color-text-primary)]">
-          {name ? `Hi ${name}. ${greeting}` : greeting}
-        </h1>
-      </div>
+      <PageHeader
+        title={name ? `Hi ${name}. ${greeting}` : greeting}
+        description={partner ? title : longDate(today) || title}
+      />
 
       {!online && <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>}
 
