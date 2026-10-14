@@ -1361,6 +1361,11 @@ export const useRsvpOfferingState = (
   // account has no phone — shared state, so both mounts always agree.
   const renderPrimaryPhoneField = (placement: "inline" | "confirm"): React.ReactNode => {
     const inline = placement === "inline";
+    // #3380 — when the confirm dialog's own error line already says "Add your
+    // phone number to confirm your RSVP.", the field under it does not repeat
+    // "Add your phone number": one message, not two.
+    const dialogAsksForPhone = !inline && confirmError === RSVP_ADD_ACCOUNT_PHONE_COPY;
+    const phoneBlankError = fieldError(guestPhone, PHONE_RE, "Add your phone number", "Enter a valid phone number");
     return renderPhoneField
       ? (
         // The injected field exposes no ref; this wrapper is what a blocked
@@ -1386,7 +1391,7 @@ export const useRsvpOfferingState = (
           palette,
           disabled: submitting,
           required: true,
-          emptyRequired: (showValidationErrors || primaryPhoneTouched) && phoneRawValue.trim().length === 0,
+          emptyRequired: (showValidationErrors || primaryPhoneTouched) && phoneRawValue.trim().length === 0 && !dialogAsksForPhone,
           onBlur: () => setPrimaryPhoneTouched(true),
         })}
         </View>
@@ -1399,7 +1404,9 @@ export const useRsvpOfferingState = (
           onChangeText={setGuestPhone}
           placeholder="+1 555 123 4567"
           palette={palette}
-          {...fieldError(guestPhone, PHONE_RE, "Add your phone number", "Enter a valid phone number")}
+          {...(dialogAsksForPhone && guestPhone.trim().length === 0
+            ? { ...phoneBlankError, invalid: false }
+            : phoneBlankError)}
           keyboardType="phone-pad"
           autoCapitalize="none"
           testID={inline ? "orch-1150-rsvp-phone" : "issue-3380-rsvp-confirm-phone-plain"}

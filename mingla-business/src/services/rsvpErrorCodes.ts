@@ -61,17 +61,19 @@ export const readRsvpErrorCode = async (
       clone?: () => { text?: () => Promise<string> };
       text?: () => Promise<string>;
     };
-    const readable =
-      typeof response.clone === "function" ? response.clone() : response;
-    if (typeof readable.text === "function") {
-      try {
+    try {
+      // Inside the try: `clone()` throws a TypeError when the body was already
+      // read, and that must fall back like any other unreadable body.
+      const readable =
+        typeof response.clone === "function" ? response.clone() : response;
+      if (typeof readable.text === "function") {
         const parsed = JSON.parse(await readable.text()) as { error?: unknown };
         if (typeof parsed.error === "string" && parsed.error.length > 0) {
           return parsed.error;
         }
-      } catch {
-        // Unreadable or non-JSON body: the synchronous parse below decides.
       }
+    } catch {
+      // Consumed, unreadable or non-JSON body: the synchronous parse below decides.
     }
   }
   return parseRsvpErrorCode(error);
