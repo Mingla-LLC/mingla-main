@@ -589,3 +589,19 @@ test("D-10 a copy fanned out before the switch went off is held at send time, wi
   same(seen.emails.length, 2, "both sent");
   same(seen.sendChecks.length, 1, "only the notice row was checked");
 });
+
+test("D-11 one copy that throws never stops the groups after it", async () => {
+  const { inGroupsOf } = await import("../eventUpdate.ts");
+  const done: number[] = [];
+  const previousError = console.error;
+  console.error = () => undefined;
+  try {
+    await inGroupsOf(Array.from({ length: 12 }, (_, i) => i), 5, async (item) => {
+      if (item === 2) throw new Error("boom");
+      done.push(item);
+    });
+  } finally {
+    console.error = previousError;
+  }
+  same(done.sort((a, b) => a - b), [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11], "every other item ran");
+});

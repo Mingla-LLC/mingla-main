@@ -291,7 +291,10 @@ export function buildEventUpdateDispatch(
   };
 }
 
-/** Run `worker` over `items`, at most `size` at a time, group after group. */
+/**
+ * Run `worker` over `items`, at most `size` at a time, group after group. A
+ * worker that throws is reported and never stops later groups.
+ */
 export async function inGroupsOf<T>(
   items: readonly T[],
   size: number,
@@ -299,6 +302,13 @@ export async function inGroupsOf<T>(
 ): Promise<void> {
   const step = Math.max(1, Math.floor(size));
   for (let index = 0; index < items.length; index += step) {
-    await Promise.all(items.slice(index, index + step).map((item) => worker(item)));
+    // allSettled: one failing copy never stops the groups after it.
+    const results = await Promise.allSettled(
+      items.slice(index, index + step).map((item) => worker(item)),
+    );
+    const failed = results.filter((result) => result.status === "rejected").length;
+    if (failed > 0) {
+      console.error(`[rsvp-notify] ${failed} edit-notice deliveries threw; the rest went on`);
+    }
   }
 }

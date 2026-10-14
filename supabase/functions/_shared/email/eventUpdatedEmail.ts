@@ -79,22 +79,64 @@ const BIDI_CHARS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
 // Zero-width and invisible joiners, soft hyphen, byte-order mark, tag block.
 const INVISIBLE_CHARS =
   /[\u00AD\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180E\u200B-\u200D\u2060-\u2064\u206A-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0]|\uDB40[\uDC00-\uDC7F]/g;
-const EMAIL_LIKE = /[^\s@<>()]+@[^\s@<>()]+\.[^\s@<>()]+/g;
-const SCHEME_LIKE =
-  /\b(?:[a-z][a-z0-9+.-]{1,20}:\/\/\S*|(?:javascript|vbscript|data|mailto|tel|sms|file|blob|intent|whatsapp):\S*|www\.\S+)/gi;
-const BARE_DOMAIN =
-  /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|io|co|uk|ng|app|me|ly|link|info|biz|xyz|dev|us|ca|de|fr|gh|ke|za|tv|cc|gg|to|shop|site|online|club|be|eu|in|page|ai|gl|ee|bio|live|events|tickets|fun|vip|top|ru|cn)\b(?:[/?#]\S*)?/gi;
+const EMAIL_LIKE = /[^\s@<>()]+@[^\s@<>()]+\.[^\s@<>()]+/gu;
+// A scheme of ANY kind followed by something: https://, javascript:, data:,
+// mailto:, tel:, intent:, a made-up one. Two letters at least, so "a:b" in a
+// sentence is left alone; a colon followed by a space never matches.
+const SCHEME_LIKE = /(?<![\p{L}\p{N}])[a-z][a-z0-9+.-]{1,31}:(?:\/\/)?[^\s]+/giu;
+const WWW_LIKE = /(?<![\p{L}\p{N}])www\.[^\s]+/giu;
+// IPv4 addresses, with an optional port and path.
+const IP_LIKE = /(?<![\p{N}.])\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?(?:[/?#][^\s]*)?/gu;
+// A host name: labels joined by a dot BETWEEN two word characters, ending in a
+// 2 to 24 letter top-level label (any script) or a punycode one, then an
+// optional port and path. "Lagos. We" (a dot followed by a space), "e.g." and
+// "3.5km" are sentences, not hosts, and stay.
+const HOST_LIKE =
+  /(?<![\p{L}\p{N}@-])(?:[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,62})\.)+(?:\p{L}{2,24}|xn--[a-z0-9-]{2,59})(?![\p{L}\p{N}-])(?::\d{1,5})?(?:[/?#][^\s]*)?/giu;
+
+/**
+ * At most `max` UTF-16 units, cut between whole characters as a reader sees
+ * them (grapheme clusters), never inside a surrogate pair. A single cluster
+ * longer than the budget is cut between code points instead.
+ */
+export function truncateText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  let out = "";
+  const Segmenter = (Intl as unknown as {
+    Segmenter?: new (locale?: string, options?: { granularity: string }) => {
+      segment(input: string): Iterable<{ segment: string }>;
+    };
+  }).Segmenter;
+  const pieces: Iterable<string> = Segmenter
+    ? Array.from(new Segmenter(undefined, { granularity: "grapheme" }).segment(text), (part) => part.segment)
+    : Array.from(text);
+  for (const piece of pieces) {
+    if (out.length + piece.length > max) {
+      if (out.length === 0) {
+        for (const point of Array.from(piece)) {
+          if (out.length + point.length > max) break;
+          out += point;
+        }
+      }
+      break;
+    }
+    out += piece;
+  }
+  return out;
+}
 
 /** One line of plain text: no control, bidi or invisible characters. */
 export function cleanLine(raw: unknown, max = 200): string {
   if (typeof raw !== "string") return "";
-  return raw
-    .replace(CONTROL_CHARS, " ")
-    .replace(BIDI_CHARS, "")
-    .replace(INVISIBLE_CHARS, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, max);
+  return truncateText(
+    raw
+      .replace(CONTROL_CHARS, " ")
+      .replace(BIDI_CHARS, "")
+      .replace(INVISIBLE_CHARS, "")
+      .replace(/\s+/g, " ")
+      .trim(),
+    max,
+  ).trim();
 }
 
 /**
@@ -104,13 +146,17 @@ export function cleanLine(raw: unknown, max = 200): string {
 export function sanitiseEditReason(raw: unknown): string | null {
   const line = cleanLine(raw, 2000);
   if (line.length === 0 || line === NO_REASON_CONSTANT) return null;
-  const cleaned = line
-    .replace(EMAIL_LIKE, LINK_REMOVED)
-    .replace(SCHEME_LIKE, LINK_REMOVED)
-    .replace(BARE_DOMAIN, LINK_REMOVED)
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, REASON_MAX);
+  const cleaned = truncateText(
+    line
+      .replace(EMAIL_LIKE, LINK_REMOVED)
+      .replace(SCHEME_LIKE, LINK_REMOVED)
+      .replace(WWW_LIKE, LINK_REMOVED)
+      .replace(IP_LIKE, LINK_REMOVED)
+      .replace(HOST_LIKE, LINK_REMOVED)
+      .replace(/\s+/g, " ")
+      .trim(),
+    REASON_MAX,
+  ).trim();
   return cleaned.length > 0 ? cleaned : null;
 }
 

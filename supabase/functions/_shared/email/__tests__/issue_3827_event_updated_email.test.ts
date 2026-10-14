@@ -312,7 +312,9 @@ Deno.test("H-03 bidi overrides, zero-width characters and line breaks are stripp
   for (const code of [0x202e, 0x202c, 0x2066, 0x200b, 0x200d, 0xfeff, 0x2028, 0x0a, 0x0d, 0x09]) {
     assertFalse(cleaned.includes(ch(code)), `U+${code.toString(16)} survived`);
   }
-  assertEquals(cleaned, `Venue movedgnp.exe hidden Bcc: ${LINK_REMOVED} Second line third`);
+  // With the override gone, "movedgnp.exe" reads as a host name and is removed
+  // too: a spoofed file name never reaches the email.
+  assertEquals(cleaned, `Venue ${LINK_REMOVED} hidden Bcc: ${LINK_REMOVED} Second line third`);
   const out = renderEventUpdatedEmail(eventInput({ reason: hostile }));
   for (const code of [0x202e, 0x2066, 0x200b, 0x200d, 0xfeff, 0x2028]) {
     assertFalse(out.html.includes(ch(code)), `U+${code.toString(16)} reached the HTML`);
@@ -378,4 +380,47 @@ Deno.test("Y-01 replies go to the brand when its address is well formed, else su
   assertEquals(eventUpdateReplyTo("Evil<a@x.example>"), "support@usemingla.com");
   assertEquals(eventUpdateReplyTo("a@x.example", "help@usemingla.com"), "a@x.example");
   assertEquals(eventUpdateReplyTo(null, "help@usemingla.com"), "help@usemingla.com");
+});
+
+Deno.test("H-05 (rework) any scheme, any host, IP addresses and IDN are removed; sentences stay", () => {
+  const removed: Array<[string, string]> = [
+    ["Tickets now at evil.zip/now before they go", "evil.zip"],
+    ["Pay at shop.example.museum today", "example.museum"],
+    ["Go to 203.0.113.9:8080/pay now", "203.0.113.9"],
+    ["Try xn--80ak6aa92e.com instead", "xn--80ak6aa92e"],
+    ["See пример.рф for details", "пример.рф"],
+    ["Open ftp://files.example/now quickly", "ftp://"],
+    ["Use custom-app:open?id=1 on your phone", "custom-app:"],
+    ["Open intent:#Intent;end now", "intent:"],
+    ["Book via evil.travel", "evil.travel"],
+    ["Visit sub.domain.co.uk/path?x=1 soon", "domain.co.uk"],
+  ];
+  for (const [reason, fragment] of removed) {
+    const cleaned = sanitiseEditReason(reason);
+    assert(cleaned, `nothing left of: ${reason}`);
+    assertFalse(cleaned.includes(fragment), `"${fragment}" survived in: ${cleaned}`);
+    assertStringIncludes(cleaned, LINK_REMOVED);
+  }
+  for (const sentence of [
+    "We moved from Lagos. We are now in Abuja.",
+    "Doors at 7 p.m. now, not 6. See you there, e.g. by the bar.",
+    "The walk is 3.5km now, version 2.0 of the route.",
+    "Note: the time is 7:30 now, room No.1 is closed.",
+  ]) {
+    assertEquals(sanitiseEditReason(sentence), sentence);
+  }
+});
+
+Deno.test("H-06 (rework) the reason is cut between whole characters, never inside a surrogate pair", () => {
+  const emoji = String.fromCodePoint(0x1f600);
+  const cut = sanitiseEditReason("x" + emoji.repeat(150));
+  assert(cut !== null && cut.length <= 200, "longer than 200 units");
+  // No lone surrogate at the end.
+  const last = cut.charCodeAt(cut.length - 1);
+  assertFalse(last >= 0xd800 && last <= 0xdbff, "the cut split a surrogate pair");
+  assertEquals(Array.from(cut).every((point) => point === "x" || point === emoji), true);
+  // A flag (one grapheme of two code points) is kept whole or dropped whole.
+  const flag = String.fromCodePoint(0x1f1f3, 0x1f1ec);
+  const flagged = sanitiseEditReason("a".repeat(198) + flag);
+  assertEquals(flagged, "a".repeat(198), "a grapheme cluster was cut in half");
 });
