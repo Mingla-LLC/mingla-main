@@ -223,8 +223,8 @@ export default function PartnerEarningsScreen(): React.ReactElement {
 
   const handleDisconnectStripe = useCallback((): void => {
     Alert.alert(
-      "Disconnect Stripe?",
-      "Your partner Stripe account will be unlinked from Mingla. Already-paid splits remain on the existing account. You can reconnect anytime — possibly with a different country or business.",
+      "Disconnect your payout account?",
+      "Your partner payout account will be unlinked from Mingla. Already-paid splits remain on the existing account. You can reconnect anytime — possibly with a different country or business.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -695,9 +695,9 @@ function StatusBadge({ status }: { status: PartnerSplitStatus }): React.ReactEle
     transferred: { label: "Transferred", color: semantic.success, bg: semantic.successTint },
     pending: { label: "Pending", color: semantic.warning, bg: semantic.warningTint },
     blocked_currency_mismatch: { label: "Blocked — currency", color: semantic.error, bg: semantic.errorTint },
-    blocked_no_stripe: { label: "Blocked — Stripe", color: semantic.error, bg: semantic.errorTint },
+    blocked_no_stripe: { label: "Blocked — no payout account", color: semantic.error, bg: semantic.errorTint },
     // ORCH-1331 — Paystack rail: no active Transfer Recipient at sale time.
-    blocked_no_paystack: { label: "Blocked — Paystack", color: semantic.error, bg: semantic.errorTint },
+    blocked_no_paystack: { label: "Blocked — no Nigerian bank", color: semantic.error, bg: semantic.errorTint },
     failed: { label: "Failed", color: semantic.error, bg: semantic.errorTint },
     reversed: { label: "Reversed", color: textTokens.tertiary, bg: glass.tint.profileElevated },
     reversed_pending: { label: "Reversed (pending)", color: textTokens.tertiary, bg: glass.tint.profileElevated },
@@ -778,8 +778,8 @@ function StatusBlock(props: {
     : null;
   const partnerCurrency = selectedCountryMeta?.defaultCurrency ?? null;
   const currencyHelper = partnerCurrency
-    ? `Stripe will settle you in ${partnerCurrency}. You'll only be able to partner with brands that sell in ${partnerCurrency}; invitations in other currencies will be blocked.`
-    : "Pick the country where you'll get paid out. Stripe locks this after onboarding, and you'll only be able to partner with brands selling in the matching currency.";
+    ? `You'll be paid in ${partnerCurrency}. You'll only be able to partner with brands that sell in ${partnerCurrency}; invitations in other currencies will be blocked.`
+    : "Pick the country where you'll get paid out. It's locked after setup, and you'll only be able to partner with brands selling in the matching currency.";
 
   if (status === "active") {
     return (
@@ -790,7 +790,7 @@ function StatusBlock(props: {
         </View>
         <Text style={styles.cardTitle}>You're earning</Text>
         <Text style={styles.cardBody}>
-          Your partner Stripe account is active
+          Your payout account is active
           {country ? ` (${country})` : ""}.
           {externalCurrencies.length > 0
             ? ` We can settle in ${externalCurrencies.join(", ").toUpperCase()}.`
@@ -801,11 +801,11 @@ function StatusBlock(props: {
             variant="primary"
             size="md"
             fullWidth
-            label={managing ? "Opening…" : "Manage Stripe account"}
+            label={managing ? "Opening…" : "Manage payout account"}
             loading={managing}
             disabled={managing || disconnecting}
             onPress={onManage}
-            accessibilityLabel="Manage Stripe account"
+            accessibilityLabel="Manage payout account"
           />
         </View>
         <View style={{ marginTop: spacing.md }}>
@@ -813,12 +813,12 @@ function StatusBlock(props: {
             variant="secondary"
             size="md"
             fullWidth
-            label={disconnecting ? "Disconnecting…" : "Disconnect Stripe"}
+            label={disconnecting ? "Disconnecting…" : "Disconnect payout account"}
             labelStyle={{ color: semantic.error }}
             loading={disconnecting}
             disabled={disconnecting || managing}
             onPress={onDisconnect}
-            accessibilityLabel="Disconnect Stripe"
+            accessibilityLabel="Disconnect payout account"
           />
         </View>
       </GlassCard>
@@ -874,9 +874,9 @@ function StatusBlock(props: {
           <View style={styles.statusDotWarning} />
           <Text style={styles.statusLabelWarning}>ACTION NEEDED</Text>
         </View>
-        <Text style={styles.cardTitle}>Stripe needs more info</Text>
+        <Text style={styles.cardTitle}>Your payout account needs more info</Text>
         <Text style={styles.cardBody}>
-          Open your partner Stripe to finish the requirements Stripe is
+          Resume setup to finish the details our payment partner is
           waiting on.
         </Text>
         <View style={{ marginTop: spacing.md }}>
@@ -888,7 +888,7 @@ function StatusBlock(props: {
             loading={starting}
             disabled={starting}
             onPress={onStart}
-            accessibilityLabel="Resume Stripe onboarding"
+            accessibilityLabel="Resume bank setup"
           />
         </View>
         {startError ? (
@@ -909,7 +909,7 @@ function StatusBlock(props: {
         </View>
         <Text style={styles.cardTitle}>Finish setting up payouts</Text>
         <Text style={styles.cardBody}>
-          You started Stripe onboarding. Pick up where you left off.
+          You started bank setup. Pick up where you left off.
         </Text>
         <View style={{ marginTop: spacing.md }}>
           <Button
@@ -920,7 +920,7 @@ function StatusBlock(props: {
             loading={starting}
             disabled={starting}
             onPress={onStart}
-            accessibilityLabel="Resume Stripe onboarding"
+            accessibilityLabel="Resume bank setup"
           />
         </View>
         {startError ? (
@@ -953,11 +953,11 @@ function StatusBlock(props: {
         <View style={styles.statusDotMuted} />
         <Text style={styles.statusLabelMuted}>NOT CONNECTED</Text>
       </View>
-      <Text style={styles.cardTitle}>Connect partner Stripe</Text>
+      <Text style={styles.cardTitle}>Connect your payout account</Text>
       <Text style={styles.cardBody}>
-        Mingla pays partners through Stripe Connect. Set up your payout
-        account once — your bank details go directly to Stripe, never to
-        Mingla.
+        Mingla pays partners through our payment partner. Set up your
+        payout account once — your bank details go straight to our payment
+        partner, never to Mingla.
       </Text>
       <View style={styles.countryPickerWrap}>
         <BrandStripeCountryPicker
@@ -968,7 +968,7 @@ function StatusBlock(props: {
           // ORCH-1331 — Nigeria rides the designed extraOptions slot; NG is
           // NEVER added to STRIPE_SUPPORTED_COUNTRIES (I-PROPOSED-T).
           extraOptions={[
-            { code: "NG", name: "Nigeria", currency: "NGN", sublabel: "Paystack" },
+            { code: "NG", name: "Nigeria", currency: "NGN", sublabel: "Bank transfer" },
           ]}
           // Returning from the NG form re-opens the sheet for a fresh pick.
           defaultOpen={reopenPicker}

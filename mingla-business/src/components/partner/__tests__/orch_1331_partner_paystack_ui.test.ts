@@ -25,9 +25,10 @@ const linksService = read("src/services/partnerBrandLinksService.ts");
 const stripeCountries = read("src/constants/stripeSupportedCountries.ts");
 
 describe("ORCH-1331 · T-15 — badge + provider-neutral labels", () => {
-  it("earnings StatusBadge maps blocked_no_paystack → 'Blocked — Paystack' (error tint)", () => {
+  // [TEST-MOD-APPROVED #3645] was "Blocked — Paystack": partner copy no longer names the payment provider.
+  it("earnings StatusBadge maps blocked_no_paystack → 'Blocked — no Nigerian bank' (error tint)", () => {
     expect(earnings).toMatch(
-      /blocked_no_paystack:\s*\{\s*label:\s*"Blocked — Paystack",\s*color:\s*semantic\.error,\s*bg:\s*semantic\.errorTint\s*\}/,
+      /blocked_no_paystack:\s*\{\s*label:\s*"Blocked — no Nigerian bank",\s*color:\s*semantic\.error,\s*bg:\s*semantic\.errorTint\s*\}/,
     );
   });
 
@@ -54,8 +55,9 @@ describe("ORCH-1331 · T-15 — badge + provider-neutral labels", () => {
 
 describe("ORCH-1331 · T-16 — picker extraOptions + NG fork (design §1.4)", () => {
   it("Nigeria rides the picker's extraOptions slot (never the Stripe allowlist)", () => {
+    // [TEST-MOD-APPROVED #3645] was sublabel "Paystack": the Nigeria row reads "Bank transfer", as on the brand bank-setup picker.
     expect(earnings).toMatch(
-      /extraOptions=\{\[\s*\{\s*code:\s*"NG",\s*name:\s*"Nigeria",\s*currency:\s*"NGN",\s*sublabel:\s*"Paystack"\s*\},?\s*\]\}/,
+      /extraOptions=\{\[\s*\{\s*code:\s*"NG",\s*name:\s*"Nigeria",\s*currency:\s*"NGN",\s*sublabel:\s*"Bank transfer"\s*\},?\s*\]\}/,
     );
     // SC-13 — NG never enters the canonical Stripe allowlist.
     expect(stripeCountries).not.toMatch(/["']NG["']/);
@@ -202,7 +204,8 @@ describe("ORCH-1331 · PartnerPaystackOnboardForm — design §3 contract", () =
       "We couldn't verify that account. Check the number and bank, then try again.",
     );
     expect(form).toContain(
-      "You already have a Stripe payout account. Disconnect it first, then connect your Nigerian bank.",
+      // [TEST-MOD-APPROVED #3645] was "a Stripe payout account": partner copy no longer names the payment provider.
+      "You already have a payout account in another country. Disconnect it first, then connect your Nigerian bank.",
     );
     expect(form).toContain(
       "Couldn't load the bank list. Check your connection and try again.",

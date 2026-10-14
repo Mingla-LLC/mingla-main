@@ -40,6 +40,12 @@ import { initStripe } from "@stripe/stripe-react-native";
 import * as WebBrowser from "expo-web-browser";
 
 import { supabase } from "../services/supabase";
+// issue #3281 — server refusals are mapped to buyer copy, never shown raw.
+import {
+  checkoutRefusalRaiseMessage,
+  readEdgeRefusal,
+} from "../services/checkoutErrorCopy";
+import { paidCheckoutErrorMessage } from "../services/ticketCheckoutService";
 // ORCH-1246 (Apple 4.9) — Apple Pay sheet must show the product, not the company.
 import { buildApplePayCartItems } from "./applePayCartItems";
 
@@ -73,6 +79,14 @@ export interface NativeCheckoutInput {
    * single/no-date path. The edge fn already validates + binds it.
    */
   eventDateId?: string;
+  /**
+   * issue #3281 — the guest's chosen day SET (#2160) for a multi-date or
+   * recurring event. Same field name and shape buyer web
+   * (`ticketCheckoutService.createTicketCheckout`) and the consumer app send,
+   * and that `ticket-checkout-create` reads (`body.eventDateIds`). Forwarded
+   * ONLY when non-empty, so a single-date request stays byte-identical.
+   */
+  eventDateIds?: readonly string[];
   /**
    * ORCH-1246 (Apple 4.9) — the on-screen event/trip/experience title, threaded
    * from the checkout route so the Apple Pay sheet's line item shows the PRODUCT
@@ -275,37 +289,34 @@ export const isStripeGooglePayTestEnv = (): boolean =>
   process.env.EAS_BUILD_PROFILE !== "production";
 
 /**
- * Minimal edge-function-error extractor inline (mingla-business does not
- * have the shared extractFunctionError util that app-mobile uses). Reads
- * the FunctionsHttpError context body if present; falls back to the
- * caller-supplied message.
+ * issue #3281 — map a `ticket-checkout-create` refusal to BUYER COPY.
+ *
+ * The previous extractor returned the server's `error` token verbatim, so a
+ * guest saw `event_date_choice_required` in red under the Pay button. Now:
+ *   1. read the status / bounded token / detail with the SAME reader buyer web
+ *      uses (`readEdgeRefusal`);
+ *   2. an RPC raise token (in `error` or `detail`) gets its specific sentence
+ *      from `checkoutErrorCopy.ts`;
+ *   3. everything else goes through the web paid mapper, which is TOTAL and
+ *      falls back to a generic "you have not been charged" sentence.
+ * The raw token, the raw detail and the framework message are never returned.
  */
-async function extractEdgeFunctionError(
-  err: unknown,
-  fallback: string,
-): Promise<string> {
-  if (err === null || typeof err !== "object") return fallback;
-  const ctx = (err as { context?: unknown }).context;
-  if (
-    ctx !== null &&
-    typeof ctx === "object" &&
-    typeof (ctx as { text?: () => Promise<string> }).text === "function"
-  ) {
-    try {
-      const body = await (ctx as { text: () => Promise<string> }).text();
-      try {
-        const parsed = JSON.parse(body) as { error?: string; message?: string };
-        return parsed.error ?? parsed.message ?? fallback;
-      } catch {
-        return body || fallback;
-      }
-    } catch {
-      return fallback;
-    }
-  }
-  const msg = (err as { message?: string }).message;
-  return typeof msg === "string" && msg.length > 0 ? msg : fallback;
+async function nativeCheckoutRefusalMessage(err: unknown): Promise<string> {
+  const refusal = await readEdgeRefusal(err);
+  const raise = checkoutRefusalRaiseMessage(refusal.code, refusal.detail);
+  if (raise !== undefined) return raise;
+  return paidCheckoutErrorMessage({
+    status: refusal.status,
+    code: refusal.code,
+    detail: refusal.detail,
+  });
 }
+
+/** issue #3281 — mirror of app-mobile's `normalizedEventDateIds`. */
+const normalizedEventDateIds = (input: NativeCheckoutInput): string[] =>
+  (input.eventDateIds ?? []).filter(
+    (id) => typeof id === "string" && id.length > 0,
+  );
 
 export const useNativeCheckoutFlow = (): (
   input: NativeCheckoutInput,
@@ -356,15 +367,18 @@ export const useNativeCheckoutFlow = (): (
           ...(input.eventDateId !== undefined && input.eventDateId.length > 0
             ? { eventDateId: input.eventDateId }
             : {}),
+          // issue #3281 — the chosen day SET. Without it a multi-date or
+          // recurring event is refused with `event_date_choice_required`
+          // (#3313). Empty => omitted => byte-identical single-date request.
+          ...(normalizedEventDateIds(input).length > 0
+            ? { eventDateIds: normalizedEventDateIds(input) }
+            : {}),
         },
       },
     );
 
     if (error) {
-      const message = await extractEdgeFunctionError(
-        error,
-        "Couldn't start checkout. Tap to try again.",
-      );
+      const message = await nativeCheckoutRefusalMessage(error);
       return {
         outcome: "failed",
         message,
