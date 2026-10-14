@@ -34,6 +34,12 @@ export interface RsvpGoingConfirmDialogProps {
   plusGuests: Array<{ name: string }>;
   submitting: boolean;
   errorText: string | null;
+  /**
+   * #3380 — optional fields the guest must fill before confirming (a signed-in
+   * guest whose account has no phone). Rendered between the summary and the
+   * error line. Absent ⇒ the dialog is unchanged.
+   */
+  contactSlot?: React.ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -48,6 +54,7 @@ export const RsvpGoingConfirmDialog: React.FC<RsvpGoingConfirmDialogProps> = ({
   plusGuests,
   submitting,
   errorText,
+  contactSlot = null,
   onConfirm,
   onCancel,
 }) => {
@@ -92,6 +99,8 @@ export const RsvpGoingConfirmDialog: React.FC<RsvpGoingConfirmDialogProps> = ({
               {bringingLine}
             </Text>
           ) : null}
+
+          {contactSlot}
 
           {errorText !== null && errorText.length > 0 ? (
             <Text style={styles.errorText} testID="orch-1163-rsvp-going-confirm-error">

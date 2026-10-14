@@ -144,6 +144,11 @@ export const rsvpErrorMessageForCode = (code: string): string => {
     return "That phone number looks off.";
   return "Couldn't save your RSVP. Try again.";
 };
+/** #3380 — a signed-in guest whose account has no usable phone number. */
+export const RSVP_ADD_ACCOUNT_PHONE_COPY = "Add your phone number to confirm your RSVP.";
+/** #3380 — a phone was sent and the server still lacks contact: the email is missing. */
+export const RSVP_ACCOUNT_EMAIL_MISSING_COPY =
+  "Your account needs an email address to RSVP. Add one to your profile, then try again.";
 const RsvpGoingConfirmDialog = React.lazy(() => import("./RsvpGoingConfirmDialog"));
 const RsvpDetailsModal = React.lazy(() => import("./RsvpDetailsModal"));
 const RsvpChipInPanel = React.lazy(() => import("./RsvpChipInPanel"));
@@ -285,6 +290,16 @@ export interface RsvpOfferingBodyProps {
   initialGuestPhone?: string;
   /** Explorer requires complete email+phone snapshots even when authenticated. */
   requirePrimaryContact?: boolean;
+  /**
+   * #3380 — whether the signed-in viewer's account already has a phone number
+   * (the server fills name, email and phone from the account and refuses the
+   * RSVP when the phone is missing). `false` ⇒ the guest is asked for a phone
+   * (inline and in the Going confirm step) before anything is sent. `true`,
+   * `null` or absent ⇒ nothing is asked up front; if the server still answers
+   * `rsvp_contact_required`, the phone field is revealed then. Ignored for
+   * anonymous guests and when `requirePrimaryContact` is set.
+   */
+  accountPhoneOnFile?: boolean | null;
   onDownloadPass?: (
     credential: RsvpPassCredential,
     recovery: RsvpAnonymousRecovery | null,
@@ -537,6 +552,10 @@ export const useRsvpOfferingState = (
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // #3380 — the server refused a signed-in reply for a missing (or unusable)
+  // account phone, so the phone field is now shown even though the surface did
+  // not know up front.
+  const [serverAskedPhone, setServerAskedPhone] = useState(false);
   // An anonymous guest's reply restored after the chip-in redirect seeds the
   // resolved state, so the returning page shows their reply, not a fresh invite.
   const restoredRsvp = props.restoredRsvp ?? null;
@@ -656,6 +675,7 @@ export const useRsvpOfferingState = (
     setPrimaryPhoneTouched(false);
     setSubmitting(false);
     setErrorMsg(null);
+    setServerAskedPhone(false);
     setGuestStatus(restoredRsvp?.guestStatus ?? null);
     setGuestApproval(restoredRsvp?.guestApproval ?? null);
     setPassDetails(restoredRsvp?.details ?? null);
@@ -716,8 +736,17 @@ export const useRsvpOfferingState = (
     guestName.trim().length > 0 &&
     EMAIL_RE.test(guestEmail.trim()) &&
     PHONE_RE.test(guestPhone.trim());
+  // #3380 — a signed-in guest whose account has no phone must add one (the
+  // server fills name and email from the account, but refuses without a phone).
+  // Only for the account-filled path: anonymous guests and Explorer's
+  // `requirePrimaryContact` path already ask for every field.
+  const accountFilledContact = isLoggedIn && props.requirePrimaryContact !== true;
+  const signedInPhoneNeeded =
+    accountFilledContact &&
+    (props.accountPhoneOnFile === false || serverAskedPhone);
+  const signedInPhoneReady = PHONE_RE.test(guestPhone.trim());
   const primaryValid =
-    (isLoggedIn && props.requirePrimaryContact !== true) ||
+    (accountFilledContact && (!signedInPhoneNeeded || signedInPhoneReady)) ||
     primaryContactComplete;
   const plusCount = config.allowPlusOnes ? guests.length : 0;
   const guestsValid = guests.every(
@@ -799,6 +828,24 @@ export const useRsvpOfferingState = (
     [guests, onSubmit, guestName, guestEmail, guestPhone, phoneCountry, plusCount, isCurrent, replyLocked],
   );
 
+  // #3380 — the server refused a signed-in (account-filled) reply because the
+  // account has no usable phone. Show the phone field from now on and return the
+  // copy for it; null for every other code and for anonymous guests (unchanged).
+  const askForAccountPhone = useCallback(
+    (code: string): string | null => {
+      if (!accountFilledContact) return null;
+      if (code !== "rsvp_contact_required" && code !== "rsvp_phone_invalid") return null;
+      setServerAskedPhone(true);
+      setPrimaryPhoneTouched(true);
+      const sentPhone = guestPhone.trim().length > 0;
+      if (!sentPhone) return RSVP_ADD_ACCOUNT_PHONE_COPY;
+      return code === "rsvp_contact_required"
+        ? RSVP_ACCOUNT_EMAIL_MISSING_COPY
+        : rsvpErrorMessageForCode(code);
+    },
+    [accountFilledContact, guestPhone],
+  );
+
   // ── what is still missing, in on-screen order (primary, then each +1) ──
   const primaryNameRef = useRef<TextInput | null>(null);
   const primaryEmailRef = useRef<TextInput | null>(null);
@@ -833,6 +880,14 @@ export const useRsvpOfferingState = (
       emailPattern: EMAIL_RE,
       phonePattern: PHONE_RE,
     });
+    // #3380 — the account fills name and email; only the phone is asked for.
+    if (signedInPhoneNeeded && !signedInPhoneReady) {
+      issues.unshift({
+        guestIndex: null,
+        field: "phone",
+        problem: guestPhone.trim().length === 0 ? "missing" : "invalid",
+      });
+    }
     if (renderPhoneField === undefined) return issues;
     // The injected phone field only reports a composed number once it is valid,
     // so "typed something that is not a number yet" must read as invalid.
@@ -853,6 +908,8 @@ export const useRsvpOfferingState = (
     guests,
     renderPhoneField,
     phoneRawValue,
+    signedInPhoneNeeded,
+    signedInPhoneReady,
   ]);
   const validationHint =
     showValidationErrors && !contactReady
@@ -926,7 +983,11 @@ export const useRsvpOfferingState = (
   const submitDirect = useCallback(
     async (rsvpStatus: "not_going" | "maybe"): Promise<void> => {
       if (submitting || !isCurrent()) return;
-      if (rsvpStatus === "maybe" && !contactReady) {
+      if (
+        (rsvpStatus === "maybe" && !contactReady) ||
+        // #3380 — the server refuses every status without an account phone.
+        (signedInPhoneNeeded && !signedInPhoneReady)
+      ) {
         // The hint beside the tapped control replaces the old error line that
         // rendered far below the fields (and under the floating bar).
         setShowValidationErrors(true);
@@ -943,7 +1004,7 @@ export const useRsvpOfferingState = (
         if (!isCurrent()) return;
         const code = err instanceof Error ? err.message : String(err);
         handleAcquisitionError(code);
-        setErrorMsg(mapErrorCode(code));
+        setErrorMsg(askForAccountPhone(code) ?? mapErrorCode(code));
       } finally {
         if (isCurrent()) setSubmitting(false);
       }
@@ -951,6 +1012,9 @@ export const useRsvpOfferingState = (
     [
       submitting,
       contactReady,
+      signedInPhoneNeeded,
+      signedInPhoneReady,
+      askForAccountPhone,
       runSubmit,
       mapErrorCode,
       handleAcquisitionError,
@@ -964,15 +1028,20 @@ export const useRsvpOfferingState = (
   const onGoingTap = useCallback((): void => {
     if (submitting || !isCurrent() || replyLocked) return;
     if (!contactReady) {
-      setShowValidationErrors(true);
-      setErrorMsg(null);
-      revealFirstIssue();
-      return;
+      // #3380 — a signed-in guest who only lacks a phone is asked for it inside
+      // the confirm step (the dialog shows the phone field).
+      const phoneAskedInConfirm = signedInPhoneNeeded && guestsValid;
+      if (!phoneAskedInConfirm) {
+        setShowValidationErrors(true);
+        setErrorMsg(null);
+        revealFirstIssue();
+        return;
+      }
     }
     setErrorMsg(null);
     setConfirmError(null);
     setConfirmOpen(true);
-  }, [submitting, contactReady, revealFirstIssue, isCurrent, replyLocked]);
+  }, [submitting, contactReady, signedInPhoneNeeded, guestsValid, revealFirstIssue, isCurrent, replyLocked]);
 
   // ── ORCH-1163-R3 — floating-bar entry handlers ──
   // The floating bar forces contactReady=true on its DecisionUnit so the buttons
@@ -986,6 +1055,11 @@ export const useRsvpOfferingState = (
       onGoingTap();
       return;
     }
+    if (signedInPhoneNeeded && guestsValid) {
+      // #3380 — only the account phone is missing: the confirm step asks for it.
+      onGoingTap();
+      return;
+    }
     if (canRevealFields) {
       // Missing details on web / a surface that can scroll: the same guidance as
       // the inline tap (scroll to the first unfinished field + the hint beside
@@ -996,7 +1070,7 @@ export const useRsvpOfferingState = (
     setErrorMsg(null);
     setPendingDecision("going");
     setDetailsOpen(true);
-  }, [submitting, contactReady, canRevealFields, onGoingTap, isCurrent]);
+  }, [submitting, contactReady, signedInPhoneNeeded, guestsValid, canRevealFields, onGoingTap, isCurrent]);
 
   const onFloatingMaybe = useCallback((): void => {
     if (submitting || !isCurrent()) return;
@@ -1057,6 +1131,16 @@ export const useRsvpOfferingState = (
 
   const onConfirmGoing = useCallback(async (): Promise<void> => {
     if (submitting || !isCurrent()) return;
+    if (signedInPhoneNeeded && !signedInPhoneReady) {
+      // #3380 — nothing is sent until the phone the dialog asks for is usable.
+      setPrimaryPhoneTouched(true);
+      setConfirmError(
+        guestPhone.trim().length === 0 && phoneRawValue.trim().length === 0
+          ? RSVP_ADD_ACCOUNT_PHONE_COPY
+          : "Enter a valid phone number.",
+      );
+      return;
+    }
     setSubmitting(true);
     setConfirmError(null);
     try {
@@ -1090,12 +1174,17 @@ export const useRsvpOfferingState = (
       if (!isCurrent()) return;
       const code = err instanceof Error ? err.message : String(err);
       handleAcquisitionError(code);
-      setConfirmError(mapErrorCode(code));
+      setConfirmError(askForAccountPhone(code) ?? mapErrorCode(code));
     } finally {
       if (isCurrent()) setSubmitting(false);
     }
   }, [
     submitting,
+    signedInPhoneNeeded,
+    signedInPhoneReady,
+    guestPhone,
+    phoneRawValue,
+    askForAccountPhone,
     runSubmit,
     event.name,
     event.dateLine,
@@ -1201,14 +1290,17 @@ export const useRsvpOfferingState = (
                   manualApproval: config.manualApproval,
                 });
 
-  const showContactForm =
-    (!isLoggedIn ||
-      (props.requirePrimaryContact === true && !primaryContactComplete)) &&
+  // The reply is still open (not resolved, not a closed full list).
+  const contactFormOpenState =
     !goingResolved &&
     !pendingResolved &&
     !waitlistedResolved &&
     !maybeResolved &&
     !(ctaState === "full" && !config.waitlistEnabled);
+  const showContactForm =
+    (!isLoggedIn ||
+      (props.requirePrimaryContact === true && !primaryContactComplete)) &&
+    contactFormOpenState;
 
   // ── per-guest plus-one stepper + contact mini-forms (§H.5) ──
   const showGuestStepper =
@@ -1263,6 +1355,69 @@ export const useRsvpOfferingState = (
     [],
   );
 
+  // The primary phone field. "inline" is the contact card (it owns the reveal
+  // ref and the historical testIDs); "confirm" (#3380) is the same controlled
+  // field re-hosted in the Going confirm dialog for a signed-in guest whose
+  // account has no phone — shared state, so both mounts always agree.
+  const renderPrimaryPhoneField = (placement: "inline" | "confirm"): React.ReactNode => {
+    const inline = placement === "inline";
+    return renderPhoneField
+      ? (
+        // The injected field exposes no ref; this wrapper is what a blocked
+        // decision tap scrolls to (and, on web, focuses the input inside).
+        <View {...(inline ? { ref: primaryPhoneRef } : {})} collapsable={false}>
+        {renderPhoneField({
+          countryCode: phoneCountry,
+          rawValue: phoneRawValue,
+          role: "primary",
+          guestId: null,
+          index: null,
+          label: "Phone",
+          testID: inline ? "issue-1857-rsvp-primary-phone" : "issue-3380-rsvp-confirm-phone",
+          onChangeCountry: (isoCode, composedE164) => {
+            setPhoneCountry(isoCode);
+            setGuestPhone(composedE164 ?? "");
+          },
+          onChangeRawValue: (raw, composedE164) => {
+            setPhoneRawValue(raw);
+            setGuestPhone(composedE164 ?? "");
+          },
+          invalid: phoneRawValue.trim().length > 0 && !PHONE_RE.test(guestPhone.trim()),
+          palette,
+          disabled: submitting,
+          required: true,
+          emptyRequired: (showValidationErrors || primaryPhoneTouched) && phoneRawValue.trim().length === 0,
+          onBlur: () => setPrimaryPhoneTouched(true),
+        })}
+        </View>
+      )
+      : (
+        <RsvpField
+          {...(inline ? { ref: primaryPhoneRef as unknown as React.Ref<TextInput> } : {})}
+          label="Phone"
+          value={guestPhone}
+          onChangeText={setGuestPhone}
+          placeholder="+1 555 123 4567"
+          palette={palette}
+          {...fieldError(guestPhone, PHONE_RE, "Add your phone number", "Enter a valid phone number")}
+          keyboardType="phone-pad"
+          autoCapitalize="none"
+          testID={inline ? "orch-1150-rsvp-phone" : "issue-3380-rsvp-confirm-phone-plain"}
+        />
+      );
+  };
+
+  // #3380 — a signed-in guest whose account has no phone: name and email come
+  // from the account, so only the phone is asked for.
+  const signedInPhoneForm =
+    !showContactForm && signedInPhoneNeeded && contactFormOpenState ? (
+      <View style={[styles.formCard, surface.card]} testID="issue-3380-rsvp-account-phone">
+        <Text style={[styles.formMicro, surface.tertiaryText]}>
+          {`Add a phone number so ${brand?.displayName?.trim() || "the host"} can reach you about this event. Your name and email come from your account.`}
+        </Text>
+        {renderPrimaryPhoneField("inline")}
+      </View>
+    ) : null;
   const contactForm = showContactForm ? (
     <View style={[styles.formCard, surface.card]} testID="orch-1157-rsvp-contact">
       <Text style={[styles.formMicro, surface.tertiaryText]}>
@@ -1298,52 +1453,9 @@ export const useRsvpOfferingState = (
       {/* ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the surface may inject a
           country-code-aware phone field (@mingla/phone-input). Absent → the plain
           text field (native fallback, unchanged). */}
-      {renderPhoneField
-        ? (
-          // The injected field exposes no ref; this wrapper is what a blocked
-          // decision tap scrolls to (and, on web, focuses the input inside).
-          <View {...{ ref: primaryPhoneRef }} collapsable={false}>
-          {renderPhoneField({
-            countryCode: phoneCountry,
-            rawValue: phoneRawValue,
-            role: "primary",
-            guestId: null,
-            index: null,
-            label: "Phone",
-            testID: "issue-1857-rsvp-primary-phone",
-            onChangeCountry: (isoCode, composedE164) => {
-              setPhoneCountry(isoCode);
-              setGuestPhone(composedE164 ?? "");
-            },
-            onChangeRawValue: (raw, composedE164) => {
-              setPhoneRawValue(raw);
-              setGuestPhone(composedE164 ?? "");
-            },
-            invalid: phoneRawValue.trim().length > 0 && !PHONE_RE.test(guestPhone.trim()),
-            palette,
-            disabled: submitting,
-            required: true,
-            emptyRequired: (showValidationErrors || primaryPhoneTouched) && phoneRawValue.trim().length === 0,
-            onBlur: () => setPrimaryPhoneTouched(true),
-          })}
-          </View>
-        )
-        : (
-          <RsvpField
-            ref={primaryPhoneRef as unknown as React.Ref<TextInput>}
-            label="Phone"
-            value={guestPhone}
-            onChangeText={setGuestPhone}
-            placeholder="+1 555 123 4567"
-            palette={palette}
-            {...fieldError(guestPhone, PHONE_RE, "Add your phone number", "Enter a valid phone number")}
-            keyboardType="phone-pad"
-            autoCapitalize="none"
-            testID="orch-1150-rsvp-phone"
-          />
-        )}
+      {renderPrimaryPhoneField("inline")}
     </View>
-  ) : null;
+  ) : signedInPhoneForm;
 
   const guestForms = showGuestStepper ? (
     <View style={[styles.guestBlock, surface.card]} testID="orch-1163-rsvp-guests">
@@ -1494,6 +1606,17 @@ export const useRsvpOfferingState = (
         plusGuests={guests.map((g) => ({ name: g.name.trim() }))}
         submitting={submitting}
         errorText={confirmError}
+        // #3380 — a signed-in guest with no account phone adds it right here.
+        contactSlot={
+          signedInPhoneNeeded ? (
+            <View testID="issue-3380-rsvp-confirm-phone-slot">
+              <Text style={[styles.formMicro, surface.tertiaryText]}>
+                {`Add a phone number so ${brand?.displayName?.trim() || "the host"} can reach you about this event.`}
+              </Text>
+              {renderPrimaryPhoneField("confirm")}
+            </View>
+          ) : null
+        }
         onConfirm={() => void onConfirmGoing()}
         onCancel={() => { if (isCurrent()) setConfirmOpen(false); }}
       />
