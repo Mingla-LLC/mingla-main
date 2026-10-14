@@ -48,6 +48,8 @@ export interface BuyerNoticeStatus {
     heldSwitchedOff?: number;
     /** RSVP guests given the usual alert instead. */
     alerted?: number;
+    /** Going guests with no email whose copy went by text or the app. */
+    reachedOther?: number;
     /** A waiting email: the people it can reach now. */
     emailable?: number;
     /** Emails are being tested now. */
@@ -107,7 +109,16 @@ export const parseBuyerNoticeStatus = (raw: unknown): BuyerNoticeStatus | null =
       held: count(source.held),
     };
     // Optional facts are present only when the server sent them.
-    for (const key of ["heldTesting", "heldSwitchedOff", "alerted", "emailable", "testAddresses"] as const) {
+    for (
+      const key of [
+        "heldTesting",
+        "heldSwitchedOff",
+        "alerted",
+        "reachedOther",
+        "emailable",
+        "testAddresses",
+      ] as const
+    ) {
       if (typeof source[key] === "number") parsed[key] = count(source[key]);
     }
     if (typeof source.testing === "boolean") parsed.testing = source.testing;
@@ -395,10 +406,17 @@ export const lastNoticeLine = (
   const heldOff = last.heldSwitchedOff ?? 0;
   const heldTesting = last.heldTesting ?? (last.heldSwitchedOff === undefined ? last.held : 0);
   const alerted = last.alerted ?? 0;
-  const reached = last.sent + last.pending + last.failed;
+  const reachedOther = last.reachedOther ?? 0;
+  const reached = last.sent + last.pending + last.failed + reachedOther;
+  const otherPart = reachedOther > 0
+    ? `${people(reachedOther, noun)} with no email address reached by text or the app`
+    : null;
   const failedPart = last.failed > 0 ? `${last.failed} failed` : null;
-  const finish = (parts: Array<string | null>): LastNoticeLine => {
-    const text = `Last update: ${parts.filter((part): part is string => part !== null).join(" · ")}`;
+  const finish = (parts: Array<string | null>): LastNoticeLine | null => {
+    const kept = parts.filter((part): part is string => part !== null);
+    // Nothing true to say (for example a copy for nobody): no line at all.
+    if (kept.length === 0) return null;
+    const text = `Last update: ${kept.join(" · ")}`;
     return last.failed > 0 ? { text: `${text}. Contact support.`, failed: true } : { text, failed: false };
   };
   if (reached === 0 && heldOff > 0 && heldTesting === 0 && alerted === 0) {
@@ -409,11 +427,22 @@ export const lastNoticeLine = (
       failed: false,
     };
   }
-  if (heldTesting > 0 || (alerted > 0 && heldOff === 0)) {
+  if (reached === 0 && heldTesting === 0 && alerted > 0) {
+    // Nobody had the new email; the guests had the usual alert instead.
+    return finish([
+      `${people(alerted, noun)} alerted the usual way`,
+      heldOff > 0 ? `${heldOff} not sent because emails were switched off` : null,
+    ]);
+  }
+  if (
+    heldTesting > 0 || last.testing === true ||
+    (alerted > 0 && heldOff === 0 && last.sent > 0)
+  ) {
     // Emails were being tested: only test addresses had the new email.
     return finish([
       alerted > 0 ? `${people(alerted, noun)} alerted the usual way` : null,
-      `${addresses(last.sent)} emailed`,
+      last.sent > 0 ? `${addresses(last.sent)} emailed` : null,
+      otherPart,
       last.pending > 0 ? `${last.pending} still sending` : null,
       heldTesting > 0 ? `${people(heldTesting, noun)} not emailed while emails are being tested` : null,
       heldOff > 0 ? `${heldOff} not sent because emails were switched off` : null,
@@ -422,6 +451,7 @@ export const lastNoticeLine = (
   }
   return finish([
     `sent to ${last.sent} of ${last.audience}${noun === "guests" ? " guests" : ""}`,
+    otherPart,
     last.pending > 0 ? `${last.pending} still sending` : null,
     `${last.noEmail} ${last.noEmail === 1 ? "has" : "have"} no email address`,
     heldOff > 0 ? `${heldOff} not sent because emails were switched off` : null,
