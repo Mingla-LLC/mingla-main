@@ -118,12 +118,13 @@ import {
 } from "../../utils/brandPaymentsPermission";
 import { majorFromMinor } from "../../utils/currency";
 import {
-  ACCOUNT_MANAGEMENT_NATIVE_RETURN,
   buildAccountManagementWebReturnUrl,
   isSafeAccountManagementTargetUrl,
 } from "../../utils/accountManagementOpen";
 
-const RETURN_DEEP_LINK = ACCOUNT_MANAGEMENT_NATIVE_RETURN;
+// #2227 — literal custom scheme in this file so the AuthSession redirect
+// registry can prove it is not https (re-export aliases are deny-by-default).
+const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 
 // Status-banner config table. ORCH-0764C requires active to render a visible
 // success confirmation; only truly unsupported statuses would be suppressed.

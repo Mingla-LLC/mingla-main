@@ -259,7 +259,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
       });
     }
 
-    // Cancel — live + upcoming. For live, it's a stronger action than End
+    // Cancel event — live + upcoming. For live, it's a stronger action than End
     // sales (cancel notifies buyers + refunds). For upcoming, it replaces
     // "Delete event" since live/upcoming rows have public footprints and
     // shouldn't be hard-deleted. #3645: RSVP copy matches the RSVP dashboard.
