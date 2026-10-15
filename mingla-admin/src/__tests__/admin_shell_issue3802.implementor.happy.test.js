@@ -53,20 +53,21 @@ const CSS = read("globals.css");
 const APP = read("App.jsx");
 
 // The approved menu (spec section 1). Group label -> page ids, in order.
+// #3720 Slice F — Support + Email folded into Community & Support (one primary item).
 const MENU = [
-  [null, ["overview", "support"]],
+  [null, ["overview", "community-support"]],
   ["Pipeline", ["hosts", "creators", "drafts", "beta-leads", "tool-leads", "team-dashboard"]],
   ["Business", ["business-people", "business-brands", "brand-sites", "business-venues", "business-offerings", "claims"]],
   ["Money", ["business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
   ["Explorer app", ["users", "placepool", "launch-cities", "signals", "deck-tuner", "place-intelligence-trial"]],
-  ["Growth", ["ad-engine", "campaign-builder", "campaigns", "email"]],
+  ["Growth", ["ad-engine", "campaign-builder", "campaigns"]],
   ["Company", ["admin", "careers"]],
   ["System", ["stripe-mode", "api-health", "settings", "agent"]],
 ];
 
-// The words on each menu item, exactly as they were before the regrouping.
+// The words on each menu item (updated for #3720 Community & Support).
 const LABELS = {
-  overview: "Dashboard", support: "Support", hosts: "Hosts", creators: "Creators", drafts: "Drafts to send",
+  overview: "Dashboard", "community-support": "Community & Support", hosts: "Hosts", creators: "Creators", drafts: "Drafts to send",
   "beta-leads": "Beta Leads", "tool-leads": "Tool Leads", "team-dashboard": "Team dashboard",
   "business-people": "People", "business-brands": "Brands", "brand-sites": "Brand Sites",
   "business-venues": "Venues", "business-offerings": "Offerings", claims: "Venue claims",
@@ -74,7 +75,7 @@ const LABELS = {
   "refund-operations": "Refund operations", subscriptions: "Subscriptions", pricing: "Pricing",
   users: "Users", placepool: "Place Pool", "launch-cities": "Launch Cities", signals: "Signal Library",
   "deck-tuner": "Deck tuner", "place-intelligence-trial": "Intelligence Trial",
-  "ad-engine": "Ads console", "campaign-builder": "Campaign Builder", campaigns: "Campaigns", email: "Email",
+  "ad-engine": "Ads console", "campaign-builder": "Campaign Builder", campaigns: "Campaigns",
   admin: "Team and roles", careers: "Careers",
   "stripe-mode": "Stripe mode", "api-health": "API health", settings: "Settings", agent: "My agent",
 };
@@ -127,7 +128,7 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
   it("no id twice", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
     assert.equal(new Set(ids).size, ids.length);
-    assert.equal(ids.length, 36);
+    assert.equal(ids.length, 35);
   });
   it("the menu and the app's pages are the same set (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -187,7 +188,7 @@ describe("#3802 S-4: every menu icon resolves", () => {
   it("the registry is found and is not empty", () => {
     assert.ok(block, "Sidebar.jsx must define ICON_MAP");
     assert.ok(importBlock, "Sidebar.jsx must import its icons from lucide-react");
-    assert.ok(entries.length >= 36);
+    assert.ok(entries.length >= 35);
   });
   it("every icon a menu item names is registered", () => {
     const keys = new Set(entries.map((e) => e.key));
@@ -272,7 +273,7 @@ describe("#3802 S-6: the breadcrumb", () => {
   });
   it("the page alone at the top of the menu, on a role home, and for an id it does not know", () => {
     assert.deepEqual(breadcrumbFor("overview", "Dashboard", NAV_GROUPS), [{ label: "Dashboard" }]);
-    assert.deepEqual(breadcrumbFor("support", "Support", NAV_GROUPS), [{ label: "Support" }]);
+    assert.deepEqual(breadcrumbFor("community-support", "Community & Support", NAV_GROUPS), [{ label: "Community & Support" }]);
     assert.deepEqual(breadcrumbFor("home", "My day", NAV_GROUPS), [{ label: "My day" }]);
     assert.deepEqual(breadcrumbFor("nope", "Dashboard", NAV_GROUPS), [{ label: "Dashboard" }]);
     assert.deepEqual(breadcrumbFor("constructor", "Dashboard", null), [{ label: "Dashboard" }]);
@@ -373,7 +374,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   const MIGRATED = [
     "AdEnginePage.jsx", "AdminPage.jsx", "AgentPage.jsx", "ApiHealthPage.jsx", "BetaLeadsPage.jsx", "BrandSitesPage.jsx", "BrandsConsolePage.jsx",
     "BusinessMoneyLedgerPage.jsx", "BusinessOrdersPage.jsx", "BusinessPaymentsPage.jsx", "CampaignBuilderPage.jsx",
-    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "DeckScoreTunerPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
+    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "DeckScoreTunerPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
     "LaunchCitiesPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
     "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "RefundOperationsPage.jsx",
     "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
@@ -408,7 +409,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   it("every page is either on the one header or named for the follow-up", () => {
     const all = fs.readdirSync(PAGES_DIR).filter((f) => /Page\.jsx$/.test(f)).sort();
     assert.deepEqual([...MIGRATED, ...FOLLOW_UP].sort(), all);
-    assert.equal(MIGRATED.length, 36);
+    assert.equal(MIGRATED.length, 37);
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -542,7 +543,7 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   };
 
   it("every state of every migrated page draws the page header", () => {
-    assert.equal(MIGRATED.length, 36);
+    assert.equal(MIGRATED.length, 37);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(

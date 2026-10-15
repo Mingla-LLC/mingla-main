@@ -124,7 +124,7 @@ async function callEdgeFunction(payload, { retried = false } = {}) {
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
-export function EmailPage() {
+export function EmailPage({ embedded = false } = {}) {
   const { signOut } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState("compose");
   const [providerConfigured, setProviderConfigured] = useState(true);
@@ -163,10 +163,14 @@ export function EmailPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Email"
-        tabs={<Tabs tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />}
-      />
+      {!embedded ? (
+        <PageHeader
+          title="Email"
+          tabs={<Tabs tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />}
+        />
+      ) : (
+        <Tabs tabs={SUB_TABS} activeTab={activeSubTab} onChange={setActiveSubTab} />
+      )}
       {sessionExpired && (
         <div
           role="alert"

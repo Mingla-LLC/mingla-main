@@ -122,7 +122,7 @@ function profileLabel(p) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function SupportDeskPage() {
+export function SupportDeskPage({ embedded = false } = {}) {
   const { addToast } = useToast();
   const { session, signOut } = useAuth();
   const mountedRef = useRef(true);
@@ -469,20 +469,37 @@ export function SupportDeskPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Support"
-        description={`Answer business support tickets. ${unassignedCount} unassigned.`}
-        actions={
-          <>
+      {!embedded && (
+        <PageHeader
+          title="Support"
+          description={`Answer business support tickets. ${unassignedCount} unassigned.`}
+          actions={
+            <>
+              <Button variant="secondary" size="sm" icon={Shield} onClick={openAgents}>
+                Agents
+              </Button>
+              <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void loadQueue()}>
+                Refresh
+              </Button>
+            </>
+          }
+        />
+      )}
+      {embedded && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            Answer business support tickets. {unassignedCount} unassigned.
+          </p>
+          <div className="flex gap-2">
             <Button variant="secondary" size="sm" icon={Shield} onClick={openAgents}>
               Agents
             </Button>
             <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void loadQueue()}>
               Refresh
             </Button>
-          </>
-        }
-      />
+          </div>
+        </div>
+      )}
 
       {sessionExpired && (
         <div
