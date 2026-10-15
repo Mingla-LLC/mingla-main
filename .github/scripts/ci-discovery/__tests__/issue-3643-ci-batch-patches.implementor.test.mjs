@@ -41,6 +41,36 @@ function writeJson(root, relative, value) {
   return write(root, relative, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function seedProductionPatches(root, sourceRoot = ROOT) {
+  const relativePatchDirectory = ".github/ci-batch/patches";
+  const sourcePatchDirectory = path.join(sourceRoot, relativePatchDirectory);
+  const targetedRows = new Set();
+  if (!fs.existsSync(sourcePatchDirectory)) return targetedRows;
+
+  fs.cpSync(sourcePatchDirectory, path.join(root, relativePatchDirectory), { recursive: true });
+  for (const entry of fs.readdirSync(sourcePatchDirectory, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".ci-batch.patch.json")) continue;
+    const declaration = JSON.parse(fs.readFileSync(path.join(sourcePatchDirectory, entry.name), "utf8"));
+    const { collection, selector } = declaration.target;
+    targetedRows.add(collection === "suites"
+      ? `suites:id=${selector.id}`
+      : `legacyOrigins:stem=${selector.stem}:extension=${selector.extension}`);
+
+    const referencedPaths = collection === "legacyOrigins"
+      ? [path.posix.join(".github/workflows", `${selector.stem}.${selector.extension}`)]
+      : declaration.operations
+        .filter((operation) => operation.op === "append-unique")
+        .map((operation) => operation.value);
+    for (const relative of referencedPaths) {
+      const source = path.join(sourceRoot, relative);
+      const target = path.join(root, relative);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.cpSync(source, target, { recursive: true });
+    }
+  }
+  return targetedRows;
+}
+
 function syntheticFixture(label, { duplicateLegacy = false } = {}) {
   const root = temporary(label);
   const workflowSource = "name: Synthetic ownership proof\njobs: {}\n";
@@ -128,7 +158,9 @@ test("bootstrap patches preserve row identity, order and counts for both allowed
 test("validator, runner, selector and router consume one effective registry view", () => {
   const root = temporary("production-consumers");
   const bootstrap = loadBootstrap();
+  const productionPatchTargets = seedProductionPatches(root);
   const suite = bootstrap.suites.find((entry) =>
+    !productionPatchTargets.has(`suites:id=${entry.id}`) &&
     !(entry.originPaths || []).some((value) => typeof value === "string" && value.startsWith(".github/workflows/"))
   );
   assert.ok(suite, "fixture needs one suite whose CAS value carries no workflow filename literal");
@@ -171,6 +203,26 @@ test("validator, runner, selector and router consume one effective registry view
     assert.match(fs.readFileSync(path.join(ROOT, consumer), "utf8"), /loadEffectiveManifest/,
       `${consumer} must not bypass the canonical effective registry`);
   }
+});
+
+test("consumer fixtures retain production patches and the files their CAS checks inspect", () => {
+  const production = syntheticFixture("production-patch-source");
+  production.patch("production", production.legacyPatch());
+  const consumerRoot = temporary("seeded-production-consumer");
+  const targets = seedProductionPatches(consumerRoot, production.root);
+  assert.deepEqual([...targets], [
+    `legacyOrigins:stem=${production.legacy.stem}:extension=${production.legacy.extension}`,
+  ]);
+  const effective = loadEffectiveManifest({
+    root: consumerRoot,
+    manifestPath: production.manifestPath,
+    expectedSha: production.expectedSha,
+    discover: true,
+  });
+  assert.equal(
+    effective.legacyOrigins[0].workflowMetadata.sourceSha256,
+    production.legacyPatch().operations[0].value,
+  );
 });
 
 test("bootstrap patch declarations fail closed for every forbidden or stale shape", async (t) => {
