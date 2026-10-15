@@ -219,7 +219,7 @@ export function checkSnapshot(snapshot) {
   return failures;
 }
 
-function selfTest() {
+function verifyHostileMutations() {
   const webBuyer = `
     const termsAccepted = buyer.termsAccepted === true;
     setBuyer({ termsAccepted: next });
@@ -309,24 +309,21 @@ function selfTest() {
   }
 
   process.stdout.write(
-    "[ORCH-0847/#3859 consent separation] SELF-TEST PASS — 8 hostile consent mutations detected.\n",
+    "[ORCH-0847/#3859 consent separation] MUTATION PROOF PASS — 8 hostile consent mutations detected.\n",
   );
 }
 
-if (process.argv.includes("--self-test")) {
-  selfTest();
+verifyHostileMutations();
+const failures = checkSnapshot(readSnapshot());
+if (failures.length > 0) {
+  process.stderr.write(
+    `[ORCH-0847/#3859 consent separation] FAIL\n${failures
+      .map((failure) => `- ${failure}`)
+      .join("\n")}\n`,
+  );
+  process.exitCode = 1;
 } else {
-  const failures = checkSnapshot(readSnapshot());
-  if (failures.length > 0) {
-    process.stderr.write(
-      `[ORCH-0847/#3859 consent separation] FAIL\n${failures
-        .map((failure) => `- ${failure}`)
-        .join("\n")}\n`,
-    );
-    process.exitCode = 1;
-  } else {
-    process.stdout.write(
-      "[ORCH-0847/#3859 consent separation] PASS — Explorer purchase-only checkout and independent default-off buyer-web marketing are intact.\n",
-    );
-  }
+  process.stdout.write(
+    "[ORCH-0847/#3859 consent separation] PASS — Explorer purchase-only checkout and independent default-off buyer-web marketing are intact.\n",
+  );
 }
