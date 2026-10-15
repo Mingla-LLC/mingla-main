@@ -37,6 +37,9 @@ import type { IconName } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
 
 import type { EventCardStatus } from "./EventListCard";
+import { isRsvpManageTarget } from "./rsvpManageTarget";
+
+export { isRsvpManageTarget } from "./rsvpManageTarget";
 
 export interface EventManageMenuProps {
   visible: boolean;
@@ -120,6 +123,8 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
   canEditEvent = true,
   canUseLifecycleActions = true,
 }) => {
+  const isRsvp = isRsvpManageTarget(event);
+
   const actions = useMemo<MenuAction[]>((): MenuAction[] => {
     const list: MenuAction[] = [];
 
@@ -183,33 +188,60 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
       });
     }
 
-    // Share link — non-draft
+    // Share link — non-draft. Separate branches keep ticketed
+    // `label: "Share event"` intact for append-only source contracts.
     if (status !== "draft") {
-      list.push({
-        key: "share",
-        icon: "share",
-        label: "Share event",
-        tone: "default",
-        onPress: () => {
-          onClose();
-          onShare();
-        },
-      });
+      if (isRsvp) {
+        list.push({
+          key: "share",
+          icon: "share",
+          label: "Share RSVP",
+          tone: "default",
+          onPress: () => {
+            onClose();
+            onShare();
+          },
+        });
+      } else {
+        list.push({
+          key: "share",
+          icon: "share",
+          label: "Share event",
+          tone: "default",
+          onPress: () => {
+            onClose();
+            onShare();
+          },
+        });
+      }
     }
 
     // Status-specific actions ---------------------------------------
 
     if (status === "draft") {
-      list.push({
-        key: "publish",
-        icon: "check",
-        label: "Publish event",
-        tone: "accent",
-        onPress: () => {
-          onClose();
-          onEdit(); // Routes to wizard; final step has Publish CTA
-        },
-      });
+      if (isRsvp) {
+        list.push({
+          key: "publish",
+          icon: "check",
+          label: "Publish RSVP",
+          tone: "accent",
+          onPress: () => {
+            onClose();
+            onEdit();
+          },
+        });
+      } else {
+        list.push({
+          key: "publish",
+          icon: "check",
+          label: "Publish event",
+          tone: "accent",
+          onPress: () => {
+            onClose();
+            onEdit(); // Routes to wizard; final step has Publish CTA
+          },
+        });
+      }
     }
 
     // Cycle 13a J-T6 G1: end sales + cancel + delete are part of EDIT_EVENT
@@ -227,25 +259,38 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
       });
     }
 
-    // Cancel event — live + upcoming. For live, it's a stronger action
-    // than End sales (cancel notifies buyers + refunds). For upcoming,
-    // it replaces "Delete event" since live/upcoming events have public
-    // footprints and shouldn't be hard-deleted.
+    // Cancel — live + upcoming. For live, it's a stronger action than End
+    // sales (cancel notifies buyers + refunds). For upcoming, it replaces
+    // "Delete event" since live/upcoming rows have public footprints and
+    // shouldn't be hard-deleted. #3645: RSVP copy matches the RSVP dashboard.
     if (
       (status === "live" || status === "upcoming") &&
       canEditEvent &&
       canUseLifecycleActions
     ) {
-      list.push({
-        key: "cancel-event",
-        icon: "trash",
-        label: "Cancel event",
-        tone: "danger",
-        onPress: () => {
-          onClose();
-          onCancelEvent();
-        },
-      });
+      if (isRsvp) {
+        list.push({
+          key: "cancel-event",
+          icon: "trash",
+          label: "Cancel RSVP",
+          tone: "danger",
+          onPress: () => {
+            onClose();
+            onCancelEvent();
+          },
+        });
+      } else {
+        list.push({
+          key: "cancel-event",
+          icon: "trash",
+          label: "Cancel event",
+          tone: "danger",
+          onPress: () => {
+            onClose();
+            onCancelEvent();
+          },
+        });
+      }
     }
 
     if (status === "upcoming") {
@@ -259,16 +304,29 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
           onDuplicate();
         },
       });
-      list.push({
-        key: "unpublish",
-        icon: "close",
-        label: "Unpublish to draft",
-        tone: "warn",
-        onPress: () => {
-          onClose();
-          onUnpublish();
-        },
-      });
+      if (isRsvp) {
+        list.push({
+          key: "unpublish",
+          icon: "close",
+          label: "Return RSVP to draft",
+          tone: "warn",
+          onPress: () => {
+            onClose();
+            onUnpublish();
+          },
+        });
+      } else {
+        list.push({
+          key: "unpublish",
+          icon: "close",
+          label: "Unpublish to draft",
+          tone: "warn",
+          onPress: () => {
+            onClose();
+            onUnpublish();
+          },
+        });
+      }
     }
 
     // Delete event — drafts ONLY. Upcoming/live events use "Cancel event"
@@ -315,6 +373,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
 
     return list;
   }, [
+    isRsvp,
     status,
     onClose,
     onEdit,
@@ -337,12 +396,13 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
 
   // Avoid noisy "unused brand var" lint if we don't read it directly:
   void brand;
-  void event;
 
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint={snapPx}>
       <View style={styles.body}>
-        <Text style={styles.heading}>Manage event</Text>
+        <Text style={styles.heading}>
+          {isRsvp ? "Manage RSVP" : "Manage event"}
+        </Text>
         <View style={styles.actionsList}>
           {actions.map((action) => (
             <ActionRow key={action.key} action={action} />
