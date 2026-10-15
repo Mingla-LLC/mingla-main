@@ -4,6 +4,7 @@ import { Header } from "./Header";
 import { NAV_ITEMS } from "../../lib/constants";
 import { useAuth } from "../../context/AuthContext";
 import { pageTitle } from "../../lib/access";
+import { DraftCountProvider, useDraftCounts } from "../../hooks/useDraftCounts";
 
 // Issue #3802 (admin shell): the one frame every page sits in. The shell, and
 // only the shell, sets the space around a page: the gutter on all four sides,
@@ -14,6 +15,7 @@ export function AppShell({ activeTab, onTabChange, onOpenSearch, children }) {
   const { access } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const draftCounts = useDraftCounts({ enabled: !!access?.areas?.includes("crm") });
 
   const handleToggleCollapsed = useCallback(() => {
     setSidebarCollapsed((prev) => !prev);
@@ -30,6 +32,7 @@ export function AppShell({ activeTab, onTabChange, onOpenSearch, children }) {
   const currentTitle = pageTitle(activeTab, access, NAV_ITEMS);
 
   return (
+    <DraftCountProvider value={draftCounts}>
     <div className="flex h-screen overflow-hidden bg-[var(--color-background-secondary)]">
       <Sidebar
         activeTab={activeTab}
@@ -56,5 +59,6 @@ export function AppShell({ activeTab, onTabChange, onOpenSearch, children }) {
         </main>
       </div>
     </div>
+    </DraftCountProvider>
   );
 }

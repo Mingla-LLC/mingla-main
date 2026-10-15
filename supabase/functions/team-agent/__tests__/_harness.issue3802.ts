@@ -119,6 +119,7 @@ export async function startSuite(tag: string, block: string): Promise<Suite> {
   };
 
   const wipe = `
+    delete from public.team_drafts where owner_email like :'like';
     delete from public.team_agent_calls where owner_email like :'like';
     delete from public.team_agent_keys where owner_email like :'like';
     delete from public.team_agent_setup_codes where owner_email like :'like';

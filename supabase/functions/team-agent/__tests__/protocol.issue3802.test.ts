@@ -96,6 +96,10 @@ test("#3802 P-1: an agent connects: initialize, the initialized notice, then its
     "set_owners",
     "log_activity",
     "record_reply",
+    "save_drafts",
+    "update_draft",
+    "list_drafts",
+    "withdraw_drafts",
   ]);
   // An admin's list, in the order a client is shown it.
   assert.deepEqual(names(admin), [
@@ -115,6 +119,10 @@ test("#3802 P-1: an agent connects: initialize, the initialized notice, then its
     "set_owners",
     "log_activity",
     "record_reply",
+    "save_drafts",
+    "update_draft",
+    "list_drafts",
+    "withdraw_drafts",
   ]);
   assert.deepEqual(
     names(admin).filter((n: string) => n !== "team_summary"),
@@ -275,7 +283,7 @@ test("#3802 P-3: the guide and the routines come from the server's one definitio
   assert.equal(got.messages[0].content.text, started.routines[0].text);
   for (const r of started.routines) {
     assert.equal(
-      /save_drafts|mark_sent|undo_move|set_target|add_beta_leads_to_hosts|delete_record/
+      /mark_sent|undo_move|set_target|add_beta_leads_to_hosts|delete_record/
         .test(r.text),
       false,
       "a routine names a tool that does not exist yet",
@@ -570,6 +578,10 @@ test("#3802 P-9: the tools that arrive later, and the ones that never will, do n
       "log_activity",
       "record_reply",
       "check_contactable",
+      "save_drafts",
+      "update_draft",
+      "list_drafts",
+      "withdraw_drafts",
     ]
   ) {
     assert.ok(listed.includes(name), `${name} is a tool now`);
@@ -579,10 +591,6 @@ test("#3802 P-9: the tools that arrive later, and the ones that never will, do n
       "undo_move",
       "add_beta_leads_to_hosts",
       "set_target",
-      "save_drafts",
-      "update_draft",
-      "withdraw_drafts",
-      "list_drafts",
       "delete_record",
       "restore_record",
       "send_message",

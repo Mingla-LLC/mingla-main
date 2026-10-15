@@ -33,9 +33,9 @@ export function StatTileSkeleton() {
 }
 
 /** The row of tiles: one column on a phone, up to three across. */
-export function StatTileRow({ children, label }) {
+export function StatTileRow({ children, label, columns = 3 }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" role="group" aria-label={label}>
+    <div className={`grid grid-cols-1 gap-3 ${columns === 4 ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-3"}`} role="group" aria-label={label}>
       {children}
     </div>
   );

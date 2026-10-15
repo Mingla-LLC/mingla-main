@@ -108,7 +108,8 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: its own "Help" group, after "Team".
     const groups = (a) => visibleNavGroups(NAV_GROUPS, a);
     for (const a of [growth, partner]) {
-      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "beta-leads", "agent"], a.role);
+      // [TEST-MOD-APPROVED #3802] Drafts to send is now the third pipeline page.
+      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "drafts", "beta-leads", "agent"], a.role);
     }
     for (const a of [owner, admin, growth, partner]) {
       const shown = groups(a);
@@ -127,7 +128,7 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
   });
   it("the menu, the title and the command palette all know it", () => {
     assert.ok(SIDEBAR.includes("const groups = visibleNavGroups(NAV_GROUPS, access);"), "the menu is drawn from the one list, like every other group");
-    assert.ok(/\bBot,\n\} from "lucide-react";/.test(SIDEBAR) && /\n {2}Bot,\n\};/.test(SIDEBAR), "the Bot icon is imported and registered");
+    assert.ok(/\bBot,\n/.test(SIDEBAR) && /\n {2}Bot,\n/.test(SIDEBAR), "the Bot icon is imported and registered");
     assert.equal(NAV_ITEMS.find((i) => i.id === "agent")?.label, "My agent");
     assert.equal(pageTitle("agent", growth, NAV_ITEMS), "My agent");
     assert.ok(SHELL.includes("pageTitle(activeTab, access, NAV_ITEMS)"));
@@ -292,12 +293,12 @@ describe("#3802 A-4: what it can do is what the connector offers", () => {
     assert.deepEqual(tools("owner"), offered);
     assert.deepEqual(tools("admin"), offered);
     assert.deepEqual(tools(undefined), tools("growth"));
-    assert.deepEqual(abilitiesFor("owner").map((g) => g.group), ["Your day", "Find and check", "Beta leads", "Team", "Add and change", "Log"]);
+    assert.deepEqual(abilitiesFor("owner").map((g) => g.group), ["Your day", "Find and check", "Beta leads", "Team", "Add and change", "Log", "Drafts"]);
   });
   it("nothing that is not built yet is offered as something to use", () => {
     const shown = ALL_AGENT_SRC.map(([, src]) => stripComments(src)).join("\n");
-    // No tool of a later part is named anywhere on the page.
-    for (const later of ["save_drafts", "mark_sent", "undo_move", "set_target", "add_beta_leads_to_hosts", "delete_record"]) {
+    // [TEST-MOD-APPROVED #3802] Draft tools are now built; later tools remain absent.
+    for (const later of ["mark_sent", "undo_move", "set_target", "add_beta_leads_to_hosts", "delete_record"]) {
       assert.equal(shown.includes(later), false, later);
     }
     for (const promise of ["Drafts to send", "See what it wrote for me", "morning sweep", "Copy prompt", "What my agent did"]) {
@@ -305,17 +306,16 @@ describe("#3802 A-4: what it can do is what the connector offers", () => {
     }
     // What is coming is under "Not yet", in plain words.
     assert.ok(PAGE.includes('title="Not yet"') && PAGE.includes('subtitle="Arriving next"'));
-    assert.equal(AGENT_NOT_YET.length, 3);
-    assert.ok(AGENT_NOT_YET.some((l) => /drafts for you to send\. You always send\./.test(l)));
+    assert.equal(AGENT_NOT_YET.length, 2);
     assert.ok(AGENT_NOT_YET.some((l) => /in the browser or on your phone/.test(l)));
     assert.ok(AGENT_NOT_YET.some((l) => /^Undo a move, add beta leads to Hosts, and set targets: do these in Mingla Admin for now\.$/.test(l)));
-    assert.ok(AGENT_GUARDRAILS.includes("It may log the first message to someone new. A follow-up or an answer is yours."));
+    assert.ok(AGENT_GUARDRAILS.includes("It may log only a cold first message. It writes every follow-up or answer as a draft for you."));
     assert.ok(AGENT_GUARDRAILS.includes("It cannot message a record marked Do not contact or Warm intro only, and it cannot lift that mark."));
     assert.ok(AGENT_GUARDRAILS.includes("It never sends an email, DM or WhatsApp for you."));
     assert.ok(AGENT_GUARDRAILS.includes("It cannot delete, manage keys or manage the team."));
     assert.equal(AGENT_GUARDRAILS.length, 7);
     assert.ok(PAGE.includes("It can read and"));
-    assert.ok(/it never deletes, and a follow-up or an answer is always yours\s+to send\./.test(PAGE));
+    assert.ok(/write drafts for you to review\. It never sends\./.test(PAGE));
   });
 });
 

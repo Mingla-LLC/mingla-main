@@ -48,7 +48,8 @@
 
 \set ON_ERROR_STOP on
 \getenv t3802w_pw PGPASSWORD
-\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
+-- [TEST-MOD-APPROVED #3802] PR-C carries the newest complete self-check.
+\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql`
 
 -- ===========================================================================
 -- PART 1 — one transaction, rolled back.
@@ -1573,7 +1574,7 @@ begin
       ('crm_records',       'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_delete,public.crm_record_log,public.crm_record_move_stage,public.crm_record_restore,public.crm_record_set_owners,public.crm_record_undo_stage_move,public.crm_record_update'),
       ('crm_record_owners', 'public.crm_record_create_core,public.crm_record_set_owners'),
       ('crm_record_identifiers', 'public.crm_record_create_core,public.crm_record_update'),
-      ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move'),
+      ('crm_activity',      'public.crm_apply_brand_link,public.crm_beta_lead_to_host,public.crm_reconcile_live,public.crm_record_create_core,public.crm_record_log,public.crm_record_move_stage,public.crm_record_undo_stage_move,public.team_draft_unsend'),
       ('crm_request_keys',  'public.crm_reconcile_live,public.crm_request_claim,public.crm_request_finish')
     ) as v(tbl, want)
   loop
@@ -1594,11 +1595,11 @@ begin
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname !~ '^pg_temp' and p.prosrc ~* 'update\s+public\.crm_records\s+set\s+stage\s*='),
     'public.crm_apply_brand_link,public.crm_reconcile_live,public.crm_record_move_stage,public.crm_record_undo_stage_move');
-  perform pg_temp.t3802w_check('W1-12', 'the one function that removes a log line',
+  perform pg_temp.t3802w_check('W1-12', 'only the two exact Undo functions remove a log line',
     (select string_agg(n.nspname || '.' || p.proname, ',' order by n.nspname, p.proname)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname !~ '^pg_temp' and p.prosrc ~* 'delete\s+from\s+(public\.)?crm_activity\M'),
-    'public.crm_record_undo_stage_move');
+    'public.crm_record_undo_stage_move,public.team_draft_unsend');
   perform pg_temp.t3802w_check('W1-12', 'no pipeline function builds a statement at run time',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'crm\_%' and p.prosrc ~* '\mexecute\s'), '0');

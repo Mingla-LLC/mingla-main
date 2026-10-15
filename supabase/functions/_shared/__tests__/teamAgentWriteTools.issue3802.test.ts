@@ -55,7 +55,18 @@ const NEW_TOOLS = [
   "log_activity",
   "record_reply",
 ];
-const WRITES = NEW_TOOLS.slice(1);
+const DRAFT_TOOLS = [
+  "save_drafts",
+  "update_draft",
+  "list_drafts",
+  "withdraw_drafts",
+];
+const WRITES = [
+  ...NEW_TOOLS.slice(1),
+  "save_drafts",
+  "update_draft",
+  "withdraw_drafts",
+];
 
 function tool(name: string) {
   const t = findTool(name);
@@ -73,7 +84,7 @@ function accepted(name: string, args: unknown): Record<string, unknown> {
   return r.args;
 }
 
-Deno.test("#3802 W-1: sixteen tools, each group together, each saying what it is", () => {
+Deno.test("#3802 W-1: twenty tools, each group together, each saying what it is", () => {
   assertEquals(TEAM_AGENT_TOOLS.map((t) => t.name), [
     "get_started",
     "my_day",
@@ -84,24 +95,26 @@ Deno.test("#3802 W-1: sixteen tools, each group together, each saying what it is
     "check_contactable",
     "list_beta_leads",
     "team_summary",
-    ...WRITES,
+    ...NEW_TOOLS.slice(1),
+    ...DRAFT_TOOLS,
   ]);
-  assertEquals(TEAM_AGENT_TOOLS.length, 16);
+  // [TEST-MOD-APPROVED #3802] Four approved draft tools extend the catalog.
+  assertEquals(TEAM_AGENT_TOOLS.length, 20);
   assertEquals(
     TEAM_AGENT_TOOLS.filter((t) => t.writes).map((t) => t.name),
     WRITES,
   );
-  assertEquals(toolsForRole("growth").length, 15);
-  assertEquals(toolsForRole("partner").length, 15);
-  assertEquals(toolsForRole("admin").length, 16);
-  assertEquals(toolsForRole("owner").length, 16);
+  assertEquals(toolsForRole("growth").length, 19);
+  assertEquals(toolsForRole("partner").length, 19);
+  assertEquals(toolsForRole("admin").length, 20);
+  assertEquals(toolsForRole("owner").length, 20);
   assertEquals(
     toolsForRole("growth").map((t) => t.name),
     toolsForRole("owner").map((t) => t.name).filter((n) =>
       n !== "team_summary"
     ),
   );
-  assertEquals(SERVER_INFO.version, "4.2.0");
+  assertEquals(SERVER_INFO.version, "4.3.0");
   const groups: Record<string, string> = {
     check_contactable: "Find and check",
     add_records: "Add and change",
@@ -626,7 +639,9 @@ Deno.test("#3802 W-4: every refusal a write tool can be given leaves in plain wo
 
 Deno.test("#3802 W-5: every function a screen calls has an agent tool, or a written reason it has none", () => {
   const called = new Set<string>();
-  for (const file of ["crmService.js", "teamAgentService.js"]) {
+  for (
+    const file of ["crmService.js", "teamAgentService.js", "draftService.js"]
+  ) {
     const src = read(`../../../../mingla-admin/src/services/${file}`);
     for (const m of src.matchAll(/\.rpc\(\s*"([a-z_]+)"/g)) called.add(m[1]);
   }
@@ -685,13 +700,16 @@ Deno.test("#3802 W-5: every function a screen calls has an agent tool, or a writ
       "team_agent_keys_overview",
       "team_agent_my_activity",
       "team_agent_setup_create",
+      "team_draft_mark_sent",
+      "team_draft_restore",
+      "team_draft_unsend",
     ],
   );
 });
 
 Deno.test("#3802 W-6: the manifest and the gateway's list in this migration are one list, and the gateway reaches what each tool says", () => {
   const migration = read(
-    "../../../migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql",
+    "../../../migrations/20271016003802_issue_3802_wave4_drafts.sql",
   );
   const gateway =
     /CREATE OR REPLACE FUNCTION public\.team_agent_call\([\s\S]*?\n\$\$;/.exec(
