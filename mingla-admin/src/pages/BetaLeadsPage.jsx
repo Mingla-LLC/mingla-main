@@ -36,6 +36,7 @@ import { buildBetaSearch, buildCrmHash, parseBetaSearch } from "../lib/crmUrl";
 import { betaLeadToHost } from "../services/crmService";
 import { Segmented } from "../components/crm/fields";
 import { LINK_BUTTON_CLASS } from "../components/crm/home/DueList";
+import { AgentPromptStrip } from "../components/agent/AgentPromptStrip";
 
 const PAGE_ID = "beta-leads";
 const OPEN_MS = 8000;
@@ -332,6 +333,8 @@ export function BetaLeadsPage() {
       />
 
       {!online && <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>}
+
+      <AgentPromptStrip routine="new_beta_leads" />
 
       {/* Load error */}
       {error ? (

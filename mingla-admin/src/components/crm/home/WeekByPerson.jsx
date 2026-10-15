@@ -32,12 +32,13 @@ export function WeekByPerson({ byPerson, loading = false, selected = "", hrefFor
             </p>
           ) : null}
           <div className="max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label="This week by person, table">
-            <table className="w-full min-w-[620px] border-collapse">
+            <table className="w-full min-w-[800px] border-collapse">
               <thead>
                 <tr className="border-b border-[var(--gray-200)]">
                   <th scope="col" className={`${TH} pl-4 sm:pl-5`}>Person</th>
                   <th scope="col" className={TH}>Role</th>
                   <th scope="col" className={`${TH} text-right`}>Touches logged</th>
+                  <th scope="col" className={`${TH} text-right`}>Of which by agent</th>
                   <th scope="col" className={`${TH} text-right`}>Stage moves</th>
                   <th scope="col" className={`${TH} text-right`}>Added</th>
                   <th scope="col" className={`${TH} text-right`}>Overdue</th>
@@ -73,6 +74,21 @@ export function WeekByPerson({ byPerson, loading = false, selected = "", hrefFor
                       )}
                     </td>
                     <td className={NUM}>{r.touches}</td>
+                    <td
+                      className={NUM}
+                      aria-label={`${r.touchesBy.claude + r.touchesBy.codex} of ${r.touches} touches were by agents: Claude ${r.touchesBy.claude}, Codex ${r.touchesBy.codex}`}
+                    >
+                      <span aria-hidden="true" className="flex flex-col items-end">
+                        {r.touchesBy.claude + r.touchesBy.codex > 0 ? (
+                          <>
+                            <span>{r.touchesBy.claude + r.touchesBy.codex}</span>
+                            <span className="text-xs text-[var(--color-text-secondary)]">Claude {r.touchesBy.claude} · Codex {r.touchesBy.codex}</span>
+                          </>
+                        ) : (
+                          <span className="text-[var(--color-text-secondary)]">None</span>
+                        )}
+                      </span>
+                    </td>
                     <td className={NUM}>{r.stageMoves}</td>
                     <td className={NUM}>{r.added}</td>
                     <td className={`${NUM} ${r.overdue > 0 ? "font-semibold text-[var(--color-error-700)]" : ""}`}>{r.overdue}</td>

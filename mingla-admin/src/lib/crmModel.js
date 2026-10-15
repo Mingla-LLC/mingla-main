@@ -642,7 +642,7 @@ export function activityActor(entry) {
 
 /** The agent badge: shown only when something other than a person or the system acted. */
 export function activityVia(entry) {
-  return entry?.via && entry.via !== "system" ? entry.via : "";
+  return entry?.via === "claude" ? "Claude" : entry?.via === "codex" ? "Codex" : "";
 }
 
 /**
@@ -821,6 +821,11 @@ export function betaConvertMessage(result, fallbackName = "") {
 export function weekRows(byPerson) {
   const list = (Array.isArray(byPerson) ? byPerson : []).filter((p) => p && typeof p.email === "string" && p.email !== "");
   const team = list.map((p) => ({ email: p.email, display_name: p.display_name }));
+  const bucket = (value) => ({
+    person: count(value?.person),
+    claude: count(value?.claude),
+    codex: count(value?.codex),
+  });
   return list.map((p) => ({
     email: p.email,
     name: ownerLabel(p.email, team),
@@ -828,8 +833,11 @@ export function weekRows(byPerson) {
     former: p.status === "former",
     invited: p.status === "invited",
     touches: count(p.touches),
+    touchesBy: bucket(p.touches_by),
     stageMoves: count(p.stage_moves),
+    stageMovesBy: bucket(p.stage_moves_by),
     added: count(p.added),
+    addedBy: bucket(p.added_by),
     overdue: count(p.overdue),
     dueToday: count(p.due_today),
   }));

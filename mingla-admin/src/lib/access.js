@@ -40,6 +40,7 @@ export const PAGE_AREA_OVERRIDES = {
   "beta-leads": AREA.BETA_LEADS,
   // My agent (issue #3802, Wave 4): everyone who works the pipelines.
   agent: AREA.CRM,
+  guide: AREA.CRM,
 };
 
 export const TEAM_NAV_GROUP = {

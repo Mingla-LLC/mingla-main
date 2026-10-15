@@ -201,6 +201,7 @@ export const NAV_GROUPS = [
       { id: "api-health",                label: "API health",         icon: "HeartPulse" },
       { id: "settings",                  label: "Settings",           icon: "Settings" },
       { id: "agent",                     label: "My agent",           icon: "Bot" },
+      { id: "guide",                     label: "Guide",              icon: "BookOpen" },
     ],
   },
 ];
