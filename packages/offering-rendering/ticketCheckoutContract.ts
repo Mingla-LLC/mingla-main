@@ -167,7 +167,7 @@ export function checkoutClientAttemptFingerprint(
     throw new Error("checkout_attempt_input_invalid");
   }
   const intakeFormData = Array.isArray(input.intakeFormData)
-    ? [...input.intakeFormData].sort((a, b) =>
+    ? Array.from(input.intakeFormData).sort((a, b) =>
       canonicalJson(a).localeCompare(canonicalJson(b))
     )
     : input.intakeFormData;
@@ -184,7 +184,7 @@ export function checkoutClientAttemptFingerprint(
     providerInput: input.providerInput,
     lines: parsedLines.lines,
     eventDateId: input.eventDateId,
-    eventDateIds: [...new Set(input.eventDateIds)].sort(),
+    eventDateIds: Array.from(new Set(input.eventDateIds)).sort(),
     intakeFormData,
   });
 }
