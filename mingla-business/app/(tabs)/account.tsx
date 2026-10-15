@@ -49,6 +49,7 @@ import { usePartnerBrandLinks } from "../../src/hooks/usePartnerBrandLinks";
 // META-ORCH-1104 Phase 3 — support-staff capability (brand-DECOUPLED, keyed on
 // user.id). Gates the "Support — Live Chats" card; RLS is the real boundary.
 import { useSupportStaff } from "../../src/hooks/useSupportStaff";
+import { useCommunityUnreadCount } from "../../src/hooks/useCommunity";
 import { isFeatureEnabled } from "../../src/config/featureFlags";
 import {
   useCurrentBrandStore,
@@ -213,6 +214,8 @@ export default function AccountTab(): React.ReactElement {
   // on user.id (NOT the current brand). The card shows ONLY for an enabled
   // staffer; RLS is the real boundary (a forced /support/inbox reads 0 rows).
   const supportStaff = useSupportStaff();
+  // #3720 Slice G — unread community announcements badge on Help & Support.
+  const { count: communityUnread } = useCommunityUnreadCount();
   const handleOpenSupportInbox = useCallback((): void => {
     router.push("/support/inbox" as never);
   }, [router]);
@@ -427,6 +430,7 @@ export default function AccountTab(): React.ReactElement {
             <SettingsNavRow
               icon="chat"
               label="Help & Support"
+              badgeCount={communityUnread}
               onPress={handleSupport}
             />
             <SettingsNavRow
@@ -536,6 +540,8 @@ interface SettingsNavRowProps {
   icon: IconName;
   label: string;
   destructive?: boolean;
+  /** Unread count badge (e.g. community announcements on Help & Support). */
+  badgeCount?: number;
   onPress: () => void;
 }
 
@@ -543,41 +549,55 @@ const SettingsNavRow: React.FC<SettingsNavRowProps> = ({
   icon,
   label,
   destructive = false,
+  badgeCount = 0,
   onPress,
-}) => (
-  <Pressable
-    onPress={onPress}
-    accessibilityRole="button"
-    accessibilityLabel={label}
-    style={({ pressed }) => [
-      styles.navRow,
-      pressed && styles.navRowPressed,
-    ]}
-  >
-    <View
-      style={[
-        styles.navIconBadge,
-        destructive && styles.navIconBadgeDestructive,
+}) => {
+  const showBadge = badgeCount > 0;
+  const a11yLabel = showBadge
+    ? `${label}, ${badgeCount} unread`
+    : label;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      style={({ pressed }) => [
+        styles.navRow,
+        pressed && styles.navRowPressed,
       ]}
     >
-      <Icon
-        name={icon}
-        size={18}
-        color={destructive ? semantic.error : textTokens.primary}
-      />
-    </View>
-    <Text
-      style={[
-        styles.navLabel,
-        destructive && styles.navLabelDestructive,
-      ]}
-      numberOfLines={1}
-    >
-      {label}
-    </Text>
-    <Icon name="chevR" size={16} color={textTokens.tertiary} />
-  </Pressable>
-);
+      <View
+        style={[
+          styles.navIconBadge,
+          destructive && styles.navIconBadgeDestructive,
+        ]}
+      >
+        <Icon
+          name={icon}
+          size={18}
+          color={destructive ? semantic.error : textTokens.primary}
+        />
+      </View>
+      <Text
+        style={[
+          styles.navLabel,
+          destructive && styles.navLabelDestructive,
+        ]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+      {showBadge ? (
+        <View style={styles.navUnreadBadge} accessibilityElementsHidden>
+          <Text style={styles.navUnreadBadgeText}>
+            {badgeCount > 9 ? "9+" : String(badgeCount)}
+          </Text>
+        </View>
+      ) : null}
+      <Icon name="chevR" size={16} color={textTokens.tertiary} />
+    </Pressable>
+  );
+};
 
 const styles = StyleSheet.create({
   host: {
@@ -646,6 +666,20 @@ const styles = StyleSheet.create({
   },
   navLabelDestructive: {
     color: semantic.error,
+  },
+  navUnreadBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    backgroundColor: accent.warm,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navUnreadBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#ffffff",
   },
   toastWrap: {
     position: "absolute",

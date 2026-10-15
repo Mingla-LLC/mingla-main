@@ -58,9 +58,10 @@ describe("#3720 support send path (implementor)", () => {
     expect(src).toMatch(/from ["']\.\.\/\.\.\/constants\/supportHostFacing["']/);
   });
 
-  test("Help & Support exposes Help Centre videos link", () => {
+  test("Help & Support Guides tab exposes Help Centre videos link", () => {
+    // #3720 Slice G moved Help Centre into GuidesTabPanel (still under hub).
     const src = fs.readFileSync(
-      path.join(ROOT, "app/account/support.tsx"),
+      path.join(ROOT, "src/components/support/GuidesTabPanel.tsx"),
       "utf8",
     );
     expect(src).toContain("Help Centre videos");
