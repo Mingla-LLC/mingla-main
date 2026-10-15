@@ -48,6 +48,7 @@ const REQUEST_KEYS = new Set([
   "creative_library_id",
   "platform",
   "lane",
+  "brand_id",
 ]);
 const SAFE_ERROR_MESSAGES: Record<string, string> = {
   provider_terminal:
@@ -73,6 +74,7 @@ function envelope(
   row: PrepareBeginRow,
   creativeId: string,
   platform: PreparationPlatform,
+  lane: "consumer" | "business",
   traceId: string,
   opts: {
     cached?: boolean;
@@ -88,7 +90,7 @@ function envelope(
     creative_library_id: creativeId,
     ref_id: row.ref_id,
     platform,
-    lane: "consumer",
+    lane,
     state: toPreparationState(row.current_status),
     capability: capabilityFor(platform),
     cached: opts.cached ?? row.current_status === "ready",
@@ -180,19 +182,34 @@ serve(async (req: Request): Promise<Response> => {
   const jwt = authHeader.replace("Bearer ", "");
   const { data: { user }, error: authError } = await supabase.auth.getUser(jwt);
   if (authError || !user) return json({ error: "unauthorized" }, 401);
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json() as Record<string, unknown>;
+  } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+
   const { data: adminRow } = await supabase
     .from("admin_users")
     .select("id")
     .eq("email", user.email)
     .eq("status", "active")
     .maybeSingle();
-  if (!adminRow) return json({ error: "forbidden" }, 403);
-
-  let body: Record<string, unknown>;
-  try {
-    body = await req.json() as Record<string, unknown>;
-  } catch {
-    return json({ error: "invalid_json" }, 400);
+  const requestedBrandId = typeof body.brand_id === "string"
+    ? body.brand_id.trim()
+    : "";
+  const requestedLane = body.lane;
+  if (!adminRow) {
+    if (!requestedBrandId || requestedLane !== "business") {
+      return json({ error: "forbidden" }, 403);
+    }
+    const { data: canManage, error: manageError } = await supabase.rpc(
+      "biz_can_manage_payments_for_brand",
+      { p_brand_id: requestedBrandId, p_user_id: user.id },
+    );
+    if (manageError || canManage !== true) {
+      return json({ error: "forbidden", detail: "permission_denied" }, 403);
+    }
   }
   for (const key of Object.keys(body)) {
     if (!REQUEST_KEYS.has(key)) {
@@ -212,7 +229,12 @@ serve(async (req: Request): Promise<Response> => {
   if (!isPreparationPlatform(platform)) {
     return json({ error: "platform_invalid" }, 422);
   }
-  if (lane !== "consumer") return json({ error: "lane_invalid" }, 422);
+  if (lane !== "consumer" && lane !== "business") {
+    return json({ error: "lane_invalid" }, 422);
+  }
+  if (!adminRow && lane !== "business") {
+    return json({ error: "lane_invalid" }, 422);
+  }
   const traceId = crypto.randomUUID();
   try {
     assertCreativeCdnConfigured();
@@ -230,7 +252,7 @@ serve(async (req: Request): Promise<Response> => {
     .from("ad_connections")
     .select("*")
     .eq("platform", platform)
-    .eq("lane", "consumer")
+    .eq("lane", lane)
     .maybeSingle();
   if (connectionError) {
     return json({ error: "connection_lookup_failed", trace_id: traceId }, 503);
@@ -255,6 +277,9 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "creative_not_found", trace_id: traceId }, 404);
   }
   const creative = creativeRow as unknown as AdCreativeRow;
+  if (!adminRow && creative.brand_id !== requestedBrandId) {
+    return json({ error: "creative_brand_mismatch", trace_id: traceId }, 403);
+  }
   if (creative.status !== "active" || creative.kind !== "video") {
     return json(
       { error: "creative_kind_or_status_invalid", trace_id: traceId },
@@ -275,7 +300,7 @@ serve(async (req: Request): Promise<Response> => {
     {
       p_creative_id: creativeId,
       p_platform: platform,
-      p_lane: "consumer",
+      p_lane: lane,
       p_external_account_id: connection.external_account_id,
       p_external_kind: "video",
       p_content_hash: creative.content_hash,
@@ -380,7 +405,7 @@ serve(async (req: Request): Promise<Response> => {
         ? 202
         : 200;
     return json(
-      envelope(row, creativeId, platform, traceId, { cached }),
+      envelope(row, creativeId, platform, lane, traceId, { cached }),
       status,
     );
   }
@@ -460,10 +485,10 @@ serve(async (req: Request): Promise<Response> => {
             row.current_status === "processing"
           ? 202
           : 200;
-        return json(envelope(row, creativeId, platform, traceId), status);
+        return json(envelope(row, creativeId, platform, lane, traceId), status);
       }
       return json(
-        envelope(row, creativeId, platform, traceId, {
+        envelope(row, creativeId, platform, lane, traceId, {
           retryAfterSeconds: platform === "meta" ? 5 : 10,
         }),
         202,
@@ -479,7 +504,7 @@ serve(async (req: Request): Promise<Response> => {
       if (error instanceof ProviderRateLimitError) {
         const retryAfter = error.retryAfterSeconds;
         return json(
-          envelope(row, creativeId, platform, traceId, {
+          envelope(row, creativeId, platform, lane, traceId, {
             cached: false,
             retryAfterSeconds: retryAfter,
             errorCode: "provider_rate_limited",
@@ -524,7 +549,7 @@ serve(async (req: Request): Promise<Response> => {
         return json({ error: "audit_write_failed", trace_id: traceId }, 500);
       }
       return json(
-        envelope(row, creativeId, platform, traceId, {
+        envelope(row, creativeId, platform, lane, traceId, {
           cached: false,
           errorCode: "provider_init_failed",
         }),
@@ -597,7 +622,10 @@ serve(async (req: Request): Promise<Response> => {
             ["uploading", "processing"].includes(row.current_status)
               ? 202
               : 200;
-          return json(envelope(row, creativeId, platform, traceId), status);
+          return json(
+            envelope(row, creativeId, platform, lane, traceId),
+            status,
+          );
         }
       }
       const checked = await adapter.check(
@@ -641,7 +669,7 @@ serve(async (req: Request): Promise<Response> => {
         if (result === "audit_failed") {
           return json({ error: "audit_write_failed", trace_id: traceId }, 500);
         }
-        return json(envelope(row, creativeId, platform, traceId, {
+        return json(envelope(row, creativeId, platform, lane, traceId, {
           cached: false,
           preview: checked.preview ?? null,
         }));
@@ -671,7 +699,7 @@ serve(async (req: Request): Promise<Response> => {
           return json({ error: "audit_write_failed", trace_id: traceId }, 500);
         }
         return json(
-          envelope(row, creativeId, platform, traceId, {
+          envelope(row, creativeId, platform, lane, traceId, {
             cached: false,
             errorCode: "provider_terminal",
           }),
@@ -698,7 +726,7 @@ serve(async (req: Request): Promise<Response> => {
         return json({ error: "audit_write_failed", trace_id: traceId }, 500);
       }
       return json(
-        envelope(row, creativeId, platform, traceId, {
+        envelope(row, creativeId, platform, lane, traceId, {
           cached: false,
           retryAfterSeconds: checked.retryAfterSeconds ?? 10,
           preview: checked.preview ?? null,
@@ -709,7 +737,7 @@ serve(async (req: Request): Promise<Response> => {
       if (error instanceof ProviderRateLimitError) {
         const retryAfter = error.retryAfterSeconds;
         return json(
-          envelope(row, creativeId, platform, traceId, {
+          envelope(row, creativeId, platform, lane, traceId, {
             cached: false,
             retryAfterSeconds: retryAfter,
             errorCode: "provider_rate_limited",
@@ -742,7 +770,7 @@ serve(async (req: Request): Promise<Response> => {
         if (result === "audit_failed") {
           return json({ error: "audit_write_failed", trace_id: traceId }, 500);
         }
-        return json(envelope(row, creativeId, platform, traceId));
+        return json(envelope(row, creativeId, platform, lane, traceId));
       }
       const result = await cas(
         {
@@ -763,7 +791,7 @@ serve(async (req: Request): Promise<Response> => {
         return json({ error: "audit_write_failed", trace_id: traceId }, 500);
       }
       return json(
-        envelope(row, creativeId, platform, traceId, {
+        envelope(row, creativeId, platform, lane, traceId, {
           cached: false,
           retryAfterSeconds: 10,
           errorCode: "provider_check_transient",

@@ -15,7 +15,11 @@ import {
 import {
   decideSpendSync,
   metaSpendDollarsToCents,
+  parseGoogleAdsSpend,
   parseMetaInsightsSpend,
+  parseRedditReportSpend,
+  parseSnapchatStatsSpend,
+  parseTikTokReportSpend,
   startDateNotReached,
 } from "../adSpendSync.ts";
 
@@ -160,6 +164,71 @@ Deno.test("Meta insights spend dollars → cents", () => {
   });
   assertEquals(rows[0].spend_cents, 150);
   assertEquals(rows[0].impressions, 10);
+});
+
+Deno.test("all five spend feeds normalize daily cost to cents", () => {
+  assertEquals(
+    parseTikTokReportSpend({
+      data: {
+        list: [{
+          dimensions: { stat_time_day: "2026-10-01" },
+          metrics: { spend: "12.34", impressions: "8", clicks: "2" },
+        }],
+      },
+    })[0],
+    {
+      spend_date: "2026-10-01",
+      spend_cents: 1234,
+      impressions: 8,
+      clicks: 2,
+    },
+  );
+  assertEquals(
+    parseSnapchatStatsSpend({
+      timeseries_stats: [{
+        timeseries_stat: {
+          timeseries: [{
+            start_time: "2026-10-01T00:00:00Z",
+            stats: { spend: 12_340_000, impressions: 9, swipes: 3 },
+          }],
+        },
+      }],
+    })[0],
+    {
+      spend_date: "2026-10-01",
+      spend_cents: 1234,
+      impressions: 9,
+      clicks: 3,
+    },
+  );
+  assertEquals(
+    parseGoogleAdsSpend({
+      results: [{
+        segments: { date: "2026-10-01" },
+        metrics: { costMicros: "12340000", impressions: "10", clicks: "4" },
+      }],
+    })[0],
+    {
+      spend_date: "2026-10-01",
+      spend_cents: 1234,
+      impressions: 10,
+      clicks: 4,
+    },
+  );
+  assertEquals(
+    parseRedditReportSpend({
+      data: [{
+        breakdowns: { DATE: "2026-10-01" },
+        metrics: { SPEND: 12_340_000, IMPRESSIONS: 11, CLICKS: 5 },
+      }],
+    })[0],
+    {
+      spend_date: "2026-10-01",
+      spend_cents: 1234,
+      impressions: 11,
+      clicks: 5,
+    },
+  );
 });
 
 Deno.test("Meta CBO lifetime uses lifetime_budget not daily_budget", async () => {

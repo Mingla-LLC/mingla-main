@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3697",
+  "target": {
+    "kind": "function",
+    "name": "admin-ad-spend-sync"
+  },
+  "basePolicySha256": "4389ee753fa603003a163e2ce18bec6b573d66b777b3aa683ef71d4031097212",
+  "operations": [
+    {
+      "op": "add_env_name",
+      "classification": "optional_top_level",
+      "name": "BUSINESS_WEB_ORIGIN",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "0c2213a6c2ec2299425007c3f320e4cdf8f3ec4abc0c578fbe6a50007f42d175",
+  "reason": "Destination safety imports adDestination; BUSINESS_WEB_ORIGIN is optional because the production-origin fallback remains."
+}

@@ -267,6 +267,8 @@ export interface CoverPickerProps {
   resumeAfterNativeEditor?: NativeEditorCarry | null;
   /** issue #3280 — tells the sheet this picker has taken the hand-off. */
   onResumeAfterNativeEditorConsumed?: (carryId: number) => void;
+  /** Restrict the picker to device video (used by Ari Host Ads). */
+  mediaMode?: "all" | "video-only";
 }
 
 const TAB_DEFS: ReadonlyArray<{ id: CoverTabId; label: string; icon: Parameters<typeof Icon>[0]["name"] }> = [
@@ -359,6 +361,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   onNativeEditorClosed,
   resumeAfterNativeEditor = null,
   onResumeAfterNativeEditorConsumed,
+  mediaMode = "all",
 }) => {
   const { isAuthReady } = useAuth();
   const isBrand = target.kind === "brand";
@@ -1900,7 +1903,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   return (
     <View style={styles.root}>
       {/* Tab bar — segmented control (DESIGN §3). */}
-      <View style={styles.tabTrack} accessibilityRole="tablist">
+      {mediaMode === "all" ? <View style={styles.tabTrack} accessibilityRole="tablist">
         {TAB_DEFS.map((tab) => {
           const isActive = tab.id === activeTab;
           return (
@@ -1924,7 +1927,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             </Pressable>
           );
         })}
-      </View>
+      </View> : null}
 
       {/* Search bar — GIF + Stock only. */}
       {(activeTab === "gif" || activeTab === "stock") ? (
@@ -2040,6 +2043,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
               : null
           }
           canRetryVideo={lastVideoUploadFileRef.current !== null}
+          videoOnly={mediaMode === "video-only"}
           disabled={disabled}
           onPickImage={pickImageOrGifCover}
           onPickVideo={() => {
@@ -2344,6 +2348,7 @@ const LibraryTab: React.FC<{
   videoStatus: EventCoverVideoStatus | null;
   videoErrorMessage: string | null;
   canRetryVideo: boolean;
+  videoOnly: boolean;
   disabled: boolean;
   onPickImage: () => void;
   onPickVideo: () => void;
@@ -2373,6 +2378,7 @@ const LibraryTab: React.FC<{
   videoStatus,
   videoErrorMessage,
   canRetryVideo,
+  videoOnly,
   disabled,
   onPickImage,
   onPickVideo,
@@ -2433,17 +2439,19 @@ const LibraryTab: React.FC<{
     {activeVideoUpload ? <VideoPickNoticeRow notice={videoPickNotice} /> : (
       <>
         <View style={styles.actionRow}>
-          <Button
-            label={hasCover ? "Replace" : "Image"}
-            leadingIcon="upload"
-            variant="secondary"
-            size="md"
-            shape="square"
-            onPress={onPickImage}
-            loading={spinning}
-            disabled={uploading || disabled}
-            style={styles.actionButton}
-          />
+          {!videoOnly ? (
+            <Button
+              label={hasCover ? "Replace" : "Image"}
+              leadingIcon="upload"
+              variant="secondary"
+              size="md"
+              shape="square"
+              onPress={onPickImage}
+              loading={spinning}
+              disabled={uploading || disabled}
+              style={styles.actionButton}
+            />
+          ) : null}
           <Button
             label="Video"
             leadingIcon="play"

@@ -170,6 +170,8 @@ import type { Platform } from "../_shared/adChannelCore.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A1 smart-link host + template (consumer OneLink w36m on go.usemingla.com — LIVE). */
 const ONELINK_BASE = "https://go.usemingla.com/w36m";
@@ -417,13 +419,89 @@ serve(async (req: Request): Promise<Response> => {
     .eq("email", user.email)
     .eq("status", "active")
     .maybeSingle();
-  if (!adminRow) return json({ error: "forbidden" }, 403);
+  const requestedOwnerKind = body.owner_kind === "host" ? "host" : "mingla";
+  const requestedBrandId = typeof body.brand_id === "string"
+    ? body.brand_id.trim()
+    : "";
+  if (requestedOwnerKind === "host") {
+    if (!UUID_REGEX.test(requestedBrandId)) {
+      return json({ error: "validation_error", detail: "brand_id_invalid" }, 400);
+    }
+    const { data: canManage, error: manageError } = await supabase.rpc(
+      "biz_can_manage_payments_for_brand",
+      { p_brand_id: requestedBrandId, p_user_id: user.id },
+    );
+    if (manageError || canManage !== true) {
+      return json({ error: "forbidden", detail: "permission_denied" }, 403);
+    }
+  } else if (!adminRow) {
+    return json({ error: "forbidden" }, 403);
+  }
 
   // ── Input validation. ────────────────────────────────────────────────────────
   const platform = body.platform ?? "meta";
   const lane = body.lane ?? "consumer";
   if (!isPlatform(platform)) return json({ error: "validation_error", detail: "platform_invalid" }, 400);
   if (!isLane(lane)) return json({ error: "validation_error", detail: "lane_invalid" }, 400);
+  if (requestedOwnerKind === "host" && lane !== "business") {
+    return json({ error: "validation_error", detail: "host_requires_business_lane" }, 422);
+  }
+
+  if (requestedOwnerKind === "host") {
+    let hostDestination;
+    try {
+      hostDestination = await resolveAdDestination(supabase, pickCallDestination(body));
+    } catch (error) {
+      if (error instanceof AdDestinationError) {
+        return json({ error: "validation_error", detail: error.code }, error.status);
+      }
+      throw error;
+    }
+    if (hostDestination.page_type === "marketing") {
+      return json({ error: "validation_error", detail: "destination_not_host_owned" }, 422);
+    }
+    const destinationBrandId = await resolveBrandIdForSlug(
+      supabase,
+      hostDestination.brand_slug,
+    );
+    if (destinationBrandId !== requestedBrandId) {
+      return json({ error: "forbidden", detail: "destination_brand_mismatch" }, 403);
+    }
+
+    const hostCreative = body.creative && typeof body.creative === "object" &&
+        !Array.isArray(body.creative)
+      ? body.creative as Record<string, unknown>
+      : {};
+    const hostCreativeId = typeof hostCreative.creative_library_id === "string"
+      ? hostCreative.creative_library_id.trim()
+      : "";
+    if (!UUID_REGEX.test(hostCreativeId)) {
+      return json({
+        error: "validation_error",
+        detail: "host_video_creative_required",
+      }, 422);
+    }
+    const { data: hostCreativeRow, error: hostCreativeError } = await supabase
+      .from("ad_creatives")
+      .select("id, brand_id, kind, status")
+      .eq("id", hostCreativeId)
+      .maybeSingle();
+    if (hostCreativeError) {
+      return json({ error: "creative_lookup_failed" }, 503);
+    }
+    if (!hostCreativeRow) {
+      return json({ error: "creative_not_found" }, 422);
+    }
+    if (hostCreativeRow.brand_id !== requestedBrandId) {
+      return json({ error: "forbidden", detail: "creative_brand_mismatch" }, 403);
+    }
+    if (hostCreativeRow.kind !== "video" || hostCreativeRow.status !== "active") {
+      return json({
+        error: "validation_error",
+        detail: "host_video_creative_required",
+      }, 422);
+    }
+  }
 
   // ISSUE-1002 [multi-destination fan-out] — REJECTED in Wave 2 (#3707 / A3-11).
   // Multi-select used to fan out N campaigns each carrying the full channel
@@ -523,7 +601,7 @@ serve(async (req: Request): Promise<Response> => {
   });
 
   const wave2MoneyBase: Omit<Wave2MoneyPersist, "brand_id"> = {
-    owner_kind: "mingla",
+    owner_kind: requestedOwnerKind,
     cap_cents: capCents,
     lifetime_budget_cents: budgetType === "lifetime" ? amountCents as number : null,
     starts_at: schedule.starts_at,

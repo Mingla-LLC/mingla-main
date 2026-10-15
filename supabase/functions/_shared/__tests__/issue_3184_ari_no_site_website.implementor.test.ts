@@ -336,7 +336,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   fn: () => {
-    assertEquals(PROMPT_VERSION, "v22"); // [TEST-MOD-APPROVED #1984] prompt bumped for analytics ads
+    assertEquals(PROMPT_VERSION, "v23"); // [TEST-MOD-APPROVED #3697] prompt bumped for Host Ads video launch
     const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
     for (
       const line of [

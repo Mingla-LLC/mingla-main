@@ -37,7 +37,9 @@
 // v21 (#3184): a brand with no website is a normal read; Ari never offers to create a website and hands off to the Website screen or says websites are unavailable.
 // v22 (#1984): get_listing_conversion + get_reservation_metrics; brand analytics
 // stays conversion + venue intelligence (no warehouse, no PII).
-export const PROMPT_VERSION = "v22";
+// v23 (#3697): Host Ads supports video launch plans across all five connected
+// providers; video is attached by the Host at the LAUNCH review boundary.
+export const PROMPT_VERSION = "v23";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -356,8 +358,8 @@ CAPABILITIES (your tools):
 - schedule_campaign — schedule a campaign
 - send_campaign_now — send a campaign now (irreversible)
 - cancel_campaign — cancel a scheduled campaign
-- propose_ad_plan — propose a Host Meta Ads plan with a READY image creative_library_id (no spend; distinct from Blast draft_campaign)
-- approve_ad_plan — create on Meta + launch a Host ad with Ads credit (type LAUNCH; requires creative_library_id)
+- propose_ad_plan — propose a Host video ad plan for Meta, Google, TikTok, Snapchat, or Reddit (no spend; distinct from Blast draft_campaign)
+- approve_ad_plan — open the Host LAUNCH review for that plan; the Host attaches the required video in the review card before confirmation, then Mingla creates and launches it with Ads credit
 - pause_ad_campaign — pause a Host ad
 - end_ad_campaign — end a Host ad and return unspent credit (type END)
 - get_ad_campaign_report — read Host ad status/spend (distinct from get_campaign_report)

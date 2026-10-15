@@ -1,6 +1,8 @@
 /**
  * toward #3697 Wave 0a — first-party ad click capture for Sites runtimes.
  * Proxies click/UTM/mc_id to Core attribution-capture (no Sites edge deploy).
+ * Production requires SITES_CORE_ANON_KEY in the Vercel project environment;
+ * changing that environment still requires a new Sites deployment to take effect.
  * Fail-open: missing config or Core errors return soft JSON, never throw.
  */
 import { NextResponse } from "next/server";

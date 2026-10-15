@@ -29,6 +29,7 @@ import {
   cancelHostAdCampaign,
   endHostAdCampaign,
   getHostAdCampaign,
+  type HostAdCampaignDetail,
   pauseHostAdCampaign,
 } from "../../../../src/services/hostAdCampaignService";
 import { formatCurrency } from "../../../../src/utils/currency";
@@ -53,10 +54,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [payload, setPayload] = useState<{
-    campaign: Record<string, unknown>;
-    spend_total_cents: number;
-  } | null>(null);
+  const [payload, setPayload] = useState<HostAdCampaignDetail | null>(null);
 
   const load = useCallback(async () => {
     if (brandId === null || campaignId === null) return;
@@ -171,6 +169,36 @@ export default function HostAdDetailRoute(): React.ReactElement {
   // Phase 3: Cancel before spend; End after — a card never shows both.
   const canCancel = !isEnded && spent <= 0;
   const canEnd = !isEnded && spent > 0;
+  const conversions = Number(payload.results?.conversions ?? 0);
+  const impressions = payload.spend_daily.reduce(
+    (total, row) => total + Number(row.impressions ?? 0),
+    0,
+  );
+  const clicks = payload.spend_daily.reduce(
+    (total, row) => total + Number(row.clicks ?? 0),
+    0,
+  );
+  const capUsed = cap > 0 ? Math.min(100, Math.round((spent / cap) * 100)) : 0;
+  const latestPauseReason = payload.timeline.find((event) =>
+    event.action === "pause" &&
+    event.provider_response &&
+    typeof event.provider_response.reason === "string"
+  )?.provider_response?.reason;
+  const endState = isEnded
+    ? status.toUpperCase() === "DELETED"
+      ? "Cancelled before platform spend — full Ads credit was returned"
+      : "Ended — unspent Ads credit was returned"
+    : latestPauseReason === "destination_unavailable"
+    ? "Destination page ended or is no longer public — delivery paused"
+    : latestPauseReason === "destination_check_failed"
+    ? "Destination availability could not be verified — delivery paused safely"
+    : latestPauseReason === "end_date_passed"
+    ? "Campaign schedule ended — delivery paused"
+    : latestPauseReason === "spend_fetch_failed"
+    ? "Results feed unavailable — delivery paused for budget safety"
+    : cap > 0 && spent >= Math.floor(cap * 0.98)
+    ? "Budget used — delivery paused at the safety cap"
+    : null;
 
   return (
     <View style={styles.host} testID="ads-detail-screen">
@@ -194,11 +222,88 @@ export default function HostAdDetailRoute(): React.ReactElement {
             Spend {formatCurrency(spent, currency, true)} of{" "}
             {formatCurrency(cap, currency, true)} cap
           </Text>
+          <Text style={styles.progress}>{capUsed}% of cap used</Text>
           {typeof c.dest_url === "string" && c.dest_url.length > 0 ? (
             <Text style={styles.dest} numberOfLines={2}>
               {c.dest_url}
             </Text>
           ) : null}
+        </GlassCard>
+
+        {endState ? (
+          <GlassCard variant="elevated" padding={spacing.md}>
+            <Text style={styles.sectionTitle}>End state</Text>
+            <Text style={styles.body}>{endState}</Text>
+          </GlassCard>
+        ) : null}
+
+        <GlassCard variant="elevated" padding={spacing.lg}>
+          <Text style={styles.sectionTitle}>Results</Text>
+          <View style={styles.metricGrid}>
+            <View style={styles.metricCell}>
+              <Text style={styles.metricNumber}>{impressions.toLocaleString()}</Text>
+              <Text style={styles.metricLabel}>Impressions</Text>
+            </View>
+            <View style={styles.metricCell}>
+              <Text style={styles.metricNumber}>{clicks.toLocaleString()}</Text>
+              <Text style={styles.metricLabel}>Clicks</Text>
+            </View>
+            <View style={styles.metricCell}>
+              <Text style={styles.metricNumber}>{conversions.toLocaleString()}</Text>
+              <Text style={styles.metricLabel}>Conversions</Text>
+            </View>
+          </View>
+          {(payload.results.by_platform ?? []).map((row) => (
+            <View key={row.platform} style={styles.resultRow}>
+              <Text style={styles.body}>{row.platform}</Text>
+              <Text style={styles.body}>{row.conversions} conversions</Text>
+            </View>
+          ))}
+          {payload.by_placement.map((row) => (
+            <View key={`${row.platform}:${row.placement}`} style={styles.resultRow}>
+              <Text style={styles.body}>{row.placement}</Text>
+              <Text style={styles.body}>{row.conversions} conversions</Text>
+            </View>
+          ))}
+        </GlassCard>
+
+        <GlassCard variant="elevated" padding={spacing.lg}>
+          <Text style={styles.sectionTitle}>Creative</Text>
+          {payload.creatives.length === 0 ? (
+            <Text style={styles.body}>No creative record yet.</Text>
+          ) : payload.creatives.map((creative) => (
+            <View key={creative.id} style={styles.timelineRow}>
+              <Text style={styles.body}>{creative.ad_creatives?.name ?? creative.name}</Text>
+              <Text style={styles.muted}>
+                {creative.ad_creatives?.kind ?? "creative"} · {creative.review_status ?? creative.status}
+              </Text>
+              {creative.review_status?.toUpperCase().includes("REJECT") ? (
+                <Text style={styles.error}>Provider rejected this creative. Review the provider detail and replace it.</Text>
+              ) : null}
+            </View>
+          ))}
+        </GlassCard>
+
+        <GlassCard variant="elevated" padding={spacing.lg}>
+          <Text style={styles.sectionTitle}>Timeline</Text>
+          {payload.timeline.length === 0 ? (
+            <Text style={styles.body}>No status changes yet.</Text>
+          ) : payload.timeline.map((event) => (
+            <View key={event.id} style={styles.timelineRow}>
+              <Text style={styles.body}>
+                {event.action.replace(/_/g, " ")} · {event.to_status ?? event.entity ?? "recorded"}
+              </Text>
+              <Text style={styles.muted}>{new Date(event.created_at).toLocaleString()}</Text>
+            </View>
+          ))}
+          {payload.credit_events.map((event) => (
+            <View key={event.id} style={styles.timelineRow}>
+              <Text style={styles.body}>
+                {event.entry_kind.replace(/_/g, " ")} · {formatCurrency(event.amount_cents, event.currency, true)}
+              </Text>
+              <Text style={styles.muted}>{new Date(event.created_at).toLocaleString()}</Text>
+            </View>
+          ))}
         </GlassCard>
 
         {error !== null ? (
@@ -292,6 +397,52 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: textTokens.primary,
     marginTop: spacing.md,
+  },
+  progress: {
+    ...typography.caption,
+    color: textTokens.secondary,
+    marginTop: spacing.xs,
+  },
+  sectionTitle: {
+    ...typography.h3,
+    color: textTokens.primary,
+    marginBottom: spacing.sm,
+  },
+  body: {
+    ...typography.bodySm,
+    color: textTokens.primary,
+  },
+  muted: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+  },
+  metricGrid: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  metricCell: {
+    flex: 1,
+  },
+  metricNumber: {
+    ...typography.h3,
+    color: textTokens.primary,
+  },
+  metricLabel: {
+    ...typography.caption,
+    color: textTokens.secondary,
+  },
+  resultRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  timelineRow: {
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: glass.border.chrome,
   },
   dest: {
     ...typography.caption,
