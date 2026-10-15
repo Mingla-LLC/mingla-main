@@ -1951,21 +1951,49 @@ test("the seven non-PR workflows remain outside the PR cancellation mandate", ()
 });
 
 test("the deploy lane's discovery trigger and wrapper-owned materialization are independent semantic units", () => {
-  const source = readWorkflowSources()[liveWorkflow("deploy", "functions")];
+  const sources = readWorkflowSources();
+  const deployName = liveWorkflow("deploy", "functions");
+  const source = sources[deployName];
   const discoveryTrigger = "      - '.github/scripts/ci-discovery/**'\n";
   const materializationStep =
     "      - name: Materialize the disk-derived function gateway policy\n" +
     "        run: node .github/scripts/ci-discovery/function-policy.mjs --write-config supabase/config.toml\n\n";
   const deployStep = "      - name: Deploy the selected edge functions\n";
-  assert.equal(sha256(source), "56f268fc2d6853d4489e3b7128f3aa3cea130a07e193aa2cec8d5f917e441444");
 
-  const u2Restored = source.replace(deployStep, `${materializationStep}${deployStep}`);
-  assert.notEqual(u2Restored, source);
-  assert.equal(sha256(u2Restored), "7427dc67fa2fe976748b6db51451398c3400575d669d35c720b455a54499c1ba");
+  // [TEST-MOD-APPROVED #3643] Reuse the deploy lane's one declared denied-byte
+  // authority. The three counterfactual states are runtime-derived structural
+  // mutations, not a durable chain of whole-workflow digest receipts.
+  const deployIndex = DENIED.indexOf(deployName);
+  assert.notEqual(deployIndex, -1, "deploy lane must remain denied from PR cancellation");
+  assert.equal(DENIED.lastIndexOf(deployName), deployIndex, "deploy denied authority must be unique");
+  const currentAuthority = DENIED_FULL_SHA256[deployIndex];
+  assert.equal(sha256(source), currentAuthority, "current deploy bytes must match their declared denied authority");
 
-  const u1Removed = removeExactLine(source, discoveryTrigger, "deploy discovery trigger");
-  assert.equal(sha256(u1Removed), "662c833b4fd222a4d708d64a5ac0f7ff9f8b6b972522a671645d182619973c18");
-  assert.equal(sha256(u2Restored.replace(discoveryTrigger, "")), "11ac47b88da99ccee009de2ce297d9b3cfc89ada2bb99bbb13aa431b00a6484e");
+  const occurrences = (state, unit) => state.split(unit).length - 1;
+  assert.equal(occurrences(source, discoveryTrigger), 1, "U1 discovery trigger must exist exactly once");
+  assert.equal(occurrences(source, materializationStep), 0, "U2 workflow materialization must stay absent");
+  assert.equal(occurrences(source, deployStep), 1, "deploy insertion anchor must exist exactly once");
+
+  const u1PlusU2 = source.replace(deployStep, `${materializationStep}${deployStep}`);
+  assert.equal(occurrences(u1PlusU2, materializationStep), 1, "restored U2 must exist exactly once");
+  assert.equal(occurrences(u1PlusU2, deployStep), 1, "restoring U2 must preserve one deploy step");
+  const neither = removeExactLine(source, discoveryTrigger, "deploy discovery trigger");
+  const u2Only = removeExactLine(u1PlusU2, discoveryTrigger, "deploy discovery trigger with restored materialization");
+
+  const states = { currentU1Only: source, restoredU1PlusU2: u1PlusU2, neither, u2Only };
+  assert.equal(new Set(Object.values(states)).size, 4, "all four semantic-unit byte states must be distinct");
+  const stateDigests = Object.fromEntries(Object.entries(states).map(([name, value]) => [name, sha256(value)]));
+  assert.equal(new Set(Object.values(stateDigests)).size, 4, "all four runtime-derived digests must be distinct");
+  assert.equal(stateDigests.currentU1Only, currentAuthority, "current state must reuse the denied-byte authority");
+
+  assert.doesNotThrow(() => assertDeniedAuthorities(sources), "current tree must satisfy denied authorities");
+  for (const [label, counterfactual] of Object.entries({ restoredU1PlusU2: u1PlusU2, neither, u2Only })) {
+    assert.throws(
+      () => assertDeniedAuthorities({ ...sources, [deployName]: counterfactual }),
+      /denied workflow bytes changed/,
+      `${label}: deploy semantic-unit drift must be rejected`,
+    );
+  }
 });
 
 test("missing concurrency reversion turns the real repository scan red", () => {
