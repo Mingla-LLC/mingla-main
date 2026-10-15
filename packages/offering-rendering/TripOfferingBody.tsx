@@ -576,7 +576,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                     {summaryRowLabel ?? "Total"}
                   </Text>
                   <Text
-                    style={[styles.selectPrice, surface.primaryText, { fontFamily: boldFamily }]}
+                    style={[styles.selectPrice, surface.primaryText, styles.moneyText]}
                     testID="trip-body-select-total"
                   >
                     {summaryPriceLabel ?? "—"}
@@ -609,7 +609,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                     {state.selectedTier.tierName}
                   </Text>
                   <Text
-                    style={[styles.selectPrice, surface.primaryText, { fontFamily: boldFamily }]}
+                    style={[styles.selectPrice, surface.primaryText, styles.moneyText]}
                     testID="trip-body-select-total"
                   >
                     {summaryPriceLabel ?? "—"}
@@ -643,8 +643,10 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                   styles.boxProceedText,
                   {
                     color: reserveTappable ? palette.accentText : palette.tertiaryText,
-                    fontFamily: boldFamily,
                   },
+                  summaryPriceLabel !== null && summaryPriceLabel !== "Free"
+                    ? styles.moneyText
+                    : { fontFamily: boldFamily },
                 ]}
               >
                 {reserveLabel}
@@ -786,7 +788,7 @@ const TripPackageRow: React.FC<{
 
         <View style={styles.pkgRight}>
           <Text
-            style={[styles.pkgPrice, surface.primaryText, { fontFamily: boldFamily }]}
+            style={[styles.pkgPrice, surface.primaryText, styles.moneyText]}
           >
             {tripTierPriceLabel(tier)}
           </Text>
@@ -899,7 +901,8 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginBottom: 8,
   },
-  title: { fontSize: 32, lineHeight: 35, fontWeight: "900", letterSpacing: -0.5 },
+  // #3859 — no fixed lineHeight: the selected host font owns its native metrics.
+  title: { fontSize: 32, fontWeight: "900", letterSpacing: -0.5 },
   // ---- §3 full-width pills ----
   fullPill: {
     flexDirection: "row",
@@ -973,6 +976,9 @@ const styles = StyleSheet.create({
   },
   selectTierName: { flexShrink: 1, fontSize: 15, fontWeight: "800" },
   selectPrice: { fontSize: 22, fontWeight: "900", letterSpacing: -0.4 },
+  // #3859 — price strings use the system face for complete currency-glyph
+  // coverage (notably U+20A6) and stable tabular digit spacing.
+  moneyText: { fontVariant: ["tabular-nums"] },
   // ---- §10 Leg B3 package rows ----
   pkgRow: {
     paddingVertical: 14,

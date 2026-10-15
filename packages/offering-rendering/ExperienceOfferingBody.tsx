@@ -641,7 +641,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
             {isFree ? "Price" : data.openDaily || data.occurrences.length > 1 ? "From" : "Price"}
           </Text>
           <Text
-            style={[styles.pricingPrice, surface.primaryText, { fontFamily: boldFamily }]}
+            style={[styles.pricingPrice, surface.primaryText]}
           >
             {priceLabel}
           </Text>
@@ -703,7 +703,8 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginBottom: 8,
   },
-  title: { fontSize: 32, lineHeight: 35, fontWeight: "900", letterSpacing: -0.5 },
+  // #3859 — no fixed lineHeight: the selected host font owns its native metrics.
+  title: { fontSize: 32, fontWeight: "900", letterSpacing: -0.5 },
   // ---- meta chips ----
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 16 },
   metaChip: {
@@ -805,7 +806,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   pricingLabel: { fontSize: 13 },
-  pricingPrice: { fontSize: 24, fontWeight: "900" },
+  // #3859 — system font guarantees currency-glyph coverage; host faces remain
+  // on identity and headings, never on money where a fallback glyph can collide.
+  pricingPrice: {
+    fontSize: 24,
+    fontWeight: "900",
+    fontVariant: ["tabular-nums"],
+  },
   reassure: { fontSize: 12, marginTop: 20, lineHeight: 17 },
 });
 

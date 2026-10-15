@@ -2564,9 +2564,9 @@ RsvpField.displayName = "RsvpField";
 
 const styles = StyleSheet.create({
   leadBlock: { marginBottom: 4 },
+  // #3859 — no fixed lineHeight: the selected host font owns its native metrics.
   title: {
     fontSize: 32,
-    lineHeight: 35,
     fontWeight: "900",
     letterSpacing: -0.5,
   },

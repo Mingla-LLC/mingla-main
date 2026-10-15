@@ -2253,9 +2253,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.4,
   },
+  // #3859 — no fixed lineHeight: the selected host font owns its native metrics.
   venueName: {
     fontSize: 30,
-    lineHeight: 33,
     fontWeight: "900",
     letterSpacing: -0.5,
     marginTop: 6,
@@ -2286,7 +2286,6 @@ const styles = StyleSheet.create({
   },
   answerValue: {
     fontSize: 17,
-    lineHeight: 22,
     fontWeight: "900",
     marginTop: 2,
   },
@@ -2323,7 +2322,6 @@ const styles = StyleSheet.create({
   },
   refreshMessage: {
     fontSize: 14,
-    lineHeight: 20,
     fontWeight: "600",
   },
   refreshMessageDesktop: {
@@ -2590,7 +2588,6 @@ const styles = StyleSheet.create({
   },
   deskName: {
     fontSize: 20,
-    lineHeight: 26,
     fontWeight: "700",
   },
   deskToday: {
@@ -2601,7 +2598,6 @@ const styles = StyleSheet.create({
   // META-ORCH-1290(C) §6.3 — desktop sticky-panel pitch (2-line clamp).
   deskPitch: {
     fontSize: 14,
-    lineHeight: 20,
     marginTop: 4,
   },
   deskShareBtn: {
