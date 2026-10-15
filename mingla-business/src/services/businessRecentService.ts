@@ -94,16 +94,23 @@ export const orderBusinessRecentPointers = (
 export const retainAuthoritativeBusinessRecentPointers = (
   pointers: BusinessRecentPointer[],
   indexRows: BusinessRecentIndexRow[],
+  restorableLocalDraftKeys?: ReadonlySet<string> | null,
 ): BusinessRecentPointer[] => {
   const authoritative = new Set(
     indexRows.map((row) => `${row.entityType}:${row.entityId}`),
   );
-  return pointers.filter(
-    (pointer) =>
-      authoritative.has(`${pointer.entityType}:${pointer.entityId}`) ||
-      pointer.pendingSync ||
-      pointer.localDraft,
-  );
+  return pointers.filter((pointer) => {
+    const key = `${pointer.entityType}:${pointer.entityId}`;
+    if (authoritative.has(key) || pointer.pendingSync) return true;
+    if (!pointer.localDraft) return false;
+    // Existing callers that do not own local-draft truth retain the legacy
+    // behavior. Home passes null while the draft store is hydrating (hide all
+    // client-only pointers) and an authoritative key set afterwards.
+    return (
+      restorableLocalDraftKeys === undefined ||
+      restorableLocalDraftKeys?.has(key) === true
+    );
+  });
 };
 
 interface IndexRpcRow {
