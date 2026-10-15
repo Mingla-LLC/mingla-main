@@ -52,28 +52,33 @@ BEGIN
     payment_provider, payment_country, pricing_region, pricing_currency,
     paystack_subaccount_code
   ) VALUES (
-    v_brand, v_owner, 'Issue 3859 ' || p_tag, v_brand_slug, 'NGN',
-    'stripe', 'NG', 'NG', 'NGN', 'ACCT_issue3859'
+    v_brand, v_owner, 'Issue 3859 ' || p_tag, v_brand_slug, 'USD',
+    'stripe', 'US', 'US', 'USD', 'ACCT_issue3859'
   );
   INSERT INTO public.stripe_connect_accounts(
     brand_id, stripe_account_id, charges_enabled, payouts_enabled,
     country, default_currency
   ) VALUES (
     v_brand, 'acct_issue3859_' || replace(v_brand::text, '-', ''), true, true,
-    'NG', 'ngn'
+    'US', 'usd'
   );
   INSERT INTO public.events(
     id, brand_id, created_by, title, slug, event_type, status, visibility,
     timezone, currency
   ) VALUES (
     v_event, v_brand, v_owner, 'Issue 3859 trip', v_trip_slug, 'trip',
-    p_status, 'public', 'UTC', 'NGN'
+    p_status, 'public', 'UTC', 'USD'
+  );
+  INSERT INTO public.event_dates(
+    event_id, start_at, end_at, timezone, is_master
+  ) VALUES (
+    v_event, '2030-01-10T10:00:00Z', '2030-01-12T18:00:00Z', 'UTC', true
   );
   INSERT INTO public.ticket_types(
     id, event_id, name, price_cents, currency, is_free, quantity_total,
     min_purchase_qty, available_online, available_in_person
   ) VALUES (
-    v_ticket, v_event, 'Standard', 100000, 'NGN', false, 20, 1, true, false
+    v_ticket, v_event, 'Standard', 100000, 'USD', false, 20, 1, true, false
   );
   INSERT INTO public.trip_pricing_tiers(
     event_id, ticket_type_id, tier_name, tier_metadata
