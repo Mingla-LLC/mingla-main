@@ -43,12 +43,18 @@ test('R2 buyer web page, data and immutable image routes traverse the protected 
 
 test('R3 native route resolves exact typed destinations and keeps place/curated local', () => {
   const route = read('app-mobile/app/s/[code].tsx');
-  for (const path of ['/e/', '/t/', '/exp/', '/b/']) assert.ok(route.includes(path), path);
-  assert.match(route, /share\.facts\.kind === 'event' \|\| share\.facts\.kind === 'rsvp_event'/);
-  assert.match(route, /return brand && entity \? `\/e\/\$\{brand\}\/\$\{entity\}` : null/);
-  assert.match(route, /share\.facts\.kind === 'trip'.*return brand && entity \? `\/t\//s);
-  assert.match(route, /share\.facts\.kind === 'experience'.*return brand && entity \? `\/exp\//s);
-  assert.match(route, /return null;\s*\};/);
+  const adapter = read('app-mobile/src/services/publicParityNativeAdapter.ts');
+  // [TEST-MOD-APPROVED #3859] The receiver now delegates canonical route
+  // validation to the shared native parity adapter. Keep this proof bound to
+  // both sides of that boundary instead of requiring duplicate route-building
+  // logic in the screen itself.
+  assert.match(route, /resolveExplorerContentShareDestination\(/);
+  for (const path of ['/e/', '/t/', '/exp/', '/b/']) assert.ok(adapter.includes(path), path);
+  assert.match(adapter, /factsKind === "event" \|\| factsKind === "rsvp_event"/);
+  assert.match(adapter, /factsKind === "trip"/);
+  assert.match(adapter, /factsKind === "experience"/);
+  assert.match(adapter, /webPath === expected \? webPath : null/);
+  assert.match(adapter, /return null;\s*\}/);
   assert.match(route, /selectPreviewFacts\(share\.facts, 4\)/);
   // [TEST-MOD-APPROVED #1615] Root review replaced the false-confirmation
   // open/destination vocabulary with one observed native-open event plus
