@@ -137,13 +137,21 @@ function validateLocalDeclaration({ root, descriptorPath, declaration, baseline,
   }
   if (declaration.lane === "migrations") {
     const database = declaration.database;
-    if (!exactKeys(database, ["database", "user", "reset"]) || database.user !== "postgres" ||
-        database.database !== "postgres" || database.reset !== "isolated-per-suite") {
+    if (!exactKeys(database, ["database", "user", "reset"]) || database.database !== "postgres" ||
+        !["isolated-per-suite", "suite-owned"].includes(database.reset)) {
       fail("malformed_database_profile", descriptorPath);
     }
-    if (!exactKeys(declaration.setup, ["migration"])) fail("malformed_sql_setup", descriptorPath);
-    if (!concreteMigrationPath(root, declaration.setup.migration)) {
-      fail("invalid_sql_setup_path", `${descriptorPath}:${declaration.setup.migration ?? "<missing>"}`);
+    if (database.reset === "isolated-per-suite") {
+      if (database.user !== "postgres") fail("malformed_database_profile", descriptorPath);
+      if (!exactKeys(declaration.setup, ["migration"])) fail("malformed_sql_setup", descriptorPath);
+      if (!concreteMigrationPath(root, declaration.setup.migration)) {
+        fail("invalid_sql_setup_path", `${descriptorPath}:${declaration.setup.migration ?? "<missing>"}`);
+      }
+    } else {
+      if (!["postgres", "supabase_admin"].includes(database.user)) {
+        fail("malformed_database_profile", descriptorPath);
+      }
+      if (Object.hasOwn(declaration, "setup")) fail("malformed_sql_setup", descriptorPath);
     }
   } else if (Object.hasOwn(declaration, "setup") || Object.hasOwn(declaration, "database")) {
     fail("unsupported_deno_setup", descriptorPath);

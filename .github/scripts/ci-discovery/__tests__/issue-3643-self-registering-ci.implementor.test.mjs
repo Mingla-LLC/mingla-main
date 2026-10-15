@@ -410,6 +410,34 @@ test("local SQL setup and Deno profile contracts fail closed before or at the bo
     assert.match(calls.at(-1).argv.at(-1), /^DROP DATABASE IF EXISTS/);
   });
 
+  await t.test("suite-owned SQL preserves its declared database role and skips isolated setup", () => {
+    const root = temporary("runner-suite-owned");
+    const suite = "supabase/migrations/__tests__/owner_only.test.sql";
+    declareSuite(root, suite, {
+      lane: "migrations",
+      orderKey: "future-sql-owner-001",
+      profile: "psql-pg17-post-replay",
+      database: { database: "postgres", user: "supabase_admin", reset: "suite-owned" },
+    });
+    const calls = [];
+    const originalLog = console.log;
+    console.log = () => {};
+    try {
+      assert.equal(runLane("migrations", {
+        planOptions: { root, baseline: minimalBaseline() },
+        executeCommand(command, argv) { calls.push({ command, argv }); return 0; },
+      }), 0);
+    } finally {
+      console.log = originalLog;
+    }
+    // [TEST-MOD-APPROVED #3643] This integration assertion pins the exact
+    // owner-only command that replaced the post-baseline hand registration.
+    assert.deepEqual(calls, [{
+      command: "psql",
+      argv: ["-h", "localhost", "-U", "supabase_admin", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-f", suite],
+    }]);
+  });
+
   const rejectBeforeExecution = (label, declaration, expected) => t.test(label, () => {
     const root = temporary(`runner-${label}`);
     const suite = "packages/future-owner/future.test.ts";
@@ -444,6 +472,29 @@ test("local SQL setup and Deno profile contracts fail closed before or at the bo
       mutate(entry);
       writeJson(fixture.root, descriptor, entry);
       assert.throws(() => compilePlans({ root: fixture.root, baseline: minimalBaseline() }), expected);
+    });
+  }
+
+  for (const [label, mutate, expected] of [
+    ["suite-owned setup", (entry) => { entry.setup = { migration: "supabase/migrations/20990101000000_future_owner.sql" }; }, /malformed_sql_setup/],
+    ["suite-owned unknown user", (entry) => { entry.database.user = "authenticated"; }, /malformed_database_profile/],
+  ]) {
+    await t.test(label, () => {
+      const root = temporary(`runner-${label.replaceAll(" ", "-")}`);
+      const suite = "supabase/migrations/__tests__/owner_only.test.sql";
+      const entry = {
+        schemaVersion: 1,
+        kind: "suite",
+        path: suite,
+        lane: "migrations",
+        orderKey: "future-sql-owner-001",
+        profile: "psql-pg17-post-replay",
+        database: { database: "postgres", user: "supabase_admin", reset: "suite-owned" },
+      };
+      write(root, suite, "-- synthetic owner-only suite\n");
+      mutate(entry);
+      writeJson(root, `${suite}.ci-suite.json`, entry);
+      assert.throws(() => compilePlans({ root, baseline: minimalBaseline() }), expected);
     });
   }
 });

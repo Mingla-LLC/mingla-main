@@ -332,8 +332,8 @@ const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
   Object.freeze({
     workflow: ["supabase-migrations-and-stripe-deno", "yml"].join("."),
     issue: "#3643",
-    beforeSha256: "45cc52dd70e16b4d454be256924c8b6aaec66c0ddbf12acfebc5577299ce60bf",
-    afterSha256: "80248f4eff8949607c63f943a124474ffea6411636f6a8dcd450cb97d067c47e",
+    beforeSha256: "27c8df5a8fec7536f07e3dad819b3ecdd21bb1b9ea5261109394093dea0a6c8c",
+    afterSha256: "9222960b40d6f2b4fed23a0e5f0dc92584f9bb668a380c6cad2015fa4bfec830",
     proofOwner: ".github/scripts/ci-discovery/__tests__/issue-3643-self-registering-ci.implementor.test.mjs",
   }),
 ]);

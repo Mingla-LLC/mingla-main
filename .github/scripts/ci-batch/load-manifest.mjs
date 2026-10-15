@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, "../../..");
 export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
-export const BOOTSTRAP_SHA256 = "a0ac2e8adb414668cc3b8447a2a38b0515d73e158e0722a3df21c475652dd657";
+export const BOOTSTRAP_SHA256 = "ec425d9e48c68fe62b3cd96c0f0b5651c4b3abf44870520a3689980e9a80cd8f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

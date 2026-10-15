@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "kind": "exclude",
+  "path": "supabase/functions/brand-stripe-account-session/__tests__/issue_3645_web_return_url.implementor.test.ts",
+  "reason": "Not part of the pre-existing migrations and specialized Deno workflow lane."
+}
