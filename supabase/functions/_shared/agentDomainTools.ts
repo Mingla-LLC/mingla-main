@@ -25,6 +25,7 @@ import {
   assertAgentReadEvent,
   resolveAccessibleAgentBrands,
 } from "./agentTenantScope.ts";
+import { calendarDaysBetween, refundCentsFromCredit } from "./adMoney.ts";
 // issue #2291 — ONE contract for what a channel_payload must contain. Ari is
 // the only writer that has no human between it and the send path, so it is the
 // writer that most needs to be told "no" before the row is stored.
@@ -32,6 +33,13 @@ import { campaignPayloadIssues } from "./campaignPayloadContract.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const STR = { type: "string", minLength: 1, maxLength: 500 };
+const HOST_AD_PLATFORMS = new Set([
+  "meta",
+  "google",
+  "tiktok",
+  "snapchat",
+  "reddit",
+]);
 
 function writeTool(
   name: string,
@@ -3129,10 +3137,145 @@ const cancelCampaign = writeTool(
   },
 );
 
+function hostAdCountries(currency: string): string[] {
+  if (currency === "NGN") return ["NG"];
+  if (currency === "GBP") return ["GB"];
+  if (currency === "EUR") return ["IE"];
+  return ["US"];
+}
+
+function hostAdScheduleDays(startsAt: unknown, endsAt: unknown): number {
+  return calendarDaysBetween(
+    typeof startsAt === "string" ? startsAt : null,
+    typeof endsAt === "string" ? endsAt : null,
+  ) ?? 1;
+}
+
+function buildHostAdCreatePayload(
+  args: Record<string, unknown>,
+  operationId: string,
+): Record<string, unknown> {
+  const platform = String(args.platform).trim().toLowerCase();
+  const budgetCents = Number(args.budget_cents);
+  const currency = String(args.currency).trim().toUpperCase();
+  const countries = hostAdCountries(currency);
+  const days = hostAdScheduleDays(args.starts_at, args.ends_at);
+  const dailyBudgetCents = Math.max(1, Math.ceil(budgetCents / days));
+  const rawPrimary = typeof args.primary_text === "string"
+    ? args.primary_text.trim()
+    : "";
+  const primary = rawPrimary || String(args.name);
+  const shortName = String(args.name).trim();
+  const destination = {
+    page_type: String(args.dest_page_type),
+    brand_slug: String(args.dest_brand_slug),
+    ...(typeof args.dest_entity_slug === "string" &&
+        args.dest_entity_slug.trim()
+      ? { entity_slug: args.dest_entity_slug.trim() }
+      : {}),
+  };
+  const base: Record<string, unknown> = {
+    platform,
+    lane: "business",
+    owner_kind: "host",
+    brand_id: args.brand_id,
+    request_id: `ari_${operationId}`.slice(0, 120),
+    name: shortName,
+    destination,
+    destinations: [destination],
+    budget: {
+      type: "daily",
+      amount_cents: dailyBudgetCents,
+      cap_cents: budgetCents,
+      currency,
+    },
+    schedule: {
+      ...(typeof args.starts_at === "string"
+        ? { starts_at: args.starts_at }
+        : {}),
+      ...(typeof args.ends_at === "string" ? { ends_at: args.ends_at } : {}),
+    },
+    targeting: { countries, age_min: 18, age_max: 65 },
+    compliance: { aiGenerated: false, specialAdCategory: "NONE" },
+  };
+  const creativeId = String(args.creative_library_id);
+  if (platform === "tiktok") {
+    return {
+      ...base,
+      objective: "TRAFFIC",
+      optimization_goal: "TRAFFIC_LANDING_PAGE_VIEW",
+      billing_event: "CPC",
+      creative: {
+        kind: "video",
+        creative_library_id: creativeId,
+        ad_text: primary.replace(/\p{Extended_Pictographic}/gu, "").slice(
+          0,
+          100,
+        ),
+      },
+    };
+  }
+  if (platform === "reddit") {
+    return {
+      ...base,
+      objective: "CLICKS",
+      creative: {
+        kind: "video",
+        creative_library_id: creativeId,
+        headline: primary.slice(0, 300),
+      },
+    };
+  }
+  if (platform === "snapchat") {
+    return {
+      ...base,
+      objective: "TRAFFIC",
+      optimization_goal: "SWIPES",
+      creative: {
+        kind: "video",
+        creative_library_id: creativeId,
+        headline: (shortName || primary).slice(0, 34),
+        brand_name: String(args.dest_brand_slug).slice(0, 32),
+      },
+    };
+  }
+  if (platform === "google") {
+    const headline = (shortName || "Discover more").slice(0, 40);
+    const description = primary.slice(0, 90);
+    return {
+      ...base,
+      creative: {
+        kind: "video",
+        creative_library_id: creativeId,
+        headlines: [headline],
+        long_headlines: [primary.slice(0, 90)],
+        descriptions: [description],
+        business_name: String(args.dest_brand_slug).slice(0, 25),
+      },
+      keywords: [],
+    };
+  }
+  return {
+    ...base,
+    objective: "OUTCOME_TRAFFIC",
+    optimization_goal: "LINK_CLICKS",
+    billing_event: "IMPRESSIONS",
+    creative: {
+      kind: "video",
+      creative_library_id: creativeId,
+      message: primary,
+      headline: shortName.slice(0, 255),
+      call_to_action_type: "LEARN_MORE",
+      ai_generated: false,
+    },
+    special_ad_categories: [],
+  };
+}
+
 // toward #3697 Wave 7c — Host Ads plan/approve/run (distinct from Blast marketing_campaigns).
 const proposeAdPlan = writeTool(
   "propose_ad_plan",
-  "Propose a Host Ads plan (typed destination, Meta, READY image creative, budget, schedule, primary copy). Does not create or spend. Distinct from draft_campaign (Blast email/SMS).",
+  "Propose a Host Ads plan for Meta, Google, TikTok, Snapchat, or Reddit. The Host attaches a video before approval. Does not create or spend. Distinct from draft_campaign (Blast email/SMS).",
   {
     brand_id: UUID,
     name: STR,
@@ -3155,7 +3298,6 @@ const proposeAdPlan = writeTool(
     "budget_cents",
     "currency",
     "platform",
-    "creative_library_id",
   ],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
@@ -3165,16 +3307,10 @@ const proposeAdPlan = writeTool(
     if (!platform) {
       throw new ToolError("INVALID_ARGS", "platform is required");
     }
-    if (platform !== "meta") {
+    if (!HOST_AD_PLATFORMS.has(platform)) {
       throw new ToolError(
         "INVALID_ARGS",
-        "platform_unsupported — Host Ads Wave 9 is Meta only",
-      );
-    }
-    if (!isUuid(args.creative_library_id)) {
-      throw new ToolError(
-        "INVALID_ARGS",
-        "creative_library_id must be a uuid of a READY image creative",
+        "platform must be meta, google, tiktok, snapchat, or reddit",
       );
     }
     const currency = typeof args.currency === "string"
@@ -3187,6 +3323,7 @@ const proposeAdPlan = writeTool(
     if (!Number.isFinite(budgetCents) || budgetCents < 100) {
       throw new ToolError("INVALID_ARGS", "budget_cents must be ≥ 100");
     }
+    const payCents = refundCentsFromCredit(budgetCents);
     return {
       plan: {
         brand_id: args.brand_id,
@@ -3198,23 +3335,27 @@ const proposeAdPlan = writeTool(
           : null,
         platform,
         budget_cents: budgetCents,
+        pay_cents: payCents,
+        fee_cents: payCents - budgetCents,
         currency,
         starts_at: typeof args.starts_at === "string" ? args.starts_at : null,
         ends_at: typeof args.ends_at === "string" ? args.ends_at : null,
         primary_text: typeof args.primary_text === "string"
           ? args.primary_text
           : "",
-        creative_library_id: String(args.creative_library_id),
+        creative_library_id: isUuid(args.creative_library_id)
+          ? String(args.creative_library_id)
+          : null,
       },
       next_step:
-        "Call approve_ad_plan with the same fields (confirm LAUNCH) to create on Meta and launch with Ads credit.",
+        "Call approve_ad_plan with the same plan fields. The Host attaches the required video on the LAUNCH review card before confirmation.",
     };
   },
 );
 
 const approveAdPlan = writeTool(
   "approve_ad_plan",
-  "Create a Host Meta ad campaign (owner_kind=host, READY image creative) then launch it by debiting Ads credit. Type LAUNCH to confirm. Distinct from send_campaign_now.",
+  "Create a Host video ad campaign on Meta, Google, TikTok, Snapchat, or Reddit, then launch it by debiting Ads credit. Type LAUNCH to confirm. Distinct from send_campaign_now.",
   {
     brand_id: UUID,
     name: STR,
@@ -3237,48 +3378,32 @@ const approveAdPlan = writeTool(
     "budget_cents",
     "currency",
     "platform",
-    "creative_library_id",
   ],
   async (args, client, userId, context) => {
     await requireBrand(args, client, userId);
     const operationId = requireAgentOperationId(context);
     const platform = String(args.platform).trim().toLowerCase();
-    if (platform !== "meta") {
+    if (!HOST_AD_PLATFORMS.has(platform)) {
       throw new ToolError(
         "INVALID_ARGS",
-        "platform_unsupported — Host Ads Wave 9 is Meta only",
+        "platform must be meta, google, tiktok, snapchat, or reddit",
       );
     }
     if (!isUuid(args.creative_library_id)) {
       throw new ToolError(
         "INVALID_ARGS",
-        "creative_library_id must be a uuid of a READY image creative",
+        "creative_library_id must be a uuid of a READY video creative",
       );
     }
     const currency = String(args.currency).trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) {
       throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
     }
-    const created = await invokeFn(client, "host-ad-campaign", {
-      action: "create",
-      brand_id: args.brand_id,
-      name: args.name,
-      dest_page_type: args.dest_page_type,
-      dest_brand_slug: args.dest_brand_slug,
-      dest_entity_slug: typeof args.dest_entity_slug === "string"
-        ? args.dest_entity_slug
-        : null,
-      platform,
-      budget_cents: Number(args.budget_cents),
-      currency,
-      starts_at: typeof args.starts_at === "string" ? args.starts_at : null,
-      ends_at: typeof args.ends_at === "string" ? args.ends_at : null,
-      primary_text: typeof args.primary_text === "string"
-        ? args.primary_text
-        : "",
-      creative_library_id: args.creative_library_id,
-      idempotency_key: `ari_create_${operationId}`,
-    }) as { campaign_id?: string; campaign?: { id?: string } };
+    const created = await invokeFn(
+      client,
+      "admin-ad-create-campaign",
+      buildHostAdCreatePayload(args, operationId),
+    ) as { campaign_id?: string; campaign?: { id?: string } };
     const campaignId = created.campaign_id ?? created.campaign?.id;
     if (!campaignId || !isUuid(campaignId)) {
       throw new ToolError(

@@ -22,6 +22,65 @@ export type HostAdCampaign = {
   created_at: string | null;
 };
 
+export type HostAdCampaignDetail = {
+  campaign: HostAdCampaign & Record<string, unknown>;
+  spend_total_cents: number;
+  spend_daily: Array<{
+    spend_date: string;
+    spend_cents: number;
+    impressions: number;
+    clicks: number;
+    platform: string;
+  }>;
+  results: {
+    conversions?: number;
+    value_cents?: Record<string, number>;
+    spend_cents?: number | null;
+    by_platform?: Array<{
+      platform: string;
+      conversions: number;
+      value_cents: number;
+    }>;
+  };
+  by_placement: Array<{
+    platform: string;
+    placement: string;
+    conversions: number;
+  }>;
+  creatives: Array<{
+    id: string;
+    name: string;
+    status: string;
+    review_status: string | null;
+    review_detail: Record<string, unknown> | null;
+    ad_creatives?: {
+      id: string;
+      kind: string;
+      name: string;
+      source_url: string | null;
+      poster_url: string | null;
+      mp4_master_url: string | null;
+    } | null;
+  }>;
+  timeline: Array<{
+    id: string;
+    platform: string | null;
+    entity: string | null;
+    action: string;
+    from_status: string | null;
+    to_status: string | null;
+    provider_response: Record<string, unknown> | null;
+    created_at: string;
+  }>;
+  credit_events: Array<{
+    id: string;
+    entry_kind: string;
+    amount_cents: number;
+    currency: string;
+    created_at: string;
+  }>;
+};
+
 export class HostAdCampaignError extends Error {
   readonly code: string;
   readonly detail: string | null;
@@ -79,7 +138,7 @@ export async function listHostAdCampaigns(
 export async function getHostAdCampaign(
   brandId: string,
   campaignId: string,
-): Promise<{ campaign: HostAdCampaign & Record<string, unknown>; spend_total_cents: number }> {
+): Promise<HostAdCampaignDetail> {
   return invokeHostAd({
     action: "get",
     brand_id: brandId,

@@ -220,6 +220,25 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     ? args.__proposal_context as Record<string, unknown>
     : {};
 
+  if (toolName === "propose_ad_plan" || toolName === "approve_ad_plan") {
+    const budget = Number(args.budget_cents ?? 0);
+    const currency = args.currency;
+    const pay = budget > 0 ? Math.ceil(budget / 0.85) : 0;
+    if (typeof args.platform === "string") {
+      out.push({ label: "Platform", value: args.platform });
+    }
+    const budgetText = formatMoneyCents(budget, currency);
+    if (budgetText) out.push({ label: "Ad budget", value: budgetText });
+    const feeText = formatMoneyCents(pay - budget, currency);
+    if (feeText) out.push({ label: "Mingla fee", value: feeText });
+    const totalText = formatMoneyCents(pay, currency);
+    if (totalText) out.push({ label: "Total top-up", value: totalText });
+    if (typeof args.dest_page_type === "string") {
+      out.push({ label: "Destination", value: args.dest_page_type.replace(/_/g, " ") });
+    }
+    return out;
+  }
+
   if (
     toolName === "refund_order" ||
     toolName === "cancel_order" ||
@@ -475,6 +494,9 @@ interface CoverBandProps {
   onOpen: () => void;
   onRemove: () => void;
   disabled: boolean;
+  addLabel?: string;
+  emptyHelp?: string;
+  selectedLabel?: string;
 }
 
 const CoverBand: React.FC<CoverBandProps> = ({
@@ -484,6 +506,9 @@ const CoverBand: React.FC<CoverBandProps> = ({
   onOpen,
   onRemove,
   disabled,
+  addLabel = "Add cover",
+  emptyHelp = "Optional — image or video",
+  selectedLabel,
 }) => {
   if (uploadState === "creating" || uploadState === "uploading" || uploadState === "processing") {
     const busyLabel =
@@ -521,7 +546,9 @@ const CoverBand: React.FC<CoverBandProps> = ({
         )}
         {/* type chip bottom-left */}
         <View style={styles.coverTypeChip}>
-          <Text style={styles.coverTypeChipText}>{coverTypeLabel(type) ?? "Cover"}</Text>
+          <Text style={styles.coverTypeChipText}>
+            {selectedLabel ?? coverTypeLabel(type) ?? "Cover"}
+          </Text>
         </View>
         {/* change / remove discs bottom-right */}
         <View style={styles.coverControls}>
@@ -558,12 +585,12 @@ const CoverBand: React.FC<CoverBandProps> = ({
       disabled={disabled}
       style={[styles.coverBand, styles.coverBandEmpty]}
       accessibilityRole="button"
-      accessibilityLabel="Add a cover image or video for this brand"
+      accessibilityLabel={addLabel}
       accessibilityHint="Opens the cover picker"
     >
       <View style={styles.coverPill}>
         <Plus size={16} color={textTokens.secondary} />
-        <Text style={styles.coverPillLabel}>{isError ? "Try again" : "Add cover"}</Text>
+        <Text style={styles.coverPillLabel}>{isError ? "Try again" : addLabel}</Text>
       </View>
       {isError ? (
         <View style={styles.coverErrorRow}>
@@ -571,7 +598,7 @@ const CoverBand: React.FC<CoverBandProps> = ({
           <Text style={styles.coverSubLabel}>Couldn&apos;t upload that cover. Tap to try again.</Text>
         </View>
       ) : (
-        <Text style={styles.coverSubLabel}>Optional — image or video</Text>
+        <Text style={styles.coverSubLabel}>{emptyHelp}</Text>
       )}
     </Pressable>
   );
@@ -591,6 +618,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const [editedArgs, setEditedArgs] = useState<Record<string, unknown>>(args);
   const [coverSheetVisible, setCoverSheetVisible] = useState(false);
   const [coverUploadState, setCoverUploadState] = useState<CoverUploadState>("idle");
+  const [adVideoPatch, setAdVideoPatch] = useState<CoverPatch>(EMPTY_COVER_PATCH);
+  const [adDraftOwnerKey] = useState(() => `ari-ad-${randomId()}`);
   const [typedName, setTypedName] = useState("");
   // #1983 — highest-safety: legal name must be freshly typed (never prefilled
   // from the model proposal), same empty-start pattern as brand-delete confirm.
@@ -611,8 +640,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   // ORCH-1103 REWORK 3 — after a "Create & attach" commit the picker writes the
   // chosen cover into editedArgs, so the band must read editedArgs (not the
   // original proposal args) to reflect the freshly-attached cover.
+  const isAdPlanProposal = toolName === "approve_ad_plan";
   const committedForArgs = createdBrandId !== null;
-  const liveArgs = editing || committedForArgs ? editedArgs : args;
+  const liveArgs = editing || committedForArgs || isAdPlanProposal ? editedArgs : args;
   const identity = primaryIdentity(toolName, liveArgs, brandNamesById);
   const isBrandCreate = toolName === "create_brand";
   const isBrandUpdate = toolName === "update_brand";
@@ -714,6 +744,46 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     });
   };
 
+  const handleAdVideoChange = async (patch: CoverPatch): Promise<void> => {
+    setAdVideoPatch(patch);
+    if (!patch.coverMediaUrl) {
+      setEditedArgs((prev) => {
+        const next = { ...prev };
+        delete next.creative_library_id;
+        return next;
+      });
+      return;
+    }
+    if (patch.coverMediaType !== "video" || !patch.coverMediaPosterUrl) {
+      setCoverUploadState("error");
+      setProposalError("Host ads need a video. Choose a video from your library.");
+      return;
+    }
+    const brandId = typeof args.brand_id === "string" ? args.brand_id : "";
+    const platform = typeof args.platform === "string" ? args.platform : "";
+    setCoverUploadState("processing");
+    setProposalError(null);
+    try {
+      const { recordAndPrepareAriAdVideo } = await import(
+        "../../services/ariAdCreativeService"
+      );
+      const creativeId = await recordAndPrepareAriAdVideo({
+        brandId,
+        platform,
+        name: typeof args.name === "string" ? args.name : "Ari Host ad video",
+        videoUrl: patch.coverMediaUrl,
+        posterUrl: patch.coverMediaPosterUrl,
+      });
+      setEditedArgs((prev) => ({ ...prev, creative_library_id: creativeId }));
+      setCoverUploadState("idle");
+    } catch (error) {
+      setCoverUploadState("error");
+      setProposalError(error instanceof Error
+        ? error.message
+        : "We couldn't prepare that ad video.");
+    }
+  };
+
   // The brand CoverTarget — requires a real brandId. On UPDATE the id comes
   // from args.brand_id. On CREATE the id only exists AFTER the brand is minted
   // (Q7), captured in `createdBrandId`. Either path yields a real, RLS-valid
@@ -741,6 +811,14 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             coverMediaApplyMode: "draft_auto",
           }
         : null;
+  const adVideoTarget: CoverTarget | null =
+    isAdPlanProposal && typeof args.brand_id === "string"
+      ? {
+          kind: "venue_draft",
+          brandId: args.brand_id,
+          draftOwnerKey: adDraftOwnerKey,
+        }
+      : null;
 
   // ORCH-1103 — what happens when the user taps "Add cover".
   //   - EDIT (real brand_id already): open the picker directly.
@@ -872,7 +950,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     onAttachDone?.(finishCover());
   };
 
-  const confirmDisabled = isExecuting || creatingForCover || coverUploadState !== "idle";
+  const confirmDisabled = isExecuting || creatingForCover || coverUploadState !== "idle" ||
+    (isAdPlanProposal && typeof editedArgs.creative_library_id !== "string");
   const canEditProposal = isToolProposalEditable(toolName, liveArgs);
 
   return (
@@ -1072,6 +1151,21 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             ) : null}
           </View>
         ) : null}
+        {isAdPlanProposal ? (
+          <View style={styles.coverWrap}>
+            <CoverBand
+              url={adVideoPatch.coverMediaUrl}
+              type={adVideoPatch.coverMediaType}
+              uploadState={coverUploadState}
+              onOpen={() => setCoverSheetVisible(true)}
+              onRemove={() => void handleAdVideoChange(EMPTY_COVER_PATCH)}
+              disabled={isExecuting}
+              addLabel="Add ad video"
+              emptyHelp="Required — upload the video Ari will run"
+              selectedLabel="Ad video"
+            />
+          </View>
+        ) : null}
 
         {editing && !isTypeConfirm ? (
           <ToolEditForm
@@ -1193,23 +1287,26 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             <Pressable
               onPress={() =>
                 void confirmProposal({
-                  ...(editing ? editedArgs : args),
+                  ...(editing || isAdPlanProposal ? editedArgs : args),
                   confirm_phrase: moneyPhrase,
                 })
               }
-              disabled={isExecuting || !canMoneyConfirm}
+              disabled={confirmDisabled || !canMoneyConfirm}
               hitSlop={{ top: 5, bottom: 5 }}
               style={({ pressed }) => [
                 styles.actionBtn,
                 styles.deleteBtn,
-                !canMoneyConfirm && styles.deleteBtnDisabled,
+                (confirmDisabled || !canMoneyConfirm) && styles.deleteBtnDisabled,
                 pressed && styles.btnPressed,
               ]}
               accessibilityRole="button"
               accessibilityLabel={`Confirm ${verb}`}
-              accessibilityState={{ disabled: isExecuting || !canMoneyConfirm }}
+              accessibilityState={{ disabled: confirmDisabled || !canMoneyConfirm }}
             >
-              <Text style={[styles.deleteText, !canMoneyConfirm && styles.deleteTextDisabled]}>
+              <Text style={[
+                styles.deleteText,
+                (confirmDisabled || !canMoneyConfirm) && styles.deleteTextDisabled,
+              ]}>
                 {isExecuting ? "Working…" : "Confirm"}
               </Text>
             </Pressable>
@@ -1233,7 +1330,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                 </Pressable>
               ) : null}
               <Pressable
-                onPress={() => void confirmProposal(editing ? editedArgs : undefined)}
+                onPress={() =>
+                  void confirmProposal(editing || isAdPlanProposal ? editedArgs : undefined)
+                }
                 disabled={confirmDisabled}
                 hitSlop={{ top: 5, bottom: 5 }}
                 style={({ pressed }) => [
@@ -1304,6 +1403,20 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           onCoverChange={handleCoverChange}
           onShowToast={() => undefined}
           onCoverVideoProcessingChange={(p) => setCoverUploadState(p ? "processing" : "idle")}
+        />
+      ) : null}
+      {isAdPlanProposal && adVideoTarget ? (
+        <CoverPickerSheet
+          visible={coverSheetVisible}
+          onClose={handleCoverSheetClose}
+          target={adVideoTarget}
+          initial={adVideoPatch}
+          onCoverChange={handleAdVideoChange}
+          onShowToast={() => undefined}
+          onCoverVideoProcessingChange={(p) => setCoverUploadState(p ? "processing" : "idle")}
+          mediaMode="video-only"
+          title="Ad video"
+          confirmLabel="Use this ad video"
         />
       ) : null}
     </GlassChrome>

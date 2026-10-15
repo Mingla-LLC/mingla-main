@@ -93,7 +93,7 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "invalid_json" }, 400);
   }
 
-  // ── ADMIN GATE FIRST (WP1 idiom: auth precedes input validation). ───────────
+  // ── Admin or brand payment-manager gate. Auth precedes input validation. ──
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return json({ error: "unauthorized" }, 401);
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -108,7 +108,19 @@ serve(async (req: Request): Promise<Response> => {
     .eq("email", user.email)
     .eq("status", "active")
     .maybeSingle();
-  if (!adminRow) return json({ error: "forbidden" }, 403);
+  const requestedBrandId = typeof body.brand_id === "string"
+    ? body.brand_id.trim()
+    : "";
+  if (!adminRow) {
+    if (!requestedBrandId) return json({ error: "forbidden" }, 403);
+    const { data: canManage, error: manageError } = await supabase.rpc(
+      "biz_can_manage_payments_for_brand",
+      { p_brand_id: requestedBrandId, p_user_id: user.id },
+    );
+    if (manageError || canManage !== true) {
+      return json({ error: "forbidden", detail: "permission_denied" }, 403);
+    }
+  }
 
   try {
     assertCreativeCdnConfigured();
@@ -170,6 +182,9 @@ serve(async (req: Request): Promise<Response> => {
   // ── Venue/brand tags reference EXISTING entities or the write is rejected. ──
   const placeId = typeof body.place_id === "string" ? body.place_id : null;
   const brandId = typeof body.brand_id === "string" ? body.brand_id : null;
+  if (!adminRow && placeId) {
+    return json({ error: "validation_error", detail: "host_place_id_forbidden" }, 422);
+  }
   if (placeId) {
     const { data: place } = await supabase
       .from("place_pool")

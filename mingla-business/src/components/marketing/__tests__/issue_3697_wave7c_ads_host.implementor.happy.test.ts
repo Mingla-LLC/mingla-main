@@ -38,6 +38,10 @@ describe("issue #3697 Wave 7c Host Ads surfaces", () => {
     expect(detail).toContain("ads-detail-end");
     expect(detail).toContain("ads-detail-cancel");
     expect(detail).toContain("spend_total_cents");
+    expect(detail).toContain("Results");
+    expect(detail).toContain("Creative");
+    expect(detail).toContain("Timeline");
+    expect(detail).toContain("by_placement");
   });
 
   it("Hub live-ad cards link to ad detail", () => {
@@ -54,8 +58,16 @@ describe("issue #3697 Wave 7c Host Ads surfaces", () => {
     expect(card).toContain('case "pause_ad_campaign"');
     expect(card).toContain('case "end_ad_campaign"');
     expect(card).toContain('case "get_ad_campaign_report"');
-    expect(card).toContain("approve_ad_plan: \"LAUNCH\"");
-    expect(card).toContain("end_ad_campaign: \"END\"");
+    expect(card).toContain('approve_ad_plan: "LAUNCH"');
+    expect(card).toContain('end_ad_campaign: "END"');
+    expect(card).toContain("recordAndPrepareAriAdVideo");
+    expect(card).toContain("Add ad video");
+    expect(card).toContain('toolName === "approve_ad_plan"');
+    expect(card).toContain("editing || isAdPlanProposal ? editedArgs : args");
+    const creative = read("src/services/ariAdCreativeService.ts");
+    expect(creative).toContain('"admin-ad-creative-upload"');
+    expect(creative).toContain('"admin-ad-creative-prepare"');
+    expect(creative).toContain('lane: "business"');
   });
 
   it("maps NGN currency copy and withdraw provider failures", () => {

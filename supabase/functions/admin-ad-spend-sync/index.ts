@@ -2,13 +2,13 @@
  * admin-ad-spend-sync — toward #3697 Wave 2 (#3701 / #3705).
  *
  * Hourly worker (pg_cron): pull platform daily spend into ad_spend_daily,
- * pause ACTIVE campaigns at 98% of cap_cents or after ends_at.
+ * pause ACTIVE campaigns at 98% of cap_cents, after ends_at, or when their
+ * public destination is no longer advertisable.
  *
  * Auth: service-role Bearer (cron) OR active admin JWT (manual refresh).
  * verify_jwt = false so the cron POST is accepted; in-code gate is mandatory.
  *
- * Meta: Graph insights (time_increment=1). Other platforms: skip fetch this
- * wave (no spend rows written) but still enforce end-date pause when set.
+ * All five providers normalize their daily spend into the shared feed.
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
@@ -26,11 +26,23 @@ import {
 import {
   type CampaignSpendTarget,
   decideSpendSync,
+  parseGoogleAdsSpend,
   parseMetaInsightsSpend,
+  parseRedditReportSpend,
+  parseSnapchatStatsSpend,
+  parseTikTokReportSpend,
   type SpendDayRow,
   sumSpendCents,
 } from "../_shared/adSpendSync.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
+import { resolveTikTokClient, tiktokApi } from "../_shared/tiktok.ts";
+import { resolveSnapchatClient, snapchatApi } from "../_shared/snapchat.ts";
+import { googleAdsRequest, resolveGoogleClient } from "../_shared/google.ts";
+import { redditRequest, resolveRedditClient } from "../_shared/reddit.ts";
+import {
+  AdDestinationError,
+  resolveAdDestination,
+} from "../_shared/adDestination.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -105,6 +117,104 @@ async function fetchMetaSpendDays(
     },
   );
   return parseMetaInsightsSpend(payload);
+}
+
+function spendWindow(): { since: string; until: string } {
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - 30);
+  const until = new Date();
+  return {
+    since: since.toISOString().slice(0, 10),
+    until: until.toISOString().slice(0, 10),
+  };
+}
+
+async function fetchTikTokSpendDays(
+  conn: AdConnectionRow,
+  externalCampaignId: string,
+): Promise<SpendDayRow[]> {
+  const client = resolveTikTokClient(conn);
+  const { since, until } = spendWindow();
+  const payload = await tiktokApi(client, "GET", "report/integrated/get/", {
+    advertiser_id: client.advertiserId,
+    report_type: "BASIC",
+    data_level: "AUCTION_CAMPAIGN",
+    dimensions: ["campaign_id", "stat_time_day"],
+    metrics: ["spend", "impressions", "clicks"],
+    start_date: since,
+    end_date: until,
+    filtering: { campaign_ids: [externalCampaignId] },
+    page_size: 1000,
+  });
+  return parseTikTokReportSpend(payload);
+}
+
+async function fetchSnapchatSpendDays(
+  conn: AdConnectionRow,
+  externalCampaignId: string,
+): Promise<SpendDayRow[]> {
+  const client = await resolveSnapchatClient(conn);
+  const { since, until } = spendWindow();
+  const exclusiveEnd = new Date(`${until}T00:00:00.000Z`);
+  exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
+  const query = new URLSearchParams({
+    granularity: "DAY",
+    fields: "impressions,swipes,spend",
+    start_time: `${since}T00:00:00.000Z`,
+    end_time: exclusiveEnd.toISOString(),
+  });
+  const payload = await snapchatApi(
+    client,
+    "GET",
+    `${client.apiBase}/v1/campaigns/${
+      encodeURIComponent(externalCampaignId)
+    }/stats?${query.toString()}`,
+  );
+  return parseSnapchatStatsSpend(payload);
+}
+
+async function fetchGoogleSpendDays(
+  conn: AdConnectionRow,
+  externalCampaignId: string,
+): Promise<SpendDayRow[]> {
+  const client = await resolveGoogleClient(conn);
+  if (!/^\d+$/.test(externalCampaignId)) {
+    throw new Error("google_campaign_id_invalid");
+  }
+  const { since, until } = spendWindow();
+  const query =
+    "SELECT campaign.id, segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks " +
+    `FROM campaign WHERE campaign.id = ${externalCampaignId} ` +
+    `AND segments.date BETWEEN '${since}' AND '${until}'`;
+  const { payload } = await googleAdsRequest(
+    client,
+    `customers/${client.customerId}/googleAds:search`,
+    { query, pageSize: 1000 },
+  );
+  return parseGoogleAdsSpend(payload);
+}
+
+async function fetchRedditSpendDays(
+  conn: AdConnectionRow,
+  externalCampaignId: string,
+): Promise<SpendDayRow[]> {
+  const client = await resolveRedditClient(conn);
+  const accountId = String(conn.external_account_id ?? "").trim();
+  if (!accountId) throw new Error("reddit_account_id_missing");
+  const { since, until } = spendWindow();
+  const payload = await redditRequest(
+    client,
+    "POST",
+    `/ad_accounts/${encodeURIComponent(accountId)}/reports`,
+    {
+      starts_at: `${since}T00:00:00Z`,
+      ends_at: `${until}T23:59:59Z`,
+      fields: ["SPEND", "IMPRESSIONS", "CLICKS"],
+      breakdowns: ["CAMPAIGN_ID", "DATE"],
+      filter: `campaign:id==${externalCampaignId}`,
+    },
+  );
+  return parseRedditReportSpend(payload);
 }
 
 async function loadCumulativeSpendCents(
@@ -246,7 +356,7 @@ serve(async (req: Request): Promise<Response> => {
   let query = supabase
     .from("ad_campaigns")
     .select(
-      "id, platform, external_campaign_id, status, cap_cents, ends_at, currency, connection_id",
+      "id, platform, external_campaign_id, status, cap_cents, ends_at, currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug",
     )
     .in("status", ["ACTIVE", "PAUSED"])
     .order("status_synced_at", { ascending: true, nullsFirst: true })
@@ -285,23 +395,95 @@ serve(async (req: Request): Promise<Response> => {
       continue;
     }
 
+    if (target.status === "ACTIVE") {
+      let destinationPause: "destination_unavailable" | "destination_check_failed" | null = null;
+      try {
+        await resolveAdDestination(supabase, {
+          page_type: row.dest_page_type,
+          brand_slug: row.dest_brand_slug,
+          entity_slug: row.dest_entity_slug,
+        });
+      } catch (err) {
+        destinationPause = err instanceof AdDestinationError && err.status < 500
+          ? "destination_unavailable"
+          : "destination_check_failed";
+      }
+      if (destinationPause) {
+        const cumulative = await loadCumulativeSpendCents(supabase, target.id);
+        if (!cumulative.ok) {
+          results.push({
+            campaign_id: target.id,
+            error: cumulative.detail,
+            destination_check: destinationPause,
+            retryable: true,
+          });
+          await touchSpendSyncWatermark(supabase, target.id);
+          continue;
+        }
+        const pauseResult = await pauseCampaignForReason(
+          supabase,
+          target,
+          row.connection_id,
+          destinationPause,
+          cumulative.cents,
+        );
+        if (!pauseResult.ok) {
+          results.push({
+            campaign_id: target.id,
+            pause_failed: pauseResult.detail,
+            destination_check: destinationPause,
+            total_spend_cents: cumulative.cents,
+          });
+          await touchSpendSyncWatermark(supabase, target.id);
+          continue;
+        }
+        paused += 1;
+        results.push({
+          campaign_id: target.id,
+          paused: destinationPause,
+          total_spend_cents: cumulative.cents,
+        });
+        continue;
+      }
+    }
+
     let days: SpendDayRow[] = [];
     let fetchError: string | null = null;
     let upsertError: string | null = null;
     try {
+      const { data: conn } = await supabase
+        .from("ad_connections")
+        .select("*")
+        .eq("id", row.connection_id)
+        .maybeSingle();
+      if (!conn) throw new AdNotConnectedError(platform as Platform);
+      const connection = conn as AdConnectionRow;
       if (platform === "meta") {
-        const { data: conn } = await supabase
-          .from("ad_connections")
-          .select("*")
-          .eq("id", row.connection_id)
-          .maybeSingle();
-        if (!conn) throw new AdNotConnectedError("meta");
         days = await fetchMetaSpendDays(
-          conn as AdConnectionRow,
+          connection,
+          target.external_campaign_id,
+        );
+      } else if (platform === "tiktok") {
+        days = await fetchTikTokSpendDays(
+          connection,
+          target.external_campaign_id,
+        );
+      } else if (platform === "snapchat") {
+        days = await fetchSnapchatSpendDays(
+          connection,
+          target.external_campaign_id,
+        );
+      } else if (platform === "google") {
+        days = await fetchGoogleSpendDays(
+          connection,
+          target.external_campaign_id,
+        );
+      } else if (platform === "reddit") {
+        days = await fetchRedditSpendDays(
+          connection,
           target.external_campaign_id,
         );
       }
-      // Other platforms: empty days this wave; end-date pause still applies.
     } catch (err) {
       fetchError =
         err instanceof AdApiError || err instanceof AdNotConnectedError
@@ -340,11 +522,10 @@ serve(async (req: Request): Promise<Response> => {
       continue;
     }
 
-    // Fail closed on Meta spend-fetch outage for capped ACTIVE campaigns:
+    // Fail closed on any spend-fetch outage for capped ACTIVE campaigns:
     // stale ad_spend_daily must not keep delivery alive without a fresh read.
     if (
       fetchError &&
-      platform === "meta" &&
       target.status === "ACTIVE" &&
       typeof target.cap_cents === "number" &&
       target.cap_cents > 0

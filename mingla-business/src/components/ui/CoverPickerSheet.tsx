@@ -142,6 +142,9 @@ export interface CoverPickerSheetProps {
    * #3655 — stage the cover pointer until host Save; see CoverPickerProps.
    */
   deferPreviousCleanup?: boolean;
+  mediaMode?: "all" | "video-only";
+  title?: string;
+  confirmLabel?: string;
 }
 
 export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
@@ -158,6 +161,9 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
   onCoverVideoProcessingChange,
   galleryEnabled = false,
   deferPreviousCleanup = false,
+  mediaMode = "all",
+  title = "Cover",
+  confirmLabel = "Use this cover",
 }) => {
   const { isWideDesktop } = useResponsiveLayout();
 
@@ -278,7 +284,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
       <View style={styles.host}>
         <SheetContentPresence onUnmount={handleSheetContentUnmounted} />
         <View style={styles.headerRow}>
-          <Text style={styles.headerTitle}>Cover</Text>
+          <Text style={styles.headerTitle}>{title}</Text>
           <Pressable
             onPress={onClose}
             accessibilityRole="button"
@@ -325,6 +331,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
               isWideDesktop={isWideDesktop}
               galleryEnabled={galleryEnabled}
               deferPreviousCleanup={deferPreviousCleanup}
+              mediaMode={mediaMode}
               onCoverVideoProcessingChange={(processing): void => {
                 setVideoProcessing(processing);
                 onCoverVideoProcessingChange?.(processing);
@@ -361,7 +368,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
             <Pressable
               onPress={onClose}
               accessibilityRole="button"
-              accessibilityLabel="Use this cover"
+              accessibilityLabel={confirmLabel}
               testID="cover-picker-confirm"
               style={({ pressed }) => [
                 styles.confirmButton,
@@ -380,7 +387,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
                 </View>
               )}
               <Text style={styles.confirmLabel} numberOfLines={1}>
-                Use this cover
+                {confirmLabel}
               </Text>
               <Icon name="check" size={20} color={textTokens.inverse} />
             </Pressable>

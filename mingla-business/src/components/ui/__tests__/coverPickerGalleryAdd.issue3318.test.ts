@@ -618,7 +618,8 @@ const NON_SAVING_HOSTS: Array<[string, number]> = [
   ["components/venue/VenueDeckReadinessSetup.tsx", 1],
   ["components/brand/BrandEditView.tsx", 1],
   ["components/brand/BrandCreationFlow.tsx", 1],
-  ["components/ari/ToolProposalCard.tsx", 2],
+  // [TEST-MOD-APPROVED #3697] Host Ads adds one video-only, non-gallery picker.
+  ["components/ari/ToolProposalCard.tsx", 3],
 ];
 
 describe("issue #3319 — Additional photos only where they are saved", () => {

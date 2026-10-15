@@ -1,5 +1,5 @@
 /**
- * toward #3697 Wave 9 — Host Meta provider create/sync (READY image, setStatus).
+ * toward #3697 Wave 9 / closeout — Host provider create/sync.
  */
 import {
   assert,
@@ -66,15 +66,20 @@ Deno.test("Wave 9: host-ad-campaign wires Meta create + activate compensate", as
   assertEquals(host.includes("host_${brandCompact}"), false);
 });
 
-Deno.test("Wave 9: Ari Host Ads tools require creative_library_id + Meta", async () => {
+Deno.test("#3697 closeout: Ari reviews a required video across all five providers", async () => {
   const tools = await Deno.readTextFile(
     new URL("../agentDomainTools.ts", import.meta.url),
   );
   assert(tools.includes("creative_library_id: UUID"));
-  assert(tools.includes("platform_unsupported — Host Ads Wave 9 is Meta only"));
-  assert(tools.includes("creative_library_id: args.creative_library_id"));
+  assert(tools.includes("HOST_AD_PLATFORMS"));
+  assert(tools.includes('"google"'));
+  assert(tools.includes('"tiktok"'));
+  assert(tools.includes('"snapchat"'));
+  assert(tools.includes('"reddit"'));
+  assert(tools.includes("buildHostAdCreatePayload"));
+  assert(tools.includes("creative_library_id must be a uuid of a READY video creative"));
   const prompt = await Deno.readTextFile(
     new URL("../agentSystemPrompt.ts", import.meta.url),
   );
-  assert(prompt.includes("creative_library_id"));
+  assert(prompt.includes("Host attaches the required video"));
 });

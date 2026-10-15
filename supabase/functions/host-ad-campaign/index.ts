@@ -5,8 +5,8 @@
  * end / cancel. Launch debits Ads credit (campaign_spend). Cancel only before
  * any platform spend (full credit return); End after spend. Wave 8: every
  * launch attempt emails admins. Wave 9: Meta business-lane create via
- * createFullCampaignAtomic + READY image creative; launch/pause call Meta
- * setStatus (credit compensate if activate fails).
+ * createFullCampaignAtomic. #3697 closeout: launch/pause use the stored provider
+ * adapter for all five platforms (credit compensates if activation fails).
  *
  * Actions: list | get | create | launch | pause | end | cancel
  */
@@ -17,11 +17,12 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   AdApiError,
-  AdNotConnectedError,
   type AdConnectionRow,
+  AdNotConnectedError,
   AtomicCreateError,
   createFullCampaignAtomic,
   getAdapter,
+  isPlatform,
 } from "../_shared/adChannel.ts";
 import {
   buildHostMetaAtomicInput,
@@ -101,7 +102,7 @@ async function pauseProviderBestEffort(
     external_campaign_id: string | null;
   },
 ): Promise<void> {
-  if (camp.platform !== "meta") return;
+  if (!isPlatform(camp.platform)) return;
   if (isSyntheticHostExternalId(camp.external_campaign_id)) return;
   if (!camp.connection_id || !camp.external_campaign_id) return;
   const { data: conn } = await supabase
@@ -115,7 +116,7 @@ async function pauseProviderBestEffort(
   } | null;
   if (!row || !row.connected || row.status !== "connected") return;
   try {
-    const adapter = getAdapter("meta");
+    const adapter = getAdapter(camp.platform);
     const tree = await loadProviderTree(
       supabase,
       camp.id,
@@ -189,7 +190,10 @@ serve(async (req: Request): Promise<Response> => {
       { p_brand_id: brandId, p_user_id: user.id },
     );
     if (manageErr) {
-      console.error("[host-ad-campaign] manage auth failed:", manageErr.message);
+      console.error(
+        "[host-ad-campaign] manage auth failed:",
+        manageErr.message,
+      );
       return json({ error: "internal_error" }, 500);
     }
     if (canManage !== true) {
@@ -239,15 +243,139 @@ serve(async (req: Request): Promise<Response> => {
         404,
       );
     }
-    const { data: spend } = await supabase
-      .from("ad_spend_daily")
-      .select("spend_cents, day")
-      .eq("campaign_id", campaignId);
+    const [
+      spendResult,
+      adSetsResult,
+      timelineResult,
+      creditResult,
+    ] = await Promise.all([
+      supabase
+        .from("ad_spend_daily")
+        .select("spend_cents, spend_date, impressions, clicks, platform")
+        .eq("campaign_id", campaignId)
+        .order("spend_date", { ascending: true }),
+      supabase
+        .from("ad_sets")
+        .select("id")
+        .eq("campaign_id", campaignId),
+      supabase
+        .from("ad_status_events")
+        .select(
+          "id, platform, entity, action, from_status, to_status, provider_response, created_at",
+        )
+        .eq("campaign_id", campaignId)
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabase
+        .from("ad_credit_ledger")
+        .select(
+          "id, entry_kind, amount_cents, fee_cents, pay_cents, refund_cents, balance_after_cents, currency, created_at",
+        )
+        .eq("campaign_id", campaignId)
+        .order("created_at", { ascending: false })
+        .limit(50),
+    ]);
+    const spend = spendResult.data ?? [];
     const spendTotal = (spend ?? []).reduce(
       (n, r) => n + Number(r.spend_cents ?? 0),
       0,
     );
-    return json({ ok: true, campaign: data, spend_total_cents: spendTotal });
+    const adSetIds = (adSetsResult.data ?? []).map((row: { id: unknown }) =>
+      String(row.id)
+    );
+    const { data: creativeRows } = adSetIds.length > 0
+      ? await supabase
+        .from("ads")
+        .select(
+          "id, name, status, review_status, review_detail, creative_id, ad_creatives(id, kind, name, source_url, poster_url, mp4_master_url)",
+        )
+        .in("ad_set_id", adSetIds)
+      : { data: [] };
+
+    const { data: conversions } = await supabase
+      .from("ad_conversions")
+      .select("touch_id, platform, value_cents, currency")
+      .eq("campaign_id", campaignId);
+    const conversionCounts = new Map<string, number>();
+    const conversionValueByCurrency = new Map<string, number>();
+    const conversionByPlatform = new Map<string, {
+      platform: string;
+      conversions: number;
+      value_cents: number;
+    }>();
+    for (const row of conversions ?? []) {
+      const touchId = typeof row.touch_id === "string" ? row.touch_id : "";
+      if (touchId) {
+        conversionCounts.set(touchId, (conversionCounts.get(touchId) ?? 0) + 1);
+      }
+      const currency = typeof row.currency === "string" && row.currency.trim()
+        ? row.currency.trim().toUpperCase()
+        : "USD";
+      const valueCents = Math.max(0, Math.floor(Number(row.value_cents) || 0));
+      conversionValueByCurrency.set(
+        currency,
+        (conversionValueByCurrency.get(currency) ?? 0) + valueCents,
+      );
+      const conversionPlatform = typeof row.platform === "string" &&
+          row.platform.trim()
+        ? row.platform.trim()
+        : String(data.platform ?? "unknown");
+      const platformResult = conversionByPlatform.get(conversionPlatform) ?? {
+        platform: conversionPlatform,
+        conversions: 0,
+        value_cents: 0,
+      };
+      platformResult.conversions += 1;
+      platformResult.value_cents += valueCents;
+      conversionByPlatform.set(conversionPlatform, platformResult);
+    }
+    const touchIds = [...conversionCounts.keys()];
+    const { data: touches } = touchIds.length > 0
+      ? await supabase
+        .from("ad_attribution_touches")
+        .select("id, network, surface, utm")
+        .in("id", touchIds)
+      : { data: [] };
+    const placementMap = new Map<string, {
+      platform: string;
+      placement: string;
+      conversions: number;
+    }>();
+    for (const row of touches ?? []) {
+      const utm = row.utm && typeof row.utm === "object"
+        ? row.utm as Record<string, unknown>
+        : {};
+      const platform = String(row.network ?? data.platform ?? "unknown");
+      const placement = String(
+        utm.utm_content ?? utm.placement ?? row.surface ?? "unknown",
+      );
+      const key = `${platform}:${placement}`;
+      const current = placementMap.get(key) ??
+        { platform, placement, conversions: 0 };
+      current.conversions += conversionCounts.get(String(row.id)) ?? 0;
+      placementMap.set(key, current);
+    }
+
+    return json({
+      ok: true,
+      campaign: data,
+      spend_total_cents: spendTotal,
+      spend_daily: spend,
+      results: {
+        conversions: (conversions ?? []).length,
+        value_cents: Object.fromEntries(conversionValueByCurrency),
+        spend_cents: spendTotal,
+        by_platform: [...conversionByPlatform.values()].sort((a, b) =>
+          b.conversions - a.conversions
+        ),
+      },
+      by_placement: [...placementMap.values()].sort((a, b) =>
+        b.conversions - a.conversions
+      ),
+      creatives: creativeRows ?? [],
+      timeline: timelineResult.data ?? [],
+      credit_events: creditResult.data ?? [],
+    });
   }
 
   if (action === "create") {
@@ -442,7 +570,11 @@ serve(async (req: Request): Promise<Response> => {
     const adapter = getAdapter("meta");
     let created;
     try {
-      created = await createFullCampaignAtomic(adapter, connection, atomicInput);
+      created = await createFullCampaignAtomic(
+        adapter,
+        connection,
+        atomicInput,
+      );
     } catch (err) {
       if (err instanceof AdNotConnectedError) {
         return json({ error: "meta_not_connected", detail: err.detail }, 424);
@@ -570,7 +702,10 @@ serve(async (req: Request): Promise<Response> => {
       .select("id")
       .single();
     if (adSetErr || !adSetRow) {
-      console.error("[host-ad-campaign] persist ad_set failed:", adSetErr?.message);
+      console.error(
+        "[host-ad-campaign] persist ad_set failed:",
+        adSetErr?.message,
+      );
       return json({
         error: "apply_failed",
         detail: adSetErr?.message ?? "ad_set_persist_failed",
@@ -762,10 +897,10 @@ serve(async (req: Request): Promise<Response> => {
           detail: "campaign_not_pausable",
         }, 409);
       }
-      if (camp.platform !== "meta") {
+      if (!isPlatform(camp.platform)) {
         return json({
           error: "validation_error",
-          detail: "platform_unsupported",
+          detail: "platform_invalid",
         }, 422);
       }
       if (isSyntheticHostExternalId(camp.external_campaign_id)) {
@@ -780,7 +915,7 @@ serve(async (req: Request): Promise<Response> => {
         .eq("id", camp.connection_id)
         .maybeSingle();
       if (!conn || !conn.connected || conn.status !== "connected") {
-        return json({ error: "meta_not_connected" }, 424);
+        return json({ error: `${String(camp.platform)}_not_connected` }, 424);
       }
       const tree = await loadProviderTree(
         supabase,
@@ -789,7 +924,7 @@ serve(async (req: Request): Promise<Response> => {
       );
       try {
         await setCampaignTreeStatus(
-          getAdapter("meta"),
+          getAdapter(camp.platform),
           conn as unknown as AdConnectionRow,
           {
             externalCampaignId: String(camp.external_campaign_id),
@@ -800,10 +935,16 @@ serve(async (req: Request): Promise<Response> => {
         );
       } catch (err) {
         if (err instanceof AdNotConnectedError) {
-          return json({ error: "meta_not_connected", detail: err.detail }, 424);
+          return json({
+            error: `${String(camp.platform)}_not_connected`,
+            detail: err.detail,
+          }, 424);
         }
         const detail = err instanceof Error ? err.message : String(err);
-        return json({ error: "provider_pause_failed", detail: detail.slice(0, 500) }, 502);
+        return json({
+          error: "provider_pause_failed",
+          detail: detail.slice(0, 500),
+        }, 502);
       }
       const { data: paused, error } = await supabase
         .from("ad_campaigns")
@@ -961,7 +1102,7 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    // launch — debit credit, activate on Meta, then claim PAUSED→ACTIVE.
+    // launch — debit credit, activate the provider tree, then claim PAUSED→ACTIVE.
     const launchAlertBase = {
       source: "host" as const,
       campaignId,
@@ -997,16 +1138,16 @@ serve(async (req: Request): Promise<Response> => {
         detail: "campaign_not_launchable",
       }, 409);
     }
-    if (camp.platform !== "meta") {
+    if (!isPlatform(camp.platform)) {
       await notifyAdLaunchAttempt({
         ...launchAlertBase,
         outcome: "rejected",
-        detail: "platform_unsupported",
+        detail: "platform_invalid",
         idempotencyKey: `ads_launch:host:${campaignId}:platform`,
       });
       return json({
         error: "validation_error",
-        detail: "platform_unsupported",
+        detail: "platform_invalid",
       }, 422);
     }
     if (isSyntheticHostExternalId(camp.external_campaign_id)) {
@@ -1041,10 +1182,10 @@ serve(async (req: Request): Promise<Response> => {
       await notifyAdLaunchAttempt({
         ...launchAlertBase,
         outcome: "rejected",
-        detail: "meta_not_connected",
+        detail: `${String(camp.platform)}_not_connected`,
         idempotencyKey: `ads_launch:host:${campaignId}:not_connected`,
       });
-      return json({ error: "meta_not_connected" }, 424);
+      return json({ error: `${String(camp.platform)}_not_connected` }, 424);
     }
 
     // Campaign-scoped debit key so concurrent client keys cannot double-charge.
@@ -1097,7 +1238,7 @@ serve(async (req: Request): Promise<Response> => {
     );
     try {
       await setCampaignTreeStatus(
-        getAdapter("meta"),
+        getAdapter(camp.platform),
         conn as unknown as AdConnectionRow,
         {
           externalCampaignId: String(camp.external_campaign_id),
@@ -1139,7 +1280,10 @@ serve(async (req: Request): Promise<Response> => {
         idempotencyKey: `ads_launch:host:${campaignId}:activate_failed`,
       });
       if (err instanceof AdNotConnectedError) {
-        return json({ error: "meta_not_connected", detail: err.detail }, 424);
+        return json({
+          error: `${String(camp.platform)}_not_connected`,
+          detail: err.detail,
+        }, 424);
       }
       return json({
         error: "provider_activate_failed",
@@ -1197,7 +1341,7 @@ serve(async (req: Request): Promise<Response> => {
     await notifyAdLaunchAttempt({
       ...launchAlertBase,
       outcome: "accepted",
-      detail: `debited_cents=${debit};provider=meta`,
+      detail: `debited_cents=${debit};provider=${String(camp.platform)}`,
       idempotencyKey: `ads_launch:host:${campaignId}:accepted`,
     });
     return json({

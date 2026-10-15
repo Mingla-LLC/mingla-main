@@ -68,7 +68,12 @@ Deno.test("Wave 7c: Host Ads Ari tools registered (distinct from Blast)", () => 
   assert(READ_ONLY_TOOL_NAMES.has("get_ad_campaign_report"));
   assert(MONEY_CONFIRM_TOOLS.has("approve_ad_plan"));
   assert(MONEY_CONFIRM_TOOLS.has("end_ad_campaign"));
-  assertEquals(findTool("approve_ad_plan")?.name, "approve_ad_plan");
+  const approve = findTool("approve_ad_plan");
+  assertEquals(approve?.name, "approve_ad_plan");
+  const required = Array.isArray(approve?.parameters.required)
+    ? approve.parameters.required as string[]
+    : [];
+  assertEquals(required.includes("creative_library_id"), false);
 });
 
 Deno.test("Wave 7c: host-ad-campaign edge + ad-credit withdraw surface exist", async () => {
@@ -87,13 +92,42 @@ Deno.test("Wave 7c: host-ad-campaign edge + ad-credit withdraw surface exist", a
   assert(edge.includes('action === "apply_withdraw"'));
   assert(edge.includes("refunds.create") || edge.includes("stripe.refunds"));
   assert(edge.includes("mingla_adc_") || edge.includes("Paystack"));
-  assert(edge.includes("`top_up:${paymentRef}`") || edge.includes("top_up:${paymentRef}"));
-  assert(edge.includes("markProviderRefundOrThrow") || edge.includes("ad_credit_mark_provider_refund_failed"));
+  assert(
+    edge.includes("`top_up:${paymentRef}`") ||
+      edge.includes("top_up:${paymentRef}"),
+  );
+  assert(
+    edge.includes("markProviderRefundOrThrow") ||
+      edge.includes("ad_credit_mark_provider_refund_failed"),
+  );
   const tools = await Deno.readTextFile(
     new URL("../agentDomainTools.ts", import.meta.url),
   );
-  assert(tools.includes("ari_create_${operationId}") || tools.includes("ari_create_"));
+  assert(tools.includes('"admin-ad-create-campaign"'));
+  assert(tools.includes('owner_kind: "host"'));
+  assert(tools.includes('lane: "business"'));
+  assert(tools.includes("HOST_AD_PLATFORMS"));
   assert(tools.includes("requireAgentOperationId(context)"));
+  const builder = await Deno.readTextFile(
+    new URL("../../admin-ad-create-campaign/index.ts", import.meta.url),
+  );
+  assert(builder.includes("biz_can_manage_payments_for_brand"));
+  assert(builder.includes("destination_brand_mismatch"));
+  assert(builder.includes("creative_brand_mismatch"));
+  assert(builder.includes("host_video_creative_required"));
+  assert(builder.includes('.select("id, brand_id, kind, status")'));
+  assert(builder.includes("owner_kind: requestedOwnerKind"));
+  const prepare = await Deno.readTextFile(
+    new URL("../../admin-ad-creative-prepare/index.ts", import.meta.url),
+  );
+  assert(prepare.includes('requestedLane !== "business"'));
+  assert(prepare.includes("creative_brand_mismatch"));
+  const spendSync = await Deno.readTextFile(
+    new URL("../../admin-ad-spend-sync/index.ts", import.meta.url),
+  );
+  assert(spendSync.includes("resolveAdDestination"));
+  assert(spendSync.includes("destination_unavailable"));
+  assert(spendSync.includes("destination_check_failed"));
   const stripeRouter = await Deno.readTextFile(
     new URL("../stripeWebhookRouter.ts", import.meta.url),
   );

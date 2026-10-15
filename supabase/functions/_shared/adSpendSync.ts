@@ -29,6 +29,8 @@ export interface CampaignSpendTarget {
 export type PauseReason =
   | "cap_98_percent"
   | "end_date_passed"
+  | "destination_unavailable"
+  | "destination_check_failed"
   | "spend_fetch_failed";
 
 export interface SpendSyncDecision {
@@ -171,6 +173,163 @@ export function parseMetaInsightsSpend(payload: unknown): SpendDayRow[] {
       currency: typeof row.account_currency === "string"
         ? row.account_currency
         : undefined,
+    });
+  }
+  return out;
+}
+
+function microsToCents(raw: unknown): number {
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.max(0, Math.round(value / 10_000)) : 0;
+}
+
+/** TikTok integrated-report spend is account-currency major units. */
+export function parseTikTokReportSpend(payload: unknown): SpendDayRow[] {
+  const root = payload && typeof payload === "object"
+    ? payload as Record<string, unknown>
+    : {};
+  const data = root.data && typeof root.data === "object"
+    ? root.data as Record<string, unknown>
+    : {};
+  const list = Array.isArray(data.list)
+    ? data.list
+    : Array.isArray(root.list)
+    ? root.list
+    : [];
+  const out: SpendDayRow[] = [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const dimensions = row.dimensions && typeof row.dimensions === "object"
+      ? row.dimensions as Record<string, unknown>
+      : {};
+    const metrics = row.metrics && typeof row.metrics === "object"
+      ? row.metrics as Record<string, unknown>
+      : row;
+    const day = String(
+      dimensions.stat_time_day ?? dimensions.date ?? row.stat_time_day ??
+        row.date ?? "",
+    ).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    out.push({
+      spend_date: day,
+      spend_cents: metaSpendDollarsToCents(metrics.spend),
+      impressions: Math.max(0, Math.floor(Number(metrics.impressions) || 0)),
+      clicks: Math.max(0, Math.floor(Number(metrics.clicks) || 0)),
+    });
+  }
+  return out;
+}
+
+/** Snap stats spend is microcurrency. */
+export function parseSnapchatStatsSpend(payload: unknown): SpendDayRow[] {
+  const root = payload && typeof payload === "object"
+    ? payload as Record<string, unknown>
+    : {};
+  const containers = Array.isArray(root.timeseries_stats)
+    ? root.timeseries_stats
+    : Array.isArray(root.total_stats)
+    ? root.total_stats
+    : [];
+  const out: SpendDayRow[] = [];
+  for (const rawContainer of containers) {
+    if (!rawContainer || typeof rawContainer !== "object") continue;
+    const container = rawContainer as Record<string, unknown>;
+    const stat =
+      container.timeseries_stat && typeof container.timeseries_stat === "object"
+        ? container.timeseries_stat as Record<string, unknown>
+        : container;
+    const rows = Array.isArray(stat.timeseries) ? stat.timeseries : [stat];
+    for (const raw of rows) {
+      if (!raw || typeof raw !== "object") continue;
+      const row = raw as Record<string, unknown>;
+      const stats = row.stats && typeof row.stats === "object"
+        ? row.stats as Record<string, unknown>
+        : row;
+      const day = String(row.start_time ?? row.startTime ?? row.date ?? "")
+        .slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+      out.push({
+        spend_date: day,
+        spend_cents: microsToCents(stats.spend),
+        impressions: Math.max(0, Math.floor(Number(stats.impressions) || 0)),
+        clicks: Math.max(
+          0,
+          Math.floor(Number(stats.swipes ?? stats.clicks) || 0),
+        ),
+      });
+    }
+  }
+  return out;
+}
+
+/** Google Ads costMicros is currency micros. */
+export function parseGoogleAdsSpend(payload: unknown): SpendDayRow[] {
+  const pages = Array.isArray(payload) ? payload : [payload];
+  const out: SpendDayRow[] = [];
+  for (const rawPage of pages) {
+    if (!rawPage || typeof rawPage !== "object") continue;
+    const page = rawPage as Record<string, unknown>;
+    const results = Array.isArray(page.results) ? page.results : [];
+    for (const raw of results) {
+      if (!raw || typeof raw !== "object") continue;
+      const row = raw as Record<string, unknown>;
+      const segments = row.segments && typeof row.segments === "object"
+        ? row.segments as Record<string, unknown>
+        : {};
+      const metrics = row.metrics && typeof row.metrics === "object"
+        ? row.metrics as Record<string, unknown>
+        : {};
+      const day = String(segments.date ?? row.date ?? "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+      out.push({
+        spend_date: day,
+        spend_cents: microsToCents(metrics.costMicros ?? metrics.cost_micros),
+        impressions: Math.max(0, Math.floor(Number(metrics.impressions) || 0)),
+        clicks: Math.max(0, Math.floor(Number(metrics.clicks) || 0)),
+      });
+    }
+  }
+  return out;
+}
+
+/** Reddit report SPEND is currency micros; tolerate current v3 row envelopes. */
+export function parseRedditReportSpend(payload: unknown): SpendDayRow[] {
+  const root = payload && typeof payload === "object"
+    ? payload as Record<string, unknown>
+    : {};
+  const data = root.data;
+  const rows = Array.isArray(data) ? data : data && typeof data === "object" &&
+      Array.isArray((data as Record<string, unknown>).rows)
+    ? (data as Record<string, unknown>).rows as unknown[]
+    : Array.isArray(root.rows)
+    ? root.rows
+    : [];
+  const out: SpendDayRow[] = [];
+  for (const raw of rows) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const metrics = row.metrics && typeof row.metrics === "object"
+      ? row.metrics as Record<string, unknown>
+      : row;
+    const breakdown = row.breakdowns && typeof row.breakdowns === "object"
+      ? row.breakdowns as Record<string, unknown>
+      : row;
+    const day = String(
+      breakdown.DATE ?? breakdown.date ?? row.starts_at ?? row.start_time ?? "",
+    ).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    out.push({
+      spend_date: day,
+      spend_cents: microsToCents(metrics.SPEND ?? metrics.spend),
+      impressions: Math.max(
+        0,
+        Math.floor(Number(metrics.IMPRESSIONS ?? metrics.impressions) || 0),
+      ),
+      clicks: Math.max(
+        0,
+        Math.floor(Number(metrics.CLICKS ?? metrics.clicks) || 0),
+      ),
     });
   }
   return out;
