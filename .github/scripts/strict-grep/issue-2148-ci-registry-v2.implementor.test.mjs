@@ -20,6 +20,7 @@ import {
   SHADOW_PARITY_WRAPPER_NAMES,
   validateRegistry,
 } from "../ci-batch/validate-manifest-v2.mjs";
+import { loadEffectiveManifest } from "../ci-batch/load-manifest.mjs";
 
 const WAVE_IDS_SHA256 = "54b55bc2c9986869c057f7e1de53712601f98338c630ab439fe515318ad230c0";
 const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -61,7 +62,7 @@ function assertWaveStage(manifest, exists = (name) => fs.existsSync(path.join(DE
 
 test("#2435 registry v2 proves the complete current topology", () => {
   const rawManifest = JSON.parse(fs.readFileSync(DEFAULT_MANIFEST, "utf8"));
-  const errors = validateRegistry(rawManifest, { root: DEFAULT_ROOT });
+  const errors = validateRegistry(loadEffectiveManifest(), { root: DEFAULT_ROOT });
   assert.deepEqual(errors, []);
   const manifest = decodeManifestTextRepresentations(rawManifest);
   assert.equal(manifest.schemaVersion, 2);

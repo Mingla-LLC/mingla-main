@@ -12,9 +12,10 @@ import {
   discoverWorkflowProviders,
   validateRegistry,
 } from "../ci-batch/validate-manifest-v2.mjs";
+import { loadEffectiveManifest } from "../ci-batch/load-manifest.mjs";
 
 test("#2435 rejects a count-preserving legacy-to-suite attribution swap", () => {
-  const manifest = JSON.parse(fs.readFileSync(DEFAULT_MANIFEST, "utf8"));
+  const manifest = loadEffectiveManifest();
   const discovery = {
     root: DEFAULT_ROOT,
     liveOrigins: discoverLiveOrigins(DEFAULT_ROOT),

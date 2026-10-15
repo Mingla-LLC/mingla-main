@@ -32,6 +32,7 @@ import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, expectedPr
 import { reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
 import { commandFingerprint } from "../run-suite-batch.mjs";
 import { isPrimarySuite, isMigratedSuite, suiteCommandFingerprint } from "../validate-manifest-v2.mjs";
+import { loadEffectiveManifest } from "../load-manifest.mjs";
 
 // [TEST-MOD-APPROVED #2897] Counts derived from the validator's single declared
 // post-seal set, never re-typed. See SUITES_ADDED_SINCE_SEAL.
@@ -54,8 +55,9 @@ const clone = (value) => structuredClone(value);
 const callsAtStart = trackedFilesCalls();
 const processInvocationsAtStart = trackedFilesProcessInvocations();
 const RAW = JSON.parse(read(".github/ci-batch/MANIFEST.json"));
+const EFFECTIVE = loadEffectiveManifest();
 const PRECOMPUTED = withTrackedFilesScope(ROOT, () => {
-  const registryErrors = validateRegistry(RAW, { root: ROOT });
+  const registryErrors = validateRegistry(EFFECTIVE, { root: ROOT });
   const providers = discoverWorkflowProviders(ROOT);
   const manifest = decodeManifestTextRepresentations(RAW);
   const suites = manifest.suites.filter((suite) => suite.migrationWave === WAVE);

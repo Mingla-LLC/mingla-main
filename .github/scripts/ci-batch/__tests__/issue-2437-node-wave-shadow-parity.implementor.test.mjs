@@ -20,6 +20,7 @@ import {
   validateShadowParityMarkers,
   SUITES_ADDED_SINCE_SEAL,
 } from "../validate-manifest-v2.mjs";
+import { loadEffectiveManifest } from "../load-manifest.mjs";
 import { commandFingerprint } from "../run-suite-batch.mjs";
 import { SELF_JOB_NAME as CLASS_A_BUDGET_JOB_NAME } from "../../strict-grep/issue-2594-class-a-budget.mjs";
 
@@ -379,6 +380,7 @@ test("terminal lifecycle rejects restored wrappers and leaves no parity markers"
 
 test("canonical validation rejects terminal omission, restored wrapper, setup drift, and trust drift", () => {
   const value = manifest();
+  Object.assign(value, loadEffectiveManifest());
   const workflowSource = fs.readFileSync(WORKFLOW_PATH, "utf8");
   const discovery = { root: ROOT, liveOrigins: discoverLiveOrigins(ROOT), workflowProviders: discoverWorkflowProviders(ROOT), matrixSource: workflowSource };
   assert.deepEqual(validateRegistry(value, discovery), []);
@@ -397,6 +399,7 @@ test("canonical validation rejects terminal omission, restored wrapper, setup dr
 
 test("job startup uses supported pre-matrix contexts and dispatch is isolated to #2300", () => {
   const value = manifest();
+  Object.assign(value, loadEffectiveManifest());
   const workflowSource = fs.readFileSync(WORKFLOW_PATH, "utf8");
   const topology = inspectBatchWorkflow(workflowSource);
   assert.equal(topology.jobIf, "github.event_name != 'workflow_dispatch'");

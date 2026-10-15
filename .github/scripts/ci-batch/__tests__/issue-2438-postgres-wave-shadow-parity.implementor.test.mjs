@@ -11,6 +11,7 @@ import { execFileSync } from "node:child_process";
 import os from "node:os";
 import { buildShardReport, commandFingerprint, createIsolatedWorkspace, expectedPrimarySuites, materializeToolExposures, minimalChildEnvironment, resolveLeafCapability, runSuiteV2, validateSetupEvidence } from "../run-suite-batch.mjs";
 import { expectedPhase3bIdentities, reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
+import { BOOTSTRAP_SHA256, loadEffectiveManifest } from "../load-manifest.mjs";
 
 // [TEST-MOD-APPROVED #2897] Counts derived from the validator's single declared
 // post-seal set, never re-typed. See SUITES_ADDED_SINCE_SEAL.
@@ -20,6 +21,11 @@ const ADDED_STEPS = SUITES_ADDED_SINCE_SEAL.reduce((sum, item) => sum + item.ste
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const manifest = () => JSON.parse(fs.readFileSync(path.join(ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
+const effectiveManifest = (root = ROOT) => loadEffectiveManifest({
+  root,
+  manifestPath: path.join(root, ".github/ci-batch/MANIFEST.json"),
+  expectedSha: BOOTSTRAP_SHA256,
+});
 // [TEST-MOD-APPROVED #2591] Raw discovery carries the providers declared in
 // PROVIDERS_ADDED_SINCE_SEAL; only the SEAL subtracts them. Counted by presence in
 // the workspace under test rather than by the declaration's length, so an isolated
@@ -114,7 +120,7 @@ const reconstructShadowAuthority = (root, discovered) =>
 const GIT_IDENTITY = ["-c", "user.email=ci@example.invalid", "-c", "user.name=CI"];
 function git(root, args) { return execFileSync("git", [...GIT_IDENTITY, ...args], { cwd: root, encoding: "utf8" }).trim(); }
 function providerSnapshot(root) {
-  const value = JSON.parse(fs.readFileSync(path.join(root, ".github/ci-batch/MANIFEST.json"), "utf8"));
+  const value = effectiveManifest(root);
   const providers = discoverWorkflowProviders(root);
   return JSON.stringify({ providers, errors: validateRegistry(value, { root }) });
 }
@@ -295,7 +301,7 @@ function canonicalReconciliation(value, host) {
 }
 
 test("terminal registry has exact identities, counts, digests, and the twelve wrappers absent", () => {
-  const value = manifest(); assertWave(value); assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
+  const value = manifest(); assertWave(value); assert.deepEqual(validateRegistry(effectiveManifest(), { root: ROOT }), []);
   // [TEST-MOD-APPROVED #2438 · SC-21] The twelve wrappers are DELETED, so their bytes
   // can no longer be read from disk. The twelve frozen pre-shadow source seals are
   // NOT abandoned with them: the registry carries each one as its suite's immutable
@@ -611,6 +617,7 @@ test("material count, attribution, setup, env, marker, and sibling reversions ar
 // timestamps, never asserted here.
 test("provider discovery work accounting stays inside its reviewed count bounds", () => {
   const value = manifest();
+  Object.assign(value, effectiveManifest());
   const providers = discoverWorkflowProviders(ROOT);
   const accounting = providerDiscoveryAccounting();
   // Byte-identity is the acceptance test for the A7-SC2 pre-filter, not speed.
@@ -802,7 +809,7 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     // workflow bytes must still fail closed against the current registry.
     const onlinePublishWorkflow = ".github/workflows/issue-2333-online-event-publish.yml";
     fs.copyFileSync(path.join(ROOT, onlinePublishWorkflow), path.join(temp, onlinePublishWorkflow));
-    const terminal = JSON.parse(fs.readFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), "utf8"));
+    const terminal = effectiveManifest(temp);
     const writeManifest = (value) => fs.writeFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), `${JSON.stringify(value, null, 2)}\n`);
     const phase3bMutation = (mutate) => { const copy = structuredClone(terminal); mutate(copy); writeManifest(copy); return copy; };
 

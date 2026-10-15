@@ -20,6 +20,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { auditWorkflowSources as auditConcurrency } from "./issue-2851-pr-concurrency-policy.mjs";
+import { loadEffectiveManifest } from "../ci-batch/load-manifest.mjs";
 
 import {
   ALWAYS_ON,
@@ -600,7 +601,7 @@ test("T-12b Phase 3 transition receipts authorize only both exact CAS pairs once
 });
 
 test("T-13 the ci-batch origin registry hashes the workflows on disk (A9 — the 108-workflow seal)", () => {
-  const manifest = JSON.parse(readFileSync(join(REPO_ROOT, CI_BATCH_MANIFEST), "utf8"));
+  const manifest = loadEffectiveManifest();
   const sources = readWorkflowSources();
   const stale = [];
   let checked = 0;
