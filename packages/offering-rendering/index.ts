@@ -187,22 +187,6 @@ export type { RsvpChipInPanelProps, ChipInPanelState } from "./RsvpChipInPanel";
 export { normalizeCityCountry } from "./normalizeCityCountry";
 export type { StructuredPlaceParts } from "./normalizeCityCountry";
 
-// issue #3859 — dependency-free checkout-v2 line and logical-attempt contract.
-export {
-  checkoutClientAttemptFingerprint,
-  createCheckoutAttemptId,
-  createCheckoutAttemptTracker,
-  isCheckoutAttemptId,
-  normalizeCheckoutV2Lines,
-  TICKET_CHECKOUT_CONTRACT_VERSION,
-} from "./ticketCheckoutContract";
-export type {
-  CheckoutAttemptTracker,
-  CheckoutClientAttemptInput,
-  CheckoutLinePlanChoice,
-  CheckoutV2Line,
-} from "./ticketCheckoutContract";
-
 // META-ORCH-1174 Leg A.4 [trip-page polish · lucide pills] — the shared lucide-icon
 // module (Calendar/Plane/Moon/Users/Globe/MapPin/Minus/Plus/BadgeCheck), drawn as
 // react-native-svg paths (NO lucide dep — I-MOR-0827 isolation). Replaces the emoji
@@ -303,10 +287,6 @@ export type {
   TripSelectedLine,
   TripInstallmentAmounts,
 } from "./tripBoxTotals";
-export {
-  publicTripInstallmentsAvailable,
-  publicTripInstallmentSchedule,
-} from "./tripInstallmentCapability";
 export { TripReserveBar } from "./TripReserveBar";
 export type { TripReserveBarProps } from "./TripReserveBar";
 export { TripPaymentChoice as TripOfferingPaymentChoice } from "./TripPaymentChoice";
@@ -593,60 +573,7 @@ export type {
   ThemeInput,
 } from "./designTokens";
 
-// Issue #3859 — provider/transport-free semantic contract for every existing
-// public-page family. Host adapters own reads and effects; this module only
-// validates identity/state/capability/action meaning and derives safe context.
-export {
-  createPublicAuthReturnIntent,
-  createPublicInstallmentCapability,
-  createPublicParityContract,
-  PUBLIC_PARITY_ANALYTICS_EVENTS,
-  PUBLIC_PARITY_CAPABILITY_KINDS,
-  PUBLIC_PARITY_DISABLED_REASONS,
-  PUBLIC_PARITY_LIFECYCLE_STATES,
-  PUBLIC_PARITY_PAGE_KINDS,
-} from "./publicParityContract";
-export type {
-  PublicParityAccessibilitySemantics,
-  PublicParityAction,
-  PublicParityActionTarget,
-  PublicParityAnalyticsContext,
-  PublicParityAnalyticsEvent,
-  PublicParityAuthReturnIntent,
-  PublicParityAuthState,
-  PublicParityCanonicalIdentity,
-  PublicParityCapability,
-  PublicParityCapabilityKind,
-  PublicParityContract,
-  PublicParityContractResult,
-  PublicParityDisabledReason,
-  PublicParityExternalOwner,
-  PublicParityFailureReason,
-  PublicParityLifecycleState,
-  PublicParityPageKind,
-  PublicParityRouteIdentity,
-  PublicParitySelection,
-  PublicParitySelectionKind,
-  PublicParitySurface,
-  PublicParityTerminalExpectation,
-  PublicParityVisibility,
-} from "./publicParityContract";
-
-// #3859 — dependency-free private intake-upload claim contract. Platform
-// pickers/storage remain host effects; only bounded types and validation live
-// in the shared package.
-export {
-  INTAKE_UPLOAD_MAX_BYTES,
-  INTAKE_UPLOAD_MIME_BY_EXTENSION,
-  intakeUploadBytesMatch,
-  intakeUploadExtensionFromFilename,
-  isIntakeUploadClaimAnswer,
-  isIntakeUploadUuid,
-  validateIntakeUploadCandidate,
-} from "./intakeUploadClaim";
-export type {
-  IntakeUploadCandidateResult,
-  IntakeUploadClaimAnswer,
-  IntakeUploadExtension,
-  IntakeUploadMime,
-} from "./intakeUploadClaim";
+// Issue #3859 runtime contracts are intentionally available through explicit
+// package subpaths instead of this broad rendering barrel. Re-exporting them
+// here makes Metro hoist checkout-only validation into the business-web boot
+// payload even though public checkout routes are lazy.

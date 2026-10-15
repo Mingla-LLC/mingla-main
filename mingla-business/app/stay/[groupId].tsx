@@ -69,7 +69,8 @@ export default function StayReservationRoute(): React.ReactElement {
   useEffect(() => {
     const group = query.data;
     if (!group || parityViewFired.current) return;
-    parityViewFired.current = captureBuyerWebPublicPageViewed({
+    parityViewFired.current = true;
+    void captureBuyerWebPublicPageViewed({
       target: {
         kind: "stay",
         entityId: group.groupId,

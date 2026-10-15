@@ -492,6 +492,9 @@ Deno.test("issue #3859 shared contract imports no host, auth, analytics, Supabas
   ) {
     assert(!source.includes(forbidden));
   }
-  assert(barrel.includes('from "./publicParityContract"'));
-  assert(barrel.includes("createPublicParityContract"));
+  assert(source.includes("export function createPublicParityContract"));
+  // The contract is an explicit subpath API. Re-exporting it from the broad
+  // rendering barrel makes Metro hoist checkout-only validation into the
+  // business-web startup payload.
+  assert(!barrel.includes('from "./publicParityContract"'));
 });

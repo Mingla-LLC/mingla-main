@@ -5,10 +5,12 @@ import {
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 import {
-  canonicalCheckoutV2FingerprintInput,
-  checkoutV2IdempotencyKey,
   normalizeCheckoutV2Lines,
 } from "../../../../packages/offering-rendering/ticketCheckoutContract.ts";
+import {
+  canonicalCheckoutV2FingerprintInput,
+  checkoutV2IdempotencyKey,
+} from "../../../../packages/offering-rendering/ticketCheckoutServerContract.ts";
 import {
   computeMultiLineInstallmentPlan,
   MultiLineInstallmentError,

@@ -353,7 +353,8 @@ export default function PublicVenueRoute(): React.ReactElement {
 
   useEffect(() => {
     if (parityViewFiredRef.current || venue === null) return;
-    parityViewFiredRef.current = captureBuyerWebPublicPageViewed({
+    parityViewFiredRef.current = true;
+    void captureBuyerWebPublicPageViewed({
       target: {
         kind: "venue",
         entityId: venue.id,

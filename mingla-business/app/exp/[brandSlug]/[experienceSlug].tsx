@@ -230,7 +230,8 @@ export default function PublicExperienceRoute(): React.ReactElement {
     if (parityViewFiredRef.current || payload === null || payload === undefined) {
       return;
     }
-    parityViewFiredRef.current = captureBuyerWebPublicPageViewed({
+    parityViewFiredRef.current = true;
+    void captureBuyerWebPublicPageViewed({
       target: {
         kind: "experience",
         entityId: payload.experience.id,

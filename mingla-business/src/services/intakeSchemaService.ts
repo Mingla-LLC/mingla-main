@@ -34,7 +34,6 @@
 import { supabase } from "./supabase";
 import { newTripOperationId, readTripRevision } from "./tripsService";
 import { createCheckoutAttemptId } from "@mingla/offering-rendering/ticketCheckoutContract";
-import { validateIntakeUploadCandidate } from "@mingla/offering-rendering/intakeUploadClaim";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -639,6 +638,12 @@ async function uploadAcceptedIntakeClaim(
     uploadSessionId: string;
   },
 ): Promise<IntakeFileAnswer> {
+  // File validation belongs to the upload interaction. Keep its shared
+  // contract out of the business-web startup chunk and load it only when the
+  // buyer actually selects a file.
+  const { validateIntakeUploadCandidate } = await import(
+    "@mingla/offering-rendering/intakeUploadClaim"
+  );
   const candidate = validateIntakeUploadCandidate({
     filename: args.filename,
     mimeType: args.mime_type,

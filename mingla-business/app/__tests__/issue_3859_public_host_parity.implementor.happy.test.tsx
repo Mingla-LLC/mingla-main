@@ -225,7 +225,7 @@ describe("issue #3859 — buyer web public-host parity", () => {
     })).toBe("error");
   });
 
-  test("all eight web families validate through the shared contract", () => {
+  test("all eight web families validate through the shared contract", async () => {
     const stayId = "a0b1c2d3-e4f5-6789-abcd-ef0123456789";
     const shareId = "0f1e2d3c-4b5a-6789-abcd-0123456789ab";
     const targets: BuyerWebPublicTarget[] = [
@@ -238,9 +238,9 @@ describe("issue #3859 — buyer web public-host parity", () => {
       { kind: "opaque-share", entityId: shareId, shareId, cardKind: "place" },
       { kind: "content-share", entityId: "Aa0Bb1Cc2Dd3Ee4F", code: "Aa0Bb1Cc2Dd3Ee4F", contentKind: "curated" },
     ];
-    expect(targets.map((target) =>
-      createBuyerWebPublicContract({ target, state: "populated" })?.identity.kind
-    )).toEqual([
+    expect((await Promise.all(targets.map((target) =>
+      createBuyerWebPublicContract({ target, state: "populated" })
+    ))).map((contract) => contract?.identity.kind)).toEqual([
       "brand",
       "venue",
       "rsvp",
@@ -250,18 +250,18 @@ describe("issue #3859 — buyer web public-host parity", () => {
       "opaque-share",
       "content-share",
     ]);
-    expect(createBuyerWebPublicContract({
+    await expect(createBuyerWebPublicContract({
       target: { kind: "brand", entityId: "brand_01", brandSlug: "Unsafe Slug" },
       state: "populated",
-    })).toBeNull();
+    })).resolves.toBeNull();
   });
 
-  test("common page analytics emits only the bounded contract context", () => {
-    expect(captureBuyerWebPublicPageViewed({
+  test("common page analytics emits only the bounded contract context", async () => {
+    await expect(captureBuyerWebPublicPageViewed({
       target: { kind: "trip", entityId: "trip_01", brandSlug: "slow-burn", tripSlug: "weekend-away" },
       state: "stale",
       authState: "anonymous",
-    })).toBe(true);
+    })).resolves.toBe(true);
     expect(captureWebMock).toHaveBeenCalledWith("public_page_viewed", {
       surface: "buyer-web",
       page_family: "trip",
@@ -275,10 +275,10 @@ describe("issue #3859 — buyer web public-host parity", () => {
       /name|email|phone|filename|token|provider|https?:|raw_error/i,
     );
     captureWebMock.mockClear();
-    expect(captureBuyerWebPublicPageViewed({
+    await expect(captureBuyerWebPublicPageViewed({
       target: { kind: "trip", entityId: "trip_01", brandSlug: "unsafe/path", tripSlug: "weekend-away" },
       state: "populated",
-    })).toBe(false);
+    })).resolves.toBe(false);
     expect(captureWebMock).not.toHaveBeenCalled();
   });
 

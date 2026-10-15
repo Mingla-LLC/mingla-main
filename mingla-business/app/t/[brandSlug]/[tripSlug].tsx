@@ -190,7 +190,8 @@ export default function PublicTripRoute(): React.ReactElement {
     if (parityViewFiredRef.current || payload === null || payload === undefined) {
       return;
     }
-    parityViewFiredRef.current = captureBuyerWebPublicPageViewed({
+    parityViewFiredRef.current = true;
+    void captureBuyerWebPublicPageViewed({
       target: {
         kind: "trip",
         entityId: payload.trip.id,

@@ -1,10 +1,9 @@
-import {
-  createPublicParityContract,
-  type PublicParityAuthState,
-  type PublicParityCanonicalIdentity,
-  type PublicParityContract,
-  type PublicParityLifecycleState,
-  type PublicParitySurface,
+import type {
+  PublicParityAuthState,
+  PublicParityCanonicalIdentity,
+  PublicParityContract,
+  PublicParityLifecycleState,
+  PublicParitySurface,
 } from "@mingla/offering-rendering/publicParityContract";
 
 import { captureWeb } from "./webAnalytics";
@@ -85,40 +84,14 @@ export const resolveBuyerWebPublicLifecycle = (
 const identityForTarget = (
   target: BuyerWebPublicTarget,
 ): PublicParityCanonicalIdentity => {
-  switch (target.kind) {
-    case "brand":
-      return { kind: "brand", entityId: target.entityId, route: { ...target } };
-    case "venue":
-      return { kind: "venue", entityId: target.entityId, route: { ...target } };
-    case "event":
-      return {
-        kind: target.entityKind,
-        entityId: target.entityId,
-        route: { ...target },
-      };
-    case "trip":
-      return { kind: "trip", entityId: target.entityId, route: { ...target } };
-    case "experience":
-      return {
-        kind: "experience",
-        entityId: target.entityId,
-        route: { ...target },
-      };
-    case "stay":
-      return { kind: "stay", entityId: target.entityId, route: { ...target } };
-    case "opaque-share":
-      return {
-        kind: "opaque-share",
-        entityId: target.entityId,
-        route: { ...target },
-      };
-    case "content-share":
-      return {
-        kind: "content-share",
-        entityId: target.entityId,
-        route: { ...target, destination: null },
-      };
-  }
+  const route = target.kind === "content-share"
+    ? { ...target, destination: null }
+    : { ...target };
+  return {
+    kind: target.kind === "event" ? target.entityKind : target.kind,
+    entityId: target.entityId,
+    route,
+  } as PublicParityCanonicalIdentity;
 };
 
 const visibilityForTarget = (
@@ -132,9 +105,9 @@ const visibilityForTarget = (
 };
 
 /** Validate one web host seam through the shared pure contract. */
-export const createBuyerWebPublicContract = (
+export const createBuyerWebPublicContract = async (
   input: BuyerWebPublicContractInput,
-): PublicParityContract | null => {
+): Promise<PublicParityContract | null> => {
   const target = input?.target;
   if (target === null || typeof target !== "object" || Array.isArray(target)) {
     return null;
@@ -152,6 +125,12 @@ export const createBuyerWebPublicContract = (
     ].includes((target as { kind?: unknown }).kind as string)
   ) return null;
 
+  // The semantic validator is checkout/public-route code, not application boot
+  // code. Loading it at the analytics seam keeps the shared contract intact
+  // without making every business-web visitor download it before first paint.
+  const { createPublicParityContract } = await import(
+    "@mingla/offering-rendering/publicParityContract"
+  );
   const result = createPublicParityContract({
     schemaVersion: 1,
     identity: identityForTarget(target),
@@ -171,10 +150,10 @@ export const createBuyerWebPublicContract = (
  * Emit only the bounded shared analytics context. `captureWeb` remains the
  * single web transport and consent gate; invalid identity emits nothing.
  */
-export const captureBuyerWebPublicPageViewed = (
+export const captureBuyerWebPublicPageViewed = async (
   input: BuyerWebPublicContractInput,
-): boolean => {
-  const contract = createBuyerWebPublicContract(input);
+): Promise<boolean> => {
+  const contract = await createBuyerWebPublicContract(input);
   if (contract === null) return false;
   captureWeb("public_page_viewed", contract.analyticsContext);
   return true;

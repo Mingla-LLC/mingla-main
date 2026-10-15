@@ -98,7 +98,8 @@ export default function PublicEventRoute(): React.ReactElement {
     if (parityViewFiredRef.current || detail === null || detail === undefined) {
       return;
     }
-    parityViewFiredRef.current = captureBuyerWebPublicPageViewed({
+    parityViewFiredRef.current = true;
+    void captureBuyerWebPublicPageViewed({
       target: {
         kind: "event",
         entityKind: detail.event.event_type === "rsvp" ? "rsvp" : "event",

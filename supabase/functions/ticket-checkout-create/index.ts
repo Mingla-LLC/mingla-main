@@ -33,13 +33,15 @@ import {
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
 import {
-  canonicalCheckoutV2FingerprintInput,
-  checkoutV2IdempotencyKey,
   type CheckoutV2Line,
   isCheckoutAttemptId,
   normalizeCheckoutV2Lines,
   TICKET_CHECKOUT_CONTRACT_VERSION,
 } from "../../../packages/offering-rendering/ticketCheckoutContract.ts";
+import {
+  canonicalCheckoutV2FingerprintInput,
+  checkoutV2IdempotencyKey,
+} from "../../../packages/offering-rendering/ticketCheckoutServerContract.ts";
 import {
   computeMultiLineInstallmentPlan,
   type InstallmentTemplate,

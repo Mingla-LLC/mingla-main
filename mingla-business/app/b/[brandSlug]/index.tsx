@@ -98,7 +98,8 @@ export default function PublicBrandRoute(): React.ReactElement {
     if (parityViewFiredRef.current || detail === null || detail === undefined) {
       return;
     }
-    parityViewFiredRef.current = captureBuyerWebPublicPageViewed({
+    parityViewFiredRef.current = true;
+    void captureBuyerWebPublicPageViewed({
       target: {
         kind: "brand",
         entityId: detail.brand.id,
