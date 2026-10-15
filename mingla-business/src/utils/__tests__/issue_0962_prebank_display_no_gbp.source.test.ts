@@ -116,4 +116,10 @@ describe("#962 R4 (source shape) — no fabricated GBP on the screen surfaces", 
     expect(src).toContain("brandHasCurrency");
     expect(src).toContain("`Price${brandHasCurrency ? ` (${code})` : \"\"}`");
   });
+
+  test("VM VenueOrderPadSheet.tsx — cart total never invents GBP", () => {
+    const src = read("src/components/venue/orderPad/VenueOrderPadSheet.tsx");
+    expect(src).toContain("currencyCodeOrNull(preview.data?.currency)");
+    expect(src).not.toContain('?? "GBP"');
+  });
 });

@@ -156,9 +156,23 @@ describe("#3645 — a refused Continue on step 1 goes to the first invalid field
     tree.unmount();
   });
 
-  test("an empty description takes focus (the reported case)", async () => {
+  test("an empty description scrolls into view then takes focus (the reported case)", async () => {
     const tree = await mount([DESCRIPTION], 0);
+    await layOut(tree);
     await pressContinue(tree, [DESCRIPTION], 1);
+    // Scroll first (description is the last onLayout section after chips), then
+    // focus on the next tick so the caret sticks when the field was off-screen.
+    expect(scrolledTo.length).toBe(1);
+    expect(focused).toEqual([]);
+    await TestRenderer.act(async () => {
+      await new Promise<void>((resolve) => {
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => setTimeout(resolve, 0));
+        } else {
+          setTimeout(resolve, 0);
+        }
+      });
+    });
     expect(focused).toEqual(["Event description"]);
     tree.unmount();
   });
@@ -184,6 +198,15 @@ describe("#3645 — a refused Continue on step 1 goes to the first invalid field
     const tree = await mount([], 0);
     await pressContinue(tree, [DESCRIPTION], 1);
     await pressContinue(tree, [DESCRIPTION], 2);
+    await TestRenderer.act(async () => {
+      await new Promise<void>((resolve) => {
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => setTimeout(resolve, 0));
+        } else {
+          setTimeout(resolve, 0);
+        }
+      });
+    });
     expect(focused).toEqual(["Event description", "Event description"]);
     tree.unmount();
   });

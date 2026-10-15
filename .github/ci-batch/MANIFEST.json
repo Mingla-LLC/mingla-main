@@ -4719,7 +4719,7 @@
       "shadowContract": {
         "variant": "default",
         "legacyJobKey": "issue-1860-rls-adversarial",
-        "workflowSha256": "299a47bd2c5a50fc2b239056475de9e0369e72c1b91d9e9ac2c4bced3bf9db7a",
+        "workflowSha256": "baba4c985626037a5f9326b1c025f03686ee244acfb1df6e73baca219fe6d82f",
         "commandSha256": "41c43008c9fd61052660f78eb821193a432f178fd74e383350614024439c3414",
         "setupSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "optionsSha256": "36c6f330d633ab592fa3ea91c9d1bc8322d857f043096cae90acb963ba9f1e71",
@@ -15855,7 +15855,7 @@
       "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
-        "sourceSha256": "299a47bd2c5a50fc2b239056475de9e0369e72c1b91d9e9ac2c4bced3bf9db7a",
+        "sourceSha256": "baba4c985626037a5f9326b1c025f03686ee244acfb1df6e73baca219fe6d82f",
         "triggers": [
           "pull_request",
           "push"
