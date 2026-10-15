@@ -198,6 +198,7 @@ test("validator, runner, selector and router consume one effective registry view
     ".github/scripts/ci-batch/route-live-provider.mjs",
     ".github/scripts/strict-grep/issue-2148-ci-runner-v2.mjs",
     ".github/scripts/strict-grep/meta-1383-manifest-parity.mjs",
+    ".github/scripts/strict-grep/issue-2881-pr-draft-gate-policy.mjs",
   ];
   for (const consumer of consumers) {
     assert.match(fs.readFileSync(path.join(ROOT, consumer), "utf8"), /loadEffectiveManifest/,

@@ -34,6 +34,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { loadEffectiveManifest } from "../ci-batch/load-manifest.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
@@ -580,7 +581,7 @@ function auditPins(errors, sources, alwaysOn, options) {
   let manifest = ciBatchManifest;
   if (manifest === null) {
     if (!requirePinInputs) return;
-    try { manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, CI_BATCH_MANIFEST), "utf8")); }
+    try { manifest = loadEffectiveManifest(); }
     catch {
       errors.push(`${CI_BATCH_MANIFEST}: unreadable, so the workflow content seal over its legacyOrigins cannot be proven`);
       return;
