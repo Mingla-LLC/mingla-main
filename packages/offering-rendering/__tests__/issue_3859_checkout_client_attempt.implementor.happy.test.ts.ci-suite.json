@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_3859_checkout_client_attempt.implementor.happy.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3859-01-checkout-client-attempt",
+  "profile": "deno-1.46-stripe"
+}

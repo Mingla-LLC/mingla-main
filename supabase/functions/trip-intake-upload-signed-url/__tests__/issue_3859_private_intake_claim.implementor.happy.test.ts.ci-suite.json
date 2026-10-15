@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/trip-intake-upload-signed-url/__tests__/issue_3859_private_intake_claim.implementor.happy.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3859-10-private-intake-claim",
+  "profile": "deno-1.46-stripe"
+}

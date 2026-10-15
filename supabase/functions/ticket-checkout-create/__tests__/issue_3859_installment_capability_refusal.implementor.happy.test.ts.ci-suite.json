@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_3859_installment_capability_refusal.implementor.happy.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3859-09-installment-capability-refusal",
+  "profile": "deno-1.46-stripe"
+}
