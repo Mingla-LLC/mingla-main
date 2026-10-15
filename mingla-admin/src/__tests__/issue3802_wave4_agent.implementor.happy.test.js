@@ -56,7 +56,8 @@ import {
   zoneWords,
 } from "../lib/agentConnect.js";
 import { STATUS_COLORS, TABLE_CATEGORIES } from "../lib/constants.js";
-import { localToday } from "../lib/crmModel.js";
+import { activityVia, localToday, relativeTime, weekRows } from "../lib/crmModel.js";
+import { AGENT_LIMIT_LABELS, GUIDE_TABS, agentActivityLine, agentPrompt, validAgentGuide } from "../lib/agentPrompts.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "..");
@@ -87,6 +88,14 @@ const PALETTE = read("components/CommandPalette.jsx");
 const SHELL = read("components/layout/AppShell.jsx");
 const PARTS = ["AgentKeyCard.jsx", "AgentConnectSteps.jsx", "AgentTeamList.jsx", "CopyBlock.jsx", "AgentSetupCard.jsx", "AgentAdvanced.jsx"].map((f) => [f, read(path.join("components", "agent", f))]);
 const ALL_AGENT_SRC = [["AgentPage", PAGE], ["teamAgentService", SERVICE], ["useAgentKeys", HOOK], ["agentConnect", LIB], ...PARTS];
+const GUIDE_PAGE = read("pages/GuidePage.jsx");
+const GUIDE_HOOK = read("hooks/useAgentGuide.js");
+const ACTIVITY_HOOK = read("hooks/useMyAgentActivity.js");
+const OVERVIEW_HOOK = read("hooks/useTeamAgentOverview.js");
+const PROMPT_STRIP = read("components/agent/AgentPromptStrip.jsx");
+const ROUTINES = read("components/agent/AgentRoutineList.jsx");
+const ADMIN_PAGE = read("pages/AdminPage.jsx");
+const WEEK = read("components/crm/home/WeekByPerson.jsx");
 
 describe("#3802 A-1: who may open My agent, and where it sits", () => {
   it("is opened by the pipelines area, so all four team roles and nobody else", () => {
@@ -104,22 +113,23 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
     assert.deepEqual(resolveRoute("agent", growth, ["home", "agent"]), { pageId: "agent", denied: false, requestedId: "agent" });
     assert.deepEqual(resolveRoute("agent", person("growth", ["role_home"]), ["home", "agent"]), { pageId: "home", denied: true, requestedId: "agent" });
   });
-  it("sits last in the System group, the last group, in the menu each role is shown", () => {
+  it("sits immediately before Guide in the System group, the last group, in the menu each role is shown", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: its own "Help" group, after "Team".
     const groups = (a) => visibleNavGroups(NAV_GROUPS, a);
     for (const a of [growth, partner]) {
       // [TEST-MOD-APPROVED #3802] Drafts to send is now the third pipeline page.
-      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "drafts", "beta-leads", "agent"], a.role);
+      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "drafts", "beta-leads", "agent", "guide"], a.role);
     }
     for (const a of [owner, admin, growth, partner]) {
       const shown = groups(a);
       const system = shown.at(-1);
       assert.equal(system.label, "System", a.role);
-      assert.equal(`${system.items.at(-1).id}:${system.items.at(-1).label}:${system.items.at(-1).icon}`, "agent:My agent:Bot");
+      assert.equal(`${system.items.at(-2).id}:${system.items.at(-2).label}:${system.items.at(-2).icon}`, "agent:My agent:Bot");
+      assert.equal(`${system.items.at(-1).id}:${system.items.at(-1).label}:${system.items.at(-1).icon}`, "guide:Guide:BookOpen");
       assert.equal(shown.slice(0, -1).some((g) => g.items.some((i) => i.id === "agent")), false);
     }
     // The two non-admin roles are shown nothing else from System.
-    for (const a of [growth, partner]) assert.deepEqual(groups(a).at(-1).items.map((i) => i.id), ["agent"]);
+    for (const a of [growth, partner]) assert.deepEqual(groups(a).at(-1).items.map((i) => i.id), ["agent", "guide"]);
     assert.equal(NAV_GROUPS.at(-1).label, "System");
     assert.equal(NAV_GROUPS.filter((g) => g.label === "System").length, 1);
     assert.equal(NAV_GROUPS.some((g) => g.label === "Help"), false);
@@ -301,7 +311,7 @@ describe("#3802 A-4: what it can do is what the connector offers", () => {
     for (const later of ["mark_sent", "undo_move", "set_target", "add_beta_leads_to_hosts", "delete_record"]) {
       assert.equal(shown.includes(later), false, later);
     }
-    for (const promise of ["Drafts to send", "See what it wrote for me", "morning sweep", "Copy prompt", "What my agent did"]) {
+    for (const promise of ["Drafts to send", "See what it wrote for me", "morning sweep"]) {
       assert.equal(shown.includes(promise), false, promise);
     }
     // What is coming is under "Not yet", in plain words.
@@ -739,5 +749,158 @@ describe("#3802 A-8: where a key ends up, lines that were not tested, touch targ
     assert.deepEqual(STATUS_COLORS, { pending: "warning", reviewed: "info", resolved: "success", dismissed: "default" });
     assert.equal(TABLE_CATEGORIES.length, 8);
     assert.equal(TABLE_CATEGORIES[0].label, "Users & Profiles");
+  });
+});
+
+describe("#3802 PR-D: Guide, prompts and counts-only agent outcomes", () => {
+  it("routes Guide after My agent for every CRM role and uses the guide-only reader", () => {
+    assert.equal(PAGE_AREA_OVERRIDES.guide, "crm");
+    for (const a of [owner, admin, growth, partner]) assert.equal(canOpenPage(a, "guide"), true, a.role);
+    assert.ok(APP.includes('import { GuidePage } from "./pages/GuidePage";'));
+    assert.match(APP, /\n {2}guide: GuidePage,/);
+    assert.deepEqual(NAV_GROUPS.at(-1).items.slice(-2).map((item) => item.id), ["agent", "guide"]);
+    assert.deepEqual(GUIDE_TABS.map((tab) => tab.id), ["stages", "icp", "agent", "rules"]);
+    assert.match(GUIDE_PAGE, /requested && requested !== tab[\s\S]*setSearch\("tab=stages", \{ replace: true \}\)/);
+    assert.match(GUIDE_PAGE, /const changeTab = \(next\) => setSearch\(`tab=\$\{next\}`\)/);
+    assert.match(GUIDE_PAGE, /role="tabpanel"[\s\S]*aria-labelledby=\{`tab-\$\{tab\}`\}/);
+    assert.match(GUIDE_HOOK, /fetchAgentGuide\(\)/);
+    assert.equal(GUIDE_HOOK.includes("useAgentKeys"), false);
+    assert.equal(PROMPT_STRIP.includes("useAgentKeys"), false);
+    assert.match(PROMPT_STRIP, /href="#\/agent"/);
+  });
+
+  it("accepts only a complete returned guide and keeps the nine limit labels closed", () => {
+    const answer = {
+      config: { pipelines: { hosts: { stages: [{}], icps: [{}] }, creators: { stages: [{}], icps: [{}] } } },
+      guide: { routines: [{}], rules: ["one"] }, limits: {},
+    };
+    assert.equal(validAgentGuide(answer), true);
+    for (const broken of [null, {}, { ...answer, guide: { routines: [], rules: ["one"] } }, { ...answer, limits: null }]) {
+      assert.equal(validAgentGuide(broken), false);
+    }
+    assert.deepEqual(Object.keys(AGENT_LIMIT_LABELS).sort(), [
+      "find_page_default", "find_page_max", "idle_days", "items_per_request", "record_log_default",
+      "record_log_max", "records_written_per_day", "requests_per_minute", "tool_calls_per_day",
+    ]);
+    assert.match(ROUTINES, /CopyBlock/);
+    assert.match(GUIDE_PAGE, /mobileGrid/);
+  });
+
+  it("builds the board prompt only from the four approved visible values", () => {
+    const routine = "Find {count} {icp}{pipeline} in {region} we have not contacted.";
+    assert.equal(agentPrompt({ pipeline: "hosts", icp: "", region: "", mine: false }, routine), "Find 20 hosts in my regions we have not contacted.");
+    assert.equal(agentPrompt({ pipeline: "creators", icp: "Food", region: "Lagos", mine: false }, routine), "Find 20 Food creators in Lagos we have not contacted.");
+    assert.equal(agentPrompt({ pipeline: "hosts", icp: "Hotel", region: "none", mine: true }, routine), "Find 20 Hotel hosts with no region yet that we have not contacted. Keep the new cards assigned to me.");
+    const forbidden = agentPrompt({ pipeline: "hosts", icp: "", region: "", mine: false, q: "secret", card: "uuid", cursor: "token", view: "list", url: "https://x" }, routine);
+    for (const leak of ["secret", "uuid", "token", "list", "https://x"]) assert.equal(forbidden.includes(leak), false, leak);
+    assert.match(PROMPT_STRIP, /This only copies the prompt\. Nothing is sent\./);
+  });
+
+  it("maps all 20 tools and failures through closed plain-English decisions", () => {
+    const tools = ["get_started", "my_day", "find_records", "get_record", "check_names", "find_mingla_link", "check_contactable", "list_beta_leads", "team_summary", "add_records", "upsert_record", "update_records", "move_stage", "set_owners", "log_activity", "record_reply", "save_drafts", "update_draft", "list_drafts", "withdraw_drafts"];
+    for (const tool of tools) {
+      const line = agentActivityLine({ tool, outcome: "ok", items: 2, summary: { created: 2, logged: 2, updated: 2, moved: 2, saved: 2, discarded: 2 } });
+      assert.equal(typeof line.text, "string", tool);
+      assert.equal(line.text.includes(tool), false, tool);
+    }
+    assert.equal(agentActivityLine({ tool: "unknown_secret", outcome: "ok", summary: { secret: "do not show" } }).text, "Agent request completed");
+    assert.equal(agentActivityLine({ tool: "x", outcome: "stage_changed" }).text, "Was refused: card had moved");
+    assert.equal(agentActivityLine({ tool: "x", outcome: "not_a_real_token" }).text, "Agent request was refused");
+    assert.equal(agentActivityLine({ tool: "add_records", outcome: "ok", items: 7, summary: { created: 0 } }).text, "Added 0 records");
+    assert.deepEqual([agentActivityLine({ outcome: "ok", agent: "claude" }).agent, agentActivityLine({ outcome: "ok", agent: "codex" }).agent, agentActivityLine({ outcome: "ok", agent: "raw" }).agent], ["Claude", "Codex", "Agent"]);
+  });
+
+  it("loads personal history once at 100 and reveals twenty locally without exposing raw payloads", () => {
+    assert.match(ACTIVITY_HOOK, /fetchMyAgentActivity\(100, null\)/);
+    assert.match(PAGE, /useState\(20\)/);
+    assert.match(PAGE, /activity\.calls\.slice\(0, shownActivity\)/);
+    assert.match(PAGE, /setShownActivity\(\(n\) => n \+ 20\)/);
+    assert.match(PAGE, /Nothing yet\. Start with What is on my plate\./);
+    for (const raw of ["call.arguments", "call.result", "JSON.stringify(call", "call.summary", "call.tool", "call.outcome"]) assert.equal(PAGE.includes(raw), false, raw);
+    assert.match(PAGE, /title="Couldn't load your agent activity"/);
+    assert.match(PAGE, /title="Couldn't load the routines"/);
+  });
+
+  it("renders the exact started_at field returned by personal activity as accessible local time", () => {
+    const call = {
+      id: "38020000-0000-4000-b000-000000000001",
+      started_at: "2026-10-14T11:55:00.000Z",
+      agent: "claude",
+      tool: "my_day",
+      outcome: "ok",
+      items: 1,
+      summary: {},
+    };
+    assert.equal(relativeTime(call.started_at, NOW), "5m ago");
+    assert.ok(new Date(call.started_at).toLocaleString().length > 0);
+    assert.match(PAGE, /typeof call\?\.started_at === "string" \? call\.started_at : ""/);
+    assert.match(PAGE, /<time dateTime=\{when\} title=\{local\}>\{relativeTime\(when\)\}<\/time>/);
+    assert.doesNotMatch(PAGE, /call\?\.created_at|call\.created_at/);
+  });
+
+  it("normalizes person/Claude/Codex buckets without changing aggregate totals", () => {
+    const [row] = weekRows([{ email: "a@x.co", touches: 9, stage_moves: 4, added: 3, touches_by: { person: 5, claude: 2, codex: "2" }, stage_moves_by: { person: -1, claude: 1, codex: 2 }, added_by: null }]);
+    assert.equal(row.touches, 9);
+    assert.deepEqual(row.touchesBy, { person: 5, claude: 2, codex: 2 });
+    assert.deepEqual(row.stageMovesBy, { person: 0, claude: 1, codex: 2 });
+    assert.deepEqual(row.addedBy, { person: 0, claude: 0, codex: 0 });
+    assert.match(WEEK, /min-w-\[800px\]/);
+    assert.match(WEEK, /of \$\{r\.touches\} touches were by agents: Claude/);
+    assert.match(WEEK, /Claude \{r\.touchesBy\.claude\} · Codex \{r\.touchesBy\.codex\}/);
+  });
+
+  it("keeps Team and roles controls available when its independent owner status read fails", () => {
+    assert.match(OVERVIEW_HOOK, /access\?\.role === "owner"/);
+    assert.match(OVERVIEW_HOOK, /fetchKeysOverview\(\)/);
+    assert.match(ADMIN_PAGE, /Agent status unavailable/);
+    assert.match(ADMIN_PAGE, /Team access controls still work\./);
+    assert.match(ADMIN_PAGE, /Their agent keys will be turned off\./);
+    assert.match(ADMIN_PAGE, /Their agent keys were turned off\./);
+    assert.match(ADMIN_PAGE, /They can connect a new agent\./);
+    assert.match(PARTS.find(([file]) => file === "AgentTeamList.jsx")[1], /Reconnect to disconnect an agent\./);
+  });
+
+  it("keeps via labels closed and title-cased", () => {
+    assert.equal(activityVia({ via: "claude" }), "Claude");
+    assert.equal(activityVia({ via: "codex" }), "Codex");
+    for (const via of [null, undefined, "system", "unknown", "CLAUDE"]) assert.equal(activityVia({ via }), "");
+  });
+
+  it("keeps every new control at least 44px at desktop and 375px with the dark brand focus ring", () => {
+    const button = read("components/ui/Button.jsx");
+    const copyBlock = PARTS.find(([file]) => file === "CopyBlock.jsx")[1];
+    const teamList = PARTS.find(([file]) => file === "AgentTeamList.jsx")[1];
+    const controls = [
+      ["Guide", GUIDE_PAGE, 2],
+      ["prompt strip", PROMPT_STRIP, 1],
+      ["My agent", PAGE, 4],
+      ["Team agent status", teamList, 3],
+      ["Team overview", ADMIN_PAGE, 1],
+    ];
+    const buttonBlocks = (source) => source.split("<Button").slice(1).map((part) => part.split("</Button>")[0]);
+    const resolvedHeight = (block, width) => {
+      if (block.includes("min-h-11")) return 44;
+      if (width === 375 && block.includes("max-sm:h-11")) return 44;
+      return block.includes('size="sm"') ? 32 : 40;
+    };
+
+    assert.match(button, /brandContrast:\s*\n\s*"min-h-11 [^"]+"/);
+    assert.match(button, /highContrastFocus \|\| variant === "brandContrast"[\s\S]{0,180}focus-visible:ring-\[var\(--color-brand-700\)\]/);
+    assert.match(ROUTINES, /buttonVariant="brandContrast"/);
+    const [copyButton] = buttonBlocks(copyBlock);
+    assert.ok(copyButton.includes("min-h-11") && copyButton.includes("max-sm:h-11"));
+    for (const width of [1440, 375]) assert.equal(resolvedHeight(copyButton, width), 44, `Copy prompt at ${width}px`);
+
+    for (const [name, source, expected] of controls) {
+      const highContrast = buttonBlocks(source).filter((block) => block.includes("highContrastFocus"));
+      assert.equal(highContrast.length, expected, `${name}: every PR-D button opts into the dark focus ring`);
+      for (const block of highContrast) {
+        assert.ok(block.includes("min-h-11"), `${name}: desktop control is shorter than 44px`);
+        assert.ok(block.includes("max-sm:h-11"), `${name}: 375px control is shorter than 44px`);
+        for (const width of [1440, 375]) assert.equal(resolvedHeight(block, width), 44, `${name} at ${width}px`);
+      }
+    }
+    assert.match(GUIDE_PAGE, /const LINK_CLASS =[\s\S]{0,320}min-h-11[\s\S]{0,320}focus-visible:ring-\[var\(--color-brand-700\)\]/);
+    assert.match(PROMPT_STRIP, /inline-flex min-h-11[^"]+focus-visible:ring-\[var\(--color-brand-700\)\]/);
   });
 });

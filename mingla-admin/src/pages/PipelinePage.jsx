@@ -41,6 +41,7 @@ import { RecordDrawer } from "../components/crm/RecordDrawer";
 import { AddRecordForm } from "../components/crm/AddRecordForm";
 import { ReasonPrompt } from "../components/crm/ReasonPrompt";
 import { PipelineOverlays } from "../components/crm/CrmLayer";
+import { AgentPromptStrip } from "../components/agent/AgentPromptStrip";
 
 const UNDO_MS = 8000;
 const BLOCK_TITLES = {
@@ -89,6 +90,8 @@ function PipelinePage({ pipeline, onTabChange }) {
 
   const title = pipeline === "creators" ? "Creators" : "Hosts";
   const singular = pipeline === "creators" ? "creator" : "host";
+  const promptIcp = def?.icps?.find((item) => item.id === state.icp)?.label || "";
+  const promptRegion = state.region === NO_REGION ? NO_REGION : regionBySlug(config?.regions, state.region)?.name || "";
 
   const patch = useCallback(
     (changes, { replace = false } = {}) => {
@@ -487,6 +490,8 @@ function PipelinePage({ pipeline, onTabChange }) {
       {!online && (
         <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>
       )}
+
+      <AgentPromptStrip routine="new_batch" pipeline={pipeline} icp={promptIcp} region={promptRegion} mine={state.mine} />
 
       {loadError ? (
         <AlertCard

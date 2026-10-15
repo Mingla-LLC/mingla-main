@@ -7,7 +7,17 @@ import { Button } from "../ui/Button";
 
 const COPIED_MS = 2500;
 
-export function CopyBlock({ text, label, copyLabel = "Copy", copiedLabel = "Copied", note, onCopied, id }) {
+export function CopyBlock({
+  text,
+  label,
+  copyLabel = "Copy",
+  copiedLabel = "Copied",
+  note,
+  onCopied,
+  id,
+  buttonVariant = "secondary",
+  className = "",
+}) {
   const boxRef = useRef(null);
   const timer = useRef(null);
   const [state, setState] = useState("idle"); // idle | copied | blocked
@@ -15,6 +25,7 @@ export function CopyBlock({ text, label, copyLabel = "Copy", copiedLabel = "Copi
 
   const copy = useCallback(async () => {
     clearTimeout(timer.current);
+    setState("copying");
     try {
       await navigator.clipboard.writeText(text);
       setState("copied");
@@ -32,12 +43,13 @@ export function CopyBlock({ text, label, copyLabel = "Copy", copiedLabel = "Copi
         selection.addRange(range);
         node.focus();
       }
+      // The selected prompt lets the person press Ctrl or Cmd + C to copy.
       setState("blocked");
     }
   }, [text, onCopied]);
 
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${className}`}>
       {label && <p className="mb-1.5 text-[13px] font-medium text-[var(--color-text-primary)]">{label}</p>}
       <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start">
         <pre
@@ -45,25 +57,26 @@ export function CopyBlock({ text, label, copyLabel = "Copy", copiedLabel = "Copi
           id={id}
           tabIndex={0}
           className={[
-            "m-0 min-w-0 flex-1 whitespace-pre-wrap break-all rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] px-3 py-2.5",
+            "m-0 min-w-0 flex-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-tertiary)] px-3 py-2.5",
             "font-mono text-[13px] leading-relaxed text-[var(--color-text-primary)]",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2",
           ].join(" ")}
         >
           {text}
         </pre>
         <Button
           type="button"
-          variant="secondary"
+          variant={buttonVariant}
           icon={state === "copied" ? Check : Copy}
           onClick={copy}
-          className="shrink-0 max-sm:h-11 max-sm:w-full"
+          disabled={state === "copying"}
+          className="min-h-11 shrink-0 max-sm:h-11 max-sm:w-full"
         >
-          {state === "copied" ? copiedLabel : copyLabel}
+          {state === "copying" ? "Copying..." : state === "copied" ? copiedLabel : copyLabel}
         </Button>
       </div>
       <p role="status" aria-live="polite" className="mt-1 min-h-[18px] text-xs text-[var(--color-text-secondary)]">
-        {state === "blocked" ? "Your browser didn't allow the copy. The text is selected: press Ctrl or Cmd + C to copy." : note || ""}
+        {state === "blocked" ? "Press Ctrl or Cmd + C to copy." : note || ""}
       </p>
     </div>
   );

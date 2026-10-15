@@ -62,7 +62,7 @@ const MENU = [
   ["Explorer app", ["users", "placepool", "launch-cities", "signals", "deck-tuner", "place-intelligence-trial"]],
   ["Growth", ["ad-engine", "campaign-builder", "campaigns"]],
   ["Company", ["admin", "careers"]],
-  ["System", ["stripe-mode", "api-health", "settings", "agent"]],
+  ["System", ["stripe-mode", "api-health", "settings", "agent", "guide"]],
 ];
 
 // The words on each menu item (updated for #3720 Community & Support).
@@ -77,7 +77,7 @@ const LABELS = {
   "deck-tuner": "Deck tuner", "place-intelligence-trial": "Intelligence Trial",
   "ad-engine": "Ads console", "campaign-builder": "Campaign Builder", campaigns: "Campaigns",
   admin: "Team and roles", careers: "Careers",
-  "stripe-mode": "Stripe mode", "api-health": "API health", settings: "Settings", agent: "My agent",
+  "stripe-mode": "Stripe mode", "api-health": "API health", settings: "Settings", agent: "My agent", guide: "Guide",
 };
 
 const person = (role, areas) => ({ email: `${role}@example.test`, role, status: "active", areas });
@@ -119,7 +119,7 @@ describe("#3802 S-1: the menu is eight groups, in the approved order", () => {
   });
   it("nothing that is not built is in the menu", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
-    for (const planned of ["calendar", "data-room", "guide"]) assert.equal(ids.includes(planned), false, planned);
+    for (const planned of ["calendar", "data-room"]) assert.equal(ids.includes(planned), false, planned);
     assert.equal(/\bSoon\b/.test(stripComments(SIDEBAR)), false);
   });
 });
@@ -128,7 +128,7 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
   it("no id twice", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
     assert.equal(new Set(ids).size, ids.length);
-    assert.equal(ids.length, 35);
+    assert.equal(ids.length, 36);
   });
   it("the menu and the app's pages are the same set (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -153,6 +153,7 @@ describe("#3802 S-3: who may open what did not move", () => {
       drafts: "crm",
       "beta-leads": "beta_leads",
       agent: "crm",
+      guide: "crm",
     });
     assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm", BETA_LEADS: "beta_leads" });
   });
@@ -164,8 +165,8 @@ describe("#3802 S-3: who may open what did not move", () => {
   });
   it("each role sees the pages it saw before, in the new order", () => {
     const ids = (a) => visibleNavGroups(NAV_GROUPS, a).flatMap((g) => g.items).map((i) => i.id);
-    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "beta-leads", "agent"]);
-    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "beta-leads", "agent"]);
+    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "beta-leads", "agent", "guide"]);
+    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "beta-leads", "agent", "guide"]);
     assert.deepEqual(ids(owner), NAV_ITEMS.map((i) => i.id));
     assert.deepEqual(ids(admin), NAV_ITEMS.map((i) => i.id).filter((id) => id !== "admin"));
     assert.deepEqual(visibleNavGroups(NAV_GROUPS, owner).map((g) => g.label), MENU.map(([label]) => label));
@@ -375,7 +376,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
     "AdEnginePage.jsx", "AdminPage.jsx", "AgentPage.jsx", "ApiHealthPage.jsx", "BetaLeadsPage.jsx", "BrandSitesPage.jsx", "BrandsConsolePage.jsx",
     "BusinessMoneyLedgerPage.jsx", "BusinessOrdersPage.jsx", "BusinessPaymentsPage.jsx", "CampaignBuilderPage.jsx",
     "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "DeckScoreTunerPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
-    "LaunchCitiesPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
+    "GuidePage.jsx", "LaunchCitiesPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
     "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "RefundOperationsPage.jsx",
     "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
     "SupportDeskPage.jsx", "TeamDashboardPage.jsx", "ToolLeadsPage.jsx", "UserManagementPage.jsx", "VenuesConsolePage.jsx",
@@ -409,7 +410,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   it("every page is either on the one header or named for the follow-up", () => {
     const all = fs.readdirSync(PAGES_DIR).filter((f) => /Page\.jsx$/.test(f)).sort();
     assert.deepEqual([...MIGRATED, ...FOLLOW_UP].sort(), all);
-    assert.equal(MIGRATED.length, 37);
+    assert.equal(MIGRATED.length, 38);
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -543,7 +544,7 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   };
 
   it("every state of every migrated page draws the page header", () => {
-    assert.equal(MIGRATED.length, 37);
+    assert.equal(MIGRATED.length, 38);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(

@@ -206,7 +206,12 @@ describe("#3802 M-3: tiles, bars and pills are built from the server's numbers",
       { display_name: "nobody" },
     ]);
     assert.deepEqual(rows.map((r) => r.name), ["Seth", "tunde.a@x.co", "tunde.b@x.co", "Gone"]);
-    assert.deepEqual(rows[1], { email: "tunde.a@x.co", name: "tunde.a@x.co", role: "growth", former: false, invited: false, touches: 3, stageMoves: 2, added: 1, overdue: 1, dueToday: 4 });
+    assert.deepEqual(rows[1], {
+      email: "tunde.a@x.co", name: "tunde.a@x.co", role: "growth", former: false, invited: false,
+      touches: 3, touchesBy: { person: 0, claude: 0, codex: 0 },
+      stageMoves: 2, stageMovesBy: { person: 0, claude: 0, codex: 0 },
+      added: 1, addedBy: { person: 0, claude: 0, codex: 0 }, overdue: 1, dueToday: 4,
+    });
     assert.equal(rows[2].invited, true);
     assert.equal(rows[3].former, true);
     assert.equal(rows[3].role, "");
@@ -293,7 +298,7 @@ describe("#3802 M-5: who may open Home, the Team dashboard and Beta leads", () =
   it("a page nobody listed is still owner and admin only", () => {
     assert.equal(areaForPage("a-page-added-tomorrow"), AREA.ADMIN_CONSOLE);
     assert.equal(canOpenPage(growth, "a-page-added-tomorrow"), false);
-    assert.deepEqual(Object.keys(PAGE_AREA_OVERRIDES).sort(), ["admin", "agent", "beta-leads", "creators", "drafts", "home", "hosts"]);
+    assert.deepEqual(Object.keys(PAGE_AREA_OVERRIDES).sort(), ["admin", "agent", "beta-leads", "creators", "drafts", "guide", "home", "hosts"]);
   });
   it("the Team dashboard is in the Team group for owner and admin only", () => {
     const ids = (a) => visibleNavGroups(NAV_GROUPS, a).flatMap((g) => g.items).map((i) => i.id);
@@ -438,7 +443,7 @@ describe("#3802 M-8: source contracts for the homes", () => {
     for (const k of ["crmKeys.home", "crmKeys.team", "crmKeys.betaLeads"]) assert.ok(SUMMARY.includes(k), `${k} is not used`);
   });
   it("nothing from a still-later wave is on a home", () => {
-    const banned = /\b(mention|mentions|posts due|content calendar|support ticket|tickets|data room|morning sweep|getting started|agent prompt|by agent|replies waiting)\b/i;
+    const banned = /\b(mention|mentions|posts due|content calendar|support ticket|tickets|data room|getting started|replies waiting)\b/i;
     for (const [name, src] of [["RoleHomePage", HOME], ["TeamDashboardPage", TEAM], ...HOME_FILES.map((f, i) => [f, HOME_PARTS[i]])]) {
       const shown = [...stripComments(src).matchAll(/>([^<>{}]+)</g), ...stripComments(src).matchAll(/["'`]([^"'`\n]{3,})["'`]/g)].map((m) => m[1]);
       for (const text of shown) assert.ok(!banned.test(text), `${name} shows [${text.trim()}]`);

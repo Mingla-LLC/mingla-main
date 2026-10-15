@@ -34,6 +34,12 @@ import { AgentAdvanced } from "../components/agent/AgentAdvanced";
 import { DISCLOSURE_CLASS } from "../components/agent/AgentConnectSteps";
 import { Segmented } from "../components/crm/fields";
 import { AgentTeamList } from "../components/agent/AgentTeamList";
+import { AgentRoutineList } from "../components/agent/AgentRoutineList";
+import { CopyBlock } from "../components/agent/CopyBlock";
+import { useAgentGuide } from "../hooks/useAgentGuide";
+import { useMyAgentActivity } from "../hooks/useMyAgentActivity";
+import { agentActivityLine, routineByName } from "../lib/agentPrompts";
+import { relativeTime } from "../lib/crmModel";
 import {
   AGENTS,
   AGENT_GUARDRAILS,
@@ -171,6 +177,10 @@ export function AgentPage() {
   const { access } = useAuth();
   const online = useOnline();
   const { keys, setup, idleDays, guide, overview, isOwner, loading, error, refetch, latest } = useAgentKeys();
+  const guideRead = useAgentGuide();
+  const activity = useMyAgentActivity();
+  const [shownActivity, setShownActivity] = useState(20);
+  useEffect(() => setShownActivity(20), [access?.email]);
 
   // The key just created, per agent. In memory only; never stored, never
   // logged, never sent to another tab. Leaving the page drops it.
@@ -577,13 +587,17 @@ export function AgentPage() {
       }
       setBusyKeyId(keyId);
       try {
-        await revokeKey(keyId);
+        const result = await revokeKey(keyId);
         if (!mountedRef.current) return;
-        addToast({ variant: "success", title: `${name}'s ${label} is disconnected`, description: "Its key stopped working. They can create a new one." });
+        const already = result?.changed === false;
+        if (already) addToast({ variant: "info", title: "This agent was already disconnected.", description: "Its key stopped working. They can create a new one." });
+        else addToast({ variant: "success", title: `${name}'s ${label} is disconnected`, description: "Its key stopped working. They can create a new one." });
+        return { ok: true, already };
       } catch (err) {
         if (!mountedRef.current) return;
         console.error("[agent] owner disconnect failed:", err?.token || err?.name || "error");
         addToast({ variant: "error", title: `Couldn't disconnect ${name}'s ${label}`, description: agentErrorWords(err) });
+        return { ok: false, message: agentErrorWords(err) };
       } finally {
         if (mountedRef.current) {
           setBusyKeyId(null);
@@ -786,6 +800,84 @@ export function AgentPage() {
             </div>
           </div>
 
+          <SectionCard title="Try these routines">
+            {guideRead.loading ? (
+              <div className="grid gap-4 lg:grid-cols-2" aria-busy="true" aria-label="Loading agent routines">
+                <Skeleton height={128} />
+                <Skeleton height={128} />
+              </div>
+            ) : guideRead.error ? (
+              <AlertCard
+                variant="warning"
+                title="Couldn't load the routines"
+                action={<Button type="button" variant="secondary" highContrastFocus onClick={guideRead.retry} className="min-h-11 max-sm:h-11">Try again</Button>}
+              >
+                Your setup and keys still work.
+              </AlertCard>
+            ) : (
+              <AgentRoutineList routines={guideRead.data?.guide?.routines} />
+            )}
+          </SectionCard>
+
+          <SectionCard title="What my agent did" noPadding>
+            {activity.loading ? (
+              <div className="flex flex-col gap-3 p-4 sm:p-5" aria-busy="true" aria-label="Loading agent activity">
+                <Skeleton height={44} />
+                <Skeleton height={44} />
+                <Skeleton height={44} />
+              </div>
+            ) : activity.error ? (
+              <div className="p-4 sm:p-5">
+                <AlertCard
+                  variant="warning"
+                  title="Couldn't load your agent activity"
+                  action={<Button type="button" variant="secondary" highContrastFocus onClick={activity.retry} className="min-h-11 max-sm:h-11">Try again</Button>}
+                >
+                  The rest of My agent still works.
+                </AlertCard>
+              </div>
+            ) : activity.calls.length === 0 ? (
+              <div className="p-4 sm:p-5">
+                <p className="text-sm text-[var(--color-text-secondary)]">Nothing yet. Start with What is on my plate.</p>
+                {routineByName(guideRead.data, "my_plate") ? (
+                  <CopyBlock
+                    id="agent-empty-my-plate"
+                    text={routineByName(guideRead.data, "my_plate").text}
+                    copyLabel="Copy prompt"
+                    buttonVariant="brandContrast"
+                    className="mt-3"
+                  />
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <ul className="divide-y divide-[var(--gray-200)]">
+                  {activity.calls.slice(0, shownActivity).map((call, index) => {
+                    const line = agentActivityLine(call);
+                    const when = typeof call?.started_at === "string" ? call.started_at : "";
+                    const local = when && !Number.isNaN(Date.parse(when)) ? new Date(when).toLocaleString() : "";
+                    return (
+                      <li key={call?.id || `${when}-${index}`} className="flex min-h-11 min-w-0 flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-5">
+                        <p className="min-w-0 text-[13px] text-[var(--color-text-primary)]">{line.text}</p>
+                        <p className="flex shrink-0 items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                          <Badge variant="brand">{line.agent}</Badge>
+                          {when ? <time dateTime={when} title={local}>{relativeTime(when)}</time> : null}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {shownActivity < activity.calls.length ? (
+                  <Button type="button" variant="secondary" highContrastFocus className="min-h-11 w-full rounded-t-none border-x-0 border-b-0 max-sm:h-11" onClick={() => setShownActivity((n) => n + 20)}>
+                    Show more
+                  </Button>
+                ) : activity.more ? (
+                  <p className="border-t border-[var(--gray-200)] px-4 py-3 text-[13px] text-[var(--color-text-secondary)] sm:px-5">Showing your latest 100 agent actions.</p>
+                ) : null}
+              </>
+            )}
+          </SectionCard>
+
           {isOwner && (
             <SectionCard title="Agents on the team" subtitle="Only you see this. A key is never shown.">
               {overview ? (
@@ -793,7 +885,7 @@ export function AgentPage() {
               ) : (
                 <div className="flex flex-wrap items-center gap-3">
                   <p className="text-[13px] text-[var(--color-text-secondary)]">Couldn&apos;t load who has an agent connected.</p>
-                  <Button type="button" variant="secondary" size="sm" onClick={() => refetch()} className="max-sm:h-11">
+                  <Button type="button" variant="secondary" size="sm" highContrastFocus onClick={() => refetch()} className="min-h-11 max-sm:h-11">
                     Try again
                   </Button>
                 </div>

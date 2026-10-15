@@ -306,7 +306,8 @@ describe("#3802 TG-3: who may open My agent, for every combination of areas", ()
           if (may) {
             assert.equal(groups.at(-1).label, "System");
             assert.equal(holders[0], groups.at(-1));
-            assert.equal(holders[0].items.at(-1).id, "agent");
+            assert.equal(holders[0].items.at(-2).id, "agent");
+            assert.equal(holders[0].items.at(-1).id, "guide");
           }
           assert.equal(groups.some((g) => g.items.length === 0), false, "no empty group is ever shown");
           assert.equal(groups.flatMap((g) => g.items).filter((i) => i.id === "agent").length, may ? 1 : 0);
@@ -323,13 +324,14 @@ describe("#3802 TG-3: who may open My agent, for every combination of areas", ()
       assert.deepEqual(visibleNavGroups(NAV_GROUPS, nobody), [], JSON.stringify(nobody));
     }
   });
-  it("My agent is in the one menu list once, the last item of System, the last group", () => {
+  it("My agent is in the one menu list once, immediately before Guide in System", () => {
     // [TEST-MOD-APPROVED ISSUE-3802] was: a "Help" group, last, after "Team".
     const labels = NAV_GROUPS.map((g) => g.label);
     assert.equal(labels.filter((l) => l === "System").length, 1);
     assert.equal(labels.at(-1), "System");
     assert.equal(labels.includes("Help"), false);
-    assert.deepEqual(NAV_GROUPS.at(-1).items.at(-1), { id: "agent", label: "My agent", icon: "Bot" });
+    assert.deepEqual(NAV_GROUPS.at(-1).items.at(-2), { id: "agent", label: "My agent", icon: "Bot" });
+    assert.deepEqual(NAV_GROUPS.at(-1).items.at(-1), { id: "guide", label: "Guide", icon: "BookOpen" });
     assert.equal(NAV_GROUPS.slice(0, -1).some((g) => g.items.some((i) => i.id === "agent")), false);
     const CONSTANTS = stripComments(read("lib/constants.js"));
     assert.equal(/TEAM_AGENT_NAV_ITEMS|teamNavGroups|teamAgentTitle/.test(CONSTANTS), false, "no second list of menu items exists beside the one list");

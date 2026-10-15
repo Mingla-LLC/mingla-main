@@ -39,6 +39,7 @@ import {
   X,
   Bot,
   FileText,
+  BookOpen,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -100,6 +101,7 @@ const ICON_MAP = {
   Settings,
   Bot,
   FileText,
+  BookOpen,
 };
 
 // Two letters for the footer avatar, from the sign-in email: "seth.ogieva@…"

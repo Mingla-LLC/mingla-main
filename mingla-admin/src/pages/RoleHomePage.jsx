@@ -20,6 +20,7 @@ import { DueList } from "../components/crm/home/DueList";
 import { StageFunnel } from "../components/crm/home/StageFunnel";
 import { TargetsCard } from "../components/crm/home/TargetsCard";
 import { useDraftCountValue } from "../hooks/useDraftCounts";
+import { AgentPromptStrip } from "../components/agent/AgentPromptStrip";
 
 const OFFLINE_WORDS = "You're offline. You can look around, but the numbers won't update until you're back.";
 const NOT_READY_WORDS = "Your home isn't switched on yet. Try again in a few minutes, or tell an admin.";
@@ -72,6 +73,8 @@ export function RoleHomePage() {
       />
 
       {!online && <AlertCard variant="warning">{OFFLINE_WORDS}</AlertCard>}
+
+      <AgentPromptStrip routine="my_plate" />
 
       {error ? (
         error.token === "forbidden" ? (

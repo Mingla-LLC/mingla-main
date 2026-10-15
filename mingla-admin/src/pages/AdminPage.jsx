@@ -3,7 +3,7 @@ import {
   Shield, UserPlus, UserX, Mail, AlertCircle, Crown, Clock, Send, Undo2, Loader2,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
-import { SectionCard } from "../components/ui/Card";
+import { AlertCard, SectionCard } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
@@ -14,6 +14,11 @@ import { formatRelativeTime } from "../lib/formatters";
 import { INVITABLE_ROLES, ROLE_LABELS } from "../lib/access";
 import { INVITE_STATE_COPY, findInviteState, inviteRowState } from "../lib/inviteLink";
 import { PageHeader } from "../components/ui/PageHeader";
+import { useOnline } from "../hooks/useCrmPipeline";
+import { useTeamAgentOverview } from "../hooks/useTeamAgentOverview";
+import { overviewRows, agentErrorWords } from "../lib/agentConnect";
+import { revokeKey } from "../services/teamAgentService";
+import { AgentStatusList } from "../components/agent/AgentTeamList";
 
 // Issue #3802 — Team and roles (owner only).
 //
@@ -73,6 +78,8 @@ function shortDate(value) {
 
 export function AdminPage() {
   const { addToast } = useToast();
+  const online = useOnline();
+  const agentOverview = useTeamAgentOverview();
   const mountedRef = useRef(true);
   const noticeTimersRef = useRef({});
   const highlightTimerRef = useRef(null);
@@ -103,6 +110,7 @@ export function AdminPage() {
   const [notices, setNotices] = useState({});      // email -> { text, undo }
   const [reinvite, setReinvite] = useState({});    // email -> role picked for "Invite again"
   const [highlight, setHighlight] = useState(null);
+  const [busyAgentKeyId, setBusyAgentKeyId] = useState(null);
   // Addresses the server refused as "in use": the one typed in the invite
   // form, and people on the list a re-send was refused for. Each line stays
   // until the address is edited or an invite to it goes through.
@@ -351,13 +359,14 @@ export function AdminPage() {
       addToast({
         variant: "success",
         title: "Access removed",
-        description: `${email} can no longer open Mingla Admin.`,
+        description: `${email} can no longer open Mingla Admin. Their agent keys were turned off.`,
       });
       const previous = removed.data?.previous || { role: row.role, status: row.status };
       showNotice(email, {
         text: "Access removed.",
         undo: { kind: "removal", role: previous.role, status: previous.status },
       });
+      agentOverview.retry();
       await load({ quiet: true });
     } finally {
       if (mountedRef.current) setRowBusy(email, null);
@@ -377,9 +386,10 @@ export function AdminPage() {
         variant: "success",
         title: "Access restored",
         description: previous.status === "invited"
-          ? `${email}'s old link no longer works. Send a new invite from their row.`
-          : `${email} can open Mingla Admin again as ${ROLE_LABELS[previous.role]}.`,
+          ? `${email}'s old link no longer works. Send a new invite from their row. They can connect a new agent.`
+          : `${email} can open Mingla Admin again as ${ROLE_LABELS[previous.role]}. They can connect a new agent.`,
       });
+      agentOverview.retry();
       await load({ quiet: true });
     } finally {
       if (mountedRef.current) setRowBusy(email, null);
@@ -490,6 +500,29 @@ export function AdminPage() {
     (p) => INVITE_STATE_COPY[inviteRowState(p, inviteStates)].needsNewLink
   ).length;
   const onlyOwner = !loading && !error && people.length > 0 && people.every((p) => p.role === "owner");
+  const agentRows = overviewRows(agentOverview.data);
+  const disconnectAgent = async (keyId, name, label) => {
+    if (busyAgentKeyId) return { ok: false, message: "Another disconnect is still running." };
+    if (!online) return { ok: false, message: "Reconnect to disconnect an agent." };
+    setBusyAgentKeyId(keyId);
+    try {
+      const result = await revokeKey(keyId);
+      const already = result?.changed === false;
+      addToast({
+        variant: already ? "info" : "success",
+        title: already ? "This agent was already disconnected." : `${name}'s ${label} is disconnected`,
+        description: "Its key stopped working. They can connect a new agent.",
+      });
+      agentOverview.retry();
+      return { ok: true, already };
+    } catch (agentError) {
+      const message = agentErrorWords(agentError);
+      addToast({ variant: "error", title: `Couldn't disconnect ${name}'s ${label}`, description: message });
+      return { ok: false, message };
+    } finally {
+      if (mountedRef.current) setBusyAgentKeyId(null);
+    }
+  };
 
   const renderNotice = (row) => {
     const notice = notices[row.email];
@@ -543,6 +576,7 @@ export function AdminPage() {
     const confirming = confirmRemove === email;
     const stateKey = row.status === "invited" ? inviteRowState(row, inviteStates) : null;
     const stateCopy = stateKey ? INVITE_STATE_COPY[stateKey] : null;
+    const agentRow = row.status === "active" ? agentRows.find((candidate) => candidate.email === email) || { email, name: email, role: row.role, agents: [] } : { email, name: email, role: row.role, agents: [] };
     const Icon = isOwner ? Crown : row.status === "invited" ? Mail : row.status === "revoked" ? UserX : Shield;
 
     let controls;
@@ -552,8 +586,8 @@ export function AdminPage() {
       );
     } else if (confirming) {
       controls = (
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Remove access for ${email}?`}>
-          <span className="text-xs text-[var(--color-text-primary)]">{`Remove access for ${email}?`}</span>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Remove access for ${email}? Their agent keys will be turned off.`}>
+          <span className="text-xs text-[var(--color-text-primary)]">{`Remove access for ${email}? Their agent keys will be turned off.`}</span>
           <Button variant="danger" size="sm" loading={action === "remove"} onClick={() => removeAccess(row)}>
             Remove
           </Button>
@@ -654,22 +688,23 @@ export function AdminPage() {
           highlight === email ? "bg-[var(--color-brand-50)]" : "",
         ].join(" ")}
       >
-        <div className="flex flex-wrap items-center gap-4 px-5 py-3.5">
-          <div
-            className={[
-              "flex h-9 w-9 items-center justify-center rounded-full shrink-0",
-              isOwner
-                ? "bg-[var(--color-brand-50)] text-[var(--color-brand-500)]"
-                : row.status === "active"
-                  ? "bg-[var(--color-success-50)] text-[var(--color-success-700)]"
-                  : row.status === "invited"
-                    ? "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]"
-                    : "bg-[var(--gray-100)] text-[var(--color-text-muted)]",
-            ].join(" ")}
-          >
-            <Icon className="h-4 w-4" aria-hidden="true" />
-          </div>
-          <div className="min-w-[200px] flex-1">
+        <div className="grid min-w-0 grid-cols-1 gap-4 px-5 py-3.5 lg:grid-cols-[minmax(200px,1fr)_minmax(220px,.8fr)_auto] lg:items-start">
+          <div className="flex min-w-0 items-start gap-4">
+            <div
+              className={[
+                "flex h-9 w-9 items-center justify-center rounded-full shrink-0",
+                isOwner
+                  ? "bg-[var(--color-brand-50)] text-[var(--color-brand-500)]"
+                  : row.status === "active"
+                    ? "bg-[var(--color-success-50)] text-[var(--color-success-700)]"
+                    : row.status === "invited"
+                      ? "bg-[var(--color-warning-50)] text-[var(--color-warning-700)]"
+                      : "bg-[var(--gray-100)] text-[var(--color-text-muted)]",
+              ].join(" ")}
+            >
+              <Icon className="h-4 w-4" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p
                 className={[
@@ -701,8 +736,17 @@ export function AdminPage() {
                 {stateCopy.line(row, findInviteState(row, inviteStates))}
               </p>
             )}
+            </div>
           </div>
-          <div className="shrink-0 max-w-full">{controls}</div>
+          <AgentStatusList
+            row={agentRow}
+            loading={row.status === "active" && agentOverview.loading}
+            unavailable={row.status === "active" && !!agentOverview.error}
+            busyKeyId={busyAgentKeyId}
+            offline={!online}
+            onDisconnect={disconnectAgent}
+          />
+          <div className="max-w-full lg:justify-self-end">{controls}</div>
         </div>
         {renderNotice(row)}
         {rowsInUse[row.email] && (
@@ -828,6 +872,17 @@ export function AdminPage() {
           </div>
         ) : (
           <div className="pb-2">
+            {agentOverview.error ? (
+              <div className="px-5 pt-4">
+                <AlertCard
+                  variant="warning"
+                  title="Agent status unavailable"
+                  action={<Button type="button" variant="secondary" size="sm" highContrastFocus disabled={!online} onClick={agentOverview.retry} className="min-h-11 max-sm:h-11">Try again</Button>}
+                >
+                  Team access controls still work.
+                </AlertCard>
+              </div>
+            ) : null}
             {renderGroup("Has access", withAccess)}
             {renderGroup(
               needNewLink > 0
