@@ -232,6 +232,10 @@ on:
       - "supabase/functions/admin-send-email/**"
       # #3720 Slice C — grant-by-email + session refresh
       - "mingla-admin/src/__tests__/issue_3720_support_grant_session.implementor.happy.test.js"
+      # #3720 Slice F — Community & Support console
+      - "mingla-admin/src/__tests__/issue_3720_community_support_console.implementor.happy.test.js"
+      - "mingla-admin/src/services/communityService.js"
+      - "mingla-admin/src/components/community/**"
       - "supabase/functions/support-grant-staff/**"
       - "mingla-admin/src/pages/**"
       - "mingla-admin/src/lib/shellNav.js"
@@ -464,6 +468,10 @@ on:
       - "supabase/functions/admin-send-email/**"
       # #3720 Slice C — grant-by-email + session refresh
       - "mingla-admin/src/__tests__/issue_3720_support_grant_session.implementor.happy.test.js"
+      # #3720 Slice F — Community & Support console
+      - "mingla-admin/src/__tests__/issue_3720_community_support_console.implementor.happy.test.js"
+      - "mingla-admin/src/services/communityService.js"
+      - "mingla-admin/src/components/community/**"
       - "supabase/functions/support-grant-staff/**"
       - "mingla-admin/src/pages/**"
       - "mingla-admin/src/lib/shellNav.js"
@@ -662,6 +670,9 @@ jobs:
       - name: "#3720 Slice C — grant email + session refresh (admin node:test)"
         working-directory: mingla-admin
         run: node --test src/__tests__/issue_3720_support_grant_session.implementor.happy.test.js
+      - name: "#3720 Slice F — Community & Support console (admin node:test)"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue_3720_community_support_console.implementor.happy.test.js
       - name: Wait for postgres
         env:
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
