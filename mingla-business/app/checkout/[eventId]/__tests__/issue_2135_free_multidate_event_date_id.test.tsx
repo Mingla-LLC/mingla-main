@@ -56,7 +56,10 @@ const { act } = TestRenderer;
 
 const MASTER_OCCURRENCE = "occ-day-one-2135-master";
 const CHOSEN_OCCURRENCE = "occ-day-two-2135-chosen";
-const EVENT_ID = "evt-2135";
+// [TEST-MOD-APPROVED #3859] Checkout v2 rejects identifiers the real database
+// cannot issue, so this integration fixture now uses production-shaped UUIDs.
+const EVENT_ID = "21350000-0000-4000-8000-000000000001";
+const TICKET_TYPE_ID = "21350000-0000-4000-8000-000000000002";
 
 const router = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: jest.fn(() => true) };
 
@@ -78,7 +81,7 @@ jest.mock(
 );
 jest.mock("expo-router", () => ({
   useRouter: () => router,
-  useLocalSearchParams: () => ({ eventId: "evt-2135" }),
+  useLocalSearchParams: () => ({ eventId: EVENT_ID }),
 }));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -90,7 +93,7 @@ jest.mock("../../../../src/hooks/usePublicEvents", () => ({
   usePublicEventById: () => ({
     data: {
       event: {
-        id: "evt-2135",
+        id: EVENT_ID,
         name: "TEST 2131 Two-Day Exhibition",
         brandSlug: "minglanigeria",
         eventSlug: "test-2131-two-day-exhibition",
@@ -167,7 +170,7 @@ const SeedCart: React.FC<{ eventDateId: string | null }> = ({ eventDateId }) => 
   const { setLineQuantity, setBuyer, setEventDateId } = useCart();
   React.useEffect(() => {
     setLineQuantity({
-      ticketTypeId: "tier-2135",
+      ticketTypeId: TICKET_TYPE_ID,
       ticketName: "Free entry",
       unitPrice: 0,
       unitPriceAllIn: 0,
@@ -201,7 +204,7 @@ const freeCompletedEnvelope = {
   tickets: [
     {
       ticketId: "50000000-0000-4000-8000-00000000e13a",
-      ticketTypeId: "tier-2135",
+      ticketTypeId: TICKET_TYPE_ID,
       ticketName: "Free entry",
       qrPayload: "mgl_free_2135_qr",
       status: "valid",
