@@ -169,13 +169,15 @@ describe("ORCH-1130 adversarial — consent value reaching ticket-checkout-creat
   const payment = (): string =>
     read("app/checkout-trip/[tripEventId]/payment.tsx");
 
-  test("nativeCheckoutFlow forwards payment_plan_choice ONLY when paymentPlanChoice is truthy (omit on absent)", () => {
+  // [TEST-MOD-APPROVED #3859] Explorer v2 carries the explicit decision on
+  // every line. The scalar key remains only for legacy v1 callers.
+  test("nativeCheckoutFlow forwards per-line choices on v2 and gates the legacy scalar to v1", () => {
     const src = nativeFlow();
-    // The conditional-spread gate: present-only. A revert to an unconditional
-    // `payment_plan_choice: input.paymentPlanChoice ?? 'auto'` would FAIL this.
+    expect(src).toContain("paymentPlanChoice: line.paymentPlanChoice");
     expect(src).toMatch(
-      /\.\.\.\(\s*input\.paymentPlanChoice\s*\n?\s*\?\s*\{\s*payment_plan_choice:\s*input\.paymentPlanChoice\s*\}\s*:\s*\{\}\s*\)/,
+      /input\.checkoutContractVersion\s*!==\s*TICKET_CHECKOUT_CONTRACT_VERSION\s*&&\s*input\.paymentPlanChoice/,
     );
+    expect(src).toContain("? { payment_plan_choice: input.paymentPlanChoice }");
     // Hard negative: the consumer flow must NOT hardcode 'auto' into the body.
     const bodyRegion = src.slice(
       src.indexOf("invoke<CheckoutCreateResponse>"),
@@ -194,33 +196,26 @@ describe("ORCH-1130 adversarial — consent value reaching ticket-checkout-creat
   // test ("ConsumerTripDetailScreen passes the explicit choice ONLY for a plan
   // trip"). Dropped as a stale cross-app pin on deleted code, covered elsewhere.
 
-  test("ConsumerTripDetailScreen passes the explicit choice ONLY for a plan trip (hasPlan gate); no-plan → undefined", () => {
+  test("ConsumerTripDetailScreen sends checkout v2 with the cart's explicit per-line choices", () => {
     const src = screen();
-    // [TEST-MOD-APPROVED ORCH-1138] assertion-drift refresh: ORCH-1138 ported
-    // the consumer reserve flow off the duplicate <ExpandedBusinessEventSheet>
-    // JSX onto an in-place `handleBuy` → `runNativeCheckout({...})` call, so the
-    // hasPlan gate moved from a JSX prop (`paymentPlanChoice={...}`) to an
-    // object property (`paymentPlanChoice: ...`). The consent invariant is
-    // IDENTICAL — explicit choice forwarded ONLY for a plan trip, undefined for
-    // no-plan. Still fails on revert (drop the gate → unconditional/auto).
-    expect(src).toMatch(
-      /paymentPlanChoice:\s*detail\.hasPlan\s*\?\s*paymentPlanChoice\s*:\s*undefined/,
+    expect(src).toContain("checkoutContractVersion: 2");
+    expect(src).toContain("lines: payload.lines");
+    // V2 must not collapse a mixed cart back into the historical scalar.
+    const checkoutWindow = src.slice(
+      src.indexOf("result = await runNativeCheckout({"),
+      src.indexOf("});", src.indexOf("result = await runNativeCheckout({")) + 3,
     );
-    // Default is "full" — a plan buyer who never touches the toggle still
-    // sends an EXPLICIT "full", not a server-defaulted deposit-only 'auto'.
-    expect(src).toMatch(
-      /useState<\s*["']full["']\s*\|\s*["']installments["']\s*>\(\s*["']full["']\s*\)/,
-    );
+    expect(checkoutWindow).not.toContain("paymentPlanChoice:");
   });
 
-  test("Path A Review forwards payment_plan_choice ONLY when isPlanActive (no-plan trip omits the key)", () => {
+  test("Path A Review sends per-line choices on web and keeps the scalar only on native v1", () => {
     const src = payment();
-    // Both the tax-calc and the create call gate the key on isPlanActive.
-    const gated = (
-      src.match(/\.\.\.\(\s*isPlanActive\s*\?\s*\{\s*paymentPlanChoice:/g) ?? []
-    ).length;
-    expect(gated).toBeGreaterThanOrEqual(1);
-    // No unconditional `payment_plan_choice` on the no-plan path.
+    expect(src).toContain("checkoutContractVersion: 2");
+    expect(src).toContain("setLinePaymentPlanChoice(line.ticketTypeId, choice)");
+    expect(src).toContain("line.paymentPlanChoice ?? \"full\"");
+    expect(src).toMatch(
+      /\.\.\.\(isPlanActive\s*\?\s*\{\s*paymentPlanChoice:\s*paymentPlanChoice\s*\}\s*:\s*\{\}\)/,
+    );
     expect(src).not.toMatch(/payment_plan_choice:\s*['"]auto['"]/);
   });
 });
@@ -276,13 +271,19 @@ describe("ORCH-1130 adversarial — selector suppressed for unbuyable/no-plan tr
     );
   });
 
-  test("Path A Review gates the selector on isPlanActive (free/no-plan trip never shows the toggle at Review)", () => {
+  test("Path A Review maps selectors only over eligible plan lines", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
-    // The Review-step selector render is gated on isPlanActive AND a non-null
-    // projected schedule AND a defined plan tier — a free/no-plan trip never
-    // satisfies isPlanActive so the toggle never mounts at Review.
+    // [TEST-MOD-APPROVED #3859] Web owns one selector per eligible line; a
+    // no-plan/free line never enters planLines, while legacy native still has a
+    // non-null first-line projection guard.
+    expect(src).toContain(
+      "if (tier?.installmentSchedule == null || line.quantity < 1) return [];",
+    );
     expect(src).toMatch(
-      /\{isPlanActive\s*&&\s*projectedSchedule\s*!==\s*null\s*&&\s*planTier\s*!==\s*undefined\s*\?\s*\(?\s*<TripPaymentChoice/,
+      /Platform\.OS\s*===\s*"web"\s*\?\s*planLines\.map/,
+    );
+    expect(src).toMatch(
+      /:\s*planLines\[0\]\s*!==\s*undefined\s*&&\s*projectedSchedule\s*!==\s*null\s*\?\s*\(\s*<TripPaymentChoice/,
     );
   });
 });

@@ -330,6 +330,11 @@ const stripeStatusQuery = { data: { status: "active" } };
 
 /** Wizard import specifier (by its last path segment) -> module the test supplies. */
 const BOUNDARY: Record<string, () => unknown> = {
+  // [TEST-MOD-APPROVED #3859] This harness publishes a free trip, so the
+  // truthful provider-capability boundary is deterministically unsupported.
+  "@mingla/offering-rendering/tripInstallmentCapability": () => ({
+    tripInstallmentsSupported: () => false,
+  }),
   // #3645 — the bank-setup return target is pure and supplied REAL.
   bankSetupReturn: () => jest.requireActual("../../utils/bankSetupReturn"),
   // #3645 — pure, so it is supplied REAL: the order of "save, then publish".

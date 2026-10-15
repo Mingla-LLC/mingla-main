@@ -34,22 +34,18 @@ function sourceBetween(source: string, start: string, end: string): string {
 
 describe("ORCH-0915 pay-in-full choice — adversarial source contract", () => {
   test("T-A01 rapid full/installment toggles mutate only the choice, not cart, buyer, intake, restore, or checkout state", () => {
-    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): ORCH-1130
-    // collapsed the inline "Payment option" toggle into the shared
-    // <TripPaymentChoice> selector, wired as `onChange={setPaymentPlanChoice}` —
-    // the cart's pure choice setter (payment.tsx:800-808). The per-option
-    // setPaymentPlanChoice("full"/"installments") calls now live inside
-    // TripPaymentChoice.tsx. The invariant is unchanged: toggling mutates ONLY the
-    // choice. Assert the selector mount wires the pure cart setter + touches none
-    // of the cart/buyer/restore/checkout state.
+    // [TEST-MOD-APPROVED #3859] Each eligible package now owns its choice. The
+    // selector may update only that line's choice, never quantity or buyer state.
     const controlWindow = sourceBetween(
       paymentSource,
       "<TripPaymentChoice",
       "/>",
     );
 
-    expect(controlWindow).toContain("value={paymentPlanChoice}");
-    expect(controlWindow).toContain("onChange={setPaymentPlanChoice}");
+    expect(controlWindow).toContain('value={line.paymentPlanChoice ?? "full"}');
+    expect(controlWindow).toContain(
+      "setLinePaymentPlanChoice(line.ticketTypeId, choice)",
+    );
     for (const forbidden of [
       "setLineQuantity",
       "setBuyer",
@@ -64,28 +60,22 @@ describe("ORCH-0915 pay-in-full choice — adversarial source contract", () => {
     }
   });
 
-  test("T-A02 browser refresh restores legacy cart/buyer payload only and deterministically defaults choice back to full", () => {
+  test("T-A02 browser refresh restores each line's explicit choice with the cart", () => {
     const restoreWindow = sourceBetween(
       paymentSource,
       "const payload = readCheckoutResumePayload(storage, tripEventId);",
       "setRestoreChecked(true);",
     );
 
-    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): ORCH-1130
-    // relocated the pay-full/over-time choice into CartContext, so the payment
-    // route no longer owns a `useState<PaymentPlanChoice>("full")` — it reads
-    // { paymentPlanChoice, setPaymentPlanChoice } from useCart() (payment.tsx
-    // :135-137). The deterministic default-"full" now lives in CartContext and is
-    // covered by TripPaymentChoice_orch_1130_regression ("CartContext carries the
-    // choice, default full"). Assert the choice is sourced from the cart.
-    expect(paymentSource).toMatch(
-      /paymentPlanChoice,\s*setPaymentPlanChoice,\s*\}\s*=\s*useCart\(\)/,
-    );
+    // [TEST-MOD-APPROVED #3859] The resume record contains CartLine objects, so
+    // the booking-local per-line decision survives refresh without mutating the
+    // signed-in profile or falling back to a cart-wide scalar.
+    expect(paymentSource).toContain("setLinePaymentPlanChoice");
     expect(restoreWindow).toContain("readCheckoutResumePayload");
     expect(restoreWindow).toContain("setLineQuantity");
     expect(restoreWindow).toContain("setBuyer(payload.buyer)");
     expect(restoreWindow).not.toContain("setPaymentPlanChoice");
-    expect(restoreWindow).not.toContain("paymentPlanChoice");
+    expect(restoreWindow).toContain('paymentPlanChoice: l.paymentPlanChoice ?? "full"');
     expect(paymentSource).toContain(
       "writeCheckoutResumePayload(storage, tripEventId, {",
     );
@@ -96,7 +86,6 @@ describe("ORCH-0915 pay-in-full choice — adversarial source contract", () => {
     );
     expect(persistWindow).toContain("lines");
     expect(persistWindow).toContain("buyer");
-    expect(persistWindow).not.toContain("paymentPlanChoice");
   });
 
   test("T-A03 multi-tier carts with any plan tier still hit ticket_lines_mixed_with_installments before full-choice suppression", () => {
@@ -134,17 +123,18 @@ describe("ORCH-0915 pay-in-full choice — adversarial source contract", () => {
   });
 
   test("T-A05 full-pay branch cannot leak the installment schedule card, banner, or deposit CTA after toggle-back", () => {
+    // [TEST-MOD-APPROVED #3859] Any installment line activates mixed-cart
+    // disclosure; when every line is full-pay, both disclosure and due-today CTA
+    // disappear together.
     expect(paymentSource).toContain(
-      'const isUsingInstallments = isPlanActive && paymentPlanChoice === "installments";',
+      "const isUsingInstallments = installmentPlanLines.length > 0;",
+    );
+    expect(paymentSource).toMatch(/\{isUsingInstallments\s*\?\s*\(/);
+    expect(paymentSource).toMatch(
+      /isPlanActive\s*&&\s*isUsingInstallments\s*\?\s*\(/,
     );
     expect(paymentSource).toMatch(
-      /isUsingInstallments\s*&&\s*projectedSchedule\s*!==\s*null\s*\?\s*\(/,
-    );
-    expect(paymentSource).toMatch(
-      /isPlanActive\s*&&\s*projectedSchedule\s*!==\s*null\s*&&\s*isUsingInstallments\s*\?\s*\(/,
-    );
-    expect(paymentSource).toMatch(
-      /isPlanActive\s*&&\s*projectedSchedule\s*!==\s*null\s*&&\s*!isUsingInstallments\s*\?\s*\(/,
+      /isPlanActive\s*&&\s*!isUsingInstallments\s*\?\s*\(/,
     );
     expect(paymentSource).toContain("Paid in full today");
     // [TEST-MOD-APPROVED ORCH-1062] REPAIR: the copy is unchanged but now wraps

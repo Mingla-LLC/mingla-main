@@ -22,10 +22,8 @@
  *
  *   (3) **Pay-button copy contract** (SC-4c + Constitution #3 — no
  *       silent failures): `payment.tsx` source contains both the
- *       `${depositCents}` deposit-branch CTA literal AND the
- *       `${totals.total}` no-plan-branch CTA literal. Reverting either
- *       branch (e.g., silently switching back to full-price-only CTA)
- *       breaks the corresponding assertion.
+ *       mixed-cart `${dueTodayCents}` installments CTA literal AND the
+ *       `${totals.total}` no-plan-branch CTA literal.
  *
  * Fails-on-revert verified at HEAD before fix (see implementation report
  * §Regression Test). Reverting any of these contracts breaks at least
@@ -342,11 +340,11 @@ describe("projectInstallmentSchedule mapper — Constitution #9 no fabricated da
 // ---------------------------------------------------------------------------
 
 describe("ORCH-0882 SC-4c — Pay-button CTA copy honesty", () => {
-  test("payment.tsx contains the deposit-branch CTA literal", () => {
+  // [TEST-MOD-APPROVED #3859] A mixed cart can combine full-pay and
+  // installment lines, so the honest CTA is the aggregate due today.
+  test("payment.tsx contains the due-today CTA literal", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
-    // The deposit-branch CTA must say "deposit" — both visible label and
-    // accessibility label.
-    expect(src).toMatch(/Pay \$\{[^}]*depositCents[^}]*\} deposit/);
+    expect(src).toMatch(/Pay \$\{[^}]*dueTodayCents[^}]*\} today/);
   });
 
   test("payment.tsx preserves the no-plan-branch full-price CTA literal", () => {
@@ -357,12 +355,10 @@ describe("ORCH-0882 SC-4c — Pay-button CTA copy honesty", () => {
     expect(src).toMatch(/Pay \$\{[^}]*totals\.total[^}]*\}/);
   });
 
-  test("payment.tsx pre-Stripe banner accessibility label cites deposit + remaining", () => {
+  test("payment.tsx pre-Stripe banner accessibility label cites due + remaining", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
-    // The accessibilityLabel on the banner must reference depositCents
-    // (the amount charged now) so screen-reader users get the same
-    // disclosure as sighted buyers.
-    expect(src).toContain("depositCents");
+    expect(src).toContain("dueTodayCents");
+    expect(src).toContain("remainingBalanceCents");
     expect(src).toMatch(/Payment plan active/);
   });
 });

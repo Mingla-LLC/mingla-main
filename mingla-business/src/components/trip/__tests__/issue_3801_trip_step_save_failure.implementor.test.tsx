@@ -105,6 +105,11 @@ const asyncNoop = async (): Promise<undefined> => undefined;
 const settledIdle = { isPending: false, isFetching: false, isError: false };
 
 const BOUNDARY: Record<string, () => unknown> = {
+  // [TEST-MOD-APPROVED #3859] The #3801 fixture has no installment provider;
+  // model the new capability boundary without changing its save-error subject.
+  "@mingla/offering-rendering/tripInstallmentCapability": () => ({
+    tripInstallmentsSupported: () => false,
+  }),
   // #3645 — REAL: the bank-setup return target is pure.
   bankSetupReturn: () => jest.requireActual("../../../utils/bankSetupReturn"),
   react: () => React,

@@ -83,14 +83,14 @@ describe("ORCH-1180 FIX B — checkout cart seed reads the per-line choice", () 
 });
 
 describe("ORCH-1180 the cart is then AWARE — deposit branch fires on 'installments'", () => {
-  // The checkout index's dueTodayCents memo (the "cart is aware" proof) is gated
-  // on paymentPlanChoice === "installments". Once Fix A/B set that, the existing
-  // projectInstallmentSchedule deposit branch + schedule + Pay-button deposit
-  // label all fire. Characterize that gate so it can't silently drop.
-  test("dueTodayCents is non-null ONLY under the installments cart choice", () => {
+  // [TEST-MOD-APPROVED #3859] Awareness is now per line: one installment line
+  // activates the aggregate while full-pay siblings remain fully due today.
+  test("dueTodayCents follows per-line choices through the shared aggregate", () => {
     const src = checkoutIndexSrc();
-    expect(src).toContain('if (paymentPlanChoice !== "installments"');
-    expect(src).toContain("projectInstallmentSchedule(");
-    expect(src).toContain("projected.depositCents");
+    expect(src).toContain(
+      'lines.every((line) => line.paymentPlanChoice !== "installments")',
+    );
+    expect(src).toContain("tripSummedDueTodayCents(");
+    expect(src).toContain('line.paymentPlanChoice ?? "full"');
   });
 });
