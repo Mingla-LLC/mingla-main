@@ -117,7 +117,13 @@ import {
   BRAND_PAYMENTS_DENIED_TITLE,
 } from "../../utils/brandPaymentsPermission";
 import { majorFromMinor } from "../../utils/currency";
+import {
+  buildAccountManagementWebReturnUrl,
+  isSafeAccountManagementTargetUrl,
+} from "../../utils/accountManagementOpen";
 
+// #2227 — literal custom scheme in this file so the AuthSession redirect
+// registry can prove it is not https (re-export aliases are deny-by-default).
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 
 // Status-banner config table. ORCH-0764C requires active to render a visible
@@ -280,6 +286,32 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
       return;
     }
     if (brand?.id === undefined || accountSession.isPending) return;
+    // #3645 — Real Host web is HTTPS: same-tab assign with HTTPS return_to
+    // (openAuthSession after an await is popup-blocked). Native and non-HTTPS
+    // environments keep the deep-link auth session.
+    const webReturnUrl =
+      typeof window !== "undefined"
+        ? buildAccountManagementWebReturnUrl(window.location.origin, brand.id)
+        : null;
+    if (webReturnUrl !== null) {
+      const result = await accountSession.mutateAsync({
+        brandId: brand.id,
+        surface: "account_management",
+        returnUrl: webReturnUrl,
+      });
+      if (
+        !isSafeAccountManagementTargetUrl(
+          result.targetUrl,
+          window.location.origin,
+        )
+      ) {
+        throw new Error(
+          "We got an unexpected bank setup link. Please try again.",
+        );
+      }
+      window.location.assign(result.targetUrl);
+      return;
+    }
     const result = await accountSession.mutateAsync({
       brandId: brand.id,
       surface: "account_management",

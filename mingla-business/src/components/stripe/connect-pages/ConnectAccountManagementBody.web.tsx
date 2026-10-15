@@ -6,9 +6,9 @@
  * route shell React.lazy it out of the initial web bundle. Stripe calls/params
  * are UNCHANGED. See SPEC §C-1.
  *
- * Web-only Path B surface opened from mingla-business via expo-web-browser.
- * Renders Stripe embedded account management plus notification banner from a
- * short-lived Account Session client_secret.
+ * Web-only Path B surface. Host web opens it same-tab (#3645); native still
+ * uses expo-web-browser. Renders Stripe embedded account management plus
+ * notification banner from a short-lived Account Session client_secret.
  */
 
 import React, { useMemo, useState } from "react";
@@ -24,6 +24,7 @@ import {
   connectEmbeddedPageStyles,
   useStripeConnectViewportZoomLock,
 } from "../../../components/stripe/connectEmbeddedPageHelpers";
+import { isAllowedAccountManagementReturnTo } from "../../../utils/accountManagementOpen";
 
 const MINGLA_BRAND_COLOR = "#eb7825" as const;
 
@@ -79,13 +80,26 @@ export default function ConnectAccountManagementBody(): React.ReactElement {
   }, [sessionClientSecret]);
 
   const handleDone = (): void => {
+    // #3645 — Host web Add bank opens this page in the SAME tab with an HTTPS
+    // return_to. Honour it with a full-page assign (re-establishes the Host
+    // session) the same way connect-onboarding does. Deep links still close
+    // the native in-app browser. Never SPA-replace into an auth-gated route
+    // from a sessionless Connect window.
     if (
-      typeof returnTo === "string" && returnTo.startsWith("mingla-business://")
+      typeof returnTo === "string" &&
+      typeof window !== "undefined" &&
+      isAllowedAccountManagementReturnTo(returnTo, window.location.origin)
     ) {
-      window.location.href = returnTo;
+      window.location.assign(returnTo);
       return;
     }
     if (typeof brandId === "string" && brandId.length > 0) {
+      if (typeof window !== "undefined") {
+        window.location.assign(
+          `/brand/${encodeURIComponent(brandId)}/payments`,
+        );
+        return;
+      }
       router.replace(`/brand/${brandId}/payments` as never);
       return;
     }
