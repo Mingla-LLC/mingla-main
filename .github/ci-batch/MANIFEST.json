@@ -26101,7 +26101,7 @@
     "childEnvironment": "minimal-allowlist-no-job-secrets"
   },
   "shadowExpectedVariants": 44,
-  "shadowContractSha256": "b54121cb297f466d1d4d0ed4fae467e5c895804898018b752aa8e191159e673c",
+  "shadowContractSha256": "dff405062653cb76e6d5497d5affd51858e3f7c5d38cf897fb18a39178f531d8",
   "phase3cLeafCapabilities": {
     "schemaVersion": 1,
     "expectedLeaves": 54,
