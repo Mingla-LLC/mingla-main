@@ -457,6 +457,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
   const signedInBuyer =
     typeof buyerUserId === "string" && buyerUserId.length > 0;
+  // #3859 P1 — Explorer checkout is authenticated. A missing id means auth is
+  // unresolved or expired, never that native should expose buyer-web's
+  // anonymous identity form.
+  const sessionRequired = visible && !signedInBuyer && terminalOutcome === null;
   // ORCH-1025 — "What's included" breakdown panel expand/collapse.
   const [breakdownOpen, setBreakdownOpen] = useState<boolean>(false);
   const [highlightUnchosen, setHighlightUnchosen] = useState<boolean>(false);
@@ -679,6 +683,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   );
 
   useEffect(() => {
+    if (!signedInBuyer) {
+      contactSeedAuthorityRef.current =
+        EXPLORER_CHECKOUT_CONTACT_SEED_AUTHORITY.awaitingAccount;
+      setContactEditorVisible(false);
+      setContactEditAll(false);
+      setContactTouched({});
+      return;
+    }
     const validation = validateExplorerCheckoutContact({
       name: buyerName,
       email: buyerEmail,
@@ -711,7 +723,14 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     setContactPhoneLocal(
       splitContactPhone(validation.normalized.phone, phoneCountry),
     );
-  }, [buyerCountryCode, buyerEmail, buyerName, buyerPhone, visible]);
+  }, [
+    buyerCountryCode,
+    buyerEmail,
+    buyerName,
+    buyerPhone,
+    signedInBuyer,
+    visible,
+  ]);
 
   useEffect(() => {
     if (visible && tickets) {
@@ -852,6 +871,9 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     // ORCH-1025 — no taxPreview gate: the buyer can pay immediately. The cart is
     // unblocked the moment it has lines (and any required intake is valid).
     if (isSubmitting) return;
+    // #3859 P1 — buyer web owns anonymous identity collection. Native waits
+    // for the existing root auth flow to restore a signed-in account.
+    if (!signedInBuyer) return;
     if (multiDaySelection !== null) {
       const validIds = new Set(multiDaySelection.occurrences.map((day) => day.id));
       const selectedIds = [...new Set(multiDaySelection.selectedEventDateIds)].filter(
@@ -1040,11 +1062,12 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     dayTruthUnavailable ||
     (!missingRequiredDay && totals.isEmpty) ||
     isSubmitting ||
+    !signedInBuyer ||
     contactEditorVisible ||
     !contactValidation.isValid ||
     !termsAccepted;
   const ctaPressDisabled =
-    isSubmitting || dayTruthUnavailable ||
+    isSubmitting || !signedInBuyer || dayTruthUnavailable ||
     (!missingRequiredDay && totals.isEmpty);
 
   // issue #2265 — the pending vocabulary. The old treatment was a bare spinner
@@ -1203,7 +1226,22 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     </View>
   );
 
-  const body = terminalBody ??
+  const sessionRequiredBody = sessionRequired ? (
+    <View
+      style={styles.bodyMessageWrap}
+      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
+      testID="explorer-checkout-session-required"
+    >
+      <ActivityIndicator color="rgba(255,255,255,0.65)" />
+      <Text style={styles.bodyMessage}>Checking your session…</Text>
+      <Text style={styles.sessionRequiredMessage}>
+        Sign in again to continue your booking.
+      </Text>
+    </View>
+  ) : null;
+
+  const body = terminalBody ?? sessionRequiredBody ??
     (renderState === "loading" ? (
       <View style={styles.bodyMessageWrap}>
         <ActivityIndicator color="rgba(255,255,255,0.65)" />
@@ -1653,6 +1691,20 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           </Text>
         </Pressable>
       </View>
+    ) : sessionRequired ? (
+      <View style={stickyBarStyle}>
+        <Pressable
+          onPress={handleCancel}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          style={({ pressed }) => [
+            styles.ctaButton,
+            pressed && styles.ctaButtonPressed,
+          ]}
+        >
+          <Text style={styles.ctaLabel}>Close</Text>
+        </Pressable>
+      </View>
     ) : renderState === "populated" ? (
       <View style={stickyBarStyle}>
         <View style={styles.subtotalRow}>
@@ -1836,6 +1888,13 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.65)",
     textAlign: "center",
     lineHeight: 22,
+  },
+  sessionRequiredMessage: {
+    maxWidth: 280,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "rgba(255, 255, 255, 0.65)",
+    textAlign: "center",
   },
   scrollContent: {
     paddingHorizontal: 24,

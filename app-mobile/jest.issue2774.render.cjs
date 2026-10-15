@@ -42,5 +42,19 @@ module.exports = {
     // issue #3859 — mounts the real Explorer brand host and invokes its public
     // navigation callbacks through the shared parity-contract adapter.
     "**/__tests__/issue_3859_explorer_public_parity.implementor.happy.test.tsx",
+    // issue #3859 — Explorer stays signed-in-only during auth expiry and
+    // recovers the account recap without losing the buyer's cart lines.
+    "**/__tests__/issue_3859_expired_session_guard.implementor.happy.render.test.tsx",
+    "**/__tests__/issue_3859_expired_session_guard.tester.adversarial.render.test.tsx",
+    // issue #3859 — native checkout request, recovery, and terminal truth.
+    "**/__tests__/issue_3859_checkout_v2_client.implementor.happy.test.ts",
+    "**/__tests__/issue_3859_native_checkout_recovery.implementor.happy.test.ts",
+    "**/__tests__/issue_3859_native_checkout_recovery.tester_adversarial.test.ts",
+    "**/__tests__/issue_3859_native_checkout_terminal_flow.implementor.happy.test.ts",
+    "**/__tests__/issue_3859_native_terminal_wiring.implementor.happy.test.ts",
+    "**/__tests__/issue_3859_paystack_recovery_terminal_truth.implementor.happy.test.ts",
+    // issue #3859 — the Node and strip-types guards must execute, not merely
+    // exist outside Jest discovery.
+    "**/__tests__/issue_3859_node_guards_ci.render.test.ts",
   ],
 };
