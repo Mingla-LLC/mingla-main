@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import React from "react";
 import {
   QueryClient,
@@ -520,12 +521,18 @@ describe("#3564 atomic menu-item reorder hook", () => {
     expect(read("src/hooks/publicMenuBundleQueryKeys.ts")).toContain(
       '["publicMenuBundle"] as const',
     );
+    const plan = JSON.parse(execFileSync(process.execPath, [
+      path.resolve(__dirname, "../../../../.github/scripts/ci-discovery/list.mjs"),
+      "--lane", "migrations", "--json",
+    ], { encoding: "utf8" })) as { entries: Array<{ path: string; profile: string }> };
     const workflow = read(
       "../.github/workflows/supabase-migrations-and-stripe-deno.yml",
     );
+    // [TEST-MOD-APPROVED #3643] The effective discovery plan replaces workflow-source membership.
     expect(
-      workflow.match(
-        /issue_3564_atomic_menu_item_reorder\.implementor\.pg17\.test\.sql/g,
+      plan.entries.filter((row) =>
+        row.path === "supabase/migrations/__tests__/issue_3564_atomic_menu_item_reorder.implementor.pg17.test.sql"
+          && row.profile === "psql-pg17-post-replay"
       ),
     ).toHaveLength(1);
   });

@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadEffectiveFunctionPolicy } from "../../.github/scripts/ci-discovery/function-policy.mjs";
 
 /**
  * #2830 — EVERY governed bundle must have a way to supply it.
@@ -23,13 +25,13 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../..");
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
-const contract = JSON.parse(read("supabase/function-env.contract.json"));
+const contract = loadEffectiveFunctionPolicy().contract;
 const deployScript = read("scripts/deploy-supabase-functions.sh");
 const coordinator = read("scripts/secrets/reconcile-governed-secrets.mjs");
 
-function declaredBundles() {
+function declaredBundles(policy = contract) {
   const names = new Set();
-  for (const entry of Object.values(contract.functions)) {
+  for (const entry of Object.values(policy.functions)) {
     for (const name of Object.keys(entry.required_bundle_fields ?? {})) {
       names.add(name);
     }
@@ -37,11 +39,17 @@ function declaredBundles() {
   return [...names].sort();
 }
 
-test("every bundle a function can REQUIRE, the lane can SUPPLY", () => {
+function missingBundleInputs(policy, coordinatorSource) {
   const supplied = new Set(
-    [...coordinator.matchAll(/bundleInputs\.([A-Z0-9_]+)\s*=/g)].map((m) => m[1]),
+    [...coordinatorSource.matchAll(/bundleInputs\.([A-Z0-9_]+)\s*=/g)].map((match) => match[1]),
   );
-  const missing = declaredBundles().filter((name) => !supplied.has(name));
+  return declaredBundles(policy).filter((name) => !supplied.has(name));
+}
+
+test("every bundle a function can REQUIRE, the lane can SUPPLY", () => {
+  const missing = missingBundleInputs(contract, coordinator);
+  // [TEST-MOD-APPROVED #3643] The assertion now reads the canonical effective
+  // function policy, so a valid local function cannot bypass this gate.
   assert.deepEqual(
     missing,
     [],
@@ -85,6 +93,8 @@ test("all four brand-site functions are covered", () => {
     "brand-site-runtime-resolve",
   ]) {
     const entry = contract.functions[name];
+    // [TEST-MOD-APPROVED #3643] These preserved assertions now bind to the
+    // effective function-policy projection rather than the sealed bootstrap.
     assert.ok(entry, `${name} missing from the contract`);
     assert.ok(
       Object.keys(entry.required_bundle_fields ?? {}).includes(
@@ -93,4 +103,46 @@ test("all four brand-site functions are covered", () => {
       `${name} should declare the sites bundle`,
     );
   }
+});
+
+test("a valid future function is rejected until its governed bundle becomes suppliable", (t) => {
+  const fixtureRoot = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "issue-2830-effective-policy-"));
+  t.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
+  const writeFixture = (relative, contents) => {
+    const target = path.join(fixtureRoot, relative);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, contents);
+  };
+  const bootstrap = JSON.parse(read("supabase/function-env.contract.json"));
+  const baseFunctionCount = Object.keys(bootstrap.functions).length;
+  writeFixture("supabase/function-env.contract.json", read("supabase/function-env.contract.json"));
+  writeFixture("supabase/config.toml", read("supabase/config.toml"));
+  writeFixture("supabase/secrets.manifest.json", read("supabase/secrets.manifest.json"));
+  for (const name of Object.keys(bootstrap.functions)) {
+    writeFixture(`supabase/functions/${name}/index.ts`, "// isolated fixture\n");
+  }
+  fs.mkdirSync(path.join(fixtureRoot, "supabase/functions/_shared"), { recursive: true });
+  const name = "issue-2830-future-governed-function";
+  writeFixture(`supabase/functions/${name}/index.ts`, "// isolated fixture\n");
+  writeFixture(`supabase/functions/${name}/function-policy.json`, `${JSON.stringify({
+    schemaVersion: 1,
+    kind: "edge-function-policy",
+    name,
+    verify_jwt: false,
+    gateway_reason: "Issue #2830 proves every locally declared bundle has a sanctioned input.",
+    env: {
+      required_top_level: [],
+      optional_top_level: [],
+      migration_fallback_top_level: [],
+      required_bundle_fields: { MINGLA_ALERT_RECIPIENTS_JSON: ["api_health"] },
+    },
+  }, null, 2)}\n`);
+
+  const effective = loadEffectiveFunctionPolicy({ root: fixtureRoot, sealBootstrap: false });
+  // [TEST-MOD-APPROVED #3643] Deriving from the fixture bootstrap prevents the
+  // next legitimate function from creating another shared count edit.
+  assert.equal(effective.diskFunctions.length, baseFunctionCount + 1);
+  assert.deepEqual(missingBundleInputs(effective.contract, coordinator), ["MINGLA_ALERT_RECIPIENTS_JSON"]);
+  const supplied = `${coordinator}\nbundleInputs.MINGLA_ALERT_RECIPIENTS_JSON = loadSecureBundleInput;\n`;
+  assert.deepEqual(missingBundleInputs(effective.contract, supplied), []);
 });

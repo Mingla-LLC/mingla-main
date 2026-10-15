@@ -87,12 +87,16 @@ orch-1386-tester-adversarial.yml f0d49800ed79ccf9a0dd51a0c6fef8cf236ad199da41a90
 // suite with exact Host-origin normalization mutants but left these tester-owned
 // byte locks on the prior pair. Re-bank those two values only: the paths,
 // lock-set cardinality, working-tree proof, and depth-one proof remain unchanged.
+// [TEST-MOD-APPROVED #3643] Exactly 2 of 33 coupled-reference bytes moved
+// together when #1860 replaced stale workflow-text membership with the canonical
+// effective migration plan. Paths, order, the other 31 hashes, and both lock
+// call sites remain unchanged.
 const REFERENCE_SHA256 = locks(`
 .github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs fc65e60b8636d7dc23190e10e8b0372cf6f033dca4cf060fb3e67d5f0ce21e06
 .github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs a6dba7a4a109956b82acae0beb2eb6eb28bdc1c1522d5793452cbcc4885d3652
 .github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.regression.test.mjs 034382651f35eb498dabd2a1c5d35df0d1fdb0219cad34f5f5a102cd5f239a87
 .github/scripts/strict-grep/issue-1607-explorer-guard-integrity.mjs 02043b12c819cbda96dcdd8bc1d93ab51b3ca7052ab9733e389e36d0a53c275d
-.github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs 243225f05fdb969970c2d1bd7de4a52abed8d02162828f6ff21b0f106db7ea6a
+.github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs 6c85c55d3a6d4b5027bd9cdf0b23535755c9cff734392bdca5995b231bd4bed8
 .github/scripts/strict-grep/issue-2084-credential-output-safety.mjs 904d78e5e171247af178881a622c97e1485caea2da06969e38be7001f2bcd635
 app-mobile/src/components/__tests__/issue-1638-tab-switch-quickwins.test.mjs 852f38916b00c85709eccbfaab634986c8b123a02c27dd40d50ef7324b7b3948
 app-mobile/src/components/deckHeroConstants.ts bdb476b046e64fa2601f9081abfc1919a589a079a4b248ca5aeb38324d1e6749
@@ -118,7 +122,7 @@ scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs 3
 scripts/ci/issue-2062-expo-config-node20.mjs 4bfb80534dae14ccc480de2104fdb749f6737de04859d198bd272105d611c6bb
 scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs f1f3a94262faab8f998b27bccba420ed90085cfd6f9926334bd22408fce0d1a8
 scripts/issue-1615/curated-composition-terminal-ui.tester.adversarial.test.mjs 4d382fefd13bd483b711715005b602e4f4445b324a9804554458ef438bb99a39
-scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs 0cbacffe0dea33f5b69b318ae537422a53d869d039f5cc037d1331c19a1bce63
+scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs 24909501d087c1df2b5455fedd8f0e9f52ee165768d73d0d508a811675c2770d
 scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs 707fefb8934df9435b1de1ce1daf8cb0fe8cf8abe8d481ce7ab734ea2e62807e
 .github/workflows/issue-2393-valid-marketing-test-fixtures.yml 466ad276405d0719a0d91c7dab4398192085784cc473b791d68895c154eab12e
 `);

@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { listLane } from "../ci-discovery/load-plan.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
@@ -40,7 +41,7 @@ export function twoAccountPublicRlsProof(ownerId, memberRows, publicBrands) {
 
 export function check(sources) {
   const failures = [];
-  const { helper, chat, confirm, tools, domain, sites, prompt, hook, screen, input, list, publicMigration, scopeMigration, turnMigration, scopeTest, migrationWorkflow, writerTest, ciManifest } = sources;
+  const { helper, chat, confirm, tools, domain, sites, prompt, hook, screen, input, list, publicMigration, scopeMigration, turnMigration, scopeTest, migrationPlan, writerTest, ciManifest } = sources;
   for (const token of [
     '.eq("account_id", userId)', '.eq("user_id", userId)', '.not("accepted_at", "is", null)', '.is("removed_at", null)',
     '.is("brand.deleted_at", null)', 'role: "owner"', 'effective_rank: 60',
@@ -157,8 +158,16 @@ export function check(sources) {
     "non-scope update was blocked", "brand scope rewrite was accepted",
     "rejected rewrite changed stored scope", "trigger helper is directly executable",
   ]) if (!scopeTest.includes(token)) failures.push(`database scope test missing ${token}`);
-  if (!migrationWorkflow.includes("issue_2013_agent_conversation_brand_immutable.test.sql")) {
-    failures.push("database scope behavior test is not wired into PostgreSQL replay");
+  const scopeRows = (migrationPlan ?? []).filter((row) =>
+    row.path === "supabase/migrations/__tests__/issue_2013_agent_conversation_brand_immutable.test.sql"
+      && row.orderKey === "legacy-0085"
+      && row.profile === "psql-pg17-post-replay"
+      && row.database?.database === "postgres"
+      && row.database?.user === "postgres"
+      && row.database?.reset === "suite-owned"
+  );
+  if (scopeRows.length !== 1) {
+    failures.push("database scope behavior test lost its exact effective PostgreSQL replay row");
   }
 
   const brands = [
@@ -195,7 +204,10 @@ const SOURCE_FILES = {
   writerTest: writerTestPath,
   ciManifest: ".github/ci-batch/MANIFEST.json",
 };
-const sources = Object.fromEntries(Object.entries(SOURCE_FILES).map(([key, file]) => [key, read(file)]));
+const sources = {
+  ...Object.fromEntries(Object.entries(SOURCE_FILES).map(([key, file]) => [key, read(file)])),
+  migrationPlan: listLane("migrations"),
+};
 
 if (process.argv.includes("--self-test")) {
   const good = check(sources);
@@ -249,6 +261,14 @@ if (process.argv.includes("--self-test")) {
   const resetRevertDetected = resetReverted.some((failure) => failure.includes("brand-switch reset"));
   const writerRegistryReverted = check({ ...sources, writerTest: sources.writerTest.replaceAll("append_agent_chat_tool_result", "unregistered_agent_chat_tool_result") });
   const writerRegistryRevertDetected = writerRegistryReverted.some((failure) => failure.includes("writer-registry tester"));
+  const planReversions = [
+    sources.migrationPlan.filter((row) => row.path !== SOURCE_FILES.scopeTest),
+    [...sources.migrationPlan, sources.migrationPlan.find((row) => row.path === SOURCE_FILES.scopeTest)],
+    sources.migrationPlan.map((row) => row.path === SOURCE_FILES.scopeTest ? { ...row, profile: "deno-1.46-stripe" } : row),
+    sources.migrationPlan.map((row) => row.path === SOURCE_FILES.scopeTest ? { ...row, orderKey: "legacy-forged" } : row),
+  ].map((migrationPlan) => check({ ...sources, migrationPlan }));
+  const planRevertsDetected = planReversions.every((failures) =>
+    failures.some((failure) => failure.includes("exact effective PostgreSQL replay row")));
 
   // [#2438 SC-13/SC-17] Execute the terminal branch instead of merely writing it.
   const withLifecycle = (value) => withRegistry((suite) => { suite.lifecycle = value; });
@@ -257,11 +277,8 @@ if (process.argv.includes("--self-test")) {
   const forgedLifecycles = ["shadow-inactive", "batched-active", "phase3b-forged", "SHADOW-ACTIVE", "", null].map((value) => withLifecycle(value));
   const forgedLifecycleDetected = forgedLifecycles.every((failures) => failures.some((failure) => failure.includes("typed shadow provider")));
   // The historical wrapper must no longer be a source of this guard at all, or
-  // SC-21's deletion reds it again.
-  // [#2438 SC-12] The retired origin must never be a source this guard READS.
-  // `migrationWorkflow` deliberately stays: it is a live, non-Phase-3B workflow
-  // and nothing in SC-21 deletes it, so a blanket "no workflow file" rule here
-  // would be false rather than strict.
+  // SC-21's deletion reds it again. Migrated SQL membership comes from the
+  // canonical effective plan rather than a workflow source.
   const wrapperDecoupled = !Object.values(SOURCE_FILES).includes(SUITE_ORIGIN_IDENTITY)
     && !Object.values(SOURCE_FILES).some((file) => !fs.existsSync(path.join(root, file)))
     && !Object.keys(SOURCE_FILES).includes("workflow");
@@ -270,8 +287,8 @@ if (process.argv.includes("--self-test")) {
       || !shadowRevertDetected || !scopeRevertDetected || !composerRevertDetected
       || !siteRegistryRevertDetected || !siteExecutorRevertDetected
       || !turnScopeRevertDetected || !turnClaimRevertDetected || !resetRevertDetected || !writerRegistryRevertDetected
-      || !terminalLifecycleAccepted || !forgedLifecycleDetected || !wrapperDecoupled) {
-    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerProvenanceReverts, shadowReverted, scopeReverted, composerReverted, siteRegistryReverted, siteExecutorReverted, turnScopeReverted, turnClaimReverted, resetReverted, writerRegistryReverted, acceptedLifecycles, forgedLifecycles, wrapperDecoupled });
+      || !planRevertsDetected || !terminalLifecycleAccepted || !forgedLifecycleDetected || !wrapperDecoupled) {
+    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerProvenanceReverts, shadowReverted, scopeReverted, composerReverted, siteRegistryReverted, siteExecutorReverted, turnScopeReverted, turnClaimReverted, resetReverted, writerRegistryReverted, planReversions, acceptedLifecycles, forgedLifecycles, wrapperDecoupled });
     process.exit(1);
   }
   console.log(`issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, #3429 turn scope/claim/reset/writer registry, ${writerProvenanceReverts.length} typed writer-provenance, immutable-scope, composer-gate, Sites registry/executor and ${forgedLifecycles.length} forged-lifecycle reverts fail; ${acceptedLifecycles.length} reviewed lifecycles pass and the deletable CI wrapper is decoupled from provider ${CI_BATCH_PROVIDER}.`);

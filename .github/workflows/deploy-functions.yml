@@ -75,9 +75,6 @@ jobs:
           MINGLA_DEPLOY_SELECTION_PATH: ${{ runner.temp }}/edge-deploy-functions
         run: node scripts/ci/select-changed-edge-functions.mjs
 
-      - name: Materialize the disk-derived function gateway policy
-        run: node .github/scripts/ci-discovery/function-policy.mjs --write-config supabase/config.toml
-
       - name: Deploy the selected edge functions
         # `success()` is spelled out rather than relied upon. The one thing this
         # step must never do is run after a selection step that FAILED — a

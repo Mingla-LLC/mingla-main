@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { listLane } from "../ci-discovery/load-plan.mjs";
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -38,7 +39,6 @@ const workflow = fs.readFileSync(
   path.join(root, ".github/workflows/supabase-migrations-and-stripe-deno.yml"),
   "utf8",
 );
-
 function functionBody(name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = migration.match(
@@ -95,9 +95,11 @@ test("the tester-owned live SQL proof attacks all three tenancy boundaries in bl
   assert.match(sqlProof, /biz_save_stay_settings_v2\(/);
   assert.match(sqlProof, /biz_publish_stay\(v_stay_id/);
   assert.equal((sqlProof.match(/SQLERRM <> 'forbidden'/g) ?? []).length, 3);
-  assert.match(
-    workflow,
-    /-f supabase\/migrations\/__tests__\/issue_1424_stay_authoring\.tester_adversarial\.test\.sql/,
+  const suitePath = "supabase/migrations/__tests__/issue_1424_stay_authoring.tester_adversarial.test.sql";
+  // [TEST-MOD-APPROVED #3643] Migrated-suite membership now comes from the canonical effective plan.
+  assert.equal(
+    listLane("migrations").filter((row) => row.path === suitePath && row.profile === "psql-pg17-post-replay").length,
+    1,
   );
 });
 

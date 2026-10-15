@@ -11,6 +11,28 @@ governed_bundle_deploy=false
 transition_inputs=false
 functions=()
 coordinator_args=()
+config_file="${repo_root}/supabase/config.toml"
+config_backup=""
+release_bake_backup=""
+
+restore_tracked_inputs() {
+  local status=$?
+  if [[ -n "${release_bake_backup:-}" && -f "$release_bake_backup" ]]; then
+    if cp "$release_bake_backup" "$release_bake_file"; then
+      rm -f "$release_bake_backup"
+    else
+      echo "WARN deploy: could not restore ${release_bake_file}; the original is at ${release_bake_backup}" >&2
+    fi
+  fi
+  if [[ -n "${config_backup:-}" && -f "$config_backup" ]]; then
+    if cp "$config_backup" "$config_file"; then
+      rm -f "$config_backup"
+    else
+      echo "WARN deploy: could not restore ${config_file}; the original is at ${config_backup}" >&2
+    fi
+  fi
+  return "$status"
+}
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -70,14 +92,23 @@ done
 [[ -n "$project_ref" ]] || { echo "FAIL deploy: explicit production project ref required" >&2; exit 2; }
 [[ "${#functions[@]}" -gt 0 ]] || { echo "FAIL deploy: explicit --function selection required; deploy-all is forbidden" >&2; exit 2; }
 
+config_backup="$(mktemp "${TMPDIR:-/tmp}/mingla-function-config.XXXXXX")"
+cp "$config_file" "$config_backup"
+trap restore_tracked_inputs EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+node "${repo_root}/.github/scripts/ci-discovery/function-policy.mjs" \
+  --write-config "$config_file"
+
 node "${repo_root}/scripts/ops/verify-production-supabase-authority.mjs" \
   --mode=offline \
   --target-ref "$project_ref"
 
 if [[ "$remediation" == true ]]; then
-  exec node "${repo_root}/scripts/secrets/reconcile-governed-secrets.mjs" \
+  node "${repo_root}/scripts/secrets/reconcile-governed-secrets.mjs" \
     --project-ref "$project_ref" \
     "${coordinator_args[@]}"
+  exit 0
 fi
 
 if [[ "$transition_inputs" == true ]]; then
@@ -138,19 +169,6 @@ fi
 # what is left on disk.
 release_bake_backup="$(mktemp "${TMPDIR:-/tmp}/mingla-release-bake.XXXXXX")"
 cp "$release_bake_file" "$release_bake_backup"
-restore_release_bake() {
-  # Never mask the script's own verdict: keep the status the exit carried.
-  local status=$?
-  if [[ -n "${release_bake_backup:-}" && -f "$release_bake_backup" ]]; then
-    if cp "$release_bake_backup" "$release_bake_file"; then
-      rm -f "$release_bake_backup"
-    else
-      echo "WARN deploy: could not restore ${release_bake_file}; the original is at ${release_bake_backup}" >&2
-    fi
-  fi
-  return "$status"
-}
-trap restore_release_bake EXIT
 # The value is a validated 40-hex literal, so it cannot carry sed metacharacters.
 perl -pi -e "s{^export const BAKED_RELEASE_SHA = .*\$}{export const BAKED_RELEASE_SHA = \"${merged_commit}\";}" \
   "$release_bake_file"

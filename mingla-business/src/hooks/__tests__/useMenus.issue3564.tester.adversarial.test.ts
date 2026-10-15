@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import React from "react";
 import {
   QueryClient,
@@ -477,7 +478,7 @@ describe("#3564 independent hook adversarial proof", () => {
     ).toBeNull();
   });
 
-  test("workflow and source retain both proof lanes, atomic writer, and category isolation", () => {
+  test("effective plan and source retain both proof lanes, atomic writer, and category isolation", () => {
     const repoRoot = path.resolve(__dirname, "../../..");
     const read = (relativePath: string): string =>
       fs.readFileSync(path.resolve(repoRoot, relativePath), "utf8");
@@ -487,6 +488,10 @@ describe("#3564 independent hook adversarial proof", () => {
       hook.indexOf("export function useReorderMenus"),
     );
     const categoryWriter = hook.slice(hook.indexOf("export function useReorderMenus"));
+    const plan = JSON.parse(execFileSync(process.execPath, [
+      path.resolve(__dirname, "../../../../.github/scripts/ci-discovery/list.mjs"),
+      "--lane", "migrations", "--json",
+    ], { encoding: "utf8" })) as { entries: Array<{ path: string; profile: string }> };
     const workflow = read("../.github/workflows/supabase-migrations-and-stripe-deno.yml");
 
     expect(itemWriter).toContain('.rpc(\n          "biz_reorder_menu_items_v1"');
@@ -495,11 +500,12 @@ describe("#3564 independent hook adversarial proof", () => {
     expect(itemWriter).toContain("retry: false");
     expect(categoryWriter).toContain('.from("menus")');
     expect(categoryWriter).not.toContain("biz_reorder_menu_items_v1");
+    // [TEST-MOD-APPROVED #3643] Migrated SQL membership now comes from the effective discovery plan.
     expect(
-      workflow.match(/issue_3564_atomic_menu_item_reorder\.implementor\.pg17\.test\.sql/g),
+      plan.entries.filter((row) => row.path === "supabase/migrations/__tests__/issue_3564_atomic_menu_item_reorder.implementor.pg17.test.sql" && row.profile === "psql-pg17-post-replay"),
     ).toHaveLength(1);
     expect(
-      workflow.match(/issue_3564_atomic_menu_item_reorder\.tester\.adversarial\.pg17\.test\.sql/g),
+      plan.entries.filter((row) => row.path === "supabase/migrations/__tests__/issue_3564_atomic_menu_item_reorder.tester.adversarial.pg17.test.sql" && row.profile === "psql-pg17-post-replay"),
     ).toHaveLength(1);
   });
 });

@@ -48,6 +48,7 @@ import {
 } from "./preflight-function-secret-readiness.mjs";
 import {
   createReceiptAuthority,
+  deploySelectedFunctions,
   ReconciliationError,
   reduceRemoteFunctionMetadata,
   runGovernedBundleDeployment,
@@ -2064,6 +2065,151 @@ test("#2241 happy: normal bundle-reader deploy is executable in one process", ()
       }),
     /normal_bundle_input_set_mismatch/,
   );
+});
+
+test("#3643: normal governed deployment consumes one effective future-function policy", (t) => {
+  const fixtureRoot = mkdtempSync(resolve(tmpdir(), "issue-3643-governed-policy-"));
+  t.after(() => rmSync(fixtureRoot, { force: true, recursive: true }));
+  const writeFixture = (relativePath, source) => {
+    const target = resolve(fixtureRoot, relativePath);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, source);
+  };
+  const bootstrap = JSON.parse(readFileSync(resolve(ROOT, "supabase/function-env.contract.json"), "utf8"));
+  writeFixture("supabase/function-env.contract.json", readFileSync(resolve(ROOT, "supabase/function-env.contract.json")));
+  writeFixture("supabase/config.toml", readFileSync(resolve(ROOT, "supabase/config.toml")));
+  writeFixture("supabase/secrets.manifest.json", readFileSync(resolve(ROOT, "supabase/secrets.manifest.json")));
+  for (const functionName of Object.keys(bootstrap.functions)) {
+    writeFixture(`supabase/functions/${functionName}/index.ts`, "// isolated fixture\n");
+  }
+  mkdirSync(resolve(fixtureRoot, "supabase/functions/_shared"), { recursive: true });
+  const functionName = "issue-3643-future-governed";
+  writeFixture(`supabase/functions/${functionName}/index.ts`, "// isolated fixture\n");
+  const writePolicy = (verifyJwt) => writeFixture(
+    `supabase/functions/${functionName}/function-policy.json`,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      kind: "edge-function-policy",
+      name: functionName,
+      verify_jwt: verifyJwt,
+      gateway_reason: "Issue #3643 proves governed deployment follows effective future policy.",
+      env: {
+        required_top_level: [],
+        optional_top_level: [],
+        migration_fallback_top_level: [],
+        required_bundle_fields: { MINGLA_ALERT_RECIPIENTS_JSON: ["api_health"] },
+      },
+    }, null, 2)}\n`,
+  );
+  const nowMs = Date.parse("2026-10-15T12:00:00.000Z");
+  const prepared = {
+    bundleName: "MINGLA_ALERT_RECIPIENTS_JSON",
+    bundleObject: { api_health: "ops@example.test" },
+    fieldNames: ["api_health"],
+    parserPass: true,
+    preservationPass: true,
+    schemaVersion: null,
+    sourceOwnerAttestationPass: true,
+  };
+  const invocations = [];
+  const baseFunctionCount = Object.keys(bootstrap.functions).length;
+  const commonDependencies = (policy, remoteVerifyJwt = policy.jwtPolicy[functionName]?.verify_jwt ?? true) => ({
+    loadPolicy: () => policy,
+    audit: () => [],
+    gitState: () => ({
+      clean: true,
+      committedAtMs: nowMs - 60_000,
+      head: mergedCommit,
+      remoteMain: mergedCommit,
+    }),
+    listLiveNames: () => [],
+    assertLiveParity: () => true,
+    prepareBundle: () => prepared,
+    applyBundle: ({ prepared: candidate }) => candidate,
+    preflight: ({ contract: received }) => {
+      assert.equal(received, policy.contract);
+      return true;
+    },
+    deploy: (options) => deploySelectedFunctions({
+      ...options,
+      spawn(command, args) {
+        invocations.push({ command, args });
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    }),
+    verifyDeployed: () => true,
+    verifyRemoteJwt: (options) => verifyRemoteJwtPostures({
+      ...options,
+      spawn: () => ({
+        status: 0,
+        stdout: JSON.stringify([{ slug: functionName, verify_jwt: remoteVerifyJwt }]),
+        stderr: "",
+      }),
+    }),
+  });
+  const run = (policy, dependencies = commonDependencies(policy)) =>
+    runGovernedBundleDeployment({
+      projectRef,
+      mergedCommit,
+      selectedFunctions: [functionName],
+      bundleInputs: { MINGLA_ALERT_RECIPIENTS_JSON: { synthetic: true } },
+      now: () => nowMs,
+      dependencies,
+    });
+
+  writePolicy(false);
+  const publicPolicy = loadEffectiveFunctionPolicy({ root: fixtureRoot, sealBootstrap: false });
+  // [TEST-MOD-APPROVED #3643] This future-function proof derives its expected
+  // population from the fixture bootstrap, so later functions need no count edit.
+  assert.equal(publicPolicy.diskFunctions.length, baseFunctionCount + 1);
+  assert.equal(publicPolicy.jwtPolicy[functionName].verify_jwt, false);
+  const publicResult = run(publicPolicy);
+  assert.deepEqual(publicResult.deployed_functions, [functionName]);
+  assert.equal(invocations.at(-1).args.includes("--no-verify-jwt"), true);
+
+  assert.throws(
+    () => run(publicPolicy, commonDependencies(publicPolicy, true)),
+    /remote_jwt_posture_mismatch/,
+  );
+  const missingPolicy = structuredClone(publicPolicy);
+  delete missingPolicy.jwtPolicy[functionName];
+  assert.throws(() => run(missingPolicy, commonDependencies(missingPolicy)), /normal_function_set_invalid/);
+  const disagreeing = structuredClone(publicPolicy);
+  disagreeing.configToml = disagreeing.configToml.replace(
+    `[functions.${functionName}]\nverify_jwt = false`,
+    `[functions.${functionName}]\nverify_jwt = true`,
+  );
+  assert.throws(() => run(disagreeing, commonDependencies(disagreeing)), /jwt_posture_mismatch/);
+  assert.throws(
+    () => runGovernedBundleDeployment({
+      projectRef,
+      mergedCommit,
+      selectedFunctions: [functionName],
+      bundleInputs: {},
+      now: () => nowMs,
+      dependencies: commonDependencies(publicPolicy),
+    }),
+    /normal_bundle_input_set_mismatch/,
+  );
+  assert.throws(
+    () => runIssue2241Reconciliation({
+      projectRef,
+      mergedCommit,
+      selectedFunctions: [...ISSUE_2241_FUNCTIONS, functionName],
+      adInput: {},
+      deliveryV3Input: {},
+      deliveryV4Input: {},
+      now: () => nowMs,
+      dependencies: { loadPolicy: () => publicPolicy, audit: () => [] },
+    }),
+    /remediation_function_set_mismatch/,
+  );
+
+  writePolicy(true);
+  const privatePolicy = loadEffectiveFunctionPolicy({ root: fixtureRoot, sealBootstrap: false });
+  assert.equal(privatePolicy.jwtPolicy[functionName].verify_jwt, true);
+  run(privatePolicy);
+  assert.equal(invocations.at(-1).args.includes("--no-verify-jwt"), false);
 });
 
 test("#2241 adversarial: live-name drift causes zero normal or remediation mutations", () => {

@@ -66,13 +66,17 @@
  * churn never trips them, and far above zero so a broken sweep always does.
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { loadAndValidate } from "../ci-batch/validate-manifest-v2.mjs";
+import { BOOTSTRAP_SHA256 } from "../ci-batch/load-manifest.mjs";
 
 const root = process.cwd().endsWith("mingla-business")
   ? join(process.cwd(), "..")
   : process.cwd();
 
 const SELF_TEST = process.argv.includes("--self-test");
+const IS_MAIN = fileURLToPath(import.meta.url) === resolve(process.argv[1] ?? "");
 
 const BUSINESS_DIR = "mingla-business";
 const WORKFLOW_DIR = join(".github", "workflows");
@@ -314,8 +318,35 @@ export const run = (
   return { code: failures.length > 0 ? 1 : 0, failures };
 };
 
+function stepInvocationLines(step) {
+  const lines = [];
+  if (typeof step?.run === "string") lines.push(step.run);
+  if (step?.invocation && typeof step.invocation.command === "string" && Array.isArray(step.invocation.argv)) {
+    lines.push([step.invocation.command, ...step.invocation.argv].join(" "));
+  }
+  for (const child of step?.children ?? []) lines.push(...stepInvocationLines(child));
+  return lines;
+}
+
+export function effectiveBatchInvocationSource({
+  root: targetRoot = root,
+  manifestPath = join(targetRoot, ".github", "ci-batch", "MANIFEST.json"),
+  expectedSha = BOOTSTRAP_SHA256,
+} = {}) {
+  const { manifest, errors } = loadAndValidate(manifestPath, {
+    root: targetRoot,
+    expectedSha,
+    discover: true,
+  });
+  if (errors.length) throw new Error(`ci-batch effective registry invalid: ${errors.join(" | ")}`);
+  return {
+    name: "ci-batch/effective-registry",
+    text: manifest.suites.flatMap((suite) => suite.steps.flatMap(stepInvocationLines)).join("\n"),
+  };
+}
+
 // ───────────────────────────── self-test ──────────────────────────────────
-if (SELF_TEST) {
+if (IS_MAIN && SELF_TEST) {
   const filler = "const filler = 1;\n".repeat(4);
   const mkConfigs = () => [
     {
@@ -547,6 +578,7 @@ if (SELF_TEST) {
 }
 
 // ───────────────────────────── live scan ──────────────────────────────────
+if (IS_MAIN && !SELF_TEST) {
 const businessPath = join(root, BUSINESS_DIR);
 const configs = (existsSync(businessPath) ? readdirSync(businessPath) : [])
   .filter((f) => /^jest\..*\.cjs$/.test(f))
@@ -575,12 +607,16 @@ const workflows = (existsSync(workflowPath) ? readdirSync(workflowPath) : [])
 // This is deliberately NOT a loosening: the manifest records each suite's literal
 // command, so the same "is this config actually named in something CI runs?" test
 // applies to it verbatim. The text is handed over raw for exactly that reason.
-const batchManifestPath = join(root, ".github", "ci-batch", "MANIFEST.json");
-if (existsSync(batchManifestPath)) {
-  workflows.push({
-    name: "ci-batch/MANIFEST.json",
-    text: readFileSync(batchManifestPath, "utf8"),
-  });
+// [TEST-MOD-APPROVED #3643] The paragraph above remains byte-stable as a
+// historical provider-reference seal. Reachability now comes from the validated
+// effective registry so issue-owned local suites are included without a manifest edit.
+// [TEST-MOD-APPROVED #3643] CI-batch invocations come from the validated
+// effective registry, including issue-owned local suites, not raw bootstrap text.
+try {
+  workflows.push(effectiveBatchInvocationSource({ root }));
+} catch (error) {
+  console.error(`#1486 effective CI-batch invocation source failed: ${error.message}`);
+  process.exit(2);
 }
 
 let npmScripts = {};
@@ -604,3 +640,4 @@ console.log(
     `${workflows.length} workflows, ${Object.keys(npmScripts).length} npm scripts; ` +
     "every config invoked, every testPathIgnorePatterns hand-off resolves to a config CI runs).",
 );
+}

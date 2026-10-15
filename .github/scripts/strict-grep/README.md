@@ -3,11 +3,13 @@
 This directory holds the modular CI gate scripts that enforce Mingla
 Host invariants. Each script enforces ONE invariant.
 
-## 🔴 `MANIFEST.json` is the single source of truth (ORCH-1383)
+## 🔴 The effective registry is the execution authority (ORCH-1383, #3643)
 
-**The authoritative list of gates is [`MANIFEST.json`](./MANIFEST.json), not this
-README and not the workflow file.** Every `.mjs` in this directory (recursive,
-including `__tests__/`) has **exactly one** manifest entry with an explicit
+[`MANIFEST.json`](./MANIFEST.json) is a sealed historical bootstrap. Existing
+bootstrap rows and counters are immutable. `loadEffectiveManifest()` in
+`load-manifest.mjs` is authoritative: it combines that bootstrap with
+issue-owned local descriptors beside new scripts. Every `.mjs` in this
+directory (recursive, including `__tests__/`) has **exactly one** effective entry with an explicit
 `enforcement` state — `batch:A..E`, `external:<workflow>`, `fixture`,
 `unenforced`, or `infrastructure`. A gate file may never exist unaccounted-for
 (**I-PROPOSED-1383-GATE-MANIFEST-TOTALITY**), and that is machine-checked by
@@ -15,7 +17,7 @@ including `__tests__/`) has **exactly one** manifest entry with an explicit
 
 Per **DEC-101 D-17b-5** this remains a **registry pattern**. ORCH-1383 changed
 only *where the registry lives*: **"one script + one workflow job" became "one
-script + one manifest entry."** The registry survives; its enforcement became
+script + one local descriptor."** The registry survives; its enforcement became
 machine-checked instead of hand-maintained.
 
 **Why:** the hand-maintained table below drifted to ~32 rows against 379 real
@@ -29,12 +31,14 @@ to update is a registry that silently rots. See
 
 ```bash
 # every gate and how it is enforced
-node -e 'for (const g of require("./.github/scripts/strict-grep/MANIFEST.json").gates)
-           console.log(g.enforcement.padEnd(12), g.script)'
+node -e 'import("./.github/scripts/strict-grep/load-manifest.mjs").then(({loadEffectiveManifest}) => {
+  for (const g of loadEffectiveManifest().gates) console.log(g.enforcement.padEnd(12), g.script)
+})'
 
 # the 21 gates CI never runs (frozen + tracked, NOT fixed — see SPEC_ORCH-1383 §5.5)
-node -e 'console.log(require("./.github/scripts/strict-grep/MANIFEST.json")
-           .gates.filter(g => g.enforcement === "unenforced").map(g => g.script).join("\n"))'
+node -e 'import("./.github/scripts/strict-grep/load-manifest.mjs").then(({loadEffectiveManifest}) => {
+  console.log(loadEffectiveManifest().gates.filter(g => g.enforcement === "unenforced").map(g => g.script).join("\n"))
+})'
 
 # run a whole dependency class exactly as CI does
 node .github/scripts/strict-grep/run-batch.mjs --class A
@@ -114,8 +118,8 @@ whose `--self-test` proves the check still fires on a NUL-hidden stale string.
 
 > ⚠️ **This table is a partial historical record (~32 of 379 gates) and is NOT
 > authoritative.** It is retained because several gates cross-reference it. **Do
-> not add rows here** — add a `MANIFEST.json` entry instead. Ignore this table
-> when answering "is gate X enforced?"; ask `MANIFEST.json`.
+> not add rows here** — add a local `<script>.gate.json` descriptor instead.
+> Ignore this table when answering "is gate X enforced?"; query the effective loader.
 
 | Invariant | Script | Cycle | Cross-reference |
 |---|---|---|---|
@@ -171,16 +175,20 @@ whose `--self-test` proves the check still fires on a NUL-hidden stale string.
    - Output rich error format on violation (file + line + suggested fix + cross-reference)
    - Exit `0` (clean), `1` (violation), `2` (inconclusive — script error)
 
-2. **Register ONE `MANIFEST.json` entry** (ORCH-1383 — this replaces "add a job"):
+2. **Register ONE local `<script>.gate.json` descriptor** beside the gate. The
+   sealed bootstrap and its counters do not change:
    ```jsonc
    {
-     "script": ".github/scripts/strict-grep/iN-name.mjs",
-     "kind": "file",
-     "enforcement": "batch:A",     // A = pure node. Use B if you need an npm dep.
-     "invocation": "node",         // "node" | "node --test" | "bash" | "npm run"
-     "modes": ["self-test", "plain"],  // EXACTLY what CI should run. Order matters.
-     "selfTest": "wired",          // "wired" | "capable-unwired" | "none"
-     "jobKeys": []
+     "schemaVersion": 1,
+     "kind": "strict-grep-gate",
+     "gate": {
+       "kind": "file",
+       "enforcement": "batch:A",     // A = pure node. Use B if you need an npm dep.
+       "invocation": "node",         // "node" | "node --test" | "bash" | "npm run"
+       "modes": ["self-test", "plain"],  // EXACTLY what CI should run. Order matters.
+       "selfTest": "wired",          // "wired" | "capable-unwired" | "none"
+       "jobKeys": []
+     }
    }
    ```
    Pick the class by **what the gate needs installed**, which is the only thing
@@ -195,10 +203,10 @@ whose `--self-test` proves the check still fires on a NUL-hidden stale string.
    | **E** | `full-clone-gates` | reads **git history** (needs `fetch-depth: 0`) |
 
    **Class A runs as three shards (issue #3449), and that changes NOTHING for you.**
-   Register the row exactly as above and your gate is placed in one shard
+   Add the descriptor exactly as above and your gate is placed in one shard
    automatically — membership is COMPUTED by `run-batch.mjs`'s `classAShardPlan()`
-   from `MANIFEST.json`, the committed `class-a-shard-costs.json` and
-   `MANIFEST.json`'s `classAShardCount`. There is no `shard` field on a gate row and
+   from the effective registry, the committed `class-a-shard-costs.json` and
+   the sealed bootstrap's `classAShardCount`. There is no `shard` field on a gate row and
    there must never be one. A gate with no cost-table entry is costed at the
    committed `defaultCostMs` and still runs exactly once; an uncosted heavy gate is
    only a balance question, never a correctness one, and the run's own log prints
@@ -221,7 +229,7 @@ whose `--self-test` proves the check still fires on a NUL-hidden stale string.
    `orch-0778-web-stripe-native-import-gate`, `orch-0885-a-no-bottomnav-on-wide-desktop`,
    `orch-1271-admin-authz-foundation`, `orch-1273-offerings-read-only`. **Do not copy
    this pattern for a new gate** — do not write a gate that asserts its own CI job
-   exists. Assert against `MANIFEST.json` instead; that is where registration lives
+   exists. Assert against `loadEffectiveManifest()` instead; that is where registration lives
    now. Carve-out gates are NOT covered by `run-batch`'s `executed === expected`, so
    parity gate **P9** covers them instead: it fails the PR if a carve-out job is
    deleted, stops running its gate, or drops one of its invocation modes.
@@ -231,7 +239,7 @@ whose `--self-test` proves the check still fires on a NUL-hidden stale string.
    Changing `modes` changes **what CI asserts**.
 
    `meta-1383-manifest-parity.mjs` fails the PR if you add the script and forget
-   the entry (P1), or add an entry with no script (P2), or let the counts drift (P3).
+   the descriptor (P1), add a stale descriptor (P2), or violate a sealed bootstrap ratchet (P3).
 
 3. **Declare the invariant beside its enforcement** — add one comment in the
    first 60 lines of the gate using
@@ -256,8 +264,9 @@ whose `--self-test` proves the check still fires on a NUL-hidden stale string.
 proven to *execute* and to exit 0, but **nothing proves that exit 0 means
 anything** — they have never been shown to fail on the defect they exist to catch.
 Every historical dark-gate failure in this repo lives in that group. A gate
-without a `--self-test` is a decoration until demonstrated otherwise. The
-`selfTestWiredFloor` ratchet in `MANIFEST.json` only ever goes up.
+without a `--self-test` is a decoration until demonstrated otherwise. New
+self-tested gates declare `selfTest: "wired"` locally; the historical
+`selfTestWiredFloor` bootstrap ratchet remains sealed.
 
 ## Allowlist comment pattern
 

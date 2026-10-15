@@ -16,6 +16,12 @@ const KNOWN_LANES = new Set([
   "notification-deno",
   "deno2-discovered",
 ]);
+export const LANE_PROFILES = Object.freeze({
+  migrations: "psql-pg17-post-replay",
+  "stripe-deno": "deno-1.46-stripe",
+  "notification-deno": "deno-1.46-notification",
+  "deno2-discovered": "deno-2-unit",
+});
 
 function fail(code, detail = "") {
   throw new Error(`ci-discovery:${code}${detail ? `:${detail}` : ""}`);
@@ -46,6 +52,19 @@ function patternRegex(pattern) {
 
 function matches(pattern, candidate) {
   return pattern.includes("*") ? patternRegex(pattern).test(candidate) : pattern === candidate;
+}
+
+function exactKeys(value, expected) {
+  return value && typeof value === "object" && !Array.isArray(value) &&
+    JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
+}
+
+function concreteMigrationPath(root, value) {
+  return typeof value === "string" &&
+    /^supabase\/migrations\/[^/*?\[\]{}]+\.sql$/.test(value) &&
+    !path.isAbsolute(value) && !value.includes("\\") &&
+    !value.split("/").some((part) => !part || part === "." || part === "..") &&
+    fs.existsSync(path.join(root, value));
 }
 
 export function readSealedBaseline({ baselinePath = BASELINE_PATH, expectedSha = BASELINE_SHA256 } = {}) {
@@ -110,15 +129,24 @@ function validateLocalDeclaration({ root, descriptorPath, declaration, baseline,
   if (!Object.hasOwn(profiles, declaration.profile)) {
     fail("unknown_profile", `${descriptorPath}:${declaration.profile}`);
   }
+  if (declaration.profile !== LANE_PROFILES[declaration.lane]) {
+    fail("lane_profile_mismatch", `${descriptorPath}:${declaration.lane}:${declaration.profile}`);
+  }
   if (typeof declaration.orderKey !== "string" || !/^[a-z0-9][a-z0-9._-]{2,127}$/.test(declaration.orderKey)) {
     fail("malformed_order_key", descriptorPath);
   }
   if (declaration.lane === "migrations") {
     const database = declaration.database;
-    if (!database || !["postgres", "supabase_admin"].includes(database.user) ||
-        database.database !== "postgres" || typeof database.reset !== "string") {
+    if (!exactKeys(database, ["database", "user", "reset"]) || database.user !== "postgres" ||
+        database.database !== "postgres" || database.reset !== "isolated-per-suite") {
       fail("malformed_database_profile", descriptorPath);
     }
+    if (!exactKeys(declaration.setup, ["migration"])) fail("malformed_sql_setup", descriptorPath);
+    if (!concreteMigrationPath(root, declaration.setup.migration)) {
+      fail("invalid_sql_setup_path", `${descriptorPath}:${declaration.setup.migration ?? "<missing>"}`);
+    }
+  } else if (Object.hasOwn(declaration, "setup") || Object.hasOwn(declaration, "database")) {
+    fail("unsupported_deno_setup", descriptorPath);
   }
   return {
     kind,
@@ -173,6 +201,17 @@ export function compilePlans({
     for (const row of rows) {
       if (!row || typeof row.path !== "string" || typeof row.orderKey !== "string" ||
           !Object.hasOwn(source.profiles, row.profile)) fail("malformed_declaration", `${lane}:row`);
+      if (row.profile !== LANE_PROFILES[lane]) {
+        fail("lane_profile_mismatch", `${lane}:${row.path}:${row.profile}`);
+      }
+      if (lane === "migrations" && !row.localDescriptor) {
+        if (!exactKeys(row.database, ["database", "user", "reset"]) || row.database.database !== "postgres" ||
+            !["postgres", "supabase_admin"].includes(row.database.user) || row.database.reset !== "suite-owned" ||
+            Object.hasOwn(row, "setup")) fail("legacy_sql_contract_drift", row.path);
+      }
+      if (lane !== "migrations" && (Object.hasOwn(row, "database") || Object.hasOwn(row, "setup"))) {
+        fail("unsupported_deno_setup", row.path);
+      }
       if (orderKeys.has(row.orderKey)) fail("duplicate_order_key", `${lane}:${row.orderKey}`);
       orderKeys.set(row.orderKey, row.path);
       for (const prior of Object.values(plans).flat()) {

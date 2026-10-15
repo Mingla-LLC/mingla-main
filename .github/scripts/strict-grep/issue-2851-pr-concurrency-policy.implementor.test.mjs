@@ -1241,7 +1241,9 @@ const DENIED_FULL_SHA256 = [
   // the reversions proven in tests 5-10. Only the pinned value moves, and only
   // because the file genuinely changed. Round 2 moved it again: the deploy
   // step's `if:` now spells out its own success() precondition.
-  "662c833b4fd222a4d708d64a5ac0f7ff9f8b6b972522a671645d182619973c18",
+  // [TEST-MOD-APPROVED #3643] The deploy lane keeps the discovery trigger but
+  // delegates effective-config materialization to the wrapper on every exit.
+  "56f268fc2d6853d4489e3b7128f3aa3cea130a07e193aa2cec8d5f917e441444",
   "0ca059b1118b93b455ee539ff31c28b2fe6ad53c61c5f61faee5c5eccb9cb7f5",
   "ae053d47c1cea32c1889cc00eba1ed11b5bbec30dd726c3d078af92f3dfdf76a",
   "c6056ea23b01ad1e38e2cfe94891872dbed9dba94c9d7e5464c354f1563fc132",
@@ -1611,14 +1613,18 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   // [TEST-MOD-APPROVED #3095] IA-5: this loop is INVERTED for every row, including
   // the rows whose comments predate #3095 and still say a reversion must move or
   // invalidate the digest. Those comments were true of the whole-document digest
-  // and are kept as history. No row is removed and no row's bytes change. Each row
+  // and are kept as history. [TEST-MOD-APPROVED #3643] The 15 suite-membership
+  // rows migrated to the sealed self-registering plan are the bounded exception:
+  // #3193 x3, #1981 x3, #3285, #3288, #3313 SQL, #3284, #3314, #3197 x2,
+  // and #3426 x2. Their canonical plan/runner proof now owns membership and order.
+  // Every remaining row
   // still proves its registered line is present exactly once in its live workflow
   // (so a CI registration cannot vanish silently) and that removing it is a real
   // semantic change (the run-time document digest moves). It now also proves that
   // removing it does NOT move the pinned policy projection. A row whose reversion
   // does move the projection is policy-relevant: it belongs with the must-move
   // controls above, not here.
-  for (const [name, line] of [
+  const revertRows = [
     [liveWorkflow("issue", "1930", "checkout", "current", "truth"), '      - "supabase/functions/_shared/secretBundle.ts"\n'],
     [liveWorkflow("supabase", "secret", "budget"), '      - "supabase/function-env.contract.json"\n'],
     [liveWorkflow("supabase", "secret", "budget"), "          supabase/functions/_shared/__tests__/issue_2893_sites_live_readiness.test.ts\n"],
@@ -1727,40 +1733,16 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            src/components/people/__tests__/BrandBookExportSheet.issue1776.tester.adversarial.test.tsx \\\n"],
     [liveWorkflow("issue", "1774", "people", "page", "tests"),
       "            src/components/people/__tests__/PeoplePage.issue1776.happy.test.tsx \\\n"],
-    // [TEST-MOD-APPROVED #3193] The four lines #3193 added across two lanes:
-    // the #2117 lane's exact-filename phase-1 skip and its post-#2986 apply,
-    // and the migrations-and-Stripe Deno lane's two pg17 suite targets. Each
-    // must independently move the digest, or the re-pins above would be
-    // accepting a change nothing proves.
+    // [TEST-MOD-APPROVED #3643] #3193's three migrated SQL memberships now
+    // live only in the sealed plan; these specialized skip/apply rows remain.
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "              *20270624003193_issue_3193_public_search_live_brand_row.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "            -f supabase/migrations/20270624003193_issue_3193_public_search_live_brand_row.sql\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "              *20270627003176_issue_3176_indexnow_outbox.sql) continue ;;\n"],
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            -f supabase/migrations/__tests__/issue_3193_public_search_live_brand_row.implementor.happy.pg17.test.sql\n"],
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            -f supabase/migrations/__tests__/issue_3193_public_search_live_brand_row.tester.adversarial.pg17.test.sql\n"],
-    // [TEST-MOD-APPROVED #3193] The #3193 tester's ledger-consumer suite target.
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            -f supabase/migrations/__tests__/issue_3193_public_search_live_row_ledger_consumers.tester.adversarial.pg17.test.sql\n"],
-    // [TEST-MOD-APPROVED #1981] The two Deno suite targets this work added to
-    // the migrations-and-Stripe Deno lane. Each must independently move the
-    // digest, or the re-pin above would accept a change nothing proves.
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            supabase/functions/_shared/__tests__/issue_1981_ari_refunds_cancels.implementor.test.ts\n"],
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            supabase/functions/_shared/__tests__/issue_1981_ari_refunds_cancels.tester_adversarial.test.ts\n"],
-    // [TEST-MOD-APPROVED #1981] Paid-cancel status suite target on the same lane.
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            supabase/functions/agent-confirm-action/__tests__/issue_1981_paid_order_must_refund_status.test.ts\n"],
-    // [TEST-MOD-APPROVED #3285] The #3285 event-dates suite target on the
-    // migrations lane, and the private-event lane's exact-filename skip. Each must
-    // independently move the digest, or the re-pin above would accept a change
-    // nothing proves.
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            -f supabase/migrations/__tests__/issue_3285_event_dates_stable_identity.implementor.happy.pg17.test.sql\n"],
+    // [TEST-MOD-APPROVED #3643] #1981's three Deno memberships and #3285's SQL
+    // membership moved to the sealed plan; this specialized replay skip remains.
     [liveWorkflow("issue", "1931", "private", "event", "access"),
       "              *20270628003285_issue_3285_event_dates_stable_identity.sql) continue ;;\n"],
     // [TEST-MOD-APPROVED #3055] The two Ari certification backlog repair proof
@@ -1770,11 +1752,8 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "            -f supabase/migrations/__tests__/issue_3055_ari_cert_backlog_repair.implementor.pg17.test.sql\n"],
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "            -f supabase/migrations/__tests__/issue_3055_ari_cert_backlog_repair.adversarial.pg17.test.sql\n"],
-    // [TEST-MOD-APPROVED #3288] The #3288 additional-photos SQL suite target on
-    // the migrations lane, and the #2333 lane's re-apply of the #3288 migration.
-    // Each must independently move the digest.
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            -f supabase/migrations/__tests__/issue_3288_gallery_absent_key_preserves.test.sql\n"],
+    // [TEST-MOD-APPROVED #3643] #3288's SQL membership moved to the sealed
+    // plan; the specialized #2333 migration re-apply remains.
     [liveWorkflow("issue", "2333", "online", "event", "publish"),
       "            -f supabase/migrations/20270701003288_issue_3288_gallery_absent_key_preserves.sql\n"],
     // [TEST-MOD-APPROVED #3325] The boot-payload baseline entry #3325 added to
@@ -1782,12 +1761,8 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     // digest, or the re-pin above would accept a change nothing proves.
     [liveWorkflow("issue", "2099", "pending", "venue", "identity", "correction", "tests"),
       '      - "mingla-business/scripts/ci/bundle-baseline.json"\n'],
-    // [TEST-MOD-APPROVED #3313] The #3313 suite targets on the migrations job,
-    // the #2333 re-apply of the #3313 migration, and its exact-filename skip in
-    // the #1931 and #2117 filtered replays. Each must independently move the
-    // digest.
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            -f supabase/migrations/__tests__/issue_3313_recurring_event_occurrences.implementor.happy.pg17.test.sql\n"],
+    // [TEST-MOD-APPROVED #3643] The sealed plan owns #3313's SQL membership;
+    // #2851 retains the fixed Node command, migration re-apply, and two skips.
     [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
       "          node --test supabase/functions/ticket-checkout-create/__tests__/issue_3313_day_choice_required.test.mjs\n"],
     [liveWorkflow("issue", "2333", "online", "event", "publish"),
@@ -1796,15 +1771,8 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "              *20270702003313_issue_3313_recurring_event_occurrences.sql) continue ;;\n"],
-    // [TEST-MOD-APPROVED #3284] The #3284 refund-terms SQL suite target on the
-    // migrations lane, and the exact-filename skip in the #1931 and #2117
-    // filtered replays. Under #3095's inverted loop each row must be present
-    // exactly once, change the parsed document when removed, and leave the
-    // policy projection where it is: none adds a trigger event key, a job-level
-    // concurrency block or a job `uses:`, so PR_FAMILY_WITHOUT_CONCURRENCY_SHA256
-    // (the policy projection since #3095) is not re-pinned.
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            -f supabase/migrations/__tests__/issue_3284_offering_refund_terms.test.sql\n"],
+    // [TEST-MOD-APPROVED #3643] #3284's SQL membership moved to the sealed
+    // plan; the two specialized replay skips remain.
     [liveWorkflow("issue", "1931", "private", "event", "access"),
       "              *20270703003284_issue_3284_offering_refund_terms.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
@@ -1815,49 +1783,32 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       " src/hooks/__tests__/issue_3284_refund_policy_mapping.implementor.test.ts"],
     [liveWorkflow("issue", "1929", "hidden", "direct", "checkout", "tests"),
       '      - "app-mobile/src/hooks/__tests__/issue_3284_refund_policy_mapping*"\n'],
-    // [TEST-MOD-APPROVED #3314] The #3314 bundle hide-remaining SQL suite target on
-    // the migrations lane, and the exact-filename skip in the #1931 and #2117
-    // filtered replays. Same three proofs as #3284's rows: present exactly once,
-    // removal changes the parsed document, and the policy projection does not move
-    // (no trigger event key, job-level concurrency block or job `uses:` is added).
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            -f supabase/migrations/__tests__/issue_3314_bundle_hide_remaining.test.sql\n"],
+    // [TEST-MOD-APPROVED #3643] #3314's SQL membership moved to the sealed
+    // plan; the two specialized replay skips remain.
     [liveWorkflow("issue", "1931", "private", "event", "access"),
       "              *20270704003314_issue_3314_bundle_hide_remaining.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "              *20270704003314_issue_3314_bundle_hide_remaining.sql) continue ;;\n"],
-    // [TEST-MOD-APPROVED #3197] The two #3197 search-promotion SQL suite targets
-    // on the migrations lane, and the offering-visibility lane's exact-filename
-    // phase-1 skip plus its post-#3193 apply of the same migration. Same three
-    // proofs as #3284's rows: present exactly once, removal changes the parsed
-    // document, and the policy projection does not move. None of the four adds a
-    // trigger event key, a job-level concurrency block or a job `uses:` (the new
-    // offering-visibility step is a plain `run:` step in an existing job), so
-    // PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 is not re-pinned, per the #3095 rule
-    // above.
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            -f supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.implementor.happy.pg17.test.sql\n"],
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            -f supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.tester.adversarial.pg17.test.sql\n"],
+    // [TEST-MOD-APPROVED #3643] #3197's two SQL memberships moved to the sealed
+    // plan; the specialized offering-visibility skip and apply remain.
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "              *20270706003197_issue_3197_public_search_auto_promotion.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "            -f supabase/migrations/20270706003197_issue_3197_public_search_auto_promotion.sql\n"],
-    // [TEST-MOD-APPROVED #3426] The two #3426 brand-section SQL suite targets on
-    // the migrations lane, and the exact-filename phase-1 skip of the #3426
-    // migration in BOTH filtered replay lanes (private-event and
-    // offering-visibility). Same three proofs as the rows above. None adds a
+    // [TEST-MOD-APPROVED #3643] The self-registering SQL plan owns the two
+    // #3426 suite targets now; only the exact-filename phase-1 skips remain in
+    // the two specialized filtered replay lanes. Neither adds a
     // trigger event key, a job-level concurrency block or a job `uses:` — every
     // line lands inside an existing `run:` script — so
     // PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 is not re-pinned, per the #3095 rule.
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            -f supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.happy.pg17.test.sql\n"],
-    [liveWorkflow("supabase", "migrations", "and", "stripe", "deno"),
-      "            -f supabase/migrations/__tests__/issue_3426_brand_offering_sections.implementor.adversarial.pg17.test.sql\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "              *20270707003426_issue_3426_brand_offering_sections.sql) continue ;;\n"],
     [liveWorkflow("issue", "1931", "private", "event", "access"),
       "              *20270707003426_issue_3426_brand_offering_sections.sql) continue ;;\n"],
+    // [TEST-MOD-APPROVED #3643] A loader-only policy change must wake the
+    // production secret-budget audit; removing this path is a semantic revert.
+    [liveWorkflow("supabase", "secret", "budget"),
+      '      - ".github/scripts/ci-discovery/function-policy.mjs"\n'],
     // [TEST-MOD-APPROVED #1780] #1780 extends the existing roster/invite lane
     // rather than adding a forbidden issue-specific workflow. Each executable
     // registration is independently revert-sensitive; none changes a trigger
@@ -1876,7 +1827,14 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     // [TEST-MOD-APPROVED #3682] Wave 2.8b Followers invite PG17 registration.
     [liveWorkflow("issue", "873", "guest", "status", "roster", "tests"),
       "          -f supabase/migrations/__tests__/issue_3682_wizard_invite_followers.happy.pg17.test.sql\n"],
-  ]) {
+  ];
+  assert.equal(revertRows.length, 67, "revert table must contain exactly 67 specialized semantic rows");
+  assert.equal(
+    revertRows.filter(([name]) => name === liveWorkflow("supabase", "migrations", "and", "stripe", "deno")).length,
+    3,
+    "only the two #3055 SQL commands and fixed #3313 Node command remain workflow-owned",
+  );
+  for (const [name, line] of revertRows) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
     const revertedDigests = canonicalDigests(reverted);
@@ -1894,15 +1852,13 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   // #3176's combined-tree pin, and every older receipt starts from that
   // pre-#3325 tree so their literals stay exactly as their owners measured them.
   //
-  // [TEST-MOD-APPROVED #3313] Removing #3313's four whole workflow blocks must
-  // reproduce #3325's pin exactly. Every older receipt below now starts from
-  // that tree, so each owner's delta stays independently measured.
+  // [TEST-MOD-APPROVED #3643] The historical #3313 receipt covered four blocks;
+  // the sealed effective plan now owns its SQL suite. This test continues to own
+  // the fixed Node invocation, migration re-apply, and two replay skips.
   //
-  // [TEST-MOD-APPROVED #3176] Current main and this branch both change the
-  // non-concurrency document. Reverting #3288's two whole workflow blocks must
-  // recover the prior #3176 authority, while reverting both owners must recover
-  // the shared pre-change authority. These exact receipts prevent a merge-time
-  // re-pin from hiding either side of the combined tree.
+  // [TEST-MOD-APPROVED #3643] The historical #3288 receipt covered its SQL
+  // membership plus migration re-apply. The sealed plan now owns membership;
+  // this test continues to own the specialized re-apply.
   //
   // [TEST-MOD-APPROVED #3095] RECEIPT CHAIN RETIRED (IA-6 REVISED ruling on
   // #3095). The four notes above are kept as history; the code they describe
@@ -1920,11 +1876,10 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
   //     content-sensitive: a comment-only edit inside the #3176 block, a
   //     #3288 block or a #3313 block broke its exact-block removal and turned
   //     this test red.
-  // Nothing they protected is lost. Each executable line those blocks carried
-  // is a row in the revert-sensitivity table above, which fails when the line
-  // is missing or duplicated: #3176's IndexNow skip, #3288's gallery suite
-  // target and replay re-apply, #3325's baseline paths entry, and #3313's SQL
-  // suite target, edge node suite, re-apply and two replay skips. A later
+  // [TEST-MOD-APPROVED #3643] Nothing they protected is lost. Migrated SQL/Deno
+  // membership is sealed by the canonical plan. This table retains #3176's
+  // IndexNow skip, #3288's replay re-apply, #3325's baseline path, and #3313's
+  // fixed Node invocation, migration re-apply, and two replay skips. A later
   // receipt of the same shape is retired the same way: keep its note and its
   // rows, drop its literal and its restoration trees, and add its name here.
 
@@ -1993,6 +1948,24 @@ test("the seven non-PR workflows remain outside the PR cancellation mandate", ()
   const byteDrift = { ...sources };
   byteDrift[DENIED[0]] = `${byteDrift[DENIED[0]]}\n`;
   assert.throws(() => assertDeniedAuthorities(byteDrift), /denied workflow bytes changed/);
+});
+
+test("the deploy lane's discovery trigger and wrapper-owned materialization are independent semantic units", () => {
+  const source = readWorkflowSources()[liveWorkflow("deploy", "functions")];
+  const discoveryTrigger = "      - '.github/scripts/ci-discovery/**'\n";
+  const materializationStep =
+    "      - name: Materialize the disk-derived function gateway policy\n" +
+    "        run: node .github/scripts/ci-discovery/function-policy.mjs --write-config supabase/config.toml\n\n";
+  const deployStep = "      - name: Deploy the selected edge functions\n";
+  assert.equal(sha256(source), "56f268fc2d6853d4489e3b7128f3aa3cea130a07e193aa2cec8d5f917e441444");
+
+  const u2Restored = source.replace(deployStep, `${materializationStep}${deployStep}`);
+  assert.notEqual(u2Restored, source);
+  assert.equal(sha256(u2Restored), "7427dc67fa2fe976748b6db51451398c3400575d669d35c720b455a54499c1ba");
+
+  const u1Removed = removeExactLine(source, discoveryTrigger, "deploy discovery trigger");
+  assert.equal(sha256(u1Removed), "662c833b4fd222a4d708d64a5ac0f7ff9f8b6b972522a671645d182619973c18");
+  assert.equal(sha256(u2Restored.replace(discoveryTrigger, "")), "11ac47b88da99ccee009de2ce297d9b3cfc89ada2bb99bbb13aa431b00a6484e");
 });
 
 test("missing concurrency reversion turns the real repository scan red", () => {

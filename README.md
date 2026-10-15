@@ -153,7 +153,7 @@ Supabase local function serving and migrations are handled from `supabase/`:
 
 ```bash
 cd supabase
-supabase functions serve
+../scripts/serve-supabase-functions.sh --function <name>
 supabase db push
 ```
 

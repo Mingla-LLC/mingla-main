@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { listLane, readSealedBaseline } from "./load-plan.mjs";
+import { compilePlans } from "./load-plan.mjs";
 
 function parseArgs(argv) {
   const laneIndex = argv.indexOf("--lane");
@@ -39,11 +40,74 @@ function selectSegment(entries, { through = null, after = null } = {}) {
   return through ? entries.slice(0, matches[0].index + 1) : entries.slice(matches[0].index + 1);
 }
 
-export function runLane(lane, { executeCommand = execute, wait = sleep, through = null, after = null } = {}) {
-  const baseline = readSealedBaseline();
+function sqlArgs(entry, database) {
+  return [
+    "-h", "localhost",
+    "-U", entry.database.user,
+    "-d", database,
+    "-v", "ON_ERROR_STOP=1",
+    "-f", entry.path,
+  ];
+}
+
+function uniqueDatabaseName() {
+  return `ci_suite_${process.pid}_${randomUUID().replaceAll("-", "").slice(0, 20)}`;
+}
+
+function runIsolatedSql(entry, profile, executeCommand, databaseName) {
+  const database = databaseName(entry);
+  if (!/^[a-z][a-z0-9_]{2,62}$/.test(database)) {
+    throw new Error(`ci-discovery:run:unsafe_database_name:${database}`);
+  }
+  const admin = ["-h", "localhost", "-U", entry.database.user, "-d", "postgres", "-v", "ON_ERROR_STOP=1"];
+  let primaryStatus = 0;
+  let primaryError = null;
+  let cleanupStatus = 0;
+  let cleanupError = null;
+  try {
+    primaryStatus = executeCommand(profile.command, [
+      ...admin,
+      "-c", `CREATE DATABASE "${database}" TEMPLATE postgres;`,
+    ]);
+    if (primaryStatus === 0) {
+      primaryStatus = executeCommand(profile.command, [
+        "-h", "localhost", "-U", entry.database.user, "-d", database,
+        "-v", "ON_ERROR_STOP=1", "-f", entry.setup.migration,
+      ]);
+    }
+    if (primaryStatus === 0) primaryStatus = executeCommand(profile.command, sqlArgs(entry, database));
+  } catch (error) {
+    primaryError = error;
+  } finally {
+    try {
+      cleanupStatus = executeCommand(profile.command, [
+        ...admin,
+        "-c", `DROP DATABASE IF EXISTS "${database}" WITH (FORCE);`,
+      ]);
+    } catch (error) {
+      cleanupError = error;
+    }
+  }
+  if (primaryError) throw primaryError;
+  if (primaryStatus !== 0) return primaryStatus;
+  if (cleanupError) throw cleanupError;
+  return cleanupStatus;
+}
+
+export function runLane(lane, {
+  executeCommand = execute,
+  wait = sleep,
+  through = null,
+  after = null,
+  planOptions = {},
+  databaseName = uniqueDatabaseName,
+} = {}) {
+  const compiled = compilePlans(planOptions);
+  const baseline = compiled.baseline;
   if ((through || after) && lane !== "migrations") throw new Error(`ci-discovery:run:segment_forbidden:${lane}`);
   if (through && after) throw new Error("ci-discovery:run:conflicting_segment");
-  const entries = selectSegment(listLane(lane), { through, after });
+  if (!Object.hasOwn(compiled.plans, lane)) throw new Error(`ci-discovery:run:unknown_lane:${lane}`);
+  const entries = selectSegment(compiled.plans[lane], { through, after });
   console.log(`Resolved ${lane} plan (${entries.length})`);
   for (const entry of entries) console.log(`${entry.orderKey}\t${entry.profile}\t${entry.path}`);
   if (entries.length === 0) return 0;
@@ -51,13 +115,9 @@ export function runLane(lane, { executeCommand = execute, wait = sleep, through 
   if (lane === "migrations") {
     for (const entry of entries) {
       const profile = baseline.profiles[entry.profile];
-      const status = executeCommand(profile.command, [
-        "-h", "localhost",
-        "-U", entry.database.user,
-        "-d", entry.database.database,
-        "-v", "ON_ERROR_STOP=1",
-        "-f", entry.path,
-      ]);
+      const status = entry.database.reset === "isolated-per-suite"
+        ? runIsolatedSql(entry, profile, executeCommand, databaseName)
+        : executeCommand(profile.command, sqlArgs(entry, entry.database.database));
       if (status !== 0) return status;
     }
     return 0;

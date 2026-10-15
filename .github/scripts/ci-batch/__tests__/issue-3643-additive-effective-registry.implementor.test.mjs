@@ -16,6 +16,11 @@ import {
 } from "../load-manifest.mjs";
 import { loadAndValidate, validateRegistry } from "../validate-manifest-v2.mjs";
 import { expectedSuites, selectSuites } from "../run-suite-batch.mjs";
+import { governanceVerdict } from "../../strict-grep/issue-2148-ci-registry-v2.mjs";
+import {
+  effectiveBatchInvocationSource,
+  run as runJestReachability,
+} from "../../strict-grep/issue-1486-jest-config-invoked-by-workflow.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../../../..");
@@ -126,7 +131,7 @@ function addDetachedWorktree(label) {
   return root;
 }
 
-test("a synthetic 86th suite passes the full production loader, validator, runner and selector path", () => {
+test("a synthetic additive suite passes the full production loader, validator, runner and selector path", () => {
   const root = addDetachedWorktree("full-validator");
   const declaration = descriptor();
   write(root, declaration.value.suite.expectedFiles[0], [
@@ -153,8 +158,14 @@ test("a synthetic 86th suite passes the full production loader, validator, runne
   assert.equal(views.rawBootstrap.commandCapabilities.commands.length, 241);
   assert.equal(views.patchedBootstrap.commandCapabilities.commands.length, 241);
   assert.equal(views.patchedBootstrap.legacyOrigins.length, 201);
-  assert.equal(manifest.suites.length, 86);
-  assert.equal(manifest.commandCapabilities.commands.length, 242);
+  // [TEST-MOD-APPROVED #3643] Effective totals now derive from the sealed
+  // projection plus this exact local descriptor, so future descriptors do not
+  // require another count edit.
+  assert.equal(manifest.suites.length, views.patchedBootstrap.suites.length + 1);
+  assert.equal(
+    manifest.commandCapabilities.commands.length,
+    views.patchedBootstrap.commandCapabilities.commands.length + 1,
+  );
   assert.equal(manifest.suites.at(-1).id, LOCAL_ID);
   assert.equal(manifest.commandCapabilities.commands.at(-1).id, LOCAL_COMMAND_ID);
   assert.equal(manifest.suites.filter((suite) => suite.id === LOCAL_ID).length, 1);
@@ -188,6 +199,75 @@ test("a synthetic 86th suite passes the full production loader, validator, runne
   claimingOrigin.replacementSuite = LOCAL_ID;
   assert.ok(validateRegistry(manifest, { root }).some((error) => /zero legacy claims|patched bootstrap exactly/.test(error)));
   claimingOrigin.replacementSuite = originalClaim;
+});
+
+test("generic governance and Jest reachability consume the synthetic additive suite exactly once", () => {
+  const root = addDetachedWorktree("generic-consumers");
+  const configPath = "mingla-business/jest.issue9998.local.cjs";
+  const expectedFile = "mingla-business/issue9998_additive_registry.test.mjs";
+  const declaration = descriptor({
+    expectedFile,
+    descriptorPath: "mingla-business/issue-9998-additive-registry.ci-batch.json",
+  });
+  const run = `npx jest --config ${configPath} --listTests && node --test ${expectedFile}`;
+  declaration.value.suite.originPaths = [configPath, expectedFile];
+  declaration.value.suite.expectedFiles = [configPath, expectedFile].sort();
+  declaration.value.suite.steps[0].run = run;
+  declaration.value.suite.steps[0].invocation.argv[1] = run;
+  write(root, configPath, 'module.exports = { testMatch: ["<rootDir>/issue9998_additive_registry.test.mjs"] };\n');
+  write(root, expectedFile, "// synthetic expected file\n");
+  writeJson(root, declaration.descriptorPath, declaration.value);
+  execFileSync("git", ["add", configPath, expectedFile, declaration.descriptorPath], { cwd: root });
+
+  const manifestPath = path.join(root, path.relative(ROOT, BOOTSTRAP_PATH));
+  const governed = governanceVerdict({ root, manifestPath });
+  assert.deepEqual(governed.errors, []);
+  const governedViews = trustedRegistryViews(governed.manifest);
+  assert.ok(governedViews);
+  // [TEST-MOD-APPROVED #3643] The generic-consumer assertion follows the same
+  // sealed-projection-plus-fixture authority instead of a mutable effective total.
+  assert.equal(governed.manifest.suites.length, governedViews.patchedBootstrap.suites.length + 1);
+  assert.equal(
+    governed.manifest.commandCapabilities.commands.length,
+    governedViews.patchedBootstrap.commandCapabilities.commands.length + 1,
+  );
+  assert.equal(governed.manifest.suites.filter((suite) => suite.id === LOCAL_ID).length, 1);
+
+  const effectiveSource = effectiveBatchInvocationSource({ root, manifestPath });
+  assert.equal(effectiveSource.text.split(configPath).length - 1, 2);
+  const configs = [
+    { name: "jest.config.cjs", code: "module.exports = {};" },
+    { name: path.basename(configPath), code: 'module.exports = { testMatch: ["<rootDir>/issue9998_additive_registry.test.mjs"] };' },
+  ];
+  const effectiveVerdict = runJestReachability({
+    configs,
+    workflows: [{ name: "default", text: "npm test" }, effectiveSource],
+    npmScripts: {},
+  }, { minConfigs: 2, minWorkflows: 1 });
+  assert.deepEqual(effectiveVerdict, { code: 0, failures: [] });
+
+  const rawSource = {
+    name: "raw-bootstrap",
+    text: fs.readFileSync(manifestPath, "utf8"),
+  };
+  const rawVerdict = runJestReachability({
+    configs,
+    workflows: [{ name: "default", text: "npm test" }, rawSource],
+    npmScripts: {},
+  }, { minConfigs: 2, minWorkflows: 1 });
+  assert.equal(rawVerdict.code, 1);
+  assert.ok(rawVerdict.failures.some((failure) => failure.includes(path.basename(configPath))));
+
+  fs.rmSync(path.join(root, declaration.descriptorPath));
+  execFileSync("git", ["add", "-u", declaration.descriptorPath], { cwd: root });
+  const withoutDescriptor = effectiveBatchInvocationSource({ root, manifestPath });
+  const missingVerdict = runJestReachability({
+    configs,
+    workflows: [{ name: "default", text: "npm test" }, withoutDescriptor],
+    npmScripts: {},
+  }, { minConfigs: 2, minWorkflows: 1 });
+  assert.equal(missingVerdict.code, 1);
+  assert.ok(missingVerdict.failures.some((failure) => failure.includes(path.basename(configPath))));
 });
 
 test("local descriptor declarations fail closed for malformed ownership, execution and routing shapes", async (t) => {
