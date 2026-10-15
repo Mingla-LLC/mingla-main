@@ -4,6 +4,7 @@
 // privacy boundary, the person/agent boundary, request-key binding, and a
 // concurrent double click against the real HTTP handler and replayed database.
 // Run only against a disposable database with the full migration chain.
+// MINGLA-INVARIANT: I-PROPOSED-3802-ONLY-A-PERSON-MARKS-A-DRAFT-SENT | issue #3802 | Only the signed-in owner acting as a person may mark a waiting message sent.
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { startSuite, type Suite } from "./_harness.issue3802.ts";

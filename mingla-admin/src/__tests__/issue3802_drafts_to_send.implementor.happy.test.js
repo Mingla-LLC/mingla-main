@@ -3,6 +3,7 @@
 // Happy path and fail-on-revert proof for the private draft lifecycle, the
 // copy-before-record boundary, and the admin queue's cross-surface wiring.
 // Hermetic: no network and no browser.
+// MINGLA-INVARIANT: I-PROPOSED-3802-NOTHING-IN-TEAM-ADMIN-SENDS-A-MESSAGE | issue #3802 | Team Admin and its agent connector only create drafts; they never send messages.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
