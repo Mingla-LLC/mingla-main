@@ -152,6 +152,10 @@ import { useClearPaystackProvider } from "../../hooks/useBrandPaystack";
 /* eslint-enable import/no-duplicates */
 import { describePayoutCountrySwitchFailure } from "../../utils/payoutCountrySwitchCopy";
 import { buildBankSetupWebReturnUrl } from "../../utils/bankSetupReturn";
+import {
+  buildAccountManagementWebReturnUrl,
+  isSafeAccountManagementTargetUrl,
+} from "../../utils/accountManagementOpen";
 import { refreshBrandPaymentState } from "../../hooks/brandPaymentStateRefresh";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
@@ -885,6 +889,31 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     if (brand === null || accountSession.isPending) return;
     setAddBankFailed(false);
     try {
+      // #3645 — HTTPS Host web: same-tab assign + return URL (popup-safe).
+      // Native / non-HTTPS keep openAuthSessionAsync + deep link.
+      const webReturnUrl =
+        typeof window !== "undefined"
+          ? buildAccountManagementWebReturnUrl(window.location.origin, brand.id)
+          : null;
+      if (webReturnUrl !== null) {
+        const result = await accountSession.mutateAsync({
+          brandId: brand.id,
+          surface: "account_management",
+          returnUrl: webReturnUrl,
+        });
+        if (
+          !isSafeAccountManagementTargetUrl(
+            result.targetUrl,
+            window.location.origin,
+          )
+        ) {
+          throw new Error(
+            "We got an unexpected bank setup link. Please try again.",
+          );
+        }
+        window.location.assign(result.targetUrl);
+        return;
+      }
       const result = await accountSession.mutateAsync({
         brandId: brand.id,
         surface: "account_management",

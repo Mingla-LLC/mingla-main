@@ -25,6 +25,11 @@ interface RawResponse {
 export async function fetchBrandStripeAccountSession(
   brandId: string,
   surface: BrandStripeAccountSessionSurface,
+  /**
+   * #3645 — Host web passes an HTTPS Payments return URL so Done can land
+   * back in the same tab. Native omits this; the edge defaults to the deep link.
+   */
+  returnUrl?: string,
 ): Promise<BrandStripeAccountSessionResult> {
   const { data, error } = await supabase.functions.invoke<RawResponse>(
     "brand-stripe-account-session",
@@ -32,6 +37,9 @@ export async function fetchBrandStripeAccountSession(
       body: {
         brand_id: brandId,
         surface,
+        ...(typeof returnUrl === "string" && returnUrl.length > 0
+          ? { return_url: returnUrl }
+          : {}),
         ...businessWebOriginOverrideBody(),
       },
     },

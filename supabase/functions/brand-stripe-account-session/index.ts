@@ -2,10 +2,15 @@
  * brand-stripe-account-session — mints embedded Connect Account Sessions.
  *
  * POST body:
- *   { brand_id: string, surface: "account_management" | "onboarding" }
+ *   {
+ *     brand_id: string,
+ *     surface: "account_management" | "onboarding",
+ *     return_url?: string  // #3645 — HTTPS Host-web origin or mingla-business://
+ *   }
  *
  * The function never creates connected accounts. It only looks up the active
  * stripe_connect_accounts row and returns a short-lived Mingla-hosted target URL.
+ * Default return_to stays the native deep link when return_url is omitted.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -47,6 +52,18 @@ interface RequestBody {
   brandId?: string;
   surface?: AccountSessionSurface;
   business_web_origin_override?: string;
+  /** Optional. Native deep link or same-origin HTTPS Host web URL. */
+  return_url?: string;
+  returnUrl?: string;
+}
+
+const NATIVE_RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
+
+function isValidReturnUrl(s: unknown, businessWebOrigin: string): s is string {
+  if (typeof s !== "string" || s.length === 0) return false;
+  if (s.startsWith("mingla-business://")) return true;
+  if (s.startsWith(`${businessWebOrigin}/`)) return true;
+  return false;
 }
 
 interface StripeConnectAccountRow {
@@ -164,6 +181,23 @@ serve(async (req) => {
     }, 400);
   }
 
+  const requestedReturn =
+    typeof body.return_url === "string"
+      ? body.return_url
+      : typeof body.returnUrl === "string"
+      ? body.returnUrl
+      : undefined;
+  let returnTo: string = NATIVE_RETURN_DEEP_LINK;
+  if (requestedReturn !== undefined) {
+    if (!isValidReturnUrl(requestedReturn, businessWebOrigin)) {
+      return jsonResponse({
+        error: "validation_error",
+        detail: "return_url_invalid_scheme",
+      }, 400);
+    }
+    returnTo = requestedReturn;
+  }
+
   const supabase = serviceRoleClient();
   const forbidden = await requirePaymentsManager(supabase, brandId, userId);
   if (forbidden) return forbidden;
@@ -212,7 +246,7 @@ serve(async (req) => {
     clientSecret: accountSession.client_secret,
     brandId,
     surface: body.surface,
-    returnTo: "mingla-business://onboarding-complete",
+    returnTo,
     businessWebOrigin,
   });
 

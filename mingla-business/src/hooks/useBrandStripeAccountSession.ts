@@ -13,6 +13,8 @@ import {
 export interface UseBrandStripeAccountSessionInput {
   brandId: string;
   surface: BrandStripeAccountSessionSurface;
+  /** #3645 — HTTPS Host-web return; omit on native. */
+  returnUrl?: string;
 }
 
 export const useBrandStripeAccountSession = (): UseMutationResult<
@@ -25,8 +27,8 @@ export const useBrandStripeAccountSession = (): UseMutationResult<
     Error,
     UseBrandStripeAccountSessionInput
   >({
-    mutationFn: async ({ brandId, surface }) =>
-      fetchBrandStripeAccountSession(brandId, surface),
+    mutationFn: async ({ brandId, surface, returnUrl }) =>
+      fetchBrandStripeAccountSession(brandId, surface, returnUrl),
     onError: (error, { brandId, surface }) => {
       console.error("[useBrandStripeAccountSession] failed", {
         message: error.message,

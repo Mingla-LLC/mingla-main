@@ -117,8 +117,13 @@ import {
   BRAND_PAYMENTS_DENIED_TITLE,
 } from "../../utils/brandPaymentsPermission";
 import { majorFromMinor } from "../../utils/currency";
+import {
+  ACCOUNT_MANAGEMENT_NATIVE_RETURN,
+  buildAccountManagementWebReturnUrl,
+  isSafeAccountManagementTargetUrl,
+} from "../../utils/accountManagementOpen";
 
-const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
+const RETURN_DEEP_LINK = ACCOUNT_MANAGEMENT_NATIVE_RETURN;
 
 // Status-banner config table. ORCH-0764C requires active to render a visible
 // success confirmation; only truly unsupported statuses would be suppressed.
@@ -280,6 +285,32 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
       return;
     }
     if (brand?.id === undefined || accountSession.isPending) return;
+    // #3645 — Real Host web is HTTPS: same-tab assign with HTTPS return_to
+    // (openAuthSession after an await is popup-blocked). Native and non-HTTPS
+    // environments keep the deep-link auth session.
+    const webReturnUrl =
+      typeof window !== "undefined"
+        ? buildAccountManagementWebReturnUrl(window.location.origin, brand.id)
+        : null;
+    if (webReturnUrl !== null) {
+      const result = await accountSession.mutateAsync({
+        brandId: brand.id,
+        surface: "account_management",
+        returnUrl: webReturnUrl,
+      });
+      if (
+        !isSafeAccountManagementTargetUrl(
+          result.targetUrl,
+          window.location.origin,
+        )
+      ) {
+        throw new Error(
+          "We got an unexpected bank setup link. Please try again.",
+        );
+      }
+      window.location.assign(result.targetUrl);
+      return;
+    }
     const result = await accountSession.mutateAsync({
       brandId: brand.id,
       surface: "account_management",

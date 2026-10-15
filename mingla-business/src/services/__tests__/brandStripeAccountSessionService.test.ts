@@ -51,3 +51,20 @@ it("passes preview business origin override to account-session edge function", a
     },
   });
 });
+
+it("#3645 forwards HTTPS return_url when Host web asks for one", async () => {
+  await fetchBrandStripeAccountSession(
+    "66666666-6666-4666-8666-666666666666",
+    "account_management",
+    "https://host.usemingla.com/brand/66666666-6666-4666-8666-666666666666/payments",
+  );
+
+  expect(invokeMock).toHaveBeenCalledWith("brand-stripe-account-session", {
+    body: {
+      brand_id: "66666666-6666-4666-8666-666666666666",
+      surface: "account_management",
+      return_url:
+        "https://host.usemingla.com/brand/66666666-6666-4666-8666-666666666666/payments",
+    },
+  });
+});
