@@ -104,6 +104,69 @@ function declareSuite(root, suitePath, declaration) {
   });
 }
 
+function workflowEventPaths(source, eventName) {
+  const lines = source.split("\n");
+  const eventStart = lines.findIndex((line) => line === `  ${eventName}:`);
+  assert.notEqual(eventStart, -1, `workflow must declare the ${eventName} event`);
+  const eventEnd = lines.findIndex((line, index) => index > eventStart && /^  [a-z_]+:/.test(line));
+  const boundedEnd = eventEnd === -1 ? lines.length : eventEnd;
+  const pathsStart = lines.findIndex((line, index) =>
+    index > eventStart && index < boundedEnd && line === "    paths:"
+  );
+  assert.notEqual(pathsStart, -1, `${eventName} must declare a paths filter`);
+  const paths = [];
+  for (let index = pathsStart + 1; index < boundedEnd; index += 1) {
+    const line = lines[index];
+    const match = /^      - "([^"]+)"$/.exec(line);
+    if (match) paths.push(match[1]);
+    else if (line.trim() && !line.trimStart().startsWith("#")) break;
+  }
+  return paths;
+}
+
+function githubPathPatternRegex(pattern) {
+  let source = "^";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const character = pattern[index];
+    if (character === "*" && pattern[index + 1] === "*") {
+      if (pattern[index + 2] === "/") {
+        source += "(?:.*/)?";
+        index += 2;
+      } else {
+        source += ".*";
+        index += 1;
+      }
+    } else if (character === "*") {
+      source += "[^/]*";
+    } else if (character === "?") {
+      source += "[^/]";
+    } else {
+      source += character.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+    }
+  }
+  return new RegExp(`${source}$`);
+}
+
+function assertDiscoveryTriggerCoverage(source) {
+  const representatives = {
+    migration_sql: "supabase/migrations/__tests__/future-owner.test.sql",
+    supabase_deno: "supabase/functions/future-owner/__tests__/future-owner.test.ts",
+    package_deno: "packages/future-owner/__tests__/future-owner.test.ts",
+    business_deno: "mingla-business/future-owner/__tests__/future-owner.deno.test.ts",
+    suite_descriptor: "future-owner/deep/future-owner.test.ts.ci-suite.json",
+    exclusion_descriptor: "future-owner/deep/future-owner.test.ts.ci-exclude.json",
+  };
+  for (const eventName of ["push", "pull_request"]) {
+    const patterns = workflowEventPaths(source, eventName);
+    for (const [candidateClass, representative] of Object.entries(representatives)) {
+      assert.ok(
+        patterns.some((pattern) => githubPathPatternRegex(pattern).test(representative)),
+        `${eventName}_paths_do_not_cover:${candidateClass}:${representative}`,
+      );
+    }
+  }
+}
+
 test("the immutable post-#3875 plan is sealed and preserves all three exact ordered sets", () => {
   const baseline = readSealedBaseline();
   assert.equal(baseline.sourceSha, "2653c9618b85a3a9e3a3b15adf155d25166c8be8");
@@ -166,6 +229,11 @@ test("the workflow retires only the three authorized lists and seals every fixed
       assert.throws(() => verifyWorkflowLiteralPolicy({ root }), /(?:fixed_(?:census|projection_mismatch)|runner_call_census)/);
     });
   }
+});
+
+test("both workflow event filters cover every discovery candidate and declaration class", () => {
+  const { source } = findWorkflowByDisplayName();
+  assertDiscoveryTriggerCoverage(source);
 });
 
 test("#3859's four PostgreSQL and ten Deno 2 suites are admitted locally in the recorded order", () => {

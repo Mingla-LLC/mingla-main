@@ -279,6 +279,14 @@ on:
       # path filters so a handler/test-only edit still runs the Stripe Deno lane
       # (registering the file in DENO_TEST_FILES alone is not enough).
       - "supabase/functions/brand-mingla-tos-accept/**"
+      # #3643 — local suite declarations must trigger this workflow even when a
+      # future suite lives outside every function/package directory named above.
+      # The migrations candidate root is already covered by `supabase/migrations/**`.
+      - "supabase/**/*.test.ts"
+      - "packages/**/*.test.ts"
+      - "mingla-business/**/*.deno.test.ts"
+      - "**/*.ci-suite.json"
+      - "**/*.ci-exclude.json"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
       - ".github/scripts/ci-discovery/**"
   pull_request:
@@ -514,6 +522,14 @@ on:
       - "supabase/functions/team-agent/**"
       # #3645 PR11c — Organiser Terms accept edge + Deno suite (both filters).
       - "supabase/functions/brand-mingla-tos-accept/**"
+      # #3643 — mirror the push-side declaration convention so a valid suite in
+      # a new directory cannot be green on main without ever running on its PR.
+      # The migrations candidate root is already covered by `supabase/migrations/**`.
+      - "supabase/**/*.test.ts"
+      - "packages/**/*.test.ts"
+      - "mingla-business/**/*.deno.test.ts"
+      - "**/*.ci-suite.json"
+      - "**/*.ci-exclude.json"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
       - ".github/scripts/ci-discovery/**"
 
