@@ -161,9 +161,12 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
   const errorsRef = useRef(errors);
   errorsRef.current = errors;
   // #3645 — Continue was pressed on an invalid step. Go to the first invalid
-  // field in screen order: a text field takes focus (which also scrolls it
-  // into view on web and native); a chip section is scrolled to and its
-  // message is read out.
+  // field in screen order: a text field takes focus; a chip section is
+  // scrolled to and its message is read out. Description sits at the bottom
+  // of the step — on web/native a bare focus() while it is off-screen often
+  // scrolls the caption into view without leaving the caret in the box
+  // (Seth live after #3848). Scroll to its layout Y first, then focus on the
+  // next frame so the caret sticks.
   useEffect(() => {
     if (focusFirstErrorSignal <= 0) return;
     const first = STEP_1_FIELD_ORDER.find(
@@ -175,7 +178,20 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
       return;
     }
     if (first === "description") {
-      descriptionRef.current?.focus();
+      const y = sectionYRef.current.description;
+      if (typeof y === "number") {
+        scrollToStepOffset?.(y);
+      }
+      const focusDescription = (): void => {
+        descriptionRef.current?.focus();
+      };
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => {
+          setTimeout(focusDescription, 0);
+        });
+      } else {
+        setTimeout(focusDescription, 0);
+      }
       return;
     }
     scrollToStepOffset?.(sectionYRef.current[first] ?? 0);
@@ -328,7 +344,7 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
       </View>
 
       {/* Description */}
-      <View style={styles.field}>
+      <View style={styles.field} onLayout={rememberSectionY("description")}>
         <Text style={styles.fieldLabel}>Description</Text>
         <View
           style={[

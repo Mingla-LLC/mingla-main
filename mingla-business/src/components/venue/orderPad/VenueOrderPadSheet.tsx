@@ -49,7 +49,7 @@ import {
   text as textTokens,
   typography,
 } from "../../../constants/designSystem";
-import { formatCurrency } from "../../../utils/currency";
+import { currencyCodeOrNull, formatCurrency } from "../../../utils/currency";
 import {
   useCreateStaffOrder,
   useOrderPadMenu,
@@ -431,7 +431,12 @@ export function VenueOrderPadSheet({
   }, [sentSessionId, openTab, handleClose]);
 
   const totalCents = preview.data?.totalCents ?? null;
-  const previewCurrency = preview.data?.currency ?? lines[0]?.currency ?? "GBP";
+  // #3645 — never invent £ when the preview and cart lines have no currency
+  // (a brand that has not chosen a payout country). formatCurrency falls back
+  // to GBP via normalizeCurrency; hide the amount instead.
+  const previewCurrency =
+    currencyCodeOrNull(preview.data?.currency) ??
+    currencyCodeOrNull(lines[0]?.currency);
 
   return (
     <Sheet
@@ -860,11 +865,13 @@ export function VenueOrderPadSheet({
                       {preview.data.serviceChargeLabel}
                     </Text>
                     <Text style={styles.moneyValue}>
-                      {formatCurrency(
-                        preview.data.serviceChargeCents,
-                        previewCurrency,
-                        true,
-                      )}
+                      {previewCurrency === null
+                        ? "—"
+                        : formatCurrency(
+                            preview.data.serviceChargeCents,
+                            previewCurrency,
+                            true,
+                          )}
                     </Text>
                   </View>
                 )
@@ -874,7 +881,9 @@ export function VenueOrderPadSheet({
                   {cartItemCount(lines)} item{cartItemCount(lines) === 1 ? "" : "s"}
                 </Text>
                 <Text style={styles.moneyValue} testID="venue-order-pad-total">
-                  {totalCents === null || preview.isPending
+                  {totalCents === null ||
+                  preview.isPending ||
+                  previewCurrency === null
                     ? "—"
                     : formatCurrency(totalCents, previewCurrency, true)}
                 </Text>
