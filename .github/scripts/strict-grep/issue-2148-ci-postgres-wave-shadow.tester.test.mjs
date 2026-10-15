@@ -15,6 +15,7 @@ import {
   isNonAuthoritativeProviderEvidence,
   validateRegistry,
 } from "../ci-batch/validate-manifest-v2.mjs";
+import { loadEffectiveManifest } from "../ci-batch/load-manifest.mjs";
 import {
   normalizeDecision,
   parseNulPaths,
@@ -232,6 +233,7 @@ test("reconstructs source truth before trusting generated registry", () => {
 
 test("locks independent registry, leaf, setup, provider and lifecycle identities", () => {
   const value = manifest(); const suites = value.suites.filter((suite) => suite.migrationWave === WAVE);
+  const effective = loadEffectiveManifest();
   // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
   // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
   // validator subtracts from the frozen provider seal. Subject and strength unchanged;
@@ -420,7 +422,7 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   assert.deepEqual([retained.length, batched.length], [60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidated.length, 31]);
   assert.equal(retained.length + batched.length + consolidated.length, value.workflowProviders.length);
   assert.deepEqual(providers.map((item) => item.workflow).sort(), retained.map((item) => item.workflow).sort());
-  assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
+  assert.deepEqual(validateRegistry(effective, { root: ROOT }), []);
 });
 
 test("selector grammar, NUL parsing, host fail-safe and evidence tampering fail closed", () => {
@@ -459,7 +461,7 @@ test("canonical cost fixture and workflow topology remain exact", () => {
 });
 
 test("independent manifest mutants reject omission, swap, widening and false terminal state", () => {
-  const base=manifest(); const attacks=[];
+  const base=loadEffectiveManifest(); const attacks=[];
   const mutate=(fn)=>{const value=structuredClone(base);fn(value);attacks.push(value);};
   mutate((m)=>m.suites.find((s)=>s.migrationWave===WAVE).steps.pop());
   mutate((m)=>m.phase3bLeafCapabilities.leaves.pop());

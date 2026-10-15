@@ -27,6 +27,7 @@ import {
   trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope,
 } from "../ci-batch/validate-manifest-v2.mjs";
 import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, commandFingerprint } from "../ci-batch/run-suite-batch.mjs";
+import { loadEffectiveManifest } from "../ci-batch/load-manifest.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
@@ -35,6 +36,7 @@ const WAVE = "phase3c-deno-wave";
 
 const processInvocationsAtStart = trackedFilesProcessInvocations();
 const BASE = JSON.parse(read(".github/ci-batch/MANIFEST.json"));
+const EFFECTIVE = loadEffectiveManifest();
 const waveSuites = (value) => value.suites.filter((suite) => suite.migrationWave === WAVE);
 const waveLeaves = (value) => waveSuites(value).flatMap((suite) => suite.steps.flatMap((step) => (step.children || []).map((child) => ({ suite, step, child }))));
 const byIdIn = (value) => (id) => value.suites.find((suite) => suite.id === id);
@@ -171,17 +173,17 @@ const MUTANTS = [
 ];
 
 const PRECOMPUTED = withTrackedFilesScope(ROOT, () => {
-  const baseErrors = validateRegistry(structuredClone(BASE), { root: ROOT });
+  const baseErrors = validateRegistry(structuredClone(EFFECTIVE), { root: ROOT });
   const providers = discoverWorkflowProviders(ROOT);
   const liveOrigins = discoverLiveOrigins(ROOT);
   const mutantErrors = new Map(MUTANTS.map(([label, mutate]) => {
-    const value = structuredClone(BASE);
+    const value = structuredClone(EFFECTIVE);
     mutate(value, byIdIn(value));
     return [label, validateRegistry(value, { root: ROOT, workflowProviders: providers, liveOrigins }).length];
   }));
   // Restoration: the untouched registry is still green under the same
   // precomputed inputs, so a red above is the mutation and nothing else.
-  const restoredErrors = validateRegistry(structuredClone(BASE), { root: ROOT, workflowProviders: providers, liveOrigins });
+  const restoredErrors = validateRegistry(structuredClone(EFFECTIVE), { root: ROOT, workflowProviders: providers, liveOrigins });
   return { baseErrors, providers, liveOrigins, mutantErrors, restoredErrors };
 });
 const { baseErrors, providers, liveOrigins, mutantErrors, restoredErrors } = PRECOMPUTED;
