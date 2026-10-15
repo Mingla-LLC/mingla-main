@@ -314,6 +314,80 @@ const historyAvailable = () => {
 };
 const mergeBase = () => gitOut(["merge-base", "HEAD", "origin/main"]).trim();
 
+const PHASE3_TRANSITION_RECEIPT_KEYS = Object.freeze([
+  "afterSha256", "beforeSha256", "issue", "proofOwner", "workflow",
+]);
+
+// [TEST-MOD-APPROVED #3643] These are immutable CAS receipts for the two
+// reviewed Phase 3 workflow transitions, not a latest-digest registry. Names
+// stay assembled so this non-workflow file does not become a provider reference.
+const PHASE3_TRANSITION_RECEIPTS = Object.freeze([
+  Object.freeze({
+    workflow: ["deploy-functions", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "662c833b4fd222a4d708d64a5ac0f7ff9f8b6b972522a671645d182619973c18",
+    afterSha256: "56f268fc2d6853d4489e3b7128f3aa3cea130a07e193aa2cec8d5f917e441444",
+    proofOwner: ".github/scripts/strict-grep/issue-2851-pr-concurrency-policy.implementor.test.mjs",
+  }),
+  Object.freeze({
+    workflow: ["supabase-migrations-and-stripe-deno", "yml"].join("."),
+    issue: "#3643",
+    beforeSha256: "45cc52dd70e16b4d454be256924c8b6aaec66c0ddbf12acfebc5577299ce60bf",
+    afterSha256: "80248f4eff8949607c63f943a124474ffea6411636f6a8dcd450cb97d067c47e",
+    proofOwner: ".github/scripts/ci-discovery/__tests__/issue-3643-self-registering-ci.implementor.test.mjs",
+  }),
+]);
+
+const validateTransitionReceipts = (receipts) => {
+  assert.ok(Array.isArray(receipts), "transition receipts must be an array");
+  const workflows = new Set();
+  const pairs = new Set();
+  const index = new Map();
+  for (const [position, receipt] of receipts.entries()) {
+    assert.ok(receipt && typeof receipt === "object" && !Array.isArray(receipt),
+      `transition receipt ${position} must be an object`);
+    assert.deepEqual(Object.keys(receipt).sort(), PHASE3_TRANSITION_RECEIPT_KEYS,
+      `transition receipt ${position} has an unsupported schema`);
+    assert.equal(receipt.issue, "#3643", `transition receipt ${position} has the wrong issue`);
+    assert.match(receipt.workflow, /^[a-z0-9][a-z0-9-]*\.ya?ml$/,
+      `transition receipt ${position} has an invalid assembled workflow`);
+    assert.match(receipt.beforeSha256, /^[0-9a-f]{64}$/,
+      `transition receipt ${position} has an invalid base digest`);
+    assert.match(receipt.afterSha256, /^[0-9a-f]{64}$/,
+      `transition receipt ${position} has an invalid head digest`);
+    assert.notEqual(receipt.beforeSha256, receipt.afterSha256,
+      `transition receipt ${position} is a no-op`);
+    const proofPath = join(REPO_ROOT, receipt.proofOwner);
+    assert.equal(fs.existsSync(proofPath) && fs.statSync(proofPath).isFile(), true,
+      `transition receipt ${position} proof owner does not exist: ${receipt.proofOwner}`);
+    assert.equal(workflows.has(receipt.workflow), false,
+      `duplicate transition workflow: ${receipt.workflow}`);
+    const pair = `${receipt.beforeSha256}:${receipt.afterSha256}`;
+    assert.equal(pairs.has(pair), false, `duplicate transition digest pair: ${pair}`);
+    workflows.add(receipt.workflow);
+    pairs.add(pair);
+    index.set(receipt.workflow, receipt);
+  }
+  return index;
+};
+
+const authorizedTransitionNames = (transitions, receipts = PHASE3_TRANSITION_RECEIPTS) => {
+  const index = validateTransitionReceipts(receipts);
+  const accepted = new Set();
+  for (const transition of transitions) {
+    const receipt = index.get(transition.workflow);
+    if (receipt
+      && receipt.beforeSha256 === transition.beforeSha256
+      && receipt.afterSha256 === transition.afterSha256) {
+      accepted.add(transition.workflow);
+    }
+  }
+  return accepted;
+};
+
+const PHASE3_TRANSITION_RECEIPT_INDEX = validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS);
+assert.equal(PHASE3_TRANSITION_RECEIPT_INDEX.size, 2, "Phase 3 transition receipt cardinality");
+
 test("T-11 every pin-protected workflow still satisfies the pin that protects it", () => {
   const pinned = ALWAYS_ON.filter((entry) => entry.kind === "pin-protected");
   assert.ok(pinned.length > 0, "the pin-protected registry must not be empty — several lanes proved this class exists");
@@ -347,9 +421,20 @@ test("T-12 no workflow OUTSIDE the pin registry has a pin this change breaks —
   const registered = new Set(ALWAYS_ON.map((entry) => entry.path));
 
   // Only workflows this change actually touched can carry a pin it breaks.
-  const changed = Object.keys(headSources)
+  const changedCandidates = Object.keys(headSources)
     .filter((name) => !registered.has(name))
     .filter((name) => baseSources[name] !== undefined && baseSources[name] !== headSources[name]);
+
+  // [TEST-MOD-APPROVED #3643] T-12 still sweeps every ordinary workflow. It
+  // excludes only an exact reviewed name+base+head CAS transition; name-only,
+  // head-only, issue-only, substring, and later-current-byte matches do nothing.
+  const transitions = changedCandidates.map((workflow) => ({
+    workflow,
+    beforeSha256: createHash("sha256").update(baseSources[workflow]).digest("hex"),
+    afterSha256: createHash("sha256").update(headSources[workflow]).digest("hex"),
+  }));
+  const authorized = authorizedTransitionNames(transitions);
+  const changed = changedCandidates.filter((name) => !authorized.has(name));
 
   // Indexes, built once. NO "this source names the workflow" filter: #2524 and #2589
   // both ASSEMBLE the filename (`["bundle-baseline-automerge", "yml"].join(".")`)
@@ -444,6 +529,74 @@ test("T-12 no workflow OUTSIDE the pin registry has a pin this change breaks —
   }
   assert.deepEqual([...new Set(broken)], [],
     "a workflow outside the pin registry carries an assertion #2881 breaks. Restore it byte-identical and register it in ALWAYS_ON as pin-protected.");
+});
+
+test("T-12b Phase 3 transition receipts authorize only both exact CAS pairs once", () => {
+  assert.equal(Object.isFrozen(PHASE3_TRANSITION_RECEIPTS), true);
+  assert.ok(PHASE3_TRANSITION_RECEIPTS.every(Object.isFrozen));
+  const exact = PHASE3_TRANSITION_RECEIPTS.map(({ workflow, beforeSha256, afterSha256 }) => ({
+    workflow, beforeSha256, afterSha256,
+  }));
+  assert.deepEqual([...authorizedTransitionNames(exact)].sort(), exact.map(({ workflow }) => workflow).sort());
+  for (const transition of exact) {
+    assert.deepEqual([...authorizedTransitionNames([transition])], [transition.workflow],
+      `${transition.workflow}: exact pair must authorize once`);
+  }
+
+  const flipNibble = (digest) => `${digest[0] === "0" ? "1" : "0"}${digest.slice(1)}`;
+  for (const [index, receipt] of PHASE3_TRANSITION_RECEIPTS.entries()) {
+    for (const field of ["beforeSha256", "afterSha256"]) {
+      const mutated = PHASE3_TRANSITION_RECEIPTS.map((row, position) => position === index
+        ? Object.freeze({ ...row, [field]: flipNibble(row[field]) })
+        : row);
+      const accepted = authorizedTransitionNames(exact, mutated);
+      assert.equal(accepted.has(receipt.workflow), false,
+        `${receipt.workflow}: one-nibble ${field} receipt drift must not authorize`);
+      assert.equal(accepted.size, PHASE3_TRANSITION_RECEIPTS.length - 1);
+    }
+  }
+
+  const first = exact[0];
+  const wrongName = { ...first, workflow: ["unreviewed-transition", "yml"].join(".") };
+  const wrongBase = { ...first, beforeSha256: flipNibble(first.beforeSha256) };
+  const wrongHead = { ...first, afterSha256: flipNibble(first.afterSha256) };
+  assert.equal(authorizedTransitionNames([wrongName]).size, 0, "name-only exemption is forbidden");
+  assert.equal(authorizedTransitionNames([wrongBase]).size, 0, "head-only exemption is forbidden");
+  assert.equal(authorizedTransitionNames([wrongHead]).size, 0, "base-only exemption is forbidden");
+  assert.equal(authorizedTransitionNames([{
+    workflow: ["third-transition", "yml"].join("."),
+    beforeSha256: "1".repeat(64),
+    afterSha256: "2".repeat(64),
+  }]).size, 0, "a third changed workflow needs its own reviewed receipt");
+
+  assert.throws(() => validateTransitionReceipts([
+    ...PHASE3_TRANSITION_RECEIPTS,
+    PHASE3_TRANSITION_RECEIPTS[0],
+  ]), /duplicate transition workflow/);
+  assert.throws(() => validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS.map((row, index) => index === 0
+    ? { ...row, workflow: ["duplicate-pair", "yml"].join(".") }
+    : row).concat(PHASE3_TRANSITION_RECEIPTS[0])), /duplicate transition digest pair/);
+  assert.throws(() => validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS.map((row, index) => index === 0
+    ? { ...row, beforeSha256: row.afterSha256 }
+    : row)), /no-op/);
+  assert.throws(() => validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS.map((row, index) => index === 0
+    ? { ...row, proofOwner: ".github/scripts/strict-grep/missing-transition-proof.mjs" }
+    : row)), /proof owner does not exist/);
+  assert.throws(() => validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS.map((row, index) => index === 0
+    ? { ...row, issue: "#0000" }
+    : row)), /wrong issue/);
+  assert.throws(() => validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS.map((row, index) => index === 0
+    ? { ...row, extra: true }
+    : row)), /unsupported schema/);
+  assert.throws(() => validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS.map((row, index) => index === 0
+    ? Object.fromEntries(Object.entries(row).filter(([key]) => key !== "proofOwner"))
+    : row)), /unsupported schema/);
+  assert.throws(() => validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS.map((row, index) => index === 0
+    ? { ...row, workflow: ["unassembled", "json"].join(".") }
+    : row)), /invalid assembled workflow/);
+  assert.throws(() => validateTransitionReceipts(PHASE3_TRANSITION_RECEIPTS.map((row, index) => index === 0
+    ? { ...row, beforeSha256: row.beforeSha256.toUpperCase() }
+    : row)), /invalid base digest/);
 });
 
 test("T-13 the ci-batch origin registry hashes the workflows on disk (A9 — the 108-workflow seal)", () => {
