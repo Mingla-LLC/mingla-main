@@ -18,6 +18,7 @@ async function fixture(mode) {
   const scriptsRoot = join(root, "scripts");
   const binRoot = join(root, "bin");
   const callsPath = join(root, "calls.txt");
+  const nodeCallsPath = join(root, "node-calls.txt");
   const configPath = join(root, "supabase/config.toml");
   const bakePath = join(root, "supabase/functions/_shared/releaseAttestationBake.ts");
   const deployScript = join(scriptsRoot, "deploy-supabase-functions.sh");
@@ -54,6 +55,10 @@ printf 'completed %s %s\n' "$action" "$name"
   await writeFile(mockPath, supabaseMock);
   await chmod(mockPath, 0o755);
 
+  // [TEST-MOD-APPROVED #3643] The copied wrapper fixture now records the
+  // remediation coordinator separately from Supabase CLI calls so cleanup and
+  // exact child-status propagation are observable without weakening any
+  // existing normal-deploy, serve, interruption, or materialization proof.
   const nodeStub = join(binRoot, "node");
   await writeFile(nodeStub, `#!/usr/bin/env bash
 set -u
@@ -62,10 +67,19 @@ if [[ "$*" == *function-policy.mjs* ]]; then
   target="\${@: -1}"
   printf '%s\n' 'project_id = "fixture"' '' '[functions.legacy]' 'verify_jwt = true' '' '# synthetic future policy' '[functions.future-local]' 'verify_jwt = false' > "$target"
 fi
+if [[ "$1" == */reconcile-governed-secrets.mjs ]]; then
+  false_count=$(grep -c '^verify_jwt = false$' "$ISSUE1456_CONFIG" || true)
+  printf 'coordinator|mode=remediation|args=%s|jwt_false=%s\n' "\${*:2}" "$false_count" >> "$ISSUE1456_NODE_CALLS"
+  if [[ "$ISSUE1456_MODE" == remediation-fail ]]; then exit 71; fi
+  if [[ "$ISSUE1456_MODE" == remediation-signal ]]; then exit 130; fi
+fi
+if [[ "$1" == */postdeploy-governed-fallback-watch.mjs ]]; then
+  printf 'fallback-watch|args=%s\n' "\${*:2}" >> "$ISSUE1456_NODE_CALLS"
+fi
 exit 0
 `);
   await chmod(nodeStub, 0o755);
-  return { root, binRoot, callsPath, configPath, bakePath, deployScript, serveScript };
+  return { root, binRoot, callsPath, nodeCallsPath, configPath, bakePath, deployScript, serveScript };
 }
 
 async function calls(path) {
@@ -92,6 +106,7 @@ async function runDeploy(mode) {
       PATH: `${current.binRoot}:${process.env.PATH}`,
       SUPABASE_PROJECT_ID: "gqnoajqerqhnvulmnyvv",
       ISSUE1456_CALLS: current.callsPath,
+      ISSUE1456_NODE_CALLS: current.nodeCallsPath,
       ISSUE1456_CONFIG: current.configPath,
       ISSUE1456_MODE: mode,
     },
@@ -100,6 +115,37 @@ async function runDeploy(mode) {
     ...current,
     result,
     calls: await calls(current.callsPath),
+    nodeCalls: await calls(current.nodeCallsPath),
+    restoredConfig: await readFile(current.configPath, "utf8"),
+    restoredBake: await readFile(current.bakePath, "utf8"),
+  };
+}
+
+async function runRemediation(mode) {
+  const current = await fixture(mode);
+  const result = spawnSync("bash", [
+    current.deployScript,
+    "--issue-2241-remediation",
+    "--project-ref", "gqnoajqerqhnvulmnyvv",
+    "--merged-commit", "0123456789abcdef0123456789abcdef01234567",
+    "--function", "alpha",
+  ], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${current.binRoot}:${process.env.PATH}`,
+      SUPABASE_PROJECT_ID: "gqnoajqerqhnvulmnyvv",
+      ISSUE1456_CALLS: current.callsPath,
+      ISSUE1456_NODE_CALLS: current.nodeCallsPath,
+      ISSUE1456_CONFIG: current.configPath,
+      ISSUE1456_MODE: mode,
+    },
+  });
+  return {
+    ...current,
+    result,
+    calls: await calls(current.callsPath),
+    nodeCalls: await calls(current.nodeCallsPath),
     restoredConfig: await readFile(current.configPath, "utf8"),
     restoredBake: await readFile(current.bakePath, "utf8"),
   };
@@ -113,6 +159,7 @@ async function runServe(mode) {
       ...process.env,
       PATH: `${current.binRoot}:${process.env.PATH}`,
       ISSUE1456_CALLS: current.callsPath,
+      ISSUE1456_NODE_CALLS: current.nodeCallsPath,
       ISSUE1456_CONFIG: current.configPath,
       ISSUE1456_MODE: mode,
     },
@@ -148,7 +195,42 @@ assert.equal(conflict.restoredBake, originalBake);
 const materializeFailure = await runDeploy("materialize-fail");
 assert.equal(materializeFailure.result.status, 73);
 assert.deepEqual(materializeFailure.calls, [], "materialization failure must invoke no Supabase command");
+assert.deepEqual(materializeFailure.nodeCalls, [], "materialization failure must invoke no coordinator");
 assert.equal(materializeFailure.restoredConfig, originalConfig);
+
+// [TEST-MOD-APPROVED #3643] These append-only runtime cases prove the terminal
+// remediation child returns through the wrapper's EXIT cleanup trap on success,
+// an ordinary nonzero verdict, and signal-shaped status 130.
+const remediationSuccess = await runRemediation("remediation-success");
+assert.equal(remediationSuccess.result.status, 0, remediationSuccess.result.stderr);
+assert.deepEqual(remediationSuccess.calls, [], "remediation must not invoke the Supabase CLI");
+assert.equal(remediationSuccess.nodeCalls.length, 1, "remediation coordinator cardinality");
+assert.match(remediationSuccess.nodeCalls[0], /^coordinator\|mode=remediation\|/);
+assert.match(remediationSuccess.nodeCalls[0], /--project-ref gqnoajqerqhnvulmnyvv/);
+assert.match(remediationSuccess.nodeCalls[0], /--function alpha/);
+assert.match(remediationSuccess.nodeCalls[0], /--merged-commit 0123456789abcdef0123456789abcdef01234567/);
+assert.match(remediationSuccess.nodeCalls[0], /jwt_false=1$/);
+assert.doesNotMatch(remediationSuccess.nodeCalls[0], /--normal-governed-deploy|fallback-watch/);
+assert.equal(remediationSuccess.restoredConfig, originalConfig);
+assert.equal(remediationSuccess.restoredBake, originalBake);
+
+const remediationFailure = await runRemediation("remediation-fail");
+assert.equal(remediationFailure.result.status, 71, "coordinator status 71 must propagate exactly");
+assert.deepEqual(remediationFailure.calls, [], "failed remediation must run no later Supabase command");
+assert.equal(remediationFailure.nodeCalls.length, 1, "failed remediation must stop after its coordinator");
+assert.match(remediationFailure.nodeCalls[0], /^coordinator\|mode=remediation\|/);
+assert.doesNotMatch(remediationFailure.nodeCalls[0], /--normal-governed-deploy|fallback-watch/);
+assert.equal(remediationFailure.restoredConfig, originalConfig);
+assert.equal(remediationFailure.restoredBake, originalBake);
+
+const remediationSignal = await runRemediation("remediation-signal");
+assert.equal(remediationSignal.result.status, 130, "signal-shaped coordinator status must propagate exactly");
+assert.deepEqual(remediationSignal.calls, [], "status 130 must run no later Supabase command");
+assert.equal(remediationSignal.nodeCalls.length, 1, "status 130 must stop after its coordinator");
+assert.match(remediationSignal.nodeCalls[0], /^coordinator\|mode=remediation\|/);
+assert.doesNotMatch(remediationSignal.nodeCalls[0], /--normal-governed-deploy|fallback-watch/);
+assert.equal(remediationSignal.restoredConfig, originalConfig);
+assert.equal(remediationSignal.restoredBake, originalBake);
 
 const served = await runServe("serve-success");
 assert.equal(served.result.status, 0, served.result.stderr);
