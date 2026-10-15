@@ -145,10 +145,11 @@ test("#3802 WP-2: with the key from the exchange an agent connects, checks, adds
     capabilities: {},
     clientInfo: { name: "suite", version: "1.0" },
   });
-  assert.equal(init.json.result.serverInfo.version, "4.2.0");
+  // [TEST-MOD-APPROVED #3802] Connector part 3 adds the approved draft tools.
+  assert.equal(init.json.result.serverInfo.version, "4.3.0");
   assert.match(init.json.result.instructions, /Run check_contactable before/);
   const listed = (await s.rpc(key, "tools/list")).json.result.tools;
-  assert.equal(listed.length, 15);
+  assert.equal(listed.length, 19);
 
   const started = out(await call(key, "get_started"));
   assert.equal(started.me.email, s.emails.growth);
@@ -178,32 +179,32 @@ test("#3802 WP-2: with the key from the exchange an agent connects, checks, adds
   assert.equal(check.results[0].record.id, s.ids.alpha);
 
   const addRequest = {
-      pipeline: "hosts",
-      request_key: "issue3802w-add-01",
-      records: [
-        {
-          name: "issue3802w-Tour One",
-          icp: "experience_host",
-          identifiers: [
-            { kind: "handle", value: "@issue3802w.tour" },
-            { kind: "phone", value: "+1 919 555 0103" },
-          ],
-          first_touch: {
-            channel: "instagram_dm",
-            direction: "outbound",
-            body: "Hi, quick question about your tours.",
-          },
+    pipeline: "hosts",
+    request_key: "issue3802w-add-01",
+    records: [
+      {
+        name: "issue3802w-Tour One",
+        icp: "experience_host",
+        identifiers: [
+          { kind: "handle", value: "@issue3802w.tour" },
+          { kind: "phone", value: "+1 919 555 0103" },
+        ],
+        first_touch: {
+          channel: "instagram_dm",
+          direction: "outbound",
+          body: "Hi, quick question about your tours.",
         },
-        {
-          name: "issue3802w-Tour Two",
-          identifiers: [{
-            kind: "handle",
-            value: "instagram.com/Issue3802w.Tour",
-          }],
-        },
-        { name: "issue3802w-host alpha" },
-        { name: "issue3802w-Bad", icp: "ambassador" },
-      ],
+      },
+      {
+        name: "issue3802w-Tour Two",
+        identifiers: [{
+          kind: "handle",
+          value: "instagram.com/Issue3802w.Tour",
+        }],
+      },
+      { name: "issue3802w-host alpha" },
+      { name: "issue3802w-Bad", icp: "ambassador" },
+    ],
   };
   const added = out(await call(key, "add_records", addRequest));
   assert.deepEqual(added.counts, {
@@ -237,7 +238,10 @@ test("#3802 WP-2: with the key from the exchange an agent connects, checks, adds
     records: [{ name: "issue3802w-Tour Three" }],
   });
   assert.equal(reused.json.result.isError, true);
-  assert.equal(reused.json.result.structuredContent.error.token, "request_key_reused");
+  assert.equal(
+    reused.json.result.structuredContent.error.token,
+    "request_key_reused",
+  );
   assert.equal(
     reused.json.result.structuredContent.error.message,
     "That request_key was already used for a different request. Nothing was changed. Use a new key.",
@@ -398,7 +402,7 @@ test("#3802 WP-4: a growth key and an admin key see the same tools but one, and 
     ) => t.name);
   const growth = await names(key);
   const admin = await names(s.keys["admin.claude"]);
-  assert.equal(growth.length, 15);
+  assert.equal(growth.length, 19);
   assert.deepEqual(admin.filter((n: string) => !growth.includes(n)), [
     "team_summary",
   ]);

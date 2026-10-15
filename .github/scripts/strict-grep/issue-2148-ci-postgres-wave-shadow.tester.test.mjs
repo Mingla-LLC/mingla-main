@@ -185,7 +185,10 @@ const WRAPPERS = [
   ["issue-1467-venue-submit-idempotency-tests.yml", "39c84667a17817587b4c1b66813b7a5d028e7ef33ec2bda47e04f1cc19763597", 1, 2, 8, 900],
   ["issue-1485-web-missing-chunk-404-tests.yml", "056e93d8b5e3f24a51c0ca874192607da05a90b43565293ee9318efb004d749b", 1, 1, 19, 900],
   ["issue-1685-venue-draft-multi-tests.yml", "b738a1749da6d5a22a440bf2c12c6d0a62bb97c7f9fc93b9a5f7bb5ea0056ab8", 1, 3, 10, 1200],
-  ["issue-1902-public-event-lifecycle-tests.yml", "ee303de029f2ff1abe129f42c8fbbcefca17287bfa8536cc60ee7c1f10c8b900", 2, 11, 11, 900],
+  // [TEST-MOD-APPROVED #3643] The frozen registry is no longer an executable
+  // route; the remaining 10 origin paths and the recomputed trigger seal still
+  // pin every product path plus the gate and historical wrapper identities.
+  ["issue-1902-public-event-lifecycle-tests.yml", "ee303de029f2ff1abe129f42c8fbbcefca17287bfa8536cc60ee7c1f10c8b900", 2, 11, 10, 900],
   ["issue-2013-ari-tenant-containment.yml", "ac59c3d6b732d34db7a5ddb4b03d407330d9916619812da7b49a339e9911601c", 1, 5, 16, 600],
   ["issue-679-brand-follow-tests.yml", "613f672bb1da1644a0de30695ea0dd5a4d24086c01dd0e9540e6e75dfb200e90", 1, 2, 13, 1200],
   ["issue-885-scanner-invite-loader-tests.yml", "931afbb3ca488138de1ed0b2c2f669f7d3359f66edf46cbaaa9651a1e6426a8b", 2, 2, 4, 900],

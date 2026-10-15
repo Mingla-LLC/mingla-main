@@ -732,6 +732,10 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     "set_owners",
     "log_activity",
     "record_reply",
+    "save_drafts",
+    "update_draft",
+    "list_drafts",
+    "withdraw_drafts",
   ]);
   // The owner's list, in the order a client is shown it: the same tools in
   // the same order, with the team dashboard among the reads.
@@ -752,6 +756,10 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     "set_owners",
     "log_activity",
     "record_reply",
+    "save_drafts",
+    "update_draft",
+    "list_drafts",
+    "withdraw_drafts",
   ]);
   assertEquals(names(owner).filter((n) => n !== "team_summary"), names(growth));
   for (const t of owner) {
@@ -784,6 +792,10 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
         set_owners: false,
         log_activity: false,
         record_reply: false,
+        save_drafts: false,
+        update_draft: false,
+        list_drafts: true,
+        withdraw_drafts: false,
       } as Record<string, boolean>)[t.name],
       t.name,
     );
@@ -798,7 +810,8 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     assertEquals(t.inputSchema.type, "object");
     assertEquals(t.inputSchema.additionalProperties, false);
   }
-  // Seven tools write; nothing in the manifest deletes, sends or manages keys.
+  // [TEST-MOD-APPROVED #3802] The approved draft slice adds three writes.
+  // Nothing in the manifest deletes, sends or manages keys.
   assertEquals(TEAM_AGENT_TOOLS.filter((t) => t.writes).map((t) => t.name), [
     "add_records",
     "upsert_record",
@@ -807,6 +820,9 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     "set_owners",
     "log_activity",
     "record_reply",
+    "save_drafts",
+    "update_draft",
+    "withdraw_drafts",
   ]);
   for (const t of TEAM_AGENT_TOOLS) {
     for (const fn of t.reaches) {
@@ -888,7 +904,6 @@ Deno.test("#3802 U-6: a tool that does not exist is an error, is never passed on
       "delete_record",
       "setup:redeem",
       "undo_move",
-      "save_drafts",
       "team_agent_key_create",
       "__proto__",
       "constructor",
@@ -1578,7 +1593,7 @@ const INDEX = code(read("../../team-agent/index.ts"));
 const MCP = code(read("../teamAgentMcp.ts"));
 const TOOLS = code(read("../teamAgentTools.ts"));
 const MIGRATION = read(
-  "../../../migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql",
+  "../../../migrations/20271016003802_issue_3802_wave4_drafts.sql",
 );
 
 Deno.test("#3802 U-11: the function reaches one thing, reads two settings and logs one shaped line", () => {
@@ -1687,9 +1702,11 @@ Deno.test("#3802 U-11: no tool deletes, sends, or reaches a key function, and th
       );
     }
   }
-  const withoutChecks = MIGRATION.replace(
-    /^DO \$w4check\$[\s\S]*?^\$w4check\$;/m,
-    "",
+  // This migration carries the earlier self-checks forward after PR-C's own
+  // check. Only the implementation prefix is the delivery-surface contract.
+  const withoutChecks = MIGRATION.slice(
+    0,
+    MIGRATION.indexOf("DO $draftcheck$"),
   );
   assert(
     !/net\.http|http_post|pg_net|resend|twilio|onesignal|sendgrid|smtp/i.test(

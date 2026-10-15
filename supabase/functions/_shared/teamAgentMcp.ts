@@ -50,7 +50,7 @@ export const MIN_REFUSAL_MS = 250;
 export const SERVER_INFO = {
   name: "mingla-team",
   title: "Mingla team pipelines",
-  version: "4.2.0",
+  version: "4.3.0",
 } as const;
 
 /** A key: `mgla_`, the agent letter, `_`, then 43 URL-safe characters. */

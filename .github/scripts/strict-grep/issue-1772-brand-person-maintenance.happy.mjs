@@ -3,6 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// MINGLA-INVARIANT: I-PROPOSED-1772-IDENTITY-MAINTENANCE-ATOMIC | issue #1772 | Brand-person identity maintenance remains atomic, authorized, recoverable, and bounded to one canonical operation.
+// MINGLA-INVARIANT: I-PROPOSED-1772-NONUSER-ERASURE-TOMBSTONED | issue #1772 | Non-user erasure leaves a durable tombstone that prevents re-ingest and export races from restoring erased identity data.
+// MINGLA-INVARIANT: I-PROPOSED-1772-NO-ERASURE-UI | issue #1772 | Destructive non-user erasure remains support-only and never appears as an ordinary Brand People user-interface action.
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const files = {
   migration: "supabase/migrations/20270612001772_issue_1772_brand_person_maintenance.sql",
@@ -36,7 +40,6 @@ const files = {
   flowTest: "mingla-business/src/components/people/__tests__/PersonMaintenanceFlow.issue1772.happy.test.tsx",
   pgWorkflow: ".github/workflows/postgres-contract-suites.yml",
   denoWorkflow: ".github/workflows/supabase-migrations-and-stripe-deno.yml",
-  invariant: "docs/INVARIANT_REGISTRY.md",
   erasureRunbook: "docs/runbooks/B2_GDPR_ERASURE_RUNBOOK.md",
   capacityRunbook: "docs/runbooks/SUPABASE_SECRET_CAPACITY.md",
   readinessGuard: ".github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs",
@@ -88,7 +91,6 @@ export function audit(base = repoRoot) {
   const peoplePageTest = read("peoplePageTest");
   const pgWorkflow = read("pgWorkflow");
   const denoWorkflow = read("denoWorkflow");
-  const invariant = read("invariant");
   const erasureRunbook = read("erasureRunbook");
   const capacityRunbook = read("capacityRunbook");
   const readinessGuard = read("readinessGuard");
@@ -402,9 +404,6 @@ export function audit(base = repoRoot) {
   }
   if (!(denoWorkflow.indexOf(nodeCommand) < denoWorkflow.indexOf(files.erasureTest) && denoWorkflow.indexOf(nodeCommand) < denoWorkflow.indexOf(files.workerTest))) {
     failures.push("secret proof must run before Edge happy tests");
-  }
-  for (const needle of ["I-PROPOSED-1772-IDENTITY-MAINTENANCE-ATOMIC", "I-PROPOSED-1772-NONUSER-ERASURE-TOMBSTONED", "I-PROPOSED-1772-NO-ERASURE-UI"]) {
-    required(invariant, needle, `invariant ${needle}`, failures);
   }
   required(erasureRunbook, "erasure_challenge_state_unknown", "runbook unknown-delivery hold", failures);
   required(capacityRunbook, "BRAND_PERSON_ERASURE_CHALLENGE_SECRET", "capacity runbook field", failures);

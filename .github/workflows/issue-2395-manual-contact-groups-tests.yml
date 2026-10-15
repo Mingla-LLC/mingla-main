@@ -18,7 +18,6 @@ on:
       - ".github/scripts/strict-grep/issue-2395-manual-contact-groups*.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-2395-manual-contact-groups-tests.yml"
-      - "docs/INVARIANT_REGISTRY.md"
   push:
     branches: [main]
     paths:

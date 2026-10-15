@@ -12,7 +12,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// MINGLA-INVARIANT: I-2719-CURRENCY-IS-NOT-PAYOUT-READINESS | issue #2719 | Currency selects pricing context and never substitutes for verified payout readiness.
+// MINGLA-INVARIANT: I-2719-FREE-CREATORS-ALWAYS-OPEN | issue #2719 | Free offering creators remain available in every payout state while paid paths stay readiness-gated.
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const LOCAL_DECLARATION_PREFIX = "// MINGLA-" + "INVARIANT: ";
 
 const PATHS = Object.freeze({
   flow: "mingla-business/src/components/brand/BrandCreationFlow.tsx",
@@ -22,7 +26,7 @@ const PATHS = Object.freeze({
   happy: "mingla-business/src/components/brand/__tests__/issue_2719_brand_payout_first.happy.test.tsx",
   tester: "mingla-business/src/components/brand/__tests__/issue_2719_brand_payout_first.tester_adversarial.test.tsx",
   fullSuiteGuard: ".github/scripts/strict-grep/i-proposed-1047-biz-jest-wired.mjs",
-  invariants: "docs/INVARIANT_REGISTRY.md",
+  gate: ".github/scripts/strict-grep/issue-2719-brand-payout-first.mjs",
 });
 
 const KINDS = ["event", "trip", "experience", "rsvp", "venue"];
@@ -59,7 +63,7 @@ export function checkSnapshot(snapshot) {
   const state = need("state");
   const happy = need("happy");
   const fullSuiteGuard = need("fullSuiteGuard");
-  const invariants = need("invariants");
+  const gate = need("gate");
   const tester = snapshot.get("tester");
 
   if (!hasWhy(state) || !hasWhy(happy)) {
@@ -121,15 +125,12 @@ export function checkSnapshot(snapshot) {
       !fullSuiteGuard.includes("runs the whole jest suite")) {
     failures.push("CI: the existing full-suite wiring guard is absent or fail-open");
   }
-  for (const invariant of [
-    "I-2719-CURRENCY-IS-NOT-PAYOUT-READINESS (ACTIVE)",
-    "I-2719-FREE-CREATORS-ALWAYS-OPEN (ACTIVE)",
+  for (const declaration of [
+    `${LOCAL_DECLARATION_PREFIX}I-2719-CURRENCY-IS-NOT-PAYOUT-READINESS | issue #2719 |`,
+    `${LOCAL_DECLARATION_PREFIX}I-2719-FREE-CREATORS-ALWAYS-OPEN | issue #2719 |`,
   ]) {
-    if (!invariants.includes(invariant)) {
-      failures.push(`INVARIANT: missing ${invariant}`);
-    }
+    if (!gate.includes(declaration)) failures.push(`INVARIANT: missing local declaration ${declaration}`);
   }
-
   return failures;
 }
 
@@ -142,7 +143,7 @@ function selfTest() {
     ["happy", '// Currency selects pricing context; it never proves a bank can collect.\n// Free creators stay open in every payout state.\ntest("issue 2719", () => {})'],
     ["tester", null],
     ["fullSuiteGuard", "const invokesSuite = true; process.exit(1); runs the whole jest suite"],
-    ["invariants", "I-2719-CURRENCY-IS-NOT-PAYOUT-READINESS (ACTIVE)\nI-2719-FREE-CREATORS-ALWAYS-OPEN (ACTIVE)"],
+    ["gate", `${LOCAL_DECLARATION_PREFIX}I-2719-CURRENCY-IS-NOT-PAYOUT-READINESS | issue #2719 |\n${LOCAL_DECLARATION_PREFIX}I-2719-FREE-CREATORS-ALWAYS-OPEN | issue #2719 |`],
   ]);
   if (checkSnapshot(clean).length !== 0) throw new Error(`clean fixture failed: ${checkSnapshot(clean).join("; ")}`);
 
@@ -153,14 +154,14 @@ function selfTest() {
     ["client enters payouts", "flow", clean.get("flow").replace('state.mode === "client" && state.step === 3 ? 5', 'state.mode === "client" && state.step === 3 ? 4')],
     ["tester skipped after staging", "tester", 'test.skip("issue 2719", () => {})'],
     ["full suite guard weakened", "fullSuiteGuard", "const invokesSuite = true"],
-    ["invariant downgraded", "invariants", "I-PROPOSED-2719-CURRENCY-IS-NOT-PAYOUT-READINESS (DRAFT)\nI-PROPOSED-2719-FREE-CREATORS-ALWAYS-OPEN (DRAFT)"],
+    ["local declaration corrupted", "gate", clean.get("gate").replace(`${LOCAL_DECLARATION_PREFIX}I-2719-CURRENCY-IS-NOT-PAYOUT-READINESS | issue #2719 |`, "currency declaration removed")],
   ];
   for (const [label, key, value] of mutations) {
     const planted = new Map(clean);
     planted.set(key, value);
     if (checkSnapshot(planted).length === 0) throw new Error(`${label}: mutation escaped`);
   }
-  process.stdout.write("[issue-2719-brand-payout-first] SELF-TEST PASS — 7 hostile mutations detected, including true deletion, staged tester skip, and invariant downgrade.\n");
+  process.stdout.write("[issue-2719-brand-payout-first] SELF-TEST PASS — 7 hostile mutations detected, including true deletion, staged tester skip, and local declaration corruption.\n");
 }
 
 if (process.argv.includes("--self-test")) {

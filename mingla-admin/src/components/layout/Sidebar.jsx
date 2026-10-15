@@ -39,6 +39,7 @@ import {
   ChevronDown,
   X,
   Bot,
+  FileText,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -55,6 +56,7 @@ import {
 // The canonical wordmark from the brand package (ISSUE-1001): never a copy,
 // and never a typed "Mingla" beside it.
 import minglaLogo from "../../../../packages/brand-assets/mingla-wordmark.png";
+import { useDraftCountValue } from "../../hooks/useDraftCounts";
 
 // The one registry of menu icons. Every `icon` named in NAV_GROUPS
 // (lib/constants.js) and in the role Home group (lib/access.js) must be a key
@@ -99,6 +101,7 @@ const ICON_MAP = {
   HeartPulse,
   Settings,
   Bot,
+  FileText,
 };
 
 // Two letters for the footer avatar, from the sign-in email: "seth.ogieva@…"
@@ -131,6 +134,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
   const homeId = homePageFor(access);
   const [foldedGroups, setFoldedGroups] = useState(() => readFoldedGroups(browserStorage()));
   const [signingOut, setSigningOut] = useState(false);
+  const draftCounts = useDraftCountValue();
 
   // Remember the folded groups in this browser. A browser that refuses is fine:
   // the fold still works until the page is reloaded (lib/shellNav.js).
@@ -175,6 +179,8 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
   const renderNavItem = (item, rail) => {
     const Icon = ICON_MAP[item.icon];
     const isActive = activeTab === item.id;
+    const waiting = item.id === "drafts" ? Number(draftCounts.data?.waiting || 0) : 0;
+    const spokenLabel = waiting > 0 ? `${item.label}, ${waiting} waiting` : item.label;
 
     return (
       <li key={item.id}>
@@ -182,7 +188,8 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
           type="button"
           onClick={() => openPage(item.id)}
           aria-current={isActive ? "page" : undefined}
-          title={rail ? item.label : undefined}
+          aria-label={spokenLabel}
+          title={rail ? spokenLabel : undefined}
           className={[
             "relative flex h-[34px] w-full items-center gap-2.5 rounded-lg text-left text-[13.5px] font-medium",
             "transition-colors duration-150 cursor-pointer",
@@ -207,6 +214,7 @@ export function Sidebar({ activeTab, onTabChange, collapsed, mobileOpen, onMobil
             <span aria-hidden="true" className="h-4 w-4 shrink-0" />
           )}
           <span className={rail ? "sr-only" : "min-w-0 truncate"}>{item.label}</span>
+          {waiting > 0 && <span aria-hidden="true" className={`${rail ? "absolute right-0.5" : "ml-auto"} inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--sidebar-active-bg)] px-1.5 text-[10.5px] font-semibold tabular-nums text-[var(--sidebar-accent)]`}>{waiting > 99 ? "99+" : waiting}</span>}
         </button>
       </li>
     );

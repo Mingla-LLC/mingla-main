@@ -199,11 +199,14 @@ export const TurnoutIntelRuntime: React.FC<TurnoutIntelRuntimeProps> = ({
     ],
   );
   useEffect(() => {
-    onValue(value);
+    // #3827 — intelligence is ambient, not part of the keystroke's urgent
+    // state. Publish from this lazy runtime so the transition machinery stays
+    // in its async chunk instead of the eager shared boot payload.
+    React.startTransition(() => onValue(value));
   }, [onValue, value]);
   useEffect(
     () => () => {
-      onValue(null);
+      React.startTransition(() => onValue(null));
       if (controllerRef !== undefined) controllerRef.current = null;
       if (sessionRef !== undefined) sessionRef.current = null;
     },

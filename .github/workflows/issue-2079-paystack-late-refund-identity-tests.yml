@@ -27,7 +27,6 @@ on:
       - ".github/scripts/strict-grep/issue-2079-paystack-late-refund-identity.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-2079-paystack-late-refund-identity-tests.yml"
-      - "docs/INVARIANT_REGISTRY.md"
   push:
     branches: [main]
     paths:
@@ -54,7 +53,6 @@ on:
       - ".github/scripts/strict-grep/issue-2079-paystack-late-refund-identity.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-2079-paystack-late-refund-identity-tests.yml"
-      - "docs/INVARIANT_REGISTRY.md"
   workflow_dispatch:
 
 concurrency:

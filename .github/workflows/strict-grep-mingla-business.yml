@@ -27,6 +27,7 @@ on:
       # so a PR touching only it must still run the suite. Do NOT widen this to
       # all of `scripts/**`.
       - "docs/**"
+      - "!docs/INVARIANT_REGISTRY.md"
       - "scripts/ota/**"
       # issue #2227 — the native openAuthSessionAsync redirect registry. ONE
       # file, deliberately: the gate SCANS app-mobile/** and mingla-business/**
@@ -86,6 +87,7 @@ on:
       # so a PR touching only it must still run the suite. Do NOT widen this to
       # all of `scripts/**`.
       - "docs/**"
+      - "!docs/INVARIANT_REGISTRY.md"
       - "scripts/ota/**"
       # issue #2227 — the native openAuthSessionAsync redirect registry. ONE
       # file, deliberately: the gate SCANS app-mobile/** and mingla-business/**

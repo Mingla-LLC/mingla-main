@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// MINGLA-INVARIANT: I-PROPOSED-1436-SECRET-CAPACITY-EXIT | issue #1436 | Secret capacity exits preserve bundled authority, replay protection, and the approved capacity exception.
+
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
@@ -13,7 +15,6 @@ const paths = {
   capacity: ".github/scripts/strict-grep/issue-1203-secret-capacity.mjs",
   refund: ".github/scripts/strict-grep/issue-1430-refund-replay-safety.mjs",
   runbook: "docs/runbooks/SUPABASE_SECRET_CAPACITY.md",
-  invariant: "docs/INVARIANT_REGISTRY.md",
   test: "scripts/secrets/issue_1436_secret_capacity_exit.test.mjs",
   adversarialTest:
     "scripts/secrets/issue_1436_secret_capacity_exit.adversarial.test.mjs",
@@ -221,12 +222,6 @@ export function violations(files) {
   ]) {
     requireToken(files.runbook ?? "", token, "capacity runbook", failures);
   }
-  requireToken(
-    files.invariant ?? "",
-    "I-PROPOSED-1436-SECRET-CAPACITY-EXIT (ACTIVE)",
-    "invariant registry",
-    failures,
-  );
   for (const token of [
     "scripts/secrets/issue_1436_*.test.mjs",
     "supabase/functions/_shared/issue_1437_*.test.ts",
@@ -406,7 +401,6 @@ function selfTest() {
       "retired direct compatibility name present; bundled payment authority missing; bundled notification HMAC authority missing; exact 88-name manifest",
     runbook:
       "schema v2 NOTIFICATION_RECIPIENT_HMAC_SECRET SOURCE_REFUNDS_POST_DISABLED PAYOUT_RELEASE_EXECUTE PAYOUT_HOLD_ONBOARD_FLIP exactly 88 content_share_v1_create_enabled CONTENT_SHARE_V1_CREATE_ENABLED",
-    invariant: "I-PROPOSED-1436-SECRET-CAPACITY-EXIT (ACTIVE)",
     test: "any retired direct-name return fails closed",
     adversarialTest:
       "same-count direct-name substitution cannot bypass exact-set parity",

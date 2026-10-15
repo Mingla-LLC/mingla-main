@@ -3,6 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// MINGLA-INVARIANT: I-RSVP-WRITE-MASTER-END-GATED | issue #1902 | RSVP writes are rejected after the canonical master event end boundary across every database and Edge path.
+// MINGLA-INVARIANT: I-PUBLIC-BRAND-UPCOMING-INCLUDES-RSVP | issue #1902 | Public upcoming-brand results include RSVP offerings under the same lifecycle truth as other public offerings.
+
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
@@ -18,7 +21,6 @@ const paths = {
     "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
   edgeTest:
     "supabase/functions/public-submit-rsvp/__tests__/issue_1902_rsvp_end_guard.test.ts",
-  invariant: "docs/INVARIANT_REGISTRY.md",
   workflow: ".github/workflows/issue-1902-rsvp-backend-safety-tests.yml",
 };
 
@@ -178,12 +180,6 @@ export function violations(files, migrationNames = []) {
     failures,
   );
 
-  for (
-    const token of [
-      "I-RSVP-WRITE-MASTER-END-GATED",
-      "I-PUBLIC-BRAND-UPCOMING-INCLUDES-RSVP",
-    ]
-  ) need(files.invariant ?? "", token, "DRAFT invariant", failures);
   for (const key of ["migrationTest", "pg17", "edgeTest"]) {
     need(
       files.workflow ?? "",

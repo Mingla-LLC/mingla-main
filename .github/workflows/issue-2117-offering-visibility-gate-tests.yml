@@ -13,7 +13,6 @@ on:
       - "supabase/functions/_shared/contentShare.ts"
       - "supabase/functions/_shared/businessNotifyTriggers.ts"
       - "supabase/security/anon_executable_definer_allowlist.txt"
-      - "docs/INVARIANT_REGISTRY.md"
       - ".github/workflows/issue-2117-offering-visibility-gate-tests.yml"
   push:
     branches: [main]

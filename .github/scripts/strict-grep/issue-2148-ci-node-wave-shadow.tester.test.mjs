@@ -100,7 +100,7 @@ app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.tes
 app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.test.mjs 6f2cee42857f5f6d6c6f42fc466dbb310272fc3d6b9b129bd12cda583557e565
 app-mobile/src/components/swipeDeck/__tests__/issue_1576_promoted_card_opacity.adversarial.test.mjs a7c8e04e6b6d849d37a01a0009cde1b61f6eacf87de8e88c64a73ea093fa2309
 app-mobile/src/components/swipeDeck/__tests__/issue_1576_promoted_card_opacity.test.mjs 31becd6159e34347f43ba36911d643e57120af4bdb33947c68b4d9449385da34
-app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.adversarial.test.mjs f0bfc2d3d6117ea926fbc222a245f16dd3b4962eb6cce27c6c93575a2dc88101
+app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.adversarial.test.mjs 5176095fc28f2985e224576c8741eb3880f381a5ae6be4f717fbdc3e6d71db52
 app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.test.mjs e6dab667b68f6683dec748cb1fb4736bcda9f6b40f750d5045028fd0cdca171d
 app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.adversarial.test.mjs d8ca0f473606a0b73328a94ce75ddb7fa222c9d228cab1572ba210ee0cd9e0b8
 app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.test.mjs 32dbc515c7f62df2ae0d3d6072474fa89d00ac032d16307e6793c8419a43cf93
@@ -172,7 +172,10 @@ scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs 707fefb893
 //   - every added pattern is the EXACT path of a file the suite already
 //     executes, so each suite's watched-file set grew and lost nothing
 //     (measured per suite: 18→20, 3495→3496, 24→28, 0 files lost).
-const PHASE2_SUITES_SHA256 = "c7ce3989bb3c2d085387d4747092a83bbe17f0a2788d6d21b22e920721a1a81a";
+// [TEST-MOD-APPROVED #3643] #3643 [freeze invariant registry]
+// Re-seals only the localized #1579 declaration and the mechanically reconciled
+// Phase 2 suite provenance; every executable command and capability lock remains.
+const PHASE2_SUITES_SHA256 = "305f1b1be4488bf34842430c7c8230ece590e60a170280e33c5054509be264c1";
 const PHASE2_COMMANDS_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
 const PROVIDER_REF_COUNTS_SHA256 = "394b2a8ad3c984b0c4278f8e4a469f34f25b936fdf1fc346eebb1f4fa8ecd5b6";
 

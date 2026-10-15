@@ -5,6 +5,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
+// MINGLA-INVARIANT: I-2714-CAMPAIGN-OPEN-TRUTH | issue #2714 | Campaign opens remain provider-grounded, historically honest, sender-isolated, privacy-safe, and independently paginated.
+
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../..",
@@ -27,7 +29,6 @@ const files = {
   issue1821DenoTest:
     "supabase/functions/marketing-send/issue-1821-accepted-email-sms-invites.test.ts",
   privacy: "mingla-marketing/lib/privacyContent.ts",
-  invariant: "docs/INVARIANT_REGISTRY.md",
   ciManifest: ".github/ci-batch/MANIFEST.json",
   // Split the historical workflow stem so CI-batch provider discovery does
   // not mistake this gate's input path for an external provider declaration.
@@ -129,11 +130,8 @@ function checkMigrationContract(
   for (const [key, needle] of [
     ["workflow-migration-reference", migrationPath],
     ["ci-manifest-migration-reference", migrationPath],
-    ["invariant-migration-reference", migrationName],
   ]) {
-    let sourceKey = "invariant";
-    if (key.startsWith("workflow")) sourceKey = "workflow";
-    else if (key.startsWith("ci-")) sourceKey = "ciManifest";
+    const sourceKey = key.startsWith("workflow") ? "workflow" : "ciManifest";
     requireExactCount(key, sources[sourceKey], needle, 1);
     requireAbsent(`${key}-superseded`, sources[sourceKey], [
       supersededMigrationName,
@@ -221,10 +219,6 @@ function check(sources, migrationEntries, migrationSha) {
     "Marketing email measurement",
     "campaigns.usemingla.com",
     "Resend",
-  ]);
-  requireAll("draft-invariant", sources.invariant, [
-    "I-2714-CAMPAIGN-OPEN-TRUTH",
-    "DRAFT",
   ]);
   requireAll("overview-test-independent-truth", sources.overviewNoRevenueTest, [
     "hasDeliveryCoverage",
@@ -323,7 +317,6 @@ if (process.argv.includes("--self-test")) {
     "recipientStats.opened / recipientStats.trackedDelivered What these numbers mean Opened is an estimate based on a tiny image in the email. Emails sent before open tracking was enabled show — because those opens were never measured.";
   good.privacy =
     "August 27, 2026 Marketing email measurement campaigns.usemingla.com Resend";
-  good.invariant = `I-2714-CAMPAIGN-OPEN-TRUTH DRAFT ${migrationName}`;
   good.ciManifest = migrationPath;
   good.overviewNoRevenueTest =
     "hasDeliveryCoverage hasOpenCoverage trackedDelivered openHealthy";
@@ -399,7 +392,7 @@ if (process.argv.includes("--self-test")) {
       !entry.startsWith(`${expectedPredecessorPrefix}_`)
     );
   });
-  for (const sourceKey of ["workflow", "ciManifest", "invariant"]) {
+  for (const sourceKey of ["workflow", "ciManifest"]) {
     proveMutation(`self-test-stale-${sourceKey}-reference`, (fixture) => {
       fixture.sources[sourceKey] = fixture.sources[sourceKey].replace(
         migrationName,

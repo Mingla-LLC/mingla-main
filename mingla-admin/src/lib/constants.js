@@ -139,6 +139,7 @@ export const NAV_GROUPS = [
     items: [
       { id: "hosts",                     label: "Hosts",              icon: "Handshake" },
       { id: "creators",                  label: "Creators",           icon: "Sparkles" },
+      { id: "drafts",                    label: "Drafts to send",      icon: "FileText" },
       { id: "beta-leads",                label: "Beta Leads",         icon: "Inbox" },
       { id: "tool-leads",                label: "Tool Leads",         icon: "Wrench" },
       { id: "team-dashboard",            label: "Team dashboard",     icon: "BarChart3" },

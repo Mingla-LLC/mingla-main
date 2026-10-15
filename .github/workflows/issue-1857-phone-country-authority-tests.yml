@@ -25,7 +25,6 @@ on:
       - "supabase/migrations/20270325001857_issue_1857_phone_country_authority.sql"
       - "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql"
-      - "docs/INVARIANT_REGISTRY.md"
       - ".github/scripts/strict-grep/issue-1857-phone-country-authority.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-1857-phone-country-authority-tests.yml"

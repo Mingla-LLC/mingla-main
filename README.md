@@ -57,7 +57,7 @@ The pre-2026-07-19 operating system (`Mingla_Artifacts/`, `Mingla_Roadmap/`, per
 | Marketing channels, attribution, motions | [`MARKETING.md`](MARKETING.md) |
 | Cross-session coordination and standing holds | [`AGENTS.md`](AGENTS.md) |
 | What shipped, when | [Mingla Avengers board](https://github.com/orgs/Mingla-LLC/projects/4) and its shipping issues |
-| Engineering invariants that must hold | [`docs/INVARIANT_REGISTRY.md`](docs/INVARIANT_REGISTRY.md) |
+| Historical engineering invariant record | [`docs/INVARIANT_REGISTRY.md`](docs/INVARIANT_REGISTRY.md) (frozen); current declarations live beside their enforcing gates or tests and lifecycle/evidence lives on the issue |
 | Stack conventions + Constitution detail | [`docs/MINGLA_ENGINEERING_HANDBOOK.md`](docs/MINGLA_ENGINEERING_HANDBOOK.md) |
 | Worktree / branch discipline | [`docs/WORKTREE_STRATEGY.md`](docs/WORKTREE_STRATEGY.md) |
 | Historical material (pre-migration) | git tag `pre-avengers-archive` |

@@ -53,7 +53,6 @@ on:
       - "supabase/migrations/20261101000000_meta_orch_1174_b1_multiline_installments.sql"
       - "supabase/migrations/20260915000000_meta_orch_1076_p1_payment_provider.sql"
       - ".github/workflows/issue-2337-free-409-honest-copy-tests.yml"
-      - "docs/INVARIANT_REGISTRY.md"
   push:
     branches: [main]
     paths: *issue_2337_paths

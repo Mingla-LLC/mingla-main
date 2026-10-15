@@ -184,7 +184,7 @@ describe("#3802 TA-2: the menu, for every combination of areas", () => {
       const who = { email: `${role}@example.test`, role, status: "active", areas: ["role_home", "crm", "beta_leads"] };
       const labels = visibleNavGroups(NAV_GROUPS, who).map((g) => g.label);
       assert.deepEqual(labels, [null, "Pipeline", "System"], role);
-      for (const id of ALL_IDS.filter((x) => !["hosts", "creators", "beta-leads", "agent"].includes(x))) {
+      for (const id of ALL_IDS.filter((x) => !["hosts", "creators", "drafts", "beta-leads", "agent"].includes(x))) {
         assert.equal(canOpenPage(who, id), false, `${role} must not open ${id}`);
       }
     }
@@ -547,7 +547,9 @@ describe("#3802 TA-8: the phone menu and sign out", () => {
   });
 
   it("in the icon rail every page keeps its name for a screen reader and on hover", () => {
-    assert.match(SIDEBAR, /title=\{rail \? item\.label : undefined\}/);
+    assert.match(SIDEBAR, /const spokenLabel = waiting > 0 \? `\$\{item\.label\}, \$\{waiting\} waiting` : item\.label;/);
+    assert.match(SIDEBAR, /aria-label=\{spokenLabel\}/);
+    assert.match(SIDEBAR, /title=\{rail \? spokenLabel : undefined\}/);
     assert.match(SIDEBAR, /<span className=\{rail \? "sr-only" : "min-w-0 truncate"\}>\{item\.label\}<\/span>/);
     // The rail never hides a page behind a folded group it has no heading to open.
     assert.match(SIDEBAR, /const open = rail \|\| isGroupOpen\(group, foldedGroups, activeTab\);/);
