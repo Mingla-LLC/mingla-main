@@ -12,15 +12,22 @@ All work — bugs, features, ideas, discoveries — lives as GitHub issues on th
 - Set board fields when creating issues (Work Type, Product, Theme, Priority, Estimate; Horizon/Quarter for roadmap items) — board views filter on them.
 - Setting Status = Done auto-closes the issue (a project workflow); don't mark Done anything that should stay open.
 
-## Canonical docs (the only durable .md surface)
+## Canonical docs (the active durable .md surface)
 
 | Doc | Owns |
 |---|---|
 | `PRODUCT_AND_STRATEGY.md` | Product, positioning, roadmap, strategy |
 | `MARKETING.md` | Channels, attribution, marketing motions |
-| `docs/` | Engineering references: invariant registry, handbook, worktree strategy, runbooks, contracts |
+| `docs/` | Maintained engineering references: handbook, worktree strategy, active runbooks, and active contracts |
 
 Everything pre-2026-07-19 (Mingla_Artifacts/, Mingla_Roadmap/, per-ORCH docs, the first comms ledger) is preserved at git tag `pre-avengers-archive`. The later `COMMS.md` coordination table was retired by #3476; chats now follow § Coordinate with other chats, and the table's history is in git.
+
+### Deprecated and historical docs
+
+- Do not load, update, or cite a deprecated, retired, archived, or frozen document as current operating truth. Consult it only when the task explicitly needs history; current issues, merged source, runtime evidence, and the canonical docs above take precedence.
+- When a document becomes obsolete, update or remove its active callers and checks in the same pull request, then delete it. Git history or a named archive tag preserves history without keeping stale instructions in the active tree.
+- Freeze a document instead of deleting it only when a current check, legal requirement, or audit trail still needs the artifact. Mark it clearly as historical, name the current replacement, and do not add new entries.
+- Do not create redirect stubs, duplicate summaries, or compatibility copies unless an active tool requires them. One maintained source of truth is cheaper and safer than several synchronized docs.
 
 ## Release records and no docs-only follow-up pull requests
 
@@ -94,7 +101,6 @@ Never mention Cursor (or `cursoragent`, `Co-authored-by: Cursor`, etc.) anywhere
 
 ## Epic / initiative delivery
 
-- Ship as sequenced small PRs against the umbrella issue; add one issue release-record comment per merged PR.
 - When a phase ends or the eng queue empties, **refresh the issue Progress table and AC ticks** in the issue body (or a dated comment if the body edit races). Tick ACs for shipped code; leave unchecked anything that still needs live proof, legal, or Seth ops (migrations apply, cutover, prod E2E, signed-in browser confirm).
 - When eng has nothing buildable left, say so and list **Seth-owned remainders** (legal text, cutover, E2E, browser proof). Do not invent approved legal prose.
 
@@ -105,7 +111,3 @@ Never mention Cursor (or `cursoragent`, `Co-authored-by: Cursor`, etc.) anywhere
 - Copilot (and similar): fix valid non-nits with tests or guards; reply on the thread; resolve when done. Skip pure style nits.
 - Prefer reshape over parallel rails (existing sweep / readiness / notify paths). Reuse existing secret and ops-alert recipient names; do not invent new inbox secret names.
 - Deno / esm.sh: avoid dual `@supabase/supabase-js@2` type graphs across extract boundaries (structural or local loose admin types beat pinning a shared module in a way that breaks sibling functions in the same CI suite).
-
-## Response style
-
-Every chat response uses exactly two top-level sections: **A — What just happened** (1–4 plain-English sentences, outcome first, layman first) and **B — Handoff** (next steps for Seth, a handoff paragraph for the next agent, or "none; awaiting your direction"). Detail beyond summary-grade goes to the issue, not chat.

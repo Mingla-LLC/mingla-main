@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 
 // META-ORCH-0954: every operator-facing agent/skill definition that ENTERS the
-// pipeline must carry the chat-coordination stanza + the 2-section output template.
+// pipeline must carry the chat-coordination stanza + standing holds.
 // (Originally the comms-ledger-read stanza; re-pinned by #3476, see below. The
 // filename and MANIFEST.json job key keep their historical name.)
 //
@@ -30,16 +30,13 @@ const SKIPPED_GITIGNORED = [
   '.codex/skills/*/SKILL.md (gitignored — Codex agent definitions are operator-local)',
 ];
 
-// Issue #974 (2026-07-19): the first comms ledger was replaced by a COMMS table and
-// the long-form 2-section template compressed into "## Response style".
-// Issue #3476 (2026-09-17): the COMMS table itself is retired. Chats now message
+// Issue #3476 (2026-09-17): the COMMS table is retired. Chats now message
 // each other directly (start / blocked / done), with the GitHub issue as the
-// Claude<->Codex channel, and binding rules live in "## Standing holds". The
-// contract keeps its substance: every agent must follow the coordination protocol
-// on entry and answer in the two-section format; the required heading moved.
+// Claude<->Codex channel, and binding rules live in "## Standing holds".
+// Issue #3643 (2026-10-14): the mandatory A/B response shape is retired. Response
+// presentation is no longer a CI invariant; coordination and standing holds remain.
 const REQUIRED_COORDINATION_HEADING = '## Coordinate with other chats (MANDATORY)';
 const REQUIRED_STANDING_HOLDS_HEADING = '## Standing holds';
-const REQUIRED_2SECTION_HEADING = '## Response style';
 
 const failures = [];
 let checked = 0;
@@ -56,9 +53,6 @@ for (const target of TARGETS) {
   }
   if (!text.includes(REQUIRED_STANDING_HOLDS_HEADING)) {
     failures.push(`${target}: missing \`${REQUIRED_STANDING_HOLDS_HEADING}\` section`);
-  }
-  if (!text.includes(REQUIRED_2SECTION_HEADING)) {
-    failures.push(`${target}: missing 2-section template`);
   }
 }
 
