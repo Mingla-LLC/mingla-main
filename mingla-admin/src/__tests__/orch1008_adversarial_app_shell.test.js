@@ -68,7 +68,7 @@ describe("ORCH-1008 adversarial — App.jsx PAGES map purity", () => {
       "subscriptions",
       "placepool",
       "claims",
-      "email",
+      "community-support",
       "admin",
       "settings",
       "signals",

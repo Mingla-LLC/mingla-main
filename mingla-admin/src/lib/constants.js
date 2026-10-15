@@ -131,7 +131,8 @@ export const NAV_GROUPS = [
     label: null,
     items: [
       { id: "overview",                  label: "Dashboard",          icon: "LayoutDashboard" },
-      { id: "support",                   label: "Support",            icon: "LifeBuoy" },
+      // #3720 Slice F — Support + Email fold into one Community & Support console.
+      { id: "community-support",         label: "Community & Support", icon: "LifeBuoy" },
     ],
   },
   {
@@ -184,7 +185,6 @@ export const NAV_GROUPS = [
       { id: "ad-engine",                 label: "Ads console",        icon: "Megaphone" },
       { id: "campaign-builder",          label: "Campaign Builder",   icon: "PencilRuler" },
       { id: "campaigns",                 label: "Campaigns",          icon: "Flag" },
-      { id: "email",                     label: "Email",              icon: "Mail" },
     ],
   },
   {

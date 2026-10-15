@@ -22,7 +22,6 @@ import { AdminPage } from "./pages/AdminPage";
 import { PlacePoolManagementPage } from "./pages/PlacePoolManagementPage";
 import { UserManagementPage } from "./pages/UserManagementPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { EmailPage } from "./pages/EmailPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
 import { SignalLibraryPage } from "./pages/SignalLibraryPage";
 import { PlaceIntelligenceTrialPage } from "./pages/PlaceIntelligenceTrialPage";
@@ -34,8 +33,8 @@ import { BetaLeadsPage } from "./pages/BetaLeadsPage";
 // ISSUE-1354 — Tool Leads: all free-tool submissions + report detail (#/tool-leads).
 import { ToolLeadsPage } from "./pages/ToolLeadsPage";
 import { StripeModePage } from "./pages/StripeModePage";
-// META-ORCH-1104 Phase 2 — admin support desk (queue + thread + agents).
-import { SupportDeskPage } from "./pages/SupportDeskPage";
+// #3720 Slice F — unified Community & Support console (replaces Support + Email nav).
+import { CommunitySupportPage } from "./pages/CommunitySupportPage";
 // ORCH-1201 — Admin API-Health hub (board of external-service health + alerts).
 import { ApiHealthPage } from "./pages/ApiHealthPage";
 // META-ORCH-1222 — Careers: applications list+detail + role CRUD (hash #/careers).
@@ -88,10 +87,9 @@ const PAGES = {
   // ISSUE-1354: all free-tool submissions + report detail (hash route #/tool-leads).
   "tool-leads": ToolLeadsPage,
   claims: ClaimsPage,
-  // META-ORCH-1104 Phase 2 — #/support support desk.
-  support: SupportDeskPage,
+  // #3720 Slice F — #/community-support (legacy #/support and #/email rewrite below).
+  "community-support": CommunitySupportPage,
   // ORCH-0671: 'photos' route deleted — getTabFromHash falls back to 'overview' via PAGES[hash] guard.
-  email: EmailPage,
   pricing: PricingPage,
   admin: AdminPage,
   settings: SettingsPage,
@@ -144,17 +142,39 @@ function requestedPageId() {
   return window.location.hash.replace("#/", "").split("?")[0].split("/")[0];
 }
 
+// #3720 Slice F — old Support / Email bookmarks open the matching console tab.
+function canonicalizeLegacyCommunityHashes() {
+  const page = requestedPageId();
+  if (page === "support") {
+    const next = "#/community-support?tab=support";
+    if (window.location.hash !== next) {
+      window.history.replaceState(null, "", next);
+    }
+    return;
+  }
+  if (page === "email") {
+    const next = "#/community-support?tab=email";
+    if (window.location.hash !== next) {
+      window.history.replaceState(null, "", next);
+    }
+  }
+}
+
 // An address that names no page reads as the dashboard, as it always has.
 // Whether the person may open that page is NOT decided here: resolveRoute()
 // decides what is actually shown.
 function getTabFromHash() {
+  canonicalizeLegacyCommunityHashes();
   const hash = requestedPageId();
   return PAGES[hash] ? hash : "overview";
 }
 
 // Did the address name a real page? Only then is a refusal worth a message.
+// Legacy #/support and #/email count as named (they rewrite to community-support).
 function addressNamesPage() {
-  return Object.hasOwn(PAGES, requestedPageId());
+  const page = requestedPageId();
+  if (page === "support" || page === "email") return true;
+  return Object.hasOwn(PAGES, page);
 }
 
 // Issue #3802 — shown when someone is signed in but the app could not find out
