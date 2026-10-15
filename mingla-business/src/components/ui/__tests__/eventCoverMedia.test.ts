@@ -177,11 +177,23 @@ describe("EventCoverMedia presentation", () => {
   test("media render failures are surfaced to the caller before fallback", () => {
     // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: implementation moved to the
     // shared @mingla/offering-rendering package; assertions unchanged.
+    // #3827 [TEST-MOD-APPROVED #3827]: the old assertions pinned separate
+    // handleMediaError("image"/"video") call expressions. The stable-callback
+    // repair deliberately replaces those fresh wrappers with one optional-event
+    // discriminator, so pin the preserved surface contract and both call sites.
     const source = repoFile("../packages/offering-rendering/EventCoverMedia.tsx");
+    const handlerStart = source.indexOf("const handleMediaError = useCallback(");
+    const handlerEnd = source.indexOf("\n  // #3827", handlerStart);
+    const handlerBlock = source.slice(handlerStart, handlerEnd);
 
     expect(source).toContain("onMediaError");
-    expect(source).toContain('handleMediaError("image"');
-    expect(source).toContain('handleMediaError("video"');
+    expect(handlerStart).toBeGreaterThanOrEqual(0);
+    expect(handlerEnd).toBeGreaterThan(handlerStart);
+    expect(handlerBlock).toContain('surface: event ? "image" : "video"');
+    expect(handlerBlock.indexOf("onMediaError?.({")).toBeLessThan(
+      handlerBlock.indexOf("setHasMediaError(true)"),
+    );
+    expect(source.match(/onError=\{handleMediaError\}/g)).toHaveLength(2);
     // ORCH-0989/ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: the CreatorStep4Cover
     // media-display-error UI (mediaDisplayError / accessibilityRole="alert") moved
     // into the shared <CoverPickerSheet>/<CoverPicker> when the inline picker was

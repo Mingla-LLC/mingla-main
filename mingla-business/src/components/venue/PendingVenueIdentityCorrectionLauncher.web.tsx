@@ -7,6 +7,9 @@
  * NEVER be statically imported here — the async chunk boundary is what keeps
  * the correction feature out of the eager `__common` payload AND out of both
  * native import graphs (`.native.tsx` renders nothing at all).
+ * #3827 follow-up: this boundary stayed intact when another eager module grew
+ * the repository-wide chunk past its ceiling. Repair shared growth at its
+ * source; never move this dialog, its service, the baseline, or the tripwire.
  *
  * A failed chunk load leaves the venue page fully usable and offers Retry.
  *
