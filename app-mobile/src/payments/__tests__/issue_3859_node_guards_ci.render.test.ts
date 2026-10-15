@@ -12,18 +12,10 @@ const nodeGuards = [
   "src/payments/__tests__/issue_3859_explorer_purchase_consent.implementor.happy.test.mjs",
 ] as const;
 
-const stripTypesGuards = [
-  "src/hooks/__tests__/issue_3859_public_installment_capability.implementor.happy.test.ts",
-] as const;
-
-const runNodeGuard = (relativePath: string, stripTypes = false): void => {
+const runNodeGuard = (relativePath: string): void => {
   const result = spawnSync(
     process.execPath,
-    [
-      ...(stripTypes ? ["--experimental-strip-types"] : []),
-      "--test",
-      relativePath,
-    ],
+    ["--test", relativePath],
     {
       cwd: appRoot,
       encoding: "utf8",
@@ -47,9 +39,5 @@ const runNodeGuard = (relativePath: string, stripTypes = false): void => {
 describe("issue #3859 — required Node guards execute in app CI", () => {
   test.each(nodeGuards)("executes %s", (relativePath) => {
     runNodeGuard(relativePath);
-  });
-
-  test.each(stripTypesGuards)("executes %s with strip-types", (relativePath) => {
-    runNodeGuard(relativePath, true);
   });
 });

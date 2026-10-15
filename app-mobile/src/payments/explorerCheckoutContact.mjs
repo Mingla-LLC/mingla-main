@@ -9,7 +9,11 @@
  * never update a profile or login identity by accident.
  */
 
-import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
+// Keep this pure authority runnable from the repository's Node-only CI lanes.
+// Those lanes intentionally do not install app-mobile/node_modules, so the
+// workspace package must be addressed by its repository path rather than the
+// Metro-only bare-package link.
+import { resolveUserPhoneE164 } from "../../../packages/card-identity/phone.mjs";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONTACT_FIELDS = /** @type {const} */ (["name", "email", "phone"]);

@@ -53,8 +53,10 @@ module.exports = {
     "**/__tests__/issue_3859_native_checkout_terminal_flow.implementor.happy.test.ts",
     "**/__tests__/issue_3859_native_terminal_wiring.implementor.happy.test.ts",
     "**/__tests__/issue_3859_paystack_recovery_terminal_truth.implementor.happy.test.ts",
-    // issue #3859 — the Node and strip-types guards must execute, not merely
-    // exist outside Jest discovery.
+    // issue #3859 — public installment capability runs in this Node 20 lane
+    // through Jest's existing TypeScript transform; the other pure Node guards
+    // are spawned below without depending on app-mobile/node_modules.
+    "**/__tests__/issue_3859_public_installment_capability.implementor.happy.test.ts",
     "**/__tests__/issue_3859_node_guards_ci.render.test.ts",
   ],
 };

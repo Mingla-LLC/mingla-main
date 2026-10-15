@@ -1,8 +1,5 @@
-import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { test } from "node:test";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import { publicTripInstallmentSchedule } from "../../../../packages/offering-rendering/tripInstallmentCapability.ts";
 
@@ -12,24 +9,22 @@ const savedSchedule = {
 };
 
 test("#3859 Explorer old-server unknown and unsupported capability hide a stale schedule", () => {
-  assert.equal(publicTripInstallmentSchedule(undefined, savedSchedule), null);
-  assert.equal(publicTripInstallmentSchedule(false, savedSchedule), null);
+  expect(publicTripInstallmentSchedule(undefined, savedSchedule)).toBeNull();
+  expect(publicTripInstallmentSchedule(false, savedSchedule)).toBeNull();
 });
 
 test("#3859 Explorer explicit supported capability preserves the saved schedule", () => {
-  assert.equal(publicTripInstallmentSchedule(true, savedSchedule), savedSchedule);
+  expect(publicTripInstallmentSchedule(true, savedSchedule)).toBe(savedSchedule);
 });
 
 test("#3859 Explorer canonical reader wiring strips stale schedules before UI state", () => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const source = readFileSync(join(here, "../useConsumerTripDetail.ts"), "utf8")
+  const source = readFileSync(join(__dirname, "../useConsumerTripDetail.ts"), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^[ \t]*\/\/.*$/gm, "");
 
-  assert.match(source, /installmentCapabilityAvailable\?:\s*unknown/);
-  assert.match(
-    source,
+  expect(source).toMatch(/installmentCapabilityAvailable\?:\s*unknown/);
+  expect(source).toMatch(
     /publicTripInstallmentSchedule\(\s*p\.installmentCapabilityAvailable,\s*tier\.installmentSchedule,?\s*\)/,
   );
-  assert.match(source, /const\s+tiers\s*=\s*rawTiers\.map/);
+  expect(source).toMatch(/const\s+tiers\s*=\s*rawTiers\.map/);
 });
