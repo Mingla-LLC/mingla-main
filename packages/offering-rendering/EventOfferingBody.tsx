@@ -1109,7 +1109,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
               style={[
                 styles.totalValue,
                 surface.primaryText,
-                { fontFamily: boldFamily },
+                styles.moneyText,
               ]}
               testID="orch-1167-running-total"
               accessibilityLiveRegion="polite"
@@ -1143,8 +1143,10 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
                   color: proceedEnabled
                     ? palette.accentText
                     : palette.tertiaryText,
-                  fontFamily: boldFamily,
                 },
+                totalLabel === null
+                  ? { fontFamily: boldFamily }
+                  : styles.moneyText,
               ]}
             >
               {proceedLabel}
@@ -1270,8 +1272,8 @@ export const EventOfferingFloatingBar: React.FC<
           styles.floatBarText,
           {
             color: enabled ? palette.accentText : palette.tertiaryText,
-            fontFamily: boldFamily,
           },
+          totalLabel === null ? { fontFamily: boldFamily } : styles.moneyText,
         ]}
       >
         {label}
@@ -1404,7 +1406,7 @@ const TicketStepperRow: React.FC<{
           style={[
             styles.tierPrice,
             surface.primaryText,
-            { fontFamily: boldFamily },
+            styles.moneyText,
           ]}
         >
           {ticket.isFree ? "Free" : priceLabel}
@@ -1511,9 +1513,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: 8,
   },
+  // #3859 — host-selectable display fonts own their native line metrics. Anton's
+  // line box is substantially taller than 35pt at 32pt; forcing 35 clipped the
+  // cap on iOS. Keep this unconstrained so iOS, Android, and web can measure the
+  // loaded face instead of pretending every face has Inter's metrics.
   title: {
     fontSize: 32,
-    lineHeight: 35,
     fontWeight: "900",
     letterSpacing: -0.5,
   },
@@ -1574,6 +1579,11 @@ const styles = StyleSheet.create({
   tierDesc: { fontSize: 13, marginTop: 3, lineHeight: 18 },
   tierCap: { fontSize: 12, fontWeight: "700", marginTop: 4 },
   tierPrice: { fontSize: 15, fontWeight: "900" },
+  // #3859 — money must not inherit a host display face. Anton does not contain
+  // U+20A6, so CoreText mixed a fallback naira glyph into the condensed run and
+  // let the mark collide with the amount. System digits + tabular spacing keep
+  // every supported currency legible while the surrounding page stays themed.
+  moneyText: { fontVariant: ["tabular-nums"] },
   // issue #2160 — the price qualifier line, directly under the price.
   tierPricingNote: { fontSize: 11, fontWeight: "700", marginTop: 1 },
   stepper: { flexDirection: "row", alignItems: "center", gap: 12 },

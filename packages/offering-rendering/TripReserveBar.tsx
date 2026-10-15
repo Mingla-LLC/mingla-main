@@ -174,7 +174,6 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
             style={[
               compact ? styles.segmentAmountCompact : styles.segmentAmount,
               { color: textColor },
-              fontStyle,
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit
@@ -244,7 +243,7 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
           ) : null}
           {price.length > 0 ? (
             <Text
-              style={[styles.rPrice, { color: palette.accentText }, fontStyle]}
+              style={[styles.rPrice, { color: palette.accentText }]}
               numberOfLines={1}
               ellipsizeMode="tail"
             >
@@ -322,7 +321,7 @@ export const TripReserveBar: React.FC<TripReserveBarProps> = ({
           label + arrow off-edge (F-4 arrow-bleed guard parity). */}
       {price.length > 0 ? (
         <Text
-          style={[styles.floatPrice, { color: palette.accentText }, fontStyle]}
+          style={[styles.floatPrice, { color: palette.accentText }]}
           numberOfLines={1}
           ellipsizeMode="tail"
         >
@@ -418,7 +417,13 @@ const styles = StyleSheet.create({
   },
   // ORCH-1175 — the live price segment inside the floating pill. Yields space
   // first (flexShrink:1) so the label + arrow stay intact on a long price.
-  floatPrice: { fontSize: 16, fontWeight: "900", flexShrink: 1, minWidth: 0 },
+  floatPrice: {
+    fontSize: 16,
+    fontWeight: "900",
+    fontVariant: ["tabular-nums"],
+    flexShrink: 1,
+    minWidth: 0,
+  },
   floatCta: { fontSize: 16, fontWeight: "900", flexShrink: 0 },
   floatButtonDisabled: {
     alignSelf: "center",
@@ -536,6 +541,7 @@ const styles = StyleSheet.create({
   segmentAmount: {
     fontSize: 17,
     fontWeight: "900",
+    fontVariant: ["tabular-nums"],
     letterSpacing: -0.3,
     marginTop: 2,
     flexShrink: 1,
@@ -544,6 +550,7 @@ const styles = StyleSheet.create({
   segmentAmountCompact: {
     fontSize: 14,
     fontWeight: "900",
+    fontVariant: ["tabular-nums"],
     letterSpacing: -0.3,
     marginTop: 1,
     flexShrink: 1,
@@ -553,7 +560,15 @@ const styles = StyleSheet.create({
   // "From … today" price truncates rather than shoving the label+arrow off-edge.
   rLeft: { alignItems: "flex-start", flexShrink: 1, minWidth: 0 },
   rKicker: { fontSize: 11, fontWeight: "700", opacity: 0.85 },
-  rPrice: { fontSize: 19, fontWeight: "900", letterSpacing: -0.3, marginTop: 1 },
+  // #3859 — money stays on the system face: some host display fonts omit the
+  // naira glyph, and native fallback inside a condensed run can overlap digits.
+  rPrice: {
+    fontSize: 19,
+    fontWeight: "900",
+    fontVariant: ["tabular-nums"],
+    letterSpacing: -0.3,
+    marginTop: 1,
+  },
   rCta: { fontSize: 16, fontWeight: "900", flexShrink: 0 },
   reserveDisabled: {
     width: "100%",

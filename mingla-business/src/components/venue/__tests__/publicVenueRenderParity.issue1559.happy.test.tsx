@@ -166,6 +166,25 @@
  * `restaurant-desktop-full` gains only the shared CTA testID. The other three
  * cases are byte-identical. The reservation sheet, share modal, anchors, size
  * floor, case roster, and assertion counts are not removed or weakened.
+ *
+ * ---------------------------------------------------------------------------
+ * [TEST-MOD-APPROVED #3859] — HOST FONT METRICS OWN THEIR LINE BOXES
+ * ---------------------------------------------------------------------------
+ * #3859 removes only fixed line heights that were smaller than the native
+ * metrics of selectable host fonts such as Anton. Keeping those Inter-sized
+ * boxes clipped titles and answer text on Explorer; the shared public venue
+ * must render the same correction on buyer web instead of preserving a known
+ * defect for byte parity.
+ *
+ * Regenerated with `MINGLA_1559_WRITE_BASELINE=1 npx jest --ci --runInBand
+ * --runTestsByPath src/components/venue/__tests__/
+ * publicVenueRenderParity.issue1559.happy.test.tsx`. All seven cases keep the
+ * same elements, copy, anchors, ordering, and case roster. The only tree deltas
+ * are deleted `lineHeight` props: phone/full and phone/menu cases drop the two
+ * 22px answer boxes plus the 33px title box; desktop cases additionally drop
+ * the 26px desk-name and one 20px desk-pitch/message box; sparse/error cases
+ * drop only the 33px title box. No assertion, subtree, or user-facing copy is
+ * removed.
  */
 import React from "react";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
