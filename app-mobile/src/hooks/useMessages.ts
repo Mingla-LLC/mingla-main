@@ -116,6 +116,9 @@ export const useMessages = () => {
           )
         `)
         .in('id', conversationIds)
+        // #668 / #3720 Slice D1 — support belongs on Host Help & Support only
+        // (parity with messagingService.getConversations).
+        .neq('linked_entity_type', 'support')
         .order('updated_at', { ascending: false });
 
       if (error) throw error;

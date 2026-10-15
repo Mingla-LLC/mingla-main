@@ -55,3 +55,20 @@ SELECT
   EXISTS (SELECT 1 FROM information_schema.columns
           WHERE table_schema='public' AND table_name='profiles' AND column_name='is_admin') AS is_admin_still_present,
   (SELECT count(*) FROM public._deprecated_profiles_is_admin_backup) AS backup_row_count;
+
+-- (G) #3720 Slice D1 — base participant SELECT policies exclude support.
+--     Expected: both quals contain IS DISTINCT FROM 'support' (or equivalent).
+SELECT polname,
+       pg_get_expr(polqual, polrelid) ILIKE '%support%'
+         AND (
+           pg_get_expr(polqual, polrelid) ILIKE '%IS DISTINCT FROM%'
+           OR pg_get_expr(polqual, polrelid) ILIKE '%<>%'
+           OR pg_get_expr(polqual, polrelid) ILIKE '%!=%'
+         ) AS excludes_support
+FROM pg_policy
+WHERE polrelid = 'public.conversations'::regclass
+  AND polname IN (
+    'Users can view conversations they participate in',
+    'Users can view their conversations'
+  )
+ORDER BY polname;
