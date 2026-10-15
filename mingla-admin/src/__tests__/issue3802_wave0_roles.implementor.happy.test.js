@@ -409,8 +409,13 @@ describe("#3802 C-9: source contracts — auth, menu, palette, routes", () => {
     assert.equal(appCode.match(/PAGES\[/g).length, 2, "a page component is never looked up from the address");
     assert.equal(/PAGES\[(activeTab|nav\.requested)\]/.test(appCode), false);
     // A refusal is announced only when the address named a real page.
+    // #3720 Slice F: addressNamesPage() reads the hash once, treats legacy
+    // #/support and #/email as named (they rewrite to community-support), then
+    // Object.hasOwn(PAGES, page) — not the older inline requestedPageId() form.
     assert.ok(APP_JSX.includes("if (route.denied && nav.named && lastToldRef.current !== nav.seq) {"));
-    assert.ok(APP_JSX.includes("return Object.hasOwn(PAGES, requestedPageId());"));
+    assert.ok(APP_JSX.includes("function addressNamesPage()"));
+    assert.ok(APP_JSX.includes('if (page === "support" || page === "email") return true;'));
+    assert.ok(APP_JSX.includes("return Object.hasOwn(PAGES, page);"));
     assert.ok(APP_JSX.includes("<AppShell activeTab={route.pageId}"));
     assert.ok(APP_JSX.includes("That page isn't part of your access"));
     assert.ok(APP_JSX.includes("Couldn&apos;t load your access"));
