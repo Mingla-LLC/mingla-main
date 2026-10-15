@@ -352,6 +352,8 @@ module.exports = {
     // moved: vercel.json
     "publicSearchMigration\\.issue2986\\.security\\.test\\.ts$", // invariant -> issue-2986-public-search-structure.mjs
     // moved: server/socialPreview.js, src/constants/platformUrl.ts, vercel.json
+    // [TEST-MOD-APPROVED #3643] Effective-plan execution is owned by the Phase 3 discovery proof.
+    // dropped: .github/scripts/ci-discovery/list.mjs — #3643's self-registering CI gate owns the effective-plan loader; this #2986 structural guard does not duplicate it.
     // dropped: scripts/ci/issue_2986_allowlist_delta_gate.mjs — #2986's live CI
     //   allowlist gate remains its own successor owner; this structural guard does not duplicate it.
   ],
