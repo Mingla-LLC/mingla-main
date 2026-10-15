@@ -186,6 +186,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useGrowthToolsReads.ts",
   // #874 — all three brand Analytics RPCs are active-member/auth.uid()-scoped.
   "useBrandAnalytics.ts",
+  // #3720 — announcements, read receipts, roadmap, email preference, and
+  // support-presence reads are host/auth.uid()-scoped. Every query in the
+  // hook folds isAuthReady into enabled before reaching those services.
+  "useCommunity.ts",
   // ── #2101 [named-buyer checkout] — MANDATORY registry entry (this gate's own
   //    ORCH-1202 completeness clause requires every new query hook to declare
   //    itself). The file owns TWO queries and BOTH fold isAuthReady into
