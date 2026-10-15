@@ -24,8 +24,7 @@ Everything pre-2026-07-19 (Mingla_Artifacts/, Mingla_Roadmap/, per-ORCH docs, th
 
 ## Release records and no docs-only follow-up pull requests
 
-- Any `docs/INVARIANT_REGISTRY.md` status change is written in the same pull request as the change it describes, before it merges.
-- Exception: if an invariant's proof only exists after merge (it needs a green `main` or a live check), leave it DRAFT, record the post-merge check on the issue, and flip it to ACTIVE in your next pull request.
+- New invariants are declared in a machine-readable comment beside the enforcing gate or test. Lifecycle, rollout state, decisions, and evidence live on the GitHub issue; the historical registry is frozen and is never edited for new work or status changes.
 - The release-record comment on the shipping issue is the sole current record of the PR, merge commit, migrations applied, deploy, and live check. Use an explicit `none`, `N/A`, or `pending` rather than omitting a field.
 - A docs-only pull request is only for work whose deliverable is the docs themselves.
 
@@ -70,7 +69,7 @@ Rules every chat must follow until the linked issue lifts them. Remove a hold in
 
 - **Never commit on the anchor `main`** (`~/Desktop/mingla-main`). Work in a per-issue worktree: `~/Desktop/mingla-orchs/<issue#>-<slug>/` on branch `<issue#>-<slug>`, branched from fresh `origin/main`. Full rules: `docs/WORKTREE_STRATEGY.md`.
 - **One PR per issue; merge only when all required checks are GREEN** and the PR is mergeable. Never merge red, never disable a check.
-- The 14-rule Architecture Constitution in `README.md` binds every change; invariants in `docs/INVARIANT_REGISTRY.md` are enforced by strict-grep CI gates.
+- The 14-rule Architecture Constitution in `README.md` binds every change; invariant declarations live beside their enforcing gates or tests, while `docs/INVARIANT_REGISTRY.md` is frozen history.
 - Fixes ship with regression tests; the tests suite is append-only (CI-gated).
 - Both apps ship the SAME version — bump together (CI parity gate).
 - Public trip/offering changes must hit ALL surfaces (consumer iOS/Android, business iOS/Android, buyer web, admin where applicable).

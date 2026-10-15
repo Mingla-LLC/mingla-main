@@ -5,6 +5,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// MINGLA-INVARIANT: I-PROPOSED-2981-MARKETING-ORIGIN-ONE-OWNER | issue #2981 | The apex marketing origin is canonical while aliases, careers, share routes, and Host product authority remain isolated.
+// MINGLA-INVARIANT: I-PROPOSED-2981-SEARCH-LIFECYCLE-ONE-OWNER | issue #2981 | One typed route lifecycle owns indexability, canonical metadata, sitemap membership, redirects, and gone responses.
+// MINGLA-INVARIANT: I-PROPOSED-2981-ENTITY-GRAPH-FACTUAL | issue #2981 | Marketing structured data contains only verified Mingla identities, destinations, assets, and factual claims.
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 
 const STATES = [
@@ -100,7 +104,6 @@ const NOINDEX_PAGE_FILES = new Map([
 
 const REQUIRED_FILES = new Set([
   'MARKETING.md',
-  'docs/INVARIANT_REGISTRY.md',
   'mingla-marketing/lib/site.ts',
   'mingla-marketing/lib/search/route-registry.ts',
   'mingla-marketing/lib/search/metadata.ts',
@@ -431,15 +434,6 @@ function validate(io) {
   if (/North Carolina Triangle|Triangle \(Raleigh/.test(marketing)) {
     fail('CANONICAL_MARKETING_DOC', 'the committed city scope must name cities individually')
   }
-  const invariants = read('docs/INVARIANT_REGISTRY.md')
-  for (const id of [
-    'I-PROPOSED-2981-MARKETING-ORIGIN-ONE-OWNER',
-    'I-PROPOSED-2981-SEARCH-LIFECYCLE-ONE-OWNER',
-    'I-PROPOSED-2981-ENTITY-GRAPH-FACTUAL',
-  ]) {
-    if (!invariants.includes(id)) fail('INVARIANT_REGISTRY', `${id} is absent`)
-  }
-
   return errors
 }
 

@@ -16,7 +16,7 @@
 //      ?userId= / ?brandId= deep-links, and ship zero edit actions.
 //   5. Nav repointed to People + Brands; the 1271 placeholder route is gone.
 //   6. The strict-grep gate + workflow job exist; admin_get_person is in the
-//      gate-first registry; the DRAFT invariant is registered.
+//      gate-first registry; the invariant is declared beside its gate.
 //
 // Fails-on-revert target = the RLS/RPC migration + the service RPC call: deleting
 // any policy line, the admin_get_person body, or the rpc("admin_get_person") call
@@ -197,7 +197,7 @@ describe("ORCH-1272 — nav + routing repointed", () => {
   });
 });
 
-describe("ORCH-1272 — gate + workflow + registry", () => {
+describe("ORCH-1272 — gate + workflow + local declaration", () => {
   it("i-1272-identity-admin-read.mjs exists and supports --self-test", () => {
     const g = read(".github/scripts/strict-grep/i-1272-identity-admin-read.mjs");
     assert.match(g, /--self-test/);
@@ -215,10 +215,8 @@ describe("ORCH-1272 — gate + workflow + registry", () => {
     const writeGate = read(".github/scripts/strict-grep/i-admin-write-audited.mjs");
     assert.doesNotMatch(writeGate, /admin_get_person/);
   });
-  it("I-PROPOSED-1272-IDENTITY-ADMIN-READ is registered DRAFT", () => {
-    // Issue #974 [TEST-MOD-APPROVED ORCH-0974]: the invariant registry moved to
-    // docs/INVARIANT_REGISTRY.md when the artifact system retired (tag pre-avengers-archive).
-    const reg = read("docs/INVARIANT_REGISTRY.md");
-    assert.match(reg, /I-PROPOSED-1272-IDENTITY-ADMIN-READ \(DRAFT\)/);
+  it("I-PROPOSED-1272-IDENTITY-ADMIN-READ is declared beside its enforcing gate", () => {
+    const gate = read(".github/scripts/strict-grep/i-1272-identity-admin-read.mjs");
+    assert.match(gate, /MINGLA-INVARIANT: I-PROPOSED-1272-IDENTITY-ADMIN-READ \| issue #1272 \|/);
   });
 });

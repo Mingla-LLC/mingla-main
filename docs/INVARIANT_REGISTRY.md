@@ -1,3 +1,5 @@
+> **FROZEN 2026-10-14.** Historical record only—do not add, edit, remove, reorder, or change status here. New invariants are declared beside their enforcing gate or test; lifecycle, decisions, and evidence live on the GitHub issue.
+
 # Invariant Registry
 
 ## DRAFT — issue #3660 (Host account deletion completes or changes nothing)

@@ -224,7 +224,10 @@ function assertWave(value) {
   assert.equal(digest(value.commandCapabilities.commands.slice(51,158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
   assert.equal(digest(value.commandCapabilities.commands.slice(158, 194)), "df9f09e2454fa05f7d74ae96517657a8582aff4c3ad742c6f2ab657cef179bc1");
   assert.equal(digest(value.phase3bLeafCapabilities.leaves), "76d627f1f117923c41dc2a4b928d606a134c2a3a0d948010e565828fa91be89d");
-  assert.equal(value.phase3bContractSha256, "8b3a94d67e1e32b7cb5580bbab84db525ad196769608d42cc0607652a3c6cad9");
+  // [TEST-MOD-APPROVED #3643] The seal changes only because #1902 no longer
+  // routes on frozen history; every remaining trigger, runtime, setup, timeout,
+  // command, leaf, and lifecycle field stays inside the same contract digest.
+  assert.equal(value.phase3bContractSha256, "ed21e7fa388d9eb7ab66feb2f578c617d2b2d5977c7f954471003fc2522efb87");
   const lifecycle=value.suites.find((suite)=>suite.id==="issue-1902-public-event-lifecycle-tests");
   assert.deepEqual(lifecycle.steps.map((step)=>step.env||null).filter(Boolean),[{NODE_PATH:"./node_modules"}]);
   assert.deepEqual(value.setupProfiles["phase3b-lifecycle-node20-deno2"].installs.map((install)=>[install.cwd,install.invocation.argv]),[["mingla-business",["ci"]],["app-mobile",["ci"]]]);

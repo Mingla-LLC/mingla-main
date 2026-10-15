@@ -28,7 +28,6 @@ on:
       - ".github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-1930-checkout-current-truth.yml"
-      - "docs/INVARIANT_REGISTRY.md"
   workflow_dispatch:
 
 concurrency:

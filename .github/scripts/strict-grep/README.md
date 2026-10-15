@@ -233,10 +233,11 @@ whose `--self-test` proves the check still fires on a NUL-hidden stale string.
    `meta-1383-manifest-parity.mjs` fails the PR if you add the script and forget
    the entry (P1), or add an entry with no script (P2), or let the counts drift (P3).
 
-3. **Cross-reference in `Mingla_Artifacts/INVARIANT_REGISTRY.md`** — add a
-   "CI enforcement" line in the I-N entry pointing to the script.
-   **Do NOT add a row to the historical table above** — `MANIFEST.json` is the
-   registry now.
+3. **Declare the invariant beside its enforcement** — add one comment in the
+   first 60 lines of the gate using
+   `// MINGLA-INVARIANT: I-N | issue #1234 | one-line rule`. Lifecycle,
+   decisions, and evidence belong on the issue. The historical registry is
+   frozen and must not be edited.
 
 4. **Test locally** — run the gate from the repo root against synthetic violation
    fixtures + clean fixtures; verify exit codes (`0` clean / `1` violation /
@@ -295,7 +296,7 @@ Other registered gate tags:
 
 - **Exit codes:** `0` clean, `1` violation, `2` script error / inconclusive.
 - **Error format:** rich (file path + line number + offending pattern +
-  suggested fix + cross-reference to INVARIANT_REGISTRY).
+  suggested fix + invariant ID and issue evidence).
 - **Warning format:** for cases the gate cannot statically verify (e.g.,
   dynamic JSX attribute values), report `WARN:` line but do NOT exit
   non-zero. The reviewer manually verifies during PR review.
@@ -308,7 +309,7 @@ Other registered gate tags:
 ## Cross-references
 
 - Workflow: `.github/workflows/strict-grep-mingla-business.yml`
-- Active invariants: `Mingla_Artifacts/INVARIANT_REGISTRY.md`
+- Current invariants: machine-readable declarations beside their enforcing gates/tests; lifecycle and evidence live on the issue
 - Decision lock: `Mingla_Artifacts/DECISION_LOG.md` DEC-101 (Cycle 17b)
 - Memory: `feedback_strict_grep_registry_pattern.md` (operator-readable
   pattern documentation for future skill sessions)

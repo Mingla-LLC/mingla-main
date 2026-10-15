@@ -19,7 +19,6 @@ on:
       - ".github/scripts/strict-grep/__tests__/issue-2305-status-table-has-a-resolver.test.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-2305-conflict-resolution-tests.yml"
-      - "docs/INVARIANT_REGISTRY.md"
   push:
     branches: [main]
     paths:
@@ -38,7 +37,6 @@ on:
       - ".github/scripts/strict-grep/__tests__/issue-2305-status-table-has-a-resolver.test.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-2305-conflict-resolution-tests.yml"
-      - "docs/INVARIANT_REGISTRY.md"
   workflow_dispatch:
 
 concurrency:

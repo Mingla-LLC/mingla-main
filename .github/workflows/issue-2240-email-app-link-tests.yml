@@ -61,7 +61,6 @@ on:
       - "mingla-business/src/services/guestFunnelLink.ts"
       - ".github/scripts/strict-grep/i-2240-email-app-link-sole-owner.mjs"
       - ".github/workflows/issue-2240-email-app-link-tests.yml"
-      - "docs/INVARIANT_REGISTRY.md"
   push:
     branches: [main]
     paths: *issue_2240_paths

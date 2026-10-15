@@ -40,9 +40,13 @@ import { join } from "node:path";
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..");
 const EDIT_ROUTE = join(REPO_ROOT, "mingla-business", "app", "event", "[id]", "edit.tsx");
 const TRIP_EDIT_ROUTE = join(REPO_ROOT, "mingla-business", "app", "trip", "[id]", "edit.tsx");
-// #1062 [biz-jest-residual-burndown] Wave 2 [TEST-MOD-APPROVED ORCH-1062] —
-// OPERATING MODEL V2 (#974) moved the invariant registry to docs/.
-const INVARIANT_REGISTRY = join(REPO_ROOT, "docs", "INVARIANT_REGISTRY.md");
+const INVARIANT_GATE = join(
+  REPO_ROOT,
+  ".github",
+  "scripts",
+  "strict-grep",
+  "i-proposed-creator-entry-is-instant.mjs",
+);
 
 const stripComments = (source: string): string =>
   source
@@ -230,19 +234,12 @@ describe("ORCH-0893 adversarial — trip/[id]/edit.tsx narrowed-scope contract",
   });
 });
 
-describe("ORCH-0893 adversarial — invariant registry entry present", () => {
-  test("I-PROPOSED-CREATOR-ENTRY-IS-INSTANT is registered (ACTIVE) in INVARIANT_REGISTRY.md", () => {
-    const source = readFileSync(INVARIANT_REGISTRY, "utf8");
-
-    // #1062 Wave 2 / B2 — the invariant was pre-staged DRAFT and PROMOTED to ACTIVE
-    // at ORCH-0893 CLOSE (the expected lifecycle; docs/INVARIANT_REGISTRY.md). The
-    // entry must still exist and cite ORCH-0893 — now as ACTIVE, not DRAFT.
-    expect(source).toMatch(/I-PROPOSED-CREATOR-ENTRY-IS-INSTANT/);
+describe("ORCH-0893 adversarial — local invariant declaration present", () => {
+  test("I-PROPOSED-CREATOR-ENTRY-IS-INSTANT is declared in its enforcing gate", () => {
+    const source = readFileSync(INVARIANT_GATE, "utf8");
     expect(source).toMatch(
-      /I-PROPOSED-CREATOR-ENTRY-IS-INSTANT.*ACTIVE.*ORCH-0893/s,
+      /MINGLA-INVARIANT: I-PROPOSED-CREATOR-ENTRY-IS-INSTANT \| issue #893 \|/,
     );
-    // The enforcement triple must be cited:
-    expect(source).toMatch(/i-proposed-creator-entry-is-instant\.mjs/);
     expect(source).toMatch(/draftDirtyCheck/);
   });
 });

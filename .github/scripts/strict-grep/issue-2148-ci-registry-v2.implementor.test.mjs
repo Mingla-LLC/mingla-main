@@ -214,7 +214,10 @@ test("#2435 registry v2 proves the complete current topology", () => {
   assert.throws(() => assertWaveStage(manifest, (name) => name === SHADOW_PARITY_WRAPPER_NAMES[0]), /terminal wrapper restored/);
 
   // Real repository shapes that defeated the original line parser.
-  assert.equal(metadata("issue-1773-reservation-stay-ingest-tests").pathScope.length, 10, "YAML path aliases must resolve");
+  // [TEST-MOD-APPROVED #3643] #3643 [freeze invariant registry]
+  // The frozen registry route is gone; the other nine aliased paths still prove
+  // the parser resolves both YAML anchors without weakening routing coverage.
+  assert.equal(metadata("issue-1773-reservation-stay-ingest-tests").pathScope.length, 9, "YAML path aliases must resolve");
   // [TEST-MOD-APPROVED #2591 · :179] Re-pointed, not weakened. #1171's wrapper is
   // deleted by this change, so the old subject no longer describes a live file.
   // issue-1403-listing-insights-tests keeps its Postgres job — it was the one lane

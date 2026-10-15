@@ -19,10 +19,12 @@
  * A regression that reads subscriptions directly in the browser → (c) FAILS.
  * `--self-test` proves FAIL-on-revert with GOOD/BAD fixtures.
  *
- * DRAFT until CLOSE (orchestrator flips I-PROPOSED-1272-IDENTITY-ADMIN-READ ACTIVE).
+ * Lifecycle and release evidence are owned by issue #1272.
  */
 import fs from "node:fs";
 import path from "node:path";
+
+// MINGLA-INVARIANT: I-PROPOSED-1272-IDENTITY-ADMIN-READ | issue #1272 | Admin identity reads stay guard-first, read-only, RLS-protected, and isolated from direct browser access to sensitive money data.
 
 const MIGRATIONS_DIR = path.join(process.cwd(), "supabase/migrations");
 const SERVICE_FILE = path.join(process.cwd(), "mingla-admin/src/services/identityReadService.js");

@@ -3,12 +3,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// MINGLA-INVARIANT: I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 | issue #1858 | Every Brand People export carries one explicit selected brand target authorized before any job or audit mutation.
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const LOCAL_DECLARATION_PREFIX = "// MINGLA-" + "INVARIANT: ";
 const files = {
   migration: "supabase/migrations/20270326001858_issue_1858_explicit_brand_export.sql",
   edge: "supabase/functions/brand-people-export/index.ts",
   workflow: ".github/workflows/issue-1858-explicit-brand-export-tests.yml",
-  invariant: "docs/INVARIANT_REGISTRY.md",
+  gate: ".github/scripts/strict-grep/issue-1858-explicit-brand-export.mjs",
 };
 
 export function inspect(source) {
@@ -29,7 +32,7 @@ export function inspect(source) {
   need("workflow", "issue_1858_explicit_brand_export.test.sql", "SQL workflow execution");
   need("workflow", "issue_1858_explicit_brand_export.test.ts", "Deno workflow execution");
   need("workflow", "issue-1858-explicit-brand-export.mjs --self-test", "guard self-test wiring");
-  need("invariant", "I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 (ACTIVE)", "ACTIVE invariant");
+  need("gate", `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 | issue #1858 |`, "local invariant declaration");
   return failures;
 }
 
@@ -45,7 +48,7 @@ function selfTest(source) {
     ["rank", { ...source, migration: source.migration.replace("biz_brand_effective_rank(v_brand,v_actor)<public.biz_role_rank('brand_admin')", "false") }],
     ["edge forwarding", { ...source, edge: source.edge.replace("p_brand_id: input.brandId ?? null", "p_brand_id: null") }],
     ["workflow", { ...source, workflow: source.workflow.split("issue_1858_explicit_brand_export.test.sql").join("missing.sql") }],
-    ["invariant lifecycle", { ...source, invariant: source.invariant.replace("I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 (ACTIVE)", "I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 (DRAFT)") }],
+    ["local declaration", { ...source, gate: source.gate.replace(`${LOCAL_DECLARATION_PREFIX}I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 | issue #1858 |`, "brand-export declaration removed") }],
   ];
   for (const [label, mutation] of mutations) {
     if (inspect(mutation).length === 0) throw new Error(`self-test did not catch ${label}`);
