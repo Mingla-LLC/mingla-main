@@ -129,7 +129,7 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const AGGREGATE_MODULE = path.join(HERE, "issue-3449-class-a-shard-completeness.mjs");
 
-const MANIFEST = loadManifest(path.join(HERE, "MANIFEST.json"));
+const MANIFEST = loadManifest();
 const COSTS = loadShardCosts(path.join(HERE, "class-a-shard-costs.json"));
 const SHARD_COUNT = MANIFEST[SHARD_COUNT_FIELD];
 const CLASS_A = expectedExecutions(MANIFEST, "A");

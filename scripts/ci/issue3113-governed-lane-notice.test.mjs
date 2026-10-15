@@ -40,12 +40,11 @@ import { readdirSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { loadEffectiveFunctionPolicy } from "../../.github/scripts/ci-discovery/function-policy.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
 const selectorPath = join(repoRoot, "scripts/ci/select-changed-edge-functions.mjs");
-const contract = JSON.parse(
-  readFileSync(join(repoRoot, "supabase/function-env.contract.json"), "utf8"),
-);
+const contract = loadEffectiveFunctionPolicy({ root: repoRoot }).contract;
 const governedInContract = Object.entries(contract.functions ?? {})
   .filter(([, value]) => Object.keys(value?.required_bundle_fields ?? {}).length > 0)
   .map(([name]) => name)

@@ -41,6 +41,8 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { loadEffectiveManifest as loadStrictGrepManifest } from "./load-manifest.mjs";
+import { loadEffectiveManifest as loadCiBatchManifest } from "../ci-batch/load-manifest.mjs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { expectedForClass, CLASSES } from "./run-batch.mjs";
 
@@ -546,8 +548,8 @@ export function formatMergeCounterCollision({
 }
 
 async function realRun() {
-  const manifest = JSON.parse(fs.readFileSync(path.join(HERE, "MANIFEST.json"), "utf8"));
-  const ciBatchManifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
+  const manifest = loadStrictGrepManifest({ root: REPO_ROOT });
+  const ciBatchManifest = loadCiBatchManifest({ root: REPO_ROOT });
   const diskFiles = walkMjs(path.join(REPO_ROOT, SG_REL));
   const { workflowInvocations, jobInvocations } = await collectWorkflowInvocations();
   // P11 — enumerate each externalGateDirs dir from disk (null = dir missing).

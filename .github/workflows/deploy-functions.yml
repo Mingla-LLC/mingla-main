@@ -18,6 +18,7 @@ on:
       - 'scripts/ops/verify-production-supabase-authority.mjs'
       - 'scripts/deploy-supabase-functions.sh'
       - 'scripts/ci/select-changed-edge-functions.mjs'
+      - '.github/scripts/ci-discovery/**'
       # #994's rule: a gate that cannot run on the file class its bug lives in
       # is theatre. The 06:48 breakage was a wrapper-vs-caller mismatch, so
       # editing the caller must re-run the caller.
@@ -73,6 +74,9 @@ jobs:
           MINGLA_DEPLOY_DISPATCH_FUNCTIONS: ${{ inputs.functions }}
           MINGLA_DEPLOY_SELECTION_PATH: ${{ runner.temp }}/edge-deploy-functions
         run: node scripts/ci/select-changed-edge-functions.mjs
+
+      - name: Materialize the disk-derived function gateway policy
+        run: node .github/scripts/ci-discovery/function-policy.mjs --write-config supabase/config.toml
 
       - name: Deploy the selected edge functions
         # `success()` is spelled out rather than relied upon. The one thing this

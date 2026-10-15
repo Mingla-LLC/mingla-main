@@ -10,6 +10,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadEffectiveFunctionPolicy } from "../../.github/scripts/ci-discovery/function-policy.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(SCRIPT_DIR, "..", "..");
@@ -2315,7 +2316,9 @@ export function auditFunctionSecretContract({
   functionsRoot = FUNCTIONS_ROOT,
   repoRoot = REPO_ROOT,
 } = {}) {
-  const contract = JSON.parse(readFileSync(contractPath, "utf8"));
+  const contract = contractPath === DEFAULT_CONTRACT && functionsRoot === FUNCTIONS_ROOT && repoRoot === REPO_ROOT
+    ? loadEffectiveFunctionPolicy({ root: repoRoot }).contract
+    : JSON.parse(readFileSync(contractPath, "utf8"));
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   const scan = scanFunctionSources({ functionsRoot, repoRoot });
   return validateFunctionEnvContract({ contract, manifest, scan });

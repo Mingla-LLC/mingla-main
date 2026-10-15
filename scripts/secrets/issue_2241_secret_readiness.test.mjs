@@ -64,14 +64,14 @@ import {
   prepareGovernedBundle,
   serializeDotenvAssignment,
 } from "./set-governed-secret-bundle.mjs";
+import { loadEffectiveFunctionPolicy } from "../../.github/scripts/ci-discovery/function-policy.mjs";
 
 const ROOT = resolve(dirname(new URL(import.meta.url).pathname), "..", "..");
 const manifest = JSON.parse(
   readFileSync(resolve(ROOT, "supabase/secrets.manifest.json"), "utf8"),
 );
-const contract = JSON.parse(
-  readFileSync(resolve(ROOT, "supabase/function-env.contract.json"), "utf8"),
-);
+const effectivePolicy = loadEffectiveFunctionPolicy({ root: ROOT });
+const contract = effectivePolicy.contract;
 const mergedCommit = "0123456789abcdef0123456789abcdef01234567";
 const projectRef = "gqnoajqerqhnvulmnyvv";
 
@@ -331,12 +331,7 @@ test("#2241 happy: checked contract classifies the complete production import gr
   // Proof this replacement BITES rather than merely counting higher: remove the
   // new function's contract entry and the deepEqual above fails with
   // `contract:function_set_mismatch` before this line is ever reached.
-  // Census after #3802 Wave 0: admin-team-invite and admin-team-accept-invite.
-  // [TEST-MOD-APPROVED #3697] 243 -> 244: Wave 6 adds `ad-credit` (ledger
-  // quote/apply for top-up + withdraw). Census pin only.
-  // [TEST-MOD-APPROVED #3697] 244 -> 245: Wave 7c adds `host-ad-campaign`.
-  // [TEST-MOD-APPROVED #3802] 245 -> 246: Wave 4 adds team-agent
-  assert.equal(Object.keys(contract.functions).length, 246);
+  assert.deepEqual(Object.keys(contract.functions).sort(), effectivePolicy.diskFunctions);
   assert.equal(manifest.secrets.length, 88);
 });
 

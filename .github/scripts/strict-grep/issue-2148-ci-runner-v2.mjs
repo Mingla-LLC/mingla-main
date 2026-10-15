@@ -8,10 +8,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodeManifestTextRepresentations, validateManifestTextRepresentations, validateRegistry, validatePhase2Contract, forbiddenEmbeddedSetup, SUITES_ADDED_SINCE_SEAL, withTrackedFilesScope, discoverWorkflowProviders, discoverLiveOrigins, DEFAULT_ROOT } from "../ci-batch/validate-manifest-v2.mjs";
 import { commandFingerprint, executesLeaves, absentFileIsFailure } from "../ci-batch/run-suite-batch.mjs";
+import { loadEffectiveManifest } from "../ci-batch/load-manifest.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../../..");
-const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 const WORKFLOW_PATH = path.join(ROOT, ".github/workflows/ci-batch.yml");
 const PRESERVED_ASSERTION_SHA256 = "46b4392592c5d6cb56bc600adc98e083b14880b79dad29fe4e1438ac41923764";
 const ASSERTION_CAPABILITY_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
@@ -37,7 +37,7 @@ const POST_SEAL_IDS = new Set(SUITES_ADDED_SINCE_SEAL.map((item) => item.suite))
 const POST_SEAL_CAPABILITY_SHA256 = "17c1cbd750d21c4905e08221e1576b08399eecc1d1f67e98ef04f51c80bcfb07";
 
 function clone(value) { return structuredClone(value); }
-function manifest() { return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8")); }
+function manifest() { return loadEffectiveManifest({ root: ROOT }); }
 function workflow() { return fs.readFileSync(WORKFLOW_PATH, "utf8"); }
 function assertionDigest(suites) {
   const assertions = suites.map((suite) => ({ id: suite.id, steps: suite.steps.map(({ name, cwd, run, invocation }) => ({ name, cwd, run, invocation })) }));

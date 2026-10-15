@@ -18,6 +18,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { dirname, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadEffectiveFunctionPolicy } from "../../.github/scripts/ci-discovery/function-policy.mjs";
 
 import { verifyProductionAuthority } from "../ops/verify-production-supabase-authority.mjs";
 import {
@@ -628,7 +629,7 @@ export function runGovernedBundleDeployment({
   if (audit().length > 0) {
     throw new ReconciliationError("contract_audit_failed");
   }
-  const contract = JSON.parse(readFileSync(DEFAULT_CONTRACT, "utf8"));
+  const contract = loadEffectiveFunctionPolicy({ root: REPO_ROOT }).contract;
   const manifest = loadManifest(DEFAULT_MANIFEST);
   if (
     !Array.isArray(selectedFunctions) ||
@@ -747,7 +748,7 @@ export function runIssue2241Reconciliation({
   if (auditFailures.length > 0) {
     throw new ReconciliationError("contract_audit_failed");
   }
-  const contract = JSON.parse(readFileSync(DEFAULT_CONTRACT, "utf8"));
+  const contract = loadEffectiveFunctionPolicy({ root: REPO_ROOT }).contract;
   const manifest = loadManifest(DEFAULT_MANIFEST);
   if (!exactSet(selectedFunctions, contract.remediation.selected_functions)) {
     throw new ReconciliationError("remediation_function_set_mismatch");

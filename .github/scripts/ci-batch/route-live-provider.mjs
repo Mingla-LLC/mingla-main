@@ -57,6 +57,7 @@ import { fileURLToPath } from "node:url";
 
 import { pathMatches } from "./select-phase3b-suites.mjs";
 import { routingContext } from "./run-suite-batch.mjs";
+import { loadEffectiveManifest } from "./load-manifest.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, "../../..");
@@ -158,7 +159,7 @@ export function main(argv = process.argv.slice(2), { env = process.env } = {}) {
   let provider;
   let patterns;
   try {
-    const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
+    const manifest = loadEffectiveManifest({ root: ROOT });
     provider = routedProvider(manifest, ownerIssue);
     patterns = providerOriginPatterns(provider);
   } catch (error) {
