@@ -21,7 +21,9 @@
  *      (the multi-tier sheet) — proves the new flow is wired.
  *
  *   3. `nativeCheckoutFlow.ts` MUST keep its `lines: Array<...>` typed
- *      input — no regression to a single-tier shape.
+ *      input — no regression to a single-tier shape. Issue #3859 extends each
+ *      line with one optional bounded `paymentPlanChoice`; the line remains the
+ *      authority instead of a checkout-wide scalar.
  *
  * Exit codes:
  *   0 — clean
@@ -39,6 +41,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = join(__dirname, "..", "..", "..");
 
+// MINGLA-INVARIANT: I-PROPOSED-3859-CONSUMER-MULTI-LINE-PLAN-AUTHORITY | issue #3859 | Native checkout keeps ticket id, quantity, and an optional bounded payment-plan choice on each cart line; a checkout-wide scalar can never replace the line array.
+
 const readMaybe = (rel) => {
   const p = join(ROOT, rel);
   if (!existsSync(p)) return null;
@@ -53,6 +57,9 @@ const checkoutCallers = [
 
 const SINGLE_LINE_HARDCODE =
   /lines\s*:\s*\[\s*\{\s*ticketTypeId\s*:\s*[a-zA-Z_$][\w$]*\s*,\s*quantity\s*:\s*1\s*\}\s*\]/;
+
+const EXTENDED_LINE_ARRAY =
+  /lines\s*:\s*Array<\s*\{(?=[^}]*ticketTypeId\s*:\s*string\s*;)(?=[^}]*quantity\s*:\s*number\s*;)(?=[^}]*paymentPlanChoice\s*\?\s*:\s*["']full["']\s*\|\s*["']installments["']\s*;)[^}]*\}\s*>/;
 
 // Pure verdict (behavior-preserving refactor). `readMaybe(rel)` returns file
 // content or null if absent. Pushes { file, msg } records into `violations` in
@@ -94,18 +101,16 @@ function check(readMaybe, violations) {
     }
   }
 
-  // Check 3 — nativeCheckoutFlow keeps lines as an array type (not a single
-  // ticketTypeId shape). Conservative grep for the type annotation.
+  // Check 3 — nativeCheckoutFlow keeps the #3859 authority on each line: an
+  // array with the required ticket id + quantity and one OPTIONAL bounded
+  // payment-plan choice. A checkout-wide scalar may remain for legacy-v1
+  // compatibility, but it can never replace or weaken this line authority.
   const flow = readMaybe("app-mobile/src/payments/nativeCheckoutFlow.ts");
   if (flow !== null) {
-    if (
-      !/lines\s*:\s*Array<\s*\{\s*ticketTypeId\s*:\s*string\s*;\s*quantity\s*:\s*number\s*\}\s*>/.test(
-        flow,
-      )
-    ) {
+    if (!EXTENDED_LINE_ARRAY.test(flow)) {
       note(
         "app-mobile/src/payments/nativeCheckoutFlow.ts",
-        "MUST keep `lines: Array<{ticketTypeId: string; quantity: number}>` type on NativeCheckoutInput — no regression to a single-tier shape.",
+        'MUST keep `lines: Array<{ticketTypeId: string; quantity: number; paymentPlanChoice?: "full" | "installments"}>` on NativeCheckoutInput — per-line authority cannot regress to a single object, a checkout-wide-only plan, or an unbounded/required plan field.',
       );
     }
   }
@@ -125,7 +130,8 @@ if (process.argv.includes("--self-test")) {
   const FLOW = "app-mobile/src/payments/nativeCheckoutFlow.ts";
   const goodEbes =
     'import TicketCartSheet from "./TicketCartSheet";\nreturn <TicketCartSheet payload={payload} />;';
-  const goodFlow = "type NativeCheckoutInput = { lines: Array<{ ticketTypeId: string; quantity: number }> };";
+  const goodFlow =
+    'type NativeCheckoutInput = { lines: Array<{ ticketTypeId: string; quantity: number; paymentPlanChoice?: "full" | "installments"; }>; paymentPlanChoice?: "full" | "installments"; };';
   const GOOD = { [EBES]: goodEbes, [CART]: "", [FLOW]: goodFlow };
 
   // GOOD: multi-tier cart wired, typed lines array, no single-line hardcode → silent.
@@ -138,20 +144,55 @@ if (process.argv.includes("--self-test")) {
   };
   if (run(bad1).length === 0) self.push("BAD1 (single-line lines hardcode re-added) not flagged");
 
-  // BAD2 (regression, different angle): nativeCheckoutFlow drops the typed
-  // lines: Array<...> input for a single-tier shape → fires.
+  // BAD2: nativeCheckoutFlow drops the array for a single object → fires.
   const bad2 = {
     ...GOOD,
-    [FLOW]: "type NativeCheckoutInput = { lines: { ticketTypeId: string; quantity: number } };",
+    [FLOW]:
+      'type NativeCheckoutInput = { lines: { ticketTypeId: string; quantity: number; paymentPlanChoice?: "full" | "installments" } };',
   };
   if (run(bad2).length === 0) self.push("BAD2 (nativeCheckoutFlow lines regressed to single-tier) not flagged");
+
+  // BAD3: the line array is present but loses one of its identity/quantity
+  // authorities → fires.
+  const bad3 = {
+    ...GOOD,
+    [FLOW]:
+      'type NativeCheckoutInput = { lines: Array<{ ticketTypeId: string; paymentPlanChoice?: "full" | "installments" }> };',
+  };
+  if (run(bad3).length === 0) self.push("BAD3 (line quantity removed) not flagged");
+
+  // BAD4: the checkout-wide legacy scalar becomes the ONLY plan authority →
+  // fires because no extended lines array remains.
+  const bad4 = {
+    ...GOOD,
+    [FLOW]:
+      'type NativeCheckoutInput = { paymentPlanChoice?: "full" | "installments"; lines: Array<{ ticketTypeId: string; quantity: number }> };',
+  };
+  if (run(bad4).length === 0) self.push("BAD4 (checkout-wide-only plan authority) not flagged");
+
+  // BAD5: the per-line choice becomes unbounded → fires.
+  const bad5 = {
+    ...GOOD,
+    [FLOW]:
+      "type NativeCheckoutInput = { lines: Array<{ ticketTypeId: string; quantity: number; paymentPlanChoice?: string }> };",
+  };
+  if (run(bad5).length === 0) self.push("BAD5 (unbounded line plan choice) not flagged");
+
+  // BAD6: the choice becomes required, breaking old callers that legitimately
+  // omit it on legacy-v1/no-plan lines → fires.
+  const bad6 = {
+    ...GOOD,
+    [FLOW]:
+      'type NativeCheckoutInput = { lines: Array<{ ticketTypeId: string; quantity: number; paymentPlanChoice: "full" | "installments" }> };',
+  };
+  if (run(bad6).length === 0) self.push("BAD6 (required line plan choice) not flagged");
 
   if (self.length) {
     console.error("I-PROPOSED-CONSUMER-MULTI-LINE-CHECKOUT self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("I-PROPOSED-CONSUMER-MULTI-LINE-CHECKOUT self-test PASS (3/3 cases).");
+  console.log("I-PROPOSED-CONSUMER-MULTI-LINE-CHECKOUT self-test PASS (7/7 cases).");
   process.exit(0);
 }
 

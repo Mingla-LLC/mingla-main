@@ -8,6 +8,12 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import {
+  collapseTripPlanChoice,
+  parseSeededTripLines,
+  resolveSeededCartPlanChoice,
+} from "../../components/trip/tripCartPlanChoice";
+
 const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
 const read = (relativePath: string): string =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -71,6 +77,29 @@ describe("#3859 buyer-web emitted accessibility state", () => {
 });
 
 describe("#3859 line-authoritative trip routing", () => {
+  test("executes the real line-collapse and checkout-seed projection", async () => {
+    const encoded = JSON.stringify([
+      {
+        ticketTypeId: "standard",
+        quantity: 1,
+        paymentPlanChoice: "full",
+      },
+      {
+        ticketTypeId: "vip",
+        quantity: 2,
+        paymentPlanChoice: "installments",
+      },
+    ]);
+    const seeded = await Promise.resolve(parseSeededTripLines(encoded));
+
+    expect(seeded).toHaveLength(2);
+    expect(collapseTripPlanChoice(seeded)).toBe("installments");
+    expect(resolveSeededCartPlanChoice(seeded, "full")).toBe("installments");
+    expect(collapseTripPlanChoice([{ paymentPlanChoice: "full" }])).toBe(
+      "full",
+    );
+  });
+
   test("single-tier package and sticky payment controls synchronize in both directions", () => {
     expect(tripRoute).toMatch(
       /const soleTierId =\s*data\.tiers\.length === 1[\s\S]*?: null;/,

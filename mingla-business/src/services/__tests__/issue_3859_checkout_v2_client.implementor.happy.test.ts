@@ -121,18 +121,37 @@ test("#3859 Business-native preview and create remain explicitly paired on v1", 
     ),
     "utf8",
   );
-  const preview = source.slice(
-    source.indexOf('mode: "preview"'),
-    source.indexOf("// ----- Handlers -----"),
+  const previewStart = source.indexOf('mode: "preview"');
+  const previewEnd = source.indexOf("// ----- Handlers -----", previewStart);
+  const nativeCreateStart = source.indexOf(
+    "const outcome = await nativeCheckout({",
   );
-  const nativeCreate = source.slice(
-    source.indexOf("const outcome = await nativeCheckout({"),
-    source.indexOf('mixpanelService.track("ticket_checkout_sheet_opened"'),
+  const nativeCreateEnd = source.indexOf(
+    'mixpanelService.track("ticket_checkout_sheet_opened"',
+    nativeCreateStart,
   );
-  const webCreate = source.slice(
-    source.indexOf("const checkout = await createTicketCheckout({"),
-    source.indexOf("const handoff = ticketCheckoutProviderHandoff(checkout)"),
+  const webCreateStart = source.indexOf(
+    "const checkout = await createTicketCheckout({",
   );
+  const webCreateEnd = source.indexOf(
+    "const handoff = ticketCheckoutProviderHandoff(checkout)",
+    webCreateStart,
+  );
+
+  expect(previewStart).toBeGreaterThan(-1);
+  expect(previewEnd).toBeGreaterThan(previewStart);
+  expect(nativeCreateStart).toBeGreaterThan(-1);
+  expect(nativeCreateEnd).toBeGreaterThan(nativeCreateStart);
+  expect(webCreateStart).toBeGreaterThan(-1);
+  expect(webCreateEnd).toBeGreaterThan(webCreateStart);
+
+  const preview = source.slice(previewStart, previewEnd);
+  const nativeCreate = source.slice(nativeCreateStart, nativeCreateEnd);
+  const webCreate = source.slice(webCreateStart, webCreateEnd);
+
+  expect(preview.length).toBeGreaterThan(40);
+  expect(nativeCreate.length).toBeGreaterThan(40);
+  expect(webCreate.length).toBeGreaterThan(40);
 
   expect(preview).not.toContain("checkoutContractVersion");
   expect(nativeCreate).not.toContain("checkoutContractVersion");

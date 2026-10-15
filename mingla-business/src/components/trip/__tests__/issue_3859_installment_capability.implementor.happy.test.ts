@@ -10,6 +10,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import {
+  publicTripInstallmentSchedule,
+  tripInstallmentsSupported,
+} from "@mingla/offering-rendering/tripInstallmentCapability";
+
 const COMPONENT_ROOT = join(__dirname, "..");
 const APP_ROOT = join(COMPONENT_ROOT, "..", "..", "..", "app");
 
@@ -31,6 +36,22 @@ const editRouteSource = readFileSync(
 );
 
 describe("#3859 unsupported trip installment capability", () => {
+  test("executes the real provider capability and public schedule boundary", async () => {
+    const savedSchedule = { depositPercent: 25, installments: 3 };
+
+    expect(await Promise.resolve(tripInstallmentsSupported(" STRIPE "))).toBe(
+      true,
+    );
+    expect(await Promise.resolve(tripInstallmentsSupported("paystack"))).toBe(
+      false,
+    );
+    expect(publicTripInstallmentSchedule(true, savedSchedule)).toBe(
+      savedSchedule,
+    );
+    expect(publicTripInstallmentSchedule(false, savedSchedule)).toBeNull();
+    expect(publicTripInstallmentSchedule(undefined, savedSchedule)).toBeNull();
+  });
+
   test("saved schedules stay visible but become provider-neutral and read-only", () => {
     expect(pricingSource).toContain(
       "Payment plans aren't available with this payment setup. Your saved schedule is kept, but buyers can't select it.",

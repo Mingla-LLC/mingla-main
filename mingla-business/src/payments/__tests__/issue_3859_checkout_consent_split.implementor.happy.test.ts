@@ -1,6 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
 
+const invoke = jest.fn();
+
+jest.mock("../../services/supabase", () => ({
+  supabase: {
+    functions: {
+      invoke: (...args: unknown[]) => invoke(...args),
+    },
+  },
+}));
+
+import { recordConsent } from "../../services/consentService";
+
 const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
 const read = (relativePath: string): string =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -14,6 +26,33 @@ const buyerRoutes = [
 ].map((file) => ({ file, source: read(file) }));
 
 describe("#3859 buyer-web checkout consent split", () => {
+  beforeEach(() => {
+    invoke.mockReset();
+    invoke.mockResolvedValue({
+      data: { ok: true, inserted: 1, deduped: 0 },
+      error: null,
+    });
+  });
+
+  test("executes the real consent client with a transactional-only purchase grant", async () => {
+    const result = await recordConsent({
+      source: "checkout",
+      disclosureText: "Purchase disclosure",
+      disclosureVersion: "2026-10-14-purchase-v1",
+      scopes: ["transactional"],
+      email: "buyer@example.test",
+      phone: "+15555550123",
+    });
+
+    expect(result).toEqual({ ok: true, inserted: 1, deduped: 0 });
+    expect(invoke).toHaveBeenCalledWith("record-consent", {
+      body: expect.objectContaining({
+        source: "checkout",
+        scopes: ["transactional"],
+      }),
+    });
+  });
+
   test("pins the approved purchase and optional-marketing words independently", () => {
     expect(disclosure).toContain(
       '"I agree to Mingla’s Terms of Service and Privacy Policy."',
