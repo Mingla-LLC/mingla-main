@@ -953,6 +953,13 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const confirmDisabled = isExecuting || creatingForCover || coverUploadState !== "idle" ||
     (isAdPlanProposal && typeof editedArgs.creative_library_id !== "string");
   const canEditProposal = isToolProposalEditable(toolName, liveArgs);
+  const handleStandardConfirm = (): void => {
+    if (isAdPlanProposal) {
+      void confirmProposal(editedArgs);
+      return;
+    }
+    void confirmProposal(editing ? editedArgs : undefined);
+  };
 
   return (
     <GlassChrome
@@ -1330,9 +1337,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                 </Pressable>
               ) : null}
               <Pressable
-                onPress={() =>
-                  void confirmProposal(editing || isAdPlanProposal ? editedArgs : undefined)
-                }
+                onPress={handleStandardConfirm}
                 disabled={confirmDisabled}
                 hitSlop={{ top: 5, bottom: 5 }}
                 style={({ pressed }) => [
