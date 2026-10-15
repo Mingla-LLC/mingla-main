@@ -14,6 +14,7 @@ import {
   validateRegistry,
   withTrackedFilesScope,
 } from "../ci-batch/validate-manifest-v2.mjs";
+import { BOOTSTRAP_SHA256, loadEffectiveManifest } from "../ci-batch/load-manifest.mjs";
 import {
   adjudicateWithReadiness,
   formatCombinedVerdict,
@@ -53,7 +54,11 @@ function cloneFixture(prefix, source = ROOT) {
 }
 
 function readRegistry(root) {
-  return JSON.parse(fs.readFileSync(path.join(root, REGISTRY), "utf8"));
+  return loadEffectiveManifest({
+    root,
+    manifestPath: path.join(root, REGISTRY),
+    expectedSha: BOOTSTRAP_SHA256,
+  });
 }
 
 function selectLiveRegisteredProvider(root, registry) {
