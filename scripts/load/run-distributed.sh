@@ -37,7 +37,7 @@ case "$SCRIPT" in
     ;;
 esac
 
-REPORT_DIR="${G1_REPORT_DIR:-$ROOT/docs/evidence/g1-load/reports}"
+REPORT_DIR="${G1_REPORT_DIR:-${TMPDIR:-/tmp}/mingla-g1-load-reports}"
 mkdir -p "$REPORT_DIR"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 LOG_DIR="/tmp/g1-distributed-${STAMP}"

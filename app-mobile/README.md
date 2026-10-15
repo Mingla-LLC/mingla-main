@@ -61,17 +61,13 @@ app-mobile/
 - Zustand owns client-only state and explicitly documented persisted startup state.
 - Mutations must surface errors and roll back optimistic state where applicable.
 - Query keys must follow the registry and factory rules.
-- Temporary fixes must be tagged and tracked before they become permanent.
+- Temporary fixes must be tagged and tracked on their owning GitHub issue before they become permanent.
 
 Core contracts:
 
 | Document | Purpose |
 |---|---|
-| [`../docs/DOMAIN_ADRS.md`](../docs/DOMAIN_ADRS.md) | Domain ownership and source-of-truth rules. |
-| [`../docs/IMPLEMENTATION_GATES.md`](../docs/IMPLEMENTATION_GATES.md) | Pre-code checklist. |
-| [`../docs/MUTATION_CONTRACT.md`](../docs/MUTATION_CONTRACT.md) | Mutation behavior and failure contract. |
 | [`../docs/QUERY_KEY_REGISTRY.md`](../docs/QUERY_KEY_REGISTRY.md) | Query-key and invalidation contract. |
-| [`../docs/TRANSITIONAL_ITEMS_REGISTRY.md`](../docs/TRANSITIONAL_ITEMS_REGISTRY.md) | Temporary work and exit conditions. |
 
 ## Environment Variables
 

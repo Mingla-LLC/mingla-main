@@ -30,14 +30,16 @@ source scripts/load/fixtures/.env.load
 export LOAD_VUS=10000
 export LOAD_DURATION=5m
 export LOAD_RAMP_DURATION=2m
+export G1_REPORT_DIR="${TMPDIR:-/tmp}/mingla-g1-load-reports"
+mkdir -p "$G1_REPORT_DIR"
 
 k6 run \
   --execution-segment "${i}/${N}:$((i+1))/${N}" \
-  --summary-export "docs/evidence/g1-load/reports/$(date -u +%Y%m%dT%H%M%SZ)-public-offering-fanout-seg${i}of${N}-vus${LOAD_VUS}.json" \
+  --summary-export "$G1_REPORT_DIR/$(date -u +%Y%m%dT%H%M%SZ)-public-offering-fanout-seg${i}of${N}-vus${LOAD_VUS}.json" \
   scripts/load/public-offering-fanout.js
 ```
 
-Coordinate clock skew (±5s) so ramps overlap. Aggregate: every segment must meet addendum SLOs (avail ≥99%, p95 &lt; 5s at 10k-equivalent; at 100k origin RPS must stay flat vs a warm 1k baseline).
+Coordinate clock skew (±5s) so ramps overlap. Attach the resulting JSON files to #426; do not commit them. Aggregate: every segment must meet addendum SLOs (avail ≥99%, p95 &lt; 5s at 10k-equivalent; at 100k origin RPS must stay flat vs a warm 1k baseline).
 
 ## Option B — k6 Cloud
 

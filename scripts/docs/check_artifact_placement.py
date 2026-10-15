@@ -11,6 +11,8 @@ This gate keeps the retired artifact system from growing back.
 retirement stub is guarded by scripts/docs/check_ota_comms_authority.py.
 
 History pre-2026-07-19 is preserved at git tag `pre-avengers-archive`.
+The documentation surface retired by #3643 is preserved at git tag
+`docs-archive-2026-10-14`.
 """
 
 from __future__ import annotations
@@ -30,11 +32,44 @@ CANONICAL_DOCS = (
     "MARKETING.md",
 )
 
-ENGINEERING_REFERENCES = (
-    "docs/INVARIANT_REGISTRY.md",
+ACTIVE_ENGINEERING_REFERENCES = (
     "docs/MINGLA_ENGINEERING_HANDBOOK.md",
     "docs/WORKTREE_STRATEGY.md",
     "docs/IOS_DEV_BUILD_REBUILD_RUNBOOK.md",
+)
+
+FROZEN_HISTORY = (
+    "docs/INVARIANT_REGISTRY.md",
+)
+
+RETIRED_DOCS = (
+    "docs/DOMAIN_ADRS.md",
+    "docs/IMPLEMENTATION_GATES.md",
+    "docs/MUTATION_CONTRACT.md",
+    "docs/TRANSITIONAL_ITEMS_REGISTRY.md",
+    "docs/cost-model-100k.md",
+    "docs/runbooks/INCIDENT_STRIPE_OUTAGE.md",
+)
+
+# Evidence belongs on its issue. These are the bounded legacy exceptions still
+# consumed by a check or current operator procedure; adding ordinary evidence
+# files here is intentionally not part of the shipping workflow.
+ALLOWED_REPO_EVIDENCE = frozenset(
+    {
+        "docs/evidence/g1-load/phase4-100k-runner-recipe.md",
+        "docs/evidence/g3-g5-operator-pack.md",
+        "docs/evidence/g3-sentry/README.md",
+        "docs/evidence/g4-dr-restore/DRILL_REPORT.template.md",
+        "docs/evidence/g4-dr-restore/README.md",
+        "docs/evidence/g5-synthetic-incident/DRILL_REPORT.template.md",
+        "docs/evidence/g5-synthetic-incident/README.md",
+        "docs/evidence/g6-stripe-live/README.md",
+        "docs/evidence/g6-stripe-live/reports/eas-pk-live-redacted.txt",
+        "docs/evidence/grade-a-checkout.md",
+        "docs/evidence/grade-a-hub.md",
+        "docs/evidence/grade-a-marketing.md",
+        "docs/evidence/grade-a-trip-checkout.md",
+    }
 )
 
 # Legacy roots that must never hold tracked files again. Pathspecs are
@@ -136,8 +171,25 @@ def check_canonical_docs(failures: list[str]) -> None:
     tracked = set(git_ls_files())
     for doc in CANONICAL_DOCS:
         require(doc in tracked, f"canonical doc missing: {doc}", failures)
-    for doc in ENGINEERING_REFERENCES:
+    for doc in ACTIVE_ENGINEERING_REFERENCES:
         require(doc in tracked, f"engineering reference missing: {doc}", failures)
+    for doc in FROZEN_HISTORY:
+        require(doc in tracked, f"frozen history missing: {doc}", failures)
+
+
+def check_retired_docs(failures: list[str]) -> None:
+    tracked = set(git_ls_files())
+    for doc in RETIRED_DOCS:
+        require(doc not in tracked, f"retired documentation returned: {doc}", failures)
+
+
+def check_evidence_surface(failures: list[str]) -> None:
+    tracked = set(git_ls_files("docs/evidence"))
+    for path in sorted(tracked - ALLOWED_REPO_EVIDENCE):
+        failures.append(
+            f"repository evidence is not an active exception: {path} "
+            "(attach work records and proof to the owning GitHub issue)"
+        )
 
 
 def check_no_legacy_work_docs(failures: list[str]) -> None:
@@ -156,6 +208,8 @@ def main() -> int:
 
     check_retired_roots(failures)
     check_canonical_docs(failures)
+    check_retired_docs(failures)
+    check_evidence_surface(failures)
     check_no_legacy_work_docs(failures)
     check_gitignore(failures)
 
@@ -173,7 +227,8 @@ def main() -> int:
 
     print("Artifact placement check PASS")
     print("- retired roots (Mingla_Artifacts/, Mingla_Roadmap/, outputs/, ...) hold no tracked files")
-    print("- canonical docs and docs/ engineering references are present")
+    print("- canonical docs, active engineering references, and frozen history are present")
+    print("- retired docs remain absent and repository evidence stays within active exceptions")
     print("- no per-work-item docs tracked (work documentation lives in issues)")
     print("- no tracked existing dist/build/web-build artifacts")
     print("- private tool roots remain ignored")

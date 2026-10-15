@@ -6,13 +6,13 @@ Engineering scaffolding (Tier 1) can merge without these. **Do not claim product
 
 | # | Gate | Status | Evidence |
 |---|------|--------|----------|
-| G1 | **100k load test on staging** | 🟡 Engineering landed (1A); Phase 4 run pending | Public harness + trip/exp CDN bundles on branch; recipe [`docs/evidence/g1-load/phase4-100k-runner-recipe.md`](./evidence/g1-load/phase4-100k-runner-recipe.md). Discover remains platform-limited (existing Phase 2/3 reports). |
+| G1 | **100k load test on staging** | 🟡 Engineering landed (1A); Phase 4 run pending | Public harness + trip/exp CDN bundles on branch; recipe [`docs/evidence/g1-load/phase4-100k-runner-recipe.md`](./evidence/g1-load/phase4-100k-runner-recipe.md). Historical run evidence lives on #426. |
 | G2 | **Staging Supabase project** | ✅ | Historical G2; authority now via `docs/contracts/production-supabase-authority.json` (see DR runbook). |
 | G3 | **Sentry live** | 🟡 Scaffolding ✅; operator DSN/proof pending | [`docs/evidence/g3-sentry/`](./evidence/g3-sentry/) · pack [`docs/evidence/g3-g5-operator-pack.md`](./evidence/g3-g5-operator-pack.md) |
 | G4 | **DR restore performed** | 🟡 Scaffolding ✅; timed drill pending | [`docs/runbooks/DR_RESTORE.md`](./runbooks/DR_RESTORE.md) · clone-only |
 | G5 | **Synthetic incident drill** | 🟡 Scaffolding ✅; drill pending (needs G3 alerts) | [`docs/runbooks/SYNTHETIC_INCIDENT_DRILL.md`](./runbooks/SYNTHETIC_INCIDENT_DRILL.md) |
 | G6 | **Stripe TEST → LIVE** | 🟡 Partial — `pk_live` OTA attestation; Dashboard screenshots pending | [`docs/evidence/g6-stripe-live/`](./evidence/g6-stripe-live/) |
-| G7 | **App Store + Play** | ✅ Public storefronts live at **1.1.6** (2026-09-10) | [`docs/evidence/g7-store-submission/`](./evidence/g7-store-submission/) |
+| G7 | **App Store + Play** | ✅ Public storefronts live at **1.1.6** (2026-09-10) | Release evidence is recorded on #426. |
 
 ## Tier 1 (engineering — no platform blockers)
 
@@ -35,5 +35,4 @@ Completed via repo/CI:
 ## Related
 
 - Epic: GitHub #426
-- Cost model: [cost-model-100k.md](./cost-model-100k.md)
 - Load profile: [load-profile.md](./load-profile.md)
