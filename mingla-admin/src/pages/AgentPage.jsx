@@ -854,7 +854,7 @@ export function AgentPage() {
                 <ul className="divide-y divide-[var(--gray-200)]">
                   {activity.calls.slice(0, shownActivity).map((call, index) => {
                     const line = agentActivityLine(call);
-                    const when = typeof call?.created_at === "string" ? call.created_at : "";
+                    const when = typeof call?.started_at === "string" ? call.started_at : "";
                     const local = when && !Number.isNaN(Date.parse(when)) ? new Date(when).toLocaleString() : "";
                     return (
                       <li key={call?.id || `${when}-${index}`} className="flex min-h-11 min-w-0 flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-5">

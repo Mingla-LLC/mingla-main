@@ -56,7 +56,7 @@ import {
   zoneWords,
 } from "../lib/agentConnect.js";
 import { STATUS_COLORS, TABLE_CATEGORIES } from "../lib/constants.js";
-import { activityVia, localToday, weekRows } from "../lib/crmModel.js";
+import { activityVia, localToday, relativeTime, weekRows } from "../lib/crmModel.js";
 import { AGENT_LIMIT_LABELS, GUIDE_TABS, agentActivityLine, agentPrompt, validAgentGuide } from "../lib/agentPrompts.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -819,6 +819,23 @@ describe("#3802 PR-D: Guide, prompts and counts-only agent outcomes", () => {
     for (const raw of ["call.arguments", "call.result", "JSON.stringify(call", "call.summary", "call.tool", "call.outcome"]) assert.equal(PAGE.includes(raw), false, raw);
     assert.match(PAGE, /title="Couldn't load your agent activity"/);
     assert.match(PAGE, /title="Couldn't load the routines"/);
+  });
+
+  it("renders the exact started_at field returned by personal activity as accessible local time", () => {
+    const call = {
+      id: "38020000-0000-4000-b000-000000000001",
+      started_at: "2026-10-14T11:55:00.000Z",
+      agent: "claude",
+      tool: "my_day",
+      outcome: "ok",
+      items: 1,
+      summary: {},
+    };
+    assert.equal(relativeTime(call.started_at, NOW), "5m ago");
+    assert.ok(new Date(call.started_at).toLocaleString().length > 0);
+    assert.match(PAGE, /typeof call\?\.started_at === "string" \? call\.started_at : ""/);
+    assert.match(PAGE, /<time dateTime=\{when\} title=\{local\}>\{relativeTime\(when\)\}<\/time>/);
+    assert.doesNotMatch(PAGE, /call\?\.created_at|call\.created_at/);
   });
 
   it("normalizes person/Claude/Codex buckets without changing aggregate totals", () => {
