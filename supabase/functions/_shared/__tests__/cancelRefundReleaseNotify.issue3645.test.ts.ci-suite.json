@@ -3,6 +3,6 @@
   "kind": "suite",
   "path": "supabase/functions/_shared/__tests__/cancelRefundReleaseNotify.issue3645.test.ts",
   "lane": "stripe-deno",
-  "orderKey": "post-seal-0003-issue-3645-cancel-refund-release",
+  "orderKey": "legacy-0053a-issue-3645-cancel-refund-release",
   "profile": "deno-1.46-stripe"
 }

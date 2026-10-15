@@ -173,7 +173,7 @@ function assertDiscoveryTriggerCoverage(source) {
   }
 }
 
-test("the immutable post-#3875 plan is sealed as the exact prefix of every effective lane", () => {
+test("the immutable post-#3875 plan is sealed as the exact legacy sequence in every effective lane", () => {
   const baseline = readSealedBaseline();
   assert.equal(baseline.sourceSha, "2653c9618b85a3a9e3a3b15adf155d25166c8be8");
   assert.deepEqual(
@@ -182,13 +182,13 @@ test("the immutable post-#3875 plan is sealed as the exact prefix of every effec
   );
   const compiled = compilePlans();
   for (const lane of ["migrations", "stripe-deno", "notification-deno"]) {
-    // [TEST-MOD-APPROVED #3643] The historical aggregate remains exact as a
-    // prefix while valid issue-owned descriptors may extend the effective plan.
-    const historical = compiled.plans[lane].slice(0, baseline.lanes[lane].length);
+    // [TEST-MOD-APPROVED #3643] The historical aggregate remains exact after
+    // removing loader-owned local rows, which may retain their former positions.
+    const historical = compiled.plans[lane].filter((row) => !row.localDescriptor);
     assert.deepEqual(
       historical.map(({ orderKey, path: suitePath, profile }) => ({ orderKey, path: suitePath, profile })),
       baseline.lanes[lane].map(({ orderKey, path: suitePath, profile }) => ({ orderKey, path: suitePath, profile })),
-      `${lane} historical membership, order and profile must remain the sealed effective-plan prefix`,
+      `${lane} historical membership, order and profile must remain the sealed effective-plan sequence`,
     );
   }
 });

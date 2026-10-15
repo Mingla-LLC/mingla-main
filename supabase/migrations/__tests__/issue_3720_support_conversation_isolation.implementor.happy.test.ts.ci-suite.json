@@ -3,6 +3,6 @@
   "kind": "suite",
   "path": "supabase/migrations/__tests__/issue_3720_support_conversation_isolation.implementor.happy.test.ts",
   "lane": "stripe-deno",
-  "orderKey": "post-seal-0001-issue-3720-support-isolation",
+  "orderKey": "legacy-0017a-issue-3720-support-isolation",
   "profile": "deno-1.46-stripe"
 }

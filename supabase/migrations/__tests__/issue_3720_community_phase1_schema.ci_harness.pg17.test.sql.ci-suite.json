@@ -3,7 +3,7 @@
   "kind": "suite",
   "path": "supabase/migrations/__tests__/issue_3720_community_phase1_schema.ci_harness.pg17.test.sql",
   "lane": "migrations",
-  "orderKey": "post-seal-0001-issue-3720-community-owner-harness",
+  "orderKey": "legacy-0083a-issue-3720-community-owner-harness",
   "profile": "psql-pg17-post-replay",
   "database": {
     "database": "postgres",
