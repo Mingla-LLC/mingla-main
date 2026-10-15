@@ -1330,6 +1330,10 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_3682_wizard_invite_followers.happy.pg17.test.sql
 
+          # #3720 Phase 1 Slice E — community announcements / roadmap / roles / online.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_3720_community_phase1_schema.implementor.happy.pg17.test.sql
+
           # Issue #1793 (#1767 Phase 4) — the HONEST public ordering state. The
           # orchestrator amendment registered against this phase: a guest at a
           # paused or unswitched venue must be able to be TOLD which, rather
@@ -2351,6 +2355,8 @@ jobs:
             supabase/functions/support-grant-staff/issue_3720_grant_email_preserve.implementor.happy.test.ts
             # #3720 Phase 0 Slice D1 — support excluded from base conversations SELECT
             supabase/migrations/__tests__/issue_3720_support_conversation_isolation.implementor.happy.test.ts
+            # #3720 Phase 1 Slice E — community schema contract
+            supabase/migrations/__tests__/issue_3720_community_phase1_schema.implementor.happy.test.ts
             # #3682 Wave 2.8 — Show me as going / Who's going privacy migration pins.
             supabase/migrations/__tests__/issue_3682_show_me_as_going.happy.test.ts
             # #3682 Wave 2.8b — wizard invite Followers / Friends of followers migration pins.
