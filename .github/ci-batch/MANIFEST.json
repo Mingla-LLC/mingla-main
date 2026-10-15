@@ -13698,7 +13698,7 @@
       "providerWorkflow": ".github/workflows/issue-1486-dormant-render-suites.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "1ef0b5f714b4815a1015ce8eb3aaf70e69ee817913c2a3908bd4e3ac124c8b4a",
+        "sourceSha256": "ce3ee7fbf44f0dcbf63d89b42cb3464b1f05d35ffd5f09c72463331ffcc04dfa",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -22133,7 +22133,8 @@
         "mingla-business/jest.config.cjs",
         "mingla-business/jest.issue1834.render.cjs",
         "mingla-business/jest.issue1863.render.cjs",
-        "mingla-business/jest.issue1890.render.cjs"
+        "mingla-business/jest.issue1890.render.cjs",
+        "mingla-business/jest.issue3827.web.render.cjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
