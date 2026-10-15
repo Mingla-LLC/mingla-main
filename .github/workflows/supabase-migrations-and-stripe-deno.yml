@@ -2448,6 +2448,8 @@ jobs:
             # #3645 PR10 — organiser payout notify (Paystack paid/failed gating,
             # pause/outcome durable drains, first-payout + bank milestones).
             supabase/functions/_shared/__tests__/organiserPayoutNotify.issue3645.test.ts
+            # #3645 item 6 — host notify on cancel-refund release + buyer cancel-email off.
+            supabase/functions/_shared/__tests__/cancelRefundReleaseNotify.issue3645.test.ts
             # #1345 — durable outbox enqueue + Resend drain for paid NG reservation
             # slot-unavailable manual-refund ops alerts (no Resend await in finalize).
             supabase/functions/_shared/__tests__/issue_1345_reservation_slot_unavailable_ops_alert.test.ts

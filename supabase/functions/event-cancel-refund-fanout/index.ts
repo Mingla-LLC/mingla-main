@@ -25,6 +25,12 @@
  * refund-reconciliation path (stripe/paystack) exactly once — the fan-out enqueues
  * NOTHING (mirrors admin-refund-order:20-23) to avoid double-notify.
  *
+ * #3645 item 6 — cancel-time buyer email is INTENTIONALLY OFF on this path. Host
+ * cancel opens an awaiting_review hold; buyers are not emailed "cancelled" here.
+ * After admin release, hosts get `business.cancel_refunds_released` (push+in-app);
+ * buyers learn money moved via `buyer_refund_issued` from the webhook path above.
+ * Do not enqueue `buyer_order_cancelled` from this function.
+ *
  * Temporary→permanent debt supersession for Stripe released occurrences is done ONCE,
  * atomically, inside cancel_event_refund_prepare BEFORE any refund fires (Paystack
  * supersession is owned by F's record_paystack_refund_outcome) — the Stripe refund
@@ -53,6 +59,10 @@ import {
   runSourceRefundOperation,
   type SourceRefundOperation,
 } from "../_shared/sourceRefundControlPlane.ts";
+import {
+  notifyCancelRefundsReleased,
+  shouldNotifyCancelRefundRelease,
+} from "../_shared/cancelRefundReleaseNotify.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -655,6 +665,19 @@ serve(async (req: Request): Promise<Response> => {
       failed_retryable: 0,
       failed: 0,
     });
+  }
+
+  // #3645 item 6 — tell hosts the held batch is moving (admin release → pending,
+  // or a drainable re-drive). Idempotent per event; fail-open so refunds continue.
+  if (shouldNotifyCancelRefundRelease(prep as Record<string, unknown> | null)) {
+    try {
+      await notifyCancelRefundsReleased(supabase, eventId);
+    } catch (notifyError) {
+      console.warn(
+        "[event-cancel-refund-fanout] host release notify failed (non-fatal)",
+        notifyError instanceof Error ? notifyError.message : String(notifyError),
+      );
+    }
   }
 
   // RSVP contributions have no order. Prepare their typed source refunds after

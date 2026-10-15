@@ -80,6 +80,11 @@ const ORDER_CHILDREN: readonly ChildType[] = [
   { type: "business.event_sold_out", label: "Sold out", description: "When a listing sells out" },
   { type: "business.low_inventory", label: "Almost gone", description: "When inventory runs low" },
   { type: "business.refund_processed", label: "Refunds", description: "When a refund is processed" },
+  {
+    type: "business.cancel_refunds_released",
+    label: "Cancel refunds released",
+    description: "When Mingla releases held refunds after a cancelled listing",
+  },
 ];
 
 const PAYMENTS_CHILDREN: readonly ChildType[] = [

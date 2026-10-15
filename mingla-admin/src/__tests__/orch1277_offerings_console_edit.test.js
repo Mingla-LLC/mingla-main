@@ -270,6 +270,17 @@ describe("Issue #3645 — cancel-refund release control on OfferingDetailView", 
     );
   });
 
+  it("offeringsService kicks fan-out after a successful release (host notify + drain)", () => {
+    assert.match(
+      OFFERINGS_SVC,
+      /releaseCancelRefundBatch[\s\S]*event-cancel-refund-fanout[\s\S]*event_id:\s*eventId/,
+    );
+    assert.match(
+      OFFERINGS_SVC,
+      /if \(result\?\.error\) return result;/,
+    );
+  });
+
   it("mapOfferingWriteError checks release-specific codes before generic not_found", () => {
     const mapper = OFFERINGS_SVC.slice(
       OFFERINGS_SVC.indexOf("export function mapOfferingWriteError"),

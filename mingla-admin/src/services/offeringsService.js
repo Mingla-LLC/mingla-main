@@ -290,12 +290,26 @@ export async function cancelOffering(eventId, reason) {
 /**
  * #3645 — release a held cancel-refund batch (HIGH). Moves
  * event_cancel_refund_runs awaiting_review → pending so fan-out/cron can refund.
+ * After a successful release, best-effort kick the fan-out (latency only — cron
+ * is correctness). The fan-out tells hosts once (`business.cancel_refunds_released`)
+ * and still does NOT enqueue cancel-time buyer email (buyers hear via refund webhook).
  */
-export function releaseCancelRefundBatch(eventId, reason) {
-  return callAdminWriteRpc("admin_release_event_cancel_refund_batch", {
+export async function releaseCancelRefundBatch(eventId, reason) {
+  const result = await callAdminWriteRpc("admin_release_event_cancel_refund_batch", {
     p_event_id: eventId,
     p_reason: reason,
   });
+  if (result?.error) return result;
+  try {
+    supabase.functions
+      .invoke("event-cancel-refund-fanout", { body: { event_id: eventId } })
+      .catch(() => {
+        /* backstop cron re-drives — see supabase/functions/event-cancel-refund-fanout */
+      });
+  } catch {
+    /* fan-out client unavailable — backstop cron re-drives */
+  }
+  return result;
 }
 
 /** #3 — close / reopen bookings (HIGH). */

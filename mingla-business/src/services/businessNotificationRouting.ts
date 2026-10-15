@@ -168,6 +168,7 @@ export function resolveBusinessNavTarget(data: BusinessPushData): BusinessNavTar
     case "business.event_sold_out":
     case "business.low_inventory":
     case "business.refund_processed":
+    case "business.cancel_refunds_released":
     case "business.new_review":
       return eventId ? `/event/${eventId}` : ACCOUNT_FALLBACK;
 
