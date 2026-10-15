@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadEffectiveFunctionPolicy } from "../../.github/scripts/ci-discovery/function-policy.mjs";
 
 import { verifyProductionAuthority } from "../ops/verify-production-supabase-authority.mjs";
 import {
@@ -314,7 +315,9 @@ export function runFunctionReadinessPreflight({
   spawn = spawnSync,
 } = {}) {
   verifyProductionAuthority({ targetRef: projectRef });
-  const contract = JSON.parse(readFileSync(contractPath, "utf8"));
+  const contract = contractPath === DEFAULT_CONTRACT
+    ? loadEffectiveFunctionPolicy({ root: REPO_ROOT }).contract
+    : JSON.parse(readFileSync(contractPath, "utf8"));
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   const names = liveNames ?? listLiveSecretNames({ projectRef, spawn });
   return evaluateFunctionReadiness({

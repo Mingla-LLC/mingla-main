@@ -18,6 +18,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { dirname, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadEffectiveFunctionPolicy } from "../../.github/scripts/ci-discovery/function-policy.mjs";
 
 import { verifyProductionAuthority } from "../ops/verify-production-supabase-authority.mjs";
 import {
@@ -356,13 +357,15 @@ export function verifyJwtPostures(
     resolve(REPO_ROOT, "supabase", "config.toml"),
     "utf8",
   ),
+  jwtPolicy = ISSUE_2241_JWT_POSTURE,
 ) {
   for (const functionName of selectedFunctions) {
-    if (
-      !Object.hasOwn(ISSUE_2241_JWT_POSTURE, functionName) ||
-      readConfigJwtPosture(configSource, functionName) !==
-        ISSUE_2241_JWT_POSTURE[functionName]
-    ) throw new ReconciliationError("jwt_posture_mismatch", [functionName]);
+    const entry = jwtPolicy?.[functionName];
+    const expected = typeof entry === "boolean" ? entry : entry?.verify_jwt;
+    if (typeof expected !== "boolean" ||
+        readConfigJwtPosture(configSource, functionName) !== expected) {
+      throw new ReconciliationError("jwt_posture_mismatch", [functionName]);
+    }
   }
   return true;
 }
@@ -406,10 +409,17 @@ function verifyMergedState({ state, mergedCommit, maxAgeHours, nowMs }) {
 export function deploySelectedFunctions({
   projectRef,
   selectedFunctions,
+  configSource = readFileSync(
+    resolve(REPO_ROOT, "supabase", "config.toml"),
+    "utf8",
+  ),
+  jwtPolicy = ISSUE_2241_JWT_POSTURE,
   spawn = spawnSync,
 }) {
-  verifyJwtPostures(selectedFunctions);
+  verifyJwtPostures(selectedFunctions, configSource, jwtPolicy);
   for (const functionName of selectedFunctions) {
+    const entry = jwtPolicy[functionName];
+    const verifyJwt = typeof entry === "boolean" ? entry : entry.verify_jwt;
     const args = [
       "functions",
       "deploy",
@@ -418,7 +428,7 @@ export function deploySelectedFunctions({
       projectRef,
       "--use-api",
     ];
-    if (ISSUE_2241_JWT_POSTURE[functionName] === false) {
+    if (verifyJwt === false) {
       args.push("--no-verify-jwt");
     }
     const result = spawn("supabase", args, {
@@ -440,9 +450,14 @@ export function deploySelectedFunctions({
 export function verifyDownloadedFunctionSources({
   projectRef,
   selectedFunctions,
+  configSource = readFileSync(
+    resolve(REPO_ROOT, "supabase", "config.toml"),
+    "utf8",
+  ),
+  jwtPolicy = ISSUE_2241_JWT_POSTURE,
   spawn = spawnSync,
 }) {
-  verifyJwtPostures(selectedFunctions);
+  verifyJwtPostures(selectedFunctions, configSource, jwtPolicy);
   const tempRoot = mkdtempSync(resolve(tmpdir(), "mingla-2241-source-"));
   try {
     for (const functionName of selectedFunctions) {
@@ -563,9 +578,14 @@ export function reduceRemoteFunctionMetadata(raw) {
 export function verifyRemoteJwtPostures({
   projectRef,
   selectedFunctions,
+  configSource = readFileSync(
+    resolve(REPO_ROOT, "supabase", "config.toml"),
+    "utf8",
+  ),
+  jwtPolicy = ISSUE_2241_JWT_POSTURE,
   spawn = spawnSync,
 }) {
-  verifyJwtPostures(selectedFunctions);
+  verifyJwtPostures(selectedFunctions, configSource, jwtPolicy);
   const result = spawn(
     "supabase",
     [
@@ -584,9 +604,11 @@ export function verifyRemoteJwtPostures({
   const metadata = reduceRemoteFunctionMetadata(result.stdout ?? "");
   const byName = new Map(metadata.map((record) => [record.name, record]));
   for (const functionName of selectedFunctions) {
+    const entry = jwtPolicy[functionName];
+    const expected = typeof entry === "boolean" ? entry : entry?.verify_jwt;
     if (
-      byName.get(functionName)?.verify_jwt !==
-        ISSUE_2241_JWT_POSTURE[functionName]
+      typeof expected !== "boolean" ||
+      byName.get(functionName)?.verify_jwt !== expected
     ) throw new ReconciliationError("remote_jwt_posture_mismatch", [
       functionName,
     ]);
@@ -628,13 +650,18 @@ export function runGovernedBundleDeployment({
   if (audit().length > 0) {
     throw new ReconciliationError("contract_audit_failed");
   }
-  const contract = JSON.parse(readFileSync(DEFAULT_CONTRACT, "utf8"));
+  const effectivePolicy = (dependencies.loadPolicy ?? loadEffectiveFunctionPolicy)({ root: REPO_ROOT });
+  const { contract, configToml, diskFunctions, jwtPolicy } = effectivePolicy;
   const manifest = loadManifest(DEFAULT_MANIFEST);
   if (
     !Array.isArray(selectedFunctions) ||
     selectedFunctions.length === 0 ||
     new Set(selectedFunctions).size !== selectedFunctions.length ||
-    selectedFunctions.some((name) => !Object.hasOwn(contract.functions, name))
+    selectedFunctions.some((name) =>
+      !Object.hasOwn(contract.functions, name) ||
+      !diskFunctions.includes(name) ||
+      !Object.hasOwn(jwtPolicy, name)
+    )
   ) throw new ReconciliationError("normal_function_set_invalid");
   const gitState = (dependencies.gitState ?? defaultGitState)(mergedCommit);
   verifyMergedState({
@@ -642,7 +669,7 @@ export function runGovernedBundleDeployment({
     mergedCommit,
     nowMs: now(),
   });
-  verifyJwtPostures(selectedFunctions);
+  verifyJwtPostures(selectedFunctions, configToml, jwtPolicy);
 
   const requiredBundleNames = sortedUnique(
     selectedFunctions.flatMap((functionName) =>
@@ -704,18 +731,25 @@ export function runGovernedBundleDeployment({
     expectedReceiptFields,
     verifyReceiptSet: authority.verifyReceiptSet,
     liveNames,
+    contract,
   });
   (dependencies.deploy ?? deploySelectedFunctions)({
     projectRef,
     selectedFunctions,
+    configSource: configToml,
+    jwtPolicy,
   });
   (dependencies.verifyDeployed ?? verifyDownloadedFunctionSources)({
     projectRef,
     selectedFunctions,
+    configSource: configToml,
+    jwtPolicy,
   });
   (dependencies.verifyRemoteJwt ?? verifyRemoteJwtPostures)({
     projectRef,
     selectedFunctions,
+    configSource: configToml,
+    jwtPolicy,
   });
   return {
     applied_bundles: requiredBundleNames,
@@ -747,7 +781,7 @@ export function runIssue2241Reconciliation({
   if (auditFailures.length > 0) {
     throw new ReconciliationError("contract_audit_failed");
   }
-  const contract = JSON.parse(readFileSync(DEFAULT_CONTRACT, "utf8"));
+  const contract = (dependencies.loadPolicy ?? loadEffectiveFunctionPolicy)({ root: REPO_ROOT }).contract;
   const manifest = loadManifest(DEFAULT_MANIFEST);
   if (!exactSet(selectedFunctions, contract.remediation.selected_functions)) {
     throw new ReconciliationError("remediation_function_set_mismatch");

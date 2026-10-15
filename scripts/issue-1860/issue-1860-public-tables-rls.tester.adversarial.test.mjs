@@ -35,6 +35,7 @@ import test from "node:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { listLane } from "../../.github/scripts/ci-discovery/load-plan.mjs";
 
 import {
   replayChain,
@@ -87,7 +88,7 @@ function realInputs(over = {}) {
   return {
     files: loadMigrations(),
     allowlistJson: JSON.parse(readFileSync(ALLOWLIST_PATH, "utf8")),
-    workflowText: readFileSync(WORKFLOW_PATH, "utf8"),
+    suitePlan: listLane("migrations"),
     // null is the CORRECT state: the retired audit is gone (see the note above).
     retiredAuditSource: existsSync(RETIRED_AUDIT_PATH)
       ? readFileSync(RETIRED_AUDIT_PATH, "utf8")
@@ -118,7 +119,10 @@ function carrier(extraSql) {
 
 const FIXTURE_INPUTS = {
   allowlistJson: { tables: ["spatial_ref_sys"] },
-  workflowText: "supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql",
+  suitePlan: [{
+    path: "supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql",
+    profile: "psql-pg17-post-replay",
+  }],
   retiredAuditSource: null,
   enforceFloor: false,
 };
@@ -328,7 +332,11 @@ test("#1860 adversarial D1 [VACUITY]: the harness reports failures when handed a
 test("#1860 adversarial D2 [VACUITY]: the real-input harness is wired to real files, not defaults", () => {
   const inputs = realInputs();
   assert.ok(inputs.files.length >= MIN_MIGRATION_FILES);
-  assert.ok(inputs.workflowText.includes("issue_1860_public_rls_coverage.test.sql"), "live half not wired");
+  // [TEST-MOD-APPROVED #3643] The live SQL proof is owned by the canonical effective plan.
+  assert.equal(inputs.suitePlan.filter((row) =>
+    row.path === "supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql"
+      && row.profile === "psql-pg17-post-replay"
+  ).length, 1, "live half not wired");
   assert.equal(typeof inputs.allowlistJson, "object");
 
   // INVERTED at #1860 REWORK, [TEST-MOD-APPROVED #1860]. The retired audit must
@@ -345,14 +353,16 @@ test("#1860 adversarial D2 [VACUITY]: the real-input harness is wired to real fi
     "resurrecting the retired audit does not fail the gate; C6 is not actually enforced",
   );
 
-  // And prove the remaining real input is load-bearing: nulling it must produce
-  // a failure, so a future refactor cannot quietly stop reading it.
-  for (const key of ["workflowText"]) {
-    assert.ok(
-      runChecks(realInputs({ [key]: null })).length > 0,
-      `${key} can be null without failing the gate; it is not actually enforced`,
-    );
-  }
+  assert.ok(
+    runChecks(realInputs({ suitePlan: [] })).some((failure) => failure.startsWith("C5:")),
+    "suitePlan can omit the live SQL row without failing the gate",
+  );
+  assert.ok(
+    runChecks(realInputs({ suitePlan: [...inputs.suitePlan, inputs.suitePlan.find((row) =>
+      row.path === "supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql"
+    )] })).some((failure) => failure.startsWith("C5:")),
+    "suitePlan can duplicate the live SQL row without failing the gate",
+  );
 });
 
 // ---------------------------------------------------------------------------

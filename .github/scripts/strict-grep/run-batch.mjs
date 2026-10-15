@@ -75,6 +75,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadEffectiveManifest } from "./load-manifest.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
@@ -82,8 +83,10 @@ const MANIFEST_PATH = path.join(HERE, "MANIFEST.json");
 
 export const CLASSES = ["A", "B", "C", "D", "E"];
 
-export function loadManifest(p = MANIFEST_PATH) {
-  return JSON.parse(fs.readFileSync(p, "utf8"));
+export function loadManifest(p = MANIFEST_PATH, { root = REPO_ROOT } = {}) {
+  return p === MANIFEST_PATH
+    ? loadEffectiveManifest({ root })
+    : JSON.parse(fs.readFileSync(p, "utf8"));
 }
 
 /**

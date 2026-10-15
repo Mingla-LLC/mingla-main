@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "kind": "exclude",
+  "path": "supabase/migrations/__tests__/issue_3720_community_phase1_schema.implementor.happy.pg17.test.sql",
+  "reason": "Executed transitively by the adjacent owner-only PostgreSQL harness."
+}

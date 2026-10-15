@@ -10,6 +10,9 @@ const migration = readFileSync(migrationPath, "utf8");
 const allowlist = readFileSync(path.join(repoRoot, "supabase/security/anon_executable_definer_allowlist.txt"), "utf8");
 const workflow = readFileSync(path.join(repoRoot, ".github/workflows/issue-2117-offering-visibility-gate-tests.yml"), "utf8");
 const fullSchemaWorkflow = readFileSync(path.join(repoRoot, ".github/workflows/supabase-migrations-and-stripe-deno.yml"), "utf8");
+const migrationPlan = JSON.parse(execFileSync(process.execPath, [
+  path.join(repoRoot, ".github/scripts/ci-discovery/list.mjs"), "--lane", "migrations", "--json",
+], { encoding: "utf8" })) as { entries: Array<{ path: string; profile: string }> };
 const legacyPreview = readFileSync(path.join(repoRoot, "mingla-business/server/socialPreview.js"), "utf8");
 const platformUrl = readFileSync(path.join(repoRoot, "mingla-business/src/constants/platformUrl.ts"), "utf8");
 const config = JSON.parse(readFileSync(path.join(repoRoot, "mingla-business/vercel.json"), "utf8")) as {
@@ -152,10 +155,11 @@ describe("#2986 exact intended-public amendment is closed and self-defending", (
       "issue_2986_public_search_documents.implementor.happy.pg17.test.sql",
       "issue_2986_public_search_documents.tester.adversarial.pg17.test.sql",
     ]) {
-      const exact = `-f supabase/migrations/__tests__/${filename}`;
-      expect(occurrences(fullSchemaWorkflow, exact)).toBe(1);
+      const exact = `supabase/migrations/__tests__/${filename}`;
+      // [TEST-MOD-APPROVED #3643] Migrated SQL membership now comes from the effective discovery plan.
+      expect(migrationPlan.entries.filter((row) => row.path === exact && row.profile === "psql-pg17-post-replay")).toHaveLength(1);
     }
-    expect(fullSchemaWorkflow).not.toMatch(/issue_2986[^\n]*\*/);
+    expect(migrationPlan.entries.filter((row) => row.path.includes("issue_2986") && row.path.includes("*"))).toHaveLength(0);
   });
 });
 

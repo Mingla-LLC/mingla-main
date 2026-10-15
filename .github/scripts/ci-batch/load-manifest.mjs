@@ -1,0 +1,435 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+export const ROOT = path.resolve(HERE, "../../..");
+export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
+export const BOOTSTRAP_SHA256 = "ec425d9e48c68fe62b3cd96c0f0b5651c4b3abf44870520a3689980e9a80cd8f";
+export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
+export const PATCH_SUFFIX = ".ci-batch.patch.json";
+export const PATCH_DIRECTORY = ".github/ci-batch/patches";
+
+// Loader-owned provenance is deliberately not a JSON field. A descriptor cannot
+// make itself trusted by spelling `localDescriptor` in its suite payload: only
+// this module can attach the private symbol after the sealed bootstrap, patches,
+// descriptors and derived capabilities have all been reconciled.
+const TRUSTED_REGISTRY_VIEWS = Symbol("ci-batch-trusted-registry-views");
+
+const SHA256 = /^[0-9a-f]{64}$/;
+const ISSUE = /^#[1-9][0-9]*$/;
+const DEPENDENT_SEAL_PATHS = Object.freeze({
+  suites: [
+    "/class", "/setupProfile", "/lifecycle", "/runtime", "/timeoutSeconds", "/steps",
+    "/expectedFiles", "/envNames", "/generatedPaths", "/shadowContract", "/triggerContract",
+    "/migrationWave", "/hostClass", "/executionClass", "/isolation",
+  ],
+  legacyOrigins: [
+    "/disposition", "/providerWorkflow", "/replacementSuite", "/replacementSuites", "/routing",
+    "/workflowMetadata/triggers", "/workflowMetadata/pathScope", "/workflowMetadata/jobKeys",
+    "/workflowMetadata/runners", "/workflowMetadata/runtimeVersions", "/workflowMetadata/setupActions",
+    "/workflowMetadata/concurrency", "/workflowMetadata/trustBoundary",
+  ],
+});
+
+function fail(code, detail = "") {
+  throw new Error(`ci-batch:effective-registry:${code}${detail ? `:${detail}` : ""}`);
+}
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function same(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function exactKeys(value, keys) {
+  return value && typeof value === "object" && !Array.isArray(value) &&
+    same(Object.keys(value).sort(), [...keys].sort());
+}
+
+function deepFreeze(value) {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  for (const child of Object.values(value)) deepFreeze(child);
+  return Object.freeze(value);
+}
+
+function repositoryRelative(value, { allowPattern = false, allowRoot = false } = {}) {
+  if (allowRoot && value === ".") return true;
+  return typeof value === "string" && value.length > 0 && value.trim() === value &&
+    !path.isAbsolute(value) && !/^[A-Za-z]:/.test(value) && !value.includes("\\") &&
+    !value.includes("\0") && !value.split("/").some((part) => !part || part === "." || part === "..") &&
+    (allowPattern || !/[?*\[\]{}]/.test(value));
+}
+
+export function trustedRegistryViews(manifest) {
+  return manifest?.[TRUSTED_REGISTRY_VIEWS] || null;
+}
+
+export function bootstrapRowSha256(row) {
+  return sha256(JSON.stringify(row));
+}
+
+function walk(root, relative = "") {
+  const absolute = path.join(root, relative);
+  if (!fs.existsSync(absolute)) return [];
+  const files = [];
+  for (const entry of fs.readdirSync(absolute, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    if (entry.name === ".git" || entry.name === "node_modules") continue;
+    const child = path.posix.join(relative.split(path.sep).join(path.posix.sep), entry.name);
+    if (entry.isDirectory()) files.push(...walk(root, child));
+    else if (entry.isFile()) files.push(child);
+  }
+  return files;
+}
+
+export function loadBootstrap({ manifestPath = BOOTSTRAP_PATH, expectedSha = BOOTSTRAP_SHA256 } = {}) {
+  const raw = fs.readFileSync(manifestPath);
+  const actual = sha256(raw);
+  if (actual !== expectedSha) fail("bootstrap_seal_mismatch", `${actual}:expected=${expectedSha}`);
+  return JSON.parse(raw.toString("utf8"));
+}
+
+function targetIdentity(collection, selector) {
+  return collection === "suites"
+    ? `suites:id=${selector.id}`
+    : `legacyOrigins:stem=${selector.stem}:extension=${selector.extension}`;
+}
+
+function selectedBootstrapRows(bootstrap, collection, selector) {
+  const rows = bootstrap[collection];
+  if (!Array.isArray(rows)) fail("bootstrap_collection_missing", collection);
+  return rows.map((row, index) => ({ row, index })).filter(({ row }) => collection === "suites"
+    ? row.id === selector.id
+    : row.stem === selector.stem && row.extension === selector.extension);
+}
+
+function semanticDiffPaths(before, after, pointer = "") {
+  if (same(before, after)) return [];
+  if (Array.isArray(before) || Array.isArray(after) || !before || !after ||
+      typeof before !== "object" || typeof after !== "object") return [pointer || "/"];
+  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();
+  return keys.flatMap((key) => semanticDiffPaths(before[key], after[key], `${pointer}/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`));
+}
+
+function protectedSealPath(collection, pointer) {
+  return DEPENDENT_SEAL_PATHS[collection].some((prefix) => pointer === prefix || pointer.startsWith(`${prefix}/`));
+}
+
+function validatePatchEnvelope(descriptorPath, declaration) {
+  const topLevel = ["schemaVersion", "kind", "ownerIssue", "target", "operations", "dependentSeals", "reason"];
+  if (!exactKeys(declaration, topLevel) || declaration.schemaVersion !== 1 ||
+      declaration.kind !== "ci-batch-bootstrap-patch" || !ISSUE.test(declaration.ownerIssue) ||
+      typeof declaration.reason !== "string" || declaration.reason.trim().length < 12 ||
+      !Array.isArray(declaration.dependentSeals)) {
+    fail("malformed_patch", descriptorPath);
+  }
+  if (declaration.dependentSeals.length !== 0) fail("dependent_seal_change", descriptorPath);
+  if (!Array.isArray(declaration.operations) || declaration.operations.length === 0) {
+    fail("malformed_patch_operations", descriptorPath);
+  }
+  if (/\.github\/workflows\/[A-Za-z0-9_.-]+\.ya?ml/.test(JSON.stringify(declaration))) {
+    fail("workflow_name_forbidden", descriptorPath);
+  }
+}
+
+function validatePatchTarget(descriptorPath, target) {
+  if (!exactKeys(target, ["collection", "selector", "baseRowSha256"]) ||
+      !["suites", "legacyOrigins"].includes(target.collection) || !SHA256.test(target.baseRowSha256)) {
+    if (target?.collection && !["suites", "legacyOrigins"].includes(target.collection)) {
+      fail("unknown_patch_collection", `${descriptorPath}:${target.collection}`);
+    }
+    fail("malformed_patch_target", descriptorPath);
+  }
+  const selectorKeys = target.collection === "suites" ? ["id"] : ["stem", "extension"];
+  if (!exactKeys(target.selector, selectorKeys) ||
+      (target.collection === "suites" && (typeof target.selector.id !== "string" || !target.selector.id)) ||
+      (target.collection === "legacyOrigins" &&
+        (typeof target.selector.stem !== "string" || !/^[A-Za-z0-9_.-]+$/.test(target.selector.stem) ||
+         !["yml", "yaml"].includes(target.selector.extension)))) {
+    fail("malformed_patch_selector", descriptorPath);
+  }
+}
+
+function validateOperationShape(descriptorPath, operation) {
+  if (!exactKeys(operation, ["op", "path", "expected", "value"]) ||
+      typeof operation.op !== "string" || typeof operation.path !== "string") {
+    fail("malformed_patch_operation", descriptorPath);
+  }
+  if (["", "/"].includes(operation.path) || ["add", "remove", "move", "copy"].includes(operation.op)) {
+    fail("row_mutation_forbidden", `${descriptorPath}:${operation.op}:${operation.path}`);
+  }
+  if (operation.path.split("/").slice(1).some((part) => /^[0-9]+$/.test(part))) {
+    fail("index_target_forbidden", `${descriptorPath}:${operation.path}`);
+  }
+}
+
+function applyOperation({ descriptorPath, root, collection, selector, original, patched, operation }) {
+  validateOperationShape(descriptorPath, operation);
+  if (protectedSealPath(collection, operation.path)) {
+    fail("dependent_seal_change", `${descriptorPath}:${operation.path}`);
+  }
+  if (collection === "legacyOrigins" && operation.path === "/workflowMetadata/sourceSha256") {
+    if (operation.op !== "replace" || !SHA256.test(operation.expected) || !SHA256.test(operation.value)) {
+      fail("malformed_source_digest_patch", descriptorPath);
+    }
+    const current = original.workflowMetadata?.sourceSha256;
+    if (!same(current, operation.expected)) fail("patch_cas_mismatch", `${descriptorPath}:${operation.path}`);
+    if (operation.expected === operation.value) fail("patch_noop", `${descriptorPath}:${operation.path}`);
+    const workflowPath = path.join(root, ".github/workflows", `${selector.stem}.${selector.extension}`);
+    if (!fs.existsSync(workflowPath)) fail("source_workflow_missing", descriptorPath);
+    const inspected = sha256(fs.readFileSync(workflowPath));
+    if (operation.value !== inspected) fail("source_digest_mismatch", `${descriptorPath}:${operation.value}:inspected=${inspected}`);
+    patched.workflowMetadata.sourceSha256 = operation.value;
+    return;
+  }
+  if (collection === "suites" && ["/originPaths", "/externalReferenceFiles"].includes(operation.path) &&
+      operation.op !== "append-unique") {
+    fail("provenance_mutation_forbidden", `${descriptorPath}:${operation.path}`);
+  }
+  if (collection === "suites" && ["/originPaths", "/externalReferenceFiles"].includes(operation.path)) {
+    if (!Array.isArray(operation.expected) ||
+        !operation.expected.every((entry) => typeof entry === "string") ||
+        typeof operation.value !== "string" || !operation.value || path.isAbsolute(operation.value) ||
+        operation.value.split("/").includes("..")) {
+      fail("malformed_provenance_patch", `${descriptorPath}:${operation.path}`);
+    }
+    const key = operation.path.slice(1);
+    const current = original[key];
+    if (!same(current, operation.expected)) fail("patch_cas_mismatch", `${descriptorPath}:${operation.path}`);
+    if (current.includes(operation.value)) fail("patch_noop", `${descriptorPath}:${operation.path}`);
+    if (!fs.existsSync(path.join(root, operation.value))) fail("appended_path_missing", `${descriptorPath}:${operation.value}`);
+    patched[key].push(operation.value);
+    return;
+  }
+  fail("unknown_patch_path", `${descriptorPath}:${operation.path}`);
+}
+
+function readPatchDeclarations(root, allFiles) {
+  const patchFiles = allFiles.filter((file) => file.endsWith(PATCH_SUFFIX));
+  for (const descriptorPath of patchFiles) {
+    if (path.posix.dirname(descriptorPath) !== PATCH_DIRECTORY) {
+      fail("patch_location_forbidden", descriptorPath);
+    }
+  }
+  return patchFiles.sort().map((descriptorPath) => {
+    let declaration;
+    try {
+      declaration = JSON.parse(fs.readFileSync(path.join(root, descriptorPath), "utf8"));
+    } catch (error) {
+      fail("malformed_patch", `${descriptorPath}:${error.message}`);
+    }
+    return { descriptorPath, declaration };
+  });
+}
+
+function applyBootstrapPatches({ root, bootstrap, allFiles }) {
+  const effective = structuredClone(bootstrap);
+  const targeted = new Set();
+  for (const { descriptorPath, declaration } of readPatchDeclarations(root, allFiles)) {
+    validatePatchEnvelope(descriptorPath, declaration);
+    validatePatchTarget(descriptorPath, declaration.target);
+    const { collection, selector, baseRowSha256 } = declaration.target;
+    const identity = targetIdentity(collection, selector);
+    if (targeted.has(identity)) fail("duplicate_patch_target", identity);
+    targeted.add(identity);
+    const matches = selectedBootstrapRows(bootstrap, collection, selector);
+    if (matches.length !== 1) fail("patch_target_cardinality", `${identity}:matches=${matches.length}`);
+    const { row: original, index } = matches[0];
+    const actualBaseSha = bootstrapRowSha256(original);
+    if (actualBaseSha !== baseRowSha256) {
+      fail("stale_base_row", `${descriptorPath}:${actualBaseSha}:expected=${baseRowSha256}`);
+    }
+    const paths = new Set();
+    const patched = structuredClone(original);
+    for (const operation of declaration.operations) {
+      if (paths.has(operation?.path)) fail("duplicate_patch_path", `${descriptorPath}:${operation?.path}`);
+      paths.add(operation?.path);
+      applyOperation({ descriptorPath, root, collection, selector, original, patched, operation });
+    }
+    const actualDiff = semanticDiffPaths(original, patched).sort();
+    const declaredDiff = [...paths].sort();
+    if (!same(actualDiff, declaredDiff)) {
+      fail("patch_semantic_diff_mismatch", `${descriptorPath}:${JSON.stringify(actualDiff)}:declared=${JSON.stringify(declaredDiff)}`);
+    }
+    effective[collection][index] = patched;
+  }
+  return effective;
+}
+
+function validateLocalSuite({ descriptorPath, declaration, root, bootstrap }) {
+  if (!exactKeys(declaration, ["schemaVersion", "kind", "ownerIssue", "suite"]) ||
+      declaration.schemaVersion !== 1 || declaration.kind !== "ci-batch-suite" ||
+      !ISSUE.test(declaration.ownerIssue)) {
+    fail("malformed_descriptor", descriptorPath);
+  }
+  const suite = declaration.suite;
+  const suiteKeys = [
+    "id", "class", "originPaths", "steps", "lifecycle", "ownerIssue", "runtime",
+    "setupProfile", "cwd", "envNames", "isolation", "expectedFiles",
+    "externalReferenceFiles", "requiredContext", "timingSeconds", "generatedPaths",
+    "exceptionRationale", "timeoutSeconds",
+  ];
+  if (!exactKeys(suite, suiteKeys)) fail("malformed_suite", descriptorPath);
+  const requiredStrings = [
+    "id", "class", "lifecycle", "ownerIssue", "setupProfile", "cwd", "isolation",
+    "requiredContext", "exceptionRationale",
+  ];
+  for (const key of requiredStrings) {
+    if (typeof suite[key] !== "string" || suite[key].length === 0) fail("missing_field", `${descriptorPath}:${key}`);
+  }
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(suite.id) || suite.ownerIssue !== declaration.ownerIssue) {
+    fail("descriptor_owner_mismatch", descriptorPath);
+  }
+  if (!Array.isArray(suite.steps) || suite.steps.length === 0 ||
+      !Array.isArray(suite.expectedFiles) || suite.expectedFiles.length === 0 ||
+      !Array.isArray(suite.originPaths) || suite.originPaths.length === 0 ||
+      !Array.isArray(suite.envNames) || !Array.isArray(suite.generatedPaths) ||
+      !Array.isArray(suite.externalReferenceFiles)) fail("missing_suite_arrays", descriptorPath);
+  for (const key of ["originPaths", "envNames", "expectedFiles", "externalReferenceFiles", "generatedPaths"]) {
+    if (!suite[key].every((entry) => typeof entry === "string") || new Set(suite[key]).size !== suite[key].length) {
+      fail("malformed_suite_array", `${descriptorPath}:${key}`);
+    }
+  }
+  if (!exactKeys(suite.runtime, ["name", "version"]) || suite.runtime.name !== "node" ||
+      typeof suite.runtime.version !== "string" ||
+      !Number.isInteger(suite.timeoutSeconds) || suite.timeoutSeconds < 1 || suite.timeoutSeconds > 1500) {
+    fail("malformed_runtime_or_timeout", descriptorPath);
+  }
+  const validTiming = (value) => value === null || (Number.isFinite(value) && value >= 0);
+  if (!exactKeys(suite.timingSeconds, ["p50", "p95", "evidence"]) ||
+      !validTiming(suite.timingSeconds.p50) || !validTiming(suite.timingSeconds.p95) ||
+      (suite.timingSeconds.p50 !== null && suite.timingSeconds.p95 !== null && suite.timingSeconds.p95 < suite.timingSeconds.p50) ||
+      typeof suite.timingSeconds.evidence !== "string" || !suite.timingSeconds.evidence.trim()) {
+    fail("malformed_timing", descriptorPath);
+  }
+  if (suite.lifecycle !== "batched-active" || suite.isolation !== "clean-worktree" || suite.envNames.length !== 0) {
+    fail("unsupported_local_execution_contract", descriptorPath);
+  }
+  if (!bootstrap.classes.includes(suite.class) || !Object.hasOwn(bootstrap.setupProfiles, suite.setupProfile) ||
+      bootstrap.setupProfiles[suite.setupProfile]?.classes?.includes(suite.class) !== true ||
+      !same(bootstrap.setupProfiles[suite.setupProfile]?.runtime, suite.runtime)) {
+    fail("unknown_class_or_setup", descriptorPath);
+  }
+  if (bootstrap.suites.some((entry) => entry.id === suite.id)) fail("bootstrap_shadow", suite.id);
+  if (!repositoryRelative(suite.cwd, { allowRoot: true }) || !fs.existsSync(path.join(root, suite.cwd))) {
+    fail("invalid_cwd", `${suite.id}:${suite.cwd}`);
+  }
+  for (const key of ["expectedFiles", "externalReferenceFiles"]) {
+    for (const file of suite[key]) {
+      if (!repositoryRelative(file) || !fs.existsSync(path.join(root, file))) {
+        fail("missing_suite_path", `${suite.id}:${key}:${file}`);
+      }
+    }
+  }
+  for (const pattern of suite.originPaths) {
+    if (!repositoryRelative(pattern, { allowPattern: true })) fail("invalid_origin_path", `${suite.id}:${pattern}`);
+  }
+  for (const generated of suite.generatedPaths) {
+    if (!repositoryRelative(generated)) fail("invalid_generated_path", `${suite.id}:${generated}`);
+  }
+  if (!suite.expectedFiles.some((file) => path.posix.dirname(file) === path.posix.dirname(descriptorPath))) {
+    fail("descriptor_not_local", descriptorPath);
+  }
+  const encoded = JSON.stringify(declaration);
+  if (/\.github\/workflows\/[^"']+\.ya?ml/.test(encoded)) fail("workflow_name_forbidden", descriptorPath);
+  for (const [index, step] of suite.steps.entries()) {
+    if (!exactKeys(step, ["name", "cwd", "run", "commandId", "invocation", "exceptionRationale"]) ||
+        typeof step.name !== "string" || !step.name.trim() || typeof step.run !== "string" || !step.run.trim() ||
+        typeof step.commandId !== "string" || step.commandId !== `assert:${suite.id}:${String(index + 1).padStart(2, "0")}` ||
+        !repositoryRelative(step.cwd, { allowRoot: true }) || !fs.existsSync(path.join(root, step.cwd)) ||
+        typeof step.exceptionRationale !== "string" || !step.exceptionRationale.includes("legacy workflow") ||
+        !exactKeys(step.invocation, ["kind", "command", "argv"]) || step.invocation.kind !== "raw-shell" ||
+        step.invocation.command !== "bash" || !Array.isArray(step.invocation.argv) ||
+        step.invocation.argv.length !== 2 || step.invocation.argv[0] !== "-c" || step.invocation.argv[1] !== step.run) {
+      fail("malformed_step", `${suite.id}:${index}`);
+    }
+  }
+  return {
+    ...suite,
+    origin: descriptorPath,
+    originPaths: [...new Set([...suite.originPaths, descriptorPath])],
+    localDescriptor: descriptorPath,
+  };
+}
+
+export function loadEffectiveManifest({
+  root = ROOT,
+  manifestPath = BOOTSTRAP_PATH,
+  expectedSha = BOOTSTRAP_SHA256,
+  discover = manifestPath === BOOTSTRAP_PATH,
+} = {}) {
+  if (!discover) return JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const bootstrap = loadBootstrap({ manifestPath, expectedSha });
+  const files = walk(root);
+  const patchedBootstrap = applyBootstrapPatches({ root, bootstrap, allFiles: files });
+  const locals = files.filter((file) => file.endsWith(DESCRIPTOR_SUFFIX) && !file.endsWith(PATCH_SUFFIX)).map((descriptorPath) => {
+    let declaration;
+    try {
+      declaration = JSON.parse(fs.readFileSync(path.join(root, descriptorPath), "utf8"));
+    } catch (error) {
+      fail("malformed_descriptor", `${descriptorPath}:${error.message}`);
+    }
+    return validateLocalSuite({ descriptorPath, declaration, root, bootstrap });
+  });
+  const ids = new Set(bootstrap.suites.map((suite) => suite.id));
+  for (const suite of locals) {
+    if (ids.has(suite.id)) fail("duplicate_suite_id", suite.id);
+    ids.add(suite.id);
+  }
+  const effectiveBase = structuredClone(patchedBootstrap);
+  const suites = [...effectiveBase.suites, ...locals.sort((a, b) => a.id.localeCompare(b.id))];
+  const localCommands = locals.flatMap((suite) => suite.steps.map((step, stepIndex) => {
+    const command = {
+      id: step.commandId,
+      suiteId: suite.id,
+      stepIndex,
+      cwd: step.cwd,
+      executable: step.invocation.command,
+      argv: step.invocation.argv,
+    };
+    return {
+      ...command,
+      payloadSha256: crypto.createHash("sha256").update(JSON.stringify({
+        cwd: command.cwd,
+        executable: command.executable,
+        argv: command.argv,
+      })).digest("hex"),
+    };
+  }));
+  const commands = [...effectiveBase.commandCapabilities.commands, ...localCommands];
+  const commandIds = new Set();
+  for (const command of commands) {
+    if (commandIds.has(command.id)) fail("duplicate_command_id", command.id);
+    commandIds.add(command.id);
+  }
+  const effective = {
+    ...effectiveBase,
+    expectedExecutableSuites: suites.length,
+    expectedSuites: suites.length,
+    commandCapabilities: {
+      ...bootstrap.commandCapabilities,
+      expectedCommands: commands.length,
+      registrySha256: crypto.createHash("sha256").update(JSON.stringify(commands)).digest("hex"),
+      commands,
+    },
+    suites,
+  };
+  Object.defineProperty(effective, TRUSTED_REGISTRY_VIEWS, {
+    enumerable: false,
+    configurable: false,
+    writable: false,
+    value: Object.freeze({
+      rawBootstrap: deepFreeze(bootstrap),
+      patchedBootstrap: deepFreeze(patchedBootstrap),
+      localSuiteIds: Object.freeze(locals.map((suite) => suite.id)),
+      localDescriptorClaims: Object.freeze(locals.map((suite) => Object.freeze({
+        suiteId: suite.id,
+        descriptorPath: suite.localDescriptor,
+      }))),
+      rawBootstrapSha256: expectedSha,
+    }),
+  });
+  return effective;
+}

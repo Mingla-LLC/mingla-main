@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3720_community_phase1_schema.implementor.happy.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "legacy-0017b-issue-3720-community-schema",
+  "profile": "deno-1.46-stripe"
+}

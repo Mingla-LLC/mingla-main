@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// #2435 / #2148 Phase 1. Fail-closed validator for the deterministic CI registry.
-// The registry is deliberately static. Discovery is used only to prove that the
-// committed inventory is complete; it is never used to decide what CI executes.
+// #2435 / #2148 Phase 1; #3643 additive registry. Fail-closed validator for the
+// deterministic CI registry. The sealed bootstrap remains historical authority;
+// issue-owned local descriptors extend one loader-derived effective registry.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 // every binding either side reads is a hoisted function declaration, and neither
 // module body touches the other's exports at evaluation time.
 import { compileOriginPattern, parseOriginPattern } from "./select-phase3b-suites.mjs";
+import { BOOTSTRAP_SHA256, loadEffectiveManifest, trustedRegistryViews } from "./load-manifest.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_ROOT = path.resolve(HERE, "../../..");
@@ -1688,11 +1689,28 @@ export function validateRegistry(
   { root = DEFAULT_ROOT, liveOrigins = null, workflowProviders = null, matrixSource = null } = {},
 ) {
   const resolvedRoot = path.resolve(root);
+  const provenance = trustedRegistryViews(rawManifest);
+  const registryViews = provenance ? {
+    trusted: true,
+    rawBootstrap: provenance.rawBootstrap,
+    patchedBootstrap: provenance.patchedBootstrap,
+    localSuiteIds: provenance.localSuiteIds,
+    localDescriptorClaims: provenance.localDescriptorClaims,
+    rawBootstrapSha256: provenance.rawBootstrapSha256,
+  } : {
+    trusted: false,
+    rawBootstrap: rawManifest,
+    patchedBootstrap: rawManifest,
+    localSuiteIds: [],
+    localDescriptorClaims: [],
+    rawBootstrapSha256: null,
+  };
   const validate = () => validateRegistryInTrackedFilesScope(rawManifest, {
     root: resolvedRoot,
     liveOrigins,
     workflowProviders,
     matrixSource,
+    registryViews,
   });
   return trackedFilesScopeFor(resolvedRoot)
     ? validate()
@@ -1701,11 +1719,51 @@ export function validateRegistry(
 
 function validateRegistryInTrackedFilesScope(
   rawManifest,
-  { root, liveOrigins, workflowProviders, matrixSource },
+  { root, liveOrigins, workflowProviders, matrixSource, registryViews },
 ) {
   const errors = [];
   errors.push(...validateManifestTextRepresentations(rawManifest));
   const manifest = decodeManifestTextRepresentations(rawManifest);
+  const rawBootstrap = decodeManifestTextRepresentations(registryViews.rawBootstrap);
+  const bootstrap = decodeManifestTextRepresentations(registryViews.patchedBootstrap);
+  const localSuiteIds = new Set(registryViews.localSuiteIds);
+  const descriptorClaims = new Map();
+  for (const claim of registryViews.localDescriptorClaims) {
+    if (!claim || descriptorClaims.has(claim.suiteId)) {
+      fail(errors, `duplicate or malformed trusted descriptor claim: ${claim?.suiteId || "<empty>"}`);
+      continue;
+    }
+    descriptorClaims.set(claim.suiteId, claim.descriptorPath);
+  }
+  if (registryViews.trusted && registryViews.rawBootstrapSha256 !== BOOTSTRAP_SHA256) {
+    fail(errors, "raw bootstrap seal differs from the immutable Phase 3 baseline");
+  }
+  const bootstrapSuiteIds = new Set((bootstrap.suites || []).map((suite) => suite.id));
+  const localSuites = (manifest.suites || []).filter((suite) => localSuiteIds.has(suite.id));
+  const localCommandIds = new Set(localSuites.flatMap((suite) => (suite.steps || []).map((step) => step.commandId)));
+  if (registryViews.trusted) {
+    const stripped = structuredClone(rawManifest);
+    stripped.suites = (stripped.suites || []).filter((suite) => !localSuiteIds.has(suite.id));
+    stripped.expectedExecutableSuites = bootstrap.expectedExecutableSuites;
+    stripped.expectedSuites = bootstrap.expectedSuites;
+    stripped.commandCapabilities.commands = (stripped.commandCapabilities?.commands || [])
+      .filter((command) => !localCommandIds.has(command.id));
+    stripped.commandCapabilities.expectedCommands = bootstrap.commandCapabilities.expectedCommands;
+    stripped.commandCapabilities.registrySha256 = bootstrap.commandCapabilities.registrySha256;
+    if (JSON.stringify(stripped) !== JSON.stringify(registryViews.patchedBootstrap)) {
+      fail(errors, "stripping trusted local suites and capabilities must reproduce the patched bootstrap exactly");
+    }
+    if (JSON.stringify((manifest.suites || []).slice(0, bootstrap.suites.length)) !== JSON.stringify(bootstrap.suites) ||
+        JSON.stringify((manifest.commandCapabilities?.commands || []).slice(0, bootstrap.commandCapabilities.commands.length)) !==
+          JSON.stringify(bootstrap.commandCapabilities.commands)) {
+      fail(errors, "effective registry must preserve the complete patched-bootstrap suite and command prefixes");
+    }
+    const orderedLocalIds = [...localSuiteIds].sort((left, right) => left.localeCompare(right));
+    if (JSON.stringify(localSuites.map((suite) => suite.id)) !== JSON.stringify(orderedLocalIds) ||
+        JSON.stringify([...descriptorClaims.keys()].sort((left, right) => left.localeCompare(right))) !== JSON.stringify(orderedLocalIds)) {
+      fail(errors, "trusted local suites must have one descriptor claim and deterministic suite-id order");
+    }
+  }
   // [#2882 F1/F2/§6d] Routing data is now execution data. These three run before
   // anything else reads `originPaths`, and they run over every suite in the
   // registry rather than the class in hand.
@@ -1730,8 +1788,12 @@ function validateRegistryInTrackedFilesScope(
   errors.push(...validatePhase3cMarkers(manifest, workflowSources));
   if (manifest.schemaVersion !== 2) fail(errors, "schemaVersion must be exactly 2");
   if (manifest.generatedAtCommit !== undefined) fail(errors, "generatedAtCommit is forbidden: it makes registry diffs nondeterministic");
-  if (manifest.expectedExecutableSuites !== EXPECTED_SUITES || manifest.expectedSuites !== EXPECTED_SUITES || manifest.shadowExpectedVariants !== 44) {
+  if (bootstrap.expectedExecutableSuites !== EXPECTED_SUITES || bootstrap.expectedSuites !== EXPECTED_SUITES || bootstrap.shadowExpectedVariants !== 44) {
     fail(errors, `wave lock requires exactly ${EXPECTED_SUITES} executable suites: ${SEALED_SUITES} sealed (32 Phase 3A, 12 Phase 3B, 17 Phase 3C) plus ${SUITES_ADDED_SINCE_SEAL.length} declared since`);
+  }
+  const expectedEffectiveSuites = EXPECTED_SUITES + localSuiteIds.size;
+  if (manifest.expectedExecutableSuites !== expectedEffectiveSuites || manifest.expectedSuites !== expectedEffectiveSuites) {
+    fail(errors, `effective registry must declare exactly ${EXPECTED_SUITES} bootstrap suites plus ${localSuiteIds.size} loader-owned local suite(s)`);
   }
   if (!Array.isArray(manifest.classes) || manifest.classes.length === 0 || new Set(manifest.classes).size !== manifest.classes.length) {
     fail(errors, "classes must be a non-empty unique array");
@@ -1741,9 +1803,10 @@ function validateRegistryInTrackedFilesScope(
   } else if (crypto.createHash("sha256").update(JSON.stringify(manifest.setupProfiles)).digest("hex") !== LOCKED_SETUP_PROFILES_SHA256) {
     fail(errors, "setupProfiles differ from the exact reviewed Phase 2 + #2437 + #2439 shadow setup contract");
   }
-  if (!Array.isArray(manifest.suites) || manifest.suites.length !== EXPECTED_SUITES) fail(errors, `suites must contain exactly ${EXPECTED_SUITES} entries`);
+  if (!Array.isArray(bootstrap.suites) || bootstrap.suites.length !== EXPECTED_SUITES) fail(errors, `bootstrap suites must contain exactly ${EXPECTED_SUITES} entries`);
+  if (!Array.isArray(manifest.suites) || manifest.suites.length !== expectedEffectiveSuites) fail(errors, `effective suites must contain exactly ${expectedEffectiveSuites} entries`);
   for (const declared of SUITES_ADDED_SINCE_SEAL) {
-    const found = (manifest.suites || []).filter((suite) => suite.id === declared.suite);
+    const found = (bootstrap.suites || []).filter((suite) => suite.id === declared.suite);
     if (found.length !== 1 || found[0].steps?.length !== declared.steps) {
       fail(errors, `declared post-seal suite ${declared.suite} (#${declared.issue}) is missing or does not carry its declared ${declared.steps} step(s)`);
     }
@@ -1944,18 +2007,31 @@ function validateRegistryInTrackedFilesScope(
   const suitesById = new Map();
   const capabilityRegistry = manifest.commandCapabilities;
   const capabilityCommands = capabilityRegistry?.commands || [];
+  const bootstrapCapabilityRegistry = bootstrap.commandCapabilities;
+  const bootstrapCapabilityCommands = bootstrapCapabilityRegistry?.commands || [];
+  const rawBootstrapCapabilityCommands = rawBootstrap.commandCapabilities?.commands || [];
   const capabilityRegistryDigest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands)).digest("hex");
-  const preservedPhase2Digest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands.slice(0, 51))).digest("hex");
-  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== EXPECTED_CAPABILITIES
-      || capabilityCommands.length !== EXPECTED_CAPABILITIES || capabilityRegistry?.registrySha256 !== LOCKED_SHADOW_CAPABILITY_SHA256
-      || capabilityRegistryDigest !== capabilityRegistry?.registrySha256) {
+  const bootstrapCapabilityRegistryDigest = crypto.createHash("sha256").update(JSON.stringify(bootstrapCapabilityCommands)).digest("hex");
+  const preservedPhase2Digest = crypto.createHash("sha256").update(JSON.stringify(rawBootstrapCapabilityCommands.slice(0, 51))).digest("hex");
+  if (bootstrapCapabilityRegistry?.schemaVersion !== 1 || bootstrapCapabilityRegistry?.expectedCommands !== EXPECTED_CAPABILITIES
+      || bootstrapCapabilityCommands.length !== EXPECTED_CAPABILITIES || bootstrapCapabilityRegistry?.registrySha256 !== LOCKED_SHADOW_CAPABILITY_SHA256
+      || bootstrapCapabilityRegistryDigest !== bootstrapCapabilityRegistry?.registrySha256) {
     fail(errors, `the ${EXPECTED_CAPABILITIES} assertion command capabilities must equal the locked Phase 1 + Phase 3A + Phase 3B + Phase 3C registry plus the declared post-seal additions`);
+  }
+  const expectedEffectiveCommands = EXPECTED_CAPABILITIES + localSuites.reduce((sum, suite) => sum + (suite.steps?.length || 0), 0);
+  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== expectedEffectiveCommands ||
+      capabilityCommands.length !== expectedEffectiveCommands || capabilityRegistryDigest !== capabilityRegistry?.registrySha256) {
+    fail(errors, `effective command registry must contain exactly ${EXPECTED_CAPABILITIES} bootstrap commands plus the ${expectedEffectiveCommands - EXPECTED_CAPABILITIES} loader-derived local command(s)`);
   }
   if (preservedPhase2Digest !== LOCKED_ASSERTION_CAPABILITY_SHA256) fail(errors, "the current-main 51 Phase 2 assertion capabilities changed");
   const capabilitiesById = new Map();
+  const capabilityAuthorities = new Set();
   for (const capability of capabilityCommands) {
     if (!capability.id || capabilitiesById.has(capability.id)) fail(errors, `duplicate or empty command capability: ${capability.id || "<empty>"}`);
     else capabilitiesById.set(capability.id, capability);
+    const authority = `${capability.suiteId}\0${capability.stepIndex}`;
+    if (capabilityAuthorities.has(authority)) fail(errors, `duplicate command payload authority: ${capability.suiteId}:${capability.stepIndex}`);
+    capabilityAuthorities.add(authority);
   }
   const claimedCapabilities = new Set();
   for (const suite of manifest.suites || []) {
@@ -1970,12 +2046,31 @@ function validateRegistryInTrackedFilesScope(
     if (manifest.setupProfiles?.[suite.setupProfile]?.classes?.includes(ownedClass) !== true) {
       fail(errors, `${suite.id}: setupProfile ${suite.setupProfile} does not route execution class ${ownedClass}`);
     }
-    if (!suiteOrigins.has(suite.origin)) suiteOrigins.set(suite.origin, []);
-    suiteOrigins.get(suite.origin).push(suite);
+    const isLocalSuite = localSuiteIds.has(suite.id);
+    const trustedDescriptor = descriptorClaims.get(suite.id);
+    if (isLocalSuite) {
+      if (!trustedDescriptor || suite.localDescriptor !== trustedDescriptor || suite.origin !== trustedDescriptor || bootstrapSuiteIds.has(suite.id)) {
+        fail(errors, `${suite.id}: local suite provenance does not equal its sole loader-owned descriptor claim`);
+      }
+      if (!fs.existsSync(path.join(root, trustedDescriptor || ""))) {
+        fail(errors, `${suite.id}: trusted local descriptor is missing from disk: ${trustedDescriptor || "<empty>"}`);
+      }
+    } else {
+      if (suite.localDescriptor !== undefined || descriptorClaims.has(suite.id)) {
+        fail(errors, `${suite.id}: bootstrap suite must have zero local descriptor claims`);
+      }
+      if (!suiteOrigins.has(suite.origin)) suiteOrigins.set(suite.origin, []);
+      suiteOrigins.get(suite.origin).push(suite);
+    }
     const originIsLive = fs.existsSync(path.join(root, suite.origin || ""));
-    if (suite.lifecycle === "batched-active" && originIsLive) fail(errors, `${suite.id}: origin is live and batched (duplicate provider): ${suite.origin}`);
+    if (!isLocalSuite && suite.lifecycle === "batched-active" && originIsLive) fail(errors, `${suite.id}: origin is live and batched (duplicate provider): ${suite.origin}`);
     if (suite.lifecycle === "shadow-active" && !originIsLive) fail(errors, `${suite.id}: shadow origin must remain live: ${suite.origin}`);
     if (suite.lifecycle === "batched-historical" && originIsLive) fail(errors, `${suite.id}: terminal origin wrapper must be absent: ${suite.origin}`);
+    if (isLocalSuite && (suite.lifecycle !== "batched-active" || isMigratedSuite(suite) || suite.hostClass !== undefined ||
+        suite.migrationWave !== undefined || suite.originVariant !== undefined || suite.shadowContract !== undefined ||
+        suite.triggerContract !== undefined)) {
+      fail(errors, `${suite.id}: local suite must remain a primary batched-active suite without wave, host, shadow or trigger fields`);
+    }
     // The lane predicate is only safe if a migrated record is complete: an
     // executionClass without a wave or a host would route into a lane nothing
     // reconciles. Fail closed rather than let a half-migrated record through.
@@ -2041,6 +2136,16 @@ function validateRegistryInTrackedFilesScope(
       : suite.expectedFiles;
     if (JSON.stringify(registeredExpectedFiles) !== JSON.stringify(derivedExpectedFiles)) {
       fail(errors, `${suite.id}: expectedFiles must exactly equal files selected by the preserved typed command`);
+    }
+    if (isLocalSuite) {
+      let patterns = [];
+      try { patterns = suiteOriginPatterns(suite).map((pattern) => compileOriginPattern(pattern)); }
+      catch (error) { fail(errors, `${suite.id}: local routing is malformed: ${error.message}`); }
+      for (const ownedPath of [trustedDescriptor, ...(suite.expectedFiles || []), ...(suite.externalReferenceFiles || [])]) {
+        if (!patterns.some((matches) => matches(ownedPath))) {
+          fail(errors, `${suite.id}: local owned path is not covered by changed-path routing: ${ownedPath}`);
+        }
+      }
     }
   }
   const waveSuites = (manifest.suites || []).filter((suite) => suite.migrationWave === PHASE3A_WAVE);
@@ -2129,7 +2234,7 @@ function validateRegistryInTrackedFilesScope(
   if (manifest.phase3bContractSha256 !== LOCKED_PHASE3B_CONTRACT_SHA256 || phase3bContractDigest !== LOCKED_PHASE3B_CONTRACT_SHA256) {
     fail(errors, "Phase 3B exact host/runtime/setup/timeout/trigger shadow contract drifted");
   }
-  if (crypto.createHash("sha256").update(JSON.stringify(capabilityCommands.slice(51, 158))).digest("hex") !== "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709") {
+  if (crypto.createHash("sha256").update(JSON.stringify(rawBootstrapCapabilityCommands.slice(51, 158))).digest("hex") !== "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709") {
     fail(errors, "Phase 3A 107-command capability digest changed");
   }
 
@@ -2436,14 +2541,24 @@ function validateRegistryInTrackedFilesScope(
     const actual = crypto.createHash("sha256").update(fs.readFileSync(path.join(root, relative))).digest("hex");
     if (actual !== expected) fail(errors, `#1902 package authority drifted: ${relative}`);
   }
-  const primaryVector = Object.fromEntries((manifest.classes || []).map((klass) => [klass,
-    manifest.suites.filter((suite) => suite.class === klass && isPrimarySuite(suite)).length]));
+  const bootstrapPrimaryVector = Object.fromEntries((bootstrap.classes || []).map((klass) => [klass,
+    bootstrap.suites.filter((suite) => suite.class === klass && isPrimarySuite(suite)).length]));
   const expectedPrimaryVector = { "admin-node20-install":2, "app-node22-install":6, "business-node20-1":2, "business-node20-2":3,
     "business-node20-3":5, "business-node20-4":5, "business-node22-ignore-scripts":3, "cross-root-node22-ignore-scripts":1,
     "node20-19-noinstall":1, "node20-noinstall":14 + SUITES_ADDED_SINCE_SEAL.length, "node22-noinstall":10, "ota-app-node20-19-install":1,
     "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1 };
-  if (JSON.stringify(Object.entries(primaryVector).sort()) !== JSON.stringify(Object.entries(expectedPrimaryVector).sort())
-      || Object.values(primaryVector).reduce((sum, count) => sum + count, 0) !== EXPECTED_PRIMARY_HOSTS) fail(errors, `primary lane must retain exactly the frozen ${SEALED_PRIMARY_HOSTS}-suite host vector plus ${SUITES_ADDED_SINCE_SEAL.length} declared addition(s)`);
+  if (JSON.stringify(Object.entries(bootstrapPrimaryVector).sort()) !== JSON.stringify(Object.entries(expectedPrimaryVector).sort())
+      || Object.values(bootstrapPrimaryVector).reduce((sum, count) => sum + count, 0) !== EXPECTED_PRIMARY_HOSTS) fail(errors, `primary lane must retain exactly the frozen ${SEALED_PRIMARY_HOSTS}-suite host vector plus ${SUITES_ADDED_SINCE_SEAL.length} declared addition(s)`);
+  const localPrimaryVector = Object.fromEntries((manifest.classes || []).map((klass) => [klass,
+    localSuites.filter((suite) => suite.class === klass && isPrimarySuite(suite)).length]));
+  const effectivePrimaryVector = Object.fromEntries((manifest.classes || []).map((klass) => [klass,
+    manifest.suites.filter((suite) => suite.class === klass && isPrimarySuite(suite)).length]));
+  const derivedEffectivePrimaryVector = Object.fromEntries((manifest.classes || []).map((klass) => [klass,
+    (bootstrapPrimaryVector[klass] || 0) + (localPrimaryVector[klass] || 0)]));
+  if (JSON.stringify(Object.entries(effectivePrimaryVector).sort()) !== JSON.stringify(Object.entries(derivedEffectivePrimaryVector).sort()) ||
+      Object.values(effectivePrimaryVector).reduce((sum, count) => sum + count, 0) !== EXPECTED_PRIMARY_HOSTS + localSuites.length) {
+    fail(errors, `effective primary lane must equal the frozen ${EXPECTED_PRIMARY_HOSTS}-suite vector plus exactly ${localSuites.length} loader-derived local primary suite(s)`);
+  }
   // Derived, not positional: `slice(158)` meant "the migrated waves" only while
   // Phase 3B was the last block in the array. Select the capabilities owned by
   // migrated suites and the check keeps meaning what it says as waves are added.
@@ -2548,12 +2663,19 @@ function validateRegistryInTrackedFilesScope(
       if (JSON.stringify(item.workflowMetadata) !== JSON.stringify(expectedMetadata)) fail(errors, `${key}: runtime/setup/trust/trigger inventory drifted`);
     }
   }
-  for (const suite of manifest.suites || []) {
+  for (const suite of bootstrap.suites || []) {
     const claims = suiteClaims.get(suite.id) || 0;
     if (claims !== 1) fail(errors, `${suite.id}: executable suite must be claimed by exactly one batched legacy origin, got ${claims}`);
   }
+  for (const suite of localSuites) {
+    const legacyClaims = suiteClaims.get(suite.id) || 0;
+    const descriptorClaim = descriptorClaims.get(suite.id);
+    if (legacyClaims !== 0 || !descriptorClaim || suite.origin !== descriptorClaim || suite.localDescriptor !== descriptorClaim) {
+      fail(errors, `${suite.id}: local suite must have zero legacy claims and exactly one trusted descriptor claim`);
+    }
+  }
   const expectedOriginKeys = new Set(liveOrigins ?? discoverLiveOrigins(root));
-  for (const suite of manifest.suites || []) expectedOriginKeys.add(path.basename(suite.origin));
+  for (const suite of bootstrap.suites || []) expectedOriginKeys.add(path.basename(suite.origin));
   // [#2591] A consolidated origin's file is deleted, so discoverLiveOrigins can
   // never see it, exactly as a batched-historical origin is admitted via
   // suite.origin above. Without this the nine trip `stale or invented origin in
@@ -2732,8 +2854,18 @@ function validateRegistryInTrackedFilesScope(
 }
 
 export function loadAndValidate(manifestPath = DEFAULT_MANIFEST, options = {}) {
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-  return { manifest, errors: validateRegistry(manifest, options) };
+  const { root = DEFAULT_ROOT, discover = manifestPath === DEFAULT_MANIFEST, expectedSha, ...validationOptions } = options;
+  if (!discover) {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    return { manifest, errors: validateRegistry(manifest, { ...validationOptions, root }) };
+  }
+  const manifest = loadEffectiveManifest({
+    root,
+    manifestPath,
+    ...(expectedSha ? { expectedSha } : {}),
+    discover: true,
+  });
+  return { manifest, errors: validateRegistry(manifest, { ...validationOptions, root }) };
 }
 
 function main() {

@@ -16,6 +16,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { listLane } from "../ci-discovery/load-plan.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -44,7 +45,11 @@ function stripComments(source) {
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 }
 
-export function audit(base) {
+function effectiveSuites() {
+  return { migrations: listLane("migrations"), "stripe-deno": listLane("stripe-deno") };
+}
+
+export function audit(base, plans = effectiveSuites()) {
   const failures = [];
   const read = (key) => {
     const target = path.join(base, files[key]);
@@ -234,12 +239,15 @@ export function audit(base) {
     failures.push("implementor receipt proof no longer covers exact replay/conflict");
   }
 
-  if (
-    !workflow.includes("issue-1977-ari-rsvp-lifecycle.mjs") ||
-    !workflow.includes("issue_1977_ari_rsvp_lifecycle.test.ts") ||
-    !workflow.includes("issue_1977_ari_rsvp_guest_contribution.test.sql")
-  ) {
-    failures.push("#1977 tests/gate are not wired into the shared supabase lane");
+  if (!workflow.includes("issue-1977-ari-rsvp-lifecycle.mjs")) {
+    failures.push("#1977 specialized gate is not wired into the shared supabase lane");
+  }
+  for (const [lane, suitePath, profile] of [
+    ["migrations", files.pgTest, "psql-pg17-post-replay"],
+    ["stripe-deno", files.denoTest, "deno-1.46-stripe"],
+  ]) {
+    const matches = (plans[lane] ?? []).filter((row) => row.path === suitePath && row.profile === profile);
+    if (matches.length !== 1) failures.push(`#1977 effective plan lost exact ${lane}/${profile} row for ${suitePath}`);
   }
 
   try {
@@ -273,6 +281,7 @@ export function audit(base) {
 }
 
 function selfTest() {
+  const plans = effectiveSuites();
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "issue-1977-gate-"));
   try {
     for (const relative of Object.values(files)) {
@@ -280,7 +289,7 @@ function selfTest() {
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.copyFileSync(path.join(root, relative), target);
     }
-    const clean = audit(tmp);
+    const clean = audit(tmp, plans);
     if (clean.length) throw new Error(`clean fixture failed: ${clean.join("; ")}`);
 
     const migration = path.join(tmp, files.migration);
@@ -289,7 +298,7 @@ function selfTest() {
       migration,
       cleanMigration.replace("PERFORM public.enqueue_rsvp_pass(v_id,NULL)", "PERFORM 1"),
     );
-    if (!audit(tmp).some((failure) => failure.includes("guest effect owner"))) {
+    if (!audit(tmp, plans).some((failure) => failure.includes("guest effect owner"))) {
       throw new Error("true mutation: pass enqueue deletion was not detected");
     }
     fs.writeFileSync(migration, cleanMigration);
@@ -300,7 +309,7 @@ function selfTest() {
       drafts,
       cleanDrafts.replace('rpc("business_create_rsvp_draft_graph"', 'from("events").insert'),
     );
-    if (!audit(tmp).some((failure) => failure.includes("drafts bypass"))) {
+    if (!audit(tmp, plans).some((failure) => failure.includes("drafts bypass"))) {
       throw new Error("true mutation: direct RSVP draft write was not detected");
     }
     fs.writeFileSync(drafts, cleanDrafts);
@@ -311,7 +320,7 @@ function selfTest() {
       toolsPath,
       cleanTools.replace('"set_rsvp_guest_status"', '"set_guest_approval"'),
     );
-    if (!audit(tmp).some((failure) => failure.includes("duplicate guest approval"))) {
+    if (!audit(tmp, plans).some((failure) => failure.includes("duplicate guest approval"))) {
       throw new Error("true mutation: set_guest_approval return was not detected");
     }
     fs.writeFileSync(toolsPath, cleanTools);
@@ -322,8 +331,19 @@ function selfTest() {
       workflow,
       cleanWorkflow.replaceAll("issue-1977-ari-rsvp-lifecycle.mjs", "issue-1977-missing.mjs"),
     );
-    if (!audit(tmp).some((failure) => failure.includes("shared supabase lane"))) {
+    if (!audit(tmp, plans).some((failure) => failure.includes("specialized gate"))) {
       throw new Error("true mutation: workflow unwire was not detected");
+    }
+
+    for (const [label, mutate] of [
+      ["delete", (rows) => rows.filter((row) => row.path !== files.pgTest)],
+      ["duplicate", (rows) => [...rows, rows.find((row) => row.path === files.pgTest)]],
+      ["wrong-profile", (rows) => rows.map((row) => row.path === files.pgTest ? { ...row, profile: "deno-1.46-stripe" } : row)],
+    ]) {
+      const broken = { ...plans, migrations: mutate(plans.migrations) };
+      if (!audit(tmp, broken).some((failure) => failure.includes("effective plan"))) {
+        throw new Error(`true mutation: effective-plan ${label} was not detected`);
+      }
     }
 
     console.log("[issue-1977-ari-rsvp-lifecycle] self-test PASS");

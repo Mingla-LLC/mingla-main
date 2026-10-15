@@ -488,5 +488,30 @@ test("#2241 regression: every relaxed deploy route runs the fallback watch", () 
   );
   assert.match(code, /--normal-governed-deploy/);
   // The remediation route is NOT relaxed by #2241 and keeps its own contract.
-  assert.match(code, /exec node .*reconcile-governed-secrets\.mjs/);
+  // [TEST-MOD-APPROVED #3643] The #3067 assertion used wrapper-level `exec`
+  // as a proxy for terminal remediation. Phase 3 owns an EXIT cleanup trap, so
+  // the security proof now scopes the branch and requires the coordinator's
+  // remediation-mode verdict to terminate it without bypassing restoration.
+  const remediationMatch = code.match(
+    /if \[\[ "\$remediation" == true \]\]; then\n([\s\S]*?)\nfi/,
+  );
+  assert.ok(remediationMatch, "the remediation branch must remain explicit");
+  const remediationBody = remediationMatch[1].trim();
+  const coordinatorCommand =
+    'node "${repo_root}/scripts/secrets/reconcile-governed-secrets.mjs"';
+  assert.equal(
+    remediationBody.split(coordinatorCommand).length - 1,
+    1,
+    "remediation must invoke the coordinator exactly once",
+  );
+  assert.match(remediationBody, /--project-ref "\$project_ref"/);
+  assert.match(remediationBody, /"\$\{coordinator_args\[@\]\}"/);
+  assert.doesNotMatch(remediationBody, /--normal-governed-deploy/);
+  assert.doesNotMatch(remediationBody, /postdeploy-governed-fallback-watch\.mjs/);
+  assert.doesNotMatch(remediationBody, /\bexec\b/);
+  assert.match(
+    remediationBody,
+    /"\$\{coordinator_args\[@\]\}"\n\s*exit 0$/,
+    "successful remediation must terminate before transition or normal deploy logic",
+  );
 });

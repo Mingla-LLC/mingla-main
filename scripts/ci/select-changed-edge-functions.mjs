@@ -36,6 +36,7 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "
 import { spawnSync } from "node:child_process";
 import { dirname, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { loadEffectiveFunctionPolicy } from "../../.github/scripts/ci-discovery/function-policy.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(SCRIPT_DIR, "..", "..");
@@ -227,7 +228,7 @@ export function parseDispatchSelection(raw, { deployable } = {}) {
  */
 export function governedBundleFunctions(selected, { root = REPO_ROOT, contract = null } = {}) {
   const source = contract ??
-    JSON.parse(readFileSync(join(root, CONTRACT_PATH), "utf8"));
+    loadEffectiveFunctionPolicy({ root }).contract;
   const functions = source.functions ?? {};
   return selected
     .filter((name) => Object.keys(functions[name]?.required_bundle_fields ?? {}).length > 0)
@@ -559,7 +560,7 @@ export function runSelfTest() {
 
   // The real repository must agree with the real contract: every function the
   // contract marks governed is a directory that exists.
-  const realContract = JSON.parse(readFileSync(join(REPO_ROOT, CONTRACT_PATH), "utf8"));
+  const realContract = loadEffectiveFunctionPolicy({ root: REPO_ROOT }).contract;
   const realDeployable = new Set(deployableFunctions(REPO_ROOT));
   const realGoverned = governedBundleFunctions([...realDeployable].sort(), {
     contract: realContract,

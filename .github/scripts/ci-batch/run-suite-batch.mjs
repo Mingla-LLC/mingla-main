@@ -12,6 +12,7 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { decodeManifestTextRepresentations, isMigratedSuite, isPrimarySuite, suiteCommandFingerprint, suiteOriginPatterns } from "./validate-manifest-v2.mjs";
 import { changedPathDigest, deriveChangedPaths, pathMatches, validateDecision } from "./select-phase3b-suites.mjs";
+import { loadEffectiveManifest } from "./load-manifest.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
@@ -77,7 +78,10 @@ export function retryIsHonoured(suite) { return isMigratedSuite(suite); }
 export const sleepBounded = (ms) => new Promise((resolve) => { setTimeout(resolve, Math.max(0, ms)); });
 
 export function loadManifest(p = MANIFEST_PATH) {
-  return decodeManifestTextRepresentations(JSON.parse(fs.readFileSync(p, "utf8")));
+  const manifest = p === MANIFEST_PATH
+    ? loadEffectiveManifest({ root: REPO_ROOT })
+    : JSON.parse(fs.readFileSync(p, "utf8"));
+  return decodeManifestTextRepresentations(manifest);
 }
 export function expectedSuites(manifest, klass) { return manifest.suites.filter((suite) => !klass || suite.class === klass); }
 export function expectedPrimarySuites(manifest, klass) {
@@ -119,11 +123,11 @@ export function runSuites(suites, opts = {}) {
 // ---------------------------------------------------------------------------
 // [#2882] Pull-request suite routing.
 //
-// ci-batch runs all 85 registered suites on every pull request and is 53% of the
+// ci-batch runs the complete effective registry on every pull request and is 53% of the
 // CI bill. `originPaths` already records, per suite, which source changes
 // invalidate it. On a pull request the runner now executes the suites the diff
 // invalidates; on `push: main`, `schedule` and `workflow_dispatch` selection is
-// the identity function and all 85 still run. Nothing is deleted or weakened —
+// the identity function and every registered suite still runs. Nothing is deleted or weakened —
 // only WHEN a suite runs changes, never WHETHER it exists.
 //
 // Every count printed below is DERIVED from the registry, never typed.

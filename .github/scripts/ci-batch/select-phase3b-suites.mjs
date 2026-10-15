@@ -10,6 +10,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { isPrimarySuite, isMigratedSuite, suiteCommandFingerprint, suiteOriginPatterns } from "./validate-manifest-v2.mjs";
+import { loadEffectiveManifest } from "./load-manifest.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, "../../..");
@@ -536,7 +537,7 @@ export function selfTest() {
 
 async function main() {
   const options = args(); if (options["self-test"]) return selfTest();
-  const manifest = JSON.parse(fs.readFileSync(MANIFEST, "utf8")); const host = String(options.host || "");
+  const manifest = loadEffectiveManifest({ root: ROOT }); const host = String(options.host || "");
   const destination = String(options.document || path.join(process.env.RUNNER_TEMP || os.tmpdir(), `phase3b-${host}.json`));
   if (options.select) {
     try {

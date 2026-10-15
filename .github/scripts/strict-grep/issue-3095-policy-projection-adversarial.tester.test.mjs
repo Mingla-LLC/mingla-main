@@ -110,6 +110,20 @@ function batchedRuby(program) {
   return { cache, warm, exec, spawnCount: () => spawns };
 }
 
+const REVERT_ROWS_DECLARATION = /^  const revertRows = (\[\n[\s\S]*?^  \]);$/m;
+const REVERT_ROWS_CONSUMER = /^  for \(const \[name, line\] of revertRows\) \{\n([\s\S]*?)^  \}$/m;
+
+function extractRevertTable(source) {
+  const declaration = exactlyOne(source, REVERT_ROWS_DECLARATION, "named revertRows declaration");
+  const consumer = exactlyOne(source, REVERT_ROWS_CONSUMER, "revertRows consuming loop");
+  const rows = new Function("liveWorkflow", `return ${declaration[1]};`)(liveWorkflow);
+  assert.ok(Array.isArray(rows), "named revertRows declaration must evaluate to an array");
+  assert.ok(rows.every((row) => Array.isArray(row) && row.length === 2
+    && row.every((value) => typeof value === "string")),
+    "every named revertRows entry must be an exact [workflow, line] pair");
+  return { rows, loopBody: consumer[1], declaration: declaration[0], consumer: consumer[0] };
+}
+
 function loadGate() {
   const source = fs.readFileSync(GATE_PATH, "utf8");
   const ruby = exactlyOne(source, /const RUBY_CANONICAL = String\.raw`([^`]*)`;/, "RUBY_CANONICAL")[1];
@@ -122,14 +136,10 @@ function loadGate() {
   const deniedHashes = [...deniedHashText.matchAll(/"([0-9a-f]{64})"/g)].map((match) => match[1]);
   const fn = (name) => exactlyOne(source, new RegExp(`^function ${name}\\([^)]*\\) \\{\\n[\\s\\S]*?^\\}$`, "m"), `function ${name}`)[0];
 
-  const ROW_TABLE_OPEN = "for (const [name, line] of [\n";
-  assert.equal(count(source, ROW_TABLE_OPEN), 1, "revert-row table: expected exactly one");
-  const tableStart = source.indexOf(ROW_TABLE_OPEN) + ROW_TABLE_OPEN.length;
-  const tableEnd = source.indexOf("]) {\n", tableStart);
-  const bodyEnd = source.indexOf("\n  }\n", tableEnd);
-  assert.ok(tableEnd > tableStart && bodyEnd > tableEnd, "revert-row table and loop body must be locatable");
-  const rows = new Function("liveWorkflow", `return [\n${source.slice(tableStart, tableEnd)}\n];`)(liveWorkflow);
-  const loopBody = source.slice(tableEnd + "]) {\n".length, bodyEnd);
+  // [TEST-MOD-APPROVED #3643] Phase 3 moved the same bounded authority into a
+  // named table. Require exactly that declaration and its sole direct consumer;
+  // a missing, duplicated, renamed, malformed, or unconsumed table fails closed.
+  const { rows, loopBody } = extractRevertTable(source);
 
   const ruby$ = batchedRuby(ruby);
   const api = new Function(
@@ -285,7 +295,31 @@ test("#3095 tester harness runs the gate's own derivation and reproduces its pin
   assert.equal(ctx.authority.withoutConcurrencySha256, ctx.gate.pinned);
   assert.equal(ctx.gate.deniedHashes.length, 7);
   ctx.gate.assertDeniedAuthorities(ctx.sources);
-  assert.ok(ctx.gate.rows.length >= 54, `the inverted revert-row table only grows, found ${ctx.gate.rows.length}`);
+  // [TEST-MOD-APPROVED #3643] Phase 3 made a bounded transfer of 15 ordinary
+  // suite memberships to the sealed discovery plan. Keep the existing 54-row
+  // floor while dynamically attacking every specialized row that remains.
+  assert.ok(ctx.gate.rows.length >= 54,
+    `the specialized revert-row table fell below its existing 54-row floor, found ${ctx.gate.rows.length}`);
+
+  // The loader itself must reject every way the named authority can be detached
+  // from its one consumer. These synthetic mutations never copy the live rows.
+  const gateSource = fs.readFileSync(GATE_PATH, "utf8");
+  const extracted = extractRevertTable(gateSource);
+  const bootstrapFails = (mutated, label) => assert.throws(
+    () => extractRevertTable(mutated),
+    undefined,
+    `${label}: named revertRows bootstrap must fail closed`,
+  );
+  bootstrapFails(gateSource.replace(extracted.declaration, ""), "missing declaration");
+  bootstrapFails(gateSource.replace(extracted.declaration,
+    `${extracted.declaration}\n${extracted.declaration}`), "duplicate declaration");
+  bootstrapFails(gateSource.replace("const revertRows =", "const renamedRows ="), "renamed declaration");
+  bootstrapFails(gateSource.replace("  const revertRows = [\n", "  const revertRows = [\n    MALFORMED_ROW,\n"),
+    "malformed declaration");
+  bootstrapFails(gateSource.replace(extracted.consumer, ""), "missing consumer");
+  bootstrapFails(gateSource.replace(extracted.consumer, `${extracted.consumer}\n${extracted.consumer}`),
+    "duplicate consumer");
+  bootstrapFails(gateSource.replace("of revertRows) {", "of renamedRows) {"), "renamed consumer");
   // The batch cache must be byte-equivalent to a real, unbatched call.
   const probe = ctx.probes.p0.name;
   const real = JSON.parse(execFileSync("ruby", ["-e", ctx.gate.ruby], {

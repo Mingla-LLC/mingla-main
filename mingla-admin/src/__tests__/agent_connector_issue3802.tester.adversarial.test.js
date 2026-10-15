@@ -25,7 +25,7 @@
 //         when the answer carries more
 //   TG-8  the key on screen goes to the key box and the lines, and to
 //         nothing else in the page's code
-//   TG-9  this suite and its two siblings are run by the workflow
+//   TG-9  this suite and its two siblings are run by CI
 //
 // Run: node --test src/__tests__/agent_connector_issue3802.tester.adversarial.test.js
 // (from mingla-admin). Hermetic: no network, no browser. TG-1 runs `sh` with
@@ -37,6 +37,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { listLane } from "../../../.github/scripts/ci-discovery/load-plan.mjs";
 import { AREA, PAGE_AREA_OVERRIDES, canOpenPage, homePageFor, resolveRoute, visibleNavGroups } from "../lib/access.js";
 import { NAV_GROUPS } from "../lib/constants.js";
 import {
@@ -592,7 +593,7 @@ describe("#3802 TG-8: where the key on screen goes", () => {
   });
 });
 
-describe("#3802 TG-9: the workflow runs this suite and its siblings", () => {
+describe("#3802 TG-9: CI runs this suite and its siblings", () => {
   // The workflow is found by what it runs, never by its file name.
   const dir = path.join(REPO, ".github", "workflows");
   const WORKFLOW = fs.readdirSync(dir).map((f) => fs.readFileSync(path.join(dir, f), "utf8")).find((t) => t.includes("run: node --test src/__tests__/issue3802_wave4_agent.implementor.happy.test.js")) ?? "";
@@ -605,10 +606,18 @@ describe("#3802 TG-9: the workflow runs this suite and its siblings", () => {
     const sql = "supabase/migrations/__tests__/issue_3802_wave4_agent_keys_gateway.tester.adversarial.pg17.test.sql";
     const ts = "supabase/functions/team-agent/__tests__/hostile.issue3802.tester.adversarial.test.ts";
     assert.ok(fs.existsSync(path.join(REPO, sql)) && fs.existsSync(path.join(REPO, ts)));
-    const sqlAt = WORKFLOW.indexOf(`-f ${sql}`);
-    const implAt = WORKFLOW.indexOf("-f supabase/migrations/__tests__/issue_3802_wave4_agent_keys_gateway.implementor.happy.pg17.test.sql");
-    assert.ok(implAt > 0 && sqlAt > implAt, "the tester's database suite runs after the implementor's, on the same schema");
-    assert.match(WORKFLOW.slice(sqlAt - 120, sqlAt), /psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \\\n\s+$/);
+    const migrationPlan = listLane("migrations");
+    const sqlAt = migrationPlan.findIndex((row) => row.path === sql);
+    const implAt = migrationPlan.findIndex((row) =>
+      row.path === "supabase/migrations/__tests__/issue_3802_wave4_agent_keys_gateway.implementor.happy.pg17.test.sql"
+    );
+    // [TEST-MOD-APPROVED #3802] SQL registration moved from hand-written text
+    // to the effective plan; retain exact order, role, database and reset.
+    assert.ok(implAt >= 0 && sqlAt === implAt + 1, "the tester's database suite runs after the implementor's, on the same schema");
+    for (const row of [migrationPlan[implAt], migrationPlan[sqlAt]]) {
+      assert.equal(row.profile, "psql-pg17-post-replay");
+      assert.deepEqual(row.database, { database: "postgres", user: "supabase_admin", reset: "suite-owned" });
+    }
     const tsAt = WORKFLOW.indexOf(ts);
     const implTs = WORKFLOW.indexOf("supabase/functions/team-agent/__tests__/spoofing.issue3802.test.ts");
     assert.ok(implTs > 0 && tsAt > implTs);

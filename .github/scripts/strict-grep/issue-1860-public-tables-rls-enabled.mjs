@@ -32,8 +32,8 @@
  *
  * The AUTHORITATIVE half is
  * `supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql`, run
- * by the containerised Postgres job in
- * `.github/workflows/supabase-migrations-and-stripe-deno.yml`. It reads
+ * by the containerised Postgres job through the canonical effective migration
+ * plan. It reads
  * `pg_class.relrowsecurity` on the schema the chain actually produced, so it is
  * immune to EVERY parsing limitation on this page BY CONSTRUCTION — it does not
  * parse anything. Whatever a `DO` block, an `EXECUTE`, an `E'…'` or a string
@@ -158,6 +158,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { listLane } from "../ci-discovery/load-plan.mjs";
 
 const root = process.cwd().endsWith("mingla-business")
   ? join(process.cwd(), "..")
@@ -587,7 +588,7 @@ export function replayChain(files) {
  *
  * @param {{name:string, sql:string}[]} a.files          migration files
  * @param {unknown}                     a.allowlistJson  parsed rls-allowlist.json
- * @param {string|null}                 a.workflowText   the live-half workflow, or null
+ * @param {object[]}                    a.suitePlan      canonical effective migration rows
  * @param {string|null}                 a.retiredAuditSource  source of the RETIRED
  *        predecessor audit if it has reappeared on disk, else null (C6)
  * @param {string|null}    [a.adversarialWorkflowText] the workflow that runs the
@@ -599,7 +600,7 @@ export function replayChain(files) {
 export function runChecks({
   files,
   allowlistJson,
-  workflowText,
+  suitePlan,
   retiredAuditSource = null,
   adversarialWorkflowText = undefined,
   adversarialSuiteExists = undefined,
@@ -699,14 +700,16 @@ export function runChecks({
     );
   }
 
-  // C5 — the live half must stay wired, or this static half is all that is left.
-  if (workflowText === null) {
-    failures.push(`C5: ${LIVE_TEST_WORKFLOW} is missing. The live catalog half of #1860 runs there.`);
-  } else if (!stripYamlComments(workflowText).includes(LIVE_TEST_PATH)) {
+  // C5 — the live half must stay in the canonical effective plan, or this
+  // static half is all that is left.
+  const liveRows = (suitePlan ?? []).filter((row) =>
+    row.path === LIVE_TEST_PATH && row.profile === "psql-pg17-post-replay"
+  );
+  if (liveRows.length !== 1) {
     failures.push(
-      `C5: ${LIVE_TEST_WORKFLOW} no longer invokes ${LIVE_TEST_PATH}. Source parsing ` +
+      `C5: the effective migration plan has ${liveRows.length} exact rows for ${LIVE_TEST_PATH}. Source parsing ` +
         `cannot see pg_class; that file is the only thing asserting the REAL applied ` +
-        `schema. Un-wiring it makes this gate the whole of #1860, which it is not.`,
+        `schema. Losing or duplicating it makes this gate the whole of #1860, which it is not.`,
     );
   }
 
@@ -816,7 +819,7 @@ ALTER TABLE public.ok_unquoted ENABLE ROW LEVEL SECURITY;
       },
     ],
     allowlistJson: { tables: ["spatial_ref_sys"] },
-    workflowText: `        run: |\n          psql -f ${LIVE_TEST_PATH}\n`,
+    suitePlan: [{ path: LIVE_TEST_PATH, profile: "psql-pg17-post-replay" }],
     retiredAuditSource: null,
     enforceFloor: false,
     ...over,
@@ -1178,10 +1181,20 @@ COMMENT ON TABLE public.u_hidden IS U&'later: DROP TABLE public.u_hidden;';`),
     true,
     "C3:",
   );
-  check("T-27 un-wiring the live SQL test FAILS", runChecks(base({ workflowText: "jobs:\n  migrations:\n    steps: []\n" })), true, "C5:");
+  // [TEST-MOD-APPROVED #3643] C5 now mutates the effective plan authority, not workflow prose.
+  check("T-27 deleting the live SQL row FAILS", runChecks(base({ suitePlan: [] })), true, "C5:");
   check(
-    "T-27b [C5] a COMMENTED-OUT live-test line does not count as wired",
-    runChecks(base({ workflowText: `jobs:\n  migrations:\n    steps:\n      # - run: psql -f ${LIVE_TEST_PATH}\n` })),
+    "T-27b [C5] a wrong-profile live-test row does not count as wired",
+    runChecks(base({ suitePlan: [{ path: LIVE_TEST_PATH, profile: "deno-1.46-stripe" }] })),
+    true,
+    "C5:",
+  );
+  check(
+    "T-27c [C5] duplicating the live-test row FAILS",
+    runChecks(base({ suitePlan: [
+      { path: LIVE_TEST_PATH, profile: "psql-pg17-post-replay" },
+      { path: LIVE_TEST_PATH, profile: "psql-pg17-post-replay" },
+    ] })),
     true,
     "C5:",
   );
@@ -1236,7 +1249,7 @@ COMMENT ON TABLE public.u_hidden IS U&'later: DROP TABLE public.u_hidden;';`),
   const realChain = loadChain();
   const realInputs = {
     allowlistJson: { tables: [...EXEMPT] },
-    workflowText: `psql -f ${LIVE_TEST_PATH}`,
+    suitePlan: listLane("migrations"),
     retiredAuditSource: null,
     enforceFloor: true,
   };
@@ -1339,7 +1352,7 @@ function main() {
   const failures = runChecks({
     files,
     allowlistJson,
-    workflowText: readOrNull(LIVE_TEST_WORKFLOW),
+    suitePlan: listLane("migrations"),
     retiredAuditSource: readOrNull(RETIRED_AUDIT_PATH),
     adversarialWorkflowText: readOrNull(ADVERSARIAL_WORKFLOW),
     adversarialSuiteExists: existsSync(join(root, ADVERSARIAL_SUITE_PATH)),

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { listLane } from "../ci-discovery/load-plan.mjs";
 
 const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -29,6 +30,19 @@ const paths = {
   workflow: ".github/workflows/supabase-migrations-and-stripe-deno.yml",
 };
 
+const expectedSuites = [
+  ["migrations", paths.sqlTest, "psql-pg17-post-replay"],
+  ["migrations", "supabase/migrations/__tests__/issue_1424_stay_authoring.tester_adversarial.test.sql", "psql-pg17-post-replay"],
+  ["stripe-deno", paths.edgeTest, "deno-1.46-stripe"],
+];
+
+function effectiveSuites() {
+  return {
+    migrations: listLane("migrations"),
+    "stripe-deno": listLane("stripe-deno"),
+  };
+}
+
 function need(source, token, label, failures) {
   if (!source.includes(token)) failures.push(`${label}: missing ${token}`);
 }
@@ -37,7 +51,7 @@ function forbid(source, token, label, failures) {
   if (source.includes(token)) failures.push(`${label}: forbidden ${token}`);
 }
 
-export function check(files) {
+export function check(files, plans = effectiveSuites()) {
   const failures = [];
 
   for (const token of [
@@ -210,18 +224,12 @@ export function check(files) {
       failures.push(`${key}: missing executable issue marker`);
     }
   }
-  need(
-    files.workflow ?? "",
-    "-f supabase/migrations/__tests__/issue_1424_stay_authoring.test.sql",
-    "blocking migration-test wiring",
-    failures,
-  );
-  need(
-    files.workflow ?? "",
-    "supabase/functions/manage-stay-inventory/index.test.ts",
-    "blocking Edge-test wiring",
-    failures,
-  );
+  for (const [lane, suitePath, profile] of expectedSuites) {
+    const matches = (plans[lane] ?? []).filter((row) => row.path === suitePath && row.profile === profile);
+    if (matches.length !== 1) {
+      failures.push(`effective suite plan: expected exactly one ${lane}/${profile} row for ${suitePath}; found ${matches.length}`);
+    }
+  }
   return failures;
 }
 
@@ -236,7 +244,8 @@ function readFiles() {
 
 function selfTest() {
   const valid = readFiles();
-  const baseline = check(valid);
+  const plans = effectiveSuites();
+  const baseline = check(valid, plans);
   if (baseline.length > 0) {
     throw new Error(`baseline invalid:\n${baseline.join("\n")}`);
   }
@@ -285,12 +294,6 @@ function selfTest() {
       "price.currency_code",
     ],
     [
-      "workflow",
-      "-f supabase/migrations/__tests__/issue_1424_stay_authoring.test.sql",
-      "-f /tmp/dark-issue-1424.sql",
-      "issue_1424_stay_authoring.test.sql",
-    ],
-    [
       "readiness",
       "settings !== null &&",
       "settings !== null &&\n    settings.property_kind !== null &&",
@@ -305,8 +308,18 @@ function selfTest() {
   ];
   for (const [key, from, to, expected] of reversions) {
     const broken = { ...valid, [key]: valid[key].replace(from, to) };
-    if (!check(broken).some((failure) => failure.includes(expected))) {
+    if (!check(broken, plans).some((failure) => failure.includes(expected))) {
       throw new Error(`true-source reversion escaped: ${expected}`);
+    }
+  }
+  for (const [label, mutate] of [
+    ["delete", (rows) => rows.filter((row) => row.path !== paths.sqlTest)],
+    ["duplicate", (rows) => [...rows, rows.find((row) => row.path === paths.sqlTest)]],
+    ["wrong-profile", (rows) => rows.map((row) => row.path === paths.sqlTest ? { ...row, profile: "deno-1.46-stripe" } : row)],
+  ]) {
+    const brokenPlans = { ...plans, migrations: mutate(plans.migrations) };
+    if (!check(valid, brokenPlans).some((failure) => failure.includes(paths.sqlTest))) {
+      throw new Error(`effective-plan ${label} reversion escaped`);
     }
   }
   console.log(
