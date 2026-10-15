@@ -58,6 +58,10 @@ function readRegistry(root) {
     root,
     manifestPath: path.join(root, REGISTRY),
     expectedSha: BOOTSTRAP_SHA256,
+    // [TEST-MOD-APPROVED #3643] Alternate-root freshness must include that
+    // root's production patches and descriptors; an explicit manifest path
+    // otherwise selects the loader's raw-bootstrap compatibility mode.
+    discover: true,
   });
 }
 

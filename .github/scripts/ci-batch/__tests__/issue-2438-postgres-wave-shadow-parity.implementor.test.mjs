@@ -25,6 +25,10 @@ const effectiveManifest = (root = ROOT) => loadEffectiveManifest({
   root,
   manifestPath: path.join(root, ".github/ci-batch/MANIFEST.json"),
   expectedSha: BOOTSTRAP_SHA256,
+  // [TEST-MOD-APPROVED #3643] A caller-supplied manifest path belongs to the
+  // caller-supplied root. Force discovery so production patches and local
+  // descriptors inside temp clones are applied instead of reading raw bytes.
+  discover: true,
 });
 // [TEST-MOD-APPROVED #2591] Raw discovery carries the providers declared in
 // PROVIDERS_ADDED_SINCE_SEAL; only the SEAL subtracts them. Counted by presence in
