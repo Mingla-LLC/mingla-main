@@ -691,63 +691,53 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
   // omitted, auto-derive the Cloudinary first-frame .jpg. Null for image/GIF
   // covers (the <Image> branch never receives a poster) and for non-Cloudinary
   // videos (the hue-band placeholder shows instead — still no eager download).
-  const resolvedPosterUrl =
-    presentation === "video" || presentation === "video_still"
-      ? (posterUrl ?? deriveCoverPosterUrl(mediaUrl))
-      : null;
+  const isVideoPresentation =
+    presentation === "video" || presentation === "video_still";
+  const resolvedPosterUrl = isVideoPresentation
+    ? (posterUrl ?? deriveCoverPosterUrl(mediaUrl))
+    : null;
 
-  const handleMediaError = (
-    surface: "image" | "video",
-    nativeEvent?: unknown,
-  ): void => {
-    if (mediaUrl !== null) {
-      onMediaError?.({
-        mediaType,
-        mediaUrl,
-        nativeEvent,
-        surface,
-      });
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.info("[EventCoverMedia] media render failed", {
+  const handleMediaError = useCallback(
+    (event?: NativeSyntheticEvent<ImageErrorEventData>): void => {
+      if (mediaUrl !== null) {
+        onMediaError?.({
           mediaType,
           mediaUrl,
-          nativeEvent,
-          surface,
+          nativeEvent: event?.nativeEvent,
+          surface: event ? "image" : "video",
         });
+        if (typeof __DEV__ !== "undefined" && __DEV__) {
+          console.info("[EventCoverMedia] media render failed", {
+            mediaType,
+            mediaUrl,
+            nativeEvent: event?.nativeEvent,
+            surface: event ? "image" : "video",
+          });
+        }
       }
-    }
-    setHasMediaError(true);
-  };
+      setHasMediaError(true);
+    },
+    [mediaType, mediaUrl, onMediaError],
+  );
 
   // #3827 — react-native-web's <Image> re-runs its load effect whenever its
   // onLoad / onError identity changes, and that effect sets LOADING (a second
   // state update). Fresh inline handlers did that on EVERY parent render, so
   // each keystroke in a form beside a cover chained an extra update; typed back
   // to back, React's nested-update limit (50) threw and the next letter was
-  // lost (Sentry MINGLA-BUSINESS-22). The image gets handlers whose identity
-  // never changes and which always call the latest closures, so a real load or
-  // error behaves exactly as before. Declared above the early return below
-  // (rules of hooks).
-  const latestImageHandlersRef = useRef({ handleMediaError, onAspectRatio });
-  latestImageHandlersRef.current = { handleMediaError, onAspectRatio };
-  const handleImageError = useCallback(
-    (event: NativeSyntheticEvent<ImageErrorEventData>): void => {
-      latestImageHandlersRef.current.handleMediaError("image", event.nativeEvent);
-    },
-    [],
-  );
+  // lost (Sentry MINGLA-BUSINESS-22). The image handlers now change only when
+  // an input they execute changes, so unrelated parent renders keep both
+  // identities stable while a real load or error behaves exactly as before.
   // ORCH-0992: report image aspect ratio so an adaptive hero fits square /
   // vertical image covers the same way it fits videos.
   const handleImageLoad = useCallback(
     (event: NativeSyntheticEvent<ImageLoadEventData>): void => {
-      const reportAspectRatio = latestImageHandlersRef.current.onAspectRatio;
-      if (reportAspectRatio === undefined) return;
-      const src = event.nativeEvent?.source;
-      if (src !== undefined && src.width > 0 && src.height > 0) {
-        reportAspectRatio(src.width / src.height);
+      const source = event.nativeEvent?.source;
+      if (source !== undefined && source.width > 0 && source.height > 0) {
+        onAspectRatio?.(source.width / source.height);
       }
     },
-    [],
+    [onAspectRatio],
   );
 
   // Render heavy media only when there IS media AND (native OR the card is at/
@@ -808,7 +798,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
         accessibilityLabel={normalizedAccessibleLabel ?? undefined}
         style={StyleSheet.absoluteFill}
       >
-        {presentation === "video" || presentation === "video_still" ? (
+        {isVideoPresentation ? (
           <EventCoverVideo
             uri={mediaUrl}
             posterUrl={resolvedPosterUrl}
@@ -818,7 +808,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
             loop={presentation === "video" ? loop : false}
             contentFit={videoContentFit}
             onAspectRatio={onAspectRatio}
-            onError={() => handleMediaError("video")}
+            onError={handleMediaError}
           />
         ) : (
           <Image
@@ -828,10 +818,10 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
             source={{ uri: mediaUrl }}
             style={StyleSheet.absoluteFill}
             resizeMode="cover"
-            // #3827: stable handlers (see handleImageLoad / handleImageError).
+            // #3827: stable handlers (see handleImageLoad / handleMediaError).
             // onLoad stays absent when no caller wants the aspect ratio.
             onLoad={onAspectRatio === undefined ? undefined : handleImageLoad}
-            onError={handleImageError}
+            onError={handleMediaError}
           />
         )}
       </View>
