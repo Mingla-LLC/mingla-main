@@ -12,6 +12,8 @@ transition_inputs=false
 functions=()
 coordinator_args=()
 config_file="${repo_root}/supabase/config.toml"
+config_lock_dir="${config_file}.materialization.lock"
+config_lock_held=false
 config_backup=""
 release_bake_backup=""
 
@@ -31,7 +33,24 @@ restore_tracked_inputs() {
       echo "WARN deploy: could not restore ${config_file}; the original is at ${config_backup}" >&2
     fi
   fi
+  if [[ "$config_lock_held" == true ]]; then
+    rmdir "$config_lock_dir"
+    config_lock_held=false
+  fi
   return "$status"
+}
+
+acquire_config_lock() {
+  local attempt
+  for ((attempt = 0; attempt < 600; attempt += 1)); do
+    if mkdir "$config_lock_dir" 2>/dev/null; then
+      config_lock_held=true
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "FAIL deploy: timed out waiting for exclusive function config materialization; no action executed" >&2
+  return 75
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -92,11 +111,12 @@ done
 [[ -n "$project_ref" ]] || { echo "FAIL deploy: explicit production project ref required" >&2; exit 2; }
 [[ "${#functions[@]}" -gt 0 ]] || { echo "FAIL deploy: explicit --function selection required; deploy-all is forbidden" >&2; exit 2; }
 
-config_backup="$(mktemp "${TMPDIR:-/tmp}/mingla-function-config.XXXXXX")"
-cp "$config_file" "$config_backup"
 trap restore_tracked_inputs EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+acquire_config_lock
+config_backup="$(mktemp "${TMPDIR:-/tmp}/mingla-function-config.XXXXXX")"
+cp "$config_file" "$config_backup"
 node "${repo_root}/.github/scripts/ci-discovery/function-policy.mjs" \
   --write-config "$config_file"
 
