@@ -6,6 +6,8 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/event-cancel-refund-fanout/**"
+      - "supabase/functions/_shared/cancelRefundReleaseNotify.ts"
+      - "supabase/functions/_shared/__tests__/cancelRefundReleaseNotify.issue3645.test.ts"
       - "supabase/functions/_shared/paystackRefunds.ts"
       - "supabase/functions/_shared/stripe.ts"
       - "supabase/config.toml"
@@ -45,6 +47,11 @@ jobs:
         run: >-
           deno check
           supabase/functions/event-cancel-refund-fanout/index.ts
+          supabase/functions/_shared/cancelRefundReleaseNotify.ts
+      - name: Cancel-refund release notify + buyer-email-off contract
+        run: >-
+          deno test --allow-read --allow-env
+          supabase/functions/_shared/__tests__/cancelRefundReleaseNotify.issue3645.test.ts
 
   issue-1179-pg17:
     if: ${{ github.event.pull_request.draft != true }}

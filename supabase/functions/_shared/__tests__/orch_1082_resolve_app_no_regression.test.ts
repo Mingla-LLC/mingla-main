@@ -40,6 +40,8 @@ Deno.test("ORCH-1082 no-regression: every existing business.* + stripe.* type st
     "business.event_sold_out",
     "business.low_inventory",
     "business.refund_processed",
+    // #3645 item 6 — held cancel-refund batch released (business.* → business app)
+    "business.cancel_refunds_released",
     "business.new_review",
     "business.dispute_opened",
     "business.dispute_action_needed",

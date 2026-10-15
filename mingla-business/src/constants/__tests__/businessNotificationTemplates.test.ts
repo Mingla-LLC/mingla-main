@@ -26,16 +26,19 @@ const TYPES = Object.keys(BUSINESS_NOTIFICATION_TEMPLATES);
 
 describe("template coverage", () => {
   // [TEST-MOD-APPROVED #3645] — #3645 PR10 added four organiser payout
-  // visibility types (failed / waiting-for-bank / paused / resumed) on top of
-  // the original 11 v1 types (new_follower still dropped).
-  test("15 business types (11 v1 + 4 #3645 payout visibility; new_follower dropped)", () => {
-    expect(TYPES).toHaveLength(15);
+  // visibility types; item 6 adds cancel_refunds_released on top of the
+  // original 11 v1 types (new_follower still dropped).
+  test("16 business types (11 v1 + 4 payout visibility + cancel_refunds_released; new_follower dropped)", () => {
+    expect(TYPES).toHaveLength(16);
     expect(isBusinessNotificationType("business.new_follower")).toBe(false);
     expect(isBusinessNotificationType("business.order_paid")).toBe(true);
     expect(isBusinessNotificationType("business.payout_waiting_for_bank")).toBe(
       true,
     );
     expect(isBusinessNotificationType("business.payouts_paused")).toBe(true);
+    expect(
+      isBusinessNotificationType("business.cancel_refunds_released"),
+    ).toBe(true);
   });
 
   test("every type has non-empty copy within char budgets", () => {

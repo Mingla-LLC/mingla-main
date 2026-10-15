@@ -37,6 +37,7 @@ export type BusinessNotificationType =
   | "business.event_sold_out"
   | "business.low_inventory"
   | "business.refund_processed"
+  | "business.cancel_refunds_released"
   | "business.dispute_opened"
   | "business.dispute_action_needed"
   | "business.payout_paid"
@@ -145,6 +146,21 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
     family: "money",
     icon: "refund",
     masterCategory: "paymentsTrust",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  // #3645 item 6 — admin released a held cancel-refund batch; fan-out is moving.
+  "business.cancel_refunds_released": {
+    type: "business.cancel_refunds_released",
+    pushTitle: "Refunds are on their way",
+    pushBody: "{eventTitle}: Mingla has released the held refunds. Buyers are being refunded.",
+    inAppTitle: "Refunds are on their way",
+    inAppBody:
+      "{eventTitle}: Mingla has released the held refunds. Buyers are being refunded.",
+    severity: "info",
+    family: "money",
+    icon: "refund",
+    masterCategory: "orderActivity",
     defaultPush: true,
     defaultInApp: true,
   },

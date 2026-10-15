@@ -11,11 +11,9 @@
  * that took them, so on an event with door sales switched on this device
  * cannot know what another device sold: that is "may have sold" too.
  *
- * WHEN TICKETS HAVE BEEN SOLD the existing copy is deliberately left alone by
- * this change. What the code does then (the cancel opens a refund run that
- * waits for review before buyers are refunded) is not something this module
- * may describe to hosts until that behaviour and its wording are confirmed on
- * #3645. The caller keeps its existing string for that branch.
+ * WHEN TICKETS HAVE BEEN SOLD: cancel opens a held refund run for Mingla review.
+ * Cancel-time buyer email is intentionally off (#3645 item 6); hosts hear when
+ * the batch is released. See the WITH-SALES section below for approved wording.
  */
 
 export const CANCEL_EVENT_NOTHING_SOLD_DESCRIPTION =
@@ -83,8 +81,12 @@ export const cancelEventDoneToast = (
 // cancelling stops sales at once (the cancel prepare step closes the ticket
 // types and bookings), lists every paid order for a full refund, and opens a
 // refund run that WAITS for a Mingla admin to release it. Nothing is refunded
-// at cancel time. Nothing here promises an email: whether buyers are emailed
-// at cancel time is not established.
+// at cancel time.
+//
+// #3645 item 6 — cancel-time buyer email is INTENTIONALLY OFF. Hosts are told
+// when Mingla releases the held batch (`business.cancel_refunds_released`).
+// Buyers learn money moved via the existing `buyer_refund_issued` webhook path.
+// Do not promise a cancel-time buyer email in this copy.
 // ---------------------------------------------------------------------------
 
 /** What the count needs to know about an order. */

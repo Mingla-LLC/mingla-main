@@ -1096,7 +1096,7 @@
       ],
       "steps": [
         {
-          "name": "Symptom 1 — implementor happy-path (cap formula + wiring)",
+          "name": "Symptom 1 \u2014 implementor happy-path (cap formula + wiring)",
           "cwd": "mingla-business",
           "run": "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts --runInBand",
           "invocation": {
@@ -1111,7 +1111,7 @@
           "commandId": "assert:issue-1027-keyboard-and-datetime-tests:01"
         },
         {
-          "name": "Symptom 1 — tester ADVERSARIAL (over-constrain / no-keyboard, cap EXECUTED)",
+          "name": "Symptom 1 \u2014 tester ADVERSARIAL (over-constrain / no-keyboard, cap EXECUTED)",
           "cwd": "mingla-business",
           "run": "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts --runInBand",
           "invocation": {
@@ -1126,7 +1126,7 @@
           "commandId": "assert:issue-1027-keyboard-and-datetime-tests:02"
         },
         {
-          "name": "Symptom 2 — implementor happy-path (onFocus wired to scrollToBottom)",
+          "name": "Symptom 2 \u2014 implementor happy-path (onFocus wired to scrollToBottom)",
           "cwd": "mingla-business",
           "run": "npx jest src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts --runInBand",
           "invocation": {
@@ -1141,7 +1141,7 @@
           "commandId": "assert:issue-1027-keyboard-and-datetime-tests:03"
         },
         {
-          "name": "Symptom 2 — tester ADVERSARIAL (scrollToBottom undefined → no throw, EXECUTED)",
+          "name": "Symptom 2 \u2014 tester ADVERSARIAL (scrollToBottom undefined \u2192 no throw, EXECUTED)",
           "cwd": "mingla-business",
           "run": "npx jest src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx --runInBand",
           "invocation": {
@@ -1156,7 +1156,7 @@
           "commandId": "assert:issue-1027-keyboard-and-datetime-tests:04"
         },
         {
-          "name": "Symptom 2b — iOS regression (deferred reveal via keyboard library, fails-on-revert)",
+          "name": "Symptom 2b \u2014 iOS regression (deferred reveal via keyboard library, fails-on-revert)",
           "cwd": "mingla-business",
           "run": "npx jest src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts --runInBand",
           "invocation": {
@@ -1171,7 +1171,7 @@
           "commandId": "assert:issue-1027-keyboard-and-datetime-tests:05"
         },
         {
-          "name": "Web date/time — implementor RENDER proof (main rows commit on web)",
+          "name": "Web date/time \u2014 implementor RENDER proof (main rows commit on web)",
           "cwd": "mingla-business",
           "run": "npx jest src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx --runInBand",
           "invocation": {
@@ -1186,7 +1186,7 @@
           "commandId": "assert:issue-1027-keyboard-and-datetime-tests:06"
         },
         {
-          "name": "Web date/time — structural guard (all 7 surfaces + native parity)",
+          "name": "Web date/time \u2014 structural guard (all 7 surfaces + native parity)",
           "cwd": "mingla-business",
           "run": "npx jest src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts --runInBand",
           "invocation": {
@@ -1201,7 +1201,7 @@
           "commandId": "assert:issue-1027-keyboard-and-datetime-tests:07"
         },
         {
-          "name": "Web date/time — tester ADVERSARIAL (empty/error/visible + NO web input leaks onto native)",
+          "name": "Web date/time \u2014 tester ADVERSARIAL (empty/error/visible + NO web input leaks onto native)",
           "cwd": "mingla-business",
           "run": "npx jest src/components/ui/__tests__/webDateTimeInput.adversarial.1027.test.tsx --runInBand",
           "invocation": {
@@ -1216,7 +1216,7 @@
           "commandId": "assert:issue-1027-keyboard-and-datetime-tests:08"
         },
         {
-          "name": "ORCH-1089 wizard parity (migrated marker showPicker → WebDateTimeInput stays green)",
+          "name": "ORCH-1089 wizard parity (migrated marker showPicker \u2192 WebDateTimeInput stays green)",
           "cwd": "mingla-business",
           "run": "npx jest src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts --runInBand",
           "invocation": {
@@ -1405,13 +1405,13 @@
         {
           "name": "Assert patch file present",
           "cwd": ".",
-          "run": "FILE=mingla-business/patches/expo-image-picker+17.0.11.patch\nif [ ! -f \"$FILE\" ]; then\n  echo \"MISSING: $FILE — the #1348 iCloud video patch is not committed.\"\n  exit 1\nfi\necho \"OK: $FILE present\"",
+          "run": "FILE=mingla-business/patches/expo-image-picker+17.0.11.patch\nif [ ! -f \"$FILE\" ]; then\n  echo \"MISSING: $FILE \u2014 the #1348 iCloud video patch is not committed.\"\n  exit 1\nfi\necho \"OK: $FILE present\"",
           "invocation": {
             "kind": "raw-shell",
             "command": "bash",
             "argv": [
               "-c",
-              "FILE=mingla-business/patches/expo-image-picker+17.0.11.patch\nif [ ! -f \"$FILE\" ]; then\n  echo \"MISSING: $FILE — the #1348 iCloud video patch is not committed.\"\n  exit 1\nfi\necho \"OK: $FILE present\""
+              "FILE=mingla-business/patches/expo-image-picker+17.0.11.patch\nif [ ! -f \"$FILE\" ]; then\n  echo \"MISSING: $FILE \u2014 the #1348 iCloud video patch is not committed.\"\n  exit 1\nfi\necho \"OK: $FILE present\""
             ]
           },
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
@@ -1450,13 +1450,13 @@
         {
           "name": "Assert installed MediaHandler.swift is patched at both video sites",
           "cwd": ".",
-          "run": "FILE=mingla-business/node_modules/expo-image-picker/ios/MediaHandler.swift\nif [ ! -f \"$FILE\" ]; then\n  echo \"FAIL: $FILE missing after install\"\n  exit 1\nfi\nnet_count=$(grep -c 'isNetworkAccessAllowed = true' \"$FILE\" || true)\nif [ \"$net_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'isNetworkAccessAllowed = true' (one per video writeData site), got $net_count\"\n  exit 1\nfi\nopt_count=$(grep -c 'options: resourceOptions' \"$FILE\" || true)\nif [ \"$opt_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'options: resourceOptions' (both video writeData sites patched), got $opt_count\"\n  exit 1\nfi\nif grep -q 'writeData(for: resource, toFile: destinationUrl, options: nil)' \"$FILE\"; then\n  echo \"FAIL: a video writeData site still reads 'options: nil' — iCloud videos will fail PHPhotosErrorDomain 3164\"\n  exit 1\nfi\necho \"OK: both video writeData sites set isNetworkAccessAllowed=true (options: resourceOptions); no video site reads options: nil\"",
+          "run": "FILE=mingla-business/node_modules/expo-image-picker/ios/MediaHandler.swift\nif [ ! -f \"$FILE\" ]; then\n  echo \"FAIL: $FILE missing after install\"\n  exit 1\nfi\nnet_count=$(grep -c 'isNetworkAccessAllowed = true' \"$FILE\" || true)\nif [ \"$net_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'isNetworkAccessAllowed = true' (one per video writeData site), got $net_count\"\n  exit 1\nfi\nopt_count=$(grep -c 'options: resourceOptions' \"$FILE\" || true)\nif [ \"$opt_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'options: resourceOptions' (both video writeData sites patched), got $opt_count\"\n  exit 1\nfi\nif grep -q 'writeData(for: resource, toFile: destinationUrl, options: nil)' \"$FILE\"; then\n  echo \"FAIL: a video writeData site still reads 'options: nil' \u2014 iCloud videos will fail PHPhotosErrorDomain 3164\"\n  exit 1\nfi\necho \"OK: both video writeData sites set isNetworkAccessAllowed=true (options: resourceOptions); no video site reads options: nil\"",
           "invocation": {
             "kind": "raw-shell",
             "command": "bash",
             "argv": [
               "-c",
-              "FILE=mingla-business/node_modules/expo-image-picker/ios/MediaHandler.swift\nif [ ! -f \"$FILE\" ]; then\n  echo \"FAIL: $FILE missing after install\"\n  exit 1\nfi\nnet_count=$(grep -c 'isNetworkAccessAllowed = true' \"$FILE\" || true)\nif [ \"$net_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'isNetworkAccessAllowed = true' (one per video writeData site), got $net_count\"\n  exit 1\nfi\nopt_count=$(grep -c 'options: resourceOptions' \"$FILE\" || true)\nif [ \"$opt_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'options: resourceOptions' (both video writeData sites patched), got $opt_count\"\n  exit 1\nfi\nif grep -q 'writeData(for: resource, toFile: destinationUrl, options: nil)' \"$FILE\"; then\n  echo \"FAIL: a video writeData site still reads 'options: nil' — iCloud videos will fail PHPhotosErrorDomain 3164\"\n  exit 1\nfi\necho \"OK: both video writeData sites set isNetworkAccessAllowed=true (options: resourceOptions); no video site reads options: nil\""
+              "FILE=mingla-business/node_modules/expo-image-picker/ios/MediaHandler.swift\nif [ ! -f \"$FILE\" ]; then\n  echo \"FAIL: $FILE missing after install\"\n  exit 1\nfi\nnet_count=$(grep -c 'isNetworkAccessAllowed = true' \"$FILE\" || true)\nif [ \"$net_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'isNetworkAccessAllowed = true' (one per video writeData site), got $net_count\"\n  exit 1\nfi\nopt_count=$(grep -c 'options: resourceOptions' \"$FILE\" || true)\nif [ \"$opt_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'options: resourceOptions' (both video writeData sites patched), got $opt_count\"\n  exit 1\nfi\nif grep -q 'writeData(for: resource, toFile: destinationUrl, options: nil)' \"$FILE\"; then\n  echo \"FAIL: a video writeData site still reads 'options: nil' \u2014 iCloud videos will fail PHPhotosErrorDomain 3164\"\n  exit 1\nfi\necho \"OK: both video writeData sites set isNetworkAccessAllowed=true (options: resourceOptions); no video site reads options: nil\""
             ]
           },
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
@@ -2763,13 +2763,13 @@
         {
           "name": "Attribution tool is runnable",
           "cwd": "mingla-business",
-          "run": "set +e\nout=$(node scripts/ci/bundle-attribute.mjs --build /tmp/definitely-not-here 2>&1)\ncode=$?\nset -e\necho \"$out\"\nif [ \"$code\" -eq 0 ]; then\n  echo \"bundle-attribute.mjs exited 0 on a missing build — it must fail loudly.\"\n  exit 1\nfi\necho \"$out\" | grep -q \"No web export\" || {\n  echo \"bundle-attribute.mjs did not explain the missing export.\"\n  exit 1\n}\n",
+          "run": "set +e\nout=$(node scripts/ci/bundle-attribute.mjs --build /tmp/definitely-not-here 2>&1)\ncode=$?\nset -e\necho \"$out\"\nif [ \"$code\" -eq 0 ]; then\n  echo \"bundle-attribute.mjs exited 0 on a missing build \u2014 it must fail loudly.\"\n  exit 1\nfi\necho \"$out\" | grep -q \"No web export\" || {\n  echo \"bundle-attribute.mjs did not explain the missing export.\"\n  exit 1\n}\n",
           "invocation": {
             "kind": "raw-shell",
             "command": "bash",
             "argv": [
               "-c",
-              "set +e\nout=$(node scripts/ci/bundle-attribute.mjs --build /tmp/definitely-not-here 2>&1)\ncode=$?\nset -e\necho \"$out\"\nif [ \"$code\" -eq 0 ]; then\n  echo \"bundle-attribute.mjs exited 0 on a missing build — it must fail loudly.\"\n  exit 1\nfi\necho \"$out\" | grep -q \"No web export\" || {\n  echo \"bundle-attribute.mjs did not explain the missing export.\"\n  exit 1\n}\n"
+              "set +e\nout=$(node scripts/ci/bundle-attribute.mjs --build /tmp/definitely-not-here 2>&1)\ncode=$?\nset -e\necho \"$out\"\nif [ \"$code\" -eq 0 ]; then\n  echo \"bundle-attribute.mjs exited 0 on a missing build \u2014 it must fail loudly.\"\n  exit 1\nfi\necho \"$out\" | grep -q \"No web export\" || {\n  echo \"bundle-attribute.mjs did not explain the missing export.\"\n  exit 1\n}\n"
             ]
           },
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
@@ -3224,7 +3224,7 @@
           "commandId": "assert:issue-1605-expanded-card:02"
         },
         {
-          "name": "ORCH-1148 — the Reserve button and its sheet gate on ALL THREE conditions",
+          "name": "ORCH-1148 \u2014 the Reserve button and its sheet gate on ALL THREE conditions",
           "cwd": ".",
           "run": "node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs --self-test\nnode .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs\n",
           "invocation": {
@@ -3239,15 +3239,15 @@
           "commandId": "assert:issue-1605-expanded-card:03"
         },
         {
-          "name": "…and that gate must FAIL on each of its documented reverts",
+          "name": "\u2026and that gate must FAIL on each of its documented reverts",
           "cwd": ".",
-          "run": "set +e\nnode .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nBASELINE=$?\nORCH1148_SIMULATE_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nNIGHTOUT=$?\nORCH1148_SIMULATE_VENUEID_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nVENUEID=$?\nset -e\necho \"baseline=$BASELINE isNightOut-revert=$NIGHTOUT venue_id-revert=$VENUEID\"\nif [ \"$BASELINE\" -ne 0 ]; then\n  echo \"FAIL: the gate is red on unmodified source.\"; exit 1\nfi\nif [ \"$NIGHTOUT\" -ne 1 ]; then\n  echo \"FAIL: re-adding isNightOut/nightOut to the SHEET gate did not fail the guard (exit $NIGHTOUT).\"\n  echo \"      Exit 2 means the harness could not find its target — the anchors are stale and the\"\n  echo \"      fails-on-revert proof is asserting nothing. Re-point it; do not delete it.\"\n  exit 1\nfi\nif [ \"$VENUEID\" -ne 1 ]; then\n  echo \"FAIL: removing venue_id from the BUTTON gate did not fail the guard (exit $VENUEID).\"\n  echo \"      That is the #1605 P0-1 dead tap, and it is the regression this guard missed once.\"\n  exit 1\nfi\necho \"OK: the guard is green on HEAD and red on both documented reverts.\"\n",
+          "run": "set +e\nnode .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nBASELINE=$?\nORCH1148_SIMULATE_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nNIGHTOUT=$?\nORCH1148_SIMULATE_VENUEID_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nVENUEID=$?\nset -e\necho \"baseline=$BASELINE isNightOut-revert=$NIGHTOUT venue_id-revert=$VENUEID\"\nif [ \"$BASELINE\" -ne 0 ]; then\n  echo \"FAIL: the gate is red on unmodified source.\"; exit 1\nfi\nif [ \"$NIGHTOUT\" -ne 1 ]; then\n  echo \"FAIL: re-adding isNightOut/nightOut to the SHEET gate did not fail the guard (exit $NIGHTOUT).\"\n  echo \"      Exit 2 means the harness could not find its target \u2014 the anchors are stale and the\"\n  echo \"      fails-on-revert proof is asserting nothing. Re-point it; do not delete it.\"\n  exit 1\nfi\nif [ \"$VENUEID\" -ne 1 ]; then\n  echo \"FAIL: removing venue_id from the BUTTON gate did not fail the guard (exit $VENUEID).\"\n  echo \"      That is the #1605 P0-1 dead tap, and it is the regression this guard missed once.\"\n  exit 1\nfi\necho \"OK: the guard is green on HEAD and red on both documented reverts.\"\n",
           "invocation": {
             "kind": "raw-shell",
             "command": "bash",
             "argv": [
               "-c",
-              "set +e\nnode .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nBASELINE=$?\nORCH1148_SIMULATE_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nNIGHTOUT=$?\nORCH1148_SIMULATE_VENUEID_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nVENUEID=$?\nset -e\necho \"baseline=$BASELINE isNightOut-revert=$NIGHTOUT venue_id-revert=$VENUEID\"\nif [ \"$BASELINE\" -ne 0 ]; then\n  echo \"FAIL: the gate is red on unmodified source.\"; exit 1\nfi\nif [ \"$NIGHTOUT\" -ne 1 ]; then\n  echo \"FAIL: re-adding isNightOut/nightOut to the SHEET gate did not fail the guard (exit $NIGHTOUT).\"\n  echo \"      Exit 2 means the harness could not find its target — the anchors are stale and the\"\n  echo \"      fails-on-revert proof is asserting nothing. Re-point it; do not delete it.\"\n  exit 1\nfi\nif [ \"$VENUEID\" -ne 1 ]; then\n  echo \"FAIL: removing venue_id from the BUTTON gate did not fail the guard (exit $VENUEID).\"\n  echo \"      That is the #1605 P0-1 dead tap, and it is the regression this guard missed once.\"\n  exit 1\nfi\necho \"OK: the guard is green on HEAD and red on both documented reverts.\"\n"
+              "set +e\nnode .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nBASELINE=$?\nORCH1148_SIMULATE_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nNIGHTOUT=$?\nORCH1148_SIMULATE_VENUEID_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nVENUEID=$?\nset -e\necho \"baseline=$BASELINE isNightOut-revert=$NIGHTOUT venue_id-revert=$VENUEID\"\nif [ \"$BASELINE\" -ne 0 ]; then\n  echo \"FAIL: the gate is red on unmodified source.\"; exit 1\nfi\nif [ \"$NIGHTOUT\" -ne 1 ]; then\n  echo \"FAIL: re-adding isNightOut/nightOut to the SHEET gate did not fail the guard (exit $NIGHTOUT).\"\n  echo \"      Exit 2 means the harness could not find its target \u2014 the anchors are stale and the\"\n  echo \"      fails-on-revert proof is asserting nothing. Re-point it; do not delete it.\"\n  exit 1\nfi\nif [ \"$VENUEID\" -ne 1 ]; then\n  echo \"FAIL: removing venue_id from the BUTTON gate did not fail the guard (exit $VENUEID).\"\n  echo \"      That is the #1605 P0-1 dead tap, and it is the regression this guard missed once.\"\n  exit 1\nfi\necho \"OK: the guard is green on HEAD and red on both documented reverts.\"\n"
             ]
           },
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
@@ -4087,7 +4087,7 @@
           "commandId": "assert:issue-1638-tab-switch-scheduling-tests:01"
         },
         {
-          "name": "ORCH-0995 T-01..T-07 — bottom-nav spotlight stays on the UI thread (was dark)",
+          "name": "ORCH-0995 T-01..T-07 \u2014 bottom-nav spotlight stays on the UI thread (was dark)",
           "cwd": "app-mobile",
           "run": "npm run test:orch-0995-spotlight",
           "invocation": {
@@ -4102,7 +4102,7 @@
           "commandId": "assert:issue-1638-tab-switch-scheduling-tests:02"
         },
         {
-          "name": "ORCH-0995 T-08..T-18 — optimistic tab feedback + deferred mount (was dark)",
+          "name": "ORCH-0995 T-08..T-18 \u2014 optimistic tab feedback + deferred mount (was dark)",
           "cwd": "app-mobile",
           "run": "npm run test:orch-0995-impl2",
           "invocation": {
@@ -4117,7 +4117,7 @@
           "commandId": "assert:issue-1638-tab-switch-scheduling-tests:03"
         },
         {
-          "name": "ORCH-0995 ADV-1..ADV-W4 — optimistic-nav desync adversarial (was dark)",
+          "name": "ORCH-0995 ADV-1..ADV-W4 \u2014 optimistic-nav desync adversarial (was dark)",
           "cwd": "app-mobile",
           "run": "npm run test:orch-0995-adversarial",
           "invocation": {
@@ -4307,7 +4307,7 @@
           "commandId": "assert:issue-1642-been-here-offline-bound:02"
         },
         {
-          "name": "TESTER ADVERSARIAL — the abandoned write cannot resurrect",
+          "name": "TESTER ADVERSARIAL \u2014 the abandoned write cannot resurrect",
           "cwd": "app-mobile",
           "run": "node --test --test-reporter=spec src/hooks/__tests__/issue_1642_abandoned_write_cannot_resurrect.adversarial.test.mjs\n",
           "invocation": {
@@ -4719,7 +4719,7 @@
       "shadowContract": {
         "variant": "default",
         "legacyJobKey": "issue-1860-rls-adversarial",
-        "workflowSha256": "baba4c985626037a5f9326b1c025f03686ee244acfb1df6e73baca219fe6d82f",
+        "workflowSha256": "299a47bd2c5a50fc2b239056475de9e0369e72c1b91d9e9ac2c4bced3bf9db7a",
         "commandSha256": "41c43008c9fd61052660f78eb821193a432f178fd74e383350614024439c3414",
         "setupSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "optionsSha256": "36c6f330d633ab592fa3ea91c9d1bc8322d857f043096cae90acb963ba9f1e71",
@@ -5514,7 +5514,7 @@
           "commandId": "assert:issue-2300-orch-artifact-reap:01"
         },
         {
-          "name": "implementor happy path — dead artifacts are reaped",
+          "name": "implementor happy path \u2014 dead artifacts are reaped",
           "cwd": ".",
           "run": "node --test scripts/issue-2300/orch-artifact-reap.implementor.happy.test.mjs",
           "invocation": {
@@ -5529,7 +5529,7 @@
           "commandId": "assert:issue-2300-orch-artifact-reap:02"
         },
         {
-          "name": "tester adversarial — live artifacts are never reaped",
+          "name": "tester adversarial \u2014 live artifacts are never reaped",
           "cwd": ".",
           "run": "node --test scripts/issue-2300/orch-artifact-reap.tester.adversarial.test.mjs",
           "invocation": {
@@ -5546,13 +5546,13 @@
         {
           "name": "the squash-blind and spawn-blind predicates stay out of the gate",
           "cwd": ".",
-          "run": "set -euo pipefail\ncode=\"$(grep -vE '^\\s*#' scripts/orch-worktree/lib/artifact-liveness.sh)\"\nfor banned in 'rev-list' 'is-ancestor' '-newermt'; do\n  if printf '%s' \"$code\" | grep -qF -- \"$banned\"; then\n    echo \"::error::'$banned' reappeared in the liveness gate. See the TRAP commentary in artifact-liveness.sh — all three read live artifacts as dead.\"\n    exit 1\n  fi\ndone\necho \"OK — none of the three known-wrong predicates gate a delete.\"\n",
+          "run": "set -euo pipefail\ncode=\"$(grep -vE '^\\s*#' scripts/orch-worktree/lib/artifact-liveness.sh)\"\nfor banned in 'rev-list' 'is-ancestor' '-newermt'; do\n  if printf '%s' \"$code\" | grep -qF -- \"$banned\"; then\n    echo \"::error::'$banned' reappeared in the liveness gate. See the TRAP commentary in artifact-liveness.sh \u2014 all three read live artifacts as dead.\"\n    exit 1\n  fi\ndone\necho \"OK \u2014 none of the three known-wrong predicates gate a delete.\"\n",
           "invocation": {
             "kind": "raw-shell",
             "command": "bash",
             "argv": [
               "-c",
-              "set -euo pipefail\ncode=\"$(grep -vE '^\\s*#' scripts/orch-worktree/lib/artifact-liveness.sh)\"\nfor banned in 'rev-list' 'is-ancestor' '-newermt'; do\n  if printf '%s' \"$code\" | grep -qF -- \"$banned\"; then\n    echo \"::error::'$banned' reappeared in the liveness gate. See the TRAP commentary in artifact-liveness.sh — all three read live artifacts as dead.\"\n    exit 1\n  fi\ndone\necho \"OK — none of the three known-wrong predicates gate a delete.\"\n"
+              "set -euo pipefail\ncode=\"$(grep -vE '^\\s*#' scripts/orch-worktree/lib/artifact-liveness.sh)\"\nfor banned in 'rev-list' 'is-ancestor' '-newermt'; do\n  if printf '%s' \"$code\" | grep -qF -- \"$banned\"; then\n    echo \"::error::'$banned' reappeared in the liveness gate. See the TRAP commentary in artifact-liveness.sh \u2014 all three read live artifacts as dead.\"\n    exit 1\n  fi\ndone\necho \"OK \u2014 none of the three known-wrong predicates gate a delete.\"\n"
             ]
           },
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
@@ -5561,13 +5561,13 @@
         {
           "name": "sweep.sh accepts no argument other than --apply",
           "cwd": ".",
-          "run": "set -euo pipefail\nif grep -nE '^\\s*--(all|force|yes|nuke|recursive)\\)' scripts/orch-worktree/sweep.sh; then\n  echo \"::error::sweep.sh grew a blast-radius-widening flag.\"\n  exit 1\nfi\ngrep -q 'APPLY=0' scripts/orch-worktree/sweep.sh \\\n  || { echo \"::error::sweep.sh must default to dry run.\"; exit 1; }\necho \"OK — dry run remains the default and no widening flag exists.\"\n",
+          "run": "set -euo pipefail\nif grep -nE '^\\s*--(all|force|yes|nuke|recursive)\\)' scripts/orch-worktree/sweep.sh; then\n  echo \"::error::sweep.sh grew a blast-radius-widening flag.\"\n  exit 1\nfi\ngrep -q 'APPLY=0' scripts/orch-worktree/sweep.sh \\\n  || { echo \"::error::sweep.sh must default to dry run.\"; exit 1; }\necho \"OK \u2014 dry run remains the default and no widening flag exists.\"\n",
           "invocation": {
             "kind": "raw-shell",
             "command": "bash",
             "argv": [
               "-c",
-              "set -euo pipefail\nif grep -nE '^\\s*--(all|force|yes|nuke|recursive)\\)' scripts/orch-worktree/sweep.sh; then\n  echo \"::error::sweep.sh grew a blast-radius-widening flag.\"\n  exit 1\nfi\ngrep -q 'APPLY=0' scripts/orch-worktree/sweep.sh \\\n  || { echo \"::error::sweep.sh must default to dry run.\"; exit 1; }\necho \"OK — dry run remains the default and no widening flag exists.\"\n"
+              "set -euo pipefail\nif grep -nE '^\\s*--(all|force|yes|nuke|recursive)\\)' scripts/orch-worktree/sweep.sh; then\n  echo \"::error::sweep.sh grew a blast-radius-widening flag.\"\n  exit 1\nfi\ngrep -q 'APPLY=0' scripts/orch-worktree/sweep.sh \\\n  || { echo \"::error::sweep.sh must default to dry run.\"; exit 1; }\necho \"OK \u2014 dry run remains the default and no widening flag exists.\"\n"
             ]
           },
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
@@ -7376,7 +7376,7 @@
       },
       "steps": [
         {
-          "name": "Brand page suites — 1155 honesty guards + #679 follow gate",
+          "name": "Brand page suites \u2014 1155 honesty guards + #679 follow gate",
           "cwd": "mingla-business",
           "run": "npx jest --config jest.issue679.cfg.cjs --runInBand",
           "invocation": {
@@ -9723,7 +9723,7 @@
           ]
         },
         {
-          "name": "ORCH-0996 Discover cache contract (adopted — was dark)",
+          "name": "ORCH-0996 Discover cache contract (adopted \u2014 was dark)",
           "cwd": ".",
           "run": "deno test --allow-read app-mobile/src/utils/__tests__/discoverEventsCache.test.ts app-mobile/src/utils/__tests__/discoverEventsCache.adversarial.test.ts",
           "invocation": {
@@ -12272,7 +12272,7 @@
       "providerWorkflow": ".github/workflows/issue-1179-cancel-refund-fanout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "ad1144c71ebaee07a3ec3c8304b8c7da965cd68d4b8700220ea95fca109ca2f7",
+        "sourceSha256": "a632cf672c65d82a92e3b9c3c0968ae53e1e2bec295b32b6a4f0a61517041f42",
         "triggers": [
           "pull_request"
         ],
@@ -12283,6 +12283,8 @@
           "mingla-admin/src/services/offeringsService.js",
           "mingla-business/src/services/businessEvents.ts",
           "supabase/config.toml",
+          "supabase/functions/_shared/__tests__/cancelRefundReleaseNotify.issue3645.test.ts",
+          "supabase/functions/_shared/cancelRefundReleaseNotify.ts",
           "supabase/functions/_shared/paystackRefunds.ts",
           "supabase/functions/_shared/stripe.ts",
           "supabase/functions/event-cancel-refund-fanout/**",
@@ -15853,7 +15855,7 @@
       "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
-        "sourceSha256": "baba4c985626037a5f9326b1c025f03686ee244acfb1df6e73baca219fe6d82f",
+        "sourceSha256": "299a47bd2c5a50fc2b239056475de9e0369e72c1b91d9e9ac2c4bced3bf9db7a",
         "triggers": [
           "pull_request",
           "push"
@@ -23256,7 +23258,7 @@
         "executable": "bash",
         "argv": [
           "-c",
-          "FILE=mingla-business/patches/expo-image-picker+17.0.11.patch\nif [ ! -f \"$FILE\" ]; then\n  echo \"MISSING: $FILE — the #1348 iCloud video patch is not committed.\"\n  exit 1\nfi\necho \"OK: $FILE present\""
+          "FILE=mingla-business/patches/expo-image-picker+17.0.11.patch\nif [ ! -f \"$FILE\" ]; then\n  echo \"MISSING: $FILE \u2014 the #1348 iCloud video patch is not committed.\"\n  exit 1\nfi\necho \"OK: $FILE present\""
         ],
         "payloadSha256": "17be35313810092b98e3f0a556bbdfc79ea5f164726f801cabe2ee73c945cf59"
       },
@@ -23292,7 +23294,7 @@
         "executable": "bash",
         "argv": [
           "-c",
-          "FILE=mingla-business/node_modules/expo-image-picker/ios/MediaHandler.swift\nif [ ! -f \"$FILE\" ]; then\n  echo \"FAIL: $FILE missing after install\"\n  exit 1\nfi\nnet_count=$(grep -c 'isNetworkAccessAllowed = true' \"$FILE\" || true)\nif [ \"$net_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'isNetworkAccessAllowed = true' (one per video writeData site), got $net_count\"\n  exit 1\nfi\nopt_count=$(grep -c 'options: resourceOptions' \"$FILE\" || true)\nif [ \"$opt_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'options: resourceOptions' (both video writeData sites patched), got $opt_count\"\n  exit 1\nfi\nif grep -q 'writeData(for: resource, toFile: destinationUrl, options: nil)' \"$FILE\"; then\n  echo \"FAIL: a video writeData site still reads 'options: nil' — iCloud videos will fail PHPhotosErrorDomain 3164\"\n  exit 1\nfi\necho \"OK: both video writeData sites set isNetworkAccessAllowed=true (options: resourceOptions); no video site reads options: nil\""
+          "FILE=mingla-business/node_modules/expo-image-picker/ios/MediaHandler.swift\nif [ ! -f \"$FILE\" ]; then\n  echo \"FAIL: $FILE missing after install\"\n  exit 1\nfi\nnet_count=$(grep -c 'isNetworkAccessAllowed = true' \"$FILE\" || true)\nif [ \"$net_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'isNetworkAccessAllowed = true' (one per video writeData site), got $net_count\"\n  exit 1\nfi\nopt_count=$(grep -c 'options: resourceOptions' \"$FILE\" || true)\nif [ \"$opt_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'options: resourceOptions' (both video writeData sites patched), got $opt_count\"\n  exit 1\nfi\nif grep -q 'writeData(for: resource, toFile: destinationUrl, options: nil)' \"$FILE\"; then\n  echo \"FAIL: a video writeData site still reads 'options: nil' \u2014 iCloud videos will fail PHPhotosErrorDomain 3164\"\n  exit 1\nfi\necho \"OK: both video writeData sites set isNetworkAccessAllowed=true (options: resourceOptions); no video site reads options: nil\""
         ],
         "payloadSha256": "c54286819c5b08abda0fd7abc0c13222fbd62ff22fe2894f5a47b2877a430bfd"
       },
@@ -23724,7 +23726,7 @@
         "executable": "bash",
         "argv": [
           "-c",
-          "set +e\nout=$(node scripts/ci/bundle-attribute.mjs --build /tmp/definitely-not-here 2>&1)\ncode=$?\nset -e\necho \"$out\"\nif [ \"$code\" -eq 0 ]; then\n  echo \"bundle-attribute.mjs exited 0 on a missing build — it must fail loudly.\"\n  exit 1\nfi\necho \"$out\" | grep -q \"No web export\" || {\n  echo \"bundle-attribute.mjs did not explain the missing export.\"\n  exit 1\n}\n"
+          "set +e\nout=$(node scripts/ci/bundle-attribute.mjs --build /tmp/definitely-not-here 2>&1)\ncode=$?\nset -e\necho \"$out\"\nif [ \"$code\" -eq 0 ]; then\n  echo \"bundle-attribute.mjs exited 0 on a missing build \u2014 it must fail loudly.\"\n  exit 1\nfi\necho \"$out\" | grep -q \"No web export\" || {\n  echo \"bundle-attribute.mjs did not explain the missing export.\"\n  exit 1\n}\n"
         ],
         "payloadSha256": "31311549de48f51128e069cbb8893b4a718b0ee2f70d0b965785320ee51b1fc5"
       },
@@ -23880,7 +23882,7 @@
         "executable": "bash",
         "argv": [
           "-c",
-          "set +e\nnode .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nBASELINE=$?\nORCH1148_SIMULATE_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nNIGHTOUT=$?\nORCH1148_SIMULATE_VENUEID_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nVENUEID=$?\nset -e\necho \"baseline=$BASELINE isNightOut-revert=$NIGHTOUT venue_id-revert=$VENUEID\"\nif [ \"$BASELINE\" -ne 0 ]; then\n  echo \"FAIL: the gate is red on unmodified source.\"; exit 1\nfi\nif [ \"$NIGHTOUT\" -ne 1 ]; then\n  echo \"FAIL: re-adding isNightOut/nightOut to the SHEET gate did not fail the guard (exit $NIGHTOUT).\"\n  echo \"      Exit 2 means the harness could not find its target — the anchors are stale and the\"\n  echo \"      fails-on-revert proof is asserting nothing. Re-point it; do not delete it.\"\n  exit 1\nfi\nif [ \"$VENUEID\" -ne 1 ]; then\n  echo \"FAIL: removing venue_id from the BUTTON gate did not fail the guard (exit $VENUEID).\"\n  echo \"      That is the #1605 P0-1 dead tap, and it is the regression this guard missed once.\"\n  exit 1\nfi\necho \"OK: the guard is green on HEAD and red on both documented reverts.\"\n"
+          "set +e\nnode .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nBASELINE=$?\nORCH1148_SIMULATE_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nNIGHTOUT=$?\nORCH1148_SIMULATE_VENUEID_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1\nVENUEID=$?\nset -e\necho \"baseline=$BASELINE isNightOut-revert=$NIGHTOUT venue_id-revert=$VENUEID\"\nif [ \"$BASELINE\" -ne 0 ]; then\n  echo \"FAIL: the gate is red on unmodified source.\"; exit 1\nfi\nif [ \"$NIGHTOUT\" -ne 1 ]; then\n  echo \"FAIL: re-adding isNightOut/nightOut to the SHEET gate did not fail the guard (exit $NIGHTOUT).\"\n  echo \"      Exit 2 means the harness could not find its target \u2014 the anchors are stale and the\"\n  echo \"      fails-on-revert proof is asserting nothing. Re-point it; do not delete it.\"\n  exit 1\nfi\nif [ \"$VENUEID\" -ne 1 ]; then\n  echo \"FAIL: removing venue_id from the BUTTON gate did not fail the guard (exit $VENUEID).\"\n  echo \"      That is the #1605 P0-1 dead tap, and it is the regression this guard missed once.\"\n  exit 1\nfi\necho \"OK: the guard is green on HEAD and red on both documented reverts.\"\n"
         ],
         "payloadSha256": "10b0d5473f8510c48987e74054a432decf94290c4349fdcdcc8dee9f4777e376"
       },
@@ -24756,7 +24758,7 @@
         "executable": "bash",
         "argv": [
           "-c",
-          "set -euo pipefail\ncode=\"$(grep -vE '^\\s*#' scripts/orch-worktree/lib/artifact-liveness.sh)\"\nfor banned in 'rev-list' 'is-ancestor' '-newermt'; do\n  if printf '%s' \"$code\" | grep -qF -- \"$banned\"; then\n    echo \"::error::'$banned' reappeared in the liveness gate. See the TRAP commentary in artifact-liveness.sh — all three read live artifacts as dead.\"\n    exit 1\n  fi\ndone\necho \"OK — none of the three known-wrong predicates gate a delete.\"\n"
+          "set -euo pipefail\ncode=\"$(grep -vE '^\\s*#' scripts/orch-worktree/lib/artifact-liveness.sh)\"\nfor banned in 'rev-list' 'is-ancestor' '-newermt'; do\n  if printf '%s' \"$code\" | grep -qF -- \"$banned\"; then\n    echo \"::error::'$banned' reappeared in the liveness gate. See the TRAP commentary in artifact-liveness.sh \u2014 all three read live artifacts as dead.\"\n    exit 1\n  fi\ndone\necho \"OK \u2014 none of the three known-wrong predicates gate a delete.\"\n"
         ],
         "payloadSha256": "619fe4c6897720424ad6473d749bc1d0140610c493b5824be988ba45dcf538e5"
       },
@@ -24768,7 +24770,7 @@
         "executable": "bash",
         "argv": [
           "-c",
-          "set -euo pipefail\nif grep -nE '^\\s*--(all|force|yes|nuke|recursive)\\)' scripts/orch-worktree/sweep.sh; then\n  echo \"::error::sweep.sh grew a blast-radius-widening flag.\"\n  exit 1\nfi\ngrep -q 'APPLY=0' scripts/orch-worktree/sweep.sh \\\n  || { echo \"::error::sweep.sh must default to dry run.\"; exit 1; }\necho \"OK — dry run remains the default and no widening flag exists.\"\n"
+          "set -euo pipefail\nif grep -nE '^\\s*--(all|force|yes|nuke|recursive)\\)' scripts/orch-worktree/sweep.sh; then\n  echo \"::error::sweep.sh grew a blast-radius-widening flag.\"\n  exit 1\nfi\ngrep -q 'APPLY=0' scripts/orch-worktree/sweep.sh \\\n  || { echo \"::error::sweep.sh must default to dry run.\"; exit 1; }\necho \"OK \u2014 dry run remains the default and no widening flag exists.\"\n"
         ],
         "payloadSha256": "e6e443c906439a4474b1618c8f065322c4f24ed0ae048b032020e4b5d9e880ab"
       },

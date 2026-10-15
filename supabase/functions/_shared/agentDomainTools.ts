@@ -6670,6 +6670,7 @@ const BUSINESS_NOTIFICATION_TYPES = [
   "business.event_sold_out",
   "business.low_inventory",
   "business.refund_processed",
+  "business.cancel_refunds_released",
   "business.dispute_opened",
   "business.dispute_action_needed",
   "business.payout_paid",
