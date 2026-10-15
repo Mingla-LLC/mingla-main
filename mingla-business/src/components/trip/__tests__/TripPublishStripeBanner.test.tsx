@@ -78,8 +78,10 @@ describe("ORCH-1076 — trip wizard gate + disabled Publish + toast (T-19)", () 
     // disabling term is still asserted.
     // [TEST-MOD-APPROVED #3645] Dock also disables for instalment plans that
     // need a bank (tripNeedsBankForInstallments); every prior term retained.
+    // [TEST-MOD-APPROVED #3859] A provider that cannot truthfully support the
+    // saved installment plan is also a hard publish refusal.
     expect(src).toMatch(
-      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*tripNeedsBankForInstallments\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
+      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*tripNeedsBankForInstallments\s*\|\|\s*tripHasUnsupportedInstallments\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
     );
   });
 
@@ -92,10 +94,13 @@ describe("ORCH-1076 — trip wizard gate + disabled Publish + toast (T-19)", () 
     // 600-char window. The invariant (stripe toast + return BEFORE the confirm
     // dialog) is unchanged; the window just needs to reach it (the confirm call
     // now sits ~1390 chars in — after the location + packages pre-checks).
-    // [TEST-MOD-APPROVED #3645] window widened 1600→2200: instalment bank
-    // pre-check sits between tripNeedsStripe and packagesValidation, pushing
-    // the first setPublishConfirmVisible past the old slice.
-    const block = src.slice(tapIdx, tapIdx + 2200);
+    // [TEST-MOD-APPROVED #3859] Slice to the handler's dependency close rather
+    // than a magic character count; the new capability refusal adds copy before
+    // the confirm path while leaving Stripe's early return contract unchanged.
+    const block = src.slice(
+      tapIdx,
+      src.indexOf("\n\n  useEffect(() => {\n    resumePublishRef.current", tapIdx),
+    );
     expect(block).toContain("if (tripNeedsStripe)");
     expect(block).toContain("Connect a bank to publish this paid trip.");
     const toastIdx = block.indexOf("Connect a bank to publish this paid trip.");

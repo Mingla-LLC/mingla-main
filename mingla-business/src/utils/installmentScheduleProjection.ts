@@ -19,6 +19,7 @@ import type {
   TripPricingTier,
 } from "../services/tripsService";
 import type { InstallmentScheduleDisplaySchedule } from "../components/trip/InstallmentScheduleDisplay";
+import { tripInstallmentAmounts } from "@mingla/offering-rendering";
 
 function addDays(anchor: Date, days: number): Date {
   const result = new Date(anchor.getTime());
@@ -47,10 +48,8 @@ function addDays(anchor: Date, days: number): Date {
  * pass 1; buyer-variant render sites pass the cart line's quantity.
  */
 export function projectInstallmentSchedule(
-  tier: Pick<
-    TripPricingTier,
-    "priceCents" | "currency" | "installmentSchedule"
-  >,
+  tier: Pick<TripPricingTier, "priceCents" | "currency" | "installmentSchedule"> &
+    Partial<Pick<TripPricingTier, "priceAllInGbp">>,
   anchorDate: Date,
   quantityMultiplier: number = 1,
 ): InstallmentScheduleDisplaySchedule | null {
@@ -75,13 +74,15 @@ export function projectInstallmentSchedule(
     Number.isFinite(quantityMultiplier) && quantityMultiplier >= 1
       ? Math.floor(quantityMultiplier)
       : 1;
-  const fullPriceCents = tier.priceCents * qty;
-  const depositCents = Math.round(
-    (fullPriceCents * schedule.deposit_pct) / 100,
-  );
+  const unitPriceCents = tier.priceAllInGbp == null
+    ? tier.priceCents
+    : Math.round(tier.priceAllInGbp * 100);
+  const fullPriceCents = unitPriceCents * qty;
+  const amounts = tripInstallmentAmounts(fullPriceCents, schedule);
+  if (amounts === null) return null;
 
-  const installments = schedule.installments.map((inst) => {
-    const amountCents = Math.round((fullPriceCents * inst.pct) / 100);
+  const installments = schedule.installments.map((inst, index) => {
+    const amountCents = amounts.installments[index].amountCents;
     let dueAt: string;
     // Issue #3801 — a fixed_date is a calendar date, a days-after-booking due
     // time is a real instant. The display must know which it was handed.
@@ -109,7 +110,7 @@ export function projectInstallmentSchedule(
 
   return {
     fullPriceCents,
-    depositCents,
+    depositCents: amounts.depositCents,
     currency: tier.currency,
     installments,
   };

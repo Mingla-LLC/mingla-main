@@ -114,8 +114,10 @@ describe("ORCH-1118 — create wizard requires confirmed Mapbox picks", () => {
     // disabling term is still asserted.
     // [TEST-MOD-APPROVED #3645] Dock also disables for instalment plans that
     // need a bank (tripNeedsBankForInstallments); every prior term retained.
+    // [TEST-MOD-APPROVED #3859] Unsupported provider/plan combinations are a
+    // separate hard refusal before any buyer can see the schedule.
     expect(w).toMatch(
-      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*tripNeedsBankForInstallments\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
+      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*tripNeedsBankForInstallments\s*\|\|\s*tripHasUnsupportedInstallments\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
     );
   });
 });

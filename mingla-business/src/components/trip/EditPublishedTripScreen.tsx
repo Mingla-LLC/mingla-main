@@ -169,6 +169,7 @@ import type { InclusionDraft } from "./TripCreatorStep3Inclusions";
 import type { EventCoverMediaType } from "../../store/draftEventStore";
 import type { EventCoverMediaProvider } from "../../types/eventCoverProvider";
 import type { OfferingGalleryImage } from "@mingla/offering-rendering";
+import { tripInstallmentsSupported } from "@mingla/offering-rendering/tripInstallmentCapability";
 
 // ---- Section configuration -----------------------------------------
 
@@ -688,6 +689,8 @@ interface RejectDialogContent {
 
 export interface EditPublishedTripScreenProps {
   trip: Trip;
+  /** Effective provider from the route's server-fresh current brand. */
+  paymentProvider?: "stripe" | "paystack";
 }
 
 interface ToastState {
@@ -706,10 +709,12 @@ interface ModalState {
 
 export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = ({
   trip,
+  paymentProvider,
 }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const updateLiveTripMutation = useUpdateLiveTripFields();
+  const paymentPlansAvailable = tripInstallmentsSupported(paymentProvider);
 
   // Local edit state — never persisted client-side; round-trip via RPC.
   const initialState = useMemo<LocalTripEditState>(
@@ -1860,6 +1865,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             ? Math.round(parsedPriceMajor * 100)
             : (firstTier?.priceCents ?? 0);
           const plannerPreviewSchedule =
+            !paymentPlansAvailable ||
             firstTier === undefined ||
             editPkg === undefined ||
             editPkg.paymentPlan === null
@@ -1884,6 +1890,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                 draft={{ ...editState.pricing, packages: lockedPackages }}
                 onChange={handlePricingChange}
                 disabled={submitting}
+                paymentPlansAvailable={paymentPlansAvailable}
               />
               {plannerPreviewSchedule !== null ? (
                 <View style={styles.plannerPlanPreviewWrap}>

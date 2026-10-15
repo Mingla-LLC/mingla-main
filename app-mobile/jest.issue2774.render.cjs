@@ -18,6 +18,10 @@ module.exports = {
       "react-test-renderer",
       "$1",
     ),
+    "^@mingla/offering-rendering/(.*)$": path.resolve(
+      __dirname,
+      "../packages/offering-rendering/$1",
+    ),
   },
   testMatch: [
     "**/__tests__/publicHeroAccessibility.issue2774.happy.test.tsx",
@@ -35,5 +39,24 @@ module.exports = {
     // issue #3682 (tester) — mounts both brand link routes against a history
     // model: X ends on Home with nothing underneath, never a dead back().
     "**/__tests__/issue_3682_brand_close_fallback.tester_adversarial.render.test.tsx",
+    // issue #3859 — mounts the real Explorer brand host and invokes its public
+    // navigation callbacks through the shared parity-contract adapter.
+    "**/__tests__/issue_3859_explorer_public_parity.implementor.happy.test.tsx",
+    // issue #3859 — Explorer stays signed-in-only during auth expiry and
+    // recovers the account recap without losing the buyer's cart lines.
+    "**/__tests__/issue_3859_expired_session_guard.implementor.happy.render.test.tsx",
+    "**/__tests__/issue_3859_expired_session_guard.tester.adversarial.render.test.tsx",
+    // issue #3859 — native checkout request, recovery, and terminal truth.
+    "**/__tests__/issue_3859_checkout_v2_client.implementor.happy.test.ts",
+    "**/__tests__/issue_3859_native_checkout_recovery.implementor.happy.test.ts",
+    "**/__tests__/issue_3859_native_checkout_recovery.tester_adversarial.test.ts",
+    "**/__tests__/issue_3859_native_checkout_terminal_flow.implementor.happy.test.ts",
+    "**/__tests__/issue_3859_native_terminal_wiring.implementor.happy.test.ts",
+    "**/__tests__/issue_3859_paystack_recovery_terminal_truth.implementor.happy.test.ts",
+    // issue #3859 — public installment capability runs in this Node 20 lane
+    // through Jest's existing TypeScript transform; the other pure Node guards
+    // are spawned below without depending on app-mobile/node_modules.
+    "**/__tests__/issue_3859_public_installment_capability.implementor.happy.test.ts",
+    "**/__tests__/issue_3859_node_guards_ci.render.test.ts",
   ],
 };

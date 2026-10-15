@@ -79,6 +79,7 @@ import {
   captureAdClickIds,
   captureWeb,
 } from "../../../../src/analytics/webAnalytics";
+import { captureBuyerWebPublicPageViewed } from "../../../../src/analytics/publicParityWebAdapter";
 import { useWebConsentState } from "../../../../src/analytics/useWebConsentState";
 import {
   usePublicBrandBySlug,
@@ -337,6 +338,7 @@ export default function PublicVenueRoute(): React.ReactElement {
   // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount.
   // Web-only (no-op on native).
   const viewFiredRef = useRef<boolean>(false);
+  const parityViewFiredRef = useRef<boolean>(false);
   const attributionFiredRef = useRef<boolean>(false);
   useEffect(() => {
     if (viewFiredRef.current) return;
@@ -348,6 +350,20 @@ export default function PublicVenueRoute(): React.ReactElement {
       slug: typeof venueSlug === "string" ? venueSlug : null,
     });
   }, [brandSlug, venueSlug]);
+
+  useEffect(() => {
+    if (parityViewFiredRef.current || venue === null) return;
+    parityViewFiredRef.current = true;
+    void captureBuyerWebPublicPageViewed({
+      target: {
+        kind: "venue",
+        entityId: venue.id,
+        brandSlug: venue.brandSlug,
+        venueSlug: venue.slug,
+      },
+      state: routeState === "populated-ready" ? "populated" : "stale",
+    });
+  }, [routeState, venue]);
 
   useEffect(() => {
     if (attributionFiredRef.current) return;

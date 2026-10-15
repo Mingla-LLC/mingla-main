@@ -22,6 +22,7 @@ import type { DiscoverTripRow } from "../services/tripsDiscoveryService";
 // issue #868 [cover-gallery] — ADDITIONAL image/GIF items (pg_public_trip_by_slug
 // already returns coverGallery from Pass 1 §C.1).
 import type { OfferingGalleryImage } from "@mingla/offering-rendering";
+import { publicTripInstallmentSchedule } from "@mingla/offering-rendering/tripInstallmentCapability";
 
 /**
  * ORCH-1119 — one item in a trip DAY's optional media gallery. Explicit `type`
@@ -342,6 +343,8 @@ interface RpcTripPayload {
   refundPolicy: unknown;
   bookingDeadline: string | null;
   bookingsClosed: boolean;
+  /** #3859 — absent on an older server and malformed values both mean unavailable. */
+  installmentCapabilityAvailable?: unknown;
   brand: RpcTripBrand;
   days: RpcTripDay[];
   inclusions: RpcTripInclusion[];
@@ -384,7 +387,7 @@ async function fetchTripDetail(
     ordinal: i.ordinal,
   }));
 
-  const tiers: TripDetailTier[] = (p.tiers ?? []).map((t) => ({
+  const rawTiers: TripDetailTier[] = (p.tiers ?? []).map((t) => ({
     ticketTypeId: t.ticketTypeId,
     tierName: t.tierName,
     priceCents: t.priceCents ?? 0,
@@ -404,6 +407,16 @@ async function fetchTripDetail(
     // restore parity with the business twin (which reads t.installments via a
     // DIRECT reader). I-1179: consumer installment parity.
     installmentSchedule: extractTripInstallmentSchedule(t.tierMetadata),
+  }));
+  // #3859 rolling compatibility: an old/pre-migration reader can still return a
+  // saved schedule. Only literal server `true` keeps it; unknown/false strips it
+  // before any selector, cart hint, or checkout plan state can observe it.
+  const tiers = rawTiers.map((tier) => ({
+    ...tier,
+    installmentSchedule: publicTripInstallmentSchedule(
+      p.installmentCapabilityAvailable,
+      tier.installmentSchedule,
+    ),
   }));
 
   // Aggregate availability derived from the per-tier rows (the prior consumer

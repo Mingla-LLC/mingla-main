@@ -52,11 +52,16 @@ export interface TravelerIntakeAnswerCardProps {
 }
 
 const EMPTY_PLACEHOLDER = "—";
+const PRIVATE_FILE_LABEL = "Uploaded file";
+
+type DisplayableIntakeFile = IntakeFileAnswer & { path: string };
 
 function formatAnswer(
   question: IntakeQuestion,
   value: IntakeAnswerValue | undefined,
-): { kind: "text"; text: string } | { kind: "files"; files: IntakeFileAnswer[] } {
+):
+  | { kind: "text"; text: string }
+  | { kind: "files"; files: DisplayableIntakeFile[] } {
   if (value === undefined || value === null) {
     return { kind: "text", text: EMPTY_PLACEHOLDER };
   }
@@ -79,11 +84,10 @@ function formatAnswer(
     case "file_upload":
       if (Array.isArray(value) && value.length > 0) {
         const files = value.filter(
-          (v): v is IntakeFileAnswer =>
+          (v): v is DisplayableIntakeFile =>
             typeof v === "object" &&
             v !== null &&
-            "path" in v &&
-            "filename" in v,
+            typeof (v as IntakeFileAnswer).path === "string",
         );
         return { kind: "files", files };
       }
@@ -167,13 +171,13 @@ export const TravelerIntakeAnswerCard: React.FC<
                       <IntakeAnswerFileThumbnail
                         key={f.path}
                         filePath={f.path}
-                        filename={f.filename}
+                        filename={f.filename ?? PRIVATE_FILE_LABEL}
                         mimeType={f.mime_type}
                         sizeBytes={f.size_bytes}
                         onImageTap={(signedUrl) =>
                           setPreviewFile({
                             signedUrl,
-                            filename: f.filename,
+                            filename: f.filename ?? PRIVATE_FILE_LABEL,
                             sizeBytes: f.size_bytes,
                           })
                         }
@@ -190,13 +194,13 @@ export const TravelerIntakeAnswerCard: React.FC<
                       <IntakeAnswerFileThumbnail
                         key={f.path}
                         filePath={f.path}
-                        filename={f.filename}
+                        filename={f.filename ?? PRIVATE_FILE_LABEL}
                         mimeType={f.mime_type}
                         sizeBytes={f.size_bytes}
                         onImageTap={(signedUrl) =>
                           setPreviewFile({
                             signedUrl,
-                            filename: f.filename,
+                            filename: f.filename ?? PRIVATE_FILE_LABEL,
                             sizeBytes: f.size_bytes,
                           })
                         }

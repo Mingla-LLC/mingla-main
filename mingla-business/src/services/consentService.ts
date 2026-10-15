@@ -1,11 +1,10 @@
 /**
  * META-ORCH-1161 Sub-A.2 (consent-capture slice) — buyer-checkout consent writer.
  *
- * Calls the shared `record-consent` edge function (verify_jwt=false, anon-tolerant)
- * to append the bundled-mandatory consent audit rows (DEC-186). One call writes a
- * transactional AND a marketing `consent_records` row per provided channel/contact;
- * the EXACT §1b disclosure string is recorded VERBATIM server-side, and ip_hash is
- * computed from the request IP by the edge fn (never sent from the client).
+ * Calls the shared `record-consent` edge function (verify_jwt=false,
+ * anon-tolerant) to append scoped consent audit rows. Legacy callers that omit
+ * `scopes` preserve the bundled behavior; #3859 checkout supplies purchase and
+ * optional-marketing scopes explicitly.
  *
  * Non-blocking by contract at the call site: the buyer's purchase MUST NOT be
  * blocked by a consent-audit write failure (the affirmative checkbox act already
@@ -16,12 +15,16 @@
 
 import { supabase } from "./supabase";
 
+export type ConsentScope = "transactional" | "marketing";
+
 export interface RecordConsentInput {
   source: "checkout" | "onboarding";
-  /** EXACT §1b disclosure string the buyer saw (CONSENT_DISCLOSURE_TEXT). */
+  /** Exact disclosure string the buyer saw. */
   disclosureText: string;
   /** Pins the disclosure wording version (DISCLOSURE_VERSION). */
   disclosureVersion: string;
+  /** Omitted preserves the existing bundled onboarding/legacy grant. */
+  scopes?: readonly ConsentScope[];
   /** E.164 phone — produces the 'sms' consent rows. */
   phone?: string | null;
   /** Email — produces the 'email' consent rows. */
@@ -50,7 +53,7 @@ export interface RecordConsentResult {
 }
 
 /**
- * Records the bundled consent grant. Returns the write result; on failure it
+ * Records the requested consent grant. Returns the write result; on failure it
  * returns ok=false rather than throwing, so the caller can proceed with the
  * purchase (the checkbox act already constitutes consent) while logging the gap.
  */
@@ -62,6 +65,7 @@ export const recordConsent = async (
       source: input.source,
       disclosureText: input.disclosureText,
       disclosureVersion: input.disclosureVersion,
+      scopes: input.scopes,
       phone: input.phone ?? null,
       email: input.email ?? null,
       countryCode: input.countryCode ?? null,

@@ -102,6 +102,8 @@ jobs:
               # full-chain lanes, which replay it in true filename order and run
               # its own suite. EXACT FILENAME, never an issue-number infix.
               *20270830003801_issue_3801_public_trip_tiers_ordered.sql) continue ;;
+              *20271015003859_issue_3859_installment_capability_refusal.sql) continue ;;
+              *20271018003859_issue_3859_public_installment_capability.sql) continue ;;
               # issue #2491 C2 steps 3+4 — SKIPPED for the same reason this phase
               # skips #2117. #2491 re-emits `pg_direct_event_checkout_bundle`,
               # whose CURRENT body reaches `issue_2489_address_withheld` /

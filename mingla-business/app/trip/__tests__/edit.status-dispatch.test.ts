@@ -38,8 +38,10 @@ describe("ORCH-0876 — /trip/[id]/edit status-based dispatch", () => {
   });
 
   test("scheduled OR live trips route to EditPublishedTripScreen", () => {
+    // [TEST-MOD-APPROVED #3859] The published editor now needs the owning
+    // brand's payment provider to keep installment capability truthful.
     expect(SRC).toMatch(
-      /if \(trip\.status === "scheduled" \|\| trip\.status === "live"\) \{\s*return <EditPublishedTripScreen trip=\{trip\} \/>;/,
+      /if \(trip\.status === "scheduled" \|\| trip\.status === "live"\) \{\s*return \(\s*<EditPublishedTripScreen[\s\S]*?trip=\{trip\}[\s\S]*?paymentProvider=\{[\s\S]*?currentBrand\.id === trip\.brandId[\s\S]*?currentBrand\.paymentProvider[\s\S]*?\}\s*\/>\s*\);/,
     );
   });
 

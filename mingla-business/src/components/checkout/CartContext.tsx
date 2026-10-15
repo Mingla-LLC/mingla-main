@@ -26,8 +26,14 @@ import React, {
   useContext,
   useMemo,
   useReducer,
+  useRef,
 } from "react";
 import type { ReactNode } from "react";
+import {
+  createCheckoutAttemptId,
+  createCheckoutAttemptTracker,
+  type CheckoutLinePlanChoice,
+} from "@mingla/offering-rendering/ticketCheckoutContract";
 
 // ---- Types ----------------------------------------------------------
 
@@ -55,6 +61,12 @@ export interface CartLine {
   /** ISO 4217 event currency. */
   currency: string;
   isFree: boolean;
+  /**
+   * #3859 — explicit checkout-v2 authority for this line. Optional only at the
+   * legacy type boundary; every reducer-created runtime line stores `"full"`
+   * when its caller omits the choice.
+   */
+  paymentPlanChoice?: CheckoutLinePlanChoice;
 }
 
 export interface BuyerDetails {
@@ -64,12 +76,9 @@ export interface BuyerDetails {
   phone: string;
   marketingOptIn: boolean;
   /**
-   * META-ORCH-1161 Sub-A.2 (DEC-186) — the single bundled-mandatory consent
-   * gate. TRUE means the buyer checked "I agree to all terms and conditions",
-   * which (per DEC-186 bundling) also constitutes the marketing grant. The Pay
-   * button is disabled until this is true AND fields are valid. When set true,
-   * the buyer surface ALSO sets `marketingOptIn=true` (the bundled grant) so the
-   * downstream payment payload carries it. Default false (affirmative act).
+   * #3859 — required purchase acceptance. This gates checkout independently
+   * from the optional `marketingOptIn` choice; changing one never changes the
+   * other. Both default false and require their own affirmative acts.
    */
   termsAccepted?: boolean;
   address?: {
@@ -215,12 +224,18 @@ type CartAction =
     currency: string;
     isFree: boolean;
     quantity: number;
+    paymentPlanChoice?: CheckoutLinePlanChoice;
   }
   | { type: "SET_BUYER"; patch: Partial<BuyerDetails> }
   | { type: "RECORD_RESULT"; result: OrderResult }
   | { type: "SET_INTAKE_TIER"; ticketTypeId: string; data: unknown }
   | { type: "CLEAR_INTAKE_TIER"; ticketTypeId: string }
   | { type: "SET_PAYMENT_PLAN_CHOICE"; choice: TripPaymentPlanChoice }
+  | {
+    type: "SET_LINE_PAYMENT_PLAN_CHOICE";
+    ticketTypeId: string;
+    choice: CheckoutLinePlanChoice;
+  }
   // ORCH-1138 Leg 3 — set/clear the chosen experience occurrence.
   | { type: "SET_EVENT_DATE_ID"; eventDateId: string | null }
   // issue #2160 — set/clear the chosen multi-date day SET.
@@ -267,6 +282,7 @@ const reducer = (state: CartState, action: CartAction): CartState => {
         currency,
         isFree,
         quantity,
+        paymentPlanChoice,
       } = action;
       const normalizedCurrency = currency.toUpperCase();
       const existingCurrency = state.lines[0]?.currency;
@@ -303,6 +319,7 @@ const reducer = (state: CartState, action: CartAction): CartState => {
               unitPriceAllIn: unitPriceAllIn ?? unitPrice,
               currency: normalizedCurrency,
               isFree,
+              paymentPlanChoice: paymentPlanChoice ?? "full",
             },
           ],
         };
@@ -318,6 +335,7 @@ const reducer = (state: CartState, action: CartAction): CartState => {
               ...l,
               quantity,
               unitPriceAllIn: unitPriceAllIn ?? l.unitPriceAllIn ?? l.unitPrice,
+              ...(paymentPlanChoice !== undefined ? { paymentPlanChoice } : {}),
             }
             : l
         ),
@@ -342,6 +360,16 @@ const reducer = (state: CartState, action: CartAction): CartState => {
     }
     case "SET_PAYMENT_PLAN_CHOICE":
       return { ...state, paymentPlanChoice: action.choice };
+    case "SET_LINE_PAYMENT_PLAN_CHOICE": {
+      return {
+        ...state,
+        lines: state.lines.map((line) =>
+          line.ticketTypeId === action.ticketTypeId
+            ? { ...line, paymentPlanChoice: action.choice }
+            : line
+        ),
+      };
+    }
     case "SET_EVENT_DATE_ID":
       return { ...state, eventDateId: action.eventDateId };
     case "SET_EVENT_DATE_IDS":
@@ -368,6 +396,7 @@ export interface CartContextValue extends CartState {
     currency: string;
     isFree: boolean;
     quantity: number;
+    paymentPlanChoice?: CheckoutLinePlanChoice;
   }) => void;
   setBuyer: (patch: Partial<BuyerDetails>) => void;
   recordResult: (result: OrderResult) => void;
@@ -385,6 +414,18 @@ export interface CartContextValue extends CartState {
    * Review & pay segmented toggle (payment.tsx) as the last-chance editor.
    */
   setPaymentPlanChoice: (choice: TripPaymentPlanChoice) => void;
+  setLinePaymentPlanChoice: (
+    ticketTypeId: string,
+    choice: CheckoutLinePlanChoice,
+  ) => void;
+  checkoutAttemptIdFor: (input: {
+    eventId: string;
+    surface: "web" | "mobile-web";
+  }) => string;
+  /** Clears only attempt identity; reserved for an explicit server review reset. */
+  resetCheckoutAttempt: () => void;
+  /** One private intake upload draft for this cart lifetime. */
+  intakeUploadSessionId: string;
   /**
    * ORCH-1138 Leg 3 — set/clear the chosen experience occurrence. Called by the
    * checkout-experience index's seed-from-route-param effect (the `eventDateId`
@@ -409,6 +450,8 @@ interface CartProviderProps {
 
 export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const checkoutAttemptTrackerRef = useRef(createCheckoutAttemptTracker());
+  const intakeUploadSessionRef = useRef(createCheckoutAttemptId());
 
   const setLineQuantity = useCallback(
     (params: {
@@ -421,6 +464,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       currency: string;
       isFree: boolean;
       quantity: number;
+      paymentPlanChoice?: CheckoutLinePlanChoice;
     }): void => {
       dispatch({ type: "SET_LINE_QUANTITY", ...params });
     },
@@ -454,6 +498,44 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     [],
   );
 
+  const setLinePaymentPlanChoice = useCallback(
+    (
+      ticketTypeId: string,
+      choice: CheckoutLinePlanChoice,
+    ): void => {
+      dispatch({ type: "SET_LINE_PAYMENT_PLAN_CHOICE", ticketTypeId, choice });
+    },
+    [],
+  );
+
+  const checkoutAttemptIdFor = useCallback(
+    (input: { eventId: string; surface: "web" | "mobile-web" }): string =>
+      checkoutAttemptTrackerRef.current.idFor({
+        eventId: input.eventId,
+        purchaseTermsAccepted: state.buyer.termsAccepted === true,
+        buyer: {
+          name: state.buyer.name,
+          email: state.buyer.email,
+          phone: state.buyer.phone,
+          marketingOptIn: state.buyer.marketingOptIn === true,
+        },
+        providerInput: { surface: input.surface },
+        lines: state.lines.map((line) => ({
+          ticketTypeId: line.ticketTypeId,
+          quantity: line.quantity,
+          paymentPlanChoice: line.paymentPlanChoice ?? "full",
+        })),
+        eventDateId: state.eventDateId,
+        eventDateIds: state.eventDateIds,
+        intakeFormData: Object.values(state.intakeFormData),
+      }),
+    [state],
+  );
+
+  const resetCheckoutAttempt = useCallback((): void => {
+    checkoutAttemptTrackerRef.current.reset();
+  }, []);
+
   // ORCH-1138 Leg 3 — chosen experience occurrence setter.
   const setEventDateId = useCallback((eventDateId: string | null): void => {
     dispatch({ type: "SET_EVENT_DATE_ID", eventDateId });
@@ -468,8 +550,10 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   );
 
   const reset = useCallback((): void => {
+    resetCheckoutAttempt();
+    intakeUploadSessionRef.current = createCheckoutAttemptId();
     dispatch({ type: "RESET" });
-  }, []);
+  }, [resetCheckoutAttempt]);
 
   const value = useMemo<CartContextValue>(
     () => ({
@@ -480,6 +564,10 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       setIntakeTierData,
       clearIntakeTierData,
       setPaymentPlanChoice,
+      setLinePaymentPlanChoice,
+      checkoutAttemptIdFor,
+      resetCheckoutAttempt,
+      intakeUploadSessionId: intakeUploadSessionRef.current,
       setEventDateId,
       setEventDateIds,
       reset,
@@ -492,6 +580,9 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       setIntakeTierData,
       clearIntakeTierData,
       setPaymentPlanChoice,
+      setLinePaymentPlanChoice,
+      checkoutAttemptIdFor,
+      resetCheckoutAttempt,
       setEventDateId,
       setEventDateIds,
       reset,

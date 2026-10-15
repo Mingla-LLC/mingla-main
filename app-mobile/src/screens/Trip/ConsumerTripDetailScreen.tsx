@@ -155,6 +155,9 @@ import {
   type NativeCheckoutPhase,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
+import { useNativeCheckoutRecovery } from "../../payments/useNativeCheckoutRecovery";
+import { captureNativePurchaseCompleted } from "../../payments/nativeCheckoutRecovery";
+import { resolveExplorerCheckoutContact } from "../../payments/explorerCheckoutContact.mjs";
 import { toastManager } from "../../components/ui/Toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -316,6 +319,9 @@ export default function ConsumerTripDetailScreen({
   const [checkoutPhase, setCheckoutPhase] = useState<NativeCheckoutPhase | null>(
     null,
   );
+  const [checkoutTerminalOutcome, setCheckoutTerminalOutcome] =
+    useState<NativeCheckoutOutcome | null>(null);
+  const terminalSuccessCloseRef = useRef<(() => void) | null>(null);
   // ORCH-1138 — the cart + native-checkout wiring the trip screen now owns
   // (ported from ExpandedBusinessEventSheet, scoped to the trip). The cart
   // fetches its own tickets/intake by eventId === tripId, exactly as EBES did.
@@ -345,6 +351,30 @@ export default function ConsumerTripDetailScreen({
   const queryClient = useQueryClient();
   const user = useAppStore((s) => s.user);
   const profile = useAppStore((s) => s.profile);
+  const explorerCheckoutContact = resolveExplorerCheckoutContact({
+    authUserId: user?.id,
+    authEmail: user?.email,
+    profileId: profile?.id,
+    profileDisplayName: profile?.display_name,
+    profilePhone: profile?.phone,
+    profileCountry: profile?.country,
+  });
+  const handleRecoveredCheckout = useCallback(
+    (outcome: NativeCheckoutOutcome): void => {
+      terminalSuccessCloseRef.current = outcome.outcome === "succeeded"
+        ? () => setCartVisible(false)
+        : null;
+      setCheckoutTerminalOutcome(outcome);
+      setCartVisible(true);
+    },
+    [],
+  );
+  useNativeCheckoutRecovery({
+    accountId: user?.id ?? null,
+    eventId: tripId,
+    recheckWhen: cartVisible,
+    onRecovered: handleRecoveredCheckout,
+  });
   // ORCH-1130 — consumer pay-full vs pay-over-time choice. Default "full" (the
   // deliberate non-surprising default; a buyer who does nothing pays the whole
   // price, never a silent partial). Threaded into the reserve flow so the
@@ -752,38 +782,19 @@ export default function ConsumerTripDetailScreen({
         toastManager.show("Please sign in to get tickets.", "warning");
         return { outcome: "canceled" };
       }
-      const buyerName =
-        profile?.display_name?.trim() || user.email?.split("@")[0] || "Guest";
-      const buyerEmail = user.email ?? profile?.email ?? "";
-      const buyerPhone = profile?.phone ?? "";
-
-      if (buyerEmail.length === 0) {
-        toastManager.show(
-          "We need an email on your profile to issue tickets.",
-          "warning",
-        );
-        return { outcome: "canceled" };
-      }
-      if (buyerPhone.length === 0) {
-        toastManager.show(
-          "Add a phone number to your profile to get tickets.",
-          "warning",
-        );
-        return { outcome: "canceled" };
-      }
-
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setCheckoutInFlight(true);
 
       let result: NativeCheckoutOutcome;
       try {
         result = await runNativeCheckout({
+          checkoutContractVersion: 2,
+          purchaseTermsAccepted: payload.purchaseTermsAccepted,
+          accountId: user.id,
           eventId: detail.tripId,
           lines: payload.lines,
           buyer: {
-            name: buyerName,
-            email: buyerEmail,
-            phone: buyerPhone,
+            ...payload.buyer,
             marketingOptIn: payload.marketingOptIn,
           },
           // ORCH-1244 (Apple 4.9) — the on-screen trip title becomes the Apple
@@ -793,12 +804,14 @@ export default function ConsumerTripDetailScreen({
           // server-side from the venue. ORCH-1016 (D2) — per-tier trip intake
           // answers ride intakeFormData; empty array omitted (byte-identical).
           ...(payload.intakeFormData.length > 0
-            ? { intakeFormData: payload.intakeFormData }
+            ? {
+              intakeFormData: payload.intakeFormData,
+              intakeUploadSessionId: payload.intakeUploadSessionId,
+            }
             : {}),
-          // ORCH-1130 / DISC-1130-A — forward the buyer's EXPLICIT pay-full vs
-          // pay-over-time choice ONLY for a plan trip (detail.hasPlan). Undefined
-          // for no-plan trips → request byte-identical; NEVER a silent 'auto'.
-          paymentPlanChoice: detail.hasPlan ? paymentPlanChoice : undefined,
+          // #3859 — each selected tier carries its own explicit full-pay or
+          // installment choice in payload.lines. No cart-wide scalar can
+          // overwrite a mixed trip cart.
           // issue #2265 — feed the cart sheet's pending copy.
           onPhase: setCheckoutPhase,
         });
@@ -811,6 +824,16 @@ export default function ConsumerTripDetailScreen({
       }
 
       if (result.outcome === "succeeded") {
+        if (result.provider !== undefined) {
+          captureNativePurchaseCompleted({
+            orderId: result.orderId,
+            eventId: detail.tripId,
+            totalCents: payload.totalCents,
+            currency: detail.currency ?? undefined,
+            provider: result.provider,
+            recovered: false,
+          });
+        }
         void Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Success,
         );
@@ -831,6 +854,9 @@ export default function ConsumerTripDetailScreen({
             if (attempts >= 3) clearInterval(interval);
           }, 1000);
         }
+      } else if (result.outcome === "pending") {
+        // The server has not finalized an order yet; the recovery panel owns
+        // the durable state and keeps retry unavailable.
       } else if (result.outcome === "canceled") {
         // Silent: user dismissed PaymentSheet.
       } else {
@@ -843,7 +869,6 @@ export default function ConsumerTripDetailScreen({
       checkoutInFlight,
       detail,
       user,
-      profile,
       runNativeCheckout,
       paymentPlanChoice,
       queryClient,
@@ -868,17 +893,30 @@ export default function ConsumerTripDetailScreen({
   const handleCartCheckout = useCallback(
     async (payload: TicketCartCheckoutPayload): Promise<void> => {
       const result = await handleBuy(payload);
-      if (result.outcome === "succeeded") setCartVisible(false);
+      if (result.outcome === "succeeded") {
+        terminalSuccessCloseRef.current = () => setCartVisible(false);
+        setCheckoutTerminalOutcome(result);
+      } else if (
+        result.outcome === "pending" ||
+        (result.outcome === "failed" && result.retryable !== undefined) ||
+        (result.outcome === "canceled" && result.retryable === true)
+      ) {
+        setCheckoutTerminalOutcome(result);
+      }
     },
     [handleBuy],
   );
 
   const handleCartCancel = useCallback((): void => {
+    const deferredSuccessClose = terminalSuccessCloseRef.current;
+    terminalSuccessCloseRef.current = null;
     setCartVisible(false);
     setInitialTicketTypeId(null);
+    setCheckoutTerminalOutcome(null);
     // META-ORCH-1174 Leg B3 — clear the multi-package seed so a later single-tier
     // Reserve doesn't re-seed the prior multi-selection.
     setSeededQuantities(undefined);
+    deferredSuccessClose?.();
   }, []);
 
   // Floating close/share chrome — preserved from the prior overlay, now layered
@@ -1212,9 +1250,9 @@ export default function ConsumerTripDetailScreen({
           (Seth, 2026-06-15). EBES stays for events/experiences only. Sibling
           BaseBottomSheet root in the same fragment so it overlays this sheet
           (feedback_rn_sub_sheet_must_render_inside_parent). The checkout request
-          is byte-identical to the prior two-tap EBES path (handleBuy ported
-          verbatim): same lines/buyer, same paymentPlanChoice forwarding, NO
-          address / taxCalculationId (venue-sourced tax, ORCH-1025/1130). */}
+          preserves the prior cart inputs (same lines/buyer and NO address /
+          taxCalculationId; venue-sourced tax, ORCH-1025/1130). #3859 moves
+          payment choice authority onto each line so mixed carts stay explicit. */}
       <TicketCartSheet
         visible={cartVisible}
         eventId={detail.tripId}
@@ -1227,15 +1265,15 @@ export default function ConsumerTripDetailScreen({
         // initialTicketTypeId). The cart lands pre-populated + editable (the
         // confirmation step). Empty/undefined → single-tier seed (Leg-A behavior).
         initialQuantities={seededQuantities}
-        buyerName={
-          profile?.display_name?.trim() || user?.email?.split("@")[0] || "Guest"
-        }
-        buyerEmail={user?.email ?? profile?.email ?? ""}
-        buyerPhone={profile?.phone ?? ""}
+        buyerName={explorerCheckoutContact.normalized.name}
+        buyerEmail={explorerCheckoutContact.normalized.email}
+        buyerPhone={explorerCheckoutContact.normalized.phone}
+        buyerCountryCode={profile?.id === user?.id ? profile?.country : null}
         brandName={seed?.brandName ?? null}
         buyerUserId={user?.id ?? null}
         isSubmitting={checkoutInFlight}
         pendingPhase={checkoutPhase}
+        terminalOutcome={checkoutTerminalOutcome}
         clearFloatingNav={false}
         // ORCH-1182 (supersedes ORCH-1130's qty-1 `dueTodayCents` scalar) — hand
         // the cart the per-tier plan data so IT sums the qty-scaled deposit over
@@ -1247,6 +1285,7 @@ export default function ConsumerTripDetailScreen({
         // with business/web). Empty for events / no-plan / pay-in-full.
         installmentNoteByTicketId={installmentNoteByTicketId}
         onCancel={handleCartCancel}
+        onTerminalRetry={() => setCheckoutTerminalOutcome(null)}
         onCheckout={handleCartCheckout}
       />
 

@@ -347,8 +347,12 @@ BEGIN
   v_payload := public.pg_public_trip_by_slug(f.v_brand_slug, f.v_trip_slug)::jsonb;
 
   SELECT string_agg(k, ',' ORDER BY k) INTO v_top FROM jsonb_object_keys(v_payload) AS k;
+  -- [TEST-MOD-APPROVED #3859] The public trip contract now truthfully exposes
+  -- whether any currently purchasable line has a server-confirmed installment
+  -- plan. Keep the full exact-key pin so no unrelated field can hitchhike.
+  -- The prior exact-key list was incomplete once that buyer-facing fact shipped.
   IF v_top IS DISTINCT FROM
-     'bookingDeadline,bookingsClosed,brand,brandId,brandSlug,coverGallery,coverMediaAlt,coverMediaType,coverMediaUrl,currency,days,departureLat,departureLng,departureText,description,destinationLat,destinationLng,destinationText,endAt,id,inclusions,refundPolicy,startAt,status,themeAnimationOverride,themeColorOverride,themeFontOverride,tiers,timezone,title,tripSlug' THEN
+     'bookingDeadline,bookingsClosed,brand,brandId,brandSlug,coverGallery,coverMediaAlt,coverMediaType,coverMediaUrl,currency,days,departureLat,departureLng,departureText,description,destinationLat,destinationLng,destinationText,endAt,id,inclusions,installmentCapabilityAvailable,refundPolicy,startAt,status,themeAnimationOverride,themeColorOverride,themeFontOverride,tiers,timezone,title,tripSlug' THEN
     RAISE EXCEPTION 'A-07 FAIL: the response keys changed: %', v_top;
   END IF;
 

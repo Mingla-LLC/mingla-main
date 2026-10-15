@@ -84,6 +84,7 @@ import { setTripPricingSwitches } from "../../services/tripsService";
 // ORCH-1339 — guest-privacy leaf-write RPC (never the big trip edit RPCs).
 import { setEventGuestPrivacy } from "../../services/businessEvents";
 import type { ThemeInput } from "@mingla/offering-rendering";
+import { tripInstallmentsSupported } from "@mingla/offering-rendering/tripInstallmentCapability";
 import {
   normalizeThemeOverrides,
   patchOfferingTheme,
@@ -776,6 +777,18 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       step1Draft.departureLng,
     ],
   );
+
+  // #3859 — capability is separate from payout readiness. Unknown is false;
+  // provider names never reach Host copy. Saved schedules stay in draft state.
+  const paymentPlansAvailable = tripInstallmentsSupported(
+    brand.paymentProvider,
+  );
+  const tripHasUnsupportedInstallments = useMemo(
+    () =>
+      !paymentPlansAvailable &&
+      step4Draft.packages.some((pkg) => pkg.paymentPlan !== null),
+    [paymentPlansAvailable, step4Draft.packages],
+  );
   const [showStep1AddressErrors, setShowStep1AddressErrors] =
     useState<boolean>(false);
 
@@ -1039,12 +1052,20 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
           quantityTotal: p.capacity,
           ticketsRemaining: persisted?.ticketsRemaining ?? null,
           isUnlimited: false,
-          installmentSchedule: p.paymentPlan,
-          description: p.description.trim().length > 0 ? p.description.trim() : null,
+          installmentSchedule: paymentPlansAvailable ? p.paymentPlan : null,
+          description:
+            p.description.trim().length > 0 ? p.description.trim() : null,
         };
       }),
     }),
-    [trip, step1Draft, daysDraft, inclusionsDraft, step4Draft],
+    [
+      trip,
+      step1Draft,
+      daysDraft,
+      inclusionsDraft,
+      step4Draft,
+      paymentPlansAvailable,
+    ],
   );
 
   // META-ORCH-1174 Leg B2 — the set of ticketTypeIds the server is known to
@@ -1559,7 +1580,15 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       showToast("Connect a bank to publish this paid trip.");
       return;
     }
-    // #3645 — instalment plans require a bank even when charge-ready.
+    if (tripHasUnsupportedInstallments) {
+      setStep(4);
+      showToast(
+        "This payment setup doesn't support payment plans. The saved schedule is kept, but it can't be published or shown to buyers.",
+      );
+      return;
+    }
+    // #3645 — supported instalment plans still require a bank even when the
+    // brand is charge-ready. Capability refusal above takes precedence.
     if (tripNeedsBankForInstallments) {
       showToast(
         "Connect a bank before publishing a trip with a payment plan.",
@@ -1615,10 +1644,20 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     } finally {
       setCheckingInvitePublish(false);
     }
-  }, [tripLocationValid, tripNeedsStripe, tripNeedsBankForInstallments,
-      packagesValidation, showToast, inviteSummary,
-    inviteEnabled, inviteRollbackReady, inviteFlag.data, step4Draft,
-    blockPaidPublishUntilAccepted]);
+  }, [
+    tripLocationValid,
+    tripNeedsStripe,
+    tripNeedsBankForInstallments,
+    tripHasUnsupportedInstallments,
+    packagesValidation,
+    showToast,
+    inviteSummary,
+    inviteEnabled,
+    inviteRollbackReady,
+    inviteFlag.data,
+    step4Draft,
+    blockPaidPublishUntilAccepted,
+  ]);
 
   useEffect(() => {
     resumePublishRef.current = (): void => {
@@ -2026,6 +2065,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               // #3645 — paid (or on a payment plan) and no bank yet: the
               // pricing step says the draft still saves.
               needsBankToPublish={tripNeedsStripe || tripNeedsBankForInstallments}
+              paymentPlansAvailable={paymentPlansAvailable}
             />
           ) : null}
           {/* ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — NEW Step 5
@@ -2163,6 +2203,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
                     submitting ||
                     tripNeedsStripe ||
                     tripNeedsBankForInstallments ||
+                    tripHasUnsupportedInstallments ||
                     !tripLocationValid ||
                     !packagesValidation.ok ||
                     !invitePublishReady ||

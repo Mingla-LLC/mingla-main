@@ -187,6 +187,17 @@ jest.mock("../../../services/postHogService", () => ({
 jest.mock("../../../payments/nativeCheckoutFlow", () => ({
   useNativeCheckoutFlow: () => () => Promise.resolve({ outcome: "canceled" }),
 }));
+jest.mock("../../../payments/useNativeCheckoutRecovery", () => ({
+  useNativeCheckoutRecovery: () => undefined,
+}));
+jest.mock("../../../payments/nativeCheckoutRecovery", () => ({
+  captureNativePurchaseCompleted: () => undefined,
+}));
+jest.mock("../../../payments/explorerCheckoutContact.mjs", () => ({
+  resolveExplorerCheckoutContact: () => ({
+    normalized: { name: "", email: "", phone: "" },
+  }),
+}));
 jest.mock("../../../components/ui/Toast", () => ({
   toastManager: { show: () => undefined },
 }));

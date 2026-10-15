@@ -1,14 +1,16 @@
 /**
  * META-ORCH-1161 Sub-A.2 (consent-capture slice) — record-consent
  *
- * The SHARED, surface-agnostic consent writer for the bundled-mandatory consent
- * gate (DEC-186). Both consent-capture surfaces call this one function:
+ * The SHARED, surface-agnostic consent writer. Existing bundled-mandatory
+ * callers retain DEC-186 behavior by omitting `scopes`; scope-aware callers can
+ * request the exact subset they actually presented and received. Both current
+ * consent-capture surfaces call this one function:
  *   - S2 consumer onboarding (app-mobile, source='onboarding', authenticated)
  *   - S3 anon buyer checkout (mingla-business, source='checkout', anon)
  *
  * It appends `consent_records` rows via the service-role client (RLS is
  * service-role-only for writes). For ONE grant it writes the cartesian product
- * of {scope: transactional, marketing} × {provided channel/contact}:
+ * of {resolved requested scopes} × {provided channel/contact}:
  *   - an 'sms'   row per provided phone (E.164)
  *   - an 'email' row per provided email (lowercased)
  * so a single bundled grant produces a transactional AND a marketing audit row
@@ -34,6 +36,7 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveConsentScopes } from "./scopes.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -92,6 +95,12 @@ interface RecordConsentRequest {
   disclosureText: string;
   /** Pins the disclosure wording version for the audit trail (DESIGN §6). */
   disclosureVersion?: string;
+  /**
+   * #3859 — scopes the caller actually presented and received. Omitted keeps
+   * the existing onboarding/legacy bundled behavior; explicit checkout callers
+   * can record transactional purchase acceptance without minting marketing.
+   */
+  scopes?: unknown;
   /** The just-created user (S2) or NULL (anon checkout, S3). */
   userId?: string | null;
   /** E.164 phone — produces the 'sms' consent rows. */
@@ -182,6 +191,14 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
+  const scopes = resolveConsentScopes(body.scopes);
+  if (scopes === null) {
+    return new Response(
+      JSON.stringify({ error: "invalid_consent_scopes" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
   // Normalize contacts. SMS rows key off the phone, email rows off the email.
   const phone =
     typeof body.phone === "string" && body.phone.trim().length > 0
@@ -216,11 +233,6 @@ serve(async (req: Request): Promise<Response> => {
   const channelContacts: Array<{ channel: "sms" | "email"; contact: string }> = [];
   if (phone !== null) channelContacts.push({ channel: "sms", contact: phone });
   if (email !== null) channelContacts.push({ channel: "email", contact: email });
-
-  const scopes: Array<"transactional" | "marketing"> = [
-    "transactional",
-    "marketing",
-  ];
 
   const ipHash = requestIp !== null ? await hashIp(requestIp) : null;
   const countryCode =

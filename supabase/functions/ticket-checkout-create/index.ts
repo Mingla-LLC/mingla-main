@@ -32,6 +32,21 @@ import {
   ticketCorsHeaders,
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
+import {
+  type CheckoutV2Line,
+  isCheckoutAttemptId,
+  normalizeCheckoutV2Lines,
+  TICKET_CHECKOUT_CONTRACT_VERSION,
+} from "../../../packages/offering-rendering/ticketCheckoutContract.ts";
+import {
+  canonicalCheckoutV2FingerprintInput,
+  checkoutV2IdempotencyKey,
+} from "../../../packages/offering-rendering/ticketCheckoutServerContract.ts";
+import {
+  computeMultiLineInstallmentPlan,
+  type InstallmentTemplate,
+  MultiLineInstallmentError,
+} from "../_shared/installments/computeMultiLineInstallmentPlan.ts";
 // ORCH-1006 [Universal all-in pricing engine] — shared money engine.
 // Slice 2 wires in the full engine: the gross-up (computeBuyerSubtotal), the
 // canonical breakdown assembler (buildPricingBreakdown), the region→behaviour
@@ -87,6 +102,11 @@ import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
 // shared by the Paystack callback_url and the Stripe success/cancel URLs.
 import { buyerWebSurfacePath } from "./buyerWebSurfacePath.ts";
 import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
+import {
+  checkoutSelectionUsesTripInstallments,
+  TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE,
+} from "../../../packages/offering-rendering/tripInstallmentCapability.ts";
+import { resolveIntakeUploadSessionId } from "./intakeUploadSession.ts";
 
 async function siteAttributionDigest(value: string): Promise<string> {
   const key = await crypto.subtle.importKey(
@@ -682,9 +702,36 @@ export const createTicketCheckoutCreateHandler = (
     // snapshot: taking a copy here would record `surface` as "unknown" on every
     // refusal after it, which is the shape of a log that looks populated and
     // answers nothing.
-    const lines = Array.isArray(body.lines)
-      ? body.lines.filter(isCheckoutLine)
-      : [];
+    const requestedContractVersion = body.checkoutContractVersion;
+    if (
+      requestedContractVersion !== undefined &&
+      requestedContractVersion !== TICKET_CHECKOUT_CONTRACT_VERSION
+    ) {
+      return jsonResponse({ error: "checkout_contract_version_invalid" }, 400);
+    }
+    const isCheckoutV2 = requestedContractVersion ===
+      TICKET_CHECKOUT_CONTRACT_VERSION;
+    let checkoutAttemptId: string | null = null;
+    let checkoutV2Lines: CheckoutV2Line[] | null = null;
+    if (isCheckoutV2) {
+      if (body.payment_plan_choice !== undefined) {
+        return jsonResponse({ error: "checkout_scalar_plan_forbidden" }, 400);
+      }
+      if (!isCheckoutAttemptId(body.checkoutAttemptId)) {
+        return jsonResponse({ error: "checkout_attempt_invalid" }, 400);
+      }
+      const parsedLines = normalizeCheckoutV2Lines(body.lines);
+      if (!parsedLines.ok) {
+        return jsonResponse({ error: parsedLines.error }, 400);
+      }
+      if (body.purchaseTermsAccepted !== true) {
+        return jsonResponse({ error: "purchase_terms_required" }, 400);
+      }
+      checkoutAttemptId = body.checkoutAttemptId;
+      checkoutV2Lines = parsedLines.lines;
+    }
+    const lines = checkoutV2Lines ??
+      (Array.isArray(body.lines) ? body.lines.filter(isCheckoutLine) : []);
     refusal.lines = lines;
 
     // issue #2694 — hoisted out of the #2150 branch. TWO possession checks now
@@ -759,14 +806,15 @@ export const createTicketCheckoutCreateHandler = (
       ? body.taxCalculationId
       : null;
     let paymentPlanChoice: PaymentPlanChoice = "auto";
-    if (body.payment_plan_choice !== undefined) {
+    if (isCheckoutV2) paymentPlanChoice = "full";
+    if (!isCheckoutV2 && body.payment_plan_choice !== undefined) {
       if (
         body.payment_plan_choice !== "full" &&
         body.payment_plan_choice !== "installments"
       ) {
         {
-        return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
-      }
+          return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
+        }
       }
       paymentPlanChoice = body.payment_plan_choice;
     }
@@ -1019,10 +1067,11 @@ export const createTicketCheckoutCreateHandler = (
     //     { ticket_type_id, schema_version_id, answers: {[questionId]: value} }
     //   ]
     // Trip-only effect; single-event flow unchanged (no event-side intake forms).
-    if (tripGateRow?.event_type === "trip") {
-      const intakeBody = Array.isArray(body.intake_form_data)
+    let canonicalIntakeFormData: unknown[] = [];
+    const intakeBody = Array.isArray(body.intake_form_data)
         ? (body.intake_form_data as Array<Record<string, unknown>>)
         : [];
+    if (tripGateRow?.event_type === "trip") {
 
       // Pull schemas for every ticket_type_id present in the cart.
       const ticketTypeIds = Array.from(
@@ -1113,6 +1162,67 @@ export const createTicketCheckoutCreateHandler = (
       }
     }
 
+    // #3859 — capability preflight before the session RPC and before provider
+    // I/O. Public readers remove unsupported plans, but a stale client can
+    // still replay `auto`/`installments`; selected tier metadata is therefore
+    // re-read here. Unknown/read-error capability fails closed. Full pay does
+    // not enter this branch and remains byte-for-byte on its existing path.
+    let selectedTripTierRows: Array<{
+      ticket_type_id: string;
+      tier_metadata: { installments?: InstallmentTemplate } | null;
+    }> = [];
+    const selectionRequestsInstallments = isCheckoutV2
+      ? checkoutV2Lines!.some((line) =>
+        line.paymentPlanChoice === "installments"
+      )
+      : paymentPlanChoice !== "full";
+    if (
+      tripGateRow?.event_type === "trip" &&
+      selectionRequestsInstallments
+    ) {
+      const selectedTicketTypeIds = Array.from(
+        new Set(lines.map((line) => line.ticketTypeId)),
+      );
+      const { data: selectedTierRows, error: selectedTierError } =
+        await supabase
+          .from("trip_pricing_tiers")
+          .select("ticket_type_id, tier_metadata")
+          .eq("event_id", eventId)
+          .in("ticket_type_id", selectedTicketTypeIds);
+      if (selectedTierError !== null) {
+        return refuse(
+          { error: TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE },
+          409,
+        );
+      }
+      selectedTripTierRows =
+        (selectedTierRows ?? []) as typeof selectedTripTierRows;
+      if (
+        (isCheckoutV2 && selectionRequestsInstallments) ||
+        (!isCheckoutV2 && checkoutSelectionUsesTripInstallments(
+          paymentPlanChoice,
+          selectedTierRows ?? [],
+        ))
+      ) {
+        const { data: installmentsSupported, error: capabilityError } =
+          await supabase.rpc("pg_trip_installments_supported", {
+            p_event_id: eventId,
+          });
+        if (capabilityError !== null || installmentsSupported !== true) {
+          return refuse(
+            { error: TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE },
+            409,
+          );
+        }
+      }
+    }
+    if (
+      isCheckoutV2 && selectionRequestsInstallments &&
+      tripGateRow?.event_type !== "trip"
+    ) {
+      return refuse({ error: "installment_plan_unavailable" }, 409);
+    }
+
     // issue #2696 — DERIVED ONLY. The caller no longer supplies this.
     //
     // The edge used to accept `body.idempotencyKey` verbatim, with no
@@ -1142,40 +1252,62 @@ export const createTicketCheckoutCreateHandler = (
     // request for event B can no longer be answered with event A's session. All
     // 179 live sessions already satisfy that relationship, so nothing legitimate
     // changes.
-    const idempotencyKey = checkoutIdempotencyKey({
-      eventId,
-      buyerEmail,
-      buyerPhoneE164,
-      lines,
-      paymentPlanChoice,
-      // issue #2160 — day-aware. Empty => string-identical to today's key.
-      eventDateIds: orderedEventDateIds,
-    });
+    const idempotencyKey = isCheckoutV2
+      ? checkoutV2IdempotencyKey({
+        eventId,
+        checkoutAttemptId: checkoutAttemptId!,
+      })
+      : checkoutIdempotencyKey({
+        eventId,
+        buyerEmail,
+        buyerPhoneE164,
+        lines,
+        paymentPlanChoice,
+        // issue #2160 — day-aware. Empty => string-identical to today's key.
+        eventDateIds: orderedEventDateIds,
+      });
     const buyerStatusToken = randomBuyerStatusToken();
 
-    const { data: sessionResult, error: sessionError } = await supabase.rpc(
+    const resolvedAttempt = isCheckoutV2
+      ? await supabase.rpc(
+        "issue_3859_resolve_checkout_attempt",
+        {
+          p_event_id: eventId,
+          p_checkout_attempt_id: checkoutAttemptId,
+        },
+      )
+      : { data: null, error: null };
+    // The literal call indentation is pinned by the append-only slice-1 source
+    // regression that proves capability refusal still precedes session I/O.
+    // deno-fmt-ignore
+    const sessionCall = resolvedAttempt.error !== null ||
+        resolvedAttempt.data !== null
+      ? resolvedAttempt
+      : await supabase.rpc(
       "biz_ticket_checkout_create_session",
       {
-        p_event_id: eventId,
-        p_buyer_user_id: userId,
-        p_buyer_name: buyerName,
-        p_buyer_email: buyerEmail,
-        p_buyer_phone_e164: buyerPhoneE164,
-        p_marketing_opt_in: marketingOptIn,
-        p_lines: lines,
-        p_idempotency_key: idempotencyKey,
-        p_expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-        p_application_fee_amount_cents: 0,
-        p_payment_plan_choice: paymentPlanChoice,
-        // issue #2160 — the chosen day set. The RPC owns validation, the
-        // event's pricing mode and the per-mode multiplier; this is a
-        // passthrough. `null` when empty so the call is byte-identical to
-        // today for every non-multi-day checkout.
-        p_event_date_ids: orderedEventDateIds.length > 0
-          ? orderedEventDateIds
-          : null,
+          p_event_id: eventId,
+          p_buyer_user_id: userId,
+          p_buyer_name: buyerName,
+          p_buyer_email: buyerEmail,
+          p_buyer_phone_e164: buyerPhoneE164,
+          p_marketing_opt_in: marketingOptIn,
+          p_lines: lines,
+          p_idempotency_key: idempotencyKey,
+          p_expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+          p_application_fee_amount_cents: 0,
+          p_payment_plan_choice: paymentPlanChoice,
+          // issue #2160 — the chosen day set. The RPC owns validation, the
+          // event's pricing mode and the per-mode multiplier; this is a
+          // passthrough. `null` when empty so the call is byte-identical to
+          // today for every non-multi-day checkout.
+          p_event_date_ids: orderedEventDateIds.length > 0
+            ? orderedEventDateIds
+            : null,
       },
-    );
+      );
+    const sessionResult: unknown = sessionCall.data;
+    const sessionError: { message?: string } | null = sessionCall.error;
 
     if (sessionError || !sessionResult) {
       console.error(
@@ -1208,6 +1340,16 @@ export const createTicketCheckoutCreateHandler = (
         return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
       }
       }
+      if (
+        sessionError?.message?.includes(
+          TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE,
+        )
+      ) {
+        return jsonResponse(
+          { error: TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE },
+          409,
+        );
+      }
       // Issue #2101 — the database re-decides under the event -> brand lock. If
       // the policy or membership changed between the Edge decision above and
       // the session RPC, the stable bounded contract is returned, not a generic
@@ -1233,8 +1375,186 @@ export const createTicketCheckoutCreateHandler = (
       );
     }
 
-    const session = sessionResult as Record<string, unknown>;
+    let session = sessionResult as Record<string, unknown>;
     const checkoutSessionId = String(session.checkoutSessionId ?? "");
+    let checkoutV2Fingerprint: string | null = null;
+
+    if (intakeBody.length > 0) {
+      const intakeUploadSessionId = resolveIntakeUploadSessionId(
+        body.intake_upload_session_id,
+      );
+      if (intakeUploadSessionId === null) {
+        return jsonResponse({ error: "intake_upload_claim_invalid" }, 409);
+      }
+      const attached = await supabase.rpc("issue_3859_attach_intake_snapshot", {
+        p_checkout_session_id: checkoutSessionId,
+        p_event_id: eventId,
+        p_buyer_user_id: userId,
+        p_upload_session_id: intakeUploadSessionId,
+        p_checkout_claim_key: idempotencyKey,
+        p_checkout_attempt_id: isCheckoutV2 ? checkoutAttemptId : null,
+        p_lines: lines,
+        p_intake_form_data: intakeBody,
+      });
+      if (attached.error !== null || !Array.isArray(attached.data)) {
+        const stale = attached.error?.message?.includes("intake_schema_stale");
+        return jsonResponse(
+          { error: stale ? "intake_schema_stale" : "intake_upload_claim_invalid" },
+          409,
+        );
+      }
+      canonicalIntakeFormData = attached.data;
+    }
+
+    // #3859 checkout-v2 binds the normalized client intent to the canonical
+    // server quote before any free finalization or provider I/O. The legacy
+    // path never enters this block and remains byte-for-byte on its scalar
+    // contract until the versioned clients ship in slice 4B.
+    if (isCheckoutV2) {
+      const sessionItems = Array.isArray(session.lineItems)
+        ? session.lineItems as Array<Record<string, unknown>>
+        : [];
+      const requestedById = new Map(
+        checkoutV2Lines!.map((line) => [line.ticketTypeId, line]),
+      );
+      const canonicalLines = sessionItems.map((item) => {
+        const ticketTypeId = String(item.ticketTypeId ?? "");
+        const requested = requestedById.get(ticketTypeId);
+        return {
+          ticketTypeId,
+          quantity: Number(item.quantity),
+          unitPriceCents: Number(item.unitPriceCents),
+          totalCents: Number(item.totalCents),
+          paymentPlanChoice: requested?.paymentPlanChoice ?? "full" as const,
+          requestedQuantity: requested?.quantity,
+        };
+      });
+      const canonicalLineSetIsExact =
+        canonicalLines.length === checkoutV2Lines!.length &&
+        canonicalLines.every((line) =>
+          requestedById.has(line.ticketTypeId) &&
+          line.requestedQuantity === line.quantity &&
+          Number.isInteger(line.quantity) && line.quantity > 0 &&
+          Number.isInteger(line.unitPriceCents) && line.unitPriceCents >= 0 &&
+          line.totalCents === line.unitPriceCents * line.quantity
+        );
+      if (!canonicalLineSetIsExact) {
+        return refuse({ error: "checkout_review_required" }, 409);
+      }
+
+      const { data: contractSessionRow, error: contractSessionError } =
+        await supabase.from("ticket_checkout_sessions")
+          .select("created_at")
+          .eq("id", checkoutSessionId)
+          .eq("event_id", eventId)
+          .maybeSingle();
+      if (
+        contractSessionError !== null ||
+        typeof contractSessionRow?.created_at !== "string"
+      ) {
+        return jsonResponse({ error: "checkout_contract_unavailable" }, 409);
+      }
+
+      const tierByTicketType = new Map(
+        selectedTripTierRows.map((
+          row,
+        ) => [row.ticket_type_id, row.tier_metadata]),
+      );
+      let computedPlan: ReturnType<typeof computeMultiLineInstallmentPlan>;
+      try {
+        computedPlan = computeMultiLineInstallmentPlan({
+          bookedAt: new Date(contractSessionRow.created_at),
+          lines: canonicalLines.map((line) => ({
+            ticketTypeId: line.ticketTypeId,
+            lineTotalCents: line.totalCents,
+            paymentPlanChoice: line.paymentPlanChoice,
+            template: tierByTicketType.get(line.ticketTypeId)?.installments ??
+              null,
+          })),
+        });
+      } catch (error) {
+        if (error instanceof MultiLineInstallmentError) {
+          return refuse({ error: error.code }, 409);
+        }
+        throw error;
+      }
+      if (computedPlan.hasInstallments && computedPlan.dueTodayCents <= 0) {
+        return refuse({ error: "installment_deposit_invalid" }, 409);
+      }
+
+      const fullPriceCents = canonicalLines.reduce(
+        (sum, line) => sum + line.totalCents,
+        0,
+      );
+      const currency = String(session.currency ?? "").trim().toUpperCase();
+      const installmentSchedule = computedPlan.hasInstallments
+        ? {
+          fullPriceCents,
+          depositCents: computedPlan.dueTodayCents,
+          currency,
+          installments: computedPlan.scheduled,
+        }
+        : null;
+      checkoutV2Fingerprint = await sha256Hex(
+        canonicalCheckoutV2FingerprintInput({
+          eventId,
+          checkoutAttemptId: checkoutAttemptId!,
+          purchaseTermsAccepted: true,
+          buyer: {
+            userId,
+            name: buyerName,
+            email: buyerEmail,
+            phoneE164: buyerPhoneE164,
+            marketingOptIn,
+          },
+          providerInput: { surface },
+          lines: canonicalLines.map((
+            { requestedQuantity: _ignored, ...line },
+          ) => line),
+          eventDateId: anchorEventDateId ?? eventDateId,
+          eventDateIds: orderedEventDateIds,
+          intakeFormData: canonicalIntakeFormData,
+          quote: {
+            currency,
+            fullPriceCents,
+            dueTodayCents: computedPlan.dueTodayCents,
+            installmentSchedule,
+          },
+        }),
+      );
+
+      const { data: boundContract, error: bindError } = await supabase.rpc(
+        "issue_3859_bind_checkout_contract",
+        {
+          p_checkout_session_id: checkoutSessionId,
+          p_event_id: eventId,
+          p_idempotency_key: idempotencyKey,
+          p_checkout_attempt_id: checkoutAttemptId,
+          p_checkout_fingerprint: checkoutV2Fingerprint,
+          p_lines: checkoutV2Lines,
+          p_due_today_cents: computedPlan.dueTodayCents,
+          p_full_price_cents: fullPriceCents,
+          p_installment_schedule: installmentSchedule,
+        },
+      );
+      if (bindError !== null || boundContract === null) {
+        const detail = bindError?.message ?? "checkout_contract_bind_failed";
+        if (
+          detail.includes("checkout_fingerprint_conflict") ||
+          detail.includes("checkout_lines_conflict")
+        ) {
+          return refuse({ error: "checkout_review_required" }, 409);
+        }
+        return jsonResponse({ error: "checkout_contract_unavailable" }, 409);
+      }
+      const bound = boundContract as Record<string, unknown>;
+      session = {
+        ...session,
+        totalCents: bound.totalCents,
+        subtotalCents: bound.totalCents,
+        installmentSchedule: bound.installmentSchedule,
+      };
+    }
 
     // ===================================================================
     // issue #2150 [duplicate free tickets on resubmit] — IDEMPOTENT REPLAY
@@ -1927,6 +2247,9 @@ export const createTicketCheckoutCreateHandler = (
       const psRequestFingerprint = await sha256Hex(JSON.stringify({
         checkoutSessionId,
         eventId,
+        ...(checkoutV2Fingerprint !== null
+          ? { checkoutFingerprint: checkoutV2Fingerprint }
+          : {}),
         amount: psBuyerTotalCents,
         currency: psCurrency,
         applicationFee: psApplicationFeeCents,
@@ -2392,6 +2715,9 @@ export const createTicketCheckoutCreateHandler = (
       const webRequestFingerprint = await sha256Hex(JSON.stringify({
         checkoutSessionId,
         eventId,
+        ...(checkoutV2Fingerprint !== null
+          ? { checkoutFingerprint: checkoutV2Fingerprint }
+          : {}),
         amount: buyerSubtotal.buyerSubtotalCents,
         currency,
         applicationFee: applicationFeeAmountCents,
@@ -2648,6 +2974,9 @@ export const createTicketCheckoutCreateHandler = (
         requestFingerprint: await sha256Hex(JSON.stringify({
           checkoutSessionId,
           eventId,
+          ...(checkoutV2Fingerprint !== null
+            ? { checkoutFingerprint: checkoutV2Fingerprint }
+            : {}),
           totalCents,
           currency,
           applicationFee: applicationFeeAmountCents,

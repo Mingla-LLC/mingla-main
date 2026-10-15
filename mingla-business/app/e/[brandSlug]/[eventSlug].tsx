@@ -21,6 +21,10 @@ import {
   fireAdPageView,
   fireAdViewContent,
 } from "../../../src/analytics/webAnalytics";
+import {
+  captureBuyerWebPublicPageViewed,
+  resolveBuyerWebPublicLifecycle,
+} from "../../../src/analytics/publicParityWebAdapter";
 
 import {
   spacing,
@@ -48,6 +52,14 @@ export default function PublicEventRoute(): React.ReactElement {
     typeof brandSlug === "string" ? brandSlug : null,
     typeof eventSlug === "string" ? eventSlug : null,
   );
+  const routeState = resolveBuyerWebPublicLifecycle({
+    hasData: publicEventQuery.data !== null &&
+      publicEventQuery.data !== undefined,
+    isLoading: publicEventQuery.isLoading,
+    isFetching: publicEventQuery.isFetching,
+    isError: publicEventQuery.isError,
+    isStale: publicEventQuery.isStale,
+  });
   // issue #3284 — start the refund ladder's chunk in the same mount that starts the
   // page data fetch above, so when the data lands the body usually paints the
   // ladder on its first frame. Nothing waits on it: if the data wins, the body
@@ -60,6 +72,7 @@ export default function PublicEventRoute(): React.ReactElement {
   // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount
   // (top of the web acquisition funnel). Web-only (no-op on native).
   const viewFiredRef = useRef<boolean>(false);
+  const parityViewFiredRef = useRef<boolean>(false);
   useEffect(() => {
     if (viewFiredRef.current) return;
     viewFiredRef.current = true;
@@ -80,7 +93,25 @@ export default function PublicEventRoute(): React.ReactElement {
     fireAdViewContent();
   }, [brandSlug, eventSlug]);
 
-  if (publicEventQuery.isLoading || publicEventQuery.isFetching) {
+  useEffect(() => {
+    const detail = publicEventQuery.data;
+    if (parityViewFiredRef.current || detail === null || detail === undefined) {
+      return;
+    }
+    parityViewFiredRef.current = true;
+    void captureBuyerWebPublicPageViewed({
+      target: {
+        kind: "event",
+        entityKind: detail.event.event_type === "rsvp" ? "rsvp" : "event",
+        entityId: detail.event.id,
+        brandSlug: detail.event.brandSlug,
+        eventSlug: detail.event.eventSlug,
+      },
+      state: routeState,
+    });
+  }, [publicEventQuery.data, routeState]);
+
+  if (routeState === "loading") {
     return (
       <View style={styles.stateWrap}>
         <ActivityIndicator />
@@ -89,7 +120,7 @@ export default function PublicEventRoute(): React.ReactElement {
     );
   }
 
-  if (publicEventQuery.isError) {
+  if (routeState === "error") {
     return (
       <View style={styles.stateWrap}>
         <Text style={styles.stateTitle}>Event could not load</Text>

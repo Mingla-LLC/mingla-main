@@ -88,6 +88,10 @@ import {
   fireAdPageView,
   fireAdViewContent,
 } from "../../../src/analytics/webAnalytics";
+import {
+  captureBuyerWebPublicPageViewed,
+  resolveBuyerWebPublicLifecycle,
+} from "../../../src/analytics/publicParityWebAdapter";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
 // §3). LAZY (ORCH-1083 budget): tap-opened, never boot-path — a static import
@@ -142,6 +146,13 @@ export default function PublicTripRoute(): React.ReactElement {
     typeof brandSlug === "string" ? brandSlug : null,
     typeof tripSlug === "string" ? tripSlug : null,
   );
+  const routeState = resolveBuyerWebPublicLifecycle({
+    hasData: query.data !== null && query.data !== undefined,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    isError: query.isError,
+    isStale: query.isStale,
+  });
   // issue #3284 — start the refund ladder's chunk in the same mount that starts the
   // page data fetch above, so when the data lands the body usually paints the
   // ladder on its first frame. Nothing waits on it: if the data wins, the body
@@ -154,6 +165,7 @@ export default function PublicTripRoute(): React.ReactElement {
   // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount.
   // Web-only (no-op on native).
   const viewFiredRef = useRef<boolean>(false);
+  const parityViewFiredRef = useRef<boolean>(false);
   useEffect(() => {
     if (viewFiredRef.current) return;
     viewFiredRef.current = true;
@@ -172,6 +184,23 @@ export default function PublicTripRoute(): React.ReactElement {
     fireAdPageView();
     fireAdViewContent();
   }, [brandSlug, tripSlug]);
+
+  useEffect(() => {
+    const payload = query.data;
+    if (parityViewFiredRef.current || payload === null || payload === undefined) {
+      return;
+    }
+    parityViewFiredRef.current = true;
+    void captureBuyerWebPublicPageViewed({
+      target: {
+        kind: "trip",
+        entityId: payload.trip.id,
+        brandSlug: payload.brand.slug,
+        tripSlug: payload.trip.slug,
+      },
+      state: routeState,
+    });
+  }, [query.data, routeState]);
 
   // META-ORCH-1174 Leg B3 — the per-package selection + per-package plan choice
   // (the §10 multi-package box owns the values; the shared state derives the
@@ -251,7 +280,7 @@ export default function PublicTripRoute(): React.ReactElement {
     setMuted((m) => !m);
   }, []);
 
-  if (query.isLoading || query.isFetching) {
+  if (routeState === "loading") {
     return (
       <View style={styles.stateHost}>
         <ActivityIndicator />
@@ -260,7 +289,7 @@ export default function PublicTripRoute(): React.ReactElement {
     );
   }
 
-  if (query.isError) {
+  if (routeState === "error") {
     // ORCH-0879: surface PostgrestError.message (Supabase errors are
     // { code, message, details, hint } objects, NOT JS Error instances).
     const rawError: unknown = query.error;
@@ -422,6 +451,28 @@ const ResolvedTripPage: React.FC<{
     [payload.brand],
   );
 
+  // #3859 — the single-tier desktop layout renders the same payment choice in
+  // the package row and the sticky summary. Keep the two existing controls on
+  // one value in both directions so the page can never show "Pay in full" beside
+  // an installment due-today total (or vice versa). Multi-tier carts keep their
+  // independent per-package choices; their sticky summary has no plan selector.
+  const soleTierId =
+    data.tiers.length === 1 ? data.tiers[0]?.ticketTypeId ?? null : null;
+  const handleSynchronizedPaymentPlanChoice = useCallback(
+    (value: TripPaymentPlanChoice): void => {
+      onPaymentPlanChoiceChange(value);
+      if (soleTierId !== null) onChangePlanChoice(soleTierId, value);
+    },
+    [onChangePlanChoice, onPaymentPlanChoiceChange, soleTierId],
+  );
+  const handleSynchronizedTierPlanChoice = useCallback(
+    (ticketTypeId: string, value: TripPaymentPlanChoice): void => {
+      onChangePlanChoice(ticketTypeId, value);
+      if (ticketTypeId === soleTierId) onPaymentPlanChoiceChange(value);
+    },
+    [onChangePlanChoice, onPaymentPlanChoiceChange, soleTierId],
+  );
+
   // META-ORCH-1174 Leg B3 (Seth, ORCH-1138 preserved) — Reserve routes STRAIGHT to
   // the trip checkout chain. DEC-B: the SELECTED LINES ride a JSON `lines` route
   // param `[{ticketTypeId, quantity, paymentPlanChoice?}]` so the checkout index
@@ -463,6 +514,14 @@ const ResolvedTripPage: React.FC<{
       }
       if (tripAccess.blocked) return;
       recordShareDestination("book_trip");
+      // #3859 — a package-row Reserve supplies authoritative per-line choices
+      // but no scalar choice. Project those lines into the legacy scalar too so
+      // the URL never says plan=full while its line payload says installments.
+      // Explicit split-button choices still win, and lines remain authoritative
+      // inside checkout for mixed carts and recovery.
+      if (choice === undefined && lines !== undefined && lines.length > 0) {
+        choice = collapseTripPlanChoice(lines);
+      }
       const linesParam =
         lines !== undefined && lines.length > 0
           ? { lines: JSON.stringify(lines) }
@@ -695,11 +754,11 @@ const ResolvedTripPage: React.FC<{
         onViewBrand={handleViewBrand}
         stateBanner={stateBanner}
         paymentPlanChoice={paymentPlanChoice}
-        onPaymentPlanChoiceChange={onPaymentPlanChoiceChange}
+        onPaymentPlanChoiceChange={handleSynchronizedPaymentPlanChoice}
         quantities={quantities}
         onChangeQuantity={onChangeQuantity}
         planChoiceByTier={planChoiceByTier}
-        onChangePlanChoice={onChangePlanChoice}
+        onChangePlanChoice={handleSynchronizedTierPlanChoice}
         onReserve={handleTripReserve}
         reserveControl={reserveControl}
         contentBottomInset={contentBottomInset}

@@ -38,6 +38,8 @@ import React, {
   useState,
 } from "react";
 import {
+  Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -80,7 +82,7 @@ import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
 import { phoneStartCountryForCurrency } from "../../../src/utils/phoneStartCountryForCurrency";
-import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
+import { tripSummedDueTodayCents } from "@mingla/offering-rendering";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
 // issue #2337 — the trip rail's FREE branch used to render `error.message`
 // straight to the guest, so a handled 409 arrived as the literal transport
@@ -97,18 +99,19 @@ import {
 } from "../../../src/services/ticketCheckoutService";
 import { recordConsent } from "../../../src/services/consentService";
 import {
-  CONSENT_VISIBLE_FOLLOW_AFTER,
-  CONSENT_VISIBLE_FOLLOW_BEFORE,
-  CONSENT_VISIBLE_LABEL_LINK,
-  CONSENT_VISIBLE_LABEL_PREFIX,
-  DISCLOSURE_VERSION,
-  GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT,
-  GUEST_CHECKOUT_DISCLOSURE_VERSION,
-  GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX,
-  consentDisclosureText,
-  consentTermsBody,
-  consentVisibleLabelSuffix,
-  resolveConsentBrandName,
+  CHECKOUT_MARKETING_DISCLOSURE_TEXT,
+  CHECKOUT_MARKETING_DISCLOSURE_VERSION,
+  CHECKOUT_MARKETING_HELPER,
+  CHECKOUT_MARKETING_LABEL,
+  PURCHASE_PRIVACY_URL,
+  PURCHASE_TERMS_DISCLOSURE_TEXT,
+  PURCHASE_TERMS_DISCLOSURE_VERSION,
+  PURCHASE_TERMS_LABEL_JOINER,
+  PURCHASE_TERMS_LABEL_PREFIX,
+  PURCHASE_TERMS_LABEL_PRIVACY,
+  PURCHASE_TERMS_LABEL_SUFFIX,
+  PURCHASE_TERMS_LABEL_TERMS,
+  PURCHASE_TERMS_URL,
 } from "../../../src/constants/consentDisclosure";
 import { supabase } from "../../../src/services/supabase";
 
@@ -122,7 +125,6 @@ import {
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { ConsentTermsSheet } from "../../../src/components/checkout/ConsentTermsSheet";
 import {
   isContinueDisabled,
   shouldShowConsentHintOnDisabledTap,
@@ -269,8 +271,6 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
 
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
-  const tripBrand = publicTripQuery.data?.brand ?? null;
-  const brandDisplayName = tripBrand?.name ?? null;
   // issue #3351 — `intakeFormData` is read here for the first time. Without it
   // this screen could not tell "the organiser asks questions" from "the
   // traveller has answered them", which is the whole defect.
@@ -278,9 +278,10 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     lines,
     buyer,
     intakeFormData,
+    intakeUploadSessionId,
     setBuyer,
     recordResult,
-    paymentPlanChoice,
+    checkoutAttemptIdFor,
   } = useCart();
   const totals = useCartTotals();
 
@@ -291,26 +292,32 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   // use (mirror of index.tsx's dueTodayCents memo) — NEVER recomputed here.
   // null → no due-today line (pay-in-full / no-plan), Total only (unchanged).
   const dueTodayCents = useMemo<number | null>(() => {
-    if (paymentPlanChoice !== "installments" || trip === null) return null;
-    for (const line of lines) {
-      const sourceTier = trip.pricingTiers.find(
-        (t) => t.ticketTypeId === line.ticketTypeId,
-      );
-      if (
-        sourceTier !== undefined &&
-        sourceTier.installmentSchedule !== null &&
-        line.quantity >= 1
-      ) {
-        const projected = projectInstallmentSchedule(
-          sourceTier,
-          new Date(),
-          line.quantity,
-        );
-        if (projected !== null) return projected.depositCents;
-      }
-    }
-    return null;
-  }, [paymentPlanChoice, trip, lines]);
+    if (
+      trip === null ||
+      !lines.some((line) => line.paymentPlanChoice === "installments")
+    ) return null;
+    return tripSummedDueTodayCents(
+      trip.pricingTiers.map((tier) => ({
+        ticketTypeId: tier.ticketTypeId,
+        priceCents: tier.priceCents,
+        priceAllInCents:
+          tier.priceAllInGbp == null
+            ? null
+            : Math.round(tier.priceAllInGbp * 100),
+        isFree: tier.priceCents === 0,
+        isUnlimited: tier.isUnlimited,
+        ticketsRemaining: tier.ticketsRemaining,
+        installmentSchedule: tier.installmentSchedule,
+      })),
+      Object.fromEntries(lines.map((line) => [line.ticketTypeId, line.quantity])),
+      Object.fromEntries(
+        lines.map((line) => [
+          line.ticketTypeId,
+          line.paymentPlanChoice ?? "full",
+        ]),
+      ),
+    );
+  }, [trip, lines]);
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — fetch per-tier intake schemas to
   // decide whether to route Continue → /intake (before /payment) when any
@@ -371,15 +378,10 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
   const submitInFlight = useRef<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const termsAccepted = buyer.termsAccepted === true;
-  const [termsSheetVisible, setTermsSheetVisible] = useState<boolean>(false);
   const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
   const [authReady, setAuthReady] = useState<boolean>(false);
-  const [signedInBuyer, setSignedInBuyer] = useState<boolean>(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
-  const acceptedGrantRef = useRef<{
-    followCapable: boolean;
-    userId: string | null;
-  } | null>(null);
+  const acceptedGrantRef = useRef<{ userId: string | null } | null>(null);
   useEffect(() => {
     let cancelled = false;
     void Promise.resolve()
@@ -389,13 +391,11 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         const id = result?.data?.session?.user?.id;
         const readyId = typeof id === "string" && id.length > 0 ? id : null;
         setSessionUserId(readyId);
-        setSignedInBuyer(readyId !== null);
         setAuthReady(true);
       })
       .catch(() => {
         if (!cancelled) {
           setSessionUserId(null);
-          setSignedInBuyer(false);
           setAuthReady(true);
         }
       });
@@ -403,29 +403,21 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
       cancelled = true;
     };
   }, []);
-  const acceptTerms = useCallback((): void => {
-    if (!authReady) return;
-    acceptedGrantRef.current = {
-      followCapable: signedInBuyer,
-      userId: sessionUserId,
-    };
-    setBuyer({ termsAccepted: true, marketingOptIn: true });
-    setConsentHintVisible(false);
-  }, [authReady, sessionUserId, setBuyer, signedInBuyer]);
   const toggleTerms = useCallback((): void => {
     if (!authReady) return;
     const next = !(buyer.termsAccepted === true);
     if (next) {
-      acceptedGrantRef.current = {
-        followCapable: signedInBuyer,
-        userId: sessionUserId,
-      };
+      acceptedGrantRef.current = { userId: sessionUserId };
     } else {
       acceptedGrantRef.current = null;
     }
-    setBuyer({ termsAccepted: next, marketingOptIn: next });
+    setBuyer({ termsAccepted: next });
     if (next) setConsentHintVisible(false);
-  }, [authReady, buyer.termsAccepted, sessionUserId, setBuyer, signedInBuyer]);
+  }, [authReady, buyer.termsAccepted, sessionUserId, setBuyer]);
+  const toggleMarketing = useCallback((): void => {
+    if (!authReady) return;
+    setBuyer({ marketingOptIn: !buyer.marketingOptIn });
+  }, [authReady, buyer.marketingOptIn, setBuyer]);
 
   const [nameTouched, setNameTouched] = useState<boolean>(false);
   const [emailTouched, setEmailTouched] = useState<boolean>(false);
@@ -561,7 +553,17 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         eventId: tripEventId,
         buyer,
         lines,
+        ...(Platform.OS === "web"
+          ? {
+            checkoutContractVersion: 2 as const,
+            checkoutAttemptId: checkoutAttemptIdFor({
+              eventId: tripEventId,
+              surface: "web",
+            }),
+          }
+          : {}),
         ...(intakeArray.length > 0 ? { intakeFormData: intakeArray } : {}),
+        ...(intakeArray.length > 0 ? { intakeUploadSessionId } : {}),
       });
       if (result.kind !== "free_completed") {
         throw new Error("Free reservation unexpectedly required payment.");
@@ -604,7 +606,16 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
       submitInFlight.current = false;
       setSubmitting(false);
     }
-  }, [tripEventId, intakeFormData, lines, buyer, recordResult, router]);
+  }, [
+    tripEventId,
+    intakeFormData,
+    intakeUploadSessionId,
+    lines,
+    buyer,
+    checkoutAttemptIdFor,
+    recordResult,
+    router,
+  ]);
 
   const showConsentHint = useCallback((): void => {
     setNameTouched(true);
@@ -637,16 +648,12 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     setSubmitError(null);
     try {
       const grant = acceptedGrantRef.current;
-      const followCapable = grant?.followCapable === true;
-      const buyerUserId = followCapable ? grant?.userId ?? null : null;
+      const buyerUserId = grant?.userId ?? null;
       const consentResult = await recordConsent({
         source: "checkout",
-        disclosureText: followCapable
-          ? consentDisclosureText(brandDisplayName)
-          : GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT,
-        disclosureVersion: followCapable
-          ? DISCLOSURE_VERSION
-          : GUEST_CHECKOUT_DISCLOSURE_VERSION,
+        disclosureText: PURCHASE_TERMS_DISCLOSURE_TEXT,
+        disclosureVersion: PURCHASE_TERMS_DISCLOSURE_VERSION,
+        scopes: ["transactional"],
         phone: buyer.phone,
         email: buyer.email,
         countryCode: phoneCountry,
@@ -657,6 +664,24 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         console.error(
           "[checkout-trip-buyer] consent_records write failed (proceeding; checkbox act stands)",
         );
+      }
+      if (buyer.marketingOptIn) {
+        const marketingConsentResult = await recordConsent({
+          source: "checkout",
+          disclosureText: CHECKOUT_MARKETING_DISCLOSURE_TEXT,
+          disclosureVersion: CHECKOUT_MARKETING_DISCLOSURE_VERSION,
+          scopes: ["marketing"],
+          phone: buyer.phone,
+          email: buyer.email,
+          countryCode: phoneCountry,
+          userId: buyerUserId,
+          eventId: tripEventId,
+        });
+        if (!marketingConsentResult.ok) {
+          console.error(
+            "[checkout-trip-buyer] marketing consent write failed (proceeding; optional checkbox act stands)",
+          );
+        }
       }
     } catch (consentErr) {
       console.error("[checkout-trip-buyer] consent write threw", consentErr);
@@ -707,9 +732,9 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
     detailsDecision,
     router,
     runFreeReservation,
-    brandDisplayName,
     buyer.phone,
     buyer.email,
+    buyer.marketingOptIn,
     phoneCountry,
   ]);
 
@@ -907,16 +932,13 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
           />
         </View>
 
-        {/* #3682 — bundled consent (Follow when signed-in; guest copy otherwise). */}
+        {/* #3859 — purchase acceptance and optional marketing are separate. */}
         <Pressable
           onPress={toggleTerms}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: termsAccepted, disabled: !authReady }}
-          accessibilityLabel={`${CONSENT_VISIBLE_LABEL_PREFIX}${CONSENT_VISIBLE_LABEL_LINK}${
-            signedInBuyer
-              ? consentVisibleLabelSuffix(brandDisplayName)
-              : GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
-          }`}
+          aria-checked={termsAccepted}
+          accessibilityLabel={PURCHASE_TERMS_DISCLOSURE_TEXT}
           disabled={!authReady}
           style={({ pressed }) => [
             styles.checkboxRow,
@@ -935,26 +957,31 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
             ) : null}
           </View>
           <Text style={styles.checkboxLabel}>
-            {CONSENT_VISIBLE_LABEL_PREFIX}
+            {PURCHASE_TERMS_LABEL_PREFIX}
             <Text
               style={styles.checkboxLinkUnderlined}
-              onPress={() => setTermsSheetVisible(true)}
+              onPress={(event) => {
+                event.stopPropagation();
+                void Linking.openURL(PURCHASE_TERMS_URL);
+              }}
               accessibilityRole="link"
-              accessibilityLabel="Open all terms and conditions"
+              accessibilityLabel="Open Mingla Terms of Service"
             >
-              {CONSENT_VISIBLE_LABEL_LINK}
+              {PURCHASE_TERMS_LABEL_TERMS}
             </Text>
-            {signedInBuyer ? (
-              <>
-                {CONSENT_VISIBLE_FOLLOW_BEFORE}
-                <Text style={styles.checkboxFollowBrand}>
-                  {resolveConsentBrandName(brandDisplayName)}
-                </Text>
-                {CONSENT_VISIBLE_FOLLOW_AFTER}
-              </>
-            ) : (
-              GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
-            )}
+            {PURCHASE_TERMS_LABEL_JOINER}
+            <Text
+              style={styles.checkboxLinkUnderlined}
+              onPress={(event) => {
+                event.stopPropagation();
+                void Linking.openURL(PURCHASE_PRIVACY_URL);
+              }}
+              accessibilityRole="link"
+              accessibilityLabel="Open Mingla Privacy Policy"
+            >
+              {PURCHASE_TERMS_LABEL_PRIVACY}
+            </Text>
+            {PURCHASE_TERMS_LABEL_SUFFIX}
           </Text>
         </Pressable>
         {consentHintVisible && !termsAccepted ? (
@@ -962,6 +989,36 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
             Please agree to continue.
           </Text>
         ) : null}
+        <Pressable
+          onPress={toggleMarketing}
+          accessibilityRole="checkbox"
+          accessibilityState={{
+            checked: buyer.marketingOptIn,
+            disabled: !authReady,
+          }}
+          aria-checked={buyer.marketingOptIn}
+          accessibilityLabel={`${CHECKOUT_MARKETING_LABEL} ${CHECKOUT_MARKETING_HELPER}`}
+          disabled={!authReady}
+          style={({ pressed }) => [
+            styles.checkboxRow,
+            pressed && styles.checkboxRowPressed,
+          ]}
+        >
+          <View
+            style={[
+              styles.checkboxBox,
+              buyer.marketingOptIn && styles.checkboxBoxChecked,
+            ]}
+          >
+            {buyer.marketingOptIn ? (
+              <Icon name="check" size={14} color={textTokens.primary} />
+            ) : null}
+          </View>
+          <View style={styles.marketingCopy}>
+            <Text style={styles.checkboxLabel}>{CHECKOUT_MARKETING_LABEL}</Text>
+            <Text style={styles.marketingHelper}>{CHECKOUT_MARKETING_HELPER}</Text>
+          </View>
+        </Pressable>
         {bannerMessage !== null ? (
           <Text style={styles.errorText}>{bannerMessage}</Text>
         ) : null}
@@ -1017,15 +1074,6 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
           </View>
         </Pressable>
       </View>
-      <ConsentTermsSheet
-        visible={termsSheetVisible}
-        onClose={() => setTermsSheetVisible(false)}
-        onAgree={() => {
-          acceptTerms();
-          setTermsSheetVisible(false);
-        }}
-        bodyText={consentTermsBody(signedInBuyer)}
-      />
     </View>
   );
 }
@@ -1183,9 +1231,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textDecorationLine: "underline",
   },
-  checkboxFollowBrand: {
-    fontWeight: "600",
-    color: "#FFFFFF",
+  marketingCopy: { flex: 1 },
+  marketingHelper: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 18,
+    color: textTokens.tertiary,
   },
   checkboxBoxFlash: {
     borderColor: semantic.error,

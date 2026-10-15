@@ -275,6 +275,7 @@ export {
   tripTotalSelectedQuantity,
   tripSummedAllInCents,
   tripSummedDueTodayCents,
+  tripInstallmentAmounts,
   tripAnyLineOnPlan,
   // ORCH-1181 — per-package deposit-due-today + the shared installment sub-line
   // copy for the checkout/cart ticket tile (business + web + consumer identical).
@@ -284,6 +285,7 @@ export {
 export type {
   TripTierLike,
   TripSelectedLine,
+  TripInstallmentAmounts,
 } from "./tripBoxTotals";
 export { TripReserveBar } from "./TripReserveBar";
 export type { TripReserveBarProps } from "./TripReserveBar";
@@ -570,3 +572,8 @@ export type {
   ThemeFontSlug,
   ThemeInput,
 } from "./designTokens";
+
+// Issue #3859 runtime contracts are intentionally available through explicit
+// package subpaths instead of this broad rendering barrel. Re-exporting them
+// here makes Metro hoist checkout-only validation into the business-web boot
+// payload even though public checkout routes are lazy.

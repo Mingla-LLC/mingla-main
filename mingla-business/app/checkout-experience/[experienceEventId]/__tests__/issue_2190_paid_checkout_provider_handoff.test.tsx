@@ -44,7 +44,10 @@ const TestRenderer = require("react-test-renderer") as {
 };
 const { act } = TestRenderer;
 
-const EXPERIENCE_EVENT_ID = "exp-2190";
+// [TEST-MOD-APPROVED #3859] Checkout v2 rejects identifiers the real database
+// cannot issue, so this integration fixture now uses production-shaped UUIDs.
+const EXPERIENCE_EVENT_ID = "21900000-0000-4000-8000-000000000003";
+const TICKET_TYPE_ID = "21900000-0000-4000-8000-000000000004";
 const SESSION_ID = "ab33adf6-0000-4000-8000-000000002190";
 const PAYSTACK_URL = "https://checkout.paystack.com/mgl2190expauth";
 const STRIPE_URL = "https://checkout.stripe.com/c/pay/cs_live_2190_exp";
@@ -83,7 +86,7 @@ jest.mock(
 );
 jest.mock("expo-router", () => ({
   useRouter: () => router,
-  useLocalSearchParams: () => ({ experienceEventId: "exp-2190" }),
+  useLocalSearchParams: () => ({ experienceEventId: EXPERIENCE_EVENT_ID }),
 }));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -95,7 +98,7 @@ jest.mock("../../../../src/hooks/usePublicExperience", () => ({
   usePublicExperienceById: () => ({
     data: {
       experience: {
-        id: "exp-2190",
+        id: EXPERIENCE_EVENT_ID,
         title: "Lagos Paid Experience",
         slug: "lagos-paid-experience",
         brandSlug: "minglanigeria",
@@ -155,7 +158,7 @@ const SeedCart: React.FC = () => {
   const { setLineQuantity, setBuyer } = useCart();
   React.useEffect(() => {
     setLineQuantity({
-      ticketTypeId: "tier-2190-exp",
+      ticketTypeId: TICKET_TYPE_ID,
       ticketName: "General admission",
       unitPrice: 15000,
       unitPriceAllIn: 15750,

@@ -21,6 +21,10 @@ import {
 } from "@mingla/offering-rendering";
 
 import { captureWeb } from "../../src/analytics/webAnalytics";
+import {
+  captureBuyerWebPublicPageViewed,
+  resolveBuyerWebPublicLifecycle,
+} from "../../src/analytics/publicParityWebAdapter";
 import { StayStripePayment } from "../../src/components/stay/StayStripePayment";
 import { useStayReservationGroup } from "../../src/hooks/useStayGuest";
 import { stayGuestService } from "../../src/services/stayGuestService";
@@ -40,6 +44,14 @@ export default function StayReservationRoute(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [payment, setPayment] = useState<StayPaymentSession | null>(null);
   const groupViewFired = useRef(false);
+  const parityViewFired = useRef(false);
+  const routeState = resolveBuyerWebPublicLifecycle({
+    hasData: query.data !== null && query.data !== undefined,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    isError: query.isError,
+    isStale: query.isStale,
+  });
 
   useEffect(() => {
     const group = query.data;
@@ -53,6 +65,20 @@ export default function StayReservationRoute(): React.ReactElement {
       state: group.state,
     });
   }, [query.data]);
+
+  useEffect(() => {
+    const group = query.data;
+    if (!group || parityViewFired.current) return;
+    parityViewFired.current = true;
+    void captureBuyerWebPublicPageViewed({
+      target: {
+        kind: "stay",
+        entityId: group.groupId,
+        groupId: group.groupId,
+      },
+      state: routeState,
+    });
+  }, [query.data, routeState]);
 
   if (groupId === null) {
     return (

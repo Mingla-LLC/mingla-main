@@ -87,6 +87,11 @@ const asyncNoop = async (): Promise<undefined> => undefined;
 const settledIdle = { isPending: false, isFetching: false, isError: false };
 
 const BOUNDARY: Record<string, () => unknown> = {
+  // [TEST-MOD-APPROVED #3859] The #3801 fixture has no installment provider;
+  // model the new capability boundary without changing its itinerary subject.
+  "@mingla/offering-rendering/tripInstallmentCapability": () => ({
+    tripInstallmentsSupported: () => false,
+  }),
   bankSetupReturn: () => jest.requireActual("../../../utils/bankSetupReturn"),
   react: () => React,
   "react-native": () => jest.requireActual("react-native"),

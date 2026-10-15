@@ -13,11 +13,20 @@ import type { BuyerDetails, CartLine, OrderResult } from "../components/checkout
 // page) into checkout-create so the post-finalize conversion send can link the
 // order to its campaign. Web-only source (native returns null → field omitted).
 import { getStoredClickAttribution } from "../analytics/webAnalytics";
+import {
+  isCheckoutAttemptId,
+  normalizeCheckoutV2Lines,
+  TICKET_CHECKOUT_CONTRACT_VERSION,
+} from "@mingla/offering-rendering/ticketCheckoutContract";
+
+type TicketCheckoutCreateLine = Omit<CartLine, "paymentPlanChoice"> & {
+  paymentPlanChoice?: CartLine["paymentPlanChoice"];
+};
 
 export interface TicketCheckoutCreateInput {
   eventId: string;
   buyer: BuyerDetails;
-  lines: CartLine[];
+  lines: TicketCheckoutCreateLine[];
   /**
    * issue #2150 — the buyer status token from THIS guest's earlier submit for
    * this event, when the browser still holds one.
@@ -65,6 +74,8 @@ export interface TicketCheckoutCreateInput {
    * trips without schemas.
    */
   intakeFormData?: unknown[];
+  /** #3859 private upload draft; required whenever intakeFormData is present. */
+  intakeUploadSessionId?: string;
   /**
    * ORCH-1138 Leg 3 — the chosen experience occurrence's event_dates.id, when
    * the buyer picked a slot from the adaptive Reserve picker
@@ -84,6 +95,10 @@ export interface TicketCheckoutCreateInput {
    * event, trip, RSVP and experience.
    */
   eventDateIds?: readonly string[];
+  /** #3859 — opt-in only; omitted callers remain on the legacy v1 rail. */
+  checkoutContractVersion?: typeof TICKET_CHECKOUT_CONTRACT_VERSION;
+  /** One UUID retained by the cart across one logical create/retry. */
+  checkoutAttemptId?: string;
 }
 
 export interface TicketCheckoutRequiresPayment {
@@ -676,6 +691,40 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
 export const createTicketCheckout = async (
   input: TicketCheckoutCreateInput,
 ): Promise<TicketCheckoutCreateResult> => {
+  const isCheckoutV2 = input.checkoutContractVersion ===
+    TICKET_CHECKOUT_CONTRACT_VERSION;
+  if (isCheckoutV2 && !isCheckoutAttemptId(input.checkoutAttemptId)) {
+    throw new Error("checkout_attempt_invalid");
+  }
+  if (isCheckoutV2 && input.buyer.termsAccepted !== true) {
+    throw new Error("purchase_terms_required");
+  }
+  if (
+    (input.intakeFormData?.length ?? 0) > 0 &&
+    !isCheckoutAttemptId(input.intakeUploadSessionId)
+  ) {
+    throw new Error("intake_upload_session_invalid");
+  }
+  if (isCheckoutV2 && input.paymentPlanChoice !== undefined) {
+    throw new Error("checkout_scalar_plan_forbidden");
+  }
+  const parsedV2Lines = isCheckoutV2
+    ? normalizeCheckoutV2Lines(input.lines)
+    : null;
+  if (parsedV2Lines !== null && !parsedV2Lines.ok) {
+    throw new Error("checkout_lines_invalid");
+  }
+  const v2PlanChoices = parsedV2Lines?.ok
+    ? new Map(parsedV2Lines.lines.map((line) => [
+      line.ticketTypeId,
+      line.paymentPlanChoice,
+    ]))
+    : null;
+  const explicitV2PlanChoice = (ticketTypeId: string) => {
+    const choice = v2PlanChoices?.get(ticketTypeId);
+    if (choice === undefined) throw new Error("checkout_lines_invalid");
+    return choice;
+  };
   const clickId = getStoredClickAttribution().clickId;
   const site = await import("../analytics/siteAttribution")
     .then((module) => module.default?.())
@@ -683,16 +732,26 @@ export const createTicketCheckout = async (
   return invokeOrThrow<TicketCheckoutCreateResult>("ticket-checkout-create", {
     eventId: input.eventId,
     returnContract: "host_v1",
+    ...(isCheckoutV2
+      ? {
+        checkoutContractVersion: TICKET_CHECKOUT_CONTRACT_VERSION,
+        checkoutAttemptId: input.checkoutAttemptId,
+        purchaseTermsAccepted: true,
+      }
+      : {}),
     buyer: input.buyer,
     lines: input.lines.map((line) => ({
       ticketTypeId: line.ticketTypeId,
       quantity: line.quantity,
       expectedUnitPriceCents: centsFromMajor(line.unitPrice),
+      ...(isCheckoutV2
+        ? { paymentPlanChoice: explicitV2PlanChoice(line.ticketTypeId) }
+        : {}),
     })),
     // ORCH-0790: omit surface when undefined so the edge function applies its
     // own "native" default — older mobile builds never send this field.
     ...(input.surface !== undefined ? { surface: input.surface } : {}),
-    ...(input.paymentPlanChoice !== undefined
+    ...(!isCheckoutV2 && input.paymentPlanChoice !== undefined
       ? { payment_plan_choice: input.paymentPlanChoice }
       : {}),
     // ORCH-0880 [Tr5 Traveler Intake Forms]: forward per-tier intake answers
@@ -700,7 +759,10 @@ export const createTicketCheckout = async (
     // schema-version freshness per Phase 2 ticket-checkout-create §164-256.
     // Omit when empty so non-intake flows preserve byte-identical request shape.
     ...(input.intakeFormData !== undefined && input.intakeFormData.length > 0
-      ? { intake_form_data: input.intakeFormData }
+      ? {
+        intake_form_data: input.intakeFormData,
+        intake_upload_session_id: input.intakeUploadSessionId,
+      }
       : {}),
     // ORCH-1138 Leg 3 — forward the chosen occurrence ONLY when present so the
     // single/no-date checkout request stays byte-identical to today. The edge fn

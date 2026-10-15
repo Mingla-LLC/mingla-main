@@ -32,6 +32,7 @@ import React, {
   useState,
 } from "react";
 import {
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -103,18 +104,19 @@ import {
 // verbatim disclosure copy + the §2 T&C sheet.
 import { recordConsent } from "../../../src/services/consentService";
 import {
-  CONSENT_VISIBLE_FOLLOW_AFTER,
-  CONSENT_VISIBLE_FOLLOW_BEFORE,
-  CONSENT_VISIBLE_LABEL_LINK,
-  CONSENT_VISIBLE_LABEL_PREFIX,
-  DISCLOSURE_VERSION,
-  GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT,
-  GUEST_CHECKOUT_DISCLOSURE_VERSION,
-  GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX,
-  consentDisclosureText,
-  consentTermsBody,
-  consentVisibleLabelSuffix,
-  resolveConsentBrandName,
+  CHECKOUT_MARKETING_DISCLOSURE_TEXT,
+  CHECKOUT_MARKETING_DISCLOSURE_VERSION,
+  CHECKOUT_MARKETING_HELPER,
+  CHECKOUT_MARKETING_LABEL,
+  PURCHASE_PRIVACY_URL,
+  PURCHASE_TERMS_DISCLOSURE_TEXT,
+  PURCHASE_TERMS_DISCLOSURE_VERSION,
+  PURCHASE_TERMS_LABEL_JOINER,
+  PURCHASE_TERMS_LABEL_PREFIX,
+  PURCHASE_TERMS_LABEL_PRIVACY,
+  PURCHASE_TERMS_LABEL_SUFFIX,
+  PURCHASE_TERMS_LABEL_TERMS,
+  PURCHASE_TERMS_URL,
 } from "../../../src/constants/consentDisclosure";
 import { supabase } from "../../../src/services/supabase";
 
@@ -128,7 +130,6 @@ import {
   useCartTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { ConsentTermsSheet } from "../../../src/components/checkout/ConsentTermsSheet";
 import {
   isContinueDisabled,
   shouldShowConsentHintOnDisabledTap,
@@ -285,6 +286,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     result: cartResult,
     eventDateId,
     eventDateIds,
+    checkoutAttemptIdFor,
   } = useCart();
   const totals = useCartTotals();
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -301,23 +303,16 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   const submitInFlight = useRef<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // META-ORCH-1161 Sub-A.2 (DEC-186) — bundled-mandatory consent gate state.
+  // #3859 — purchase acceptance and optional marketing are independent.
   const termsAccepted = buyer.termsAccepted === true;
-  const [termsSheetVisible, setTermsSheetVisible] = useState<boolean>(false);
   // Shown after the buyer taps a disabled Pay button with fields valid but the
   // box unchecked — never a silent dead tap (DESIGN §S3.4).
   const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
-  // #3682 — Follow clause only when a signed-in buyer can actually auto-follow.
-  // Guests get the pre-follow disclosure (auto-follow skips null buyer_user_id).
-  // authReady gates the checkbox so we never show guest copy, accept it, then
-  // record a Follow grant after a late session hydrate.
+  // Auth settles before acceptance so the audit record binds to the principal
+  // that was present when the buyer checked the required purchase box.
   const [authReady, setAuthReady] = useState<boolean>(false);
-  const [signedInBuyer, setSignedInBuyer] = useState<boolean>(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
-  const acceptedGrantRef = useRef<{
-    followCapable: boolean;
-    userId: string | null;
-  } | null>(null);
+  const acceptedGrantRef = useRef<{ userId: string | null } | null>(null);
   useEffect(() => {
     let cancelled = false;
     void Promise.resolve()
@@ -327,13 +322,11 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         const id = result?.data?.session?.user?.id;
         const readyId = typeof id === "string" && id.length > 0 ? id : null;
         setSessionUserId(readyId);
-        setSignedInBuyer(readyId !== null);
         setAuthReady(true);
       })
       .catch(() => {
         if (!cancelled) {
           setSessionUserId(null);
-          setSignedInBuyer(false);
           setAuthReady(true);
         }
       });
@@ -342,39 +335,26 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     };
   }, []);
 
-  // Checking the box constitutes the bundled grant: DEC-186 folds marketing into
-  // the single mandatory consent, so `marketingOptIn` rides with `termsAccepted`
-  // (the downstream payment payload reads `marketingOptIn`).
-  const acceptTerms = useCallback((): void => {
-    if (!authReady) return;
-    acceptedGrantRef.current = {
-      followCapable: signedInBuyer,
-      userId: sessionUserId,
-    };
-    setBuyer({ termsAccepted: true, marketingOptIn: true });
-    setConsentHintVisible(false);
-  }, [authReady, sessionUserId, setBuyer, signedInBuyer]);
-
   const toggleTerms = useCallback((): void => {
     if (!authReady) return;
     const next = !(buyer.termsAccepted === true);
     if (next) {
-      acceptedGrantRef.current = {
-        followCapable: signedInBuyer,
-        userId: sessionUserId,
-      };
+      acceptedGrantRef.current = { userId: sessionUserId };
     } else {
       acceptedGrantRef.current = null;
     }
-    setBuyer({ termsAccepted: next, marketingOptIn: next });
+    setBuyer({ termsAccepted: next });
     if (next) setConsentHintVisible(false);
   }, [
     authReady,
     buyer.termsAccepted,
     sessionUserId,
     setBuyer,
-    signedInBuyer,
   ]);
+  const toggleMarketing = useCallback((): void => {
+    if (!authReady) return;
+    setBuyer({ marketingOptIn: !buyer.marketingOptIn });
+  }, [authReady, buyer.marketingOptIn, setBuyer]);
 
   // Touched flags — show validation errors only after first focus blur,
   // so a fresh-mount form doesn't immediately scream red.
@@ -547,27 +527,16 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     setSubmitting(true);
     setSubmitError(null);
 
-    // META-ORCH-1161 Sub-A.2 — record the bundled consent grant (transactional +
-    // marketing, both channels) with the EXACT §1b disclosure VERBATIM. The phone
-    // country supplies country_code; ip_hash is computed server-side. Non-blocking:
-    // the checkbox act already constitutes consent, so an audit-write failure must
-    // not deadlock checkout — we log and proceed (Constitution #3: surfaced via
-    // console, never silently swallowed).
+    // #3859 — purchase acceptance records transactional scope only. Optional
+    // marketing is a second affirmative act and therefore a second audit write.
     try {
-      // Bind the audit row to the disclosure the buyer actually accepted when
-      // they checked the box (acceptedGrantRef). Do not re-derive from a
-      // late-hydrated session — that caused guest copy + Follow grant.
       const grant = acceptedGrantRef.current;
-      const followCapable = grant?.followCapable === true;
-      const buyerUserId = followCapable ? grant?.userId ?? null : null;
+      const buyerUserId = grant?.userId ?? null;
       const consentResult = await recordConsent({
         source: "checkout",
-        disclosureText: followCapable
-          ? consentDisclosureText(brand?.displayName)
-          : GUEST_CHECKOUT_CONSENT_DISCLOSURE_TEXT,
-        disclosureVersion: followCapable
-          ? DISCLOSURE_VERSION
-          : GUEST_CHECKOUT_DISCLOSURE_VERSION,
+        disclosureText: PURCHASE_TERMS_DISCLOSURE_TEXT,
+        disclosureVersion: PURCHASE_TERMS_DISCLOSURE_VERSION,
+        scopes: ["transactional"],
         phone: buyer.phone,
         email: buyer.email,
         countryCode: phoneCountry,
@@ -583,6 +552,24 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         console.error(
           "[checkout-buyer] consent_records write failed (proceeding; checkbox act stands)",
         );
+      }
+      if (buyer.marketingOptIn) {
+        const marketingConsentResult = await recordConsent({
+          source: "checkout",
+          disclosureText: CHECKOUT_MARKETING_DISCLOSURE_TEXT,
+          disclosureVersion: CHECKOUT_MARKETING_DISCLOSURE_VERSION,
+          scopes: ["marketing"],
+          phone: buyer.phone,
+          email: buyer.email,
+          countryCode: phoneCountry,
+          userId: buyerUserId,
+          eventId,
+        });
+        if (!marketingConsentResult.ok) {
+          console.error(
+            "[checkout-buyer] marketing consent write failed (proceeding; optional checkbox act stands)",
+          );
+        }
       }
     } catch (consentErr) {
       console.error("[checkout-buyer] consent write threw", consentErr);
@@ -644,6 +631,12 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           // disagreed. The fallback stays for older builds; this build stops
           // relying on it.
           surface: Platform.OS === "web" ? "web" : "native",
+          ...(Platform.OS === "web"
+            ? {
+              checkoutContractVersion: 2 as const,
+              checkoutAttemptId: checkoutAttemptIdFor({ eventId, surface: "web" }),
+            }
+            : {}),
           ...(heldToken.length > 0 ? { buyerStatusToken: heldToken } : {}),
           ...(eventDateId !== null ? { eventDateId } : {}),
         // issue #2160 — forward the chosen day SET. Empty => byte-identical
@@ -782,6 +775,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     eventDateIds,
     // issue #2337 — the handler reads the cart's held buyer status token.
     cartResult,
+    checkoutAttemptIdFor,
     recordResult,
     router,
   ]);
@@ -960,18 +954,13 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           />
         </View>
 
-        {/* META-ORCH-1161 Sub-A.2 (DEC-186) — bundled-mandatory consent gate.
-            ONE checkbox covering T&Cs + transactional + reminders + email +
-            SMS marketing; the underlined link opens the §2 T&C sheet. */}
+        {/* #3859 — purchase acceptance and optional marketing are separate. */}
         <Pressable
           onPress={toggleTerms}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: termsAccepted, disabled: !authReady }}
-          accessibilityLabel={`${CONSENT_VISIBLE_LABEL_PREFIX}${CONSENT_VISIBLE_LABEL_LINK}${
-            signedInBuyer
-              ? consentVisibleLabelSuffix(brand?.displayName)
-              : GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
-          }`}
+          aria-checked={termsAccepted}
+          accessibilityLabel={PURCHASE_TERMS_DISCLOSURE_TEXT}
           disabled={!authReady}
           style={({ pressed }) => [
             styles.checkboxRow,
@@ -991,26 +980,31 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             ) : null}
           </View>
           <Text style={styles.checkboxLabel}>
-            {CONSENT_VISIBLE_LABEL_PREFIX}
+            {PURCHASE_TERMS_LABEL_PREFIX}
             <Text
               style={styles.checkboxLinkUnderlined}
-              onPress={() => setTermsSheetVisible(true)}
+              onPress={(event) => {
+                event.stopPropagation();
+                void Linking.openURL(PURCHASE_TERMS_URL);
+              }}
               accessibilityRole="link"
-              accessibilityLabel="Open all terms and conditions"
+              accessibilityLabel="Open Mingla Terms of Service"
             >
-              {CONSENT_VISIBLE_LABEL_LINK}
+              {PURCHASE_TERMS_LABEL_TERMS}
             </Text>
-            {signedInBuyer ? (
-              <>
-                {CONSENT_VISIBLE_FOLLOW_BEFORE}
-                <Text style={styles.checkboxFollowBrand}>
-                  {resolveConsentBrandName(brand?.displayName)}
-                </Text>
-                {CONSENT_VISIBLE_FOLLOW_AFTER}
-              </>
-            ) : (
-              GUEST_CHECKOUT_VISIBLE_LABEL_SUFFIX
-            )}
+            {PURCHASE_TERMS_LABEL_JOINER}
+            <Text
+              style={styles.checkboxLinkUnderlined}
+              onPress={(event) => {
+                event.stopPropagation();
+                void Linking.openURL(PURCHASE_PRIVACY_URL);
+              }}
+              accessibilityRole="link"
+              accessibilityLabel="Open Mingla Privacy Policy"
+            >
+              {PURCHASE_TERMS_LABEL_PRIVACY}
+            </Text>
+            {PURCHASE_TERMS_LABEL_SUFFIX}
           </Text>
         </Pressable>
         {consentHintVisible && !termsAccepted ? (
@@ -1018,6 +1012,37 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             Please agree to continue.
           </Text>
         ) : null}
+        <Pressable
+          onPress={toggleMarketing}
+          accessibilityRole="checkbox"
+          accessibilityState={{
+            checked: buyer.marketingOptIn,
+            disabled: !authReady,
+          }}
+          aria-checked={buyer.marketingOptIn}
+          accessibilityLabel={`${CHECKOUT_MARKETING_LABEL} ${CHECKOUT_MARKETING_HELPER}`}
+          disabled={!authReady}
+          style={({ pressed }) => [
+            styles.checkboxRow,
+            pressed && styles.checkboxRowPressed,
+            !authReady && styles.checkboxRowPressed,
+          ]}
+        >
+          <View
+            style={[
+              styles.checkboxBox,
+              buyer.marketingOptIn && styles.checkboxBoxChecked,
+            ]}
+          >
+            {buyer.marketingOptIn ? (
+              <Icon name="check" size={14} color={textTokens.primary} />
+            ) : null}
+          </View>
+          <View style={styles.marketingCopy}>
+            <Text style={styles.checkboxLabel}>{CHECKOUT_MARKETING_LABEL}</Text>
+            <Text style={styles.marketingHelper}>{CHECKOUT_MARKETING_HELPER}</Text>
+          </View>
+        </Pressable>
         {submitError !== null ? (
           <Text style={styles.errorText}>{submitError}</Text>
         ) : null}
@@ -1065,16 +1090,6 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         </Pressable>
       </View>
 
-      {/* META-ORCH-1161 Sub-A.2 — the §2 T&C sheet (shared overlay). */}
-      <ConsentTermsSheet
-        visible={termsSheetVisible}
-        onClose={() => setTermsSheetVisible(false)}
-        onAgree={() => {
-          acceptTerms();
-          setTermsSheetVisible(false);
-        }}
-        bodyText={consentTermsBody(signedInBuyer)}
-      />
     </View>
   );
 }
@@ -1232,10 +1247,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textDecorationLine: "underline",
   },
-  // #3682 contract b — brand phrase is the only emphasis in the label (600 / white).
-  checkboxFollowBrand: {
-    fontWeight: "600",
-    color: "#FFFFFF",
+  marketingCopy: { flex: 1 },
+  marketingHelper: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 18,
+    color: textTokens.tertiary,
   },
   // Red flash on the box when the buyer taps a disabled Pay with the box
   // unchecked (DESIGN §S3.4 — never a silent dead tap).

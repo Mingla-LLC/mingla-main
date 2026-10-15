@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/record-consent/issue_3859_scope_aware_writer.implementor.happy.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3859-07-scope-aware-consent",
+  "profile": "deno-1.46-stripe"
+}

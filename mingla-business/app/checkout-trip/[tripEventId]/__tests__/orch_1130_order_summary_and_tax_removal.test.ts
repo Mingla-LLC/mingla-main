@@ -38,28 +38,27 @@ const stripComments = (src: string): string =>
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
 describe("ORCH-1130 Fix #1 — Total + Total due today under installments", () => {
-  it("trip buyer.tsx renders a 'Total due today' line gated on the deposit memo", () => {
+  // [TEST-MOD-APPROVED #3859] Mixed carts sum each line according to that
+  // line's explicit choice; they no longer project one cart-wide deposit.
+  it("trip buyer.tsx renders a 'Total due today' line from per-line choices", () => {
     const code = stripComments(read(TRIP_BUYER));
     // Both labels present (full Total + due-today).
     expect(code).toMatch(/>Total</);
     expect(code).toMatch(/Total due today/);
-    // The due-today line is gated on the re-added dueTodayCents memo (deposit
-    // read from projectInstallmentSchedule, NOT recomputed).
+    // The shared aggregate is fed quantities and a per-ticket choice map.
     expect(code).toMatch(/dueTodayCents\s*!==\s*null/);
-    expect(code).toMatch(/projectInstallmentSchedule\(/);
-    expect(code).toMatch(/paymentPlanChoice\s*!==\s*"installments"/);
+    expect(code).toMatch(/tripSummedDueTodayCents\(/);
+    expect(code).toMatch(/line\.paymentPlanChoice\s*===\s*"installments"/);
+    expect(code).toMatch(/line\.paymentPlanChoice\s*\?\?\s*"full"/);
   });
 
-  it("trip payment.tsx renders a 'Total due today' line from projectedSchedule.depositCents", () => {
+  it("trip payment.tsx renders a 'Total due today' line from the mixed-cart aggregate", () => {
     const code = stripComments(read(TRIP_PAYMENT));
     expect(code).toMatch(/>Total</);
     expect(code).toMatch(/Total due today/);
-    // Gated on the installments selection + the EXISTING projected schedule
-    // deposit (never recomputed in the box).
-    expect(code).toMatch(
-      /isUsingInstallments\s*&&\s*projectedSchedule\s*!==\s*null/,
-    );
-    expect(code).toMatch(/projectedSchedule\.depositCents/);
+    expect(code).toMatch(/isUsingInstallments\s*\?/);
+    expect(code).toMatch(/tripSummedDueTodayCents\(/);
+    expect(code).toMatch(/formatCurrency\(dueTodayCents/);
   });
 });
 

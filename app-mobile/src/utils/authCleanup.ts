@@ -123,6 +123,14 @@ export async function performPrivateAuthCleanup(options: CleanupOptions): Promis
   }
 
   try {
+    const { purgeNativeCheckoutRecovery } =
+      require("../payments/nativeCheckoutRecovery") as typeof import("../payments/nativeCheckoutRecovery");
+    await purgeNativeCheckoutRecovery();
+  } catch (error) {
+    console.warn(`[AUTH_CLEANUP] checkout recovery clear failed (${reason}):`, error);
+  }
+
+  try {
     const allKeys = await AsyncStorage.getAllKeys();
     const privateKeys = allKeys.filter(isPrivateAsyncStorageKey);
     if (privateKeys.length > 0) {

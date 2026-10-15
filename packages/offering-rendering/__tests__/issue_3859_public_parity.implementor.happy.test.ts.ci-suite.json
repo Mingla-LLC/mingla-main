@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_3859_public_parity.implementor.happy.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3859-05-public-parity",
+  "profile": "deno-1.46-stripe"
+}

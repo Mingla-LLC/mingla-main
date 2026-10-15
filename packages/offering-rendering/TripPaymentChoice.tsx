@@ -112,9 +112,10 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
           style={[styles.seg, { borderColor: palette.panelBorder }]}
         >
           <Pressable
-            accessibilityRole="button"
+            accessibilityRole="tab"
             accessibilityLabel={`Pay full ${fullLabel} now`}
             accessibilityState={{ selected: isFull }}
+            aria-selected={isFull}
             onPress={() => onChange("full")}
             style={[styles.segBtn, isFull ? { backgroundColor: palette.accent } : null]}
           >
@@ -128,11 +129,12 @@ export const TripPaymentChoice: React.FC<TripPaymentChoiceProps> = ({
             </Text>
           </Pressable>
           <Pressable
-            accessibilityRole="button"
+            accessibilityRole="tab"
             accessibilityLabel={`Pay over time, ${depositLabel} deposit today plus ${futureCount} future payment${
               futureCount === 1 ? "" : "s"
             }`}
             accessibilityState={{ selected: !isFull }}
+            aria-selected={!isFull}
             onPress={() => onChange("installments")}
             style={[styles.segBtn, !isFull ? { backgroundColor: palette.accent } : null]}
           >

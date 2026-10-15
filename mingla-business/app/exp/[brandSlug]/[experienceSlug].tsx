@@ -85,6 +85,10 @@ import {
   fireAdPageView,
   fireAdViewContent,
 } from "../../../src/analytics/webAnalytics";
+import {
+  captureBuyerWebPublicPageViewed,
+  resolveBuyerWebPublicLifecycle,
+} from "../../../src/analytics/publicParityWebAdapter";
 import { ExperiencePreview } from "../../../src/components/experience/ExperiencePreview";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
 // §3). LAZY (ORCH-1083 budget): tap-opened, never boot-path — a static import
@@ -171,6 +175,13 @@ export default function PublicExperienceRoute(): React.ReactElement {
     typeof brandSlug === "string" ? brandSlug : null,
     typeof experienceSlug === "string" ? experienceSlug : null,
   );
+  const routeState = resolveBuyerWebPublicLifecycle({
+    hasData: query.data !== null && query.data !== undefined,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    isError: query.isError,
+    isStale: query.isStale,
+  });
   // issue #3284 — start the refund ladder's chunk in the same mount that starts the
   // page data fetch above, so when the data lands the body usually paints the
   // ladder on its first frame. Nothing waits on it: if the data wins, the body
@@ -196,6 +207,7 @@ export default function PublicExperienceRoute(): React.ReactElement {
   // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount.
   // Web-only (no-op on native). toward #3697: also capture first-party ad clicks.
   const viewFiredRef = useRef<boolean>(false);
+  const parityViewFiredRef = useRef<boolean>(false);
   useEffect(() => {
     if (viewFiredRef.current) return;
     viewFiredRef.current = true;
@@ -212,6 +224,23 @@ export default function PublicExperienceRoute(): React.ReactElement {
     fireAdPageView();
     fireAdViewContent();
   }, [brandSlug, experienceSlug]);
+
+  useEffect(() => {
+    const payload = query.data;
+    if (parityViewFiredRef.current || payload === null || payload === undefined) {
+      return;
+    }
+    parityViewFiredRef.current = true;
+    void captureBuyerWebPublicPageViewed({
+      target: {
+        kind: "experience",
+        entityId: payload.experience.id,
+        brandSlug: payload.experience.brandSlug,
+        experienceSlug: payload.experience.slug,
+      },
+      state: routeState,
+    });
+  }, [query.data, routeState]);
 
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {
@@ -247,7 +276,7 @@ export default function PublicExperienceRoute(): React.ReactElement {
     setMuted((m) => !m);
   }, []);
 
-  if (query.isLoading || query.isFetching) {
+  if (routeState === "loading") {
     return (
       <View style={styles.stateHost}>
         <ActivityIndicator />
@@ -256,7 +285,7 @@ export default function PublicExperienceRoute(): React.ReactElement {
     );
   }
 
-  if (query.isError) {
+  if (routeState === "error") {
     const rawError: unknown = query.error;
     const errorMessage =
       rawError !== null &&

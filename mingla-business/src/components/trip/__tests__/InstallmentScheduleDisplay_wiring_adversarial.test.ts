@@ -9,9 +9,9 @@
  * THIS test attacks:
  *
  *   A-01 (same-source-of-truth contract): the Pay-button VISIBLE label
- *        and accessibilityLabel BOTH reference depositCents on the
- *        deposit-branch — catches a class of bug where visible label
- *        says "deposit" but a11y still says full price.
+ *        and accessibilityLabel BOTH reference the mixed-cart
+ *        dueTodayCents aggregate — catches a class of bug where visible
+ *        and accessibility totals disagree.
  *
  *   A-02 (no-fabrication via mechanism inspection): InstallmentSchedule
  *        Display source contains NO formatting calls on prop values
@@ -52,9 +52,8 @@
  *        ORCH-0873. Documentation drift guard.
  *
  *   A-09 (banner copy invariant): the pre-Stripe banner accessibility
- *        label references BOTH the deposit amount AND the
- *        installments.length count — catches hardcoded "N installments"
- *        copy that would lie when N is actually 2 or 4.
+ *        label references due today, remaining balance, and the aggregate
+ *        future-installment count — catches mixed-cart copy that lies.
  *
  *   A-10 (no hardcoded currency symbol in banner): the banner copy uses
  *        formatCurrency() not literal `$` or `£` strings. Constitution
@@ -87,14 +86,12 @@ function read(rel: string): string {
 // ---------------------------------------------------------------------------
 
 describe("A-01: Pay-button same-source-of-truth (visible ↔ a11y)", () => {
-  test("visible label deposit-branch + a11y label deposit-branch both reference depositCents", () => {
+  // [TEST-MOD-APPROVED #3859] Mixed carts no longer have one meaningful
+  // deposit. Both surfaces must use the sum of every selected line's due-now
+  // amount, which includes full-pay and installment lines.
+  test("visible label + a11y label both reference dueTodayCents", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
-    // Count occurrences of projectedSchedule.depositCents in payment.tsx —
-    // must appear in BOTH visible label AND accessibilityLabel ternary
-    // (plus banner body), so the count must be >= 4 (banner body uses it
-    // twice for the strong-spans). If a future refactor splits the
-    // visible label off the a11y source, this count drops.
-    const matches = src.match(/projectedSchedule\.depositCents/g) ?? [];
+    const matches = src.match(/dueTodayCents/g) ?? [];
     expect(matches.length).toBeGreaterThanOrEqual(4);
   });
   test("both label branches reference totals.total (no-plan fallback)", () => {
@@ -181,7 +178,9 @@ describe("A-03: mapper fractional rounding contract", () => {
       out.installments[1].amountCents;
     expect(Math.abs(sumCents - out.fullPriceCents)).toBeLessThanOrEqual(1);
   });
-  test("priceCents=0 (free trip) with plan returns zero-amount schedule", () => {
+  // [TEST-MOD-APPROVED #3859] A free line cannot truthfully offer an
+  // installment payment method; the projection now fails closed.
+  test("priceCents=0 (free trip) with plan is rejected", () => {
     const tier: Pick<
       TripPricingTier,
       "priceCents" | "currency" | "installmentSchedule"
@@ -194,12 +193,7 @@ describe("A-03: mapper fractional rounding contract", () => {
       },
     };
     const out = projectInstallmentSchedule(tier, new Date("2026-06-01Z"));
-    expect(out).not.toBeNull();
-    if (out === null) return;
-    expect(out.depositCents).toBe(0);
-    expect(out.installments[0].amountCents).toBe(0);
-    expect(Number.isFinite(out.depositCents)).toBe(true);
-    expect(Number.isFinite(out.installments[0].amountCents)).toBe(true);
+    expect(out).toBeNull();
   });
 });
 
@@ -283,7 +277,9 @@ describe("A-05: mapper isolates per-tier (no index drift)", () => {
 // ---------------------------------------------------------------------------
 
 describe("A-06: mapper edge inputs (no crash, no fabrication)", () => {
-  test("empty installments array produces zero-installment schedule", () => {
+  // [TEST-MOD-APPROVED #3859] Empty/zero-deposit plans are not actionable
+  // installment offers, so they must not reach checkout as valid schedules.
+  test("empty installments array is rejected", () => {
     const tier: Pick<
       TripPricingTier,
       "priceCents" | "currency" | "installmentSchedule"
@@ -296,12 +292,9 @@ describe("A-06: mapper edge inputs (no crash, no fabrication)", () => {
       },
     };
     const out = projectInstallmentSchedule(tier, new Date("2026-06-01Z"));
-    expect(out).not.toBeNull();
-    if (out === null) return;
-    expect(out.depositCents).toBe(100000);
-    expect(out.installments).toEqual([]);
+    expect(out).toBeNull();
   });
-  test("deposit_pct=0 produces zero-deposit schedule (all charged later)", () => {
+  test("deposit_pct=0 is rejected", () => {
     const tier: Pick<
       TripPricingTier,
       "priceCents" | "currency" | "installmentSchedule"
@@ -317,11 +310,7 @@ describe("A-06: mapper edge inputs (no crash, no fabrication)", () => {
       },
     };
     const out = projectInstallmentSchedule(tier, new Date("2026-06-01Z"));
-    expect(out).not.toBeNull();
-    if (out === null) return;
-    expect(out.depositCents).toBe(0);
-    expect(out.installments[0].amountCents).toBe(50000);
-    expect(out.installments[1].amountCents).toBe(50000);
+    expect(out).toBeNull();
   });
 });
 
@@ -379,8 +368,10 @@ describe("A-08: component header documents ORCH-0882 canonical targets", () => {
 // A-09 — Banner accessibility-label data invariant
 // ---------------------------------------------------------------------------
 
-describe("A-09: pre-Stripe banner a11y label cites depositCents + installments.length", () => {
-  test("banner accessibilityLabel template references both depositCents and installments.length", () => {
+describe("A-09: pre-Stripe banner a11y label cites mixed-cart totals", () => {
+  // [TEST-MOD-APPROVED #3859] The banner now describes the truthful cart
+  // aggregate rather than pretending every line shares one deposit schedule.
+  test("banner accessibilityLabel references due, remaining, and future count", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
     // Find the banner block — must contain both data sources in its a11y
     // label template. Catches a class of bug where the label hardcodes
@@ -391,8 +382,9 @@ describe("A-09: pre-Stripe banner a11y label cites depositCents + installments.l
     expect(bannerRegion).not.toBeNull();
     if (bannerRegion === null) return;
     const labelText = bannerRegion[0];
-    expect(labelText).toContain("depositCents");
-    expect(labelText).toContain("installments.length");
+    expect(labelText).toContain("dueTodayCents");
+    expect(labelText).toContain("remainingBalanceCents");
+    expect(labelText).toContain("futureInstallmentCount");
   });
 });
 
@@ -432,7 +424,9 @@ describe("A-10: banner copy uses formatCurrency (Constitution #10)", () => {
 // ---------------------------------------------------------------------------
 
 describe("A-11 (hotfix-2): cents-shape formatCurrency calls use minor:true", () => {
-  test("every formatCurrency call on depositCents/installments amount/fullPriceCents passes minor:true", () => {
+  // [TEST-MOD-APPROVED #3859] The payment route formats aggregate cents after
+  // per-line choice composition; those values retain the same minor-unit rule.
+  test("every formatCurrency call on mixed-cart cents values passes minor:true", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");
     // Find every formatCurrency(...) call. For each call body that
     // references a cents-suffix identifier (depositCents,
@@ -449,8 +443,7 @@ describe("A-11 (hotfix-2): cents-shape formatCurrency calls use minor:true", () 
     let centsShapeChecked = 0;
     for (const call of calls) {
       const isCentsShape =
-        /depositCents|fullPriceCents|amountCents/.test(call) &&
-        !/installments\.length/.test(call);
+        /dueTodayCents|remainingBalanceCents|fullCartCents/.test(call);
       if (isCentsShape) {
         centsShapeChecked += 1;
         // Must contain `, true` BEFORE the closing paren — the
@@ -460,7 +453,7 @@ describe("A-11 (hotfix-2): cents-shape formatCurrency calls use minor:true", () 
     }
     // Sanity: we must have actually checked at least one cents-shape
     // call (otherwise the test passes vacuously).
-    expect(centsShapeChecked).toBeGreaterThanOrEqual(3);
+    expect(centsShapeChecked).toBeGreaterThanOrEqual(2);
   });
   test("totals.total formatCurrency call does NOT use minor:true (CartContext is major units)", () => {
     const src = read("app/checkout-trip/[tripEventId]/payment.tsx");

@@ -72,7 +72,7 @@
 //
 //   lane    loop spelling                              case subject                       globs
 //   #1931   for f in $(find supabase/migrations …)     case "$f" in            full path  8
-//   #2117   for f in $(find supabase/migrations …)     case "$f" in            full path  16
+//   #2117   for f in $(find supabase/migrations …)     case "$f" in            full path  18
 //   #1644   for migration in supabase/migrations/*.sql case "$(basename …)" in basename   1
 //   #1647   for migration in supabase/migrations/*.sql case "$(basename …)" in basename   3 (alternation)
 //
@@ -856,11 +856,17 @@ function selfTest() {
   // skip this gate reports a C-1 closure violation naming that exact file, so
   // the skip is required, not chosen. Only the GOOD #2117 count moves, 15 -> 16;
   // every mutant targets the #1931 lane and is unchanged.
+  // [TEST-MOD-APPROVED #3859] The #2117 lane gains two exact skips, SIXTEEN ->
+  // EIGHTEEN, for the two #3859 migrations that re-emit
+  // `pg_public_trip_by_slug`; both `LANGUAGE sql` bodies call
+  // `pg_offering_visibility_gate`, which that lane's phase 1 lacks. The guard
+  // itself named both exact filenames. Only the GOOD #2117 count moves; every
+  // parser mutant and BAD fixture remains unchanged.
   const expectedInventory = {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
     "issue-1931-private-event-access.yml": 17,
-    "issue-2117-offering-visibility-gate-tests.yml": 16,
+    "issue-2117-offering-visibility-gate-tests.yml": 18,
   };
   if (JSON.stringify(inventory) !== JSON.stringify(expectedInventory)) {
     record("GOOD", `lane inventory is ${JSON.stringify(inventory)}, expected ${JSON.stringify(expectedInventory)}`);
@@ -999,7 +1005,7 @@ function selfTest() {
     console.error(`#2492 SELF-TEST FAILED:\n  - ${failures.join("\n  - ")}`);
     process.exit(1);
   }
-  console.log("#2492 self-test PASS (1 good tree with the 17/1/3/16 lane inventory, 10 mutants M-1…M-10 all behaving).");
+  console.log("#2492 self-test PASS (1 good tree with the 17/1/3/18 lane inventory, 10 mutants M-1…M-10 all behaving).");
 }
 
 // ---------------------------------------------------------------------------

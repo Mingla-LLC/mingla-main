@@ -35,6 +35,7 @@ import { priceDecimals, priceFallbackDecimals } from "./priceDecimals";
 import {
   clampTripTierQuantity,
   tripAnyLineOnPlan,
+  tripInstallmentAmounts,
   tripMinTierAllInCents,
   tripSelectedLines,
   tripSummedAllInCents,
@@ -128,7 +129,10 @@ function addDaysIso(anchor: Date, days: number): string {
  * (Leg B passes the cart quantity; Leg A passes 1).
  */
 export function projectTripSchedule(
-  tier: Pick<TripOfferingTier, "priceCents" | "currency" | "installmentSchedule">,
+  tier: Pick<
+    TripOfferingTier,
+    "priceCents" | "priceAllInCents" | "currency" | "installmentSchedule"
+  >,
   anchorDate: Date,
   quantityMultiplier = 1,
 ): ProjectedTripSchedule | null {
@@ -145,10 +149,11 @@ export function projectTripSchedule(
     Number.isFinite(quantityMultiplier) && quantityMultiplier >= 1
       ? Math.floor(quantityMultiplier)
       : 1;
-  const fullPriceCents = tier.priceCents * qty;
-  const depositCents = Math.round((fullPriceCents * schedule.deposit_pct) / 100);
-  const installments = schedule.installments.map((inst) => {
-    const amountCents = Math.round((fullPriceCents * inst.pct) / 100);
+  const fullPriceCents = (tier.priceAllInCents ?? tier.priceCents) * qty;
+  const amounts = tripInstallmentAmounts(fullPriceCents, schedule);
+  if (amounts === null) return null;
+  const installments = schedule.installments.map((inst, index) => {
+    const amountCents = amounts.installments[index].amountCents;
     let dueAtIso: string;
     if (typeof inst.fixed_date === "string" && inst.fixed_date.length > 0) {
       dueAtIso = `${inst.fixed_date}T00:00:00.000Z`;
@@ -159,7 +164,12 @@ export function projectTripSchedule(
     }
     return { ordinal: inst.ordinal, amountCents, dueAtIso };
   });
-  return { fullPriceCents, depositCents, currency: tier.currency, installments };
+  return {
+    fullPriceCents,
+    depositCents: amounts.depositCents,
+    currency: tier.currency,
+    installments,
+  };
 }
 
 // ===========================================================================

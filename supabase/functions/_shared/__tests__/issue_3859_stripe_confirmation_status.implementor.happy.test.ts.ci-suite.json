@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3859_stripe_confirmation_status.implementor.happy.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3859-06-stripe-confirmation-status",
+  "profile": "deno-1.46-stripe"
+}

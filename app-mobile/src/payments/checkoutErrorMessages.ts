@@ -201,6 +201,7 @@ const DATE_UNAVAILABLE_TOKENS: ReadonlySet<string> = new Set([
 
 /** The buyer (or the request built from their input) is malformed. */
 const DETAILS_INCOMPLETE_TOKENS: ReadonlySet<string> = new Set([
+  "purchase_terms_required",
   "buyer_name_required",
   "buyer_email_invalid",
   "buyer_phone_required",
