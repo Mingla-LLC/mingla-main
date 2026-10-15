@@ -55,7 +55,7 @@ if [[ "$SCRIPT" != "scale" ]]; then
 fi
 
 K6_PATH="$ROOT/scripts/load/$K6_SCRIPT"
-REPORT_DIR="${G1_REPORT_DIR:-$ROOT/docs/evidence/g1-load/reports}"
+REPORT_DIR="${G1_REPORT_DIR:-${TMPDIR:-/tmp}/mingla-g1-load-reports}"
 mkdir -p "$REPORT_DIR"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 REPORT_JSON="$REPORT_DIR/${STAMP}-${SCRIPT}-vus${LOAD_VUS:-2}.json"

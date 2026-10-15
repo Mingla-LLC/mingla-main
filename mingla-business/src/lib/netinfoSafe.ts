@@ -23,7 +23,7 @@
  *
  * [TRANSITIONAL] assume-online fallback — exit condition: the next business
  * native build ships with RNCNetInfo compiled in (autolinked from
- * package.json). See docs/TRANSITIONAL_ITEMS_REGISTRY.md item 6.
+ * package.json). See #1758 for the decision and removal condition.
  */
 
 export interface NetInfoSafeState {

@@ -1,7 +1,7 @@
 # G3–G5 operator close-out pack (#426)
 
 Engineering scaffolding is on `main` (contracts green via `scripts/audit/run-all.mjs`).  
-**These gates close only when the operator steps below produce evidence files.**
+**These gates close only when the operator steps below produce evidence attached to #426.**
 
 ## G3 — Sentry live
 
@@ -23,7 +23,7 @@ Follow [`docs/runbooks/DR_RESTORE.md`](../runbooks/DR_RESTORE.md) — **restore-
 ./scripts/ops/g4-dr-restore-drill.sh finish
 ```
 
-Commit the JSON under `docs/evidence/g4-dr-restore/reports/`.
+Attach the generated JSON to #426; do not commit it.
 
 ## G5 — Synthetic incident
 

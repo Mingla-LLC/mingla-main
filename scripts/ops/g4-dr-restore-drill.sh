@@ -15,7 +15,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
-REPORT_DIR="$ROOT/docs/evidence/g4-dr-restore/reports"
+REPORT_DIR="${G4_DRILL_REPORT_DIR:-${TMPDIR:-/tmp}/mingla-g4-dr-restore-reports}"
 STATE_FILE="${G4_DRILL_STATE:-/tmp/mingla-g4-drill-state.txt}"
 DEFAULT_PROJECT_REF="${G4_DRILL_PROJECT_REF:-gqnoajqerqhnvulmnyvv}"
 

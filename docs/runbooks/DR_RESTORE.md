@@ -116,9 +116,9 @@ Record **T3** = last verification step passed (UTC).
 ### 6. Close out
 
 1. Post all-clear with duration: `T3 - T0` (total), `T2 - T1` (restore job), `T3 - T2` (verify).
-2. File drill/incident report: `docs/evidence/g4-dr-restore/reports/<timestamp>-drill.json` (use `./scripts/ops/g4-dr-restore-drill.sh`).
+2. Generate the drill/incident report with `./scripts/ops/g4-dr-restore-drill.sh`; it defaults to a temporary directory.
 3. Update RTO line in this runbook if measured duration differs from target.
-4. For G4 gate: attach report + dashboard screenshot to GitHub #426.
+4. For G4 gate: attach report + dashboard screenshot to GitHub #426; do not commit the report.
 
 ## Timed drill helper
 

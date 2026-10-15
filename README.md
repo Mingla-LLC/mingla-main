@@ -82,7 +82,7 @@ Every change must preserve these rules. If a change violates one, the PR must ca
 4. **One key per entity.** Entity families use one query-key factory and invalidate through the factory.
 5. **Server state stays server-side.** Server-authoritative state is not persisted locally unless a documented offline contract exists.
 6. **Logout clears everything.** Private local data clears from React Query, Zustand, AsyncStorage, queues, and realtime channels.
-7. **Label what's temporary.** Transitional work is tagged and tracked in the transitional registry.
+7. **Label what's temporary.** Transitional work is tagged and tracked on its owning GitHub issue.
 8. **Subtract before adding.** Remove the competing stale path before adding a replacement.
 9. **No fabricated data.** Missing data is hidden or shown as `--`; fake values are worse than blank states.
 10. **Currency-aware everywhere.** Price display must use locale/currency plumbing, not hardcoded symbols.
@@ -95,11 +95,7 @@ Supporting contracts:
 
 | Document | Purpose |
 |---|---|
-| [`docs/DOMAIN_ADRS.md`](docs/DOMAIN_ADRS.md) | Domain ownership and source-of-truth decisions. |
-| [`docs/IMPLEMENTATION_GATES.md`](docs/IMPLEMENTATION_GATES.md) | Required pre-code checklist. |
-| [`docs/MUTATION_CONTRACT.md`](docs/MUTATION_CONTRACT.md) | State-changing operation contract. |
 | [`docs/QUERY_KEY_REGISTRY.md`](docs/QUERY_KEY_REGISTRY.md) | Query-key factories and invalidation rules. |
-| [`docs/TRANSITIONAL_ITEMS_REGISTRY.md`](docs/TRANSITIONAL_ITEMS_REGISTRY.md) | Temporary work with owners and exit conditions. |
 | [`docs/runbooks/ANDROID_SIGNING_AND_DEEP_LINK_REGISTRY.md`](docs/runbooks/ANDROID_SIGNING_AND_DEEP_LINK_REGISTRY.md) | Android signing certificates, where each is registered, and the pre-release check. |
 
 ## Repo Map

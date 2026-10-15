@@ -14,7 +14,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
-REPORT_DIR="$ROOT/docs/evidence/g5-synthetic-incident/reports"
+REPORT_DIR="${G5_DRILL_REPORT_DIR:-${TMPDIR:-/tmp}/mingla-g5-synthetic-incident-reports}"
 STATE_FILE="${G5_DRILL_STATE:-/tmp/mingla-g5-drill-state.txt}"
 
 utc_now() {

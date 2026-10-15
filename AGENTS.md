@@ -16,9 +16,16 @@ All work — bugs, features, ideas, discoveries — lives as GitHub issues on th
 
 | Doc | Owns |
 |---|---|
+| `README.md` | Architecture Constitution and repository map |
+| `AGENTS.md` | Delivery, coordination, release, and safety rules |
 | `PRODUCT_AND_STRATEGY.md` | Product, positioning, roadmap, strategy |
 | `MARKETING.md` | Channels, attribution, marketing motions |
-| `docs/` | Maintained engineering references: handbook, worktree strategy, active runbooks, and active contracts |
+| `docs/MINGLA_ENGINEERING_HANDBOOK.md` | Maintained stack and engineering conventions |
+| `docs/WORKTREE_STRATEGY.md` | Worktree lifecycle and ownership |
+| `docs/runbooks/` | Active operational runbooks that a check or operator still uses |
+| `docs/contracts/` | Machine-readable contracts consumed by checks or runtime tooling |
+
+Other files under `docs/` survive only while a person or check actively consumes them. `docs/INVARIANT_REGISTRY.md` is frozen history; new invariant declarations live beside their enforcing gate or test. Historical evidence, implementation plans, decision records, and work-item specifications belong on their GitHub issues, not in the repository.
 
 Everything pre-2026-07-19 (Mingla_Artifacts/, Mingla_Roadmap/, per-ORCH docs, the first comms ledger) is preserved at git tag `pre-avengers-archive`. The later `COMMS.md` coordination table was retired by #3476; chats now follow § Coordinate with other chats, and the table's history is in git.
 
