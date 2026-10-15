@@ -62,7 +62,8 @@ function assertWaveStage(manifest, exists = (name) => fs.existsSync(path.join(DE
 
 test("#2435 registry v2 proves the complete current topology", () => {
   const rawManifest = JSON.parse(fs.readFileSync(DEFAULT_MANIFEST, "utf8"));
-  const errors = validateRegistry(loadEffectiveManifest(), { root: DEFAULT_ROOT });
+  const effectiveManifest = loadEffectiveManifest();
+  const errors = validateRegistry(effectiveManifest, { root: DEFAULT_ROOT });
   assert.deepEqual(errors, []);
   const manifest = decodeManifestTextRepresentations(rawManifest);
   assert.equal(manifest.schemaVersion, 2);
@@ -177,8 +178,11 @@ test("#2435 registry v2 proves the complete current topology", () => {
 
   const live = discoverLiveOrigins(DEFAULT_ROOT);
   const yamlTruth = inspectWorkflows(DEFAULT_ROOT, live);
+  // [TEST-MOD-APPROVED #3643] Workflow metadata is live-root evidence, so it
+  // must come from the effective patched view. Raw bootstrap remains above for
+  // frozen wave identities, counts and structural assertions only.
   const registered = new Map(
-    manifest.legacyOrigins
+    effectiveManifest.legacyOrigins
       // [TEST-MOD-APPROVED #2591 · :177] `consolidated-provider` joins the excluded
       // dispositions for the same reason batched-historical is excluded: the entry
       // no longer describes a live wrapper, so it carries no workflowMetadata. Left

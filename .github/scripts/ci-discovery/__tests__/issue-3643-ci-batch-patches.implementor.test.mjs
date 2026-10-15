@@ -206,6 +206,19 @@ test("validator, runner, selector and router consume one effective registry view
     assert.match(fs.readFileSync(path.join(ROOT, consumer), "utf8"), /loadEffectiveManifest/,
       `${consumer} must not bypass the canonical effective registry`);
   }
+
+  // [TEST-MOD-APPROVED #3643] Merely importing the loader was insufficient:
+  // explicit temp-root manifest paths default to raw compatibility mode unless
+  // discovery is forced, and a validator can still compare raw metadata later.
+  const postgresShadow = fs.readFileSync(path.join(ROOT,
+    ".github/scripts/ci-batch/__tests__/issue-2438-postgres-wave-shadow-parity.implementor.test.mjs"), "utf8");
+  const classAMargin = fs.readFileSync(path.join(ROOT,
+    ".github/scripts/strict-grep/issue-3336-class-a-margin.tester.test.mjs"), "utf8");
+  const registryV2 = fs.readFileSync(path.join(ROOT,
+    ".github/scripts/strict-grep/issue-2148-ci-registry-v2.implementor.test.mjs"), "utf8");
+  assert.match(postgresShadow, /const effectiveManifest = \(root = ROOT\) => loadEffectiveManifest\(\{[\s\S]*?discover: true,/);
+  assert.match(classAMargin, /function readRegistry\(root\) \{[\s\S]*?loadEffectiveManifest\(\{[\s\S]*?discover: true,/);
+  assert.match(registryV2, /const effectiveManifest = loadEffectiveManifest\(\);[\s\S]*?effectiveManifest\.legacyOrigins/);
 });
 
 test("consumer fixtures retain production patches and the files their CAS checks inspect", () => {
