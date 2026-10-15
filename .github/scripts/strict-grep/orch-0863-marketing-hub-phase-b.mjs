@@ -2047,6 +2047,10 @@ function checkNoNewBackendFiles() {
     // #3720 Phase 0 Slice D1 — support conversations excluded from base participant SELECT
     "supabase/migrations/20271016003720_issue_3720_support_conversation_isolation.sql",
     "supabase/migrations/__tests__/issue_3720_support_conversation_isolation.implementor.happy.test.ts",
+    // #3720 Phase 1 Slice E — community schema + outbox category + roles
+    "supabase/migrations/20271017003720_issue_3720_community_phase1_schema.sql",
+    "supabase/migrations/__tests__/issue_3720_community_phase1_schema.implementor.happy.test.ts",
+    "supabase/migrations/__tests__/issue_3720_community_phase1_schema.implementor.happy.pg17.test.sql",
   ];
   const ALLOWLIST = [
     ...META_ORCH_1104_BACKEND_ALLOWLIST,
