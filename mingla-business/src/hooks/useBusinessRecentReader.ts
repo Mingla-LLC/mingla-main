@@ -79,6 +79,12 @@ const withIndexLifecycle = (
 export function useBusinessRecent(input: {
   brandId: string | null;
   pageCount?: number;
+  /**
+   * Home's hydrated local-draft authority. `null` means hydration is pending,
+   * so client-only Recent cards stay hidden; omission preserves compatibility
+   * for non-Home/test callers that do not own draft truth.
+   */
+  restorableLocalDraftKeys?: ReadonlySet<string> | null;
 }): {
   rows: BusinessRecentPointer[];
   total: number;
@@ -317,10 +323,24 @@ export function useBusinessRecent(input: {
     mergeRecentPointers(fallbackRows, cached),
     serverRows,
   );
+  const locallyReconciledRows =
+    input.restorableLocalDraftKeys === undefined
+      ? candidateRows
+      : candidateRows.filter(
+          (pointer) =>
+            !pointer.localDraft ||
+            input.restorableLocalDraftKeys?.has(
+              `${pointer.entityType}:${pointer.entityId}`,
+            ) === true,
+        );
   const mergedRows = (
     authoritativeIndexReady
-      ? retainAuthoritativeBusinessRecentPointers(candidateRows, indexRows)
-      : candidateRows
+      ? retainAuthoritativeBusinessRecentPointers(
+          locallyReconciledRows,
+          indexRows,
+          input.restorableLocalDraftKeys,
+        )
+      : locallyReconciledRows
   ).map((pointer) => {
     const index = currentIndexByKey.get(
       `${pointer.entityType}:${pointer.entityId}`,
@@ -359,12 +379,39 @@ export function useBusinessRecent(input: {
   }, [input.brandId, offlineHint, queryClient, userId]);
 
   useEffect(() => {
-    if (scope === null || !authoritativeIndexReady) return;
+    if (
+      scope === null ||
+      !hasHydrated ||
+      !fallbackReady ||
+      input.restorableLocalDraftKeys === null ||
+      (!authoritativeIndexReady && input.restorableLocalDraftKeys === undefined)
+    )
+      return;
+    const sourceRows =
+      input.restorableLocalDraftKeys === undefined
+        ? mergeRecentPointers(fallbackRows, serverRows)
+        : mergeRecentPointers(
+            mergeRecentPointers(fallbackRows, cached),
+            serverRows,
+          );
+    const restorableRows =
+      input.restorableLocalDraftKeys === undefined
+        ? sourceRows
+        : sourceRows.filter(
+            (pointer) =>
+              !pointer.localDraft ||
+              input.restorableLocalDraftKeys?.has(
+                `${pointer.entityType}:${pointer.entityId}`,
+              ) === true,
+          );
     const snapshot = orderBusinessRecentPointers(
-      retainAuthoritativeBusinessRecentPointers(
-        mergeRecentPointers(fallbackRows, serverRows),
-        indexRows,
-      ),
+      authoritativeIndexReady
+        ? retainAuthoritativeBusinessRecentPointers(
+            restorableRows,
+            indexRows,
+            input.restorableLocalDraftKeys,
+          )
+        : restorableRows,
       indexRows,
     );
     const sourceKey = fallbackRows
@@ -373,18 +420,35 @@ export function useBusinessRecent(input: {
     const snapshotKey = snapshot
       .map((row) => `${row.entityType}:${row.entityId}:${row.lastOpenedAt}`)
       .join("|");
-    for (const pointer of cached) {
-      if (
-        !pointer.pendingSync &&
-        !pointer.localDraft &&
-        !indexRows.some(
-          (row) =>
-            row.entityType === pointer.entityType &&
-            row.entityId === pointer.entityId,
-        )
-      ) {
-        remove(scope, pointer.entityType, pointer.entityId);
-      }
+    const rejectedRows =
+      input.restorableLocalDraftKeys === undefined
+        ? cached.filter(
+            (pointer) =>
+              !pointer.pendingSync &&
+              !pointer.localDraft &&
+              !indexRows.some(
+                (row) =>
+                  row.entityType === pointer.entityType &&
+                  row.entityId === pointer.entityId,
+              ),
+          )
+        : sourceRows.filter(
+            (pointer) =>
+              !snapshot.some(
+                (retained) =>
+                  retained.entityType === pointer.entityType &&
+                  retained.entityId === pointer.entityId,
+              ),
+          );
+    for (const pointer of rejectedRows) {
+      remove(scope, pointer.entityType, pointer.entityId);
+      void removeBusinessRecentPresentationCache(
+        scope,
+        pointer.entityType,
+        pointer.entityId,
+      ).catch(() => {
+        console.warn("[Recent] orphan cache cleanup failed");
+      });
     }
     const reconciliationKey = `${scope}:${sourceKey}=>${snapshotKey}`;
     if (cachedSnapshotRef.current === reconciliationKey) return;
@@ -404,6 +468,9 @@ export function useBusinessRecent(input: {
     authoritativeIndexReady,
     cached,
     fallbackRows,
+    fallbackReady,
+    hasHydrated,
+    input.restorableLocalDraftKeys,
     indexRows,
     remove,
     scope,
@@ -572,6 +639,7 @@ export function useBusinessRecent(input: {
         indexQuery.isLoading ||
         !hasHydrated ||
         !fallbackReady ||
+        input.restorableLocalDraftKeys === null ||
         firstHydrationPending) &&
       rows.length === 0
     )
@@ -593,6 +661,7 @@ export function useBusinessRecent(input: {
     indexQuery.isFetching,
     indexQuery.isLoading,
     indexRows.length,
+    input.restorableLocalDraftKeys,
     omitted,
     pageQueries,
     rows.length,

@@ -17,9 +17,12 @@
  * Established by SPEC §4.4.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { useDraftsForBrand } from "../store/draftEventStore";
+import {
+  useDraftEventStore,
+  useDraftsForBrand,
+} from "../store/draftEventStore";
 import { useLiveEventsForBrand } from "../store/liveEventStore";
 import { buildUpcomingItems } from "../utils/upcomingBuilder";
 import {
@@ -54,6 +57,8 @@ export interface UpcomingForBrand {
   isLoading: boolean;
   isError: boolean;
   errors: { events?: unknown; trips?: unknown };
+  /** Local draft persistence is safe to use as reconciliation authority. */
+  draftsHydrated: boolean;
 }
 
 export const useUpcomingForBrand = (
@@ -63,6 +68,17 @@ export const useUpcomingForBrand = (
   const tripsQuery = useTripsByBrand(brandId);
   const legacyLiveEvents = useLiveEventsForBrand(brandId);
   const drafts = useDraftsForBrand(brandId);
+  const [draftsHydrated, setDraftsHydrated] = useState<boolean>(() =>
+    useDraftEventStore.persist.hasHydrated(),
+  );
+
+  useEffect(() => {
+    const unsubscribe = useDraftEventStore.persist.onFinishHydration(() => {
+      setDraftsHydrated(true);
+    });
+    if (useDraftEventStore.persist.hasHydrated()) setDraftsHydrated(true);
+    return unsubscribe;
+  }, []);
 
   const serverEvents = eventsQuery.data ?? [];
   const trips = tripsQuery.data ?? [];
@@ -84,5 +100,6 @@ export const useUpcomingForBrand = (
       events: eventsQuery.error ?? undefined,
       trips: tripsQuery.error ?? undefined,
     },
+    draftsHydrated,
   };
 };

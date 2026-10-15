@@ -229,11 +229,22 @@ export default function HomeTab(): React.ReactElement {
     recoveryResolving: brandRecovery.isResolving,
   });
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
+  const restorableLocalDraftKeys = useMemo<ReadonlySet<string> | null>(() => {
+    if (!upcoming.draftsHydrated) return null;
+    return new Set(
+      upcoming.items.flatMap((item) => {
+        if (item.kind !== "draft" || !item.id.startsWith("d_")) return [];
+        const draft = item.source as { isRsvp?: boolean };
+        return [`${draft.isRsvp === true ? "rsvp" : "event"}:${item.id}`];
+      }),
+    );
+  }, [upcoming.draftsHydrated, upcoming.items]);
   const showFullRecent = params.recent === "all";
   const [recentPageCount, setRecentPageCount] = useState(1);
   const recent = useBusinessRecent({
     brandId: currentBrand?.id ?? null,
     pageCount: showFullRecent ? recentPageCount : 1,
+    restorableLocalDraftKeys,
   });
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // ORCH-0826 M0: universal creator sheet (Create event/experience/trip)
