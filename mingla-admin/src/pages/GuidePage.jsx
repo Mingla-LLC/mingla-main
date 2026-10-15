@@ -166,7 +166,7 @@ export function GuidePage() {
           <AlertCard
             variant="error"
             title="You can't open this any more"
-            action={<Button variant="secondary" size="sm" onClick={() => window.location.reload()} className="max-sm:h-11">Reload</Button>}
+            action={<Button variant="secondary" size="sm" highContrastFocus onClick={() => window.location.reload()} className="min-h-11 max-sm:h-11">Reload</Button>}
           >
             Ask the owner to check your team access.
           </AlertCard>
@@ -174,7 +174,7 @@ export function GuidePage() {
           <AlertCard
             variant="error"
             title="Couldn't load the guide"
-            action={<Button variant="secondary" size="sm" disabled={!online} onClick={guide.retry} className="max-sm:h-11">Try again</Button>}
+            action={<Button variant="secondary" size="sm" highContrastFocus disabled={!online} onClick={guide.retry} className="min-h-11 max-sm:h-11">Try again</Button>}
           >
             Check your connection and try again. No pipeline changes were made.
           </AlertCard>

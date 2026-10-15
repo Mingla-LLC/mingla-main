@@ -101,9 +101,10 @@ begin
 end $proof$;
 
 select count(*) as total, count(*) filter (where not ok) as failed,
+       count(*) filter (where not ok) > 0 as has_failures,
        coalesce(string_agg(label || ': ' || detail, E'\n' order by label) filter (where not ok), 'none') as failures
 from t3802d_results \gset
-\if :failed
+\if :has_failures
   \echo 'ISSUE-3802 PR-D OUTCOME COUNTS FAILED:' :failures
   do $$ begin raise exception 'issue3802_pr_d_outcome_counts_failed'; end $$;
 \endif

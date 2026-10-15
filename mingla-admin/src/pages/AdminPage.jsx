@@ -877,7 +877,7 @@ export function AdminPage() {
                 <AlertCard
                   variant="warning"
                   title="Agent status unavailable"
-                  action={<Button type="button" variant="secondary" size="sm" disabled={!online} onClick={agentOverview.retry}>Try again</Button>}
+                  action={<Button type="button" variant="secondary" size="sm" highContrastFocus disabled={!online} onClick={agentOverview.retry} className="min-h-11 max-sm:h-11">Try again</Button>}
                 >
                   Team access controls still work.
                 </AlertCard>

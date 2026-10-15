@@ -865,4 +865,42 @@ describe("#3802 PR-D: Guide, prompts and counts-only agent outcomes", () => {
     assert.equal(activityVia({ via: "codex" }), "Codex");
     for (const via of [null, undefined, "system", "unknown", "CLAUDE"]) assert.equal(activityVia({ via }), "");
   });
+
+  it("keeps every new control at least 44px at desktop and 375px with the dark brand focus ring", () => {
+    const button = read("components/ui/Button.jsx");
+    const copyBlock = PARTS.find(([file]) => file === "CopyBlock.jsx")[1];
+    const teamList = PARTS.find(([file]) => file === "AgentTeamList.jsx")[1];
+    const controls = [
+      ["Guide", GUIDE_PAGE, 2],
+      ["prompt strip", PROMPT_STRIP, 1],
+      ["My agent", PAGE, 4],
+      ["Team agent status", teamList, 3],
+      ["Team overview", ADMIN_PAGE, 1],
+    ];
+    const buttonBlocks = (source) => source.split("<Button").slice(1).map((part) => part.split("</Button>")[0]);
+    const resolvedHeight = (block, width) => {
+      if (block.includes("min-h-11")) return 44;
+      if (width === 375 && block.includes("max-sm:h-11")) return 44;
+      return block.includes('size="sm"') ? 32 : 40;
+    };
+
+    assert.match(button, /brandContrast:\s*\n\s*"min-h-11 [^"]+"/);
+    assert.match(button, /highContrastFocus \|\| variant === "brandContrast"[\s\S]{0,180}focus-visible:ring-\[var\(--color-brand-700\)\]/);
+    assert.match(ROUTINES, /buttonVariant="brandContrast"/);
+    const [copyButton] = buttonBlocks(copyBlock);
+    assert.ok(copyButton.includes("min-h-11") && copyButton.includes("max-sm:h-11"));
+    for (const width of [1440, 375]) assert.equal(resolvedHeight(copyButton, width), 44, `Copy prompt at ${width}px`);
+
+    for (const [name, source, expected] of controls) {
+      const highContrast = buttonBlocks(source).filter((block) => block.includes("highContrastFocus"));
+      assert.equal(highContrast.length, expected, `${name}: every PR-D button opts into the dark focus ring`);
+      for (const block of highContrast) {
+        assert.ok(block.includes("min-h-11"), `${name}: desktop control is shorter than 44px`);
+        assert.ok(block.includes("max-sm:h-11"), `${name}: 375px control is shorter than 44px`);
+        for (const width of [1440, 375]) assert.equal(resolvedHeight(block, width), 44, `${name} at ${width}px`);
+      }
+    }
+    assert.match(GUIDE_PAGE, /const LINK_CLASS =[\s\S]{0,320}min-h-11[\s\S]{0,320}focus-visible:ring-\[var\(--color-brand-700\)\]/);
+    assert.match(PROMPT_STRIP, /inline-flex min-h-11[^"]+focus-visible:ring-\[var\(--color-brand-700\)\]/);
+  });
 });

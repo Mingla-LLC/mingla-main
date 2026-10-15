@@ -70,7 +70,7 @@ export function CopyBlock({
           icon={state === "copied" ? Check : Copy}
           onClick={copy}
           disabled={state === "copying"}
-          className="shrink-0 max-sm:h-11 max-sm:w-full"
+          className="min-h-11 shrink-0 max-sm:h-11 max-sm:w-full"
         >
           {state === "copying" ? "Copying..." : state === "copied" ? copiedLabel : copyLabel}
         </Button>

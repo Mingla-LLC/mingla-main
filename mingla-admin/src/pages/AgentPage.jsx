@@ -810,7 +810,7 @@ export function AgentPage() {
               <AlertCard
                 variant="warning"
                 title="Couldn't load the routines"
-                action={<Button type="button" variant="secondary" onClick={guideRead.retry} className="max-sm:h-11">Try again</Button>}
+                action={<Button type="button" variant="secondary" highContrastFocus onClick={guideRead.retry} className="min-h-11 max-sm:h-11">Try again</Button>}
               >
                 Your setup and keys still work.
               </AlertCard>
@@ -831,7 +831,7 @@ export function AgentPage() {
                 <AlertCard
                   variant="warning"
                   title="Couldn't load your agent activity"
-                  action={<Button type="button" variant="secondary" onClick={activity.retry} className="max-sm:h-11">Try again</Button>}
+                  action={<Button type="button" variant="secondary" highContrastFocus onClick={activity.retry} className="min-h-11 max-sm:h-11">Try again</Button>}
                 >
                   The rest of My agent still works.
                 </AlertCard>
@@ -868,7 +868,7 @@ export function AgentPage() {
                   })}
                 </ul>
                 {shownActivity < activity.calls.length ? (
-                  <Button type="button" variant="secondary" className="min-h-11 w-full rounded-t-none border-x-0 border-b-0 max-sm:h-11" onClick={() => setShownActivity((n) => n + 20)}>
+                  <Button type="button" variant="secondary" highContrastFocus className="min-h-11 w-full rounded-t-none border-x-0 border-b-0 max-sm:h-11" onClick={() => setShownActivity((n) => n + 20)}>
                     Show more
                   </Button>
                 ) : activity.more ? (
@@ -885,7 +885,7 @@ export function AgentPage() {
               ) : (
                 <div className="flex flex-wrap items-center gap-3">
                   <p className="text-[13px] text-[var(--color-text-secondary)]">Couldn&apos;t load who has an agent connected.</p>
-                  <Button type="button" variant="secondary" size="sm" onClick={() => refetch()} className="max-sm:h-11">
+                  <Button type="button" variant="secondary" size="sm" highContrastFocus onClick={() => refetch()} className="min-h-11 max-sm:h-11">
                     Try again
                   </Button>
                 </div>

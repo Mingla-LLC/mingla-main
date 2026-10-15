@@ -60,6 +60,7 @@ export function AgentStatusList({ row, loading = false, unavailable = false, bus
                   <Button
                     type="button"
                     variant="danger"
+                    highContrastFocus
                     loading={busyKeyId === a.keyId}
                     disabled={offline || (busyKeyId && busyKeyId !== a.keyId)}
                     title={offline ? "Reconnect to disconnect an agent." : undefined}
@@ -74,11 +75,11 @@ export function AgentStatusList({ row, loading = false, unavailable = false, bus
                         setProblem(result?.message || "Couldn't disconnect this agent. Try again.");
                       }
                     }}
-                    className="max-sm:h-11"
+                    className="min-h-11 max-sm:h-11"
                   >
                     {busyKeyId === a.keyId ? "Disconnecting..." : "Disconnect"}
                   </Button>
-                  <Button ref={keepRef} type="button" variant="secondary" disabled={!!busyKeyId} onClick={() => keep(a.keyId)} className="max-sm:h-11">
+                  <Button ref={keepRef} type="button" variant="secondary" highContrastFocus disabled={!!busyKeyId} onClick={() => keep(a.keyId)} className="min-h-11 max-sm:h-11">
                     Keep
                   </Button>
                 </div>
@@ -96,11 +97,12 @@ export function AgentStatusList({ row, loading = false, unavailable = false, bus
                   type="button"
                   variant="ghost"
                   size="sm"
+                  highContrastFocus
                   disabled={offline || !!busyKeyId}
                   title={offline ? "Reconnect to disconnect an agent." : undefined}
                   onClick={() => setAsking(a.keyId)}
                   aria-label={`Disconnect ${row.name}'s ${a.label}`}
-                  className="max-sm:h-11"
+                  className="min-h-11 max-sm:h-11"
                 >
                   Disconnect
                 </Button>

@@ -11,7 +11,7 @@ const VARIANTS = {
   danger:
     "bg-[#ef4444] text-white border-transparent hover:bg-[#dc2626] active:bg-[#b91c1c]",
   brandContrast:
-    "bg-[var(--color-brand-800)] text-white border-transparent hover:bg-[var(--color-brand-900)] active:bg-[var(--color-brand-900)]",
+    "min-h-11 bg-[var(--color-brand-800)] text-white border-transparent hover:bg-[var(--color-brand-900)] active:bg-[var(--color-brand-900)]",
   link:
     "bg-transparent text-[var(--color-brand-500)] border-transparent hover:underline p-0 h-auto",
 };
@@ -28,6 +28,7 @@ export const Button = forwardRef(function Button(
     size = "md",
     loading = false,
     disabled = false,
+    highContrastFocus = false,
     icon: Icon,
     iconRight: IconRight,
     children,
@@ -47,7 +48,9 @@ export const Button = forwardRef(function Button(
       className={[
         "inline-flex items-center justify-center font-semibold border",
         "transition-all duration-150 ease-out select-none",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
+        highContrastFocus || variant === "brandContrast"
+          ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2"
+          : "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
         VARIANTS[variant] || VARIANTS.primary,
         variant === "link" ? "" : SIZES[size] || SIZES.md,
         isIconOnly && variant !== "link"

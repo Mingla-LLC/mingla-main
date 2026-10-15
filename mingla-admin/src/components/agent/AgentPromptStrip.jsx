@@ -39,7 +39,7 @@ export function AgentPromptStrip({ routine, pipeline = "", icp = "", region = ""
           variant="warning"
           title="Couldn't load an agent prompt"
           action={
-            <Button type="button" variant="secondary" size="sm" disabled={!online} onClick={guide.retry} className="max-sm:h-11">
+            <Button type="button" variant="secondary" size="sm" highContrastFocus disabled={!online} onClick={guide.retry} className="min-h-11 max-sm:h-11">
               Try again
             </Button>
           }
