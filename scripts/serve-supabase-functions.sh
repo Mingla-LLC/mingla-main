@@ -5,6 +5,8 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 config_file="${repo_root}/supabase/config.toml"
+config_lock_dir="${config_file}.materialization.lock"
+config_lock_held=false
 function_name=""
 config_backup=""
 
@@ -35,14 +37,32 @@ restore_config() {
       echo "WARN serve: could not restore ${config_file}; the original is at ${config_backup}" >&2
     fi
   fi
+  if [[ "$config_lock_held" == true ]]; then
+    rmdir "$config_lock_dir"
+    config_lock_held=false
+  fi
   return "$status"
 }
 
-config_backup="$(mktemp "${TMPDIR:-/tmp}/mingla-function-config.XXXXXX")"
-cp "$config_file" "$config_backup"
+acquire_config_lock() {
+  local attempt
+  for ((attempt = 0; attempt < 600; attempt += 1)); do
+    if mkdir "$config_lock_dir" 2>/dev/null; then
+      config_lock_held=true
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "FAIL serve: timed out waiting for exclusive function config materialization; no action executed" >&2
+  return 75
+}
+
 trap restore_config EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+acquire_config_lock
+config_backup="$(mktemp "${TMPDIR:-/tmp}/mingla-function-config.XXXXXX")"
+cp "$config_file" "$config_backup"
 
 node "${repo_root}/.github/scripts/ci-discovery/function-policy.mjs" \
   --write-config "$config_file"
