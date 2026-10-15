@@ -74,6 +74,7 @@ BEGIN
 
   -- [TEST-MOD-APPROVED #3859] A bankless Paystack brand is now refused by the
   -- provider-neutral capability belt before the older bank-specific belt.
+  -- The superseded exact-error assertion therefore described unreachable behavior.
   INSERT INTO public.events (
     id, brand_id, title, slug, event_type, status, currency
   ) VALUES (

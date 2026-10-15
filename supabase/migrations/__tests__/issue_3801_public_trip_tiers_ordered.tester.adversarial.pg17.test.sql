@@ -350,6 +350,7 @@ BEGIN
   -- [TEST-MOD-APPROVED #3859] The public trip contract now truthfully exposes
   -- whether any currently purchasable line has a server-confirmed installment
   -- plan. Keep the full exact-key pin so no unrelated field can hitchhike.
+  -- The prior exact-key list was incomplete once that buyer-facing fact shipped.
   IF v_top IS DISTINCT FROM
      'bookingDeadline,bookingsClosed,brand,brandId,brandSlug,coverGallery,coverMediaAlt,coverMediaType,coverMediaUrl,currency,days,departureLat,departureLng,departureText,description,destinationLat,destinationLng,destinationText,endAt,id,inclusions,installmentCapabilityAvailable,refundPolicy,startAt,status,themeAnimationOverride,themeColorOverride,themeFontOverride,tiers,timezone,title,tripSlug' THEN
     RAISE EXCEPTION 'A-07 FAIL: the response keys changed: %', v_top;
