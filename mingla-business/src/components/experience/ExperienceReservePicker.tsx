@@ -32,6 +32,17 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { ThemePalette } from "@mingla/offering-rendering";
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import {
+  priceDecimals,
+  priceFallbackDecimals,
+} from "@mingla/offering-rendering/priceDecimals";
+import {
+  experienceTimeChoices,
+  experienceZoneCityLabel,
+  experienceZoneDiffersFromViewer,
+  formatExperienceMinute,
+} from "@mingla/offering-rendering/experienceTimeZone";
 import { Sheet } from "../ui/Sheet";
 import { Icon } from "../ui/Icon";
 import type { PublicExperienceDate } from "../../services/publicExperienceService";
@@ -56,6 +67,12 @@ export interface ExperienceReservePickerProps {
   fontFamily?: string;
   /** Event-level remaining caps the party-size stepper (open-daily). */
   eventRemaining: number | null;
+  /**
+   * issue #3281 Round 1 — server all-in unit price in CENTS. When set with
+   * `currency`, the confirm button reads "Reserve · ₦70,000" (party × unit).
+   */
+  unitAllInCents?: number | null;
+  currency?: string | null;
   onCancel: () => void;
   onConfirm: (selection: ExperienceReserveSelection) => void;
 }
@@ -127,20 +144,6 @@ function formatWindow(startAt: string, endAt: string, timezone: string): string 
   return s.length > 0 && e.length > 0 ? `${s} – ${e}` : s;
 }
 
-/** Build the bound clock minutes [openMin, closeMin] of an occurrence window. */
-function windowMinutes(
-  startAt: string,
-  endAt: string,
-): { open: number; close: number } | null {
-  const s = new Date(startAt);
-  const e = new Date(endAt);
-  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return null;
-  const open = s.getHours() * 60 + s.getMinutes();
-  let close = e.getHours() * 60 + e.getMinutes();
-  if (close <= open) close += 24 * 60; // wrap past midnight
-  return { open, close };
-}
-
 function remainingChip(remaining: number | null): string | null {
   if (remaining === null) return null;
   if (remaining <= 0) return "Sold out";
@@ -156,6 +159,8 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   palette,
   fontFamily,
   eventRemaining,
+  unitAllInCents = null,
+  currency = null,
   onCancel,
   onConfirm,
 }) => {
@@ -188,16 +193,16 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
   );
 
   // Open-daily: free 30-min-step time choices BOUNDED by the occurrence window
-  // (OQ-5 — "any time within the window"; the 30-min step is presentation only,
-  // every offered time is genuinely inside the authored open/close hours).
+  // in the EXPERIENCE zone (issue #3281 — never Date#getHours()).
   const timeChoices = useMemo<number[]>(() => {
     if (mode !== "open-daily" || selectedDate === null) return [];
-    const w = windowMinutes(selectedDate.startAt, selectedDate.endAt);
-    if (w === null) return [];
-    const out: number[] = [];
-    for (let m = w.open; m <= w.close; m += 30) out.push(m % (24 * 60));
-    return out;
-  }, [mode, selectedDate]);
+    return experienceTimeChoices(
+      selectedDate.startAt,
+      selectedDate.endAt,
+      timezone,
+      30,
+    );
+  }, [mode, selectedDate, timezone]);
 
   const partyMax = Math.min(
     MAX_PARTY,
@@ -221,13 +226,34 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
     onConfirm({ eventDateId: selectedDate.id, quantity: party });
   };
 
-  const formatMinute = (min: number): string => {
-    const h = Math.floor(min / 60) % 24;
-    const m = min % 60;
-    const ampm = h >= 12 ? "PM" : "AM";
-    const h12 = h % 12 === 0 ? 12 : h % 12;
-    return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
-  };
+  const formatMinute = formatExperienceMinute;
+
+  const zoneCity = experienceZoneCityLabel(timezone);
+  const showZoneHint = experienceZoneDiffersFromViewer(timezone);
+
+  const confirmLabel = useMemo((): string => {
+    const qty = mode === "slots" ? 1 : party;
+    const unit =
+      typeof unitAllInCents === "number" && unitAllInCents > 0
+        ? unitAllInCents
+        : null;
+    const code = (currency ?? "").trim().toUpperCase();
+    if (unit === null || code.length !== 3) return "Reserve →";
+    const major = (unit * qty) / 100;
+    try {
+      const money = withCurrencyGlyph(
+        new Intl.NumberFormat(undefined, {
+          style: "currency",
+          currency: code,
+          ...priceDecimals(major),
+        }).format(major),
+        code,
+      );
+      return `Reserve · ${money}`;
+    } catch {
+      return `Reserve · ${major.toFixed(priceFallbackDecimals(major))} ${code}`;
+    }
+  }, [mode, party, unitAllInCents, currency]);
 
   // ORCH-1186 Fix 4 — wizard step machine (open-daily only). Slots mode shows
   // the single date list as before (no wizard — a single tap reserves).
@@ -394,6 +420,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
             <>
               <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
                 CHOOSE A TIME · {formatWindow(selectedDate.startAt, selectedDate.endAt, timezone)}
+                {showZoneHint && zoneCity.length > 0 ? ` · ${zoneCity} time` : ""}
               </Text>
               <View style={styles.timeWrap}>
                 {timeChoices.map((min) => {
@@ -500,7 +527,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
               disabled={!canConfirm}
               accessibilityRole="button"
               accessibilityState={{ disabled: !canConfirm }}
-              accessibilityLabel="Reserve"
+              accessibilityLabel={confirmLabel}
               style={[
                 styles.confirm,
                 canConfirm
@@ -516,7 +543,7 @@ export const ExperienceReservePicker: React.FC<ExperienceReservePickerProps> = (
                   fontStyle,
                 ]}
               >
-                Reserve →
+                {confirmLabel}
               </Text>
             </Pressable>
           ) : null}

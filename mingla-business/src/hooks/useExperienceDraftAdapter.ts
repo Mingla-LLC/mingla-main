@@ -21,7 +21,7 @@
  *                      fields of the biz_create_experience p_payload
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   type DraftEvent,
@@ -31,6 +31,10 @@ import {
 } from "../store/draftEventStore";
 import { validateStep, type ValidationError } from "../utils/draftEventValidation";
 import { computeEndsAtUtcWithSmartInfer } from "../utils/eventDateMath";
+import {
+  defaultTimezoneForBrand,
+  detectDeviceTimezone,
+} from "../utils/timezones";
 
 /** The When-step subset of DraftEvent the adapter actually owns. */
 export interface ExperienceWhenState {
@@ -52,14 +56,11 @@ export interface ExperiencePayloadWhen {
   timezone: string;
 }
 
-const detectDeviceTimezone = (): string => {
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return typeof tz === "string" && tz.length > 0 ? tz : "UTC";
-  } catch {
-    return "UTC";
-  }
-};
+/** Brand hints used only when seeding a NEW experience's timezone. */
+export interface ExperienceBrandTimezoneHints {
+  payoutCountry?: string | null;
+  currency?: string | null;
+}
 
 /**
  * Build a type-complete synthetic DraftEvent. Only the When subset is
@@ -165,17 +166,43 @@ export function useExperienceDraftAdapter(
   // ORCH-1339 — the wizard threads its guest-privacy toggle state so the
   // synthetic draft carries the host's real values (defaults false).
   guestPrivacy?: ExperienceGuestPrivacyState,
+  // issue #3281 Round 1 — brand country/currency beat the device zone for new drafts.
+  brandTzHints?: ExperienceBrandTimezoneHints,
 ): UseExperienceDraftAdapterResult {
+  const seededTimezone =
+    initialWhen?.timezone ??
+    defaultTimezoneForBrand({
+      payoutCountry: brandTzHints?.payoutCountry,
+      currency: brandTzHints?.currency,
+      deviceZone: detectDeviceTimezone(),
+    });
   const [whenState, setWhenState] = useState<ExperienceWhenState>({
     whenMode: initialWhen?.whenMode ?? "single",
     date: initialWhen?.date ?? null,
     doorsOpen: initialWhen?.doorsOpen ?? null,
     endsAt: initialWhen?.endsAt ?? null,
-    timezone: initialWhen?.timezone ?? detectDeviceTimezone(),
+    timezone: seededTimezone,
     recurrenceRule: initialWhen?.recurrenceRule ?? null,
     multiDates: initialWhen?.multiDates ?? null,
   });
   const [showErrors, setShowErrors] = useState(false);
+  // Brand often hydrates after first paint. If the host has not touched
+  // timezone yet and we seeded from the device, promote to the brand zone once.
+  const timezoneTouchedRef = useRef(initialWhen?.timezone !== undefined);
+  useEffect(() => {
+    if (timezoneTouchedRef.current) return;
+    if (initialWhen?.timezone !== undefined) return;
+    const next = defaultTimezoneForBrand({
+      payoutCountry: brandTzHints?.payoutCountry,
+      currency: brandTzHints?.currency,
+      deviceZone: detectDeviceTimezone(),
+    });
+    setWhenState((prev) => (prev.timezone === next ? prev : { ...prev, timezone: next }));
+  }, [
+    brandTzHints?.payoutCountry,
+    brandTzHints?.currency,
+    initialWhen?.timezone,
+  ]);
 
   const draftEvent = useMemo(
     () => synthDraft(brandId, whenState, guestPrivacy ?? GUEST_PRIVACY_DEFAULTS),
@@ -192,7 +219,10 @@ export function useExperienceDraftAdapter(
         if ("date" in patch) next.date = patch.date ?? null;
         if ("doorsOpen" in patch) next.doorsOpen = patch.doorsOpen ?? null;
         if ("endsAt" in patch) next.endsAt = patch.endsAt ?? null;
-        if ("timezone" in patch && patch.timezone !== undefined) next.timezone = patch.timezone;
+        if ("timezone" in patch && patch.timezone !== undefined) {
+          timezoneTouchedRef.current = true;
+          next.timezone = patch.timezone;
+        }
         if ("recurrenceRule" in patch) next.recurrenceRule = patch.recurrenceRule ?? null;
         if ("multiDates" in patch) next.multiDates = patch.multiDates ?? null;
         return next;

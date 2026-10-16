@@ -1297,6 +1297,12 @@ export default function ConsumerExperienceDetailScreen({
         palette={palette}
         fontFamily={boldFamily}
         eventRemaining={eventRemaining}
+        unitAllInCents={
+          sellableTicket !== undefined && !sellableTicket.isFree
+            ? (sellableAllInCents ?? sellablePriceCents)
+            : null
+        }
+        currency={sellableTicket?.currency ?? seed.currency ?? null}
         onCancel={handleReserveCancel}
         onConfirm={handleReserveConfirm}
       />

@@ -463,7 +463,7 @@ const ResolvedExperiencePage: React.FC<{
         : ticket.priceCents;
   const expPrice =
     expDisplayCents !== null && expDisplayCents > 0
-      ? formatExpPrice(expDisplayCents, ticket!.currency)
+      ? `${formatExpPrice(expDisplayCents, ticket!.currency)} per person`
       : ticket !== null
         ? "Free"
         : "";
@@ -771,6 +771,8 @@ const ResolvedExperiencePage: React.FC<{
         palette={palette}
         fontFamily={boldFamily}
         eventRemaining={ticket?.ticketsRemaining ?? null}
+        unitAllInCents={expDisplayCents}
+        currency={ticket?.currency ?? null}
         onCancel={() => setPickerVisible(false)}
         onConfirm={handlePickerConfirm}
       />
