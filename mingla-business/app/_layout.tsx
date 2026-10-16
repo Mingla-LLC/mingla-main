@@ -99,6 +99,11 @@ import {
   processBusinessNotification,
   type BusinessNavTarget,
 } from "../src/services/businessNotificationRouting";
+import {
+  consumeBusinessPushLaunchTarget,
+  holdBusinessPushLaunchTarget,
+  isBusinessNavigationStartupSettled,
+} from "../src/services/businessPushLaunchIntent";
 import { usePushPermissionMoment } from "../src/hooks/usePushPermissionMoment";
 import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
 // ORCH-1102 — route-agnostic auth routing with no dead-ends. Pure, unit-tested
@@ -608,8 +613,14 @@ function RootLayoutInner(): React.ReactElement {
   // app-lifetime native listener captures a cold click before the intentionally
   // deferred OneSignal initialization above, then buffers it until this React
   // subscriber is ready. On web these remain guarded no-ops. Re-registers when
-  // the signed-in user changes so auth gating sees fresh state.
+  // the signed-in user / startup-settled flag changes so auth gating sees fresh
+  // state. #3720: do not push while boot index → Home can still overwrite.
   const userId = user?.id ?? null;
+  const navigationStartupSettled = isBusinessNavigationStartupSettled({
+    loading,
+    userId,
+    pathname,
+  });
   useEffect(() => {
     // Foreground: show the system banner for every business push (consumer
     // chose "app feels alive"; SDK v5 needs an explicit display()).
@@ -620,12 +631,15 @@ function RootLayoutInner(): React.ReactElement {
     );
 
     // Tap (tray / lock screen / banner): mark read + track + navigate. When
-    // unauthenticated, stash the resolved target for post-login replay.
+    // unauthenticated, stash the resolved target for post-login replay. When
+    // authenticated but boot index → Home can still win, hold the target.
     const removeClicked = onNotificationClicked((data) => {
       if (typeof data.type !== "string") return;
       processBusinessNotification(data, {
         router,
         isAuthenticated: userId !== null,
+        navigationStartupSettled,
+        holdLaunchTarget: holdBusinessPushLaunchTarget,
         stashDeferred: (target: BusinessNavTarget) => {
           void AsyncStorage.setItem(
             DEFERRED_PUSH_TARGET_KEY,
@@ -639,11 +653,23 @@ function RootLayoutInner(): React.ReactElement {
       removeForeground();
       removeClicked();
     };
-  }, [router, userId]);
+  }, [router, userId, navigationStartupSettled]);
+
+  // #3720 — flush a held authenticated push target once startup navigation
+  // has settled (auth ready and no longer on boot `/`), so index → Home cannot
+  // overwrite Community → Roadmap.
+  useEffect(() => {
+    if (!navigationStartupSettled) return;
+    const target = consumeBusinessPushLaunchTarget();
+    if (target !== null) {
+      router.push(target as never);
+    }
+  }, [navigationStartupSettled, router]);
 
   // META-ORCH-1074 Sub-B — replay a deferred push target once auth is ready.
-  // A tap while logged out stashed a path; navigate to it after sign-in, then
-  // clear the stash so it fires at most once.
+  // A tap while logged out stashed a path; after sign-in, push only once
+  // startup is settled (same cold-start Home race). If storage resolves after
+  // settle, push immediately; otherwise hold for the flush effect above.
   useEffect(() => {
     if (userId === null) return;
     let cancelled = false;
@@ -653,8 +679,13 @@ function RootLayoutInner(): React.ReactElement {
         if (raw === null || cancelled) return;
         await AsyncStorage.removeItem(DEFERRED_PUSH_TARGET_KEY);
         const parsed = JSON.parse(raw) as { target?: string };
-        if (typeof parsed.target === "string" && parsed.target.length > 0) {
+        if (typeof parsed.target !== "string" || parsed.target.length === 0) {
+          return;
+        }
+        if (navigationStartupSettled) {
           router.push(parsed.target as never);
+        } else {
+          holdBusinessPushLaunchTarget(parsed.target);
         }
       } catch (err) {
         if (__DEV__) {
@@ -666,7 +697,7 @@ function RootLayoutInner(): React.ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [userId, router]);
+  }, [userId, navigationStartupSettled, router]);
 
   // Cycle 17d §C — TTL evict ended-event entries from phone stores (30d post end_at).
   // Runs once after auth bootstrap completes (signal that Zustand persist hydration is done).

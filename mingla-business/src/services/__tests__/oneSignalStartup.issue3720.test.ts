@@ -39,4 +39,16 @@ describe("#3720 OneSignal cold-click startup order", () => {
       -1,
     );
   });
+
+  test("holds push navigation until boot index → Home has settled", () => {
+    expect(rootLayout).toContain("isBusinessNavigationStartupSettled");
+    expect(rootLayout).toContain("navigationStartupSettled");
+    expect(rootLayout).toContain("holdLaunchTarget: holdBusinessPushLaunchTarget");
+    const holdCall = rootLayout.indexOf(
+      "holdLaunchTarget: holdBusinessPushLaunchTarget",
+    );
+    const flushCall = rootLayout.indexOf("consumeBusinessPushLaunchTarget()");
+    expect(holdCall).toBeGreaterThan(-1);
+    expect(flushCall).toBeGreaterThan(holdCall);
+  });
 });

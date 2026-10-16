@@ -291,12 +291,21 @@ export interface ProcessBusinessNotificationDeps {
   isAuthenticated: boolean;
   /** Stash for a tap that arrives before auth (replayed post-login). */
   stashDeferred: (target: BusinessNavTarget) => void;
+  /**
+   * #3720 — false while auth is still loading or the boot index → Home
+   * redirect can still overwrite an immediate push. When false, the resolved
+   * target is held via `holdLaunchTarget` for a single flush after startup.
+   */
+  navigationStartupSettled: boolean;
+  /** Hold an authenticated target until startup navigation has settled. */
+  holdLaunchTarget: (target: BusinessNavTarget) => void;
 }
 
 /**
  * Handle a tapped business push: mark read, track, navigate. When
  * unauthenticated, stash the resolved target for post-login replay (mirrors
- * consumer deferred-deeplink behavior).
+ * consumer deferred-deeplink behavior). When authenticated but startup is not
+ * settled, hold the target instead of pushing (cold-start Home race).
  */
 export function processBusinessNotification(
   data: BusinessPushData,
@@ -322,6 +331,11 @@ export function processBusinessNotification(
     });
   } catch {
     // analytics best-effort
+  }
+
+  if (!deps.navigationStartupSettled) {
+    deps.holdLaunchTarget(target);
+    return;
   }
 
   deps.router.push(target as never);
