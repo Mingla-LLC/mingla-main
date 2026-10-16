@@ -9,9 +9,6 @@ on:
       - '.github/workflows/issue-1456-edge-deploy-idempotency.yml'
       - 'scripts/deploy-supabase-functions.sh'
       - 'scripts/ci/issue1456-edge-deploy-idempotency.test.mjs'
-      # #3645 — effective-policy changes can move the bootstrap seal this lane
-      # verifies, so the seal owner must wake the lane on every PR and push.
-      - '.github/scripts/ci-discovery/function-policy.mjs'
       # #2948 — the wrapper's guard and its CALLER now fail together or not at
       # all. The 06:48 outage was a caller/callee mismatch, so the lane that
       # proves the callee refuses also proves the caller complies.
@@ -26,9 +23,6 @@ on:
       - '.github/workflows/issue-1456-edge-deploy-idempotency.yml'
       - 'scripts/deploy-supabase-functions.sh'
       - 'scripts/ci/issue1456-edge-deploy-idempotency.test.mjs'
-      # #3645 — effective-policy changes can move the bootstrap seal this lane
-      # verifies, so the seal owner must wake the lane on every PR and push.
-      - '.github/scripts/ci-discovery/function-policy.mjs'
       # #2948 — the wrapper's guard and its CALLER now fail together or not at
       # all. The 06:48 outage was a caller/callee mismatch, so the lane that
       # proves the callee refuses also proves the caller complies.

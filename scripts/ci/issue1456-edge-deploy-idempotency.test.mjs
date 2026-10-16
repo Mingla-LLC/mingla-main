@@ -1,19 +1,26 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { chmod, copyFile, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import {
+  CONTRACT_PATH,
+  CONTRACT_SHA256,
+} from "../../.github/scripts/ci-discovery/function-policy.mjs";
 
-// MINGLA-INVARIANT: I-3645-CI-SEAL-OWNER-WAKES-VALIDATOR | issue #3645 | The effective-policy seal owner wakes both pull-request and main-push edge idempotency validation.
+// MINGLA-INVARIANT: I-3645-EDGE-LANE-BOOTSTRAP-SEAL | issue #3645 | The edge idempotency lane proves the checked-in function contract matches the bootstrap seal before deployment behavior is trusted.
 const repoRoot = resolve(import.meta.dirname, "../..");
 const deploySource = join(repoRoot, "scripts/deploy-supabase-functions.sh");
 const serveSource = join(repoRoot, "scripts/serve-supabase-functions.sh");
-const workflowSource = await readFile(
-  join(repoRoot, ".github", "workflows", "issue-1456-edge-deploy-idempotency.yml"),
-  "utf8",
-);
 const originalConfig = "project_id = \"fixture\"\n\n[functions.legacy]\nverify_jwt = true\n";
 const originalBake = 'export const BAKED_RELEASE_SHA = "0000000000000000000000000000000000000000";\n';
+
+// I-3645-EDGE-LANE-BOOTSTRAP-SEAL: this test is in the lane's frozen PR/main
+// path scope, so a recovery cannot report green while its real contract seal
+// remains stale. Keep the bytes raw: function-policy.mjs seals the file bytes.
+const contractBytes = await readFile(CONTRACT_PATH);
+assert.equal(crypto.createHash("sha256").update(contractBytes).digest("hex"), CONTRACT_SHA256);
 
 // [TEST-MOD-APPROVED #3643] The fixture now runs copied wrappers in a temporary
 // repository so effective-config materialization and restoration are observable
@@ -251,19 +258,5 @@ const serveMaterializeFailure = await runServe("materialize-fail");
 assert.equal(serveMaterializeFailure.result.status, 73);
 assert.deepEqual(serveMaterializeFailure.calls, []);
 assert.equal(serveMaterializeFailure.restoredConfig, originalConfig);
-
-// I-3645-CI-SEAL-OWNER-WAKES-VALIDATOR: the function-policy loader owns the
-// effective bootstrap seal, so both PR and main-push triggers must observe it.
-const sealOwnerTrigger = "- '.github/scripts/ci-discovery/function-policy.mjs'";
-const pullRequestTrigger = workflowSource.slice(
-  workflowSource.indexOf("  pull_request:"),
-  workflowSource.indexOf("  push:"),
-);
-const pushTrigger = workflowSource.slice(
-  workflowSource.indexOf("  push:"),
-  workflowSource.indexOf("\nconcurrency:"),
-);
-assert.ok(pullRequestTrigger.includes(sealOwnerTrigger), "the seal owner must wake pull requests");
-assert.ok(pushTrigger.includes(sealOwnerTrigger), "the seal owner must wake main pushes");
 
 console.log("issue #1456 deployment idempotency and effective-policy wrappers: PASS");

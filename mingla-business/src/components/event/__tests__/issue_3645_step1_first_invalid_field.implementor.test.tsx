@@ -17,7 +17,7 @@
  */
 
 import React from "react";
-import { beforeEach, describe, expect, jest, test } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -79,6 +79,12 @@ const TestRenderer = require("react-test-renderer") as {
 const focused: string[] = [];
 const scrolledTo: number[] = [];
 const announced = mockAnnounced;
+type AnimationFrame = (time: number) => void;
+const animationGlobal = globalThis as {
+  requestAnimationFrame?: (callback: AnimationFrame) => number;
+};
+const originalAnimationFrame = animationGlobal.requestAnimationFrame;
+const queuedAnimationFrames: AnimationFrame[] = [];
 
 const err = (fieldKey: string, message: string): ValidationError => ({
   fieldKey,
@@ -128,6 +134,21 @@ async function pressContinue(
   });
 }
 
+// [TEST-MOD-APPROVED #3645] The old assertion depended on whichever native
+// requestAnimationFrame shim happened to run under full-suite load. Own the
+// frame boundary so "scroll now, focus next frame" is proved deterministically.
+async function flushDeferredFocus(): Promise<void> {
+  await TestRenderer.act(async () => {
+    const frames = queuedAnimationFrames.splice(0);
+    frames.forEach((callback) => callback(0));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+async function unmount(tree: Tree): Promise<void> {
+  await TestRenderer.act(() => tree.unmount());
+}
+
 /** Give the chip sections a position, as layout would on a device. */
 async function layOut(tree: Tree): Promise<void> {
   const sections = tree.root.findAll(
@@ -147,13 +168,22 @@ describe("#3645 — a refused Continue on step 1 goes to the first invalid field
     focused.length = 0;
     scrolledTo.length = 0;
     announced.length = 0;
+    queuedAnimationFrames.length = 0;
+    animationGlobal.requestAnimationFrame = (callback): number => {
+      queuedAnimationFrames.push(callback);
+      return queuedAnimationFrames.length;
+    };
+  });
+
+  afterEach(() => {
+    animationGlobal.requestAnimationFrame = originalAnimationFrame;
   });
 
   test("nothing moves before Continue is pressed, even on an invalid step", async () => {
     const tree = await mount([DESCRIPTION], 0);
     expect(focused).toEqual([]);
     expect(scrolledTo).toEqual([]);
-    tree.unmount();
+    await unmount(tree);
   });
 
   test("an empty description scrolls into view then takes focus (the reported case)", async () => {
@@ -164,24 +194,16 @@ describe("#3645 — a refused Continue on step 1 goes to the first invalid field
     // focus on the next tick so the caret sticks when the field was off-screen.
     expect(scrolledTo.length).toBe(1);
     expect(focused).toEqual([]);
-    await TestRenderer.act(async () => {
-      await new Promise<void>((resolve) => {
-        if (typeof requestAnimationFrame === "function") {
-          requestAnimationFrame(() => setTimeout(resolve, 0));
-        } else {
-          setTimeout(resolve, 0);
-        }
-      });
-    });
+    await flushDeferredFocus();
     expect(focused).toEqual(["Event description"]);
-    tree.unmount();
+    await unmount(tree);
   });
 
   test("an empty name takes focus, and it comes before the description on screen", async () => {
     const tree = await mount([], 0);
     await pressContinue(tree, [DESCRIPTION, NAME], 1);
     expect(focused).toEqual(["Event name"]);
-    tree.unmount();
+    await unmount(tree);
   });
 
   test("a chip section cannot take focus: the body scrolls to it and its message is read out", async () => {
@@ -191,24 +213,16 @@ describe("#3645 — a refused Continue on step 1 goes to the first invalid field
     expect(focused).toEqual([]);
     expect(scrolledTo).toEqual([300]);
     expect(announced).toEqual(["Pick at least one party type."]);
-    tree.unmount();
+    await unmount(tree);
   });
 
   test("every refused Continue goes there again, not only the first", async () => {
     const tree = await mount([], 0);
     await pressContinue(tree, [DESCRIPTION], 1);
     await pressContinue(tree, [DESCRIPTION], 2);
-    await TestRenderer.act(async () => {
-      await new Promise<void>((resolve) => {
-        if (typeof requestAnimationFrame === "function") {
-          requestAnimationFrame(() => setTimeout(resolve, 0));
-        } else {
-          setTimeout(resolve, 0);
-        }
-      });
-    });
+    await flushDeferredFocus();
     expect(focused).toEqual(["Event description", "Event description"]);
-    tree.unmount();
+    await unmount(tree);
   });
 
   test("a valid step moves nothing", async () => {
@@ -216,6 +230,6 @@ describe("#3645 — a refused Continue on step 1 goes to the first invalid field
     await pressContinue(tree, [], 1);
     expect(focused).toEqual([]);
     expect(scrolledTo).toEqual([]);
-    tree.unmount();
+    await unmount(tree);
   });
 });
