@@ -5,6 +5,8 @@
  *   deno test --allow-read supabase/migrations/__tests__/issue_3720_support_ticket_anon_execute_lockdown.implementor.test.ts
  */
 
+// MINGLA-INVARIANT: I-3720-SUPPORT-TICKET-AUTH-ONLY | issue #3720 | Only authenticated and service roles may execute the support-ticket creation RPC.
+
 import {
   assert,
   assertEquals,
