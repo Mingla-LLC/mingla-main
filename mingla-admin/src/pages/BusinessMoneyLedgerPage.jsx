@@ -15,8 +15,10 @@ import { Tabs } from "../components/ui/Tabs";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { StayOperationsPanel } from "../components/stay/StayOperationsPanel";
-import { listRefunds, listDisputes, getDispute, listPayouts, listRevenueLog, listOrganiserPayoutDebts } from "../services/adminMoneyService";
+import { listRefunds, listDisputes, getDispute, listPaystackDisputes, listPayouts, listRevenueLog, listOrganiserPayoutDebts } from "../services/adminMoneyService";
 import { annotateDispute } from "../services/adminMoneyActService";
+import { PaystackDisputeDetail } from "../components/money/PaystackDisputeDetail";
+import { deadlineCountdown } from "../lib/paystackDisputeEvidence";
 import { reconcileTicketRefund } from "../services/adminRefundReconciliationService";
 import { timeAgo, formatDateTime, formatDate } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -111,6 +113,37 @@ const DISPUTE_CSV = {
   filename: "disputes",
 };
 
+// #3645 WS5 — Paystack disputes (Paystack = Mingla MoR; the evidence clock is
+// Mingla's). Sorted by internal deadline; the countdown is red once overdue.
+function internalDeadlineCell(due, row) {
+  if (row.is_resolved) return <span className="text-[var(--color-text-muted)]">—</span>;
+  const { overdue, label } = deadlineCountdown(due);
+  const late = overdue && !row.evidence_reviewed_at;
+  return <span className={late ? "text-[#b91c1c] font-medium" : "text-[var(--color-text-secondary)]"}>{label}</span>;
+}
+const PAYSTACK_DISPUTE_COLUMNS = [
+  { key: "created_at", label: "Opened", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
+  { key: "brand_name", label: "Brand", render: brandCell },
+  { key: "transaction_reference", label: "Reference", render: (v) => (v ? <span className="font-mono text-xs break-all">{v}</span> : <span className="text-[var(--color-text-muted)]">—</span>) },
+  { key: "amount_cents", label: "Amount", render: (v, row) => <span className="font-medium">{formatMoney(v, row.currency)}</span> },
+  { key: "status", label: "Paystack status", render: (v) => v || "—" },
+  {
+    key: "evidence_state",
+    label: "Evidence",
+    render: (v) => <Badge variant={v === "needs_review" ? "warning" : v === "resolved" ? "default" : "success"} dot>{(v || "—").replace("_", " ")}</Badge>,
+  },
+  { key: "internal_deadline_at", label: "Review due", render: internalDeadlineCell },
+];
+const PAYSTACK_DISPUTE_CSV = {
+  columns: [
+    { key: "created_at", label: "Opened" }, { key: "brand_name", label: "Brand" }, { key: "transaction_reference", label: "Reference" },
+    { key: "amount_cents", label: "Amount cents" }, { key: "currency", label: "Currency" }, { key: "status", label: "Paystack status" },
+    { key: "evidence_state", label: "Evidence state" }, { key: "internal_deadline_at", label: "Internal deadline" },
+    { key: "response_due_by", label: "Paystack deadline" }, { key: "paystack_dispute_id", label: "Dispute id" },
+  ],
+  filename: "paystack-disputes",
+};
+
 const PAYOUT_COLUMNS = [
   { key: "created_at", label: "Created", render: (v) => <span className="text-xs text-[var(--color-text-tertiary)]">{timeAgo(v)}</span> },
   { key: "brand_name", label: "Brand", render: brandCell },
@@ -167,6 +200,7 @@ const DEBT_CSV = {
 const TABS = [
   { id: "refunds", label: "Refunds" },
   { id: "disputes", label: "Disputes" },
+  { id: "paystack_disputes", label: "Paystack disputes" },
   { id: "payouts", label: "Payouts" },
   { id: "debts", label: "Organiser debts" },
   { id: "revenue", label: "Platform revenue" },
@@ -184,6 +218,9 @@ function tabFromHash() {
 }
 function disputeIdFromHash() {
   return hashParams().get("disputeId");
+}
+function paystackDisputeIdFromHash() {
+  return hashParams().get("paystackDisputeId");
 }
 
 // ── Dispute detail sections ───────────────────────────────────────────────────
@@ -272,6 +309,7 @@ function buildDisputeSections(bundle) {
 export function BusinessMoneyLedgerPage() {
   const [activeTab, setActiveTab] = useState(() => tabFromHash());
   const [disputeId, setDisputeId] = useState(() => disputeIdFromHash());
+  const [paystackDisputeId, setPaystackDisputeId] = useState(() => paystackDisputeIdFromHash());
   const [disputeBundle, setDisputeBundle] = useState(null);
   const [disputeLoading, setDisputeLoading] = useState(false);
   const [disputeError, setDisputeError] = useState(null);
@@ -283,6 +321,7 @@ export function BusinessMoneyLedgerPage() {
     const sync = () => {
       setActiveTab(tabFromHash());
       setDisputeId(disputeIdFromHash());
+      setPaystackDisputeId(paystackDisputeIdFromHash());
     };
     window.addEventListener("hashchange", sync);
     return () => window.removeEventListener("hashchange", sync);
@@ -296,6 +335,16 @@ export function BusinessMoneyLedgerPage() {
   const openDispute = useCallback((id) => {
     window.location.hash = `#/business-money-ledger?tab=disputes&disputeId=${id}`;
     setDisputeId(id);
+  }, []);
+
+  const openPaystackDispute = useCallback((id) => {
+    window.location.hash = `#/business-money-ledger?tab=paystack_disputes&paystackDisputeId=${id}`;
+    setPaystackDisputeId(id);
+  }, []);
+
+  const backToPaystackDisputes = useCallback(() => {
+    window.location.hash = "#/business-money-ledger?tab=paystack_disputes";
+    setPaystackDisputeId(null);
   }, []);
 
   const backToLedger = useCallback(() => {
@@ -356,6 +405,17 @@ export function BusinessMoneyLedgerPage() {
     }
     loadDispute(disputeId);
   }, [disputeId, note, markReviewed, loadDispute]);
+
+  // ── Paystack dispute detail (evidence workflow) ─────────────────────────────
+  if (paystackDisputeId) {
+    return (
+      <PaystackDisputeDetail
+        key={paystackDisputeId}
+        disputeId={paystackDisputeId}
+        onBack={backToPaystackDisputes}
+      />
+    );
+  }
 
   // ── Dispute detail view ─────────────────────────────────────────────────────
   if (disputeId) {
@@ -447,6 +507,21 @@ export function BusinessMoneyLedgerPage() {
         onRowClick={(row) => openDispute(row.id)}
         csv={DISPUTE_CSV}
         emptyMessage="No disputes yet."
+        emptyIcon={Landmark}
+      />
+    );
+  } else if (activeTab === "paystack_disputes") {
+    listView = (
+      <EntityListView
+        key="paystack_disputes"
+        title="Paystack disputes"
+        columns={PAYSTACK_DISPUTE_COLUMNS}
+        fetchPage={listPaystackDisputes}
+        searchPlaceholder="Search Paystack dispute id or transaction reference"
+        filters={[{ key: "status", label: "Evidence", options: [{ value: "needs_review", label: "Needs review" }, { value: "reviewed", label: "Reviewed" }, { value: "exported", label: "Exported" }, { value: "submitted_stub", label: "Submitted (stub)" }, { value: "resolved", label: "Resolved" }] }]}
+        onRowClick={(row) => openPaystackDispute(row.id)}
+        csv={PAYSTACK_DISPUTE_CSV}
+        emptyMessage="No Paystack disputes yet."
         emptyIcon={Landmark}
       />
     );

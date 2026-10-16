@@ -54,6 +54,33 @@ export async function annotateDispute({ dispute_id, note, mark_reviewed, reason 
   });
 }
 
+// ── #3645 WS5 — Paystack dispute evidence (DB-only audited RPCs) ──────────────
+
+/**
+ * Human review gate: approves the CURRENT auto-assembled dossier (the server
+ * recomputes + hashes it; the client never supplies dossier content).
+ */
+export async function reviewPaystackDisputeEvidence({ dispute_id, note, reason }) {
+  return callAdminWriteRpc("admin_review_paystack_dispute_evidence", {
+    p_dispute_id: dispute_id,
+    p_note: note ?? null,
+    p_reason: reason,
+  });
+}
+
+/**
+ * action: 'export' (record + hand back the reviewed dossier JSON) |
+ * 'submit_stub' (record intent; NO Paystack API call is made). Both need a
+ * prior review whose sha256 still matches, and append an immutable evidence row.
+ */
+export async function recordPaystackDisputeEvidenceAction({ dispute_id, action, reason }) {
+  return callAdminWriteRpc("admin_record_paystack_dispute_evidence_action", {
+    p_dispute_id: dispute_id,
+    p_action: action,
+    p_reason: reason,
+  });
+}
+
 // ── W2-D — subscription comp / extend / revoke override (DB-only audited RPCs) ─
 
 /** "Comp"/"extend" Plus. p_expires_at null → base RPC derives from duration_days. */

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#1210",
+  "suite": {
+    "id": "issue-1210-reminder-make-interval-source-guard",
+    "class": "node20-noinstall",
+    "originPaths": [
+      ".github/scripts/__tests__/issue-1210-reminder-make-interval.test.mjs",
+      "supabase/migrations/20271026001210_issue_1210_reminder_make_interval_int.sql",
+      "supabase/migrations/__tests__/issue_1210_reminder_make_interval.implementor.happy.pg17.test.sql",
+      "supabase/migrations/__tests__/issue_1210_reminder_make_interval.tester.adversarial.pg17.test.sql"
+    ],
+    "steps": [
+      {
+        "name": "Run #1210 reminder make_interval source guard",
+        "cwd": ".",
+        "run": "node --test .github/scripts/__tests__/issue-1210-reminder-make-interval.test.mjs",
+        "commandId": "assert:issue-1210-reminder-make-interval-source-guard:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test .github/scripts/__tests__/issue-1210-reminder-make-interval.test.mjs"
+          ]
+        },
+        "exceptionRationale": "Raw shell matches the legacy workflow command contract while the descriptor owns registration."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#1210",
+    "runtime": { "name": "node", "version": "20" },
+    "setupProfile": "node20-noinstall",
+    "cwd": ".",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      ".github/scripts/__tests__/issue-1210-reminder-make-interval.test.mjs"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: node20-noinstall",
+    "timingSeconds": { "p50": null, "p95": null, "evidence": "not-yet-measured" },
+    "generatedPaths": ["suite-results.json"],
+    "exceptionRationale": "Raw shell is retained for the issue-owned command without adding an execution grammar.",
+    "timeoutSeconds": 480
+  }
+}

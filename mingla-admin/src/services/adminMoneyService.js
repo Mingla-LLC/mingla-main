@@ -100,6 +100,28 @@ export async function listPaidWithoutTicket({ pageSize = 50 } = {}) {
   return { rows: data ?? [], total: (data ?? []).length };
 }
 
+/**
+ * Paystack disputes list (#3645 WS5; Paystack = Mingla MoR, so the evidence
+ * clock is Mingla's). Soonest internal deadline first, resolved last. Filter
+ * `status` matches the evidence state (needs_review | reviewed | exported |
+ * submitted_stub | resolved) or the raw Paystack status.
+ */
+export async function listPaystackDisputes({ search, filters = {}, page = 0, pageSize = 25 }) {
+  const { data, error } = await supabase.rpc("admin_list_paystack_disputes", {
+    p_search: search || null,
+    p_status_filter: filters.status || null,
+    p_limit: pageSize,
+    p_offset: page * pageSize,
+  });
+  if (error) throw new Error(error.message || "Failed to load Paystack disputes.");
+  return { rows: data?.rows ?? [], total: data?.total ?? 0 };
+}
+
+/** Paystack dispute detail: dispute + brand + live evidence dossier + sha256 + evidence log. */
+export async function getPaystackDispute(disputeId) {
+  return supabase.rpc("admin_get_paystack_dispute", { p_dispute_id: disputeId });
+}
+
 /** Payouts list. Filters: status, brandId. */
 export async function listPayouts({ search, filters = {}, page = 0, pageSize = 25 }) {
   const { data, error } = await supabase.rpc("admin_list_payouts", {
