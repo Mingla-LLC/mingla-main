@@ -33,8 +33,8 @@ export function Tabs({ tabs, activeTab, onChange, className = "", variant = "def
   }
 
   return (
-    <div className={`border-b border-[var(--gray-200)] ${className}`}>
-      <nav className={mobileGrid ? "grid grid-cols-2 gap-0 sm:flex" : "flex gap-0"} role="tablist">
+    <div className={`admin-control-scroll min-w-0 overflow-x-auto border-b border-[var(--gray-200)] ${className}`}>
+      <nav className={mobileGrid ? "grid min-w-full grid-cols-2 gap-0 sm:flex sm:w-max" : "flex w-max min-w-full gap-0"} role="tablist">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTab;
           return (
@@ -49,7 +49,7 @@ export function Tabs({ tabs, activeTab, onChange, className = "", variant = "def
               onClick={() => onChange(tab.id)}
               onKeyDown={(e) => handleKeyDown(e, tab.id)}
               className={[
-                "min-h-11 px-4 py-2 text-sm font-medium cursor-pointer transition-colors duration-150 -mb-px",
+                "-mb-px min-h-11 shrink-0 cursor-pointer whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors duration-150",
                 variant === "highContrast"
                   ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2"
                   : "",

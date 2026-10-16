@@ -1,11 +1,11 @@
 // Issue #3802 (Wave 1) — small form pieces shared by the Hosts and Creators
-// screens. Same look as components/ui/Input.jsx; every control is 40px high so
-// it is easy to hit on a phone.
+// screens. Same look as components/ui/Input.jsx; every control keeps a 44px
+// touch target so it remains comfortable on phones and at browser zoom.
 
 export const CONTROL_CLASS = [
-  "w-full h-10 max-sm:h-11 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
-  "border border-[var(--gray-300)] rounded-lg outline-none transition-all duration-150",
-  "focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-100)]",
+  "w-full min-h-11 px-3 text-sm bg-[var(--color-background-primary)] text-[var(--color-text-primary)]",
+  "border border-[var(--gray-300)] rounded-xl outline-none transition-[border-color,box-shadow,background-color] duration-150",
+  "focus-visible:border-[var(--color-brand-500)] focus-visible:ring-2 focus-visible:ring-[var(--color-brand-100)]",
   "disabled:opacity-60 disabled:cursor-not-allowed",
 ].join(" ");
 
@@ -45,7 +45,7 @@ export const MISSING_CITY_LABEL = "City missing?";
 /** options: [{ value, label, disabled }]. `placeholder` is the empty choice. */
 export function Select({ options, placeholder, className = "", ...props }) {
   return (
-    <select className={`${CONTROL_CLASS} cursor-pointer ${className}`} {...props}>
+    <select className={`${CONTROL_CLASS} cursor-pointer pr-10 ${className}`} {...props}>
       {placeholder !== undefined && <option value="">{placeholder}</option>}
       {options.map((o) => (
         <option key={o.value} value={o.value} disabled={!!o.disabled}>
@@ -62,7 +62,7 @@ export function Segmented({ label, options, value, onChange, disabled = false, v
     <div
       role="group"
       aria-label={label}
-      className={`${fullWidth ? "flex w-full" : "inline-flex"} max-w-full flex-wrap rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-0.5 ${className}`}
+      className={`${fullWidth ? "flex w-full" : "inline-flex w-fit"} admin-control-scroll max-w-full flex-nowrap gap-1 overflow-x-auto rounded-xl border border-[var(--gray-300)] bg-[var(--color-background-primary)] p-1 shadow-[var(--shadow-sm)] ${className}`}
     >
       {options.map((o) => {
         const pressed = o.value === value;
@@ -76,8 +76,8 @@ export function Segmented({ label, options, value, onChange, disabled = false, v
               if (!pressed) onChange(o.value);
             }}
             className={[
-              "h-10 max-sm:h-11 px-3 text-sm font-medium rounded-md whitespace-nowrap transition-colors duration-150",
-              fullWidth ? "min-w-0 flex-1 px-2" : "",
+              "min-h-11 shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium leading-5 transition-[color,background-color,box-shadow] duration-150",
+              fullWidth ? "min-w-fit flex-1" : "",
               `focus-visible:outline-none focus-visible:ring-2 ${variant === "highContrast" ? "focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-background-primary)]" : "focus-visible:ring-[var(--color-brand-500)]"}`,
               pressed
                 ? variant === "highContrast" ? "bg-[var(--color-brand-800)] text-white hover:bg-[var(--color-brand-900)] active:bg-[var(--color-brand-900)]" : "bg-[var(--color-brand-500)] text-white"

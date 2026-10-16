@@ -116,7 +116,7 @@ export function DraftsPage() {
     <div className="flex min-w-0 flex-col gap-6">
       <div ref={headingRef} tabIndex={-1}><PageHeader title="Drafts to send" description="Your agent writes. You review and send." meta={<span role="status" aria-live="polite"><Badge variant={totalWaiting > 0 ? "warning" : "success"}>{meta}</Badge></span>} /></div>
       <p className="sr-only" role="status" aria-live="polite">{queue.notice}</p>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><Segmented label="Draft state" options={DRAFT_STATES} value={query.state} onChange={selectState} variant="highContrast" fullWidth className="sm:w-auto" /></div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><Segmented label="Draft state" options={DRAFT_STATES} value={query.state} onChange={selectState} variant="highContrast" fullWidth className="sm:!w-fit" /></div>
       {filtered && <AlertCard variant="info" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => { const p = new URLSearchParams(search); p.delete("record"); setSearch(p.toString()); }}>Clear filter</Button>}>Showing drafts for {filterRecordName || "a record that is no longer available"}</AlertCard>}
       {!online && <div id="drafts-offline"><AlertCard variant="warning" title="You’re offline">{queue.drafts.length ? "You can read these drafts, but saving, marking, discarding, restoring and Undo need a connection." : "Drafts will load when you’re back online."}</AlertCard></div>}
       {queue.stale && <AlertCard variant="warning" title="Drafts may be out of date" action={<Button type="button" variant="secondary" className="min-h-11" onClick={() => queue.refetch()}>Try again</Button>} />}
