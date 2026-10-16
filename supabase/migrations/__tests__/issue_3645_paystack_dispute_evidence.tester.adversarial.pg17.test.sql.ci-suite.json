@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3645_paystack_dispute_evidence.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3645-ws5-02-evidence-adversarial",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}
