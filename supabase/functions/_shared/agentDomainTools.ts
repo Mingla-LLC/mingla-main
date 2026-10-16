@@ -477,7 +477,7 @@ const publishExperience = writeTool(
 
 const updateExperience = writeTool(
   "update_experience",
-  "Compose a typed patch over the fresh canonical experience graph. Draft and scheduled/live lifecycles use their existing server owners.",
+  "Compose a typed patch over the fresh canonical experience graph. Draft and scheduled/live lifecycles use their existing server owners. Live date/stop edits keep occurrence and stop ids; the server refuses destructive shifts when buyers exist — do not pre-refuse date edits merely because orders exist.",
   {
     event_id: UUID,
     expected_revision: { type: "string", format: "date-time" },
