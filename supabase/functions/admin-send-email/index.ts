@@ -268,6 +268,7 @@ async function sendViaResend(input: {
       input.campaignId,
       input.to,
     );
+    // no-attachment: Admin campaigns embed approved image/GIF URLs in HTML; this composer does not send file attachments.
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -752,6 +753,7 @@ serve(async (req) => {
         first_name: "Maya",
         display_name: "Maya Okafor",
         username: "mayaexplores",
+        // orch-strict-grep-allow stripe-country-out-of-scope — recipient preview country, unrelated to Stripe account availability
         country: "NG",
         preferred_language: "en",
         created_at: "2026-01-15T12:00:00.000Z",
