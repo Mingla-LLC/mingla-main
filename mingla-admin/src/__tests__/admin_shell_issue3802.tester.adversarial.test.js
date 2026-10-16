@@ -184,7 +184,8 @@ describe("#3802 TA-2: the menu, for every combination of areas", () => {
       const who = { email: `${role}@example.test`, role, status: "active", areas: ["role_home", "crm", "beta_leads"] };
       const labels = visibleNavGroups(NAV_GROUPS, who).map((g) => g.label);
       assert.deepEqual(labels, [null, "Pipeline", "System"], role);
-      for (const id of ALL_IDS.filter((x) => !["hosts", "creators", "drafts", "beta-leads", "agent", "guide"].includes(x))) {
+      // [TEST-MOD-APPROVED #3802] Content Calendar deliberately shares CRM access with the pipeline pages.
+      for (const id of ALL_IDS.filter((x) => !["hosts", "creators", "drafts", "beta-leads", "content-calendar", "agent", "guide"].includes(x))) {
         assert.equal(canOpenPage(who, id), false, `${role} must not open ${id}`);
       }
     }
