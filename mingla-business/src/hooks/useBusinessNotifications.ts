@@ -57,7 +57,6 @@ export interface BusinessNotification {
   data?: Record<string, unknown> | null;
 }
 
-const STALE_TIME_MS = 30 * 1000;
 const FETCH_LIMIT = 50;
 
 export const businessNotificationKeys = {
@@ -198,7 +197,14 @@ export function useBusinessNotifications(
   return useQuery<readonly BusinessNotification[]>({
     queryKey: enabled ? businessNotificationKeys.all(userId) : DISABLED_KEY,
     enabled,
-    staleTime: STALE_TIME_MS,
+    // #3720: an inbox INSERT can happen while Host is suspended or before the
+    // auth-gated Realtime channel subscribes. Push provider I/O starts only
+    // after the row exists, so mount/foreground must perform an authoritative
+    // read instead of trusting a 30-second cache that may have missed the
+    // INSERT. Realtime remains the steady-state fast path between focus events.
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
     queryFn: async (): Promise<readonly BusinessNotification[]> => {
       if (userId === null) {
         throw new Error("useBusinessNotifications: enabled but userId null");

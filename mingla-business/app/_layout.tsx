@@ -604,10 +604,11 @@ function RootLayoutInner(): React.ReactElement {
   // (authenticated + a brand exists), one-shot, never on boot/account-only.
   usePushPermissionMoment(user !== null, currentBrandId);
 
-  // META-ORCH-1074 Sub-B — foreground display + click handlers. Registered
-  // after initializeOneSignal() (above). On web these are guarded no-ops
-  // (the service never initializes the native module). Re-registers when the
-  // signed-in user changes so the auth gate + deferred replay see fresh state.
+  // META-ORCH-1074 Sub-B — foreground display + click handlers. The service's
+  // app-lifetime native listener captures a cold click before the intentionally
+  // deferred OneSignal initialization above, then buffers it until this React
+  // subscriber is ready. On web these remain guarded no-ops. Re-registers when
+  // the signed-in user changes so auth gating sees fresh state.
   const userId = user?.id ?? null;
   useEffect(() => {
     // Foreground: show the system banner for every business push (consumer

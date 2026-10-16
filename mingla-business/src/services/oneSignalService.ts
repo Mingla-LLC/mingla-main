@@ -67,6 +67,10 @@ export function initializeOneSignal(): void {
     OneSignal!.Debug.setLogLevel(__DEV__ ? LogLevel!.Verbose : LogLevel!.Warn);
     OneSignal!.initialize(ONESIGNAL_APP_ID!);
     _initialized = true;
+    // #3720: the SDK's native bridge can surface a notification click during
+    // cold startup. Keep the capture attached independently of React/auth so a
+    // tap cannot be lost between native launch and the root layout subscribing.
+    ensureNativeNotificationClickCapture();
     if (__DEV__) console.log("[OneSignal] initialized");
     // ORCH-1250 (consumer ORCH-1243 parity): seed the OS-permission tag as soon
     // as the SDK is up so the launch In-App Message audience can read TRUE OS
@@ -248,6 +252,57 @@ export interface OneSignalNotificationData {
   [key: string]: unknown;
 }
 
+type NotificationClickCallback = (data: OneSignalNotificationData) => void;
+
+// #3720: a cold push tap can reach the native bridge before the root layout's
+// effect has mounted. OneSignal 5.4.5 deliberately supports cold-start click
+// capture, but the previous `_initialized` guard returned a permanent no-op
+// listener because SDK initialization was deferred until after interactions.
+// Own one app-lifetime native listener here, buffer at most the latest tap until
+// React is ready, and fan out to current subscribers. The pending tap is taken
+// before callback invocation so it can be replayed at most once.
+const _notificationClickSubscribers = new Set<NotificationClickCallback>();
+let _pendingNotificationClick: OneSignalNotificationData | null = null;
+let _nativeNotificationClickCaptureAttached = false;
+
+const _nativeNotificationClickHandler = (event: {
+  notification: { additionalData?: unknown };
+}): void => {
+  const data = (event.notification.additionalData ??
+    {}) as OneSignalNotificationData;
+  if (_notificationClickSubscribers.size === 0) {
+    _pendingNotificationClick = data;
+    return;
+  }
+  for (const subscriber of _notificationClickSubscribers) {
+    try {
+      subscriber(data);
+    } catch (error) {
+      console.warn("[OneSignal] notification click subscriber failed:", error);
+    }
+  }
+};
+
+function ensureNativeNotificationClickCapture(): void {
+  if (OneSignal === null || _nativeNotificationClickCaptureAttached) return;
+  try {
+    OneSignal.Notifications.addEventListener(
+      "click",
+      _nativeNotificationClickHandler as never,
+    );
+    _nativeNotificationClickCaptureAttached = true;
+  } catch (error) {
+    // A platform that requires initialize() first gets one retry from
+    // initializeOneSignal(). Until then, do not lie that capture is attached.
+    console.warn("[OneSignal] early notification click capture failed:", error);
+  }
+}
+
+// Register during module evaluation, before the Expo root renders. On iOS the
+// OneSignal bridge initializes with a nil app id specifically so launch-click
+// listeners can attach this early; initializeOneSignal() supplies the real id.
+ensureNativeNotificationClickCapture();
+
 /**
  * Register a callback for a push arriving while the app is foregrounded.
  * SDK v5 requires an explicit `display()` to show the banner. The callback
@@ -260,7 +315,7 @@ export function onForegroundNotification(
     display: () => void,
   ) => void,
 ): () => void {
-  if (!_initialized || OneSignal === null) {
+  if (OneSignal === null) {
     return (): void => {};
   }
   // SDK event shapes are loosely typed; narrow at the boundary.
@@ -300,18 +355,27 @@ export function onForegroundNotification(
 export function onNotificationClicked(
   callback: (data: OneSignalNotificationData) => void,
 ): () => void {
-  if (!_initialized || OneSignal === null) {
+  if (OneSignal === null) {
     return (): void => {};
   }
-  const handler = (event: {
-    notification: { additionalData?: unknown };
-  }): void => {
-    const data = (event.notification.additionalData ??
-      {}) as OneSignalNotificationData;
-    callback(data);
-  };
-  OneSignal.Notifications.addEventListener("click", handler as never);
+
+  ensureNativeNotificationClickCapture();
+  _notificationClickSubscribers.add(callback);
+
+  const pending = _pendingNotificationClick;
+  if (pending !== null) {
+    _pendingNotificationClick = null;
+    try {
+      callback(pending);
+    } catch (error) {
+      console.warn(
+        "[OneSignal] pending notification click replay failed:",
+        error,
+      );
+    }
+  }
+
   return (): void => {
-    OneSignal?.Notifications.removeEventListener("click", handler as never);
+    _notificationClickSubscribers.delete(callback);
   };
 }
