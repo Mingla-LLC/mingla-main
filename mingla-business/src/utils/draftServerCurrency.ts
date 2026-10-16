@@ -30,11 +30,22 @@ export interface ServerCurrencyAnswer {
 
 const answers = new Map<string, ServerCurrencyAnswer>();
 let sequence = 0;
+let stamp = 0;
 const listeners = new Set<() => void>();
 
 const normalize = (currency: string | null | undefined): string | null => {
   const code = currency?.trim().toUpperCase();
   return code !== undefined && code.length > 0 ? code : null;
+};
+
+/**
+ * Allocate a total-order stamp for a server answer or an in-flight read.
+ * Date.now() alone can give an open read and a later save the same millisecond;
+ * the delayed read could then overwrite the save even though it started first.
+ */
+export const nextDraftServerCurrencyStamp = (): number => {
+  stamp = Math.max(stamp + 1, Date.now());
+  return stamp;
 };
 
 /**
@@ -44,8 +55,9 @@ const normalize = (currency: string | null | undefined): string | null => {
 export const setDraftServerCurrency = (
   draftId: string,
   currency: string | null | undefined,
-  at: number = Date.now(),
+  at: number = nextDraftServerCurrencyStamp(),
 ): void => {
+  stamp = Math.max(stamp, at);
   const held = answers.get(draftId);
   if (held !== undefined && held.at > at) return;
   const next = normalize(currency);
@@ -91,4 +103,5 @@ export const subscribeDraftServerCurrency = (listener: () => void): (() => void)
 export const resetDraftServerCurrencyForTest = (): void => {
   answers.clear();
   listeners.clear();
+  stamp = 0;
 };
