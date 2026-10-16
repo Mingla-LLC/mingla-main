@@ -255,6 +255,33 @@
   }
 }
 
+/* Issue #3802 — shared control polish. Native selects keep platform semantics,
+   while the shell guarantees a comfortable target and enough room for labels. */
+#root select:not([multiple]) {
+  min-block-size: 44px;
+  max-inline-size: 100%;
+  padding-inline-start: 0.75rem;
+  padding-inline-end: 2.5rem;
+  border-radius: 0.75rem;
+  text-overflow: ellipsis;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+#root select:not([multiple]):focus-visible {
+  outline: none;
+  border-color: var(--color-brand-500);
+  box-shadow: 0 0 0 3px var(--color-brand-100);
+}
+
+.admin-control-scroll {
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+}
+
+.admin-control-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 /* ─── Login Animations ─── */
 @keyframes loginCardIn {
   from { opacity: 0; transform: translateY(16px) scale(0.98); }

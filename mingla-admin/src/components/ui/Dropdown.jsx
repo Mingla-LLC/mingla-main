@@ -1,14 +1,14 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useId } from "react";
 
 export function Dropdown({ trigger, children, align = "right", className = "" }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-  const triggerRef = useRef(null);
+  const triggerId = useId();
 
   const close = useCallback(() => {
     setOpen(false);
-    triggerRef.current?.focus();
-  }, []);
+    requestAnimationFrame(() => document.getElementById(triggerId)?.focus());
+  }, [triggerId]);
 
   useEffect(() => {
     if (!open) return;
@@ -29,7 +29,7 @@ export function Dropdown({ trigger, children, align = "right", className = "" })
   return (
     <div ref={ref} className={`relative inline-block ${className}`}>
       <div
-        ref={triggerRef}
+        id={triggerId}
         onClick={() => setOpen(!open)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(!open); }
@@ -45,9 +45,9 @@ export function Dropdown({ trigger, children, align = "right", className = "" })
       {open && (
         <div
           className={[
-            "absolute mt-1 min-w-[180px] py-1",
+            "absolute mt-2 min-w-[200px] max-w-[min(22rem,calc(100vw-2rem))] max-h-[min(28rem,calc(100dvh-5rem))] overflow-y-auto p-1.5",
             "bg-[var(--color-background-primary)] border border-[var(--gray-200)]",
-            "rounded-lg shadow-[var(--shadow-lg)]",
+            "rounded-xl shadow-[var(--shadow-lg)]",
             "animate-[dropdown-in_150ms_ease-out]",
             align === "right" ? "right-0" : "left-0",
           ].join(" ")}
@@ -67,7 +67,7 @@ export function DropdownItem({ onClick, destructive = false, children, className
       onClick={(e) => { onClick?.(e); onClose?.(); }}
       role="menuitem"
       className={[
-        "w-full text-left px-3 py-2 text-sm cursor-pointer transition-colors duration-150",
+        "flex min-h-11 w-full items-center rounded-lg px-3 py-2 text-left text-sm cursor-pointer transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-brand-500)]",
         destructive
           ? "text-[#ef4444] hover:bg-[var(--color-error-50)]"
           : "text-[var(--color-text-primary)] hover:bg-[var(--gray-50)]",

@@ -17,6 +17,8 @@
 //
 // Fails-on-revert is recorded on the issue.
 
+// MINGLA-INVARIANT: I-PROPOSED-3802-ADMIN-CONTROLS-NO-CLIPPING | issue #3802 | Shared Admin selects, segmented controls, and tabs preserve 44-pixel targets and never compress long labels into overlap.
+
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -241,8 +243,10 @@ describe("#3802 W-7 (P3d): touch targets are 44px on the screens this work adds 
   it("the shared pieces those screens use are 44px on a phone", () => {
     assert.match(read("components/crm/home/DueList.jsx"), /"inline-flex h-10 items-center justify-center rounded-lg border px-4 text-sm font-semibold no-underline max-sm:h-11",/);
     const fields = read("components/crm/fields.jsx");
-    assert.match(fields, /"w-full h-10 max-sm:h-11 px-3 text-sm /);
-    assert.match(fields, /"h-10 max-sm:h-11 px-3 text-sm font-medium rounded-md /);
+    // [TEST-MOD-APPROVED #3802] The shared controls now keep the larger
+    // touch target at every breakpoint instead of only growing on phones.
+    assert.match(fields, /"w-full min-h-11 px-3 text-sm /);
+    assert.match(fields, /"min-h-11 shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium leading-5 /);
     assert.match(TEAM, /"inline-flex h-10 items-center gap-1\.5 rounded-full border px-3 text-sm font-medium transition-colors duration-150 max-sm:h-11",/);
   });
   it("Add to Hosts, Open host and the email are 44px wherever the cards are shown", () => {
@@ -302,5 +306,46 @@ describe("#3802 W-5 (P3b): the toast's own buttons hand that place on", () => {
   it("Undo and the close button both pass the owner's answer to the focus return", () => {
     assert.match(TOAST, /const restoreFocus = focusReturn\(rootRef\.current, toast\.action\.focusAfter\);\s*onDismiss\(toast\.id\);\s*toast\.action\.onClick\?\.\(\);\s*restoreFocus\(\);/);
     assert.match(TOAST, /const restoreFocus = focusReturn\(rootRef\.current, toast\.action\?\.focusAfter\);\s*onDismiss\(toast\.id\);\s*restoreFocus\(\);/);
+  });
+});
+
+describe("#3802 Admin controls remain spacious and readable", () => {
+  it("keeps shared fields at least 44px tall with visible keyboard focus", () => {
+    const fields = read("components/crm/fields.jsx");
+    assert.match(fields, /CONTROL_CLASS[\s\S]*?min-h-11/);
+    assert.match(fields, /focus-visible:border-\[var\(--color-brand-500\)\]/);
+    assert.match(fields, /<select className=\{`\$\{CONTROL_CLASS\} cursor-pointer pr-10/);
+  });
+
+  it("lets segmented labels keep their width instead of wrapping or overlapping", () => {
+    const fields = read("components/crm/fields.jsx");
+    assert.match(fields, /admin-control-scroll[\s\S]*?flex-nowrap[\s\S]*?overflow-x-auto/);
+    assert.match(fields, /min-h-11 shrink-0 whitespace-nowrap/);
+    assert.doesNotMatch(fields, /max-w-full flex-wrap rounded-lg/);
+    assert.doesNotMatch(fields, /min-w-0 flex-1 px-2/);
+    assert.match(read("pages/ContentCalendarPage.jsx"), /fullWidth className="sm:!w-fit"/);
+    assert.match(read("pages/DraftsPage.jsx"), /fullWidth className="sm:!w-fit"/);
+  });
+
+  it("lets long shared tab labels scroll safely while preserving keyboard semantics", () => {
+    const tabs = read("components/ui/Tabs.jsx");
+    assert.match(tabs, /admin-control-scroll min-w-0 overflow-x-auto/);
+    assert.match(tabs, /min-h-11 shrink-0 cursor-pointer whitespace-nowrap/);
+    assert.match(tabs, /role="tablist"/);
+    assert.match(tabs, /tabIndex=\{isActive \? 0 : -1\}/);
+  });
+
+  it("scopes the native-select baseline to the Admin app root", () => {
+    const css = read("globals.css");
+    assert.match(css, /#root select:not\(\[multiple\]\) \{[\s\S]*?min-block-size: 44px;/);
+    assert.match(css, /padding-inline-end: 2\.5rem;/);
+    assert.match(css, /text-overflow: ellipsis;/);
+  });
+
+  it("gives shared menus breathing room without allowing viewport overflow", () => {
+    const dropdown = read("components/ui/Dropdown.jsx");
+    assert.match(dropdown, /absolute mt-2 min-w-\[200px\]/);
+    assert.match(dropdown, /max-w-\[min\(22rem,calc\(100vw-2rem\)\)\]/);
+    assert.match(dropdown, /flex min-h-11 w-full items-center rounded-lg/);
   });
 });
