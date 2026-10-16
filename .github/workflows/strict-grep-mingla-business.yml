@@ -1006,6 +1006,14 @@ jobs:
             src/components/utils/__tests__/issue_1669_tester_adversarial.test.ts \
             src/components/utils/__tests__/holidayCardToExpandedCardData.test.ts \
             src/components/utils/__tests__/holidayCardToExpandedCardData.adversarial.test.ts
+      # #3281 Round 1 PR 1d / #1672 — saved brand experience keeps Book (node:test;
+      # same mapper directory as #1669; runs on Node 22 type-strip like #1605).
+      - name: "Issue #3281 1d: saved brand experience keeps Book"
+        working-directory: app-mobile
+        run: |
+          node --test \
+            src/components/utils/__tests__/issue_3281_experience_r1_saved_book.implementor.test.mjs \
+            src/components/utils/__tests__/issue_3281_experience_r1_saved_book.adversarial.test.mjs
       # issue #2227 — the native browser-primitive registry gate lives at
       # scripts/ci/check-native-authsession-redirects.sh (a .sh outside the
       # strict-grep dir, like scripts/ci/security_definer_anon_gate.sh), so it

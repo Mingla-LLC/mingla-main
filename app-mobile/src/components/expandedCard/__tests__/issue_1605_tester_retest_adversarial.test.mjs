@@ -207,14 +207,16 @@ test('A-4 a paid brand experience saved from the deck never prints Free on the s
   assert.ok(ENVELOPE > 0, 'A-4 (vacuity): the envelope must be non-zero, or Free would be the honest answer.');
 
   // ── 1 · the REAL persistence mapper ────────────────────────────────────────
+  // [TEST-MOD-APPROVED #3281] #1672 / Round 1 PR 1d now preserves `cardType:
+  // 'experience'` through savedCardToExpandedCardData (no curated stamp). The
+  // money-span recovery below still runs; vacuity expects the FIXED discriminator.
   const mapped = savedCardToExpandedCardData(experienceCard);
   assert.ok(mapped, 'A-4 (vacuity): the mapper returned nothing.');
   assert.equal(
     mapped.cardType,
-    'curated',
-    'A-4 (vacuity): the mapper no longer destroys the `experience` discriminator, so the structural '
-    + 'recovery this rule exercises is no longer the thing under test. That is a WELCOME change — but '
-    + 're-point this rule at the new path rather than deleting it, because the money span is what matters.',
+    'experience',
+    'A-4 (vacuity): the mapper must keep `experience` (#3281 1d / #1672). If this is curated again, '
+    + 'Book is gone on Likes and the Free-over-paid recovery is the only remaining safety net.',
   );
   assert.equal(mapped.brandId, 'brand-7001', 'A-4: `brandId` did not survive persistence + mapping.');
   assert.equal(mapped.eventId, 'evt-9001', 'A-4: `eventId` did not survive persistence + mapping.');

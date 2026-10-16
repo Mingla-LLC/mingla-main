@@ -62,6 +62,7 @@
 import type { ExpandedCardData } from "../../types/expandedCardTypes";
 import type { PriceTierSlug } from "../../constants/priceTiers";
 import { canonicalDiscoveryPriceFields } from "../../utils/priceTiers";
+import { isBrandExperiencePayload } from "../../utils/isBrandExperiencePayload";
 
 const PRICE_TIER_SLUGS: readonly string[] = [
   "any",
@@ -132,12 +133,16 @@ export function savedCardToExpandedCardData(
     savedCardId: str(c.savedCardId) ?? str(c.saved_card_id),
   };
 
+  // #1672 / #3281 1d — brand experiences share the curated pass-through cast
+  // (R8 budget = 2 on this file). They also carry stops[], so the stamp below
+  // would overwrite `cardType: 'experience'` and Likes would reopen them as AI
+  // plans with no Book path. Same discriminator as the deck.
   // Curated pass-through — identical to the deck (SwipeableCards.tsx:1829-1831).
-  // The full curated shape (stops + itinerary metadata) is preserved verbatim.
-  if (c.cardType === "curated") {
+  if (isBrandExperiencePayload(c) || c.cardType === "curated") {
     return {
       ...cardData,
       ...normalizedProvenance,
+      ...(isBrandExperiencePayload(c) ? { cardType: "experience" as const } : {}),
     } as unknown as ExpandedCardData;
   }
 
@@ -146,6 +151,7 @@ export function savedCardToExpandedCardData(
   // discriminated on that array, so honouring it here is what keeps those two
   // surfaces rendering curated now that they route through this mapper. The
   // pass-through is still verbatim; only the discriminator is stamped on.
+  // Brand experiences never reach here (handled above).
   if (Array.isArray(c.stops) && c.stops.length > 0) {
     return {
       ...(cardData as object),

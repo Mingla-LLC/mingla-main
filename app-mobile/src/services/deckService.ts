@@ -24,6 +24,9 @@ import {
   type CanonicalDiscoveryPrice,
 } from '../utils/priceTiers';
 import type { PriceTierSlug } from '../constants/priceTiers';
+import { isBrandExperiencePayload } from '../utils/isBrandExperiencePayload';
+
+export { isBrandExperiencePayload };
 
 /**
  * ORCH-0490 Phase 2.2 — Source discriminant for progressive delivery.
@@ -315,24 +318,9 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
 // ORCH-1065: a brand-authored experience envelope. Checked BEFORE isCuratedPayload
 // because an experience envelope ALSO has stops[] + experienceType + tagline; the
 // discriminator is the explicit cardType:'experience' + brand attribution.
+// Single source: utils/isBrandExperiencePayload (#1672 / #3281 1d).
 function isExperiencePayload(card: any): boolean {
-  // Primary: the explicit discriminator the supply always sets.
-  if (card?.cardType === 'experience') return true;
-  // ORCH-1072 tag-loss hardening (investigation §A/B): a brand experience is
-  // structurally distinguishable from an AI-curated card — it carries a
-  // non-empty brandId + eventId + a stops[] array, whereas curated AI cards
-  // have stops + experienceType + tagline but NO brand attribution. If the
-  // explicit tag is ever lost upstream, recover it here so the card still
-  // routes to ExpandedBusinessEventSheet (Book), never the place/curated
-  // Save/Schedule branch. Curated cards (empty brandId) are NOT matched.
-  return (
-    card?.cardType !== 'curated' &&
-    typeof card?.brandId === 'string' &&
-    card.brandId.length > 0 &&
-    typeof card?.eventId === 'string' &&
-    card.eventId.length > 0 &&
-    Array.isArray(card?.stops)
-  );
+  return isBrandExperiencePayload(card);
 }
 
 // ORCH-1065: intent id → consumer-facing label (parity with curated intents).

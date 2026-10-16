@@ -39,10 +39,12 @@ import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
 import { CardDiscussionModal } from "./board/CardDiscussionModal";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { openExpandedCardContentShare } from "../services/contentShareController";
-import { ExpandedCardData } from "../types/expandedCardTypes";
 // #1669 [expanded-card-one-producer]: the collab session view routes through
 // the ONE canonical producer instead of a hand-written literal.
 import { savedCardToExpandedCardData } from "./utils/savedCardToExpandedCardData";
+import { isBrandExperiencePayload } from "../utils/isBrandExperiencePayload";
+import { experienceRecToBusinessEventCard } from "../utils/experienceRecToBusinessEventCard";
+import type { ExpansionTarget } from "../types/expansion";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -178,8 +180,8 @@ export default function SessionViewModal({
     cardTitle: string;
   } | null>(null);
 
-  // Expanded card modal state
-  const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<ExpandedCardData | null>(null);
+  // Expanded card modal state (businessEvent for brand experiences — #1672 Book path)
+  const [modalTarget, setModalTarget] = useState<ExpansionTarget | null>(null);
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
 
   // Share modal state
@@ -614,18 +616,30 @@ export default function SessionViewModal({
     // Open now / Closed was computed against the VIEWER's clock), and rebuilt
     // curated plans from a fixed 9-key allowlist — the half of ORCH-1054 that
     // was repaired on the Matches/Plans sheets and never here. One producer now.
+    const source = {
+      ...(cardData as Record<string, unknown>),
+      id: cardData.id || card.id,
+      placeId: cardData.placeId,
+      sourceScope: 'collaboration',
+      sourceRecordId: card.saved_card_id || card.id,
+      savedCardId: card.saved_card_id || card.id,
+      title: cardData.title || t('modals:session_view.session_fallback'),
+      category: cardData.category || t('modals:session_view.session_fallback'),
+      categoryIcon: cardData.categoryIcon || "star",
+    };
+
+    // #1672 / #3281 1d — brand experiences open the Book path, not curated.
+    if (isBrandExperiencePayload(source)) {
+      setModalTarget({
+        kind: "businessEvent",
+        data: experienceRecToBusinessEventCard(source),
+      });
+      setIsExpandedModalVisible(true);
+      return;
+    }
+
     const expandedCardData = savedCardToExpandedCardData(
-      {
-        ...(cardData as Record<string, unknown>),
-        id: cardData.id || card.id,
-        placeId: cardData.placeId,
-        sourceScope: 'collaboration',
-        sourceRecordId: card.saved_card_id || card.id,
-        savedCardId: card.saved_card_id || card.id,
-        title: cardData.title || t('modals:session_view.session_fallback'),
-        category: cardData.category || t('modals:session_view.session_fallback'),
-        categoryIcon: cardData.categoryIcon || "star",
-      },
+      source,
       // The card's OWN planning datetime wins when it has one — the pre-#1669
       // literal read `cardData.selectedDateTime || new Date()`, and passing an
       // unconditional `new Date()` as the option would override it, because the
@@ -638,7 +652,7 @@ export default function SessionViewModal({
     );
     if (!expandedCardData) return;
 
-    setSelectedCardForExpansion(expandedCardData);
+    setModalTarget({ kind: "nightOut", data: expandedCardData });
     setIsExpandedModalVisible(true);
   };
 
@@ -826,14 +840,18 @@ export default function SessionViewModal({
         )}
 
         {/* Expanded Card Modal */}
-        {selectedCardForExpansion && (
+        {modalTarget && (
           <ExpandedCardModal
             visible={isExpandedModalVisible}
             // ORCH-0828: discriminated-union target.
-            target={{ kind: "nightOut", data: selectedCardForExpansion }}
+            target={modalTarget}
             onClose={() => {
+              const dismissOwnerModal = modalTarget?.kind === "businessEvent";
               setIsExpandedModalVisible(false);
-              setSelectedCardForExpansion(null);
+              setModalTarget(null);
+              // #1672 / #3281 1d — experience Book navigates via /exp; leave the
+              // session Modal up and Book is covered.
+              if (dismissOwnerModal) onClose();
             }}
             onSave={async () => {
               // Card is already saved in this board

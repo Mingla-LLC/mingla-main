@@ -42,6 +42,9 @@ import {
 // #1669 [expanded-card-one-producer]: Calendar's saved-card rows route through
 // the ONE canonical producer instead of a hand-written literal.
 import { savedCardToExpandedCardData } from "../utils/savedCardToExpandedCardData";
+import { isBrandExperiencePayload } from "../../utils/isBrandExperiencePayload";
+import { experienceRecToBusinessEventCard } from "../../utils/experienceRecToBusinessEventCard";
+import type { ExpansionTarget } from "../../types/expansion";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastManager } from "../ui/Toast";
@@ -306,9 +309,8 @@ const CalendarTab = ({
   // ORCH-1064: re-open guard window (block re-present within 500ms of close so the
   // wrapInRNModal modal isn't re-presented mid-dismiss → intermittent freeze).
   const lastModalCloseAtRef = useRef(0);
-  const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<
-    ExpandedCardData | null
-  >(null);
+  // nightOut for places/curated; businessEvent for brand experiences (#1672 Book path)
+  const [modalTarget, setModalTarget] = useState<ExpansionTarget | null>(null);
   // META-ORCH-1148 2.2f — the Confirmed reservation pass injected into the
   // ExpandedCardModal when a reservation row is tapped (null for normal cards).
   const [reservationPassForModal, setReservationPassForModal] = useState<
@@ -2074,6 +2076,27 @@ const CalendarTab = ({
     source.categoryIcon = ExperienceIcon;
     source.phone = experience.phoneNumber || entry.phoneNumber;
 
+    // #1672 / #3281 1d — brand experiences open the Book path, not curated.
+    if (isBrandExperiencePayload(source)) {
+      setModalTarget({
+        kind: "businessEvent",
+        data: experienceRecToBusinessEventCard(source),
+      });
+      setIsExpandedModalVisible(true);
+      recordCardExpand((entry as any).card_id || entry.id, {
+        category: experience.category || (entry as any).category,
+        priceTier: null,
+        isCurated: false,
+      });
+      mixpanelService.trackCardExpanded({
+        cardId: (entry as any).card_id || entry.id,
+        cardTitle: experience.title || entry.title,
+        category: experience.category || entry.category || "Experience",
+        source: "calendar",
+      });
+      return;
+    }
+
     const expandedCardData = savedCardToExpandedCardData(source, {
       selectedDateTime: entry.suggestedDates?.[0]
         ? new Date(entry.suggestedDates[0])
@@ -2083,7 +2106,7 @@ const CalendarTab = ({
     });
     if (!expandedCardData) return;
 
-    setSelectedCardForExpansion(expandedCardData);
+    setModalTarget({ kind: "nightOut", data: expandedCardData });
     setIsExpandedModalVisible(true);
 
     // ORCH-0408 Phase 4: Record expand — counter + user interaction log (fire-and-forget)
@@ -2104,7 +2127,7 @@ const CalendarTab = ({
 
   const handleCloseExpandedModal = () => {
     setIsExpandedModalVisible(false);
-    setSelectedCardForExpansion(null);
+    setModalTarget(null);
     setReservationPassForModal(null);
     lastModalCloseAtRef.current = Date.now(); // ORCH-1064: re-open guard window
   };
@@ -2199,7 +2222,7 @@ const CalendarTab = ({
         : undefined,
     };
 
-    setSelectedCardForExpansion(venueCard);
+    setModalTarget({ kind: "nightOut", data: venueCard });
     setReservationPassForModal(pass);
     setIsExpandedModalVisible(true);
   };
@@ -3104,11 +3127,11 @@ const CalendarTab = ({
       )}
 
       {/* Expanded Card Modal - Global instance */}
-      {selectedCardForExpansion && (
+      {modalTarget && (
         <ExpandedCardModal
           visible={isExpandedModalVisible}
           // ORCH-0828: discriminated-union target.
-          target={{ kind: "nightOut", data: selectedCardForExpansion }}
+          target={modalTarget}
           reservationPass={reservationPassForModal}
           onClose={handleCloseExpandedModal}
           onSave={handleSaveFromModal}
@@ -3121,7 +3144,7 @@ const CalendarTab = ({
           accountPreferences={accountPreferences}
           isSaved={true}
           currentMode={calendarEntries.find((e) =>
-              e.id === selectedCardForExpansion.id
+              modalTarget.kind === "nightOut" && e.id === modalTarget.data.id
             )
               ?.source === "solo"
             ? "solo"

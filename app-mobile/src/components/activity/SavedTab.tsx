@@ -36,6 +36,9 @@ import { ExpandedCardData } from "../../types/expandedCardTypes";
 // #1669 [expanded-card-one-producer]: Likes routes through the ONE canonical
 // producer instead of its own two hand-written literals.
 import { savedCardToExpandedCardData } from "../utils/savedCardToExpandedCardData";
+import { isBrandExperiencePayload } from "../../utils/isBrandExperiencePayload";
+import { experienceRecToBusinessEventCard } from "../../utils/experienceRecToBusinessEventCard";
+import type { ExpansionTarget } from "../../types/expansion";
 import { mixpanelService } from "../../services/mixpanelService";
 import { logAppsFlyerEvent } from "../../services/appsFlyerService";
 import { recordCardExpand } from "../../services/cardEngagementService";
@@ -1252,8 +1255,8 @@ const SavedTab = ({
   const { canAccess } = useFeatureGate();
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallFeature, setPaywallFeature] = useState<GatedFeature>('curated_cards');
-  const [selectedCardForModal, setSelectedCardForModal] =
-    useState<ExpandedCardData | null>(null);
+  // nightOut for places/curated; businessEvent for brand experiences (#1672 Book path)
+  const [modalTarget, setModalTarget] = useState<ExpansionTarget | null>(null);
   const [originalSavedCard, setOriginalSavedCard] = useState<SavedCard | null>(
     null
   );
@@ -1548,7 +1551,7 @@ const SavedTab = ({
     // Close expanded card modal if open (prevents Modal stacking conflicts)
     if (isModalVisible) {
       setIsModalVisible(false);
-      setSelectedCardForModal(null);
+      setModalTarget(null);
     }
 
     // Show the propose date/time modal
@@ -1587,7 +1590,7 @@ const SavedTab = ({
     // Close expanded card modal if open (prevents Modal stacking conflicts)
     if (isModalVisible) {
       setIsModalVisible(false);
-      setSelectedCardForModal(null);
+      setModalTarget(null);
     }
 
     // Open the date/time picker modal
@@ -1840,6 +1843,29 @@ const SavedTab = ({
     // ORCH-1054 that was never repaired here. One producer now. The only thing
     // Likes still owns is its own match-score resolution and the "planning
     // for" datetime; every field-survival decision lives in the mapper.
+    // #1672 / #3281 1d — brand experiences open the same Book path as the deck
+    // (businessEvent → /exp/...), not the curated AI plan modal.
+    if (isBrandExperiencePayload(card)) {
+      setModalTarget({
+        kind: "businessEvent",
+        data: experienceRecToBusinessEventCard(card),
+      });
+      setOriginalSavedCard(card);
+      setIsModalVisible(true);
+      recordCardExpand(card.id, {
+        category: card.category,
+        priceTier: undefined,
+        isCurated: false,
+      });
+      mixpanelService.trackCardExpanded({
+        cardId: card.id,
+        cardTitle: card.title,
+        category: card.category,
+        source: "saved",
+      });
+      return;
+    }
+
     const expandedCardData = savedCardToExpandedCardData(
       { ...(card as unknown as Record<string, unknown>), matchScore },
       {
@@ -1851,7 +1877,7 @@ const SavedTab = ({
     );
     if (!expandedCardData) return;
 
-    setSelectedCardForModal(expandedCardData);
+    setModalTarget({ kind: "nightOut", data: expandedCardData });
     setOriginalSavedCard(card);
     setIsModalVisible(true);
 
@@ -1873,7 +1899,7 @@ const SavedTab = ({
 
   const handleCloseModal = () => {
     setIsModalVisible(false);
-    setSelectedCardForModal(null);
+    setModalTarget(null);
     setOriginalSavedCard(null);
   };
 
@@ -2307,11 +2333,11 @@ const SavedTab = ({
       />
 
       {/* Expanded Card Modal */}
-      {isModalVisible && selectedCardForModal && (
+      {isModalVisible && modalTarget && (
         <ExpandedCardModal
           visible={isModalVisible}
           // ORCH-0828: discriminated-union target.
-          target={{ kind: "nightOut", data: selectedCardForModal }}
+          target={modalTarget}
           onClose={handleCloseModal}
           isSaved={true}
           onSave={handleModalSave}

@@ -20,13 +20,10 @@ import {
 } from "../../hooks/useSessionScheduledCards";
 import { realtimeService } from "../../services/realtimeService";
 import { supabase } from "../../services/supabase";
-import type { ExpandedCardData } from "../../types/expandedCardTypes";
-// ORCH-1054 [matches-expanded-card-parity]: canonical deck-parity mapper.
-// Replaces the pre-1054 bespoke lossy `toExpandedCard` (which forced
-// category:"night_out" + dropped curated/stroll/picnic + place metadata) so the
-// Matches + Plans expanded cards render identically to the deck. Mirrors
-// SwipeableCards.tsx `recommendationToExpanded`.
-import { savedCardToExpandedCardData } from "../utils/savedCardToExpandedCardData";
+import type { ExpansionTarget } from "../../types/expansion";
+// ORCH-1054 [matches-expanded-card-parity]: canonical deck-parity mapper still
+// used inside expansionTargetFromSavedPayload for places/curated.
+import { expansionTargetFromSavedPayload } from "../../utils/expansionTargetFromSavedPayload";
 
 interface Props {
   sessionId: string;
@@ -240,9 +237,7 @@ export function ScheduleSheet({
 }: SheetProps & { accountPreferences?: Props["accountPreferences"] }) {
   const { rows, isLoading, isError, refetch } =
     useSessionScheduledCards(sessionId);
-  const [expandedCard, setExpandedCard] = useState<ExpandedCardData | null>(
-    null,
-  );
+  const [modalTarget, setModalTarget] = useState<ExpansionTarget | null>(null);
 
   const hasRows = !isLoading && !isError && rows.length > 0;
 
@@ -280,7 +275,7 @@ export function ScheduleSheet({
               key={item.savedCardId}
               style={styles.scheduleRow}
               onPress={() =>
-                setExpandedCard(savedCardToExpandedCardData({
+                setModalTarget(expansionTargetFromSavedPayload({
                   ...item.cardData,
                   sourceScope: 'collaboration',
                   sourceRecordId: item.savedCardId,
@@ -310,11 +305,15 @@ export function ScheduleSheet({
         )}
       </CompactCollabBottomSheet>
       <ExpandedCardModal
-        visible={!!expandedCard}
-        target={
-          expandedCard ? { kind: "nightOut", data: expandedCard } : null
-        }
-        onClose={() => setExpandedCard(null)}
+        visible={!!modalTarget}
+        target={modalTarget}
+        onClose={() => {
+          const dismissOwnerSheet = modalTarget?.kind === "businessEvent";
+          setModalTarget(null);
+          // #1672 / #3281 1d — experience Book navigates via /exp and calls
+          // onClose; leave the Plans wrapInRNModal up and Book is unreachable.
+          if (dismissOwnerSheet) onClose();
+        }}
         onSave={() => {}}
         onShare={(card) => openExpandedCardContentShare(card, 'collab_locked_expanded')}
         shareProducerSurface="collab_locked_expanded"
@@ -344,9 +343,7 @@ export function SavedToSessionCardsSheet({
   accountPreferences?: Props["accountPreferences"];
   isAdmin: boolean;
 }) {
-  const [expandedCard, setExpandedCard] = useState<ExpandedCardData | null>(
-    null,
-  );
+  const [modalTarget, setModalTarget] = useState<ExpansionTarget | null>(null);
   // ORCH-1049 [collab Matches sheet bottom bleed]: the Matches sheet renders
   // CompactCollabBottomSheet in scrollMode="view", whose body is a consumer-owned
   // flexed BottomSheetView — the BaseBottomSheet primitive only injects its
@@ -364,15 +361,13 @@ export function SavedToSessionCardsSheet({
   const savedCardsBottomInset = Math.max(insets.bottom, 16);
 
   const openExpandedCardModal = useCallback((card: SavedSessionCard) => {
-    const expanded = savedCardToExpandedCardData(
-      {
-        ...(card.card_data || card.experience_data || {}),
-        sourceScope: 'collaboration',
-        sourceRecordId: card.saved_card_id || card.id,
-        savedCardId: card.saved_card_id || card.id,
-      },
-    );
-    if (expanded) setExpandedCard(expanded);
+    const target = expansionTargetFromSavedPayload({
+      ...(card.card_data || card.experience_data || {}),
+      sourceScope: 'collaboration',
+      sourceRecordId: card.saved_card_id || card.id,
+      savedCardId: card.saved_card_id || card.id,
+    });
+    if (target) setModalTarget(target);
   }, []);
 
   return (
@@ -403,11 +398,14 @@ export function SavedToSessionCardsSheet({
         </View>
       </CompactCollabBottomSheet>
       <ExpandedCardModal
-        visible={!!expandedCard}
-        target={
-          expandedCard ? { kind: "nightOut", data: expandedCard } : null
-        }
-        onClose={() => setExpandedCard(null)}
+        visible={!!modalTarget}
+        target={modalTarget}
+        onClose={() => {
+          const dismissOwnerSheet = modalTarget?.kind === "businessEvent";
+          setModalTarget(null);
+          // #1672 / #3281 1d — same as Plans: experience Book must dismiss Matches.
+          if (dismissOwnerSheet) onClose();
+        }}
         onSave={() => {}}
         onShare={(card) => openExpandedCardContentShare(card, 'collab_saved_expanded')}
         shareProducerSurface="collab_saved_expanded"

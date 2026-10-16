@@ -167,8 +167,10 @@ export interface ExpandedCardData extends Partial<CanonicalDiscoveryPrice> {
       duration: number;
     }>;
   };
-  // Curated experience fields (multi-stop itinerary cards)
-  cardType?: 'curated';
+  // Curated experience fields (multi-stop itinerary cards).
+  // `experience` = brand-authored bookable (#1672 / #3281 1d) — must not be
+  // collapsed to `curated` on the saved round-trip.
+  cardType?: 'curated' | 'experience';
   stops?: CuratedStop[];
   tagline?: string;
   totalPriceMin?: number;
