@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #3645] paystack_unverified retired; Paystack arm now Verify-backed (paystack_verify_unavailable).
 // ORCH-1388 [checkout-session honest expiry] — source-contract tests over the
 // reconcile-stuck-checkouts sweep (SPEC §9 implementor side, R-1..R-8), in the
 // established `Deno.readTextFile` needle convention of
@@ -300,7 +301,7 @@ Deno.test("R-8b — the Paystack guard (pi_ prefix check) is present in the clas
   );
   has(
     classifySrc,
-    '"paystack_unverified"',
+    '"paystack_verify_unavailable"',
     "OQ-A bound default: never expire what the sweep cannot verify",
   );
 });

@@ -91,6 +91,15 @@ export async function getDispute(disputeId) {
   return supabase.rpc("admin_get_dispute", { p_dispute_id: disputeId });
 }
 
+/** #3645 — past-expiry Paystack (mingla_*) checkouts with no order yet. */
+export async function listPaidWithoutTicket({ pageSize = 50 } = {}) {
+  const { data, error } = await supabase.rpc("admin_list_paid_without_ticket", {
+    p_limit: pageSize,
+  });
+  if (error) throw new Error(error.message || "Failed to load paid-without-ticket rows.");
+  return { rows: data ?? [], total: (data ?? []).length };
+}
+
 /** Payouts list. Filters: status, brandId. */
 export async function listPayouts({ search, filters = {}, page = 0, pageSize = 25 }) {
   const { data, error } = await supabase.rpc("admin_list_payouts", {

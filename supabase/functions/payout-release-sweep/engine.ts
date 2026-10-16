@@ -28,6 +28,11 @@ export type MoneyCandidate = {
   minglaFeeCents: number;
   partnerShareCents: number;
   providerFeeCents: number;
+  /**
+   * #3645 — quoted processing recovery pool (usually pricing_breakdown
+   * components.service_fee_cents). 0 = legacy row; surplus math is a no-op.
+   */
+  processingRecoveryPoolCents?: number;
 };
 
 export type PendingItem = MoneyCandidate & {
@@ -97,11 +102,15 @@ export function computePendingItems(
     const releasableAt = new Date(ms(anchorEndAt) + RELEASE_DELAY_MS)
       .toISOString();
     if (ms(releasableAt) > now) continue;
+    // #3645 — Mingla keeps recovery surplus; organiser absorbs deficit via full
+    // provider fee deduction when pool < actual (surplus term is then 0).
+    const pool = Math.max(0, Math.trunc(candidate.processingRecoveryPoolCents ?? 0));
+    const recoverySurplusCents = Math.max(0, pool - candidate.providerFeeCents);
     const netCents = Math.max(
       0,
       candidate.grossCents - candidate.refundedCents - candidate.disputedCents -
         candidate.minglaFeeCents - candidate.partnerShareCents -
-        candidate.providerFeeCents,
+        candidate.providerFeeCents - recoverySurplusCents,
     );
     const resolvedEventDateId = (
         candidate.sourceType === "venue_reservation" ||

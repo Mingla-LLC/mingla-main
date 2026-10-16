@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #3645] paystack_unverified retired; Paystack arm now Verify-backed (paystack_verify_unavailable).
 // ORCH-1388 [checkout-session honest expiry] — TESTER adversarial suite.
 //
 // DIFFERENT ANGLE than the implementor's two suites:
@@ -213,19 +214,36 @@ Deno.test("INVARIANT B — every `expire` outcome is strictly-past-expiry, non-P
   }
 });
 
-// ── INVARIANT C (Paystack is inert to Stripe) ────────────────────────────────
-// A `mingla_*` reference is never verifiable here and is never a Stripe id:
-// classify always skips it (never expire), independent of every other input.
-Deno.test("INVARIANT C — PAYSTACK always skips `paystack_unverified`, never expire/finalize, across all statuses × expiry", () => {
+// ── INVARIANT C (Paystack never uses Stripe PI truth) ────────────────────────
+// Stripe PI statuses on a PAYSTACK row are ignored; missing Paystack verify
+// truth stays fail-safe skip. #3645 adds verify-driven finalize/expire.
+Deno.test("INVARIANT C — PAYSTACK ignores Stripe piStatus; empty verify truth skips", () => {
   for (const piStatus of [...ALL_PI_STATUSES, ...FUZZ_PI_STATUSES]) {
     for (const [label, expiresAt] of EXPIRY_POINTS) {
       assertEquals(
         act("PAYSTACK", expiresAt, { piStatus }),
-        { action: "skip", reason: "paystack_unverified" },
-        `PAYSTACK/${piStatus}@${label}: an unverifiable Paystack ref must be an inert skip (SC-8)`,
+        { action: "skip", reason: "paystack_verify_unavailable" },
+        `PAYSTACK/${piStatus}@${label}: empty Paystack truth must fail-safe skip`,
       );
     }
   }
+});
+
+Deno.test("INVARIANT C2 — PAYSTACK success finalizes; terminal past-expiry expires (#3645)", () => {
+  for (const [, expiresAt] of EXPIRY_POINTS) {
+    assertEquals(
+      act("PAYSTACK", expiresAt, { paystackStatus: "success" }),
+      { action: "finalize" },
+    );
+  }
+  assertEquals(
+    act("PAYSTACK", "2026-07-17T11:00:00.000Z", { paystackStatus: "failed" }),
+    { action: "expire" },
+  );
+  assertEquals(
+    act("PAYSTACK", "2026-07-17T13:00:00.000Z", { paystackStatus: "failed" }),
+    { action: "skip", reason: "in_window" },
+  );
 });
 
 // ── BOUNDARY: strictly-less-than, pinned to the exact millisecond ────────────
