@@ -7,6 +7,10 @@ import { spawnSync } from "node:child_process";
 const repoRoot = resolve(import.meta.dirname, "../..");
 const deploySource = join(repoRoot, "scripts/deploy-supabase-functions.sh");
 const serveSource = join(repoRoot, "scripts/serve-supabase-functions.sh");
+const workflowSource = await readFile(
+  join(repoRoot, ".github/workflows/issue-1456-edge-deploy-idempotency.yml"),
+  "utf8",
+);
 const originalConfig = "project_id = \"fixture\"\n\n[functions.legacy]\nverify_jwt = true\n";
 const originalBake = 'export const BAKED_RELEASE_SHA = "0000000000000000000000000000000000000000";\n';
 
@@ -246,5 +250,19 @@ const serveMaterializeFailure = await runServe("materialize-fail");
 assert.equal(serveMaterializeFailure.result.status, 73);
 assert.deepEqual(serveMaterializeFailure.calls, []);
 assert.equal(serveMaterializeFailure.restoredConfig, originalConfig);
+
+// I-3645-CI-SEAL-OWNER-WAKES-VALIDATOR: the function-policy loader owns the
+// effective bootstrap seal, so both PR and main-push triggers must observe it.
+const sealOwnerTrigger = "- '.github/scripts/ci-discovery/function-policy.mjs'";
+const pullRequestTrigger = workflowSource.slice(
+  workflowSource.indexOf("  pull_request:"),
+  workflowSource.indexOf("  push:"),
+);
+const pushTrigger = workflowSource.slice(
+  workflowSource.indexOf("  push:"),
+  workflowSource.indexOf("\nconcurrency:"),
+);
+assert.ok(pullRequestTrigger.includes(sealOwnerTrigger), "the seal owner must wake pull requests");
+assert.ok(pushTrigger.includes(sealOwnerTrigger), "the seal owner must wake main pushes");
 
 console.log("issue #1456 deployment idempotency and effective-policy wrappers: PASS");
