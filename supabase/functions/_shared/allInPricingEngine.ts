@@ -4,11 +4,12 @@
 //   (base tiers, 3 switches, region/currency, venue tax basis, take-rate bps)
 // into ONE buyer total + the money split, with ZERO buyer-entered address.
 //
-// Mental model (take-rate amendment §2.4):
+// Mental model (take-rate amendment §2.4 + #3645 Ilashe fee integrity):
 //   Take-rate     = Mingla's profit (set by Seth, collected via application_fee_amount).
-//   Service fee   = Stripe's processing-cost recovery (set by the brand's switch).
-//   Stripe fee    = paid by the connected account (controller fees responsibility).
-//   Three levers, three owners, never netted.
+//   Service fee   = processing recovery POOL (buyer-paid when passed; 300 bps default).
+//   Provider fee  = actual provider-reported cost (settled after charge).
+//   Mingla also keeps recovery surplus = max(0, pool − actual). Organiser absorbs
+//   deficit = max(0, actual − pool). Quote freezes the pool; settlement uses actual.
 //
 // Stripe docs cited where load-bearing:
 //   - direct-charge application_fee_amount: https://docs.stripe.com/connect/direct-charges#collect-fees
@@ -288,5 +289,29 @@ export function buildPricingBreakdown(args: {
     stripe_tax_calculation_id: stripeTaxCalculationId,
     effective_take_rate_bps: input.effectiveTakeRateBps,
     take_rate_source: input.takeRateSource,
+  };
+}
+
+/**
+ * #3645 Ilashe — settle processing recovery from the provider's actual fee.
+ * pool = quoted 3% service-fee (or passed pool cents); never a forecast of cost.
+ */
+export function allocateProcessingRecovery(args: {
+  processingRecoveryPoolCents: number;
+  actualProviderFeeCents: number;
+}): {
+  recoverySurplusCents: number;
+  processingDeficitCents: number;
+  minglaRecoveryPlusTakeAddonCents: number;
+} {
+  const pool = Math.max(0, Math.trunc(args.processingRecoveryPoolCents));
+  const actual = Math.max(0, Math.trunc(args.actualProviderFeeCents));
+  const recoverySurplusCents = Math.max(0, pool - actual);
+  const processingDeficitCents = Math.max(0, actual - pool);
+  return {
+    recoverySurplusCents,
+    processingDeficitCents,
+    // Caller adds platform take separately; this is the surplus leg only.
+    minglaRecoveryPlusTakeAddonCents: recoverySurplusCents,
   };
 }
