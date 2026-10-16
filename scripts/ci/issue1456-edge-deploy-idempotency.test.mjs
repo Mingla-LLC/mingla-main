@@ -251,6 +251,7 @@ assert.equal(serveMaterializeFailure.result.status, 73);
 assert.deepEqual(serveMaterializeFailure.calls, []);
 assert.equal(serveMaterializeFailure.restoredConfig, originalConfig);
 
+// MINGLA-INVARIANT: I-3645-CI-SEAL-OWNER-WAKES-VALIDATOR | issue #3645 | The effective-policy seal owner wakes both pull-request and main-push edge idempotency validation.
 // I-3645-CI-SEAL-OWNER-WAKES-VALIDATOR: the function-policy loader owns the
 // effective bootstrap seal, so both PR and main-push triggers must observe it.
 const sealOwnerTrigger = "- '.github/scripts/ci-discovery/function-policy.mjs'";
