@@ -21,28 +21,9 @@ import {
 import { realtimeService } from "../../services/realtimeService";
 import { supabase } from "../../services/supabase";
 import type { ExpansionTarget } from "../../types/expansion";
-// ORCH-1054 [matches-expanded-card-parity]: canonical deck-parity mapper.
-// Replaces the pre-1054 bespoke lossy `toExpandedCard` (which forced
-// category:"night_out" + dropped curated/stroll/picnic + place metadata) so the
-// Matches + Plans expanded cards render identically to the deck. Mirrors
-// SwipeableCards.tsx `recommendationToExpanded`.
-import { savedCardToExpandedCardData } from "../utils/savedCardToExpandedCardData";
-import { isBrandExperiencePayload } from "../../utils/isBrandExperiencePayload";
-import { experienceRecToBusinessEventCard } from "../../utils/experienceRecToBusinessEventCard";
-
-/** Open nightOut for places/curated; businessEvent for brand experiences (#1672). */
-function expansionTargetFromSavedPayload(
-  payload: Record<string, unknown>,
-): ExpansionTarget | null {
-  if (isBrandExperiencePayload(payload)) {
-    return {
-      kind: "businessEvent",
-      data: experienceRecToBusinessEventCard(payload),
-    };
-  }
-  const expanded = savedCardToExpandedCardData(payload);
-  return expanded ? { kind: "nightOut", data: expanded } : null;
-}
+// ORCH-1054 [matches-expanded-card-parity]: canonical deck-parity mapper still
+// used inside expansionTargetFromSavedPayload for places/curated.
+import { expansionTargetFromSavedPayload } from "../../utils/expansionTargetFromSavedPayload";
 
 interface Props {
   sessionId: string;
@@ -326,7 +307,13 @@ export function ScheduleSheet({
       <ExpandedCardModal
         visible={!!modalTarget}
         target={modalTarget}
-        onClose={() => setModalTarget(null)}
+        onClose={() => {
+          const dismissOwnerSheet = modalTarget?.kind === "businessEvent";
+          setModalTarget(null);
+          // #1672 / #3281 1d — experience Book navigates via /exp and calls
+          // onClose; leave the Plans wrapInRNModal up and Book is unreachable.
+          if (dismissOwnerSheet) onClose();
+        }}
         onSave={() => {}}
         onShare={(card) => openExpandedCardContentShare(card, 'collab_locked_expanded')}
         shareProducerSurface="collab_locked_expanded"
@@ -413,7 +400,12 @@ export function SavedToSessionCardsSheet({
       <ExpandedCardModal
         visible={!!modalTarget}
         target={modalTarget}
-        onClose={() => setModalTarget(null)}
+        onClose={() => {
+          const dismissOwnerSheet = modalTarget?.kind === "businessEvent";
+          setModalTarget(null);
+          // #1672 / #3281 1d — same as Plans: experience Book must dismiss Matches.
+          if (dismissOwnerSheet) onClose();
+        }}
         onSave={() => {}}
         onShare={(card) => openExpandedCardContentShare(card, 'collab_saved_expanded')}
         shareProducerSurface="collab_saved_expanded"

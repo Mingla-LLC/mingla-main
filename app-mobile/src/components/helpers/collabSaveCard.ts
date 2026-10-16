@@ -4,6 +4,7 @@ import { mixpanelService } from "../../services/mixpanelService";
 import { toastManager } from "../ui/Toast";
 import type { Recommendation } from "../../types/recommendation";
 import { canonicalDiscoveryPriceFields } from "../../utils/priceTiers";
+import { isBrandExperiencePayload } from "../../utils/isBrandExperiencePayload";
 
 /**
  * ORCH-0558 v3: Build the card_data JSONB payload persisted on
@@ -85,6 +86,39 @@ export function buildCardDataPayload(
               (url): url is string => typeof url === "string" && url.length > 0,
             )
             .slice(0, 6),
+        }
+      : {}),
+    // #1672 / #3281 1d — brand experiences must keep the Book envelope through
+    // the mutual-like → board_saved_cards path (Matches / Plans / SessionView).
+    ...(isBrandExperiencePayload(c)
+      ? {
+          cardType: "experience",
+          stops: c.stops,
+          tagline: c.tagline,
+          totalPriceMin: c.totalPriceMin,
+          totalPriceMax: c.totalPriceMax,
+          estimatedDurationMinutes: c.estimatedDurationMinutes,
+          experienceType: c.experienceType,
+          brandId: c.brandId,
+          brandSlug: c.brandSlug,
+          brandName: c.brandName,
+          brandLogoUrl: c.brandLogoUrl,
+          eventId: c.eventId,
+          eventSlug: c.eventSlug,
+          coverMediaUrl: c.coverMediaUrl,
+          coverMediaType: c.coverMediaType,
+          currency: c.currency,
+          timezone: c.timezone,
+          city: c.city,
+          upcomingOccurrences: c.upcomingOccurrences,
+          experienceIntents: c.experienceIntents,
+          brandTheme: c.brandTheme,
+          isRecurring: c.isRecurring,
+          recurrenceRule: c.recurrenceRule,
+          masterDateUtc: c.masterDateUtc,
+          masterEndAtUtc: c.masterEndAtUtc,
+          hideAddressUntilTicket: c.hideAddressUntilTicket,
+          theme: c.theme,
         }
       : {}),
   };

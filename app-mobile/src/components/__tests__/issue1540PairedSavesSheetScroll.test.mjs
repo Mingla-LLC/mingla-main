@@ -293,11 +293,14 @@ test("T-8 the shared presentation owner exports the pieces and both consumers im
 });
 
 // ── T-9: defect 2 wiring ────────────────────────────────────────────────────
-test("T-9 onSaveCardPress opens the card via savedCardToExpandedCardData and never calls handleSaveCard", () => {
+// [TEST-MOD-APPROVED #3281] Round 1 PR 1d — friend saved brand experiences open
+// via expansionTargetFromSavedPayload (businessEvent Book path); places/curated
+// still go through savedCardToExpandedCardData inside that helper.
+test("T-9 onSaveCardPress opens the card via expansionTargetFromSavedPayload and never calls handleSaveCard", () => {
   assert.match(
     FRIEND_PROFILE,
-    /import \{ savedCardToExpandedCardData \} from ['"][^'"]*savedCardToExpandedCardData['"]/,
-    "T-9 ViewFriendProfileScreen must use the existing canonical converter, not a new mapper",
+    /import \{ expansionTargetFromSavedPayload \} from ['"][^'"]*expansionTargetFromSavedPayload['"]/,
+    "T-9 ViewFriendProfileScreen must use the shared expansion helper (delegates to the canonical converter)",
   );
   assert.ok(
     !/onSaveCardPress=\{handleSaveCard\}/.test(FRIEND_PROFILE),
@@ -305,15 +308,15 @@ test("T-9 onSaveCardPress opens the card via savedCardToExpandedCardData and nev
   );
   const idx = FRIEND_PROFILE.indexOf("onSaveCardPress=");
   assert.ok(idx > 0, "T-9 the onSaveCardPress prop must still be passed to PersonHolidayView");
-  const block = FRIEND_PROFILE.slice(idx, idx + 400);
+  const block = FRIEND_PROFILE.slice(idx, idx + 500);
   assert.match(
     block,
-    /savedCardToExpandedCardData\(cardData\)/,
+    /expansionTargetFromSavedPayload\(/,
     "T-9 the tap handler must convert the saved card",
   );
   assert.match(
     block,
-    /setExpandedCard\(expanded\)/,
+    /setModalTarget\(target\)/,
     "T-9 the tap handler must OPEN the converted card",
   );
   assert.ok(
@@ -336,9 +339,8 @@ test("T-10 savedCardToExpandedCardData converts a realistic saved_card.card_data
   // is transpiled here and the REAL product function is executed. If the
   // transpiler is missing this test FAILS; it never silently skips.
   //
-  // The converter's whole runtime dependency graph is two files: itself and
-  // `src/utils/priceTiers.ts`, which has zero imports. The only other import is
-  // `import type { ExpandedCardData }`, which transpilation erases.
+  // The converter's runtime graph: itself, priceTiers (no imports), and
+  // isBrandExperiencePayload (#3281 1d; no imports). Type-only imports erase.
   const ts = await import("typescript");
   const transpile = (code) =>
     ts.default.transpileModule(code, {
@@ -352,8 +354,15 @@ test("T-10 savedCardToExpandedCardData converts a realistic saved_card.card_data
     `data:text/javascript;base64,${Buffer.from(code, "utf8").toString("base64")}`;
 
   const priceTiersUrl = toModuleUrl(transpile(read("src/utils/priceTiers.ts")));
+  const brandExpUrl = toModuleUrl(
+    transpile(read("src/utils/isBrandExperiencePayload.ts")),
+  );
   const converterJs = transpile(read("src/components/utils/savedCardToExpandedCardData.ts"))
-    .replace(/(["'])\.\.\/\.\.\/utils\/priceTiers\1/, JSON.stringify(priceTiersUrl));
+    .replace(/(["'])\.\.\/\.\.\/utils\/priceTiers\1/, JSON.stringify(priceTiersUrl))
+    .replace(
+      /(["'])\.\.\/\.\.\/utils\/isBrandExperiencePayload\1/,
+      JSON.stringify(brandExpUrl),
+    );
   const mod = await import(toModuleUrl(converterJs));
 
   assert.equal(

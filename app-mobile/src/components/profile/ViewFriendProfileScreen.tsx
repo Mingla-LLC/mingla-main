@@ -32,7 +32,8 @@ import PersonHolidayView from '../PersonHolidayView';
 import ExpandedCardModal from '../ExpandedCardModal';
 import { openExpandedCardContentShare } from '../../services/contentShareController';
 import type { ExpandedCardData } from '../../types/expandedCardTypes';
-import { savedCardToExpandedCardData } from '../utils/savedCardToExpandedCardData';
+import type { ExpansionTarget } from '../../types/expansion';
+import { expansionTargetFromSavedPayload } from '../../utils/expansionTargetFromSavedPayload';
 import CustomHolidayModal from '../CustomHolidayModal';
 import FriendActionsSheet from '../friends/FriendActionsSheet';
 import { getSharedCustomHolidaysByPairing, createCustomHolidayForPairing, deleteCustomHoliday as deleteCustomHolidayFromDb } from '../../services/customHolidayService';
@@ -579,13 +580,13 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   }, [t]);
 
   // ── Expanded card modal ─────────────────────────────────
-  // ORCH-0997: expandedCard is now a fully-shaped ExpandedCardData (built by
-  // PersonHolidayView via holidayCardToExpandedCardData), so the modal renders the
-  // hero image + location + curated stops identically to the deck (RC#2 fix).
-  const [expandedCard, setExpandedCard] = useState<ExpandedCardData | null>(null);
+  // ORCH-0997: holiday cards arrive fully-shaped (PersonHolidayView via
+  // holidayCardToExpandedCardData). #1672 / #3281 1d: friend saved brand
+  // experiences open as businessEvent so Book survives.
+  const [modalTarget, setModalTarget] = useState<ExpansionTarget | null>(null);
 
   const handleCardPress = useCallback((card: ExpandedCardData) => {
-    setExpandedCard(card);
+    setModalTarget({ kind: "nightOut", data: card });
   }, []);
 
   const handleSaveCard = useCallback(async (cardData: Record<string, unknown>) => {
@@ -839,8 +840,10 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
                 // legitimate save path is ExpandedCardModal's own `onSave`
                 // below, which still calls `handleSaveCard`.
                 onSaveCardPress={(cardData) => {
-                  const expanded = savedCardToExpandedCardData(cardData);
-                  if (expanded) setExpandedCard(expanded);
+                  const target = expansionTargetFromSavedPayload(
+                    cardData as Record<string, unknown>,
+                  );
+                  if (target) setModalTarget(target);
                 }}
                 onDeleteCustomDay={handleDeleteCustomHoliday}
               />
@@ -852,15 +855,15 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
       </ScrollView>
 
       {/* Expanded card modal — ORCH-0435 */}
-      {expandedCard && (
+      {modalTarget && (
         <ExpandedCardModal
-          visible={!!expandedCard}
+          visible={!!modalTarget}
           // ORCH-0828: discriminated-union target.
-          target={{ kind: "nightOut", data: expandedCard }}
-          onClose={() => setExpandedCard(null)}
+          target={modalTarget}
+          onClose={() => setModalTarget(null)}
           onSave={async (card: any) => {
             await handleSaveCard(card);
-            setExpandedCard(null);
+            setModalTarget(null);
           }}
           onShare={(card) => openExpandedCardContentShare(card, 'friend_profile_expanded')}
           shareProducerSurface="friend_profile_expanded"

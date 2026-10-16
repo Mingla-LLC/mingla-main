@@ -133,23 +133,16 @@ export function savedCardToExpandedCardData(
     savedCardId: str(c.savedCardId) ?? str(c.saved_card_id),
   };
 
-  // #1672 / #3281 1d — brand experiences FIRST. They also carry stops[], so the
-  // curated stamp below would overwrite `cardType: 'experience'` and Likes would
-  // reopen them as AI plans with no Book path. Same discriminator as the deck.
-  if (isBrandExperiencePayload(c)) {
-    return {
-      ...cardData,
-      ...normalizedProvenance,
-      cardType: "experience",
-    } as unknown as ExpandedCardData;
-  }
-
+  // #1672 / #3281 1d — brand experiences share the curated pass-through cast
+  // (R8 budget = 2 on this file). They also carry stops[], so the stamp below
+  // would overwrite `cardType: 'experience'` and Likes would reopen them as AI
+  // plans with no Book path. Same discriminator as the deck.
   // Curated pass-through — identical to the deck (SwipeableCards.tsx:1829-1831).
-  // The full curated shape (stops + itinerary metadata) is preserved verbatim.
-  if (c.cardType === "curated") {
+  if (isBrandExperiencePayload(c) || c.cardType === "curated") {
     return {
       ...cardData,
       ...normalizedProvenance,
+      ...(isBrandExperiencePayload(c) ? { cardType: "experience" as const } : {}),
     } as unknown as ExpandedCardData;
   }
 

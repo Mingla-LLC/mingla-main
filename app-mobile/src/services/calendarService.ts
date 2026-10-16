@@ -272,6 +272,14 @@ export class CalendarService {
       "estimatedDurationMinutes", "experienceType", "pairingKey",
       "shoppingList", "strollData", "picnicData", "nightOutData",
       "tip", "sessionName",
+      // #1672 / #3281 1d — brand-experience envelope. Without these, schedule →
+      // Calendar reopen loses Book (empty brandSlug/eventSlug; structural
+      // recovery also needs brandId + eventId beside stops).
+      "brandId", "brandSlug", "brandName", "brandLogoUrl", "eventId", "eventSlug",
+      "coverMediaUrl", "coverMediaType", "currency", "timezone", "city",
+      "upcomingOccurrences", "experienceIntents", "brandTheme",
+      "isRecurring", "recurrenceRule", "masterDateUtc", "masterEndAtUtc",
+      "hideAddressUntilTicket", "theme",
     ];
     const sanitizedCardData: Record<string, unknown> = {};
     for (const key of allowedCardFields) {

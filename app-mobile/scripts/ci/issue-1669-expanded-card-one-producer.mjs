@@ -100,6 +100,9 @@ const SANCTIONED_PRODUCER_SYMBOLS = [
   "holidayCardToExpandedCardData",
   "fallbackCardToExpandedCardData",
   "cardPayloadToExpandedCardData",
+  // [TEST-MOD-APPROVED #3281] Round 1 PR 1d — routes brand experiences to
+  // businessEvent and places/curated through savedCardToExpandedCardData.
+  "expansionTargetFromSavedPayload",
 ];
 
 /** Files allowed to render <ExpandedCardModal>, and how each one gets its data. */

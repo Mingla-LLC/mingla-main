@@ -846,8 +846,12 @@ export default function SessionViewModal({
             // ORCH-0828: discriminated-union target.
             target={modalTarget}
             onClose={() => {
+              const dismissOwnerModal = modalTarget?.kind === "businessEvent";
               setIsExpandedModalVisible(false);
               setModalTarget(null);
+              // #1672 / #3281 1d — experience Book navigates via /exp; leave the
+              // session Modal up and Book is covered.
+              if (dismissOwnerModal) onClose();
             }}
             onSave={async () => {
               // Card is already saved in this board

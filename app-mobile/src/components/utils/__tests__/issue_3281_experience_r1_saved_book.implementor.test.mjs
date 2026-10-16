@@ -118,3 +118,62 @@ test("1d implementor: recovers experience when cardType was lost", async () => {
   assert.equal(isBrandExperiencePayload(lostTag), true);
   assert.equal(savedCardToExpandedCardData(lostTag).cardType, "experience");
 });
+
+test("1d implementor: calendar allowlist keeps Book envelope keys", async () => {
+  const fs = await import("node:fs");
+  const calendarSrc = fs.readFileSync(
+    path.resolve(UTILS, "../services/calendarService.ts"),
+    "utf8",
+  );
+  for (const key of [
+    "brandId",
+    "brandSlug",
+    "eventId",
+    "eventSlug",
+    "coverMediaUrl",
+    "upcomingOccurrences",
+  ]) {
+    assert.match(
+      calendarSrc,
+      new RegExp(`"${key}"`),
+      `calendar allowlist must keep ${key} for schedule→readback Book`,
+    );
+  }
+});
+
+test("1d implementor: collab save source keeps Book envelope fields", async () => {
+  // Avoid importing collabSaveCard.ts (pulls Toast/RN). Assert the writer
+  // source carries the experience envelope keys Copilot flagged.
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(
+    path.resolve(UTILS, "../components/helpers/collabSaveCard.ts"),
+    "utf8",
+  );
+  assert.match(src, /isBrandExperiencePayload\(c\)/);
+  for (const key of [
+    "brandId",
+    "brandSlug",
+    "eventId",
+    "eventSlug",
+    "coverMediaUrl",
+    "upcomingOccurrences",
+  ]) {
+    assert.match(
+      src,
+      new RegExp(`${key}:\\s*c\\.${key}`),
+      `buildCardDataPayload must persist ${key}`,
+    );
+  }
+  const { expansionTargetFromSavedPayload } = await import(
+    path.join(UTILS, "expansionTargetFromSavedPayload.ts")
+  );
+  // Simulate the payload shape the writer emits for a brand experience.
+  const payload = {
+    ...BRAND_EXPERIENCE,
+    cardType: "experience",
+  };
+  const target = expansionTargetFromSavedPayload(payload);
+  assert.equal(target?.kind, "businessEvent");
+  assert.equal(target?.data?.brandSlug, "smoke-rhythm");
+  assert.equal(target?.data?.eventSlug, "rooftop-supper");
+});

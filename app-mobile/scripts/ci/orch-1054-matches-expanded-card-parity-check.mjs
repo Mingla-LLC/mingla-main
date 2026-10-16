@@ -63,10 +63,11 @@ const maybeRevert = (source, kind) => {
       );
   }
   if (kind === "mapper") {
-    // Revert the curated pass-through to a field-by-field rebuild that drops
-    // the verbatim shape (simulates the old lossy curated handling).
+    // Revert the curated/experience pass-through to a field-by-field rebuild that
+    // drops the verbatim shape (simulates the old lossy curated handling).
+    // [TEST-MOD-APPROVED #3281] pattern covers the merged brand-experience branch.
     return source.replace(
-      /if \(c\.cardType === "curated"\) \{\s*return \{\s*\.\.\.cardData,\s*\.\.\.normalizedProvenance,\s*\} as unknown as ExpandedCardData;\s*\}/s,
+      /if \(isBrandExperiencePayload\(c\) \|\| c\.cardType === "curated"\) \{\s*return \{\s*\.\.\.cardData,\s*\.\.\.normalizedProvenance,[\s\S]*?\} as unknown as ExpandedCardData;\s*\}/s,
       'if (c.cardType === "curated") { return { cardType: "curated" } as unknown as ExpandedCardData; }',
     );
   }
@@ -102,18 +103,17 @@ check(
 
 // ── 2. Both expanded-open paths route through the canonical shared mapper. ──
 // [TEST-MOD-APPROVED #3281] Round 1 PR 1d: both sheets call
-// `expansionTargetFromSavedPayload`, which still uses
+// `expansionTargetFromSavedPayload` (utils/), which uses
 // `savedCardToExpandedCardData` for places/curated and routes brand experiences
-// to `businessEvent` so Book survives (#1672). Count of mapper calls is 1
-// (inside the helper); both open paths must invoke the helper.
+// to `businessEvent` so Book survives (#1672).
+const expansionHelper = read("app-mobile/src/utils/expansionTargetFromSavedPayload.ts");
 check(
   "C2 [FAILS-ON-REVERT] both Matches+Plans open paths use savedCardToExpandedCardData",
-  /import \{ savedCardToExpandedCardData \} from "\.\.\/utils\/savedCardToExpandedCardData";/.test(
+  /import \{ expansionTargetFromSavedPayload \} from "\.\.\/\.\.\/utils\/expansionTargetFromSavedPayload";/.test(
     banners,
   ) &&
-    /function expansionTargetFromSavedPayload\(/.test(banners) &&
-    /savedCardToExpandedCardData\(payload\)/.test(banners) &&
-    /isBrandExperiencePayload\(payload\)/.test(banners) &&
+    /savedCardToExpandedCardData\(payload\)/.test(expansionHelper) &&
+    /isBrandExperiencePayload\(payload\)/.test(expansionHelper) &&
     (banners.match(/expansionTargetFromSavedPayload\(/g) ?? []).length >= 2 &&
     /setModalTarget\(expansionTargetFromSavedPayload\(\{[\s\S]*?\.\.\.item\.cardData,[\s\S]*?sourceRecordId: item\.savedCardId,[\s\S]*?savedCardId: item\.savedCardId,[\s\S]*?\}\)\)/.test(
       banners,
@@ -125,9 +125,10 @@ check(
 );
 
 // ── 3. The shared mapper mirrors the deck: curated pass-through verbatim. ──
+// [TEST-MOD-APPROVED #3281] brand experiences share this pass-through cast.
 check(
   "C3 [FAILS-ON-REVERT] shared mapper preserves every curated field before provenance normalization",
-  /if \(c\.cardType === "curated"\) \{\s*return \{\s*\.\.\.cardData,\s*\.\.\.normalizedProvenance,\s*\} as unknown as ExpandedCardData;\s*\}/s.test(
+  /if \(isBrandExperiencePayload\(c\) \|\| c\.cardType === "curated"\) \{\s*return \{\s*\.\.\.cardData,\s*\.\.\.normalizedProvenance,[\s\S]*?\} as unknown as ExpandedCardData;\s*\}/s.test(
     mapper,
   ),
   "Curated cards must spread the complete record before normalized provenance is overlaid, preserving stops/itinerary without fabricating provider identity.",
