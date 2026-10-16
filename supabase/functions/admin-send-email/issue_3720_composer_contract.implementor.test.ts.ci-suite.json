@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/admin-send-email/issue_3720_composer_contract.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3720-email-composer-contract",
+  "profile": "deno-1.46-stripe"
+}
