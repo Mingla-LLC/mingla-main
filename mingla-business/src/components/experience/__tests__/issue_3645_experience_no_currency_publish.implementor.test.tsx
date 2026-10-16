@@ -500,7 +500,8 @@ describe("#3645 no dollars are shown for a brand with no currency", () => {
     // The Pricing step is where the total is shown.
     const tree = await mountAtStep(jest.fn(), true, 3);
     const text = textOf(tree);
-    expect(text).toContain("25.00");
+    // #3281 intentionally suppresses trailing zeroes for whole-unit prices.
+    expect(text).toContain("Buyers pay 25 for all 2 stops");
     expect(text).not.toContain("$");
     expect(text).not.toContain("USD");
     await act(async () => tree.unmount());
@@ -513,7 +514,8 @@ describe("#3645 no dollars are shown for a brand with no currency", () => {
       stripeStatus: "active",
     };
     const tree = await mountAtStep(jest.fn(), true, 3);
-    expect(textOf(tree)).toContain("£25.00");
+    // #3281 intentionally suppresses trailing zeroes for whole-unit prices.
+    expect(textOf(tree)).toContain("Buyers pay £25 for all 2 stops");
     await act(async () => tree.unmount());
   });
 

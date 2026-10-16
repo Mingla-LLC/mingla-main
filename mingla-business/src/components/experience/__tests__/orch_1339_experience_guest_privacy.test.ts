@@ -65,9 +65,10 @@ describe("ORCH-1339 — ExperienceCreatorWizard persistence + hydration", () => 
     expect(wizard).toContain("useState<ExperienceGuestPrivacyState>");
     expect(wizard).toContain("privateGuestList={guestPrivacy.privateGuestList}");
     expect(wizard).toContain("hideRemainingCount={guestPrivacy.hideRemainingCount}");
-    // Third adapter arg (replaces the old hard-coded false pair).
+    // Third adapter arg (replaces the old hard-coded false pair). #3281 adds a
+    // fourth, independent defaults object after it.
     expect(wizard).toMatch(
-      /useExperienceDraftAdapter\(\s*brandId,\s*initialDraft\?\.when,\s*guestPrivacy,\s*\)/,
+      /useExperienceDraftAdapter\(\s*brandId,\s*initialDraft\?\.when,\s*guestPrivacy,\s*\{/,
     );
   });
 

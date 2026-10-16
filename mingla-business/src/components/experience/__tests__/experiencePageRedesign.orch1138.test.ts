@@ -139,7 +139,8 @@ describe("ORCH-1138 Leg 3 — experience page redesign", () => {
   test("SC-6 open-daily picker offers date + time-within-window + party-size (= quantity, never new lines)", () => {
     expect(pickerSrc).toMatch(/mode === "open-daily"/);
     expect(pickerSrc).toMatch(/timeChoices/);
-    expect(pickerSrc).toMatch(/windowMinutes/); // time bound to the occurrence window
+    // #3281 centralises the zone-correct window calculation inside this helper.
+    expect(pickerSrc).toMatch(/experienceTimeChoices/); // time bound to the occurrence window
     expect(pickerSrc).toMatch(/party/);
     // party-size maps to cart quantity (the route passes quantity to the checkout path).
     expect(routeSrc).toMatch(/routeParams\.quantity = String\(selection\.quantity\)/);

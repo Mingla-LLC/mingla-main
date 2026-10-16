@@ -154,16 +154,18 @@ describe("#3372 experience price (public experience page, Business and Explorer)
 
   test("a naira experience reads ₦, with no NGN", () => {
     expect(experiencePriceLabel(experience("NGN", 2500000, 2650000))).toEqual({
-      label: "₦26,500.00",
+      label: "₦26,500 per person",
       isFree: false,
     });
-    expect(experiencePriceLabel(experience("NGN", 2500000)).label).toBe("₦25,000.00");
+    expect(experiencePriceLabel(experience("NGN", 2500000)).label).toBe(
+      "₦25,000 per person",
+    );
   });
 
-  test("dollar, pound and euro experiences are unchanged", () => {
-    expect(experiencePriceLabel(experience("USD", 3500)).label).toBe("$35.00");
-    expect(experiencePriceLabel(experience("GBP", 3500)).label).toBe("£35.00");
-    expect(experiencePriceLabel(experience("EUR", 3500)).label).toBe("€35.00");
+  test("dollar, pound and euro experience glyphs stay intact beside the unit", () => {
+    expect(experiencePriceLabel(experience("USD", 3500)).label).toBe("$35 per person");
+    expect(experiencePriceLabel(experience("GBP", 3500)).label).toBe("£35 per person");
+    expect(experiencePriceLabel(experience("EUR", 3500)).label).toBe("€35 per person");
   });
 });
 
