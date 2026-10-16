@@ -93,9 +93,8 @@ export async function createSupportTicket(
 }
 
 /**
- * @deprecated #3720 — new-ticket staff push is server-side
- * (`tg_support_ticket_notify_staff` → notify-support with the service-role
- * bearer). Kept as a no-op so older callers / tests that still invoke it do not
+ * @deprecated #3720 — new-ticket staff delivery is atomically enqueued by
+ * `create_support_ticket`. Kept as a no-op so older callers / tests do not
  * hit the service-role-only edge with a user JWT (which returned 401).
  */
 export async function notifyNewSupportTicket(_ticketId: string): Promise<void> {

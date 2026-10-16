@@ -1,13 +1,11 @@
 /**
  * META-ORCH-1104 Phase 0 — notify-support (INTERNAL push fan-out, D6).
  *
- * Service-role producer invoked by support-send (and support-claim for the
- * new-ticket fan-out). verify_jwt = false (config.toml) — authenticated by the
+ * Service-role producer invoked by support-send. verify_jwt = false
+ * (config.toml) — authenticated by the
  * service-role bearer the caller passes; rejects any request without it.
  *
  * Fan-out rules:
- *   event = 'new_ticket' → push every support_staff WHERE enabled AND available,
- *                          EXCLUDING the requester. type business.support_new_ticket.
  *   event = 'message'    → staff reply  → push the requester (business.support_message);
  *                          requester reply → push the assignee (if any) PLUS every
  *                          enabled+available staffer. EXCLUDE the sender. business.support_message.
@@ -69,11 +67,22 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => null) as
-      | { event?: string; ticketId?: string; senderUserId?: string; senderIsStaff?: boolean }
+      | {
+        event?: string;
+        ticketId?: string;
+        senderUserId?: string;
+        senderIsStaff?: boolean;
+      }
       | null;
     const event = body?.event;
     const ticketId = body?.ticketId;
-    if (!ticketId || (event !== "new_ticket" && event !== "message")) {
+    // #3720 reliability cutover: create_support_ticket atomically owns every
+    // new-ticket bell/push/email outbox event. Refuse the retired edge path so
+    // an old internal caller cannot create a second event.
+    if (event === "new_ticket") {
+      return json({ error: "new_ticket_owned_by_create_support_ticket" }, 409);
+    }
+    if (!ticketId || event !== "message") {
       return json({ error: "bad_request" }, 400);
     }
 
@@ -88,35 +97,31 @@ serve(async (req) => {
 
     const sender = body?.senderUserId ?? null;
     const recipients = new Set<string>();
-    let type = "business.support_message";
+    const type = "business.support_message";
 
-    if (event === "new_ticket") {
-      type = "business.support_new_ticket";
-      for (const id of await availableStaffIds(admin)) recipients.add(id);
-    } else {
-      // message
-      if (body?.senderIsStaff === true) {
-        // staff reply → notify the requester.
-        if (ticket.requester_user_id) recipients.add(ticket.requester_user_id as string);
-      } else {
-        // requester reply → notify the assignee (if any) + available roster.
-        if (ticket.assigned_staff_id) recipients.add(ticket.assigned_staff_id as string);
-        for (const id of await availableStaffIds(admin)) recipients.add(id);
+    if (body?.senderIsStaff === true) {
+      // staff reply → notify the requester.
+      if (ticket.requester_user_id) {
+        recipients.add(ticket.requester_user_id as string);
       }
+    } else {
+      // requester reply → notify the assignee (if any) + available roster.
+      if (ticket.assigned_staff_id) {
+        recipients.add(ticket.assigned_staff_id as string);
+      }
+      for (const id of await availableStaffIds(admin)) recipients.add(id);
     }
     if (sender) recipients.delete(sender);
 
     // #3720: staff→host push is always signed as Veronica; staff pushes keep
     // operational titles. Audit log (support-send) still names the real agent.
-    const title = event === "new_ticket"
-      ? "New support request"
-      : body?.senderIsStaff === true
+    const title = body?.senderIsStaff === true
       ? `${SUPPORT_HOST_FACING_AGENT} replied`
       : "Support reply";
-    const subj = typeof ticket.subject === "string" ? ticket.subject : "your request";
-    const pushBody = event === "new_ticket"
-      ? `A user opened: ${subj}`
-      : body?.senderIsStaff === true
+    const subj = typeof ticket.subject === "string"
+      ? ticket.subject
+      : "your request";
+    const pushBody = body?.senderIsStaff === true
       ? `${SUPPORT_HOST_FACING_AGENT} replied on: ${subj}`
       : `New message on: ${subj}`;
 

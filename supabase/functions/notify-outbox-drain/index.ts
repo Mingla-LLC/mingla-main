@@ -97,6 +97,60 @@ async function readBoundedSuccessEnvelope(
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ISSUE_3720_CONTACT_CATEGORIES = new Set([
+  "business.community_announcement",
+  "business.support_new_ticket",
+]);
+const ISSUE_3720_DURABLE_CATEGORIES = new Set([
+  ...ISSUE_3720_CONTACT_CATEGORIES,
+  "business.community_roadmap_updated",
+]);
+const TERMINAL_DELIVERY_STATUSES = new Set([
+  "sent",
+  "delivered",
+  "suppressed",
+  "skipped",
+]);
+
+// #3720 — announcement/support email is resolved at send time from the same
+// trusted auth identity used by the product. Producers never copy an address
+// into the outbox, so preference changes and corrected addresses take effect
+// before provider I/O without exposing auth.users to clients.
+export async function resolveIssue3720Contact(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  row: Record<string, unknown>,
+): Promise<string | null> {
+  const category = String(row.category_key ?? "");
+  const existing = typeof row.contact === "string" ? row.contact.trim() : "";
+  if (existing) return existing;
+  if (!ISSUE_3720_CONTACT_CATEGORIES.has(category) || !row.user_id) return null;
+  const { data, error } = await admin.rpc("issue_3720_notification_email", {
+    p_user_id: row.user_id,
+  });
+  if (error) throw new Error("notification_email_lookup_failed");
+  return typeof data === "string" && EMAIL_RE.test(data.trim())
+    ? data.trim().toLowerCase()
+    : null;
+}
+
+export function dispatchEnvelopeIsTerminal(
+  envelope: Record<string, unknown> | null,
+): boolean {
+  if (
+    !envelope || envelope.success !== true ||
+    !Array.isArray(envelope.deliveries)
+  ) {
+    return false;
+  }
+  return envelope.deliveries.length > 0 &&
+    envelope.deliveries.every((entry) => {
+      if (!entry || typeof entry !== "object") return false;
+      return TERMINAL_DELIVERY_STATUSES.has(
+        String((entry as Record<string, unknown>).status ?? ""),
+      );
+    });
+}
 
 /**
  * #3392 — who a venue booking confirmation goes to, and its manage link.
@@ -126,7 +180,9 @@ export async function resolveReservationConfirmationDispatch(
     ? payload.guest_email.trim()
     : "";
   // The link is a credential: it only ever goes to the booking's own email.
-  if (!EMAIL_RE.test(guestEmail)) return { contact: rowContact, manageUrl: null };
+  if (!EMAIL_RE.test(guestEmail)) {
+    return { contact: rowContact, manageUrl: null };
+  }
   const contact = guestEmail;
   try {
     const link = await resolveVenueReservationManageLink(admin, {
@@ -225,7 +281,11 @@ export async function processGeneric(
         next_attempt_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
         last_error: err instanceof Error ? err.message : String(err),
       }).eq("id", id);
-      console.error("[notify-outbox-drain] quiet-hours retry failed for", id, err);
+      console.error(
+        "[notify-outbox-drain] quiet-hours retry failed for",
+        id,
+        err,
+      );
       return false;
     }
   }
@@ -236,21 +296,25 @@ export async function processGeneric(
       .eq("id", row.brand_id).maybeSingle();
     if (brand?.name && typeof brand.name === "string") brandName = brand.name;
   }
-  const payload = {
+  const payload: Record<string, unknown> = {
     ...((row.payload as Record<string, unknown>) ?? {}),
     brand_name: brandName,
   };
   let contact = (row.contact as string | null | undefined) ?? null;
   let reservationManageUrl: string | null = null;
-  if (row.category_key === "buyer_reservation_confirmed") {
-    const confirmation = await resolveReservationConfirmationDispatch(
-      admin,
-      row,
-    );
-    contact = confirmation.contact;
-    reservationManageUrl = confirmation.manageUrl;
-  }
   try {
+    contact = await resolveIssue3720Contact(admin, row);
+    if (row.category_key === "buyer_reservation_confirmed") {
+      const confirmation = await resolveReservationConfirmationDispatch(
+        admin,
+        row,
+      );
+      contact = confirmation.contact;
+      reservationManageUrl = confirmation.manageUrl;
+    }
+    const deepLink = typeof payload.deep_link === "string"
+      ? payload.deep_link
+      : null;
     const res = await fetch(`${url}/functions/v1/notify-dispatch`, {
       method: "POST",
       headers: {
@@ -264,26 +328,44 @@ export async function processGeneric(
         payload,
         idempotency_key: row.idempotency_key,
         country_code: row.country_code ?? null,
+        deep_link: deepLink,
         // #3392 — in transit only; see resolveReservationConfirmationDispatch.
         ...(reservationManageUrl
           ? { reservation_manage_url: reservationManageUrl }
           : {}),
       }),
     });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`notify-dispatch ${res.status}: ${text}`);
+    const envelope = await readBoundedSuccessEnvelope(res);
+    const requiresDurableTerminalEnvelope = ISSUE_3720_DURABLE_CATEGORIES.has(
+      String(row.category_key ?? ""),
+    );
+    if (
+      !res.ok ||
+      (requiresDurableTerminalEnvelope && !dispatchEnvelopeIsTerminal(envelope))
+    ) {
+      const reason = typeof envelope?.reason === "string"
+        ? envelope.reason
+        : "non_terminal_delivery";
+      throw new Error(`notify-dispatch ${res.status}: ${reason}`);
     }
     await admin.from("notification_outbox").update({
       status: "done",
       processed_at: new Date().toISOString(),
+      next_attempt_at: null,
+      last_error: null,
     }).eq("id", id);
     return true;
   } catch (err) {
     const attempts = ((row.attempts as number) ?? 0) + 1;
+    const terminal = attempts >= 3;
     await admin.from("notification_outbox").update({
-      status: attempts >= 3 ? "failed" : "pending",
+      status: terminal ? "failed" : "retry_wait",
       attempts,
+      next_attempt_at: terminal
+        ? null
+        : new Date(Date.now() + Math.min(15 * 60_000, 60_000 * 2 ** attempts))
+          .toISOString(),
+      processed_at: terminal ? new Date().toISOString() : null,
       last_error: err instanceof Error ? err.message : String(err),
     }).eq("id", id);
     console.error("[notify-outbox-drain] dispatch failed for", id, err);

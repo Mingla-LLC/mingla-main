@@ -123,7 +123,7 @@ export async function getCommunityEmailPrefEnabled(): Promise<boolean> {
   const { data, error } = await supabase
     .from("notification_channel_prefs")
     .select("enabled")
-    .eq("category_key", "community_announcement")
+    .eq("category_key", "business.community_announcement")
     .eq("channel", "email")
     .maybeSingle();
   if (error) throw new Error(error.message);

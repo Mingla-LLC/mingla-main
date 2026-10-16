@@ -81,6 +81,12 @@ export interface PushPayload {
   threadId?: string; // iOS thread grouping / Android group key
   iosBadgeType?: string; // "SetTo" | "Increase"
   iosBadgeCount?: number; // Badge count value
+  // Stable caller-owned UUID passed to OneSignal so a retry cannot create a
+  // second provider notification after an ambiguous response.
+  oneSignalIdempotencyKey?: string;
+  // Lets the generic adapter retain OneSignal's accepted notification ID
+  // without changing the longstanding boolean return contract.
+  onAccepted?: (providerMessageId: string) => void;
   beforeProviderIo?: () => Promise<void>;
 }
 
@@ -97,8 +103,11 @@ export interface OfferingPushClaimReceipt {
   };
 }
 
-export interface OfferingPushPayload
-  extends Omit<PushPayload, "beforeProviderIo"> {
+export interface OfferingPushPayload extends
+  Omit<
+    PushPayload,
+    "beforeProviderIo" | "oneSignalIdempotencyKey" | "onAccepted"
+  > {
   offeringAttemptId: string;
   internalProviderClaimKey: string;
   oneSignalIdempotencyKey: string;
@@ -253,6 +262,10 @@ export async function sendPush(
       payload.body.length === 0
     ))
   ) return offering ? failed("local_payload_invalid", false) : false;
+  if (
+    !offering && payload.oneSignalIdempotencyKey &&
+    !UUID.test(payload.oneSignalIdempotencyKey)
+  ) return false;
 
   const oneSignalPayload = {
     app_id: appId,
@@ -263,7 +276,9 @@ export async function sendPush(
     headings: { en: payload.title },
     contents: { en: payload.body },
     data: payload.data ?? {},
-    ...(offering && { idempotency_key: payload.oneSignalIdempotencyKey }),
+    ...(payload.oneSignalIdempotencyKey && {
+      idempotency_key: payload.oneSignalIdempotencyKey,
+    }),
     // small_icon: status bar icon (monochrome per Android guidelines)
     small_icon: "ic_stat_onesignal_default",
     // large_icon: Mingla logo from Supabase Storage (OneSignal auto-resizes)
@@ -388,6 +403,7 @@ export async function sendPush(
   // A canonical id is authoritative even if OneSignal also supplies a warning.
   if (body.id && (!offering || UUID.test(body.id))) {
     console.log("[push-utils] push accepted", { app: appType });
+    if (!offering) payload.onAccepted?.(body.id);
     return offering
       ? {
         outcome: "accepted",

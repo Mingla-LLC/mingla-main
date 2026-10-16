@@ -10,6 +10,7 @@ import { useToast } from "../../context/ToastContext";
 import { formatDateTime } from "../../lib/formatters";
 import {
   archiveAnnouncement,
+  getAnnouncementNotificationStatus,
   listAnnouncements,
   publishAnnouncement,
   upsertAnnouncement,
@@ -27,11 +28,17 @@ export function AnnouncementsPanel() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [editor, setEditor] = useState(null);
+  const [notificationStatus, setNotificationStatus] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setRows(await listAnnouncements());
+      const [announcements, status] = await Promise.all([
+        listAnnouncements(),
+        getAnnouncementNotificationStatus(),
+      ]);
+      setRows(announcements);
+      setNotificationStatus(status);
     } catch (err) {
       addToast({
         variant: "error",
@@ -65,7 +72,11 @@ export function AnnouncementsPanel() {
       setEditor(null);
       await load();
     } catch (err) {
-      addToast({ variant: "error", title: "Save failed", description: err?.message });
+      addToast({
+        variant: "error",
+        title: "Save failed",
+        description: err?.message,
+      });
     } finally {
       setBusyId(null);
     }
@@ -74,18 +85,27 @@ export function AnnouncementsPanel() {
   async function onPublish(id) {
     setBusyId(id);
     try {
-      const n = await publishAnnouncement(id);
+      const result = await publishAnnouncement(id);
+      const status = await getAnnouncementNotificationStatus(
+        result?.campaign_id ?? null,
+      );
+      setNotificationStatus(status);
       addToast({
         variant: "success",
-        title: "Published",
-        description:
-          typeof n === "number"
-            ? `Queued notices for ${n} host teammate${n === 1 ? "" : "s"}.`
-            : undefined,
+        title: result?.duplicate ? "Already published" : "Published and queued",
+        description: Number.isInteger(result?.audience_count)
+          ? `Queued one notification for each of ${result.audience_count} Host user${
+              result.audience_count === 1 ? "" : "s"
+            }.`
+          : "The announcement is live. Delivery status is tracked separately.",
       });
       await load();
     } catch (err) {
-      addToast({ variant: "error", title: "Publish failed", description: err?.message });
+      addToast({
+        variant: "error",
+        title: "Publish failed",
+        description: err?.message,
+      });
     } finally {
       setBusyId(null);
     }
@@ -98,7 +118,11 @@ export function AnnouncementsPanel() {
       addToast({ variant: "success", title: "Archived" });
       await load();
     } catch (err) {
-      addToast({ variant: "error", title: "Archive failed", description: err?.message });
+      addToast({
+        variant: "error",
+        title: "Archive failed",
+        description: err?.message,
+      });
     } finally {
       setBusyId(null);
     }
@@ -108,10 +132,16 @@ export function AnnouncementsPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Service notices for Hosts. Push is always on; email follows each host&apos;s community email preference.
+          Service notices for Hosts. Push is always on; email follows each
+          host&apos;s community email preference.
         </p>
         <div className="flex gap-2">
-          <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void load()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={RefreshCw}
+            onClick={() => void load()}
+          >
             Refresh
           </Button>
           <Button
@@ -124,13 +154,54 @@ export function AnnouncementsPanel() {
         </div>
       </div>
 
+      {notificationStatus ? (
+        <SectionCard title="Latest announcement notification">
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[var(--color-text-secondary)]">
+            <span>Status: {notificationStatus.state}</span>
+            <span>Audience: {notificationStatus.audience_count}</span>
+            <span>
+              Bell delivered:{" "}
+              {notificationStatus.channels?.inapp_delivered ?? 0}
+            </span>
+            <span>
+              Push accepted: {notificationStatus.channels?.push_accepted ?? 0}
+            </span>
+            <span>
+              Push suppressed:{" "}
+              {notificationStatus.channels?.push_suppressed ?? 0}
+            </span>
+            <span>
+              Push retrying: {notificationStatus.channels?.push_retrying ?? 0}
+            </span>
+            <span>
+              Push failed: {notificationStatus.channels?.push_failed ?? 0}
+            </span>
+            <span>
+              Email accepted: {notificationStatus.channels?.email_accepted ?? 0}
+            </span>
+            <span>
+              Email suppressed:{" "}
+              {notificationStatus.channels?.email_suppressed ?? 0}
+            </span>
+            <span>
+              Email retrying: {notificationStatus.channels?.email_retrying ?? 0}
+            </span>
+            <span>
+              Email failed: {notificationStatus.channels?.email_failed ?? 0}
+            </span>
+          </div>
+        </SectionCard>
+      ) : null}
+
       {loading ? (
         <div className="flex justify-center py-12">
           <Spinner />
         </div>
       ) : rows.length === 0 ? (
         <SectionCard>
-          <p className="text-sm text-[var(--color-text-secondary)]">No announcements yet.</p>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            No announcements yet.
+          </p>
         </SectionCard>
       ) : (
         <div className="space-y-3">
@@ -148,7 +219,9 @@ export function AnnouncementsPanel() {
                   </div>
                   <p className="text-xs text-[var(--color-text-tertiary)]">
                     Updated {formatDateTime(row.updated_at)}
-                    {row.published_at ? ` · Published ${formatDateTime(row.published_at)}` : ""}
+                    {row.published_at
+                      ? ` · Published ${formatDateTime(row.published_at)}`
+                      : ""}
                   </p>
                   <p className="text-sm text-[var(--color-text-secondary)] whitespace-pre-wrap line-clamp-3">
                     {row.body_md}
@@ -209,13 +282,17 @@ export function AnnouncementsPanel() {
           <Input
             label="Title"
             value={editor?.title || ""}
-            onChange={(e) => setEditor((prev) => ({ ...prev, title: e.target.value }))}
+            onChange={(e) =>
+              setEditor((prev) => ({ ...prev, title: e.target.value }))
+            }
             maxLength={200}
           />
           <Textarea
             label="Body (markdown ok)"
             value={editor?.bodyMd || ""}
-            onChange={(e) => setEditor((prev) => ({ ...prev, bodyMd: e.target.value }))}
+            onChange={(e) =>
+              setEditor((prev) => ({ ...prev, bodyMd: e.target.value }))
+            }
             rows={8}
           />
         </ModalBody>

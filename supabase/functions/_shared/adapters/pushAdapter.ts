@@ -19,6 +19,7 @@ export interface PushSendInput {
   data?: Record<string, unknown>;
   // Routing key — `business.*`/`stripe.*` → business app, else consumer.
   routingType?: string;
+  idempotencyKey?: string;
   beforeProviderIo?: () => Promise<void>;
 }
 
@@ -136,6 +137,7 @@ async function send(
       beforeProviderIo: input.beforeProviderIo,
     });
   }
+  let providerMessageId: string | null = null;
   const ok = await sendPush({
     targetUserId: input.userId,
     title: input.title,
@@ -144,6 +146,10 @@ async function send(
     app,
     iosBadgeType: "Increase",
     iosBadgeCount: 1,
+    oneSignalIdempotencyKey: input.idempotencyKey,
+    onAccepted: (id) => {
+      providerMessageId = id;
+    },
     beforeProviderIo: input.beforeProviderIo,
   });
   // sendPush absorbs provider/network failures, but deliberately lets a
@@ -151,7 +157,7 @@ async function send(
   return {
     ok,
     status: ok ? "sent" : "failed",
-    providerMessageId: null,
+    providerMessageId,
     error: ok ? undefined : "push_not_delivered",
   };
 }

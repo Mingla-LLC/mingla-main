@@ -8,7 +8,7 @@ BEGIN;
 -- the four #1529 producers write a country and that a policy skip does not
 -- escalate a refund. This file attacks the three things they do NOT cover:
 --
---   ADV-1  COMPLETENESS UNDER EXEMPTION. The live catalog contains FIVE
+--   ADV-1  COMPLETENESS UNDER EXEMPTION. The live catalog contains EIGHT
 --          notification_outbox producers. The fifth,
 --          public.admin_request_source_refund_attention_recovery, enqueues into
 --          the outbox and never mentions country_code. It is legitimately
@@ -272,14 +272,14 @@ BEGIN
       v_count;
   END IF;
 
-  -- And the WRITERS specifically. FIVE, not four: the floor is the number that
+  -- And the WRITERS specifically. EIGHT: the floor is the number that
   -- actually exists, so a producer disappearing is caught as well as one
   -- appearing.
   SELECT count(*) INTO v_count
   FROM issue_1529_adv_producers WHERE writes_outbox;
-  IF v_count < 5 THEN
+  IF v_count < 8 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_producer_floor_breached_expected_at_least_5_got_%',
+      'issue_1529_adv_producer_floor_breached_expected_at_least_8_got_%',
       v_count;
   END IF;
 END;
@@ -293,7 +293,10 @@ DECLARE
     'orch_1161_reservation_notify_outbox',
     'pg_notify_reminders_enqueue',
     'finalize_rsvp_contribution',
-    'issue_1389_enqueue_stay_event'
+    'issue_1389_enqueue_stay_event',
+    'community_publish_announcement',
+    'community_notify_roadmap_change',
+    'create_support_ticket'
   ];
   -- Bucket 2: producers exempt because their rows belong to the source-refund
   -- pool, which by #1221's privacy design carries contact NULL and resolves the
@@ -312,6 +315,8 @@ DECLARE
     'claim_notification_outbox',
     'claim_source_refund_notification_delivery',
     'claim_source_refund_notification_outbox',
+    'community_get_announcement_notification_status',
+    'community_get_roadmap_notification_status',
     'complete_source_refund_notification_delivery',
     'issue_1427_admin_list_stay_operations',
     'issue_1427_admin_retry_stay_notification',

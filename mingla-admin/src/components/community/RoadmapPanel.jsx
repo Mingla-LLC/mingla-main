@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Plus, RefreshCw, Save } from "lucide-react";
+import { ArrowDown, ArrowUp, Bell, Plus, RefreshCw, Save } from "lucide-react";
 import { SectionCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
@@ -8,7 +8,10 @@ import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { Spinner } from "../ui/Spinner";
 import { useToast } from "../../context/ToastContext";
 import {
+  getRoadmapNotificationPreview,
+  getRoadmapNotificationStatus,
   listRoadmapCards,
+  notifyRoadmapChange,
   reorderRoadmap,
   upsertRoadmapCard,
 } from "../../services/communityService";
@@ -31,11 +34,22 @@ export function RoadmapPanel() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [editor, setEditor] = useState(null);
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const [notifyRequestKey, setNotifyRequestKey] = useState(null);
+  const [notifyPreview, setNotifyPreview] = useState(null);
+  const [notifyStatus, setNotifyStatus] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setRows(await listRoadmapCards());
+      const [preview, status] = await Promise.all([
+        getRoadmapNotificationPreview(),
+        getRoadmapNotificationStatus(),
+      ]);
+      setNotifyPreview(preview);
+      setNotifyStatus(status);
     } catch (err) {
       addToast({
         variant: "error",
@@ -110,6 +124,64 @@ export function RoadmapPanel() {
     }
   }
 
+  function openNotifyConfirmation() {
+    setNotifyRequestKey(crypto.randomUUID());
+    setNotifyOpen(true);
+  }
+
+  async function sendRoadmapNotification() {
+    if (!notifyRequestKey) return;
+    setNotifyBusy(true);
+    try {
+      const result = await notifyRoadmapChange(notifyRequestKey);
+      const status = await getRoadmapNotificationStatus(result?.campaign_id ?? null);
+      setNotifyStatus(status);
+      setNotifyOpen(false);
+      setNotifyRequestKey(null);
+      addToast({
+        variant: "success",
+        title: result?.duplicate ? "Notification already queued" : "Notification queued",
+        description: `One push and one in-app notification were queued for ${
+          result?.audience_count ?? 0
+        } Host user${result?.audience_count === 1 ? "" : "s"}.`,
+      });
+    } catch (err) {
+      addToast({
+        variant: "error",
+        title: "Could not queue roadmap notification",
+        description: `${err?.message || "Try again."} Retrying here will not duplicate the send.`,
+      });
+    } finally {
+      setNotifyBusy(false);
+    }
+  }
+
+  async function retryRoadmapNotification() {
+    if (!notifyStatus?.request_key) return;
+    setNotifyBusy(true);
+    try {
+      const result = await notifyRoadmapChange(notifyStatus.request_key);
+      setNotifyStatus(
+        await getRoadmapNotificationStatus(result?.campaign_id ?? null),
+      );
+      addToast({
+        variant: "success",
+        title: "Retry queued",
+        description: `${result?.requeued ?? 0} failed recipient event${
+          result?.requeued === 1 ? "" : "s"
+        } will resume without resending completed channels.`,
+      });
+    } catch (err) {
+      addToast({
+        variant: "error",
+        title: "Could not retry roadmap notification",
+        description: err?.message,
+      });
+    } finally {
+      setNotifyBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -119,6 +191,17 @@ export function RoadmapPanel() {
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void load()}>
             Refresh
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={Bell}
+            disabled={busy || loading || !notifyPreview?.published_count}
+            onClick={openNotifyConfirmation}
+          >
+            {notifyPreview?.published_count
+              ? "Notify roadmap change"
+              : "Publish a roadmap card to notify Hosts"}
           </Button>
           <Button
             size="sm"
@@ -138,6 +221,34 @@ export function RoadmapPanel() {
           </Button>
         </div>
       </div>
+
+      {notifyStatus ? (
+        <SectionCard title="Last roadmap notification">
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-[var(--color-text-secondary)]">
+            <span>Status: {notifyStatus.state}</span>
+            <span>
+              Last notified: {new Date(notifyStatus.created_at).toLocaleString()}
+            </span>
+            <span>Audience: {notifyStatus.audience_count}</span>
+            <span>Bell delivered: {notifyStatus.channels?.inapp_delivered ?? 0}</span>
+            <span>Push accepted: {notifyStatus.channels?.push_accepted ?? 0}</span>
+            <span>Push suppressed: {notifyStatus.channels?.push_suppressed ?? 0}</span>
+            <span>Push retrying: {notifyStatus.channels?.push_retrying ?? 0}</span>
+            <span>Push failed: {notifyStatus.channels?.push_failed ?? 0}</span>
+            {notifyStatus.state === "partial" || notifyStatus.state === "failed" ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={RefreshCw}
+                loading={notifyBusy}
+                onClick={() => void retryRoadmapNotification()}
+              >
+                Retry failed deliveries
+              </Button>
+            ) : null}
+          </div>
+        </SectionCard>
+      ) : null}
 
       {loading ? (
         <div className="flex justify-center py-12">
@@ -271,6 +382,56 @@ export function RoadmapPanel() {
           </Button>
           <Button icon={Save} loading={busy} onClick={() => void saveEditor()}>
             Save
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      <Modal
+        open={notifyOpen}
+        onClose={() => {
+          if (!notifyBusy) {
+            setNotifyOpen(false);
+            setNotifyRequestKey(null);
+          }
+        }}
+        title={`Send one roadmap update notification to ${
+          notifyPreview?.audience_count ?? 0
+        } active Hosts?`}
+        size="sm"
+      >
+        <ModalBody className="space-y-3">
+          <p className="text-sm text-[var(--color-text-primary)]">
+            This sends one push and one matching in-app notification to each of{" "}
+            <strong>{notifyPreview?.audience_count ?? 0} active Host users</strong>.
+          </p>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            All roadmap edits since the last notice are bundled into this one update.
+            Hosts will land on the Roadmap section. No email is sent.
+          </p>
+          <div className="rounded-lg border border-[var(--color-border-primary)] p-3">
+            <p className="text-sm font-semibold">Mingla roadmap updated</p>
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              See what’s new in Now, Next and Later.
+            </p>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            variant="secondary"
+            disabled={notifyBusy}
+            onClick={() => {
+              setNotifyOpen(false);
+              setNotifyRequestKey(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            icon={Bell}
+            loading={notifyBusy}
+            onClick={() => void sendRoadmapNotification()}
+          >
+            Send one notification
           </Button>
         </ModalFooter>
       </Modal>

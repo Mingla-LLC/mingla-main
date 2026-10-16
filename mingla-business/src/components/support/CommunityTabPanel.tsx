@@ -2,9 +2,11 @@
  * #3720 Slice G — Community tab: announcements, roadmap, email pref.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
+  findNodeHandle,
   Pressable,
   StyleSheet,
   Text,
@@ -27,9 +29,11 @@ import type {
   CommunityRoadmapCard,
   CommunityRoadmapLane,
 } from "../../services/communityService";
+import { communityMarkdownToPlainText } from "../../utils/communityMarkdown";
 import { BrandSwitch } from "../ui/BrandSwitch";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
+import { CommunityMarkdown } from "./CommunityMarkdown";
 
 const LANE_LABEL: Record<CommunityRoadmapLane, string> = {
   now: "Now",
@@ -57,7 +61,7 @@ function AnnouncementCard({
       <GlassCard variant="elevated" radius="md" padding={spacing.md}>
         <View style={styles.rowTop}>
           <Text style={styles.cardTitle} numberOfLines={2}>
-            {item.title}
+            {communityMarkdownToPlainText(item.title)}
           </Text>
           {unread ? <View style={styles.unreadDot} /> : null}
         </View>
@@ -67,7 +71,7 @@ function AnnouncementCard({
           </Text>
         ) : null}
         <Text style={styles.bodyPreview} numberOfLines={3}>
-          {item.body_md}
+          {communityMarkdownToPlainText(item.body_md)}
         </Text>
       </GlassCard>
     </Pressable>
@@ -93,7 +97,17 @@ function RoadmapCardRow({
   );
 }
 
-export const CommunityTabPanel: React.FC = () => {
+export interface CommunityTabPanelProps {
+  targetAnnouncementId?: string;
+  targetSection?: "roadmap";
+  onTargetLayout?: (contentY: number) => void;
+}
+
+export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
+  targetAnnouncementId,
+  targetSection,
+  onTargetLayout,
+}) => {
   const {
     data: announcements,
     isLoading: annsLoading,
@@ -116,6 +130,78 @@ export const CommunityTabPanel: React.FC = () => {
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [prefToast, setPrefToast] = useState<string | null>(null);
+  const [announcementListY, setAnnouncementListY] = useState<number | null>(
+    null,
+  );
+  const [targetAnnouncementY, setTargetAnnouncementY] = useState<number | null>(
+    null,
+  );
+  const [roadmapY, setRoadmapY] = useState<number | null>(null);
+  const readTargetRef = useRef<string | null>(null);
+  const focusedTargetRef = useRef<string | null>(null);
+  const targetAnnouncementRef = useRef<View>(null);
+  const roadmapRef = useRef<View>(null);
+
+  const focusTarget = useCallback((target: "announcement" | "roadmap") => {
+    const ref =
+      target === "announcement"
+        ? targetAnnouncementRef.current
+        : roadmapRef.current;
+    const nativeTag = ref ? findNodeHandle(ref) : null;
+    if (nativeTag !== null) AccessibilityInfo.setAccessibilityFocus(nativeTag);
+  }, []);
+
+  useEffect(() => {
+    setTargetAnnouncementY(null);
+    readTargetRef.current = null;
+    focusedTargetRef.current = null;
+  }, [targetAnnouncementId]);
+
+  useEffect(() => {
+    if (!targetAnnouncementId) return;
+    const target = announcements.find(
+      (item) => item.id === targetAnnouncementId,
+    );
+    if (!target) return;
+    setExpandedId(targetAnnouncementId);
+    if (
+      target.read_at === null &&
+      readTargetRef.current !== targetAnnouncementId
+    ) {
+      readTargetRef.current = targetAnnouncementId;
+      void markRead(targetAnnouncementId).catch(() => undefined);
+    }
+  }, [announcements, markRead, targetAnnouncementId]);
+
+  useEffect(() => {
+    if (
+      targetAnnouncementId &&
+      announcementListY !== null &&
+      targetAnnouncementY !== null
+    ) {
+      onTargetLayout?.(announcementListY + targetAnnouncementY);
+      if (focusedTargetRef.current !== targetAnnouncementId) {
+        focusedTargetRef.current = targetAnnouncementId;
+        focusTarget("announcement");
+      }
+    }
+  }, [
+    announcementListY,
+    onTargetLayout,
+    targetAnnouncementId,
+    targetAnnouncementY,
+    focusTarget,
+  ]);
+
+  useEffect(() => {
+    if (targetSection === "roadmap" && roadmapY !== null) {
+      onTargetLayout?.(roadmapY);
+      if (focusedTargetRef.current !== "roadmap") {
+        focusedTargetRef.current = "roadmap";
+        focusTarget("roadmap");
+      }
+    }
+  }, [focusTarget, onTargetLayout, roadmapY, targetSection]);
 
   const handleOpen = useCallback(
     async (id: string): Promise<void> => {
@@ -178,78 +264,108 @@ export const CommunityTabPanel: React.FC = () => {
           </Text>
         </GlassCard>
       ) : (
-        <View style={styles.list}>
-          {announcements.map((item) =>
-            expandedId === item.id && expanded ? (
-              <GlassCard
-                key={item.id}
-                variant="elevated"
-                radius="md"
-                padding={spacing.md}
-              >
-                <Pressable
-                  onPress={() => setExpandedId(null)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Collapse announcement"
-                >
-                  <View style={styles.rowTop}>
-                    <Text style={styles.cardTitle}>{expanded.title}</Text>
-                  </View>
-                  {expanded.published_at ? (
-                    <Text style={styles.meta}>
-                      {new Date(expanded.published_at).toLocaleDateString()}
-                    </Text>
-                  ) : null}
-                </Pressable>
-                <Text style={styles.bodyFull}>{expanded.body_md}</Text>
-              </GlassCard>
-            ) : (
-              <AnnouncementCard
-                key={item.id}
-                item={item}
-                onOpen={(id) => void handleOpen(id)}
-              />
-            ),
-          )}
-        </View>
-      )}
-
-      <Text style={styles.sectionLabel}>Roadmap</Text>
-
-      {roadLoading ? (
-        <View style={styles.listState}>
-          <ActivityIndicator color={textTokens.secondary} />
-        </View>
-      ) : roadError ? (
-        <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
-          <Text style={styles.cardBody}>
-            We couldn&apos;t load the roadmap just now.
-          </Text>
-          <Button
-            label="Try again"
-            variant="secondary"
-            onPress={() => void refetchRoad()}
-          />
-        </GlassCard>
-      ) : byLane.length === 0 ? (
-        <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
-          <Text style={styles.emptyTitle}>Nothing published yet</Text>
-          <Text style={styles.cardBody}>
-            Mingla&apos;s public roadmap will appear here when it&apos;s ready.
-          </Text>
-        </GlassCard>
-      ) : (
-        <View style={styles.list}>
-          {byLane.map(({ lane, cards }) => (
-            <View key={lane} style={styles.laneBlock}>
-              <Text style={styles.laneLabel}>{LANE_LABEL[lane]}</Text>
-              {cards.map((card) => (
-                <RoadmapCardRow key={card.id} card={card} />
-              ))}
+        <View
+          style={styles.list}
+          onLayout={(event) => setAnnouncementListY(event.nativeEvent.layout.y)}
+        >
+          {announcements.map((item) => (
+            <View
+              key={item.id}
+              ref={
+                targetAnnouncementId === item.id
+                  ? targetAnnouncementRef
+                  : undefined
+              }
+              accessible={targetAnnouncementId === item.id}
+              accessibilityLabel={
+                targetAnnouncementId === item.id
+                  ? `Announcement: ${communityMarkdownToPlainText(item.title)}`
+                  : undefined
+              }
+              onLayout={
+                targetAnnouncementId === item.id
+                  ? (event) =>
+                      setTargetAnnouncementY(event.nativeEvent.layout.y)
+                  : undefined
+              }
+            >
+              {expandedId === item.id && expanded ? (
+                <GlassCard variant="elevated" radius="md" padding={spacing.md}>
+                  <Pressable
+                    onPress={() => setExpandedId(null)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Collapse announcement"
+                  >
+                    <View style={styles.rowTop}>
+                      <Text style={styles.cardTitle}>
+                        {communityMarkdownToPlainText(expanded.title)}
+                      </Text>
+                    </View>
+                    {expanded.published_at ? (
+                      <Text style={styles.meta}>
+                        {new Date(expanded.published_at).toLocaleDateString()}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                  <CommunityMarkdown body={expanded.body_md} />
+                </GlassCard>
+              ) : (
+                <AnnouncementCard
+                  item={item}
+                  onOpen={(id) => void handleOpen(id)}
+                />
+              )}
             </View>
           ))}
         </View>
       )}
+
+      <View
+        ref={roadmapRef}
+        accessible={targetSection === "roadmap"}
+        accessibilityLabel="Roadmap section"
+        onLayout={(event) => setRoadmapY(event.nativeEvent.layout.y)}
+      >
+        <Text style={styles.sectionLabel} accessibilityRole="header">
+          Roadmap
+        </Text>
+
+        {roadLoading ? (
+          <View style={styles.listState}>
+            <ActivityIndicator color={textTokens.secondary} />
+          </View>
+        ) : roadError ? (
+          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <Text style={styles.cardBody}>
+              We couldn&apos;t load the roadmap just now.
+            </Text>
+            <Button
+              label="Try again"
+              variant="secondary"
+              onPress={() => void refetchRoad()}
+            />
+          </GlassCard>
+        ) : byLane.length === 0 ? (
+          <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
+            <Text style={styles.emptyTitle}>Nothing published yet</Text>
+            <Text style={styles.cardBody}>
+              Mingla&apos;s public roadmap will appear here when it&apos;s
+              ready.
+            </Text>
+          </GlassCard>
+        ) : (
+          <View style={styles.list}>
+            {byLane.map(({ lane, cards }) => (
+              <View key={lane} style={styles.laneBlock}>
+                <Text style={styles.laneLabel}>{LANE_LABEL[lane]}</Text>
+                {cards.map((card) => (
+                  <RoadmapCardRow key={card.id} card={card} />
+                ))}
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
 
       <GlassCard variant="elevated" radius="md" padding={spacing.lg}>
         <View style={styles.prefRow}>
@@ -322,12 +438,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     fontSize: 13,
     lineHeight: 19,
-    color: textTokens.secondary,
-  },
-  bodyFull: {
-    marginTop: spacing.md,
-    fontSize: 14,
-    lineHeight: 21,
     color: textTokens.secondary,
   },
   cardBody: {

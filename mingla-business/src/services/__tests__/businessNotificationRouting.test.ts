@@ -56,10 +56,10 @@ jest.mock("../mixpanelService", () => ({
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 
 import {
-  parseBusinessDeepLink,
-  resolveBusinessNavTarget,
-  processBusinessNotification,
   type BusinessPushData,
+  parseBusinessDeepLink,
+  processBusinessNotification,
+  resolveBusinessNavTarget,
 } from "../businessNotificationRouting";
 
 beforeEach(() => {
@@ -87,15 +87,29 @@ describe("parseBusinessDeepLink", () => {
     );
   });
   test("brand listing + team", () => {
-    expect(
-      parseBusinessDeepLink("mingla-business://brand/b-9/listing"),
-    ).toBe("/brand/b-9/listing");
+    expect(parseBusinessDeepLink("mingla-business://brand/b-9/listing")).toBe(
+      "/brand/b-9/listing",
+    );
     expect(parseBusinessDeepLink("mingla-business://brand/b-9/team")).toBe(
       "/brand/b-9/team",
     );
   });
   test("non-mingla scheme → null", () => {
     expect(parseBusinessDeepLink("https://example.com")).toBeNull();
+  });
+
+  // [TEST-MOD-APPROVED #3720] Push and bell must share the exact Community target.
+  test("Community announcement and roadmap land on the intended content", () => {
+    expect(
+      parseBusinessDeepLink(
+        "mingla-business://community/announcement/a3720000-0000-4000-8000-000000000001",
+      ),
+    ).toBe(
+      "/account/support?tab=community&announcementId=a3720000-0000-4000-8000-000000000001",
+    );
+    expect(parseBusinessDeepLink("mingla-business://community/roadmap")).toBe(
+      "/account/support?tab=community&section=roadmap",
+    );
   });
 
   // ORCH-1082 Gap 15 + 17b — happy-path FAILS-on-revert cases. Reverting the
@@ -119,7 +133,9 @@ describe("parseBusinessDeepLink", () => {
       );
     });
     test("Gap 17b: unknown partner sub → null", () => {
-      expect(parseBusinessDeepLink("mingla-business://partner/bogus")).toBeNull();
+      expect(
+        parseBusinessDeepLink("mingla-business://partner/bogus"),
+      ).toBeNull();
     });
     // Regression guards: pre-existing brand cases unchanged by the new branches.
     test("regression: brand team/listing + bare brand unchanged", () => {
@@ -129,7 +145,9 @@ describe("parseBusinessDeepLink", () => {
       expect(parseBusinessDeepLink("mingla-business://brand/B/listing")).toBe(
         "/brand/B/listing",
       );
-      expect(parseBusinessDeepLink("mingla-business://brand/B")).toBe("/brand/B");
+      expect(parseBusinessDeepLink("mingla-business://brand/B")).toBe(
+        "/brand/B",
+      );
     });
     test("regression: missing brandId → null", () => {
       expect(parseBusinessDeepLink("mingla-business://brand")).toBeNull();
@@ -141,17 +159,23 @@ describe("parseBusinessDeepLink", () => {
 });
 
 describe("resolveBusinessNavTarget — per type", () => {
-  const cases: ReadonlyArray<[BusinessPushData, string]> = [
+  const cases: readonly [BusinessPushData, string][] = [
     [
       { type: "business.order_paid", deepLink: "mingla-business://event/e1" },
       "/event/e1",
     ],
     [
-      { type: "business.event_sold_out", deepLink: "mingla-business://event/e2" },
+      {
+        type: "business.event_sold_out",
+        deepLink: "mingla-business://event/e2",
+      },
       "/event/e2",
     ],
     [
-      { type: "business.low_inventory", deepLink: "mingla-business://event/e3" },
+      {
+        type: "business.low_inventory",
+        deepLink: "mingla-business://event/e3",
+      },
       "/event/e3",
     ],
     [
@@ -162,7 +186,10 @@ describe("resolveBusinessNavTarget — per type", () => {
       "/event/e4",
     ],
     [
-      { type: "business.dispute_opened", deepLink: "mingla-business://payments" },
+      {
+        type: "business.dispute_opened",
+        deepLink: "mingla-business://payments",
+      },
       "/brand/brand-123/payments",
     ],
     [
@@ -203,6 +230,17 @@ describe("resolveBusinessNavTarget — per type", () => {
     ],
     // stripe.* compliance type → payments
     [{ type: "stripe.payout_failed" }, "/brand/brand-123/payments"],
+    [
+      { type: "business.community_roadmap_updated" },
+      "/account/support?tab=community&section=roadmap",
+    ],
+    [
+      {
+        type: "business.community_announcement",
+        announcementId: "a3720000-0000-4000-8000-000000000001",
+      },
+      "/account/support?tab=community&announcementId=a3720000-0000-4000-8000-000000000001",
+    ],
   ];
 
   test.each(cases)("%o → %s", (data, expected) => {
@@ -219,6 +257,15 @@ describe("resolveBusinessNavTarget — per type", () => {
     expect(resolveBusinessNavTarget({ type: "totally.unknown" })).toBe(
       "/(tabs)/account",
     );
+  });
+
+  test("malformed Community id fails safely to the Community tab", () => {
+    expect(
+      resolveBusinessNavTarget({
+        type: "business.community_announcement",
+        deepLink: "mingla-business://community/announcement/not-a-uuid",
+      }),
+    ).toBe("/account/support?tab=community");
   });
 });
 
