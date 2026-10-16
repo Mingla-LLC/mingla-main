@@ -647,8 +647,10 @@ begin
     from pg_catalog.pg_proc p2 join pg_catalog.pg_namespace n on n.oid = p2.pronamespace
    where n.nspname not in ('pg_catalog', 'information_schema', 'pg_temp') and n.nspname not like 'pg_temp%'
      and p2.prokind = 'f' and p2.prosrc ~* '\mteam_agent_keys\M';
+  -- [TEST-MOD-APPROVED #3802] Wave 2's separately guarded content gateway
+  -- updates the key's last-used marker, so the legacy authority list advances.
   perform pg_temp.t3802ta_ok('TA-6', 'only the named functions mention the keys table',
-    v_list = 'admin_team_set_member,team_agent_call,team_agent_key_issue,team_agent_key_revoke,team_agent_keys_mine,team_agent_keys_overview,team_agent_person,team_agent_resolve,team_agent_setup_create,team_agent_setup_redeem', v_list);
+    v_list = 'admin_team_set_member,team_agent_call,team_agent_content_call,team_agent_key_issue,team_agent_key_revoke,team_agent_keys_mine,team_agent_keys_overview,team_agent_person,team_agent_resolve,team_agent_setup_create,team_agent_setup_redeem', v_list);
   select coalesce(string_agg(p2.proname, ',' order by p2.proname), '') into v_list
     from pg_catalog.pg_proc p2 join pg_catalog.pg_namespace n on n.oid = p2.pronamespace
    where n.nspname not like 'pg_%' and n.nspname <> 'information_schema'
@@ -660,7 +662,7 @@ begin
    where n.nspname not like 'pg_%' and n.nspname <> 'information_schema'
      and p2.prokind = 'f' and p2.prosrc ~* '\mteam_agent_calls\M';
   perform pg_temp.t3802ta_ok('TA-6', 'only the named functions mention the request table',
-    v_list = 'crm_ctx,team_agent_call,team_agent_housekeeping,team_agent_keys_mine,team_agent_keys_overview,team_agent_my_activity', v_list);
+    v_list = 'content_calendar_ctx,crm_ctx,team_agent_call,team_agent_content_call,team_agent_housekeeping,team_agent_keys_mine,team_agent_keys_overview,team_agent_my_activity', v_list);
   perform pg_temp.t3802ta_ok('TA-6', 'no function takes a person or an agent from its caller',
     not exists (select 1 from pg_catalog.pg_proc p2 join pg_catalog.pg_namespace n on n.oid = p2.pronamespace
                  where n.nspname = 'public' and p2.proname like 'team\_agent\_%'

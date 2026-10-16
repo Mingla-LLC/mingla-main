@@ -143,6 +143,7 @@ export const NAV_GROUPS = [
       { id: "drafts",                    label: "Drafts to send",      icon: "FileText" },
       { id: "beta-leads",                label: "Beta Leads",         icon: "Inbox" },
       { id: "tool-leads",                label: "Tool Leads",         icon: "Wrench" },
+      { id: "content-calendar",          label: "Content calendar",   icon: "CalendarClock" },
       { id: "team-dashboard",            label: "Team dashboard",     icon: "BarChart3" },
     ],
   },

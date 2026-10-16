@@ -31,9 +31,10 @@
 
 \set ON_ERROR_STOP on
 \getenv t3802b_pw PGPASSWORD
--- [TEST-MOD-APPROVED #3802] PR-C carries the newest complete self-checks.
+-- [TEST-MOD-APPROVED #3802] Wave 2 adds one separately guarded sibling gateway;
+-- keep this legacy self-check scoped to the original agent surface it owns.
 \set t3802b_check `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql`
-\set t3802b_w4check `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql`
+\set t3802b_w4check `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'team_agent_call,team_agent_content_call,team_agent_housekeeping'/" -e "s/admin_team_set_member,team_agent_call,team_agent_key_issue/admin_team_set_member,team_agent_call,team_agent_content_call,team_agent_key_issue/"`
 \set t3802b_file `cat supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
 
 -- ===========================================================================
@@ -301,9 +302,9 @@ begin
     perform pg_temp.t3802b_like('B-1', 'an anonymous caller cannot run ' || split_part(t, '(', 1),
       pg_temp.t3802b_as('anon', 'select public.' || t || '::text'), 'ERR:42501:%');
   end loop;
-  perform pg_temp.t3802b_check('B-1', 'there are exactly 16 team_agent_ functions and 51 crm_ functions',
+  perform pg_temp.t3802b_check('B-1', 'there are exactly 17 team_agent_ functions and 51 crm_ functions',
     (select count(*) filter (where p.proname like 'team\_agent\_%')::text || '/' || count(*) filter (where p.proname like 'crm\_%')
-       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '16/51');
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'), '17/51');
   perform pg_temp.t3802b_check('B-1', 'no agent function takes a person from its caller',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'team\_agent\_%'

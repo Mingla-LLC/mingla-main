@@ -283,6 +283,7 @@ describe("#3802 TA-3: access for every combination of areas", () => {
     for (const areas of subsets) {
       const p = person(areas);
       assert.equal(canOpenPage(p, "beta-leads"), areas.includes("beta_leads"), areas.join(","));
+      assert.equal(canOpenPage(p, "content-calendar"), areas.includes("crm"), areas.join(","));
       assert.equal(canOpenPage(p, "team-dashboard"), areas.includes("admin_console"), areas.join(","));
       assert.equal(canOpenPage(p, "hosts"), areas.includes("crm"), areas.join(","));
       assert.equal(canOpenPage(p, "home"), areas.includes("role_home"), areas.join(","));
@@ -290,10 +291,10 @@ describe("#3802 TA-3: access for every combination of areas", () => {
     }
   });
 
-  it("a role with the pipelines but not Beta leads sees no Beta Leads in the menu and is sent home from its address", () => {
+  it("a role with the pipelines but not Beta leads sees the CRM-backed calendar and no Beta Leads", () => {
     const p = person(["role_home", "crm"]);
     const ids = visibleNavGroups(NAV_GROUPS, p).flatMap((g) => g.items.map((i) => i.id));
-    assert.deepEqual(ids, ["home", "hosts", "creators", "drafts", "agent", "guide"]);
+    assert.deepEqual(ids, ["home", "hosts", "creators", "drafts", "content-calendar", "agent", "guide"]);
     const known = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.id));
     assert.deepEqual(resolveRoute("beta-leads", p, known), { pageId: homePageFor(p), denied: true, requestedId: "beta-leads" });
     assert.deepEqual(resolveRoute("team-dashboard", p, known), { pageId: "home", denied: true, requestedId: "team-dashboard" });

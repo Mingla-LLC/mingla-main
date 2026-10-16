@@ -38,6 +38,7 @@ export const PAGE_AREA_OVERRIDES = {
   creators: AREA.CRM,
   drafts: AREA.CRM,
   "beta-leads": AREA.BETA_LEADS,
+  "content-calendar": AREA.CRM,
   // My agent (issue #3802, Wave 4): everyone who works the pipelines.
   agent: AREA.CRM,
   guide: AREA.CRM,

@@ -56,7 +56,7 @@ const APP = read("App.jsx");
 // #3720 Slice F — Support + Email folded into Community & Support (one primary item).
 const MENU = [
   [null, ["overview", "community-support"]],
-  ["Pipeline", ["hosts", "creators", "drafts", "beta-leads", "tool-leads", "team-dashboard"]],
+  ["Pipeline", ["hosts", "creators", "drafts", "beta-leads", "tool-leads", "content-calendar", "team-dashboard"]],
   ["Business", ["business-people", "business-brands", "brand-sites", "business-venues", "business-offerings", "claims"]],
   ["Money", ["business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
   ["Explorer app", ["users", "placepool", "launch-cities", "signals", "deck-tuner", "place-intelligence-trial"]],
@@ -68,7 +68,7 @@ const MENU = [
 // The words on each menu item (updated for #3720 Community & Support).
 const LABELS = {
   overview: "Dashboard", "community-support": "Community & Support", hosts: "Hosts", creators: "Creators", drafts: "Drafts to send",
-  "beta-leads": "Beta Leads", "tool-leads": "Tool Leads", "team-dashboard": "Team dashboard",
+  "beta-leads": "Beta Leads", "tool-leads": "Tool Leads", "content-calendar": "Content calendar", "team-dashboard": "Team dashboard",
   "business-people": "People", "business-brands": "Brands", "brand-sites": "Brand Sites",
   "business-venues": "Venues", "business-offerings": "Offerings", claims: "Venue claims",
   "business-payments": "Payments", "business-orders": "Orders", "business-money-ledger": "Money ledger",
@@ -128,7 +128,7 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
   it("no id twice", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
     assert.equal(new Set(ids).size, ids.length);
-    assert.equal(ids.length, 36);
+    assert.equal(ids.length, 37);
   });
   it("the menu and the app's pages are the same set (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -152,6 +152,7 @@ describe("#3802 S-3: who may open what did not move", () => {
       creators: "crm",
       drafts: "crm",
       "beta-leads": "beta_leads",
+      "content-calendar": "crm",
       agent: "crm",
       guide: "crm",
     });
@@ -165,8 +166,8 @@ describe("#3802 S-3: who may open what did not move", () => {
   });
   it("each role sees the pages it saw before, in the new order", () => {
     const ids = (a) => visibleNavGroups(NAV_GROUPS, a).flatMap((g) => g.items).map((i) => i.id);
-    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "beta-leads", "agent", "guide"]);
-    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "beta-leads", "agent", "guide"]);
+    assert.deepEqual(ids(growth), ["home", "hosts", "creators", "drafts", "beta-leads", "content-calendar", "agent", "guide"]);
+    assert.deepEqual(ids(partner), ["home", "hosts", "creators", "drafts", "beta-leads", "content-calendar", "agent", "guide"]);
     assert.deepEqual(ids(owner), NAV_ITEMS.map((i) => i.id));
     assert.deepEqual(ids(admin), NAV_ITEMS.map((i) => i.id).filter((id) => id !== "admin"));
     assert.deepEqual(visibleNavGroups(NAV_GROUPS, owner).map((g) => g.label), MENU.map(([label]) => label));
@@ -375,7 +376,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   const MIGRATED = [
     "AdEnginePage.jsx", "AdminPage.jsx", "AgentPage.jsx", "ApiHealthPage.jsx", "BetaLeadsPage.jsx", "BrandSitesPage.jsx", "BrandsConsolePage.jsx",
     "BusinessMoneyLedgerPage.jsx", "BusinessOrdersPage.jsx", "BusinessPaymentsPage.jsx", "CampaignBuilderPage.jsx",
-    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "DeckScoreTunerPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
+    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "ContentCalendarPage.jsx", "DeckScoreTunerPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
     "GuidePage.jsx", "LaunchCitiesPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
     "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "RefundOperationsPage.jsx",
     "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
@@ -410,7 +411,7 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   it("every page is either on the one header or named for the follow-up", () => {
     const all = fs.readdirSync(PAGES_DIR).filter((f) => /Page\.jsx$/.test(f)).sort();
     assert.deepEqual([...MIGRATED, ...FOLLOW_UP].sort(), all);
-    assert.equal(MIGRATED.length, 38);
+    assert.equal(MIGRATED.length, 39);
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -544,7 +545,7 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   };
 
   it("every state of every migrated page draws the page header", () => {
-    assert.equal(MIGRATED.length, 38);
+    assert.equal(MIGRATED.length, 39);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(

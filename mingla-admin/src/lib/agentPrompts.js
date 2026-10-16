@@ -33,6 +33,7 @@ const SUCCESS_LINES = {
   list_beta_leads: "Read beta leads",
   team_summary: "Checked the team numbers",
   list_drafts: "Read your drafts",
+  list_content: "Read the content calendar",
 };
 
 const SUMMARY_KEYS = new Set([
@@ -43,6 +44,7 @@ const SUMMARY_KEYS = new Set([
   "moved",
   "saved",
   "discarded",
+  "commented",
   "refused",
 ]);
 
@@ -75,6 +77,11 @@ function successLine(call) {
   if (tool === "record_reply") return counted("Recorded", countFor(call, "logged"), "reply", "replies");
   if (tool === "save_drafts") return counted("Wrote", countFor(call, "saved"), "draft");
   if (tool === "withdraw_drafts") return counted("Withdrew", countFor(call, "discarded"), "draft");
+  if (tool === "add_content") return counted("Added", countFor(call, "created"), "content card");
+  if (tool === "update_content") return counted("Updated", countFor(call, "updated"), "content card");
+  if (tool === "assign_content") return counted("Updated owners on", countFor(call, "updated"), "content card");
+  if (tool === "comment_content") return counted("Commented on", countFor(call, "commented"), "content card");
+  if (tool === "move_content") return counted("Moved", countFor(call, "moved"), "content card");
   if (tool === "update_draft") {
     return (summaryCount(call?.summary, "updated") || 0) > 0 ? "Updated a draft" : "Checked a draft; no change was needed";
   }

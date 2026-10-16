@@ -100,6 +100,12 @@ test("#3802 P-1: an agent connects: initialize, the initialized notice, then its
     "update_draft",
     "list_drafts",
     "withdraw_drafts",
+    "list_content",
+    "add_content",
+    "update_content",
+    "assign_content",
+    "comment_content",
+    "move_content",
   ]);
   // An admin's list, in the order a client is shown it.
   assert.deepEqual(names(admin), [
@@ -123,6 +129,12 @@ test("#3802 P-1: an agent connects: initialize, the initialized notice, then its
     "update_draft",
     "list_drafts",
     "withdraw_drafts",
+    "list_content",
+    "add_content",
+    "update_content",
+    "assign_content",
+    "comment_content",
+    "move_content",
   ]);
   assert.deepEqual(
     names(admin).filter((n: string) => n !== "team_summary"),
@@ -582,6 +594,12 @@ test("#3802 P-9: the tools that arrive later, and the ones that never will, do n
       "update_draft",
       "list_drafts",
       "withdraw_drafts",
+      "list_content",
+      "add_content",
+      "update_content",
+      "assign_content",
+      "comment_content",
+      "move_content",
     ]
   ) {
     assert.ok(listed.includes(name), `${name} is a tool now`);

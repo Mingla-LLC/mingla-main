@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/contentCalendarAdminRework.issue3802.implementor.adversarial.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3802-wave2-content-admin-rework-adversarial",
+  "profile": "deno-1.46-stripe"
+}

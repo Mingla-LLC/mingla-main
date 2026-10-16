@@ -76,7 +76,7 @@ export function Modal({ open, onClose, title, size = "md", destructive = false, 
     <div
       ref={overlayRef}
       onMouseDown={(e) => { if (e.target === overlayRef.current) onClose(); }}
-      className="fixed inset-0 flex items-center justify-center p-4 bg-black/50 backdrop-blur-[4px] animate-[fade-in_200ms_ease-out]"
+      className="fixed inset-0 flex items-center justify-center p-4 bg-black/50 backdrop-blur-[4px] motion-safe:animate-[fade-in_200ms_ease-out]"
       style={{ zIndex: "var(--z-modal)" }}
       role="dialog"
       aria-modal="true"
@@ -87,7 +87,7 @@ export function Modal({ open, onClose, title, size = "md", destructive = false, 
         tabIndex={-1}
         className={[
           "w-full bg-[var(--color-background-primary)] rounded-xl shadow-[var(--shadow-xl)]",
-          "animate-[scale-in_200ms_ease-out]",
+          "motion-safe:animate-[scale-in_200ms_ease-out]",
           SIZE_CLASSES[size] || SIZE_CLASSES.md,
           "max-h-[calc(100vh-32px)] flex flex-col",
         ].join(" ")}
@@ -98,7 +98,7 @@ export function Modal({ open, onClose, title, size = "md", destructive = false, 
           </h2>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] transition-colors duration-150 cursor-pointer"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)] transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]"
             aria-label="Close"
           >
             <X className="h-5 w-5" />

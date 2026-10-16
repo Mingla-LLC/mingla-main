@@ -118,7 +118,7 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
     const groups = (a) => visibleNavGroups(NAV_GROUPS, a);
     for (const a of [growth, partner]) {
       // [TEST-MOD-APPROVED #3802] Drafts to send is now the third pipeline page.
-      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "drafts", "beta-leads", "agent", "guide"], a.role);
+      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "drafts", "beta-leads", "content-calendar", "agent", "guide"], a.role);
     }
     for (const a of [owner, admin, growth, partner]) {
       const shown = groups(a);
@@ -303,7 +303,7 @@ describe("#3802 A-4: what it can do is what the connector offers", () => {
     assert.deepEqual(tools("owner"), offered);
     assert.deepEqual(tools("admin"), offered);
     assert.deepEqual(tools(undefined), tools("growth"));
-    assert.deepEqual(abilitiesFor("owner").map((g) => g.group), ["Your day", "Find and check", "Beta leads", "Team", "Add and change", "Log", "Drafts"]);
+    assert.deepEqual(abilitiesFor("owner").map((g) => g.group), ["Your day", "Find and check", "Beta leads", "Team", "Add and change", "Log", "Drafts", "Content"]);
   });
   it("nothing that is not built yet is offered as something to use", () => {
     const shown = ALL_AGENT_SRC.map(([, src]) => stripComments(src)).join("\n");

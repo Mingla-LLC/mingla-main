@@ -364,6 +364,12 @@ export const AGENT_ABILITIES = [
   { tool: "update_draft", group: "Drafts", title: "Updates its waiting drafts", detail: "Until you edit one yourself." },
   { tool: "list_drafts", group: "Drafts", title: "Reads your drafts", detail: "Only your own waiting, sent or discarded drafts." },
   { tool: "withdraw_drafts", group: "Drafts", title: "Withdraws its waiting drafts", detail: "Until you edit one yourself." },
+  { tool: "list_content", group: "Content", title: "Reads the content calendar", detail: "Searches cards by stage, owner, date or words." },
+  { tool: "add_content", group: "Content", title: "Adds content ideas", detail: "Up to 50 title-only cards at once, assigned to you in Idea." },
+  { tool: "update_content", group: "Content", title: "Updates content cards", detail: "Copy, timing, channels, links and planning details, using the revision it read." },
+  { tool: "assign_content", group: "Content", title: "Sets content owners", detail: "Active team members only, using the revision it read." },
+  { tool: "comment_content", group: "Content", title: "Comments on content", detail: "Adds a visible comment under your name and its agent name." },
+  { tool: "move_content", group: "Content", title: "Moves content stages", detail: "Uses the same approvals and publishing rules as the screen. It cannot delete." },
 ];
 
 /** The abilities this role is offered, grouped in page order. */

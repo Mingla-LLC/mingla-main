@@ -50,7 +50,7 @@ export const MIN_REFUSAL_MS = 250;
 export const SERVER_INFO = {
   name: "mingla-team",
   title: "Mingla team pipelines",
-  version: "4.3.0",
+  version: "4.4.0",
 } as const;
 
 /** A key: `mgla_`, the agent letter, `_`, then 43 URL-safe characters. */
@@ -75,7 +75,7 @@ export const SETUP_REFUSAL_BODY =
  * first sentences carry what matters most. At most 1,900 characters.
  */
 export const INSTRUCTIONS =
-  "Mingla team pipelines: Hosts and Creators outreach and Beta leads, for the Mingla team. " +
+  "Mingla team pipelines and content calendar: Hosts and Creators outreach, Beta leads and planned content, for the Mingla team. " +
   "You act as the person whose key this is, with their role and nothing more. " +
   "Call get_started first: it gives you the stages, ICPs, regions, channels, your team and the rules. " +
   "You can read, add up to 50 records at once, update, move cards, set owners, and log notes, replies and a cold first touch. " +

@@ -736,6 +736,12 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     "update_draft",
     "list_drafts",
     "withdraw_drafts",
+    "list_content",
+    "add_content",
+    "update_content",
+    "assign_content",
+    "comment_content",
+    "move_content",
   ]);
   // The owner's list, in the order a client is shown it: the same tools in
   // the same order, with the team dashboard among the reads.
@@ -760,6 +766,12 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     "update_draft",
     "list_drafts",
     "withdraw_drafts",
+    "list_content",
+    "add_content",
+    "update_content",
+    "assign_content",
+    "comment_content",
+    "move_content",
   ]);
   assertEquals(names(owner).filter((n) => n !== "team_summary"), names(growth));
   for (const t of owner) {
@@ -796,6 +808,12 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
         update_draft: false,
         list_drafts: true,
         withdraw_drafts: false,
+        list_content: true,
+        add_content: false,
+        update_content: false,
+        assign_content: false,
+        comment_content: false,
+        move_content: false,
       } as Record<string, boolean>)[t.name],
       t.name,
     );
@@ -823,6 +841,11 @@ Deno.test("#3802 U-5: tools/list by role, and what a listing carries", async () 
     "save_drafts",
     "update_draft",
     "withdraw_drafts",
+    "add_content",
+    "update_content",
+    "assign_content",
+    "comment_content",
+    "move_content",
   ]);
   for (const t of TEAM_AGENT_TOOLS) {
     for (const fn of t.reaches) {
@@ -1595,6 +1618,9 @@ const TOOLS = code(read("../teamAgentTools.ts"));
 const MIGRATION = read(
   "../../../migrations/20271016003802_issue_3802_wave4_drafts.sql",
 );
+const CONTENT_MIGRATION = read(
+  "../../../migrations/20271020003802_issue_3802_wave2_content_calendar.sql",
+);
 
 Deno.test("#3802 U-11: the function reaches one thing, reads two settings and logs one shaped line", () => {
   assert(
@@ -1611,9 +1637,15 @@ Deno.test("#3802 U-11: the function reaches one thing, reads two settings and lo
     !/Deno\.env/.test(MCP) && !/Deno\.env/.test(TOOLS),
     "the shared modules read the environment",
   );
-  assertEquals([...INDEX.matchAll(/\.rpc\(\s*"([a-z_]+)"/g)].map((m) => m[1]), [
-    "team_agent_call",
-  ]);
+  assertEquals([...INDEX.matchAll(/\.rpc\(gateway,/g)].length, 1);
+  assertEquals(
+    [...INDEX.matchAll(/"(team_agent(?:_content)?_call)"/g)].map((m) => m[1])
+      .sort(),
+    [
+      "team_agent_call",
+      "team_agent_content_call",
+    ],
+  );
   assert(
     !/\.from\(|\.storage|\.auth\.admin|functions\.invoke/.test(INDEX),
     "the function touches something other than the gateway",
@@ -1655,11 +1687,19 @@ Deno.test("#3802 U-11: the function reaches one thing, reads two settings and lo
 
 Deno.test("#3802 U-11: the tools here and the gateway's list are the same list, and every function a tool reaches exists", () => {
   const list = /c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(MIGRATION);
+  const contentList = /c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(
+    CONTENT_MIGRATION,
+  );
   assert(list, "the gateway's tool list was found");
-  const inGateway = [...list[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  assert(contentList, "the content gateway's tool list was found");
+  const inGateway = [...list[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1])
+    .concat(
+      [...contentList[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
+    );
   assertEquals(inGateway, TEAM_AGENT_TOOLS.map((t) => t.name));
   const branches = [
     ...MIGRATION.matchAll(/^\s+WHEN ((?:'[a-z_]+'(?:, )?)+) THEN$/gm),
+    ...CONTENT_MIGRATION.matchAll(/^\s+WHEN ((?:'[a-z_]+'(?:, )?)+) THEN$/gm),
   ].flatMap((m) => [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]));
   assertEquals([...branches].sort(), [...inGateway].sort());
   const dir = new URL("../../../migrations/", import.meta.url);
@@ -1683,10 +1723,15 @@ Deno.test("#3802 U-11: the tools here and the gateway's list are the same list, 
     /CREATE OR REPLACE FUNCTION public\.team_agent_call\([\s\S]*?\n\$\$;/
       .exec(MIGRATION);
   assert(gateway);
+  const contentGateway =
+    /CREATE FUNCTION public\.team_agent_content_call\([\s\S]*?\n\$\$;/
+      .exec(CONTENT_MIGRATION);
+  assert(contentGateway);
   for (const t of TEAM_AGENT_TOOLS) {
     for (const fn of t.reaches) {
       assert(
-        gateway[0].includes(`public.${fn}(`),
+        gateway[0].includes(`public.${fn}(`) ||
+          contentGateway[0].includes(`public.${fn}(`),
         `the gateway never calls ${fn}`,
       );
     }
