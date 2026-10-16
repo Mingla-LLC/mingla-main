@@ -62,6 +62,10 @@ describe("#3645 WS5 — canActOnEvidence (review gate)", () => {
     const st = { evidence_reviewed_at: "2026-10-01T12:00:00Z", review_current: true };
     assert.deepEqual(canActOnEvidence({ is_resolved: true }, st), { canReview: false, canExport: true, canSubmit: false });
   });
+  it("resolved export stays available even when the live dossier hash no longer matches", () => {
+    const st = { evidence_reviewed_at: "2026-10-01T12:00:00Z", review_current: false };
+    assert.deepEqual(canActOnEvidence({ is_resolved: true }, st), { canReview: false, canExport: true, canSubmit: false });
+  });
 });
 
 describe("#3645 WS5 — filename / serialisation / errors", () => {
@@ -85,6 +89,8 @@ describe("#3645 WS5 — filename / serialisation / errors", () => {
       past_provider_deadline: /deadline has passed/,
       review_required: /Review the evidence/,
       dossier_changed_since_review: /Review it again/,
+      dossier_sha_mismatch: /Reload and review/,
+      expected_dossier_sha_required: /Reload and review/,
     };
     for (const [code, re] of Object.entries(cases)) {
       assert.match(evidenceErrorMessage({ message: `ERROR: ${code}` }), re, code);
@@ -109,6 +115,7 @@ describe("#3645 WS5 — service + UI wiring", () => {
   });
   it("act service routes review + export/submit through callAdminWriteRpc", () => {
     assert.match(ACT, /callAdminWriteRpc\("admin_review_paystack_dispute_evidence"/);
+    assert.match(ACT, /p_expected_dossier_sha256:\s*expected_dossier_sha256/);
     assert.match(ACT, /callAdminWriteRpc\("admin_record_paystack_dispute_evidence_action"/);
   });
   it("Money ledger has a Paystack disputes tab distinct from Stripe disputes", () => {
@@ -120,11 +127,13 @@ describe("#3645 WS5 — service + UI wiring", () => {
   });
   it("detail view drives review -> export -> submit_stub via the act service", () => {
     assert.match(DETAIL, /reviewPaystackDisputeEvidence\(/);
+    assert.match(DETAIL, /expected_dossier_sha256:\s*bundle\.dossier_sha256/);
     assert.match(DETAIL, /action: "export"/);
     assert.match(DETAIL, /action: "submit_stub"/);
     assert.match(DETAIL, /canActOnEvidence\(/);
     assert.match(DETAIL, /evidenceFilename\(/);
     assert.match(DETAIL, /NOTHING is sent to Paystack/);
+    assert.match(DETAIL, /does not answer Paystack/);
   });
   it("neither the page nor the detail view writes a table directly", () => {
     const DIRECT_WRITE_RE = /\.(update|insert|delete)\s*\(/;

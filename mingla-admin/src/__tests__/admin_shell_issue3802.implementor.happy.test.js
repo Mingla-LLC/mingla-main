@@ -534,7 +534,9 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
     // An opened record. Each draws the record's own title and a way back
     // (EntityDetailView, OfferingDetailView, VenueDetailView, or its own bar).
     "BrandsConsolePage.jsx": 1,
-    "BusinessMoneyLedgerPage.jsx": 1,
+    // [TEST-MOD-APPROVED #3645] Paystack dispute detail is a second headerless
+    // opened-record return alongside the existing Stripe dispute detail.
+    "BusinessMoneyLedgerPage.jsx": 2,
     "BusinessOrdersPage.jsx": 1,
     "BusinessPaymentsPage.jsx": 1,
     "OfferingsConsolePage.jsx": 1,

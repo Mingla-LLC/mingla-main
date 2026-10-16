@@ -196,7 +196,12 @@ export function PaystackDisputeDetail({ disputeId, onBack }) {
           "Confirms a person has read the auto-assembled dossier. Export and submit unlock only while the dossier still matches this review. Moves no money.",
         confirmLabel: "Approve",
         onConfirm: async ({ reason }) => {
-          const { error: err } = await reviewPaystackDisputeEvidence({ dispute_id: id, note: null, reason });
+          const { error: err } = await reviewPaystackDisputeEvidence({
+            dispute_id: id,
+            note: null,
+            reason,
+            expected_dossier_sha256: bundle.dossier_sha256,
+          });
           if (err) throw new Error(evidenceErrorMessage(err));
           await load(true);
         },
@@ -228,7 +233,7 @@ export function PaystackDisputeDetail({ disputeId, onBack }) {
         label: "Submit to Paystack (stub)",
         title: "Record evidence submission",
         description:
-          "Records the reviewed dossier as submitted. The Paystack evidence API is not wired yet, so NOTHING is sent to Paystack — upload the exported JSON in the Paystack dashboard before the auto-accept deadline.",
+          "Records the reviewed dossier as submitted. The Paystack evidence API is not wired yet, so NOTHING is sent to Paystack. Upload the exported JSON in the Paystack dashboard and confirm the response there before auto-accept — this stub alone does not answer Paystack.",
         confirmLabel: "Record submission",
         onConfirm: async ({ reason }) => {
           const { error: err } = await recordPaystackDisputeEvidenceAction({

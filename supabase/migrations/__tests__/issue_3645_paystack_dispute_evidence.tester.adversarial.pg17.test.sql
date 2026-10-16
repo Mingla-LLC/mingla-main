@@ -10,6 +10,7 @@ DECLARE
   v_order   constant uuid := '36450000-0000-4000-8000-0000000000a5';
   v_dispute uuid;
   v_now     timestamptz := timestamptz '2026-10-01 12:00:00+00';
+  v_sha     text;
 BEGIN
   INSERT INTO auth.users(id) VALUES (v_owner);
   INSERT INTO public.creator_accounts(id, email)
@@ -40,6 +41,11 @@ BEGIN
   );
   SELECT id INTO v_dispute FROM public.paystack_disputes
    WHERE paystack_dispute_id = 'dsp_3645_ws5a';
+
+  -- Keep the open dispute inside the provider window for the early gates.
+  UPDATE public.paystack_disputes
+     SET response_due_by = now() + interval '16 hours'
+   WHERE id = v_dispute;
 
   SET LOCAL ROLE authenticated;
   PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
@@ -72,13 +78,20 @@ BEGIN
     END IF;
   END;
 
+  v_sha := public.admin_get_paystack_dispute(v_dispute)->>'dossier_sha256';
   PERFORM public.admin_review_paystack_dispute_evidence(
-    v_dispute, NULL, 'adv review'
+    v_dispute, NULL, 'adv review', v_sha
   );
 
+  -- Fixture mutations are not granted to authenticated on paystack_disputes /
+  -- orders; run them as the migration role, then restore the admin JWT.
+  RESET ROLE;
   UPDATE public.paystack_disputes
-     SET response_due_by = v_now - interval '1 minute'
+     SET response_due_by = now() - interval '1 minute'
    WHERE id = v_dispute;
+
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
   BEGIN
     PERFORM public.admin_record_paystack_dispute_evidence_action(
       v_dispute, 'submit_stub', 'late'
@@ -90,11 +103,15 @@ BEGIN
     END IF;
   END;
 
+  RESET ROLE;
   UPDATE public.paystack_disputes
-     SET response_due_by = v_now + interval '10 hours'
+     SET response_due_by = now() + interval '10 hours'
    WHERE id = v_dispute;
   UPDATE public.orders SET buyer_email = 'changed-after-review@example.test'
    WHERE id = v_order;
+
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
   BEGIN
     PERFORM public.admin_record_paystack_dispute_evidence_action(
       v_dispute, 'export', 'stale'

@@ -49,6 +49,12 @@ BEGIN
    WHERE paystack_dispute_id = 'dsp_3645_ws5';
   IF v_dispute IS NULL THEN RAISE EXCEPTION 'ws5_dispute_missing'; END IF;
 
+  -- Anchor provider deadline to the transaction clock so submit_stub does not
+  -- fail with past_provider_deadline when CI runs after the fixture opened_at.
+  UPDATE public.paystack_disputes
+     SET response_due_by = now() + interval '16 hours'
+   WHERE id = v_dispute;
+
   v_deadline := public.paystack_dispute_internal_deadline(v_now, v_now + interval '16 hours');
   IF v_deadline IS DISTINCT FROM v_now + interval '4 hours' THEN
     RAISE EXCEPTION 'ws5_internal_deadline_expected_4h_got_%', v_deadline;
@@ -69,9 +75,25 @@ BEGIN
     RAISE EXCEPTION 'ws5_detail_bad_sha_%', v_sha;
   END IF;
 
+  -- Wrong sha must fail closed (operator must reload if the dossier moved).
+  BEGIN
+    PERFORM public.admin_review_paystack_dispute_evidence(
+      v_dispute, 'stale view', 'ws5 wrong sha',
+      repeat('a', 64)
+    );
+    RAISE EXCEPTION 'ws5_wrong_sha_should_fail';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT LIKE '%dossier_sha_mismatch%' THEN
+      RAISE EXCEPTION 'ws5_wrong_sha_unexpected_%', SQLERRM;
+    END IF;
+  END;
+
   PERFORM public.admin_review_paystack_dispute_evidence(
-    v_dispute, 'looks complete', 'ws5 happy review'
+    v_dispute, 'looks complete', 'ws5 happy review', v_sha
   );
+
+  -- admin_state / evidence_events are service_role-only; assert as postgres.
+  RESET ROLE;
   IF NOT EXISTS (
     SELECT 1 FROM public.paystack_dispute_admin_state
      WHERE dispute_id = v_dispute AND evidence_reviewed_sha256 = v_sha
@@ -79,9 +101,14 @@ BEGIN
     RAISE EXCEPTION 'ws5_review_state_missing';
   END IF;
 
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
+
   PERFORM public.admin_record_paystack_dispute_evidence_action(
     v_dispute, 'export', 'ws5 happy export'
   );
+
+  RESET ROLE;
   IF NOT EXISTS (
     SELECT 1 FROM public.paystack_dispute_evidence_events
      WHERE dispute_id = v_dispute AND action = 'export' AND dossier_sha256 = v_sha
@@ -89,9 +116,14 @@ BEGIN
     RAISE EXCEPTION 'ws5_export_event_missing';
   END IF;
 
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claim.sub', v_admin::text, true);
+
   PERFORM public.admin_record_paystack_dispute_evidence_action(
     v_dispute, 'submit_stub', 'ws5 happy submit stub'
   );
+
+  RESET ROLE;
   IF NOT EXISTS (
     SELECT 1 FROM public.paystack_dispute_evidence_events
      WHERE dispute_id = v_dispute AND action = 'submit_stub'
@@ -100,7 +132,6 @@ BEGIN
     RAISE EXCEPTION 'ws5_submit_stub_missing';
   END IF;
 
-  RESET ROLE;
   PERFORM set_config('request.jwt.claim.sub', '', true);
   RAISE NOTICE 'issue_3645_paystack_dispute_evidence_happy_pass';
 END;

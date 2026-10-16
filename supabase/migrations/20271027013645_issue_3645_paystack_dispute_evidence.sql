@@ -244,16 +244,48 @@ BEGIN
           AND (c.event_id IS NULL OR c.event_id = v_order.event_id)
       ), '[]'::jsonb);
 
-      -- Delivery proof: in-app/push/email notifications tied to this order.
+      -- Delivery proof: shared notification_deliveries PLUS the ticket-delivery
+      -- ledger (ticket_order_notifications). A successfully emailed ticket may
+      -- exist only on the ticket ledger (#3645 Copilot should-fix).
       v_delivery := coalesce((
         SELECT jsonb_agg(jsonb_build_object(
-          'notification_type', n.type, 'channel', nd.channel, 'status', nd.status,
-          'provider', nd.provider, 'attempted_at', nd.attempt_at,
-          'delivered_at', nd.delivered_at
-        ) ORDER BY nd.attempt_at, nd.id)
-        FROM public.notifications n
-        JOIN public.notification_deliveries nd ON nd.notification_id = n.id
-        WHERE n.related_id = v_order.id::text
+          'source', x.source,
+          'notification_type', x.notification_type,
+          'channel', x.channel,
+          'status', x.status,
+          'provider', x.provider,
+          'provider_message_id', x.provider_message_id,
+          'attempted_at', x.sort_at,
+          'delivered_at', x.delivered_at
+        ) ORDER BY x.sort_at NULLS LAST, x.source, x.id)
+        FROM (
+          SELECT
+            'notification_delivery'::text AS source,
+            nd.id,
+            n.type AS notification_type,
+            nd.channel,
+            nd.status,
+            nd.provider,
+            NULL::text AS provider_message_id,
+            nd.attempt_at AS sort_at,
+            nd.delivered_at
+          FROM public.notifications n
+          JOIN public.notification_deliveries nd ON nd.notification_id = n.id
+          WHERE n.related_id = v_order.id::text
+          UNION ALL
+          SELECT
+            'ticket_order_notification'::text,
+            ton.id,
+            coalesce(ton.payload->>'template_key', 'ticket_order'),
+            ton.channel,
+            ton.status,
+            ton.provider,
+            ton.provider_message_id,
+            coalesce(ton.sent_at, ton.created_at),
+            ton.delivered_at
+          FROM public.ticket_order_notifications ton
+          WHERE ton.order_id = v_order.id
+        ) x
       ), '[]'::jsonb);
 
       IF jsonb_array_length(v_tickets) = 0 THEN
@@ -325,25 +357,46 @@ BEGIN
       public.paystack_dispute_internal_deadline(d.created_at, d.response_due_by)
         AS internal_deadline_at,
       s.evidence_reviewed_at,
-      CASE
-        WHEN d.is_resolved THEN 'resolved'
-        WHEN EXISTS (SELECT 1 FROM public.paystack_dispute_evidence_events ev
-                     WHERE ev.dispute_id = d.id AND ev.action = 'submit_stub') THEN 'submitted_stub'
-        WHEN EXISTS (SELECT 1 FROM public.paystack_dispute_evidence_events ev
-                     WHERE ev.dispute_id = d.id AND ev.action = 'export') THEN 'exported'
-        WHEN s.evidence_reviewed_at IS NOT NULL THEN 'reviewed'
-        ELSE 'needs_review'
-      END AS evidence_state
+      s.evidence_reviewed_sha256,
+      encode(
+        sha256(convert_to(public.paystack_dispute_build_dossier(d.id)::text, 'UTF8')),
+        'hex'
+      ) AS live_dossier_sha256
     FROM public.paystack_disputes d
     LEFT JOIN public.brands b ON b.id = d.brand_id
     LEFT JOIN public.paystack_dispute_admin_state s ON s.dispute_id = d.id
-  ), flagged AS (
+  ), classified AS (
     SELECT base.*,
-      (base.evidence_reviewed_at IS NULL AND NOT base.is_resolved
-        AND now() > base.internal_deadline_at) AS internal_overdue
+      CASE
+        WHEN base.is_resolved THEN 'resolved'
+        WHEN EXISTS (
+          SELECT 1 FROM public.paystack_dispute_evidence_events ev
+           WHERE ev.dispute_id = base.id
+             AND ev.action = 'submit_stub'
+             AND ev.dossier_sha256 = base.live_dossier_sha256
+        ) THEN 'submitted_stub'
+        WHEN EXISTS (
+          SELECT 1 FROM public.paystack_dispute_evidence_events ev
+           WHERE ev.dispute_id = base.id
+             AND ev.action = 'export'
+             AND ev.dossier_sha256 = base.live_dossier_sha256
+        ) THEN 'exported'
+        WHEN base.evidence_reviewed_sha256 IS NOT NULL
+             AND base.evidence_reviewed_sha256 = base.live_dossier_sha256
+          THEN 'reviewed'
+        ELSE 'needs_review'
+      END AS evidence_state,
+      (
+        NOT base.is_resolved
+        AND (
+          base.evidence_reviewed_sha256 IS NULL
+          OR base.evidence_reviewed_sha256 IS DISTINCT FROM base.live_dossier_sha256
+        )
+        AND now() > base.internal_deadline_at
+      ) AS internal_overdue
     FROM base
   ), filtered AS (
-    SELECT * FROM flagged
+    SELECT * FROM classified
     WHERE (p_search IS NULL
            OR paystack_dispute_id ILIKE '%' || p_search || '%'
            OR transaction_reference ILIKE '%' || p_search || '%')
@@ -387,7 +440,14 @@ BEGIN
     'brand', (SELECT jsonb_build_object('id', b.id, 'name', b.name, 'slug', b.slug)
               FROM public.brands b WHERE b.id = d.brand_id),
     'internal_deadline_at', v_deadline,
-    'internal_overdue', (s.evidence_reviewed_at IS NULL AND NOT d.is_resolved AND now() > v_deadline),
+    'internal_overdue', (
+      NOT d.is_resolved
+      AND now() > v_deadline
+      AND (
+        s.evidence_reviewed_sha256 IS NULL
+        OR s.evidence_reviewed_sha256 IS DISTINCT FROM v_sha
+      )
+    ),
     'admin_state', jsonb_build_object(
       'internal_note', s.internal_note,
       'evidence_reviewed_at', s.evidence_reviewed_at,
@@ -411,10 +471,14 @@ END;
 $fn$;
 
 -- ── §7. admin_review_paystack_dispute_evidence — the human review gate ────────
+-- Approval is bound to the dossier the operator displayed: the client must pass
+-- the sha256 it showed; a mismatch means reload and re-read before approving.
+DROP FUNCTION IF EXISTS public.admin_review_paystack_dispute_evidence(uuid, text, text);
 CREATE OR REPLACE FUNCTION public.admin_review_paystack_dispute_evidence(
   p_dispute_id uuid,
   p_note text,
-  p_reason text
+  p_reason text,
+  p_expected_dossier_sha256 text
 ) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
@@ -427,6 +491,10 @@ DECLARE
 BEGIN
   IF NOT public.is_admin_user() THEN RAISE EXCEPTION 'not_authorized'; END IF;
   IF p_reason IS NULL OR btrim(p_reason) = '' THEN RAISE EXCEPTION 'reason_required'; END IF;
+  IF p_expected_dossier_sha256 IS NULL
+     OR p_expected_dossier_sha256 !~ '^[0-9a-f]{64}$' THEN
+    RAISE EXCEPTION 'expected_dossier_sha_required';
+  END IF;
 
   SELECT * INTO d FROM public.paystack_disputes WHERE id = p_dispute_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'dispute_not_found'; END IF;
@@ -434,6 +502,9 @@ BEGIN
 
   v_dossier := public.paystack_dispute_build_dossier(p_dispute_id);
   v_sha := encode(sha256(convert_to(v_dossier::text, 'UTF8')), 'hex');
+  IF v_sha IS DISTINCT FROM p_expected_dossier_sha256 THEN
+    RAISE EXCEPTION 'dossier_sha_mismatch';
+  END IF;
   SELECT email INTO v_email FROM auth.users WHERE id = auth.uid();
 
   INSERT INTO public.paystack_dispute_admin_state AS s (
@@ -457,7 +528,11 @@ BEGIN
 
   PERFORM public.admin_write_audit(
     'paystack_dispute.evidence_review', 'paystack_dispute', p_dispute_id::text, p_reason,
-    jsonb_build_object('dossier_sha256', v_sha, 'evidence_event_id', v_event_id)
+    jsonb_build_object(
+      'dossier_sha256', v_sha,
+      'expected_dossier_sha256', p_expected_dossier_sha256,
+      'evidence_event_id', v_event_id
+    )
   );
 
   RETURN jsonb_build_object(
@@ -496,15 +571,31 @@ BEGIN
     RAISE EXCEPTION 'past_provider_deadline';
   END IF;
 
-  SELECT * INTO s FROM public.paystack_dispute_admin_state WHERE dispute_id = p_dispute_id;
-  IF NOT FOUND OR s.evidence_reviewed_at IS NULL THEN
-    RAISE EXCEPTION 'review_required';
-  END IF;
+  -- Resolved disputes: export the last immutable reviewed/exported snapshot so
+  -- record-keeping survives outcome webhooks that change the live dossier hash.
+  -- New submit_stub still requires a live-matching review while open.
+  IF p_action = 'export' AND d.is_resolved THEN
+    SELECT ev.dossier, ev.dossier_sha256
+      INTO v_dossier, v_sha
+      FROM public.paystack_dispute_evidence_events ev
+     WHERE ev.dispute_id = p_dispute_id
+       AND ev.action IN ('review_approve', 'export')
+     ORDER BY ev.created_at DESC
+     LIMIT 1;
+    IF v_dossier IS NULL THEN
+      RAISE EXCEPTION 'review_required';
+    END IF;
+  ELSE
+    SELECT * INTO s FROM public.paystack_dispute_admin_state WHERE dispute_id = p_dispute_id;
+    IF NOT FOUND OR s.evidence_reviewed_at IS NULL THEN
+      RAISE EXCEPTION 'review_required';
+    END IF;
 
-  v_dossier := public.paystack_dispute_build_dossier(p_dispute_id);
-  v_sha := encode(sha256(convert_to(v_dossier::text, 'UTF8')), 'hex');
-  IF v_sha IS DISTINCT FROM s.evidence_reviewed_sha256 THEN
-    RAISE EXCEPTION 'dossier_changed_since_review';
+    v_dossier := public.paystack_dispute_build_dossier(p_dispute_id);
+    v_sha := encode(sha256(convert_to(v_dossier::text, 'UTF8')), 'hex');
+    IF v_sha IS DISTINCT FROM s.evidence_reviewed_sha256 THEN
+      RAISE EXCEPTION 'dossier_changed_since_review';
+    END IF;
   END IF;
 
   v_provider := CASE WHEN p_action = 'submit_stub' THEN 'not_sent_stub' ELSE 'not_applicable' END;
@@ -544,9 +635,9 @@ GRANT EXECUTE ON FUNCTION public.admin_list_paystack_disputes(text, text, int, i
   TO authenticated;
 REVOKE EXECUTE ON FUNCTION public.admin_get_paystack_dispute(uuid) FROM anon, PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_get_paystack_dispute(uuid) TO authenticated;
-REVOKE EXECUTE ON FUNCTION public.admin_review_paystack_dispute_evidence(uuid, text, text)
+REVOKE EXECUTE ON FUNCTION public.admin_review_paystack_dispute_evidence(uuid, text, text, text)
   FROM anon, PUBLIC;
-GRANT EXECUTE ON FUNCTION public.admin_review_paystack_dispute_evidence(uuid, text, text)
+GRANT EXECUTE ON FUNCTION public.admin_review_paystack_dispute_evidence(uuid, text, text, text)
   TO authenticated;
 REVOKE EXECUTE ON FUNCTION public.admin_record_paystack_dispute_evidence_action(uuid, text, text)
   FROM anon, PUBLIC;
@@ -559,7 +650,7 @@ DECLARE
   v_admin_sigs text[] := ARRAY[
     'public.admin_list_paystack_disputes(text,text,integer,integer)',
     'public.admin_get_paystack_dispute(uuid)',
-    'public.admin_review_paystack_dispute_evidence(uuid,text,text)',
+    'public.admin_review_paystack_dispute_evidence(uuid,text,text,text)',
     'public.admin_record_paystack_dispute_evidence_action(uuid,text,text)'
   ];
   v_internal_sigs text[] := ARRAY[

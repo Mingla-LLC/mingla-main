@@ -57,14 +57,21 @@ export async function annotateDispute({ dispute_id, note, mark_reviewed, reason 
 // ── #3645 WS5 — Paystack dispute evidence (DB-only audited RPCs) ──────────────
 
 /**
- * Human review gate: approves the CURRENT auto-assembled dossier (the server
- * recomputes + hashes it; the client never supplies dossier content).
+ * Human review gate: approves the CURRENT auto-assembled dossier. The client
+ * must pass the dossier_sha256 it displayed; the server recomputes and rejects
+ * a mismatch so approval cannot bind to an unseen replacement snapshot.
  */
-export async function reviewPaystackDisputeEvidence({ dispute_id, note, reason }) {
+export async function reviewPaystackDisputeEvidence({
+  dispute_id,
+  note,
+  reason,
+  expected_dossier_sha256,
+}) {
   return callAdminWriteRpc("admin_review_paystack_dispute_evidence", {
     p_dispute_id: dispute_id,
     p_note: note ?? null,
     p_reason: reason,
+    p_expected_dossier_sha256: expected_dossier_sha256,
   });
 }
 

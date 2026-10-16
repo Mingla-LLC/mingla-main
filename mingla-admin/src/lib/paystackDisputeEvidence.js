@@ -30,14 +30,18 @@ export function deadlineCountdown(deadline, now = Date.now()) {
   return { overdue: false, label: `${hours}h ${mins % 60}m` };
 }
 
-/** Review/export/submit are only offered while the dispute is still open. */
+/**
+ * Review/export/submit gating.
+ * Resolved disputes may still export the last immutable reviewed/exported
+ * snapshot for the record; live-hash review is only required while open.
+ */
 export function canActOnEvidence(dispute, adminState) {
   const resolved = !!dispute?.is_resolved;
   const reviewed = !!adminState?.evidence_reviewed_at;
   const current = !!adminState?.review_current;
   return {
     canReview: !resolved,
-    canExport: reviewed && current,
+    canExport: resolved || (reviewed && current),
     canSubmit: !resolved && reviewed && current,
   };
 }
@@ -65,5 +69,7 @@ export function evidenceErrorMessage(err) {
   if (msg.includes("review_required")) return "Review the evidence dossier first.";
   if (msg.includes("dossier_changed_since_review"))
     return "The dossier changed since it was reviewed. Review it again.";
+  if (msg.includes("dossier_sha_mismatch") || msg.includes("expected_dossier_sha_required"))
+    return "The dossier changed while you were reading it. Reload and review again.";
   return msg || "Something went wrong. Please try again.";
 }
