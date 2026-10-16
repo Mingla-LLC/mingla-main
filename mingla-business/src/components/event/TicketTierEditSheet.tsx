@@ -1474,16 +1474,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             )}
           </View>
 
-          {/* ───── Section: Transfer ───── */}
-          <Text style={styles.sectionHeader}>Transfer</Text>
-
-          <ToggleRow
-            label="Allow transfers"
-            sub="Buyers can transfer this ticket to someone else."
-            value={allowTransfers}
-            onChange={setAllowTransfers}
-            accessibilityLabel="Allow transfers"
-          />
+          {/* #2879 Ilashe P0 — transfer UI removed until buyer/admin transfer ships.
+              allowTransfers remains in save payload from initial draft for P1. */}
 
           {/* Action dock */}
           <GlassCard

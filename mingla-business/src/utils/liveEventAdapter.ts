@@ -236,7 +236,8 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   tickets: "Tickets",
   visibility: "Visibility",
   requireApproval: "Require approval",
-  allowTransfers: "Allow transfers",
+  // #2879 — kept for diff keys only; UI no longer exposes transfer claims.
+  allowTransfers: "Transfer setting",
   hideRemainingCount: "Hide remaining count",
   passwordProtected: "Password protected",
   themeOverrides: "Public theme",

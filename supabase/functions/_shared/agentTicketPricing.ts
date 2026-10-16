@@ -232,9 +232,8 @@ export function applyTierPatch(
       : typeof args.max_purchase_qty === "number"
       ? args.max_purchase_qty
       : current?.maxPurchaseQty ?? null,
-    allowTransfers: typeof args.allow_transfers === "boolean"
-      ? args.allow_transfers
-      : current?.allowTransfers ?? true,
+    // #2879 Ilashe P0 — ignore client allow_transfers; preserve existing or default true in DB only.
+    allowTransfers: current?.allowTransfers ?? true,
     description: args.description === null
       ? null
       : args.description === undefined
