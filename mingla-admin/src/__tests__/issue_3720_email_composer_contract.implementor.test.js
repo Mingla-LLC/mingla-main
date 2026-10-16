@@ -36,7 +36,9 @@ describe("#3720 exact Admin email composer contract", () => {
     for (const token of ["first_name", "display_name", "username", "country", "language", "joined_date"]) {
       assert.match(COMPOSER, new RegExp(token));
     }
-    assert.match(COMPOSER, /createLink/);
+    assert.match(COMPOSER, /Add hyperlink/);
+    assert.match(COMPOSER, /mailto:/);
+    assert.match(COMPOSER, /search_recipients/);
     assert.match(COMPOSER, /admin-email-assets/);
     assert.match(COMPOSER, /image\/gif/);
     assert.match(COMPOSER, /Add divider/);

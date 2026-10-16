@@ -85,6 +85,17 @@ function campaignAudienceLabel(log) {
   return log?.recipient_type === "bulk" ? segmentLabel(log.segment_filter) : (log?.recipient_email || "One person");
 }
 
+function campaignStatusLabel(status) {
+  if (status === "sent" || status === "completed") return "Completed";
+  if (status === "partial") return "Partially completed";
+  if (status === "sending") return "Sending";
+  if (status === "scheduled") return "Scheduled";
+  if (status === "queued" || status === "pending") return "Queued";
+  if (status === "cancelled") return "Cancelled";
+  if (status === "failed") return "Failed";
+  return String(status || "Unknown");
+}
+
 async function getAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) throw new SessionExpiredError();
@@ -804,6 +815,7 @@ function LegacyComposeSubView({ providerConfigured, providerChecked, onSessionEx
 // ─── History ────────────────────────────────────────────────────────────────
 
 function HistorySubView() {
+  const { addToast } = useToast();
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -816,6 +828,7 @@ function HistorySubView() {
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [detailLog, setDetailLog] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
   const [stats, setStats] = useState({ totalSent: 0, todayCount: 0, failureRate: 0 });
 
   const fetchHistory = useCallback(async () => {
@@ -876,12 +889,12 @@ function HistorySubView() {
     const exportColumns = [
       { key: "subject", label: "Subject" },
       { key: "recipient_type", label: "Type" },
-      { key: "sent_count", label: "Sent" },
+      { key: "sent_count", label: "Provider Accepted" },
       { key: "failed_count", label: "Failed" },
       { key: "recipient_count", label: "Total Recipients" },
       { key: "status", label: "Status" },
       { key: "template_used", label: "Template" },
-      { key: "created_at", label: "Sent At" },
+      { key: "created_at", label: "Created At" },
     ];
     exportCsv(exportColumns, history, "email_history");
   }
@@ -904,15 +917,15 @@ function HistorySubView() {
     },
     {
       key: "sent_count",
-      label: "Recipients",
-      render: (val, row) => `${val || 0} / ${row.recipient_count || 0}`,
+      label: "Accepted",
+      render: (val, row) => `${val || 0} accepted · ${row.matched_count || row.recipient_count || 0} matched`,
     },
     {
       key: "status",
       label: "Status",
       render: (val) => {
-        const v = val === "sent" ? "success" : ["partial", "scheduled", "queued", "sending"].includes(val) ? "warning" : val === "failed" ? "error" : "default";
-        return <Badge variant={v} dot>{String(val || "unknown").replace("_", " ")}</Badge>;
+        const v = ["sent", "completed"].includes(val) ? "success" : ["partial", "scheduled", "queued", "sending", "pending"].includes(val) ? "warning" : val === "failed" ? "error" : "default";
+        return <Badge variant={v} dot>{campaignStatusLabel(val)}</Badge>;
       },
     },
     {
@@ -937,12 +950,27 @@ function HistorySubView() {
     },
   ];
 
+  async function cancelCampaign() {
+    if (!detailLog) return;
+    setCancelling(true);
+    try {
+      await callEdgeFunction({ action: "cancel_campaign", campaignId: detailLog.id });
+      addToast({ variant: "success", title: "Scheduled email cancelled" });
+      setDetailLog(null);
+      await fetchHistory();
+    } catch (error) {
+      addToast({ variant: "error", title: "Could not cancel campaign", description: error.message });
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard icon={Send} label="Total Emails Sent" value={stats.totalSent.toLocaleString()} />
-        <StatCard icon={Clock} label="Emails Today" value={stats.todayCount} />
+        <StatCard icon={Send} label="Provider accepted" value={stats.totalSent.toLocaleString()} />
+        <StatCard icon={Clock} label="Accepted today" value={stats.todayCount} />
         <StatCard
           icon={stats.failureRate > 5 ? AlertTriangle : CheckCircle}
           label="Failure Rate"
@@ -963,7 +991,7 @@ function HistorySubView() {
         rows={history}
         loading={loading}
         emptyIcon={Mail}
-        emptyMessage="No emails sent yet"
+        emptyMessage="No email campaigns yet"
         pagination={{
           page,
           pageSize: PAGE_SIZE,
@@ -998,14 +1026,16 @@ function HistorySubView() {
                   <div>
                     <p className="text-[var(--color-text-tertiary)]">Recipients</p>
                     <p className="text-[var(--color-text-primary)]">
-                      {detailLog.recipient_count} targeted, {detailLog.sent_count} sent, {detailLog.failed_count} failed
-                      {Number(detailLog.skipped_count) > 0 && `, ${detailLog.skipped_count} opted out`}
+                      {detailLog.matched_count || detailLog.recipient_count} matched, {detailLog.sent_count} provider accepted, {detailLog.failed_count} failed
+                      {Number(detailLog.skipped_count) > 0 && `, ${detailLog.skipped_count} unsubscribed`}
+                      {Number(detailLog.no_contact_count) > 0 && `, ${detailLog.no_contact_count} no valid email`}
+                      {Number(detailLog.duplicate_count) > 0 && `, ${detailLog.duplicate_count} duplicate`}
                     </p>
                   </div>
                   <div>
                     <p className="text-[var(--color-text-tertiary)]">Status</p>
-                    <Badge variant={detailLog.status === "sent" ? "success" : detailLog.status === "partial" ? "warning" : "error"} dot>
-                      {detailLog.status}
+                    <Badge variant={["sent", "completed"].includes(detailLog.status) ? "success" : ["partial", "scheduled", "queued", "sending", "pending"].includes(detailLog.status) ? "warning" : "error"} dot>
+                      {campaignStatusLabel(detailLog.status)}
                     </Badge>
                   </div>
                   <div>
@@ -1038,6 +1068,9 @@ function HistorySubView() {
               </div>
             </ModalBody>
             <ModalFooter>
+              {["scheduled", "queued"].includes(detailLog.status) && (
+                <Button variant="danger" onClick={cancelCampaign} loading={cancelling}>Cancel campaign</Button>
+              )}
               <Button variant="ghost" onClick={() => setDetailLog(null)}>Close</Button>
             </ModalFooter>
           </>

@@ -15,7 +15,7 @@ export type PersonalizationToken = typeof PERSONALIZATION_TOKENS[number];
 
 export interface RecipientProfile {
   id?: string | null;
-  email: string;
+  email?: string | null;
   first_name?: string | null;
   display_name?: string | null;
   username?: string | null;
@@ -25,9 +25,65 @@ export interface RecipientProfile {
   segment?: string | null;
 }
 
+export function normalizedValidEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const email = value.toLowerCase().trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
+/**
+ * #3720 — create one deterministic recipient snapshot from the complete
+ * paginated audience. Invalid addresses, global suppressions, and duplicate
+ * normalized addresses remain visible in review counts without entering the
+ * provider delivery queue.
+ */
+export function snapshotAudience(
+  profiles: RecipientProfile[],
+  suppressed: Set<string>,
+) {
+  const seen = new Set<string>();
+  let noContact = 0;
+  let duplicate = 0;
+  let skippedOptOut = 0;
+  const deliveries: Array<{
+    profile_id: string | null;
+    recipient_email: string;
+    personalization: RecipientProfile;
+    status: "pending" | "skipped_opt_out";
+  }> = [];
+  for (const profile of profiles) {
+    const email = normalizedValidEmail(profile.email);
+    if (!email) {
+      noContact += 1;
+      continue;
+    }
+    if (seen.has(email)) {
+      duplicate += 1;
+      continue;
+    }
+    seen.add(email);
+    const isSuppressed = suppressed.has(email);
+    if (isSuppressed) skippedOptOut += 1;
+    deliveries.push({
+      profile_id: profile.id ?? null,
+      recipient_email: email,
+      personalization: profile,
+      status: isSuppressed ? "skipped_opt_out" : "pending",
+    });
+  }
+  return {
+    deliveries,
+    matched: profiles.length,
+    willReceive: deliveries.length - skippedOptOut,
+    skippedOptOut,
+    noContact,
+    duplicate,
+  };
+}
+
 export interface AudienceDefinition {
   mode: "everyone" | "segment" | "person";
-  email?: string;
+  profileId?: string;
   filters?: {
     userType?: "all" | "host" | "explorer";
     country?: string;
@@ -44,17 +100,48 @@ export interface AudienceDefinition {
 export function fallbackPersonalization(
   profile: RecipientProfile,
 ): Record<PersonalizationToken, string> {
-  const displayName = profile.display_name?.trim() || "Mingla member";
-  const firstName = profile.first_name?.trim() || displayName.split(/\s+/)[0] ||
-    "there";
+  const rawFirstName = profile.first_name?.trim() ?? "";
+  const rawDisplayName = profile.display_name?.trim() ?? "";
+  const rawUsername = (profile.username?.trim() ?? "").replace(/^@+/, "");
+  const firstName = rawFirstName || rawDisplayName.split(/\s+/)[0] ||
+    rawUsername || "there";
+  const displayName = rawDisplayName || rawFirstName ||
+    (rawUsername ? `@${rawUsername}` : "") || "Mingla member";
+  const username = rawUsername
+    ? `@${rawUsername}`
+    : rawDisplayName || rawFirstName || "Mingla member";
+  const countryCode = profile.country?.trim().toUpperCase() ?? "";
+  const languageCode = profile.preferred_language?.trim().toLowerCase() ?? "";
+  let country = "your area";
+  let language = "English";
+  try {
+    if (countryCode) {
+      country = new Intl.DisplayNames(["en"], { type: "region" }).of(
+        countryCode,
+      ) || country;
+    }
+    if (languageCode) {
+      language = new Intl.DisplayNames(["en"], { type: "language" }).of(
+        languageCode,
+      ) || language;
+    }
+  } catch {
+    country = countryCode || country;
+    language = languageCode || language;
+  }
   return {
     first_name: firstName,
     display_name: displayName,
-    username: profile.username?.trim() || "member",
-    country: profile.country?.trim() || "your area",
-    language: profile.preferred_language?.trim() || "your preferred language",
+    username,
+    country,
+    language,
     joined_date: profile.created_at
-      ? new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" })
+      ? new Intl.DateTimeFormat("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      })
         .format(new Date(profile.created_at))
       : "recently",
   };
@@ -102,6 +189,12 @@ export function personalizeDocument(
 }
 
 export function validateDocument(input: unknown): EmailContentBlock[] {
+  if (
+    input && typeof input === "object" && !Array.isArray(input) &&
+    (input as Record<string, unknown>).version === 1
+  ) {
+    input = (input as Record<string, unknown>).blocks;
+  }
   if (!Array.isArray(input) || input.length === 0 || input.length > 100) {
     throw new Error("email_document_invalid");
   }
@@ -163,6 +256,34 @@ export function validateDocument(input: unknown): EmailContentBlock[] {
   });
 }
 
+export function versionedDocument(document: EmailContentBlock[]) {
+  return { version: 1 as const, blocks: document };
+}
+
+export function assertSupportedPersonalization(
+  subject: string,
+  document: EmailContentBlock[],
+) {
+  const allowed = new Set<string>([...PERSONALIZATION_TOKENS, "name"]);
+  const values = [
+    subject,
+    ...document.flatMap((block) =>
+      block.type === "rich_text"
+        ? [block.html]
+        : block.type === "image"
+        ? [block.alt]
+        : []
+    ),
+  ];
+  for (const value of values) {
+    for (const match of value.matchAll(/\{([^{}]+)\}/g)) {
+      if (!allowed.has(match[1])) {
+        throw new Error(`personalization_token_unsupported:${match[1]}`);
+      }
+    }
+  }
+}
+
 export function legacyBodyDocument(body: string): EmailContentBlock[] {
   const paragraphs = body.split(/\n{2,}/).map((paragraph) => paragraph.trim())
     .filter(Boolean);
@@ -192,17 +313,20 @@ export function documentPlainText(document: EmailContentBlock[]): string {
 
 export function normalizeAudience(input: unknown): AudienceDefinition {
   if (!input || typeof input !== "object") {
-    return { mode: "everyone", filters: {} };
+    throw new Error("audience_mode_invalid");
   }
   const raw = input as Record<string, unknown>;
   if (raw.mode === "person") {
-    const email = typeof raw.email === "string"
-      ? raw.email.toLowerCase().trim()
+    const profileId = typeof raw.profileId === "string"
+      ? raw.profileId.trim()
       : "";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new Error("recipient_email_invalid");
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        .test(profileId)
+    ) {
+      throw new Error("recipient_profile_invalid");
     }
-    return { mode: "person", email };
+    return { mode: "person", profileId };
   }
   if (raw.mode === "everyone") return { mode: "everyone", filters: {} };
   if (raw.mode !== "segment") throw new Error("audience_mode_invalid");

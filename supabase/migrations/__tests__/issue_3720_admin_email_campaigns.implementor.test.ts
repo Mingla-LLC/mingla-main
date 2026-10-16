@@ -25,6 +25,10 @@ Deno.test("#3720 campaign migration provides durable scheduling and recipient re
     "issue_3720_admin_email_campaign_dependencies_missing",
   );
   assertStringIncludes(sql, "'pending', 'draft', 'scheduled'");
+  assertStringIncludes(sql, "'accepted'");
+  assertStringIncludes(sql, "'completed'");
+  assertStringIncludes(sql, "no_contact_count");
+  assertStringIncludes(sql, "duplicate_count");
 });
 
 Deno.test("#3720 composer assets are public-read/admin-write with bounded safe formats", () => {
@@ -48,4 +52,6 @@ Deno.test("#3720 delivery has no product count cap and uses provider idempotency
   assertEquals(edge.includes(".limit(500)"), false);
   assertStringIncludes(edge, 'select("id", { count: "exact", head: true })');
   assertEquals(edge.includes('.select("status")'), false);
+  assertStringIncludes(edge, 'status: "accepted"');
+  assertStringIncludes(edge, 'finalStatus = failed === 0\n    ? "completed"');
 });

@@ -34,6 +34,22 @@ function safeHttpsUrl(value: string): string | null {
   }
 }
 
+function safeRichTextHref(value: string): string | null {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === "https:") return parsed.toString();
+    if (
+      parsed.protocol === "mailto:" &&
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parsed.pathname)
+    ) {
+      return parsed.toString();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * #3720 — the composer stores a small structured document, never arbitrary
  * email HTML. Rich-text blocks get an explicit tag/attribute allow-list here,
@@ -54,7 +70,7 @@ export function sanitizeAdminRichText(value: string): string {
       if (tag !== "a") return `<${tag}>`;
 
       const hrefMatch = raw.match(/href\s*=\s*["']([^"']+)["']/i);
-      const href = hrefMatch ? safeHttpsUrl(hrefMatch[1]) : null;
+      const href = hrefMatch ? safeRichTextHref(hrefMatch[1]) : null;
       if (!href) return "<a>";
       return `<a href="${
         escapeHtml(href)

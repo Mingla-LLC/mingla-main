@@ -11,14 +11,19 @@ import {
 } from "../_shared/email/index.ts";
 import { signUnsubscribeToken } from "../_shared/marketingTokens.ts";
 import {
+  assertSupportedPersonalization,
   type AudienceDefinition,
   documentPlainText,
+  fallbackPersonalization,
   legacyBodyDocument,
   normalizeAudience,
+  normalizedValidEmail,
   personalizeDocument,
   personalizeText,
   type RecipientProfile,
+  snapshotAudience,
   validateDocument,
+  versionedDocument,
 } from "./model.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -34,6 +39,8 @@ const ADMIN_BLAST_BRAND_ID = "00000000-0000-4000-8000-372000000002";
 const BRANDED_UNSUBSCRIBE_LINK_ORIGIN = "https://usemingla.com/unsubscribe";
 const RECIPIENT_PAGE_SIZE = 1000;
 const DELIVERY_BATCH_SIZE = 40;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type ServiceClient = SupabaseClient;
 interface CampaignRecord {
   id: string;
@@ -113,7 +120,7 @@ function legacySegmentAudience(
 
 // deno-lint-ignore no-explicit-any
 function applyAudienceFilters(query: any, audience: AudienceDefinition) {
-  if (audience.mode === "person") return query.eq("email", audience.email);
+  if (audience.mode === "person") return query.eq("id", audience.profileId);
   if (audience.mode === "everyone") {
     return query.in("segment", ["business", "explorer"]);
   }
@@ -165,18 +172,13 @@ async function loadAudienceProfiles(
       .select(
         "id,email,first_name,display_name,username,country,preferred_language,created_at,segment,has_completed_onboarding,email_verified,active,is_beta_tester",
       )
-      .not("email", "is", null)
       .order("id", { ascending: true })
       .range(offset, offset + RECIPIENT_PAGE_SIZE - 1);
     query = applyAudienceFilters(query, audience);
     const { data, error } = await query;
     if (error) throw new Error(`audience_query_failed:${error.message}`);
     const page = (data ?? []) as RecipientProfile[];
-    recipients.push(
-      ...page.filter((row) =>
-        typeof row.email === "string" && row.email.trim()
-      ),
-    );
+    recipients.push(...page);
     if (page.length < RECIPIENT_PAGE_SIZE) break;
   }
   return recipients;
@@ -292,7 +294,7 @@ async function sendViaResend(input: {
       const parsed = JSON.parse(responseBody);
       if (typeof parsed?.id === "string") id = parsed.id;
     } catch {
-      // A successful provider response without JSON still counts as delivered.
+      // A successful provider response without JSON still counts as accepted.
     }
     return { ok: true, id };
   } catch (error) {
@@ -329,6 +331,7 @@ async function createCampaign(
   ) {
     throw new Error("email_image_asset_bucket_required");
   }
+  assertSupportedPersonalization(subject, document);
   if (!documentPlainText(document).replace(/─/g, "").trim()) {
     throw new Error("email_document_empty");
   }
@@ -350,19 +353,8 @@ async function createCampaign(
 
   const recipients = await loadAudienceProfiles(supabase, audience);
   const suppressed = await loadSuppressedEmails(supabase);
-  let skippedOptOut = 0;
-  const deliveries = recipients.map((profile) => {
-    const email = profile.email.toLowerCase().trim();
-    const isSuppressed = suppressed.has(email);
-    if (isSuppressed) skippedOptOut += 1;
-    return {
-      profile_id: profile.id ?? null,
-      recipient_email: email,
-      personalization: profile,
-      status: isSuppressed ? "skipped_opt_out" : "pending",
-    };
-  });
-  if (deliveries.length - skippedOptOut < 1) {
+  const snapshot = snapshotAudience(recipients, suppressed);
+  if (snapshot.willReceive < 1) {
     throw new Error("audience_has_no_eligible_recipients");
   }
 
@@ -374,15 +366,20 @@ async function createCampaign(
     .insert({
       subject,
       body: documentPlainText(document),
-      body_document: document,
+      body_document: versionedDocument(document),
       from_name: ADMIN_SENDER.name,
       from_email: ADMIN_SENDER.address,
       recipient_type: audience.mode === "person" ? "individual" : "bulk",
-      recipient_email: audience.mode === "person" ? audience.email : null,
+      recipient_email: audience.mode === "person"
+        ? snapshot.deliveries[0]?.recipient_email ?? null
+        : null,
       segment_filter: audience.mode === "segment" ? audience.filters : null,
       audience,
-      recipient_count: deliveries.length,
-      skipped_count: skippedOptOut,
+      recipient_count: snapshot.deliveries.length,
+      matched_count: snapshot.matched,
+      skipped_count: snapshot.skippedOptOut,
+      no_contact_count: snapshot.noContact,
+      duplicate_count: snapshot.duplicate,
       status,
       scheduled_for: scheduledFor?.toISOString() ?? null,
       timezone,
@@ -396,8 +393,8 @@ async function createCampaign(
     );
   }
 
-  for (let offset = 0; offset < deliveries.length; offset += 500) {
-    const page = deliveries.slice(offset, offset + 500).map((row) => ({
+  for (let offset = 0; offset < snapshot.deliveries.length; offset += 500) {
+    const page = snapshot.deliveries.slice(offset, offset + 500).map((row) => ({
       ...row,
       campaign_id: campaign.id,
     }));
@@ -417,8 +414,11 @@ async function createCampaign(
   }
   return {
     ...campaign,
-    will_receive: deliveries.length - skippedOptOut,
-    skipped_opt_out: skippedOptOut,
+    matched: snapshot.matched,
+    will_receive: snapshot.willReceive,
+    skipped_opt_out: snapshot.skippedOptOut,
+    no_contact: snapshot.noContact,
+    duplicate: snapshot.duplicate,
   };
 }
 
@@ -438,7 +438,7 @@ async function claimCampaignById(
 ) {
   const now = new Date().toISOString();
   const { data: scheduled } = await supabase.from("admin_email_log")
-    .update({ status: "sending", processing_started_at: now })
+    .update({ status: "sending", started_at: now, processing_started_at: now })
     .eq("id", campaignId)
     .eq("status", "scheduled")
     .lte("scheduled_for", now)
@@ -446,7 +446,7 @@ async function claimCampaignById(
     .maybeSingle();
   if (scheduled) return scheduled;
   const { data: queued } = await supabase.from("admin_email_log")
-    .update({ status: "sending", processing_started_at: now })
+    .update({ status: "sending", started_at: now, processing_started_at: now })
     .eq("id", campaignId)
     .eq("status", "queued")
     .select("*")
@@ -496,9 +496,9 @@ async function processClaimedCampaign(
       });
       if (result.ok) {
         await supabase.from("admin_email_recipient_deliveries").update({
-          status: "sent",
+          status: "accepted",
           provider_message_id: result.id ?? null,
-          sent_at: new Date().toISOString(),
+          accepted_at: new Date().toISOString(),
           last_error: null,
           updated_at: new Date().toISOString(),
         }).eq("id", delivery.id);
@@ -524,8 +524,8 @@ async function processClaimedCampaign(
     if (error) throw new Error(`delivery_count_failed:${error.message}`);
     return count ?? 0;
   };
-  const [sent, failed, skipped, unfinished] = await Promise.all([
-    countStatuses(["sent"]),
+  const [accepted, failed, skipped, unfinished] = await Promise.all([
+    countStatuses(["accepted"]),
     countStatuses(["failed"]),
     countStatuses(["skipped_opt_out"]),
     countStatuses(["pending", "sending", "retrying"]),
@@ -534,24 +534,28 @@ async function processClaimedCampaign(
   if (unfinished > 0) {
     await supabase.from("admin_email_log").update({
       status: "queued",
-      sent_count: sent,
+      sent_count: accepted,
       failed_count: failed,
       skipped_count: skipped,
       processing_started_at: null,
     }).eq("id", campaign.id);
     return {
       campaign_id: campaign.id,
-      sent,
+      accepted,
       failed,
       skipped_opt_out: skipped,
       pending: unfinished,
     };
   }
 
-  const finalStatus = failed === 0 ? "sent" : sent === 0 ? "failed" : "partial";
+  const finalStatus = failed === 0
+    ? "completed"
+    : accepted === 0
+    ? "failed"
+    : "partial";
   await supabase.from("admin_email_log").update({
     status: finalStatus,
-    sent_count: sent,
+    sent_count: accepted,
     failed_count: failed,
     skipped_count: skipped,
     completed_at: new Date().toISOString(),
@@ -560,7 +564,7 @@ async function processClaimedCampaign(
   return {
     campaign_id: campaign.id,
     status: finalStatus,
-    sent,
+    accepted,
     failed,
     skipped_opt_out: skipped,
     pending: 0,
@@ -639,15 +643,76 @@ serve(async (req) => {
         mode: "everyone",
         filters: {},
       });
-      return jsonResponse({
-        countries: [
-          ...new Set(profiles.map((row) => row.country).filter(Boolean)),
-        ].sort(),
-        languages: [
-          ...new Set(
-            profiles.map((row) => row.preferred_language).filter(Boolean),
+      const countries = [
+        ...new Set(
+          profiles.map((row) => row.country?.trim().toUpperCase()).filter(
+            Boolean,
           ),
-        ].sort(),
+        ),
+      ].sort();
+      const languages = [
+        ...new Set(
+          profiles.map((row) => row.preferred_language?.trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      ].sort();
+      return jsonResponse({
+        countries: countries.map((value) => ({
+          value,
+          label: fallbackPersonalization({ email: null, country: value })
+            .country,
+        })),
+        languages: languages.map((value) => ({
+          value,
+          label: fallbackPersonalization({
+            email: null,
+            preferred_language: value,
+          }).language,
+        })),
+      });
+    }
+
+    if (action === "search_recipients") {
+      const term = typeof body.term === "string" ? body.term.trim() : "";
+      if (term.length < 2) return jsonResponse({ recipients: [] });
+      const pattern = `%${
+        term.replace(/[\\%_]/g, "\\$&").replace(/[(),]/g, "")
+      }%`;
+      const { data: matches, error: searchError } = await supabase
+        .from("profiles_with_segment")
+        .select(
+          "id,email,first_name,display_name,username,country,preferred_language,created_at,segment",
+        )
+        .in("segment", ["business", "explorer"])
+        .or(
+          `email.ilike.${pattern},display_name.ilike.${pattern},username.ilike.${pattern}`,
+        )
+        .order("display_name", { ascending: true, nullsFirst: false })
+        .limit(12);
+      if (searchError) {
+        throw new Error(`recipient_search_failed:${searchError.message}`);
+      }
+      const suppressed = await loadSuppressedEmails(supabase);
+      return jsonResponse({
+        recipients: (matches ?? []).map((profile: RecipientProfile) => {
+          const email = normalizedValidEmail(profile.email);
+          const values = fallbackPersonalization(profile);
+          const exclusion = !email
+            ? "No valid email"
+            : suppressed.has(email)
+            ? "Unsubscribed"
+            : null;
+          return {
+            profile_id: profile.id,
+            display_name: values.display_name,
+            username: values.username,
+            email,
+            account_type: profile.segment === "business" ? "Host" : "Explorer",
+            country: values.country,
+            eligible: exclusion === null,
+            exclusion,
+          };
+        }),
       });
     }
 
@@ -662,13 +727,14 @@ serve(async (req) => {
         : normalizeAudience(body.audience);
       const recipients = await loadAudienceProfiles(supabase, audience);
       const suppressed = await loadSuppressedEmails(supabase);
-      const skippedOptOut = recipients.filter((row) =>
-        suppressed.has(row.email.toLowerCase().trim())
-      ).length;
+      const snapshot = snapshotAudience(recipients, suppressed);
       return jsonResponse({
-        total: recipients.length,
-        opted_out: skippedOptOut,
-        will_receive: recipients.length - skippedOptOut,
+        matched: snapshot.matched,
+        total: snapshot.matched,
+        opted_out: snapshot.skippedOptOut,
+        no_contact: snapshot.noContact,
+        duplicate: snapshot.duplicate,
+        will_receive: snapshot.willReceive,
       });
     }
 
@@ -680,6 +746,7 @@ serve(async (req) => {
         body.document ??
           legacyBodyDocument(String(body.body ?? "Preview content")),
       );
+      assertSupportedPersonalization(subject, document);
       const sample = {
         email: "member@example.com",
         first_name: "Maya",
@@ -694,7 +761,10 @@ serve(async (req) => {
       } as RecipientProfile;
       const rendered = renderTransactionalEmail({
         variant: "admin_compose",
-        recipient: { name: sample.first_name ?? null, email: sample.email },
+        recipient: {
+          name: sample.first_name ?? null,
+          email: sample.email ?? "member@example.com",
+        },
         body: {
           variant: "admin_compose",
           title: personalizeText(subject, sample),
@@ -716,6 +786,28 @@ serve(async (req) => {
       }, 201);
     }
 
+    if (action === "cancel_campaign") {
+      const campaignId = typeof body.campaignId === "string"
+        ? body.campaignId.trim()
+        : "";
+      if (!UUID_PATTERN.test(campaignId)) {
+        throw new Error("campaign_id_invalid");
+      }
+      const { data: campaign, error: cancelError } = await supabase
+        .from("admin_email_log")
+        .update({ status: "cancelled", completed_at: new Date().toISOString() })
+        .eq("id", campaignId)
+        .in("status", ["scheduled", "queued"])
+        .is("processing_started_at", null)
+        .select("id,status")
+        .maybeSingle();
+      if (cancelError) {
+        throw new Error(`campaign_cancel_failed:${cancelError.message}`);
+      }
+      if (!campaign) throw new Error("campaign_not_cancellable");
+      return jsonResponse({ campaign });
+    }
+
     // Compatibility for the previous Admin client: both old actions now enter
     // the same unlimited, durable campaign lane and never bypass suppressions.
     if (action === "send" || action === "send_bulk") {
@@ -724,9 +816,23 @@ serve(async (req) => {
         const unsupported = assertSupportedSegment(segment);
         if (unsupported) return jsonResponse({ error: unsupported }, 400);
       }
-      const audience = action === "send"
-        ? { mode: "person", email: String(body.to ?? "") }
-        : legacySegmentAudience(segment);
+      let audience: AudienceDefinition;
+      if (action === "send") {
+        const email = String(body.to ?? "").toLowerCase().trim();
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles_with_segment")
+          .select("id")
+          .ilike("email", email)
+          .in("segment", ["business", "explorer"])
+          .limit(1)
+          .maybeSingle();
+        if (profileError || !profile) {
+          throw new Error("recipient_profile_invalid");
+        }
+        audience = { mode: "person", profileId: profile.id };
+      } else {
+        audience = legacySegmentAudience(segment);
+      }
       const campaign = await createCampaign(supabase, user.id, {
         ...body,
         audience,
@@ -744,7 +850,7 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const status =
-      /invalid|required|unsupported|email_block|email_document|recipient_email|no_eligible/
+      /invalid|required|unsupported|not_cancellable|email_block|email_document|recipient_email|no_eligible/
           .test(message)
         ? 400
         : 500;

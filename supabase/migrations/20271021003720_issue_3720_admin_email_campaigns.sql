@@ -35,12 +35,15 @@ ALTER TABLE public.admin_email_log
   ADD COLUMN IF NOT EXISTS completed_at timestamptz,
   ADD COLUMN IF NOT EXISTS processing_started_at timestamptz,
   ADD COLUMN IF NOT EXISTS last_error text,
-  ADD COLUMN IF NOT EXISTS skipped_count integer NOT NULL DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS skipped_count integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS matched_count integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS no_contact_count integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS duplicate_count integer NOT NULL DEFAULT 0;
 
 ALTER TABLE public.admin_email_log
   ADD CONSTRAINT admin_email_log_status_check
   CHECK (status IN (
-    'pending', 'draft', 'scheduled', 'queued', 'sending', 'sent', 'partial', 'failed', 'cancelled'
+    'pending', 'draft', 'scheduled', 'queued', 'sending', 'sent', 'completed', 'partial', 'failed', 'cancelled'
   ));
 
 COMMENT ON COLUMN public.admin_email_log.body_document IS
@@ -49,6 +52,8 @@ COMMENT ON COLUMN public.admin_email_log.audience IS
   '#3720 audience mode and AND-combined filter snapshot shown in campaign history.';
 COMMENT ON COLUMN public.admin_email_log.scheduled_for IS
   '#3720 UTC instant selected by the admin; null means send as soon as queued.';
+COMMENT ON COLUMN public.admin_email_log.sent_count IS
+  '#3720 legacy column name: for durable campaigns this counts provider-accepted messages, never proven delivery.';
 
 CREATE TABLE IF NOT EXISTS public.admin_email_recipient_deliveries (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -57,13 +62,13 @@ CREATE TABLE IF NOT EXISTS public.admin_email_recipient_deliveries (
   recipient_email text NOT NULL,
   personalization jsonb NOT NULL DEFAULT '{}'::jsonb,
   status text NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'sending', 'retrying', 'sent', 'failed', 'skipped_opt_out')),
+    CHECK (status IN ('pending', 'sending', 'retrying', 'accepted', 'failed', 'skipped_opt_out')),
   attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0 AND attempts <= 3),
   next_attempt_at timestamptz NOT NULL DEFAULT now(),
   last_attempt_at timestamptz,
   provider_message_id text,
   last_error text,
-  sent_at timestamptz,
+  accepted_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (campaign_id, recipient_email)
