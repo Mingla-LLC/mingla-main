@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #3645] paystack_unverified retired; Paystack arm now Verify-backed (paystack_verify_unavailable).
 /**
  * issue #2947 slice 1 — the sweep's batch SELECT must only contain rows a run
  * can act on. IMPLEMENTOR happy path + the two obligations that ride with it.

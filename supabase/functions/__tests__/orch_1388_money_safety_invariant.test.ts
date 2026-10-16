@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #3645] paystack_unverified retired; Paystack arm now Verify-backed (paystack_verify_unavailable).
 // ORCH-1388 [checkout-session honest expiry] — TESTER adversarial suite.
 //
 // DIFFERENT ANGLE than the implementor's two suites:

@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #3645] paystack_unverified retired; Paystack arm now Verify-backed (paystack_verify_unavailable).
 // ORCH-1388 [checkout-session honest expiry] — source-contract tests over the
 // reconcile-stuck-checkouts sweep (SPEC §9 implementor side, R-1..R-8), in the
 // established `Deno.readTextFile` needle convention of

@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #3645] paystack_unverified retired; Paystack arm now Verify-backed (paystack_verify_unavailable).
 // ORCH-1388 [checkout-session honest expiry] — implementor unit matrix over the
 // PURE decision partition in reconcile-stuck-checkouts/classify.ts
 // (SPEC_ORCH-1388_CHECKOUT_SESSION_HONEST_EXPIRY.md §4.2b + §7 T-1..T-11).

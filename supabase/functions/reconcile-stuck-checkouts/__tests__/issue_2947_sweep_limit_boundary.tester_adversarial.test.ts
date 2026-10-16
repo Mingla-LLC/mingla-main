@@ -1,3 +1,4 @@
+// [TEST-MOD-APPROVED #3645] paystack_unverified retired; Paystack arm now Verify-backed (paystack_verify_unavailable).
 /**
  * issue #2947 slice 1 — TESTER ADVERSARIAL suite. Independent of, and
  * deliberately not overlapping with, `issue_2947_sweep_expiry_filter.test.ts`.
