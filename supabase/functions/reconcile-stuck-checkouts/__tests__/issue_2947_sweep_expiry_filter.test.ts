@@ -345,6 +345,9 @@ function harness(
         ReconcileStuckCheckoutsDeps["stripeClient"]
       >,
     qrTokenPepper: () => "issue-2947-regression-pepper-value-0123456789",
+    // #3645 — default offline verify: classify sees empty truth →
+    // paystack_verify_unavailable (was unconditional paystack_verify_unavailable).
+    paystackVerifier: () => Promise.reject(new Error("paystack offline in test")),
   };
 
   return { rows, rec, deps };
@@ -566,15 +569,14 @@ Deno.test("#2947 T-5 - the live pre-queue population behaves exactly as it did a
   // created 2026-08-17 23:39 .. 2026-08-19 03:59 UTC, oldest expiry
   // 2026-08-17 23:54 — i.e. THIRTEEN TO FIFTEEN DAYS past expiry, so
   // `expires_at < now()` is true for every one of them and the shipped
-  // predicate ADMITS them. Ref-class PAYSTACK ⇒ classify() returns
-  // `{action:"skip", reason:"paystack_unverified"}` unconditionally, without
-  // ever consulting the cutoff (classify.ts:170-174), so every one is skipped.
+  // predicate ADMITS them. Ref-class PAYSTACK with unavailable verify ⇒
+  // `{action:"skip", reason:"paystack_verify_unavailable"}` (fail-safe).
   //
   // The summary below is not a guess: all 24 retained sweep responses in
   // `net._http_response` (2026-09-01 09:00:03 .. 14:45:03 UTC, spanning the
   // v493 deploy at 14:17:53) carry ONE distinct body — `{"reconciled":0,
   // "expired":0,"skipped":6,"errors":0}` with six `mingla_<sessionId>` piIds,
-  // `csId: null`, `skip: "paystack_unverified"`. This case asserts that body's
+  // `csId: null`, `skip: "paystack_verify_unavailable"`. This case asserts that body's
   // shape exactly.
   //
   // WHY THIS CASE STILL EARNS ITS PLACE, and why the SPEC makes it the standing
@@ -626,7 +628,7 @@ Deno.test("#2947 T-5 - the live pre-queue population behaves exactly as it did a
       sessionId: row.id,
       piId: row.stripe_payment_intent_id,
       csId: null,
-      skip: "paystack_unverified",
+      skip: "paystack_verify_unavailable",
     })),
   });
   // The rows themselves are left exactly where they were — in-flight, unexpired.

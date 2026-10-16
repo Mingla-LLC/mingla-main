@@ -351,6 +351,8 @@ function harness(
           ReconcileStuckCheckoutsDeps["stripeClient"]
         >,
       qrTokenPepper: () => "issue-2947-tester-adversarial-pepper-0123456789",
+      paystackVerifier: () =>
+        Promise.reject(new Error("paystack offline in tester")),
     },
   };
 }
@@ -532,7 +534,7 @@ Deno.test("#2947 TA-2 - a 1:1 age interleave still yields a full batch of expiri
 // ── TA-3 · the residual starvation surface the predicate does NOT close ──────
 
 Deno.test("#2947 TA-3 - PINNED DEFECT: past-expiry PAYSTACK rows are unexpirable yet still occupy every slot", async () => {
-  // classify() returns `skip: paystack_unverified` for a PAYSTACK ref
+  // classify() returns `skip: paystack_verify_unavailable` for a PAYSTACK ref
   // UNCONDITIONALLY — the expiry cutoff is never consulted (classify.ts:170-174).
   // Such a row is therefore permanently unactionable, yet `expires_at < now()`
   // is TRUE for it, so the shipped predicate admits it to the batch. It is the
@@ -607,7 +609,7 @@ Deno.test("#2947 TA-4 - the true live in-flight population is 6 PAYSTACK rows, a
   assertEquals(summary.errors, 0);
   assertEquals(
     summary.results.map((r) => r.skip),
-    Array.from({ length: 6 }, () => "paystack_unverified"),
+    Array.from({ length: 6 }, () => "paystack_verify_unavailable"),
   );
   assertEquals(
     h.rec.stripeRetrieves,

@@ -300,7 +300,7 @@ Deno.test("R-8b — the Paystack guard (pi_ prefix check) is present in the clas
   );
   has(
     classifySrc,
-    '"paystack_unverified"',
+    '"paystack_verify_unavailable"',
     "OQ-A bound default: never expire what the sweep cannot verify",
   );
 });

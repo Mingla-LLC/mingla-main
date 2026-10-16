@@ -196,14 +196,22 @@ Deno.test("T-8: CS payment_status=paid/no_payment_required with no PI → SKIP c
   }
 });
 
-// ── T-9: Paystack refs are unverifiable — never expired ─────────────────────
-Deno.test("T-9: PAYSTACK → SKIP paystack_unverified at any expiry (SC-8; ref never sent to Stripe — enforced structurally by classifyRef + index I/O routing)", () => {
+// ── T-9: Paystack without verify truth is fail-safe skip ────────────────────
+Deno.test("T-9: PAYSTACK empty truth → SKIP paystack_verify_unavailable; success → finalize (#3645)", () => {
   for (const expiresAt of [PAST, FUTURE]) {
     assertEquals(
       act("PAYSTACK", expiresAt, {}),
-      { action: "skip", reason: "paystack_unverified" },
+      { action: "skip", reason: "paystack_verify_unavailable" },
     );
   }
+  assertEquals(
+    act("PAYSTACK", PAST, { paystackStatus: "success" }),
+    { action: "finalize" },
+  );
+  assertEquals(
+    act("PAYSTACK", PAST, { paystackStatus: "abandoned" }),
+    { action: "expire" },
+  );
 });
 
 // ── T-10: no-ref strands — no payment object, no money possible ─────────────
