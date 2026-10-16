@@ -117,7 +117,10 @@ function selfTest() {
   const mutations = [
     ["notify", "if (categoryError) {", "if (!catData) {", "category error collapsed into data"],
     ["notify", "if (policy.error) {", "if (policy.data !== true) {", "policy error collapsed into denial"],
-    ["notify", 'return { success: false, reason: "inbox_unavailable" };', 'return { success: false, reason: "inbox_idempotency_collision" };', "reload outage fabricated collision"],
+    // [TEST-MOD-APPROVED #3720] The shared dispatcher now has another valid
+    // inbox_unavailable return. Pin this mutation to the offering-only reload
+    // branch so the negative control still falsifies the protected path.
+    ["notify", 'if (existing.error) {\n      return { success: false, reason: "inbox_unavailable" };', 'if (existing.error) {\n      return { success: false, reason: "inbox_idempotency_collision" };', "reload outage fabricated collision"],
     ["push", "claim = await payload.beforeProviderIo();", "claim = await payload.beforeProviderIo();\n      await Promise.resolve();", "async gap after claim"],
     ["push", "idempotency_key: payload.oneSignalIdempotencyKey", "idempotency_key: payload.internalProviderClaimKey", "provider key swap"],
     ["dispatch", "offering_attempt_id: claimed.attemptId", "offering_attempt_id: claimed.internalProviderClaimKey", "explicit attempt authority removed"],
