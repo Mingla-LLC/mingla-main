@@ -81,11 +81,17 @@ export function CommunitySupportPage() {
 
   if (!activeTab) {
     return (
-      <SectionCard title="Community & Support">
-        <p className="text-sm text-[var(--color-text-secondary)]">
-          Your account does not have an active Community or Support assignment.
-        </p>
-      </SectionCard>
+      <div className="space-y-6">
+        <PageHeader
+          title="Community & Support"
+          description="Your assigned Community and Support workspace."
+        />
+        <SectionCard title="Access needed">
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            Your account does not have an active Community or Support assignment.
+          </p>
+        </SectionCard>
+      </div>
     );
   }
 
