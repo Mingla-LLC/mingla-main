@@ -35,6 +35,7 @@ module.exports = {
   },
   testMatch: [
     "**/__tests__/notifWebRender.orch1211.web.render.test.tsx",
+    "**/__tests__/communityTargetFocus.issue3720.web.render.test.ts",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|react-native-svg|expo|@expo)",

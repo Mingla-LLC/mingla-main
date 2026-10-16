@@ -4,9 +4,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  AccessibilityInfo,
   ActivityIndicator,
-  findNodeHandle,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -30,6 +29,7 @@ import type {
   CommunityRoadmapLane,
 } from "../../services/communityService";
 import { communityMarkdownToPlainText } from "../../utils/communityMarkdown";
+import { focusCommunityTargetNode } from "../../utils/communityTargetFocus";
 import { BrandSwitch } from "../ui/BrandSwitch";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -147,8 +147,7 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
       target === "announcement"
         ? targetAnnouncementRef.current
         : roadmapRef.current;
-    const nativeTag = ref ? findNodeHandle(ref) : null;
-    if (nativeTag !== null) AccessibilityInfo.setAccessibilityFocus(nativeTag);
+    focusCommunityTargetNode(ref);
   }, []);
 
   useEffect(() => {
@@ -282,6 +281,11 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
                   ? `Announcement: ${communityMarkdownToPlainText(item.title)}`
                   : undefined
               }
+              tabIndex={
+                Platform.OS === "web" && targetAnnouncementId === item.id
+                  ? -1
+                  : undefined
+              }
               onLayout={
                 targetAnnouncementId === item.id
                   ? (event) =>
@@ -324,6 +328,9 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
         ref={roadmapRef}
         accessible={targetSection === "roadmap"}
         accessibilityLabel="Roadmap section"
+        tabIndex={
+          Platform.OS === "web" && targetSection === "roadmap" ? -1 : undefined
+        }
         onLayout={(event) => setRoadmapY(event.nativeEvent.layout.y)}
       >
         <Text style={styles.sectionLabel} accessibilityRole="header">
