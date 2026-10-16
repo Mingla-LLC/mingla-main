@@ -304,6 +304,10 @@ $t$;
 -- ---------------------------------------------------------------------------
 -- XA-1 — catalog.
 -- ---------------------------------------------------------------------------
+-- [TEST-MOD-APPROVED #3802] 2026-10-15: Wave 6 deliberately adds one
+-- closed provenance reader and two closed import-evidence tables. The catalog
+-- pins below expand by exactly those three objects; all prior grants, policies,
+-- and browser-denial assertions remain unchanged.
 do $t$
 declare
   c_client constant text[] := array['crm_config','crm_records_list','crm_record_get','crm_duplicate_check',
@@ -333,7 +337,7 @@ begin
   end loop;
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname like 'crm\_%';
-  perform pg_temp.x_eq('XA-1', 'number of crm_ functions', v_n::text, '51');
+  perform pg_temp.x_eq('XA-1', 'number of crm_ functions', v_n::text, '52');
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = any (c_client) and p.prosecdef;
   perform pg_temp.x_eq('XA-1', 'client functions that run with owner rights', v_n::text, '20');
@@ -363,7 +367,7 @@ begin
   end loop;
   perform pg_temp.x_eq('XA-1', 'number of crm_ tables',
     (select count(*)::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'crm\_%'), '6');
+      where n.nspname = 'public' and c.relkind = 'r' and c.relname like 'crm\_%'), '8');
   perform pg_temp.x_eq('XA-1', 'no view, sequence or materialised view named crm_',
     (select count(*)::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind in ('v','m','S') and c.relname like 'crm\_%'), '0');
@@ -1351,8 +1355,10 @@ begin
   v_got := pg_temp.x_as('partner', format('select public.crm_record_get(%L)::text', v_id))::jsonb;
   perform pg_temp.x_eq('XA-14', 'a record carries exactly its named keys',
     (select string_agg(k, ',' order by k) from jsonb_object_keys(v_got->'record') k), c_record_keys);
-  perform pg_temp.x_eq('XA-14', 'opening a record returns exactly four parts',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(v_got) k), 'activity,links,record,undoable_activity_id');
+  -- [TEST-MOD-APPROVED #3802] 2026-10-15: record details append the
+  -- read-only imports summary; record/list payload keys remain pinned below.
+  perform pg_temp.x_eq('XA-14', 'opening a record returns exactly five parts',
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(v_got) k), 'activity,imports,links,record,undoable_activity_id');
   v_got := pg_temp.x_as('partner', $$select public.crm_records_list('hosts')::text$$)::jsonb;
   perform pg_temp.x_eq('XA-14', 'every listed record carries exactly its named keys',
     (select string_agg(distinct ks, ';') from (select (select string_agg(k, ',' order by k) from jsonb_object_keys(e) k) ks

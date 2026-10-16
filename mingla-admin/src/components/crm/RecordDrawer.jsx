@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
-import { ArrowRight, FileText } from "lucide-react";
+import { ArrowRight, ExternalLink, FileText } from "lucide-react";
 import { Drawer } from "../ui/Drawer";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
@@ -886,6 +886,55 @@ export function RecordDrawer({
             </p>
           )}
         </div>
+
+        {current.data?.imports?.length > 0 && (
+          <section
+            aria-labelledby={fid("import-history")}
+            className="rounded-xl border border-[var(--gray-200)] bg-[var(--gray-50)] p-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 id={fid("import-history")} className="text-sm font-semibold text-[var(--color-text-primary)]">
+                  Imported from ClickUp
+                </h3>
+                <p className="mt-1 text-xs text-[var(--color-text-tertiary)]">
+                  Original cards are kept as read-only context. Work continues here in Mingla.
+                </p>
+              </div>
+              <Badge variant="default">
+                {current.data.imports.length} {current.data.imports.length === 1 ? "source card" : "source cards"}
+              </Badge>
+            </div>
+            <ul className="mt-3 space-y-2">
+              {current.data.imports.map((item) => (
+                <li
+                  key={`${item.source_system}:${item.source_id}`}
+                  className="flex min-w-0 flex-col gap-2 rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] px-3 py-2.5 sm:flex-row sm:items-center"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium text-[var(--color-text-primary)]">
+                      {item.task_name || record.name}
+                    </p>
+                    <p className="mt-0.5 text-xs text-[var(--color-text-secondary)]">
+                      {[item.original_status && `Original stage: ${item.original_status}`, item.city].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  {item.source_url && (
+                    <a
+                      href={item.source_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]"
+                    >
+                      Open original
+                      <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <div className="border-t border-[var(--gray-200)] pt-4">
           <LogForm key={record.id} record={record} config={config} disabled={locked} onSubmit={submitLog} />

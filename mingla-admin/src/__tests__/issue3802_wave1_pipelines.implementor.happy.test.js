@@ -20,6 +20,7 @@
 //   P-10 server answers are shown in plain words, never raw
 //   P-11 moves the screen stops before asking the server
 //   P-12 duplicates while typing, by-region counts, owners, list order
+//   P-13 imported ClickUp context appears only in record details
 //
 // Fails-on-revert is recorded on the issue for P-1 (crmModel.nameKey), P-3
 // (crmModel.nextStage), P-6 (PAGE_AREA_OVERRIDES in access.js) and P-8 (the
@@ -726,5 +727,33 @@ describe("#3802 P-12: duplicates, counts, owners, order", () => {
     for (const s of ["replied", "meeting", "negotiating"]) assert.equal(stageBadgeVariant(s), "info");
     for (const s of ["lost", "passed"]) assert.equal(stageBadgeVariant(s), "error");
     for (const s of ["prospect", "contacted", "identified", "constructor"]) assert.equal(stageBadgeVariant(s), "default");
+  });
+});
+
+// [TEST-MOD-APPROVED #3802] 2026-10-15: Wave 6 appends imported-source
+// detail coverage to this already registered CRM suite. CI registration remains
+// self-contained; no workflow or frozen discovery baseline is edited.
+describe("#3802 P-13: imported ClickUp context", () => {
+  const drawer = read("components/crm/RecordDrawer.jsx");
+  const migration = read("../../supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql");
+
+  it("shows imported source cards only when a detail response contains them", () => {
+    assert.match(drawer, /current\.data\?\.imports\?\.length > 0/);
+    assert.match(drawer, /Imported from ClickUp/);
+    assert.match(drawer, /Original stage:/);
+    assert.match(drawer, /Open original/);
+  });
+
+  it("opens the original source safely without exposing raw context", () => {
+    assert.match(drawer, /href=\{item\.source_url\}/);
+    assert.match(drawer, /target="_blank"/);
+    assert.match(drawer, /rel="noreferrer"/);
+    assert.doesNotMatch(drawer, /source_context/);
+  });
+
+  it("keeps board and list record JSON stable and adds imports only to details", () => {
+    const getBody = migration.slice(migration.indexOf("CREATE OR REPLACE FUNCTION public.crm_record_get"));
+    assert.match(getBody, /'imports', public\.crm_record_sources_json\(v_rec\.id\)/);
+    assert.doesNotMatch(migration, /CREATE OR REPLACE FUNCTION public\.crm_record_json/);
   });
 });
