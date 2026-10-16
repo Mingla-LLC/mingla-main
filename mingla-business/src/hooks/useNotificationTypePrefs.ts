@@ -27,10 +27,8 @@ import {
 } from "@tanstack/react-query";
 
 import { supabase } from "../services/supabase";
-import {
-  BUSINESS_NOTIFICATION_TEMPLATES,
-  type BusinessNotificationType,
-} from "../constants/businessNotificationTemplates";
+import type { BusinessNotificationType } from "../constants/businessNotificationTemplates";
+import { businessNotificationDefaultOptIn } from "../constants/businessNotificationPreferenceDefaults";
 import { useAuth } from "../context/AuthContext";
 
 export type PrefChannel = "push" | "in_app";
@@ -53,8 +51,7 @@ export function defaultOptIn(
   type: BusinessNotificationType,
   channel: PrefChannel,
 ): boolean {
-  const t = BUSINESS_NOTIFICATION_TEMPLATES[type];
-  return channel === "push" ? t.defaultPush : t.defaultInApp;
+  return businessNotificationDefaultOptIn(type, channel);
 }
 
 interface PrefsState {
