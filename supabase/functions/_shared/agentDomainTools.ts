@@ -302,7 +302,7 @@ const upsertTicketTier = writeTool(
     waitlist_enabled: { type: "boolean" },
     min_purchase_qty: { type: "integer", minimum: 1 },
     max_purchase_qty: { type: "integer", minimum: 1, nullable: true },
-    allow_transfers: { type: "boolean" },
+    // #2879 Ilashe P0 — transfer flag omitted from tool schema until the product ships.
     description: { type: "string", maxLength: 280, nullable: true },
     sale_start_at: { type: "string", format: "date-time", nullable: true },
     sale_end_at: { type: "string", format: "date-time", nullable: true },

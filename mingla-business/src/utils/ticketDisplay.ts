@@ -48,7 +48,7 @@ const ticketSublineParts = (
   if (t.approvalRequired) modifiers.push("approval");
   if (t.passwordProtected) modifiers.push("password");
   if (t.waitlistEnabled) modifiers.push("waitlist");
-  if (!t.allowTransfers) modifiers.push("non-transferable");
+  // #2879 Ilashe P0 — do not surface transferability; capability does not exist yet.
 
   return { price, modifiers };
 };
@@ -57,8 +57,7 @@ const ticketSublineParts = (
  * "Free · max 4 / buyer · approval" — sub-line under ticket name.
  *
  * Modifiers compose left-to-right:
- *   price → max-per-buyer (if non-default) → approval → password →
- *   waitlist → non-transferable.
+ *   price → max-per-buyer (if non-default) → approval → password → waitlist.
  */
 export const formatTicketSubline = (t: TicketStub): string => {
   // Price (always first)
@@ -137,9 +136,7 @@ export const formatTicketBadges = (t: TicketStub): TicketBadge[] => {
   if (t.maxPurchaseQty !== null) {
     badges.push({ label: `Max ${t.maxPurchaseQty} per buyer`, variant: "muted" });
   }
-  if (!t.allowTransfers) {
-    badges.push({ label: "Transfers disabled", variant: "muted" });
-  }
+  // #2879 Ilashe P0 — omit transferability badges until the product ships.
   return badges;
 };
 
