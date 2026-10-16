@@ -124,6 +124,13 @@ import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
 // cold-launch from a tap survives the auth gate.
 const DEFERRED_PUSH_TARGET_KEY = "mingla-business.deferredPushTarget.v1";
 
+// #3720: push taps can launch the process before React effects run. OneSignal's
+// startup contract requires initialization in the first application module;
+// deferring this behind InteractionManager made the click-listener effect
+// permanently register a no-op on cold boot. The service is idempotent and the
+// web implementation is a guarded no-op.
+initializeOneSignal();
+
 // ORCH-1318 (§B.3/§E.1, business B1) — AppsFlyer OneLink referral capture key.
 // Matches the consumer capture key (shared §B.1 payload contract). ATTRIBUTION
 // ONLY in B1: the code is persisted for later attribution; there is no read /
@@ -582,7 +589,6 @@ function RootLayoutInner(): React.ReactElement {
           });
         });
         revenueCatService.initialize();
-        initializeOneSignal();
         // META-ORCH-1187 LEG 2 — buyer-web analytics init (PostHog + GA4),
         // consent-gated (no cookies/capture until Accept). WEB-ONLY: the call
         // resolves to a no-op on native via the .web.ts split, and is further
@@ -604,10 +610,11 @@ function RootLayoutInner(): React.ReactElement {
   // (authenticated + a brand exists), one-shot, never on boot/account-only.
   usePushPermissionMoment(user !== null, currentBrandId);
 
-  // META-ORCH-1074 Sub-B — foreground display + click handlers. Registered
-  // after initializeOneSignal() (above). On web these are guarded no-ops
-  // (the service never initializes the native module). Re-registers when the
-  // signed-in user changes so the auth gate + deferred replay see fresh state.
+  // META-ORCH-1074 Sub-B — foreground display + click handlers. OneSignal is
+  // initialized at module startup above, and the service buffers a cold click
+  // until this subscriber is ready. On web these remain guarded no-ops.
+  // Re-registers when the signed-in user changes so the auth gate + deferred
+  // replay see fresh state.
   const userId = user?.id ?? null;
   useEffect(() => {
     // Foreground: show the system banner for every business push (consumer
