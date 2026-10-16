@@ -1,28 +1,42 @@
 /**
- * #3720 — OneSignal initialization must happen during root-module startup,
- * before the root click-handler effect and never behind after-interactions.
+ * #3720 — cold-click capture must attach during module evaluation even though
+ * the optional OneSignal SDK remains intentionally initialized after the first
+ * interaction frame for Android startup safety.
  */
 
 import fs from "node:fs";
 import path from "node:path";
 
-describe("#3720 OneSignal startup order", () => {
-  const source = fs.readFileSync(
+describe("#3720 OneSignal cold-click startup order", () => {
+  const rootLayout = fs.readFileSync(
     path.resolve(__dirname, "../../../app/_layout.tsx"),
     "utf8",
   );
+  const service = fs.readFileSync(
+    path.resolve(__dirname, "../oneSignalService.ts"),
+    "utf8",
+  );
 
-  test("initializes before RootLayout renders and not inside deferred SDK work", () => {
-    const startupCall = source.indexOf("initializeOneSignal();");
-    const rootLayout = source.indexOf("function RootLayout");
-    const deferredBlock = source.indexOf(
+  test("captures clicks early while preserving deferred optional-SDK initialization", () => {
+    const captureCall = service.indexOf(
+      "ensureNativeNotificationClickCapture();",
+      service.indexOf("function ensureNativeNotificationClickCapture"),
+    );
+    const clickSubscriber = service.indexOf(
+      "export function onNotificationClicked",
+    );
+    const deferredBlock = rootLayout.indexOf(
       "InteractionManager.runAfterInteractions",
     );
+    const initializeCall = rootLayout.indexOf("initializeOneSignal();");
 
-    expect(startupCall).toBeGreaterThan(-1);
-    expect(rootLayout).toBeGreaterThan(-1);
-    expect(startupCall).toBeLessThan(rootLayout);
-    expect(source.indexOf("initializeOneSignal();", startupCall + 1)).toBe(-1);
-    expect(startupCall).toBeLessThan(deferredBlock);
+    expect(captureCall).toBeGreaterThan(-1);
+    expect(clickSubscriber).toBeGreaterThan(-1);
+    expect(captureCall).toBeLessThan(clickSubscriber);
+    expect(deferredBlock).toBeGreaterThan(-1);
+    expect(initializeCall).toBeGreaterThan(deferredBlock);
+    expect(rootLayout.indexOf("initializeOneSignal();", initializeCall + 1)).toBe(
+      -1,
+    );
   });
 });
