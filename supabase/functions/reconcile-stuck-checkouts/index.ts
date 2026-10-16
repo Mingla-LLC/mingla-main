@@ -41,7 +41,10 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
-import { qrTokenPepper } from "../_shared/ticketCheckout.ts";
+import {
+  dispatchTicketConfirmation,
+  qrTokenPepper,
+} from "../_shared/ticketCheckout.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
 import { fireAdConversion } from "../_shared/adConversionFire.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.74.0?target=denonext";
@@ -51,6 +54,11 @@ import {
   stripePaymentIntentAmount,
 } from "../_shared/ticketEvidenceHold.ts";
 import type { StripeTruth } from "./classify.ts";
+import { paystackVerifyTransaction } from "../_shared/paystack.ts";
+import {
+  handlePaystackChargeSuccess,
+  type PaystackVerifier,
+} from "../_shared/paystackWebhookRouter.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -150,6 +158,8 @@ export interface ReconcileStuckCheckoutsDeps {
   serviceClient: () => ServiceClient;
   stripeClient: () => StripeClient;
   qrTokenPepper: () => string;
+  /** #3645 — injected so tests stub Paystack verify without network I/O. */
+  paystackVerifier?: PaystackVerifier;
 }
 
 /**
@@ -246,7 +256,11 @@ const defaultDeps: ReconcileStuckCheckoutsDeps = {
   serviceClient,
   stripeClient: stripeTicketCheckout,
   qrTokenPepper,
+  paystackVerifier: paystackVerifyTransaction,
 };
+
+/** Cap Paystack verifies per run so a stuck mingla_* backlog cannot stampede. */
+const PAYSTACK_VERIFY_BATCH_LIMIT = 20;
 
 export const createReconcileStuckCheckoutsHandler = (
   deps: ReconcileStuckCheckoutsDeps = defaultDeps,
@@ -260,10 +274,13 @@ async (req) => {
   const supabase = deps.serviceClient();
   const stripe = deps.stripeClient();
   const pepper = deps.qrTokenPepper();
+  const paystackVerify: PaystackVerifier = deps.paystackVerifier ??
+    paystackVerifyTransaction;
 
   // Captured ONCE per run: drives both the classify() cutoff test and the CAS
   // write's server-side `.lt("expires_at", nowIso)` re-check.
   const nowIso = new Date().toISOString();
+  let paystackVerifiesThisRun = 0;
 
   // Release evidence-only holds FIRST, so a released session (now in flight
   // again) is finalized by the batch below in this same run.
@@ -306,8 +323,8 @@ async (req) => {
     // DRAFT invariant carried the same overclaim and was corrected the same
     // way): it bounds the batch to rows PAST EXPIRY. It does NOT bound the
     // batch to rows this run can act on. A row past expiry may still be
-    // skipped fail-safe — `paystack_unverified` is the live case, six such
-    // rows today — so SWEEP_BATCH_LIMIT is an upper bound on rows CONSIDERED,
+    // skipped fail-safe when Paystack verify is unavailable — so
+    // SWEEP_BATCH_LIMIT is an upper bound on rows CONSIDERED,
     // not on work DONE. Any later slice that sizes throughput from this limit
     // must subtract the permanently-skipped classes rather than assume them
     // empty.
@@ -350,16 +367,47 @@ async (req) => {
         stripeCheckoutSessionId: csId,
       });
 
-      // ── Read-only Stripe truth per ref class (classify.ts stays pure). ────
-      // PAYSTACK (`mingla_*` in the PI column) and NO_REF rows perform NO
-      // Stripe I/O — a Paystack reference is not a Stripe id and must never
-      // reach a retrieve; a no-ref row has no payment object to check.
+      // ── Read-only provider truth per ref class (classify.ts stays pure). ──
+      // PAYSTACK (`mingla_*` in the PI column) NEVER hits Stripe retrieve.
+      // #3645: Paystack rows verify-by-reference (capped) then classify.
       let truth: StripeTruth = {};
       let pi: PaymentIntentLike | null = null;
       let piId: string | null = null;
       let hostedRelationConflict = false;
+      let paystackReference: string | null = null;
+      let paystackTxn: Record<string, unknown> | null = null;
 
-      if (refClass === "STRIPE_PI") {
+      if (refClass === "PAYSTACK") {
+        paystackReference = piRef;
+        if (
+          paystackReference &&
+          paystackVerifiesThisRun < PAYSTACK_VERIFY_BATCH_LIMIT
+        ) {
+          paystackVerifiesThisRun += 1;
+          try {
+            paystackTxn = await paystackVerify(paystackReference);
+            truth = {
+              paystackStatus: String(paystackTxn?.status ?? "").toLowerCase(),
+            };
+          } catch (verifyErr) {
+            console.warn(
+              "[reconcile-stuck-checkouts] paystack verify unavailable",
+              paystackReference,
+              verifyErr instanceof Error ? verifyErr.message : String(verifyErr),
+            );
+            truth = {};
+          }
+        } else if (paystackReference) {
+          truth = {};
+          results.push({
+            sessionId,
+            piId: paystackReference,
+            csId: null,
+            skip: "paystack_verify_batch_capped",
+          });
+          continue;
+        }
+      } else if (refClass === "STRIPE_PI") {
         piId = piRef as string; // non-null + `pi_`-prefixed by classification
         if (csId) {
           const cs = await retrieveCheckoutSessionReadOnly(
@@ -433,6 +481,82 @@ async (req) => {
       }
 
       const decision = classify({ refClass, expiresAt, truth, nowIso });
+
+      if (decision.action === "finalize" && refClass === "PAYSTACK") {
+        if (!paystackReference || !paystackTxn) {
+          results.push({
+            sessionId,
+            piId: paystackReference,
+            skip: "finalize_without_paystack_truth",
+          });
+          continue;
+        }
+        const memoised: PaystackVerifier = (ref: string) =>
+          ref === paystackReference
+            ? Promise.resolve(paystackTxn as Record<string, unknown>)
+            : paystackVerify(ref);
+        try {
+          const result = await handlePaystackChargeSuccess(
+            supabase as never,
+            { reference: paystackReference },
+            memoised,
+          );
+          if (
+            result.status === "finalized" || result.status === "replayed"
+          ) {
+            const orderId = result.orderId ?? null;
+            if (orderId && result.status === "finalized") {
+              void dispatchTicketConfirmation(orderId).catch((err: unknown) => {
+                console.warn(
+                  "[reconcile-stuck-checkouts] paystack confirmation dispatch failed (non-fatal):",
+                  err instanceof Error ? err.message : String(err),
+                );
+              });
+              try {
+                await fireAdConversion(supabase as never, {
+                  orderId,
+                  surface: "web",
+                });
+              } catch (adConvErr) {
+                console.warn(
+                  "[reconcile-stuck-checkouts] paystack ad-conversion fire threw (non-fatal):",
+                  adConvErr instanceof Error
+                    ? adConvErr.message
+                    : String(adConvErr),
+                );
+              }
+            }
+            results.push({
+              sessionId,
+              piId: paystackReference,
+              orderId,
+              status: "finalized",
+              provider: "paystack",
+              paystackOutcome: result.status,
+            });
+          } else if (result.status === "paid_reversal_pending") {
+            results.push({
+              sessionId,
+              piId: paystackReference,
+              status: "paid_reversal_pending",
+              skip: "paid_reversal_pending",
+            });
+          } else {
+            results.push({
+              sessionId,
+              piId: paystackReference,
+              skip: `paystack_${result.status}`,
+            });
+          }
+        } catch (err) {
+          results.push({
+            sessionId,
+            piId: paystackReference,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        continue;
+      }
 
       if (decision.action === "finalize") {
         if (pi === null || piId === null) {

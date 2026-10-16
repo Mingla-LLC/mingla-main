@@ -91,6 +91,11 @@ export interface StripeTruth {
   piStatus?: string;
   /** cs.payment_status when the web arm's Checkout Session has NO resolvable PI. */
   csPaymentStatus?: string;
+  /**
+   * #3645 Ilashe P0 — Paystack verify `data.status` when refClass is PAYSTACK.
+   * Absent/empty means verify was unavailable; never expire on missing truth.
+   */
+  paystackStatus?: string;
 }
 
 /** Exactly one action per row. index.ts obeys; classify() decides. */
@@ -167,11 +172,25 @@ export function classify(input: ClassifyInput): SweepAction {
     case "STRIPE_PI":
       return classifyPiStatus(input.truth.piStatus, pastExpiry);
 
-    case "PAYSTACK":
-      // OQ-A bound default: a `mingla_*` reference cannot be verified against
-      // Stripe (and this sweep performs no Paystack reads) — never expire
-      // what we cannot check; visible in the skip counter (SC-8).
-      return { action: "skip", reason: "paystack_unverified" };
+    case "PAYSTACK": {
+      // #3645 Ilashe P0 — verify-by-reference (same authority as return-leg /
+      // webhook). Missing truth stays fail-safe skip; never Stripe-retrieve a
+      // mingla_* id.
+      const ps = (input.truth.paystackStatus ?? "").toLowerCase();
+      if (ps === "") {
+        return { action: "skip", reason: "paystack_verify_unavailable" };
+      }
+      if (ps === "success") {
+        return { action: "finalize" };
+      }
+      if (ps === "failed" || ps === "abandoned" || ps === "reversed") {
+        return pastExpiry
+          ? { action: "expire" }
+          : { action: "skip", reason: "in_window" };
+      }
+      // In-flight Paystack statuses (pending / ongoing / processing / …).
+      return { action: "skip", reason: `paystack_status_${ps}` };
+    }
 
     case "STRIPE_CS": {
       if (input.truth.piStatus !== undefined) {

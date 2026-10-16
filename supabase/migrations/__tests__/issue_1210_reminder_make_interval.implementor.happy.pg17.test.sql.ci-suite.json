@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_1210_reminder_make_interval.implementor.happy.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-1210-01-reminder-make-interval-happy",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}
