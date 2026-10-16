@@ -118,7 +118,9 @@ check(
     // 4. … which spreads the complete curated record before overlaying only
     //    normalized provenance. This preserves every curated field without
     //    relabelling an unproven display id as provider identity (#1880).
-    /if \(c\.cardType === ["']curated["']\) \{\s*return \{\s*\.\.\.cardData,\s*\.\.\.normalizedProvenance,\s*\} as unknown as ExpandedCardData;/s.test(
+    // [TEST-MOD-APPROVED #3281] Round 1 PR 1d — brand experiences share this
+    // pass-through cast (same change as orch-1054 C3); curated spread is intact.
+    /if \(isBrandExperiencePayload\(c\) \|\| c\.cardType === ["']curated["']\) \{\s*return \{\s*\.\.\.cardData,\s*\.\.\.normalizedProvenance,[\s\S]*?\} as unknown as ExpandedCardData;/s.test(
       files.canonicalMapper,
     ),
   "Adapter must flatten legacy-then-top-level (so every curated key survives), normalise cardType to the literal discriminator, and delegate to savedCardToExpandedCardData — which must spread the whole curated record before overlaying normalized provenance. Do not go back to a field-by-field allowlist: that was the ORCH-1054 bug.",
