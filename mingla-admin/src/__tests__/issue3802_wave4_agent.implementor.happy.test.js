@@ -67,10 +67,10 @@ const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s
 const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
 
 const person = (role, areas) => ({ email: `${role}@example.test`, role, status: "active", areas });
-const owner = person("owner", ["admin_console", "team_manage", "crm", "beta_leads"]);
-const admin = person("admin", ["admin_console", "crm", "beta_leads"]);
-const growth = person("growth", ["role_home", "crm", "beta_leads"]);
-const partner = person("partner", ["role_home", "crm", "beta_leads"]);
+const owner = person("owner", ["admin_console", "team_manage", "crm", "beta_leads", "content_calendar"]);
+const admin = person("admin", ["admin_console", "crm", "beta_leads", "content_calendar"]);
+const growth = person("growth", ["role_home", "crm", "beta_leads", "content_calendar"]);
+const partner = person("partner", ["role_home", "crm", "beta_leads", "content_calendar"]);
 
 // Made up here; the shape of a key, never a real one.
 const KEY_C = "mgla_c_" + "k".repeat(43);
@@ -118,7 +118,7 @@ describe("#3802 A-1: who may open My agent, and where it sits", () => {
     const groups = (a) => visibleNavGroups(NAV_GROUPS, a);
     for (const a of [growth, partner]) {
       // [TEST-MOD-APPROVED #3802] Drafts to send is now the third pipeline page.
-      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "drafts", "beta-leads", "agent", "guide"], a.role);
+      assert.deepEqual(groups(a).flatMap((g) => g.items).map((i) => i.id), ["home", "hosts", "creators", "drafts", "beta-leads", "content-calendar", "agent", "guide"], a.role);
     }
     for (const a of [owner, admin, growth, partner]) {
       const shown = groups(a);
@@ -303,7 +303,7 @@ describe("#3802 A-4: what it can do is what the connector offers", () => {
     assert.deepEqual(tools("owner"), offered);
     assert.deepEqual(tools("admin"), offered);
     assert.deepEqual(tools(undefined), tools("growth"));
-    assert.deepEqual(abilitiesFor("owner").map((g) => g.group), ["Your day", "Find and check", "Beta leads", "Team", "Add and change", "Log", "Drafts"]);
+    assert.deepEqual(abilitiesFor("owner").map((g) => g.group), ["Your day", "Find and check", "Beta leads", "Team", "Add and change", "Log", "Drafts", "Content"]);
   });
   it("nothing that is not built yet is offered as something to use", () => {
     const shown = ALL_AGENT_SRC.map(([, src]) => stripComments(src)).join("\n");

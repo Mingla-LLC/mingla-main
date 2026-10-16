@@ -68,6 +68,7 @@ import { DraftsPage } from "./pages/DraftsPage";
 // Issue #3802 (Wave 4) — connect your own agent (#/agent).
 import { AgentPage } from "./pages/AgentPage";
 import { GuidePage } from "./pages/GuidePage";
+import { ContentCalendarPage } from "./pages/ContentCalendarPage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -133,6 +134,7 @@ const PAGES = {
   // Issue #3802 (Wave 4): opened by the `crm` area, like the boards.
   agent: AgentPage,
   guide: GuidePage,
+  "content-calendar": ContentCalendarPage,
 };
 
 // Issue #3802 — every page id the app knows. Which of them a person may open

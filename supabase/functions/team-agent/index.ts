@@ -27,10 +27,22 @@ const server = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+const CONTENT_TOOLS = new Set([
+  "list_content",
+  "add_content",
+  "update_content",
+  "assign_content",
+  "comment_content",
+  "move_content",
+]);
+
 const handler = createTeamAgentHandler({
   // The only call this function makes.
   gateway: async (keyHash, tool, args, client) => {
-    const { data, error } = await server.rpc("team_agent_call", {
+    const gateway = CONTENT_TOOLS.has(tool)
+      ? "team_agent_content_call"
+      : "team_agent_call";
+    const { data, error } = await server.rpc(gateway, {
       p_key_hash: keyHash,
       p_tool: tool,
       p_args: args,

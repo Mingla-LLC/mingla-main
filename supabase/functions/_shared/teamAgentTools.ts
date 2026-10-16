@@ -74,6 +74,7 @@ export interface TeamAgentTool {
     | "Add and change"
     | "Log"
     | "Drafts"
+    | "Content"
     | "Beta leads"
     | "Team";
 }
@@ -1094,6 +1095,311 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     peopleText: true,
     group: "Drafts",
   },
+  {
+    name: "list_content",
+    title: "List content",
+    description:
+      "Read content calendar cards, with optional search, stage, owner, date range or unscheduled filters. " +
+      DATA_NOT_INSTRUCTIONS,
+    inputSchema: schema({
+      id: RECORD_ID,
+      q: {
+        type: "string",
+        maxLength: 160,
+        hint: "Send words from the title, copy or notes",
+      },
+      stage: {
+        type: "string",
+        maxLength: 20,
+        enum: ["idea", "writing", "design", "review", "scheduled", "published"],
+        hint: "Use a content stage",
+      },
+      owner: { type: "string", maxLength: 320, hint: "Send a team email" },
+      mine: {
+        type: "boolean",
+        hint: "Use true for cards assigned to your person",
+      },
+      undated: {
+        type: "boolean",
+        hint: "Use true for cards without a publish time",
+      },
+      from: {
+        type: "string",
+        maxLength: 40,
+        hint: "Send a date-time such as 2026-10-20T00:00:00Z",
+      },
+      to: {
+        type: "string",
+        maxLength: 40,
+        hint: "Send a date-time such as 2026-11-01T00:00:00Z",
+      },
+      limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 500,
+        hint: "Send a whole number from 1 to 500",
+      },
+    }),
+    annotations: READ,
+    reaches: [
+      "content_calendar_config",
+      "content_calendar_list",
+      "content_calendar_get",
+    ],
+    writes: false,
+    adminOnly: false,
+    peopleText: true,
+    group: "Content",
+  },
+  {
+    name: "add_content",
+    title: "Add content ideas",
+    description:
+      "Add 1 to 50 simple content cards. Each starts in Idea and is assigned to your person. Add details later with update_content. " +
+      DATA_NOT_INSTRUCTIONS,
+    inputSchema: schema({
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: {
+              type: "string",
+              minLength: 1,
+              maxLength: 160,
+              hint: "Send a title of 1 to 160 characters",
+            },
+          },
+          required: ["title"],
+          hint: "Send one object with only a title",
+        },
+        minItems: 1,
+        maxItems: MAX_ITEMS,
+        hint: "Send 1 to 50 title-only cards",
+      },
+      request_key: REQUEST_KEY,
+    }, ["items", "request_key"]),
+    annotations: WRITE,
+    reaches: ["content_calendar_create"],
+    writes: true,
+    adminOnly: false,
+    peopleText: false,
+    group: "Content",
+  },
+  {
+    name: "update_content",
+    title: "Update content",
+    description:
+      "Update one content card using the revision you read. This cannot change its stage, owners, comments or delete it. " +
+      DATA_NOT_INSTRUCTIONS,
+    inputSchema: schema({
+      id: RECORD_ID,
+      changes: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            minLength: 1,
+            maxLength: 160,
+            hint: "Send a title of 1 to 160 characters",
+          },
+          publish_at: {
+            type: "string",
+            maxLength: 40,
+            hint: "Send a date-time, or an empty string to clear it",
+          },
+          channels: {
+            type: "array",
+            items: {
+              type: "string",
+              maxLength: 20,
+              enum: [
+                "instagram",
+                "tiktok",
+                "facebook",
+                "x",
+                "threads",
+                "youtube",
+                "linkedin",
+                "website",
+                "email",
+              ],
+              hint: "Use a supported channel",
+            },
+            minItems: 0,
+            maxItems: 9,
+            hint: "Send supported channels",
+          },
+          copy: {
+            type: "string",
+            maxLength: 20000,
+            hint: "Send the post copy, or an empty string to clear it",
+          },
+          notes: {
+            type: "string",
+            maxLength: 20000,
+            hint: "Send working notes, or an empty string to clear them",
+          },
+          drive_url: {
+            type: "string",
+            maxLength: 2000,
+            pattern: "^(https://.*)?$",
+            hint: "Send an https link, or an empty string to clear it",
+          },
+          live_url: {
+            type: "string",
+            maxLength: 2000,
+            pattern: "^(https://.*)?$",
+            hint: "Send an https link, or an empty string to clear it",
+          },
+          format: {
+            type: "string",
+            maxLength: 30,
+            enum: [
+              "",
+              "graphic",
+              "carousel",
+              "short_video",
+              "long_video",
+              "story",
+              "talking_head",
+              "motion_graphics",
+              "photo_ugc",
+              "blog",
+              "email",
+              "landing_page",
+            ],
+            hint: "Use a supported format, or empty to clear",
+          },
+          audience: {
+            type: "string",
+            maxLength: 30,
+            enum: ["", "explorer", "business", "education_investor"],
+            hint: "Use a supported audience, or empty to clear",
+          },
+          city_id: {
+            type: "string",
+            maxLength: 36,
+            hint:
+              "Send a city id from the calendar, or an empty string to clear it",
+          },
+        },
+        required: [],
+        hint: "Send one or more supported card fields",
+      },
+      expected_revision: {
+        type: "integer",
+        minimum: 1,
+        maximum: 2147483647,
+        hint: "Send the revision you read",
+      },
+      request_key: REQUEST_KEY,
+    }, ["id", "changes", "expected_revision", "request_key"]),
+    annotations: WRITE,
+    reaches: ["content_calendar_update"],
+    writes: true,
+    adminOnly: false,
+    peopleText: true,
+    group: "Content",
+  },
+  {
+    name: "assign_content",
+    title: "Assign content",
+    description:
+      "Replace the owners on one content card with active team members, using the revision you read. " +
+      DATA_NOT_INSTRUCTIONS,
+    inputSchema: schema({
+      id: RECORD_ID,
+      owner_emails: {
+        type: "array",
+        items: {
+          type: "string",
+          maxLength: 320,
+          hint: "Send an active team email",
+        },
+        minItems: 0,
+        maxItems: 10,
+        hint: "Send up to 10 active team emails",
+      },
+      expected_revision: {
+        type: "integer",
+        minimum: 1,
+        maximum: 2147483647,
+        hint: "Send the revision you read",
+      },
+      request_key: REQUEST_KEY,
+    }, ["id", "owner_emails", "expected_revision", "request_key"]),
+    annotations: WRITE,
+    reaches: ["content_calendar_assign"],
+    writes: true,
+    adminOnly: false,
+    peopleText: false,
+    group: "Content",
+  },
+  {
+    name: "comment_content",
+    title: "Comment on content",
+    description:
+      "Add a visible comment to one content card. This records your person and this agent. " +
+      DATA_NOT_INSTRUCTIONS,
+    inputSchema: schema({
+      id: RECORD_ID,
+      body: {
+        type: "string",
+        minLength: 1,
+        maxLength: 4000,
+        hint: "Send a comment of 1 to 4,000 characters",
+      },
+      request_key: REQUEST_KEY,
+    }, ["id", "body", "request_key"]),
+    annotations: WRITE,
+    reaches: ["content_calendar_comment_add"],
+    writes: true,
+    adminOnly: false,
+    peopleText: true,
+    group: "Content",
+  },
+  {
+    name: "move_content",
+    title: "Move content",
+    description:
+      "Move a content card using the revision you read. Forward moves are one stage at a time. Writing to Design needs nonblank copy and approve_copy; Review to Scheduled needs a publish date, channel and approve_design; Scheduled to Published needs a live link or publish_without_link. Backward moves are allowed. " +
+      DATA_NOT_INSTRUCTIONS,
+    inputSchema: schema({
+      id: RECORD_ID,
+      to: {
+        type: "string",
+        maxLength: 20,
+        enum: ["idea", "writing", "design", "review", "scheduled", "published"],
+        hint: "Use a content stage",
+      },
+      expected_revision: {
+        type: "integer",
+        minimum: 1,
+        maximum: 2147483647,
+        hint: "Send the revision you read",
+      },
+      approve_copy: {
+        type: "boolean",
+        hint: "Use true to approve copy when moving Writing to Design",
+      },
+      approve_design: {
+        type: "boolean",
+        hint: "Use true to approve design when moving Review to Scheduled",
+      },
+      publish_without_link: {
+        type: "boolean",
+        hint: "Use true only to explicitly publish without a stable live link",
+      },
+      request_key: REQUEST_KEY,
+    }, ["id", "to", "expected_revision", "request_key"]),
+    annotations: WRITE,
+    reaches: ["content_calendar_move"],
+    writes: true,
+    adminOnly: false,
+    peopleText: false,
+    group: "Content",
+  },
 ];
 
 /**
@@ -1129,6 +1435,18 @@ export const SCREEN_FUNCTION_PARITY: Readonly<
   team_draft_mark_sent: { excluded: "a person sends" },
   team_draft_unsend: { excluded: "a person undoes the Mingla record" },
   team_draft_restore: { excluded: "a person restores a discarded draft" },
+  content_calendar_config: { tools: ["list_content"] },
+  content_calendar_list: { tools: ["list_content"] },
+  content_calendar_get: { tools: ["list_content"] },
+  content_calendar_create: { tools: ["add_content"] },
+  content_calendar_update: { tools: ["update_content"] },
+  content_calendar_assign: { tools: ["assign_content"] },
+  content_calendar_comment_add: { tools: ["comment_content"] },
+  content_calendar_move: { tools: ["move_content"] },
+  content_calendar_undo: {
+    excluded: "a person undoes a recent move or reschedule",
+  },
+  content_calendar_delete: { excluded: "an agent cannot delete" },
   crm_record_delete: { excluded: "an agent cannot delete" },
   crm_record_restore: { excluded: "an agent cannot delete" },
   crm_record_undo_stage_move: { excluded: "later: not in this part" },

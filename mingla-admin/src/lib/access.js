@@ -26,6 +26,7 @@ export const AREA = {
   CRM: "crm",
   // Beta leads, for the whole team (issue #3802, Wave 1).
   BETA_LEADS: "beta_leads",
+  CONTENT_CALENDAR: "content_calendar",
 };
 
 // Every page id NOT listed here needs AREA.ADMIN_CONSOLE. A page added by any
@@ -38,6 +39,7 @@ export const PAGE_AREA_OVERRIDES = {
   creators: AREA.CRM,
   drafts: AREA.CRM,
   "beta-leads": AREA.BETA_LEADS,
+  "content-calendar": AREA.CONTENT_CALENDAR,
   // My agent (issue #3802, Wave 4): everyone who works the pipelines.
   agent: AREA.CRM,
   guide: AREA.CRM,

@@ -736,6 +736,12 @@ test("#3802 H-6: every tool, and the connector's first words, tell the agent tha
         update_draft: false,
         list_drafts: true,
         withdraw_drafts: false,
+        list_content: true,
+        add_content: false,
+        update_content: false,
+        assign_content: false,
+        comment_content: false,
+        move_content: false,
       } as Record<string, boolean>)[t.name],
       `${t.name}: says whether it reads or writes`,
     );

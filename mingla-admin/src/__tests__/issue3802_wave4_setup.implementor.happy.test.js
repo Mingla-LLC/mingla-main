@@ -1305,8 +1305,8 @@ describe("#3802 S-8: where the setup message and its code may go", () => {
     }
   });
   it("the page lists one ability per tool, in the connector's order, with the approved groups", () => {
-    assert.deepEqual(AGENT_ABILITIES.map((a) => a.tool).slice(9), ["add_records", "upsert_record", "update_records", "move_stage", "set_owners", "log_activity", "record_reply", "save_drafts", "update_draft", "list_drafts", "withdraw_drafts"]);
-    assert.deepEqual([...new Set(AGENT_ABILITIES.map((a) => a.group))], ["Your day", "Find and check", "Beta leads", "Team", "Add and change", "Log", "Drafts"]);
+    assert.deepEqual(AGENT_ABILITIES.map((a) => a.tool).slice(9), ["add_records", "upsert_record", "update_records", "move_stage", "set_owners", "log_activity", "record_reply", "save_drafts", "update_draft", "list_drafts", "withdraw_drafts", "list_content", "add_content", "update_content", "assign_content", "comment_content", "move_content"]);
+    assert.deepEqual([...new Set(AGENT_ABILITIES.map((a) => a.group))], ["Your day", "Find and check", "Beta leads", "Team", "Add and change", "Log", "Drafts", "Content"]);
     assert.equal(AGENT_ABILITIES.find((a) => a.tool === "add_records").detail, "Up to 50 at once. A name, an email, a phone or a handle that is already there is skipped, never doubled.");
     assert.equal(AGENT_ABILITIES.find((a) => a.tool === "move_stage").detail, "Always from the stage it saw; Live sets itself.");
     assert.equal(AGENT_ABILITIES.find((a) => a.tool === "log_activity").detail, "A note, a reply, or the first message to someone never contacted.");
