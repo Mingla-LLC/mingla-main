@@ -92,14 +92,10 @@ import { revenueCatService } from "../src/services/revenueCatService";
 import {
   initializeOneSignal,
   onForegroundNotification,
-  onNotificationClicked,
   syncPushPermissionTag,
 } from "../src/services/oneSignalService";
-import {
-  processBusinessNotification,
-  type BusinessNavTarget,
-} from "../src/services/businessNotificationRouting";
 import { usePushPermissionMoment } from "../src/hooks/usePushPermissionMoment";
+import { useBusinessPushTapRouting } from "../src/hooks/useBusinessPushTapRouting";
 import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
 // ORCH-1102 — route-agnostic auth routing with no dead-ends. Pure, unit-tested
 // predicates: an unauthenticated user on ANY web route redirects to the real
@@ -118,11 +114,6 @@ import {
 import { hasUsableStoredWebSession } from "../src/utils/authReadiness";
 // ORCH-1246 (Apple 2.1) — gate the ATT request on foreground-active state.
 import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
-
-// Sub-B: a tap that arrives before auth is stashed here + replayed post-login
-// (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
-// cold-launch from a tap survives the auth gate.
-const DEFERRED_PUSH_TARGET_KEY = "mingla-business.deferredPushTarget.v1";
 
 // ORCH-1318 (§B.3/§E.1, business B1) — AppsFlyer OneLink referral capture key.
 // Matches the consumer capture key (shared §B.1 payload contract). ATTRIBUTION
@@ -604,11 +595,8 @@ function RootLayoutInner(): React.ReactElement {
   // (authenticated + a brand exists), one-shot, never on boot/account-only.
   usePushPermissionMoment(user !== null, currentBrandId);
 
-  // META-ORCH-1074 Sub-B — foreground display + click handlers. The service's
-  // app-lifetime native listener captures a cold click before the intentionally
-  // deferred OneSignal initialization above, then buffers it until this React
-  // subscriber is ready. On web these remain guarded no-ops. Re-registers when
-  // the signed-in user changes so auth gating sees fresh state.
+  // META-ORCH-1074 Sub-B — foreground display. The native click capture and
+  // startup-safe routing handoff live in useBusinessPushTapRouting below.
   const userId = user?.id ?? null;
   useEffect(() => {
     // Foreground: show the system banner for every business push (consumer
@@ -619,54 +607,15 @@ function RootLayoutInner(): React.ReactElement {
       },
     );
 
-    // Tap (tray / lock screen / banner): mark read + track + navigate. When
-    // unauthenticated, stash the resolved target for post-login replay.
-    const removeClicked = onNotificationClicked((data) => {
-      if (typeof data.type !== "string") return;
-      processBusinessNotification(data, {
-        router,
-        isAuthenticated: userId !== null,
-        stashDeferred: (target: BusinessNavTarget) => {
-          void AsyncStorage.setItem(
-            DEFERRED_PUSH_TARGET_KEY,
-            JSON.stringify({ target, ts: Date.now() }),
-          );
-        },
-      });
-    });
-
     return () => {
       removeForeground();
-      removeClicked();
     };
-  }, [router, userId]);
+  }, []);
 
-  // META-ORCH-1074 Sub-B — replay a deferred push target once auth is ready.
-  // A tap while logged out stashed a path; navigate to it after sign-in, then
-  // clear the stash so it fires at most once.
-  useEffect(() => {
-    if (userId === null) return;
-    let cancelled = false;
-    void (async (): Promise<void> => {
-      try {
-        const raw = await AsyncStorage.getItem(DEFERRED_PUSH_TARGET_KEY);
-        if (raw === null || cancelled) return;
-        await AsyncStorage.removeItem(DEFERRED_PUSH_TARGET_KEY);
-        const parsed = JSON.parse(raw) as { target?: string };
-        if (typeof parsed.target === "string" && parsed.target.length > 0) {
-          router.push(parsed.target as never);
-        }
-      } catch (err) {
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.warn("[_layout] deferred push replay failed:", err);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, router]);
+  // #3720: a cold tap is not navigable merely because React subscribed. Wait
+  // until auth is resolved AND the authenticated `/` -> Home redirect has
+  // finished, then consume the preserved tap exactly once.
+  useBusinessPushTapRouting({ loading, pathname, router, userId });
 
   // Cycle 17d §C — TTL evict ended-event entries from phone stores (30d post end_at).
   // Runs once after auth bootstrap completes (signal that Zustand persist hydration is done).
