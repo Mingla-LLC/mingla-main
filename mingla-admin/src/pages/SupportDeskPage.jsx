@@ -139,7 +139,7 @@ function hasActiveNextUpdate(ticket) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function SupportDeskPage({ embedded = false } = {}) {
+export function SupportDeskPage({ embedded = false, canManageAgents = true } = {}) {
   const { addToast } = useToast();
   const { session, signOut } = useAuth();
   const mountedRef = useRef(true);
@@ -504,10 +504,11 @@ export function SupportDeskPage({ embedded = false } = {}) {
   }, [addToast]);
 
   const openAgents = useCallback(() => {
+    if (!canManageAgents) return;
     setAgentsOpen(true);
     setGrantEmail("");
     void loadStaff();
-  }, [loadStaff]);
+  }, [canManageAgents, loadStaff]);
 
   const handleGrant = useCallback(async (e) => {
     e?.preventDefault?.();
@@ -600,9 +601,11 @@ export function SupportDeskPage({ embedded = false } = {}) {
               <Button variant="secondary" size="sm" onClick={() => setProductInboxOpen(true)}>
                 Product inbox
               </Button>
-              <Button variant="secondary" size="sm" icon={Shield} onClick={openAgents}>
-                Agents
-              </Button>
+              {canManageAgents && (
+                <Button variant="secondary" size="sm" icon={Shield} onClick={openAgents}>
+                  Agents
+                </Button>
+              )}
               <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void loadQueue()}>
                 Refresh
               </Button>
@@ -622,9 +625,11 @@ export function SupportDeskPage({ embedded = false } = {}) {
             <Button variant="secondary" size="sm" onClick={() => setProductInboxOpen(true)}>
               Product inbox
             </Button>
-            <Button variant="secondary" size="sm" icon={Shield} onClick={openAgents}>
-              Agents
-            </Button>
+            {canManageAgents && (
+              <Button variant="secondary" size="sm" icon={Shield} onClick={openAgents}>
+                Agents
+              </Button>
+            )}
             <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => void loadQueue()}>
               Refresh
             </Button>
@@ -1057,6 +1062,7 @@ export function SupportDeskPage({ embedded = false } = {}) {
       />
 
       {/* Agents panel */}
+      {canManageAgents && (
       <Modal open={agentsOpen} onClose={() => setAgentsOpen(false)} title="Support agents" size="md">
         <ModalBody>
           <p className="text-sm text-[var(--color-text-secondary)] mb-4">
@@ -1125,6 +1131,7 @@ export function SupportDeskPage({ embedded = false } = {}) {
           <Button variant="secondary" onClick={() => setAgentsOpen(false)}>Done</Button>
         </ModalFooter>
       </Modal>
+      )}
     </div>
   );
 }

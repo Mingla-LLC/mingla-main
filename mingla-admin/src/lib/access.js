@@ -28,6 +28,18 @@ export const AREA = {
   BETA_LEADS: "beta_leads",
 };
 
+// Issue #3720 operational capabilities. These are intentionally outside AREA:
+// AREA remains the role-to-area contract pinned by #3802, while these values
+// come from a separate server-owned capability RPC. They can open only the
+// Community & Support console and never imply full admin access.
+export const COMMUNITY_SUPPORT_AREA = "community_support";
+export const SUPPORT_OPERATIONS_AREA = "community_support_support";
+export const COMMUNITY_OPERATIONS_AREA = "community_support_community";
+
+export const PAGE_ADDITIONAL_AREAS = Object.freeze({
+  "community-support": Object.freeze([COMMUNITY_SUPPORT_AREA]),
+});
+
 // Every page id NOT listed here needs AREA.ADMIN_CONSOLE. A page added by any
 // other piece of work is therefore owner/admin-only without touching this file.
 // The default is admin_console. NEVER invert this default.
@@ -74,12 +86,13 @@ export function areaForPage(pageId) {
 }
 
 export function canOpenPage(access, pageId) {
-  return (
-    !!access &&
-    access.status === "active" &&
-    Array.isArray(access.areas) &&
-    access.areas.includes(areaForPage(pageId))
-  );
+  if (!access || access.status !== "active" || !Array.isArray(access.areas)) return false;
+  if (access.areas.includes(areaForPage(pageId))) return true;
+  const additional =
+    typeof pageId === "string" && Object.hasOwn(PAGE_ADDITIONAL_AREAS, pageId)
+      ? PAGE_ADDITIONAL_AREAS[pageId]
+      : [];
+  return additional.some((area) => access.areas.includes(area));
 }
 
 /** Where this person lands: their role home, else the dashboard, else nowhere. */

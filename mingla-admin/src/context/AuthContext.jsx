@@ -34,12 +34,24 @@ const ACCESS_REMOVED_MESSAGE = "Your access was removed.";
  */
 async function loadAccess() {
   try {
-    const { data, error } = await supabase.rpc("admin_team_my_access");
+    const [teamResult, operationalResult] = await Promise.all([
+      supabase.rpc("admin_team_my_access"),
+      supabase.rpc("admin_team_my_operational_areas"),
+    ]);
+    const error = teamResult.error || operationalResult.error;
     if (error) {
       console.error("[AuthContext] access check failed:", error.message);
       return { ok: false };
     }
-    return { ok: true, access: normalizeAccess(data) };
+    const access = normalizeAccess(teamResult.data);
+    if (!access) return { ok: true, access };
+    const operationalAreas = Array.isArray(operationalResult.data)
+      ? operationalResult.data.filter((area) => typeof area === "string")
+      : [];
+    return {
+      ok: true,
+      access: { ...access, areas: [...new Set([...access.areas, ...operationalAreas])] },
+    };
   } catch (err) {
     console.error("[AuthContext] access check failed:", err?.message || err);
     return { ok: false };
@@ -241,6 +253,13 @@ export function AuthProvider({ children }) {
     setAccess((prev) => (sameAccess(prev, loaded.access) ? prev : loaded.access));
   }, [rejectSession]);
 
+  const refreshCurrentAccess = useCallback(async () => {
+    const { data, error } = await supabase.auth.getSession();
+    const currentSession = data?.session ?? null;
+    if (error || !currentSession || acceptedUserIdRef.current !== currentSession.user?.id) return;
+    await refreshAccess(currentSession);
+  }, [refreshAccess]);
+
   useEffect(() => {
     // `mounted` belongs to THIS run of the effect (React runs it twice in
     // development); mountedRef is what the callbacks above look at.
@@ -300,6 +319,23 @@ export function AuthProvider({ children }) {
       subscription.unsubscribe();
     };
   }, [resolveSession, refreshAccess]);
+
+  // Operational grants and revocations take effect without signing out. Focus
+  // and visibility changes refresh immediately; the light interval covers a
+  // user who keeps the Admin tab open continuously.
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshCurrentAccess();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    const intervalId = window.setInterval(refreshWhenVisible, 30_000);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.clearInterval(intervalId);
+    };
+  }, [refreshCurrentAccess]);
 
   /**
    * "Try again" on the retry screen: re-run the access check for the session
@@ -545,6 +581,7 @@ export function AuthProvider({ children }) {
       access,
       accessError,
       retryAccess,
+      refreshCurrentAccess,
       authNotice,
       clearAuthNotice,
       verifyPassword,
