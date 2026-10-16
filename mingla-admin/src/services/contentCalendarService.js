@@ -21,6 +21,7 @@ async function call(name, args = {}) {
 export const fetchContentConfig = () => call("content_calendar_config");
 export const listContent = (query = {}) => call("content_calendar_list", { p_query: query });
 export const getContent = (id) => call("content_calendar_get", { p_id: id });
+export const checkContentDuplicate = (title) => call("content_calendar_duplicate_check", { p_title: title });
 export const createContent = (title, key) => call("content_calendar_create", { p_title: title, p_request_key: key });
 export const updateContent = (id, changes, revision, key) => call("content_calendar_update", { p_id: id, p_changes: changes, p_expected_revision: revision, p_request_key: key });
 export const assignContent = (id, owners, revision, key) => call("content_calendar_assign", { p_id: id, p_owner_emails: owners, p_expected_revision: revision, p_request_key: key });

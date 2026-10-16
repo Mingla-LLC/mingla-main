@@ -23,6 +23,7 @@ COMMENT ON FUNCTION public.admin_team_role_areas(text) IS
 CREATE TABLE public.content_calendar_items (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title          text NOT NULL,
+  title_key      text GENERATED ALWAYS AS (public.crm_name_key(title)) STORED,
   stage          text NOT NULL DEFAULT 'idea',
   owner_emails   text[] NOT NULL DEFAULT ARRAY[]::text[],
   publish_at     timestamptz,
@@ -31,6 +32,11 @@ CREATE TABLE public.content_calendar_items (
   notes          text,
   drive_url      text,
   live_url       text,
+  copy_approved_by text,
+  copy_approved_at timestamptz,
+  design_approved_by text,
+  design_approved_at timestamptz,
+  published_without_link boolean NOT NULL DEFAULT false,
   format         text,
   audience       text,
   city_id        uuid,
@@ -42,20 +48,72 @@ CREATE TABLE public.content_calendar_items (
   deleted_by     text,
   deleted_at     timestamptz,
   CONSTRAINT content_calendar_title_check CHECK (char_length(btrim(title)) BETWEEN 1 AND 160),
+  CONSTRAINT content_calendar_title_key_check CHECK (title_key <> ''),
   CONSTRAINT content_calendar_stage_check CHECK (stage IN ('idea','writing','design','review','scheduled','published')),
   CONSTRAINT content_calendar_owners_check CHECK (cardinality(owner_emails) <= 10),
   CONSTRAINT content_calendar_channels_check CHECK (
     cardinality(channels) <= 9 AND channels <@ ARRAY['instagram','tiktok','facebook','x','threads','youtube','linkedin','website','email']::text[]),
   CONSTRAINT content_calendar_copy_check CHECK (char_length(COALESCE(copy_text, '')) <= 20000),
   CONSTRAINT content_calendar_notes_check CHECK (char_length(COALESCE(notes, '')) <= 20000),
-  CONSTRAINT content_calendar_drive_check CHECK (drive_url IS NULL OR (char_length(drive_url) <= 2000 AND drive_url ~ '^https://')),
-  CONSTRAINT content_calendar_live_check CHECK (live_url IS NULL OR (char_length(live_url) <= 2000 AND live_url ~ '^https://')),
+  CONSTRAINT content_calendar_drive_check CHECK (drive_url IS NULL OR (char_length(drive_url) <= 2000 AND drive_url ~ '^https?://')),
+  CONSTRAINT content_calendar_live_check CHECK (live_url IS NULL OR (char_length(live_url) <= 2000 AND live_url ~ '^https?://')),
   CONSTRAINT content_calendar_format_check CHECK (format IS NULL OR format IN ('graphic','carousel','short_video','long_video','story','talking_head','motion_graphics','photo_ugc','blog','email','landing_page')),
   CONSTRAINT content_calendar_audience_check CHECK (audience IS NULL OR audience IN ('explorer','business','education_investor')),
-  CONSTRAINT content_calendar_revision_check CHECK (revision > 0)
+  CONSTRAINT content_calendar_revision_check CHECK (revision > 0),
+  CONSTRAINT content_calendar_copy_approval_pair_check CHECK ((copy_approved_by IS NULL) = (copy_approved_at IS NULL)),
+  CONSTRAINT content_calendar_design_approval_pair_check CHECK ((design_approved_by IS NULL) = (design_approved_at IS NULL)),
+  CONSTRAINT content_calendar_copy_gate_check CHECK (
+    stage IN ('idea','writing') OR
+    (NULLIF(btrim(COALESCE(copy_text,'')),'') IS NOT NULL AND copy_approved_by IS NOT NULL AND copy_approved_at IS NOT NULL)),
+  CONSTRAINT content_calendar_schedule_gate_check CHECK (
+    stage NOT IN ('scheduled','published') OR
+    (design_approved_by IS NOT NULL AND design_approved_at IS NOT NULL AND publish_at IS NOT NULL AND cardinality(channels) > 0)),
+  CONSTRAINT content_calendar_publish_gate_check CHECK (
+    stage <> 'published' OR live_url IS NOT NULL OR published_without_link)
 );
 CREATE INDEX content_calendar_items_by_publish ON public.content_calendar_items (publish_at, id) WHERE deleted_at IS NULL;
 CREATE INDEX content_calendar_items_by_stage ON public.content_calendar_items (stage, updated_at DESC) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX content_calendar_items_title_key_unique ON public.content_calendar_items (title_key) WHERE deleted_at IS NULL;
+
+CREATE FUNCTION public.content_calendar_item_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path = ''
+AS $$
+DECLARE v_old_stage integer; v_new_stage integer;
+BEGIN
+  IF TG_OP='UPDATE' AND NEW.stage IS DISTINCT FROM OLD.stage THEN
+    SELECT ord INTO v_old_stage FROM unnest(ARRAY['idea','writing','design','review','scheduled','published']) WITH ORDINALITY s(stage,ord) WHERE stage=OLD.stage;
+    SELECT ord INTO v_new_stage FROM unnest(ARRAY['idea','writing','design','review','scheduled','published']) WITH ORDINALITY s(stage,ord) WHERE stage=NEW.stage;
+    IF v_new_stage < v_old_stage THEN
+      IF v_new_stage <= 2 THEN
+        NEW.copy_approved_by:=NULL; NEW.copy_approved_at:=NULL;
+        NEW.design_approved_by:=NULL; NEW.design_approved_at:=NULL;
+      ELSIF v_new_stage <= 4 THEN
+        NEW.design_approved_by:=NULL; NEW.design_approved_at:=NULL;
+      END IF;
+      NEW.published_without_link:=false;
+    END IF;
+  END IF;
+  IF TG_OP='UPDATE' AND OLD.stage NOT IN ('idea','writing') AND NEW.copy_text IS DISTINCT FROM OLD.copy_text THEN
+    RAISE EXCEPTION 'copy_locked: Copy is read-only after Writing. Move the card back to Writing to revise it.' USING ERRCODE='22023';
+  END IF;
+  IF NEW.stage NOT IN ('idea','writing') AND
+     (NULLIF(btrim(COALESCE(NEW.copy_text,'')),'') IS NULL OR NEW.copy_approved_by IS NULL OR NEW.copy_approved_at IS NULL) THEN
+    RAISE EXCEPTION 'copy_approval_required: Design and later stages require approved copy.' USING ERRCODE='22023';
+  END IF;
+  IF NEW.stage IN ('scheduled','published') AND
+     (NEW.design_approved_by IS NULL OR NEW.design_approved_at IS NULL OR NEW.publish_at IS NULL OR cardinality(NEW.channels)=0) THEN
+    RAISE EXCEPTION 'schedule_required: Scheduled and Published require approved design, a publish date and at least one channel.' USING ERRCODE='22023';
+  END IF;
+  IF NEW.stage='published' AND NEW.live_url IS NULL AND NOT NEW.published_without_link THEN
+    RAISE EXCEPTION 'live_link_required: Published needs a live link or the explicit without-link decision.' USING ERRCODE='22023';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.content_calendar_item_guard() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER content_calendar_item_guard_before
+  BEFORE INSERT OR UPDATE ON public.content_calendar_items
+  FOR EACH ROW EXECUTE FUNCTION public.content_calendar_item_guard();
 
 CREATE TABLE public.content_calendar_comments (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -78,7 +136,9 @@ CREATE TABLE public.content_calendar_audit (
   metadata     jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at   timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT content_calendar_audit_via_check CHECK (via IS NULL OR via IN ('claude','codex')),
-  CONSTRAINT content_calendar_audit_metadata_check CHECK (jsonb_typeof(metadata) = 'object')
+  CONSTRAINT content_calendar_audit_metadata_check CHECK (
+    jsonb_typeof(metadata) = 'object' AND
+    NOT (metadata ?| ARRAY['title','copy','copy_text','notes','body','comment','drive_url','live_url','before','after']))
 );
 CREATE INDEX content_calendar_audit_by_item ON public.content_calendar_audit (item_id, created_at DESC, id DESC);
 
@@ -152,6 +212,9 @@ AS $$
     'id', r.id, 'title', r.title, 'stage', r.stage, 'owners', to_jsonb(r.owner_emails),
     'publish_at', r.publish_at, 'channels', to_jsonb(r.channels), 'copy', r.copy_text,
     'notes', r.notes, 'drive_url', r.drive_url, 'live_url', r.live_url,
+    'copy_approved_by', r.copy_approved_by, 'copy_approved_at', r.copy_approved_at,
+    'design_approved_by', r.design_approved_by, 'design_approved_at', r.design_approved_at,
+    'published_without_link', r.published_without_link,
     'format', r.format, 'audience', r.audience, 'city_id', r.city_id,
     'city_name', (SELECT c.name FROM public.seeding_cities c WHERE c.id = r.city_id),
     'revision', r.revision, 'created_by', r.created_by, 'created_at', r.created_at,
@@ -312,6 +375,29 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.content_calendar_get(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.content_calendar_get(uuid) TO authenticated, service_role;
 
+CREATE FUNCTION public.content_calendar_duplicate_check(p_title text) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $$
+DECLARE v record; v_key text; v_exact jsonb; v_similar jsonb;
+BEGIN
+  SELECT * INTO v FROM public.content_calendar_ctx();
+  v_key := public.crm_name_key(regexp_replace(btrim(COALESCE(p_title,'')), '\s+', ' ', 'g'));
+  IF v_key IS NULL OR v_key = '' THEN RETURN '{"exact":null,"similar":[]}'::jsonb; END IF;
+  SELECT jsonb_build_object('id',i.id,'title',i.title,'stage',i.stage) INTO v_exact
+    FROM public.content_calendar_items i WHERE i.deleted_at IS NULL AND i.title_key=v_key LIMIT 1;
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('id',s.id,'title',s.title,'stage',s.stage) ORDER BY s.title,s.id),'[]'::jsonb)
+    INTO v_similar
+    FROM (SELECT i.id,i.title,i.stage FROM public.content_calendar_items i
+           WHERE i.deleted_at IS NULL AND i.title_key<>v_key
+             AND char_length(v_key)>=3 AND char_length(i.title_key)>=3
+             AND (position(v_key IN i.title_key)>0 OR position(i.title_key IN v_key)>0)
+           ORDER BY i.title,i.id LIMIT 5) s;
+  RETURN jsonb_build_object('exact',v_exact,'similar',v_similar);
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.content_calendar_duplicate_check(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.content_calendar_duplicate_check(text) TO authenticated, service_role;
+
 CREATE FUNCTION public.content_calendar_create(p_title text, p_request_key text DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -323,13 +409,21 @@ BEGIN
   IF p_title IS NULL OR char_length(btrim(p_title)) NOT BETWEEN 1 AND 160 THEN
     RAISE EXCEPTION 'invalid_title: Title must be 1 to 160 characters.' USING ERRCODE='22023';
   END IF;
+  IF public.crm_name_key(p_title) = '' THEN
+    RAISE EXCEPTION 'invalid_title: Title must contain visible letters or numbers.' USING ERRCODE='22023';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.content_calendar_items i WHERE i.deleted_at IS NULL AND i.title_key=public.crm_name_key(p_title)) THEN
+    RAISE EXCEPTION 'duplicate_title: That title is already on the content calendar. Open the existing card instead.' USING ERRCODE='23505';
+  END IF;
   INSERT INTO public.content_calendar_items (title, owner_emails, created_by, updated_by)
   VALUES (btrim(p_title), ARRAY[v.actor_email], v.actor_email, v.actor_email) RETURNING * INTO v_item;
   v_audit := public.content_calendar_audit_write(v_item.id, v.actor_email, v.via, 'content.created',
-    jsonb_build_object('after', public.content_calendar_item_json(v_item)));
+    jsonb_build_object('to_revision',v_item.revision,'changed_fields',jsonb_build_array('title','owners','stage')));
   v_out := jsonb_build_object('item', public.content_calendar_item_json(v_item), 'audit_id', v_audit);
   PERFORM public.content_calendar_request_finish(v.actor_email, p_request_key, 'create', v_out);
   RETURN v_out;
+EXCEPTION WHEN unique_violation THEN
+  RAISE EXCEPTION 'duplicate_title: That title is already on the content calendar. Open the existing card instead.' USING ERRCODE='23505';
 END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.content_calendar_create(text,text) FROM PUBLIC, anon;
@@ -341,8 +435,9 @@ CREATE FUNCTION public.content_calendar_update(
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
 DECLARE
-  v record; v_item public.content_calendar_items; v_before jsonb; v_after jsonb; v_replay jsonb; v_out jsonb;
+  v record; v_item public.content_calendar_items; v_after jsonb; v_replay jsonb; v_out jsonb;
   v_args jsonb; v_audit uuid; v_action text := 'content.updated'; v_value text; v_channels text[];
+  v_fields text[]; v_before_publish timestamptz;
 BEGIN
   SELECT * INTO v FROM public.content_calendar_ctx();
   v_args := jsonb_build_object('id', p_id, 'changes', p_changes, 'expected_revision', p_expected_revision);
@@ -358,10 +453,15 @@ BEGIN
   IF p_expected_revision IS NULL OR v_item.revision <> p_expected_revision THEN
     RAISE EXCEPTION 'stale_write: This card changed since you opened it. Reload it, then apply your change again.' USING ERRCODE='40001';
   END IF;
-  v_before := public.content_calendar_item_json(v_item);
+  v_before_publish := v_item.publish_at;
+  SELECT array_agg(k ORDER BY k) INTO v_fields FROM jsonb_object_keys(p_changes) k;
   IF p_changes ? 'title' THEN
     IF jsonb_typeof(p_changes->'title') <> 'string' OR char_length(btrim(p_changes->>'title')) NOT BETWEEN 1 AND 160 THEN
       RAISE EXCEPTION 'invalid_title: Title must be 1 to 160 characters.' USING ERRCODE='22023'; END IF;
+    IF EXISTS (SELECT 1 FROM public.content_calendar_items i WHERE i.id<>p_id AND i.deleted_at IS NULL
+                 AND i.title_key=public.crm_name_key(p_changes->>'title')) THEN
+      RAISE EXCEPTION 'duplicate_title: That title is already on the content calendar. Open the existing card instead.' USING ERRCODE='23505';
+    END IF;
     v_item.title := btrim(p_changes->>'title');
   END IF;
   IF p_changes ? 'publish_at' THEN
@@ -379,6 +479,9 @@ BEGIN
     v_item.channels := v_channels;
   END IF;
   IF p_changes ? 'copy' THEN
+    IF v_item.stage NOT IN ('idea','writing') THEN
+      RAISE EXCEPTION 'copy_locked: Copy is read-only after Writing. Move the card back to Writing to revise it.' USING ERRCODE='22023';
+    END IF;
     IF jsonb_typeof(p_changes->'copy') NOT IN ('string','null') OR char_length(COALESCE(p_changes->>'copy','')) > 20000 THEN
       RAISE EXCEPTION 'invalid_copy: Copy must be at most 20,000 characters.' USING ERRCODE='22023'; END IF;
     v_item.copy_text := NULLIF(p_changes->>'copy','');
@@ -391,8 +494,8 @@ BEGIN
   FOREACH v_value IN ARRAY ARRAY['drive_url','live_url'] LOOP
     IF p_changes ? v_value THEN
       IF jsonb_typeof(p_changes->v_value) NOT IN ('string','null') OR char_length(COALESCE(p_changes->>v_value,'')) > 2000
-         OR (NULLIF(p_changes->>v_value,'') IS NOT NULL AND (p_changes->>v_value) !~ '^https://') THEN
-        RAISE EXCEPTION 'invalid_url: Links must start with https:// and be at most 2,000 characters.' USING ERRCODE='22023'; END IF;
+         OR (NULLIF(p_changes->>v_value,'') IS NOT NULL AND (p_changes->>v_value) !~ '^https?://') THEN
+        RAISE EXCEPTION 'invalid_url: Links must start with http:// or https:// and be at most 2,000 characters.' USING ERRCODE='22023'; END IF;
       IF v_value='drive_url' THEN v_item.drive_url := NULLIF(p_changes->>v_value,'');
       ELSE v_item.live_url := NULLIF(p_changes->>v_value,''); END IF;
     END IF;
@@ -415,18 +518,32 @@ BEGIN
       RAISE EXCEPTION 'invalid_city: Choose a listed city.' USING ERRCODE='22023';
     ELSE v_item.city_id := (p_changes->>'city_id')::uuid; END IF;
   END IF;
+  IF v_item.stage NOT IN ('idea','writing') AND
+     (NULLIF(btrim(COALESCE(v_item.copy_text,'')),'') IS NULL OR v_item.copy_approved_at IS NULL OR v_item.copy_approved_by IS NULL) THEN
+    RAISE EXCEPTION 'copy_approval_required: Design and later stages require approved copy.' USING ERRCODE='22023';
+  END IF;
+  IF v_item.stage IN ('scheduled','published') AND
+     (v_item.design_approved_at IS NULL OR v_item.design_approved_by IS NULL OR v_item.publish_at IS NULL OR cardinality(v_item.channels)=0) THEN
+    RAISE EXCEPTION 'schedule_required: Scheduled and Published require approved design, a publish date and at least one channel.' USING ERRCODE='22023';
+  END IF;
+  IF v_item.stage='published' AND v_item.live_url IS NULL AND NOT v_item.published_without_link THEN
+    RAISE EXCEPTION 'live_link_required: Add the live link, or explicitly publish without one.' USING ERRCODE='22023';
+  END IF;
   UPDATE public.content_calendar_items SET title=v_item.title, publish_at=v_item.publish_at, channels=v_item.channels,
     copy_text=v_item.copy_text, notes=v_item.notes, drive_url=v_item.drive_url, live_url=v_item.live_url,
     format=v_item.format, audience=v_item.audience, city_id=v_item.city_id, revision=revision+1,
     updated_by=v.actor_email, updated_at=now() WHERE id=p_id RETURNING * INTO v_item;
   v_after := public.content_calendar_item_json(v_item);
-  IF (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(p_changes) k) = ARRAY['publish_at']::text[] THEN v_action := 'content.rescheduled'; END IF;
+  IF v_fields = ARRAY['publish_at']::text[] THEN v_action := 'content.rescheduled'; END IF;
   v_audit := public.content_calendar_audit_write(p_id, v.actor_email, v.via, v_action,
-    jsonb_build_object('before', v_before, 'after', v_after, 'from_revision', p_expected_revision, 'to_revision', v_item.revision));
+    jsonb_build_object('changed_fields',to_jsonb(v_fields),'from_revision',p_expected_revision,'to_revision',v_item.revision) ||
+    CASE WHEN v_action='content.rescheduled' THEN jsonb_build_object('previous_publish_at',v_before_publish) ELSE '{}'::jsonb END);
   v_out := jsonb_build_object('item', v_after, 'audit_id', v_audit);
   PERFORM public.content_calendar_request_finish(v.actor_email, p_request_key, 'update', v_out);
   RETURN v_out;
-EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow OR invalid_text_representation THEN
+EXCEPTION WHEN unique_violation THEN
+  RAISE EXCEPTION 'duplicate_title: That title is already on the content calendar. Open the existing card instead.' USING ERRCODE='23505';
+WHEN invalid_datetime_format OR datetime_field_overflow OR invalid_text_representation THEN
   RAISE EXCEPTION 'invalid_changes: A date or identifier has the wrong shape.' USING ERRCODE='22023';
 END;
 $$;
@@ -438,7 +555,7 @@ CREATE FUNCTION public.content_calendar_assign(
 ) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
-DECLARE v record; v_item public.content_calendar_items; v_owners text[]; v_before jsonb; v_replay jsonb; v_out jsonb; v_audit uuid;
+DECLARE v record; v_item public.content_calendar_items; v_owners text[]; v_replay jsonb; v_out jsonb; v_audit uuid;
 BEGIN
   SELECT * INTO v FROM public.content_calendar_ctx();
   v_replay := public.content_calendar_request_begin(v.actor_email, p_request_key, 'assign',
@@ -451,11 +568,10 @@ BEGIN
   SELECT * INTO v_item FROM public.content_calendar_items i WHERE i.id=p_id AND i.deleted_at IS NULL FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'not_found: That content card is no longer here.' USING ERRCODE='P0002'; END IF;
   IF p_expected_revision IS NULL OR v_item.revision<>p_expected_revision THEN RAISE EXCEPTION 'stale_write: This card changed since you opened it. Reload it, then apply your change again.' USING ERRCODE='40001'; END IF;
-  v_before := public.content_calendar_item_json(v_item);
   UPDATE public.content_calendar_items SET owner_emails=v_owners, revision=revision+1, updated_by=v.actor_email, updated_at=now()
     WHERE id=p_id RETURNING * INTO v_item;
   v_audit := public.content_calendar_audit_write(p_id,v.actor_email,v.via,'content.assigned',
-    jsonb_build_object('before',v_before,'after',public.content_calendar_item_json(v_item),'from_revision',p_expected_revision,'to_revision',v_item.revision));
+    jsonb_build_object('changed_fields',jsonb_build_array('owners'),'from_revision',p_expected_revision,'to_revision',v_item.revision));
   v_out := jsonb_build_object('item',public.content_calendar_item_json(v_item),'audit_id',v_audit);
   PERFORM public.content_calendar_request_finish(v.actor_email,p_request_key,'assign',v_out);
   RETURN v_out;
@@ -470,7 +586,11 @@ CREATE FUNCTION public.content_calendar_move(
 ) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
-DECLARE v record; v_item public.content_calendar_items; v_before jsonb; v_replay jsonb; v_out jsonb; v_audit uuid; v_from_idx integer; v_to_idx integer;
+DECLARE
+  v record; v_item public.content_calendar_items; v_replay jsonb; v_out jsonb; v_audit uuid;
+  v_from_idx integer; v_to_idx integer; v_now timestamptz := clock_timestamp();
+  v_previous_copy_by text; v_previous_copy_at timestamptz;
+  v_previous_design_by text; v_previous_design_at timestamptz; v_previous_without_link boolean;
 BEGIN
   SELECT * INTO v FROM public.content_calendar_ctx();
   v_replay := public.content_calendar_request_begin(v.actor_email,p_request_key,'move',jsonb_build_object(
@@ -483,22 +603,46 @@ BEGIN
   SELECT ord INTO v_from_idx FROM unnest(ARRAY['idea','writing','design','review','scheduled','published']) WITH ORDINALITY s(stage,ord) WHERE stage=v_item.stage;
   SELECT ord INTO v_to_idx FROM unnest(ARRAY['idea','writing','design','review','scheduled','published']) WITH ORDINALITY s(stage,ord) WHERE stage=p_to;
   IF v_to_idx IS NULL THEN RAISE EXCEPTION 'invalid_stage: Use Idea, Writing, Design, Review, Scheduled or Published.' USING ERRCODE='22023'; END IF;
+  IF v_to_idx=v_from_idx THEN RAISE EXCEPTION 'no_change: That card is already in this stage.' USING ERRCODE='22023'; END IF;
   IF v_to_idx > v_from_idx + 1 THEN RAISE EXCEPTION 'stage_order: Move forward one stage at a time.' USING ERRCODE='22023'; END IF;
+  v_previous_copy_by:=v_item.copy_approved_by; v_previous_copy_at:=v_item.copy_approved_at;
+  v_previous_design_by:=v_item.design_approved_by; v_previous_design_at:=v_item.design_approved_at;
+  v_previous_without_link:=v_item.published_without_link;
   IF v_item.stage='writing' AND p_to='design' THEN
     IF NULLIF(btrim(COALESCE(v_item.copy_text,'')),'') IS NULL THEN RAISE EXCEPTION 'copy_required: Add copy before Design.' USING ERRCODE='22023'; END IF;
     IF NOT COALESCE(p_approve_copy,false) THEN RAISE EXCEPTION 'copy_approval_required: Approve the copy before Design.' USING ERRCODE='22023'; END IF;
+    v_item.copy_approved_by:=v.actor_email; v_item.copy_approved_at:=v_now;
   ELSIF v_item.stage='review' AND p_to='scheduled' THEN
     IF v_item.publish_at IS NULL OR cardinality(v_item.channels)=0 THEN RAISE EXCEPTION 'schedule_required: Add a publish date, time and at least one channel.' USING ERRCODE='22023'; END IF;
     IF NOT COALESCE(p_approve_design,false) THEN RAISE EXCEPTION 'design_approval_required: Approve the design before Scheduled.' USING ERRCODE='22023'; END IF;
+    v_item.design_approved_by:=v.actor_email; v_item.design_approved_at:=v_now;
   ELSIF v_item.stage='scheduled' AND p_to='published' AND v_item.live_url IS NULL AND NOT COALESCE(p_publish_without_link,false) THEN
     RAISE EXCEPTION 'live_link_required: Add the live link, or explicitly publish without one.' USING ERRCODE='22023';
   END IF;
-  v_before := public.content_calendar_item_json(v_item);
-  UPDATE public.content_calendar_items SET stage=p_to,revision=revision+1,updated_by=v.actor_email,updated_at=now()
+  IF v_to_idx<v_from_idx THEN
+    IF v_to_idx<=2 THEN
+      v_item.copy_approved_by:=NULL; v_item.copy_approved_at:=NULL;
+      v_item.design_approved_by:=NULL; v_item.design_approved_at:=NULL;
+    ELSIF v_to_idx<=4 THEN
+      v_item.design_approved_by:=NULL; v_item.design_approved_at:=NULL;
+    END IF;
+  END IF;
+  v_item.published_without_link := p_to='published' AND v_item.live_url IS NULL AND COALESCE(p_publish_without_link,false);
+  UPDATE public.content_calendar_items SET stage=p_to,
+    copy_approved_by=v_item.copy_approved_by,copy_approved_at=v_item.copy_approved_at,
+    design_approved_by=v_item.design_approved_by,design_approved_at=v_item.design_approved_at,
+    published_without_link=v_item.published_without_link,
+    revision=revision+1,updated_by=v.actor_email,updated_at=now()
     WHERE id=p_id RETURNING * INTO v_item;
   v_audit := public.content_calendar_audit_write(p_id,v.actor_email,v.via,'content.stage_move',jsonb_build_object(
-    'before',v_before,'after',public.content_calendar_item_json(v_item),'from_revision',p_expected_revision,'to_revision',v_item.revision,
-    'copy_approved',COALESCE(p_approve_copy,false),'design_approved',COALESCE(p_approve_design,false),'published_without_link',COALESCE(p_publish_without_link,false)));
+    'previous_stage',(SELECT stage FROM unnest(ARRAY['idea','writing','design','review','scheduled','published']) WITH ORDINALITY s(stage,ord) WHERE ord=v_from_idx),
+    'next_stage',p_to,'from_revision',p_expected_revision,'to_revision',v_item.revision,
+    'previous_copy_approved_by',v_previous_copy_by,'previous_copy_approved_at',v_previous_copy_at,
+    'previous_design_approved_by',v_previous_design_by,'previous_design_approved_at',v_previous_design_at,
+    'previous_published_without_link',v_previous_without_link,
+    'copy_approved_by',v_item.copy_approved_by,'copy_approved_at',v_item.copy_approved_at,
+    'design_approved_by',v_item.design_approved_by,'design_approved_at',v_item.design_approved_at,
+    'published_without_link',v_item.published_without_link));
   v_out := jsonb_build_object('item',public.content_calendar_item_json(v_item),'audit_id',v_audit);
   PERFORM public.content_calendar_request_finish(v.actor_email,p_request_key,'move',v_out);
   RETURN v_out;
@@ -541,11 +685,21 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'not_found: That content card is no longer here.' USING ERRCODE='P0002'; END IF;
   IF p_expected_revision IS NULL OR v_item.revision<>p_expected_revision OR (v_a.metadata->>'to_revision')::bigint<>p_expected_revision THEN
     RAISE EXCEPTION 'stale_write: This card changed after that action, so it cannot be undone safely.' USING ERRCODE='40001'; END IF;
-  IF v_a.action='content.stage_move' THEN v_item.stage := v_a.metadata#>>'{before,stage}';
-  ELSE v_item.publish_at := (v_a.metadata#>>'{before,publish_at}')::timestamptz; END IF;
-  UPDATE public.content_calendar_items SET stage=v_item.stage,publish_at=v_item.publish_at,revision=revision+1,
+  IF v_a.action='content.stage_move' THEN
+    v_item.stage := v_a.metadata->>'previous_stage';
+    v_item.copy_approved_by := v_a.metadata->>'previous_copy_approved_by';
+    v_item.copy_approved_at := (v_a.metadata->>'previous_copy_approved_at')::timestamptz;
+    v_item.design_approved_by := v_a.metadata->>'previous_design_approved_by';
+    v_item.design_approved_at := (v_a.metadata->>'previous_design_approved_at')::timestamptz;
+    v_item.published_without_link := COALESCE((v_a.metadata->>'previous_published_without_link')::boolean,false);
+  ELSE v_item.publish_at := (v_a.metadata->>'previous_publish_at')::timestamptz; END IF;
+  UPDATE public.content_calendar_items SET stage=v_item.stage,publish_at=v_item.publish_at,
+    copy_approved_by=v_item.copy_approved_by,copy_approved_at=v_item.copy_approved_at,
+    design_approved_by=v_item.design_approved_by,design_approved_at=v_item.design_approved_at,
+    published_without_link=v_item.published_without_link,revision=revision+1,
     updated_by=v.actor_email,updated_at=now() WHERE id=v_item.id RETURNING * INTO v_item;
-  v_new_audit := public.content_calendar_audit_write(v_item.id,v.actor_email,v.via,'content.undo',jsonb_build_object('undid_audit_id',p_audit_id,'after',public.content_calendar_item_json(v_item)));
+  v_new_audit := public.content_calendar_audit_write(v_item.id,v.actor_email,v.via,'content.undo',
+    jsonb_build_object('undid_audit_id',p_audit_id,'to_revision',v_item.revision,'restored_stage',v_item.stage));
   RETURN jsonb_build_object('item',public.content_calendar_item_json(v_item),'audit_id',v_new_audit);
 END;
 $$;
@@ -563,7 +717,8 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'not_found: That content card is no longer here.' USING ERRCODE='P0002'; END IF;
   IF p_expected_revision IS NULL OR v_item.revision<>p_expected_revision THEN RAISE EXCEPTION 'stale_write: This card changed since you opened it. Reload it, then try again.' USING ERRCODE='40001'; END IF;
   UPDATE public.content_calendar_items SET deleted_at=now(),deleted_by=v.actor_email,revision=revision+1,updated_by=v.actor_email,updated_at=now() WHERE id=p_id RETURNING * INTO v_item;
-  v_audit := public.content_calendar_audit_write(p_id,v.actor_email,v.via,'content.deleted',jsonb_build_object('before',public.content_calendar_item_json(v_item)));
+  v_audit := public.content_calendar_audit_write(p_id,v.actor_email,v.via,'content.deleted',
+    jsonb_build_object('from_revision',p_expected_revision,'to_revision',v_item.revision,'changed_fields',jsonb_build_array('deleted_at')));
   RETURN jsonb_build_object('id',p_id,'audit_id',v_audit);
 END;
 $$;
@@ -721,6 +876,7 @@ BEGIN
   END LOOP;
   FOREACH v_fn IN ARRAY ARRAY[
     'public.content_calendar_config()','public.content_calendar_list(jsonb)','public.content_calendar_get(uuid)',
+    'public.content_calendar_duplicate_check(text)',
     'public.content_calendar_create(text,text)','public.content_calendar_update(uuid,jsonb,bigint,text)',
     'public.content_calendar_assign(uuid,text[],bigint,text)','public.content_calendar_move(uuid,text,bigint,boolean,boolean,boolean,text)',
     'public.content_calendar_comment_add(uuid,text,text)','public.content_calendar_undo(uuid,bigint)','public.content_calendar_delete(uuid,bigint)'] LOOP

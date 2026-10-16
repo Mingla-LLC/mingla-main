@@ -707,6 +707,7 @@ Deno.test("#3802 W-5: every function a screen calls has an agent tool, or a writ
       .map(([fn]) => fn).sort(),
     [
       "content_calendar_delete",
+      "content_calendar_duplicate_check",
       "content_calendar_undo",
       "crm_beta_lead_to_host",
       "crm_record_delete",

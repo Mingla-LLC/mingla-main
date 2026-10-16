@@ -1,5 +1,6 @@
 import { ArrowRight, CalendarClock, MessageSquare } from "lucide-react";
 import { Badge } from "../ui/Badge";
+import { canMoveTo } from "../../lib/contentCalendarModel";
 
 export function ContentCard({ item, compact = false, onOpen, onMove, onStage, stages = [], draggable = false }) {
   const date = item.publish_at ? new Date(item.publish_at) : null;
@@ -24,7 +25,7 @@ export function ContentCard({ item, compact = false, onOpen, onMove, onStage, st
           Next stage <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       )}
-      {onStage && <label className="mt-2 block"><span className="sr-only">Move {item.title} to stage</span><select value={item.stage} onChange={(event) => onStage(item, event.target.value)} className="min-h-11 w-full rounded-md border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 text-xs text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]">{stages.map((stage) => <option key={stage.value} value={stage.value}>{stage.label}</option>)}</select></label>}
+      {onStage && <label className="mt-2 block"><span className="sr-only">Move {item.title} to stage</span><select value={item.stage} onChange={(event) => onStage(item, event.target.value)} className="min-h-11 w-full rounded-md border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 text-xs text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)]">{stages.map((stage) => <option key={stage.value} value={stage.value} disabled={stage.value !== item.stage && !canMoveTo(item, stage.value)}>{stage.label}</option>)}</select></label>}
     </article>
   );
 }

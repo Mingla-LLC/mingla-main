@@ -146,7 +146,7 @@ Deno.test("#3802 Wave 2: one simple add, approval prompts, autosave and explicit
     },
   );
   assertMatch(PAGE, /It starts in Idea and is assigned to you/);
-  assertMatch(PAGE, /createContent\(title,/);
+  assertMatch(PAGE, /createContent\(clean,/);
   for (
     const label of [
       "Title",
@@ -192,7 +192,7 @@ Deno.test("#3802 Wave 2: route, separate area, RPC boundary and responsive contr
     [...SERVICE.matchAll(/call\("(content_calendar_[a-z_]+)"/g)].map((match) =>
       match[1]
     ).length,
-    10,
+    11,
   );
   assertMatch(CARD, /text\/x-mingla-content-id/);
   for (const source of [PAGE, DRAWER, CARD]) assertMatch(source, /min-h-11/);

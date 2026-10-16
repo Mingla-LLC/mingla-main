@@ -1243,14 +1243,14 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
           drive_url: {
             type: "string",
             maxLength: 2000,
-            pattern: "^(https://.*)?$",
-            hint: "Send an https link, or an empty string to clear it",
+            pattern: "^(https?://.*)?$",
+            hint: "Send an http or https link, or an empty string to clear it",
           },
           live_url: {
             type: "string",
             maxLength: 2000,
-            pattern: "^(https://.*)?$",
-            hint: "Send an https link, or an empty string to clear it",
+            pattern: "^(https?://.*)?$",
+            hint: "Send an http or https link, or an empty string to clear it",
           },
           format: {
             type: "string",
@@ -1438,6 +1438,9 @@ export const SCREEN_FUNCTION_PARITY: Readonly<
   content_calendar_config: { tools: ["list_content"] },
   content_calendar_list: { tools: ["list_content"] },
   content_calendar_get: { tools: ["list_content"] },
+  content_calendar_duplicate_check: {
+    excluded: "a person reviews likely duplicates while typing",
+  },
   content_calendar_create: { tools: ["add_content"] },
   content_calendar_update: { tools: ["update_content"] },
   content_calendar_assign: { tools: ["assign_content"] },
