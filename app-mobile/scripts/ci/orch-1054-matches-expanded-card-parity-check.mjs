@@ -101,15 +101,27 @@ check(
 );
 
 // ── 2. Both expanded-open paths route through the canonical shared mapper. ──
+// [TEST-MOD-APPROVED #3281] Round 1 PR 1d: both sheets call
+// `expansionTargetFromSavedPayload`, which still uses
+// `savedCardToExpandedCardData` for places/curated and routes brand experiences
+// to `businessEvent` so Book survives (#1672). Count of mapper calls is 1
+// (inside the helper); both open paths must invoke the helper.
 check(
   "C2 [FAILS-ON-REVERT] both Matches+Plans open paths use savedCardToExpandedCardData",
   /import \{ savedCardToExpandedCardData \} from "\.\.\/utils\/savedCardToExpandedCardData";/.test(
     banners,
   ) &&
-    (banners.match(/savedCardToExpandedCardData\(/g) ?? []).length === 2 &&
-    /setExpandedCard\(savedCardToExpandedCardData\(\{[\s\S]*?\.\.\.item\.cardData,[\s\S]*?sourceRecordId: item\.savedCardId,[\s\S]*?savedCardId: item\.savedCardId,[\s\S]*?\}\)\)/.test(banners) &&
-    /const expanded = savedCardToExpandedCardData\(\s*\{[\s\S]*?\.\.\.\(card\.card_data \|\| card\.experience_data \|\| \{\}\),[\s\S]*?sourceRecordId: card\.saved_card_id \|\| card\.id,[\s\S]*?savedCardId: card\.saved_card_id \|\| card\.id,[\s\S]*?\},\s*\)/.test(banners),
-  "Plans (ScheduleSheet) and Matches (SavedToSessionCardsSheet) must both map via the shared canonical mapper.",
+    /function expansionTargetFromSavedPayload\(/.test(banners) &&
+    /savedCardToExpandedCardData\(payload\)/.test(banners) &&
+    /isBrandExperiencePayload\(payload\)/.test(banners) &&
+    (banners.match(/expansionTargetFromSavedPayload\(/g) ?? []).length >= 2 &&
+    /setModalTarget\(expansionTargetFromSavedPayload\(\{[\s\S]*?\.\.\.item\.cardData,[\s\S]*?sourceRecordId: item\.savedCardId,[\s\S]*?savedCardId: item\.savedCardId,[\s\S]*?\}\)\)/.test(
+      banners,
+    ) &&
+    /expansionTargetFromSavedPayload\(\s*\{[\s\S]*?\.\.\.\(card\.card_data \|\| card\.experience_data \|\| \{\}\),[\s\S]*?sourceRecordId: card\.saved_card_id \|\| card\.id,[\s\S]*?savedCardId: card\.saved_card_id \|\| card\.id,[\s\S]*?\}\s*\)/.test(
+      banners,
+    ),
+  "Plans (ScheduleSheet) and Matches (SavedToSessionCardsSheet) must both map via the shared canonical mapper (brand experiences via expansionTargetFromSavedPayload → Book).",
 );
 
 // ── 3. The shared mapper mirrors the deck: curated pass-through verbatim. ──
