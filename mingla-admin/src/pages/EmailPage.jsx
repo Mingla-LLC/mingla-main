@@ -14,9 +14,7 @@ import { Tabs } from "../components/ui/Tabs";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
-import {
-  timeAgo, formatDate, formatDateTime, formatRelativeTime, formatFullDate, truncate, escapeLike,
-} from "../lib/formatters";
+import { formatRelativeTime, formatFullDate, truncate } from "../lib/formatters";
 import { logAdminAction } from "../lib/auditLog";
 import { exportCsv } from "../lib/exportCsv";
 import {
@@ -24,6 +22,7 @@ import {
   AlertTriangle, Eye, User, Plus, Pencil, Trash2, Download,
 } from "lucide-react";
 import { PageHeader } from "../components/ui/PageHeader";
+import { EmailComposer } from "../components/email/EmailComposer";
 
 class SessionExpiredError extends Error {
   constructor(message = SESSION_EXPIRED_MESSAGE) {
@@ -64,6 +63,26 @@ function segmentLabel(seg) {
   if (seg.type === "onboarding") return `Onboarding: ${seg.onboarding || "—"}`;
   if (seg.type === "status") return `Status: ${seg.status || "—"}`;
   return "Custom";
+}
+
+function campaignAudienceLabel(log) {
+  if (log?.audience?.mode === "everyone") return "Everyone";
+  if (log?.audience?.mode === "person") return log.recipient_email || log.audience.email || "One person";
+  if (log?.audience?.mode === "segment") {
+    const filters = log.audience.filters || {};
+    const active = [
+      filters.userType && filters.userType !== "all" ? filters.userType : null,
+      filters.country && filters.country !== "all" ? filters.country : null,
+      filters.onboarding && filters.onboarding !== "all" ? filters.onboarding : null,
+      filters.accountStatus && filters.accountStatus !== "all" ? filters.accountStatus : null,
+      filters.emailStatus && filters.emailStatus !== "all" ? filters.emailStatus : null,
+      filters.language && filters.language !== "all" ? filters.language : null,
+      filters.beta && filters.beta !== "all" ? filters.beta : null,
+      filters.joinedFrom || filters.joinedTo ? "joined date" : null,
+    ].filter(Boolean);
+    return active.length ? active.join(" · ") : "All Host & Explorer users";
+  }
+  return log?.recipient_type === "bulk" ? segmentLabel(log.segment_filter) : (log?.recipient_email || "One person");
 }
 
 async function getAuthHeaders() {
@@ -141,9 +160,9 @@ export function EmailPage({ embedded = false } = {}) {
     let cancelled = false;
     async function checkProvider() {
       try {
-        const result = await callEdgeFunction({ action: "estimate", segment: { type: "all" } });
+        const result = await callEdgeFunction({ action: "check_provider" });
         if (!cancelled) {
-          if (result._noProvider) setProviderConfigured(false);
+          setProviderConfigured(!result._noProvider && result.configured !== false);
           setProviderChecked(true);
           setSessionExpired(false);
         }
@@ -201,7 +220,17 @@ export function EmailPage({ embedded = false } = {}) {
 
 // ─── Compose ────────────────────────────────────────────────────────────────
 
-function ComposeSubView({ providerConfigured, providerChecked, onSessionExpired }) {
+function ComposeSubView(props) {
+  return (
+    <EmailComposer
+      callEdgeFunction={callEdgeFunction}
+      providerConfigured={props.providerConfigured}
+      onSessionExpired={props.onSessionExpired}
+    />
+  );
+}
+
+function LegacyComposeSubView({ providerConfigured, providerChecked, onSessionExpired }) {
   const { addToast } = useToast();
   const mountedRef = useRef(true);
 
@@ -870,12 +899,8 @@ function HistorySubView() {
     },
     {
       key: "recipient_type",
-      label: "Type",
-      render: (val) => (
-        <Badge variant={val === "bulk" ? "info" : "default"}>
-          {val === "bulk" ? "Bulk" : "Individual"}
-        </Badge>
-      ),
+      label: "Audience",
+      render: (_, row) => <span className="text-sm" title={campaignAudienceLabel(row)}>{truncate(campaignAudienceLabel(row), 34)}</span>,
     },
     {
       key: "sent_count",
@@ -886,8 +911,8 @@ function HistorySubView() {
       key: "status",
       label: "Status",
       render: (val) => {
-        const v = val === "sent" ? "success" : val === "partial" ? "warning" : "error";
-        return <Badge variant={v} dot>{val}</Badge>;
+        const v = val === "sent" ? "success" : ["partial", "scheduled", "queued", "sending"].includes(val) ? "warning" : val === "failed" ? "error" : "default";
+        return <Badge variant={v} dot>{String(val || "unknown").replace("_", " ")}</Badge>;
       },
     },
     {
@@ -897,9 +922,11 @@ function HistorySubView() {
     },
     {
       key: "created_at",
-      label: "Sent",
+      label: "When",
       sortable: true,
-      render: (val) => formatRelativeTime(val),
+      render: (val, row) => row.status === "scheduled" && row.scheduled_for
+        ? `Scheduled ${formatRelativeTime(row.scheduled_for)}`
+        : formatRelativeTime(row.completed_at || val),
     },
     {
       key: "_actions",
@@ -963,16 +990,16 @@ function HistorySubView() {
                     <p className="text-[var(--color-text-primary)]">{detailLog.from_name} &lt;{detailLog.from_email}&gt;</p>
                   </div>
                   <div>
-                    <p className="text-[var(--color-text-tertiary)]">Type</p>
+                    <p className="text-[var(--color-text-tertiary)]">Audience</p>
                     <p className="text-[var(--color-text-primary)]">
-                      {detailLog.recipient_type === "bulk" ? "Bulk" : "Individual"}
-                      {detailLog.recipient_email && ` — ${detailLog.recipient_email}`}
+                      {campaignAudienceLabel(detailLog)}
                     </p>
                   </div>
                   <div>
                     <p className="text-[var(--color-text-tertiary)]">Recipients</p>
                     <p className="text-[var(--color-text-primary)]">
                       {detailLog.recipient_count} targeted, {detailLog.sent_count} sent, {detailLog.failed_count} failed
+                      {Number(detailLog.skipped_count) > 0 && `, ${detailLog.skipped_count} opted out`}
                     </p>
                   </div>
                   <div>
@@ -982,8 +1009,12 @@ function HistorySubView() {
                     </Badge>
                   </div>
                   <div>
-                    <p className="text-[var(--color-text-tertiary)]">Sent</p>
-                    <p className="text-[var(--color-text-primary)]">{formatFullDate(detailLog.created_at)}</p>
+                    <p className="text-[var(--color-text-tertiary)]">When</p>
+                    <p className="text-[var(--color-text-primary)]">
+                      {detailLog.status === "scheduled" && detailLog.scheduled_for
+                        ? `Scheduled for ${formatFullDate(detailLog.scheduled_for)} (${detailLog.timezone || "UTC"})`
+                        : formatFullDate(detailLog.completed_at || detailLog.created_at)}
+                    </p>
                   </div>
                   {detailLog.template_used && (
                     <div>

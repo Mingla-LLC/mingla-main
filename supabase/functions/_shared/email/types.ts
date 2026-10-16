@@ -68,7 +68,20 @@ export interface GenericBodyInput {
   title: string;
   paragraphs: string[];
   cta?: { label: string; url: string } | null;
+  /** #3720 — validated Admin composer blocks. Legacy paragraphs remain valid. */
+  document?: EmailContentBlock[] | null;
 }
+
+export type EmailContentBlock =
+  | { id?: string; type: "rich_text"; html: string }
+  | {
+    id?: string;
+    type: "image";
+    url: string;
+    alt: string;
+    link?: string | null;
+  }
+  | { id?: string; type: "divider" };
 
 export type EmailBodyInput = TicketBodyInput | GenericBodyInput;
 
