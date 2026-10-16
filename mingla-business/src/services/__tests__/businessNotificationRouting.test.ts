@@ -273,32 +273,74 @@ describe("processBusinessNotification", () => {
   test("authenticated → marks row read + navigates", () => {
     const push = jest.fn();
     const stashDeferred = jest.fn();
+    const holdLaunchTarget = jest.fn();
     processBusinessNotification(
       {
         type: "business.payout_paid",
         notificationId: "n-1",
         deepLink: "mingla-business://payments",
       },
-      { router: { push }, isAuthenticated: true, stashDeferred },
+      {
+        router: { push },
+        isAuthenticated: true,
+        navigationStartupSettled: true,
+        holdLaunchTarget,
+        stashDeferred,
+      },
     );
     expect(updateFn).toHaveBeenCalledTimes(1); // read_at + push_clicked UPDATE
     expect(updateEq).toHaveBeenCalledWith("id", "n-1");
     expect(push).toHaveBeenCalledWith("/brand/brand-123/payments");
     expect(stashDeferred).not.toHaveBeenCalled();
+    expect(holdLaunchTarget).not.toHaveBeenCalled();
+  });
+
+  test("authenticated but startup unsettled → holds, does not push", () => {
+    const push = jest.fn();
+    const stashDeferred = jest.fn();
+    const holdLaunchTarget = jest.fn();
+    processBusinessNotification(
+      {
+        type: "business.community_roadmap_updated",
+        notificationId: "n-roadmap",
+        deepLink: "mingla-business://community/roadmap",
+      },
+      {
+        router: { push },
+        isAuthenticated: true,
+        navigationStartupSettled: false,
+        holdLaunchTarget,
+        stashDeferred,
+      },
+    );
+    expect(updateFn).toHaveBeenCalledTimes(1);
+    expect(push).not.toHaveBeenCalled();
+    expect(stashDeferred).not.toHaveBeenCalled();
+    expect(holdLaunchTarget).toHaveBeenCalledWith(
+      "/account/support?tab=community&section=roadmap",
+    );
   });
 
   test("unauthenticated → stashes target, does not navigate", () => {
     const push = jest.fn();
     const stashDeferred = jest.fn();
+    const holdLaunchTarget = jest.fn();
     processBusinessNotification(
       {
         type: "business.claim_decision",
         deepLink: "mingla-business://brand/b-2/listing",
       },
-      { router: { push }, isAuthenticated: false, stashDeferred },
+      {
+        router: { push },
+        isAuthenticated: false,
+        navigationStartupSettled: false,
+        holdLaunchTarget,
+        stashDeferred,
+      },
     );
     expect(push).not.toHaveBeenCalled();
     expect(stashDeferred).toHaveBeenCalledWith("/brand/b-2/listing");
+    expect(holdLaunchTarget).not.toHaveBeenCalled();
     expect(updateFn).not.toHaveBeenCalled();
   });
 });
