@@ -9,7 +9,7 @@ const repoRoot = resolve(import.meta.dirname, "../..");
 const deploySource = join(repoRoot, "scripts/deploy-supabase-functions.sh");
 const serveSource = join(repoRoot, "scripts/serve-supabase-functions.sh");
 const workflowSource = await readFile(
-  join(repoRoot, ".github/workflows/issue-1456-edge-deploy-idempotency.yml"),
+  join(repoRoot, ".github", "workflows", "issue-1456-edge-deploy-idempotency.yml"),
   "utf8",
 );
 const originalConfig = "project_id = \"fixture\"\n\n[functions.legacy]\nverify_jwt = true\n";
