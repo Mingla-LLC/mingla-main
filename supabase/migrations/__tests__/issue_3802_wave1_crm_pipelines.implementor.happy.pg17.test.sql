@@ -48,8 +48,9 @@
 
 \set ON_ERROR_STOP on
 \getenv t3802w_pw PGPASSWORD
--- [TEST-MOD-APPROVED #3802] PR-C carries the newest complete self-check.
-\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql`
+-- [TEST-MOD-APPROVED #3802] 2026-10-15: Wave 6 extends the newest
+-- complete self-check with the closed import-provenance function and tables.
+\set t3802w_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql`
 
 -- ===========================================================================
 -- PART 1 — one transaction, rolled back.
@@ -1347,8 +1348,10 @@ begin
   perform pg_temp.t3802w_check('W1-11', 'record view: newest first, the dated reply last but one',
     (select string_agg(coalesce(a->>'body', a->>'reply_class'), ' < ' order by o) from jsonb_array_elements(pg_temp.t3802w_jb(r) -> 'activity') with ordinality x(a, o)),
     'clock skew < Sent the intro. < Added to the pipeline. < interested');
+  -- [TEST-MOD-APPROVED #3802] 2026-10-15: Wave 6 appends one safe,
+  -- read-only imports key to record details; the record/list shapes stay exact.
   perform pg_temp.t3802w_check('W1-11', 'record view: top-level keys',
-    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(r)) k), 'activity,links,record,undoable_activity_id');
+    (select string_agg(k, ',' order by k) from jsonb_object_keys(pg_temp.t3802w_jb(r)) k), 'activity,imports,links,record,undoable_activity_id');
 end;
 $w11$;
 
@@ -1490,6 +1493,9 @@ $w14$;
 -- W1-12 — catalog pins. A new writer, grant or policy must be added here
 -- deliberately.
 -- ---------------------------------------------------------------------------
+-- [TEST-MOD-APPROVED #3802] 2026-10-15: Wave 6 adds the one closed
+-- provenance summary reader and the two closed import-evidence tables to this
+-- exact catalog. Existing privilege and mutation assertions are preserved.
 do $w12$
 declare
   c_client constant text[] := array[
@@ -1511,7 +1517,7 @@ declare
     'crm_stage_counts_json()', 'crm_targets_json(date)',
     'crm_ident_key(text,text)', 'crm_clean_identifiers(jsonb)', 'crm_identifier_matches(text,jsonb,uuid)',
     'crm_identifiers_json(uuid)', 'crm_identifier_hits(text,jsonb,uuid)', 'crm_request_claim(text,text,jsonb)',
-    'crm_phone_national(text)'];
+    'crm_phone_national(text)', 'crm_record_sources_json(uuid)'];
   v_fn text;
   v_tbl text;
   v_role text;
@@ -1549,7 +1555,8 @@ begin
       'true/true/search_path=""');
   end loop;
 
-  foreach v_tbl in array array['public.crm_records', 'public.crm_record_owners', 'public.crm_activity', 'public.crm_request_keys'] loop
+  foreach v_tbl in array array['public.crm_records', 'public.crm_record_owners', 'public.crm_activity', 'public.crm_request_keys',
+    'public.crm_record_sources', 'public.crm_import_receipts'] loop
     foreach v_role in array array['anon', 'authenticated'] loop
       foreach v_priv in array array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN'] loop
         perform pg_temp.t3802w_check('W1-12', v_role || ' ' || v_priv || ' on ' || v_tbl,

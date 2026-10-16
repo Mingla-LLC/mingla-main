@@ -306,9 +306,10 @@ begin
   perform pg_temp.t3802k_check('K-1', 'there are exactly 17 team_agent_ functions',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public' and p.proname like 'team\_agent\_%'), '17');
-  perform pg_temp.t3802k_check('K-1', 'there are exactly 51 crm_ functions',
+  -- [TEST-MOD-APPROVED #3802] Wave 6 adds one closed source-summary helper.
+  perform pg_temp.t3802k_check('K-1', 'there are exactly 52 crm_ functions',
     (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public' and p.proname like 'crm\_%'), '51');
+      where n.nspname = 'public' and p.proname like 'crm\_%'), '52');
 
   foreach t in array array['public.team_agent_keys', 'public.team_agent_calls'] loop
     perform pg_temp.t3802k_check('K-1', t || ': row security on, no policy, no trigger',

@@ -47,8 +47,8 @@
 
 \set ON_ERROR_STOP on
 \getenv t3802h_pw PGPASSWORD
--- [TEST-MOD-APPROVED #3802] PR-C carries the newest complete self-check.
-\set t3802h_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql`
+-- [TEST-MOD-APPROVED #3802] Wave 6 carries the newest complete self-check.
+\set t3802h_selfcheck `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql`
 \set t3802h_rekey `sed -n '/^-- issue-3802-pr3 rekey: begin/,/^-- issue-3802-pr3 rekey: end/p' supabase/migrations/20270823003802_issue_3802_wave1_homes_targets_beta.sql`
 \set t3802h_oldkey `sed -n '/^CREATE FUNCTION public.crm_name_key/,/^\$\$;/p' supabase/migrations/20270820003802_issue_3802_wave1_crm_pipelines.sql`
 
@@ -1643,7 +1643,9 @@ begin
       ('one targets column readable by signed-in users', $q$grant select (monthly_target) on public.crm_targets to authenticated$q$, '%authenticated holds%on public.crm_targets%'),
       ('a policy on the targets table',                 $q$create policy issue3802h_planted on public.crm_targets for select using (true)$q$, '%a policy exists on public.crm_targets%'),
       ('row security switched off on the targets table', $q$alter table public.crm_targets disable row level security$q$, '%row security is off on public.crm_targets%'),
-      ('a trigger on the targets table',                $q$create trigger issue3802h_planted before insert on public.crm_targets for each row execute function pg_temp.t3802h_fault()$q$, '%a trigger exists on public.crm_targets%'),
+      -- [TEST-MOD-APPROVED #3802] The latest complete self-check reports all
+      -- closed CRM evidence tables with one stable trigger error.
+      ('a trigger on the targets table',                $q$create trigger issue3802h_planted before insert on public.crm_targets for each row execute function pg_temp.t3802h_fault()$q$, '%a trigger exists on a closed CRM evidence table%'),
       ('a summary helper opened to signed-in users',    $q$grant execute on function public.crm_due_json(text, date, integer) to authenticated$q$, '%authenticated can execute the internal public.crm_due_json(text,date,integer)%'),
       ('the address check opened to signed-in users',   $q$grant execute on function public.admin_team_invite_address_verdict(text) to authenticated$q$, '%authenticated can execute the internal public.admin_team_invite_address_verdict(text)%'),
       ('the home summary opened to anon',               $q$grant execute on function public.crm_home_summary(date) to anon$q$, '%anon can execute public.crm_home_summary(date)%'),
