@@ -94,18 +94,55 @@ GRANT ALL ON public.admin_email_recipient_deliveries TO service_role;
 ALTER TABLE public.email_templates
   ADD COLUMN IF NOT EXISTS body_document jsonb;
 
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES (
-  'admin-email-assets',
-  'admin-email-assets',
-  true,
-  5242880,
-  ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-)
-ON CONFLICT (id) DO UPDATE SET
-  public = EXCLUDED.public,
-  file_size_limit = EXCLUDED.file_size_limit,
-  allowed_mime_types = EXCLUDED.allowed_mime_types;
+-- Production's Supabase-managed buckets table carries the visibility, size,
+-- and MIME columns below. The migration replay image intentionally exposes a
+-- minimal id/name shape, so keep the bucket declaration portable while still
+-- applying every restriction in production.
+DO $bucket$
+DECLARE
+  has_public boolean;
+  has_file_size_limit boolean;
+  has_allowed_mime_types boolean;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'public'
+  ) INTO has_public;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'file_size_limit'
+  ) INTO has_file_size_limit;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets' AND column_name = 'allowed_mime_types'
+  ) INTO has_allowed_mime_types;
+
+  IF has_public AND has_file_size_limit AND has_allowed_mime_types THEN
+    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    VALUES (
+      'admin-email-assets',
+      'admin-email-assets',
+      true,
+      5242880,
+      ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      public = EXCLUDED.public,
+      file_size_limit = EXCLUDED.file_size_limit,
+      allowed_mime_types = EXCLUDED.allowed_mime_types;
+  ELSIF has_public THEN
+    INSERT INTO storage.buckets (id, name, public)
+    VALUES ('admin-email-assets', 'admin-email-assets', true)
+    ON CONFLICT (id) DO UPDATE SET public = EXCLUDED.public;
+  ELSE
+    INSERT INTO storage.buckets (id, name)
+    VALUES ('admin-email-assets', 'admin-email-assets')
+    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+  END IF;
+END
+$bucket$;
 
 DROP POLICY IF EXISTS admin_email_assets_public_read ON storage.objects;
 CREATE POLICY admin_email_assets_public_read

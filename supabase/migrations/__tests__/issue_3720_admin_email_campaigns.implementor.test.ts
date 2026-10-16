@@ -36,6 +36,8 @@ Deno.test("#3720 composer assets are public-read/admin-write with bounded safe f
   assertStringIncludes(sql, "5242880");
   assertStringIncludes(sql, "image/gif");
   assertStringIncludes(sql, "public.is_admin_user()");
+  assertStringIncludes(sql, "information_schema.columns");
+  assertStringIncludes(sql, "INSERT INTO storage.buckets (id, name)");
   assertEquals(sql.includes("image/svg+xml"), false);
 });
 
