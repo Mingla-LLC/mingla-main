@@ -82,9 +82,9 @@ Per https://docs.stripe.com/get-started/checklist/go-live:
 
 - [ ] Mingla Privacy Policy updated to disclose Stripe as a data processor + the data shared
 - [ ] Mingla Terms of Service updated to reflect:
-  - Mingla as merchant of record per `controller.fees.payer=application` + `controller.losses.payments=application`
-  - Application fee disclosure (whatever the percentage is)
-  - Dispute responsibility (Mingla absorbs chargebacks)
+  - Organiser-seller model (#3645): brand is merchant of record on Stripe Connect direct charges; Mingla is MoR on Paystack cutover rails
+  - Application fee / processing-recovery disclosure (1.5% take + 3% recovery pool; surplus to Mingla; organiser absorbs deficit above the pool)
+  - Dispute responsibility: Stripe direct-charge disputes are the organiser's; Paystack disputes are Mingla's 16h clock with organiser debt on loss
 - [ ] Mingla Host ToS Acceptance Gate copy reviewed by legal (Phase 12 deliverable)
 - [ ] GDPR data-processing agreement (DPA) with Stripe in place (Stripe provides standard DPA)
 - [ ] Connect Platform Agreement T&Cs disclosure surfaces shipped (Phase 12 covers disclosure during onboarding)
@@ -108,7 +108,7 @@ Per https://docs.stripe.com/get-started/checklist/go-live:
 - [ ] Mingla support team trained to answer dispute questions from brand admins
 - [ ] Dispute evidence collection process documented (which order details to attach, how to respond via Stripe)
 - [ ] Audit log retention confirmed sufficient to support disputes (Sub-A migration `20260511000003_b2a_v3_notifications.sql` retains audit_log indefinitely; consider retention policy)
-- [ ] Chargeback rate threshold monitored (>1% triggers Stripe risk review; Mingla absorbs the charge)
+- [ ] Chargeback rate threshold monitored (>1% triggers Stripe risk review; losses follow #3645 organiser-seller / Paystack debt rules — not a blanket "Mingla absorbs")
 
 ---
 
