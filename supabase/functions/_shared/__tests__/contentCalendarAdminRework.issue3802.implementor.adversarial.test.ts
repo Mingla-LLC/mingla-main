@@ -144,6 +144,21 @@ Deno.test("#3802 Wave 2 adversarial: duplicate and payload boundaries stay close
   }
 });
 
+Deno.test("#3802 Wave 2 release guard preserves the environment's own admin function", () => {
+  assertMatch(
+    MIGRATION,
+    /set_config\(\s*'issue3802\.wave2_admin_fn_md5',[\s\S]*md5\(p\.prosrc\)[\s\S]*true\s*\)/,
+  );
+  assertMatch(
+    MIGRATION,
+    /IS DISTINCT FROM current_setting\('issue3802\.wave2_admin_fn_md5', true\)/,
+  );
+  assert(
+    !MIGRATION.includes("dc5465a20a4246c6921be0469e261a8b"),
+    "the production migration must not pin a replay-only function fingerprint",
+  );
+});
+
 Deno.test("#3802 Wave 2 adversarial: database owns approvals and backward resets", () => {
   for (
     const field of [
