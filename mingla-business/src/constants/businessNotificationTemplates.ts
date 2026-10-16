@@ -7,7 +7,7 @@
  * `business.new_follower` is DROPPED from v1 (operator 2026-06-04 — no follower
  * data source); not present here.
  *
- * This module is the SINGLE source of truth the inbox uses to map a row's
+ * This module is the full catalog the inbox uses to map a row's
  * `type` → its visual family (icon + accent), severity, default opt-in, and
  * master category. `notify-dispatch` renders the actual push/in-app copy
  * server-side from its own template store; the title/body on a `notifications`
@@ -18,7 +18,10 @@
  * The push/in-app copy strings ARE included here (mirroring the Sub-D matrix)
  * for: (a) the client-side regression test (SC-D1 — char limits + no `{var}`
  * leakage), (b) any future client-side fallback render. They are NOT the
- * delivery path (that is server-side notify-dispatch). Currency-aware
+ * delivery path (that is server-side notify-dispatch). Notification settings
+ * use the startup-safe preference-default rule in
+ * `businessNotificationPreferenceDefaults.ts`; the #3493 parity test prevents
+ * that rule from drifting from this catalog. Currency-aware
  * `{amount}` formatting (Sub-D §2) is the server's job; the templates only
  * carry the `{amount}` slot.
  *
