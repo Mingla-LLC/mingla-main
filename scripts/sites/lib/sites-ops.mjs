@@ -333,12 +333,15 @@ export function validateManagementBackupResponse(value, {
     const distinctDays = new Set(
       completed.map((backup) => new Date(backup.inserted).toISOString().slice(0, 10)),
     );
-    const oldest = completed.at(-1)?.inserted ?? current.inserted;
-    if (
-      distinctDays.size < REQUIRED_BACKUP_RETENTION_DAYS ||
-      current.inserted - oldest <
-        (REQUIRED_BACKUP_RETENTION_DAYS - 1) * 24 * 60 * 60 * 1000
-    ) fail("DATABASE_BACKUP_RETENTION_UNPROVEN");
+    const latestDay = new Date(current.inserted);
+    latestDay.setUTCHours(0, 0, 0, 0);
+    for (let offset = 0; offset < REQUIRED_BACKUP_RETENTION_DAYS; offset += 1) {
+      const expectedDay = new Date(latestDay);
+      expectedDay.setUTCDate(expectedDay.getUTCDate() - offset);
+      if (!distinctDays.has(expectedDay.toISOString().slice(0, 10))) {
+        fail("DATABASE_BACKUP_RETENTION_UNPROVEN");
+      }
+    }
   }
   return {
     inserted_at: new Date(current.inserted).toISOString(),
