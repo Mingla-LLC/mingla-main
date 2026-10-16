@@ -554,6 +554,7 @@ const seedRsvp = (brandId: string, currency: string): string => {
 describe("#3645 retest 2: the one shared answer", () => {
   const {
     getDraftServerCurrency,
+    nextDraftServerCurrencyStamp,
     setDraftServerCurrency,
     subscribeDraftServerCurrency,
   } = draftServerCurrency;
@@ -596,6 +597,18 @@ describe("#3645 retest 2: the one shared answer", () => {
       order.forEach((at) => setDraftServerCurrency(id, at === 5 ? "USD" : `X${at}`, at));
       expect(getDraftServerCurrency(id)).toBe("USD");
     });
+  });
+
+  test("a later save outranks an earlier read when the wall clock does not tick", () => {
+    const now = jest.spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      const readAskedAt = nextDraftServerCurrencyStamp();
+      setDraftServerCurrency("same-millisecond", "NGN");
+      setDraftServerCurrency("same-millisecond", "GBP", readAskedAt);
+      expect(getDraftServerCurrency("same-millisecond")).toBe("NGN");
+    } finally {
+      now.mockRestore();
+    }
   });
 
   test("listeners hear a change once, not a repeat, and not after they leave", () => {

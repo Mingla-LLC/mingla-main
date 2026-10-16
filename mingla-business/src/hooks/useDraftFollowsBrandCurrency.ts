@@ -35,6 +35,7 @@ import {
   draftServerCurrencySequence,
   forgetDraftServerCurrency,
   getDraftServerCurrencyAnswer,
+  nextDraftServerCurrencyStamp,
   setDraftServerCurrency,
   subscribeDraftServerCurrency,
 } from "../utils/draftServerCurrency";
@@ -141,7 +142,7 @@ export const useDraftFollowsBrandCurrency = ({
   useEffect(() => {
     if (draftId === null || draftId.startsWith("d_")) return undefined;
     let live = true;
-    const askedAt = Date.now();
+    const askedAt = nextDraftServerCurrencyStamp();
     const ask = async (): Promise<void> => {
       try {
         const open = await fetchDraftOpenState(draftId);
