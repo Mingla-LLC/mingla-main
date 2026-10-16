@@ -3,6 +3,15 @@
 -- functions. This migration imports no legacy task data.
 BEGIN;
 
+-- Preserve the production function byte-for-byte without assuming that the
+-- replay database and production currently have the same historical body.
+SELECT set_config(
+  'issue3802.wave2_admin_fn_md5',
+  (SELECT md5(p.prosrc) FROM pg_catalog.pg_proc p
+   WHERE p.oid = 'public.is_admin_user()'::regprocedure),
+  true
+);
+
 CREATE TABLE public.content_calendar_items (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title          text NOT NULL,
@@ -877,7 +886,9 @@ BEGIN
     RAISE EXCEPTION 'issue 3802 wave2 self-check: connector tool catalog changed (%)',v_names; END IF;
   SELECT p.prosrc INTO v_src FROM pg_catalog.pg_proc p WHERE p.oid='public.content_calendar_delete(uuid,bigint)'::regprocedure;
   IF v_src !~ 'is_admin_user' THEN RAISE EXCEPTION 'issue 3802 wave2 self-check: delete gate changed'; END IF;
-  IF (SELECT md5(p.prosrc) FROM pg_catalog.pg_proc p WHERE p.oid='public.is_admin_user()'::regprocedure) <> 'dc5465a20a4246c6921be0469e261a8b' THEN
+  IF NULLIF(current_setting('issue3802.wave2_admin_fn_md5', true), '') IS NULL
+     OR (SELECT md5(p.prosrc) FROM pg_catalog.pg_proc p WHERE p.oid='public.is_admin_user()'::regprocedure)
+          IS DISTINCT FROM current_setting('issue3802.wave2_admin_fn_md5', true) THEN
     RAISE EXCEPTION 'issue 3802 wave2 self-check: is_admin_user changed'; END IF;
 END;
 $wave2check$;
