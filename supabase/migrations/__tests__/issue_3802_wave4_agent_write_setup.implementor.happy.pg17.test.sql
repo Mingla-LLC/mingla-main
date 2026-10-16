@@ -33,7 +33,8 @@
 \getenv t3802b_pw PGPASSWORD
 -- [TEST-MOD-APPROVED #3802] Wave 2 adds one separately guarded sibling gateway;
 -- keep this legacy self-check scoped to the original agent surface it owns.
-\set t3802b_check `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql`
+-- [TEST-MOD-APPROVED #3802] Wave 6 carries the newest complete CRM self-check.
+\set t3802b_check `sed -n '/^DO \$check\$/,/^\$check\$;/p' supabase/migrations/20271023003802_issue_3802_wave6_crm_import.sql`
 \set t3802b_w4check `sed -n '/^DO \$w4check\$/,/^\$w4check\$;/p' supabase/migrations/20271016003802_issue_3802_wave4_drafts.sql | sed -e "/WHERE n.nspname = 'public' AND p.proname LIKE/ s/$/ AND p.proname <> 'team_agent_content_call'/" -e "s/'team_agent_call,team_agent_housekeeping'/'team_agent_call,team_agent_content_call,team_agent_housekeeping'/" -e "s/admin_team_set_member,team_agent_call,team_agent_key_issue/admin_team_set_member,team_agent_call,team_agent_content_call,team_agent_key_issue/"`
 \set t3802b_file `cat supabase/migrations/20270831003802_issue_3802_wave4_agent_write_setup.sql`
 
