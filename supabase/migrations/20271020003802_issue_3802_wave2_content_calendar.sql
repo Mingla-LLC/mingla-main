@@ -3,23 +3,6 @@
 -- functions. This migration imports no legacy task data.
 BEGIN;
 
--- The role-to-area function remains the one authority for application access.
-CREATE OR REPLACE FUNCTION public.admin_team_role_areas(p_role text) RETURNS text[]
-LANGUAGE sql IMMUTABLE SET search_path = ''
-AS $$
-  SELECT CASE p_role
-    WHEN 'owner'   THEN ARRAY['admin_console','team_manage','crm','beta_leads','content_calendar']
-    WHEN 'admin'   THEN ARRAY['admin_console','crm','beta_leads','content_calendar']
-    WHEN 'growth'  THEN ARRAY['role_home','crm','beta_leads','content_calendar']
-    WHEN 'partner' THEN ARRAY['role_home','crm','beta_leads','content_calendar']
-    ELSE ARRAY[]::text[]
-  END
-$$;
-REVOKE EXECUTE ON FUNCTION public.admin_team_role_areas(text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_team_role_areas(text) TO authenticated, service_role;
-COMMENT ON FUNCTION public.admin_team_role_areas(text) IS
-  'Issue #3802. The one role-to-areas map. content_calendar is separate from crm and admin_console; all four active team roles receive it.';
-
 CREATE TABLE public.content_calendar_items (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title          text NOT NULL,
@@ -173,13 +156,15 @@ COMMENT ON TABLE public.content_calendar_request_keys IS 'Issue #3802. Replay bi
 
 -- The browser cannot claim an agent. The connector creates the request row in
 -- this transaction first; only then does this context expose claude/codex.
+-- Content Calendar follows the existing CRM access shared by all four roles;
+-- it does not extend the stable role-area response contract.
 CREATE FUNCTION public.content_calendar_ctx()
 RETURNS TABLE (actor_email text, via text)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
 DECLARE v_email text;
 BEGIN
-  IF auth.uid() IS NULL OR NOT COALESCE(public.admin_team_can('content_calendar'), false) THEN
+  IF auth.uid() IS NULL OR NOT COALESCE(public.admin_team_can('crm'), false) THEN
     RAISE EXCEPTION 'forbidden: Your account cannot use the content calendar. Ask the owner to give you team access.' USING ERRCODE = '42501';
   END IF;
   SELECT lower(btrim(u.email)) INTO v_email FROM auth.users u WHERE u.id = auth.uid();
@@ -862,10 +847,10 @@ NOTIFY pgrst, 'reload schema';
 DO $wave2check$
 DECLARE v_fn text; v_table text; v_names text; v_src text;
 BEGIN
-  IF public.admin_team_role_areas('owner') IS DISTINCT FROM ARRAY['admin_console','team_manage','crm','beta_leads','content_calendar']
-     OR public.admin_team_role_areas('admin') IS DISTINCT FROM ARRAY['admin_console','crm','beta_leads','content_calendar']
-     OR public.admin_team_role_areas('growth') IS DISTINCT FROM ARRAY['role_home','crm','beta_leads','content_calendar']
-     OR public.admin_team_role_areas('partner') IS DISTINCT FROM ARRAY['role_home','crm','beta_leads','content_calendar'] THEN
+  IF public.admin_team_role_areas('owner') IS DISTINCT FROM ARRAY['admin_console','team_manage','crm','beta_leads']
+     OR public.admin_team_role_areas('admin') IS DISTINCT FROM ARRAY['admin_console','crm','beta_leads']
+     OR public.admin_team_role_areas('growth') IS DISTINCT FROM ARRAY['role_home','crm','beta_leads']
+     OR public.admin_team_role_areas('partner') IS DISTINCT FROM ARRAY['role_home','crm','beta_leads'] THEN
     RAISE EXCEPTION 'issue 3802 wave2 self-check: role areas changed'; END IF;
   FOREACH v_table IN ARRAY ARRAY['public.content_calendar_items','public.content_calendar_comments','public.content_calendar_audit','public.content_calendar_request_keys'] LOOP
     IF NOT (SELECT c.relrowsecurity FROM pg_catalog.pg_class c WHERE c.oid=v_table::regclass)

@@ -67,10 +67,10 @@ const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s
 const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
 
 const person = (role, areas) => ({ email: `${role}@example.test`, role, status: "active", areas });
-const owner = person("owner", ["admin_console", "team_manage", "crm", "beta_leads", "content_calendar"]);
-const admin = person("admin", ["admin_console", "crm", "beta_leads", "content_calendar"]);
-const growth = person("growth", ["role_home", "crm", "beta_leads", "content_calendar"]);
-const partner = person("partner", ["role_home", "crm", "beta_leads", "content_calendar"]);
+const owner = person("owner", ["admin_console", "team_manage", "crm", "beta_leads"]);
+const admin = person("admin", ["admin_console", "crm", "beta_leads"]);
+const growth = person("growth", ["role_home", "crm", "beta_leads"]);
+const partner = person("partner", ["role_home", "crm", "beta_leads"]);
 
 // Made up here; the shape of a key, never a real one.
 const KEY_C = "mgla_c_" + "k".repeat(43);

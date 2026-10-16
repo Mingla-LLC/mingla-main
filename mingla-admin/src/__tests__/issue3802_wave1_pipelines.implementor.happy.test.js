@@ -146,10 +146,10 @@ const RECORDS = [
 
 // The area lists the server returns for each role after Wave 1's database
 // change (admin_team_role_areas in migration 20270820003802).
-const owner = { email: "o@test.local", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm", "beta_leads", "content_calendar"] };
-const admin = { email: "a@test.local", role: "admin", status: "active", areas: ["admin_console", "crm", "beta_leads", "content_calendar"] };
-const growth = { email: "g@test.local", role: "growth", status: "active", areas: ["role_home", "crm", "beta_leads", "content_calendar"] };
-const partner = { email: "p@test.local", role: "partner", status: "active", areas: ["role_home", "crm", "beta_leads", "content_calendar"] };
+const owner = { email: "o@test.local", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm", "beta_leads"] };
+const admin = { email: "a@test.local", role: "admin", status: "active", areas: ["admin_console", "crm", "beta_leads"] };
+const growth = { email: "g@test.local", role: "growth", status: "active", areas: ["role_home", "crm", "beta_leads"] };
+const partner = { email: "p@test.local", role: "partner", status: "active", areas: ["role_home", "crm", "beta_leads"] };
 
 function parsePageIds() {
   const m = APP_JSX.match(/const PAGES\s*=\s*\{([\s\S]*?)\n\}/);

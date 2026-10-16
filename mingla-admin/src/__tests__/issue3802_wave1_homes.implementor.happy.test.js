@@ -88,10 +88,10 @@ const ACTION_LABELS = Object.fromEntries(
 );
 
 const cp = (...points) => String.fromCodePoint(...points);
-const owner = { email: "o@test.local", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm", "beta_leads", "content_calendar"] };
-const admin = { email: "a@test.local", role: "admin", status: "active", areas: ["admin_console", "crm", "beta_leads", "content_calendar"] };
-const growth = { email: "g@test.local", role: "growth", status: "active", areas: ["role_home", "crm", "beta_leads", "content_calendar"] };
-const partner = { email: "p@test.local", role: "partner", status: "active", areas: ["role_home", "crm", "beta_leads", "content_calendar"] };
+const owner = { email: "o@test.local", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm", "beta_leads"] };
+const admin = { email: "a@test.local", role: "admin", status: "active", areas: ["admin_console", "crm", "beta_leads"] };
+const growth = { email: "g@test.local", role: "growth", status: "active", areas: ["role_home", "crm", "beta_leads"] };
+const partner = { email: "p@test.local", role: "partner", status: "active", areas: ["role_home", "crm", "beta_leads"] };
 const PAGE_IDS = [...APP.match(/const PAGES\s*=\s*\{([\s\S]*?)\n\}/)[1].matchAll(/^\s*"?([a-zA-Z][\w-]*)"?\s*:/gm)].map((m) => m[1]);
 
 describe("#3802 M-1: one name, one key (the server suite's inputs, H-3)", () => {

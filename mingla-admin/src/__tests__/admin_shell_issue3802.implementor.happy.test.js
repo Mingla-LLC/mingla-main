@@ -81,10 +81,10 @@ const LABELS = {
 };
 
 const person = (role, areas) => ({ email: `${role}@example.test`, role, status: "active", areas });
-const owner = person("owner", ["admin_console", "team_manage", "crm", "beta_leads", "content_calendar"]);
-const admin = person("admin", ["admin_console", "crm", "beta_leads", "content_calendar"]);
-const growth = person("growth", ["role_home", "crm", "beta_leads", "content_calendar"]);
-const partner = person("partner", ["role_home", "crm", "beta_leads", "content_calendar"]);
+const owner = person("owner", ["admin_console", "team_manage", "crm", "beta_leads"]);
+const admin = person("admin", ["admin_console", "crm", "beta_leads"]);
+const growth = person("growth", ["role_home", "crm", "beta_leads"]);
+const partner = person("partner", ["role_home", "crm", "beta_leads"]);
 
 // A storage that behaves like the browser's, and two that do not.
 function memoryStorage(initial = {}) {
@@ -152,11 +152,11 @@ describe("#3802 S-3: who may open what did not move", () => {
       creators: "crm",
       drafts: "crm",
       "beta-leads": "beta_leads",
-      "content-calendar": "content_calendar",
+      "content-calendar": "crm",
       agent: "crm",
       guide: "crm",
     });
-    assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm", BETA_LEADS: "beta_leads", CONTENT_CALENDAR: "content_calendar" });
+    assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm", BETA_LEADS: "beta_leads" });
   });
   it("every other page still needs the full admin console", () => {
     for (const item of NAV_ITEMS) {

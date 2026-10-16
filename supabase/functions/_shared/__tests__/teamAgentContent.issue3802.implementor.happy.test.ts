@@ -167,12 +167,12 @@ Deno.test("#3802 Wave 2: one simple add, approval prompts, autosave and explicit
   assertMatch(PAGE, /duration: 8000/);
 });
 
-Deno.test("#3802 Wave 2: route, separate area, RPC boundary and responsive controls stay exact", () => {
-  assertEquals(PAGE_AREA_OVERRIDES["content-calendar"], AREA.CONTENT_CALENDAR);
+Deno.test("#3802 Wave 2: route, CRM access, RPC boundary and responsive controls stay exact", () => {
+  assertEquals(PAGE_AREA_OVERRIDES["content-calendar"], AREA.CRM);
   for (const role of ["owner", "admin", "growth", "partner"]) {
     assert(
       canOpenPage(
-        { role, status: "active", areas: ["content_calendar"] },
+        { role, status: "active", areas: ["crm"] },
         "content-calendar",
       ),
       role,

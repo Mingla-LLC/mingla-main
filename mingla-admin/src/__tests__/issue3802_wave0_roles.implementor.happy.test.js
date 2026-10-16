@@ -88,8 +88,8 @@ function parsePageIds() {
 const PAGE_IDS = parsePageIds();
 
 // The same area lists the server returns for each role.
-const owner = { email: "owner@test.local", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm", "beta_leads", "content_calendar"] };
-const admin = { email: "admin@test.local", role: "admin", status: "active", areas: ["admin_console", "crm", "beta_leads", "content_calendar"] };
+const owner = { email: "owner@test.local", role: "owner", status: "active", areas: ["admin_console", "team_manage", "crm", "beta_leads"] };
+const admin = { email: "admin@test.local", role: "admin", status: "active", areas: ["admin_console", "crm", "beta_leads"] };
 const growth = { email: "growth@test.local", role: "growth", status: "active", areas: ["role_home"] };
 const partner = { email: "partner@test.local", role: "partner", status: "active", areas: ["role_home"] };
 const invitedGrowth = { email: "inv@test.local", role: "growth", status: "invited", areas: [] };
@@ -123,7 +123,7 @@ describe("#3802 C-1: a page nobody listed is owner/admin-only", () => {
   });
 
   it("only approved pages are listed as exceptions, and none loosens the default", () => {
-    assert.deepEqual(PAGE_AREA_OVERRIDES, { home: "role_home", admin: "team_manage", hosts: "crm", creators: "crm", drafts: "crm", "beta-leads": "beta_leads", "content-calendar": "content_calendar", agent: "crm", guide: "crm" });
+    assert.deepEqual(PAGE_AREA_OVERRIDES, { home: "role_home", admin: "team_manage", hosts: "crm", creators: "crm", drafts: "crm", "beta-leads": "beta_leads", "content-calendar": "crm", agent: "crm", guide: "crm" });
     for (const id of PAGE_IDS) {
       if (Object.hasOwn(PAGE_AREA_OVERRIDES, id)) continue;
       assert.equal(areaForPage(id), "admin_console", `'${id}' must need admin_console`);
@@ -332,7 +332,7 @@ describe("#3802 C-8: titles and role display names", () => {
       partner: "Founding partner",
     });
     assert.deepEqual(INVITABLE_ROLES, ["admin", "growth", "partner"]);
-    assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm", BETA_LEADS: "beta_leads", CONTENT_CALENDAR: "content_calendar" });
+    assert.deepEqual(AREA, { ADMIN_CONSOLE: "admin_console", TEAM_MANAGE: "team_manage", ROLE_HOME: "role_home", CRM: "crm", BETA_LEADS: "beta_leads" });
   });
 
   it("team actions have plain-English labels in the activity list", () => {
