@@ -113,8 +113,9 @@ begin
        from pg_proc p where p.oid in ('public.crm_identifier_hits(text,jsonb,uuid)'::regprocedure,
                                       'public.team_agent_records_find(jsonb)'::regprocedure)),
     'crm_identifier_hits:s00:service_role,team_agent_records_find:s01:service_role');
-  perform pg_temp.t3802c_check('N-1', 'no crm_ function is added: the earlier suites count them',
-    (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'), '51');
+  -- [TEST-MOD-APPROVED #3802] Wave 6 adds one closed source-summary helper.
+  perform pg_temp.t3802c_check('N-1', 'Wave 6 leaves exactly 52 crm_ functions',
+    (select count(*)::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'crm\_%'), '52');
   perform pg_temp.t3802c_check('N-1', 'is_admin_user() has the source it had before Wave 4',
     (select md5(prosrc) from pg_proc where oid = 'public.is_admin_user()'::regprocedure), 'dc5465a20a4246c6921be0469e261a8b');
 end;
