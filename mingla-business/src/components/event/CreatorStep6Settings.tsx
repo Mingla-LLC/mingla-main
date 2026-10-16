@@ -2,11 +2,11 @@
  * Wizard Step 6 — Settings.
  *
  * Designer source: screens-creator.jsx lines 237-277 (CreatorStep6).
- * Visibility 3-pill (Public / Unlisted / Private) + 4 ToggleRows
- * (Require approval / Allow transfers / Hide remaining / Password).
+ * Visibility 3-pill (Public / Unlisted / Private) + ToggleRows
+ * (Require approval / Hide remaining / Password).
+ * #2879 Ilashe P0 — transfer toggle removed: product cannot transfer yet.
  *
- * Watch-point WK-CYCLE-3-1 — ToggleRow appears 4× here. If Cycle 4+
- * surfaces 5th use, lift to kit primitive (carve-out DEC required).
+ * Watch-point WK-CYCLE-3-1 — ToggleRow kit lift still tracked for reuse.
  *
  * Per Cycle 3 spec §3.9 Step 6.
  *
@@ -217,13 +217,6 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
         sub="Manually approve every order."
         on={draft.requireApproval}
         onToggle={() => updateDraft({ requireApproval: !draft.requireApproval })}
-      />
-
-      <ToggleRow
-        label="Allow ticket transfers"
-        sub="Buyers can send to friends."
-        on={draft.allowTransfers}
-        onToggle={() => updateDraft({ allowTransfers: !draft.allowTransfers })}
       />
 
       <ToggleRow

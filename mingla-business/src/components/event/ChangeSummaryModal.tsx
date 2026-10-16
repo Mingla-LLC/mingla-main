@@ -403,7 +403,7 @@ const TICKET_FIELD_LABELS: Record<string, string> = {
   waitlistEnabled: "Waitlist",
   minPurchaseQty: "Min purchase qty",
   maxPurchaseQty: "Max purchase qty",
-  allowTransfers: "Allow transfers",
+  allowTransfers: "Transfer setting",
   displayOrder: "Display order",
   availableAt: "Available at",
 };
