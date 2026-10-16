@@ -137,6 +137,10 @@ import type { ThemeInput } from "@mingla/offering-rendering";
 // #3372 — the price-field symbol reads "₦", not "NGN " (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import {
+  priceDecimals,
+  priceFallbackDecimals,
+} from "@mingla/offering-rendering/priceDecimals";
+import {
   normalizeThemeOverrides,
   patchOfferingTheme,
 } from "../../services/offeringTheme";
@@ -687,6 +691,10 @@ export const ExperienceCreatorWizard: React.FC<
     brandId,
     initialDraft?.when,
     guestPrivacy,
+    {
+      payoutCountry: brand?.payoutCountry ?? brand?.paymentCountry ?? null,
+      currency: brand?.defaultCurrency ?? null,
+    },
   );
 
   // Seed stop 1 from the brand venue default (design §2.7): name/address text
@@ -1780,6 +1788,8 @@ export const ExperienceCreatorWizard: React.FC<
                 }
               // META-ORCH-1059 — experiences can recur with no end.
               allowNeverEnds
+              // issue #3281 Round 1 — experience-flavoured When copy.
+              offeringNoun="experience"
             />
           </View>
         ) : null}
@@ -1900,7 +1910,24 @@ export const ExperienceCreatorWizard: React.FC<
             <View style={styles.reviewCard}>
               <Text style={styles.label}>Experience</Text><Text style={styles.reviewValue}>{title}</Text>
               <Text style={styles.label}>Stops</Text><Text style={styles.reviewValue}>{stops.length}</Text>
-              <Text style={styles.label}>Price</Text><Text style={styles.reviewValue}>{isFree || (pricingMode === "per_stop" && resolvedTotalMajor === 0) ? "Free" : `${currencySymbol}${resolvedTotalMajor.toFixed(2)}`}</Text>
+              <Text style={styles.label}>Price</Text><Text style={styles.reviewValue}>{isFree || (pricingMode === "per_stop" && resolvedTotalMajor === 0) ? "Free" : (() => {
+                const code = (displayCurrency ?? "").trim().toUpperCase();
+                if (code.length === 3) {
+                  try {
+                    return withCurrencyGlyph(
+                      new Intl.NumberFormat(undefined, {
+                        style: "currency",
+                        currency: code,
+                        ...priceDecimals(resolvedTotalMajor),
+                      }).format(resolvedTotalMajor),
+                      code,
+                    );
+                  } catch {
+                    /* fall through */
+                  }
+                }
+                return `${currencySymbol}${resolvedTotalMajor.toFixed(priceFallbackDecimals(resolvedTotalMajor))}`;
+              })()}</Text>
             </View>
             <InvitePlanReviewSummary plan={invitePlan} quote={inviteQuote} />
           </View>

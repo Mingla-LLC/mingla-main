@@ -197,10 +197,14 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   // META-ORCH-1059 — experience wizard opts in to the open-ended "Never ends"
   // recurrence option; events leave it false (bounded end required).
   allowNeverEnds = false,
+  // issue #3281 Round 1 — experience wizard swaps event-flavoured copy.
+  offeringNoun = "event",
   // ORCH-1150 — RSVP wizard locks single-date: hide the mode tabs + render only
   // the single-date body. Default false; event wizard is byte-identical.
   lockSingleDate = false,
 }) => {
+  const noun = offeringNoun === "experience" ? "experience" : "event";
+  const opensLabel = offeringNoun === "experience" ? "Opens" : "Doors open";
   const intelDateHighlight = useTurnoutFocusTarget("date");
   // ---- Picker state (date + time + termination-until) ----
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
@@ -484,10 +488,14 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
     if (mins === 0) return null;
     const h = Math.floor(mins / 60);
     const m = mins % 60;
-    if (h === 0) return `${m}m event`;
-    if (m === 0) return `${h}h event`;
-    return `${h}h ${m}m event`;
-  }, [draft.doorsOpen, draft.endsAt]);
+    if (h === 0) return `${m}m ${noun}`;
+    if (m === 0) {
+      return offeringNoun === "experience" ? `Open ${h} hours` : `${h}h ${noun}`;
+    }
+    return offeringNoun === "experience"
+      ? `Open ${h}h ${m}m`
+      : `${h}h ${m}m ${noun}`;
+  }, [draft.doorsOpen, draft.endsAt, noun, offeringNoun]);
 
   // ORCH-0877 — wizard preview line above the duration label. Renders the
   // canonical formatter output ("Sat 18 May · 10 PM – Sun 19 May · 2 AM" on
@@ -923,7 +931,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       {lockSingleDate ? null : (
         <View style={styles.field}>
           <Text style={styles.fieldLabel}>
-            How often does this event happen?
+            How often does this {noun} happen?
           </Text>
           <View style={styles.segmentRow}>
             <SegmentPill
@@ -1006,7 +1014,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
               onChange commits doorsOpen/endsAt to the draft. Native unchanged. */}
           <View style={styles.timeRow}>
             <View style={styles.timeCell}>
-              <Text style={styles.fieldLabel}>Doors open</Text>
+              <Text style={styles.fieldLabel}>{opensLabel}</Text>
               {Platform.OS === "web" ? (
                 <WebDateTimeInput
                   type="time"
@@ -1182,7 +1190,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             <Text style={styles.helperHint}>
               {allowNeverEnds
                 ? "Up to 52 occurrences, a fixed end date, or never ends."
-                : "Recurring events must end. Up to 52 occurrences or 1 year out."}
+                : `Recurring ${noun}s must end. Up to 52 occurrences or 1 year out.`}
             </Text>
           </View>
         </>
@@ -1853,7 +1861,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
         }
         description={
           (draft.multiDates?.length ?? 0) <= 2
-            ? "Multi-date events need at least 2 dates. Add another date first or switch the event to Single."
+            ? `Multi-date ${noun}s need at least 2 dates. Add another date first or switch the ${noun} to Single.`
             : "You'll lose any overrides for this date. This can't be undone."
         }
         confirmLabel={(draft.multiDates?.length ?? 0) <= 2 ? "OK" : "Remove"}

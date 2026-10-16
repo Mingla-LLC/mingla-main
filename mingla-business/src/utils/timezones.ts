@@ -427,3 +427,72 @@ export const formatTimezoneLabel = (
   const offset = formatTimezoneOffset(tz, at);
   return offset.length > 0 ? `${tz} (${offset})` : tz;
 };
+
+/**
+ * issue #3281 Round 1 — default timezone for a NEW experience draft.
+ *
+ * Prefer the brand's payout country, then the currency's home zone, then the
+ * device zone. Events/RSVPs keep their own device-zone default; only the
+ * experience When adapter uses this.
+ */
+const COUNTRY_DEFAULT_ZONE: Readonly<Record<string, string>> = {
+  NG: "Africa/Lagos",
+  GB: "Europe/London",
+  UK: "Europe/London",
+  US: "America/New_York",
+  CA: "America/Toronto",
+  IE: "Europe/Dublin",
+  AU: "Australia/Sydney",
+  ZA: "Africa/Johannesburg",
+  GH: "Africa/Accra",
+  KE: "Africa/Nairobi",
+};
+
+const CURRENCY_DEFAULT_ZONE: Readonly<Record<string, string>> = {
+  NGN: "Africa/Lagos",
+  GBP: "Europe/London",
+  USD: "America/New_York",
+  EUR: "Europe/Paris",
+  CAD: "America/Toronto",
+  AUD: "Australia/Sydney",
+  ZAR: "Africa/Johannesburg",
+  GHS: "Africa/Accra",
+  KES: "Africa/Nairobi",
+};
+
+export const detectDeviceTimezone = (): string => {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof tz === "string" && tz.length > 0 ? tz : "UTC";
+  } catch {
+    return "UTC";
+  }
+};
+
+export interface DefaultTimezoneForBrandInput {
+  payoutCountry?: string | null;
+  currency?: string | null;
+  deviceZone?: string | null;
+}
+
+export const defaultTimezoneForBrand = (
+  input: DefaultTimezoneForBrandInput = {},
+): string => {
+  const country = (input.payoutCountry ?? "").trim().toUpperCase();
+  if (country.length > 0) {
+    const fromCountry = COUNTRY_DEFAULT_ZONE[country];
+    if (fromCountry !== undefined && isRuntimeZone(fromCountry)) {
+      return fromCountry;
+    }
+  }
+  const currency = (input.currency ?? "").trim().toUpperCase();
+  if (currency.length > 0) {
+    const fromCurrency = CURRENCY_DEFAULT_ZONE[currency];
+    if (fromCurrency !== undefined && isRuntimeZone(fromCurrency)) {
+      return fromCurrency;
+    }
+  }
+  const device = (input.deviceZone ?? "").trim();
+  if (device.length > 0) return device;
+  return detectDeviceTimezone();
+};

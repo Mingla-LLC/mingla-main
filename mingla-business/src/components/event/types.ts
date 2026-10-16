@@ -137,6 +137,13 @@ export interface StepBodyProps {
    */
   allowNeverEnds?: boolean;
   /**
+   * issue #3281 Round 1 — which offering noun the When-step copy uses.
+   * Experiences pass `"experience"` so the shared step says "Opens" /
+   * "Open 8 hours" / "How often does this experience happen?" instead of the
+   * event wording. Default `"event"` keeps every existing caller byte-identical.
+   */
+  offeringNoun?: "event" | "experience";
+  /**
    * ORCH-1150 — when true (RSVP wizard only), CreatorStep2When hides the
    * single/recurring/multi_date mode tabs and renders ONLY the single-date
    * body (steering #4). Default false; the event wizard never passes it, so

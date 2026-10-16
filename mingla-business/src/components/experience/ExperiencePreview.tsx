@@ -479,7 +479,11 @@ const LegacyExperiencePreview: React.FC<{
         {/* STOPS itinerary. */}
         {experience.stops.length > 0 ? (
           <View style={styles.legacySection}>
-            <Text style={styles.sectionLabel}>The itinerary</Text>
+            <Text style={styles.sectionLabel}>
+              {(experience.stops?.length ?? 0) === 1
+                ? "What you'll do"
+                : "The itinerary"}
+            </Text>
             <View style={styles.stopsList}>
               {experience.stops.map((stop) => {
                 const t = formatStopTime(stop.startTime);
@@ -489,11 +493,11 @@ const LegacyExperiencePreview: React.FC<{
                       STOP {stop.stopOrder + 1}
                     </Text>
                     <Text style={styles.legacyStopName}>{stop.placeName}</Text>
-                    {stop.address.trim().length > 0 ? (
-                      <Text style={styles.legacyStopAddress} numberOfLines={2}>
-                        {stop.address}
-                      </Text>
-                    ) : null}
+                    <Text style={styles.legacyStopAddress} numberOfLines={2}>
+                      {stop.address.trim().length > 0
+                        ? stop.address
+                        : "Address shared after you book"}
+                    </Text>
                     {t !== null && t.length > 0 ? (
                       <Text style={styles.legacyStopTime}>{t}</Text>
                     ) : null}

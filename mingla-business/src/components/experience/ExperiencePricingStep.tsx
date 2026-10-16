@@ -44,6 +44,11 @@ import type {
   ExperiencePricingMode,
   ExperienceStopDraft,
 } from "./experienceWizardTypes";
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import {
+  priceDecimals,
+  priceFallbackDecimals,
+} from "@mingla/offering-rendering/priceDecimals";
 
 export interface ExperiencePricingStepProps {
   currencySymbol: string;
@@ -147,8 +152,29 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
     setStops((prev) => prev.map((s, idx) => (idx === i ? { ...s, priceMajor: v } : s)));
   };
 
+  const formatSummaryTotal = (major: number): string => {
+    const code = (currency ?? "").trim().toUpperCase();
+    if (code.length === 3) {
+      try {
+        return withCurrencyGlyph(
+          new Intl.NumberFormat(undefined, {
+            style: "currency",
+            currency: code,
+            ...priceDecimals(major),
+          }).format(major),
+          code,
+        );
+      } catch {
+        return `${currencySymbol}${major.toFixed(priceFallbackDecimals(major))}`;
+      }
+    }
+    // Brand has no currency yet (#3645): keep the symbol-only preview honest.
+    const decimals = priceFallbackDecimals(major);
+    return `${currencySymbol}${major.toFixed(decimals)}`;
+  };
+
   const summaryCopy = (): string => {
-    const t = `${currencySymbol}${resolvedTotalMajor.toFixed(2)}`;
+    const t = formatSummaryTotal(resolvedTotalMajor);
     if (isFree || resolvedTotalMajor === 0) {
       return `Free for buyers — they get all ${n} stops in one booking.`;
     }
@@ -239,7 +265,7 @@ export const ExperiencePricingStep: React.FC<ExperiencePricingStepProps> = ({
           <View style={styles.divider} />
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>{`${currencySymbol}${resolvedTotalMajor.toFixed(2)}`}</Text>
+            <Text style={styles.totalValue}>{formatSummaryTotal(resolvedTotalMajor)}</Text>
           </View>
         </>
       )}

@@ -33,6 +33,13 @@ export function stopLabelForIndex(index: number, total: number): string {
   return "THEN";
 }
 
+/**
+ * issue #3281 Round 1 — copy when a stop's street address is withheld.
+ * Same sentence family as events ("Address shared after you get tickets").
+ */
+export const EXPERIENCE_ADDRESS_SHARED_AFTER_BOOK =
+  "Address shared after you book";
+
 export interface StopSpineProps {
   stops: ExperienceOfferingStop[];
   palette: ThemePalette;
@@ -92,7 +99,11 @@ export const StopSpine: React.FC<StopSpineProps> = ({
                 <Text style={[styles.stopAddr, surface.tertiaryText]} numberOfLines={2}>
                   {stop.address}
                 </Text>
-              ) : null}
+              ) : (
+                <Text style={[styles.stopAddr, surface.tertiaryText]} numberOfLines={2}>
+                  {EXPERIENCE_ADDRESS_SHARED_AFTER_BOOK}
+                </Text>
+              )}
               {stop.description !== null && stop.description.trim().length > 0 ? (
                 <Text style={[styles.stopBlurb, surface.secondaryText]}>
                   {stop.description}

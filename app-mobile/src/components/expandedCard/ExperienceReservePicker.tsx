@@ -32,6 +32,17 @@ import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { ThemePalette } from "@mingla/offering-rendering";
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import {
+  priceDecimals,
+  priceFallbackDecimals,
+} from "@mingla/offering-rendering/priceDecimals";
+import {
+  experienceTimeChoices,
+  experienceZoneCityLabel,
+  experienceZoneDiffersFromViewer,
+  formatExperienceMinute,
+} from "@mingla/offering-rendering/experienceTimeZone";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import { BOTTOM_NAV_CONTENT_HEIGHT } from "../../hooks/useAppLayout";
@@ -57,6 +68,9 @@ export interface ExperienceReservePickerProps {
   fontFamily?: string;
   /** Event-level remaining caps the party-size stepper (open-daily). */
   eventRemaining: number | null;
+  /** issue #3281 Round 1 — server all-in unit cents for "Reserve · {total}". */
+  unitAllInCents?: number | null;
+  currency?: string | null;
   onCancel: () => void;
   onConfirm: (selection: ExperienceReserveSelection) => void;
 }
@@ -132,20 +146,6 @@ function formatWindow(
   return s.length > 0 && e.length > 0 ? `${s} – ${e}` : s;
 }
 
-/** Build the bound clock minutes [open, close] of an occurrence window. */
-function windowMinutes(
-  startAt: string,
-  endAt: string,
-): { open: number; close: number } | null {
-  const s = new Date(startAt);
-  const e = new Date(endAt);
-  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return null;
-  const open = s.getHours() * 60 + s.getMinutes();
-  let close = e.getHours() * 60 + e.getMinutes();
-  if (close <= open) close += 24 * 60; // wrap past midnight
-  return { open, close };
-}
-
 function remainingChip(remaining: number | null): string | null {
   if (remaining === null) return null;
   if (remaining <= 0) return "Sold out";
@@ -163,6 +163,8 @@ export const ExperienceReservePicker: React.FC<
   palette,
   fontFamily,
   eventRemaining,
+  unitAllInCents = null,
+  currency = null,
   onCancel,
   onConfirm,
 }) => {
@@ -190,16 +192,16 @@ export const ExperienceReservePicker: React.FC<
     [occurrences, selectedDateId],
   );
 
-  // Open-daily: 30-min-step time choices BOUNDED by the occurrence window
-  // (every offered time is genuinely inside the authored open/close hours).
+  // Open-daily: 30-min-step time choices in the EXPERIENCE zone (#3281).
   const timeChoices = useMemo<number[]>(() => {
     if (mode !== "open-daily" || selectedDate === null) return [];
-    const w = windowMinutes(selectedDate.startAt, selectedDate.endAt);
-    if (w === null) return [];
-    const out: number[] = [];
-    for (let m = w.open; m <= w.close; m += 30) out.push(m % (24 * 60));
-    return out;
-  }, [mode, selectedDate]);
+    return experienceTimeChoices(
+      selectedDate.startAt,
+      selectedDate.endAt,
+      timezone,
+      30,
+    );
+  }, [mode, selectedDate, timezone]);
 
   const partyMax = Math.min(
     MAX_PARTY,
@@ -212,6 +214,34 @@ export const ExperienceReservePicker: React.FC<
         (selectedDate.remaining === null || selectedDate.remaining > 0)
       : selectedDate !== null && selectedMinute !== null;
 
+  const formatMinute = formatExperienceMinute;
+  const zoneCity = experienceZoneCityLabel(timezone);
+  const showZoneHint = experienceZoneDiffersFromViewer(timezone);
+
+  const confirmLabel = useMemo((): string => {
+    const qty = mode === "slots" ? 1 : party;
+    const unit =
+      typeof unitAllInCents === "number" && unitAllInCents > 0
+        ? unitAllInCents
+        : null;
+    const code = (currency ?? "").trim().toUpperCase();
+    if (unit === null || code.length !== 3) return "Reserve →";
+    const major = (unit * qty) / 100;
+    try {
+      const money = withCurrencyGlyph(
+        new Intl.NumberFormat(undefined, {
+          style: "currency",
+          currency: code,
+          ...priceDecimals(major),
+        }).format(major),
+        code,
+      );
+      return `Reserve · ${money}`;
+    } catch {
+      return `Reserve · ${major.toFixed(priceFallbackDecimals(major))} ${code}`;
+    }
+  }, [mode, party, unitAllInCents, currency]);
+
   const handleConfirm = (): void => {
     if (selectedDate === null) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -221,14 +251,6 @@ export const ExperienceReservePicker: React.FC<
     }
     if (selectedMinute === null) return;
     onConfirm({ eventDateId: selectedDate.eventDateId, quantity: party });
-  };
-
-  const formatMinute = (min: number): string => {
-    const h = Math.floor(min / 60) % 24;
-    const m = min % 60;
-    const ampm = h >= 12 ? "PM" : "AM";
-    const h12 = h % 12 === 0 ? 12 : h % 12;
-    return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
   };
 
   // Android opaque-glass fallback (ANDROID-GLASS-OPAQUE): the sheet + cards use
@@ -441,6 +463,7 @@ export const ExperienceReservePicker: React.FC<
           <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
             CHOOSE A TIME ·{" "}
             {formatWindow(selectedDate.startAt, selectedDate.endAt, timezone)}
+            {showZoneHint && zoneCity.length > 0 ? ` · ${zoneCity} time` : ""}
           </Text>
           <View style={styles.timeWrap}>
             {timeChoices.map((min) => {
@@ -581,7 +604,7 @@ export const ExperienceReservePicker: React.FC<
           disabled={!canConfirm}
           accessibilityRole="button"
           accessibilityState={{ disabled: !canConfirm }}
-          accessibilityLabel="Reserve"
+          accessibilityLabel={confirmLabel}
           style={[
             styles.confirm,
             canConfirm
@@ -601,7 +624,7 @@ export const ExperienceReservePicker: React.FC<
               fontStyle,
             ]}
           >
-            Reserve →
+            {confirmLabel}
           </Text>
         </Pressable>
       ) : null}

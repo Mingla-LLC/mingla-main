@@ -230,8 +230,20 @@ export {
   experienceAvailabilityBanner,
 } from "./ExperienceOfferingBody";
 export type { ExperienceOfferingBodyProps, RightNowFacts } from "./ExperienceOfferingBody";
-export { StopSpine, stopLabelForIndex } from "./StopSpine";
+export {
+  StopSpine,
+  stopLabelForIndex,
+  EXPERIENCE_ADDRESS_SHARED_AFTER_BOOK,
+} from "./StopSpine";
 export type { StopSpineProps } from "./StopSpine";
+export {
+  experienceWindowMinutes,
+  experienceTimeChoices,
+  formatExperienceMinute,
+  experienceZoneCityLabel,
+  experienceZoneDiffersFromViewer,
+} from "./experienceTimeZone";
+export type { ExperienceWindowMinutes } from "./experienceTimeZone";
 export type {
   ExperienceOfferingData,
   ExperienceOfferingBrand,

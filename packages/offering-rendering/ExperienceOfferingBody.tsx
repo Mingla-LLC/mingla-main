@@ -68,6 +68,7 @@ import { boldFontFamily, offeringSurfaceStyles, type ThemePalette } from "./them
 import { type ResolvedTheme } from "./designTokens";
 // #3372 — naira shows "₦", not "NGN", whatever the engine or locale (#3341 rule).
 import { withCurrencyGlyph } from "./currencyGlyph";
+import { priceDecimals, priceFallbackDecimals } from "./priceDecimals";
 import { EventCoverMedia } from "./EventCoverMedia";
 import { StopSpine } from "./StopSpine";
 import { BadgeCheck, Calendar, Clock, MapPin, Sparkles, Users } from "./LucideIcons";
@@ -176,19 +177,23 @@ export function experiencePriceLabel(
     typeof t.priceAllInCents === "number" && t.priceAllInCents > 0
       ? t.priceAllInCents
       : t.priceCents;
+  // issue #3281 Round 1 — unit beside the price (person until Round 2 adds basis).
+  const basisLabel = "per person";
   try {
+    const money = withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: t.currency || "USD",
+        ...priceDecimals(cents / 100),
+      }).format(cents / 100),
+      t.currency,
+    );
+    return { label: `${money} ${basisLabel}`, isFree: false };
+  } catch {
     return {
-      label: withCurrencyGlyph(
-        new Intl.NumberFormat(undefined, {
-          style: "currency",
-          currency: t.currency || "USD",
-        }).format(cents / 100),
-        t.currency,
-      ),
+      label: `${(cents / 100).toFixed(priceFallbackDecimals(cents / 100))} ${t.currency} ${basisLabel}`,
       isFree: false,
     };
-  } catch {
-    return { label: `${(cents / 100).toFixed(2)} ${t.currency}`, isFree: false };
   }
 }
 
@@ -299,7 +304,14 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   const aboutCollapsedNow = canCollapseAbout && aboutCollapsed;
 
   const stopCount = data.stops.length;
-  const stopEyebrow = stopCount > 0 ? `${stopCount}-stop experience` : null;
+  // issue #3281 Round 1 — one stop reads as a whole experience (reachable once
+  // Round 2 allows publishing a single stop). Keep the multi-stop eyebrow otherwise.
+  const stopEyebrow =
+    stopCount === 1
+      ? "EXPERIENCE"
+      : stopCount > 1
+        ? `${stopCount}-stop experience`
+        : null;
 
   const vibeLabels = experienceVibeLabels(data.intents);
   const { label: priceLabel, isFree } = experiencePriceLabel(data);
@@ -575,11 +587,13 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
         </View>
       ) : null}
 
-      {/* (8) The itinerary — shared StopSpine (REAL authored stops, rule 9). */}
+      {/* (8) The itinerary — shared StopSpine (REAL authored stops, rule 9).
+          Visible title is "What you'll do" for a one-stop experience (#3281);
+          the "(8) The itinerary" comment is the section-order gate anchor. */}
       {data.stops.length > 0 ? (
         <View style={styles.section} testID="experience-body-itinerary">
           <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
-            The itinerary
+            {stopCount === 1 ? "What you'll do" : "The itinerary"}
           </Text>
           <StopSpine
             stops={data.stops}
