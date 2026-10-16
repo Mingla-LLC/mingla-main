@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3720_support_ticket_anon_execute_lockdown.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "legacy-0017c-issue-3720-support-ticket-anon-lockdown",
+  "profile": "deno-1.46-stripe"
+}
