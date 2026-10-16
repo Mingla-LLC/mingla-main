@@ -413,7 +413,9 @@ const BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS: Record<
   "business.team_member_joined": { push: false, in_app: true },
 };
 
-function isBusinessPreferenceType(type: string): type is BusinessPreferenceType {
+function isBusinessPreferenceType(
+  type: string,
+): type is BusinessPreferenceType {
   return Object.prototype.hasOwnProperty.call(
     BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS,
     type,
@@ -527,6 +529,9 @@ serve(async (req) => {
           payload.idempotency_key ?? payload.idempotencyKey ?? "",
         ),
         country_code: payload.country_code ?? null,
+        deep_link: typeof payload.deep_link === "string"
+          ? payload.deep_link
+          : null,
         requested_channel: payload.requested_channel ?? null,
         email_cta: trustedReservationManageCta({
           serviceCaller: isExactServiceBearer(
@@ -697,12 +702,13 @@ serve(async (req) => {
 
     let businessChannels: BusinessChannelDefaults | null = null;
     if (userId && isBusinessPreferenceType(type)) {
-      const { data: businessPrefRows, error: businessPrefError } = await adminClient
-        .from("business_notification_type_preferences")
-        .select("channel, opt_in")
-        .eq("user_id", userId)
-        .eq("type", type)
-        .limit(2);
+      const { data: businessPrefRows, error: businessPrefError } =
+        await adminClient
+          .from("business_notification_type_preferences")
+          .select("channel, opt_in")
+          .eq("user_id", userId)
+          .eq("type", type)
+          .limit(2);
       if (businessPrefError) {
         console.error({
           event: "business_notification_preference_lookup_failed",
@@ -986,9 +992,7 @@ serve(async (req) => {
       const nextAttemptAt = nextQuietHoursEnd(userTimezone);
       const quietKey = idempotencyKey
         ? `quiet_hours:${idempotencyKey}`
-        : (notificationId
-          ? `quiet_hours:notif:${notificationId}`
-          : null);
+        : (notificationId ? `quiet_hours:notif:${notificationId}` : null);
       if (quietKey && userId && skipPush !== true) {
         const legacyPayload = {
           userId,

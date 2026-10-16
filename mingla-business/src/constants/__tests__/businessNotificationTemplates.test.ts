@@ -15,11 +15,11 @@
 import { describe, expect, test } from "@jest/globals";
 
 import {
-  BUSINESS_NOTIFICATION_TEMPLATES,
   BUSINESS_NOTIFICATION_BRANCH_COPY,
+  BUSINESS_NOTIFICATION_TEMPLATES,
   interpolateTemplate,
-  resolveNotificationVisual,
   isBusinessNotificationType,
+  resolveNotificationVisual,
 } from "../businessNotificationTemplates";
 
 const TYPES = Object.keys(BUSINESS_NOTIFICATION_TEMPLATES);
@@ -28,8 +28,9 @@ describe("template coverage", () => {
   // [TEST-MOD-APPROVED #3645] — #3645 PR10 added four organiser payout
   // visibility types; item 6 adds cancel_refunds_released on top of the
   // original 11 v1 types (new_follower still dropped).
-  test("16 business types (11 v1 + 4 payout visibility + cancel_refunds_released; new_follower dropped)", () => {
-    expect(TYPES).toHaveLength(16);
+  // [TEST-MOD-APPROVED #3720] Community/support adds three Host inbox types.
+  test("19 business types include Community and operational support", () => {
+    expect(TYPES).toHaveLength(19);
     expect(isBusinessNotificationType("business.new_follower")).toBe(false);
     expect(isBusinessNotificationType("business.order_paid")).toBe(true);
     expect(isBusinessNotificationType("business.payout_waiting_for_bank")).toBe(
@@ -39,6 +40,15 @@ describe("template coverage", () => {
     expect(
       isBusinessNotificationType("business.cancel_refunds_released"),
     ).toBe(true);
+    expect(isBusinessNotificationType("business.community_announcement")).toBe(
+      true,
+    );
+    expect(
+      isBusinessNotificationType("business.community_roadmap_updated"),
+    ).toBe(true);
+    expect(isBusinessNotificationType("business.support_new_ticket")).toBe(
+      true,
+    );
   });
 
   test("every type has non-empty copy within char budgets", () => {
@@ -54,7 +64,8 @@ describe("template coverage", () => {
 
   test("team_member_joined is the one push=OFF default", () => {
     expect(
-      BUSINESS_NOTIFICATION_TEMPLATES["business.team_member_joined"].defaultPush,
+      BUSINESS_NOTIFICATION_TEMPLATES["business.team_member_joined"]
+        .defaultPush,
     ).toBe(false);
     expect(
       BUSINESS_NOTIFICATION_TEMPLATES["business.order_paid"].defaultPush,
@@ -81,7 +92,8 @@ describe("interpolateTemplate", () => {
 
 describe("branch copy", () => {
   test("account_status_changed has both branches", () => {
-    const b = BUSINESS_NOTIFICATION_BRANCH_COPY["business.account_status_changed"];
+    const b =
+      BUSINESS_NOTIFICATION_BRANCH_COPY["business.account_status_changed"];
     expect(b.restricted.pushTitle).toBe("Payments paused");
     expect(b.reactivated.pushTitle).toBe("Payments back on");
   });
@@ -94,17 +106,36 @@ describe("branch copy", () => {
 
 describe("visual mapping", () => {
   test("money / risk / audience / team families", () => {
-    expect(resolveNotificationVisual("business.order_paid").family).toBe("money");
-    expect(resolveNotificationVisual("business.dispute_action_needed")).toEqual({
-      family: "risk",
-      icon: "flag",
-      severity: "blocking",
+    expect(resolveNotificationVisual("business.order_paid").family).toBe(
+      "money",
+    );
+    expect(resolveNotificationVisual("business.dispute_action_needed")).toEqual(
+      {
+        family: "risk",
+        icon: "flag",
+        severity: "blocking",
+      },
+    );
+    expect(resolveNotificationVisual("business.new_review").family).toBe(
+      "audience",
+    );
+    expect(resolveNotificationVisual("business.team_member_joined").family)
+      .toBe("team");
+    expect(
+      resolveNotificationVisual("business.community_roadmap_updated"),
+    ).toEqual({ family: "audience", icon: "notebook", severity: "info" });
+    expect(resolveNotificationVisual("business.support_new_ticket")).toEqual({
+      family: "team",
+      icon: "inbox",
+      severity: "info",
     });
-    expect(resolveNotificationVisual("business.new_review").family).toBe("audience");
-    expect(resolveNotificationVisual("business.team_member_joined").family).toBe("team");
   });
   test("stripe.* risk types map to amber risk", () => {
-    expect(resolveNotificationVisual("stripe.payout_failed").family).toBe("risk");
-    expect(resolveNotificationVisual("stripe.refund_processed").family).toBe("money");
+    expect(resolveNotificationVisual("stripe.payout_failed").family).toBe(
+      "risk",
+    );
+    expect(resolveNotificationVisual("stripe.refund_processed").family).toBe(
+      "money",
+    );
   });
 });

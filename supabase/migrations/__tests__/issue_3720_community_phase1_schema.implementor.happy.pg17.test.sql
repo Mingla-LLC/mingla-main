@@ -10,6 +10,14 @@ create temporary table t3720e_results (
   ok boolean not null,
   detail text
 );
+-- [TEST-MOD-APPROVED #3720] Assertions execute after SET ROLE authenticated.
+grant select, insert, update on t3720e_results to authenticated;
+
+create temporary table t3720e_ids (
+  key text primary key,
+  id uuid not null
+);
+grant select, insert, update on t3720e_ids to authenticated;
 
 create or replace function pg_temp.ok(p_name text, p_ok boolean, p_detail text default null)
 returns void language plpgsql as $$
@@ -63,11 +71,12 @@ values (
 )
 on conflict do nothing;
 
+-- [TEST-MOD-APPROVED #3720] Reliability migration namespaced the category.
 select pg_temp.ok(
   'category_seeded',
   exists (
     select 1 from public.notification_categories
-    where key = 'community_announcement' and is_transactional = true
+    where key = 'business.community_announcement' and is_transactional = true
       and 'email' = any(default_channels)
   )
 );
@@ -91,7 +100,7 @@ set local role authenticated;
 do $$
 declare
   v_id uuid;
-  v_n int;
+  v_publish jsonb;
 begin
   if not public.is_admin_user() then
     perform pg_temp.ok('admin_jwt', false, 'is_admin_user false for fixture admin');
@@ -100,22 +109,17 @@ begin
   perform pg_temp.ok('admin_jwt', true);
 
   v_id := public.community_upsert_announcement(null, 'Hello hosts', 'Body for hosts');
+  insert into t3720e_ids(key, id) values ('announcement', v_id);
   perform pg_temp.ok('upsert_id', v_id is not null);
 
-  v_n := public.community_publish_announcement(v_id);
-  perform pg_temp.ok('publish_enqueued', v_n >= 1, 'enqueued=' || v_n::text);
+  v_publish := public.community_publish_announcement(v_id);
   perform pg_temp.ok(
-    'outbox_row',
-    exists (
-      select 1 from public.notification_outbox o
-      where o.idempotency_key =
-        'community_announcement:' || v_id::text || ':b3720000-0000-4000-8000-000000000002'
-        and o.category_key = 'community_announcement'
-    )
+    'publish_enqueued',
+    (v_publish->>'audience_count')::integer >= 1,
+    'result=' || v_publish::text
   );
-
-  v_n := public.community_publish_announcement(v_id);
-  perform pg_temp.ok('publish_idempotent', v_n = 0);
+  v_publish := public.community_publish_announcement(v_id);
+  perform pg_temp.ok('publish_idempotent', (v_publish->>'duplicate')::boolean);
 
   perform public.community_upsert_roadmap_card(
     null, 'Public title', 'Public body', 'SECRET note', 'now', 'published'
@@ -125,6 +129,23 @@ end;
 $$;
 
 reset role;
+
+do $outbox$
+declare
+  v_id uuid;
+begin
+  select id into v_id from t3720e_ids where key = 'announcement';
+  perform pg_temp.ok(
+    'outbox_row',
+    exists (
+      select 1 from public.notification_outbox o
+      where o.idempotency_key =
+        'business.community_announcement:' || v_id::text || ':b3720000-0000-4000-8000-000000000002'
+        and o.category_key = 'business.community_announcement'
+    )
+  );
+end;
+$outbox$;
 
 select set_config('request.jwt.claim.sub', 'b3720000-0000-4000-8000-000000000002', true);
 set local role authenticated;
@@ -162,7 +183,7 @@ begin
     exists (
       select 1 from public.notification_channel_prefs p
       where p.user_id = 'b3720000-0000-4000-8000-000000000002'
-        and p.category_key = 'community_announcement'
+        and p.category_key = 'business.community_announcement'
         and p.channel = 'email'
         and p.enabled = false
     )

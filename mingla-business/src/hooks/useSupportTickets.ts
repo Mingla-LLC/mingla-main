@@ -68,8 +68,8 @@ export const useCreateSupportTicket = (): UseCreateSupportTicketResult => {
   const mutation = useMutation<string, Error, { subject: string; brandId?: string | null }>({
     mutationFn: async ({ subject, brandId }): Promise<string> => {
       if (user === null) throw new Error("Not signed in");
-      // #3720: staff push is fired server-side from create_support_ticket
-      // (tg_support_ticket_notify_staff). Do not call notify-support from the client.
+      // #3720: create_support_ticket atomically enqueues staff delivery. Do not
+      // call the retired notify-support new_ticket path from the client.
       return createSupportTicket(subject, brandId);
     },
     onSuccess: (): void => {

@@ -48,7 +48,10 @@ export type BusinessNotificationType =
   | "business.account_status_changed"
   | "business.new_review"
   | "business.claim_decision"
-  | "business.team_member_joined";
+  | "business.team_member_joined"
+  | "business.community_announcement"
+  | "business.community_roadmap_updated"
+  | "business.support_new_ticket";
 
 /** Severity union — mirrors `NotificationTemplate.severity`. */
 export type NotificationSeverity = "blocking" | "warning" | "info";
@@ -153,7 +156,8 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
   "business.cancel_refunds_released": {
     type: "business.cancel_refunds_released",
     pushTitle: "Refunds are on their way",
-    pushBody: "{eventTitle}: Mingla has released the held refunds. Buyers are being refunded.",
+    pushBody:
+      "{eventTitle}: Mingla has released the held refunds. Buyers are being refunded.",
     inAppTitle: "Refunds are on their way",
     inAppBody:
       "{eventTitle}: Mingla has released the held refunds. Buyers are being refunded.",
@@ -181,7 +185,8 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
   "business.dispute_action_needed": {
     type: "business.dispute_action_needed",
     pushTitle: "Evidence due soon",
-    pushBody: "Submit evidence by {evidenceDueBy} to contest a {amount} dispute.",
+    pushBody:
+      "Submit evidence by {evidenceDueBy} to contest a {amount} dispute.",
     inAppTitle: "Evidence needed to contest a dispute",
     inAppBody:
       "Submit your evidence by {evidenceDueBy} or the {amount} dispute is lost by default. Tap to respond.",
@@ -319,6 +324,45 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
     defaultPush: false,
     defaultInApp: true,
   },
+  "business.community_announcement": {
+    type: "business.community_announcement",
+    pushTitle: "Mingla announcement",
+    pushBody: "Open Mingla Host to read the update.",
+    inAppTitle: "Mingla announcement",
+    inAppBody: "Open Mingla Host to read the update.",
+    severity: "info",
+    family: "audience",
+    icon: "bell",
+    masterCategory: "audienceContent",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.community_roadmap_updated": {
+    type: "business.community_roadmap_updated",
+    pushTitle: "Mingla roadmap updated",
+    pushBody: "See what’s new in Now, Next and Later.",
+    inAppTitle: "Mingla roadmap updated",
+    inAppBody: "See what’s new in Now, Next and Later.",
+    severity: "info",
+    family: "audience",
+    icon: "notebook",
+    masterCategory: "audienceContent",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.support_new_ticket": {
+    type: "business.support_new_ticket",
+    pushTitle: "New support request",
+    pushBody: "A new support ticket needs attention.",
+    inAppTitle: "New support request",
+    inAppBody: "A new support ticket needs attention.",
+    severity: "info",
+    family: "team",
+    icon: "inbox",
+    masterCategory: "brandTeam",
+    defaultPush: true,
+    defaultInApp: true,
+  },
 };
 
 /**
@@ -374,7 +418,8 @@ export const BUSINESS_NOTIFICATION_BRANCH_COPY: {
     },
     rejected: {
       pushTitle: "Claim update",
-      pushBody: "We couldn't approve your {brandName} claim. Tap for next steps.",
+      pushBody:
+        "We couldn't approve your {brandName} claim. Tap for next steps.",
       inAppTitle: "About your {brandName} claim",
       inAppBody:
         "We couldn't approve your claim for {brandName}. {rejectionReason} Tap to see how to resolve it.",
@@ -445,7 +490,9 @@ export function interpolateTemplate(
 ): string {
   return template.replace(/\{(\w+)\}/g, (_match, key: string) => {
     const v = vars[key];
-    return typeof v === "string" && v.length > 0 ? v : FALLBACK_LITERALS[key] ?? "";
+    return typeof v === "string" && v.length > 0
+      ? v
+      : FALLBACK_LITERALS[key] ?? "";
   });
 }
 

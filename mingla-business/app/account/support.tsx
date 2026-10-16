@@ -9,10 +9,9 @@
  * route — NEVER imported by anon-tolerant buyer routes.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 // orch-strict-grep-allow orch-0892 — web-exported requester screen; plain ScrollView over a short ticket list, single subject input sits above the fold (no focused-input keyboard scroll). The chat-thread keyboard handling lives in the quarantined SupportThread.native (keyboard-controller), not here.
-import { ScrollView } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -29,16 +28,14 @@ import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Toast } from "../../src/components/ui/Toast";
 import { useCommunityUnreadCount } from "../../src/hooks/useCommunity";
 import {
+  type HelpSupportTabId,
   isHelpSupportTabId,
   loadLastHelpSupportTab,
   resolveInitialHelpSupportTab,
   saveLastHelpSupportTab,
-  type HelpSupportTabId,
 } from "../../src/utils/helpSupportLastTab";
 
-function firstParam(
-  value: string | string[] | undefined,
-): string | undefined {
+function firstParam(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) return value[0];
   return value;
 }
@@ -46,8 +43,16 @@ function firstParam(
 export default function SupportRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ tab?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    tab?: string | string[];
+    announcementId?: string | string[];
+    section?: string | string[];
+  }>();
   const queryTab = firstParam(params.tab);
+  const targetAnnouncementId = firstParam(params.announcementId);
+  const targetSection =
+    firstParam(params.section) === "roadmap" ? "roadmap" : undefined;
+  const scrollRef = useRef<ScrollView>(null);
 
   const { count: unreadCount, isLoading: unreadLoading } =
     useCommunityUnreadCount();
@@ -101,6 +106,13 @@ export default function SupportRoute(): React.ReactElement {
     setToast({ visible: true, message });
   }, []);
 
+  const handleCommunityTargetLayout = useCallback((contentY: number): void => {
+    scrollRef.current?.scrollTo({
+      y: Math.max(0, contentY - spacing.sm),
+      animated: true,
+    });
+  }, []);
+
   const tab: HelpSupportTabId = activeTab ?? "support";
 
   return (
@@ -134,6 +146,7 @@ export default function SupportRoute(): React.ReactElement {
           now per-occurrence, so the approval is stated where it applies. */}
       {/* orch-strict-grep-allow orch-0892 — web-exported requester screen; plain ScrollView over a short ticket list, single subject input sits above the fold (no focused-input keyboard scroll). The chat-thread keyboard handling lives in the quarantined SupportThread.native (keyboard-controller), not here. */}
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
@@ -141,7 +154,13 @@ export default function SupportRoute(): React.ReactElement {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {tab === "community" ? <CommunityTabPanel /> : null}
+        {tab === "community" ? (
+          <CommunityTabPanel
+            targetAnnouncementId={targetAnnouncementId}
+            targetSection={targetSection}
+            onTargetLayout={handleCommunityTargetLayout}
+          />
+        ) : null}
         {tab === "support" ? <SupportTabPanel onToast={showToast} /> : null}
         {tab === "guides" ? <GuidesTabPanel onToast={showToast} /> : null}
       </ScrollView>

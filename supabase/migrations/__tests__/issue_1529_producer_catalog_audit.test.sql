@@ -68,19 +68,19 @@ END;
 $vacuity$;
 
 -- ---------------------------------------------------------------------------
--- (2) RATCHET — raised 4 → 5 for P1-1. The floor is the number that ACTUALLY
+-- (2) RATCHET — raised 5 → 8 for #3720. The floor is the number that ACTUALLY
 --     exists in the catalog, so a producer DISAPPEARING is caught as well as
---     one appearing. At the old floor of 4 the fifth could have vanished
---     unnoticed.
+--     one appearing. At the old floor of 5 any of #3720's three producers
+--     could have vanished unnoticed.
 -- ---------------------------------------------------------------------------
 DO $ratchet$
 DECLARE
   v_count integer;
 BEGIN
   SELECT count(*) INTO v_count FROM issue_1529_discovered_producers;
-  IF v_count < 5 THEN
+  IF v_count < 8 THEN
     RAISE EXCEPTION
-      'issue_1529_producer_floor_breached_expected_at_least_5_got_%', v_count;
+      'issue_1529_producer_floor_breached_expected_at_least_8_got_%', v_count;
   END IF;
 END;
 $ratchet$;
@@ -97,6 +97,9 @@ $ratchet$;
 --       issue_1389_enqueue_stay_event       → explicit NULL on the email legs;
 --                                             mingla_e164_country over the
 --                                             NORMALISED handset on the SMS legs
+--       community_publish_announcement      → explicit NULL (no SMS channel)
+--       community_notify_roadmap_change     → explicit NULL (no SMS channel)
+--       create_support_ticket               → explicit NULL (no SMS channel)
 --
 --     DRAIN-DERIVED — emits source-refund-pool rows carrying contact NULL by
 --     #1221's privacy design, so the recipient (and therefore the country) can
@@ -104,7 +107,8 @@ $ratchet$;
 --       admin_request_source_refund_attention_recovery
 --
 --     ADDING A PRODUCER? Classify it, and add a behavioural case for it to
---     issue_1529_producer_country_code.test.sql. If you classify it as
+--     issue_1529_producer_country_code.test.sql or its owning registered
+--     PostgreSQL suite. If you classify it as
 --     drain-derived it must EARN that in sections (4) and (7) — you cannot
 --     simply park it here.
 -- ---------------------------------------------------------------------------
@@ -114,7 +118,10 @@ DECLARE
     'orch_1161_reservation_notify_outbox',
     'pg_notify_reminders_enqueue',
     'finalize_rsvp_contribution',
-    'issue_1389_enqueue_stay_event'
+    'issue_1389_enqueue_stay_event',
+    'community_publish_announcement',
+    'community_notify_roadmap_change',
+    'create_support_ticket'
   ];
   drain_derived text[] := ARRAY[
     'admin_request_source_refund_attention_recovery'
@@ -210,7 +217,10 @@ DECLARE
     'orch_1161_reservation_notify_outbox',
     'pg_notify_reminders_enqueue',
     'finalize_rsvp_contribution',
-    'issue_1389_enqueue_stay_event'
+    'issue_1389_enqueue_stay_event',
+    'community_publish_announcement',
+    'community_notify_roadmap_change',
+    'create_support_ticket'
   ];
   v_missing text;
 BEGIN

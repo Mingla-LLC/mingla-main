@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/__tests__/issue_3720_notification_reliability.implementor.test.ts",
+  "lane": "notification-deno",
+  "orderKey": "issue-3720-notification-reliability",
+  "profile": "deno-1.46-notification"
+}

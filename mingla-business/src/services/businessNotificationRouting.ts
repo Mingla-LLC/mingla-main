@@ -61,13 +61,17 @@ function currentBrandId(): string | null {
 
 /** Fallback when payments has no brand context: the account tab. */
 const ACCOUNT_FALLBACK = "/(tabs)/account";
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
  * Parse a `mingla-business://…` deep link into an expo-router path.
  * Returns null when the URI is unrecognized (caller falls back to
  * NAV_TARGETS by type). Pure + synchronous.
  */
-export function parseBusinessDeepLink(deepLink: string): BusinessNavTarget | null {
+export function parseBusinessDeepLink(
+  deepLink: string,
+): BusinessNavTarget | null {
   const SCHEME = "mingla-business://";
   if (!deepLink.startsWith(SCHEME)) return null;
   const path = deepLink.slice(SCHEME.length).replace(/^\/+/, "");
@@ -114,6 +118,18 @@ export function parseBusinessDeepLink(deepLink: string): BusinessNavTarget | nul
       const ticketId = rest[0];
       return ticketId ? `/support/${ticketId}` : null;
     }
+    case "community": {
+      const sub = rest[0];
+      if (sub === "roadmap") {
+        return "/account/support?tab=community&section=roadmap";
+      }
+      if (sub === "announcement" && rest[1]) {
+        return UUID_RE.test(rest[1])
+          ? `/account/support?tab=community&announcementId=${rest[1]}`
+          : "/account/support?tab=community";
+      }
+      return "/account/support?tab=community";
+    }
     // Issue #1791 (#1767 Phase 3, SPEC #1788 P-54): the venue head. BEFORE this
     // case existed, `mingla-business://venue/{id}/orders` returned null and fell
     // through to the ACCOUNT TAB — so an order-arrived push would have dumped a
@@ -145,7 +161,9 @@ export function parseBusinessDeepLink(deepLink: string): BusinessNavTarget | nul
  * still lands somewhere. Pure given `data` (for entity ids) + the current
  * brand id.
  */
-export function resolveBusinessNavTarget(data: BusinessPushData): BusinessNavTarget {
+export function resolveBusinessNavTarget(
+  data: BusinessPushData,
+): BusinessNavTarget {
   const type = data.type ?? "";
 
   // 1) Prefer the explicit deep link when present + parseable.
@@ -188,11 +206,25 @@ export function resolveBusinessNavTarget(data: BusinessPushData): BusinessNavTar
     case "business.team_member_joined":
       return brandId ? `/brand/${brandId}/team` : ACCOUNT_FALLBACK;
 
+    case "business.community_announcement": {
+      const announcementId = (data.announcementId ?? data.announcement_id) as
+        | string
+        | undefined;
+      return announcementId && UUID_RE.test(announcementId)
+        ? `/account/support?tab=community&announcementId=${announcementId}`
+        : "/account/support?tab=community";
+    }
+
+    case "business.community_roadmap_updated":
+      return "/account/support?tab=community&section=roadmap";
+
     // META-ORCH-1104: support reply / new-ticket → the support thread. The
     // ticket id rides data.ticketId (notify-support payload) or relatedId.
     case "business.support_message":
     case "business.support_new_ticket": {
-      const ticketId = (data.ticketId ?? data.relatedId) as string | undefined;
+      const ticketId = (data.ticketId ?? data.ticket_id ?? data.relatedId) as
+        | string
+        | undefined;
       return ticketId ? `/support/${ticketId}` : ACCOUNT_FALLBACK;
     }
 
@@ -277,7 +309,9 @@ export function processBusinessNotification(
     return;
   }
 
-  if (typeof data.notificationId === "string" && data.notificationId.length > 0) {
+  if (
+    typeof data.notificationId === "string" && data.notificationId.length > 0
+  ) {
     markRowClicked(data.notificationId);
   }
 

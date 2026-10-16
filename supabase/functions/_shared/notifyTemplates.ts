@@ -17,6 +17,36 @@ function str(v: unknown, fallback = ""): string {
   return v === null || v === undefined ? fallback : String(v);
 }
 
+// #3720 — Community copy is authored as Markdown but native push, email text,
+// and the Host inbox are plain-text surfaces. Keep the words while removing
+// formatting tokens so users never see raw ###, ** or backticks.
+export function communityMarkdownToPlainText(value: unknown): string {
+  return str(value)
+    .replace(/```(?:[a-z0-9_-]+)?\s*([\s\S]*?)```/gi, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/(^|\n)\s{0,3}#{1,6}\s+/g, "$1")
+    .replace(/(^|\n)\s{0,3}(?:[-+*]|\d+[.)])\s+/g, "$1")
+    .replace(/(^|\n)\s{0,3}>\s?/g, "$1")
+    .replace(/[*_~`]+/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,!?;:])/g, "$1")
+    .trim();
+}
+
+function communityExcerpt(value: unknown, maxLength = 180): string {
+  const plain = communityMarkdownToPlainText(value);
+  if (plain.length <= maxLength) return plain;
+  return `${plain.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
 // Format an integer cents amount into a currency-aware display string. Mirrors the
 // edge-side formatMoneyCents intent without importing the Stripe helper here (this
 // module must stay dependency-light + unit-testable). Falls back to a plain amount
@@ -110,6 +140,45 @@ export function renderCategoryMessage(
   const eventTitle = str(payload.event_title ?? payload.title, "your event");
 
   switch (categoryKey) {
+    case "business.community_announcement": {
+      const title = communityMarkdownToPlainText(payload.title) ||
+        "Mingla announcement";
+      const body = communityMarkdownToPlainText(
+        payload.body_md ?? payload.body,
+      );
+      return {
+        push: {
+          title,
+          body: communityExcerpt(body) ||
+            "Open Mingla Host to read the update.",
+        },
+        email: {
+          subject: title,
+          body: body || "Open Mingla Host to read the update.",
+        },
+        sms: `Mingla: ${communityExcerpt(body)}`,
+      };
+    }
+    case "business.community_roadmap_updated": {
+      const body = "See what’s new in Now, Next and Later.";
+      return {
+        push: { title: "Mingla roadmap updated", body },
+        email: { subject: "Mingla roadmap updated", body },
+        sms: `Mingla: ${body}`,
+      };
+    }
+    case "business.support_new_ticket": {
+      const publicBody = "A new support ticket needs attention.";
+      const subject = communityMarkdownToPlainText(payload.subject);
+      return {
+        push: { title: "New support request", body: publicBody },
+        email: {
+          subject: "New Mingla support ticket",
+          body: subject ? `${publicBody}\n\nSubject: ${subject}` : publicBody,
+        },
+        sms: `Mingla: ${publicBody}`,
+      };
+    }
     case "stay_request_received":
     case "stay_request_action_needed":
     case "stay_reconciliation_attention": {

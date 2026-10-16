@@ -10,13 +10,16 @@ import { supabase } from "../lib/supabase";
 function throwRpc(error) {
   if (!error) return;
   const msg = error.message || String(error);
-  if (/not_authorized/i.test(msg)) throw new Error("You need admin access for this action.");
+  if (/not_authorized/i.test(msg))
+    throw new Error("You need admin access for this action.");
   if (/not_found/i.test(msg)) throw new Error("That item was not found.");
   if (/invalid_title|invalid_lane|invalid_status|invalid_role/i.test(msg)) {
     throw new Error("Check the form fields and try again.");
   }
   if (/admin_use_is_admin_user/i.test(msg)) {
-    throw new Error("Admins already have full community access — do not add them as community staff.");
+    throw new Error(
+      "Admins already have full community access — do not add them as community staff.",
+    );
   }
   throw new Error(msg);
 }
@@ -26,7 +29,9 @@ function throwRpc(error) {
 export async function listAnnouncements() {
   const { data, error } = await supabase
     .from("community_announcements")
-    .select("id, title, body_md, status, published_at, author_user_id, created_at, updated_at")
+    .select(
+      "id, title, body_md, status, published_at, author_user_id, created_at, updated_at",
+    )
     .order("updated_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
@@ -46,6 +51,15 @@ export async function publishAnnouncement(id) {
   const { data, error } = await supabase.rpc("community_publish_announcement", {
     p_id: id,
   });
+  throwRpc(error);
+  return data;
+}
+
+export async function getAnnouncementNotificationStatus(campaignId = null) {
+  const { data, error } = await supabase.rpc(
+    "community_get_announcement_notification_status",
+    { p_campaign_id: campaignId },
+  );
   throwRpc(error);
   return data;
 }
@@ -97,6 +111,32 @@ export async function reorderRoadmap(orderedIds) {
     p_ordered_ids: orderedIds,
   });
   throwRpc(error);
+}
+
+export async function getRoadmapNotificationPreview() {
+  const { data, error } = await supabase.rpc(
+    "community_roadmap_notification_preview",
+  );
+  throwRpc(error);
+  return data;
+}
+
+export async function notifyRoadmapChange(requestKey) {
+  const { data, error } = await supabase.rpc(
+    "community_notify_roadmap_change",
+    { p_request_key: requestKey },
+  );
+  throwRpc(error);
+  return data;
+}
+
+export async function getRoadmapNotificationStatus(campaignId = null) {
+  const { data, error } = await supabase.rpc(
+    "community_get_roadmap_notification_status",
+    { p_campaign_id: campaignId },
+  );
+  throwRpc(error);
+  return data;
 }
 
 // ── Community staff (moderator / agent) ──────────────────────────────────────

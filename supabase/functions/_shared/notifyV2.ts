@@ -65,6 +65,8 @@ export interface DispatchV2Input {
   payload: Record<string, unknown>;
   idempotency_key: string;
   country_code?: string | null;
+  /** Canonical app destination. Required and allowlisted for #3720 Host types. */
+  deep_link?: string | null;
   requested_channel?: "inapp" | "push" | "email" | "sms" | null;
   persisted_offering_push?: PersistedOfferingPushV1;
   offering_attempt_id?: string;
@@ -166,6 +168,182 @@ const isEmail = (c: string | null | undefined): boolean =>
 const isPhone = (c: string | null | undefined): boolean =>
   !!c && c.startsWith("+");
 
+type ChannelClaim = {
+  outcome: "claimed" | "terminal" | "in_flight";
+  deliveryId: string;
+  status: string;
+  providerMessageId: string | null;
+  legacyFallback?: { notificationId: string; channel: string };
+};
+
+function validDeepLink(
+  category: string,
+  deepLink: string | null | undefined,
+): boolean {
+  if (category === "business.community_roadmap_updated") {
+    return deepLink === "mingla-business://community/roadmap";
+  }
+  if (category === "business.community_announcement") {
+    const id = deepLink?.replace(
+      "mingla-business://community/announcement/",
+      "",
+    );
+    return !!id && UUID.test(id) &&
+      deepLink === `mingla-business://community/announcement/${id}`;
+  }
+  if (category === "business.support_new_ticket") {
+    const id = deepLink?.replace("mingla-business://support/", "");
+    return !!id && UUID.test(id) &&
+      deepLink === `mingla-business://support/${id}`;
+  }
+  return true;
+}
+
+export function providerSafePayload(
+  category: string,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const pick = (keys: string[]): Record<string, unknown> =>
+    Object.fromEntries(
+      keys
+        .filter((key) => payload[key] !== undefined)
+        .map((key) => [key, payload[key]]),
+    );
+  if (category === "business.community_announcement") {
+    return pick(["campaign_id", "announcement_id"]);
+  }
+  if (category === "business.community_roadmap_updated") {
+    return pick(["campaign_id"]);
+  }
+  if (category === "business.support_new_ticket") {
+    return pick(["ticket_id"]);
+  }
+  return payload;
+}
+
+const ISSUE_3720_CATEGORIES = new Set([
+  "business.community_announcement",
+  "business.community_roadmap_updated",
+  "business.support_new_ticket",
+]);
+const SAFE_DENIAL_REASONS = new Set([
+  "category_inactive",
+  "channel_inactive",
+  "preference_off",
+  "complaint",
+  "hard_bounce",
+  "legal_suppression",
+  "policy_denied",
+]);
+
+export async function issue3720DenialReason(
+  client: MinimalClient,
+  input: Pick<DispatchV2Input, "user_id" | "category_key">,
+  channel: string,
+  contact: string | null,
+): Promise<string> {
+  if (!ISSUE_3720_CATEGORIES.has(input.category_key)) {
+    return "can_send_denied";
+  }
+  try {
+    const { data, error } = await client.rpc(
+      "issue_3720_notification_denial_reason",
+      {
+        p_user_id: input.user_id ?? null,
+        p_category_key: input.category_key,
+        p_channel: channel,
+        p_contact: contact,
+      },
+    );
+    return !error && typeof data === "string" && SAFE_DENIAL_REASONS.has(data)
+      ? data
+      : "policy_denied";
+  } catch {
+    return "policy_denied";
+  }
+}
+
+async function claimChannel(
+  client: MinimalClient,
+  notificationId: string,
+  channel: string,
+): Promise<ChannelClaim> {
+  const { data, error } = await client.rpc(
+    "issue_3720_claim_notification_channel",
+    { p_notification_id: notificationId, p_channel: channel },
+  );
+  // Lightweight pre-#3720 fake clients return a clean null for unknown RPCs.
+  // Preserve their existing delivery-insert contract; a real database RPC
+  // failure always carries `error` and must fail closed.
+  if (!error && data == null) {
+    return {
+      outcome: "claimed",
+      deliveryId: "",
+      status: "queued",
+      providerMessageId: null,
+      legacyFallback: { notificationId, channel },
+    };
+  }
+  if (error || !data || typeof data !== "object") {
+    throw new Error("delivery_claim_unavailable");
+  }
+  const claim = data as Record<string, unknown>;
+  if (
+    !["claimed", "terminal", "in_flight"].includes(String(claim.outcome)) ||
+    typeof claim.deliveryId !== "string" || typeof claim.status !== "string"
+  ) {
+    throw new Error("delivery_claim_invalid");
+  }
+  return {
+    outcome: claim.outcome as ChannelClaim["outcome"],
+    deliveryId: claim.deliveryId,
+    status: claim.status,
+    providerMessageId: typeof claim.providerMessageId === "string"
+      ? claim.providerMessageId
+      : null,
+  };
+}
+
+async function completeChannel(
+  client: MinimalClient,
+  claim: ChannelClaim,
+  status: string,
+  provider: string | null,
+  providerMessageId: string | null,
+  failedReason: string | null,
+  segments?: number,
+  legacyRejectedContact?: string | null,
+): Promise<void> {
+  if (claim.legacyFallback) {
+    await writeDelivery(
+      client,
+      claim.legacyFallback.notificationId,
+      claim.legacyFallback.channel,
+      status,
+      provider,
+      failedReason,
+      providerMessageId,
+      segments,
+      legacyRejectedContact,
+    );
+    return;
+  }
+  const { data, error } = await client.rpc(
+    "issue_3720_complete_notification_channel",
+    {
+      p_delivery_id: claim.deliveryId,
+      p_status: status,
+      p_provider: provider,
+      p_provider_message_id: providerMessageId,
+      p_failed_reason: failedReason,
+      p_segments: segments ?? null,
+    },
+  );
+  if (error || data !== true) {
+    throw new Error("delivery_completion_unavailable");
+  }
+}
+
 export async function dispatchV2(
   client: MinimalClient,
   input: DispatchV2Input,
@@ -184,17 +362,26 @@ export async function dispatchV2(
     return { success: false, reason: "category_inactive_or_missing" };
   }
 
+  if (!validDeepLink(input.category_key, input.deep_link)) {
+    return { success: false, reason: "deep_link_invalid" };
+  }
+
   // 2. Render the per-category copy (push title/body, email, sms).
   const rendered: RenderedMessage = renderCategoryMessage(
     input.category_key,
     input.payload,
   );
-  const inboxData = { ...input.payload, category_key: input.category_key };
+  const inboxData = {
+    ...input.payload,
+    category_key: input.category_key,
+    ...(input.deep_link ? { deepLink: input.deep_link } : {}),
+  };
 
   // 3. Idempotent insert into notifications (the inbox). Reuse the existing
   //    23505 UNIQUE(idempotency_key) path. Only when we have a user_id (the
   //    inbox is keyed on user_id NOT NULL).
   let notificationId: string | null = null;
+  let duplicate = false;
   if (input.user_id) {
     const insertRes = await client
       .from("notifications")
@@ -204,6 +391,7 @@ export async function dispatchV2(
         title: rendered.push.title,
         body: rendered.push.body,
         data: inboxData,
+        deep_link: input.deep_link ?? null,
         idempotency_key: input.idempotency_key,
       })
       // deno-lint-ignore no-explicit-any
@@ -214,11 +402,27 @@ export async function dispatchV2(
       };
     if (insertRes.error) {
       if (insertRes.error.code === "23505") {
-        return { success: true, duplicate: true, notificationId: null };
+        const existing = await client.from("notifications").select("*")
+          .eq("idempotency_key", input.idempotency_key).maybeSingle();
+        if (existing.error || !existing.data) {
+          return { success: false, reason: "inbox_unavailable" };
+        }
+        const row = existing.data as Record<string, unknown>;
+        if (
+          row.user_id !== input.user_id || row.type !== input.category_key ||
+          row.idempotency_key !== input.idempotency_key ||
+          (row.deep_link ?? null) !== (input.deep_link ?? null)
+        ) {
+          return { success: false, reason: "inbox_idempotency_collision" };
+        }
+        notificationId = String(row.id);
+        duplicate = true;
+      } else {
+        return { success: false, reason: "notification_insert_failed" };
       }
-      return { success: false, reason: "notification_insert_failed" };
+    } else {
+      notificationId = insertRes.data?.id ?? null;
     }
-    notificationId = insertRes.data?.id ?? null;
   } else {
     // Anon/guest: no inbox row (notifications.user_id is NOT NULL). Use the
     // idempotency_key against the outbox-side dedupe (already enforced upstream).
@@ -238,12 +442,24 @@ export async function dispatchV2(
   }
   const nid: string = notificationId;
 
-  // 4. ALWAYS write the in-app delivery (free, durable).
-  await writeDelivery(client, nid, "inapp", "delivered", null, null);
-
-  const deliveries: DispatchV2Result["deliveries"] = [
-    { channel: "inapp", status: "delivered", providerMessageId: null },
-  ];
+  // 4. ALWAYS establish the in-app delivery before provider I/O. The claim RPC
+  // makes this resumable instead of returning early on a duplicate inbox row.
+  const deliveries: NonNullable<DispatchV2Result["deliveries"]> = [];
+  const inappClaim = await claimChannel(client, nid, "inapp");
+  if (inappClaim.outcome === "claimed") {
+    await completeChannel(client, inappClaim, "delivered", "inapp", null, null);
+    deliveries.push({
+      channel: "inapp",
+      status: "delivered",
+      providerMessageId: null,
+    });
+  } else {
+    deliveries.push({
+      channel: "inapp",
+      status: inappClaim.status,
+      providerMessageId: inappClaim.providerMessageId,
+    });
+  }
 
   // 5. Simultaneous fan-out: for EACH channel in default_channels (besides
   //    inapp), if can_send passes, fire the adapter. ALL fire — no waterfall.
@@ -260,6 +476,15 @@ export async function dispatchV2(
     : cat.default_channels;
   for (const channel of requestedChannels) {
     if (channel === "inapp") continue;
+    const claim = await claimChannel(client, nid, channel);
+    if (claim.outcome !== "claimed") {
+      deliveries.push({
+        channel,
+        status: claim.status,
+        providerMessageId: claim.providerMessageId,
+      });
+      continue;
+    }
     const contactForChannel = channel === "email"
       ? contactEmail
       : channel === "sms"
@@ -267,24 +492,45 @@ export async function dispatchV2(
       : null;
 
     // can_send gate (the single chokepoint). push/inapp pass with contact=null.
-    const { data: allowedData } = await client.rpc("can_send", {
-      p_user_id: input.user_id ?? null,
-      p_category_key: input.category_key,
-      p_channel: channel,
-      p_contact: contactForChannel,
-    });
+    const { data: allowedData, error: allowedError } = await client.rpc(
+      "can_send",
+      {
+        p_user_id: input.user_id ?? null,
+        p_category_key: input.category_key,
+        p_channel: channel,
+        p_contact: contactForChannel,
+      },
+    );
+    if (allowedError) {
+      await completeChannel(
+        client,
+        claim,
+        "failed",
+        providerForChannel(channel, contactForChannel),
+        null,
+        "can_send_unavailable",
+      );
+      deliveries.push({ channel, status: "failed", providerMessageId: null });
+      continue;
+    }
     const allowed = allowedData === true;
     if (!allowed) {
-      await writeDelivery(
+      const deniedReason = await issue3720DenialReason(
         client,
-        nid,
+        input,
         channel,
+        contactForChannel,
+      );
+      await completeChannel(
+        client,
+        claim,
         "suppressed",
         // #1537 — a policy suppression is attributable to the market that would
         // have carried it: `can_send` was called with this exact contact, so
         // the provider that would have handled it is known.
         providerForChannel(channel, contactForChannel),
-        "can_send_denied",
+        null,
+        deniedReason,
       );
       deliveries.push({
         channel,
@@ -296,20 +542,27 @@ export async function dispatchV2(
 
     if (channel === "push") {
       tasks.push((async () => {
-        const pushData = { ...input.payload, category_key: input.category_key };
+        const pushData = {
+          ...providerSafePayload(input.category_key, input.payload),
+          category_key: input.category_key,
+          type: input.category_key,
+          notificationId: nid,
+          ...(input.deep_link ? { deepLink: input.deep_link } : {}),
+        };
         const r = await pushAdapter.send({
           userId: input.user_id!,
           title: rendered.push.title,
           body: rendered.push.body,
           data: pushData,
           routingType: input.category_key,
+          idempotencyKey: nid,
         });
-        await writeDelivery(
+        await completeChannel(
           client,
-          nid,
-          "push",
+          claim,
           r.status,
           CHANNEL_PROVIDER.push,
+          r.providerMessageId ?? null,
           r.error ?? null,
         );
         deliveries.push({
@@ -323,15 +576,15 @@ export async function dispatchV2(
         const r = await emailAdapter.send({
           to: contactEmail,
           ...emailContent(rendered, input.email_cta),
+          idempotencyKey: `${input.idempotency_key}:email`,
         });
-        await writeDelivery(
+        await completeChannel(
           client,
-          nid,
-          "email",
+          claim,
           r.status,
           CHANNEL_PROVIDER.email,
-          r.error ?? null,
           r.providerMessageId,
+          r.error ?? null,
         );
         deliveries.push({
           channel: "email",
@@ -347,17 +600,16 @@ export async function dispatchV2(
           message: rendered.sms,
           countryCode: input.country_code,
         });
-        await writeDelivery(
+        await completeChannel(
           client,
-          nid,
-          "sms",
+          claim,
           r.status,
           // #1537 — the provider the ADAPTER actually used (or, on a
           // kill-switch skip, would have used). Was `CHANNEL_PROVIDER.sms`, a
           // constant `"twilio"` that no send ever consulted.
           r.provider,
-          r.error ?? null,
           r.providerMessageId,
+          r.error ?? null,
           r.segments,
         );
         deliveries.push({
@@ -369,22 +621,26 @@ export async function dispatchV2(
       })());
     } else {
       // Channel allowed but no contact for it — record skipped (no silent drop).
-      await writeDelivery(
+      const missingReason = channel === "email" &&
+          (input.category_key === "business.community_announcement" ||
+            input.category_key === "business.support_new_ticket")
+        ? "no_confirmed_email"
+        : "no_contact";
+      await completeChannel(
         client,
-        nid,
-        channel,
+        claim,
         "skipped",
         // #1537 — there is no destination for this channel, so for SMS there is
         // no market and no provider. null, not a fabricated "twilio".
         providerForChannel(channel, contactForChannel),
-        "no_contact",
-        null, // providerMessageId — nothing was sent
-        undefined, // segments
-        // #1537 — the contact that was REJECTED for this channel (an email
-        // supplied where a phone was required, or vice versa). Production held
-        // three `no_contact` rows with contact=NULL, so the recipient that
-        // failed to be reached was unrecoverable from the ledger — the row
-        // recorded that SOMEONE was missed but not who.
+        null,
+        missingReason,
+        undefined,
+        // #1537 — preserve the pre-#3720 audit contract for an authenticated
+        // notification handed the wrong kind of recipient (for example, an
+        // email address where SMS required a phone number). This value is used
+        // only by the legacy insert fallback; #3720's channels never copy an
+        // address into their durable delivery rows.
         input.contact ?? null,
       );
       deliveries.push({ channel, status: "skipped", providerMessageId: null });
@@ -393,7 +649,7 @@ export async function dispatchV2(
 
   await Promise.all(tasks);
 
-  return { success: true, notificationId, deliveries };
+  return { success: true, duplicate, notificationId, deliveries };
 }
 
 const UUID =

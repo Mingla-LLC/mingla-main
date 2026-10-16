@@ -5,7 +5,7 @@
  *   A. create hook must not call notify-support with a user JWT
  *   B. SupportThreadCore must not import postPlannerMessage
  *   C. notify-support staff→host title must use Veronica
- *   D. migration must install the AFTER INSERT notify trigger
+ *   D. reliability cutover must remove the AFTER INSERT network trigger
  */
 import { describe, expect, test } from "@jest/globals";
 import fs from "node:fs";
@@ -45,18 +45,19 @@ describe("#3720 support notify path (adversarial)", () => {
     expect(src).toMatch(/replied/);
   });
 
-  test("D. migration installs tg_support_ticket_notify_staff on support_tickets", () => {
+  // [TEST-MOD-APPROVED #3720] Durable outbox replaced the best-effort trigger.
+  test("D. reliability migration removes the network trigger and enqueues durably", () => {
     const mig = fs.readFileSync(
       path.join(
         REPO,
-        "supabase/migrations/20270829003720_issue_3720_support_new_ticket_notify.sql",
+        "supabase/migrations/20271020003720_issue_3720_notification_reliability.sql",
       ),
       "utf8",
     );
-    expect(mig).toMatch(/tg_support_ticket_notify_staff/);
-    expect(mig).toMatch(/AFTER INSERT ON public\.support_tickets/);
-    expect(mig).toMatch(/notify-support/);
-    expect(mig).toMatch(/new_ticket/);
-    expect(mig).toMatch(/service_role_key/);
+    expect(mig).toMatch(/DROP TRIGGER IF EXISTS tg_support_ticket_notify_staff/);
+    expect(mig).toMatch(/CREATE OR REPLACE FUNCTION public\.create_support_ticket/);
+    expect(mig).toMatch(/INSERT INTO public\.notification_outbox/);
+    expect(mig).toMatch(/business\.support_new_ticket/);
+    expect(mig).not.toMatch(/net\.http_post/);
   });
 });
