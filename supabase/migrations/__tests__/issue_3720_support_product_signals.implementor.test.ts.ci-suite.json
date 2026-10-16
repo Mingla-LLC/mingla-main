@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3720_support_product_signals.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3720-support-product-signals",
+  "profile": "deno-1.46-stripe"
+}

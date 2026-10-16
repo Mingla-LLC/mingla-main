@@ -41,6 +41,18 @@ import { logAdminAction } from "../lib/auditLog";
 import { extractFunctionError } from "../lib/edgeFunctionError";
 import { timeAgo, formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
+import { Segmented, Select } from "../components/crm/fields";
+import {
+  InternalTicketModal,
+  NextUpdateModal,
+  ProductInboxModal,
+  ProductSignalModal,
+} from "../components/community/SupportWorkflowModals";
+import {
+  listInternalSupportThreads,
+  listProductSignals,
+  updateInternalSupportThread,
+} from "../services/supportProductWorkflowService";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -120,6 +132,11 @@ function profileLabel(p) {
   return p.display_name || p.username || p.email || "Unknown user";
 }
 
+function hasActiveNextUpdate(ticket) {
+  const nextUpdateMs = ticket?.next_update_at ? Date.parse(ticket.next_update_at) : Number.NaN;
+  return Number.isFinite(nextUpdateMs) && nextUpdateMs > Date.now();
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function SupportDeskPage({ embedded = false } = {}) {
@@ -145,6 +162,7 @@ export function SupportDeskPage({ embedded = false } = {}) {
 
   // Queue state
   const [tickets, setTickets] = useState([]);
+  const [productSignals, setProductSignals] = useState([]);
   const [profilesById, setProfilesById] = useState({}); // user_id → { ...profile, segment }
   const [brandsById, setBrandsById] = useState({});       // brand_id → { id, name }
   const [statusFilter, setStatusFilter] = useState("all");
@@ -159,6 +177,10 @@ export function SupportDeskPage({ embedded = false } = {}) {
   const [threadError, setThreadError] = useState(null);
   const [reply, setReply] = useState("");
   const [acting, setActing] = useState(false);
+  const [newInternalOpen, setNewInternalOpen] = useState(false);
+  const [nextUpdateSource, setNextUpdateSource] = useState(null);
+  const [productSignalSource, setProductSignalSource] = useState(null);
+  const [productInboxOpen, setProductInboxOpen] = useState(false);
 
   // Agents panel state
   const [agentsOpen, setAgentsOpen] = useState(false);
@@ -173,28 +195,45 @@ export function SupportDeskPage({ embedded = false } = {}) {
     setQueueLoading(true);
     setQueueError(null);
     try {
-      let query = supabase
-        .from("support_tickets")
-        .select("id, requester_user_id, requester_segment, subject, status, priority, assigned_staff_id, conversation_id, brand_id, created_at, first_response_at, resolved_at, last_message_at")
-        .order("last_message_at", { ascending: false })
-        .limit(200);
-      if (statusFilter !== "all") query = query.eq("status", statusFilter);
-      if (unassignedOnly) query = query.is("assigned_staff_id", null);
-
-      const { data, error } = await query;
-      if (error) throw error;
-      const rows = data || [];
+      const [liveResult, internalRows, signals] = await Promise.all([
+        supabase
+          .from("support_tickets")
+          .select("id, requester_user_id, requester_segment, subject, status, priority, assigned_staff_id, conversation_id, brand_id, created_at, first_response_at, resolved_at, last_message_at, next_update_at, next_update_note, support_workflow_revision")
+          .order("last_message_at", { ascending: false })
+          .limit(200),
+        listInternalSupportThreads(),
+        listProductSignals(),
+      ]);
+      if (liveResult.error) throw liveResult.error;
+      const liveRows = (liveResult.data || []).map((row) => ({
+        ...row,
+        source_kind: "support_ticket",
+        source_label: "Live chat",
+        workflow_revision: row.support_workflow_revision,
+        details: null,
+        brand_group_context: null,
+      }));
+      const normalizedInternal = internalRows.map((row) => ({
+        ...row,
+        source_kind: "internal_thread",
+        source_label: "Staff-created",
+        requester_user_id: row.linked_user_id,
+        conversation_id: null,
+        first_response_at: null,
+        last_message_at: row.updated_at,
+        workflow_revision: row.revision,
+      }));
+      const rows = [...liveRows, ...normalizedInternal]
+        .sort((left, right) => new Date(right.last_message_at) - new Date(left.last_message_at));
 
       // Batch-resolve the requester + assigned-staff profiles (with segment) and
       // brands. support_tickets FKs point at auth.users, so we can't embed
       // profiles directly — resolve by id instead.
       const userIds = [
         ...new Set(
-          rows.flatMap((t) => [t.requester_user_id, t.assigned_staff_id]).filter(Boolean),
+          rows.flatMap((t) => [t.requester_user_id, t.assigned_staff_id, t.created_by]).filter(Boolean),
         ),
       ];
-      const brandIds = [...new Set(rows.map((t) => t.brand_id).filter(Boolean))];
-
       const [profilesRes, brandsRes] = await Promise.all([
         userIds.length
           ? supabase
@@ -202,9 +241,7 @@ export function SupportDeskPage({ embedded = false } = {}) {
               .select("id, display_name, username, email, avatar_url, segment")
               .in("id", userIds)
           : Promise.resolve({ data: [], error: null }),
-        brandIds.length
-          ? supabase.from("brands").select("id, name").in("id", brandIds)
-          : Promise.resolve({ data: [], error: null }),
+        supabase.from("brands").select("id, name").order("name", { ascending: true }).limit(1000),
       ]);
 
       if (!mountedRef.current) return;
@@ -215,6 +252,7 @@ export function SupportDeskPage({ embedded = false } = {}) {
       setProfilesById(pMap);
       setBrandsById(bMap);
       setTickets(rows);
+      setProductSignals(signals);
     } catch (err) {
       if (!mountedRef.current) return;
       setQueueError(err.message);
@@ -223,7 +261,7 @@ export function SupportDeskPage({ embedded = false } = {}) {
     } finally {
       if (mountedRef.current) setQueueLoading(false);
     }
-  }, [statusFilter, unassignedOnly, addToast]);
+  }, [addToast]);
 
   useEffect(() => { void loadQueue(); }, [loadQueue]);
 
@@ -235,6 +273,16 @@ export function SupportDeskPage({ embedded = false } = {}) {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "support_tickets" },
+        () => { if (mountedRef.current) void loadQueue(); },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "support_internal_threads" },
+        () => { if (mountedRef.current) void loadQueue(); },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "support_product_signals" },
         () => { if (mountedRef.current) void loadQueue(); },
       )
       .subscribe();
@@ -270,7 +318,7 @@ export function SupportDeskPage({ embedded = false } = {}) {
     setSelectedTicket(ticket);
     setReply("");
     setMessages([]);
-    void loadThread(ticket.conversation_id);
+    if (ticket.conversation_id) void loadThread(ticket.conversation_id);
   }, [loadThread]);
 
   const closeTicket = useCallback(() => {
@@ -297,7 +345,7 @@ export function SupportDeskPage({ embedded = false } = {}) {
   // ─── Actions ──────────────────────────────────────────────────────────────────
 
   const handleClaim = useCallback(async () => {
-    if (!selectedTicket) return;
+    if (!selectedTicket || selectedTicket.source_kind !== "support_ticket") return;
     setActing(true);
     const res = await invokeSupportFn("support-claim", { ticketId: selectedTicket.id });
     if (res.ok) {
@@ -314,7 +362,16 @@ export function SupportDeskPage({ embedded = false } = {}) {
   }, [selectedTicket, myUserId, addToast, loadQueue]);
 
   const handleReply = useCallback(async () => {
-    if (!selectedTicket) return;
+    if (!selectedTicket || selectedTicket.source_kind !== "support_ticket") return;
+    if (!hasActiveNextUpdate(selectedTicket)) {
+      addToast({
+        variant: "warning",
+        title: selectedTicket.next_update_at ? "Renew the next update first" : "Set the next update first",
+        description: "The customer must know when Mingla will update them again before a staff reply is sent.",
+      });
+      setNextUpdateSource(selectedTicket);
+      return;
+    }
     const body = reply.trim();
     if (!body) return;
     setActing(true);
@@ -326,6 +383,7 @@ export function SupportDeskPage({ embedded = false } = {}) {
       const sideEffect = await invokeSupportFn("support-send", {
         ticketId: selectedTicket.id,
         content: body,
+        actorMode: "staff",
       });
       if (!sideEffect.ok) {
         if (noteInvokeResult(sideEffect)) return;
@@ -347,18 +405,34 @@ export function SupportDeskPage({ embedded = false } = {}) {
   const handleSetStatus = useCallback(async (nextStatus) => {
     if (!selectedTicket || nextStatus === selectedTicket.status) return;
     setActing(true);
-    const res = await invokeSupportFn("support-set-status", {
-      ticketId: selectedTicket.id,
-      status: nextStatus,
-    });
-    if (res.ok) {
-      setSessionExpired(false);
-      addToast({ variant: "success", title: `Status → ${nextStatus}` });
-      await logAdminAction("support.set_status", "support_ticket", selectedTicket.id, { status: nextStatus });
-      setSelectedTicket((t) => (t ? { ...t, status: nextStatus } : t));
-      await loadQueue();
-    } else if (!noteInvokeResult(res)) {
-      addToast({ variant: "error", title: "Couldn't change status", description: res.error });
+    if (selectedTicket.source_kind === "internal_thread") {
+      try {
+        const revision = await updateInternalSupportThread({
+          threadId: selectedTicket.id,
+          expectedRevision: selectedTicket.workflow_revision,
+          status: nextStatus,
+          priority: selectedTicket.priority,
+        });
+        setSelectedTicket((ticket) => ticket ? { ...ticket, status: nextStatus, workflow_revision: revision } : ticket);
+        addToast({ variant: "success", title: `Status → ${nextStatus}` });
+        await loadQueue();
+      } catch (error) {
+        addToast({ variant: "error", title: "Couldn't change status", description: error.message });
+      }
+    } else {
+      const res = await invokeSupportFn("support-set-status", {
+        ticketId: selectedTicket.id,
+        status: nextStatus,
+      });
+      if (res.ok) {
+        setSessionExpired(false);
+        addToast({ variant: "success", title: `Status → ${nextStatus}` });
+        await logAdminAction("support.set_status", "support_ticket", selectedTicket.id, { status: nextStatus });
+        setSelectedTicket((t) => (t ? { ...t, status: nextStatus } : t));
+        await loadQueue();
+      } else if (!noteInvokeResult(res)) {
+        addToast({ variant: "error", title: "Couldn't change status", description: res.error });
+      }
     }
     if (mountedRef.current) setActing(false);
   }, [selectedTicket, addToast, loadQueue]);
@@ -366,18 +440,34 @@ export function SupportDeskPage({ embedded = false } = {}) {
   const handleSetPriority = useCallback(async (nextPriority) => {
     if (!selectedTicket || nextPriority === selectedTicket.priority) return;
     setActing(true);
-    const res = await invokeSupportFn("support-set-status", {
-      ticketId: selectedTicket.id,
-      priority: nextPriority,
-    });
-    if (res.ok) {
-      setSessionExpired(false);
-      addToast({ variant: "success", title: `Priority → ${nextPriority}` });
-      await logAdminAction("support.set_priority", "support_ticket", selectedTicket.id, { priority: nextPriority });
-      setSelectedTicket((t) => (t ? { ...t, priority: nextPriority } : t));
-      await loadQueue();
-    } else if (!noteInvokeResult(res)) {
-      addToast({ variant: "error", title: "Couldn't change priority", description: res.error });
+    if (selectedTicket.source_kind === "internal_thread") {
+      try {
+        const revision = await updateInternalSupportThread({
+          threadId: selectedTicket.id,
+          expectedRevision: selectedTicket.workflow_revision,
+          status: selectedTicket.status,
+          priority: nextPriority,
+        });
+        setSelectedTicket((ticket) => ticket ? { ...ticket, priority: nextPriority, workflow_revision: revision } : ticket);
+        addToast({ variant: "success", title: `Priority → ${nextPriority}` });
+        await loadQueue();
+      } catch (error) {
+        addToast({ variant: "error", title: "Couldn't change priority", description: error.message });
+      }
+    } else {
+      const res = await invokeSupportFn("support-set-status", {
+        ticketId: selectedTicket.id,
+        priority: nextPriority,
+      });
+      if (res.ok) {
+        setSessionExpired(false);
+        addToast({ variant: "success", title: `Priority → ${nextPriority}` });
+        await logAdminAction("support.set_priority", "support_ticket", selectedTicket.id, { priority: nextPriority });
+        setSelectedTicket((t) => (t ? { ...t, priority: nextPriority } : t));
+        await loadQueue();
+      } else if (!noteInvokeResult(res)) {
+        addToast({ variant: "error", title: "Couldn't change priority", description: res.error });
+      }
     }
     if (mountedRef.current) setActing(false);
   }, [selectedTicket, addToast, loadQueue]);
@@ -461,9 +551,38 @@ export function SupportDeskPage({ embedded = false } = {}) {
     [tickets],
   );
 
+  const visibleTickets = useMemo(
+    () => tickets.filter((ticket) => (
+      (statusFilter === "all" || ticket.status === statusFilter)
+      && (!unassignedOnly || !ticket.assigned_staff_id)
+    )),
+    [tickets, statusFilter, unassignedOnly],
+  );
+
+  const selectedSignal = useMemo(() => {
+    if (!selectedTicket) return null;
+    return productSignals.find((signal) => signal.sources.some((source) => (
+      source.source_kind === selectedTicket.source_kind && source.source_id === selectedTicket.id
+    ))) || null;
+  }, [productSignals, selectedTicket]);
+
   const requester = selectedTicket ? profilesById[selectedTicket.requester_user_id] : null;
   const assignee = selectedTicket?.assigned_staff_id ? profilesById[selectedTicket.assigned_staff_id] : null;
   const brand = selectedTicket?.brand_id ? brandsById[selectedTicket.brand_id] : null;
+  const brandOptions = useMemo(
+    () => Object.values(brandsById).sort((left, right) => left.name.localeCompare(right.name)),
+    [brandsById],
+  );
+
+  const handleWorkflowError = useCallback((error) => {
+    const message = error?.message || "The workflow action failed";
+    const stale = message.includes("stale_revision");
+    addToast({
+      variant: "error",
+      title: stale ? "This ticket changed in another tab" : "Couldn't save the workflow change",
+      description: stale ? "Refresh the queue, review the latest version and try again." : message,
+    });
+  }, [addToast]);
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -475,6 +594,12 @@ export function SupportDeskPage({ embedded = false } = {}) {
           description={`Answer business support tickets. ${unassignedCount} unassigned.`}
           actions={
             <>
+              <Button variant="primary" size="sm" onClick={() => setNewInternalOpen(true)}>
+                Add ticket
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setProductInboxOpen(true)}>
+                Product inbox
+              </Button>
               <Button variant="secondary" size="sm" icon={Shield} onClick={openAgents}>
                 Agents
               </Button>
@@ -490,7 +615,13 @@ export function SupportDeskPage({ embedded = false } = {}) {
           <p className="text-sm text-[var(--color-text-secondary)]">
             Answer business support tickets. {unassignedCount} unassigned.
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" size="sm" onClick={() => setNewInternalOpen(true)}>
+              Add ticket
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setProductInboxOpen(true)}>
+              Product inbox
+            </Button>
             <Button variant="secondary" size="sm" icon={Shield} onClick={openAgents}>
               Agents
             </Button>
@@ -519,20 +650,12 @@ export function SupportDeskPage({ embedded = false } = {}) {
 
       {/* Status filter tabs + unassigned toggle */}
       <div className="flex flex-wrap items-center gap-2">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setStatusFilter(tab.id)}
-            className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-              statusFilter === tab.id
-                ? "border-[var(--color-brand-500)] bg-[var(--color-brand-500)] text-white"
-                : "border-[var(--gray-300)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-50)]"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        <Segmented
+          label="Support status"
+          options={STATUS_TABS.map((tab) => ({ value: tab.id, label: tab.label }))}
+          value={statusFilter}
+          onChange={setStatusFilter}
+        />
         <label className="ml-2 flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer select-none">
           <input
             type="checkbox"
@@ -546,8 +669,8 @@ export function SupportDeskPage({ embedded = false } = {}) {
 
       {/* Queue */}
       <SectionCard
-        title={`Tickets (${tickets.length})`}
-        subtitle="Newest activity first"
+        title={`Support inbox (${visibleTickets.length})`}
+        subtitle="Live customer chats and staff-created work, newest activity first"
         noPadding
       >
         {queueLoading ? (
@@ -558,12 +681,12 @@ export function SupportDeskPage({ embedded = false } = {}) {
             <p className="text-xs text-[var(--color-text-tertiary)]">{queueError}</p>
             <Button variant="link" onClick={() => void loadQueue()}>Try again</Button>
           </div>
-        ) : tickets.length === 0 ? (
+        ) : visibleTickets.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-12">
             <LifeBuoy className="h-10 w-10 text-[var(--gray-300)]" />
             <p className="text-sm text-[var(--color-text-tertiary)]">
               {statusFilter === "all" && !unassignedOnly
-                ? "No support tickets yet."
+                ? "No support work yet."
                 : "No tickets match this filter."}
             </p>
           </div>
@@ -572,16 +695,18 @@ export function SupportDeskPage({ embedded = false } = {}) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--gray-200)] text-left text-[var(--color-text-tertiary)]">
+                  <th className="py-2.5 px-4">Type</th>
                   <th className="py-2.5 px-4">Requester</th>
                   <th className="py-2.5 px-4">Subject</th>
                   <th className="py-2.5 px-4">Status</th>
                   <th className="py-2.5 px-4">Priority</th>
                   <th className="py-2.5 px-4">Assigned</th>
+                  <th className="py-2.5 px-4">Next update</th>
                   <th className="py-2.5 px-4">Last activity</th>
                 </tr>
               </thead>
               <tbody>
-                {tickets.map((t) => {
+                {visibleTickets.map((t) => {
                   const r = profilesById[t.requester_user_id];
                   const a = t.assigned_staff_id ? profilesById[t.assigned_staff_id] : null;
                   return (
@@ -590,14 +715,29 @@ export function SupportDeskPage({ embedded = false } = {}) {
                       onClick={() => openTicket(t)}
                       className="border-b border-[var(--gray-100)] hover:bg-[var(--gray-50)] cursor-pointer"
                     >
+                      <td className="py-2.5 px-4 whitespace-nowrap">
+                        <Badge variant={t.source_kind === "support_ticket" ? "brand" : "default"}>
+                          {t.source_label}
+                        </Badge>
+                      </td>
                       <td className="py-2.5 px-4">
                         <div className="flex items-center gap-2 min-w-0">
-                          <Avatar src={r?.avatar_url} name={profileLabel(r)} size="sm" />
-                          <span className="truncate text-[var(--color-text-primary)]">{profileLabel(r)}</span>
+                          <Avatar src={r?.avatar_url} name={r ? profileLabel(r) : "Internal"} size="sm" />
+                          <span className="truncate text-[var(--color-text-primary)]">{r ? profileLabel(r) : "No customer linked"}</span>
                         </div>
                       </td>
                       <td className="py-2.5 px-4 max-w-[260px]">
-                        <span className="truncate block text-[var(--color-text-primary)]">{t.subject}</span>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openTicket(t);
+                          }}
+                          className="block max-w-full truncate text-left text-[var(--color-text-primary)] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)]"
+                          aria-label={`Open ${t.source_label.toLowerCase()}: ${t.subject}`}
+                        >
+                          {t.subject}
+                        </button>
                       </td>
                       <td className="py-2.5 px-4">
                         <Badge variant={STATUS_BADGE[t.status] || "default"} dot>{t.status}</Badge>
@@ -610,6 +750,15 @@ export function SupportDeskPage({ embedded = false } = {}) {
                           <span className="text-[var(--color-text-secondary)] truncate">{profileLabel(a)}</span>
                         ) : (
                           <Badge variant="warning">Unassigned</Badge>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-4 text-xs whitespace-nowrap">
+                        {t.next_update_at ? (
+                          <span className={hasActiveNextUpdate(t) ? "text-[var(--color-text-secondary)]" : "font-medium text-[var(--color-error-700)]"}>
+                            {formatDateTime(t.next_update_at)}
+                          </span>
+                        ) : (
+                          <Badge variant="error">Promise needed</Badge>
                         )}
                       </td>
                       <td className="py-2.5 px-4 text-xs text-[var(--color-text-tertiary)] whitespace-nowrap">
@@ -637,7 +786,24 @@ export function SupportDeskPage({ embedded = false } = {}) {
               {/* Thread */}
               <div className="flex flex-col border-r border-[var(--gray-200)] min-h-[320px]">
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[52vh]">
-                  {threadLoading ? (
+                  {selectedTicket.source_kind === "internal_thread" ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="default">Staff-created</Badge>
+                        <span className="text-xs text-[var(--color-text-tertiary)]">Internal only · no customer message was sent</span>
+                      </div>
+                      <div className="rounded-xl border border-[var(--gray-200)] bg-[var(--gray-50)] p-4">
+                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Reported context</div>
+                        <p className="whitespace-pre-wrap text-sm text-[var(--color-text-primary)]">{selectedTicket.details}</p>
+                      </div>
+                      {selectedTicket.brand_group_context && (
+                        <div className="rounded-xl border border-[var(--gray-200)] p-4">
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Brand group context</div>
+                          <p className="text-sm text-[var(--color-text-primary)]">{selectedTicket.brand_group_context}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : threadLoading ? (
                     <div className="flex justify-center py-8"><Spinner /></div>
                   ) : threadError ? (
                     <div className="rounded-lg border border-[var(--color-error-200,#fecaca)] bg-[var(--color-error-50)] p-3 text-xs text-[var(--color-error-700)]">
@@ -680,10 +846,11 @@ export function SupportDeskPage({ embedded = false } = {}) {
                   )}
                 </div>
                 {/* Composer */}
+                {selectedTicket.source_kind === "support_ticket" && (
                 <div className="border-t border-[var(--gray-200)] p-3 flex items-end gap-2">
                   <div className="flex-1 space-y-1">
                     <p className="text-[11px] text-[var(--color-text-tertiary)]">
-                      Replying as Veronica from Mingla
+                      Replying as Veronica from Mingla · a next-update promise is required
                     </p>
                     <textarea
                       value={reply}
@@ -704,30 +871,39 @@ export function SupportDeskPage({ embedded = false } = {}) {
                     variant="primary"
                     icon={Send}
                     loading={acting}
-                    disabled={acting || !reply.trim()}
+                    disabled={acting || !reply.trim() || !hasActiveNextUpdate(selectedTicket)}
                     onClick={() => void handleReply()}
                   >
                     Send
                   </Button>
                 </div>
+                )}
               </div>
 
               {/* Meta + actions */}
               <div className="p-4 space-y-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <Badge variant={selectedTicket.source_kind === "support_ticket" ? "brand" : "default"}>
+                    {selectedTicket.source_label}
+                  </Badge>
+                  {selectedTicket.source_kind === "support_ticket" && <span className="text-xs text-[var(--color-text-tertiary)]">Customer can see the conversation</span>}
+                </div>
                 <div className="space-y-1">
-                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">Requester</div>
-                  <div className="flex items-center gap-2">
-                    <Avatar src={requester?.avatar_url} name={profileLabel(requester)} size="sm" />
-                    <div className="min-w-0">
-                      <div className="truncate text-[var(--color-text-primary)]">{profileLabel(requester)}</div>
-                      {requester?.email && (
-                        <div className="truncate text-xs text-[var(--color-text-tertiary)]">{requester.email}</div>
-                      )}
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">Customer</div>
+                  {requester ? (
+                    <div className="flex items-center gap-2">
+                      <Avatar src={requester.avatar_url} name={profileLabel(requester)} size="sm" />
+                      <div className="min-w-0">
+                        <div className="truncate text-[var(--color-text-primary)]">{profileLabel(requester)}</div>
+                        {requester.email && (
+                          <div className="truncate text-xs text-[var(--color-text-tertiary)]">{requester.email}</div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  {requester?.segment && (
-                    <Badge variant="info">{requester.segment}</Badge>
+                  ) : (
+                    <div className="text-sm text-[var(--color-text-tertiary)]">No customer linked</div>
                   )}
+                  {requester?.segment && <Badge variant="info">{requester.segment}</Badge>}
                 </div>
 
                 {brand && (
@@ -741,7 +917,7 @@ export function SupportDeskPage({ embedded = false } = {}) {
                   <div className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">Assigned</div>
                   {assignee ? (
                     <div className="text-[var(--color-text-primary)] truncate">{profileLabel(assignee)}</div>
-                  ) : (
+                  ) : selectedTicket.source_kind === "support_ticket" ? (
                     <Button
                       variant="primary"
                       size="sm"
@@ -752,36 +928,67 @@ export function SupportDeskPage({ embedded = false } = {}) {
                     >
                       Claim ticket
                     </Button>
+                  ) : (
+                    <div className="text-[var(--color-text-tertiary)]">Not assigned</div>
                   )}
                 </div>
 
                 <label className="block space-y-1">
                   <span className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">Status</span>
-                  <select
+                  <Select
                     value={selectedTicket.status}
                     onChange={(e) => void handleSetStatus(e.target.value)}
                     disabled={acting}
-                    className="w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
-                  >
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
+                    options={STATUS_OPTIONS.map((value) => ({ value, label: value }))}
+                  />
                 </label>
 
                 <label className="block space-y-1">
                   <span className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">Priority</span>
-                  <select
+                  <Select
                     value={selectedTicket.priority}
                     onChange={(e) => void handleSetPriority(e.target.value)}
                     disabled={acting}
-                    className="w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 py-1.5 text-sm text-[var(--color-text-primary)]"
-                  >
-                    {PRIORITY_OPTIONS.map((p) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
+                    options={PRIORITY_OPTIONS.map((value) => ({ value, label: value }))}
+                  />
                 </label>
+
+                <div className="rounded-xl border border-[var(--gray-200)] p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium text-[var(--color-text-primary)]">Next update</div>
+                    <Button variant="ghost" size="sm" onClick={() => setNextUpdateSource(selectedTicket)}>
+                      {selectedTicket.next_update_at ? "Change" : "Set now"}
+                    </Button>
+                  </div>
+                  {selectedTicket.next_update_at ? (
+                    <>
+                      <div className="text-sm text-[var(--color-text-primary)]">{formatDateTime(selectedTicket.next_update_at)}</div>
+                      <p className="text-xs text-[var(--color-text-tertiary)]">{selectedTicket.next_update_note}</p>
+                    </>
+                  ) : (
+                    <p className="text-xs font-medium text-[var(--color-error-700)]">Required before Support sends a reply.</p>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-[var(--gray-200)] p-3 space-y-2">
+                  <div className="font-medium text-[var(--color-text-primary)]">Product signal</div>
+                  {selectedSignal ? (
+                    <>
+                      <p className="text-xs text-[var(--color-text-secondary)]">{selectedSignal.title}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge variant="info">{selectedSignal.state.replaceAll('_', ' ')}</Badge>
+                        <Button variant="ghost" size="sm" onClick={() => setProductInboxOpen(true)}>Open inbox</Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs text-[var(--color-text-tertiary)]">Send a private, structured report for Product review.</p>
+                      <Button variant="secondary" size="sm" onClick={() => setProductSignalSource(selectedTicket)}>
+                        Create signal
+                      </Button>
+                    </>
+                  )}
+                </div>
 
                 <div className="pt-2 border-t border-[var(--gray-200)] space-y-1 text-xs text-[var(--color-text-tertiary)]">
                   <div>Opened {formatDateTime(selectedTicket.created_at)}</div>
@@ -800,6 +1007,54 @@ export function SupportDeskPage({ embedded = false } = {}) {
           <Button variant="secondary" onClick={closeTicket}>Close</Button>
         </ModalFooter>
       </Modal>
+
+      <InternalTicketModal
+        open={newInternalOpen}
+        brands={brandOptions}
+        onClose={() => setNewInternalOpen(false)}
+        onCreated={async () => {
+          addToast({ variant: "success", title: "Staff-created ticket added" });
+          await loadQueue();
+        }}
+        onError={handleWorkflowError}
+      />
+
+      <NextUpdateModal
+        source={nextUpdateSource}
+        onClose={() => setNextUpdateSource(null)}
+        onSaved={async () => {
+          addToast({ variant: "success", title: "Next update saved" });
+          closeTicket();
+          await loadQueue();
+        }}
+        onError={handleWorkflowError}
+      />
+
+      <ProductSignalModal
+        source={productSignalSource}
+        signals={productSignals}
+        onClose={() => setProductSignalSource(null)}
+        onCreated={async () => {
+          addToast({ variant: "success", title: "Private Product signal created" });
+          await loadQueue();
+        }}
+        onLinked={async () => {
+          addToast({ variant: "success", title: "Report linked to the existing Product signal" });
+          await loadQueue();
+        }}
+        onError={handleWorkflowError}
+      />
+
+      <ProductInboxModal
+        open={productInboxOpen}
+        signals={productSignals}
+        onClose={() => setProductInboxOpen(false)}
+        onSaved={async () => {
+          addToast({ variant: "success", title: "Product review saved" });
+          await loadQueue();
+        }}
+        onError={handleWorkflowError}
+      />
 
       {/* Agents panel */}
       <Modal open={agentsOpen} onClose={() => setAgentsOpen(false)} title="Support agents" size="md">

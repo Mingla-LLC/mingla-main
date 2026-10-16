@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/support-send/issue_3720_next_update_gate.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3720-support-next-update-gate",
+  "profile": "deno-1.46-stripe"
+}

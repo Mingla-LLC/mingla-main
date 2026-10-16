@@ -51,7 +51,7 @@ serve(async (req) => {
     if (!authHeader) return json({ error: "No authorization header" }, 401);
 
     const body = await req.json().catch(() => null) as
-      | { ticketId?: unknown; content?: unknown; messageType?: unknown }
+      | { ticketId?: unknown; content?: unknown; messageType?: unknown; actorMode?: unknown }
       | null;
     const ticketId = body?.ticketId;
     if (!isUuid(ticketId)) return json({ error: "ticketId_required" }, 400);
@@ -61,6 +61,14 @@ serve(async (req) => {
     const messageType = (VALID_MESSAGE_TYPES as readonly string[]).includes(messageTypeRaw)
       ? messageTypeRaw
       : "text";
+    const actorMode = body?.actorMode === undefined
+      ? null
+      : body.actorMode === "staff" || body.actorMode === "requester"
+      ? body.actorMode
+      : null;
+    if (body?.actorMode !== undefined && actorMode === null) {
+      return json({ error: "invalid_actor_mode" }, 400);
+    }
 
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
@@ -74,7 +82,7 @@ serve(async (req) => {
     // requester/assignee regardless of the caller's RLS view.
     const { data: ticket, error: tErr } = await admin
       .from("support_tickets")
-      .select("id, requester_user_id, assigned_staff_id, conversation_id, first_response_at")
+      .select("id, requester_user_id, assigned_staff_id, conversation_id, first_response_at, next_update_at")
       .eq("id", ticketId)
       .maybeSingle();
     if (tErr) return json({ error: tErr.message }, 500);
@@ -82,15 +90,25 @@ serve(async (req) => {
 
     // Authorize: requester (own ticket) OR staff/admin.
     const isRequester = ticket.requester_user_id === user.id;
-    let isStaff = false;
-    if (!isRequester) {
-      const [{ data: staff }, { data: adm }] = await Promise.all([
-        userClient.rpc("is_support_staff", { p_user_id: user.id }),
-        userClient.rpc("is_admin_user"),
-      ]);
-      isStaff = staff === true || adm === true;
+    const [{ data: staff }, { data: adm }] = await Promise.all([
+      userClient.rpc("is_support_staff", { p_user_id: user.id }),
+      userClient.rpc("is_admin_user"),
+    ]);
+    const isStaff = staff === true || adm === true;
+    if (actorMode === "staff" && !isStaff) return json({ error: "Forbidden" }, 403);
+    if (actorMode === "requester" && !isRequester) return json({ error: "Forbidden" }, 403);
+    if (actorMode === null && !isRequester && !isStaff) return json({ error: "Forbidden" }, 403);
+    // A dual-role account can use the customer composer as the requester and
+    // the Support desk as staff. The calling surface makes that intent explicit;
+    // older clients are inferred without changing their existing behavior.
+    const senderIsStaff = actorMode === "staff" || (actorMode === null && !isRequester && isStaff);
+    // I-3720-NEXT-UPDATE-HONEST: a staff reply must not leave the customer
+    // without a concrete communication promise. Requesters can always add more
+    // context to their own ticket; the gate applies only to staff replies.
+    const nextUpdateMs = ticket.next_update_at ? Date.parse(ticket.next_update_at) : Number.NaN;
+    if (senderIsStaff && (!Number.isFinite(nextUpdateMs) || nextUpdateMs <= Date.now())) {
+      return json({ error: "next_update_required" }, 422);
     }
-    if (!isRequester && !isStaff) return json({ error: "Forbidden" }, 403);
 
     // Insert the message. Use the USER client so the RLS INSERT policies
     // (participant path for the requester, messages_support_staff_insert for
@@ -112,14 +130,14 @@ serve(async (req) => {
     // on the FIRST staff message.
     const nowIso = new Date().toISOString();
     const patch: Record<string, unknown> = { last_message_at: nowIso };
-    if (isStaff && !ticket.first_response_at) {
+    if (senderIsStaff && !ticket.first_response_at) {
       patch.first_response_at = nowIso;
     }
     await admin.from("support_tickets").update(patch).eq("id", ticketId);
 
     await admin.from("support_audit_log").insert({
       actor_user_id: user.id,
-      action: isStaff ? "staff_reply" : "requester_reply",
+      action: senderIsStaff ? "staff_reply" : "requester_reply",
       ticket_id: ticketId,
       metadata: { message_id: inserted?.id ?? null },
     });
@@ -138,7 +156,7 @@ serve(async (req) => {
           event: "message",
           ticketId,
           senderUserId: user.id,
-          senderIsStaff: isStaff,
+          senderIsStaff,
         }),
       });
     } catch (pushErr) {
