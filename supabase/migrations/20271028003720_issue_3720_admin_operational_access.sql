@@ -6,8 +6,6 @@
 -- is_admin_user(), admin_team_role_areas(), and admin_team_my_access() are not
 -- replaced or changed by this migration.
 --
--- MINGLA-INVARIANT: I-3720-ADMIN-OPERATIONAL-ACCESS | issue #3720 | Community and Support assignments may open only their scoped Admin console; admin_console remains equivalent to is_admin_user().
-
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 

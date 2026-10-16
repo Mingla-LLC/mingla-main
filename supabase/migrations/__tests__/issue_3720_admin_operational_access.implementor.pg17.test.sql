@@ -1,6 +1,6 @@
 -- #3720 scoped Admin Community & Support access, executable PostgreSQL 17 proof.
 -- Runs after the complete migration replay and rolls every fixture back.
--- MINGLA-INVARIANT: I-3720-ADMIN-OPERATIONAL-ACCESS | issue #3720 | Operational grants never confer admin_console and require an active Admin team membership.
+-- MINGLA-INVARIANT: I-3720-ADMIN-OPERATIONAL-ACCESS | issue #3720 | Operational grants never confer admin_console and require accepted Admin team membership.
 \set ON_ERROR_STOP on
 BEGIN;
 
