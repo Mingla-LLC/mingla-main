@@ -1007,7 +1007,8 @@ serve(async (req: Request): Promise<Response> => {
     ? "fund"
     : action === "review"
     ? "review"
-    : action === "confirm_launch" || action === "assert_launchable"
+    : action === "confirm_launch" || action === "assert_launchable" ||
+        action === "record_create_failure"
     ? "launch"
     : action === "cancel_before_create" || action === "request_stop"
     ? "end"
@@ -1022,6 +1023,65 @@ serve(async (req: Request): Promise<Response> => {
       error: "plan_conflict",
       detail: "plan_version_hash_mismatch",
     }, 409);
+  }
+
+  if (action === "record_create_failure") {
+    const platform = body.platform;
+    if (!isPlatform(platform)) {
+      return json(
+        { error: "validation_error", detail: "platform_invalid" },
+        400,
+      );
+    }
+    const [{ data: allocation }, { data: existingCampaign }] = await Promise
+      .all([
+        db.from("ad_plan_provider_allocations").select("platform")
+          .eq("plan_version_id", versionId).eq("platform", platform)
+          .maybeSingle(),
+        db.from("ad_campaigns").select("id")
+          .eq("plan_version_id", versionId).eq("plan_hash", planHash)
+          .eq("platform", platform).maybeSingle(),
+      ]);
+    if (!allocation) {
+      return json(
+        { error: "plan_conflict", detail: "provider_allocation_missing" },
+        409,
+      );
+    }
+    if (existingCampaign) {
+      return json(
+        { error: "plan_conflict", detail: "provider_campaign_already_exists" },
+        409,
+      );
+    }
+    const detail = typeof body.error_detail === "string"
+      ? body.error_detail.trim().slice(0, 500)
+      : "provider_create_failed";
+    const { data: attempt, error: attemptError } = await db.rpc(
+      "ad_record_provider_attempt",
+      {
+        p_plan_version_id: versionId,
+        p_plan_hash: planHash,
+        p_platform: platform,
+        p_command: "create_paused_objects",
+        p_idempotency_key: `${planHash}:${platform}:create`,
+        p_state: "failed_retryable",
+        p_external_ids: {},
+        p_provider_response: null,
+        p_error_detail: detail || "provider_create_failed",
+      },
+    );
+    if (attemptError) return databaseFailure(attemptError);
+    const { data: plan, error: stateError } = await db.from("ad_plans")
+      .update({ state: "creation_failed_retryable" })
+      .eq("id", authorized.plan.id)
+      .eq("current_version_id", versionId)
+      .in("state", ["creating_paused_objects", "creation_failed_retryable"])
+      .select("*").maybeSingle();
+    if (stateError) return databaseFailure(stateError);
+    return plan
+      ? json({ ok: true, plan, provider_attempt: attempt })
+      : json({ error: "plan_conflict", detail: "create_state_invalid" }, 409);
   }
 
   if (action === "mark_ready") {

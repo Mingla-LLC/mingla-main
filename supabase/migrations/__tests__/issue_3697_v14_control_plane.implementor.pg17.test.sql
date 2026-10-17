@@ -489,6 +489,22 @@ BEGIN
   IF v_confirmation.plan_hash <> v_version.plan_hash THEN
     RAISE EXCEPTION 'confirmation_hash_not_bound';
   END IF;
+  -- [TEST-MOD-APPROVED #3697] A partial provider failure is durable and a
+  -- retry returns to the creating state without changing the frozen version.
+  PERFORM public.ad_record_provider_attempt(
+    v_version.id, v_version.plan_hash, 'tiktok', 'create_paused_objects',
+    v_version.plan_hash || ':tiktok:create', 'failed_retryable',
+    '{}'::jsonb, NULL, 'controlled provider failure'
+  );
+  UPDATE public.ad_plans SET state = 'creation_failed_retryable'
+  WHERE id = v_plan.id;
+  v_confirmation := public.ad_plan_confirm_launch(
+    v_version.id, v_version.plan_hash, 'LAUNCH', v_user
+  );
+  IF (SELECT state FROM public.ad_plans WHERE id = v_plan.id)
+     <> 'creating_paused_objects' THEN
+    RAISE EXCEPTION 'provider_create_retry_not_resumable';
+  END IF;
   PERFORM public.ad_record_provider_attempt(
     v_version.id, v_version.plan_hash, 'meta', 'create_paused_objects',
     'v14-control-meta-create', 'succeeded',

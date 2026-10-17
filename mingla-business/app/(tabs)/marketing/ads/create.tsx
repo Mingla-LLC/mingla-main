@@ -235,12 +235,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
       setRightsConfirmed(mediaRights?.rights_confirmed === true);
       setRightsBasis(
         ["owned", "licensed", "authorized_by_brand"].includes(
-            String(mediaRights?.rights_basis),
-          )
-          ? mediaRights?.rights_basis as
-            | "owned"
-            | "licensed"
-            | "authorized_by_brand"
+          String(mediaRights?.rights_basis),
+        )
+          ? (mediaRights?.rights_basis as
+              "owned" | "licensed" | "authorized_by_brand")
           : "owned",
       );
       setAiGenerated(mediaRights?.ai_generated === true);
@@ -303,12 +301,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
             targeting: aggregate.targeting_snapshots,
             measurement:
               (aggregate.version.canonical_plan.measurement as
-                | Record<string, unknown>
-                | undefined) ?? null,
+                Record<string, unknown> | undefined) ?? null,
             mediaRights:
               (aggregate.version.canonical_plan.media_rights as
-                | Record<string, unknown>
-                | undefined) ?? null,
+                Record<string, unknown> | undefined) ?? null,
             providerValidations: [],
           });
           setActivePlanState(aggregate.plan.state);
@@ -331,12 +327,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
             targeting: aggregate.targeting_snapshots,
             measurement:
               (aggregate.version.canonical_plan.measurement as
-                | Record<string, unknown>
-                | undefined) ?? null,
+                Record<string, unknown> | undefined) ?? null,
             mediaRights:
               (aggregate.version.canonical_plan.media_rights as
-                | Record<string, unknown>
-                | undefined) ?? null,
+                Record<string, unknown> | undefined) ?? null,
             providerValidations: [],
           });
           setActivePlanState(aggregate.plan.state);
@@ -385,23 +379,23 @@ export default function HostAdCreateRoute(): React.ReactElement {
         ? "Choose a ready Bunny video creative."
         : !rightsConfirmed
           ? "Confirm that this brand may use the creative in paid ads."
-        : name.trim().length < 3
-          ? "Add a campaign name."
-          : primaryText.trim().length < 3
-            ? "Add the primary ad text."
-            : countries.length === 0
-              ? "Enter at least one two-letter country code."
-              : !Number.isInteger(Number(ageMin)) ||
-                  !Number.isInteger(Number(ageMax)) ||
-                  Number(ageMin) < 13 ||
-                  Number(ageMax) > 100 ||
-                  Number(ageMin) > Number(ageMax)
-                ? "Use an age range between 13 and 100."
-                : dailyBudgetCents <= 0
-                  ? "Enter a daily budget."
-                  : capCents < dailyBudgetCents
-                    ? "The hard cap must be at least one day of budget."
-                    : null;
+          : name.trim().length < 3
+            ? "Add a campaign name."
+            : primaryText.trim().length < 3
+              ? "Add the primary ad text."
+              : countries.length === 0
+                ? "Enter at least one two-letter country code."
+                : !Number.isInteger(Number(ageMin)) ||
+                    !Number.isInteger(Number(ageMax)) ||
+                    Number(ageMin) < 13 ||
+                    Number(ageMax) > 100 ||
+                    Number(ageMin) > Number(ageMax)
+                  ? "Use an age range between 13 and 100."
+                  : dailyBudgetCents <= 0
+                    ? "Enter a daily budget."
+                    : capCents < dailyBudgetCents
+                      ? "The hard cap must be at least one day of budget."
+                      : null;
 
   const handlePrepare = async (forceAcceptance = false) => {
     if (!permissions.canPlan) {
@@ -473,7 +467,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
 
   const handleFund = async () => {
     if (!permissions.canFund) {
-      setError("A finance manager, owner or approved ads spender must hold funds.");
+      setError(
+        "A finance manager, owner or approved ads spender must hold funds.",
+      );
       return;
     }
     if (!prepared || prepared.status !== "ready") return;
@@ -543,7 +539,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
 
   const handleCancelBeforeCreate = async () => {
     if (!permissions.canEnd) {
-      setError("Only the brand owner can cancel a funded plan and release its hold.");
+      setError(
+        "Only the brand owner can cancel a funded plan and release its hold.",
+      );
       return;
     }
     if (!prepared) return;
@@ -887,10 +885,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
             ))}
           </View>
           <Pressable
-            style={[
-              styles.acceptRow,
-              rightsConfirmed && styles.choiceSelected,
-            ]}
+            style={[styles.acceptRow, rightsConfirmed && styles.choiceSelected]}
             onPress={() => {
               setRightsConfirmed((value) => !value);
               setPrepared(null);
@@ -921,10 +916,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
             accessibilityLabel="Creative is AI-generated"
           >
             <View
-              style={[
-                styles.checkbox,
-                aiGenerated && styles.checkboxChecked,
-              ]}
+              style={[styles.checkbox, aiGenerated && styles.checkboxChecked]}
             />
             <Text style={styles.choiceTitle}>
               This creative is AI-generated or materially AI-edited
@@ -998,12 +990,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     {String(prepared.measurement.quality).replaceAll("_", " ")}
                   </Text>
                   <Text style={styles.choiceSubtitle}>
-                    Result order: {Array.isArray(
-                        prepared.measurement.result_hierarchy,
-                      )
+                    Result order:{" "}
+                    {Array.isArray(prepared.measurement.result_hierarchy)
                       ? prepared.measurement.result_hierarchy
-                        .map((value) => String(value).replaceAll("_", " "))
-                        .join(" → ")
+                          .map((value) => String(value).replaceAll("_", " "))
+                          .join(" → ")
                       : "Unavailable"}
                   </Text>
                   <Text style={styles.choiceSubtitle}>
@@ -1019,7 +1010,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     {String(prepared.mediaRights.rights_basis).replaceAll(
                       "_",
                       " ",
-                    )} · {prepared.mediaRights.ai_generated === true
+                    )}{" "}
+                    ·{" "}
+                    {prepared.mediaRights.ai_generated === true
                       ? "AI-generated"
                       : "not marked AI-generated"}
                   </Text>
@@ -1070,9 +1063,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
                         {providerEstimateLabel(row.provider_estimate)}
                       </Text>
                       <Text style={styles.choiceSubtitle}>
-                        Observed {row.estimate_observed_at
+                        Observed{" "}
+                        {row.estimate_observed_at
                           ? new Date(row.estimate_observed_at).toLocaleString()
-                          : "time unavailable"} · {row.provider_estimate.source}
+                          : "time unavailable"}{" "}
+                        · {row.provider_estimate.source}
                       </Text>
                       {row.provider_estimate.state !== "available" ? (
                         <Text style={styles.choiceSubtitle}>
@@ -1084,10 +1079,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                       ) : null}
                       {(row.provider_estimate.assumptions ?? []).map(
                         (assumption) => (
-                          <Text
-                            key={assumption}
-                            style={styles.choiceSubtitle}
-                          >
+                          <Text key={assumption} style={styles.choiceSubtitle}>
                             {assumption}
                           </Text>
                         ),
@@ -1134,7 +1126,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
                         <Text style={styles.helper}>
                           Hold {formatMoney(setup.currency, capCents)} in Ads
                           credit. First-three or flagged Host campaigns then
-                          stop for staff approval; no provider object is created.
+                          stop for staff approval; no provider object is
+                          created.
                         </Text>
                         <Button
                           label="Hold funds"
@@ -1160,6 +1153,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                   {[
                     "funded_held",
                     "staff_approved",
+                    "creating_paused_objects",
                     "creation_failed_retryable",
                   ].includes(activePlanState ?? "") ? (
                     permissions.canLaunch ? (
@@ -1176,7 +1170,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
                         />
                         <Button
                           label={
-                            activePlanState === "creation_failed_retryable"
+                            [
+                              "creating_paused_objects",
+                              "creation_failed_retryable",
+                            ].includes(activePlanState ?? "")
                               ? "Retry provider creation and launch"
                               : "Launch approved plan"
                           }
@@ -1199,7 +1196,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     "funded_held",
                     "staff_review_required",
                     "staff_approved",
+                    "creating_paused_objects",
                     "creation_failed_retryable",
+                    "creation_failed_terminal",
                   ].includes(activePlanState ?? "") ? (
                     <Button
                       label="Cancel plan and release funds"

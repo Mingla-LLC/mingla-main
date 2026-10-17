@@ -40,6 +40,11 @@ Deno.test("v1.4 provider create binds the executable version before a platform w
       "fx_snapshot_id",
     ]
   ) assertStringIncludes(source, field);
+  const plan = await Deno.readTextFile(
+    new URL("../../ad-plan/index.ts", import.meta.url),
+  );
+  assertStringIncludes(plan, 'action === "record_create_failure"');
+  assertStringIncludes(plan, 'state: "creation_failed_retryable"');
 });
 
 Deno.test("v1.4 app destinations must be ready before an immutable version is frozen", async () => {
@@ -70,6 +75,10 @@ Deno.test("v1.4 app destinations must be ready before an immutable version is fr
   assertStringIncludes(createVersion, "provider_delivery_budget_cents");
   assertStringIncludes(migration, "host_delivery_budget_cents");
   assertStringIncludes(migration, "provider_delivery_budget_cents");
+  assertStringIncludes(
+    migration,
+    "'staff_approved','creation_failed_retryable'",
+  );
   assertStringIncludes(migration, "'app_install'");
   assertStringIncludes(migration, "'install'");
   assertStringIncludes(migration, "v_store_url");

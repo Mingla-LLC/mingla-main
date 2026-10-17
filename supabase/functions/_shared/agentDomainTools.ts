@@ -3677,20 +3677,32 @@ const approveAdPlan = writeTool(
       [];
     for (const allocation of aggregate.provider_allocations) {
       const platform = String(allocation.platform);
-      const result = await invokeFn(
-        client,
-        "admin-ad-create-campaign",
-        buildHostAdCreatePayload(aggregate, platform, operationId),
-      ) as { campaign_id?: string; campaign?: { id?: string } };
-      const campaignId = result.campaign_id ?? result.campaign?.id;
-      if (!campaignId || !isUuid(campaignId)) {
-        throw new ToolError(
-          "RPC_FAILED",
-          "provider create returned no campaign id",
-        );
+      let result: { campaign_id?: string; campaign?: { id?: string } };
+      try {
+        result = await invokeFn(
+          client,
+          "admin-ad-create-campaign",
+          buildHostAdCreatePayload(aggregate, platform, operationId),
+        ) as { campaign_id?: string; campaign?: { id?: string } };
+        const campaignId = result.campaign_id ?? result.campaign?.id;
+        if (!campaignId || !isUuid(campaignId)) {
+          throw new ToolError(
+            "RPC_FAILED",
+            "provider create returned no campaign id",
+          );
+        }
+        created.push(result);
+        createdCampaigns.push({ campaignId, platform });
+      } catch (cause) {
+        await invokeFn(client, "ad-plan", {
+          action: "record_create_failure",
+          plan_version_id: args.plan_version_id,
+          plan_hash: args.plan_hash,
+          platform,
+          error_detail: cause instanceof Error ? cause.message : String(cause),
+        });
+        throw cause;
       }
-      created.push(result);
-      createdCampaigns.push({ campaignId, platform });
     }
     const launched: unknown[] = [];
     for (const item of createdCampaigns) {

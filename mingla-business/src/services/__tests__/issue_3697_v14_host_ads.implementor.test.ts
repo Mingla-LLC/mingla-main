@@ -84,6 +84,13 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(hostCampaignEndpoint).toContain('providerTree,\n        "PAUSED"');
   });
 
+  it("keeps partial provider creation resumable after app restart", () => {
+    expect(service).toContain('"creating_paused_objects"');
+    expect(service).toContain('action: "record_create_failure"');
+    expect(service).not.toContain("item.value.campaigns.length === 0");
+    expect(createRoute).toContain("Retry provider creation and launch");
+  });
+
   it("uses the shared aggregate lifecycle for Host pause and plan-wide stop", () => {
     expect(campaignService).toContain('"admin-ad-campaign-action"');
     expect(planEndpoint).toContain('action === "cancel_before_create"');

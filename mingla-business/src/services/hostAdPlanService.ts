@@ -180,7 +180,9 @@ const HOST_PLAN_IN_PROGRESS_STATES = new Set([
   "staff_review_required",
   "staff_approved",
   "changes_requested",
+  "creating_paused_objects",
   "creation_failed_retryable",
+  "creation_failed_terminal",
 ]);
 
 export async function listHostAdPlans(
@@ -199,9 +201,7 @@ export async function listHostAdPlans(
     rows.map((plan) => getHostAdPlan(plan.id)),
   );
   return settled.flatMap((item) =>
-    item.status === "fulfilled" && item.value.campaigns.length === 0
-      ? [item.value]
-      : [],
+    item.status === "fulfilled" ? [item.value] : [],
   );
 }
 
@@ -552,6 +552,21 @@ async function validateAggregate(
   return validations;
 }
 
+async function recordCreateFailure(
+  aggregate: HostAdPlanAggregate,
+  platform: string,
+  cause: unknown,
+): Promise<void> {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  await invoke("ad-plan", {
+    action: "record_create_failure",
+    plan_version_id: aggregate.version.id,
+    plan_hash: aggregate.version.plan_hash,
+    platform,
+    error_detail: detail,
+  });
+}
+
 export async function cancelHostAdPlanBeforeCreate(input: {
   versionId: string;
   planHash: string;
@@ -660,23 +675,32 @@ export async function launchHostAdPlan(input: {
     platform: string;
   }[] = [];
   for (const allocation of aggregate.provider_allocations) {
-    const created = await invoke<Record<string, unknown>>(
-      "admin-ad-create-campaign",
-      providerCreatePayload(aggregate, allocation),
-    );
+    const platform = String(allocation.platform);
+    let created: Record<string, unknown>;
+    try {
+      created = await invoke<Record<string, unknown>>(
+        "admin-ad-create-campaign",
+        providerCreatePayload(aggregate, allocation),
+      );
+    } catch (cause) {
+      await recordCreateFailure(aggregate, platform, cause);
+      throw cause;
+    }
     const nestedCampaign = created.campaign as
       Record<string, unknown> | undefined;
     const campaignId = String(created.campaign_id ?? nestedCampaign?.id ?? "");
     if (!campaignId) {
-      throw new HostAdPlanError(
+      const cause = new HostAdPlanError(
         "provider_create_failed",
         "Provider create returned no campaign ID",
       );
+      await recordCreateFailure(aggregate, platform, cause);
+      throw cause;
     }
     createdCampaigns.push({
       created,
       campaignId,
-      platform: String(allocation.platform),
+      platform,
     });
   }
   const campaigns: Record<string, unknown>[] = [];

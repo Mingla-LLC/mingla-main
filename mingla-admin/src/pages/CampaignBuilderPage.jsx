@@ -1264,14 +1264,15 @@ export function CampaignBuilderPage() {
             plan_hash: immutablePlan.plan_hash,
           });
         }
-        if (!immutablePlan.confirmed) {
-          await callPlan({
-            action: "confirm_launch",
-            plan_version_id: immutablePlan.plan_version_id,
-            plan_hash: immutablePlan.plan_hash,
-            phrase: launchPhrase,
-          });
-        }
+        // Reconfirm idempotently on every real create attempt. Besides binding
+        // the exact phrase/hash, the server uses this to move a durable partial
+        // failure back into creating_paused_objects before an idempotent retry.
+        await callPlan({
+          action: "confirm_launch",
+          plan_version_id: immutablePlan.plan_version_id,
+          plan_hash: immutablePlan.plan_hash,
+          phrase: launchPhrase,
+        });
         immutablePlan = { ...immutablePlan, funded: true, confirmed: true };
         setPlanPreview(immutablePlan);
         if (certificationMode) {
@@ -1434,6 +1435,17 @@ export function CampaignBuilderPage() {
         const { data, error } = await createCampaign(payload);
         if (error) {
           const parsed = await parseEdgeError(error);
+          if (!validateOnly && immutablePlan) {
+            await adPlanAction({
+              action: "record_create_failure",
+              plan_version_id: immutablePlan.plan_version_id,
+              plan_hash: immutablePlan.plan_hash,
+              platform,
+              error_detail: String(
+                parsed?.body?.detail ?? parsed?.message ?? "Create failed.",
+              ),
+            });
+          }
           results[resultKey] = {
             ...meta,
             error: {
@@ -1471,6 +1483,15 @@ export function CampaignBuilderPage() {
               title: `Created on ${platform}${destLabel}. Nothing is spending yet.`,
             });
           } else {
+            if (!validateOnly && immutablePlan) {
+              await adPlanAction({
+                action: "record_create_failure",
+                plan_version_id: immutablePlan.plan_version_id,
+                plan_hash: immutablePlan.plan_hash,
+                platform,
+                error_detail: "Provider create returned no campaign object.",
+              });
+            }
             // Honest "nothing happened": no dry-run exists on this platform (or the
             // create returned no object). Record it truthfully — never a false
             // "Created" — so Review shows the honest state.

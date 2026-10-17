@@ -1774,7 +1774,8 @@ BEGIN
     WHERE plan_version_id = v_version.id AND plan_hash = v_version.plan_hash;
   END IF;
   UPDATE public.ad_plans SET state = 'creating_paused_objects'
-  WHERE id = v_plan.id AND state IN ('funded_held','staff_approved');
+  WHERE id = v_plan.id
+    AND state IN ('funded_held','staff_approved','creation_failed_retryable');
   RETURN v_confirmation;
 END;
 $function$;
