@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3720_drive_binding_active_guard.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3720-drive-binding-active-guard-adversarial",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}
