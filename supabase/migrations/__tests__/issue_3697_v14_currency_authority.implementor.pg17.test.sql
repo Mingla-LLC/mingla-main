@@ -122,13 +122,14 @@ BEGIN
   INSERT INTO public.ad_campaigns (
     id, connection_id, platform, external_campaign_id, name, objective,
     status, dest_page_type, dest_brand_slug, dest_url, dest_smart_link,
-    brand_id, owner_kind, currency, cap_cents
+    brand_id, owner_kind, currency, cap_cents, host_budget_cents,
+    provider_budget_cents
   ) VALUES (
     v_host_campaign, v_connection, 'meta', 'campaign_issue3697_host',
     'Issue 3697 Host', 'OUTCOME_TRAFFIC', 'PAUSED', 'brand',
     'issue-3697-ngn', 'https://usemingla.com/issue-3697-ngn',
     'https://usemingla.com/issue-3697-ngn', v_ngn_brand, 'host', 'NGN',
-    10000
+    10000, 10000, 7000
   );
 
   IF NOT EXISTS (
@@ -181,8 +182,10 @@ BEGIN
      OR (v_snapshot->>'ledger_balance_cents')::bigint <> 10000
      OR (v_snapshot->>'ledger_terminal_balance_cents')::bigint <> 10000
      OR (v_snapshot->>'ledger_reconciles')::boolean IS DISTINCT FROM true
-     OR (v_snapshot->'provider_liability_by_currency'->>'USD')::bigint <> 7000
+     OR (v_snapshot->'provider_liability_by_currency'->>'USD')::bigint <> 4000
      OR jsonb_array_length(v_snapshot->'provider_liability_campaigns') <> 1
+     OR (v_snapshot->'provider_liability_campaigns'->0
+       ->>'committed_budget_cents')::bigint <> 7000
   THEN
     RAISE EXCEPTION 'currency_reconciliation_snapshot_incomplete:%', v_snapshot;
   END IF;

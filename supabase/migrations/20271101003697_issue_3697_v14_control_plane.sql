@@ -2245,6 +2245,33 @@ GRANT EXECUTE ON FUNCTION public.ad_plan_open(text,text,uuid,text,text,jsonb,uui
 GRANT EXECUTE ON FUNCTION public.ad_fx_convert_frozen_minor(bigint,character,character,uuid)
   TO service_role;
 
+-- The currency migration captured the legacy before-image before these
+-- provider-budget columns existed. Refresh only the after-image now that the
+-- immutable provider allocation is available; never relabel Host minor units
+-- as provider money.
+WITH post_snapshot AS (
+  SELECT
+    a.brand_id,
+    public.ad_currency_reconciliation_snapshot(a.brand_id) AS detail
+  FROM public.ad_currency_migration_audit a
+)
+UPDATE public.ad_currency_migration_audit a
+SET post_wallet_currency = s.detail->>'wallet_currency',
+    post_wallet_balance_cents =
+      (s.detail->>'wallet_balance_cents')::bigint,
+    post_ledger_balance_cents =
+      (s.detail->>'ledger_balance_cents')::bigint,
+    post_ledger_terminal_balance_cents =
+      (s.detail->>'ledger_terminal_balance_cents')::bigint,
+    post_ledger_reconciles =
+      (s.detail->>'ledger_reconciles')::boolean,
+    post_provider_liability_by_currency =
+      s.detail->'provider_liability_by_currency',
+    post_provider_liability_campaigns =
+      s.detail->'provider_liability_campaigns'
+FROM post_snapshot s
+WHERE s.brand_id = a.brand_id;
+
 COMMENT ON TABLE public.ad_plans IS
   'Issue #3697 v1.4 stable ad aggregate shared by Admin, Host and Ari. current_version_id is the only executable version.';
 COMMENT ON TABLE public.ad_plan_versions IS

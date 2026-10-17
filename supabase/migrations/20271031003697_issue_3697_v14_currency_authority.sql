@@ -227,11 +227,16 @@ BEGIN
       c.id AS campaign_id,
       c.status,
       CASE
-        WHEN upper(btrim(coalesce(ac.currency, ''))) ~ '^[A-Z]{3}$'
-          THEN upper(btrim(ac.currency))
+        WHEN upper(btrim(coalesce(
+          nullif(to_jsonb(c)->>'provider_currency', ''), ac.currency, ''
+        ))) ~ '^[A-Z]{3}$'
+          THEN upper(btrim(coalesce(
+            nullif(to_jsonb(c)->>'provider_currency', ''), ac.currency
+          )))
         ELSE 'UNRESOLVED'
       END AS provider_currency,
       greatest(coalesce(
+        nullif(to_jsonb(c)->>'provider_budget_cents', '')::bigint,
         c.cap_cents, c.lifetime_budget_cents, c.daily_budget_cents, 0
       ), 0)::bigint AS committed_budget_cents,
       coalesce(s.spend_cents, 0)::bigint AS provider_spend_cents,
