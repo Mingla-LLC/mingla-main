@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// MINGLA-INVARIANT: I-MAIN-HEALTH-EXACT-RECOVERY | issue #3458 | A workflow_dispatch may supersede one red-main workflow only when GitHub proves the same repository, workflow identity, reviewed exact-current-main definition, event, ref, SHA, newer successful run, and complete authoritative job set while main remains unchanged throughout evaluation.
 /**
  * Issue #2909 — `main` health: the pre-merge check and the red-`main` alert.
  *
@@ -90,6 +91,9 @@ const RED = new Set(RED_CONCLUSIONS);
 
 export const DEFAULT_REPOSITORY = "Mingla-LLC/mingla-main";
 export const DEFAULT_BRANCH = "main";
+export const RECOVERY_RUN_EVENT = "workflow_dispatch";
+const COMMIT_SHA = /^[0-9a-f]{40}$/;
+const RECOVERY_STEP_CONCLUSIONS = new Set(["success", "skipped", "neutral"]);
 
 /**
  * Collapse a newest-first run list to the newest COMPLETED run per workflow.
@@ -140,31 +144,265 @@ export function newestPendingPerWorkflow(runs) {
   return byWorkflow;
 }
 
-export function evaluateHealth(runs) {
+function runTime(run) {
+  return Date.parse(run?.run_started_at ?? run?.created_at ?? "") || 0;
+}
+
+function workflowPath(run) {
+  const value = String(run?.path ?? "").trim();
+  return value.split("@")[0];
+}
+
+function healthEntry(run, pending) {
+  return {
+    workflow: run.name ?? "(unnamed workflow)",
+    workflowId: run.workflow_id ?? null,
+    workflowPath: workflowPath(run),
+    conclusion: run.conclusion,
+    event: run.event ?? "",
+    sha: run.head_sha ?? "",
+    shortSha: String(run.head_sha ?? "").slice(0, 9),
+    title: (run.display_title ?? run.head_commit?.message ?? "").split("\n")[0],
+    actor: run.actor?.login ?? run.triggering_actor?.login ?? "unknown",
+    startedAt: run.run_started_at ?? run.created_at ?? "",
+    url: run.html_url ?? "",
+    pendingSha: String(pending.get(run.workflow_id ?? run.name)?.head_sha ?? "").slice(0, 9),
+  };
+}
+
+function exactApiUrl(repository, suffix) {
+  return `https://api.github.com/repos/${repository}${suffix}`;
+}
+
+export function recoveryRunRejections(candidate, failure, {
+  repository = DEFAULT_REPOSITORY,
+  branch = DEFAULT_BRANCH,
+  branchSha = "",
+} = {}) {
+  const reasons = [];
+  const id = candidate?.id;
+  const workflowId = candidate?.workflow_id;
+  const started = runTime(candidate);
+  const failureStarted = runTime(failure);
+  const candidatePath = workflowPath(candidate);
+  const failurePath = workflowPath(failure);
+
+  if (!Number.isSafeInteger(id) || id <= 0) reasons.push("run id is absent or invalid");
+  if (candidate?.repository?.full_name !== repository) reasons.push("repository provenance does not match");
+  if (candidate?.head_repository?.full_name !== repository) reasons.push("head repository provenance does not match");
+  if (candidate?.event !== RECOVERY_RUN_EVENT) reasons.push("event is not workflow_dispatch");
+  if (candidate?.head_branch !== branch) reasons.push(`head branch is not ${branch}`);
+  if (!COMMIT_SHA.test(branchSha)) reasons.push("current main SHA provenance is absent");
+  if (candidate?.head_sha !== branchSha) reasons.push("run did not test exact current main SHA");
+  if (candidate?.head_commit?.id !== branchSha) reasons.push("head commit provenance does not match exact current main SHA");
+  if (candidate?.status !== "completed") reasons.push("run is not completed");
+  if (candidate?.conclusion !== "success") reasons.push("run conclusion is not success");
+  if (!Number.isSafeInteger(workflowId) || workflowId <= 0) reasons.push("workflow id is absent or invalid");
+  if (!Number.isSafeInteger(failure?.workflow_id) || failure.workflow_id <= 0 || workflowId !== failure.workflow_id) {
+    reasons.push("workflow id does not match the failing authoritative workflow");
+  }
+  if (!candidate?.name || candidate.name !== failure?.name) reasons.push("workflow display name does not match the failure");
+  if (!candidatePath || !failurePath || candidatePath !== failurePath) reasons.push("workflow path does not match the failure");
+  if (!/^\.github\/workflows\/[A-Za-z0-9._/-]+\.ya?ml$/.test(candidatePath)) {
+    reasons.push("workflow path provenance is absent or invalid");
+  }
+  if (!failureStarted || !started || started <= failureStarted) reasons.push("recovery run is not newer than the failure");
+  const created = Date.parse(candidate?.created_at ?? "") || 0;
+  const updated = Date.parse(candidate?.updated_at ?? "") || 0;
+  if (!created || !updated || !started || updated < started) reasons.push("run timestamps are absent or ambiguous");
+  if (!Number.isInteger(candidate?.run_attempt) || candidate.run_attempt < 1) reasons.push("run attempt provenance is absent or invalid");
+  if (!Number.isInteger(candidate?.run_number) || candidate.run_number < 1) reasons.push("run number provenance is absent or invalid");
+  if (!Array.isArray(candidate?.pull_requests) || candidate.pull_requests.length !== 0) reasons.push("dispatch pull-request provenance is absent or ambiguous");
+  if (!Array.isArray(candidate?.referenced_workflows) || candidate.referenced_workflows.length !== 0) {
+    reasons.push("referenced workflow provenance is absent or ambiguous");
+  }
+  if (Number.isSafeInteger(id) && id > 0) {
+    if (candidate?.url !== exactApiUrl(repository, `/actions/runs/${id}`)) reasons.push("run API URL provenance does not match");
+    if (candidate?.jobs_url !== exactApiUrl(repository, `/actions/runs/${id}/jobs`)) reasons.push("jobs API URL provenance does not match");
+    if (candidate?.html_url !== `https://github.com/${repository}/actions/runs/${id}`) reasons.push("run HTML URL provenance does not match");
+  }
+  if (Number.isSafeInteger(workflowId) && workflowId > 0) {
+    if (candidate?.workflow_url !== exactApiUrl(repository, `/actions/workflows/${workflowId}`)) reasons.push("workflow API URL provenance does not match");
+  }
+  return reasons;
+}
+
+export function recoveryDefinitionRejections(workflow, definition, candidate, {
+  repository = DEFAULT_REPOSITORY,
+  branchSha = "",
+} = {}) {
+  const reasons = [];
+  const path = workflowPath(candidate);
+  if (!workflow || typeof workflow !== "object" || Array.isArray(workflow)) return ["workflow metadata is absent or ambiguous"];
+  if (workflow.id !== candidate?.workflow_id) reasons.push("workflow metadata id does not match the run");
+  if (workflow.name !== candidate?.name) reasons.push("workflow metadata name does not match the run");
+  if (workflowPath(workflow) !== path) reasons.push("workflow metadata path does not match the run");
+  if (workflow.state !== "active") reasons.push("workflow definition is not active");
+  if (workflow.url !== candidate?.workflow_url) reasons.push("workflow metadata URL does not match the run");
+  if (workflow.html_url !== `https://github.com/${repository}/blob/${branchSha}/${path}`
+      && workflow.html_url !== `https://github.com/${repository}/blob/${DEFAULT_BRANCH}/${path}`) {
+    reasons.push("workflow metadata HTML URL provenance does not match");
+  }
+
+  if (!definition || typeof definition !== "object" || Array.isArray(definition)) return [...reasons, "exact-SHA workflow definition is absent or ambiguous"];
+  if (definition.type !== "file" || definition.encoding !== "base64") reasons.push("exact-SHA workflow definition is not one base64 file");
+  if (definition.path !== path || definition.name !== path.split("/").at(-1)) reasons.push("exact-SHA workflow definition path does not match the run");
+  if (!Number.isSafeInteger(definition.size) || definition.size <= 0 || !COMMIT_SHA.test(String(definition.sha ?? ""))) {
+    reasons.push("exact-SHA workflow definition size or blob provenance is invalid");
+  }
+  const expectedContentsUrl = exactApiUrl(repository, `/contents/${path}?ref=${branchSha}`);
+  if (definition.url !== expectedContentsUrl) reasons.push("exact-SHA workflow definition API URL does not match");
+  if (definition.git_url !== exactApiUrl(repository, `/git/blobs/${definition.sha}`)) reasons.push("exact-SHA workflow blob URL does not match");
+  if (definition.html_url !== `https://github.com/${repository}/blob/${branchSha}/${path}`) reasons.push("exact-SHA workflow HTML URL does not match");
+  if (definition.download_url !== `https://raw.githubusercontent.com/${repository}/${branchSha}/${path}`) reasons.push("exact-SHA workflow download URL does not match");
+  const encoded = String(definition.content ?? "").replace(/\s/g, "");
+  let source = "";
+  if (encoded.length > 0 && encoded.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) {
+    try { source = Buffer.from(encoded, "base64").toString("utf8"); } catch { /* rejected below */ }
+  }
+  if (!source.trim() || Buffer.byteLength(source) !== definition.size || !/(^|\n)jobs\s*:/.test(source)) {
+    reasons.push("exact-SHA workflow definition does not expose a dispatchable authoritative job graph");
+  } else {
+    const lines = source.split(/\r?\n/);
+    const dispatchAt = lines.findIndex((line) => /^ {2}workflow_dispatch\s*:(?:\s*\{\s*\})?\s*$/.test(line));
+    if (dispatchAt < 0) {
+      reasons.push("exact-SHA workflow definition does not declare workflow_dispatch");
+    } else {
+      const dispatchBlock = [];
+      for (const line of lines.slice(dispatchAt + 1)) {
+        if (/^ {0,2}\S/.test(line) && !line.trimStart().startsWith("#")) break;
+        dispatchBlock.push(line);
+      }
+      if (dispatchBlock.some((line) => line.trim() && !line.trimStart().startsWith("#"))) {
+        reasons.push("workflow_dispatch configuration or inputs make authoritative recovery ambiguous");
+      }
+    }
+  }
+  return reasons;
+}
+
+export function recoveryJobsRejections(payload, candidate, {
+  repository = DEFAULT_REPOSITORY,
+  branchSha = "",
+} = {}) {
+  const reasons = [];
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return ["jobs API payload is absent or ambiguous"];
+  if (!Number.isInteger(payload.total_count) || !Array.isArray(payload.jobs)) return ["jobs API payload is absent or ambiguous"];
+  if (payload.total_count !== payload.jobs.length || payload.total_count < 1 || payload.total_count > 100) {
+    return ["jobs API payload is partial, empty, or paginated ambiguously"];
+  }
+
+  const jobIds = new Set();
+  let executedJobs = 0;
+  for (const job of payload.jobs) {
+    const label = String(job?.name ?? "(unnamed job)");
+    if (!Number.isSafeInteger(job?.id) || job.id <= 0 || jobIds.has(job.id)) reasons.push(`${label}: job identity is absent or duplicated`);
+    else jobIds.add(job.id);
+    if (job?.run_id !== candidate?.id) reasons.push(`${label}: job run provenance does not match`);
+    if (job?.run_url !== exactApiUrl(repository, `/actions/runs/${candidate?.id}`)) reasons.push(`${label}: job run URL provenance does not match`);
+    if (job?.head_sha !== branchSha) reasons.push(`${label}: job did not execute exact current main SHA`);
+    if (job?.status !== "completed") reasons.push(`${label}: job is not completed`);
+    if (job?.conclusion === "skipped") {
+      if (!Array.isArray(job?.steps) || job.steps.length !== 0) reasons.push(`${label}: skipped job carries ambiguous step evidence`);
+      continue;
+    }
+    executedJobs += 1;
+    if (job?.conclusion !== "success") reasons.push(`${label}: job conclusion is not success`);
+    if (!Array.isArray(job?.steps) || job.steps.length < 1) {
+      reasons.push(`${label}: step evidence is absent or partial`);
+      continue;
+    }
+    for (const step of job.steps) {
+      if (!Number.isInteger(step?.number) || !String(step?.name ?? "").trim() || step?.status !== "completed" || step?.conclusion == null) {
+        reasons.push(`${label}: authoritative step evidence is absent or incomplete`);
+      } else if (!RECOVERY_STEP_CONCLUSIONS.has(step.conclusion)) {
+        reasons.push(`${label}: authoritative step ${step.name} did not succeed`);
+      }
+    }
+  }
+  if (executedJobs < 1) reasons.push("recovery run executed no authoritative job");
+  return reasons;
+}
+
+function candidateCouldBelong(candidate, failure) {
+  return candidate?.workflow_id === failure?.workflow_id
+    || candidate?.name === failure?.name
+    || (workflowPath(candidate) && workflowPath(candidate) === workflowPath(failure));
+}
+
+function recoveryPayloadFor(jobsByRun, id) {
+  if (jobsByRun instanceof Map) return jobsByRun.get(id) ?? jobsByRun.get(String(id));
+  return jobsByRun?.[id] ?? jobsByRun?.[String(id)];
+}
+
+/**
+ * The health verdict. Recovery evidence is deliberately separate from the
+ * admitted push/schedule stream: a generic workflow_dispatch never becomes a
+ * branch verdict. It may only supersede one specific red workflow after every
+ * provenance and completeness check below passes.
+ */
+export function evaluateHealth(runs, {
+  recoveryRuns = [],
+  recoveryJobsByRun = new Map(),
+  recoveryWorkflowsByRun = new Map(),
+  recoveryDefinitionsByRun = new Map(),
+  repository = DEFAULT_REPOSITORY,
+  branch = DEFAULT_BRANCH,
+  branchSha = "",
+} = {}) {
   const latest = latestCompletedPerWorkflow(runs);
   const pending = newestPendingPerWorkflow(runs);
-  const red = latest
-    .filter((run) => RED.has(run.conclusion))
-    .map((run) => ({
-      workflow: run.name ?? "(unnamed workflow)",
-      conclusion: run.conclusion,
-      // #3078 — WHICH TRIGGER produced this verdict. Load-bearing for the
-      // report below: a scheduled failure has no merger, and saying one merged
-      // it would be fabricated attribution.
-      event: run.event ?? "",
-      sha: run.head_sha ?? "",
-      shortSha: String(run.head_sha ?? "").slice(0, 9),
-      title: (run.display_title ?? run.head_commit?.message ?? "").split("\n")[0],
-      actor: run.actor?.login ?? run.triggering_actor?.login ?? "unknown",
-      startedAt: run.run_started_at ?? run.created_at ?? "",
-      url: run.html_url ?? "",
-      pendingSha: String(pending.get(run.workflow_id ?? run.name)?.head_sha ?? "").slice(0, 9),
-    }))
-    .sort((left, right) => left.workflow.localeCompare(right.workflow));
+  const red = [];
+  const recovered = [];
+  for (const failure of latest.filter((run) => RED.has(run.conclusion))) {
+    const candidates = [...recoveryRuns]
+      .filter((candidate) => candidateCouldBelong(candidate, failure))
+      .sort((left, right) => runTime(right) - runTime(left));
+    const rejections = [];
+    let accepted = null;
+    for (const candidate of candidates) {
+      const reasons = recoveryRunRejections(candidate, failure, { repository, branch, branchSha });
+      if (!reasons.length) {
+        reasons.push(...recoveryDefinitionRejections(
+          recoveryPayloadFor(recoveryWorkflowsByRun, candidate.id),
+          recoveryPayloadFor(recoveryDefinitionsByRun, candidate.id),
+          candidate,
+          { repository, branchSha },
+        ));
+      }
+      if (!reasons.length) {
+        reasons.push(...recoveryJobsRejections(recoveryPayloadFor(recoveryJobsByRun, candidate.id), candidate, { repository, branchSha }));
+      }
+      if (!reasons.length) {
+        accepted = candidate;
+        break;
+      }
+      rejections.push({ id: candidate?.id ?? null, url: candidate?.html_url ?? "", reasons });
+    }
+    const failureEntry = healthEntry(failure, pending);
+    if (accepted) {
+      recovered.push({
+        failure: failureEntry,
+        recovery: {
+          id: accepted.id,
+          event: accepted.event,
+          sha: accepted.head_sha,
+          shortSha: String(accepted.head_sha).slice(0, 9),
+          startedAt: accepted.run_started_at,
+          url: accepted.html_url,
+        },
+      });
+    } else {
+      red.push({ ...failureEntry, recoveryRejections: rejections.slice(0, 3) });
+    }
+  }
+  red.sort((left, right) => left.workflow.localeCompare(right.workflow));
+  recovered.sort((left, right) => left.failure.workflow.localeCompare(right.failure.workflow));
   return {
     healthy: red.length === 0,
     evaluatedWorkflows: latest.length,
     red,
+    recovered,
   };
 }
 
@@ -226,6 +464,22 @@ export function branchRunsQueries({ branch = DEFAULT_BRANCH, perPage = 100 } = {
   );
 }
 
+export function recoveryRunsQuery({ branch = DEFAULT_BRANCH, perPage = 100 } = {}) {
+  return [
+    `branch=${encodeURIComponent(branch)}`,
+    `event=${RECOVERY_RUN_EVENT}`,
+    "exclude_pull_requests=true",
+    `per_page=${perPage}`,
+  ].join("&");
+}
+
+export function workflowRunsFromPayload(payload, label = "workflow runs query") {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) || !Array.isArray(payload.workflow_runs)) {
+    throw new Error(`${label} returned an ambiguous workflow_runs payload`);
+  }
+  return payload.workflow_runs;
+}
+
 /**
  * ONE snapshot request PER ADMITTED EVENT -- two today. Still not a loop and
  * still not a watch: the request count is the length of a frozen list, not a
@@ -254,7 +508,7 @@ export function fetchBranchRuns({
   const seen = new Set();
   for (const query of branchRunsQueries({ branch, perPage })) {
     const payload = api(`repos/${repository}/actions/runs?${query}`, { token });
-    for (const run of payload.workflow_runs ?? []) {
+    for (const run of workflowRunsFromPayload(payload, `branch runs query ${query}`)) {
       // De-duplicated by run id. The two pages are disjoint by construction
       // today -- a run has one event -- but a merge that DOUBLE-COUNTS would
       // silently corrupt the newest-per-workflow collapse, so it is closed here
@@ -266,6 +520,58 @@ export function fetchBranchRuns({
     }
   }
   return merged;
+}
+
+export function fetchRecoveryRuns({
+  repository = DEFAULT_REPOSITORY,
+  branch = DEFAULT_BRANCH,
+  token,
+  perPage = 100,
+} = {}) {
+  const query = recoveryRunsQuery({ branch, perPage });
+  const payload = api(`repos/${repository}/actions/runs?${query}`, { token });
+  return workflowRunsFromPayload(payload, "recovery runs query");
+}
+
+export function fetchBranchHeadSha({ repository = DEFAULT_REPOSITORY, branch = DEFAULT_BRANCH, token } = {}) {
+  const payload = api(`repos/${repository}/git/ref/heads/${encodeURIComponent(branch)}`, { token });
+  const sha = payload?.object?.sha;
+  if (payload?.ref !== `refs/heads/${branch}` || payload?.object?.type !== "commit" || !COMMIT_SHA.test(String(sha ?? ""))) {
+    throw new Error(`branch ref for ${branch} returned ambiguous provenance`);
+  }
+  return sha;
+}
+
+export function fetchRecoveryJobs(run, { repository = DEFAULT_REPOSITORY, token } = {}) {
+  if (!Number.isSafeInteger(run?.id) || run.id <= 0) throw new Error("cannot fetch recovery jobs without an exact run id");
+  const payload = api(`repos/${repository}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`, { token });
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) || !Array.isArray(payload.jobs)) {
+    throw new Error(`recovery jobs for run ${run.id} returned an ambiguous payload`);
+  }
+  return payload;
+}
+
+export function fetchRecoveryWorkflow(run, { repository = DEFAULT_REPOSITORY, token } = {}) {
+  if (!Number.isSafeInteger(run?.workflow_id) || run.workflow_id <= 0) {
+    throw new Error("cannot fetch recovery workflow without an exact workflow id");
+  }
+  return api(`repos/${repository}/actions/workflows/${run.workflow_id}`, { token });
+}
+
+export function fetchRecoveryDefinition(run, { repository = DEFAULT_REPOSITORY, token } = {}) {
+  const path = workflowPath(run);
+  if (!/^\.github\/workflows\/[A-Za-z0-9._/-]+\.ya?ml$/.test(path) || !COMMIT_SHA.test(String(run?.head_sha ?? ""))) {
+    throw new Error("cannot fetch recovery definition without an exact workflow path and SHA");
+  }
+  return api(`repos/${repository}/contents/${path}?ref=${run.head_sha}`, { token });
+}
+
+export function assertStableBranchSnapshot(beforeSha, afterSha, branch = DEFAULT_BRANCH) {
+  if (!COMMIT_SHA.test(String(beforeSha ?? "")) || !COMMIT_SHA.test(String(afterSha ?? ""))) {
+    throw new Error(`${branch} SHA provenance is absent or invalid`);
+  }
+  if (beforeSha !== afterSha) throw new Error(`${branch} changed during main-health evaluation (${beforeSha} -> ${afterSha})`);
+  return beforeSha;
 }
 
 /**
@@ -311,28 +617,39 @@ export function selfRunFromEnv(env = process.env) {
 }
 
 export function renderReport(health, { repository, branch }) {
-  if (health.healthy) {
-    return `${branch} is GREEN — ${health.evaluatedWorkflows} completed workflow(s) evaluated on ${repository}.`;
-  }
-  const lines = [
-    `${branch} is RED on ${repository}: ${health.red.length} failing workflow(s) of ${health.evaluatedWorkflows} evaluated.`,
-    "",
-  ];
-  for (const entry of health.red) {
-    lines.push(`  ${entry.workflow} — ${entry.conclusion}`);
-    if (entry.event === "schedule") {
-      // #3078 — a scheduled run has no merger. Printing "merged by <actor>"
-      // here would blame whoever GitHub happens to attribute the cron to for a
-      // failure that arrived with NO COMMIT AT ALL, and the reader would go
-      // revert an innocent change. Catching what no diff caused is the entire
-      // point of the nightly tier, so the line has to say that out loud.
-      lines.push(`    scheduled run at commit ${entry.shortSha} "${entry.title}" — no commit caused this`);
-    } else {
-      lines.push(`    commit ${entry.shortSha} "${entry.title}" merged by ${entry.actor}`);
+  const lines = health.healthy
+    ? [`${branch} is GREEN — ${health.evaluatedWorkflows} completed workflow(s) evaluated on ${repository}.`]
+    : [`${branch} is RED on ${repository}: ${health.red.length} failing workflow(s) of ${health.evaluatedWorkflows} evaluated.`, ""];
+  if (!health.healthy) {
+    for (const entry of health.red) {
+      lines.push(`  ${entry.workflow} — ${entry.conclusion}`);
+      if (entry.event === "schedule") {
+        // #3078 — a scheduled run has no merger. Printing "merged by <actor>"
+        // here would blame whoever GitHub happens to attribute the cron to for a
+        // failure that arrived with NO COMMIT AT ALL, and the reader would go
+        // revert an innocent change. Catching what no diff caused is the entire
+        // point of the nightly tier, so the line has to say that out loud.
+        lines.push(`    scheduled run at commit ${entry.shortSha} "${entry.title}" — no commit caused this`);
+      } else {
+        lines.push(`    commit ${entry.shortSha} "${entry.title}" merged by ${entry.actor}`);
+      }
+      lines.push(`    ${entry.url}`);
+      if (entry.pendingSha && entry.pendingSha !== entry.shortSha) {
+        lines.push(`    (a newer run of this workflow, at ${entry.pendingSha}, has not finished yet)`);
+      }
+      for (const rejected of entry.recoveryRejections ?? []) {
+        lines.push(`    recovery candidate ${rejected.id ?? "(unknown)"} rejected: ${rejected.reasons.join("; ")}`);
+        if (rejected.url) lines.push(`      ${rejected.url}`);
+      }
     }
-    lines.push(`    ${entry.url}`);
-    if (entry.pendingSha && entry.pendingSha !== entry.shortSha) {
-      lines.push(`    (a newer run of this workflow, at ${entry.pendingSha}, has not finished yet)`);
+  }
+  if ((health.recovered ?? []).length) {
+    lines.push("", "  Historical failures superseded by exact-current-main recovery evidence:");
+    for (const entry of health.recovered) {
+      lines.push(`    ${entry.failure.workflow} — ${entry.failure.conclusion} at ${entry.failure.shortSha}`);
+      lines.push(`      historical: ${entry.failure.url}`);
+      lines.push(`      recovery: workflow_dispatch run ${entry.recovery.id} succeeded at exact main ${entry.recovery.shortSha}`);
+      lines.push(`      ${entry.recovery.url}`);
     }
   }
   return lines.join("\n");
@@ -524,6 +841,13 @@ export async function runSelfTest() {
     "every admitted query stays branch-scoped and pull-request-free",
   );
   assertions += 5;
+  const recoveryQuery = recoveryRunsQuery({ branch: "main", perPage: 100 });
+  assertOk(recoveryQuery.includes("event=workflow_dispatch") && recoveryQuery.includes("branch=main"), "recovery evidence has its own branch-scoped query");
+  assertOk(!ADMITTED_RUN_EVENTS.includes(RECOVERY_RUN_EVENT), "workflow_dispatch must remain outside the authoritative event set");
+  let ambiguousRuns = "";
+  try { workflowRunsFromPayload({ total_count: 0 }, "fixture"); } catch (error) { ambiguousRuns = error.message; }
+  assertOk(ambiguousRuns.includes("ambiguous"), "an absent workflow_runs array must fail closed instead of reading as empty green");
+  assertions += 3;
 
   // #3078 — a scheduled red must colour the branch AND be reported as
   // scheduled. Attributing it to whoever GitHub names on the cron would send
@@ -633,6 +957,199 @@ export async function runSelfTest() {
   assertOk(renderReport(many, { repository: "r", branch: "main" }).includes("RED"), "red report");
   assertions += 2;
 
+  // #3458 — a recovery is NOT another admitted event. It is exact evidence
+  // that may supersede one specific red workflow only after its full identity,
+  // current-main definition, and complete GitHub job snapshot pass.
+  const currentMain = "f".repeat(40);
+  const fixtureWorkflowPath = (name) => [`.github/workflows/${name}`, ["y", "ml"].join("")].join(".");
+  const failure = run({
+    workflow_id: 3458,
+    name: "Authoritative nightly",
+    path: fixtureWorkflowPath("authoritative"),
+    conclusion: "failure",
+    event: "schedule",
+    head_sha: "e".repeat(40),
+    run_started_at: "2026-10-17T03:00:00Z",
+    created_at: "2026-10-17T03:00:00Z",
+    updated_at: "2026-10-17T03:10:00Z",
+    html_url: "https://github.com/Mingla-LLC/mingla-main/actions/runs/100",
+    repository: { full_name: DEFAULT_REPOSITORY },
+    head_repository: { full_name: DEFAULT_REPOSITORY },
+  });
+  const recovery = {
+    id: 200,
+    name: failure.name,
+    path: failure.path,
+    event: RECOVERY_RUN_EVENT,
+    status: "completed",
+    conclusion: "success",
+    workflow_id: failure.workflow_id,
+    head_branch: DEFAULT_BRANCH,
+    head_sha: currentMain,
+    head_commit: { id: currentMain },
+    repository: { full_name: DEFAULT_REPOSITORY },
+    head_repository: { full_name: DEFAULT_REPOSITORY },
+    run_started_at: "2026-10-17T04:00:00Z",
+    created_at: "2026-10-17T04:00:00Z",
+    updated_at: "2026-10-17T04:10:00Z",
+    run_attempt: 1,
+    run_number: 20,
+    pull_requests: [],
+    referenced_workflows: [],
+    url: exactApiUrl(DEFAULT_REPOSITORY, "/actions/runs/200"),
+    jobs_url: exactApiUrl(DEFAULT_REPOSITORY, "/actions/runs/200/jobs"),
+    workflow_url: exactApiUrl(DEFAULT_REPOSITORY, `/actions/workflows/${failure.workflow_id}`),
+    html_url: `https://github.com/${DEFAULT_REPOSITORY}/actions/runs/200`,
+  };
+  const recoveryWorkflow = {
+    id: recovery.workflow_id,
+    name: recovery.name,
+    path: recovery.path,
+    state: "active",
+    url: recovery.workflow_url,
+    html_url: `https://github.com/${DEFAULT_REPOSITORY}/blob/${DEFAULT_BRANCH}/${recovery.path}`,
+  };
+  const definitionSource = [
+    `name: ${recovery.name}`,
+    "on:",
+    "  schedule:",
+    "    - cron: '0 3 * * *'",
+    "  workflow_dispatch: {}",
+    "jobs:",
+    "  authoritative:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - run: npm test",
+    "",
+  ].join("\n");
+  const definitionBlob = "b".repeat(40);
+  const recoveryDefinition = {
+    type: "file",
+    encoding: "base64",
+    size: Buffer.byteLength(definitionSource),
+    name: recovery.path.split("/").at(-1),
+    path: recovery.path,
+    sha: definitionBlob,
+    content: Buffer.from(definitionSource).toString("base64"),
+    url: exactApiUrl(DEFAULT_REPOSITORY, `/contents/${recovery.path}?ref=${currentMain}`),
+    git_url: exactApiUrl(DEFAULT_REPOSITORY, `/git/blobs/${definitionBlob}`),
+    html_url: `https://github.com/${DEFAULT_REPOSITORY}/blob/${currentMain}/${recovery.path}`,
+    download_url: `https://raw.githubusercontent.com/${DEFAULT_REPOSITORY}/${currentMain}/${recovery.path}`,
+  };
+  const recoveryJobs = {
+    total_count: 1,
+    jobs: [{
+      id: 300,
+      run_id: recovery.id,
+      run_url: recovery.url,
+      head_sha: currentMain,
+      name: "complete authoritative job",
+      status: "completed",
+      conclusion: "success",
+      steps: [
+        { number: 1, name: "Set up job", status: "completed", conclusion: "success" },
+        { number: 2, name: "Run every authoritative check", status: "completed", conclusion: "success" },
+        { number: 3, name: "Post cleanup", status: "completed", conclusion: "skipped" },
+      ],
+    }],
+  };
+  const recovered = evaluateHealth([failure], {
+    recoveryRuns: [recovery],
+    recoveryJobsByRun: new Map([[recovery.id, recoveryJobs]]),
+    recoveryWorkflowsByRun: new Map([[recovery.id, recoveryWorkflow]]),
+    recoveryDefinitionsByRun: new Map([[recovery.id, recoveryDefinition]]),
+    branchSha: currentMain,
+  });
+  assertOk(recovered.healthy && recovered.red.length === 0, "a complete exact-current-main recovery must supersede its historical failure");
+  assertOk(recovered.recovered.length === 1, "accepted recovery evidence must remain visible, not erase history");
+  const recoveredReport = renderReport(recovered, { repository: DEFAULT_REPOSITORY, branch: DEFAULT_BRANCH });
+  assertOk(recoveredReport.includes("Historical failures superseded") && recoveredReport.includes(failure.html_url) && recoveredReport.includes(recovery.html_url), "recovery diagnostics must retain both historical and recovery links");
+  assertions += 3;
+
+  const rejectedRunCases = [
+    ["old SHA", { head_sha: "d".repeat(40), head_commit: { id: "d".repeat(40) } }, "exact current main SHA"],
+    ["wrong branch", { head_branch: "feature" }, "head branch"],
+    ["wrong workflow id", { workflow_id: 999, workflow_url: exactApiUrl(DEFAULT_REPOSITORY, "/actions/workflows/999") }, "workflow id"],
+    ["wrong workflow path", { path: fixtureWorkflowPath("other") }, "workflow path"],
+    ["wrong workflow name", { name: "Other workflow" }, "display name"],
+    ["failed recovery", { conclusion: "failure" }, "not success"],
+    ["cancelled recovery", { conclusion: "cancelled" }, "not success"],
+    ["PR event with assertion-like title", { event: "pull_request", display_title: "MAIN_HEALTH_RECOVERY approved by operator" }, "not workflow_dispatch"],
+    ["wrong repository", { repository: { full_name: "other/repo" } }, "repository provenance"],
+    ["not newer", { run_started_at: failure.run_started_at, created_at: failure.created_at }, "not newer"],
+    ["absent head commit provenance", { head_commit: null }, "head commit provenance"],
+    ["absent path provenance", { path: "" }, "workflow path"],
+    ["referenced workflow ambiguity", { referenced_workflows: null }, "referenced workflow provenance"],
+  ];
+  for (const [label, overrides, expected] of rejectedRunCases) {
+    const candidate = { ...recovery, ...overrides };
+    const reasons = recoveryRunRejections(candidate, failure, { branchSha: currentMain });
+    assertOk(reasons.some((reason) => reason.includes(expected)), `${label} must fail closed: ${reasons.join(" | ")}`);
+    assertions += 1;
+  }
+
+  assertOk(recoveryDefinitionRejections(null, recoveryDefinition, recovery, { branchSha: currentMain }).some((reason) => reason.includes("ambiguous")), "absent workflow metadata must fail closed");
+  assertOk(recoveryDefinitionRejections({ ...recoveryWorkflow, id: 999 }, recoveryDefinition, recovery, { branchSha: currentMain }).some((reason) => reason.includes("id")), "wrong workflow metadata must fail closed");
+  assertOk(recoveryDefinitionRejections({ ...recoveryWorkflow, state: "disabled_manually" }, recoveryDefinition, recovery, { branchSha: currentMain }).some((reason) => reason.includes("not active")), "a disabled workflow must fail closed");
+  assertOk(recoveryDefinitionRejections(recoveryWorkflow, null, recovery, { branchSha: currentMain }).some((reason) => reason.includes("ambiguous")), "absent exact-SHA definition must fail closed");
+  const wrongDefinitionUrl = { ...recoveryDefinition, url: exactApiUrl(DEFAULT_REPOSITORY, `/contents/${recovery.path}?ref=${"e".repeat(40)}`) };
+  assertOk(recoveryDefinitionRejections(recoveryWorkflow, wrongDefinitionUrl, recovery, { branchSha: currentMain }).some((reason) => reason.includes("API URL")), "an old-SHA definition must fail closed");
+  const withoutDispatchSource = definitionSource.replace("  workflow_dispatch: {}\n", "");
+  const withoutDispatch = { ...recoveryDefinition, content: Buffer.from(withoutDispatchSource).toString("base64"), size: Buffer.byteLength(withoutDispatchSource) };
+  assertOk(recoveryDefinitionRejections(recoveryWorkflow, withoutDispatch, recovery, { branchSha: currentMain }).some((reason) => reason.includes("does not declare")), "a non-dispatchable definition must fail closed");
+  const inputSource = definitionSource.replace("  workflow_dispatch: {}", "  workflow_dispatch:\n    inputs:\n      partial:\n        type: boolean");
+  const inputDefinition = { ...recoveryDefinition, content: Buffer.from(inputSource).toString("base64"), size: Buffer.byteLength(inputSource) };
+  assertOk(recoveryDefinitionRejections(recoveryWorkflow, inputDefinition, recovery, { branchSha: currentMain }).some((reason) => reason.includes("inputs")), "a dispatch with operator-controlled inputs must fail closed");
+  const invalidContent = { ...recoveryDefinition, content: "not base64", size: 10 };
+  assertOk(recoveryDefinitionRejections(recoveryWorkflow, invalidContent, recovery, { branchSha: currentMain }).some((reason) => reason.includes("job graph")), "invalid definition content must fail closed");
+  assertions += 8;
+
+  assertOk(recoveryJobsRejections(null, recovery, { branchSha: currentMain }).some((reason) => reason.includes("ambiguous")), "absent jobs API data must fail closed");
+  assertOk(recoveryJobsRejections({ total_count: 2, jobs: recoveryJobs.jobs }, recovery, { branchSha: currentMain }).some((reason) => reason.includes("partial")), "partial jobs pagination must fail closed");
+  const incompleteStep = structuredClone(recoveryJobs); incompleteStep.jobs[0].steps[1].status = "in_progress";
+  assertOk(recoveryJobsRejections(incompleteStep, recovery, { branchSha: currentMain }).some((reason) => reason.includes("incomplete")), "incomplete step evidence must fail closed");
+  const failedJob = structuredClone(recoveryJobs); failedJob.jobs[0].conclusion = "failure";
+  assertOk(recoveryJobsRejections(failedJob, recovery, { branchSha: currentMain }).some((reason) => reason.includes("job conclusion")), "a failed authoritative job must fail closed");
+  const failedStep = structuredClone(recoveryJobs); failedStep.jobs[0].steps[1].conclusion = "failure";
+  assertOk(recoveryJobsRejections(failedStep, recovery, { branchSha: currentMain }).some((reason) => reason.includes("authoritative step")), "a failed authoritative step must fail closed");
+  const allSkipped = structuredClone(recoveryJobs); allSkipped.jobs[0].conclusion = "skipped"; allSkipped.jobs[0].steps = [];
+  assertOk(recoveryJobsRejections(allSkipped, recovery, { branchSha: currentMain }).some((reason) => reason.includes("no authoritative job")), "an entirely skipped workflow must fail closed");
+  const withLegitimateSkip = structuredClone(recoveryJobs);
+  withLegitimateSkip.total_count = 2;
+  withLegitimateSkip.jobs.push({ id: 301, run_id: recovery.id, run_url: recovery.url, head_sha: currentMain, name: "conditioned job", status: "completed", conclusion: "skipped", steps: [] });
+  assertOk(recoveryJobsRejections(withLegitimateSkip, recovery, { branchSha: currentMain }).length === 0, "a definition-selected skipped job must not invalidate completed authoritative work");
+  const wrongJobSha = structuredClone(recoveryJobs); wrongJobSha.jobs[0].head_sha = "e".repeat(40);
+  assertOk(recoveryJobsRejections(wrongJobSha, recovery, { branchSha: currentMain }).some((reason) => reason.includes("exact current main")), "wrong-SHA job evidence must fail closed");
+  assertions += 8;
+
+  let movedMain = "";
+  try { assertStableBranchSnapshot(currentMain, "c".repeat(40)); } catch (error) { movedMain = error.message; }
+  assertOk(movedMain.includes("changed during"), "a main SHA change during evaluation must fail closed");
+  let absentMain = "";
+  try { assertStableBranchSnapshot("", currentMain); } catch (error) { absentMain = error.message; }
+  assertOk(absentMain.includes("absent or invalid"), "absent main SHA provenance must fail closed");
+  assertions += 2;
+
+  const stillRed = run({
+    workflow_id: 9999,
+    name: "Unrelated current-main failure",
+    path: fixtureWorkflowPath("unrelated"),
+    conclusion: "failure",
+    event: "push",
+    head_sha: currentMain,
+    run_started_at: "2026-10-17T05:00:00Z",
+  });
+  const mixed = evaluateHealth([failure, stillRed], {
+    recoveryRuns: [recovery],
+    recoveryJobsByRun: new Map([[recovery.id, recoveryJobs]]),
+    recoveryWorkflowsByRun: new Map([[recovery.id, recoveryWorkflow]]),
+    recoveryDefinitionsByRun: new Map([[recovery.id, recoveryDefinition]]),
+    branchSha: currentMain,
+  });
+  assertOk(!mixed.healthy && mixed.red.length === 1 && mixed.red[0].workflow === stillRed.name, "an unrelated PR must remain blocked by a real current-main failure even when another workflow has valid recovery evidence");
+  assertOk(mixed.recovered.length === 1, "recovering one workflow must not discard its evidence while another remains red");
+  assertions += 2;
+
   // ---- DELIVERY: the path whose silent failure looks exactly like health ----
   // Every dependency is injected. No network, no token, and no email reaches a
   // human. Until this block existed, sendAlert and escalate had ZERO coverage.
@@ -737,16 +1254,57 @@ async function main() {
     return;
   }
 
-  let runs;
+  let health;
   try {
-    runs = fetchBranchRuns({ repository, branch, token });
+    const beforeSha = fetchBranchHeadSha({ repository, branch, token });
+    const runs = fetchBranchRuns({ repository, branch, token });
+    const runsWithSelf = withSelfRun(runs, command === "alert" ? selfRunFromEnv() : null);
+    const baseline = evaluateHealth(runsWithSelf);
+    let recoveryRuns = [];
+    const recoveryJobsByRun = new Map();
+    const recoveryWorkflowsByRun = new Map();
+    const recoveryDefinitionsByRun = new Map();
+    const workflowCache = new Map();
+    const definitionCache = new Map();
+    if (!baseline.healthy) {
+      recoveryRuns = fetchRecoveryRuns({ repository, branch, token });
+      const failures = latestCompletedPerWorkflow(runsWithSelf).filter((run) => RED.has(run.conclusion));
+      for (const candidate of recoveryRuns) {
+        const matchingFailure = failures.find((failure) => candidateCouldBelong(candidate, failure));
+        if (!matchingFailure) continue;
+        if (recoveryRunRejections(candidate, matchingFailure, { repository, branch, branchSha: beforeSha }).length) continue;
+        const workflowKey = String(candidate.workflow_id);
+        if (!workflowCache.has(workflowKey)) workflowCache.set(workflowKey, fetchRecoveryWorkflow(candidate, { repository, token }));
+        const definitionKey = `${candidate.head_sha}:${workflowPath(candidate)}`;
+        if (!definitionCache.has(definitionKey)) definitionCache.set(definitionKey, fetchRecoveryDefinition(candidate, { repository, token }));
+        recoveryWorkflowsByRun.set(candidate.id, workflowCache.get(workflowKey));
+        recoveryDefinitionsByRun.set(candidate.id, definitionCache.get(definitionKey));
+        if (recoveryDefinitionRejections(
+          recoveryWorkflowsByRun.get(candidate.id),
+          recoveryDefinitionsByRun.get(candidate.id),
+          candidate,
+          { repository, branchSha: beforeSha },
+        ).length) continue;
+        recoveryJobsByRun.set(candidate.id, fetchRecoveryJobs(candidate, { repository, token }));
+      }
+    }
+    const afterSha = fetchBranchHeadSha({ repository, branch, token });
+    const branchSha = assertStableBranchSnapshot(beforeSha, afterSha, branch);
+    health = evaluateHealth(runsWithSelf, {
+      recoveryRuns,
+      recoveryJobsByRun,
+      recoveryWorkflowsByRun,
+      recoveryDefinitionsByRun,
+      repository,
+      branch,
+      branchSha,
+    });
   } catch (error) {
     // A read that cannot be performed is NOT a green. It is an honest 2.
     console.error(`::error::#2909 could not read ${branch} health: ${error.message}`);
     process.exitCode = 2;
     return;
   }
-  const health = evaluateHealth(withSelfRun(runs, command === "alert" ? selfRunFromEnv() : null));
   const report = renderReport(health, { repository, branch });
   console.log(report);
 
