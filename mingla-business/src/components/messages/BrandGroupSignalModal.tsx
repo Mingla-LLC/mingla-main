@@ -130,13 +130,13 @@ export function BrandGroupSignalModal({
           <Text style={styles.help}>No AI is required. The selected messages prefill this form; a Support teammate reviews and edits every field before saving.</Text>
           <Text style={styles.label}>Signal type</Text>
           <View style={styles.chips}>{SIGNAL_KINDS.map((value) => (
-            <Pressable key={value} onPress={() => setSignalKind(value)} style={[styles.chip, signalKind === value && styles.chipActive]}>
+            <Pressable key={value} accessibilityRole="button" accessibilityLabel={`Signal type ${value.replace("_", " and ")}`} accessibilityState={{ selected: signalKind === value }} onPress={() => setSignalKind(value)} style={[styles.chip, signalKind === value && styles.chipActive]}>
               <Text style={[styles.chipText, signalKind === value && styles.chipTextActive]}>{value.replace("_", " & ")}</Text>
             </Pressable>
           ))}</View>
           <Text style={styles.label}>Priority</Text>
           <View style={styles.chips}>{PRIORITIES.map((value) => (
-            <Pressable key={value} onPress={() => setPriority(value)} style={[styles.chip, priority === value && styles.chipActive]}>
+            <Pressable key={value} accessibilityRole="button" accessibilityLabel={`Priority ${value}`} accessibilityState={{ selected: priority === value }} onPress={() => setPriority(value)} style={[styles.chip, priority === value && styles.chipActive]}>
               <Text style={[styles.chipText, priority === value && styles.chipTextActive]}>{value}</Text>
             </Pressable>
           ))}</View>

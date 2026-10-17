@@ -182,16 +182,16 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
       {canBrand && canSupport ? (
         <View style={styles.actorBar}>
           <Text style={styles.actorLabel}>Replying as</Text>
-          <Pressable onPress={() => setActorMode("brand")} style={[styles.actorChoice, actorMode === "brand" && styles.actorChoiceActive]}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Reply as Brand team" accessibilityState={{ selected: actorMode === "brand" }} onPress={() => setActorMode("brand")} style={[styles.actorChoice, actorMode === "brand" && styles.actorChoiceActive]}>
             <Text style={[styles.actorChoiceText, actorMode === "brand" && styles.actorChoiceTextActive]}>Brand team</Text>
           </Pressable>
-          <Pressable onPress={() => setActorMode("support")} style={[styles.actorChoice, actorMode === "support" && styles.actorChoiceActive]}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Reply as Mingla Support" accessibilityState={{ selected: actorMode === "support" }} onPress={() => setActorMode("support")} style={[styles.actorChoice, actorMode === "support" && styles.actorChoiceActive]}>
             <Text style={[styles.actorChoiceText, actorMode === "support" && styles.actorChoiceTextActive]}>Mingla Support</Text>
           </Pressable>
         </View>
       ) : null}
 
-      {notice ? <Pressable onPress={() => setNotice(null)} style={styles.notice}><Text style={styles.noticeText}>{notice}</Text></Pressable> : null}
+      {notice ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss notification" onPress={() => setNotice(null)} style={styles.notice}><Text style={styles.noticeText}>{notice}</Text></Pressable> : null}
 
       {loading ? (
         <View style={styles.state}><ActivityIndicator color={accent.warm} /></View>
@@ -222,9 +222,9 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
                   <Text style={styles.time}>{new Date(message.created_at).toLocaleString()}</Text>
                 </View>
                 <View style={[styles.actions, mine && styles.actionsMine]}>
-                  <Pressable onPress={() => setReplyTo(message)}><Text style={styles.actionText}>Reply</Text></Pressable>
-                  <Pressable onPress={() => toggleSelected(message.id)}><Text style={styles.actionText}>{selected ? "Unselect" : "Select"}</Text></Pressable>
-                  {canSupport ? <Pressable onPress={() => setSignalSourceId(message.id)}><Text style={styles.actionText}>Create product signal</Text></Pressable> : null}
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Reply to ${message.sender_display_name}`} onPress={() => setReplyTo(message)}><Text style={styles.actionText}>Reply</Text></Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel={selected ? "Remove message from related context" : "Add message to related context"} accessibilityState={{ selected }} onPress={() => toggleSelected(message.id)}><Text style={styles.actionText}>{selected ? "Unselect" : "Select"}</Text></Pressable>
+                  {canSupport ? <Pressable accessibilityRole="button" accessibilityLabel="Create product signal from this message" onPress={() => setSignalSourceId(message.id)}><Text style={styles.actionText}>Create product signal</Text></Pressable> : null}
                 </View>
               </View>
             );
@@ -236,7 +236,7 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
         {replyTo ? (
           <View style={styles.composerContext}>
             <View style={styles.headerCopy}><Text style={styles.contextTitle}>Replying to {replyTo.sender_display_name}</Text><Text style={styles.contextText} numberOfLines={1}>{replyTo.content}</Text></View>
-            <Pressable onPress={() => setReplyTo(null)}><Text style={styles.actionText}>Clear</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Clear reply context" onPress={() => setReplyTo(null)}><Text style={styles.actionText}>Clear</Text></Pressable>
           </View>
         ) : null}
         {selectedMessages.length ? <Text style={styles.selectedNote}>{selectedMessages.length} related message{selectedMessages.length === 1 ? "" : "s"} selected</Text> : null}
