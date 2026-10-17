@@ -329,6 +329,74 @@ function validateDeliveryBundle(bundleObject) {
   };
 }
 
+const GOOGLE_CALENDAR_FIELDS = [
+  "calendar_client_id",
+  "calendar_client_secret",
+  "calendar_refresh_token",
+];
+const GOOGLE_DRIVE_FIELDS = [
+  "client_email",
+  "host_details_folder_id",
+  "private_key",
+  "shared_drive_id",
+];
+
+function validateGoogleBundle(bundleObject) {
+  if (
+    !exactSet(Object.keys(bundleObject), [
+      ...GOOGLE_CALENDAR_FIELDS,
+      "drive_storage",
+    ]) ||
+    GOOGLE_CALENDAR_FIELDS.some((field) =>
+      typeof bundleObject[field] !== "string" ||
+      bundleObject[field].length === 0 ||
+      bundleObject[field].includes("|")
+    ) ||
+    !isRecord(bundleObject.drive_storage) ||
+    !exactSet(Object.keys(bundleObject.drive_storage), GOOGLE_DRIVE_FIELDS)
+  ) throw new BundleSetterError("google_bundle_shape_invalid");
+
+  const drive = bundleObject.drive_storage;
+  if (
+    typeof drive.client_email !== "string" ||
+    !drive.client_email.includes("@") ||
+    typeof drive.private_key !== "string" ||
+    !drive.private_key.includes("-----BEGIN PRIVATE KEY-----") ||
+    !drive.private_key.includes("-----END PRIVATE KEY-----") ||
+    typeof drive.shared_drive_id !== "string" ||
+    drive.shared_drive_id.length < 8 ||
+    typeof drive.host_details_folder_id !== "string" ||
+    drive.host_details_folder_id.length < 8
+  ) throw new BundleSetterError("google_bundle_strict_parser_invalid");
+
+  return {
+    absentPrevious: [],
+    fieldNames: [
+      ...GOOGLE_CALENDAR_FIELDS,
+      ...GOOGLE_DRIVE_FIELDS.map((field) => `drive_storage.${field}`),
+    ].sort(),
+    minimumPreservedFields: GOOGLE_CALENDAR_FIELDS,
+  };
+}
+
+export function serializeGoogleCredentialBundle(bundleObject) {
+  validateGoogleBundle(bundleObject);
+  const drive = {
+    client_email: bundleObject.drive_storage.client_email,
+    private_key: bundleObject.drive_storage.private_key,
+    shared_drive_id: bundleObject.drive_storage.shared_drive_id,
+    host_details_folder_id: bundleObject.drive_storage.host_details_folder_id,
+  };
+  const encodedDrive = Buffer.from(JSON.stringify(drive), "utf8")
+    .toString("base64url");
+  return [
+    bundleObject.calendar_client_id,
+    bundleObject.calendar_client_secret,
+    bundleObject.calendar_refresh_token,
+    encodedDrive,
+  ].join("|");
+}
+
 /** Validate a complete authoritative bundle without writing or logging it. */
 export function prepareGovernedBundle({
   bundleName,
@@ -346,6 +414,8 @@ export function prepareGovernedBundle({
   let result;
   if (bundleName === "AD_CONVERSION_TOKENS") {
     result = validateAdBundle({ bundleObject, record, previousFieldStates });
+  } else if (bundleName === "GOOGLE_CALENDAR_KEYS") {
+    result = validateGoogleBundle(bundleObject);
   } else if (bundleName === "MINGLA_DELIVERY_FLAGS_JSON") {
     result = validateDeliveryBundle(bundleObject);
   } else throw new BundleSetterError("bundle_not_supported", [bundleName]);
@@ -354,6 +424,14 @@ export function prepareGovernedBundle({
     throw new BundleSetterError("preservation_attestation_missing", [
       bundleName,
     ]);
+  }
+  const missingMinimumPreserved = (result.minimumPreservedFields ?? [])
+    .filter((field) => !authoritativeExistingFieldNames.includes(field));
+  if (missingMinimumPreserved.length > 0) {
+    throw new BundleSetterError(
+      "preservation_attestation_incomplete",
+      missingMinimumPreserved,
+    );
   }
   const missingExisting = authoritativeExistingFieldNames.filter((field) =>
     !result.fieldNames.includes(field)
@@ -419,7 +497,9 @@ export function applyPreparedGovernedBundle({
   }
   const dotenv = serializeDotenvAssignment(
     prepared.bundleName,
-    JSON.stringify(prepared.bundleObject),
+    prepared.bundleName === "GOOGLE_CALENDAR_KEYS"
+      ? serializeGoogleCredentialBundle(prepared.bundleObject)
+      : JSON.stringify(prepared.bundleObject),
   );
   const result = spawn(
     "supabase",

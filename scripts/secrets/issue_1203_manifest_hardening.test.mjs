@@ -59,7 +59,10 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   const target = transition.secrets.map((record) => record.name);
   const pending = new Set(transition.rollout.pending_bundle_names);
   assert.equal(target.length, 86);
-  assert.equal(pending.size, 6);
+  // [TEST-MOD-APPROVED #3720] GOOGLE_CALENDAR_KEYS now has governed field
+  // ownership, so the historical transition fixture derives one more bundle
+  // and one fewer direct-name-era slot without changing the enforced 88 names.
+  assert.equal(pending.size, 7);
   assert.equal(transition.rollout.legacy_names.length, 20);
   const preRolloutNames = [
     ...target.filter((name) => !pending.has(name)),
@@ -71,9 +74,9 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
       1,
     );
   }
-  assert.equal(preRolloutNames.length, 100);
-  assert.ok(preRolloutNames.length <= 100);
-  transition.rollout.expected_user_managed_count = 100;
+  assert.equal(preRolloutNames.length, 99);
+  assert.ok(preRolloutNames.length <= 99);
+  transition.rollout.expected_user_managed_count = 99;
   const expected = auditSecretBudget({
     manifest: transition,
     liveNames: preRolloutNames,

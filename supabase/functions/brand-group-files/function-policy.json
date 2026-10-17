@@ -7,9 +7,14 @@
   "env": {
     "migration_fallback_top_level": [],
     "optional_top_level": [],
-    "required_bundle_fields": {},
-    "required_top_level": [
-      "GOOGLE_CALENDAR_KEYS"
-    ]
+    "required_bundle_fields": {
+      "GOOGLE_CALENDAR_KEYS": [
+        "drive_storage.client_email",
+        "drive_storage.host_details_folder_id",
+        "drive_storage.private_key",
+        "drive_storage.shared_drive_id"
+      ]
+    },
+    "required_top_level": []
   }
 }
