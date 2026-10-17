@@ -23,6 +23,7 @@
 import {
   assert,
   assertEquals,
+  assertMatch,
   assertStringIncludes,
   assertThrows,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
@@ -489,8 +490,8 @@ Deno.test("ISSUE-997 C adversarial [structural]: the TikTok video READY-ref reso
   // TikTok validate_only stays the named-skipped no-op (no create, no upload).
   assertStringIncludes(tiktokBranch, "tiktok_no_validate_only");
   // Duration gate is wired on the video path.
-  assertStringIncludes(
+  assertMatch(
     tiktokBranch,
-    "validateTikTokVideoDuration(libCreativeVT.duration_seconds)",
+    /validateTikTokVideoDuration\(\s*libCreativeVT\.duration_seconds,?\s*\)/,
   );
 });

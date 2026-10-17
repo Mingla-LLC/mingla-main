@@ -5,6 +5,7 @@
 import {
   assert,
   assertEquals,
+  assertMatch,
   assertStringIncludes,
   assertThrows,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
@@ -342,14 +343,14 @@ Deno.test("ISSUE-997 C the create branch resolves an exact READY video ref and e
   assertStringIncludes(source, "refExtraVT.video_id");
   assertStringIncludes(source, "refExtraVT.cover_image_id");
   // 5–60 s advertising-policy duration gate.
-  assertStringIncludes(
+  assertMatch(
     source,
-    "validateTikTokVideoDuration(libCreativeVT.duration_seconds)",
+    /validateTikTokVideoDuration\(\s*libCreativeVT\.duration_seconds,?\s*\)/,
   );
   // The ad object is built as SINGLE_VIDEO and threads the prepared video_id.
-  assertStringIncludes(
+  assertMatch(
     source,
-    'const adFormatT = creativeKindT === "video" ? "SINGLE_VIDEO" : "SINGLE_IMAGE";',
+    /const adFormatT = creativeKindT === "video"\s*\? "SINGLE_VIDEO"\s*: "SINGLE_IMAGE";/,
   );
   assertStringIncludes(source, "adFormat: adFormatT");
   assertStringIncludes(source, "...(videoIdT ? { videoId: videoIdT } : {})");
