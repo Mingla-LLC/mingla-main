@@ -180,3 +180,5 @@ test("plan currency comes from ad_connections and rides the create budget", () =
   assert.equal(unresolved.channels[0].dailyLabel, "Currency unavailable/day");
   assert.match(unresolved.budgetLine, /Currency unavailable/);
 });
+// #3697 v1.4: prior USD-fallback assertions were replaced because unresolved
+// provider currency must now fail closed under the binding currency contract.

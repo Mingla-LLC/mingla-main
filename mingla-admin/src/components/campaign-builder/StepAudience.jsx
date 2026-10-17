@@ -76,9 +76,15 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
   const errors = validateAudience(audience);
   const set = (patch) => onAudienceChange({ ...audience, ...patch });
 
-  const pickedPlatforms = channelRows.filter((r) => r.eligible).map((r) => r.platform);
-  const cityPlatforms = CITY_SEARCH_PLATFORMS.filter((p) => pickedPlatforms.includes(p));
-  const interestPlatforms = INTEREST_SEARCH_PLATFORMS.filter((p) => pickedPlatforms.includes(p));
+  const pickedPlatforms = channelRows
+    .filter((r) => r.eligible)
+    .map((r) => r.platform);
+  const cityPlatforms = CITY_SEARCH_PLATFORMS.filter((p) =>
+    pickedPlatforms.includes(p),
+  );
+  const interestPlatforms = INTEREST_SEARCH_PLATFORMS.filter((p) =>
+    pickedPlatforms.includes(p),
+  );
   const redditEligible = pickedPlatforms.includes("reddit");
 
   const cities = audience.cities ?? [];
@@ -88,13 +94,24 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
 
   // ── City typeahead ──────────────────────────────────────────────────────────
   const [cityQuery, setCityQuery] = useState("");
-  const [cityCountry, setCityCountry] = useState(audience.countries?.[0] ?? "US");
+  const [cityCountry, setCityCountry] = useState(
+    audience.countries?.[0] ?? "US",
+  );
   const [resolvingCity, setResolvingCity] = useState(false);
   const cityRunner = useCallback(async () => {
-    const { data } = await searchTargeting({ platform: "meta", kind: "city", q: cityQuery, country: cityCountry });
+    const { data } = await searchTargeting({
+      platform: "meta",
+      kind: "city",
+      q: cityQuery,
+      country: cityCountry,
+    });
     return { items: data?.results ?? [], warning: data?.warning };
   }, [cityQuery, cityCountry]);
-  const citySearch = useDebouncedResults(cityRunner, { q: cityQuery, country: cityCountry, key: "city" });
+  const citySearch = useDebouncedResults(cityRunner, {
+    q: cityQuery,
+    country: cityCountry,
+    key: "city",
+  });
 
   const addCity = async (result) => {
     const cc = result.meta?.country_code ?? cityCountry;
@@ -107,20 +124,52 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
       google: cityName && cc ? { name: cityName, country_code: cc } : null,
       tiktok: null,
     };
-    // Resolve a TikTok city location_id only when TikTok is in the picked set.
-    if (pickedPlatforms.includes("tiktok")) {
+    // Resolve every provider-native city key we can prove now. The immutable
+    // plan compiler rejects a silent country fallback when a selected platform
+    // has no exact city reference.
+    if (
+      pickedPlatforms.includes("tiktok") ||
+      pickedPlatforms.includes("google")
+    ) {
       setResolvingCity(true);
       try {
-        const { data } = await searchTargeting({ platform: "tiktok", kind: "city", q: cityName, country: cc });
-        const first = (data?.results ?? [])[0];
-        if (first?.id) chip.tiktok = { location_ids: [String(first.id)] };
+        const [tiktok, google] = await Promise.all([
+          pickedPlatforms.includes("tiktok")
+            ? searchTargeting({
+                platform: "tiktok",
+                kind: "city",
+                q: cityName,
+                country: cc,
+              })
+            : Promise.resolve({ data: null }),
+          pickedPlatforms.includes("google")
+            ? searchTargeting({
+                platform: "google",
+                kind: "city",
+                q: cityName,
+                country: cc,
+              })
+            : Promise.resolve({ data: null }),
+        ]);
+        const tiktokFirst = (tiktok.data?.results ?? [])[0];
+        if (tiktokFirst?.id)
+          chip.tiktok = { location_ids: [String(tiktokFirst.id)] };
+        const googleFirst = (google.data?.results ?? [])[0];
+        if (googleFirst?.id) {
+          chip.google = {
+            name: String(googleFirst.meta?.name ?? cityName),
+            country_code: String(googleFirst.meta?.country_code ?? cc),
+            criterion_id: String(googleFirst.id),
+          };
+        }
       } catch {
         chip.tiktok = null;
       } finally {
         setResolvingCity(false);
       }
     }
-    if (!cities.some((c) => c.id === chip.id)) set({ cities: [...cities, chip] });
+    if (!cities.some((c) => c.id === chip.id))
+      set({ cities: [...cities, chip] });
     setCityQuery("");
     citySearch.reset();
   };
@@ -137,8 +186,16 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
   const interestRunner = useCallback(async () => {
     const calls = await Promise.all(
       searchablePlatforms.map(async (platform) => {
-        const { data } = await searchTargeting({ platform, kind: "interest", q: interestQuery });
-        return (data?.results ?? []).map((r) => ({ platform, id: String(r.id), name: r.name }));
+        const { data } = await searchTargeting({
+          platform,
+          kind: "interest",
+          q: interestQuery,
+        });
+        return (data?.results ?? []).map((r) => ({
+          platform,
+          id: String(r.id),
+          name: r.name,
+        }));
       }),
     );
     return { items: calls.flat(), warning: null };
@@ -151,14 +208,20 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
   });
 
   const addInterest = (chip) => {
-    if (!interests.some((i) => i.platform === chip.platform && i.id === chip.id)) {
+    if (
+      !interests.some((i) => i.platform === chip.platform && i.id === chip.id)
+    ) {
       set({ interests: [...interests, chip] });
     }
     setInterestQuery("");
     interestSearch.reset();
   };
   const removeInterest = (platform, id) =>
-    set({ interests: interests.filter((i) => !(i.platform === platform && i.id === id)) });
+    set({
+      interests: interests.filter(
+        (i) => !(i.platform === platform && i.id === id),
+      ),
+    });
 
   // Reddit free-text interest names.
   const [redditInterest, setRedditInterest] = useState("");
@@ -171,8 +234,8 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
   if (!TARGETING_SEARCH_PROXY_ENABLED) {
     return (
       <div className="p-3 rounded-lg border border-dashed border-[var(--gray-300)] text-xs text-[var(--color-text-tertiary)]">
-        City + radius targeting arrives with the targeting-search proxy. Until then, campaigns
-        target whole countries.
+        City + radius targeting arrives with the targeting-search proxy. Until
+        then, campaigns target whole countries.
       </div>
     );
   }
@@ -182,8 +245,9 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
       <div>
         <h2 className="text-lg font-semibold">Who should see this?</h2>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Country + age is the recommended broad shape. Add cities to laser-target a venue's
-          neighborhood, and interests to reach the right crowd.
+          Country + age is the recommended broad shape. Add cities to
+          laser-target a venue's neighborhood, and interests to reach the right
+          crowd.
         </p>
       </div>
 
@@ -193,7 +257,8 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
         values={audience.countries}
         onChange={(countries) => {
           set({ countries });
-          if (!countries.includes(cityCountry) && countries[0]) setCityCountry(countries[0]);
+          if (!countries.includes(cityCountry) && countries[0])
+            setCityCountry(countries[0]);
         }}
         helper="Prefilled with the live markets — edit freely. Country is the fallback when no city is picked."
       />
@@ -211,7 +276,9 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
                 className="h-7 rounded-md border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 text-xs"
               >
                 {(audience.countries ?? []).map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
                 ))}
               </select>
             </label>
@@ -221,47 +288,59 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
             <SearchInput
               value={cityQuery}
               onChange={(e) => setCityQuery(e.target.value)}
-              onClear={() => { setCityQuery(""); citySearch.reset(); }}
+              onClear={() => {
+                setCityQuery("");
+                citySearch.reset();
+              }}
               placeholder={`Type a city (disambiguated to ${cityCountry})…`}
             />
-            {(citySearch.loading || citySearch.results.length > 0) && cityQuery.trim().length >= 2 && (
-              <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-lg">
-                {citySearch.loading && (
-                  <li className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-tertiary)]">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Searching…
-                  </li>
-                )}
-                {!citySearch.loading && citySearch.results.map((r) => (
-                  <li key={r.id}>
-                    <button
-                      type="button"
-                      onClick={() => addCity(r)}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--gray-50)] cursor-pointer"
-                    >
-                      {r.name}
-                    </button>
-                  </li>
-                ))}
-                {!citySearch.loading && citySearch.results.length === 0 && (
-                  <li className="px-3 py-2 text-xs text-[var(--color-text-tertiary)]">
-                    {citySearch.warning ?? "No matches."}
-                  </li>
-                )}
-              </ul>
-            )}
+            {(citySearch.loading || citySearch.results.length > 0) &&
+              cityQuery.trim().length >= 2 && (
+                <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-lg">
+                  {citySearch.loading && (
+                    <li className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-tertiary)]">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />{" "}
+                      Searching…
+                    </li>
+                  )}
+                  {!citySearch.loading &&
+                    citySearch.results.map((r) => (
+                      <li key={r.id}>
+                        <button
+                          type="button"
+                          onClick={() => addCity(r)}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--gray-50)] cursor-pointer"
+                        >
+                          {r.name}
+                        </button>
+                      </li>
+                    ))}
+                  {!citySearch.loading && citySearch.results.length === 0 && (
+                    <li className="px-3 py-2 text-xs text-[var(--color-text-tertiary)]">
+                      {citySearch.warning ?? "No matches."}
+                    </li>
+                  )}
+                </ul>
+              )}
           </div>
 
           {cities.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {cities.map((c) => {
-                const on = [c.meta && "Meta", c.google && "Google", c.tiktok && "TikTok"].filter(Boolean);
+                const on = [
+                  c.meta && "Meta",
+                  c.google && "Google",
+                  c.tiktok && "TikTok",
+                ].filter(Boolean);
                 return (
                   <span
                     key={c.id}
                     className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 text-xs font-medium rounded-full border border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
                   >
                     {c.label}
-                    <span className="text-[10px] text-[var(--color-text-tertiary)]">{on.join(" · ")}</span>
+                    <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                      {on.join(" · ")}
+                    </span>
                     <button
                       type="button"
                       onClick={() => removeCity(c.id)}
@@ -273,89 +352,117 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
                   </span>
                 );
               })}
-              {resolvingCity && <Loader2 className="w-4 h-4 animate-spin text-[var(--color-text-tertiary)]" />}
+              {resolvingCity && (
+                <Loader2 className="w-4 h-4 animate-spin text-[var(--color-text-tertiary)]" />
+              )}
             </div>
           )}
 
-          {cities.length > 0 && (pickedPlatforms.includes("meta") || pickedPlatforms.includes("snapchat")) && (
-            <div className="flex items-center gap-3 max-w-sm pt-1">
-              <label className="text-xs font-medium whitespace-nowrap">Radius (Meta &amp; Snap)</label>
-              <input
-                type="range"
-                min={RADIUS_BOUNDS[distanceUnit].min}
-                max={RADIUS_BOUNDS[distanceUnit].max}
-                value={radius}
-                onChange={(e) => set({ radius: clampRadius(e.target.value, distanceUnit) })}
-                className="flex-1"
-                aria-label="Radius around each city"
-              />
-              <span className="text-xs tabular-nums w-14 text-right">{radius} {distanceUnit === "mile" ? "mi" : "km"}</span>
-            </div>
-          )}
-          {cities.some((c) => !c.tiktok) && pickedPlatforms.includes("tiktok") && (
-            <p className="text-[11px] text-[var(--color-text-tertiary)]">
-              A city without a TikTok tag isn't available on TikTok — those campaigns fall back to
-              country targeting for that city.
-            </p>
-          )}
+          {cities.length > 0 &&
+            (pickedPlatforms.includes("meta") ||
+              pickedPlatforms.includes("snapchat")) && (
+              <div className="flex items-center gap-3 max-w-sm pt-1">
+                <label className="text-xs font-medium whitespace-nowrap">
+                  Radius (Meta &amp; Snap)
+                </label>
+                <input
+                  type="range"
+                  min={RADIUS_BOUNDS[distanceUnit].min}
+                  max={RADIUS_BOUNDS[distanceUnit].max}
+                  value={radius}
+                  onChange={(e) =>
+                    set({ radius: clampRadius(e.target.value, distanceUnit) })
+                  }
+                  className="flex-1"
+                  aria-label="Radius around each city"
+                />
+                <span className="text-xs tabular-nums w-14 text-right">
+                  {radius} {distanceUnit === "mile" ? "mi" : "km"}
+                </span>
+              </div>
+            )}
+          {cities.some((c) => !c.tiktok) &&
+            pickedPlatforms.includes("tiktok") && (
+              <p className="text-[11px] text-[var(--color-text-tertiary)]">
+                A city without a TikTok tag isn't available on TikTok — those
+                campaigns fall back to country targeting for that city.
+              </p>
+            )}
         </div>
       )}
 
       {/* ── Interest targeting (Meta + TikTok + Google + Snapchat — ISSUE-992) ── */}
       {searchablePlatforms.length > 0 && (
         <div className="space-y-2">
-          <span className="block text-sm font-medium">Interests (optional)</span>
+          <span className="block text-sm font-medium">
+            Interests (optional)
+          </span>
           <div className="relative">
             <SearchInput
               value={interestQuery}
               onChange={(e) => setInterestQuery(e.target.value)}
-              onClear={() => { setInterestQuery(""); interestSearch.reset(); }}
+              onClear={() => {
+                setInterestQuery("");
+                interestSearch.reset();
+              }}
               placeholder="Type an interest (e.g. nightlife, food)…"
             />
-            {(interestSearch.loading || interestSearch.results.length > 0) && interestQuery.trim().length >= 2 && (
-              <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-lg">
-                {interestSearch.loading && (
-                  <li className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-tertiary)]">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Searching…
-                  </li>
-                )}
-                {!interestSearch.loading && interestSearch.results.map((r) => (
-                  <li key={`${r.platform}:${r.id}`}>
-                    <button
-                      type="button"
-                      onClick={() => addInterest(r)}
-                      className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--gray-50)] cursor-pointer"
-                    >
-                      <span>{r.name}</span>
-                      <span className="text-[10px] text-[var(--color-text-tertiary)]">{PLATFORM_LABEL[r.platform]}</span>
-                    </button>
-                  </li>
-                ))}
-                {!interestSearch.loading && interestSearch.results.length === 0 && (
-                  <li className="px-3 py-2 text-xs text-[var(--color-text-tertiary)]">No matches.</li>
-                )}
-              </ul>
-            )}
+            {(interestSearch.loading || interestSearch.results.length > 0) &&
+              interestQuery.trim().length >= 2 && (
+                <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-lg border border-[var(--gray-200)] bg-[var(--color-background-primary)] shadow-lg">
+                  {interestSearch.loading && (
+                    <li className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-tertiary)]">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />{" "}
+                      Searching…
+                    </li>
+                  )}
+                  {!interestSearch.loading &&
+                    interestSearch.results.map((r) => (
+                      <li key={`${r.platform}:${r.id}`}>
+                        <button
+                          type="button"
+                          onClick={() => addInterest(r)}
+                          className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--gray-50)] cursor-pointer"
+                        >
+                          <span>{r.name}</span>
+                          <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                            {PLATFORM_LABEL[r.platform]}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  {!interestSearch.loading &&
+                    interestSearch.results.length === 0 && (
+                      <li className="px-3 py-2 text-xs text-[var(--color-text-tertiary)]">
+                        No matches.
+                      </li>
+                    )}
+                </ul>
+              )}
           </div>
           {interests.filter((i) => i.platform !== "reddit").length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {interests.filter((i) => i.platform !== "reddit").map((i) => (
-                <span
-                  key={`${i.platform}:${i.id}`}
-                  className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 text-xs font-medium rounded-full border border-[var(--gray-300)] bg-[var(--gray-50)]"
-                >
-                  {i.name}
-                  <span className="text-[10px] text-[var(--color-text-tertiary)]">{PLATFORM_LABEL[i.platform]}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeInterest(i.platform, i.id)}
-                    className="ml-0.5 rounded-full p-0.5 hover:bg-[var(--gray-200)] cursor-pointer"
-                    aria-label={`Remove ${i.name}`}
+              {interests
+                .filter((i) => i.platform !== "reddit")
+                .map((i) => (
+                  <span
+                    key={`${i.platform}:${i.id}`}
+                    className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 text-xs font-medium rounded-full border border-[var(--gray-300)] bg-[var(--gray-50)]"
                   >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
+                    {i.name}
+                    <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                      {PLATFORM_LABEL[i.platform]}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeInterest(i.platform, i.id)}
+                      className="ml-0.5 rounded-full p-0.5 hover:bg-[var(--gray-200)] cursor-pointer"
+                      aria-label={`Remove ${i.name}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
             </div>
           )}
         </div>
@@ -363,12 +470,19 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
 
       {redditEligible && (
         <div className="space-y-2">
-          <span className="block text-sm font-medium">Reddit interests (optional)</span>
+          <span className="block text-sm font-medium">
+            Reddit interests (optional)
+          </span>
           <div className="flex gap-2 max-w-sm">
             <Input
               value={redditInterest}
               onChange={(e) => setRedditInterest(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addRedditInterest(); } }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addRedditInterest();
+                }
+              }}
               placeholder="e.g. nightlife"
             />
             <button
@@ -381,22 +495,24 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
           </div>
           {interests.filter((i) => i.platform === "reddit").length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {interests.filter((i) => i.platform === "reddit").map((i) => (
-                <span
-                  key={`reddit:${i.id}`}
-                  className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 text-xs font-medium rounded-full border border-[var(--gray-300)] bg-[var(--gray-50)]"
-                >
-                  {i.name}
-                  <button
-                    type="button"
-                    onClick={() => removeInterest("reddit", i.id)}
-                    className="ml-0.5 rounded-full p-0.5 hover:bg-[var(--gray-200)] cursor-pointer"
-                    aria-label={`Remove ${i.name}`}
+              {interests
+                .filter((i) => i.platform === "reddit")
+                .map((i) => (
+                  <span
+                    key={`reddit:${i.id}`}
+                    className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 text-xs font-medium rounded-full border border-[var(--gray-300)] bg-[var(--gray-50)]"
                   >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
+                    {i.name}
+                    <button
+                      type="button"
+                      onClick={() => removeInterest("reddit", i.id)}
+                      className="ml-0.5 rounded-full p-0.5 hover:bg-[var(--gray-200)] cursor-pointer"
+                      aria-label={`Remove ${i.name}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
             </div>
           )}
         </div>
@@ -410,7 +526,9 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
           min={13}
           max={65}
           value={audience.ageMin}
-          onChange={(e) => set({ ageMin: e.target.value === "" ? "" : Number(e.target.value) })}
+          onChange={(e) =>
+            set({ ageMin: e.target.value === "" ? "" : Number(e.target.value) })
+          }
         />
         <Input
           label="Age max"
@@ -418,7 +536,9 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
           min={13}
           max={65}
           value={audience.ageMax}
-          onChange={(e) => set({ ageMax: e.target.value === "" ? "" : Number(e.target.value) })}
+          onChange={(e) =>
+            set({ ageMax: e.target.value === "" ? "" : Number(e.target.value) })
+          }
           helper="65 means 65 and over."
         />
       </div>
@@ -445,9 +565,10 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
           ))}
         </div>
         <p className="text-[11px] text-[var(--color-text-tertiary)]">
-          Age applies to Meta, TikTok, Snapchat and Google (Reddit can't target age). Gender
-          applies to Meta, TikTok, Snapchat, Google and Reddit. City radius applies to Meta and
-          Snapchat; Google targets the whole city (radius coming later).
+          Age applies to Meta, TikTok, Snapchat and Google (Reddit can't target
+          age). Gender applies to Meta, TikTok, Snapchat, Google and Reddit.
+          City radius applies to Meta and Snapchat; Google targets the whole
+          city (radius coming later).
         </p>
       </div>
 
@@ -458,7 +579,9 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
       )}
 
       {errors.map((message) => (
-        <p key={message} className="text-xs text-[#ef4444]">{message}</p>
+        <p key={message} className="text-xs text-[#ef4444]">
+          {message}
+        </p>
       ))}
     </div>
   );

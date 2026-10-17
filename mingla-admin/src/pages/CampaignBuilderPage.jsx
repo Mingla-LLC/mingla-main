@@ -32,6 +32,7 @@ import { StepCopy } from "../components/campaign-builder/StepCopy";
 import { StepPolicy } from "../components/campaign-builder/StepPolicy";
 import { StepReview } from "../components/campaign-builder/StepReview";
 import {
+  adPlanAction,
   checkVideoPreparation,
   createCampaign,
   getConnection,
@@ -40,17 +41,39 @@ import {
   runPreflight,
   startVideoPreparation,
 } from "../services/adEngineService";
-import { resolveGoalForPayload, resolveMetaObjective } from "../lib/adBuilder/objectiveResolver";
+import {
+  resolveGoalForPayload,
+  resolveMetaObjective,
+} from "../lib/adBuilder/objectiveResolver";
 import { classifyCreateResult } from "../lib/adBuilder/createResult";
-import { applyChannelSelection, planChannels, splitBudget } from "../lib/adBuilder/channelPlan";
+import {
+  applyChannelSelection,
+  planChannels,
+  splitBudget,
+} from "../lib/adBuilder/channelPlan";
 import { complianceExclusions } from "../lib/adBuilder/compliance";
-import { validateAudience, DEFAULT_AGE_MAX, DEFAULT_AGE_MIN, DEFAULT_COUNTRIES } from "../lib/adBuilder/audienceRules";
+import {
+  validateAudience,
+  DEFAULT_AGE_MAX,
+  DEFAULT_AGE_MIN,
+  DEFAULT_COUNTRIES,
+} from "../lib/adBuilder/audienceRules";
 import { DEFAULT_RADIUS_MI } from "../lib/adBuilder/targeting";
-import { allocateLifetimeCents, calendarDaysBetween, validateBudget } from "../lib/adBuilder/budgetRules";
+import {
+  allocateLifetimeCents,
+  calendarDaysBetween,
+  validateBudget,
+} from "../lib/adBuilder/budgetRules";
 import { validateCopy } from "../lib/adBuilder/copyRules";
 import { runPolicyPrecheck } from "../lib/adBuilder/policyLinter";
 import { partitionFundedCreative } from "../lib/adBuilder/creativeGate";
-import { buildCreatePayload, resolvePlanCurrency, suggestCampaignName } from "../lib/adBuilder/payload";
+import {
+  audienceIntentFromState,
+  buildCreatePayload,
+  resolvePlanCurrency,
+  suggestCampaignName,
+  targetingRefsFromState,
+} from "../lib/adBuilder/payload";
 import { buildLaunchSummary } from "../lib/adBuilder/launchSummary";
 import {
   PREPARATION_ORDER,
@@ -94,7 +117,9 @@ export function CampaignBuilderPage() {
       setAdsConsoleEnabled(flags.enable_ads_console !== false);
       setAdsConsoleReady(true);
     });
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // ── Wizard navigation ──
@@ -174,9 +199,12 @@ export function CampaignBuilderPage() {
   // presentation only and is reset whenever the recorded creative identity
   // changes. The queue runs exactly one request at a time.
   const [preparationRows, setPreparationRows] = useState({});
-  const [preparationRunningPlatform, setPreparationRunningPlatform] = useState(null);
+  const [preparationRunningPlatform, setPreparationRunningPlatform] =
+    useState(null);
   const [preparationStopped, setPreparationStopped] = useState(false);
-  const [preparationOnline, setPreparationOnline] = useState(() => navigator.onLine);
+  const [preparationOnline, setPreparationOnline] = useState(
+    () => navigator.onLine,
+  );
   const preparationStopRef = useRef(false);
   const preparationRunRef = useRef(false);
   const terminalAnnouncementsRef = useRef(new Set());
@@ -214,6 +242,9 @@ export function CampaignBuilderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [validatingShapes, setValidatingShapes] = useState(false);
   const [createResults, setCreateResults] = useState(null);
+  const [planPreview, setPlanPreview] = useState(null);
+  const [broaderAccepted, setBroaderAccepted] = useState(false);
+  const [launchPhrase, setLaunchPhrase] = useState("");
   // One request_id per (platform, destination, wizard session) — server
   // idempotency replay. ISSUE-1002: the fan-out is per (platform × destination),
   // so the idempotency key gains the destination axis (a single-destination build
@@ -232,45 +263,67 @@ export function CampaignBuilderPage() {
   // no group (NULL), keeping that path byte-identical.
 
   const dirty = Boolean(
-    destinations.length > 0 || creative.publicUrl || copy.primary || budget.totalDailyCents > 0,
+    destinations.length > 0 ||
+    creative.publicUrl ||
+    copy.primary ||
+    budget.totalDailyCents > 0,
   );
 
   // ── Preflight + connections load ──
-  const loadPreflight = useCallback(async (platform) => {
-    if (platform) setRecheckBusy(platform);
-    else setPreflightRunning(true);
-    const { data, error } = await runPreflight(platform);
-    if (error) {
-      const parsed = await parseEdgeError(error);
-      addToast({ variant: "error", title: "Preflight failed", description: String(parsed?.message ?? "") });
-    } else if (platform) {
-      const row = (data?.rows ?? [])[0];
-      if (row) {
-        setPreflightRows((prev) =>
-          (prev ?? []).map((r) => (r.platform === platform ? row : r)),
-        );
+  const loadPreflight = useCallback(
+    async (platform) => {
+      if (platform) setRecheckBusy(platform);
+      else setPreflightRunning(true);
+      const { data, error } = await runPreflight(platform);
+      if (error) {
+        const parsed = await parseEdgeError(error);
         addToast({
-          variant: row.overall === "green" ? "success" : "warning",
-          title: row.overall === "green"
-            ? `${platform} is ready.`
-            : `Still ${row.overall} — see the card.`,
+          variant: "error",
+          title: "Preflight failed",
+          description: String(parsed?.message ?? ""),
+        });
+      } else if (platform) {
+        const row = (data?.rows ?? [])[0];
+        if (row) {
+          setPreflightRows((prev) =>
+            (prev ?? []).map((r) => (r.platform === platform ? row : r)),
+          );
+          addToast({
+            variant: row.overall === "green" ? "success" : "warning",
+            title:
+              row.overall === "green"
+                ? `${platform} is ready.`
+                : `Still ${row.overall} — see the card.`,
+          });
+        }
+      } else {
+        setPreflightRows(data?.rows ?? []);
+        const ready = (data?.rows ?? []).filter(
+          (r) => r.overall === "green" || r.overall === "amber",
+        ).length;
+        addToast({
+          variant: "info",
+          title: `${ready} of ${(data?.rows ?? []).length} channels ready.`,
         });
       }
-    } else {
-      setPreflightRows(data?.rows ?? []);
-      const ready = (data?.rows ?? []).filter((r) => r.overall === "green" || r.overall === "amber").length;
-      addToast({ variant: "info", title: `${ready} of ${(data?.rows ?? []).length} channels ready.` });
-    }
-    if (platform) setRecheckBusy(null);
-    else setPreflightRunning(false);
-  }, [addToast]);
+      if (platform) setRecheckBusy(null);
+      else setPreflightRunning(false);
+    },
+    [addToast],
+  );
 
   useEffect(() => {
     loadPreflight();
     // Connection rows carry Meta's per-category floors (extra.minimum_budgets).
     (async () => {
       const loaded = {};
-      for (const platform of ["meta", "google", "tiktok", "snapchat", "reddit"]) {
+      for (const platform of [
+        "meta",
+        "google",
+        "tiktok",
+        "snapchat",
+        "reddit",
+      ]) {
         const { data } = await getConnection(platform, "consumer");
         if (data) loaded[platform] = data;
       }
@@ -304,7 +357,13 @@ export function CampaignBuilderPage() {
       return Math.floor((budget.totalLifetimeCents || 0) / days);
     }
     return budget.totalDailyCents;
-  }, [budget.mode, budget.totalDailyCents, budget.totalLifetimeCents, budget.startsAt, budget.endsAt]);
+  }, [
+    budget.mode,
+    budget.totalDailyCents,
+    budget.totalLifetimeCents,
+    budget.startsAt,
+    budget.endsAt,
+  ]);
   const channelRows = useMemo(
     () =>
       planChannels({
@@ -316,7 +375,15 @@ export function CampaignBuilderPage() {
         connections,
         metaGoal,
       }),
-    [preflightRows, goalIds, audience.countries, planningDailyCents, budget.allowlist, connections, metaGoal],
+    [
+      preflightRows,
+      goalIds,
+      audience.countries,
+      planningDailyCents,
+      budget.allowlist,
+      connections,
+      metaGoal,
+    ],
   );
   // ── ISSUE-986: the platform picker resolves the channel set ──
   // The candidate set (`channelRows`) is what the picker renders. The COMPLIANCE
@@ -335,7 +402,12 @@ export function CampaignBuilderPage() {
     [specialAdCategory, eligiblePlatforms],
   );
   const plannedRows = useMemo(
-    () => applyChannelSelection({ channelRows, selectedPlatforms, excluded: complianceExcluded }),
+    () =>
+      applyChannelSelection({
+        channelRows,
+        selectedPlatforms,
+        excluded: complianceExcluded,
+      }),
     [channelRows, selectedPlatforms, complianceExcluded],
   );
   // The effective selected+buildable platform ids (post eligibility + compliance).
@@ -352,19 +424,22 @@ export function CampaignBuilderPage() {
   const currencyBlockedReason = planCurrency.unresolved
     ? "Connect the selected ad account and load its billing currency before creating anything."
     : planCurrency.mixed
-    ? "Selected ad accounts use different currencies. Split this into one campaign per billing currency."
-    : null;
+      ? "Selected ad accounts use different currencies. Split this into one campaign per billing currency."
+      : null;
 
-  const togglePlatform = useCallback((platform) => {
-    setSelectedPlatforms((prev) => {
-      // Materialize the "all eligible" default on the first explicit toggle so
-      // the operator owns the set from then on.
-      const current = prev === null ? eligiblePlatforms : prev;
-      return current.includes(platform)
-        ? current.filter((p) => p !== platform)
-        : [...current, platform];
-    });
-  }, [eligiblePlatforms]);
+  const togglePlatform = useCallback(
+    (platform) => {
+      setSelectedPlatforms((prev) => {
+        // Materialize the "all eligible" default on the first explicit toggle so
+        // the operator owns the set from then on.
+        const current = prev === null ? eligiblePlatforms : prev;
+        return current.includes(platform)
+          ? current.filter((p) => p !== platform)
+          : [...current, platform];
+      });
+    },
+    [eligiblePlatforms],
+  );
 
   // Lifetime mode: split the daily equivalent so strategy/weights still apply,
   // then allocateLifetimeCents conserves the entered total at create.
@@ -372,7 +447,12 @@ export function CampaignBuilderPage() {
     // ISSUE-986: split across the PICKED channel set (plannedRows) — never the
     // full eligible set. The picker is the single source of truth for who gets
     // funded; a deselected/compliance-excluded channel is already ineligible here.
-    () => splitBudget({ totalDailyCents: planningDailyCents, channelRows: plannedRows, strategy: budget.strategy }),
+    () =>
+      splitBudget({
+        totalDailyCents: planningDailyCents,
+        channelRows: plannedRows,
+        strategy: budget.strategy,
+      }),
     [planningDailyCents, budget.strategy, plannedRows],
   );
 
@@ -382,7 +462,10 @@ export function CampaignBuilderPage() {
   // identical for the same goalIds) purely for display — Review reads this
   // to show each channel's REAL resolved objective instead of one repeated
   // goal-label string. Never touches runCreate's own resolution.
-  const resolvedGoalForDisplay = useMemo(() => resolveGoalForPayload(goalIds), [goalIds]);
+  const resolvedGoalForDisplay = useMemo(
+    () => resolveGoalForPayload(goalIds),
+    [goalIds],
+  );
 
   // ── ISSUE-995 [Campaign Builder creative] Wave 3 — PROCEED-WITH-PASSING ──
   // The funded set (allocations) partitioned into the channels this creative can
@@ -392,17 +475,21 @@ export function CampaignBuilderPage() {
   // "ready" can never fail at create. The build proceeds on `buildable` and
   // simply does not create the `excluded` ones — the backend create loop is
   // already per-channel independent.
-  const fundedPlatforms = useMemo(() => allocations.map((a) => a.platform), [allocations]);
+  const fundedPlatforms = useMemo(
+    () => allocations.map((a) => a.platform),
+    [allocations],
+  );
   const creativePartition = useMemo(
-    () => partitionFundedCreative({
-      fundedPlatforms,
-      channels: creative.validation?.channels ?? [],
-      // ISSUE-995 REWORK: video ad create isn't wired yet (#997) — a video
-      // creative excludes every funded channel (preview-only), so nothing
-      // misleading builds.
-      kind: creative.kind,
-      preparationByPlatform: preparationRows,
-    }),
+    () =>
+      partitionFundedCreative({
+        fundedPlatforms,
+        channels: creative.validation?.channels ?? [],
+        // ISSUE-995 REWORK: video ad create isn't wired yet (#997) — a video
+        // creative excludes every funded channel (preview-only), so nothing
+        // misleading builds.
+        kind: creative.kind,
+        preparationByPlatform: preparationRows,
+      }),
     [fundedPlatforms, creative.validation, creative.kind, preparationRows],
   );
 
@@ -416,84 +503,116 @@ export function CampaignBuilderPage() {
   }, [creative.creativeRow?.id]);
 
   const preparationPlatforms = useMemo(
-    () => PREPARATION_ORDER.filter((platform) => fundedPlatforms.includes(platform)),
+    () =>
+      PREPARATION_ORDER.filter((platform) =>
+        fundedPlatforms.includes(platform),
+      ),
     [fundedPlatforms],
   );
 
-  const invokePreparation = useCallback(async (platform, action, creativeId) => {
-    const input = {
-      creative_library_id: creativeId,
-      platform,
-      lane: "consumer",
-    };
-    const fn = action === "retry"
-      ? retryVideoPreparation
-      : action === "status"
-      ? checkVideoPreparation
-      : startVideoPreparation;
-    return fn(input);
-  }, []);
+  const invokePreparation = useCallback(
+    async (platform, action, creativeId) => {
+      const input = {
+        creative_library_id: creativeId,
+        platform,
+        lane: "consumer",
+      };
+      const fn =
+        action === "retry"
+          ? retryVideoPreparation
+          : action === "status"
+            ? checkVideoPreparation
+            : startVideoPreparation;
+      return fn(input);
+    },
+    [],
+  );
 
-  const runPreparationPlatform = useCallback(async (platform, firstAction, creativeId) => {
-    let action = firstAction;
-    while (!preparationStopRef.current) {
-      setPreparationRunningPlatform(platform);
-      const result = await invokePreparation(platform, action, creativeId);
-      if (creative.creativeRow?.id !== creativeId) return null;
-      if (result.error) {
-        const parsed = result.parsedError ?? await parseEdgeError(result.error);
-        setPreparationRows((prev) => ({
-          ...prev,
-          [platform]: {
-            ...(prev[platform] ?? {}),
-            platform,
-            state: "failed",
-            retryable: true,
-            error: {
-              code: parsed?.body?.error ?? "preparation_request_failed",
-              message: parsed?.message ?? "We couldn't finish the platform handoff. Nothing was created.",
+  const runPreparationPlatform = useCallback(
+    async (platform, firstAction, creativeId) => {
+      let action = firstAction;
+      while (!preparationStopRef.current) {
+        setPreparationRunningPlatform(platform);
+        const result = await invokePreparation(platform, action, creativeId);
+        if (creative.creativeRow?.id !== creativeId) return null;
+        if (result.error) {
+          const parsed =
+            result.parsedError ?? (await parseEdgeError(result.error));
+          setPreparationRows((prev) => ({
+            ...prev,
+            [platform]: {
+              ...(prev[platform] ?? {}),
+              platform,
+              state: "failed",
+              retryable: true,
+              error: {
+                code: parsed?.body?.error ?? "preparation_request_failed",
+                message:
+                  parsed?.message ??
+                  "We couldn't finish the platform handoff. Nothing was created.",
+              },
+              trace_id: parsed?.body?.trace_id ?? null,
             },
-            trace_id: parsed?.body?.trace_id ?? null,
-          },
-        }));
-        return null;
+          }));
+          return null;
+        }
+        const row = result.data;
+        setPreparationRows((prev) => ({ ...prev, [platform]: row }));
+        if (
+          result.terminalDiscovered &&
+          !terminalAnnouncementsRef.current.has(row.trace_id)
+        ) {
+          terminalAnnouncementsRef.current.add(row.trace_id);
+          addToast({
+            variant: "error",
+            title: `${platform} couldn't prepare this video.`,
+            description: "Nothing was created. Use Retry on that platform.",
+          });
+        }
+        if (!["uploading", "processing"].includes(row?.state)) return row;
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, retryDelayMs(row)),
+        );
+        action = "status";
       }
-      const row = result.data;
-      setPreparationRows((prev) => ({ ...prev, [platform]: row }));
-      if (result.terminalDiscovered && !terminalAnnouncementsRef.current.has(row.trace_id)) {
-        terminalAnnouncementsRef.current.add(row.trace_id);
-        addToast({
-          variant: "error",
-          title: `${platform} couldn't prepare this video.`,
-          description: "Nothing was created. Use Retry on that platform.",
-        });
-      }
-      if (!["uploading", "processing"].includes(row?.state)) return row;
-      await new Promise((resolve) => window.setTimeout(resolve, retryDelayMs(row)));
-      action = "status";
-    }
-    return null;
-  }, [addToast, creative.creativeRow?.id, invokePreparation]);
+      return null;
+    },
+    [addToast, creative.creativeRow?.id, invokePreparation],
+  );
 
-  const runPreparationQueue = useCallback(async ({ resume = false } = {}) => {
-    const creativeId = creative.creativeRow?.id;
-    if (!creativeId || preparationRunRef.current || !preparationOnline) return;
-    preparationRunRef.current = true;
-    preparationStopRef.current = false;
-    setPreparationStopped(false);
-    try {
-      for (const platform of preparationPlatforms) {
-        if (preparationStopRef.current) break;
-        const state = preparationRows[platform]?.state ?? "not_started";
-        if (state === "ready" || state === "failed" || state === "timed_out") continue;
-        const action = resume && ["uploading", "processing"].includes(state) ? "status" : "start";
-        await runPreparationPlatform(platform, action, creativeId);
+  const runPreparationQueue = useCallback(
+    async ({ resume = false } = {}) => {
+      const creativeId = creative.creativeRow?.id;
+      if (!creativeId || preparationRunRef.current || !preparationOnline)
+        return;
+      preparationRunRef.current = true;
+      preparationStopRef.current = false;
+      setPreparationStopped(false);
+      try {
+        for (const platform of preparationPlatforms) {
+          if (preparationStopRef.current) break;
+          const state = preparationRows[platform]?.state ?? "not_started";
+          if (state === "ready" || state === "failed" || state === "timed_out")
+            continue;
+          const action =
+            resume && ["uploading", "processing"].includes(state)
+              ? "status"
+              : "start";
+          await runPreparationPlatform(platform, action, creativeId);
+        }
+      } finally {
+        preparationRunRef.current = false;
+        setPreparationRunningPlatform(null);
       }
-    } finally {
-      preparationRunRef.current = false;
-      setPreparationRunningPlatform(null);
-    }
-  }, [creative.creativeRow?.id, preparationOnline, preparationPlatforms, preparationRows, runPreparationPlatform]);
+    },
+    [
+      creative.creativeRow?.id,
+      preparationOnline,
+      preparationPlatforms,
+      preparationRows,
+      runPreparationPlatform,
+    ],
+  );
 
   const stopPreparation = useCallback(() => {
     preparationStopRef.current = true;
@@ -501,44 +620,53 @@ export function CampaignBuilderPage() {
     setPreparationRunningPlatform(null);
   }, []);
 
-  const retryPreparation = useCallback(async (platform) => {
-    const creativeId = creative.creativeRow?.id;
-    if (!creativeId || preparationRunRef.current || !preparationOnline) return;
-    preparationRunRef.current = true;
-    preparationStopRef.current = false;
-    setPreparationStopped(false);
-    try {
-      await runPreparationPlatform(platform, "retry", creativeId);
-    } finally {
-      preparationRunRef.current = false;
-      setPreparationRunningPlatform(null);
-    }
-  }, [creative.creativeRow?.id, preparationOnline, runPreparationPlatform]);
+  const retryPreparation = useCallback(
+    async (platform) => {
+      const creativeId = creative.creativeRow?.id;
+      if (!creativeId || preparationRunRef.current || !preparationOnline)
+        return;
+      preparationRunRef.current = true;
+      preparationStopRef.current = false;
+      setPreparationStopped(false);
+      try {
+        await runPreparationPlatform(platform, "retry", creativeId);
+      } finally {
+        preparationRunRef.current = false;
+        setPreparationRunningPlatform(null);
+      }
+    },
+    [creative.creativeRow?.id, preparationOnline, runPreparationPlatform],
+  );
 
-  const checkPreparation = useCallback(async (platform) => {
-    const creativeId = creative.creativeRow?.id;
-    if (!creativeId || preparationRunRef.current || !preparationOnline) return;
-    preparationRunRef.current = true;
-    preparationStopRef.current = false;
-    setPreparationStopped(false);
-    try {
-      await runPreparationPlatform(platform, "status", creativeId);
-    } finally {
-      preparationRunRef.current = false;
-      setPreparationRunningPlatform(null);
-    }
-  }, [creative.creativeRow?.id, preparationOnline, runPreparationPlatform]);
+  const checkPreparation = useCallback(
+    async (platform) => {
+      const creativeId = creative.creativeRow?.id;
+      if (!creativeId || preparationRunRef.current || !preparationOnline)
+        return;
+      preparationRunRef.current = true;
+      preparationStopRef.current = false;
+      setPreparationStopped(false);
+      try {
+        await runPreparationPlatform(platform, "status", creativeId);
+      } finally {
+        preparationRunRef.current = false;
+        setPreparationRunningPlatform(null);
+      }
+    },
+    [creative.creativeRow?.id, preparationOnline, runPreparationPlatform],
+  );
 
   // ISSUE-1009 [partial-failure retry lockout] — the page owns completion
   // truth because it owns all three inputs. Expected create work is exactly the
   // current destinations × creative-buildable platforms; funded-but-excluded
   // channels and stale result keys cannot complete or permanently block Review.
   const allExpectedPairsSucceeded = useMemo(
-    () => areAllExpectedCreatePairsSuccessful({
-      destinations,
-      buildablePlatforms: creativePartition.buildable,
-      createResults,
-    }),
+    () =>
+      areAllExpectedCreatePairsSuccessful({
+        destinations,
+        buildablePlatforms: creativePartition.buildable,
+        createResults,
+      }),
     [destinations, creativePartition.buildable, createResults],
   );
 
@@ -549,9 +677,56 @@ export function CampaignBuilderPage() {
   const firstDestination = destinations[0] ?? null;
   useEffect(() => {
     if (!nameTouched && firstDestination) {
-      setName(suggestCampaignName({ brandName: firstDestination.brand_name, title: firstDestination.title }));
+      setName(
+        suggestCampaignName({
+          brandName: firstDestination.brand_name,
+          title: firstDestination.title,
+        }),
+      );
     }
   }, [firstDestination, nameTouched]);
+
+  const planFingerprint = useMemo(
+    () =>
+      JSON.stringify({
+        lane,
+        goals: goalIds,
+        destination: firstDestination
+          ? {
+              page_type: firstDestination.page_type,
+              brand_slug: firstDestination.brand_slug,
+              slug: firstDestination.slug,
+              url: firstDestination.dest_url,
+            }
+          : null,
+        audience,
+        budget,
+        allocations,
+        creative: creative.creativeRow?.id ?? creative.publicUrl ?? null,
+        copy,
+        specialAdCategory,
+        name,
+      }),
+    [
+      lane,
+      goalIds,
+      firstDestination,
+      audience,
+      budget,
+      allocations,
+      creative.creativeRow?.id,
+      creative.publicUrl,
+      copy,
+      specialAdCategory,
+      name,
+    ],
+  );
+
+  useEffect(() => {
+    setPlanPreview(null);
+    setBroaderAccepted(false);
+    setLaunchPhrase("");
+  }, [planFingerprint]);
 
   // ── Per-step gate (Next disabled until the step is valid) ──
   const stepValid = (stepId) => {
@@ -561,9 +736,13 @@ export function CampaignBuilderPage() {
       case "preflight":
         // ISSUE-986: at least one platform must be healthy AND picked — the
         // picker can't proceed with an empty channel set.
-        return Boolean(preflightRows) &&
-          preflightRows.some((r) => r.overall === "green" || r.overall === "amber") &&
-          effectivePlatforms.length > 0;
+        return (
+          Boolean(preflightRows) &&
+          preflightRows.some(
+            (r) => r.overall === "green" || r.overall === "amber",
+          ) &&
+          effectivePlatforms.length > 0
+        );
       case "goal":
         return goalIds.length > 0;
       case "destination":
@@ -572,18 +751,27 @@ export function CampaignBuilderPage() {
         return validateAudience(audience).length === 0;
       case "budget": {
         const mode = budget.mode === "lifetime" ? "lifetime" : "daily";
-        const amount = mode === "lifetime" ? budget.totalLifetimeCents : budget.totalDailyCents;
+        const amount =
+          mode === "lifetime"
+            ? budget.totalLifetimeCents
+            : budget.totalDailyCents;
         if (mode === "lifetime" && !budget.endsAt) return false;
-        return validateBudget({ totalDailyCents: amount || 0, channelRows }).length === 0 &&
-          allocations.length > 0;
+        const finiteCap = Number(budget.capCents);
+        if (!Number.isSafeInteger(finiteCap) || finiteCap < (amount || 0))
+          return false;
+        return (
+          validateBudget({ totalDailyCents: amount || 0, channelRows })
+            .length === 0 && allocations.length > 0
+        );
       }
       case "creative": {
         // ISSUE-995: a video creative must be RECORDED (its bytes live off-
         // client, so the library row id is the only way to reference it);
         // an image can build from its inline public URL.
-        const hasMedia = creative.kind === "video"
-          ? Boolean(creative.creativeRow)
-          : Boolean(creative.publicUrl);
+        const hasMedia =
+          creative.kind === "video"
+            ? Boolean(creative.creativeRow)
+            : Boolean(creative.publicUrl);
         if (!hasMedia || !creative.validation) return false;
         // ISSUE-995 PROCEED-WITH-PASSING: Next is enabled as long as AT LEAST
         // ONE funded channel can build with this creative — the failing ones are
@@ -592,12 +780,15 @@ export function CampaignBuilderPage() {
         return creativePartition.buildable.length > 0;
       }
       case "copy": {
-        const funded = creative.kind === "video"
-          ? creativePartition.buildable
-          : allocations.map((a) => a.platform);
+        const funded =
+          creative.kind === "video"
+            ? creativePartition.buildable
+            : allocations.map((a) => a.platform);
         const validation = validateCopy(copy, funded);
-        return funded.every((p) => (validation[p]?.hard ?? []).length === 0) &&
-          copy.primary.trim().length > 0;
+        return (
+          funded.every((p) => (validation[p]?.hard ?? []).length === 0) &&
+          copy.primary.trim().length > 0
+        );
       }
       case "policy":
         return specialAdCategory !== "CREDIT";
@@ -611,15 +802,23 @@ export function CampaignBuilderPage() {
     if (stepValid(stepId)) return null;
     switch (stepId) {
       case "preflight":
-        return effectivePlatforms.length === 0 && preflightRows?.some((r) => r.overall === "green" || r.overall === "amber")
+        return effectivePlatforms.length === 0 &&
+          preflightRows?.some(
+            (r) => r.overall === "green" || r.overall === "amber",
+          )
           ? "Pick at least one platform to build for."
           : "No channel can run an ad right now. Fix at least one blocker above to continue.";
       case "goal":
         return "Pick at least one goal.";
       case "destination":
         return "Pick a page to send people to.";
+      case "budget":
+        return "Set a hard cap at or above the campaign budget.";
       case "creative": {
-        const hasMedia = creative.kind === "video" ? Boolean(creative.creativeRow) : Boolean(creative.publicUrl);
+        const hasMedia =
+          creative.kind === "video"
+            ? Boolean(creative.creativeRow)
+            : Boolean(creative.publicUrl);
         if (!hasMedia) {
           return creative.kind === "video"
             ? "Add the video and record it to the library first."
@@ -648,6 +847,161 @@ export function CampaignBuilderPage() {
     if (index >= 0) goTo(index);
   };
 
+  const callPlan = async (payload) => {
+    const { data, error } = await adPlanAction(payload);
+    if (!error) return data;
+    const parsed = await parseEdgeError(error);
+    throw new Error(
+      String(
+        parsed?.body?.detail ??
+          parsed?.body?.error ??
+          parsed?.message ??
+          "The immutable plan could not be prepared.",
+      ),
+    );
+  };
+
+  const prepareImmutablePlan = async (executionAllocations, capByPlatform) => {
+    if (
+      planPreview?.status === "ready" &&
+      planPreview.fingerprint === planFingerprint
+    ) {
+      return planPreview;
+    }
+    if (
+      planPreview?.status === "blocked" &&
+      planPreview.fingerprint === planFingerprint
+    )
+      return planPreview;
+    if (
+      planPreview?.status === "broader" &&
+      planPreview.fingerprint === planFingerprint &&
+      !broaderAccepted
+    )
+      return planPreview;
+
+    const destinationFamily =
+      firstDestination.page_type === "marketing"
+        ? "marketing_page"
+        : "public_mingla_page";
+    const destinationKey =
+      firstDestination.page_type === "marketing"
+        ? firstDestination.slug
+        : [
+            firstDestination.page_type,
+            firstDestination.brand_slug,
+            firstDestination.page_type === "brand"
+              ? null
+              : firstDestination.slug,
+          ]
+            .filter(Boolean)
+            .join(":");
+    let planId =
+      planPreview?.fingerprint === planFingerprint ? planPreview.plan_id : null;
+    if (!planId) {
+      const opened = await callPlan({
+        action: "open",
+        client_kind: "admin",
+        owner_kind: "mingla",
+        destination_family: destinationFamily,
+        destination_key: destinationKey,
+      });
+      planId = opened?.plan?.id;
+    }
+    if (!planId) throw new Error("The server did not return a plan ID.");
+
+    const audienceIntent = audienceIntentFromState(audience);
+    const platforms = executionAllocations.map((row) => row.platform);
+    const broaderAcceptance = Object.fromEntries(
+      platforms.map((platform) => [platform, broaderAccepted]),
+    );
+    const versioned = await callPlan({
+      action: "create_version",
+      plan_id: planId,
+      canonical_plan: {
+        name,
+        goal_ids: goalIds,
+        schedule: {
+          starts_at: budget.startsAt,
+          ends_at: budget.endsAt,
+        },
+        audience_intent: audienceIntent,
+        creative_library_id: creative.creativeRow?.id ?? null,
+        creative_url: creative.kind === "image" ? creative.publicUrl : null,
+        copy,
+        special_ad_category: specialAdCategory,
+        confirmation_phrase: "CREATE PAUSED",
+        broader_acceptance: broaderAcceptance,
+      },
+      provider_allocations: executionAllocations.map((allocation) => ({
+        platform: allocation.platform,
+        connection_id: connections[allocation.platform]?.id,
+        host_budget_cents: capByPlatform.get(allocation.platform),
+        host_delivery_budget_cents: allocation.dailyCents,
+      })),
+    });
+    const versionId = versioned?.version?.id;
+    const planHash = versioned?.version?.plan_hash;
+    if (!versionId || !planHash) {
+      throw new Error("The server did not return an immutable plan binding.");
+    }
+    const frozen = await callPlan({
+      action: "freeze_targeting",
+      plan_version_id: versionId,
+      audience_intent: audienceIntent,
+      refs_by_platform: targetingRefsFromState(audience, platforms),
+    });
+    const targetingSnapshots = frozen?.targeting_snapshots ?? [];
+    const hardBlocks = targetingSnapshots.filter(
+      (row) =>
+        row.verdict === "unavailable" || row.verdict === "check_required",
+    );
+    const broaderRows = targetingSnapshots.filter(
+      (row) => row.verdict === "broader" && row.broader_accepted !== true,
+    );
+    if (hardBlocks.length > 0) {
+      const preview = {
+        status: "blocked",
+        fingerprint: planFingerprint,
+        plan_id: planId,
+        plan_version_id: versionId,
+        plan_hash: planHash,
+        targeting_snapshots: targetingSnapshots,
+      };
+      setPlanPreview(preview);
+      return preview;
+    }
+    if (broaderRows.length > 0) {
+      const preview = {
+        status: "broader",
+        fingerprint: planFingerprint,
+        plan_id: planId,
+        plan_version_id: versionId,
+        plan_hash: planHash,
+        targeting_snapshots: targetingSnapshots,
+      };
+      setPlanPreview(preview);
+      return preview;
+    }
+    await callPlan({
+      action: "mark_ready",
+      plan_version_id: versionId,
+      plan_hash: planHash,
+    });
+    const preview = {
+      status: "ready",
+      fingerprint: planFingerprint,
+      plan_id: planId,
+      plan_version_id: versionId,
+      plan_hash: planHash,
+      targeting_snapshots: targetingSnapshots,
+      funded: false,
+      confirmed: false,
+    };
+    setPlanPreview(preview);
+    return preview;
+  };
+
   // ── Create (paused) — one call per (destination × funded channel); NEVER launches ──
   const runCreate = async ({ validateOnly }) => {
     if (currencyBlockedReason) {
@@ -661,6 +1015,23 @@ export function CampaignBuilderPage() {
     if (validateOnly) setValidatingShapes(true);
     else setSubmitting(true);
     const results = { ...(createResults ?? {}) };
+    const executionAllocations =
+      creative.kind === "video"
+        ? allocations.filter((row) =>
+            creativePartition.buildable.includes(row.platform),
+          )
+        : allocations;
+    const totalCap =
+      budget.mode === "lifetime"
+        ? Number(budget.totalLifetimeCents)
+        : Number(budget.capCents);
+    const capByPlatform = new Map(
+      allocateLifetimeCents(executionAllocations, totalCap).map((row) => [
+        row.platform,
+        row.amountCents,
+      ]),
+    );
+    let immutablePlan = null;
     // ISSUE-979 Bug 1: resolve every platform's objective AND optimization_goal
     // ONCE, coherently, from the whole selected goal set (single source of
     // truth) — never goalIds[0] for one field and the full array for another.
@@ -670,7 +1041,9 @@ export function CampaignBuilderPage() {
     // ISSUE-995 PROCEED-WITH-PASSING: skip funded channels this creative can't
     // build (reject or unresolved needs_transcode). The backend loop is already
     // per-channel independent — we simply don't issue their create call.
-    const creativeExcluded = new Set(creativePartition.excluded.map((e) => e.platform));
+    const creativeExcluded = new Set(
+      creativePartition.excluded.map((e) => e.platform),
+    );
     // ISSUE-1002 [multi-destination fan-out] — the DESTINATION axis is the OUTER
     // loop around the existing per-platform allocations loop, so one campaign fans
     // out to one ad per (destination × platform), each with its own landing URL
@@ -681,7 +1054,8 @@ export function CampaignBuilderPage() {
       addToast({
         variant: "error",
         title: "One page per campaign",
-        message: "Pick a single destination. Create a separate campaign for another page.",
+        message:
+          "Pick a single destination. Create a separate campaign for another page.",
       });
       if (validateOnly) setValidatingShapes(false);
       else setSubmitting(false);
@@ -711,17 +1085,81 @@ export function CampaignBuilderPage() {
       return;
     }
     // Conserve the admin-entered lifetime total (avoid floor(total/days)*days loss).
-    const lifetimeByPlatform = budget.mode === "lifetime"
-      ? new Map(
-        allocateLifetimeCents(allocations, budget.totalLifetimeCents || 0).map((row) => [
-          row.platform,
-          row.amountCents,
-        ]),
-      )
-      : null;
+    const lifetimeByPlatform =
+      budget.mode === "lifetime"
+        ? new Map(
+            allocateLifetimeCents(
+              executionAllocations,
+              budget.totalLifetimeCents || 0,
+            ).map((row) => [row.platform, row.amountCents]),
+          )
+        : null;
+    if (!validateOnly) {
+      try {
+        immutablePlan = await prepareImmutablePlan(
+          executionAllocations,
+          capByPlatform,
+        );
+        if (immutablePlan.status !== "ready") {
+          addToast({
+            variant: immutablePlan.status === "broader" ? "warning" : "error",
+            title:
+              immutablePlan.status === "broader"
+                ? "Review the targeting differences"
+                : "The plan has targeting blockers",
+            description:
+              immutablePlan.status === "broader"
+                ? "Accept each named provider widening, then prepare the bound plan again."
+                : "Return to Audience and resolve the provider checks shown in Review.",
+          });
+          setSubmitting(false);
+          return;
+        }
+        if (launchPhrase !== "CREATE PAUSED") {
+          addToast({
+            variant: "warning",
+            title: "Type CREATE PAUSED to continue",
+            description:
+              "The phrase confirms this exact hash and hard cap. Nothing launches yet.",
+          });
+          setSubmitting(false);
+          return;
+        }
+        if (!immutablePlan.funded) {
+          await callPlan({
+            action: "fund",
+            plan_version_id: immutablePlan.plan_version_id,
+            plan_hash: immutablePlan.plan_hash,
+          });
+        }
+        if (!immutablePlan.confirmed) {
+          await callPlan({
+            action: "confirm_launch",
+            plan_version_id: immutablePlan.plan_version_id,
+            plan_hash: immutablePlan.plan_hash,
+            phrase: launchPhrase,
+          });
+        }
+        immutablePlan = { ...immutablePlan, funded: true, confirmed: true };
+        setPlanPreview(immutablePlan);
+      } catch (error) {
+        addToast({
+          variant: "error",
+          title: "Plan preparation failed",
+          description: error instanceof Error ? error.message : String(error),
+        });
+        setSubmitting(false);
+        return;
+      }
+    }
     const multiDest = false;
     const groupId = null;
-    const baseName = name || suggestCampaignName({ brandName: firstDestination?.brand_name, title: firstDestination?.title });
+    const baseName =
+      name ||
+      suggestCampaignName({
+        brandName: firstDestination?.brand_name,
+        title: firstDestination?.title,
+      });
     for (const dest of destinations) {
       const destSlot = `${dest.page_type}:${dest.id}`;
       const destBody = {
@@ -733,7 +1171,7 @@ export function CampaignBuilderPage() {
       // the created campaigns stay distinguishable; a single-destination build
       // keeps the base name exactly.
       const perCallName = multiDest ? `${baseName} — ${dest.title}` : baseName;
-      for (const allocation of allocations) {
+      for (const allocation of executionAllocations) {
         const platform = allocation.platform;
         const resultKey = multiDest ? `${platform}::${destSlot}` : platform;
         const meta = { platform, destTitle: dest.title, multiDest };
@@ -752,12 +1190,14 @@ export function CampaignBuilderPage() {
           budget: {
             dailyCentsForChannel: allocation.dailyCents,
             mode: budget.mode === "lifetime" ? "lifetime" : "daily",
-            amountCents: budget.mode === "lifetime" && lifetimeAmount != null
-              ? lifetimeAmount
-              : allocation.dailyCents,
-            capCents: budget.mode === "lifetime" && lifetimeAmount != null
-              ? lifetimeAmount
-              : (budget.capCents ?? null),
+            amountCents:
+              budget.mode === "lifetime" && lifetimeAmount != null
+                ? lifetimeAmount
+                : allocation.dailyCents,
+            capCents:
+              budget.mode === "lifetime" && lifetimeAmount != null
+                ? (capByPlatform.get(platform) ?? lifetimeAmount)
+                : (capByPlatform.get(platform) ?? null),
             startsAt: budget.startsAt,
             endsAt: budget.endsAt,
             currency: planCurrency.currency,
@@ -779,58 +1219,65 @@ export function CampaignBuilderPage() {
           requestId: requestIdFor(platform, destSlot),
           validateOnly,
         });
-        const { data, error } = await createCampaign(payload);
-      if (error) {
-        const parsed = await parseEdgeError(error);
-        results[resultKey] = {
-          ...meta,
-          error: {
-            code: parsed?.body?.error,
-            message: typeof parsed?.body?.detail === "string"
-              ? parsed.body.detail
-              : parsed?.body?.detail?.message ?? parsed?.message ?? "Create failed.",
-            trace: parsed?.body?.detail?.trace_id ?? null,
-          },
-        };
-      } else {
-        // ISSUE-979 Bug 2: only "Created" when something was actually created or
-        // validated. TikTok/Snap/Reddit have no validate-only mode and return
-        // { validated: false, skipped_layers } to a validate_only call — that is
-        // NOT a create, so it must never fire the "Created" toast.
-        const outcome = classifyCreateResult(data);
-        const destLabel = multiDest ? ` → ${dest.title}` : "";
-        if (outcome.outcome === "validated") {
-          results[resultKey] = {
-            ...meta,
-            validated: true,
-            validated_layers: outcome.validatedLayers,
-            skipped_layers: outcome.skippedLayers,
-          };
-        } else if (outcome.outcome === "created") {
-          results[resultKey] = { ...meta, campaign: outcome.campaign };
-          addToast({
-            variant: "success",
-            title: `Created on ${platform}${destLabel}. Nothing is spending yet.`,
-          });
-        } else {
-          // Honest "nothing happened": no dry-run exists on this platform (or the
-          // create returned no object). Record it truthfully — never a false
-          // "Created" — so Review shows the honest state.
-          results[resultKey] = {
-            ...meta,
-            noPlatformValidate: true,
-            skipped_layers: outcome.skippedLayers,
-            detail: outcome.detail,
-          };
-          addToast({
-            variant: "info",
-            title: `${platform}${destLabel}: nothing was created or validated.`,
-            description: validateOnly
-              ? "This platform has no dry-run, so the real create is its first check. Use “Create campaign (paused)” to build it."
-              : "The platform returned no object — check the card for details.",
-          });
+        if (immutablePlan) {
+          payload.plan_version_id = immutablePlan.plan_version_id;
+          payload.plan_hash = immutablePlan.plan_hash;
         }
-      }
+        const { data, error } = await createCampaign(payload);
+        if (error) {
+          const parsed = await parseEdgeError(error);
+          results[resultKey] = {
+            ...meta,
+            error: {
+              code: parsed?.body?.error,
+              message:
+                typeof parsed?.body?.detail === "string"
+                  ? parsed.body.detail
+                  : (parsed?.body?.detail?.message ??
+                    parsed?.message ??
+                    "Create failed."),
+              trace: parsed?.body?.detail?.trace_id ?? null,
+            },
+          };
+        } else {
+          // ISSUE-979 Bug 2: only "Created" when something was actually created or
+          // validated. TikTok/Snap/Reddit have no validate-only mode and return
+          // { validated: false, skipped_layers } to a validate_only call — that is
+          // NOT a create, so it must never fire the "Created" toast.
+          const outcome = classifyCreateResult(data);
+          const destLabel = multiDest ? ` → ${dest.title}` : "";
+          if (outcome.outcome === "validated") {
+            results[resultKey] = {
+              ...meta,
+              validated: true,
+              validated_layers: outcome.validatedLayers,
+              skipped_layers: outcome.skippedLayers,
+            };
+          } else if (outcome.outcome === "created") {
+            results[resultKey] = { ...meta, campaign: outcome.campaign };
+            addToast({
+              variant: "success",
+              title: `Created on ${platform}${destLabel}. Nothing is spending yet.`,
+            });
+          } else {
+            // Honest "nothing happened": no dry-run exists on this platform (or the
+            // create returned no object). Record it truthfully — never a false
+            // "Created" — so Review shows the honest state.
+            results[resultKey] = {
+              ...meta,
+              noPlatformValidate: true,
+              skipped_layers: outcome.skippedLayers,
+              detail: outcome.detail,
+            };
+            addToast({
+              variant: "info",
+              title: `${platform}${destLabel}: nothing was created or validated.`,
+              description: validateOnly
+                ? "This platform has no dry-run, so the real create is its first check. Use “Create campaign (paused)” to build it."
+                : "The platform returned no object — check the card for details.",
+            });
+          }
+        }
         setCreateResults({ ...results });
       }
     }
@@ -840,40 +1287,59 @@ export function CampaignBuilderPage() {
 
   const summary = buildLaunchSummary({
     channelRows: plannedRows,
-    allocations: creative.kind === "video"
-      ? allocations.filter((a) => creativePartition.buildable.includes(a.platform))
-      : allocations,
+    allocations:
+      creative.kind === "video"
+        ? allocations.filter((a) =>
+            creativePartition.buildable.includes(a.platform),
+          )
+        : allocations,
     goalIds,
     resolvedGoal: resolvedGoalForDisplay,
-    destinations: destinations.map((d) => ({ title: d.title, dest_url: d.dest_url })),
-    creative: (creative.kind === "video" ? creative.creativeRow : creative.publicUrl)
+    destinations: destinations.map((d) => ({
+      title: d.title,
+      dest_url: d.dest_url,
+    })),
+    creative: (
+      creative.kind === "video" ? creative.creativeRow : creative.publicUrl
+    )
       ? {
-        kind: creative.kind,
-        name: creative.name,
-        width: creative.validation?.probe?.width,
-        height: creative.validation?.probe?.height,
-      }
+          kind: creative.kind,
+          name: creative.name,
+          width: creative.validation?.probe?.width,
+          height: creative.validation?.probe?.height,
+        }
       : null,
     copyCheck: (() => {
       const funded = allocations.map((a) => a.platform);
       const validation = validateCopy(copy, funded);
-      const copyHardBlocks = funded.reduce((n, p) => n + (validation[p]?.hard ?? []).length, 0);
-      const copyText = [copy.primary, copy.headline, copy.description].filter(Boolean).join("\n");
-      const { personalAttributes, dating, alcohol } = runPolicyPrecheck({ copyText, channelSet: funded });
+      const copyHardBlocks = funded.reduce(
+        (n, p) => n + (validation[p]?.hard ?? []).length,
+        0,
+      );
+      const copyText = [copy.primary, copy.headline, copy.description]
+        .filter(Boolean)
+        .join("\n");
+      const { personalAttributes, dating, alcohol } = runPolicyPrecheck({
+        copyText,
+        channelSet: funded,
+      });
       return {
         copyHardBlocks,
-        policyFindings: personalAttributes.length + (dating ? 1 : 0) + (alcohol ? 1 : 0),
+        policyFindings:
+          personalAttributes.length + (dating ? 1 : 0) + (alcohol ? 1 : 0),
       };
     })(),
-    totalDailyCents: budget.mode === "lifetime"
-      ? (budget.totalLifetimeCents ?? budget.totalDailyCents)
-      : budget.totalDailyCents,
+    totalDailyCents:
+      budget.mode === "lifetime"
+        ? (budget.totalLifetimeCents ?? budget.totalDailyCents)
+        : budget.totalDailyCents,
     preparationByPlatform: preparationRows,
     // toward #3697 Wave 3 — Review mirrors server hard-cap / schedule.
     budgetMode: budget.mode,
-    capCents: budget.mode === "lifetime"
-      ? (budget.totalLifetimeCents ?? budget.capCents)
-      : budget.capCents,
+    capCents:
+      budget.mode === "lifetime"
+        ? (budget.totalLifetimeCents ?? budget.capCents)
+        : budget.capCents,
     startsAt: budget.startsAt,
     endsAt: budget.endsAt,
     currency: planCurrency.currency,
@@ -882,7 +1348,11 @@ export function CampaignBuilderPage() {
   const stepId = STEPS[activeIndex].id;
   const disabledReason = nextDisabledReason();
   const goBack = () => {
-    if (stepId === "creative" && preparationRunningPlatform && !preparationStopped) {
+    if (
+      stepId === "creative" &&
+      preparationRunningPlatform &&
+      !preparationStopped
+    ) {
       const leave = window.confirm(
         `Leave while ${preparationRunningPlatform} is processing?\n\nNo campaign or ad will be created. The platform may keep processing the uploaded video. When you return, we’ll check its latest status.`,
       );
@@ -897,9 +1367,13 @@ export function CampaignBuilderPage() {
       <div className="space-y-6">
         <PageHeader title="Campaign Builder" />
         <AlertCard variant="info" title="Ads console is off">
-          Campaign Builder is gated by <code className="text-xs">enable_ads_console</code>.
-          Turn it on in admin_config, or use{" "}
-          <a className="underline" href="#/ad-engine">Ad Engine</a> for connections.
+          Campaign Builder is gated by{" "}
+          <code className="text-xs">enable_ads_console</code>. Turn it on in
+          admin_config, or use{" "}
+          <a className="underline" href="#/ad-engine">
+            Ad Engine
+          </a>{" "}
+          for connections.
         </AlertCard>
       </div>
     );
@@ -913,7 +1387,12 @@ export function CampaignBuilderPage() {
         activeIndex={activeIndex}
         maxVisitedIndex={maxVisitedIndex}
         onJump={(index) => {
-          if (index < activeIndex && dirty && stepId === "review" && createResults) {
+          if (
+            index < activeIndex &&
+            dirty &&
+            stepId === "review" &&
+            createResults
+          ) {
             setPendingJump(index);
           } else {
             goTo(index);
@@ -945,15 +1424,28 @@ export function CampaignBuilderPage() {
               specialAdCategory={specialAdCategory}
             />
           )}
-          {stepId === "goal" && <StepGoal goalIds={goalIds} onGoalsChange={setGoalIds} />}
+          {stepId === "goal" && (
+            <StepGoal goalIds={goalIds} onGoalsChange={setGoalIds} />
+          )}
           {stepId === "destination" && (
-            <StepDestination destinations={destinations} onDestinationsChange={setDestinations} />
+            <StepDestination
+              destinations={destinations}
+              onDestinationsChange={setDestinations}
+            />
           )}
           {stepId === "audience" && (
-            <StepAudience audience={audience} onAudienceChange={setAudience} channelRows={plannedRows} />
+            <StepAudience
+              audience={audience}
+              onAudienceChange={setAudience}
+              channelRows={plannedRows}
+            />
           )}
           {stepId === "budget" && (
-            <StepBudget budget={budget} onBudgetChange={setBudget} channelRows={plannedRows} />
+            <StepBudget
+              budget={budget}
+              onBudgetChange={setBudget}
+              channelRows={plannedRows}
+            />
           )}
           {stepId === "creative" && (
             <StepCreative
@@ -1013,6 +1505,11 @@ export function CampaignBuilderPage() {
               onValidateShapes={() => runCreate({ validateOnly: true })}
               onJumpToStep={jumpToStepId}
               currencyBlockedReason={currencyBlockedReason}
+              planPreview={planPreview}
+              broaderAccepted={broaderAccepted}
+              onBroaderAcceptedChange={setBroaderAccepted}
+              confirmationPhrase={launchPhrase}
+              onConfirmationPhraseChange={setLaunchPhrase}
             />
           )}
 
@@ -1029,7 +1526,9 @@ export function CampaignBuilderPage() {
             {activeIndex < STEPS.length - 1 && (
               <div className="flex items-center gap-3">
                 {disabledReason && (
-                  <span className="text-xs text-[var(--color-text-tertiary)]">{disabledReason}</span>
+                  <span className="text-xs text-[var(--color-text-tertiary)]">
+                    {disabledReason}
+                  </span>
                 )}
                 <Button
                   iconRight={ArrowRight}
@@ -1061,7 +1560,11 @@ export function CampaignBuilderPage() {
           <p className="text-[10px] text-[var(--color-text-tertiary)] mt-2">
             Preview source is labeled above every frame.
             {destinations.length > 1 && (
-              <> Showing the first of {destinations.length} destinations — each gets its own ad.</>
+              <>
+                {" "}
+                Showing the first of {destinations.length} destinations — each
+                gets its own ad.
+              </>
             )}
           </p>
         </div>
@@ -1075,12 +1578,14 @@ export function CampaignBuilderPage() {
       >
         <ModalBody>
           <p className="text-sm">
-            Campaigns already created stay created (they're paused). Going back lets you edit
-            the plan for the next create.
+            Campaigns already created stay created (they're paused). Going back
+            lets you edit the plan for the next create.
           </p>
         </ModalBody>
         <ModalFooter>
-          <Button variant="secondary" onClick={() => setPendingJump(null)}>Stay</Button>
+          <Button variant="secondary" onClick={() => setPendingJump(null)}>
+            Stay
+          </Button>
           <Button
             onClick={() => {
               goTo(pendingJump);

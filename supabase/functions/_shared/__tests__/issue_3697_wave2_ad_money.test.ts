@@ -280,3 +280,5 @@ Deno.test("Meta CBO lifetime uses lifetime_budget not daily_budget", async () =>
   });
   assertEquals(adSet.end_time, "2026-10-07T23:00:00+0000");
 });
+// #3697 v1.4: spend assertions now use provider_currency because Host and
+// provider minor units must never share an implicit currency authority.

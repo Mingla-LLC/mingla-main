@@ -1,0 +1,88 @@
+import fs from "node:fs";
+import path from "node:path";
+
+const ROOT = path.resolve(__dirname, "../../..");
+const read = (relative: string): string =>
+  fs.readFileSync(path.join(ROOT, relative), "utf8");
+
+describe("issue #3697 v1.4 Host Ads program", () => {
+  const service = read("src/services/hostAdPlanService.ts");
+  const createRoute = read("app/(tabs)/marketing/ads/create.tsx");
+  const adsRoute = read("app/(tabs)/marketing/ads/index.tsx");
+  const ariCard = read("src/components/ari/ToolProposalCard.tsx");
+  const campaignService = read("src/services/hostAdCampaignService.ts");
+  const hostCampaignEndpoint = read(
+    "../supabase/functions/host-ad-campaign/index.ts",
+  );
+  const planEndpoint = read("../supabase/functions/ad-plan/index.ts");
+
+  it("links the Ads tab to a concrete Host builder", () => {
+    expect(adsRoute).toContain('router.push("/(tabs)/marketing/ads/create"');
+    expect(createRoute).toContain("Prepare immutable plan");
+    expect(createRoute).toContain("Hold funds and launch");
+    expect(adsRoute).toContain("useHostAdPlans");
+    expect(adsRoute).toContain("Plans in progress");
+  });
+
+  it("uses the shared immutable plan and never accepts client currency", () => {
+    expect(service).toContain('action: "open"');
+    expect(service).toContain('action: "create_version"');
+    expect(service).toContain('action: "freeze_targeting"');
+    expect(service).toContain('action: "mark_ready"');
+    expect(service).toContain('action: "fund"');
+    expect(service).toContain('action: "confirm_launch"');
+    expect(service).not.toMatch(/currency:\s*input\./);
+    expect(service).toContain('phrase: "LAUNCH"');
+    expect(service).toContain("input.connections.map");
+    expect(createRoute).toContain("one or more connected platforms");
+  });
+
+  it("stops the first three for staff review before provider create", () => {
+    const reviewIndex = service.indexOf(
+      'aggregate.plan.state === "staff_review_required"',
+    );
+    const createIndex = service.lastIndexOf('"admin-ad-create-campaign"');
+    expect(reviewIndex).toBeGreaterThan(-1);
+    expect(createIndex).toBeGreaterThan(reviewIndex);
+    expect(createRoute).toContain("no provider object exists");
+    expect(createRoute).toContain("Cancel plan and release funds");
+  });
+
+  it("runs safe provider preflight before funding and exposes cancellation", () => {
+    const validateIndex = service.indexOf("await validateAggregate(aggregate)");
+    const fundIndex = service.indexOf('action: "fund"');
+    expect(validateIndex).toBeGreaterThan(-1);
+    expect(validateIndex).toBeLessThan(fundIndex);
+    expect(service).toContain("validate_only: true");
+    expect(service).toContain('action: "cancel_before_create"');
+  });
+
+  it("uses the shared aggregate lifecycle for Host pause and plan-wide stop", () => {
+    expect(campaignService).toContain('"admin-ad-campaign-action"');
+    expect(planEndpoint).toContain('action === "cancel_before_create"');
+    expect(hostCampaignEndpoint).toContain("campaign_ids: planCampaigns.map");
+  });
+
+  it("reuses canonical Bunny creative rows instead of inventing an Ads uploader", () => {
+    expect(planEndpoint).toContain('.from("ad_creatives")');
+    expect(planEndpoint).toContain('.eq("kind", "video")');
+    expect(createRoute).toContain("shared cover-video flow");
+    expect(createRoute).not.toMatch(/uploadAsync|createUpload|bunny.*upload/i);
+  });
+
+  it("exposes only permission-scoped Host setup data", () => {
+    expect(planEndpoint).toContain('action === "host_setup"');
+    expect(planEndpoint).toContain("biz_can_manage_payments_for_brand");
+    expect(planEndpoint).toContain(
+      "id,platform,lane,currency,status,connected,updated_at",
+    );
+    expect(planEndpoint).not.toContain('select("*,secret');
+  });
+
+  it("shows Ari's server-resolved brand currency without inventing a top-up", () => {
+    expect(ariCard).toContain("context.ad_budget_cents");
+    expect(ariCard).toContain('label: "Hard cap"');
+    expect(ariCard).toContain('label: "Daily total"');
+    expect(ariCard).not.toContain('label: "Total top-up"');
+  });
+});

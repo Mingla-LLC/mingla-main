@@ -14,7 +14,15 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, Pause, RefreshCw, Rocket } from "lucide-react";
+import {
+  CheckCircle2,
+  ExternalLink,
+  MessageSquareWarning,
+  Pause,
+  RefreshCw,
+  Rocket,
+  XCircle,
+} from "lucide-react";
 import { AlertCard, SectionCard } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -22,6 +30,7 @@ import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
 import {
+  adPlanAction,
   campaignAction,
   getCampaignConversions,
   getCampaignDetail,
@@ -30,7 +39,10 @@ import {
   parseEdgeError,
   syncCampaigns,
 } from "../services/adEngineService";
-import { DELIVERY_BADGE_VARIANTS, mapReviewDetail } from "../lib/adBuilder/reviewDetailMap";
+import {
+  DELIVERY_BADGE_VARIANTS,
+  mapReviewDetail,
+} from "../lib/adBuilder/reviewDetailMap";
 import { launchConfirmCopy } from "../lib/adBuilder/budgetRules";
 import { PLATFORM_LABELS } from "../lib/adBuilder/channelPlan";
 import { LAUNCH_CONFIRM_PHRASE } from "../lib/adLaunchConfirm";
@@ -60,7 +72,8 @@ function formatMinor(currency, minor) {
 }
 
 function CurrencyRows({ values }) {
-  const rows = values && typeof values === "object" ? Object.entries(values) : [];
+  const rows =
+    values && typeof values === "object" ? Object.entries(values) : [];
   if (rows.length === 0) return <span>—</span>;
   return (
     <div className="space-y-1">
@@ -81,6 +94,7 @@ export function CampaignsPage() {
   const [adsConsoleEnabled, setAdsConsoleEnabled] = useState(true);
   const [adsConsoleReady, setAdsConsoleReady] = useState(false);
   const [campaigns, setCampaigns] = useState(null);
+  const [reviewQueue, setReviewQueue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -88,6 +102,7 @@ export function CampaignsPage() {
   const [rowBusy, setRowBusy] = useState({});
   const [rowWarning, setRowWarning] = useState({});
   const [launchTarget, setLaunchTarget] = useState(null);
+  const [reviewTarget, setReviewTarget] = useState(null);
   // ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI (the detail panel feed).
   const [roi, setRoi] = useState(null);
   const [roiLoading, setRoiLoading] = useState(false);
@@ -97,33 +112,89 @@ export function CampaignsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await listCampaigns();
+    const [{ data, error }, reviewResult] = await Promise.all([
+      listCampaigns(),
+      adPlanAction({ action: "review_queue" }),
+    ]);
     if (error) {
-      addToast({ variant: "error", title: "Campaign list failed", description: error.message });
+      addToast({
+        variant: "error",
+        title: "Campaign list failed",
+        description: error.message,
+      });
       setCampaigns([]);
     } else {
       setCampaigns(data ?? []);
     }
+    if (reviewResult.error) {
+      const parsed = await parseEdgeError(reviewResult.error);
+      addToast({
+        variant: "error",
+        title: "Host review queue failed",
+        description: String(
+          parsed?.message ?? "The review queue could not load.",
+        ),
+      });
+      setReviewQueue([]);
+    } else {
+      setReviewQueue(reviewResult.data?.queue ?? []);
+    }
     setLoading(false);
   }, [addToast]);
 
-  const loadDetail = useCallback(async (campaignId) => {
-    if (!campaignId) {
-      setDetail(null);
-      return;
-    }
-    setDetailLoading(true);
-    const { data, error } = await getCampaignDetail(campaignId);
+  const handleReview = async ({ item, decision, reason }) => {
+    const version = item?.version;
+    if (!version?.id || !version?.plan_hash)
+      throw new Error("Plan binding is missing");
+    const { error } = await adPlanAction({
+      action: "review",
+      plan_version_id: version.id,
+      plan_hash: version.plan_hash,
+      decision,
+      reason,
+    });
     if (error) {
-      addToast({ variant: "error", title: "Campaign detail failed", description: error.message });
-      setDetail(null);
-    } else {
-      setDetail(data ?? null);
+      const parsed = await parseEdgeError(error);
+      throw new Error(String(parsed?.message ?? "Review failed"));
     }
-    setDetailLoading(false);
-  }, [addToast]);
+    addToast({
+      variant: decision === "approved" ? "success" : "warning",
+      title:
+        decision === "approved"
+          ? "Plan approved. The Host can resume it."
+          : decision === "changes_requested"
+            ? "Changes requested. Held funds were released."
+            : "Plan rejected. Held funds were released.",
+    });
+    await load();
+  };
+
+  const loadDetail = useCallback(
+    async (campaignId) => {
+      if (!campaignId) {
+        setDetail(null);
+        return;
+      }
+      setDetailLoading(true);
+      const { data, error } = await getCampaignDetail(campaignId);
+      if (error) {
+        addToast({
+          variant: "error",
+          title: "Campaign detail failed",
+          description: error.message,
+        });
+        setDetail(null);
+      } else {
+        setDetail(data ?? null);
+      }
+      setDetailLoading(false);
+    },
+    [addToast],
+  );
 
   useEffect(() => {
+    // Initial remote snapshot; state transitions live inside the async loader.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
@@ -134,7 +205,9 @@ export function CampaignsPage() {
       setAdsConsoleEnabled(flags.enable_ads_console !== false);
       setAdsConsoleReady(true);
     });
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -144,32 +217,45 @@ export function CampaignsPage() {
   }, []);
 
   useEffect(() => {
+    // Route selection drives the remote detail snapshot.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDetail(selectedId);
   }, [selectedId, loadDetail]);
 
   // ISSUE-865 PR1 WP-4 — load the campaign's conversions & ROI rollup.
-  const loadConversions = useCallback(async (campaignId) => {
-    if (!campaignId) {
-      setRoi(null);
-      return;
-    }
-    setRoiLoading(true);
-    const { data, error } = await getCampaignConversions(campaignId);
-    if (error) {
-      addToast({ variant: "error", title: "Conversions failed", description: error.message });
-      setRoi(null);
-    } else {
-      setRoi(toCampaignRoiView(data));
-    }
-    setRoiLoading(false);
-  }, [addToast]);
+  const loadConversions = useCallback(
+    async (campaignId) => {
+      if (!campaignId) {
+        setRoi(null);
+        return;
+      }
+      setRoiLoading(true);
+      const { data, error } = await getCampaignConversions(campaignId);
+      if (error) {
+        addToast({
+          variant: "error",
+          title: "Conversions failed",
+          description: error.message,
+        });
+        setRoi(null);
+      } else {
+        setRoi(toCampaignRoiView(data));
+      }
+      setRoiLoading(false);
+    },
+    [addToast],
+  );
 
   useEffect(() => {
+    // Route selection drives the remote conversion snapshot.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadConversions(selectedId);
   }, [selectedId, loadConversions]);
 
   useEffect(() => {
     if (!selectedId || detail?.dest_page_type !== "venue") {
+      // Clear detail derived from the previous route selection.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStayRollup(null);
       setStayRollupError(null);
       return;
@@ -183,7 +269,9 @@ export function CampaignsPage() {
       setStayRollupError(error?.message ?? null);
       setStayRollupLoading(false);
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [detail?.dest_page_type, selectedId]);
 
   const handleAction = async (campaign, action, extras = {}) => {
@@ -194,7 +282,7 @@ export function CampaignsPage() {
       const detail = String(
         typeof parsed?.body?.detail === "string"
           ? parsed.body.detail
-          : parsed?.body?.detail?.message ?? parsed?.message ?? "",
+          : (parsed?.body?.detail?.message ?? parsed?.message ?? ""),
       );
       addToast({
         variant: "error",
@@ -207,7 +295,11 @@ export function CampaignsPage() {
     if (data?.warning) {
       // The 200 + warning contract: launched, but delivery is gated upstream.
       setRowWarning((prev) => ({ ...prev, [campaign.id]: data.warning }));
-      addToast({ variant: "warning", title: "Launched with warning", description: data.warning });
+      addToast({
+        variant: "warning",
+        title: "Launched with warning",
+        description: data.warning,
+      });
     } else {
       setRowWarning((prev) => ({ ...prev, [campaign.id]: null }));
       if (action === "launch") {
@@ -230,7 +322,11 @@ export function CampaignsPage() {
     const { error } = await syncCampaigns(campaignId);
     if (error) {
       const parsed = await parseEdgeError(error);
-      addToast({ variant: "error", title: "Sync failed", description: String(parsed?.message ?? "") });
+      addToast({
+        variant: "error",
+        title: "Sync failed",
+        description: String(parsed?.message ?? ""),
+      });
     } else {
       addToast({ variant: "success", title: "Status synced" });
       await load();
@@ -244,9 +340,13 @@ export function CampaignsPage() {
       <div className="space-y-6">
         <PageHeader title="Campaigns" />
         <AlertCard variant="info" title="Ads console is off">
-          Campaigns is gated by <code className="text-xs">enable_ads_console</code>.
-          Turn it on in admin_config, or use{" "}
-          <a className="underline" href="#/ad-engine">Ad Engine</a> for connections.
+          Campaigns is gated by{" "}
+          <code className="text-xs">enable_ads_console</code>. Turn it on in
+          admin_config, or use{" "}
+          <a className="underline" href="#/ad-engine">
+            Ad Engine
+          </a>{" "}
+          for connections.
         </AlertCard>
       </div>
     );
@@ -259,21 +359,136 @@ export function CampaignsPage() {
         description="Everything is created paused — launching is the explicit act that starts spend. Meta hard caps pause at 98% via the hourly spend feed; other platforms follow end-date rules until their spend adapters land."
         actions={
           <div className="flex gap-2">
-            <Button variant="secondary" size="sm" icon={RefreshCw} loading={rowBusy.all === "sync"} onClick={() => handleSync()}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={RefreshCw}
+              loading={rowBusy.all === "sync"}
+              onClick={() => handleSync()}
+            >
               Sync all
             </Button>
-            <Button size="sm" icon={Rocket} onClick={() => { window.location.hash = "#/campaign-builder"; }}>
+            <Button
+              size="sm"
+              icon={Rocket}
+              onClick={() => {
+                window.location.hash = "#/campaign-builder";
+              }}
+            >
               New campaign
             </Button>
           </div>
         }
       />
+      <SectionCard
+        title="Host plans awaiting staff review"
+        subtitle="The first three campaigns for each Host, plus flagged plans, stop here before any provider object is created. Funds are held, not spent."
+      >
+        {loading && reviewQueue === null ? (
+          <div className="flex items-center gap-2 py-4">
+            <Spinner size="sm" /> Loading review queue…
+          </div>
+        ) : !reviewQueue || reviewQueue.length === 0 ? (
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            No Host plans need review.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {reviewQueue.map((item) => {
+              const plan = item.plan ?? {};
+              const version = item.version ?? {};
+              const canonical = version.canonical_plan ?? {};
+              const providers = (item.provider_allocations ?? [])
+                .map((row) => row.platform)
+                .join(", ");
+              return (
+                <div
+                  key={plan.id}
+                  className="rounded-xl border border-[var(--gray-200)] p-4 space-y-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold">
+                        {canonical.name || "Untitled Host campaign"}
+                      </div>
+                      <div className="text-xs text-[var(--color-text-secondary)]">
+                        Brand {plan.brand_id} ·{" "}
+                        {providers || "No provider allocation"} ·{" "}
+                        {formatMinor(
+                          version.host_currency,
+                          version.host_budget_cents,
+                        )}{" "}
+                        held
+                      </div>
+                      <div className="mt-1 text-[10px] font-mono break-all text-[var(--color-text-tertiary)]">
+                        Plan {version.plan_hash}
+                      </div>
+                    </div>
+                    <Badge variant="warning">STAFF REVIEW</Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {(plan.review_reasons ?? []).map((reason) => (
+                      <Badge key={reason} variant="info">
+                        {String(reason).replaceAll("_", " ")}
+                      </Badge>
+                    ))}
+                    {(item.targeting_snapshots ?? []).map((row) => (
+                      <Badge
+                        key={row.platform}
+                        variant={
+                          row.verdict === "exact" ? "success" : "warning"
+                        }
+                      >
+                        {row.platform}: {row.verdict}
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      icon={CheckCircle2}
+                      onClick={() =>
+                        setReviewTarget({ item, decision: "approved" })
+                      }
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={MessageSquareWarning}
+                      onClick={() =>
+                        setReviewTarget({ item, decision: "changes_requested" })
+                      }
+                    >
+                      Request changes
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      icon={XCircle}
+                      onClick={() =>
+                        setReviewTarget({ item, decision: "rejected" })
+                      }
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SectionCard>
       <SectionCard>
         {loading ? (
-          <div className="flex items-center gap-2 py-4"><Spinner size="sm" /> Loading campaigns…</div>
+          <div className="flex items-center gap-2 py-4">
+            <Spinner size="sm" /> Loading campaigns…
+          </div>
         ) : !campaigns || campaigns.length === 0 ? (
           <p className="text-sm text-[var(--color-text-secondary)]">
-            No campaigns yet — build one in the Campaign Builder. It will start paused.
+            No campaigns yet — build one in the Campaign Builder. It will start
+            paused.
           </p>
         ) : (
           <div className="space-y-2">
@@ -291,46 +506,98 @@ export function CampaignsPage() {
                   <button
                     type="button"
                     className="font-medium text-sm truncate hover:underline text-left"
-                    onClick={() => { window.location.hash = `#/campaigns?campaignId=${campaign.id}`; }}
+                    onClick={() => {
+                      window.location.hash = `#/campaigns?campaignId=${campaign.id}`;
+                    }}
                   >
                     {campaign.name}
                   </button>
                   <div className="text-xs text-[var(--color-text-secondary)]">
-                    {PLATFORM_LABELS[campaign.platform] ?? campaign.platform} · {campaign.objective} ·{" "}
-                    {formatCampaignMoney(campaign.currency, campaign.daily_budget_cents)}/day
+                    {PLATFORM_LABELS[campaign.platform] ?? campaign.platform} ·{" "}
+                    {campaign.objective} ·{" "}
+                    {formatCampaignMoney(
+                      campaign.currency,
+                      campaign.daily_budget_cents,
+                    )}
+                    /day
                     {campaign.cap_cents != null && (
-                      <> · cap {formatCampaignMoney(campaign.currency, campaign.cap_cents)}</>
+                      <>
+                        {" "}
+                        · cap{" "}
+                        {formatCampaignMoney(
+                          campaign.currency,
+                          campaign.cap_cents,
+                        )}
+                      </>
                     )}
                     {" · "}
-                    <a className="underline inline-flex items-center gap-1" href={campaign.dest_url} target="_blank" rel="noreferrer">
+                    <a
+                      className="underline inline-flex items-center gap-1"
+                      href={campaign.dest_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       destination <ExternalLink size={10} />
                     </a>
                   </div>
-                  {scheduleWindowLabel({ startsAt: campaign.starts_at, endsAt: campaign.ends_at }) && (
+                  {scheduleWindowLabel({
+                    startsAt: campaign.starts_at,
+                    endsAt: campaign.ends_at,
+                  }) && (
                     <div className="text-[10px] text-[var(--color-text-tertiary)] mt-0.5">
-                      {scheduleWindowLabel({ startsAt: campaign.starts_at, endsAt: campaign.ends_at })}
+                      {scheduleWindowLabel({
+                        startsAt: campaign.starts_at,
+                        endsAt: campaign.ends_at,
+                      })}
                     </div>
                   )}
                   {rowWarning[campaign.id] && (
-                    <div className="text-xs text-[var(--color-warning-700)] mt-1">{rowWarning[campaign.id]}</div>
+                    <div className="text-xs text-[var(--color-warning-700)] mt-1">
+                      {rowWarning[campaign.id]}
+                    </div>
                   )}
                 </div>
                 {/* DUAL badges: advertiser status + delivery status. */}
-                <Badge variant={campaign.status === "ACTIVE" ? "success" : "default"}>{campaign.status}</Badge>
-                <Badge variant={DELIVERY_BADGE_VARIANTS[campaign.delivery_status] ?? "info"}>
+                <Badge
+                  variant={campaign.status === "ACTIVE" ? "success" : "default"}
+                >
+                  {campaign.status}
+                </Badge>
+                <Badge
+                  variant={
+                    DELIVERY_BADGE_VARIANTS[campaign.delivery_status] ?? "info"
+                  }
+                >
                   {campaign.delivery_status ?? "unknown"}
                 </Badge>
                 {canLaunchCampaign(campaign.status) && (
-                  <Button size="sm" icon={Rocket} loading={rowBusy[campaign.id] === "launch"} onClick={() => setLaunchTarget(campaign)}>
+                  <Button
+                    size="sm"
+                    icon={Rocket}
+                    loading={rowBusy[campaign.id] === "launch"}
+                    onClick={() => setLaunchTarget(campaign)}
+                  >
                     Launch
                   </Button>
                 )}
                 {canPauseCampaign(campaign.status) && (
-                  <Button size="sm" variant="secondary" icon={Pause} loading={rowBusy[campaign.id] === "pause"} onClick={() => handleAction(campaign, "pause")}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={Pause}
+                    loading={rowBusy[campaign.id] === "pause"}
+                    onClick={() => handleAction(campaign, "pause")}
+                  >
                     Pause
                   </Button>
                 )}
-                <Button size="sm" variant="ghost" icon={RefreshCw} loading={rowBusy[campaign.id] === "sync"} onClick={() => handleSync(campaign.id)}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={RefreshCw}
+                  loading={rowBusy[campaign.id] === "sync"}
+                  onClick={() => handleSync(campaign.id)}
+                >
                   Sync
                 </Button>
               </div>
@@ -346,58 +613,110 @@ export function CampaignsPage() {
           subtitle="Review verdicts with cause and fix — the verbatim platform text is always shown."
         >
           {detailLoading ? (
-            <div className="flex items-center gap-2 py-4"><Spinner size="sm" /> Loading detail…</div>
+            <div className="flex items-center gap-2 py-4">
+              <Spinner size="sm" /> Loading detail…
+            </div>
           ) : !detail ? (
-            <p className="text-sm text-[var(--color-text-secondary)]">Campaign not found.</p>
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              Campaign not found.
+            </p>
           ) : (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="font-semibold text-sm">{detail.name}</span>
-                <Badge variant={detail.status === "ACTIVE" ? "success" : "default"}>{detail.status}</Badge>
-                <Badge variant={DELIVERY_BADGE_VARIANTS[detail.delivery_status] ?? "info"}>
+                <Badge
+                  variant={detail.status === "ACTIVE" ? "success" : "default"}
+                >
+                  {detail.status}
+                </Badge>
+                <Badge
+                  variant={
+                    DELIVERY_BADGE_VARIANTS[detail.delivery_status] ?? "info"
+                  }
+                >
                   {detail.delivery_status ?? "unknown"}
                 </Badge>
                 <span className="text-xs text-[var(--color-text-secondary)]">
-                  synced {detail.status_synced_at ? new Date(detail.status_synced_at).toLocaleString() : "never"}
+                  synced{" "}
+                  {detail.status_synced_at
+                    ? new Date(detail.status_synced_at).toLocaleString()
+                    : "never"}
                 </span>
               </div>
 
               {(detail.ad_sets ?? []).map((adSet) => (
-                <div key={adSet.id} className="border border-[var(--gray-200)] rounded-xl p-3 space-y-2">
+                <div
+                  key={adSet.id}
+                  className="border border-[var(--gray-200)] rounded-xl p-3 space-y-2"
+                >
                   <div className="flex flex-wrap items-center gap-2 text-xs">
                     <span className="font-medium">{adSet.name}</span>
-                    <Badge variant={adSet.status === "ACTIVE" ? "success" : "default"}>{adSet.status}</Badge>
+                    <Badge
+                      variant={
+                        adSet.status === "ACTIVE" ? "success" : "default"
+                      }
+                    >
+                      {adSet.status}
+                    </Badge>
                     {adSet.external_status && (
-                      <Badge variant={DELIVERY_BADGE_VARIANTS[adSet.external_status] ?? "info"}>
+                      <Badge
+                        variant={
+                          DELIVERY_BADGE_VARIANTS[adSet.external_status] ??
+                          "info"
+                        }
+                      >
                         {adSet.external_status}
                       </Badge>
                     )}
                     {adSet.optimization_goal && (
-                      <span className="text-[var(--color-text-tertiary)]">{adSet.optimization_goal}</span>
+                      <span className="text-[var(--color-text-tertiary)]">
+                        {adSet.optimization_goal}
+                      </span>
                     )}
                   </div>
                   {(adSet.ads ?? []).map((ad) => {
                     const cards = mapReviewDetail({
                       platform: detail.platform,
                       ad,
-                      deliveryStatus: ad.review_status ?? detail.delivery_status,
+                      deliveryStatus:
+                        ad.review_status ?? detail.delivery_status,
                     });
                     return (
-                      <div key={ad.id} className="pl-3 border-l-2 border-[var(--gray-100)] space-y-2">
+                      <div
+                        key={ad.id}
+                        className="pl-3 border-l-2 border-[var(--gray-100)] space-y-2"
+                      >
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           <span>{ad.name}</span>
-                          <Badge variant={ad.status === "ACTIVE" ? "success" : "default"}>{ad.status}</Badge>
+                          <Badge
+                            variant={
+                              ad.status === "ACTIVE" ? "success" : "default"
+                            }
+                          >
+                            {ad.status}
+                          </Badge>
                           {ad.review_status && (
-                            <Badge variant={DELIVERY_BADGE_VARIANTS[ad.review_status] ?? "info"}>
+                            <Badge
+                              variant={
+                                DELIVERY_BADGE_VARIANTS[ad.review_status] ??
+                                "info"
+                              }
+                            >
                               review: {ad.review_status}
                             </Badge>
                           )}
                         </div>
                         {cards.map((card, i) => (
-                          <AlertCard key={i} variant={card.severity} title={card.title}>
+                          <AlertCard
+                            key={i}
+                            variant={card.severity}
+                            title={card.title}
+                          >
                             {card.body}
                             {card.action && (
-                              <div className="mt-1 text-xs font-medium">[{card.action}]</div>
+                              <div className="mt-1 text-xs font-medium">
+                                [{card.action}]
+                              </div>
                             )}
                           </AlertCard>
                         ))}
@@ -435,7 +754,9 @@ export function CampaignsPage() {
               {stayRollupError}
             </AlertCard>
           ) : !stayRollup ? (
-            <p className="text-sm text-[var(--color-text-secondary)]">Stay booking data is unavailable.</p>
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              Stay booking data is unavailable.
+            </p>
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -446,9 +767,16 @@ export function CampaignsPage() {
                   ["Confirmed bookings", stayRollup.confirmedBookings],
                   ["Cancellations", stayRollup.cancellations],
                 ].map(([label, value]) => (
-                  <div key={label} className="border border-[var(--gray-200)] rounded-lg p-3">
-                    <div className="text-[var(--color-text-tertiary)] text-xs uppercase">{label}</div>
-                    <div className="text-xl font-semibold">{Number(value) || 0}</div>
+                  <div
+                    key={label}
+                    className="border border-[var(--gray-200)] rounded-lg p-3"
+                  >
+                    <div className="text-[var(--color-text-tertiary)] text-xs uppercase">
+                      {label}
+                    </div>
+                    <div className="text-xl font-semibold">
+                      {Number(value) || 0}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -458,9 +786,16 @@ export function CampaignsPage() {
                   ["Refunds", stayRollup.refundsByCurrency],
                   ["Net bookings", stayRollup.netByCurrency],
                 ].map(([label, values]) => (
-                  <div key={label} className="border border-[var(--gray-200)] rounded-lg p-3">
-                    <div className="text-[var(--color-text-tertiary)] text-xs uppercase mb-1">{label}</div>
-                    <div className="text-lg font-semibold"><CurrencyRows values={values} /></div>
+                  <div
+                    key={label}
+                    className="border border-[var(--gray-200)] rounded-lg p-3"
+                  >
+                    <div className="text-[var(--color-text-tertiary)] text-xs uppercase mb-1">
+                      {label}
+                    </div>
+                    <div className="text-lg font-semibold">
+                      <CurrencyRows values={values} />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -470,70 +805,89 @@ export function CampaignsPage() {
       )}
 
       {/* toward #3697 Wave 3 — spend vs hard cap (real spend from rollup; never fabricate). */}
-      {selectedId && (() => {
-        const selectedCampaign = (campaigns ?? []).find((c) => c.id === selectedId) ?? detail;
-        const currency = selectedCampaign?.currency ?? "USD";
-        const capCents = selectedCampaign?.cap_cents ?? null;
-        const platform = selectedCampaign?.platform ?? detail?.platform;
-        const isMeta = platform === "meta";
-        // While ROI reloads, ignore the previous campaign's spend (stale %).
-        const spendCents = roiLoading ? null : (roi?.spendCents ?? null);
-        const progress = spendCapProgress({ spendCents, capCents });
-        return (
-          <SectionCard
-            title="Spend vs hard cap"
-            subtitle={
-              isMeta
-                ? "Hourly Meta spend feed writes real totals. The server pauses Meta at 98% of the hard cap."
-                : "Hard cap is stored for this campaign. Live 98% auto-pause via spend feed is Meta-only for now; other platforms follow end-date rules until their adapters land."
-            }
-          >
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="border border-[var(--gray-200)] rounded-lg p-3">
-                <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Spend</div>
-                <div className="text-xl font-semibold">
-                  {spendCents == null ? "—" : formatCampaignMoney(currency, spendCents)}
+      {selectedId &&
+        (() => {
+          const selectedCampaign =
+            (campaigns ?? []).find((c) => c.id === selectedId) ?? detail;
+          const currency = selectedCampaign?.currency ?? "USD";
+          const capCents = selectedCampaign?.cap_cents ?? null;
+          const platform = selectedCampaign?.platform ?? detail?.platform;
+          const isMeta = platform === "meta";
+          // While ROI reloads, ignore the previous campaign's spend (stale %).
+          const spendCents = roiLoading ? null : (roi?.spendCents ?? null);
+          const progress = spendCapProgress({ spendCents, capCents });
+          return (
+            <SectionCard
+              title="Spend vs hard cap"
+              subtitle={
+                isMeta
+                  ? "Hourly Meta spend feed writes real totals. The server pauses Meta at 98% of the hard cap."
+                  : "Hard cap is stored for this campaign. Live 98% auto-pause via spend feed is Meta-only for now; other platforms follow end-date rules until their adapters land."
+              }
+            >
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="border border-[var(--gray-200)] rounded-lg p-3">
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">
+                    Spend
+                  </div>
+                  <div className="text-xl font-semibold">
+                    {spendCents == null
+                      ? "—"
+                      : formatCampaignMoney(currency, spendCents)}
+                  </div>
+                </div>
+                <div className="border border-[var(--gray-200)] rounded-lg p-3">
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">
+                    Hard cap
+                  </div>
+                  <div className="text-xl font-semibold">
+                    {capCents == null
+                      ? "—"
+                      : formatCampaignMoney(currency, capCents)}
+                  </div>
+                </div>
+                <div className="border border-[var(--gray-200)] rounded-lg p-3">
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">
+                    Used
+                  </div>
+                  <div className="text-xl font-semibold">
+                    {progress.pctLabel}
+                  </div>
+                </div>
+                <div className="border border-[var(--gray-200)] rounded-lg p-3">
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">
+                    Schedule
+                  </div>
+                  <div className="text-sm font-medium">
+                    {scheduleWindowLabel({
+                      startsAt: selectedCampaign?.starts_at,
+                      endsAt: selectedCampaign?.ends_at,
+                    }) ?? "—"}
+                  </div>
                 </div>
               </div>
-              <div className="border border-[var(--gray-200)] rounded-lg p-3">
-                <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Hard cap</div>
-                <div className="text-xl font-semibold">
-                  {capCents == null ? "—" : formatCampaignMoney(currency, capCents)}
+              {typeof progress.barRatio === "number" && (
+                <div className="mt-3 h-2 rounded-full bg-[var(--gray-100)] overflow-hidden">
+                  <div
+                    className={[
+                      "h-full rounded-full transition-all",
+                      progress.atPauseThreshold
+                        ? "bg-[var(--color-warning-600)]"
+                        : "bg-[var(--color-brand-500)]",
+                    ].join(" ")}
+                    style={{ width: `${Math.round(progress.barRatio * 100)}%` }}
+                  />
                 </div>
-              </div>
-              <div className="border border-[var(--gray-200)] rounded-lg p-3">
-                <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Used</div>
-                <div className="text-xl font-semibold">{progress.pctLabel}</div>
-              </div>
-              <div className="border border-[var(--gray-200)] rounded-lg p-3">
-                <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Schedule</div>
-                <div className="text-sm font-medium">
-                  {scheduleWindowLabel({
-                    startsAt: selectedCampaign?.starts_at,
-                    endsAt: selectedCampaign?.ends_at,
-                  }) ?? "—"}
-                </div>
-              </div>
-            </div>
-            {typeof progress.barRatio === "number" && (
-              <div className="mt-3 h-2 rounded-full bg-[var(--gray-100)] overflow-hidden">
-                <div
-                  className={[
-                    "h-full rounded-full transition-all",
-                    progress.atPauseThreshold ? "bg-[var(--color-warning-600)]" : "bg-[var(--color-brand-500)]",
-                  ].join(" ")}
-                  style={{ width: `${Math.round(progress.barRatio * 100)}%` }}
-                />
-              </div>
-            )}
-            {isMeta && progress.atPauseThreshold && (
-              <p className="mt-2 text-xs text-[var(--color-warning-700)]">
-                At or past 98% of the hard cap — Meta launch/spend sync will keep this paused.
-              </p>
-            )}
-          </SectionCard>
-        );
-      })()}
+              )}
+              {isMeta && progress.atPauseThreshold && (
+                <p className="mt-2 text-xs text-[var(--color-warning-700)]">
+                  At or past 98% of the hard cap — Meta launch/spend sync will
+                  keep this paused.
+                </p>
+              )}
+            </SectionCard>
+          );
+        })()}
 
       {/* ISSUE-865 PR1 WP-4 — Conversions & ROI (below Ad sets & ads). Reads the
           per-campaign ad_campaign_conversion_rollup RPC. Spend/ROAS are shown ONLY
@@ -549,34 +903,45 @@ export function CampaignsPage() {
             </div>
           ) : !roi || !roi.hasData ? (
             <div className="text-[var(--color-text-secondary)] text-sm">
-              No attributed conversions yet. When someone clicks this campaign&apos;s ad and
-              purchases or RSVPs on Mingla, the conversion is measured and shows up here.
+              No attributed conversions yet. When someone clicks this
+              campaign&apos;s ad and purchases or RSVPs on Mingla, the
+              conversion is measured and shows up here.
             </div>
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="border border-[var(--gray-200)] rounded-lg p-3">
-                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Conversions</div>
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">
+                    Conversions
+                  </div>
                   <div className="text-xl font-semibold">{roi.conversions}</div>
                 </div>
                 <div className="border border-[var(--gray-200)] rounded-lg p-3">
-                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Attributed value</div>
-                  <div className="text-xl font-semibold"><CurrencyRows values={roi.valueByCurrency} /></div>
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">
+                    Attributed value
+                  </div>
+                  <div className="text-xl font-semibold">
+                    <CurrencyRows values={roi.valueByCurrency} />
+                  </div>
                 </div>
                 <div className="border border-[var(--gray-200)] rounded-lg p-3">
-                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Spend</div>
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">
+                    Spend
+                  </div>
                   <div className="text-xl font-semibold">
                     {roi.spendCents === null
                       ? "—"
                       : formatCampaignMoney(
-                        (campaigns ?? []).find((c) => c.id === selectedId)?.currency
-                          ?? detail?.currency,
-                        roi.spendCents,
-                      )}
+                          (campaigns ?? []).find((c) => c.id === selectedId)
+                            ?.currency ?? detail?.currency,
+                          roi.spendCents,
+                        )}
                   </div>
                 </div>
                 <div className="border border-[var(--gray-200)] rounded-lg p-3">
-                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">ROAS</div>
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">
+                    ROAS
+                  </div>
                   <div className="text-xl font-semibold">
                     {roi.roas === null ? "—" : `${roi.roas.toFixed(2)}×`}
                   </div>
@@ -585,7 +950,8 @@ export function CampaignsPage() {
 
               {roi.spendCents === null && (
                 <div className="text-[var(--color-text-tertiary)] text-xs">
-                  Spend appears after the hourly feed writes the first ad_spend_daily row.
+                  Spend appears after the hourly feed writes the first
+                  ad_spend_daily row.
                 </div>
               )}
 
@@ -623,9 +989,9 @@ export function CampaignsPage() {
         description={
           launchTarget
             ? launchConfirmCopy({
-              channelCount: 1,
-              totalDailyCents: Number(launchTarget.daily_budget_cents) || 0,
-            })
+                channelCount: 1,
+                totalDailyCents: Number(launchTarget.daily_budget_cents) || 0,
+              })
             : undefined
         }
         confirmLabel="Launch"
@@ -643,6 +1009,44 @@ export function CampaignsPage() {
           if (!result.ok) {
             throw new Error(result.detail || "Launch failed");
           }
+        }}
+      />
+      <HighRiskActionModal
+        open={reviewTarget !== null}
+        onClose={() => setReviewTarget(null)}
+        title={
+          reviewTarget?.decision === "approved"
+            ? "Approve this exact Host plan?"
+            : reviewTarget?.decision === "changes_requested"
+              ? "Request changes to this plan?"
+              : "Reject this Host plan?"
+        }
+        description={
+          reviewTarget?.decision === "approved"
+            ? "Approval lets the Host resume this immutable plan and create provider objects. It does not launch anything from Admin."
+            : "The pre-create hold will be released back to Ads credit. The Host can revise from the preserved plan history; no provider object exists."
+        }
+        confirmLabel={
+          reviewTarget?.decision === "approved"
+            ? "Approve plan"
+            : reviewTarget?.decision === "changes_requested"
+              ? "Request changes"
+              : "Reject plan"
+        }
+        confirmPhrase={
+          reviewTarget?.decision === "approved"
+            ? "APPROVE"
+            : reviewTarget?.decision === "changes_requested"
+              ? "CHANGES"
+              : "REJECT"
+        }
+        requireReason
+        reasonLabel="Staff review reason (audit log)"
+        successMessage={null}
+        onConfirm={async ({ reason }) => {
+          if (!reviewTarget) throw new Error("No plan selected");
+          await handleReview({ ...reviewTarget, reason });
+          setReviewTarget(null);
         }}
       />
     </div>

@@ -35,11 +35,13 @@ import {
 import { formatCurrency } from "../../../../src/utils/currency";
 import { randomId } from "../../../../src/utils/randomId";
 
-function firstParam(
-  value: string | string[] | undefined,
-): string | null {
+function firstParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string" && value.length > 0) return value;
-  if (Array.isArray(value) && typeof value[0] === "string" && value[0].length > 0) {
+  if (
+    Array.isArray(value) &&
+    typeof value[0] === "string" &&
+    value[0].length > 0
+  ) {
     return value[0];
   }
   return null;
@@ -159,13 +161,27 @@ export default function HostAdDetailRoute(): React.ReactElement {
 
   const c = payload.campaign;
   const name = String(c.name ?? "Ad");
-  const status = String(c.status ?? "");
-  const currency = String(c.currency ?? "USD");
-  const cap = Number(c.cap_cents ?? c.daily_budget_cents ?? 0);
+  const status = payload.plan_state ?? String(c.status ?? "");
+  const currencyCandidate = payload.plan_currency ?? c.currency;
+  const currency =
+    typeof currencyCandidate === "string" &&
+    /^[A-Z]{3}$/.test(currencyCandidate)
+      ? currencyCandidate
+      : null;
+  const cap = Number(
+    payload.plan_cap_cents ?? c.cap_cents ?? c.daily_budget_cents ?? 0,
+  );
   const spent = payload.spend_total_cents;
-  const isLive = status.toUpperCase() === "ACTIVE";
+  const isLive =
+    ["LIVE", "PARTIALLY_LIVE"].includes(status.toUpperCase()) ||
+    payload.plan_campaigns.some(
+      (row) => String(row.status).toUpperCase() === "ACTIVE",
+    );
   const isEnded =
-    status.toUpperCase() === "ARCHIVED" || status.toUpperCase() === "DELETED";
+    status.toUpperCase() === "ENDED" ||
+    payload.plan_campaigns.every((row) =>
+      ["ARCHIVED", "DELETED"].includes(String(row.status).toUpperCase()),
+    );
   // Phase 3: Cancel before spend; End after — a card never shows both.
   const canCancel = !isEnded && spent <= 0;
   const canEnd = !isEnded && spent > 0;
@@ -179,26 +195,27 @@ export default function HostAdDetailRoute(): React.ReactElement {
     0,
   );
   const capUsed = cap > 0 ? Math.min(100, Math.round((spent / cap) * 100)) : 0;
-  const latestPauseReason = payload.timeline.find((event) =>
-    event.action === "pause" &&
-    event.provider_response &&
-    typeof event.provider_response.reason === "string"
+  const latestPauseReason = payload.timeline.find(
+    (event) =>
+      event.action === "pause" &&
+      event.provider_response &&
+      typeof event.provider_response.reason === "string",
   )?.provider_response?.reason;
   const endState = isEnded
     ? status.toUpperCase() === "DELETED"
       ? "Cancelled before platform spend — full Ads credit was returned"
       : "Ended — unspent Ads credit was returned"
     : latestPauseReason === "destination_unavailable"
-    ? "Destination page ended or is no longer public — delivery paused"
-    : latestPauseReason === "destination_check_failed"
-    ? "Destination availability could not be verified — delivery paused safely"
-    : latestPauseReason === "end_date_passed"
-    ? "Campaign schedule ended — delivery paused"
-    : latestPauseReason === "spend_fetch_failed"
-    ? "Results feed unavailable — delivery paused for budget safety"
-    : cap > 0 && spent >= Math.floor(cap * 0.98)
-    ? "Budget used — delivery paused at the safety cap"
-    : null;
+      ? "Destination page ended or is no longer public — delivery paused"
+      : latestPauseReason === "destination_check_failed"
+        ? "Destination availability could not be verified — delivery paused safely"
+        : latestPauseReason === "end_date_passed"
+          ? "Campaign schedule ended — delivery paused"
+          : latestPauseReason === "spend_fetch_failed"
+            ? "Results feed unavailable — delivery paused for budget safety"
+            : cap > 0 && spent >= Math.floor(cap * 0.98)
+              ? "Budget used — delivery paused at the safety cap"
+              : null;
 
   return (
     <View style={styles.host} testID="ads-detail-screen">
@@ -213,14 +230,19 @@ export default function HostAdDetailRoute(): React.ReactElement {
         </Pressable>
 
         <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.kicker}>{String(c.platform ?? "")}</Text>
+          <Text style={styles.kicker}>
+            {payload.plan_campaigns
+              .map((row) => String(row.platform))
+              .join(" · ")}
+          </Text>
           <Text style={styles.title}>{name}</Text>
           <Text style={styles.status} testID="ads-detail-status">
             {status}
           </Text>
           <Text style={styles.metric}>
-            Spend {formatCurrency(spent, currency, true)} of{" "}
-            {formatCurrency(cap, currency, true)} cap
+            {currency
+              ? `Spend ${formatCurrency(spent, currency, true)} of ${formatCurrency(cap, currency, true)} cap`
+              : "Currency authority unavailable — spending actions are blocked"}
           </Text>
           <Text style={styles.progress}>{capUsed}% of cap used</Text>
           {typeof c.dest_url === "string" && c.dest_url.length > 0 ? (
@@ -241,7 +263,9 @@ export default function HostAdDetailRoute(): React.ReactElement {
           <Text style={styles.sectionTitle}>Results</Text>
           <View style={styles.metricGrid}>
             <View style={styles.metricCell}>
-              <Text style={styles.metricNumber}>{impressions.toLocaleString()}</Text>
+              <Text style={styles.metricNumber}>
+                {impressions.toLocaleString()}
+              </Text>
               <Text style={styles.metricLabel}>Impressions</Text>
             </View>
             <View style={styles.metricCell}>
@@ -249,7 +273,9 @@ export default function HostAdDetailRoute(): React.ReactElement {
               <Text style={styles.metricLabel}>Clicks</Text>
             </View>
             <View style={styles.metricCell}>
-              <Text style={styles.metricNumber}>{conversions.toLocaleString()}</Text>
+              <Text style={styles.metricNumber}>
+                {conversions.toLocaleString()}
+              </Text>
               <Text style={styles.metricLabel}>Conversions</Text>
             </View>
           </View>
@@ -260,7 +286,10 @@ export default function HostAdDetailRoute(): React.ReactElement {
             </View>
           ))}
           {payload.by_placement.map((row) => (
-            <View key={`${row.platform}:${row.placement}`} style={styles.resultRow}>
+            <View
+              key={`${row.platform}:${row.placement}`}
+              style={styles.resultRow}
+            >
               <Text style={styles.body}>{row.placement}</Text>
               <Text style={styles.body}>{row.conversions} conversions</Text>
             </View>
@@ -271,37 +300,53 @@ export default function HostAdDetailRoute(): React.ReactElement {
           <Text style={styles.sectionTitle}>Creative</Text>
           {payload.creatives.length === 0 ? (
             <Text style={styles.body}>No creative record yet.</Text>
-          ) : payload.creatives.map((creative) => (
-            <View key={creative.id} style={styles.timelineRow}>
-              <Text style={styles.body}>{creative.ad_creatives?.name ?? creative.name}</Text>
-              <Text style={styles.muted}>
-                {creative.ad_creatives?.kind ?? "creative"} · {creative.review_status ?? creative.status}
-              </Text>
-              {creative.review_status?.toUpperCase().includes("REJECT") ? (
-                <Text style={styles.error}>Provider rejected this creative. Review the provider detail and replace it.</Text>
-              ) : null}
-            </View>
-          ))}
+          ) : (
+            payload.creatives.map((creative) => (
+              <View key={creative.id} style={styles.timelineRow}>
+                <Text style={styles.body}>
+                  {creative.ad_creatives?.name ?? creative.name}
+                </Text>
+                <Text style={styles.muted}>
+                  {creative.ad_creatives?.kind ?? "creative"} ·{" "}
+                  {creative.review_status ?? creative.status}
+                </Text>
+                {creative.review_status?.toUpperCase().includes("REJECT") ? (
+                  <Text style={styles.error}>
+                    Provider rejected this creative. Review the provider detail
+                    and replace it.
+                  </Text>
+                ) : null}
+              </View>
+            ))
+          )}
         </GlassCard>
 
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.sectionTitle}>Timeline</Text>
           {payload.timeline.length === 0 ? (
             <Text style={styles.body}>No status changes yet.</Text>
-          ) : payload.timeline.map((event) => (
-            <View key={event.id} style={styles.timelineRow}>
-              <Text style={styles.body}>
-                {event.action.replace(/_/g, " ")} · {event.to_status ?? event.entity ?? "recorded"}
-              </Text>
-              <Text style={styles.muted}>{new Date(event.created_at).toLocaleString()}</Text>
-            </View>
-          ))}
+          ) : (
+            payload.timeline.map((event) => (
+              <View key={event.id} style={styles.timelineRow}>
+                <Text style={styles.body}>
+                  {event.action.replace(/_/g, " ")} ·{" "}
+                  {event.to_status ?? event.entity ?? "recorded"}
+                </Text>
+                <Text style={styles.muted}>
+                  {new Date(event.created_at).toLocaleString()}
+                </Text>
+              </View>
+            ))
+          )}
           {payload.credit_events.map((event) => (
             <View key={event.id} style={styles.timelineRow}>
               <Text style={styles.body}>
-                {event.entry_kind.replace(/_/g, " ")} · {formatCurrency(event.amount_cents, event.currency, true)}
+                {event.entry_kind.replace(/_/g, " ")} ·{" "}
+                {formatCurrency(event.amount_cents, event.currency, true)}
               </Text>
-              <Text style={styles.muted}>{new Date(event.created_at).toLocaleString()}</Text>
+              <Text style={styles.muted}>
+                {new Date(event.created_at).toLocaleString()}
+              </Text>
             </View>
           ))}
         </GlassCard>
@@ -312,7 +357,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
           </Text>
         ) : null}
 
-        {manage.allowed && !isEnded ? (
+        {manage.allowed && !isEnded && currency ? (
           <View style={styles.actions}>
             {isLive ? (
               <Pressable

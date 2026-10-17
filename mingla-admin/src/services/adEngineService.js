@@ -27,7 +27,12 @@ export async function parseEdgeError(error) {
   } catch {
     body = null;
   }
-  return { status, body, message: body?.detail?.message ?? body?.detail ?? body?.error ?? error.message };
+  return {
+    status,
+    body,
+    message:
+      body?.detail?.message ?? body?.detail ?? body?.error ?? error.message,
+  };
 }
 
 // ── Connection ────────────────────────────────────────────────────────────────
@@ -56,7 +61,11 @@ export async function connectMeta(action = "connect") {
  * see the function's own header comment). No token ever reaches this client;
  * the call is authenticated by the admin's own session JWT (invokeWithRefresh).
  */
-export async function connectChannel(platform, action = "connect", lane = "consumer") {
+export async function connectChannel(
+  platform,
+  action = "connect",
+  lane = "consumer",
+) {
   return invokeWithRefresh("admin-ad-connect", {
     body: { platform, lane, action },
   });
@@ -66,10 +75,7 @@ export async function connectChannel(platform, action = "connect", lane = "consu
  * platform with no row yet, e.g. Google pre-provisioning, is simply absent
  * from the result; callers must not fabricate a row for it). */
 export async function getConnections(lane = "consumer") {
-  return supabase
-    .from("ad_connections")
-    .select("*")
-    .eq("lane", lane);
+  return supabase.from("ad_connections").select("*").eq("lane", lane);
 }
 
 // ── Preflight ─────────────────────────────────────────────────────────────────
@@ -129,6 +135,11 @@ export async function listCampaigns() {
 /** The atomic create (everything PAUSED). payload matches admin-ad-create-campaign. */
 export async function createCampaign(payload) {
   return invokeWithRefresh("admin-ad-create-campaign", { body: payload });
+}
+
+/** Issue #3697 v1.4 immutable plan lifecycle shared by Admin, Host and Ari. */
+export async function adPlanAction(payload) {
+  return invokeWithRefresh("ad-plan", { body: payload });
 }
 
 /**
@@ -204,7 +215,13 @@ export async function getStayCampaignRollup(campaignId) {
  * the fn returns { results:[], warning } on a provider hiccup, never an error.
  * kind ∈ 'city' | 'interest'; country is the ISO code that disambiguates a city.
  */
-export async function searchTargeting({ platform, kind, q, country, lane = "consumer" }) {
+export async function searchTargeting({
+  platform,
+  kind,
+  q,
+  country,
+  lane = "consumer",
+}) {
   return invokeWithRefresh("admin-ad-targeting-search", {
     body: { platform, kind, q, lane, ...(country ? { country } : {}) },
   });
@@ -229,7 +246,9 @@ export async function creativeUpload(payload) {
  * Retry immediately instead of replacing it with a generic transport error.
  */
 export async function prepareVideoCreative(payload) {
-  const result = await invokeWithRefresh("admin-ad-creative-prepare", { body: payload });
+  const result = await invokeWithRefresh("admin-ad-creative-prepare", {
+    body: payload,
+  });
   if (!result.error) return result;
   const parsed = await parseEdgeError(result.error);
   return normalizePreparationInvoke(result, parsed);

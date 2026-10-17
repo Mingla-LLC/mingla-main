@@ -19,7 +19,7 @@ export function mapAdCreditQuoteError(err: unknown): string {
     case "pay_above_maximum":
       return "That amount is above the maximum top-up for this currency.";
     case "currency_unsupported":
-      return "Top-up is not available for this brand currency yet.";
+      return "Top-up is not available for this brand currency yet. NGN brands use Paystack; reconnect the payout rail if this brand should settle in NGN.";
     case "brand_currency_unresolved":
     case "currency_reconciliation_pending":
     case "paystack_currency_mismatch":

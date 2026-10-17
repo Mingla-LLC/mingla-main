@@ -16,7 +16,11 @@ import {
   learningLimitedWarning,
   validateBudget,
 } from "../../lib/adBuilder/budgetRules";
-import { PLATFORM_LABELS, splitBudget, unfundedEligibleChannels } from "../../lib/adBuilder/channelPlan";
+import {
+  PLATFORM_LABELS,
+  splitBudget,
+  unfundedEligibleChannels,
+} from "../../lib/adBuilder/channelPlan";
 
 const STRATEGIES = [
   { id: "auto", label: "Auto" },
@@ -28,24 +32,29 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const set = (patch) => onBudgetChange({ ...budget, ...patch });
   const mode = budget.mode === "lifetime" ? "lifetime" : "daily";
-  const amountCents = mode === "lifetime"
-    ? (budget.totalLifetimeCents ?? 0)
-    : (budget.totalDailyCents ?? 0);
+  const amountCents =
+    mode === "lifetime"
+      ? (budget.totalLifetimeCents ?? 0)
+      : (budget.totalDailyCents ?? 0);
   const errors = validateBudget({
     totalDailyCents: mode === "daily" ? amountCents : Math.max(amountCents, 1),
     channelRows,
   });
-  const platforms = channelRows.filter((r) => r.eligible).map((r) => r.platform);
+  const platforms = channelRows
+    .filter((r) => r.eligible)
+    .map((r) => r.platform);
   // Create rejects lifetime for every non-Meta platform — only offer it when
   // the funded set is Meta-only (or empty before channels resolve).
-  const lifetimeAllowed = platforms.length === 0 ||
+  const lifetimeAllowed =
+    platforms.length === 0 ||
     (platforms.length === 1 && platforms[0] === "meta");
   useEffect(() => {
     if (mode === "lifetime" && !lifetimeAllowed) {
       onBudgetChange({
         ...budget,
         mode: "daily",
-        totalDailyCents: budget.totalDailyCents || budget.totalLifetimeCents || 0,
+        totalDailyCents:
+          budget.totalDailyCents || budget.totalLifetimeCents || 0,
       });
     }
   }, [lifetimeAllowed, mode, budget, onBudgetChange]);
@@ -56,23 +65,30 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
   const d1 = {
     minBudgetCents: platforms.reduce((sum, platform) => {
       const row = channelRows.find((r) => r.platform === platform);
-      const perDay = typeof row?.floorCents === "number" && row.floorCents > 0
-        ? row.floorCents
-        : 0;
+      const perDay =
+        typeof row?.floorCents === "number" && row.floorCents > 0
+          ? row.floorCents
+          : 0;
       return sum + perDay * daysForMin;
     }, 0),
     days: daysForMin,
   };
-  const capCents = mode === "lifetime"
-    ? amountCents
-    : (typeof budget.capCents === "number" && budget.capCents > 0
-      ? budget.capCents
-      : (days != null && amountCents > 0 ? amountCents * days : amountCents));
+  const capCents =
+    mode === "lifetime"
+      ? amountCents
+      : typeof budget.capCents === "number" && budget.capCents > 0
+        ? budget.capCents
+        : days != null && amountCents > 0
+          ? amountCents * days
+          : amountCents;
 
   const allocations = splitBudget({
-    totalDailyCents: mode === "daily" ? amountCents : (days != null && days > 0
-      ? Math.floor(amountCents / days)
-      : amountCents),
+    totalDailyCents:
+      mode === "daily"
+        ? amountCents
+        : days != null && days > 0
+          ? Math.floor(amountCents / days)
+          : amountCents,
     channelRows,
     strategy: budget.strategy,
   });
@@ -80,7 +96,10 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
   const unfunded = unfundedEligibleChannels({
     channelRows,
     allocations,
-    totalDailyCents: mode === "daily" ? amountCents : allocations.reduce((s, a) => s + a.dailyCents, 0),
+    totalDailyCents:
+      mode === "daily"
+        ? amountCents
+        : allocations.reduce((s, a) => s + a.dailyCents, 0),
     strategy: budget.strategy,
   });
   const eligibleOptions = channelRows
@@ -88,7 +107,9 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
     .map((r) => ({ value: r.platform, label: r.label }));
 
   const belowMinimum = amountCents > 0 && amountCents < d1.minBudgetCents;
-  const googleShort = mode === "lifetime" && platforms.includes("google") &&
+  const googleShort =
+    mode === "lifetime" &&
+    platforms.includes("google") &&
     (days == null || days < 3);
 
   return (
@@ -96,25 +117,42 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
       <div>
         <h2 className="text-lg font-semibold">How much, and when?</h2>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Set a daily or total budget, dates, and a hard cap. Mingla pauses at 98% of the cap.
+          Set a daily or total budget, dates, and a hard cap. Mingla pauses at
+          98% of the cap.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
         <CurrencyInput
-          label={mode === "lifetime" ? "Total budget / hard cap (USD)" : "Total daily budget (USD)"}
+          label={
+            mode === "lifetime"
+              ? "Total budget / hard cap (USD)"
+              : "Total daily budget (USD)"
+          }
           id="total-budget"
           cents={amountCents}
-          onCentsChange={(cents) => set(
-            mode === "lifetime"
-              ? { totalLifetimeCents: cents, capCents: cents }
-              : { totalDailyCents: cents },
-          )}
+          onCentsChange={(cents) =>
+            set(
+              mode === "lifetime"
+                ? { totalLifetimeCents: cents, capCents: cents }
+                : {
+                    totalDailyCents: cents,
+                    ...(typeof budget.capCents === "number" &&
+                    budget.capCents > 0
+                      ? {}
+                      : { capCents: cents }),
+                  },
+            )
+          }
           helper="Dollars in, cents at rest — each platform's unit conversion happens server-side."
         />
         <div className="space-y-1.5">
           <span className="block text-sm font-medium">Budget type</span>
-          <div className="inline-flex rounded-lg border border-[var(--gray-300)] p-0.5" role="radiogroup" aria-label="Budget type">
+          <div
+            className="inline-flex rounded-lg border border-[var(--gray-300)] p-0.5"
+            role="radiogroup"
+            aria-label="Budget type"
+          >
             <button
               type="button"
               role="radio"
@@ -134,13 +172,19 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
               role="radio"
               aria-checked={mode === "lifetime"}
               disabled={!lifetimeAllowed}
-              title={lifetimeAllowed ? undefined : "Lifetime budget is Meta-only — deselect other platforms first"}
+              title={
+                lifetimeAllowed
+                  ? undefined
+                  : "Lifetime budget is Meta-only — deselect other platforms first"
+              }
               onClick={() => {
                 if (!lifetimeAllowed) return;
                 set({
                   mode: "lifetime",
-                  totalLifetimeCents: budget.totalLifetimeCents || budget.totalDailyCents || 0,
-                  capCents: budget.totalLifetimeCents || budget.totalDailyCents || 0,
+                  totalLifetimeCents:
+                    budget.totalLifetimeCents || budget.totalDailyCents || 0,
+                  capCents:
+                    budget.totalLifetimeCents || budget.totalDailyCents || 0,
                 });
               }}
               className={[
@@ -148,8 +192,8 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
                 !lifetimeAllowed
                   ? "text-[var(--color-text-tertiary)] opacity-50 cursor-not-allowed"
                   : mode === "lifetime"
-                  ? "bg-[var(--color-brand-500)] text-white"
-                  : "text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]",
+                    ? "bg-[var(--color-brand-500)] text-white"
+                    : "text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]",
               ].join(" ")}
             >
               Total (lifetime)
@@ -158,8 +202,8 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
           <p className="text-xs text-[var(--color-text-tertiary)]">
             {!lifetimeAllowed && mode === "lifetime"
               ? "Lifetime budget is Meta-only — switch to Daily or fund Meta alone."
-              : "The campaign starts paused; spending begins only when you launch it from the campaign page."}
-            {" "}Hard cap: ${(capCents / 100).toFixed(2)}.
+              : "The campaign starts paused; spending begins only when you launch it from the campaign page."}{" "}
+            Hard cap: ${(capCents / 100).toFixed(2)}.
           </p>
         </div>
       </div>
@@ -199,21 +243,29 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
         </label>
       </div>
 
-      {mode === "daily" && days != null && (
+      {mode === "daily" && (
         <label className="space-y-1.5 block max-w-sm">
           <span className="block text-sm font-medium">Hard cap (USD)</span>
           <CurrencyInput
             id="hard-cap"
             cents={budget.capCents ?? capCents}
             onCentsChange={(capCentsNext) => set({ capCents: capCentsNext })}
-            helper={`Defaults to daily × ${days} days when dates are set.`}
+            helper={
+              days != null
+                ? `Your absolute ceiling across ${days} scheduled day${days === 1 ? "" : "s"}.`
+                : "Required absolute ceiling. The campaign pauses before this amount is exceeded."
+            }
           />
         </label>
       )}
 
       <div className="space-y-1.5">
         <span className="block text-sm font-medium">Split strategy</span>
-        <div className="inline-flex rounded-lg border border-[var(--gray-300)] p-0.5" role="radiogroup" aria-label="Split strategy">
+        <div
+          className="inline-flex rounded-lg border border-[var(--gray-300)] p-0.5"
+          role="radiogroup"
+          aria-label="Split strategy"
+        >
           {STRATEGIES.map((s) => (
             <button
               key={s.id}
@@ -236,33 +288,44 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
 
       {amountCents > 0 && allocations.length > 0 && (
         <div className="p-3 rounded-lg border border-[var(--gray-200)] space-y-2">
-          <p className="text-xs font-semibold">Proposed split (local estimate)</p>
+          <p className="text-xs font-semibold">
+            Proposed split (local estimate)
+          </p>
           {allocations.map((a) => {
             const learning = learningLimitedWarning(a.dailyCents);
             return (
               <div key={a.platform} className="text-xs">
-                <span className="font-medium">{PLATFORM_LABELS[a.platform]}</span>{" "}
+                <span className="font-medium">
+                  {PLATFORM_LABELS[a.platform]}
+                </span>{" "}
                 — ${(a.dailyCents / 100).toFixed(2)}/day
                 {learning && (
-                  <p className="text-[var(--color-warning-700)] mt-0.5">{learning}</p>
+                  <p className="text-[var(--color-warning-700)] mt-0.5">
+                    {learning}
+                  </p>
                 )}
               </div>
             );
           })}
-          {excluded.filter((r) => r.excludedReason).map((r) => (
-            <p key={r.platform} className="text-xs text-[var(--color-text-tertiary)]">
-              {r.label}: {r.excludedReason}
-            </p>
-          ))}
+          {excluded
+            .filter((r) => r.excludedReason)
+            .map((r) => (
+              <p
+                key={r.platform}
+                className="text-xs text-[var(--color-text-tertiary)]"
+              >
+                {r.label}: {r.excludedReason}
+              </p>
+            ))}
         </div>
       )}
 
       {belowMinimum && (
         <AlertCard variant="warning" title="Below platform minimum">
           <p className="text-xs mt-1">
-            {platforms.join(", ")} for {d1.days} day{d1.days === 1 ? "" : "s"} need at least $
-            {(d1.minBudgetCents / 100).toFixed(2)}. You entered ${(amountCents / 100).toFixed(2)}.
-            Each platform has its own minimum.
+            {platforms.join(", ")} for {d1.days} day{d1.days === 1 ? "" : "s"}{" "}
+            need at least ${(d1.minBudgetCents / 100).toFixed(2)}. You entered $
+            {(amountCents / 100).toFixed(2)}. Each platform has its own minimum.
           </p>
         </AlertCard>
       )}
@@ -270,8 +333,8 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
       {googleShort && (
         <AlertCard variant="warning" title="Google needs at least 3 days">
           <p className="text-xs mt-1">
-            Google has no money minimum, but it won&apos;t run a total budget for less than 3 days.
-            Your dates cover {days ?? 0}.
+            Google has no money minimum, but it won&apos;t run a total budget
+            for less than 3 days. Your dates cover {days ?? 0}.
           </p>
         </AlertCard>
       )}
@@ -292,13 +355,19 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
       )}
 
       {mode === "daily" && (
-        <AlertCard variant="info" title="A day can cost more than your daily budget">
-          {PACING_DISCLOSURES.meta} {PACING_DISCLOSURES.google} The hard cap never moves.
+        <AlertCard
+          variant="info"
+          title="A day can cost more than your daily budget"
+        >
+          {PACING_DISCLOSURES.meta} {PACING_DISCLOSURES.google} The hard cap
+          never moves.
         </AlertCard>
       )}
 
       {errors.map((message) => (
-        <p key={message} className="text-xs text-[#ef4444]">{message}</p>
+        <p key={message} className="text-xs text-[#ef4444]">
+          {message}
+        </p>
       ))}
 
       <div>
@@ -308,7 +377,11 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
           aria-expanded={advancedOpen}
           onClick={() => setAdvancedOpen((v) => !v)}
         >
-          {advancedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {advancedOpen ? (
+            <ChevronDown size={14} />
+          ) : (
+            <ChevronRight size={14} />
+          )}
           Advanced — channel allowlist
         </button>
         {advancedOpen && (

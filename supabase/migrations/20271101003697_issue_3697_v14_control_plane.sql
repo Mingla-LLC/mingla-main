@@ -10,6 +10,107 @@
 
 BEGIN;
 
+-- One extensible registry owns Mingla-controlled destinations. Marketing pages
+-- are one family under usemingla.com; app targets point at the existing exact
+-- iOS/Android app identities and inherit the established readiness authority.
+CREATE TABLE public.ad_destination_registry (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  destination_family text NOT NULL CHECK (destination_family IN (
+    'marketing_page', 'explorer_app', 'host_app'
+  )),
+  destination_key text NOT NULL CHECK (
+    char_length(btrim(destination_key)) BETWEEN 1 AND 240
+  ),
+  title text NOT NULL CHECK (char_length(btrim(title)) BETWEEN 1 AND 240),
+  canonical_url text NOT NULL CHECK (canonical_url ~ '^https://[^?#]+$'),
+  result_kind text NOT NULL CHECK (result_kind IN ('clicks', 'installs')),
+  app_key text NULL REFERENCES public.ad_advertising_apps(app_key) ON DELETE RESTRICT,
+  os text NULL CHECK (os IS NULL OR os IN ('ios', 'android')),
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('draft', 'active', 'retired')),
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(metadata) = 'object'),
+  created_by uuid NULL REFERENCES auth.users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (destination_family, destination_key),
+  CONSTRAINT ad_destination_registry_shape CHECK (
+    (destination_family = 'marketing_page' AND app_key IS NULL AND os IS NULL
+      AND canonical_url ~ '^https://usemingla\.com(/[^?#]*)?$')
+    OR
+    (destination_family = 'explorer_app' AND app_key = 'explorer' AND os IS NOT NULL)
+    OR
+    (destination_family = 'host_app' AND app_key = 'business' AND os IS NOT NULL)
+  ),
+  CONSTRAINT ad_destination_registry_app_key CHECK (
+    (destination_family = 'marketing_page')
+    OR destination_key = os
+  )
+);
+
+INSERT INTO public.ad_destination_registry (
+  id, destination_family, destination_key, title, canonical_url, result_kind,
+  app_key, os, status
+) VALUES
+  -- Preserve the Wave 4 route ids: campaign-builder selections and evidence
+  -- already treat these as durable destination identities.
+  ('36970000-0004-4000-8000-000000000001','marketing_page','explorer','Mingla Explorer home','https://usemingla.com/','installs',NULL,NULL,'active'),
+  ('36970000-0004-4000-8000-000000000002','marketing_page','host','Mingla Host home','https://usemingla.com/host','installs',NULL,NULL,'active'),
+  ('36970000-0004-4000-8000-000000000003','marketing_page','download','Explorer app download','https://usemingla.com/download','installs',NULL,NULL,'active'),
+  ('36970000-0004-4000-8000-000000000004','marketing_page','host-download','Host app download','https://usemingla.com/host/download','installs',NULL,NULL,'active'),
+  ('36970000-0004-4000-8000-000000000005','marketing_page','tools','Free Host tools','https://usemingla.com/tools','clicks',NULL,NULL,'active'),
+  ('36970000-0004-4000-8000-000000000006','marketing_page','tools-events','Event turnout tool','https://usemingla.com/tools/events','clicks',NULL,NULL,'active'),
+  ('36970000-0004-4000-8000-000000000007','marketing_page','tools-venues','Venue grader tool','https://usemingla.com/tools/venues','clicks',NULL,NULL,'active'),
+  ('36970000-0004-4000-8000-000000000008','marketing_page','tools-trips','Trip quote tool','https://usemingla.com/tools/trips','clicks',NULL,NULL,'active'),
+  ('36970000-0004-4000-8000-000000000009','marketing_page','tools-pricing','Pricing audit tool','https://usemingla.com/tools/pricing','clicks',NULL,NULL,'active'),
+  ('36970000-0014-4000-8000-000000000010','explorer_app','ios','Mingla Explorer for iPhone','https://go.usemingla.com/w36m','installs','explorer','ios','active'),
+  ('36970000-0014-4000-8000-000000000011','explorer_app','android','Mingla Explorer for Android','https://go.usemingla.com/w36m','installs','explorer','android','active'),
+  ('36970000-0014-4000-8000-000000000012','host_app','ios','Mingla Host for iPhone','https://biz.usemingla.com/ZSCW','installs','business','ios','active'),
+  ('36970000-0014-4000-8000-000000000013','host_app','android','Mingla Host for Android','https://biz.usemingla.com/ZSCW','installs','business','android','active');
+
+CREATE INDEX ad_destination_registry_active_idx
+  ON public.ad_destination_registry(destination_family, status, title);
+
+CREATE TRIGGER ad_destination_registry_updated_at
+  BEFORE UPDATE ON public.ad_destination_registry
+  FOR EACH ROW EXECUTE FUNCTION public.tg_ad_engine_set_updated_at();
+
+ALTER TABLE public.ad_destination_registry ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "ad destination registry admin read"
+  ON public.ad_destination_registry FOR SELECT TO authenticated
+  USING (public.is_admin_user());
+REVOKE ALL ON public.ad_destination_registry FROM anon, authenticated;
+GRANT SELECT ON public.ad_destination_registry TO authenticated;
+GRANT ALL ON public.ad_destination_registry TO service_role;
+
+-- Keep the established marketing page list RPC compatible while moving its
+-- source of truth out of a hard-coded VALUES block.
+CREATE OR REPLACE FUNCTION public.ad_marketing_route_rows()
+RETURNS TABLE (
+  id uuid,
+  entity_slug text,
+  path text,
+  title text,
+  result_kind text
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT r.id,
+    r.destination_key,
+    CASE
+      WHEN r.canonical_url = 'https://usemingla.com/' THEN '/'
+      ELSE substring(r.canonical_url FROM char_length('https://usemingla.com') + 1)
+    END,
+    r.title,
+    r.result_kind
+  FROM public.ad_destination_registry r
+  WHERE r.destination_family = 'marketing_page' AND r.status = 'active'
+  ORDER BY r.title, r.destination_key;
+$function$;
+REVOKE EXECUTE ON FUNCTION public.ad_marketing_route_rows() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.ad_marketing_route_rows() TO authenticated, service_role;
+
 CREATE TABLE public.ad_plans (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   client_kind text NOT NULL CHECK (client_kind IN ('admin', 'host', 'ari')),
@@ -48,6 +149,7 @@ CREATE TABLE public.ad_plan_versions (
   version_number integer NOT NULL CHECK (version_number > 0),
   previous_version_id uuid NULL REFERENCES public.ad_plan_versions(id) ON DELETE RESTRICT,
   canonical_plan jsonb NOT NULL CHECK (jsonb_typeof(canonical_plan) = 'object'),
+  destination_snapshot jsonb NOT NULL CHECK (jsonb_typeof(destination_snapshot) = 'object'),
   plan_hash text NOT NULL CHECK (plan_hash ~ '^[0-9a-f]{64}$'),
   host_currency char(3) NOT NULL REFERENCES public.supported_brand_currencies(code),
   host_budget_cents bigint NOT NULL CHECK (host_budget_cents > 0),
@@ -98,6 +200,8 @@ CREATE TABLE public.ad_plan_targeting_snapshots (
   verdict text NOT NULL CHECK (verdict IN ('exact', 'broader', 'unavailable', 'check_required')),
   widening_summary jsonb NOT NULL DEFAULT '[]'::jsonb
     CHECK (jsonb_typeof(widening_summary) = 'array'),
+  checks_required jsonb NOT NULL DEFAULT '[]'::jsonb
+    CHECK (jsonb_typeof(checks_required) = 'array'),
   broader_accepted boolean NOT NULL DEFAULT false,
   broader_accepted_by uuid NULL REFERENCES auth.users(id),
   broader_accepted_at timestamptz NULL,
@@ -340,11 +444,13 @@ BEGIN
     ('creating_paused_objects','cancelled_before_create'),
     ('platform_review','scheduled'), ('platform_review','live'),
     ('platform_review','platform_rejected'), ('platform_review','partially_ready'),
+    ('platform_review','partially_live'),
     ('scheduled','live'), ('scheduled','pause_requested'), ('scheduled','stop_requested'),
     ('live','pause_requested'), ('live','stop_requested'), ('live','partially_live'),
     ('pause_requested','paused'), ('pause_requested','live'),
+    ('pause_requested','partially_live'),
     ('pause_requested','stop_requested'),
-    ('paused','live'), ('paused','stop_requested'),
+    ('paused','live'), ('paused','partially_live'), ('paused','stop_requested'),
     ('stop_requested','settling'), ('stop_requested','settlement_attention_required'),
     ('settling','ended'), ('settling','settlement_attention_required'),
     ('changes_requested','draft'), ('changes_requested','validating'),
@@ -352,7 +458,8 @@ BEGIN
     ('staff_rejected','draft'), ('staff_rejected','cancelled_before_create'),
     ('platform_rejected','draft'),
     ('partially_ready','creating_paused_objects'), ('partially_ready','stop_requested'),
-    ('partially_live','pause_requested'), ('partially_live','stop_requested'),
+    ('partially_live','live'), ('partially_live','pause_requested'),
+    ('partially_live','stop_requested'),
     ('creation_failed_retryable','creating_paused_objects'),
     ('creation_failed_retryable','draft'), ('creation_failed_terminal','draft'),
     ('payment_failed','ready_for_funding'), ('expired','draft'),
@@ -426,6 +533,112 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.ad_plan_destination_resolve(
+  p_destination_family text,
+  p_destination_key text,
+  p_platforms jsonb DEFAULT '[]'::jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_family text := btrim(coalesce(p_destination_family, ''));
+  v_key text := btrim(coalesce(p_destination_key, ''));
+  v_registry public.ad_destination_registry%ROWTYPE;
+  v_page_type text;
+  v_brand_slug text;
+  v_entity_slug text;
+  v_public jsonb;
+  v_provider text;
+  v_provider_rows jsonb := '[]'::jsonb;
+  v_ready boolean := true;
+BEGIN
+  IF v_family NOT IN (
+    'public_mingla_page', 'marketing_page', 'explorer_app', 'host_app'
+  ) OR v_key = '' OR jsonb_typeof(coalesce(p_platforms, '[]'::jsonb)) <> 'array' THEN
+    RETURN jsonb_build_object(
+      'ok', false, 'ready', false, 'code', 'destination_descriptor_invalid'
+    );
+  END IF;
+
+  IF v_family = 'public_mingla_page' THEN
+    v_page_type := split_part(v_key, ':', 1);
+    v_brand_slug := split_part(v_key, ':', 2);
+    v_entity_slug := nullif(split_part(v_key, ':', 3), '');
+    v_public := public.ad_destination_resolve(
+      v_page_type, v_brand_slug, v_entity_slug
+    );
+    RETURN v_public || jsonb_build_object(
+      'destination_family', v_family,
+      'destination_key', v_key,
+      'ready', coalesce((v_public->>'ok')::boolean, false)
+    );
+  END IF;
+
+  SELECT * INTO v_registry
+  FROM public.ad_destination_registry r
+  WHERE r.destination_family = v_family
+    AND r.destination_key = v_key
+    AND r.status = 'active';
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'ok', false, 'ready', false, 'code', 'destination_not_registered',
+      'destination_family', v_family, 'destination_key', v_key
+    );
+  END IF;
+
+  IF v_registry.app_key IS NOT NULL THEN
+    IF jsonb_array_length(coalesce(p_platforms, '[]'::jsonb)) = 0 THEN
+      v_ready := false;
+    ELSE
+      FOR v_provider IN
+        SELECT value
+        FROM jsonb_array_elements_text(p_platforms)
+      LOOP
+        IF v_provider NOT IN ('meta','tiktok','snapchat','google','reddit') THEN
+          RETURN jsonb_build_object(
+            'ok', false, 'ready', false, 'code', 'destination_platform_invalid'
+          );
+        END IF;
+        v_provider_rows := v_provider_rows || jsonb_build_array(
+          jsonb_build_object(
+            'platform', v_provider,
+            'ready', public.can_create_native_app_campaign(
+              v_registry.app_key, v_registry.os, v_provider
+            )
+          )
+        );
+      END LOOP;
+      SELECT bool_and(coalesce((value->>'ready')::boolean, false))
+      INTO v_ready
+      FROM jsonb_array_elements(v_provider_rows);
+    END IF;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'ready', v_ready,
+    'code', CASE WHEN v_ready THEN NULL ELSE 'app_acquisition_not_ready' END,
+    'id', v_registry.id,
+    'destination_family', v_registry.destination_family,
+    'destination_key', v_registry.destination_key,
+    'title', v_registry.title,
+    'canonical_url', v_registry.canonical_url,
+    'result_kind', v_registry.result_kind,
+    'app_key', v_registry.app_key,
+    'os', v_registry.os,
+    'provider_readiness', v_provider_rows
+  );
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.ad_plan_destination_resolve(text,text,jsonb)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ad_plan_destination_resolve(text,text,jsonb)
+  TO service_role;
+
 CREATE OR REPLACE FUNCTION public.ad_plan_open(
   p_client_kind text,
   p_owner_kind text,
@@ -443,6 +656,7 @@ AS $function$
 DECLARE
   v_prior_host_campaigns bigint := 0;
   v_reasons jsonb := coalesce(p_risk_reasons, '[]'::jsonb);
+  v_destination jsonb;
   v_plan public.ad_plans%ROWTYPE;
 BEGIN
   IF p_client_kind NOT IN ('admin','host','ari')
@@ -452,7 +666,19 @@ BEGIN
   IF jsonb_typeof(v_reasons) <> 'array' THEN
     RAISE EXCEPTION 'ad_plan_risk_reasons_invalid' USING ERRCODE = '22023';
   END IF;
+  v_destination := public.ad_plan_destination_resolve(
+    p_destination_family, p_destination_key, '[]'::jsonb
+  );
+  IF coalesce((v_destination->>'ok')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'ad_plan_destination_invalid:%',
+      coalesce(v_destination->>'code', 'destination_not_available')
+      USING ERRCODE = '22023';
+  END IF;
   IF p_owner_kind = 'host' THEN
+    IF p_destination_family <> 'public_mingla_page'
+       OR nullif(v_destination->>'brand_id','')::uuid IS DISTINCT FROM p_brand_id THEN
+      RAISE EXCEPTION 'ad_plan_host_destination_mismatch' USING ERRCODE = '22023';
+    END IF;
     PERFORM public.ad_require_brand_currency(p_brand_id);
     SELECT count(DISTINCT v.plan_id) INTO v_prior_host_campaigns
     FROM public.ad_campaigns c
@@ -504,6 +730,8 @@ DECLARE
   v_fx_expires_at timestamptz;
   v_host_sum bigint := 0;
   v_normalized_allocations jsonb := '[]'::jsonb;
+  v_platforms jsonb;
+  v_destination jsonb;
   v_hash text;
   v_version_row public.ad_plan_versions%ROWTYPE;
 BEGIN
@@ -597,6 +825,17 @@ BEGIN
   IF v_host_sum <> p_host_budget_cents THEN
     RAISE EXCEPTION 'ad_plan_host_allocation_sum_mismatch' USING ERRCODE = '22023';
   END IF;
+  SELECT jsonb_agg(value->>'platform' ORDER BY value->>'platform')
+  INTO v_platforms
+  FROM jsonb_array_elements(v_normalized_allocations);
+  v_destination := public.ad_plan_destination_resolve(
+    v_plan.destination_family, v_plan.destination_key, v_platforms
+  );
+  IF coalesce((v_destination->>'ok')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'ad_plan_destination_invalid:%',
+      coalesce(v_destination->>'code', 'destination_not_available')
+      USING ERRCODE = '22023';
+  END IF;
   IF v_plan.owner_kind = 'mingla' AND EXISTS (
     SELECT 1 FROM jsonb_array_elements(v_normalized_allocations) a
     WHERE a->>'provider_currency' <> v_host_currency
@@ -614,6 +853,7 @@ BEGIN
   FROM public.ad_plan_versions WHERE plan_id = p_plan_id;
   v_hash := encode(extensions.digest(convert_to(jsonb_build_object(
     'plan', p_canonical_plan,
+    'destination', v_destination,
     'host_budget_cents', p_host_budget_cents,
     'host_currency', v_host_currency,
     'provider_allocations', (
@@ -622,10 +862,12 @@ BEGIN
     )
   )::text, 'UTF8'), 'sha256'), 'hex');
   INSERT INTO public.ad_plan_versions (
-    plan_id, version_number, previous_version_id, canonical_plan, plan_hash,
+    plan_id, version_number, previous_version_id, canonical_plan,
+    destination_snapshot, plan_hash,
     host_currency, host_budget_cents, created_by
   ) VALUES (
-    p_plan_id, v_version, v_previous.id, p_canonical_plan, v_hash,
+    p_plan_id, v_version, v_previous.id, p_canonical_plan,
+    v_destination, v_hash,
     v_host_currency, p_host_budget_cents, p_actor_id
   ) RETURNING * INTO v_version_row;
   INSERT INTO public.ad_plan_provider_allocations (
@@ -720,6 +962,7 @@ AS $function$
 DECLARE
   v_version public.ad_plan_versions%ROWTYPE;
   v_plan public.ad_plans%ROWTYPE;
+  v_destination jsonb;
   v_platform_count integer;
   v_snapshot_count integer;
   v_allocation_count integer;
@@ -767,6 +1010,21 @@ BEGIN
       )
   ) THEN
     RAISE EXCEPTION 'ad_plan_targeting_not_accepted' USING ERRCODE = '22023';
+  END IF;
+  v_destination := public.ad_plan_destination_resolve(
+    v_plan.destination_family,
+    v_plan.destination_key,
+    v_version.canonical_plan->'platforms'
+  );
+  IF coalesce((v_destination->>'ok')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'ad_plan_destination_invalid:%',
+      coalesce(v_destination->>'code', 'destination_not_available')
+      USING ERRCODE = '22023';
+  END IF;
+  IF coalesce((v_destination->>'ready')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'ad_plan_destination_not_ready:%',
+      coalesce(v_destination->>'code', 'destination_not_ready')
+      USING ERRCODE = '55000';
   END IF;
   UPDATE public.ad_plans SET state = 'ready_for_funding'
   WHERE id = v_plan.id RETURNING * INTO v_plan;
@@ -916,10 +1174,11 @@ BEGIN
 END;
 $function$;
 
-CREATE OR REPLACE FUNCTION public.ad_plan_cancel_before_create(
+CREATE OR REPLACE FUNCTION public.ad_plan_release_funding_hold(
   p_plan_version_id uuid,
   p_plan_hash text,
   p_idempotency_key text,
+  p_reason text,
   p_actor_id uuid DEFAULT NULL
 )
 RETURNS public.ad_plan_funding_holds
@@ -941,6 +1200,9 @@ BEGIN
   SELECT * INTO v_plan FROM public.ad_plans WHERE id = v_version.plan_id FOR UPDATE;
   SELECT * INTO v_hold FROM public.ad_plan_funding_holds
   WHERE plan_version_id = v_version.id FOR UPDATE;
+  IF FOUND AND v_hold.state IN ('released','voided') THEN
+    RETURN v_hold;
+  END IF;
   IF NOT FOUND OR v_hold.state <> 'held' THEN
     RAISE EXCEPTION 'ad_plan_funding_not_held' USING ERRCODE = '55000';
   END IF;
@@ -989,7 +1251,8 @@ BEGIN
       v_hold.brand_id, 'unspend_return', v_hold.amount_cents, 0,
       v_wallet.balance_cents + v_hold.amount_cents, v_hold.currency,
       p_actor_id, btrim(p_idempotency_key), jsonb_build_object(
-        'reason', 'cancelled_before_create', 'plan_id', v_plan.id,
+        'reason', coalesce(nullif(btrim(p_reason), ''), 'released_before_create'),
+        'plan_id', v_plan.id,
         'plan_version_id', v_version.id, 'plan_hash', v_version.plan_hash,
         'hold_id', v_hold.id
       )
@@ -999,6 +1262,34 @@ BEGIN
   SET state = CASE WHEN funding_source = 'host_credit' THEN 'released' ELSE 'voided' END,
       released_at = now(), release_ledger_id = v_release_ledger.id
   WHERE id = v_hold.id RETURNING * INTO v_hold;
+  RETURN v_hold;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.ad_plan_cancel_before_create(
+  p_plan_version_id uuid,
+  p_plan_hash text,
+  p_idempotency_key text,
+  p_actor_id uuid DEFAULT NULL
+)
+RETURNS public.ad_plan_funding_holds
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_version public.ad_plan_versions%ROWTYPE;
+  v_plan public.ad_plans%ROWTYPE;
+  v_hold public.ad_plan_funding_holds%ROWTYPE;
+BEGIN
+  SELECT * INTO v_version FROM public.ad_plan_versions
+  WHERE id = p_plan_version_id AND plan_hash = lower(p_plan_hash);
+  IF NOT FOUND THEN RAISE EXCEPTION 'ad_plan_version_hash_mismatch' USING ERRCODE = '22023'; END IF;
+  SELECT * INTO v_plan FROM public.ad_plans WHERE id = v_version.plan_id FOR UPDATE;
+  v_hold := public.ad_plan_release_funding_hold(
+    p_plan_version_id, p_plan_hash, p_idempotency_key,
+    'cancelled_before_create', p_actor_id
+  );
   UPDATE public.ad_plans SET state = 'cancelled_before_create' WHERE id = v_plan.id;
   RETURN v_hold;
 END;
@@ -1020,6 +1311,7 @@ DECLARE
   v_version public.ad_plan_versions%ROWTYPE;
   v_plan public.ad_plans%ROWTYPE;
   v_review public.ad_plan_reviews%ROWTYPE;
+  v_hold public.ad_plan_funding_holds%ROWTYPE;
 BEGIN
   IF p_decision NOT IN ('approved','changes_requested','rejected') OR p_decided_by IS NULL THEN
     RAISE EXCEPTION 'ad_plan_review_invalid' USING ERRCODE = '22023';
@@ -1037,6 +1329,13 @@ BEGIN
     v_plan.id, v_version.id, v_version.plan_hash, p_decision,
     nullif(btrim(coalesce(p_reason,'')), ''), p_decided_by
   ) RETURNING * INTO v_review;
+  IF p_decision <> 'approved' THEN
+    v_hold := public.ad_plan_release_funding_hold(
+      v_version.id, v_version.plan_hash,
+      'review_release:' || v_version.plan_hash || ':' || p_decision,
+      'staff_' || p_decision, p_decided_by
+    );
+  END IF;
   UPDATE public.ad_plans SET state = CASE p_decision
     WHEN 'approved' THEN 'staff_approved'
     WHEN 'changes_requested' THEN 'changes_requested'
@@ -1060,6 +1359,7 @@ DECLARE
   v_version public.ad_plan_versions%ROWTYPE;
   v_plan public.ad_plans%ROWTYPE;
   v_hold public.ad_plan_funding_holds%ROWTYPE;
+  v_destination jsonb;
 BEGIN
   SELECT * INTO v_version FROM public.ad_plan_versions
   WHERE id = p_plan_version_id AND plan_hash = lower(p_plan_hash);
@@ -1089,6 +1389,17 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'ad_plan_targeting_not_accepted' USING ERRCODE = '55000';
   END IF;
+  v_destination := public.ad_plan_destination_resolve(
+    v_plan.destination_family,
+    v_plan.destination_key,
+    v_version.canonical_plan->'platforms'
+  );
+  IF coalesce((v_destination->>'ok')::boolean, false) IS NOT TRUE
+     OR coalesce((v_destination->>'ready')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'ad_plan_destination_not_ready:%',
+      coalesce(v_destination->>'code', 'destination_not_ready')
+      USING ERRCODE = '55000';
+  END IF;
   IF v_plan.review_required AND NOT EXISTS (
     SELECT 1 FROM public.ad_plan_reviews r
     WHERE r.plan_version_id = v_version.id
@@ -1097,7 +1408,10 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'ad_plan_staff_approval_required' USING ERRCODE = '55000';
   END IF;
-  IF v_plan.state NOT IN ('funded_held','staff_approved','creating_paused_objects') THEN
+  IF v_plan.state NOT IN (
+    'funded_held','staff_approved','creating_paused_objects','platform_review',
+    'scheduled','paused','partially_live'
+  ) THEN
     RAISE EXCEPTION 'ad_plan_launch_state_invalid' USING ERRCODE = '55000';
   END IF;
   RETURN jsonb_build_object(
@@ -1284,6 +1598,45 @@ BEGIN
   RETURN v_attempt;
 END;
 $function$;
+
+CREATE OR REPLACE FUNCTION public.ad_campaign_record_plan_create_success()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_version public.ad_plan_versions%ROWTYPE;
+  v_expected integer;
+  v_created integer;
+BEGIN
+  IF NEW.plan_version_id IS NULL THEN RETURN NEW; END IF;
+  SELECT * INTO v_version FROM public.ad_plan_versions
+  WHERE id = NEW.plan_version_id AND plan_hash = NEW.plan_hash;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'ad_campaign_plan_binding_mismatch' USING ERRCODE = '22023';
+  END IF;
+  PERFORM public.ad_record_provider_attempt(
+    v_version.id, v_version.plan_hash, NEW.platform,
+    'create_paused_objects', v_version.plan_hash || ':' || NEW.platform || ':create',
+    'succeeded', jsonb_build_object('campaign_id', NEW.external_campaign_id),
+    jsonb_build_object('status', NEW.status), NULL
+  );
+  SELECT count(*) INTO v_expected FROM public.ad_plan_provider_allocations
+  WHERE plan_version_id = v_version.id;
+  SELECT count(DISTINCT platform) INTO v_created FROM public.ad_campaigns
+  WHERE plan_version_id = v_version.id AND plan_hash = v_version.plan_hash;
+  IF v_expected > 0 AND v_created = v_expected THEN
+    UPDATE public.ad_plans SET state = 'platform_review'
+    WHERE id = v_version.plan_id AND state = 'creating_paused_objects';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER ad_campaign_record_plan_create_success
+  AFTER INSERT ON public.ad_campaigns
+  FOR EACH ROW EXECUTE FUNCTION public.ad_campaign_record_plan_create_success();
 
 CREATE OR REPLACE FUNCTION public.ad_request_campaign_stop(
   p_campaign_id uuid,
@@ -1667,7 +2020,8 @@ GRANT ALL ON public.ad_plans, public.ad_plan_versions,
 
 REVOKE ALL ON FUNCTION public.ad_immutable_row_guard(),
   public.ad_plan_set_updated_at(), public.ad_plan_state_transition_guard(),
-  public.ad_campaign_plan_binding_guard() FROM PUBLIC, anon, authenticated;
+  public.ad_campaign_plan_binding_guard(),
+  public.ad_campaign_record_plan_create_success() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.ad_fx_convert_frozen_minor(bigint,character,character,uuid)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.ad_plan_open(text,text,uuid,text,text,jsonb,uuid),
@@ -1675,6 +2029,7 @@ REVOKE ALL ON FUNCTION public.ad_plan_open(text,text,uuid,text,text,jsonb,uuid),
   public.ad_plan_quote_for_brand(uuid,uuid,bigint),
   public.ad_plan_mark_ready(uuid,text), public.ad_plan_hold_host_funds(uuid,text,text,uuid),
   public.ad_plan_mark_admin_funded(uuid,text),
+  public.ad_plan_release_funding_hold(uuid,text,text,text,uuid),
   public.ad_plan_cancel_before_create(uuid,text,text,uuid),
   public.ad_plan_record_review(uuid,text,text,text,uuid),
   public.ad_plan_assert_launchable(uuid,text),

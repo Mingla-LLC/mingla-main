@@ -79,7 +79,10 @@ export interface ToolProposalCardProps {
    * read back the newly-created brandId and re-target the picker (Q7
    * create-row-first / attach-second). Resolves `{ ok, brandId? }`.
    */
-  onConfirm: (editedArgs?: Record<string, unknown>, keepPending?: boolean) => Promise<ConfirmOutcome>;
+  onConfirm: (
+    editedArgs?: Record<string, unknown>,
+    keepPending?: boolean,
+  ) => Promise<ConfirmOutcome>;
   onCancel: () => void;
   /**
    * Brand-name lookup for delete/update target display + type-to-confirm
@@ -111,43 +114,80 @@ interface Field {
 
 function humanizeToolName(toolName: string): string {
   switch (toolName) {
-    case "create_brand": return "Create brand";
-    case "update_brand": return "Update brand";
-    case "delete_brand": return "Delete brand";
-    case "manage_brand_hours": return "Update venue hours";
-    case "manage_brand_discovery_currency": return "Update discovery currency";
-    case "create_event": return "Create event";
-    case "update_event": return "Update event";
-    case "cancel_event": return "Cancel event";
-    case "discard_event_draft": return "Discard draft";
-    case "send_campaign_now": return "Send campaign";
-    case "propose_ad_plan": return "Propose ad plan";
-    case "approve_ad_plan": return "Launch Host ad";
-    case "pause_ad_campaign": return "Pause Host ad";
-    case "end_ad_campaign": return "End Host ad";
-    case "get_ad_campaign_report": return "Ad campaign report";
-    case "refund_order": return "Refund order";
-    case "cancel_order": return "Cancel free order";
-    case "cancel_trip_booking": return "Cancel trip booking";
-    case "charge_installment_now": return "Charge installment now";
-    case "retry_installment": return "Retry installment";
-    case "send_installment_reminder": return "Send installment reminder";
-    case "get_order_refund_preview": return "Preview refundable lines";
-    case "list_trip_installments": return "List trip installments";
-    case "request_account_deletion": return "Delete account";
-    case "invite_brand_member": return "Invite team member";
-    case "invite_scanner": return "Invite scanner";
-    case "revoke_brand_member": return "Revoke team member";
-    case "revoke_brand_invitation": return "Revoke team invitation";
-    case "revoke_scanner_invitation": return "Revoke scanner invitation";
-    case "manage_brand_people": return "Add Brand Person";
-    case "propose_site_content_update": return "Confirm Website draft";
-    case "propose_site_settings_update": return "Confirm Website settings draft";
-    case "attach_approved_site_media": return "Confirm Website image";
-    case "create_site_preview": return "Create private preview";
-    case "publish_site": return "Publish Website";
-    case "rollback_site": return "Publish earlier Website version";
-    default: return toolName.replace(/_/g, " ");
+    case "create_brand":
+      return "Create brand";
+    case "update_brand":
+      return "Update brand";
+    case "delete_brand":
+      return "Delete brand";
+    case "manage_brand_hours":
+      return "Update venue hours";
+    case "manage_brand_discovery_currency":
+      return "Update discovery currency";
+    case "create_event":
+      return "Create event";
+    case "update_event":
+      return "Update event";
+    case "cancel_event":
+      return "Cancel event";
+    case "discard_event_draft":
+      return "Discard draft";
+    case "send_campaign_now":
+      return "Send campaign";
+    case "propose_ad_plan":
+      return "Propose ad plan";
+    case "approve_ad_plan":
+      return "Launch Host ad";
+    case "pause_ad_campaign":
+      return "Pause Host ad";
+    case "end_ad_campaign":
+      return "End Host ad";
+    case "get_ad_campaign_report":
+      return "Ad campaign report";
+    case "refund_order":
+      return "Refund order";
+    case "cancel_order":
+      return "Cancel free order";
+    case "cancel_trip_booking":
+      return "Cancel trip booking";
+    case "charge_installment_now":
+      return "Charge installment now";
+    case "retry_installment":
+      return "Retry installment";
+    case "send_installment_reminder":
+      return "Send installment reminder";
+    case "get_order_refund_preview":
+      return "Preview refundable lines";
+    case "list_trip_installments":
+      return "List trip installments";
+    case "request_account_deletion":
+      return "Delete account";
+    case "invite_brand_member":
+      return "Invite team member";
+    case "invite_scanner":
+      return "Invite scanner";
+    case "revoke_brand_member":
+      return "Revoke team member";
+    case "revoke_brand_invitation":
+      return "Revoke team invitation";
+    case "revoke_scanner_invitation":
+      return "Revoke scanner invitation";
+    case "manage_brand_people":
+      return "Add Brand Person";
+    case "propose_site_content_update":
+      return "Confirm Website draft";
+    case "propose_site_settings_update":
+      return "Confirm Website settings draft";
+    case "attach_approved_site_media":
+      return "Confirm Website image";
+    case "create_site_preview":
+      return "Create private preview";
+    case "publish_site":
+      return "Publish Website";
+    case "rollback_site":
+      return "Publish earlier Website version";
+    default:
+      return toolName.replace(/_/g, " ");
   }
 }
 
@@ -190,7 +230,10 @@ function primaryIdentity(
   if (toolName === "update_event") return "Event update";
   if (toolName === "update_brand" || toolName === "delete_brand") {
     const id = typeof args.brand_id === "string" ? args.brand_id : "";
-    return brandNamesById[id] ?? (toolName === "update_brand" ? "Brand update" : "This brand");
+    return (
+      brandNamesById[id] ??
+      (toolName === "update_brand" ? "Brand update" : "This brand")
+    );
   }
   if (typeof args.title === "string" && args.title) return args.title;
   if (typeof args.name === "string" && args.name) return args.name;
@@ -207,34 +250,47 @@ function coverTypeLabel(type: unknown): string | null {
 
 function formatMoneyCents(cents: unknown, currency: unknown): string | null {
   if (typeof cents !== "number" || !Number.isFinite(cents)) return null;
-  const code = typeof currency === "string" && currency.trim()
-    ? currency.trim().toUpperCase()
-    : "";
+  const code =
+    typeof currency === "string" && currency.trim()
+      ? currency.trim().toUpperCase()
+      : "";
   const amount = (cents / 100).toFixed(2);
   return code ? `${amount} ${code}` : amount;
 }
 
 function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
   const out: Field[] = [];
-  const context = args.__proposal_context !== null && typeof args.__proposal_context === "object"
-    ? args.__proposal_context as Record<string, unknown>
-    : {};
+  const context =
+    args.__proposal_context !== null &&
+    typeof args.__proposal_context === "object"
+      ? (args.__proposal_context as Record<string, unknown>)
+      : {};
 
   if (toolName === "propose_ad_plan" || toolName === "approve_ad_plan") {
-    const budget = Number(args.budget_cents ?? 0);
-    const currency = args.currency;
-    const pay = budget > 0 ? Math.ceil(budget / 0.85) : 0;
-    if (typeof args.platform === "string") {
-      out.push({ label: "Platform", value: args.platform });
+    const budget = Number(context.ad_budget_cents ?? args.budget_cents ?? 0);
+    const daily = Number(
+      context.ad_daily_budget_cents ?? args.daily_budget_cents ?? 0,
+    );
+    const currency = context.currency;
+    const platforms = Array.isArray(context.ad_platforms)
+      ? context.ad_platforms
+      : Array.isArray(args.platforms)
+        ? args.platforms
+        : typeof args.platform === "string"
+          ? [args.platform]
+          : [];
+    if (platforms.length > 0) {
+      out.push({ label: "Platforms", value: platforms.join(", ") });
     }
     const budgetText = formatMoneyCents(budget, currency);
-    if (budgetText) out.push({ label: "Ad budget", value: budgetText });
-    const feeText = formatMoneyCents(pay - budget, currency);
-    if (feeText) out.push({ label: "Mingla fee", value: feeText });
-    const totalText = formatMoneyCents(pay, currency);
-    if (totalText) out.push({ label: "Total top-up", value: totalText });
+    if (budgetText) out.push({ label: "Hard cap", value: budgetText });
+    const dailyText = formatMoneyCents(daily, currency);
+    if (dailyText) out.push({ label: "Daily total", value: dailyText });
     if (typeof args.dest_page_type === "string") {
-      out.push({ label: "Destination", value: args.dest_page_type.replace(/_/g, " ") });
+      out.push({
+        label: "Destination",
+        value: args.dest_page_type.replace(/_/g, " "),
+      });
     }
     return out;
   }
@@ -265,7 +321,10 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
       }
     }
     if (toolName === "cancel_trip_booking") {
-      const total = formatMoneyCents(context.refund_total_cents, context.currency);
+      const total = formatMoneyCents(
+        context.refund_total_cents,
+        context.currency,
+      );
       if (total) out.push({ label: "Refund total", value: total });
       else out.push({ label: "Refund total", value: "Preview pending" });
     }
@@ -275,11 +334,12 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
       }
     }
     if (toolName === "charge_installment_now") {
-      const id = typeof args.installment_id === "string"
-        ? args.installment_id
-        : typeof context.installment_id === "string"
-        ? context.installment_id
-        : "";
+      const id =
+        typeof args.installment_id === "string"
+          ? args.installment_id
+          : typeof context.installment_id === "string"
+            ? context.installment_id
+            : "";
       if (id) out.push({ label: "Installment", value: `${id.slice(0, 8)}…` });
     }
     if (typeof args.reason === "string" && args.reason.trim()) {
@@ -298,7 +358,10 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
   ].includes(toolName);
   if (isSiteTool) {
     const brandId = typeof args.brand_id === "string" ? args.brand_id : "";
-    out.push({ label: "Brand", value: brandId ? `${brandId.slice(0, 8)}…` : "Selected brand" });
+    out.push({
+      label: "Brand",
+      value: brandId ? `${brandId.slice(0, 8)}…` : "Selected brand",
+    });
     if (typeof args.page_role === "string") {
       out.push({ label: "Page", value: args.page_role.replace(/_/g, " ") });
     }
@@ -313,23 +376,35 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
       value: ["publish_site", "rollback_site"].includes(toolName)
         ? "Changes the verified public Website"
         : toolName === "create_site_preview"
-        ? "Private preview — not live"
-        : "Draft only — does not publish",
+          ? "Private preview — not live"
+          : "Draft only — does not publish",
     });
     return out;
   }
   if (toolName === "manage_brand_hours" && Array.isArray(args.hours)) {
-    const weekdayLabels = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const weekdayLabels = [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+    ];
     const rows = args.hours
-      .filter((raw): raw is Record<string, unknown> => typeof raw === "object" && raw !== null)
+      .filter(
+        (raw): raw is Record<string, unknown> =>
+          typeof raw === "object" && raw !== null,
+      )
       .slice()
       .sort((a, b) => Number(a.weekday) - Number(b.weekday));
     for (const row of rows) {
       const weekday = Number(row.weekday);
       const label = weekdayLabels[weekday] ?? `Day ${weekday}`;
-      const value = row.is_closed === true
-        ? "Closed"
-        : `${String(row.open_time ?? "—")}–${String(row.close_time ?? "—")}`;
+      const value =
+        row.is_closed === true
+          ? "Closed"
+          : `${String(row.open_time ?? "—")}–${String(row.close_time ?? "—")}`;
       out.push({ label, value });
     }
     return out;
@@ -339,7 +414,10 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
       out.push({ label: "Currency", value: args.currency_code.toUpperCase() });
     }
     if (typeof args.expected_state_version === "number") {
-      out.push({ label: "State version", value: String(args.expected_state_version) });
+      out.push({
+        label: "State version",
+        value: String(args.expected_state_version),
+      });
     }
     if (typeof args.decision === "string") {
       out.push({ label: "Decision", value: args.decision.replace(/_/g, " ") });
@@ -347,12 +425,23 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     return out;
   }
   if (toolName === "upsert_ticket_tier") {
-    out.push({ label: "Event state", value: String(context.lifecycle ?? "event") });
+    out.push({
+      label: "Event state",
+      value: String(context.lifecycle ?? "event"),
+    });
     out.push({ label: "Action", value: String(context.action ?? "update") });
-    const tierName = typeof args.name === "string" ? args.name : context.tier_name;
-    if (typeof tierName === "string") out.push({ label: "Tier", value: tierName });
-    const currency = typeof context.effective_currency === "string" ? context.effective_currency : "currency pending";
-    if (typeof context.current_price_cents === "number" || typeof context.proposed_price_cents === "number") {
+    const tierName =
+      typeof args.name === "string" ? args.name : context.tier_name;
+    if (typeof tierName === "string")
+      out.push({ label: "Tier", value: tierName });
+    const currency =
+      typeof context.effective_currency === "string"
+        ? context.effective_currency
+        : "currency pending";
+    if (
+      typeof context.current_price_cents === "number" ||
+      typeof context.proposed_price_cents === "number"
+    ) {
       out.push({
         label: "Price",
         value: `${typeof context.current_price_cents === "number" ? `${(context.current_price_cents / 100).toFixed(2)} ${currency}` : "new"} → ${typeof context.proposed_price_cents === "number" ? `${(context.proposed_price_cents / 100).toFixed(2)} ${currency}` : "Free"}`,
@@ -362,13 +451,34 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
       label: "Capacity",
       value: `${context.current_capacity ?? "new"} → ${context.proposed_capacity ?? "Unlimited"}`,
     });
-    out.push({ label: "Payout check", value: context.payout_ready === true ? "Ready" : "Not needed" });
-    out.push({ label: "Available", value: String(context.available_at ?? "both") });
+    out.push({
+      label: "Payout check",
+      value: context.payout_ready === true ? "Ready" : "Not needed",
+    });
+    out.push({
+      label: "Available",
+      value: String(context.available_at ?? "both"),
+    });
   }
-  if (toolName === "set_pricing_switches" || toolName === "set_brand_pricing_defaults") {
-    if (args.tax !== undefined) out.push({ label: "Tax", value: `${String(context.current_tax ?? "inherit")} → ${String(args.tax)}` });
-    if (args.mingla_fee !== undefined) out.push({ label: "Mingla fee", value: `${String(context.current_mingla_fee ?? "inherit")} → ${String(args.mingla_fee)}` });
-    if (args.service_fee !== undefined) out.push({ label: "Service fee", value: `${String(context.current_service_fee ?? "inherit")} → ${String(args.service_fee)}` });
+  if (
+    toolName === "set_pricing_switches" ||
+    toolName === "set_brand_pricing_defaults"
+  ) {
+    if (args.tax !== undefined)
+      out.push({
+        label: "Tax",
+        value: `${String(context.current_tax ?? "inherit")} → ${String(args.tax)}`,
+      });
+    if (args.mingla_fee !== undefined)
+      out.push({
+        label: "Mingla fee",
+        value: `${String(context.current_mingla_fee ?? "inherit")} → ${String(args.mingla_fee)}`,
+      });
+    if (args.service_fee !== undefined)
+      out.push({
+        label: "Service fee",
+        value: `${String(context.current_service_fee ?? "inherit")} → ${String(args.service_fee)}`,
+      });
   }
   if (toolName === "create_event" || toolName === "update_event") {
     if (typeof args.start_at === "string") {
@@ -388,7 +498,10 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
       out.push({ label: "Where", value: args.location_text });
     }
     if (typeof args.brand_id === "string") {
-      out.push({ label: "Brand", value: String(args.brand_id).slice(0, 8) + "…" });
+      out.push({
+        label: "Brand",
+        value: String(args.brand_id).slice(0, 8) + "…",
+      });
     }
     if (typeof args.visibility === "string") {
       out.push({ label: "Visibility", value: args.visibility });
@@ -412,7 +525,11 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     }
     // ORCH-1103 — textual echo of the cover for screen-reader linearity.
     const ct = coverTypeLabel(args.cover_media_type);
-    if (typeof args.cover_media_url === "string" && args.cover_media_url && ct) {
+    if (
+      typeof args.cover_media_url === "string" &&
+      args.cover_media_url &&
+      ct
+    ) {
       out.push({ label: "Cover", value: ct });
     }
   }
@@ -472,7 +589,11 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     ]);
     for (const [key, value] of Object.entries(args)) {
       if (skip.has(key) || value == null || value === "") continue;
-      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
         out.push({ label: key.replace(/_/g, " "), value: String(value) });
       }
     }
@@ -485,7 +606,8 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
 // uploading / error. Whole band pressable; "Add cover" pill the visible affordance.
 // ----------------------------------------------------------------------------
 
-type CoverUploadState = "idle" | "creating" | "uploading" | "processing" | "error";
+type CoverUploadState =
+  "idle" | "creating" | "uploading" | "processing" | "error";
 
 interface CoverBandProps {
   url: string | null;
@@ -510,7 +632,11 @@ const CoverBand: React.FC<CoverBandProps> = ({
   emptyHelp = "Optional — image or video",
   selectedLabel,
 }) => {
-  if (uploadState === "creating" || uploadState === "uploading" || uploadState === "processing") {
+  if (
+    uploadState === "creating" ||
+    uploadState === "uploading" ||
+    uploadState === "processing"
+  ) {
     const busyLabel =
       uploadState === "creating"
         ? "Creating brand…"
@@ -521,7 +647,9 @@ const CoverBand: React.FC<CoverBandProps> = ({
       <View
         style={[styles.coverBand, styles.coverBandBusy]}
         accessibilityLabel={
-          uploadState === "creating" ? "Creating your brand, please wait." : "Uploading cover, please wait."
+          uploadState === "creating"
+            ? "Creating your brand, please wait."
+            : "Uploading cover, please wait."
         }
       >
         <ActivityIndicator size="large" color={textTokens.inverse} />
@@ -534,9 +662,17 @@ const CoverBand: React.FC<CoverBandProps> = ({
   if (hasCover) {
     const isVideo = type === "video";
     return (
-      <View style={[styles.coverBand, styles.coverBandFilled]} accessibilityLabel="Cover selected. Double-tap to change.">
+      <View
+        style={[styles.coverBand, styles.coverBandFilled]}
+        accessibilityLabel="Cover selected. Double-tap to change."
+      >
         {!isVideo ? (
-          <Image source={{ uri: url as string }} style={styles.coverImage} accessibilityIgnoresInvertColors resizeMode="cover" />
+          <Image
+            source={{ uri: url as string }}
+            style={styles.coverImage}
+            accessibilityIgnoresInvertColors
+            resizeMode="cover"
+          />
         ) : (
           <View style={styles.coverVideoFallback}>
             <View style={styles.playDisc}>
@@ -590,12 +726,16 @@ const CoverBand: React.FC<CoverBandProps> = ({
     >
       <View style={styles.coverPill}>
         <Plus size={16} color={textTokens.secondary} />
-        <Text style={styles.coverPillLabel}>{isError ? "Try again" : addLabel}</Text>
+        <Text style={styles.coverPillLabel}>
+          {isError ? "Try again" : addLabel}
+        </Text>
       </View>
       {isError ? (
         <View style={styles.coverErrorRow}>
           <AlertTriangle size={14} color={semantic.error} />
-          <Text style={styles.coverSubLabel}>Couldn&apos;t upload that cover. Tap to try again.</Text>
+          <Text style={styles.coverSubLabel}>
+            Couldn&apos;t upload that cover. Tap to try again.
+          </Text>
         </View>
       ) : (
         <Text style={styles.coverSubLabel}>{emptyHelp}</Text>
@@ -617,8 +757,10 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const [editing, setEditing] = useState(false);
   const [editedArgs, setEditedArgs] = useState<Record<string, unknown>>(args);
   const [coverSheetVisible, setCoverSheetVisible] = useState(false);
-  const [coverUploadState, setCoverUploadState] = useState<CoverUploadState>("idle");
-  const [adVideoPatch, setAdVideoPatch] = useState<CoverPatch>(EMPTY_COVER_PATCH);
+  const [coverUploadState, setCoverUploadState] =
+    useState<CoverUploadState>("idle");
+  const [adVideoPatch, setAdVideoPatch] =
+    useState<CoverPatch>(EMPTY_COVER_PATCH);
   const [adDraftOwnerKey] = useState(() => `ari-ad-${randomId()}`);
   const [typedName, setTypedName] = useState("");
   // #1983 — highest-safety: legal name must be freshly typed (never prefilled
@@ -632,7 +774,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   // the new id here, then opens the full picker against the real brand.
   const [createAttachVisible, setCreateAttachVisible] = useState(false);
   const [createdBrandId, setCreatedBrandId] = useState<string | null>(null);
-  const [createDescription, setCreateDescription] = useState<string | null>(null);
+  const [createDescription, setCreateDescription] = useState<string | null>(
+    null,
+  );
   const [creatingForCover, setCreatingForCover] = useState(false);
   const [proposalError, setProposalError] = useState<string | null>(null);
 
@@ -642,7 +786,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   // original proposal args) to reflect the freshly-attached cover.
   const isAdPlanProposal = toolName === "approve_ad_plan";
   const committedForArgs = createdBrandId !== null;
-  const liveArgs = editing || committedForArgs || isAdPlanProposal ? editedArgs : args;
+  const liveArgs =
+    editing || committedForArgs || isAdPlanProposal ? editedArgs : args;
   const identity = primaryIdentity(toolName, liveArgs, brandNamesById);
   const isBrandCreate = toolName === "create_brand";
   const isBrandUpdate = toolName === "update_brand";
@@ -666,11 +811,13 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const isSiteRollbackConfirm = toolName === "rollback_site";
 
   // ----- delete-variant -----------------------------------------------------
-  const deleteBrandId = isBrandDelete && typeof args.brand_id === "string" ? args.brand_id : null;
+  const deleteBrandId =
+    isBrandDelete && typeof args.brand_id === "string" ? args.brand_id : null;
   const cascade = useBrandCascadePreview(isBrandDelete ? deleteBrandId : null);
   const deleteName = isBrandDelete ? identity : "";
   const canDelete =
-    typedName.trim().toLowerCase() === deleteName.trim().toLowerCase() && deleteName.length > 0;
+    typedName.trim().toLowerCase() === deleteName.trim().toLowerCase() &&
+    deleteName.length > 0;
   const canMoneyConfirm =
     !!moneyPhrase && typedName.trim().toUpperCase() === moneyPhrase;
   const canAccountDeletion =
@@ -680,16 +827,16 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
 
   // ----- cover threading -----------------------------------------------------
   const coverUrl = (liveArgs.cover_media_url as string | undefined) ?? null;
-  const coverPosterUrl = (liveArgs.cover_media_poster_url as string | undefined) ?? null;
+  const coverPosterUrl =
+    (liveArgs.cover_media_poster_url as string | undefined) ?? null;
   const coverType = liveArgs.cover_media_type;
 
   const handleCoverChange = async (patch: CoverPatch): Promise<void> => {
     const selectionRef = patch.coverMediaUrl ? randomId() : undefined;
     if (selectionRef && typeof liveArgs.event_id === "string") {
       try {
-        const { registerEventCoverSelection } = await import(
-          "../../services/eventCoverMediaService"
-        );
+        const { registerEventCoverSelection } =
+          await import("../../services/eventCoverMediaService");
         await registerEventCoverSelection(
           liveArgs.event_id,
           selectionRef,
@@ -756,7 +903,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     }
     if (patch.coverMediaType !== "video" || !patch.coverMediaPosterUrl) {
       setCoverUploadState("error");
-      setProposalError("Host ads need a video. Choose a video from your library.");
+      setProposalError(
+        "Host ads need a video. Choose a video from your library.",
+      );
       return;
     }
     const brandId = typeof args.brand_id === "string" ? args.brand_id : "";
@@ -764,9 +913,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     setCoverUploadState("processing");
     setProposalError(null);
     try {
-      const { recordAndPrepareAriAdVideo } = await import(
-        "../../services/ariAdCreativeService"
-      );
+      const { recordAndPrepareAriAdVideo } =
+        await import("../../services/ariAdCreativeService");
       const creativeId = await recordAndPrepareAriAdVideo({
         brandId,
         platform,
@@ -778,9 +926,11 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
       setCoverUploadState("idle");
     } catch (error) {
       setCoverUploadState("error");
-      setProposalError(error instanceof Error
-        ? error.message
-        : "We couldn't prepare that ad video.");
+      setProposalError(
+        error instanceof Error
+          ? error.message
+          : "We couldn't prepare that ad video.",
+      );
     }
   };
 
@@ -788,10 +938,16 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   // from args.brand_id. On CREATE the id only exists AFTER the brand is minted
   // (Q7), captured in `createdBrandId`. Either path yields a real, RLS-valid
   // brand target the reused CoverPicker can persist against.
-  const updateBrandId = isBrandUpdate && typeof args.brand_id === "string" ? args.brand_id : null;
+  const updateBrandId =
+    isBrandUpdate && typeof args.brand_id === "string" ? args.brand_id : null;
   const effectiveBrandId = createdBrandId ?? updateBrandId;
-  const offeringKind: "event" | "trip" | "experience" =
-    toolName.includes("trip") ? "trip" : toolName.includes("experience") ? "experience" : "event";
+  const offeringKind: "event" | "trip" | "experience" = toolName.includes(
+    "trip",
+  )
+    ? "trip"
+    : toolName.includes("experience")
+      ? "experience"
+      : "event";
   const coverTarget: CoverTarget | null =
     isBrandWithCover && effectiveBrandId && accountId
       ? {
@@ -801,9 +957,11 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           existingDescription:
             createdBrandId !== null
               ? createDescription
-              : (args.description as string | null) ?? null,
+              : ((args.description as string | null) ?? null),
         }
-      : isOfferingCover && typeof liveArgs.brand_id === "string" && typeof liveArgs.event_id === "string"
+      : isOfferingCover &&
+          typeof liveArgs.brand_id === "string" &&
+          typeof liveArgs.event_id === "string"
         ? {
             kind: offeringKind,
             brandId: liveArgs.brand_id,
@@ -853,9 +1011,10 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
       }
       return outcome;
     } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : "Couldn't complete that action — try again.";
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Couldn't complete that action — try again.";
       setProposalError(message);
       return { ok: false, error: message };
     }
@@ -899,9 +1058,11 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
       // If the commit failed (outcome.ok false) the screen toast already shows;
       // the card stays put with the Add-cover affordance still live.
     } catch (error) {
-      setProposalError(error instanceof Error
-        ? error.message
-        : "Couldn't complete that action — try again.");
+      setProposalError(
+        error instanceof Error
+          ? error.message
+          : "Couldn't complete that action — try again.",
+      );
     } finally {
       setCreatingForCover(false);
     }
@@ -920,7 +1081,13 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   };
 
   const initialPatch: CoverPatch = coverUrl
-    ? { ...EMPTY_COVER_PATCH, coverMediaUrl: coverUrl, coverMediaPosterUrl: coverPosterUrl ?? (coverType === "image" ? coverUrl : null), coverMediaType: (coverType as CoverPatch["coverMediaType"]) ?? null }
+    ? {
+        ...EMPTY_COVER_PATCH,
+        coverMediaUrl: coverUrl,
+        coverMediaPosterUrl:
+          coverPosterUrl ?? (coverType === "image" ? coverUrl : null),
+        coverMediaType: (coverType as CoverPatch["coverMediaType"]) ?? null,
+      }
     : EMPTY_COVER_PATCH;
 
   // ORCH-1103 REWORK 3 — once the brand has been minted via "Create & attach"
@@ -950,7 +1117,10 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     onAttachDone?.(finishCover());
   };
 
-  const confirmDisabled = isExecuting || creatingForCover || coverUploadState !== "idle" ||
+  const confirmDisabled =
+    isExecuting ||
+    creatingForCover ||
+    coverUploadState !== "idle" ||
     (isAdPlanProposal && typeof editedArgs.creative_library_id !== "string");
   const canEditProposal = isToolProposalEditable(toolName, liveArgs);
   const handleStandardConfirm = (): void => {
@@ -965,7 +1135,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     <GlassChrome
       intensity="cardElevated"
       tintColor={glass.tint.profileElevated}
-      borderColor={isTypeConfirm ? "rgba(239,68,68,0.32)" : ariPalette.proposalBorder}
+      borderColor={
+        isTypeConfirm ? "rgba(239,68,68,0.32)" : ariPalette.proposalBorder
+      }
       radius="lg"
       style={styles.card}
     >
@@ -973,7 +1145,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
         <Text style={styles.reviewBoundary}>Review before Ari acts</Text>
         <View style={styles.headerRow}>
           <AriOrb size="xs" decorative />
-          {isTypeConfirm ? <AlertTriangle size={12} color={semantic.error} /> : null}
+          {isTypeConfirm ? (
+            <AlertTriangle size={12} color={semantic.error} />
+          ) : null}
           <Text
             style={[styles.verb, isTypeConfirm && styles.verbDanger]}
             numberOfLines={1}
@@ -982,7 +1156,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           </Text>
         </View>
 
-        <Text style={styles.identity} numberOfLines={2}>{identity}</Text>
+        <Text style={styles.identity} numberOfLines={2}>
+          {identity}
+        </Text>
 
         {isSiteDraftConfirm || isSitePublishConfirm || isSiteRollbackConfirm ? (
           <View style={styles.assuranceRow}>
@@ -990,8 +1166,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               {isSiteDraftConfirm
                 ? "This confirmation updates the saved draft only. It will not publish the Website."
                 : isSiteRollbackConfirm
-                ? "This is a separate rollback confirmation. The selected earlier revision will be validated and published as a new version."
-                : "This is a separate publish confirmation. Mingla will validate and verify this exact revision before the public Website changes."}
+                  ? "This is a separate rollback confirmation. The selected earlier revision will be validated and published as a new version."
+                  : "This is a separate publish confirmation. Mingla will validate and verify this exact revision before the public Website changes."}
             </Text>
           </View>
         ) : null}
@@ -1001,8 +1177,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           <>
             <View style={styles.assuranceRow}>
               <Text style={styles.assuranceText}>
-                Recoverable for 30 days. Your data stays — events, orders, refunds, audit logs are
-                preserved. Recovery needs support after that.
+                Recoverable for 30 days. Your data stays — events, orders,
+                refunds, audit logs are preserved. Recovery needs support after
+                that.
               </Text>
             </View>
             {cascade.isLoading ? (
@@ -1014,24 +1191,33 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               <View style={styles.fields}>
                 <View style={styles.fieldRow}>
                   <Text style={styles.fieldLabel}>Past events</Text>
-                  <Text style={styles.fieldValue}>{cascade.data.pastEventCount}</Text>
+                  <Text style={styles.fieldValue}>
+                    {cascade.data.pastEventCount}
+                  </Text>
                 </View>
                 <View style={styles.fieldRow}>
                   <Text style={styles.fieldLabel}>Team members</Text>
-                  <Text style={styles.fieldValue}>{cascade.data.teamMemberCount}</Text>
+                  <Text style={styles.fieldValue}>
+                    {cascade.data.teamMemberCount}
+                  </Text>
                 </View>
                 <View style={styles.fieldRow}>
                   <Text style={styles.fieldLabel}>Payout account</Text>
                   <Text style={styles.fieldValue}>
-                    {cascade.data.hasStripeConnect ? "Linked (will unlink)" : "Not linked"}
+                    {cascade.data.hasStripeConnect
+                      ? "Linked (will unlink)"
+                      : "Not linked"}
                   </Text>
                 </View>
               </View>
             ) : (
-              <Text style={styles.coverSubLabel}>Couldn&apos;t load counts — you can still delete.</Text>
+              <Text style={styles.coverSubLabel}>
+                Couldn&apos;t load counts — you can still delete.
+              </Text>
             )}
             <Text style={styles.confirmHelper}>
-              Type <Text style={styles.confirmHelperName}>{deleteName}</Text> to confirm
+              Type <Text style={styles.confirmHelperName}>{deleteName}</Text> to
+              confirm
             </Text>
             <TextInput
               value={typedName}
@@ -1049,7 +1235,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           <>
             <View style={styles.assuranceRow}>
               <Text style={styles.assuranceText}>
-                This deletes your Host account. Type your legal name and DELETE to confirm.
+                This deletes your Host account. Type your legal name and DELETE
+                to confirm.
               </Text>
             </View>
             <Text style={styles.confirmHelper}>
@@ -1066,7 +1253,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               accessibilityLabel="Type your legal name to confirm account deletion"
             />
             <Text style={styles.confirmHelper}>
-              Type <Text style={styles.confirmHelperName}>DELETE</Text> to confirm
+              Type <Text style={styles.confirmHelperName}>DELETE</Text> to
+              confirm
             </Text>
             <TextInput
               value={typedName}
@@ -1086,7 +1274,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                 {fieldsFor(toolName, liveArgs).map((f, i) => (
                   <View key={i} style={styles.fieldRow}>
                     <Text style={styles.fieldLabel}>{f.label}</Text>
-                    <Text style={styles.fieldValue} numberOfLines={2}>{f.value}</Text>
+                    <Text style={styles.fieldValue} numberOfLines={2}>
+                      {f.value}
+                    </Text>
                   </View>
                 ))}
               </View>
@@ -1097,7 +1287,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               </Text>
             </View>
             <Text style={styles.confirmHelper}>
-              Type <Text style={styles.confirmHelperName}>{moneyPhrase}</Text> to confirm
+              Type <Text style={styles.confirmHelperName}>{moneyPhrase}</Text>{" "}
+              to confirm
             </Text>
             <TextInput
               value={typedName}
@@ -1131,14 +1322,18 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             {createAttachVisible && isBrandCreate ? (
               <View style={styles.createAttachRow}>
                 <Text style={styles.createAttachText}>
-                  We&apos;ll create <Text style={styles.createAttachName}>{identity}</Text> so your
-                  cover has a home.
+                  We&apos;ll create{" "}
+                  <Text style={styles.createAttachName}>{identity}</Text> so
+                  your cover has a home.
                 </Text>
                 <View style={styles.createAttachActions}>
                   <Pressable
                     onPress={() => setCreateAttachVisible(false)}
                     hitSlop={{ top: 5, bottom: 5 }}
-                    style={({ pressed }) => [styles.createAttachCancel, pressed && styles.btnPressed]}
+                    style={({ pressed }) => [
+                      styles.createAttachCancel,
+                      pressed && styles.btnPressed,
+                    ]}
                     accessibilityRole="button"
                     accessibilityLabel="Not now"
                   >
@@ -1147,7 +1342,10 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                   <Pressable
                     onPress={() => void handleCreateAndAttach()}
                     hitSlop={{ top: 5, bottom: 5 }}
-                    style={({ pressed }) => [styles.createAttachConfirm, pressed && styles.btnPressed]}
+                    style={({ pressed }) => [
+                      styles.createAttachConfirm,
+                      pressed && styles.btnPressed,
+                    ]}
                     accessibilityRole="button"
                     accessibilityLabel="Create the brand and add a cover"
                   >
@@ -1181,12 +1379,15 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             onChange={setEditedArgs}
           />
         ) : (
-          !isTypeConfirm && fieldsFor(toolName, liveArgs).length > 0 && (
+          !isTypeConfirm &&
+          fieldsFor(toolName, liveArgs).length > 0 && (
             <View style={styles.fields}>
               {fieldsFor(toolName, liveArgs).map((f, i) => (
                 <View key={i} style={styles.fieldRow}>
                   <Text style={styles.fieldLabel}>{f.label}</Text>
-                  <Text style={styles.fieldValue} numberOfLines={1}>{f.value}</Text>
+                  <Text style={styles.fieldValue} numberOfLines={1}>
+                    {f.value}
+                  </Text>
                 </View>
               ))}
             </View>
@@ -1208,171 +1409,203 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           {committed ? (
             <Pressable
               onPress={handleDone}
-              disabled={isExecuting || creatingForCover || coverUploadState !== "idle"}
+              disabled={
+                isExecuting || creatingForCover || coverUploadState !== "idle"
+              }
               hitSlop={{ top: 5, bottom: 5 }}
               style={({ pressed }) => [
                 styles.actionBtn,
                 styles.confirmBtn,
                 pressed && styles.btnPressed,
-                (isExecuting || creatingForCover || coverUploadState !== "idle") && styles.btnDisabled,
+                (isExecuting ||
+                  creatingForCover ||
+                  coverUploadState !== "idle") &&
+                  styles.btnDisabled,
               ]}
               accessibilityRole="button"
               accessibilityLabel="Done"
-              accessibilityState={{ disabled: isExecuting || creatingForCover || coverUploadState !== "idle" }}
+              accessibilityState={{
+                disabled:
+                  isExecuting ||
+                  creatingForCover ||
+                  coverUploadState !== "idle",
+              }}
             >
               <Text style={styles.confirmText}>Done</Text>
             </Pressable>
           ) : (
-          <>
-          <Pressable
-            onPress={onCancel}
-            disabled={isExecuting}
-            hitSlop={{ top: 5, bottom: 5 }}
-            style={({ pressed }) => [
-              styles.actionBtn,
-              styles.cancelBtn,
-              pressed && styles.btnPressed,
-              isExecuting && styles.btnDisabled,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Cancel proposal"
-          >
-            <Text style={styles.cancelText}>Cancel</Text>
-          </Pressable>
-
-          {/* Delete-variant has no Edit button; the typed-name field is the gate */}
-          {isBrandDelete ? (
-            <Pressable
-              onPress={() =>
-                void confirmProposal({
-                  ...args,
-                  confirm_phrase: typedName.trim(),
-                })
-              }
-              disabled={isExecuting || !canDelete}
-              hitSlop={{ top: 5, bottom: 5 }}
-              style={({ pressed }) => [
-                styles.actionBtn,
-                styles.deleteBtn,
-                !canDelete && styles.deleteBtnDisabled,
-                pressed && styles.btnPressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Delete brand"
-              accessibilityState={{ disabled: isExecuting || !canDelete }}
-            >
-              <Text style={[styles.deleteText, !canDelete && styles.deleteTextDisabled]}>
-                {isExecuting ? "Deleting…" : "Delete brand"}
-              </Text>
-            </Pressable>
-          ) : isAccountDeletion ? (
-            <Pressable
-              onPress={() =>
-                void confirmProposal({
-                  ...(editing ? editedArgs : args),
-                  legal_name: legalNameInput.trim(),
-                  confirm_phrase: "DELETE",
-                })
-              }
-              disabled={isExecuting || !canAccountDeletion}
-              hitSlop={{ top: 5, bottom: 5 }}
-              style={({ pressed }) => [
-                styles.actionBtn,
-                styles.deleteBtn,
-                !canAccountDeletion && styles.deleteBtnDisabled,
-                pressed && styles.btnPressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Delete account"
-              accessibilityState={{ disabled: isExecuting || !canAccountDeletion }}
-            >
-              <Text style={[styles.deleteText, !canAccountDeletion && styles.deleteTextDisabled]}>
-                {isExecuting ? "Deleting…" : "Delete account"}
-              </Text>
-            </Pressable>
-          ) : isMoneyConfirm && moneyPhrase ? (
-            <Pressable
-              onPress={() =>
-                void confirmProposal({
-                  ...(editing || isAdPlanProposal ? editedArgs : args),
-                  confirm_phrase: moneyPhrase,
-                })
-              }
-              disabled={confirmDisabled || !canMoneyConfirm}
-              hitSlop={{ top: 5, bottom: 5 }}
-              style={({ pressed }) => [
-                styles.actionBtn,
-                styles.deleteBtn,
-                (confirmDisabled || !canMoneyConfirm) && styles.deleteBtnDisabled,
-                pressed && styles.btnPressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={`Confirm ${verb}`}
-              accessibilityState={{ disabled: confirmDisabled || !canMoneyConfirm }}
-            >
-              <Text style={[
-                styles.deleteText,
-                (confirmDisabled || !canMoneyConfirm) && styles.deleteTextDisabled,
-              ]}>
-                {isExecuting ? "Working…" : "Confirm"}
-              </Text>
-            </Pressable>
-          ) : (
             <>
-              {canEditProposal ? (
-                <Pressable
-                  onPress={() => setEditing((e) => !e)}
-                  disabled={isExecuting}
-                  hitSlop={{ top: 5, bottom: 5 }}
-                  style={({ pressed }) => [
-                    styles.actionBtn,
-                    styles.editBtn,
-                    pressed && styles.btnPressed,
-                    isExecuting && styles.btnDisabled,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={editing ? "Stop editing" : "Edit proposal"}
-                >
-                  <Text style={styles.editText}>{editing ? "Done editing" : "Edit"}</Text>
-                </Pressable>
-              ) : null}
               <Pressable
-                onPress={handleStandardConfirm}
-                disabled={confirmDisabled}
+                onPress={onCancel}
+                disabled={isExecuting}
                 hitSlop={{ top: 5, bottom: 5 }}
                 style={({ pressed }) => [
                   styles.actionBtn,
-                  styles.confirmBtn,
+                  styles.cancelBtn,
                   pressed && styles.btnPressed,
-                  confirmDisabled && styles.btnDisabled,
+                  isExecuting && styles.btnDisabled,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={
-                  isSitePublishConfirm
-                    ? "Publish Website"
-                    : isSiteRollbackConfirm
-                    ? "Publish earlier Website version"
-                    : isSiteDraftConfirm
-                    ? "Confirm draft update"
-                    : "Confirm proposal"
-                }
-                accessibilityState={{ disabled: confirmDisabled }}
+                accessibilityLabel="Cancel proposal"
               >
-                <Text style={styles.confirmText}>
-                  {isExecuting
-                    ? "Working…"
-                    : isSitePublishConfirm
-                    ? "Publish Website"
-                    : isSiteRollbackConfirm
-                    ? "Publish earlier version"
-                    : isSiteDraftConfirm
-                    ? "Confirm draft update"
-                    : "Confirm"}
-                </Text>
+                <Text style={styles.cancelText}>Cancel</Text>
               </Pressable>
+
+              {/* Delete-variant has no Edit button; the typed-name field is the gate */}
+              {isBrandDelete ? (
+                <Pressable
+                  onPress={() =>
+                    void confirmProposal({
+                      ...args,
+                      confirm_phrase: typedName.trim(),
+                    })
+                  }
+                  disabled={isExecuting || !canDelete}
+                  hitSlop={{ top: 5, bottom: 5 }}
+                  style={({ pressed }) => [
+                    styles.actionBtn,
+                    styles.deleteBtn,
+                    !canDelete && styles.deleteBtnDisabled,
+                    pressed && styles.btnPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete brand"
+                  accessibilityState={{ disabled: isExecuting || !canDelete }}
+                >
+                  <Text
+                    style={[
+                      styles.deleteText,
+                      !canDelete && styles.deleteTextDisabled,
+                    ]}
+                  >
+                    {isExecuting ? "Deleting…" : "Delete brand"}
+                  </Text>
+                </Pressable>
+              ) : isAccountDeletion ? (
+                <Pressable
+                  onPress={() =>
+                    void confirmProposal({
+                      ...(editing ? editedArgs : args),
+                      legal_name: legalNameInput.trim(),
+                      confirm_phrase: "DELETE",
+                    })
+                  }
+                  disabled={isExecuting || !canAccountDeletion}
+                  hitSlop={{ top: 5, bottom: 5 }}
+                  style={({ pressed }) => [
+                    styles.actionBtn,
+                    styles.deleteBtn,
+                    !canAccountDeletion && styles.deleteBtnDisabled,
+                    pressed && styles.btnPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete account"
+                  accessibilityState={{
+                    disabled: isExecuting || !canAccountDeletion,
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.deleteText,
+                      !canAccountDeletion && styles.deleteTextDisabled,
+                    ]}
+                  >
+                    {isExecuting ? "Deleting…" : "Delete account"}
+                  </Text>
+                </Pressable>
+              ) : isMoneyConfirm && moneyPhrase ? (
+                <Pressable
+                  onPress={() =>
+                    void confirmProposal({
+                      ...(editing || isAdPlanProposal ? editedArgs : args),
+                      confirm_phrase: moneyPhrase,
+                    })
+                  }
+                  disabled={confirmDisabled || !canMoneyConfirm}
+                  hitSlop={{ top: 5, bottom: 5 }}
+                  style={({ pressed }) => [
+                    styles.actionBtn,
+                    styles.deleteBtn,
+                    (confirmDisabled || !canMoneyConfirm) &&
+                      styles.deleteBtnDisabled,
+                    pressed && styles.btnPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Confirm ${verb}`}
+                  accessibilityState={{
+                    disabled: confirmDisabled || !canMoneyConfirm,
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.deleteText,
+                      (confirmDisabled || !canMoneyConfirm) &&
+                        styles.deleteTextDisabled,
+                    ]}
+                  >
+                    {isExecuting ? "Working…" : "Confirm"}
+                  </Text>
+                </Pressable>
+              ) : (
+                <>
+                  {canEditProposal ? (
+                    <Pressable
+                      onPress={() => setEditing((e) => !e)}
+                      disabled={isExecuting}
+                      hitSlop={{ top: 5, bottom: 5 }}
+                      style={({ pressed }) => [
+                        styles.actionBtn,
+                        styles.editBtn,
+                        pressed && styles.btnPressed,
+                        isExecuting && styles.btnDisabled,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        editing ? "Stop editing" : "Edit proposal"
+                      }
+                    >
+                      <Text style={styles.editText}>
+                        {editing ? "Done editing" : "Edit"}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    onPress={handleStandardConfirm}
+                    disabled={confirmDisabled}
+                    hitSlop={{ top: 5, bottom: 5 }}
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      styles.confirmBtn,
+                      pressed && styles.btnPressed,
+                      confirmDisabled && styles.btnDisabled,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      isSitePublishConfirm
+                        ? "Publish Website"
+                        : isSiteRollbackConfirm
+                          ? "Publish earlier Website version"
+                          : isSiteDraftConfirm
+                            ? "Confirm draft update"
+                            : "Confirm proposal"
+                    }
+                    accessibilityState={{ disabled: confirmDisabled }}
+                  >
+                    <Text style={styles.confirmText}>
+                      {isExecuting
+                        ? "Working…"
+                        : isSitePublishConfirm
+                          ? "Publish Website"
+                          : isSiteRollbackConfirm
+                            ? "Publish earlier version"
+                            : isSiteDraftConfirm
+                              ? "Confirm draft update"
+                              : "Confirm"}
+                    </Text>
+                  </Pressable>
+                </>
+              )}
             </>
-          )}
-          </>
           )}
         </View>
       </View>
@@ -1396,7 +1629,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           initial={initialPatch}
           onCoverChange={handleCoverChange}
           onShowToast={() => undefined}
-          onCoverVideoProcessingChange={(p) => setCoverUploadState(p ? "processing" : "idle")}
+          onCoverVideoProcessingChange={(p) =>
+            setCoverUploadState(p ? "processing" : "idle")
+          }
         />
       ) : null}
       {!isBrandWithCover && isOfferingCover && coverTarget ? (
@@ -1407,7 +1642,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           initial={initialPatch}
           onCoverChange={handleCoverChange}
           onShowToast={() => undefined}
-          onCoverVideoProcessingChange={(p) => setCoverUploadState(p ? "processing" : "idle")}
+          onCoverVideoProcessingChange={(p) =>
+            setCoverUploadState(p ? "processing" : "idle")
+          }
         />
       ) : null}
       {isAdPlanProposal && adVideoTarget ? (
@@ -1418,7 +1655,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           initial={adVideoPatch}
           onCoverChange={handleAdVideoChange}
           onShowToast={() => undefined}
-          onCoverVideoProcessingChange={(p) => setCoverUploadState(p ? "processing" : "idle")}
+          onCoverVideoProcessingChange={(p) =>
+            setCoverUploadState(p ? "processing" : "idle")
+          }
           mediaMode="video-only"
           title="Ad video"
           confirmLabel="Use this ad video"
@@ -1437,7 +1676,13 @@ const styles = StyleSheet.create({
   inner: {
     padding: CARD_PADDING,
   },
-  reviewBoundary: { color: textTokens.secondary, fontSize: 14, lineHeight: 20, fontWeight: "600", marginBottom: 8 },
+  reviewBoundary: {
+    color: textTokens.secondary,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",

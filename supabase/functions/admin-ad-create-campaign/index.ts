@@ -55,8 +55,8 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   AdApiError,
-  AdNotConnectedError,
   type AdConnectionRow,
+  AdNotConnectedError,
   AtomicCreateError,
   centsToPlatformBudget,
   type CreateAdInput,
@@ -66,10 +66,10 @@ import {
   createFullCampaignAtomic,
   getAdapter,
   isLane,
+  isMetaGoalValidForObjective,
   isPlatform,
   META_OBJECTIVE_GOAL_MATRIX,
   META_PIXEL_GATED_GOALS,
-  isMetaGoalValidForObjective,
   metaBudgetCategoryForGoal,
   REDDIT_CTA_MAP,
   TIKTOK_CTA_MAP,
@@ -84,12 +84,12 @@ import {
   validateSpecialAdCategories,
 } from "../_shared/meta.ts";
 import {
+  GOOGLE_GENDER_TYPES,
   GOOGLE_GEO_COUNTRY_CONSTANTS,
   googleAgeRangesForRange,
   googleCreateDemandGenVideoCampaign,
   googleCreateFullCampaign,
   type GoogleDemandGenVideoInput,
-  GOOGLE_GENDER_TYPES,
   type GoogleKeywordInput,
   normalizeGoogleKeywords,
   type ResolvedGeoTarget,
@@ -105,6 +105,7 @@ import { MINGLA_SQUARE_LOGO_PNG_BASE64 } from "../_shared/adDemandGenLogo.ts";
 import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
 import {
   assertTikTokIdentityAllowed,
+  normalizeTikTokInterestCategoryIds,
   resolveTikTokGeo,
   TIKTOK_BILLING_EVENTS,
   TIKTOK_GENDERS,
@@ -119,21 +120,19 @@ import {
   validateTikTokName,
   validateTikTokObjective,
   validateTikTokVideoDuration,
-  normalizeTikTokInterestCategoryIds,
 } from "../_shared/tiktok.ts";
 import {
   normalizeRedditObjective,
   REDDIT_NAME_MAX,
   REDDIT_NAME_MIN,
+  RedditChainError,
   redditConnExtras,
   redditCreateFullChain,
-  RedditChainError,
   type RedditCreativeBuildInput,
   validateRedditCreative,
 } from "../_shared/reddit.ts";
 import {
   buildSnapchatReviewDetail,
-  type SnapchatCircleGeo,
   SNAPCHAT_BID_STRATEGIES,
   SNAPCHAT_CIRCLE_UNITS,
   SNAPCHAT_DEFAULT_BID_STRATEGY,
@@ -142,6 +141,7 @@ import {
   SNAPCHAT_MIN_CAMPAIGN_BUDGET_MICRO,
   SNAPCHAT_MIN_SPEND_CAP_MICRO,
   SNAPCHAT_PIXEL_GATED_GOALS,
+  type SnapchatCircleGeo,
   type SnapchatCreateAdExtensions,
   type SnapchatCreateCampaignExtensions,
   type SnapchatCreateCreativeExtensions,
@@ -304,7 +304,10 @@ function pickCallDestination(body: Record<string, unknown>): DestinationInput {
     return single as DestinationInput;
   }
   const list = body.destinations;
-  if (Array.isArray(list) && list.length > 0 && list[0] && typeof list[0] === "object") {
+  if (
+    Array.isArray(list) && list.length > 0 && list[0] &&
+    typeof list[0] === "object"
+  ) {
     return list[0] as DestinationInput;
   }
   return {} as DestinationInput;
@@ -317,9 +320,83 @@ function pickCallDestination(body: Record<string, unknown>): DestinationInput {
  * byte-identical to before.
  */
 function pickDestGroupId(body: Record<string, unknown>): string | null {
-  return typeof body.destination_group_id === "string" && body.destination_group_id.trim()
+  return typeof body.destination_group_id === "string" &&
+      body.destination_group_id.trim()
     ? body.destination_group_id.trim()
     : null;
+}
+
+function canonicalJson(value: unknown): string {
+  const normalize = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(normalize);
+    if (input && typeof input === "object") {
+      return Object.fromEntries(
+        Object.entries(input as Record<string, unknown>)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, item]) => [key, normalize(item)]),
+      );
+    }
+    return input;
+  };
+  return JSON.stringify(normalize(value));
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function immutableRequestMismatch(
+  canonicalPlan: Record<string, unknown>,
+  body: Record<string, unknown>,
+  schedule: { starts_at: string | null; ends_at: string | null },
+): string | null {
+  if (String(canonicalPlan.name ?? "") !== String(body.name ?? "").trim()) {
+    return "plan_name_mismatch";
+  }
+  const frozenSchedule = objectRecord(canonicalPlan.schedule) ?? {};
+  if (
+    (frozenSchedule.starts_at ?? null) !== schedule.starts_at ||
+    (frozenSchedule.ends_at ?? null) !== schedule.ends_at
+  ) return "plan_schedule_mismatch";
+
+  const frozenCopy = objectRecord(canonicalPlan.copy);
+  if (
+    frozenCopy && canonicalJson(frozenCopy) !== canonicalJson(body.copy_intent)
+  ) return "plan_copy_mismatch";
+
+  const creative = objectRecord(body.creative_intent) ?? {};
+  const frozenCreativeId = typeof canonicalPlan.creative_library_id === "string"
+    ? canonicalPlan.creative_library_id
+    : null;
+  const requestCreativeId = typeof creative.creative_library_id === "string"
+    ? creative.creative_library_id
+    : null;
+  if (frozenCreativeId !== requestCreativeId) {
+    return "plan_creative_mismatch";
+  }
+  const frozenCreativeUrl = typeof canonicalPlan.creative_url === "string"
+    ? canonicalPlan.creative_url
+    : null;
+  const requestCreativeUrl = typeof creative.image_url === "string"
+    ? creative.image_url
+    : null;
+  if (frozenCreativeUrl !== requestCreativeUrl) {
+    return "plan_creative_mismatch";
+  }
+
+  const compliance = objectRecord(body.compliance) ?? {};
+  const frozenCategory = typeof canonicalPlan.special_ad_category === "string"
+    ? canonicalPlan.special_ad_category
+    : "NONE";
+  const requestedCategory = typeof compliance.specialAdCategory === "string"
+    ? compliance.specialAdCategory
+    : "NONE";
+  if (frozenCategory !== requestedCategory) {
+    return "plan_compliance_mismatch";
+  }
+  return null;
 }
 
 /** toward #3697 Wave 2 — money columns stamped on every ad_campaigns insert. */
@@ -331,6 +408,13 @@ type Wave2MoneyPersist = {
   starts_at: string | null;
   ends_at: string | null;
   currency: string;
+  plan_version_id?: string;
+  plan_hash?: string;
+  host_currency?: string;
+  provider_currency?: string;
+  host_budget_cents?: number;
+  provider_budget_cents?: number;
+  fx_snapshot_id?: string | null;
 };
 
 async function resolveBrandIdForSlug(
@@ -371,8 +455,10 @@ async function resolveBrandIdForSlug(
 const COMPLIANCE_UNSUPPORTED_REASON: Record<string, string> = {
   tiktok:
     "TikTok's aigc_disclosure_type is CUSTOMIZED_USER-only (unreachable for this account, T-P6) and it exposes no special-ad-category field",
-  snapchat: "Snapchat's create API exposes no AI-disclosure field and no special-ad-category field",
-  reddit: "Reddit's create API exposes no AI-disclosure field and no special-ad-category field",
+  snapchat:
+    "Snapchat's create API exposes no AI-disclosure field and no special-ad-category field",
+  reddit:
+    "Reddit's create API exposes no AI-disclosure field and no special-ad-category field",
   google:
     "Google Ads exposes no general special-ad-category field (account-level policy) and no RSA AI-disclosure field; only containsEuPoliticalAdvertising (already declared)",
 };
@@ -383,10 +469,13 @@ const COMPLIANCE_UNSUPPORTED_REASON: Record<string, string> = {
  */
 function documentComplianceDrop(platform: string, compliance: unknown): void {
   const c = (compliance ?? {}) as Record<string, unknown>;
-  const specialCategory = typeof c.specialAdCategory === "string" ? c.specialAdCategory : "NONE";
+  const specialCategory = typeof c.specialAdCategory === "string"
+    ? c.specialAdCategory
+    : "NONE";
   const aiGenerated = c.aiGenerated === true;
   if (specialCategory === "NONE" && !aiGenerated) return; // nothing set — nothing to note
-  const reason = COMPLIANCE_UNSUPPORTED_REASON[platform] ?? `${platform} exposes no compliance-flag field`;
+  const reason = COMPLIANCE_UNSUPPORTED_REASON[platform] ??
+    `${platform} exposes no compliance-flag field`;
   console.warn(
     `[admin-ad-create-campaign] ${platform}: compliance intent received ` +
       `(special_ad_category=${specialCategory}, ai_generated=${aiGenerated}) but cannot be ` +
@@ -395,7 +484,9 @@ function documentComplianceDrop(platform: string, compliance: unknown): void {
 }
 
 serve(async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
   let body: Record<string, unknown>;
@@ -426,7 +517,10 @@ serve(async (req: Request): Promise<Response> => {
     : "";
   if (requestedOwnerKind === "host") {
     if (!UUID_REGEX.test(requestedBrandId)) {
-      return json({ error: "validation_error", detail: "brand_id_invalid" }, 400);
+      return json(
+        { error: "validation_error", detail: "brand_id_invalid" },
+        400,
+      );
     }
     const { data: canManage, error: manageError } = await supabase.rpc(
       "biz_can_manage_payments_for_brand",
@@ -442,31 +536,50 @@ serve(async (req: Request): Promise<Response> => {
   // ── Input validation. ────────────────────────────────────────────────────────
   const platform = body.platform ?? "meta";
   const lane = body.lane ?? "consumer";
-  if (!isPlatform(platform)) return json({ error: "validation_error", detail: "platform_invalid" }, 400);
-  if (!isLane(lane)) return json({ error: "validation_error", detail: "lane_invalid" }, 400);
+  if (!isPlatform(platform)) {
+    return json({ error: "validation_error", detail: "platform_invalid" }, 400);
+  }
+  if (!isLane(lane)) {
+    return json({ error: "validation_error", detail: "lane_invalid" }, 400);
+  }
   if (requestedOwnerKind === "host" && lane !== "business") {
-    return json({ error: "validation_error", detail: "host_requires_business_lane" }, 422);
+    return json({
+      error: "validation_error",
+      detail: "host_requires_business_lane",
+    }, 422);
   }
 
   if (requestedOwnerKind === "host") {
     let hostDestination;
     try {
-      hostDestination = await resolveAdDestination(supabase, pickCallDestination(body));
+      hostDestination = await resolveAdDestination(
+        supabase,
+        pickCallDestination(body),
+      );
     } catch (error) {
       if (error instanceof AdDestinationError) {
-        return json({ error: "validation_error", detail: error.code }, error.status);
+        return json(
+          { error: "validation_error", detail: error.code },
+          error.status,
+        );
       }
       throw error;
     }
     if (hostDestination.page_type === "marketing") {
-      return json({ error: "validation_error", detail: "destination_not_host_owned" }, 422);
+      return json({
+        error: "validation_error",
+        detail: "destination_not_host_owned",
+      }, 422);
     }
     const destinationBrandId = await resolveBrandIdForSlug(
       supabase,
       hostDestination.brand_slug,
     );
     if (destinationBrandId !== requestedBrandId) {
-      return json({ error: "forbidden", detail: "destination_brand_mismatch" }, 403);
+      return json(
+        { error: "forbidden", detail: "destination_brand_mismatch" },
+        403,
+      );
     }
 
     const hostCreative = body.creative && typeof body.creative === "object" &&
@@ -494,9 +607,14 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: "creative_not_found" }, 422);
     }
     if (hostCreativeRow.brand_id !== requestedBrandId) {
-      return json({ error: "forbidden", detail: "creative_brand_mismatch" }, 403);
+      return json(
+        { error: "forbidden", detail: "creative_brand_mismatch" },
+        403,
+      );
     }
-    if (hostCreativeRow.kind !== "video" || hostCreativeRow.status !== "active") {
+    if (
+      hostCreativeRow.kind !== "video" || hostCreativeRow.status !== "active"
+    ) {
       return json({
         error: "validation_error",
         detail: "host_video_creative_required",
@@ -526,24 +644,36 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   const name = typeof body.name === "string" ? body.name.trim() : "";
-  if (!name) return json({ error: "validation_error", detail: "name_required" }, 400);
+  if (!name) {
+    return json({ error: "validation_error", detail: "name_required" }, 400);
+  }
 
-  const objective = typeof body.objective === "string" ? body.objective : "OUTCOME_TRAFFIC";
+  const objective = typeof body.objective === "string"
+    ? body.objective
+    : "OUTCOME_TRAFFIC";
   // A4.e.5 (supersedes OD-4): LINK_CLICKS is the default until the pixel fires.
   const optimizationGoal = typeof body.optimization_goal === "string"
     ? body.optimization_goal
     : "LINK_CLICKS";
-  const billingEvent = typeof body.billing_event === "string" ? body.billing_event : "IMPRESSIONS";
+  const billingEvent = typeof body.billing_event === "string"
+    ? body.billing_event
+    : "IMPRESSIONS";
 
   const budget = (body.budget ?? {}) as Record<string, unknown>;
   const budgetTypeRaw = typeof budget.type === "string" ? budget.type : "daily";
   if (budgetTypeRaw !== "daily" && budgetTypeRaw !== "lifetime") {
-    return json({ error: "validation_error", detail: "budget_type_unsupported" }, 422);
+    return json({
+      error: "validation_error",
+      detail: "budget_type_unsupported",
+    }, 422);
   }
   const budgetType = budgetTypeRaw as BudgetMode;
   const amountCents = budget.amount_cents;
   if (!Number.isInteger(amountCents) || (amountCents as number) <= 0) {
-    return json({ error: "validation_error", detail: "budget_amount_cents_invalid" }, 400);
+    return json({
+      error: "validation_error",
+      detail: "budget_amount_cents_invalid",
+    }, 400);
   }
   // QA P3-9: sane business ceiling — $1M (daily or lifetime). A typo'd budget
   // must die here, not at Meta (the conversion layer separately guards precision).
@@ -588,9 +718,10 @@ serve(async (req: Request): Promise<Response> => {
     return json({
       error: "validation_error",
       detail: "google_min_total_days",
-      message: `Google needs at least 3 days for a total budget. Your dates cover ${
-        schedule.days ?? 0
-      }.`,
+      message:
+        `Google needs at least 3 days for a total budget. Your dates cover ${
+          schedule.days ?? 0
+        }.`,
     }, 422);
   }
 
@@ -598,13 +729,16 @@ serve(async (req: Request): Promise<Response> => {
     mode: budgetType,
     amountCents: amountCents as number,
     days: schedule.days,
-    capCents: typeof budget.cap_cents === "number" ? budget.cap_cents as number : null,
+    capCents: typeof budget.cap_cents === "number"
+      ? budget.cap_cents as number
+      : null,
   });
 
   // Currency is provider/account truth for Mingla campaigns. Host campaigns
-  // additionally require the verified brand settlement authority. A
-  // cross-currency Host plan must arrive through the v1.4 quoted-FX plan path;
-  // this legacy direct-create endpoint cannot reinterpret one amount twice.
+  // use the verified brand settlement authority for all customer-facing money.
+  // A real provider write must bind to one funded, reviewed, confirmed v1.4
+  // plan; validate_only remains available without funding because it creates
+  // no object and persists nothing.
   const { data: moneyConnection, error: moneyConnectionError } = await supabase
     .from("ad_connections")
     .select("id, currency, connected, status")
@@ -627,7 +761,174 @@ serve(async (req: Request): Promise<Response> => {
     }, 409);
   }
   let customerCurrency = providerCurrency;
-  if (requestedOwnerKind === "host") {
+  let providerAmountCents = amountCents as number;
+  let planMoney: Omit<
+    Wave2MoneyPersist,
+    | "brand_id"
+    | "owner_kind"
+    | "cap_cents"
+    | "lifetime_budget_cents"
+    | "starts_at"
+    | "ends_at"
+    | "currency"
+  > = {};
+  if (body.validate_only !== true) {
+    const planVersionId = typeof body.plan_version_id === "string"
+      ? body.plan_version_id.trim()
+      : "";
+    const planHash = typeof body.plan_hash === "string"
+      ? body.plan_hash.trim().toLowerCase()
+      : "";
+    if (!UUID_REGEX.test(planVersionId) || !/^[0-9a-f]{64}$/.test(planHash)) {
+      return json({
+        error: "plan_required",
+        detail: "plan_version_and_hash_required_before_provider_create",
+      }, 409);
+    }
+    const { data: version, error: versionError } = await supabase
+      .from("ad_plan_versions")
+      .select(
+        "id, plan_id, plan_hash, canonical_plan, destination_snapshot, host_currency",
+      )
+      .eq("id", planVersionId)
+      .eq("plan_hash", planHash)
+      .maybeSingle();
+    if (versionError || !version) {
+      return json({
+        error: "plan_conflict",
+        detail: "plan_version_hash_mismatch",
+      }, 409);
+    }
+    const { data: plan } = await supabase.from("ad_plans")
+      .select("id, owner_kind, brand_id, current_version_id, state")
+      .eq("id", version.plan_id).maybeSingle();
+    const { data: allocation } = await supabase
+      .from("ad_plan_provider_allocations")
+      .select("*")
+      .eq("plan_version_id", planVersionId)
+      .eq("platform", platform)
+      .maybeSingle();
+    const { data: targetingSnapshot } = await supabase
+      .from("ad_plan_targeting_snapshots")
+      .select("verdict, broader_accepted, audience_intent, compiled_targeting")
+      .eq("plan_version_id", planVersionId)
+      .eq("platform", platform)
+      .maybeSingle();
+    const { data: confirmation } = await supabase
+      .from("ad_plan_confirmations")
+      .select("id")
+      .eq("plan_version_id", planVersionId)
+      .eq("plan_hash", planHash)
+      .maybeSingle();
+    if (
+      !plan || plan.current_version_id !== planVersionId ||
+      plan.owner_kind !== requestedOwnerKind ||
+      (requestedOwnerKind === "host" && plan.brand_id !== requestedBrandId) ||
+      !allocation || allocation.connection_id !== moneyConnection.id ||
+      allocation.provider_currency !== providerCurrency || !confirmation ||
+      !targetingSnapshot ||
+      targetingSnapshot.verdict === "unavailable" ||
+      targetingSnapshot.verdict === "check_required" ||
+      (targetingSnapshot.verdict === "broader" &&
+        targetingSnapshot.broader_accepted !== true)
+    ) {
+      return json(
+        { error: "plan_conflict", detail: "plan_binding_incomplete" },
+        409,
+      );
+    }
+    const suppliedIntent = body.audience_intent;
+    if (
+      !suppliedIntent || typeof suppliedIntent !== "object" ||
+      Array.isArray(suppliedIntent) ||
+      canonicalJson(suppliedIntent) !==
+        canonicalJson(targetingSnapshot.audience_intent)
+    ) {
+      return json(
+        { error: "plan_conflict", detail: "targeting_snapshot_mismatch" },
+        409,
+      );
+    }
+    let suppliedDestination;
+    try {
+      suppliedDestination = await resolveAdDestination(
+        supabase,
+        pickCallDestination(body),
+      );
+    } catch (error) {
+      if (error instanceof AdDestinationError) {
+        return json({ error: "plan_conflict", detail: error.code }, 409);
+      }
+      return json(
+        { error: "plan_conflict", detail: "destination_lookup_failed" },
+        409,
+      );
+    }
+    const frozenDestination = version.destination_snapshot as
+      | Record<string, unknown>
+      | null;
+    if (
+      !frozenDestination ||
+      suppliedDestination.canonical_url !== frozenDestination.canonical_url
+    ) {
+      return json(
+        { error: "plan_conflict", detail: "destination_snapshot_mismatch" },
+        409,
+      );
+    }
+    const { error: launchableError } = await supabase.rpc(
+      "ad_plan_assert_launchable",
+      { p_plan_version_id: planVersionId, p_plan_hash: planHash },
+    );
+    if (launchableError) {
+      return json({
+        error: "plan_not_launchable",
+        detail: launchableError.message,
+      }, 409);
+    }
+    const canonicalPlan = version.canonical_plan as Record<string, unknown>;
+    const requestMismatch = immutableRequestMismatch(
+      canonicalPlan,
+      body,
+      schedule,
+    );
+    if (requestMismatch) {
+      return json(
+        { error: "plan_conflict", detail: requestMismatch },
+        409,
+      );
+    }
+    const deliveryBudgets = canonicalPlan.delivery_budgets as
+      | Record<string, Record<string, unknown>>
+      | undefined;
+    const delivery = deliveryBudgets?.[platform];
+    const hostDeliveryAmount = delivery?.host_amount_cents;
+    const providerDeliveryAmount = delivery?.provider_amount_cents;
+    if (
+      !Number.isSafeInteger(hostDeliveryAmount) ||
+      !Number.isSafeInteger(providerDeliveryAmount) ||
+      hostDeliveryAmount !== amountCents ||
+      allocation.host_budget_cents !== capCents
+    ) {
+      return json(
+        { error: "plan_conflict", detail: "plan_budget_mismatch" },
+        409,
+      );
+    }
+    providerAmountCents = providerDeliveryAmount as number;
+    customerCurrency = String(allocation.host_currency);
+    planMoney = {
+      plan_version_id: planVersionId,
+      plan_hash: planHash,
+      host_currency: String(allocation.host_currency),
+      provider_currency: String(allocation.provider_currency),
+      host_budget_cents: Number(allocation.host_budget_cents),
+      provider_budget_cents: Number(allocation.provider_budget_cents),
+      fx_snapshot_id: allocation.fx_snapshot_id
+        ? String(allocation.fx_snapshot_id)
+        : null,
+    };
+  } else if (requestedOwnerKind === "host") {
     const authority = await resolveAdBrandCurrency(supabase, requestedBrandId);
     if (!authority.ok) {
       return json({
@@ -636,25 +937,22 @@ serve(async (req: Request): Promise<Response> => {
       }, 409);
     }
     customerCurrency = authority.currency;
-    if (customerCurrency !== providerCurrency) {
-      return json({
-        error: "validation_error",
-        detail: "cross_currency_plan_required",
-        host_currency: customerCurrency,
-        provider_currency: providerCurrency,
-      }, 409);
-    }
   }
 
   const wave2MoneyBase: Omit<Wave2MoneyPersist, "brand_id"> = {
     owner_kind: requestedOwnerKind,
     cap_cents: capCents,
-    lifetime_budget_cents: budgetType === "lifetime" ? amountCents as number : null,
+    lifetime_budget_cents: budgetType === "lifetime"
+      ? amountCents as number
+      : null,
     starts_at: schedule.starts_at,
     ends_at: schedule.ends_at,
     currency: customerCurrency,
+    ...planMoney,
   };
-  const dailyBudgetForPersist = budgetType === "lifetime" ? null : amountCents as number;
+  const dailyBudgetForPersist = budgetType === "lifetime"
+    ? null
+    : amountCents as number;
 
   // ══ GOOGLE branch (ISSUE-867 WP2 — AC-G-2) ══════════════════════════════════
   // ONE atomic googleAds:mutate (partialFailure:false — native no-orphan
@@ -662,9 +960,10 @@ serve(async (req: Request): Promise<Response> => {
   // below the budget checks is google-shaped, so the branch is self-contained
   // and the Meta path below stays byte-identical.
   if (platform === "google") {
-    const requestIdG = typeof body.request_id === "string" && body.request_id.trim()
-      ? body.request_id.trim()
-      : null;
+    const requestIdG =
+      typeof body.request_id === "string" && body.request_id.trim()
+        ? body.request_id.trim()
+        : null;
     const validateOnlyG = body.validate_only === true;
 
     // (1) Pure input validation — all 422s BEFORE any provider call.
@@ -681,9 +980,10 @@ serve(async (req: Request): Promise<Response> => {
       documentComplianceDrop("google", body.compliance);
 
       // (1a) Require the prepared library ref (create never uploads inline).
-      const creativeLibraryIdGV = typeof creativeG.creative_library_id === "string"
-        ? creativeG.creative_library_id.trim()
-        : "";
+      const creativeLibraryIdGV =
+        typeof creativeG.creative_library_id === "string"
+          ? creativeG.creative_library_id.trim()
+          : "";
       if (!creativeLibraryIdGV) {
         return json({ error: "video_preparation_required" }, 422);
       }
@@ -698,13 +998,20 @@ serve(async (req: Request): Promise<Response> => {
       const entitySlugGV = typeof destinationGV.entity_slug === "string"
         ? destinationGV.entity_slug.trim()
         : "";
+      // deno-fmt-ignore
       if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site", "marketing"].includes(pageTypeGV)) {
-        return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
+        return json({
+          error: "validation_error",
+          detail: "destination_page_type_invalid",
+        }, 400);
       }
       // toward #3697 Wave 4 — marketing implies sentinel brand when omitted.
       if (pageTypeGV === "marketing" && !brandSlugGV) brandSlugGV = "mingla";
       if (!brandSlugGV) {
-        return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
+        return json({
+          error: "validation_error",
+          detail: "destination_brand_slug_required",
+        }, 400);
       }
 
       // (1c) Demand Gen ad copy — businessName (≤25), ≥1 headline (≤40), ≥1 long
@@ -714,21 +1021,29 @@ serve(async (req: Request): Promise<Response> => {
       //      (wiring explicit long_headlines/business_name into the admin payload is
       //      a follow-up — see the D2 report); an explicit value overrides and is
       //      validated by validateGoogleDemandGenAd.
-      const headlinesGV = (Array.isArray(creativeG.headlines) ? creativeG.headlines : [])
-        .filter((h): h is string => typeof h === "string" && h.trim().length > 0)
-        .map((h) => h.trim());
-      const descriptionsGV = (Array.isArray(creativeG.descriptions) ? creativeG.descriptions : [])
-        .filter((d): d is string => typeof d === "string" && d.trim().length > 0)
-        .map((d) => d.trim());
+      const headlinesGV =
+        (Array.isArray(creativeG.headlines) ? creativeG.headlines : [])
+          .filter((h): h is string =>
+            typeof h === "string" && h.trim().length > 0
+          )
+          .map((h) => h.trim());
+      const descriptionsGV =
+        (Array.isArray(creativeG.descriptions) ? creativeG.descriptions : [])
+          .filter((d): d is string =>
+            typeof d === "string" && d.trim().length > 0
+          )
+          .map((d) => d.trim());
       const longHeadlinesGV = Array.isArray(creativeG.long_headlines)
         ? (creativeG.long_headlines as unknown[])
-          .filter((h): h is string => typeof h === "string" && h.trim().length > 0)
+          .filter((h): h is string =>
+            typeof h === "string" && h.trim().length > 0
+          )
           .map((h) => h.trim())
         : headlinesGV;
-      const businessNameGV =
-        typeof creativeG.business_name === "string" && creativeG.business_name.trim()
-          ? creativeG.business_name.trim()
-          : deriveGoogleBusinessName(brandSlugGV);
+      const businessNameGV = typeof creativeG.business_name === "string" &&
+          creativeG.business_name.trim()
+        ? creativeG.business_name.trim()
+        : deriveGoogleBusinessName(brandSlugGV);
       const demandGenCheck = validateGoogleDemandGenAd({
         businessName: businessNameGV,
         headlines: headlinesGV,
@@ -736,7 +1051,10 @@ serve(async (req: Request): Promise<Response> => {
         descriptions: descriptionsGV,
       });
       if (!demandGenCheck.ok) {
-        return json({ error: demandGenCheck.detail, detail: demandGenCheck.message }, 422);
+        return json({
+          error: demandGenCheck.detail,
+          detail: demandGenCheck.message,
+        }, 422);
       }
 
       // (1d) Targeting — countries required; named locations validated (SEARCH mirror).
@@ -746,20 +1064,27 @@ serve(async (req: Request): Promise<Response> => {
         !Array.isArray(countriesGV) || countriesGV.length === 0 ||
         countriesGV.some((c) => typeof c !== "string" || !c.trim())
       ) {
-        return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
+        return json({
+          error: "validation_error",
+          detail: "targeting_countries_required",
+        }, 400);
       }
-      const countryCodesGV = (countriesGV as string[]).map((c) => c.trim().toUpperCase());
+      const countryCodesGV = (countriesGV as string[]).map((c) =>
+        c.trim().toUpperCase()
+      );
       const locationsGV = Array.isArray(targetingGV.locations)
         ? targetingGV.locations as Record<string, unknown>[]
         : [];
       for (const location of locationsGV) {
         if (
           typeof location.name !== "string" || !location.name.trim() ||
-          typeof location.country_code !== "string" || !location.country_code.trim()
+          typeof location.country_code !== "string" ||
+          !location.country_code.trim()
         ) {
           return json({
             error: "validation_error",
-            detail: "targeting_location_invalid — each location needs { name, country_code }",
+            detail:
+              "targeting_location_invalid — each location needs { name, country_code }",
           }, 400);
         }
       }
@@ -771,7 +1096,10 @@ serve(async (req: Request): Promise<Response> => {
         .eq("platform", "google")
         .eq("lane", lane)
         .maybeSingle();
-      if (!gconnRowGV || !gconnRowGV.connected || gconnRowGV.status !== "connected") {
+      if (
+        !gconnRowGV || !gconnRowGV.connected ||
+        gconnRowGV.status !== "connected"
+      ) {
         return json({ error: "google_not_provisioned" }, 409);
       }
       const gconnGV = gconnRowGV as unknown as AdConnectionRow;
@@ -784,7 +1112,9 @@ serve(async (req: Request): Promise<Response> => {
           .eq("connection_id", gconnGV.id)
           .eq("request_id", requestIdG)
           .maybeSingle();
-        if (existingGV) return json({ campaign: existingGV, idempotent_replay: true });
+        if (existingGV) {
+          return json({ campaign: existingGV, idempotent_replay: true });
+        }
       }
 
       // (3) READY-ref resolve — the exact current-hash READY google VIDEO ref (D1):
@@ -797,7 +1127,10 @@ serve(async (req: Request): Promise<Response> => {
         .eq("id", creativeLibraryIdGV)
         .maybeSingle();
       if (!libCreativeGV) {
-        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+        return json({
+          error: "creative_not_found",
+          detail: "creative_library_id does not resolve",
+        }, 422);
       }
       if (libCreativeGV.kind !== "video") {
         return json({ error: "creative_kind_mismatch" }, 422);
@@ -832,7 +1165,10 @@ serve(async (req: Request): Promise<Response> => {
       }
       // A Demand Gen video ad needs the PREPARED youtube_video_id (D1 folds it into
       // external_ref_extra on the READY transition). A ref missing it fails closed.
-      const refExtraGV = (refGV.external_ref_extra ?? {}) as Record<string, unknown>;
+      const refExtraGV = (refGV.external_ref_extra ?? {}) as Record<
+        string,
+        unknown
+      >;
       const youtubeVideoIdGV = typeof refExtraGV.youtube_video_id === "string"
         ? refExtraGV.youtube_video_id
         : "";
@@ -847,7 +1183,10 @@ serve(async (req: Request): Promise<Response> => {
       // (4) Destination resolve — READ-ONLY, public + live only.
       let resolvedDestinationGV;
       try {
-        resolvedDestinationGV = await resolveAdDestination(supabase, destinationGV);
+        resolvedDestinationGV = await resolveAdDestination(
+          supabase,
+          destinationGV,
+        );
       } catch (err) {
         if (err instanceof AdDestinationError) {
           return json({ error: err.code, detail: err.message }, err.status);
@@ -859,7 +1198,10 @@ serve(async (req: Request): Promise<Response> => {
       const destVenueIdGV = resolvedDestinationGV.venue_id;
       const finalUrlCheckGV = validateGoogleFinalUrl(destUrlGV);
       if (!finalUrlCheckGV.ok) {
-        return json({ error: finalUrlCheckGV.detail, detail: finalUrlCheckGV.message }, 422);
+        return json({
+          error: finalUrlCheckGV.detail,
+          detail: finalUrlCheckGV.message,
+        }, 422);
       }
 
       // (5) Geo resolution — numeric criterion ids (mirror SEARCH); PRESENCE.
@@ -869,7 +1211,8 @@ serve(async (req: Request): Promise<Response> => {
           const gclientGV = await resolveGoogleClient(gconnGV);
           for (const location of locationsGV) {
             const nameL = (location.name as string).trim();
-            const countryCodeL = (location.country_code as string).trim().toUpperCase();
+            const countryCodeL = (location.country_code as string).trim()
+              .toUpperCase();
             const resolved = await suggestGeoTargetConstants(gclientGV, {
               name: nameL,
               countryCode: countryCodeL,
@@ -887,12 +1230,19 @@ serve(async (req: Request): Promise<Response> => {
       } catch (err) {
         if (err instanceof AdNotConnectedError) {
           return json(
-            { error: err.detail === "google_not_provisioned" ? "google_not_provisioned" : "google_not_connected" },
+            {
+              error: err.detail === "google_not_provisioned"
+                ? "google_not_provisioned"
+                : "google_not_connected",
+            },
             err.detail === "google_not_provisioned" ? 409 : 424,
           );
         }
         if (err instanceof AdApiError) {
-          return json({ error: "geo_not_resolvable", detail: err.toJSON() }, 422);
+          return json(
+            { error: "geo_not_resolvable", detail: err.toJSON() },
+            422,
+          );
         }
         throw err;
       }
@@ -911,12 +1261,15 @@ serve(async (req: Request): Promise<Response> => {
           target_type: l.targetType,
         }));
       } else {
-        const unresolvedGV = countryCodesGV.filter((code) => !GOOGLE_GEO_COUNTRY_CONSTANTS[code]);
+        const unresolvedGV = countryCodesGV.filter((code) =>
+          !GOOGLE_GEO_COUNTRY_CONSTANTS[code]
+        );
         if (unresolvedGV.length > 0) {
           return json({
             error: "geo_not_resolvable",
-            detail:
-              `Country code(s) ${unresolvedGV.join(", ")} are not in the verified seed constants (US/GB/NG — A1.3 GR-37). Add a CSV-verified constant or target a named location instead.`,
+            detail: `Country code(s) ${
+              unresolvedGV.join(", ")
+            } are not in the verified seed constants (US/GB/NG — A1.3 GR-37). Add a CSV-verified constant or target a named location instead.`,
           }, 422);
         }
         geoTargetCriterionIdsGV = countryCodesGV.map(
@@ -937,7 +1290,7 @@ serve(async (req: Request): Promise<Response> => {
 
       const demandGenInput: GoogleDemandGenVideoInput = {
         name,
-        dailyBudgetCents: amountCents as number,
+        dailyBudgetCents: providerAmountCents,
         finalUrl: destUrlGV,
         trackingUrlTemplate: trackingUrlTemplateGV,
         businessName: businessNameGV,
@@ -954,7 +1307,10 @@ serve(async (req: Request): Promise<Response> => {
       // (6) The atomic Demand Gen mutate — validateOnly passthrough validates the
       //     EXACT same body with ZERO objects created (native Google validate).
       try {
-        const createdGV = await googleCreateDemandGenVideoCampaign(gconnGV, demandGenInput);
+        const createdGV = await googleCreateDemandGenVideoCampaign(
+          gconnGV,
+          demandGenInput,
+        );
         if (validateOnlyG) {
           return json({
             validated: true,
@@ -968,7 +1324,8 @@ serve(async (req: Request): Promise<Response> => {
             ],
             skipped_layers: [],
             request_id: createdGV.requestId,
-            detail: "validate_only — nothing created on the platform, nothing persisted.",
+            detail:
+              "validate_only — nothing created on the platform, nothing persisted.",
           });
         }
 
@@ -976,7 +1333,11 @@ serve(async (req: Request): Promise<Response> => {
         let deliveryStatusGV: string | null = null;
         try {
           const adapterGV = getAdapter("google");
-          const statusGV = await adapterGV.getStatus(gconnGV, "campaign", createdGV.externalCampaignId);
+          const statusGV = await adapterGV.getStatus(
+            gconnGV,
+            "campaign",
+            createdGV.externalCampaignId,
+          );
           deliveryStatusGV = statusGV.effectiveStatus;
         } catch {
           deliveryStatusGV = null;
@@ -1062,7 +1423,12 @@ serve(async (req: Request): Promise<Response> => {
           // Never a half-written DB row set. Everything on Google is PAUSED (zero
           // spend) and natively consistent; no delete path (REMOVED is permanent),
           // so the audit row carries the IDs for manual reconciliation.
-          if (campaignRowGV) await supabase.from("ad_campaigns").delete().eq("id", campaignRowGV.id);
+          if (campaignRowGV) {
+            await supabase.from("ad_campaigns").delete().eq(
+              "id",
+              campaignRowGV.id,
+            );
+          }
           await supabase.from("ad_status_events").insert({
             campaign_id: null,
             platform: "google",
@@ -1079,11 +1445,18 @@ serve(async (req: Request): Promise<Response> => {
             provider_response: {
               db_error: persistErrGV.message,
               request_id: createdGV.requestId,
-              note: "google demand-gen objects exist PAUSED (atomic create succeeded; DB persist failed) — reconcile manually",
+              note:
+                "google demand-gen objects exist PAUSED (atomic create succeeded; DB persist failed) — reconcile manually",
             },
           });
-          console.error("[admin-ad-create-campaign] google demand-gen persist failed:", persistErrGV.message);
-          return json({ error: "internal_error", detail: "db_persist_failed_google_objects_paused" }, 500);
+          console.error(
+            "[admin-ad-create-campaign] google demand-gen persist failed:",
+            persistErrGV.message,
+          );
+          return json({
+            error: "internal_error",
+            detail: "db_persist_failed_google_objects_paused",
+          }, 500);
         }
 
         await supabase.from("ad_status_events").insert({
@@ -1100,14 +1473,24 @@ serve(async (req: Request): Promise<Response> => {
             external_ad_id: createdGV.externalAdId,
             budget_resource_name: createdGV.budgetResourceName,
           },
-          provider_response: createdGV.requestId ? { request_id: createdGV.requestId } : null,
+          provider_response: createdGV.requestId
+            ? { request_id: createdGV.requestId }
+            : null,
         });
 
-        return json({ campaign: campaignRowGV, ad_set: adSetRowGV, ad: adRowGV });
+        return json({
+          campaign: campaignRowGV,
+          ad_set: adSetRowGV,
+          ad: adRowGV,
+        });
       } catch (err) {
         if (err instanceof AdNotConnectedError) {
           return json(
-            { error: err.detail === "google_not_provisioned" ? "google_not_provisioned" : "google_not_connected" },
+            {
+              error: err.detail === "google_not_provisioned"
+                ? "google_not_provisioned"
+                : "google_not_connected",
+            },
             err.detail === "google_not_provisioned" ? 409 : 424,
           );
         }
@@ -1121,7 +1504,10 @@ serve(async (req: Request): Promise<Response> => {
             action: "create_failed",
             actor: user.id,
             external_ids: null,
-            provider_response: { step: "atomic_mutate_demand_gen", ...err.toJSON() },
+            provider_response: {
+              step: "atomic_mutate_demand_gen",
+              ...err.toJSON(),
+            },
           });
           return json({
             error: "google_create_failed",
@@ -1131,7 +1517,10 @@ serve(async (req: Request): Promise<Response> => {
           }, 502);
         }
         const detailGV = err instanceof Error ? err.message : String(err);
-        console.error("[admin-ad-create-campaign] google demand-gen unexpected:", detailGV);
+        console.error(
+          "[admin-ad-create-campaign] google demand-gen unexpected:",
+          detailGV,
+        );
         return json({ error: "internal_error" }, 500);
       }
     }
@@ -1142,19 +1531,29 @@ serve(async (req: Request): Promise<Response> => {
     const rsa = validateGoogleRsa(creativeG.headlines, creativeG.descriptions);
     if (!rsa.ok) return json({ error: rsa.detail, detail: rsa.message }, 422);
     const headlines = (creativeG.headlines as string[]).map((h) => h.trim());
-    const descriptions = (creativeG.descriptions as string[]).map((d) => d.trim());
+    const descriptions = (creativeG.descriptions as string[]).map((d) =>
+      d.trim()
+    );
 
     // Keywords REQUIRED for SEARCH (GR-15); PHRASE default; ≤80 chars/≤10 words (GR-73).
-    const keywordsResult = normalizeGoogleKeywords(body.keywords, { required: true });
+    const keywordsResult = normalizeGoogleKeywords(body.keywords, {
+      required: true,
+    });
     if (!keywordsResult.ok) {
-      return json({ error: keywordsResult.detail, detail: keywordsResult.message }, 422);
+      return json({
+        error: keywordsResult.detail,
+        detail: keywordsResult.message,
+      }, 422);
     }
     const negativesResult = normalizeGoogleKeywords(body.negative_keywords, {
       required: false,
       field: "negative_keywords",
     });
     if (!negativesResult.ok) {
-      return json({ error: negativesResult.detail, detail: negativesResult.message }, 422);
+      return json({
+        error: negativesResult.detail,
+        detail: negativesResult.message,
+      }, 422);
     }
     const keywords: GoogleKeywordInput[] = keywordsResult.keywords;
     const negativeKeywords: GoogleKeywordInput[] = negativesResult.keywords;
@@ -1164,7 +1563,10 @@ serve(async (req: Request): Promise<Response> => {
       cpcBidCentsRaw !== undefined &&
       (!Number.isInteger(cpcBidCentsRaw) || (cpcBidCentsRaw as number) <= 0)
     ) {
-      return json({ error: "validation_error", detail: "cpc_bid_cents_invalid" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "cpc_bid_cents_invalid",
+      }, 400);
     }
     const cpcBidCents = cpcBidCentsRaw as number | undefined;
 
@@ -1174,20 +1576,27 @@ serve(async (req: Request): Promise<Response> => {
       !Array.isArray(countriesG) || countriesG.length === 0 ||
       countriesG.some((c) => typeof c !== "string" || !c.trim())
     ) {
-      return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "targeting_countries_required",
+      }, 400);
     }
-    const countryCodes = (countriesG as string[]).map((c) => c.trim().toUpperCase());
+    const countryCodes = (countriesG as string[]).map((c) =>
+      c.trim().toUpperCase()
+    );
     const locationsG = Array.isArray(targetingG.locations)
       ? targetingG.locations as Record<string, unknown>[]
       : [];
     for (const location of locationsG) {
       if (
         typeof location.name !== "string" || !location.name.trim() ||
-        typeof location.country_code !== "string" || !location.country_code.trim()
+        typeof location.country_code !== "string" ||
+        !location.country_code.trim()
       ) {
         return json({
           error: "validation_error",
-          detail: "targeting_location_invalid — each location needs { name, country_code }",
+          detail:
+            "targeting_location_invalid — each location needs { name, country_code }",
         }, 400);
       }
     }
@@ -1210,12 +1619,15 @@ serve(async (req: Request): Promise<Response> => {
         const min = Number(ageMinRaw);
         const max = Number(ageMaxRaw);
         if (
-          (ageMinRaw !== undefined && (!Number.isInteger(min) || min < 13 || min > 65)) ||
-          (ageMaxRaw !== undefined && (!Number.isInteger(max) || max < 13 || max > 65))
+          (ageMinRaw !== undefined &&
+            (!Number.isInteger(min) || min < 13 || min > 65)) ||
+          (ageMaxRaw !== undefined &&
+            (!Number.isInteger(max) || max < 13 || max > 65))
         ) {
           return json({
             error: "validation_error",
-            detail: "targeting_age_invalid — age_min/age_max must be integers 13-65",
+            detail:
+              "targeting_age_invalid — age_min/age_max must be integers 13-65",
           }, 400);
         }
         if (ageMinRaw !== undefined && ageMaxRaw !== undefined && min > max) {
@@ -1237,18 +1649,25 @@ serve(async (req: Request): Promise<Response> => {
       if (gendersRaw !== undefined) {
         if (
           !Array.isArray(gendersRaw) ||
-          gendersRaw.some((g) => !(GOOGLE_GENDER_TYPES as readonly string[]).includes(String(g)))
+          gendersRaw.some((g) =>
+            !(GOOGLE_GENDER_TYPES as readonly string[]).includes(String(g))
+          )
         ) {
           return json({
             error: "validation_error",
-            detail: `targeting_genders_invalid — genders ⊆ {${GOOGLE_GENDER_TYPES.join(",")}}`,
+            detail: `targeting_genders_invalid — genders ⊆ {${
+              GOOGLE_GENDER_TYPES.join(",")
+            }}`,
           }, 400);
         }
         const uniq = [...new Set(gendersRaw.map((g) => String(g)))];
         // A single-gender target restricts; both genders = "all" → no criteria.
         if (uniq.length === 1) {
           googleGenders = uniq;
-          googleDemographicsRecord = { ...(googleDemographicsRecord ?? {}), genders: uniq };
+          googleDemographicsRecord = {
+            ...(googleDemographicsRecord ?? {}),
+            genders: uniq,
+          };
         }
       }
       // 3b audiences — numeric-string user_interest ids; junk dropped (never
@@ -1259,7 +1678,8 @@ serve(async (req: Request): Promise<Response> => {
         if (!Array.isArray(audiencesRaw)) {
           return json({
             error: "validation_error",
-            detail: "targeting_audiences_invalid — expected an array of numeric-string ids",
+            detail:
+              "targeting_audiences_invalid — expected an array of numeric-string ids",
           }, 400);
         }
         const ids = [...new Set(audiencesRaw.map((a) => String(a).trim()))]
@@ -1276,12 +1696,19 @@ serve(async (req: Request): Promise<Response> => {
     const entitySlugG = typeof destinationG.entity_slug === "string"
       ? destinationG.entity_slug.trim()
       : "";
+    // deno-fmt-ignore
     if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site", "marketing"].includes(pageTypeG)) {
-      return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "destination_page_type_invalid",
+      }, 400);
     }
     if (pageTypeG === "marketing" && !brandSlugG) brandSlugG = "mingla";
     if (!brandSlugG) {
-      return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "destination_brand_slug_required",
+      }, 400);
     }
 
     // (2) Connection (fail-close): an absent/broken google connection is a
@@ -1306,7 +1733,9 @@ serve(async (req: Request): Promise<Response> => {
         .eq("connection_id", gconn.id)
         .eq("request_id", requestIdG)
         .maybeSingle();
-      if (existingG) return json({ campaign: existingG, idempotent_replay: true });
+      if (existingG) {
+        return json({ campaign: existingG, idempotent_replay: true });
+      }
     }
 
     // (3) Destination resolve — READ-ONLY, public + live only (§4.4b; the
@@ -1327,7 +1756,10 @@ serve(async (req: Request): Promise<Response> => {
     // A4.f/GR-73: finalUrls = [canonical dest_url] — https, ≤2,084 bytes.
     const finalUrlCheck = validateGoogleFinalUrl(destUrlG);
     if (!finalUrlCheck.ok) {
-      return json({ error: finalUrlCheck.detail, detail: finalUrlCheck.message }, 422);
+      return json({
+        error: finalUrlCheck.detail,
+        detail: finalUrlCheck.message,
+      }, 422);
     }
 
     // (4) Geo resolution (GR-37/G-P2 — numeric criterion IDs, never names).
@@ -1341,8 +1773,12 @@ serve(async (req: Request): Promise<Response> => {
         const gclient = await resolveGoogleClient(gconn);
         for (const location of locationsG) {
           const name = (location.name as string).trim();
-          const countryCode = (location.country_code as string).trim().toUpperCase();
-          const resolved = await suggestGeoTargetConstants(gclient, { name, countryCode });
+          const countryCode = (location.country_code as string).trim()
+            .toUpperCase();
+          const resolved = await suggestGeoTargetConstants(gclient, {
+            name,
+            countryCode,
+          });
           if (!resolved) {
             return json({
               error: "geo_not_resolvable",
@@ -1356,7 +1792,11 @@ serve(async (req: Request): Promise<Response> => {
     } catch (err) {
       if (err instanceof AdNotConnectedError) {
         return json(
-          { error: err.detail === "google_not_provisioned" ? "google_not_provisioned" : "google_not_connected" },
+          {
+            error: err.detail === "google_not_provisioned"
+              ? "google_not_provisioned"
+              : "google_not_connected",
+          },
           err.detail === "google_not_provisioned" ? 409 : 424,
         );
       }
@@ -1381,12 +1821,15 @@ serve(async (req: Request): Promise<Response> => {
         target_type: l.targetType,
       }));
     } else {
-      const unresolved = countryCodes.filter((code) => !GOOGLE_GEO_COUNTRY_CONSTANTS[code]);
+      const unresolved = countryCodes.filter((code) =>
+        !GOOGLE_GEO_COUNTRY_CONSTANTS[code]
+      );
       if (unresolved.length > 0) {
         return json({
           error: "geo_not_resolvable",
-          detail:
-            `Country code(s) ${unresolved.join(", ")} are not in the verified seed constants (US/GB/NG — A1.3 GR-37). Add a CSV-verified constant or target a named location instead.`,
+          detail: `Country code(s) ${
+            unresolved.join(", ")
+          } are not in the verified seed constants (US/GB/NG — A1.3 GR-37). Add a CSV-verified constant or target a named location instead.`,
         }, 422);
       }
       geoTargetCriterionIds = countryCodes.map(
@@ -1396,8 +1839,12 @@ serve(async (req: Request): Promise<Response> => {
     }
     // ISSUE-992: state the applied demographics/audiences in the persisted
     // targeting jsonb (so the campaign surface + audit reflect them).
-    if (googleDemographicsRecord) geoTargetingRecord.demographics = googleDemographicsRecord;
-    if (googleUserInterestIds) geoTargetingRecord.audiences = googleUserInterestIds;
+    if (googleDemographicsRecord) {
+      geoTargetingRecord.demographics = googleDemographicsRecord;
+    }
+    if (googleUserInterestIds) {
+      geoTargetingRecord.audiences = googleUserInterestIds;
+    }
 
     const trackingUrlTemplate = buildGoogleTrackingUrlTemplate({
       pageType: pageTypeG,
@@ -1407,7 +1854,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const createInput = {
       name,
-      dailyBudgetCents: amountCents as number,
+      dailyBudgetCents: providerAmountCents,
       cpcBidCents,
       finalUrl: destUrlG,
       trackingUrlTemplate,
@@ -1420,7 +1867,9 @@ serve(async (req: Request): Promise<Response> => {
       // NEGATIVE demographic-exclusion criteria; (3b): positive audiences.
       ...(googleAgeRanges ? { ageRanges: googleAgeRanges } : {}),
       ...(googleGenders ? { genders: googleGenders } : {}),
-      ...(googleUserInterestIds ? { userInterestIds: googleUserInterestIds } : {}),
+      ...(googleUserInterestIds
+        ? { userInterestIds: googleUserInterestIds }
+        : {}),
       // G-2 (Seth-approved): keep AGE/GENDER UNDETERMINED INCLUDED.
       excludeUndeterminedAge: false,
       excludeUndeterminedGender: false,
@@ -1450,7 +1899,8 @@ serve(async (req: Request): Promise<Response> => {
           validated_layers: validatedLayersG,
           skipped_layers: [],
           request_id: created.requestId,
-          detail: "validate_only — nothing created on the platform, nothing persisted.",
+          detail:
+            "validate_only — nothing created on the platform, nothing persisted.",
         });
       }
 
@@ -1458,7 +1908,11 @@ serve(async (req: Request): Promise<Response> => {
       let deliveryStatusG: string | null = null;
       try {
         const adapterG = getAdapter("google");
-        const statusG = await adapterG.getStatus(gconn, "campaign", created.externalCampaignId);
+        const statusG = await adapterG.getStatus(
+          gconn,
+          "campaign",
+          created.externalCampaignId,
+        );
         deliveryStatusG = statusG.effectiveStatus;
       } catch {
         deliveryStatusG = null;
@@ -1546,7 +2000,12 @@ serve(async (req: Request): Promise<Response> => {
         // (zero spend risk) and natively consistent; there is no delete path
         // (REMOVED is permanent — A1.1(4)), so the audit row carries the IDs
         // for manual reconciliation.
-        if (campaignRowG) await supabase.from("ad_campaigns").delete().eq("id", campaignRowG.id);
+        if (campaignRowG) {
+          await supabase.from("ad_campaigns").delete().eq(
+            "id",
+            campaignRowG.id,
+          );
+        }
         await supabase.from("ad_status_events").insert({
           campaign_id: null,
           platform: "google",
@@ -1563,11 +2022,18 @@ serve(async (req: Request): Promise<Response> => {
           provider_response: {
             db_error: persistErrG.message,
             request_id: created.requestId,
-            note: "google objects exist PAUSED (atomic create succeeded; DB persist failed) — reconcile manually",
+            note:
+              "google objects exist PAUSED (atomic create succeeded; DB persist failed) — reconcile manually",
           },
         });
-        console.error("[admin-ad-create-campaign] google persist failed:", persistErrG.message);
-        return json({ error: "internal_error", detail: "db_persist_failed_google_objects_paused" }, 500);
+        console.error(
+          "[admin-ad-create-campaign] google persist failed:",
+          persistErrG.message,
+        );
+        return json({
+          error: "internal_error",
+          detail: "db_persist_failed_google_objects_paused",
+        }, 500);
       }
 
       await supabase.from("ad_status_events").insert({
@@ -1585,14 +2051,20 @@ serve(async (req: Request): Promise<Response> => {
           budget_resource_name: created.budgetResourceName,
         },
         // A1.1(4): the Google request_id is what Google support requires.
-        provider_response: created.requestId ? { request_id: created.requestId } : null,
+        provider_response: created.requestId
+          ? { request_id: created.requestId }
+          : null,
       });
 
       return json({ campaign: campaignRowG, ad_set: adSetRowG, ad: adRowG });
     } catch (err) {
       if (err instanceof AdNotConnectedError) {
         return json(
-          { error: err.detail === "google_not_provisioned" ? "google_not_provisioned" : "google_not_connected" },
+          {
+            error: err.detail === "google_not_provisioned"
+              ? "google_not_provisioned"
+              : "google_not_connected",
+          },
           err.detail === "google_not_provisioned" ? 409 : 424,
         );
       }
@@ -1631,19 +2103,27 @@ serve(async (req: Request): Promise<Response> => {
   // layers instead) → sequential atomic create (campaign → squad → creative →
   // ad, ALL PAUSED) with compensating rollback → persist → audit.
   if (platform === "snapchat") {
-    const requestIdS = typeof body.request_id === "string" && body.request_id.trim()
-      ? body.request_id.trim()
-      : null;
+    const requestIdS =
+      typeof body.request_id === "string" && body.request_id.trim()
+        ? body.request_id.trim()
+        : null;
     const validateOnlyS = body.validate_only === true;
 
     // (1) Pure input validation — all 422s BEFORE any provider call.
     const nameCheck = validateSnapchatName(name, "campaign name");
-    if (!nameCheck.ok) return json({ error: nameCheck.detail, detail: nameCheck.message }, 422);
+    if (!nameCheck.ok) {
+      return json({ error: nameCheck.detail, detail: nameCheck.message }, 422);
+    }
 
-    const objectiveS = typeof body.objective === "string" ? body.objective : "TRAFFIC";
+    const objectiveS = typeof body.objective === "string"
+      ? body.objective
+      : "TRAFFIC";
     const objectiveCheck = validateSnapchatObjective(objectiveS);
     if (!objectiveCheck.ok) {
-      return json({ error: objectiveCheck.detail, detail: objectiveCheck.message }, 422);
+      return json({
+        error: objectiveCheck.detail,
+        detail: objectiveCheck.message,
+      }, 422);
     }
 
     // A1.1(6) (OD-4 REVERSED): SWIPES default until #865's pixel fires.
@@ -1651,11 +2131,13 @@ serve(async (req: Request): Promise<Response> => {
       ? body.optimization_goal
       : SNAPCHAT_DEFAULT_OPTIMIZATION_GOAL;
     const goalCheck = validateSnapchatOptimizationGoal(optimizationGoalS);
-    if (!goalCheck.ok) return json({ error: goalCheck.detail, detail: goalCheck.message }, 422);
+    if (!goalCheck.ok) {
+      return json({ error: goalCheck.detail, detail: goalCheck.message }, 422);
+    }
 
     // Budget level (OD-3): ABO (squad, ≥$5/day) default; CBO (campaign, ≥$20/day).
     const budgetLevelS = budget.level === "campaign" ? "campaign" : "adset";
-    const budgetMicroS = (amountCents as number) * 10_000; // display-math only; the adapter owns THE conversion
+    const budgetMicroS = providerAmountCents * 10_000; // display-math only; the adapter owns THE conversion
     const floorMicroS = budgetLevelS === "campaign"
       ? SNAPCHAT_MIN_CAMPAIGN_BUDGET_MICRO
       : SNAPCHAT_MIN_ADSQUAD_BUDGET_MICRO;
@@ -1664,8 +2146,10 @@ serve(async (req: Request): Promise<Response> => {
       return json({
         error: "budget_below_minimum",
         detail:
-          `Daily budget ${amountCents}¢ converts to ${budgetMicroS} micro — below Snap's ${floorMicroS} micro ${
-            budgetLevelS === "campaign" ? "($20.00 campaign)" : "($5.00 ad-squad)"
+          `Daily provider budget ${providerAmountCents}¢ converts to ${budgetMicroS} micro — below Snap's ${floorMicroS} micro ${
+            budgetLevelS === "campaign"
+              ? "($20.00 campaign)"
+              : "($5.00 ad-squad)"
           } floor (AC-S-3).`,
         floor_micro: floorMicroS,
         level: budgetLevelS,
@@ -1679,7 +2163,10 @@ serve(async (req: Request): Promise<Response> => {
       spendCapCentsRaw !== undefined &&
       (!Number.isInteger(spendCapCentsRaw) || (spendCapCentsRaw as number) <= 0)
     ) {
-      return json({ error: "validation_error", detail: "spend_cap_cents_invalid" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "spend_cap_cents_invalid",
+      }, 400);
     }
     const spendCapCentsS = spendCapCentsRaw as number | undefined;
     if (
@@ -1697,7 +2184,9 @@ serve(async (req: Request): Promise<Response> => {
     const bidStrategyS = typeof body.bid_strategy === "string"
       ? body.bid_strategy
       : SNAPCHAT_DEFAULT_BID_STRATEGY;
-    if (!(SNAPCHAT_BID_STRATEGIES as readonly string[]).includes(bidStrategyS)) {
+    if (
+      !(SNAPCHAT_BID_STRATEGIES as readonly string[]).includes(bidStrategyS)
+    ) {
       return json({
         error: "bid_strategy_invalid",
         detail: `bid_strategy "${bidStrategyS}" is invalid — valid: ${
@@ -1707,15 +2196,20 @@ serve(async (req: Request): Promise<Response> => {
     }
     const bidCentsRaw = budget.bid_cents;
     if (
-      bidCentsRaw !== undefined && (!Number.isInteger(bidCentsRaw) || (bidCentsRaw as number) <= 0)
+      bidCentsRaw !== undefined &&
+      (!Number.isInteger(bidCentsRaw) || (bidCentsRaw as number) <= 0)
     ) {
-      return json({ error: "validation_error", detail: "bid_cents_invalid" }, 400);
+      return json(
+        { error: "validation_error", detail: "bid_cents_invalid" },
+        400,
+      );
     }
     const bidCentsS = bidCentsRaw as number | undefined;
     if (bidStrategyS !== "AUTO_BID" && typeof bidCentsS !== "number") {
       return json({
         error: "bid_micro_required",
-        detail: `bid_strategy ${bidStrategyS} requires budget.bid_cents (converted ×10,000 to bid_micro).`,
+        detail:
+          `bid_strategy ${bidStrategyS} requires budget.bid_cents (converted ×10,000 to bid_micro).`,
       }, 422);
     }
 
@@ -1725,9 +2219,14 @@ serve(async (req: Request): Promise<Response> => {
       !Array.isArray(countriesS) || countriesS.length === 0 ||
       countriesS.some((c) => typeof c !== "string" || !c.trim())
     ) {
-      return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "targeting_countries_required",
+      }, 400);
     }
-    const countryCodesS = (countriesS as string[]).map((c) => c.trim().toUpperCase());
+    const countryCodesS = (countriesS as string[]).map((c) =>
+      c.trim().toUpperCase()
+    );
     // GR-39: demographics default [{min_age:"18"}]; STRINGS, validated pre-call.
     const demographicsS = snapchatDemographicsWithDefault(
       Array.isArray(targetingS.demographics)
@@ -1736,7 +2235,10 @@ serve(async (req: Request): Promise<Response> => {
     );
     const demographicsCheck = validateSnapchatDemographics(demographicsS);
     if (!demographicsCheck.ok) {
-      return json({ error: demographicsCheck.detail, detail: demographicsCheck.message }, 422);
+      return json({
+        error: demographicsCheck.detail,
+        detail: demographicsCheck.message,
+      }, 422);
     }
 
     // ── ISSUE-992 (3a): city circles + SCLS interest segments (pre-flight
@@ -1746,28 +2248,39 @@ serve(async (req: Request): Promise<Response> => {
     const rawCirclesS = Array.isArray(targetingS.circles)
       ? targetingS.circles as Record<string, unknown>[]
       : [];
-    const circleInputsS: { name: string; country_code: string; radius: number; unit: string }[] = [];
+    const circleInputsS: {
+      name: string;
+      country_code: string;
+      radius: number;
+      unit: string;
+    }[] = [];
     for (const c of rawCirclesS) {
       const cName = typeof c.name === "string" ? c.name.trim() : "";
-      const cCountry = typeof c.country_code === "string" ? c.country_code.trim() : "";
+      const cCountry = typeof c.country_code === "string"
+        ? c.country_code.trim()
+        : "";
       const cRadius = Number(c.radius);
       const cUnit = typeof c.unit === "string" ? c.unit.trim() : "";
       if (!cName || !cCountry) {
         return json({
           error: "validation_error",
-          detail: "targeting_circle_invalid — each circle needs { name, country_code }",
+          detail:
+            "targeting_circle_invalid — each circle needs { name, country_code }",
         }, 400);
       }
       if (!Number.isFinite(cRadius) || cRadius <= 0) {
         return json({
           error: "validation_error",
-          detail: "targeting_circle_radius_invalid — radius must be a positive number",
+          detail:
+            "targeting_circle_radius_invalid — radius must be a positive number",
         }, 422);
       }
       if (!(SNAPCHAT_CIRCLE_UNITS as readonly string[]).includes(cUnit)) {
         return json({
           error: "validation_error",
-          detail: `targeting_circle_unit_invalid — unit ∈ {${SNAPCHAT_CIRCLE_UNITS.join(",")}}`,
+          detail: `targeting_circle_unit_invalid — unit ∈ {${
+            SNAPCHAT_CIRCLE_UNITS.join(",")
+          }}`,
         }, 422);
       }
       circleInputsS.push({
@@ -1778,7 +2291,11 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
     const snapInterestIdsS = Array.isArray(targetingS.interests)
-      ? [...new Set((targetingS.interests as unknown[]).map((i) => String(i).trim()))].filter(Boolean)
+      ? [
+        ...new Set(
+          (targetingS.interests as unknown[]).map((i) => String(i).trim()),
+        ),
+      ].filter(Boolean)
       : [];
 
     const creativeS = (body.creative ?? {}) as Record<string, unknown>;
@@ -1788,12 +2305,18 @@ serve(async (req: Request): Promise<Response> => {
     documentComplianceDrop("snapchat", body.compliance);
     const headlineCheck = validateSnapchatHeadline(creativeS.headline);
     if (!headlineCheck.ok) {
-      return json({ error: headlineCheck.detail, detail: headlineCheck.message }, 422);
+      return json({
+        error: headlineCheck.detail,
+        detail: headlineCheck.message,
+      }, 422);
     }
     const headlineS = (creativeS.headline as string).trim();
     const brandNameCheck = validateSnapchatBrandName(creativeS.brand_name);
     if (!brandNameCheck.ok) {
-      return json({ error: brandNameCheck.detail, detail: brandNameCheck.message }, 422);
+      return json({
+        error: brandNameCheck.detail,
+        detail: brandNameCheck.message,
+      }, 422);
     }
     const brandNameS = typeof creativeS.brand_name === "string"
       ? creativeS.brand_name.trim()
@@ -1807,12 +2330,19 @@ serve(async (req: Request): Promise<Response> => {
     const entitySlugS = typeof destinationS.entity_slug === "string"
       ? destinationS.entity_slug.trim()
       : "";
+    // deno-fmt-ignore
     if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site", "marketing"].includes(pageTypeS)) {
-      return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "destination_page_type_invalid",
+      }, 400);
     }
     if (pageTypeS === "marketing" && !brandSlugS) brandSlugS = "mingla";
     if (!brandSlugS) {
-      return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "destination_brand_slug_required",
+      }, 400);
     }
 
     // S-3: CTA from the WEB_VIEW allowlist (VIEW_MORE does not exist) — defaults
@@ -1823,7 +2353,9 @@ serve(async (req: Request): Promise<Response> => {
       ? "BUY_TICKETS"
       : "BOOK_NOW";
     const ctaCheck = validateSnapchatCta("WEB_VIEW", ctaS);
-    if (!ctaCheck.ok) return json({ error: ctaCheck.detail, detail: ctaCheck.message }, 422);
+    if (!ctaCheck.ok) {
+      return json({ error: ctaCheck.detail, detail: ctaCheck.message }, 422);
+    }
 
     // (2) Connection (fail-close) — 424 snapchat_not_connected.
     const { data: sconnRow } = await supabase
@@ -1841,10 +2373,12 @@ serve(async (req: Request): Promise<Response> => {
     // (3) AC-S-11: Public Profile TRUSTED CONFIG gate — 424
     //     snapchat_profile_missing with ZERO provider calls (A1.2-8; the API
     //     lookup 403s on our token class, S-P4).
-    const profileIdS =
-      (typeof sconnExtra.profile_id === "string" && sconnExtra.profile_id.trim()) ||
+    const profileIdS = (typeof sconnExtra.profile_id === "string" &&
+      sconnExtra.profile_id.trim()) ||
       (Deno.env.get(
-        lane === "business" ? "SNAPCHAT_MINGLABIZ_PROFILE_ID" : "SNAPCHAT_PROFILE_ID",
+        lane === "business"
+          ? "SNAPCHAT_MINGLABIZ_PROFILE_ID"
+          : "SNAPCHAT_PROFILE_ID",
       ) ?? "").trim();
     if (!profileIdS) {
       return json({
@@ -1865,9 +2399,10 @@ serve(async (req: Request): Promise<Response> => {
             `${optimizationGoalS} is pixel-measured and the Snap pixel sends no events yet (#865 owns the install) — optimizing to an event we don't send means no/erratic delivery (GR-21). Use SWIPES until the pixel fires.`,
         }, 422);
       }
-      pixelIdS = typeof sconnExtra.pixel_id === "string" && sconnExtra.pixel_id.trim()
-        ? sconnExtra.pixel_id.trim()
-        : null;
+      pixelIdS =
+        typeof sconnExtra.pixel_id === "string" && sconnExtra.pixel_id.trim()
+          ? sconnExtra.pixel_id.trim()
+          : null;
       if (!pixelIdS) {
         return json({
           error: "pixel_goal_unavailable",
@@ -1885,7 +2420,9 @@ serve(async (req: Request): Promise<Response> => {
         .eq("connection_id", sconn.id)
         .eq("request_id", requestIdS)
         .maybeSingle();
-      if (existingS) return json({ campaign: existingS, idempotent_replay: true });
+      if (existingS) {
+        return json({ campaign: existingS, idempotent_replay: true });
+      }
     }
 
     // (4) Destination resolve — READ-ONLY, public + live only (§4.4b; the
@@ -1902,12 +2439,17 @@ serve(async (req: Request): Promise<Response> => {
     const destUrlS = resolvedDestinationS.canonical_url;
     const destEventIdS = resolvedDestinationS.event_id;
     const destVenueIdS = resolvedDestinationS.venue_id;
-    const snapTrackedDestUrlS = `${destUrlS}${destUrlS.includes("?") ? "&" : "?"}mc_id={{campaign.id}}`;
+    const snapTrackedDestUrlS = `${destUrlS}${
+      destUrlS.includes("?") ? "&" : "?"
+    }mc_id={{campaign.id}}`;
     // GR-54 + destination policy v1: the web-view URL is the canonical page
     // (https, ≤2048) — NEVER the OneLink (D-P1).
     const webViewUrlCheck = validateSnapchatWebViewUrl(snapTrackedDestUrlS);
     if (!webViewUrlCheck.ok) {
-      return json({ error: webViewUrlCheck.detail, detail: webViewUrlCheck.message }, 422);
+      return json({
+        error: webViewUrlCheck.detail,
+        detail: webViewUrlCheck.message,
+      }, 422);
     }
 
     // (5) Media resolve — Phase A videos must use the exact prepared ref.
@@ -1938,7 +2480,10 @@ serve(async (req: Request): Promise<Response> => {
       // The authoritative usability gate is the READY-ref check
       // (external_kind + content_hash + status="ready"), asserted below.
       if (!libCreative) {
-        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+        return json({
+          error: "creative_not_found",
+          detail: "creative_library_id does not resolve",
+        }, 422);
       }
       if (creativeKindS === "video" && libCreative.kind !== "video") {
         return json({ error: "creative_kind_mismatch" }, 422);
@@ -1961,7 +2506,10 @@ serve(async (req: Request): Promise<Response> => {
             "No READY snapchat platform ref for this creative on this ad account — upload it through the #866 creative library (admin-ad-creative-upload) first; create never uploads inline.",
         }, 422);
       }
-      if (ref.content_hash && libCreative.content_hash && ref.content_hash !== libCreative.content_hash) {
+      if (
+        ref.content_hash && libCreative.content_hash &&
+        ref.content_hash !== libCreative.content_hash
+      ) {
         // A1-1 (#866): cache validity keys on CONTENT — a stale ref must never serve.
         return json({
           error: "creative_ref_stale",
@@ -1969,10 +2517,18 @@ serve(async (req: Request): Promise<Response> => {
             "The snapchat platform ref was uploaded from different bytes than the creative's current content_hash — re-upload through the creative library.",
         }, 422);
       }
-      if (libCreative.kind === "video" && typeof libCreative.duration_seconds === "number") {
-        const durationCheck = validateSnapchatVideoDuration(libCreative.duration_seconds);
+      if (
+        libCreative.kind === "video" &&
+        typeof libCreative.duration_seconds === "number"
+      ) {
+        const durationCheck = validateSnapchatVideoDuration(
+          libCreative.duration_seconds,
+        );
         if (!durationCheck.ok) {
-          return json({ error: durationCheck.detail, detail: durationCheck.message }, 422);
+          return json({
+            error: durationCheck.detail,
+            detail: durationCheck.message,
+          }, 422);
         }
       }
       topSnapMediaIdS = String(ref.external_ref);
@@ -2014,20 +2570,30 @@ serve(async (req: Request): Promise<Response> => {
     //     cascade the ad-account-scoped creative — GR-48; the runner tracks +
     //     attempts both and audits residue).
     const adapterS = getAdapter("snapchat");
-    const campaignInputS: CreateCampaignInput & SnapchatCreateCampaignExtensions = {
-      name,
-      objective: objectiveS,
-      ...(budgetLevelS === "campaign" ? { dailyBudgetCents: amountCents as number } : {}),
-      ...(typeof spendCapCentsS === "number" ? { spendCapCents: spendCapCentsS } : {}),
-      ...(typeof body.promotion_type === "string" ? { promotionType: body.promotion_type } : {}),
-    };
+    const campaignInputS:
+      & CreateCampaignInput
+      & SnapchatCreateCampaignExtensions = {
+        name,
+        objective: objectiveS,
+        ...(budgetLevelS === "campaign"
+          ? { dailyBudgetCents: providerAmountCents }
+          : {}),
+        ...(typeof spendCapCentsS === "number"
+          ? { spendCapCents: spendCapCentsS }
+          : {}),
+        ...(typeof body.promotion_type === "string"
+          ? { promotionType: body.promotion_type }
+          : {}),
+      };
     // ISSUE-992 (3a): create-time SERVER geocode of each city circle — the
     // MAPBOX_ACCESS_TOKEN + every coordinate stay strictly server-side. A null
     // geocode DROPS that circle (never fabricates a location — Constitution #3);
     // if every circle misses, buildSnapchatAdSquadBody falls back to country-only.
     const geocodedCirclesS: SnapchatCircleGeo[] = [];
     for (const circle of circleInputsS) {
-      const coords = await forwardGeocodeText(`${circle.name}, ${circle.country_code}`);
+      const coords = await forwardGeocodeText(
+        `${circle.name}, ${circle.country_code}`,
+      );
       if (!coords) continue; // geocode miss → this city drops to country targeting
       geocodedCirclesS.push({
         country_code: circle.country_code,
@@ -2042,7 +2608,7 @@ serve(async (req: Request): Promise<Response> => {
       name: `${name} — ad squad`,
       optimizationGoal: optimizationGoalS,
       billingEvent: "IMPRESSION",
-      ...(budgetLevelS === "adset" ? { budgetCents: amountCents as number } : {}),
+      ...(budgetLevelS === "adset" ? { budgetCents: providerAmountCents } : {}),
       targeting: {
         countries: countryCodesS,
         demographics: demographicsS,
@@ -2055,21 +2621,25 @@ serve(async (req: Request): Promise<Response> => {
         ...(pixelIdS ? { pixel_id: pixelIdS } : {}),
       },
     };
-    const creativeInputS: CreateCreativeInput & SnapchatCreateCreativeExtensions = {
-      destUrl: snapTrackedDestUrlS, // canonical page + documented Snap campaign macro
-      message: headlineS, // interface-required; Snap creatives carry headline, not message
-      headline: headlineS,
-      callToActionType: ctaS,
-      campaignName: name,
-      adName: `${name} — ad`,
-      topSnapMediaId: topSnapMediaIdS,
-      brandName: brandNameS,
-      creativeType: "WEB_VIEW",
-    };
-    const adInputS: Omit<CreateAdInput, "externalCreativeId"> & SnapchatCreateAdExtensions = {
-      name: `${name} — ad`,
-      creativeType: "WEB_VIEW", // S-2: the map derives type REMOTE_WEBPAGE from this
-    };
+    const creativeInputS:
+      & CreateCreativeInput
+      & SnapchatCreateCreativeExtensions = {
+        destUrl: snapTrackedDestUrlS, // canonical page + documented Snap campaign macro
+        message: headlineS, // interface-required; Snap creatives carry headline, not message
+        headline: headlineS,
+        callToActionType: ctaS,
+        campaignName: name,
+        adName: `${name} — ad`,
+        topSnapMediaId: topSnapMediaIdS,
+        brandName: brandNameS,
+        creativeType: "WEB_VIEW",
+      };
+    const adInputS:
+      & Omit<CreateAdInput, "externalCreativeId">
+      & SnapchatCreateAdExtensions = {
+        name: `${name} — ad`,
+        creativeType: "WEB_VIEW", // S-2: the map derives type REMOTE_WEBPAGE from this
+      };
 
     try {
       const created = await createFullCampaignAtomic(adapterS, sconn, {
@@ -2095,7 +2665,11 @@ serve(async (req: Request): Promise<Response> => {
         deliveryStatusS = null;
       }
       try {
-        const adStatus = await adapterS.getStatus(sconn, "ad", created.externalAdId);
+        const adStatus = await adapterS.getStatus(
+          sconn,
+          "ad",
+          created.externalAdId,
+        );
         adReviewStatusS = adStatus.effectiveStatus ?? adReviewStatusS;
         reviewDetailS = buildSnapchatReviewDetail({
           issuesInfo: adStatus.issuesInfo,
@@ -2138,7 +2712,9 @@ serve(async (req: Request): Promise<Response> => {
           name,
           objective: objectiveS, // the objective_v2_type value (S-1)
           status: "PAUSED",
-          daily_budget_cents: budgetLevelS === "campaign" ? dailyBudgetForPersist : null,
+          daily_budget_cents: budgetLevelS === "campaign"
+            ? dailyBudgetForPersist
+            : null,
           delivery_status: deliveryStatusS,
           status_synced_at: new Date().toISOString(),
           targeting: targetingRecordS,
@@ -2187,7 +2763,9 @@ serve(async (req: Request): Promise<Response> => {
             ad_set_id: adSetRowS.id,
             external_ad_id: created.externalAdId,
             external_creative_id: created.externalCreativeId,
-            ...(creativeLibraryRowIdS ? { creative_id: creativeLibraryRowIdS } : {}),
+            ...(creativeLibraryRowIdS
+              ? { creative_id: creativeLibraryRowIdS }
+              : {}),
             name: `${name} — ad`,
             status: "PAUSED",
             // GR-38: the AD vocabulary (PENDING|APPROVED|REJECTED); the creative
@@ -2205,7 +2783,12 @@ serve(async (req: Request): Promise<Response> => {
         // Never a half-written DB row set: delete the campaign row (cascades),
         // roll back the platform chain (creative FIRST — campaign delete does
         // NOT cascade the ad-account-scoped creative, GR-48), then audit.
-        if (campaignRowS) await supabase.from("ad_campaigns").delete().eq("id", campaignRowS.id);
+        if (campaignRowS) {
+          await supabase.from("ad_campaigns").delete().eq(
+            "id",
+            campaignRowS.id,
+          );
+        }
         let creativeRollbackOkS: boolean | null = null;
         if (created.externalCreativeId && adapterS.rollbackCreative) {
           try {
@@ -2230,7 +2813,9 @@ serve(async (req: Request): Promise<Response> => {
           campaign_id: null,
           platform: "snapchat",
           entity: "campaign",
-          action: rollbackOkS && creativeRollbackOkS !== false ? "rollback" : "create_failed",
+          action: rollbackOkS && creativeRollbackOkS !== false
+            ? "rollback"
+            : "create_failed",
           actor: user.id,
           to_status: null,
           external_ids: {
@@ -2249,8 +2834,14 @@ serve(async (req: Request): Promise<Response> => {
               : {}),
           },
         });
-        console.error("[admin-ad-create-campaign] snapchat persist failed:", persistErrS.message);
-        return json({ error: "internal_error", detail: "db_persist_failed_platform_rolled_back" }, 500);
+        console.error(
+          "[admin-ad-create-campaign] snapchat persist failed:",
+          persistErrS.message,
+        );
+        return json({
+          error: "internal_error",
+          detail: "db_persist_failed_platform_rolled_back",
+        }, 500);
       }
 
       await supabase.from("ad_status_events").insert({
@@ -2276,7 +2867,11 @@ serve(async (req: Request): Promise<Response> => {
       if (err instanceof AdNotConnectedError) {
         // A1.2-8 defense-in-depth: the adapter re-checks the profile config.
         return json(
-          { error: err.detail === "snapchat_profile_missing" ? "snapchat_profile_missing" : "snapchat_not_connected" },
+          {
+            error: err.detail === "snapchat_profile_missing"
+              ? "snapchat_profile_missing"
+              : "snapchat_not_connected",
+          },
           424,
         );
       }
@@ -2292,7 +2887,10 @@ serve(async (req: Request): Promise<Response> => {
               : String(failure.cause),
           };
         const creativeResidueS = failure.creativeRollbackSucceeded === false
-          ? { creative_residue_id: failure.partialExternalIds.external_creative_id ?? null }
+          ? {
+            creative_residue_id:
+              failure.partialExternalIds.external_creative_id ?? null,
+          }
           : {};
         const fullyRolledBackS = failure.rollbackSucceeded !== false &&
           failure.creativeRollbackSucceeded !== false;
@@ -2308,7 +2906,11 @@ serve(async (req: Request): Promise<Response> => {
             ...failure.partialExternalIds,
             external_media_id: topSnapMediaIdS,
           },
-          provider_response: { step: failure.step, ...providerResponseS, ...creativeResidueS },
+          provider_response: {
+            step: failure.step,
+            ...providerResponseS,
+            ...creativeResidueS,
+          },
         });
         return json({
           error: "snapchat_create_failed",
@@ -2319,7 +2921,10 @@ serve(async (req: Request): Promise<Response> => {
         }, 502);
       }
       if (err instanceof AdApiError) {
-        return json({ error: "snapchat_create_failed", detail: err.toJSON() }, 502);
+        return json(
+          { error: "snapchat_create_failed", detail: err.toJSON() },
+          502,
+        );
       }
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[admin-ad-create-campaign] snapchat unexpected:", detail);
@@ -2341,19 +2946,30 @@ serve(async (req: Request): Promise<Response> => {
   // $50/day CBO campaign); bid_type under CBO defaults in the builder
   // (A1.1(b)); schedule_start_time defaults to now in UTC+0 (A1.1(a)).
   if (platform === "tiktok") {
-    const requestIdT = typeof body.request_id === "string" && body.request_id.trim()
-      ? body.request_id.trim()
-      : null;
+    const requestIdT =
+      typeof body.request_id === "string" && body.request_id.trim()
+        ? body.request_id.trim()
+        : null;
     const validateOnlyT = body.validate_only === true;
 
     // (1) Pure input validation — all 400/422s BEFORE any provider call.
     const nameCheckT = validateTikTokName(name, "campaign_name");
-    if (!nameCheckT.ok) return json({ error: nameCheckT.detail, detail: nameCheckT.message }, 422);
+    if (!nameCheckT.ok) {
+      return json(
+        { error: nameCheckT.detail, detail: nameCheckT.message },
+        422,
+      );
+    }
 
-    const objectiveT = typeof body.objective === "string" ? body.objective : "TRAFFIC";
+    const objectiveT = typeof body.objective === "string"
+      ? body.objective
+      : "TRAFFIC";
     const objectiveCheckT = validateTikTokObjective(objectiveT);
     if (!objectiveCheckT.ok) {
-      return json({ error: objectiveCheckT.detail, detail: objectiveCheckT.message }, 422);
+      return json({
+        error: objectiveCheckT.detail,
+        detail: objectiveCheckT.message,
+      }, 422);
     }
     // A1.0-6: no conversion optimization until #865 — the pixel has ZERO
     // events (T-P4); optimizing to an event we don't send means no delivery.
@@ -2368,7 +2984,11 @@ serve(async (req: Request): Promise<Response> => {
     const optimizationGoalT = typeof body.optimization_goal === "string"
       ? body.optimization_goal
       : "TRAFFIC_LANDING_PAGE_VIEW"; // A1.0-6 default
-    if (!(TIKTOK_OPTIMIZATION_GOALS as readonly string[]).includes(optimizationGoalT)) {
+    if (
+      !(TIKTOK_OPTIMIZATION_GOALS as readonly string[]).includes(
+        optimizationGoalT,
+      )
+    ) {
       return json({
         error: "invalid_optimization_goal",
         detail: `optimization_goal "${optimizationGoalT}" is invalid — valid: ${
@@ -2376,7 +2996,9 @@ serve(async (req: Request): Promise<Response> => {
         }.`,
       }, 422);
     }
-    const billingEventT = typeof body.billing_event === "string" ? body.billing_event : "CPC";
+    const billingEventT = typeof body.billing_event === "string"
+      ? body.billing_event
+      : "CPC";
     if (!(TIKTOK_BILLING_EVENTS as readonly string[]).includes(billingEventT)) {
       return json({
         error: "validation_error",
@@ -2390,7 +3012,7 @@ serve(async (req: Request): Promise<Response> => {
     // (campaign, ≥$50/day) on budget.level === "campaign". THE one cents→
     // dollars conversion is centsToPlatformBudget; floors AFTER it (A1.0-1).
     const budgetLevelT = budget.level === "campaign" ? "campaign" : "adset";
-    const dollarsT = centsToPlatformBudget("tiktok", amountCents as number);
+    const dollarsT = centsToPlatformBudget("tiktok", providerAmountCents);
     const floorCheckT = validateTikTokBudgetFloor({
       level: budgetLevelT === "campaign" ? "campaign" : "ad_group",
       mode: "daily",
@@ -2398,18 +3020,27 @@ serve(async (req: Request): Promise<Response> => {
     });
     if (!floorCheckT.ok) {
       // AC-3 (amended): min-check after conversion, before any provider write.
-      return json({ error: floorCheckT.detail, detail: floorCheckT.message }, 422);
+      return json(
+        { error: floorCheckT.detail, detail: floorCheckT.message },
+        422,
+      );
     }
 
     // Bidding (A1.1(b)): bid_type is optional here — under CBO the builder
     // defaults BID_TYPE_NO_BID; bid_price rides only with BID_TYPE_CUSTOM.
-    const bidTypeT = typeof budget.bid_type === "string" ? budget.bid_type : undefined;
+    const bidTypeT = typeof budget.bid_type === "string"
+      ? budget.bid_type
+      : undefined;
     const bidPriceCentsRawT = budget.bid_price_cents;
     if (
       bidPriceCentsRawT !== undefined &&
-      (!Number.isInteger(bidPriceCentsRawT) || (bidPriceCentsRawT as number) <= 0)
+      (!Number.isInteger(bidPriceCentsRawT) ||
+        (bidPriceCentsRawT as number) <= 0)
     ) {
-      return json({ error: "validation_error", detail: "bid_price_cents_invalid" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "bid_price_cents_invalid",
+      }, 400);
     }
     const bidPriceCentsT = bidPriceCentsRawT as number | undefined;
 
@@ -2433,7 +3064,10 @@ serve(async (req: Request): Promise<Response> => {
     const adTextCheckT = validateTikTokAdText(adTextT);
     if (!adTextCheckT.ok) {
       // AC-14: >100 weighted chars / emoji rejected edge-side, pre-call.
-      return json({ error: adTextCheckT.detail, detail: adTextCheckT.message }, 422);
+      return json(
+        { error: adTextCheckT.detail, detail: adTextCheckT.message },
+        422,
+      );
     }
 
     const targetingT = (body.targeting ?? {}) as Record<string, unknown>;
@@ -2442,34 +3076,57 @@ serve(async (req: Request): Promise<Response> => {
       !Array.isArray(countriesT) || countriesT.length === 0 ||
       countriesT.some((c) => typeof c !== "string" || !c.trim())
     ) {
-      return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
-    }
-    const countryCodesT = (countriesT as string[]).map((c) => c.trim().toUpperCase());
-    const genderT = typeof targetingT.gender === "string" ? targetingT.gender : undefined;
-    if (genderT !== undefined && !(TIKTOK_GENDERS as readonly string[]).includes(genderT)) {
       return json({
         error: "validation_error",
-        detail: `gender "${genderT}" is invalid — valid: ${TIKTOK_GENDERS.join(" | ")}.`,
+        detail: "targeting_countries_required",
+      }, 400);
+    }
+    const countryCodesT = (countriesT as string[]).map((c) =>
+      c.trim().toUpperCase()
+    );
+    const genderT = typeof targetingT.gender === "string"
+      ? targetingT.gender
+      : undefined;
+    if (
+      genderT !== undefined &&
+      !(TIKTOK_GENDERS as readonly string[]).includes(genderT)
+    ) {
+      return json({
+        error: "validation_error",
+        detail: `gender "${genderT}" is invalid — valid: ${
+          TIKTOK_GENDERS.join(" | ")
+        }.`,
       }, 422);
     }
-    const ageMinT = typeof targetingT.age_min === "number" ? targetingT.age_min : undefined;
-    const ageMaxT = typeof targetingT.age_max === "number" ? targetingT.age_max : undefined;
+    const ageMinT = typeof targetingT.age_min === "number"
+      ? targetingT.age_min
+      : undefined;
+    const ageMaxT = typeof targetingT.age_max === "number"
+      ? targetingT.age_max
+      : undefined;
     // ISSUE-989 — city location_ids (resolved via admin-ad-targeting-search
     // tool/region CITY filter) targeting laser city audiences; when present they
     // REPLACE the whole-country resolution below. Numeric ids only (never ISO
     // codes) — validated here so a malformed id 422s instead of silently widening.
     const cityLocationIdsT = Array.isArray(targetingT.location_ids)
-      ? (targetingT.location_ids as unknown[]).filter((id): id is string => typeof id === "string")
+      ? (targetingT.location_ids as unknown[]).filter((id): id is string =>
+        typeof id === "string"
+      )
       : [];
     if (cityLocationIdsT.length > 0) {
       const cityCheck = validateTikTokLocationIds(cityLocationIdsT);
       if (!cityCheck.ok) {
-        return json({ error: cityCheck.detail, detail: cityCheck.message }, 422);
+        return json(
+          { error: cityCheck.detail, detail: cityCheck.message },
+          422,
+        );
       }
     }
     // ISSUE-989 — interest_category_ids from tool/interest_category (numeric,
     // deduped, capped). Empty when none picked → broad targeting unchanged.
-    const interestCategoryIdsT = normalizeTikTokInterestCategoryIds(targetingT.interest_category_ids);
+    const interestCategoryIdsT = normalizeTikTokInterestCategoryIds(
+      targetingT.interest_category_ids,
+    );
 
     const destinationT = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
     const pageTypeT = destinationT.page_type ?? "";
@@ -2479,12 +3136,19 @@ serve(async (req: Request): Promise<Response> => {
     const entitySlugT = typeof destinationT.entity_slug === "string"
       ? destinationT.entity_slug.trim()
       : "";
+    // deno-fmt-ignore
     if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site", "marketing"].includes(pageTypeT)) {
-      return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "destination_page_type_invalid",
+      }, 400);
     }
     if (pageTypeT === "marketing" && !brandSlugT) brandSlugT = "mingla";
     if (!brandSlugT) {
-      return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "destination_brand_slug_required",
+      }, 400);
     }
 
     // CTA: TikTok CTAs are bare display strings (never a shared normalizer —
@@ -2518,7 +3182,10 @@ serve(async (req: Request): Promise<Response> => {
       assertTikTokIdentityAllowed(identityTypeT);
     } catch (err) {
       if (err instanceof AdApiError) {
-        return json({ error: err.code ?? "identity_forbidden", detail: err.message }, 422);
+        return json({
+          error: err.code ?? "identity_forbidden",
+          detail: err.message,
+        }, 422);
       }
       throw err;
     }
@@ -2541,7 +3208,9 @@ serve(async (req: Request): Promise<Response> => {
         .eq("connection_id", tconn.id)
         .eq("request_id", requestIdT)
         .maybeSingle();
-      if (existingT) return json({ campaign: existingT, idempotent_replay: true });
+      if (existingT) {
+        return json({ campaign: existingT, idempotent_replay: true });
+      }
     }
 
     // (4) Destination resolve — READ-ONLY, public + live only (§4.4b).
@@ -2561,7 +3230,10 @@ serve(async (req: Request): Promise<Response> => {
     // page — NEVER the OneLink; attribution rides in utm_params.
     const landingCheckT = validateTikTokLandingPageUrl(destUrlT);
     if (!landingCheckT.ok) {
-      return json({ error: landingCheckT.detail, detail: landingCheckT.message }, 422);
+      return json({
+        error: landingCheckT.detail,
+        detail: landingCheckT.message,
+      }, 422);
     }
 
     // (5) Media resolve — for VIDEO (#997 C): a #866 library ref that
@@ -2570,14 +3242,20 @@ serve(async (req: Request): Promise<Response> => {
     // explicit Asset-Library image_id, a #866 library ref
     // (external_ref_extra.image_id), or an image_url to upload AFTER the validate
     // gate (UPLOAD_BY_URL — GR-58).
-    let imageIdT = typeof creativeT.image_id === "string" ? creativeT.image_id.trim() : "";
+    let imageIdT = typeof creativeT.image_id === "string"
+      ? creativeT.image_id.trim()
+      : "";
     let videoIdT = "";
     // ISSUE-997 C: SINGLE_VIDEO for a prepared video, else SINGLE_IMAGE (#866).
-    const adFormatT = creativeKindT === "video" ? "SINGLE_VIDEO" : "SINGLE_IMAGE";
+    const adFormatT = creativeKindT === "video"
+      ? "SINGLE_VIDEO"
+      : "SINGLE_IMAGE";
     const creativeLibraryIdT = typeof creativeT.creative_library_id === "string"
       ? creativeT.creative_library_id.trim()
       : "";
-    const imageUrlT = typeof creativeT.image_url === "string" ? creativeT.image_url.trim() : "";
+    const imageUrlT = typeof creativeT.image_url === "string"
+      ? creativeT.image_url.trim()
+      : "";
     let creativeLibraryRowIdT: string | null = null;
     if (creativeKindT === "video") {
       // ISSUE-997 C: video create is a pure READY-ref consumer — create NEVER
@@ -2591,7 +3269,10 @@ serve(async (req: Request): Promise<Response> => {
         .eq("id", creativeLibraryIdT)
         .maybeSingle();
       if (!libCreativeVT) {
-        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+        return json({
+          error: "creative_not_found",
+          detail: "creative_library_id does not resolve",
+        }, 422);
       }
       if (libCreativeVT.kind !== "video") {
         return json({ error: "creative_kind_mismatch" }, 422);
@@ -2614,7 +3295,10 @@ serve(async (req: Request): Promise<Response> => {
             "No READY tiktok VIDEO ref for this creative on this advertiser — prepare it through admin-ad-creative-prepare (tiktok) first; create never uploads inline.",
         }, 422);
       }
-      if (refVT.content_hash && libCreativeVT.content_hash && refVT.content_hash !== libCreativeVT.content_hash) {
+      if (
+        refVT.content_hash && libCreativeVT.content_hash &&
+        refVT.content_hash !== libCreativeVT.content_hash
+      ) {
         // A1-1 (#866): cache validity keys on CONTENT — a stale ref must never serve.
         return json({
           error: "creative_ref_stale",
@@ -2625,9 +3309,16 @@ serve(async (req: Request): Promise<Response> => {
       // A SINGLE_VIDEO ad-object needs BOTH the prepared video_id and a cover
       // image_id (both land in external_ref_extra at prepare — #997 C 2.1). A
       // legacy #1184 ref with only video_id fails closed here, never silently.
-      const refExtraVT = (refVT.external_ref_extra ?? {}) as Record<string, unknown>;
-      const preparedVideoIdT = typeof refExtraVT.video_id === "string" ? refExtraVT.video_id : "";
-      const coverImageIdT = typeof refExtraVT.cover_image_id === "string" ? refExtraVT.cover_image_id : "";
+      const refExtraVT = (refVT.external_ref_extra ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const preparedVideoIdT = typeof refExtraVT.video_id === "string"
+        ? refExtraVT.video_id
+        : "";
+      const coverImageIdT = typeof refExtraVT.cover_image_id === "string"
+        ? refExtraVT.cover_image_id
+        : "";
       if (!preparedVideoIdT || !coverImageIdT) {
         return json({
           error: "creative_ref_incomplete",
@@ -2638,9 +3329,14 @@ serve(async (req: Request): Promise<Response> => {
       // 5–60 s ADVERTISING-POLICY duration gate (Seth-approved; T-4). A longer
       // video uploads/creates fine, then dies in review while budget burns.
       if (typeof libCreativeVT.duration_seconds === "number") {
-        const durationCheckVT = validateTikTokVideoDuration(libCreativeVT.duration_seconds);
+        const durationCheckVT = validateTikTokVideoDuration(
+          libCreativeVT.duration_seconds,
+        );
         if (!durationCheckVT.ok) {
-          return json({ error: durationCheckVT.detail, detail: durationCheckVT.message }, 422);
+          return json({
+            error: durationCheckVT.detail,
+            detail: durationCheckVT.message,
+          }, 422);
         }
       }
       videoIdT = preparedVideoIdT;
@@ -2653,7 +3349,10 @@ serve(async (req: Request): Promise<Response> => {
         .eq("id", creativeLibraryIdT)
         .maybeSingle();
       if (!libCreativeT) {
-        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+        return json({
+          error: "creative_not_found",
+          detail: "creative_library_id does not resolve",
+        }, 422);
       }
       const { data: refT } = await supabase
         .from("ad_creative_platform_refs")
@@ -2670,7 +3369,10 @@ serve(async (req: Request): Promise<Response> => {
             "No READY tiktok platform ref for this creative on this advertiser — upload it through the #866 creative library (admin-ad-creative-upload) first, or pass creative.image_url for a create-time UPLOAD_BY_URL.",
         }, 422);
       }
-      if (refT.content_hash && libCreativeT.content_hash && refT.content_hash !== libCreativeT.content_hash) {
+      if (
+        refT.content_hash && libCreativeT.content_hash &&
+        refT.content_hash !== libCreativeT.content_hash
+      ) {
         return json({
           error: "creative_ref_stale",
           detail:
@@ -2679,8 +3381,13 @@ serve(async (req: Request): Promise<Response> => {
       }
       // #866 keys external_ref = material_id; ad/create needs the image_id
       // secondary ref (A1-9 captures BOTH).
-      const refExtraT = (refT.external_ref_extra ?? {}) as Record<string, unknown>;
-      const refImageIdT = typeof refExtraT.image_id === "string" ? refExtraT.image_id : "";
+      const refExtraT = (refT.external_ref_extra ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const refImageIdT = typeof refExtraT.image_id === "string"
+        ? refExtraT.image_id
+        : "";
       if (!refImageIdT) {
         return json({
           error: "creative_ref_incomplete",
@@ -2732,7 +3439,11 @@ serve(async (req: Request): Promise<Response> => {
         locationIdsT = cityLocationIdsT;
       } else {
         try {
-          locationIdsT = await resolveTikTokGeo(tconn, countryCodesT, objectiveT);
+          locationIdsT = await resolveTikTokGeo(
+            tconn,
+            countryCodesT,
+            objectiveT,
+          );
         } catch (err) {
           if (err instanceof AdApiError && err.code === "geo_unavailable") {
             // AC-13: 422 naming the unavailable countries — never a silent drop.
@@ -2757,16 +3468,22 @@ serve(async (req: Request): Promise<Response> => {
         name,
         objective: objectiveT,
         // CBO ⇒ budget on the campaign ($50/day floor in the builder).
-        ...(budgetLevelT === "campaign" ? { dailyBudgetCents: amountCents as number } : {}),
+        ...(budgetLevelT === "campaign"
+          ? { dailyBudgetCents: providerAmountCents }
+          : {}),
       };
       const adSetInputT: CreateAdSetInput = {
         name: `${name} — ad group`,
         optimizationGoal: optimizationGoalT,
         billingEvent: billingEventT,
-        ...(budgetLevelT === "adset" ? { budgetCents: amountCents as number } : {}),
+        ...(budgetLevelT === "adset"
+          ? { budgetCents: providerAmountCents }
+          : {}),
         targeting: {
           location_ids: locationIdsT,
-          ...(interestCategoryIdsT.length > 0 ? { interest_category_ids: interestCategoryIdsT } : {}),
+          ...(interestCategoryIdsT.length > 0
+            ? { interest_category_ids: interestCategoryIdsT }
+            : {}),
           ...(ageMinT !== undefined ? { age_min: ageMinT } : {}),
           ...(ageMaxT !== undefined ? { age_max: ageMaxT } : {}),
           ...(genderT ? { gender: genderT } : {}),
@@ -2774,9 +3491,13 @@ serve(async (req: Request): Promise<Response> => {
           // A1.1(b): bid_type REQUIRED under CBO — the builder defaults
           // BID_TYPE_NO_BID; campaign-level bid_type is deprecated in v1.3.
           campaign_budget_optimize_on: budgetLevelT === "campaign",
-          ...(budgetLevelT === "campaign" ? { campaign_budget_cents: amountCents as number } : {}),
+          ...(budgetLevelT === "campaign"
+            ? { campaign_budget_cents: providerAmountCents }
+            : {}),
           ...(bidTypeT ? { bid_type: bidTypeT } : {}),
-          ...(typeof bidPriceCentsT === "number" ? { bid_price_cents: bidPriceCentsT } : {}),
+          ...(typeof bidPriceCentsT === "number"
+            ? { bid_price_cents: bidPriceCentsT }
+            : {}),
           ...(requestIdT ? { request_id: requestIdT } : {}),
           // schedule_start_time defaults to NOW in UTC+0 inside the builder
           // (A1.1(a): TikTok schedule strings are UTC+0, never advertiser-tz).
@@ -2786,27 +3507,29 @@ serve(async (req: Request): Promise<Response> => {
         destUrl: destUrlT, // interface-required; TikTok's createCreative is a documented no-op
         message: adTextT,
       };
-      const adInputT: Omit<CreateAdInput, "externalCreativeId"> & TikTokCreateAdExtensions = {
-        name: `${name} — ad`,
-        adText: adTextT,
-        // SINGLE_IMAGE: the ad image. SINGLE_VIDEO (#997 C): the video cover +
-        // the prepared video_id (both from external_ref_extra at prepare).
-        adFormat: adFormatT,
-        imageIds: [imageIdT],
-        ...(videoIdT ? { videoId: videoIdT } : {}),
-        // A1.0-5: the canonical page is the ad-visible URL; attribution rides
-        // utm_params (≤14, case-sensitive keys, TikTok serve-time macros).
-        landingPageUrl: destUrlT,
-        identityType: identityTypeT,
-        identityId: identityIdT,
-        callToAction: ctaT,
-        utmParams: [
-          { key: "utm_source", value: "tiktok" },
-          { key: "utm_medium", value: "paid" },
-          { key: "utm_campaign", value: "__CAMPAIGN_ID__" },
-          { key: "utm_content", value: "__CID__" },
-        ],
-      };
+      const adInputT:
+        & Omit<CreateAdInput, "externalCreativeId">
+        & TikTokCreateAdExtensions = {
+          name: `${name} — ad`,
+          adText: adTextT,
+          // SINGLE_IMAGE: the ad image. SINGLE_VIDEO (#997 C): the video cover +
+          // the prepared video_id (both from external_ref_extra at prepare).
+          adFormat: adFormatT,
+          imageIds: [imageIdT],
+          ...(videoIdT ? { videoId: videoIdT } : {}),
+          // A1.0-5: the canonical page is the ad-visible URL; attribution rides
+          // utm_params (≤14, case-sensitive keys, TikTok serve-time macros).
+          landingPageUrl: destUrlT,
+          identityType: identityTypeT,
+          identityId: identityIdT,
+          callToAction: ctaT,
+          utmParams: [
+            { key: "utm_source", value: "tiktok" },
+            { key: "utm_medium", value: "paid" },
+            { key: "utm_campaign", value: "__CAMPAIGN_ID__" },
+            { key: "utm_content", value: "__CID__" },
+          ],
+        };
 
       const createdT = await createFullCampaignAtomic(adapterT, tconn, {
         campaign: campaignInputT,
@@ -2819,7 +3542,11 @@ serve(async (req: Request): Promise<Response> => {
       // status is the real state; the GR-38 sync cron repairs/refreshes).
       let deliveryStatusT: string | null = null;
       try {
-        const statusT = await adapterT.getStatus(tconn, "campaign", createdT.externalCampaignId);
+        const statusT = await adapterT.getStatus(
+          tconn,
+          "campaign",
+          createdT.externalCampaignId,
+        );
         deliveryStatusT = statusT.effectiveStatus;
       } catch {
         deliveryStatusT = null;
@@ -2837,7 +3564,9 @@ serve(async (req: Request): Promise<Response> => {
         countries: countryCodesT,
         location_ids: locationIdsT, // resolved numeric ids persisted (T-5)
         ...(cityLocationIdsT.length > 0 ? { city_targeted: true } : {}),
-        ...(interestCategoryIdsT.length > 0 ? { interest_category_ids: interestCategoryIdsT } : {}),
+        ...(interestCategoryIdsT.length > 0
+          ? { interest_category_ids: interestCategoryIdsT }
+          : {}),
         ...(ageMinT !== undefined ? { age_min: ageMinT } : {}),
         ...(ageMaxT !== undefined ? { age_max: ageMaxT } : {}),
         ...(genderT ? { gender: genderT } : {}),
@@ -2859,7 +3588,9 @@ serve(async (req: Request): Promise<Response> => {
           name,
           objective: objectiveT,
           status: "PAUSED",
-          daily_budget_cents: budgetLevelT === "campaign" ? dailyBudgetForPersist : null,
+          daily_budget_cents: budgetLevelT === "campaign"
+            ? dailyBudgetForPersist
+            : null,
           delivery_status: deliveryStatusT,
           status_synced_at: new Date().toISOString(),
           targeting: targetingRecordT,
@@ -2908,7 +3639,9 @@ serve(async (req: Request): Promise<Response> => {
             ad_set_id: adSetRowT.id,
             external_ad_id: createdT.externalAdId,
             external_creative_id: null, // TikTok creatives are inline — no standalone object
-            ...(creativeLibraryRowIdT ? { creative_id: creativeLibraryRowIdT } : {}),
+            ...(creativeLibraryRowIdT
+              ? { creative_id: creativeLibraryRowIdT }
+              : {}),
             name: `${name} — ad`,
             status: "PAUSED",
             review_status: createdT.reviewStatus, // null — sync ingests review states (fast-follow)
@@ -2923,7 +3656,12 @@ serve(async (req: Request): Promise<Response> => {
         // Never a half-written DB row set: delete the campaign row (cascades)
         // and roll back the platform campaign (DELETE cascades adgroup/ad; no
         // account-level creative residue exists — TikTok inlines it), then audit.
-        if (campaignRowT) await supabase.from("ad_campaigns").delete().eq("id", campaignRowT.id);
+        if (campaignRowT) {
+          await supabase.from("ad_campaigns").delete().eq(
+            "id",
+            campaignRowT.id,
+          );
+        }
         let rollbackOkT = false;
         try {
           if (adapterT.rollbackCampaign) {
@@ -2948,8 +3686,14 @@ serve(async (req: Request): Promise<Response> => {
           },
           provider_response: { db_error: persistErrT.message },
         });
-        console.error("[admin-ad-create-campaign] tiktok persist failed:", persistErrT.message);
-        return json({ error: "internal_error", detail: "db_persist_failed_platform_rolled_back" }, 500);
+        console.error(
+          "[admin-ad-create-campaign] tiktok persist failed:",
+          persistErrT.message,
+        );
+        return json({
+          error: "internal_error",
+          detail: "db_persist_failed_platform_rolled_back",
+        }, 500);
       }
 
       await supabase.from("ad_status_events").insert({
@@ -2990,7 +3734,9 @@ serve(async (req: Request): Promise<Response> => {
           campaign_id: null,
           platform: "tiktok",
           entity: "campaign",
-          action: failureT.rollbackSucceeded === true ? "rollback" : "create_failed",
+          action: failureT.rollbackSucceeded === true
+            ? "rollback"
+            : "create_failed",
           actor: user.id,
           external_ids: {
             ...failureT.partialExternalIds,
@@ -3007,7 +3753,10 @@ serve(async (req: Request): Promise<Response> => {
       }
       if (err instanceof AdApiError) {
         // Pre-chain provider failure (geo read / image upload) — nothing created.
-        return json({ error: "tiktok_create_failed", detail: err.toJSON() }, 502);
+        return json(
+          { error: "tiktok_create_failed", detail: err.toJSON() },
+          502,
+        );
       }
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[admin-ad-create-campaign] tiktok unexpected:", detail);
@@ -3028,22 +3777,29 @@ serve(async (req: Request): Promise<Response> => {
   // mid-chain failure PATCHes configured_status:"DELETED" in reverse order
   // and records any orphaned t3_ post (§7.1/§7.2).
   if (platform === "reddit") {
-    const requestIdR = typeof body.request_id === "string" && body.request_id.trim()
-      ? body.request_id.trim()
-      : null;
+    const requestIdR =
+      typeof body.request_id === "string" && body.request_id.trim()
+        ? body.request_id.trim()
+        : null;
     const validateOnlyR = body.validate_only === true;
 
     // (1) Pure input validation — all 422s BEFORE any provider call.
     if (name.length < REDDIT_NAME_MIN || name.length > REDDIT_NAME_MAX) {
       return json({
         error: "name_out_of_range",
-        detail: `Campaign name must be ${REDDIT_NAME_MIN}–${REDDIT_NAME_MAX} chars [SPEC].`,
+        detail:
+          `Campaign name must be ${REDDIT_NAME_MIN}–${REDDIT_NAME_MAX} chars [SPEC].`,
       }, 422);
     }
-    const objectiveInputR = typeof body.objective === "string" ? body.objective : "TRAFFIC";
+    const objectiveInputR = typeof body.objective === "string"
+      ? body.objective
+      : "TRAFFIC";
     const objectiveR = normalizeRedditObjective(objectiveInputR);
     if (!objectiveR.ok) {
-      return json({ error: objectiveR.detail, detail: objectiveR.message }, 422);
+      return json(
+        { error: objectiveR.detail, detail: objectiveR.message },
+        422,
+      );
     }
 
     const targetingR = (body.targeting ?? {}) as Record<string, unknown>;
@@ -3052,10 +3808,18 @@ serve(async (req: Request): Promise<Response> => {
       !Array.isArray(countriesR) || countriesR.length === 0 ||
       countriesR.some((c) => typeof c !== "string" || !c.trim())
     ) {
-      return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "targeting_countries_required",
+      }, 400);
     }
-    const countryCodesR = (countriesR as string[]).map((c) => c.trim().toUpperCase());
-    const passthroughRootR = (targetingR.passthrough ?? {}) as Record<string, unknown>;
+    const countryCodesR = (countriesR as string[]).map((c) =>
+      c.trim().toUpperCase()
+    );
+    const passthroughRootR = (targetingR.passthrough ?? {}) as Record<
+      string,
+      unknown
+    >;
     const redditPassthroughR = (passthroughRootR.reddit ?? null) as
       | Record<string, unknown>
       | null;
@@ -3068,12 +3832,19 @@ serve(async (req: Request): Promise<Response> => {
     const entitySlugR = typeof destinationR.entity_slug === "string"
       ? destinationR.entity_slug.trim()
       : "";
+    // deno-fmt-ignore
     if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site", "marketing"].includes(pageTypeR)) {
-      return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "destination_page_type_invalid",
+      }, 400);
     }
     if (pageTypeR === "marketing" && !brandSlugR) brandSlugR = "mingla";
     if (!brandSlugR) {
-      return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "destination_brand_slug_required",
+      }, 400);
     }
 
     const creativeR = (body.creative ?? {}) as Record<string, unknown>;
@@ -3097,7 +3868,10 @@ serve(async (req: Request): Promise<Response> => {
       ? creativeR.message.trim()
       : "";
     if (!headlineR) {
-      return json({ error: "validation_error", detail: "creative_headline_required" }, 400);
+      return json({
+        error: "validation_error",
+        detail: "creative_headline_required",
+      }, 400);
     }
     // Media presence — pure input validation (400/422 BEFORE any provider call).
     // IMAGE takes a public master URL inline; VIDEO takes the #866 library row id
@@ -3153,7 +3927,10 @@ serve(async (req: Request): Promise<Response> => {
       redditConnExtras(rconn); // fail-close: 424 with the re-connect instruction
     } catch (err) {
       if (err instanceof AdApiError) {
-        return json({ error: "reddit_connection_incomplete", detail: err.message }, 424);
+        return json({
+          error: "reddit_connection_incomplete",
+          detail: err.message,
+        }, 424);
       }
       throw err;
     }
@@ -3166,7 +3943,9 @@ serve(async (req: Request): Promise<Response> => {
         .eq("connection_id", rconn.id)
         .eq("request_id", requestIdR)
         .maybeSingle();
-      if (existingR) return json({ campaign: existingR, idempotent_replay: true });
+      if (existingR) {
+        return json({ campaign: existingR, idempotent_replay: true });
+      }
     }
 
     // (3) Destination resolve — READ-ONLY, public + live only (§4.4b).
@@ -3196,12 +3975,16 @@ serve(async (req: Request): Promise<Response> => {
         .eq("id", creativeLibraryIdR)
         .maybeSingle();
       if (!libCreativeR) {
-        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+        return json({
+          error: "creative_not_found",
+          detail: "creative_library_id does not resolve",
+        }, 422);
       }
       if (libCreativeR.kind !== "video") {
         return json({
           error: "creative_kind_mismatch",
-          detail: 'creative_library_id is not a video creative (kind must be "video").',
+          detail:
+            'creative_library_id is not a video creative (kind must be "video").',
         }, 422);
       }
       // §5.5: Reddit downloads the master MP4 from a PUBLIC URL — mp4_master_url is
@@ -3249,7 +4032,10 @@ serve(async (req: Request): Promise<Response> => {
     }
     const creativeCheckR = validateRedditCreative(creativeInputR);
     if (!creativeCheckR.ok) {
-      return json({ error: creativeCheckR.detail, detail: creativeCheckR.message }, 422);
+      return json({
+        error: creativeCheckR.detail,
+        detail: creativeCheckR.message,
+      }, 422);
     }
     const creativeWarningsR = creativeCheckR.warnings;
 
@@ -3271,7 +4057,9 @@ serve(async (req: Request): Promise<Response> => {
         ],
         detail:
           "validate_only — nothing was validated on Reddit (no validate-only exists), nothing created, nothing persisted. The first real create (everything PAUSED) is the platform-side validation.",
-        ...(creativeWarningsR.length > 0 ? { warnings: creativeWarningsR } : {}),
+        ...(creativeWarningsR.length > 0
+          ? { warnings: creativeWarningsR }
+          : {}),
       });
     }
 
@@ -3290,12 +4078,14 @@ serve(async (req: Request): Promise<Response> => {
         },
         adGroup: {
           name: `${name} — ad group`,
-          budgetCents: amountCents as number, // → goal_value micro in the builder; NO floor of ours (GR-59)
+          budgetCents: providerAmountCents, // → goal_value micro in the builder; NO floor of ours (GR-59)
           optimizationGoal: "CLICKS", // pixel-independent safe default (§3.2)
           startTime: new Date().toISOString(),
           normalizedTargeting: {
             countries: countryCodesR,
-            ...(Array.isArray(targetingR.genders) ? { genders: targetingR.genders } : {}),
+            ...(Array.isArray(targetingR.genders)
+              ? { genders: targetingR.genders }
+              : {}),
             // age_min/age_max are deliberately NEVER forwarded — Reddit has no
             // age targeting (R-8); the serializer warns if they appear.
           },
@@ -3319,9 +4109,14 @@ serve(async (req: Request): Promise<Response> => {
       });
       const targetingRecordR: Record<string, unknown> = {
         countries: countryCodesR,
-        ...(redditPassthroughR ? { passthrough: { reddit: redditPassthroughR } } : {}),
+        ...(redditPassthroughR
+          ? { passthrough: { reddit: redditPassthroughR } }
+          : {}),
       };
-      const allWarningsR = [...creativeWarningsR, ...createdR.targetingWarnings];
+      const allWarningsR = [
+        ...creativeWarningsR,
+        ...createdR.targetingWarnings,
+      ];
 
       // (6) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
       const moneyR: Wave2MoneyPersist = {
@@ -3410,11 +4205,19 @@ serve(async (req: Request): Promise<Response> => {
         // Never a half-written DB row set: delete the campaign row (cascades)
         // and roll back the platform tree (PATCH configured_status:"DELETED" —
         // R-5; the t3_ post is profile-scoped residue, recorded not deleted).
-        if (campaignRowR) await supabase.from("ad_campaigns").delete().eq("id", campaignRowR.id);
+        if (campaignRowR) {
+          await supabase.from("ad_campaigns").delete().eq(
+            "id",
+            campaignRowR.id,
+          );
+        }
         let rollbackOkR = false;
         try {
           if (getAdapter("reddit").rollbackCampaign) {
-            await getAdapter("reddit").rollbackCampaign!(rconn, createdR.externalCampaignId);
+            await getAdapter("reddit").rollbackCampaign!(
+              rconn,
+              createdR.externalCampaignId,
+            );
             rollbackOkR = true;
           }
         } catch {
@@ -3437,8 +4240,14 @@ serve(async (req: Request): Promise<Response> => {
           },
           provider_response: { db_error: persistErrR.message },
         });
-        console.error("[admin-ad-create-campaign] reddit persist failed:", persistErrR.message);
-        return json({ error: "internal_error", detail: "db_persist_failed_platform_rolled_back" }, 500);
+        console.error(
+          "[admin-ad-create-campaign] reddit persist failed:",
+          persistErrR.message,
+        );
+        return json({
+          error: "internal_error",
+          detail: "db_persist_failed_platform_rolled_back",
+        }, 500);
       }
 
       await supabase.from("ad_status_events").insert({
@@ -3509,7 +4318,10 @@ serve(async (req: Request): Promise<Response> => {
         }, 502);
       }
       if (err instanceof AdApiError) {
-        return json({ error: "reddit_create_failed", detail: err.toJSON() }, 502);
+        return json(
+          { error: "reddit_create_failed", detail: err.toJSON() },
+          502,
+        );
       }
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[admin-ad-create-campaign] reddit unexpected:", detail);
@@ -3532,42 +4344,79 @@ serve(async (req: Request): Promise<Response> => {
 
   const targetingInput = (body.targeting ?? {}) as Record<string, unknown>;
   const countries = targetingInput.countries;
-  if (!Array.isArray(countries) || countries.length === 0 || countries.some((c) => typeof c !== "string")) {
-    return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
+  if (
+    !Array.isArray(countries) || countries.length === 0 ||
+    countries.some((c) => typeof c !== "string")
+  ) {
+    return json({
+      error: "validation_error",
+      detail: "targeting_countries_required",
+    }, 400);
   }
 
   const destination = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
   const pageType = destination.page_type ?? "";
-  let brandSlug = typeof destination.brand_slug === "string" ? destination.brand_slug.trim() : "";
-  const entitySlug = typeof destination.entity_slug === "string" ? destination.entity_slug.trim() : "";
+  let brandSlug = typeof destination.brand_slug === "string"
+    ? destination.brand_slug.trim()
+    : "";
+  const entitySlug = typeof destination.entity_slug === "string"
+    ? destination.entity_slug.trim()
+    : "";
+  // deno-fmt-ignore
   if (!["event", "rsvp", "trip", "experience", "brand", "venue", "reservation", "site", "marketing"].includes(pageType)) {
-    return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
+    return json({
+      error: "validation_error",
+      detail: "destination_page_type_invalid",
+    }, 400);
   }
   // toward #3697 Wave 4 — marketing implies sentinel brand when omitted.
   if (pageType === "marketing" && !brandSlug) brandSlug = "mingla";
-  if (!brandSlug) return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
+  if (!brandSlug) {
+    return json({
+      error: "validation_error",
+      detail: "destination_brand_slug_required",
+    }, 400);
+  }
 
   const creative = (body.creative ?? {}) as Record<string, unknown>;
   const creativeKind = creative.kind === "video" ? "video" : "image";
   const creativeLibraryId = typeof creative.creative_library_id === "string"
     ? creative.creative_library_id.trim()
     : "";
-  const message = typeof creative.message === "string" ? creative.message.trim() : "";
-  if (!message) return json({ error: "validation_error", detail: "creative_message_required" }, 400);
-  let imageUrl = typeof creative.image_url === "string" ? creative.image_url : undefined;
-  let imageHash = typeof creative.image_hash === "string" ? creative.image_hash : undefined;
-  let videoId = typeof creative.video_id === "string" ? creative.video_id : undefined;
-  let videoThumbnailImageHash = typeof creative.video_thumbnail_image_hash === "string"
-    ? creative.video_thumbnail_image_hash
+  const message = typeof creative.message === "string"
+    ? creative.message.trim()
+    : "";
+  if (!message) {
+    return json({
+      error: "validation_error",
+      detail: "creative_message_required",
+    }, 400);
+  }
+  let imageUrl = typeof creative.image_url === "string"
+    ? creative.image_url
     : undefined;
+  let imageHash = typeof creative.image_hash === "string"
+    ? creative.image_hash
+    : undefined;
+  let videoId = typeof creative.video_id === "string"
+    ? creative.video_id
+    : undefined;
+  let videoThumbnailImageHash =
+    typeof creative.video_thumbnail_image_hash === "string"
+      ? creative.video_thumbnail_image_hash
+      : undefined;
   let metaCreativeLibraryRowId: string | null = null;
   if (!imageUrl && !imageHash && !videoId && !creativeLibraryId) {
-    return json({ error: "validation_error", detail: "creative_media_required" }, 400);
+    return json({
+      error: "validation_error",
+      detail: "creative_media_required",
+    }, 400);
   }
 
-  const requestId = typeof body.request_id === "string" && body.request_id.trim()
-    ? body.request_id.trim()
-    : null;
+  const requestId =
+    typeof body.request_id === "string" && body.request_id.trim()
+      ? body.request_id.trim()
+      : null;
   const validateOnly = body.validate_only === true;
 
   // ── 1. Connection (fail-close). ──────────────────────────────────────────────
@@ -3585,13 +4434,18 @@ serve(async (req: Request): Promise<Response> => {
   // Phase A video cannot accept a client-supplied provider id. Resolve the
   // exact current-hash READY ref for this creative/account/lane.
   if (creativeKind === "video") {
-    if (!creativeLibraryId) return json({ error: "video_preparation_required" }, 422);
+    if (!creativeLibraryId) {
+      return json({ error: "video_preparation_required" }, 422);
+    }
     const { data: libCreative } = await supabase
       .from("ad_creatives")
       .select("id, kind, status, content_hash")
       .eq("id", creativeLibraryId)
       .maybeSingle();
-    if (!libCreative || libCreative.kind !== "video" || libCreative.status !== "active" || !libCreative.content_hash) {
+    if (
+      !libCreative || libCreative.kind !== "video" ||
+      libCreative.status !== "active" || !libCreative.content_hash
+    ) {
       return json({ error: "creative_not_found" }, 422);
     }
     const { data: ref } = await supabase
@@ -3605,10 +4459,13 @@ serve(async (req: Request): Promise<Response> => {
       .eq("content_hash", libCreative.content_hash)
       .eq("status", "ready")
       .maybeSingle();
-    const refExtra = ref?.external_ref_extra && typeof ref.external_ref_extra === "object"
-      ? ref.external_ref_extra as Record<string, unknown>
-      : {};
-    if (!ref?.external_ref || typeof refExtra.thumbnail_image_hash !== "string") {
+    const refExtra =
+      ref?.external_ref_extra && typeof ref.external_ref_extra === "object"
+        ? ref.external_ref_extra as Record<string, unknown>
+        : {};
+    if (
+      !ref?.external_ref || typeof refExtra.thumbnail_image_hash !== "string"
+    ) {
       return json({ error: "video_preparation_required" }, 422);
     }
     videoId = String(ref.external_ref);
@@ -3632,7 +4489,10 @@ serve(async (req: Request): Promise<Response> => {
   // ── 2. Objective → optimization_goal matrix (M-2/M-3 — never rely on Meta's
   //       silent auto-correct). ─────────────────────────────────────────────────
   if (!META_OBJECTIVE_GOAL_MATRIX[objective]) {
-    return json({ error: "validation_error", detail: "invalid_objective" }, 422);
+    return json(
+      { error: "validation_error", detail: "invalid_objective" },
+      422,
+    );
   }
   if (!isMetaGoalValidForObjective(objective, optimizationGoal)) {
     return json({
@@ -3650,9 +4510,14 @@ serve(async (req: Request): Promise<Response> => {
   // (creative.ai_generated below). The platform-neutral body.compliance mirror
   // is redundant for Meta (these API-shaped keys are authoritative) and is only
   // consumed by the other four branches, which cannot express it.
-  const specialValidation = validateSpecialAdCategories(body.special_ad_categories);
+  const specialValidation = validateSpecialAdCategories(
+    body.special_ad_categories,
+  );
   if (!specialValidation.ok) {
-    return json({ error: specialValidation.detail, detail: specialValidation.message }, 422);
+    return json({
+      error: specialValidation.detail,
+      detail: specialValidation.message,
+    }, 422);
   }
   const specialAdCategories = specialValidation.categories;
   // ISSUE-989 — real city + interest targeting. Cities carry the exact Meta
@@ -3669,12 +4534,20 @@ serve(async (req: Request): Promise<Response> => {
   // buildMetaGeoLocations mirrors TikTok's city-replaces-country behavior; the
   // country stays the fallback ONLY when no city is chosen.
   const metaCities = normalizeMetaCities(targetingInput.cities);
-  const metaInterestSpec = buildMetaInterestFlexibleSpec(targetingInput.interests);
+  const metaInterestSpec = buildMetaInterestFlexibleSpec(
+    targetingInput.interests,
+  );
   let targeting: Record<string, unknown> = {
     geo_locations: buildMetaGeoLocations(countries, metaCities),
-    ...(typeof targetingInput.age_min === "number" ? { age_min: targetingInput.age_min } : {}),
-    ...(typeof targetingInput.age_max === "number" ? { age_max: targetingInput.age_max } : {}),
-    ...(Array.isArray(targetingInput.genders) ? { genders: targetingInput.genders } : {}),
+    ...(typeof targetingInput.age_min === "number"
+      ? { age_min: targetingInput.age_min }
+      : {}),
+    ...(typeof targetingInput.age_max === "number"
+      ? { age_max: targetingInput.age_max }
+      : {}),
+    ...(Array.isArray(targetingInput.genders)
+      ? { genders: targetingInput.genders }
+      : {}),
     ...(metaInterestSpec ? { flexible_spec: metaInterestSpec } : {}),
   };
   if (specialAdCategories.length > 0) {
@@ -3683,7 +4556,10 @@ serve(async (req: Request): Promise<Response> => {
 
   // ── 4. Per-category budget floor (A4.g / PROOF M-P8 — never hardcoded). ──────
   const extra = (connection.extra ?? {}) as Record<string, unknown>;
-  const floors = extra.minimum_budgets as Record<string, number> | null | undefined;
+  const floors = extra.minimum_budgets as
+    | Record<string, number>
+    | null
+    | undefined;
   const category = metaBudgetCategoryForGoal(optimizationGoal);
   if (!floors || typeof floors[category] !== "number") {
     return json({
@@ -3698,14 +4574,14 @@ serve(async (req: Request): Promise<Response> => {
   const minCents = budgetType === "lifetime"
     ? floorCents * (schedule.days as number)
     : floorCents;
-  if ((amountCents as number) < minCents) {
+  if (providerAmountCents < minCents) {
     return json({
       error: budgetType === "lifetime"
         ? "budget_below_platform_minimum"
         : "budget_below_minimum",
       detail: budgetType === "lifetime"
-        ? `Lifetime budget ${amountCents}¢ is below the ${category} floor ${floorCents}¢/day × ${schedule.days} days (= ${minCents}¢) for ${optimizationGoal}.`
-        : `Daily budget ${amountCents}¢ is below the ${category} floor ${floorCents}¢ for ${optimizationGoal} (per-category minimum_budgets — PROOF M-P8).`,
+        ? `Lifetime provider budget ${providerAmountCents}¢ is below the ${category} floor ${floorCents}¢/day × ${schedule.days} days (= ${minCents}¢) for ${optimizationGoal}.`
+        : `Daily provider budget ${providerAmountCents}¢ is below the ${category} floor ${floorCents}¢ for ${optimizationGoal} (per-category minimum_budgets — PROOF M-P8).`,
       floor_cents: floorCents,
       min_budget_cents: minCents,
       category,
@@ -3726,10 +4602,13 @@ serve(async (req: Request): Promise<Response> => {
         }, 422);
       }
     } catch (err) {
-      if (err instanceof AdNotConnectedError) return json({ error: "meta_not_connected" }, 424);
+      if (err instanceof AdNotConnectedError) {
+        return json({ error: "meta_not_connected" }, 424);
+      }
       return json({
         error: "pixel_no_signal",
-        detail: "Pixel signal could not be verified — refusing a pixel-measured goal (fail-close). Use LINK_CLICKS.",
+        detail:
+          "Pixel signal could not be verified — refusing a pixel-measured goal (fail-close). Use LINK_CLICKS.",
       }, 422);
     }
   }
@@ -3755,8 +4634,8 @@ serve(async (req: Request): Promise<Response> => {
     name,
     objective,
     ...(budgetType === "lifetime"
-      ? { lifetimeBudgetCents: amountCents as number }
-      : { dailyBudgetCents: amountCents as number }), // CBO (OD-3)
+      ? { lifetimeBudgetCents: providerAmountCents }
+      : { dailyBudgetCents: providerAmountCents }), // CBO (OD-3)
     bidStrategy, // QA P1-1 — explicit LOWEST_COST_WITHOUT_CAP, never a Meta default
     specialAdCategories,
     specialAdCategoryCountry: Array.isArray(body.special_ad_category_country)
@@ -3778,8 +4657,12 @@ serve(async (req: Request): Promise<Response> => {
   const creativeInput = {
     destUrl, // A4.f: the AD-VISIBLE destination — never the OneLink
     message,
-    headline: typeof creative.headline === "string" ? creative.headline : undefined,
-    description: typeof creative.description === "string" ? creative.description : undefined,
+    headline: typeof creative.headline === "string"
+      ? creative.headline
+      : undefined,
+    description: typeof creative.description === "string"
+      ? creative.description
+      : undefined,
     imageUrl,
     imageHash,
     videoId,
@@ -3841,10 +4724,13 @@ serve(async (req: Request): Promise<Response> => {
         validated: true,
         validated_layers: validatedLayers,
         skipped_layers: skippedLayers,
-        detail: "validate_only — nothing created on the platform, nothing persisted.",
+        detail:
+          "validate_only — nothing created on the platform, nothing persisted.",
       });
     } catch (err) {
-      if (err instanceof AdNotConnectedError) return json({ error: err.detail }, 424);
+      if (err instanceof AdNotConnectedError) {
+        return json({ error: err.detail }, 424);
+      }
       if (err instanceof AdApiError) {
         return json({
           error: "validation_failed",
@@ -3853,7 +4739,10 @@ serve(async (req: Request): Promise<Response> => {
         }, 422);
       }
       const detail = err instanceof Error ? err.message : String(err);
-      console.error("[admin-ad-create-campaign] validate-only unexpected:", detail);
+      console.error(
+        "[admin-ad-create-campaign] validate-only unexpected:",
+        detail,
+      );
       return json({ error: "internal_error" }, 500);
     }
   }
@@ -3870,7 +4759,11 @@ serve(async (req: Request): Promise<Response> => {
     // Read back delivery status (effective_status).
     let deliveryStatus: string | null = null;
     try {
-      const status = await adapter.getStatus(connection, "campaign", created.externalCampaignId);
+      const status = await adapter.getStatus(
+        connection,
+        "campaign",
+        created.externalCampaignId,
+      );
       deliveryStatus = status.effectiveStatus;
     } catch {
       deliveryStatus = null; // status read-back is best-effort; sync repairs it
@@ -3951,7 +4844,9 @@ serve(async (req: Request): Promise<Response> => {
           ad_set_id: adSetRow.id,
           external_ad_id: created.externalAdId,
           external_creative_id: created.externalCreativeId,
-          ...(metaCreativeLibraryRowId ? { creative_id: metaCreativeLibraryRowId } : {}),
+          ...(metaCreativeLibraryRowId
+            ? { creative_id: metaCreativeLibraryRowId }
+            : {}),
           name: adInput.name,
           status: "PAUSED",
           review_status: created.reviewStatus,
@@ -3965,12 +4860,17 @@ serve(async (req: Request): Promise<Response> => {
     if (persistError) {
       // Never a half-written DB row set: delete the campaign row (cascades) and
       // roll back the platform campaign, then audit for reconciliation.
-      if (campaignRow) await supabase.from("ad_campaigns").delete().eq("id", campaignRow.id);
+      if (campaignRow) {
+        await supabase.from("ad_campaigns").delete().eq("id", campaignRow.id);
+      }
       // QA P2-5: the account-level creative does NOT cascade with the campaign.
       let creativeRollbackOk: boolean | null = null;
       if (created.externalCreativeId && adapter.rollbackCreative) {
         try {
-          await adapter.rollbackCreative(connection, created.externalCreativeId);
+          await adapter.rollbackCreative(
+            connection,
+            created.externalCreativeId,
+          );
           creativeRollbackOk = true;
         } catch {
           creativeRollbackOk = false; // residue — id recorded below
@@ -3981,7 +4881,10 @@ serve(async (req: Request): Promise<Response> => {
       let rollbackOk = false;
       try {
         if (adapter.rollbackCampaign) {
-          await adapter.rollbackCampaign(connection, created.externalCampaignId);
+          await adapter.rollbackCampaign(
+            connection,
+            created.externalCampaignId,
+          );
           rollbackOk = true;
         }
       } catch {
@@ -3991,7 +4894,9 @@ serve(async (req: Request): Promise<Response> => {
         campaign_id: null,
         platform,
         entity: "campaign",
-        action: rollbackOk && creativeRollbackOk !== false ? "rollback" : "create_failed",
+        action: rollbackOk && creativeRollbackOk !== false
+          ? "rollback"
+          : "create_failed",
         actor: user.id,
         to_status: null,
         external_ids: {
@@ -4007,8 +4912,14 @@ serve(async (req: Request): Promise<Response> => {
             : {}),
         },
       });
-      console.error("[admin-ad-create-campaign] persist failed:", persistError.message);
-      return json({ error: "internal_error", detail: "db_persist_failed_platform_rolled_back" }, 500);
+      console.error(
+        "[admin-ad-create-campaign] persist failed:",
+        persistError.message,
+      );
+      return json({
+        error: "internal_error",
+        detail: "db_persist_failed_platform_rolled_back",
+      }, 500);
     }
 
     await supabase.from("ad_status_events").insert({
@@ -4039,10 +4950,17 @@ serve(async (req: Request): Promise<Response> => {
       const failure = err.failure;
       const providerResponse = failure.cause instanceof AdApiError
         ? failure.cause.toJSON()
-        : { message: failure.cause instanceof Error ? failure.cause.message : String(failure.cause) };
+        : {
+          message: failure.cause instanceof Error
+            ? failure.cause.message
+            : String(failure.cause),
+        };
       // QA P2-5: any surviving account-level creative is named in the audit row.
       const creativeResidue = failure.creativeRollbackSucceeded === false
-        ? { creative_residue_id: failure.partialExternalIds.external_creative_id ?? null }
+        ? {
+          creative_residue_id:
+            failure.partialExternalIds.external_creative_id ?? null,
+        }
         : {};
       const fullyRolledBack = failure.rollbackSucceeded !== false &&
         failure.creativeRollbackSucceeded !== false;
@@ -4055,7 +4973,11 @@ serve(async (req: Request): Promise<Response> => {
           : "create_failed",
         actor: user.id,
         external_ids: failure.partialExternalIds,
-        provider_response: { step: failure.step, ...providerResponse, ...creativeResidue },
+        provider_response: {
+          step: failure.step,
+          ...providerResponse,
+          ...creativeResidue,
+        },
       });
       return json({
         error: `${platform}_create_failed`,

@@ -187,26 +187,21 @@ export function compileProviderTargeting(
         );
       } else {
         (compiled.geo_locations as Record<string, unknown>).cities = locations
-          .ids.map((key) => ({ key }));
-      }
-    }
-    if (intent.radiusKm != null) {
-      const missingCoordinates = cities.filter((city) =>
-        !Number.isFinite(city.latitude) || !Number.isFinite(city.longitude)
-      );
-      if (!cities.length || missingCoordinates.length) {
-        checksRequired.push(
-          "Meta radius targeting needs a verified latitude/longitude for every center.",
-        );
-      } else {
-        (compiled.geo_locations as Record<string, unknown>).custom_locations =
-          cities.map((city) => ({
-            latitude: city.latitude,
-            longitude: city.longitude,
-            radius: city.radiusKm ?? intent.radiusKm,
-            distance_unit: "kilometer",
+          .ids.map((key) => ({
+            key,
+            ...(intent.radiusKm != null
+              ? {
+                radius: intent.radiusKm,
+                distance_unit: "kilometer",
+              }
+              : {}),
           }));
       }
+    }
+    if (intent.radiusKm != null && !cities.length) {
+      checksRequired.push(
+        "Meta radius targeting needs at least one verified city center.",
+      );
     }
     if (intent.ageMin != null) compiled.age_min = intent.ageMin;
     if (intent.ageMax != null) compiled.age_max = intent.ageMax;

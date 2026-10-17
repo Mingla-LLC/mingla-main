@@ -18,7 +18,12 @@ DECLARE
   v_campaign_2 constant uuid := '36971000-0000-4000-8000-000000000042';
   v_bad_plan public.ad_plans%ROWTYPE;
   v_bad_version public.ad_plan_versions%ROWTYPE;
+  v_app_plan public.ad_plans%ROWTYPE;
+  v_app_version public.ad_plan_versions%ROWTYPE;
   v_admin_plan public.ad_plans%ROWTYPE;
+  v_revise_plan public.ad_plans%ROWTYPE;
+  v_revise_version public.ad_plan_versions%ROWTYPE;
+  v_revised_version public.ad_plan_versions%ROWTYPE;
   v_plan public.ad_plans%ROWTYPE;
   v_version public.ad_plan_versions%ROWTYPE;
   v_hold public.ad_plan_funding_holds%ROWTYPE;
@@ -97,7 +102,7 @@ BEGIN
   -- currency-homogeneous plans; a cross-currency total is never spend authority.
   v_admin_plan := public.ad_plan_open(
     'admin', 'mingla', NULL, 'marketing_page',
-    'https://usemingla.com/femzy', '[]'::jsonb, v_user
+    'explorer', '[]'::jsonb, v_user
   );
   v_failed := false;
   BEGIN
@@ -122,10 +127,45 @@ BEGIN
   END;
   IF NOT v_failed THEN RAISE EXCEPTION 'admin_mixed_currency_plan_was_not_split'; END IF;
 
+  -- Explorer is a first-class destination, but provider creation remains
+  -- blocked until the existing exact app-readiness authority turns green.
+  v_app_plan := public.ad_plan_open(
+    'admin', 'mingla', NULL, 'explorer_app', 'ios', '[]'::jsonb, v_user
+  );
+  v_app_version := public.ad_plan_create_version(
+    v_app_plan.id,
+    '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb,
+    1000, 'USD', jsonb_build_array(jsonb_build_object(
+      'platform', 'meta', 'connection_id', v_connection,
+      'host_budget_cents', 1000, 'provider_budget_cents', 1000,
+      'fx_snapshot_id', NULL
+    )), v_user
+  );
+  INSERT INTO public.ad_plan_targeting_snapshots (
+    plan_version_id, platform, audience_intent, compiled_targeting, verdict,
+    evidence_observed_at, compiler_version
+  ) VALUES (
+    v_app_version.id, 'meta', '{"countries":["NG"]}'::jsonb,
+    '{"geo_locations":{"countries":["NG"]}}'::jsonb,
+    'exact', now(), 'v1.4-test'
+  );
+  v_failed := false;
+  BEGIN
+    PERFORM public.ad_plan_mark_ready(
+      v_app_version.id, v_app_version.plan_hash
+    );
+  EXCEPTION WHEN SQLSTATE '55000' THEN
+    v_failed := SQLERRM =
+      'ad_plan_destination_not_ready:app_acquisition_not_ready';
+  END;
+  IF NOT v_failed THEN
+    RAISE EXCEPTION 'native_app_plan_bypassed_readiness_authority';
+  END IF;
+
   -- A broader snapshot that was not explicitly accepted cannot become ready.
   v_bad_plan := public.ad_plan_open(
     'host', 'host', v_brand, 'public_mingla_page',
-    'event:issue-3697-broader', '[]'::jsonb, v_user
+    'brand:issue-3697-control-plane', '[]'::jsonb, v_user
   );
   v_bad_version := public.ad_plan_create_version(
     v_bad_plan.id,
@@ -153,9 +193,67 @@ BEGIN
   END;
   IF NOT v_failed THEN RAISE EXCEPTION 'silent_targeting_widening_succeeded'; END IF;
 
+  -- A non-approval is recoverable: staff feedback atomically releases the
+  -- pre-create hold so the Host can freeze a new version without trapped funds.
+  v_revise_plan := public.ad_plan_open(
+    'host', 'host', v_brand, 'public_mingla_page',
+    'brand:issue-3697-control-plane', '[]'::jsonb, v_user
+  );
+  v_revise_version := public.ad_plan_create_version(
+    v_revise_plan.id,
+    '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb,
+    1500000, 'NGN', jsonb_build_array(jsonb_build_object(
+      'platform', 'meta', 'connection_id', v_connection,
+      'host_budget_cents', 1500000,
+      'provider_budget_cents', 1000,
+      'fx_snapshot_id', v_snapshot
+    )), v_user
+  );
+  INSERT INTO public.ad_plan_targeting_snapshots (
+    plan_version_id, platform, audience_intent, compiled_targeting, verdict,
+    evidence_observed_at, compiler_version
+  ) VALUES (
+    v_revise_version.id, 'meta', '{"countries":["NG"]}'::jsonb,
+    '{"geo_locations":{"countries":["NG"]}}'::jsonb,
+    'exact', now(), 'v1.4-test'
+  );
+  PERFORM public.ad_plan_mark_ready(
+    v_revise_version.id, v_revise_version.plan_hash
+  );
+  PERFORM public.ad_plan_hold_host_funds(
+    v_revise_version.id, v_revise_version.plan_hash,
+    'v14-review-release-hold', v_user
+  );
+  PERFORM public.ad_plan_record_review(
+    v_revise_version.id, v_revise_version.plan_hash, 'changes_requested',
+    'Correct the headline', v_user
+  );
+  SELECT balance_cents, held_cents INTO v_wallet_balance, v_wallet_held
+  FROM public.ad_credit_wallets WHERE brand_id = v_brand;
+  SELECT * INTO v_hold FROM public.ad_plan_funding_holds
+  WHERE plan_version_id = v_revise_version.id;
+  IF v_wallet_balance <> 3000000 OR v_wallet_held <> 0
+     OR v_hold.state <> 'released' THEN
+    RAISE EXCEPTION 'staff_feedback_trapped_host_funds:balance %, held %, hold %',
+      v_wallet_balance, v_wallet_held, row_to_json(v_hold);
+  END IF;
+  v_revised_version := public.ad_plan_create_version(
+    v_revise_plan.id,
+    '{"platforms":["meta"],"confirmation_phrase":"LAUNCH","headline":"Corrected"}'::jsonb,
+    1500000, 'NGN', jsonb_build_array(jsonb_build_object(
+      'platform', 'meta', 'connection_id', v_connection,
+      'host_budget_cents', 1500000,
+      'provider_budget_cents', 1000,
+      'fx_snapshot_id', v_snapshot
+    )), v_user
+  );
+  IF v_revised_version.previous_version_id <> v_revise_version.id THEN
+    RAISE EXCEPTION 'review_revision_did_not_preserve_version_history';
+  END IF;
+
   v_plan := public.ad_plan_open(
     'ari', 'host', v_brand, 'public_mingla_page',
-    'event:issue-3697-control', '[]'::jsonb, v_user
+    'brand:issue-3697-control-plane', '[]'::jsonb, v_user
   );
   IF v_plan.review_required IS DISTINCT FROM true
      OR NOT (v_plan.review_reasons ? 'first_three_host_campaigns') THEN

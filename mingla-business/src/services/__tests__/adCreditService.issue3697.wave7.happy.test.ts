@@ -234,3 +234,5 @@ describe("adCreditService Wave 7", () => {
     });
   });
 });
+// #3697 v1.4: client-supplied currency expectations were replaced because the
+// server-resolved brand settlement currency is now the only wallet authority.

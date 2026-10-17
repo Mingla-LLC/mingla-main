@@ -22,6 +22,7 @@ import type { Platform } from "../_shared/adChannelCore.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_CURRENCY_RE = /^[A-Z]{3}$/;
@@ -48,6 +49,8 @@ type Plan = {
   client_kind: "admin" | "host" | "ari";
   owner_kind: "mingla" | "host";
   brand_id: string | null;
+  destination_family: string;
+  destination_key: string;
   current_version_id: string | null;
   state: string;
 };
@@ -63,6 +66,7 @@ type RequestedAllocation = {
   platform: Platform;
   connection_id: string;
   host_budget_cents: number;
+  host_delivery_budget_cents: number;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -86,15 +90,21 @@ function parseAllocations(value: unknown): RequestedAllocation[] | null {
     const platform = row?.platform;
     const connectionId = row?.connection_id;
     const budget = positiveMinor(row?.host_budget_cents);
+    const deliveryBudget = row?.host_delivery_budget_cents === undefined
+      ? budget
+      : positiveMinor(row.host_delivery_budget_cents);
     if (
       !isPlatform(platform) || typeof connectionId !== "string" ||
-      !UUID_RE.test(connectionId) || budget === null || seen.has(platform)
+      !UUID_RE.test(connectionId) || budget === null ||
+      deliveryBudget === null ||
+      deliveryBudget > budget || seen.has(platform)
     ) return null;
     seen.add(platform);
     rows.push({
       platform,
       connection_id: connectionId,
       host_budget_cents: budget,
+      host_delivery_budget_cents: deliveryBudget,
     });
   }
   return rows;
@@ -209,11 +219,36 @@ async function normalizedAllocations(
           detail: error?.message ?? "provider_quote_unavailable",
         };
       }
+      let providerDeliveryBudget = allocation.host_delivery_budget_cents;
+      if (data.provider_currency !== authority.currency) {
+        const { data: converted, error: conversionError } = await db.rpc(
+          "fx_convert_minor",
+          {
+            p_amount: allocation.host_delivery_budget_cents,
+            p_source: authority.currency,
+            p_target: data.provider_currency,
+            p_snapshot: data.fx_snapshot_id,
+          },
+        );
+        if (
+          conversionError || !Number.isSafeInteger(converted) || converted <= 0
+        ) {
+          return {
+            ok: false,
+            status: 422,
+            detail: conversionError?.message ??
+              "provider_delivery_quote_unavailable",
+          };
+        }
+        providerDeliveryBudget = converted;
+      }
       rows.push({
         platform: allocation.platform,
         connection_id: allocation.connection_id,
         host_budget_cents: allocation.host_budget_cents,
+        host_delivery_budget_cents: allocation.host_delivery_budget_cents,
         provider_budget_cents: data.provider_budget_cents,
+        provider_delivery_budget_cents: providerDeliveryBudget,
         fx_snapshot_id: data.fx_snapshot_id,
       });
     }
@@ -254,7 +289,9 @@ async function normalizedAllocations(
       platform: allocation.platform,
       connection_id: allocation.connection_id,
       host_budget_cents: allocation.host_budget_cents,
+      host_delivery_budget_cents: allocation.host_delivery_budget_cents,
       provider_budget_cents: allocation.host_budget_cents,
+      provider_delivery_budget_cents: allocation.host_delivery_budget_cents,
       fx_snapshot_id: null,
     });
   }
@@ -345,6 +382,126 @@ serve(async (req: Request): Promise<Response> => {
   const actor = user as User;
   const action = typeof body.action === "string" ? body.action : "";
 
+  if (action === "host_setup") {
+    const brandId = typeof body.brand_id === "string" ? body.brand_id : "";
+    if (!UUID_RE.test(brandId)) {
+      return json(
+        { error: "validation_error", detail: "brand_id_invalid" },
+        400,
+      );
+    }
+    const { data: allowed } = await db.rpc(
+      "biz_can_manage_payments_for_brand",
+      { p_brand_id: brandId, p_user_id: actor.id },
+    );
+    if (allowed !== true) return json({ error: "forbidden" }, 403);
+    if (!ANON_KEY) {
+      return json(
+        { error: "configuration_error", detail: "anon_key_missing" },
+        503,
+      );
+    }
+    const userDb = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const [pages, connections, creatives, authority, plans] = await Promise.all(
+      [
+        userDb.rpc("ad_advertisable_pages", {
+          p_query: null,
+          p_types: null,
+          p_include_unavailable: false,
+          p_brand_id: brandId,
+          p_page: 0,
+        }),
+        db.from("ad_connections")
+          .select("id,platform,lane,currency,status,connected,updated_at")
+          .eq("lane", "business").eq("connected", true).eq(
+            "status",
+            "connected",
+          )
+          .order("platform"),
+        db.from("ad_creatives")
+          .select(
+            "id,name,kind,status,source_url,poster_url,mp4_master_url,bunny_video_id,duration_seconds,aspect_ratio,created_at",
+          )
+          .eq("brand_id", brandId).eq("kind", "video").eq("status", "active")
+          .order("created_at", { ascending: false }).limit(100),
+        resolveAdBrandCurrency(db, brandId),
+        db.from("ad_plans")
+          .select("*").eq("brand_id", brandId).eq("owner_kind", "host")
+          .order("updated_at", { ascending: false }).limit(50),
+      ],
+    );
+    const firstError = pages.error ?? connections.error ?? creatives.error ??
+      plans.error;
+    if (firstError) return databaseFailure(firstError);
+    if (!authority.ok) {
+      return json({
+        error: "currency_authority_unresolved",
+        detail: authority.detail,
+      }, 409);
+    }
+    return json({
+      ok: true,
+      currency: authority.currency,
+      pages: pages.data ?? [],
+      connections: connections.data ?? [],
+      creatives: creatives.data ?? [],
+      plans: plans.data ?? [],
+    });
+  }
+
+  if (action === "review_queue") {
+    if (!(await isActiveAdmin(db, actor))) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const { data: plans, error: plansError } = await db.from("ad_plans")
+      .select("*").eq("state", "staff_review_required")
+      .order("updated_at", { ascending: true }).limit(100);
+    if (plansError) return databaseFailure(plansError);
+    const versionIds = (plans ?? []).map((
+      row: { current_version_id?: string },
+    ) => row.current_version_id).filter((id: unknown): id is string =>
+      typeof id === "string"
+    );
+    if (versionIds.length === 0) return json({ ok: true, queue: [] });
+    const [versions, allocations, targeting, holds] = await Promise.all([
+      db.from("ad_plan_versions").select("*").in("id", versionIds),
+      db.from("ad_plan_provider_allocations").select("*")
+        .in("plan_version_id", versionIds).order("platform"),
+      db.from("ad_plan_targeting_snapshots").select("*")
+        .in("plan_version_id", versionIds).order("platform"),
+      db.from("ad_plan_funding_holds").select("*")
+        .in("plan_version_id", versionIds),
+    ]);
+    const firstError = versions.error ?? allocations.error ?? targeting.error ??
+      holds.error;
+    if (firstError) return databaseFailure(firstError);
+    const queue = (plans ?? []).map((plan: Record<string, unknown>) => {
+      const versionId = String(plan.current_version_id ?? "");
+      return {
+        plan,
+        version: (versions.data ?? []).find((row: { id: string }) =>
+          row.id === versionId
+        ) ?? null,
+        provider_allocations: (allocations.data ?? []).filter(
+          (row: { plan_version_id: string }) =>
+            row.plan_version_id === versionId,
+        ),
+        targeting_snapshots: (targeting.data ?? []).filter(
+          (row: { plan_version_id: string }) =>
+            row.plan_version_id === versionId,
+        ),
+        funding_hold: (holds.data ?? []).find(
+          (row: { plan_version_id: string }) =>
+            row.plan_version_id === versionId,
+        ) ?? null,
+      };
+    });
+    return json({ ok: true, queue });
+  }
+
   if (action === "open") {
     const clientKind = body.client_kind;
     const ownerKind = body.owner_kind;
@@ -426,6 +583,23 @@ serve(async (req: Request): Promise<Response> => {
       : json({ ok: true, plans: data ?? [] });
   }
 
+  if (action === "list_destinations") {
+    if (!(await isActiveAdmin(db, actor))) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const family = typeof body.destination_family === "string"
+      ? body.destination_family.trim()
+      : "";
+    let query = db.from("ad_destination_registry").select(
+      "id,destination_family,destination_key,title,canonical_url,result_kind,app_key,os,status,metadata",
+    ).eq("status", "active").order("destination_family").order("title");
+    if (family) query = query.eq("destination_family", family);
+    const { data, error } = await query;
+    return error
+      ? databaseFailure(error)
+      : json({ ok: true, destinations: data ?? [] });
+  }
+
   const planId = typeof body.plan_id === "string" ? body.plan_id : "";
   const versionId = typeof body.plan_version_id === "string"
     ? body.plan_version_id
@@ -478,6 +652,35 @@ serve(async (req: Request): Promise<Response> => {
       host_currency: normalized.hostCurrency,
       host_budget_cents: hostBudget,
     });
+    const { data: destination, error: destinationError } = await db.rpc(
+      "ad_plan_destination_resolve",
+      {
+        p_destination_family: plan.destination_family,
+        p_destination_key: plan.destination_key,
+        p_platforms: platforms,
+      },
+    );
+    if (
+      destinationError || !asRecord(destination) ||
+      (destination as Record<string, unknown>).ok !== true
+    ) {
+      return json({
+        error: "plan_preflight_failed",
+        detail: destinationError?.message ??
+          asRecord(destination)?.code ?? "destination_not_available",
+      }, 422);
+    }
+    canonical.destination = destination;
+    canonical.delivery_budgets = Object.fromEntries(
+      normalized.rows.map((row) => [
+        row.platform,
+        {
+          host_currency: normalized.hostCurrency,
+          host_amount_cents: row.host_delivery_budget_cents,
+          provider_amount_cents: row.provider_delivery_budget_cents,
+        },
+      ]),
+    );
     const { data, error } = await db.rpc("ad_plan_create_version", {
       p_plan_id: plan.id,
       p_canonical_plan: canonical,
@@ -543,6 +746,7 @@ serve(async (req: Request): Promise<Response> => {
         compiled_targeting: row.compiledTargeting,
         verdict: row.verdict,
         widening_summary: row.wideningSummary,
+        checks_required: row.checksRequired,
         broader_accepted: accepted,
         broader_accepted_by: accepted ? actor.id : null,
         broader_accepted_at: accepted ? frozenAt : null,

@@ -31,16 +31,19 @@ import {
 } from "../../../../src/constants/designSystem";
 import { useAdCreditWallet } from "../../../../src/hooks/marketing/useAdCreditWallet";
 import { useHostAdCampaigns } from "../../../../src/hooks/marketing/useHostAdCampaigns";
+import { useHostAdPlans } from "../../../../src/hooks/marketing/useHostAdPlans";
 import { useCanManageBrandPayments } from "../../../../src/hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { applyAdCreditTopUp } from "../../../../src/services/adCreditService";
 import { formatCurrency } from "../../../../src/utils/currency";
 
-function firstParam(
-  value: string | string[] | undefined,
-): string | null {
+function firstParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string" && value.length > 0) return value;
-  if (Array.isArray(value) && typeof value[0] === "string" && value[0].length > 0) {
+  if (
+    Array.isArray(value) &&
+    typeof value[0] === "string" &&
+    value[0].length > 0
+  ) {
     return value[0];
   }
   return null;
@@ -72,6 +75,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const brandId = brand?.id ?? null;
   const walletQuery = useAdCreditWallet(brandId);
   const campaignsQuery = useHostAdCampaigns(brandId);
+  const plansQuery = useHostAdPlans(brandId);
   const manage = useCanManageBrandPayments(brandId);
   const [sheetMode, setSheetMode] = useState<AdCreditQuoteMode | null>(null);
   const [returnNotice, setReturnNotice] = useState<string | null>(null);
@@ -89,7 +93,8 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const onRefresh = useCallback(() => {
     void walletQuery.refetch();
     void campaignsQuery.refetch();
-  }, [campaignsQuery, walletQuery]);
+    void plansQuery.refetch();
+  }, [campaignsQuery, plansQuery, walletQuery]);
 
   // Stripe Checkout return: ?ad_credit_top_up=1&session_id=cs_...
   // Paystack return: ?reference=mingla_adc_... (and/or trxref)
@@ -179,7 +184,10 @@ export default function MarketingAdsRoute(): React.ReactElement {
     );
   }
 
-  if (walletQuery.viewLoading || (!walletQuery.hasResolved && !walletQuery.isError)) {
+  if (
+    walletQuery.viewLoading ||
+    (!walletQuery.hasResolved && !walletQuery.isError)
+  ) {
     return (
       <View style={styles.host} testID="ads-skeleton">
         <ActivityIndicator color={textTokens.secondary} />
@@ -241,16 +249,18 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const wallet = walletQuery.data?.wallet;
   const history = walletQuery.data?.history ?? [];
   const authority = walletQuery.data?.currency_authority;
-  const authorityCurrency = authority?.resolved === true &&
-      typeof authority.currency === "string" &&
-      /^[A-Z]{3}$/.test(authority.currency)
-    ? authority.currency
-    : null;
-  const walletAligned = wallet === null || wallet === undefined || (
-    wallet.currency_status === "aligned" &&
-    wallet.currency === authorityCurrency &&
-    wallet.authority_currency === authorityCurrency
-  );
+  const authorityCurrency =
+    authority?.resolved === true &&
+    typeof authority.currency === "string" &&
+    /^[A-Z]{3}$/.test(authority.currency)
+      ? authority.currency
+      : null;
+  const walletAligned =
+    wallet === null ||
+    wallet === undefined ||
+    (wallet.currency_status === "aligned" &&
+      wallet.currency === authorityCurrency &&
+      wallet.authority_currency === authorityCurrency);
   if (authorityCurrency === null || !walletAligned) {
     return (
       <View style={styles.host}>
@@ -266,8 +276,9 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const currency = authorityCurrency;
   const balanceCents = wallet?.balance_cents ?? 0;
   const campaigns = campaignsQuery.campaigns;
+  const plans = plansQuery.plans;
   const filteredCampaigns = campaigns.filter((c) =>
-    campaignMatchesFilter(c.status, campaignFilter)
+    campaignMatchesFilter(c.status, campaignFilter),
   );
 
   return (
@@ -276,7 +287,11 @@ export default function MarketingAdsRoute(): React.ReactElement {
         contentContainerStyle={styles.scroll}
         refreshControl={
           <RefreshControl
-            refreshing={walletQuery.isRefetching || campaignsQuery.isRefetching}
+            refreshing={
+              walletQuery.isRefetching ||
+              campaignsQuery.isRefetching ||
+              plansQuery.isRefetching
+            }
             onRefresh={onRefresh}
           />
         }
@@ -292,8 +307,9 @@ export default function MarketingAdsRoute(): React.ReactElement {
             {formatCurrency(balanceCents, currency, true)}
           </Text>
           <Text style={styles.sub}>
-            Top-ups keep 15% as Mingla&apos;s fee. Withdraw unused credit any time.
-            Payments and refunds stay in this brand&apos;s verified settlement currency.
+            Top-ups keep 15% as Mingla&apos;s fee. Withdraw unused credit any
+            time. Payments and refunds stay in this brand&apos;s verified
+            settlement currency.
           </Text>
           <View style={styles.actions}>
             <Pressable
@@ -317,7 +333,79 @@ export default function MarketingAdsRoute(): React.ReactElement {
           </View>
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>Your ads</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Your ads</Text>
+          <Pressable
+            style={[
+              styles.createBtn,
+              !manage.allowed && styles.createBtnDisabled,
+            ]}
+            onPress={() => router.push("/(tabs)/marketing/ads/create" as never)}
+            disabled={!manage.allowed}
+            accessibilityRole="button"
+            accessibilityLabel="Create a Host ad"
+            accessibilityState={{ disabled: !manage.allowed }}
+            testID="ads-create"
+          >
+            <Text style={styles.createBtnLabel}>Create ad</Text>
+          </Pressable>
+        </View>
+        {plans.length > 0 ? (
+          <>
+            <Text style={styles.subsectionTitle}>Plans in progress</Text>
+            <GlassCard
+              variant="base"
+              padding={0}
+              testID="ads-plans-in-progress"
+            >
+              {plans.map((item) => {
+                const canonical = item.version.canonical_plan;
+                const planName = String(canonical.name ?? "Saved ad plan");
+                const platforms = item.provider_allocations
+                  .map((allocation) => String(allocation.platform))
+                  .join(" · ");
+                const reviewReason = item.reviews[0]?.reason;
+                return (
+                  <Pressable
+                    key={item.plan.id}
+                    style={styles.campaignRow}
+                    onPress={() =>
+                      router.push(
+                        `/(tabs)/marketing/ads/create?plan_id=${item.plan.id}` as never,
+                      )
+                    }
+                    disabled={!manage.allowed}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: !manage.allowed }}
+                    accessibilityLabel={`${planName}, ${item.plan.state.replaceAll("_", " ")}`}
+                    testID={`ads-plan-row-${item.plan.id}`}
+                  >
+                    <View style={styles.campaignText}>
+                      <Text style={styles.campaignName}>{planName}</Text>
+                      <Text style={styles.campaignMeta}>
+                        {platforms} ·{" "}
+                        {formatCurrency(
+                          item.version.host_budget_cents,
+                          item.version.host_currency,
+                          true,
+                        )}{" "}
+                        cap
+                      </Text>
+                      {reviewReason ? (
+                        <Text style={styles.planReason}>{reviewReason}</Text>
+                      ) : null}
+                    </View>
+                    <View style={styles.statusPill}>
+                      <Text style={styles.statusPillLabel}>
+                        {item.plan.state.replaceAll("_", " ")}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </GlassCard>
+          </>
+        ) : null}
         <View style={styles.filterRow} testID="ads-campaign-filters">
           {(
             [
@@ -354,11 +442,15 @@ export default function MarketingAdsRoute(): React.ReactElement {
           {campaigns.length === 0 ? (
             <View style={styles.emptyHistory} testID="ads-campaigns-empty">
               <Text style={styles.emptyHistoryText}>
-                No Host ads yet. Ask Ari to propose a plan, or add credit first.
+                No Host ads yet. Create one here or ask Ari to propose the same
+                immutable plan.
               </Text>
             </View>
           ) : filteredCampaigns.length === 0 ? (
-            <View style={styles.emptyHistory} testID="ads-campaigns-filter-empty">
+            <View
+              style={styles.emptyHistory}
+              testID="ads-campaigns-filter-empty"
+            >
               <Text style={styles.emptyHistoryText}>
                 No ads in this filter.
               </Text>
@@ -411,9 +503,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
               </Text>
             </View>
           ) : (
-            history.map((row) => (
-              <AdCreditLedgerRow key={row.id} row={row} />
-            ))
+            history.map((row) => <AdCreditLedgerRow key={row.id} row={row} />)
           )}
         </GlassCard>
       </ScrollView>
@@ -489,6 +579,30 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     marginTop: spacing.sm,
   },
+  subsectionTitle: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    fontWeight: "700",
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  createBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 999,
+    backgroundColor: "#F5F5F6",
+  },
+  createBtnDisabled: {
+    opacity: 0.45,
+  },
+  createBtnLabel: {
+    ...typography.buttonMd,
+    color: "#0c0e12",
+  },
   filterRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -542,6 +656,11 @@ const styles = StyleSheet.create({
   campaignMeta: {
     ...typography.caption,
     color: textTokens.secondary,
+  },
+  planReason: {
+    ...typography.caption,
+    color: textTokens.secondary,
+    marginTop: spacing.xs,
   },
   statusPill: {
     paddingHorizontal: spacing.sm,

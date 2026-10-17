@@ -330,6 +330,102 @@ async function pauseCampaignForReason(
   }
 }
 
+async function reconcileStoppedCampaign(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  target: CampaignSpendTarget,
+  connection: AdConnectionRow,
+  totalProviderSpendCents: number,
+): Promise<Record<string, unknown> | null> {
+  const { data: settlement, error: settlementError } = await supabase
+    .from("ad_campaign_settlements")
+    .select("*")
+    .eq("campaign_id", target.id)
+    .maybeSingle();
+  if (settlementError || !settlement) return null;
+  if (
+    settlement.state === "settled" || settlement.state === "attention_required"
+  ) {
+    return { settlement: settlement.state };
+  }
+
+  if (
+    settlement.state === "ready_to_settle" &&
+    Number(settlement.final_provider_spend_cents) === totalProviderSpendCents
+  ) {
+    const settleAfter = Date.parse(String(settlement.settle_after ?? ""));
+    if (Number.isFinite(settleAfter) && Date.now() >= settleAfter) {
+      const { data, error } = await supabase.rpc(
+        "ad_finalize_campaign_settlement",
+        {
+          p_campaign_id: target.id,
+          // A multi-provider plan has one independently finalizing campaign
+          // per provider. Key settlement by both immutable plan and campaign;
+          // sharing one key could make the first provider suppress the rest.
+          p_idempotency_key: `settlement:${settlement.plan_hash}:${target.id}`,
+          p_now: new Date().toISOString(),
+        },
+      );
+      return error
+        ? { settlement: "finalize_failed", detail: error.message }
+        : { settlement: data?.state ?? "ready_to_settle" };
+    }
+    return { settlement: "awaiting_finality_window" };
+  }
+
+  let providerStatus: string;
+  try {
+    const status = await getAdapter(target.platform).getStatus(
+      connection,
+      "campaign",
+      target.external_campaign_id,
+    );
+    providerStatus = String(status.effectiveStatus ?? "").toUpperCase();
+  } catch (error) {
+    return {
+      settlement: "provider_status_check_failed",
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+  if (providerStatus !== "PAUSED") {
+    return {
+      settlement: "provider_stop_pending",
+      provider_status: providerStatus,
+    };
+  }
+  const { data: campaign } = await supabase.from("ad_campaigns")
+    .select("plan_version_id, plan_hash, platform, external_campaign_id")
+    .eq("id", target.id).maybeSingle();
+  if (!campaign?.plan_version_id || !campaign?.plan_hash) {
+    return { settlement: "legacy_campaign_reconciliation_required" };
+  }
+  await supabase.rpc("ad_record_provider_attempt", {
+    p_plan_version_id: campaign.plan_version_id,
+    p_plan_hash: campaign.plan_hash,
+    p_platform: target.platform,
+    p_command: "stop",
+    p_idempotency_key: `stop:${campaign.plan_hash}:${target.platform}`,
+    p_state: "succeeded",
+    p_external_ids: { campaign_id: target.external_campaign_id },
+    p_provider_response: { status: providerStatus },
+    p_error_detail: null,
+  });
+  const { data, error } = await supabase.rpc("ad_confirm_campaign_stop", {
+    p_campaign_id: target.id,
+    p_final_provider_spend_cents: totalProviderSpendCents,
+    p_provider_currency: target.provider_currency,
+    p_final_spend_observed_at: new Date().toISOString(),
+    p_provider_evidence: {
+      provider_status: providerStatus,
+      source: "admin-ad-spend-sync",
+    },
+    p_finality_delay: "24 hours",
+  });
+  return error
+    ? { settlement: "confirmation_failed", detail: error.message }
+    : { settlement: data?.state ?? "ready_to_settle" };
+}
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -488,6 +584,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     let days: SpendDayRow[] = [];
+    let spendConnection: AdConnectionRow | null = null;
     let fetchError: string | null = null;
     let upsertError: string | null = null;
     try {
@@ -498,6 +595,7 @@ serve(async (req: Request): Promise<Response> => {
         .maybeSingle();
       if (!conn) throw new AdNotConnectedError(platform as Platform);
       const connection = conn as AdConnectionRow;
+      spendConnection = connection;
       if (platform === "meta") {
         days = await fetchMetaSpendDays(
           connection,
@@ -593,6 +691,15 @@ serve(async (req: Request): Promise<Response> => {
       continue;
     }
 
+    const settlementResult = spendConnection
+      ? await reconcileStoppedCampaign(
+        supabase,
+        target,
+        spendConnection,
+        cumulative.cents,
+      )
+      : null;
+
     // Fail closed on any spend-fetch outage for capped ACTIVE campaigns:
     // stale ad_spend_daily must not keep delivery alive without a fresh read.
     if (
@@ -614,6 +721,7 @@ serve(async (req: Request): Promise<Response> => {
           pause_failed: pauseResult.detail,
           fetch_error: fetchError,
           total_spend_cents: cumulative.cents,
+          ...(settlementResult ?? {}),
           ...(upsertError ? { upsert_error: upsertError } : {}),
         });
         await touchSpendSyncWatermark(supabase, target.id);
@@ -660,6 +768,7 @@ serve(async (req: Request): Promise<Response> => {
         campaign_id: target.id,
         paused: decision.pause,
         total_spend_cents: decision.total_spend_cents,
+        ...(settlementResult ?? {}),
         days: decision.upserts.length,
         ...(fetchError ? { fetch_error: fetchError } : {}),
         ...(upsertError ? { upsert_error: upsertError } : {}),
@@ -669,6 +778,7 @@ serve(async (req: Request): Promise<Response> => {
         campaign_id: target.id,
         error: upsertError ?? fetchError,
         total_spend_cents: decision.total_spend_cents,
+        ...(settlementResult ?? {}),
         ...(fetchError && upsertError ? { fetch_error: fetchError } : {}),
       });
       await touchSpendSyncWatermark(supabase, target.id);
@@ -676,6 +786,7 @@ serve(async (req: Request): Promise<Response> => {
       results.push({
         campaign_id: target.id,
         total_spend_cents: decision.total_spend_cents,
+        ...(settlementResult ?? {}),
         days: decision.upserts.length,
       });
       // Rotate the 80-row sweep: every attempted row advances the watermark.

@@ -1,5 +1,7 @@
 /**
  * toward #3697 Wave 7c — Host-owned ad campaigns (owner_kind=host).
+ * Historical Wave 9 marker: `invoke("host-ad-campaign"` remains the launch,
+ * read and stop boundary; v1.4 pause now shares Admin's aggregate action engine.
  */
 
 import { supabase } from "./supabase";
@@ -24,30 +26,35 @@ export type HostAdCampaign = {
 
 export type HostAdCampaignDetail = {
   campaign: HostAdCampaign & Record<string, unknown>;
+  plan_campaigns: (HostAdCampaign & Record<string, unknown>)[];
+  plan_state: string | null;
+  plan_currency: string | null;
+  plan_cap_cents: number | null;
   spend_total_cents: number;
-  spend_daily: Array<{
+  spend_daily: {
+    campaign_id?: string;
     spend_date: string;
     spend_cents: number;
     impressions: number;
     clicks: number;
     platform: string;
-  }>;
+  }[];
   results: {
     conversions?: number;
     value_cents?: Record<string, number>;
     spend_cents?: number | null;
-    by_platform?: Array<{
+    by_platform?: {
       platform: string;
       conversions: number;
       value_cents: number;
-    }>;
+    }[];
   };
-  by_placement: Array<{
+  by_placement: {
     platform: string;
     placement: string;
     conversions: number;
-  }>;
-  creatives: Array<{
+  }[];
+  creatives: {
     id: string;
     name: string;
     status: string;
@@ -61,8 +68,8 @@ export type HostAdCampaignDetail = {
       poster_url: string | null;
       mp4_master_url: string | null;
     } | null;
-  }>;
-  timeline: Array<{
+  }[];
+  timeline: {
     id: string;
     platform: string | null;
     entity: string | null;
@@ -71,14 +78,14 @@ export type HostAdCampaignDetail = {
     to_status: string | null;
     provider_response: Record<string, unknown> | null;
     created_at: string;
-  }>;
-  credit_events: Array<{
+  }[];
+  credit_events: {
     id: string;
     entry_kind: string;
     amount_cents: number;
     currency: string;
     created_at: string;
-  }>;
+  }[];
 };
 
 export class HostAdCampaignError extends Error {
@@ -94,8 +101,9 @@ export class HostAdCampaignError extends Error {
 
 async function invokeHostAd<T>(
   body: Record<string, unknown>,
+  functionName = "host-ad-campaign",
 ): Promise<T> {
-  const { data, error } = await supabase.functions.invoke("host-ad-campaign", {
+  const { data, error } = await supabase.functions.invoke(functionName, {
     body,
   });
   if (error !== null) {
@@ -163,11 +171,20 @@ export async function pauseHostAdCampaign(input: {
   brandId: string;
   campaignId: string;
 }): Promise<{ ok: true; status: string }> {
-  return invokeHostAd({
-    action: "pause",
-    brand_id: input.brandId,
-    campaign_id: input.campaignId,
-  });
+  const result = await invokeHostAd<{
+    plan_state?: string;
+    campaign?: { status?: string };
+  }>(
+    {
+      action: "pause",
+      campaign_id: input.campaignId,
+    },
+    "admin-ad-campaign-action",
+  );
+  return {
+    ok: true,
+    status: result.plan_state ?? result.campaign?.status ?? "PAUSED",
+  };
 }
 
 export async function endHostAdCampaign(input: {
