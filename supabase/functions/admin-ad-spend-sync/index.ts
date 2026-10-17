@@ -32,6 +32,7 @@ import {
   parseSnapchatStatsSpend,
   parseTikTokReportSpend,
   type SpendDayRow,
+  type SpendSyncDecision,
   sumSpendCents,
 } from "../_shared/adSpendSync.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
@@ -356,7 +357,7 @@ serve(async (req: Request): Promise<Response> => {
   let query = supabase
     .from("ad_campaigns")
     .select(
-      "id, platform, external_campaign_id, status, cap_cents, ends_at, currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug",
+      "id, platform, external_campaign_id, status, cap_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug",
     )
     .in("status", ["ACTIVE", "PAUSED"])
     .order("status_synced_at", { ascending: true, nullsFirst: true })
@@ -387,7 +388,9 @@ serve(async (req: Request): Promise<Response> => {
       status: String(row.status ?? ""),
       cap_cents: typeof row.cap_cents === "number" ? row.cap_cents : null,
       ends_at: typeof row.ends_at === "string" ? row.ends_at : null,
-      currency: typeof row.currency === "string" ? row.currency : "USD",
+      provider_currency: typeof row.provider_currency === "string"
+        ? row.provider_currency
+        : null,
     };
     if (!target.external_campaign_id) {
       results.push({ campaign_id: target.id, skipped: "no_external_id" });
@@ -395,8 +398,45 @@ serve(async (req: Request): Promise<Response> => {
       continue;
     }
 
+    if (
+      typeof target.provider_currency !== "string" ||
+      !/^[A-Z]{3}$/.test(target.provider_currency.trim().toUpperCase())
+    ) {
+      const cumulative = await loadCumulativeSpendCents(supabase, target.id);
+      if (target.status === "ACTIVE" && cumulative.ok) {
+        const pauseResult = await pauseCampaignForReason(
+          supabase,
+          target,
+          row.connection_id,
+          "provider_currency_unresolved",
+          cumulative.cents,
+        );
+        if (pauseResult.ok) paused += 1;
+        results.push({
+          campaign_id: target.id,
+          ...(pauseResult.ok
+            ? { paused: "provider_currency_unresolved" }
+            : { pause_failed: pauseResult.detail }),
+          total_spend_cents: cumulative.cents,
+        });
+      } else {
+        results.push({
+          campaign_id: target.id,
+          error: cumulative.ok
+            ? "provider_currency_unresolved"
+            : cumulative.detail,
+          retryable: true,
+        });
+        await touchSpendSyncWatermark(supabase, target.id);
+      }
+      continue;
+    }
+
     if (target.status === "ACTIVE") {
-      let destinationPause: "destination_unavailable" | "destination_check_failed" | null = null;
+      let destinationPause:
+        | "destination_unavailable"
+        | "destination_check_failed"
+        | null = null;
       try {
         await resolveAdDestination(supabase, {
           page_type: row.dest_page_type,
@@ -495,7 +535,38 @@ serve(async (req: Request): Promise<Response> => {
       days = [];
     }
 
-    const draft = decideSpendSync({ campaign: target, days });
+    let draft: SpendSyncDecision;
+    try {
+      draft = decideSpendSync({ campaign: target, days });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      const cumulative = await loadCumulativeSpendCents(supabase, target.id);
+      if (target.status === "ACTIVE" && cumulative.ok) {
+        const pauseResult = await pauseCampaignForReason(
+          supabase,
+          target,
+          row.connection_id,
+          reason,
+          cumulative.cents,
+        );
+        if (pauseResult.ok) paused += 1;
+        results.push({
+          campaign_id: target.id,
+          ...(pauseResult.ok
+            ? { paused: reason }
+            : { pause_failed: pauseResult.detail }),
+          total_spend_cents: cumulative.cents,
+        });
+      } else {
+        results.push({
+          campaign_id: target.id,
+          error: cumulative.ok ? reason : cumulative.detail,
+          retryable: true,
+        });
+        await touchSpendSyncWatermark(supabase, target.id);
+      }
+      continue;
+    }
     if (draft.upserts.length > 0) {
       const { error: upErr } = await supabase.from("ad_spend_daily").upsert(
         draft.upserts,

@@ -34,16 +34,30 @@ export const HOST_FEE_RATIO = 0.15;
 
 /**
  * toward #3697 Wave 6 — standalone Ads credit top-up limits (Seth 2026-09-30):
- * at least $25 / £20 / ₦25,000; at most $5,000 (or currency peer).
+ * at least the local-currency peer of roughly $25; at most the configured
+ * local-currency peer of roughly $5,000. These are explicit product limits,
+ * not request-time FX guesses, so a retry cannot receive a different quote.
  * Amounts are pay-cents (what the host is charged), not credit after fee.
  */
-export const AD_CREDIT_TOP_UP_LIMITS_CENTS: Readonly<
-  Record<"USD" | "GBP" | "NGN", { min_pay_cents: number; max_pay_cents: number }>
-> = {
+export const AD_CREDIT_TOP_UP_LIMITS_CENTS = {
+  BGN: { min_pay_cents: 4_500, max_pay_cents: 900_000 },
+  CAD: { min_pay_cents: 3_500, max_pay_cents: 700_000 },
+  CHF: { min_pay_cents: 2_500, max_pay_cents: 500_000 },
+  CZK: { min_pay_cents: 55_000, max_pay_cents: 11_000_000 },
+  DKK: { min_pay_cents: 17_500, max_pay_cents: 3_500_000 },
+  EUR: { min_pay_cents: 2_500, max_pay_cents: 500_000 },
+  HUF: { min_pay_cents: 900_000, max_pay_cents: 180_000_000 },
+  ISK: { min_pay_cents: 350_000, max_pay_cents: 70_000_000 },
+  NOK: { min_pay_cents: 27_500, max_pay_cents: 5_500_000 },
+  PLN: { min_pay_cents: 10_000, max_pay_cents: 2_000_000 },
+  RON: { min_pay_cents: 11_500, max_pay_cents: 2_300_000 },
+  SEK: { min_pay_cents: 27_500, max_pay_cents: 5_500_000 },
   USD: { min_pay_cents: 2500, max_pay_cents: 500_000 },
   GBP: { min_pay_cents: 2000, max_pay_cents: 500_000 },
   NGN: { min_pay_cents: 2_500_000, max_pay_cents: 750_000_000 },
-};
+} as const satisfies Readonly<
+  Record<string, { min_pay_cents: number; max_pay_cents: number }>
+>;
 
 export type AdCreditCurrency = keyof typeof AD_CREDIT_TOP_UP_LIMITS_CENTS;
 
@@ -103,7 +117,11 @@ export function allocateWithdrawFromLots(
   detail: string;
 } {
   if (!Number.isInteger(creditCents) || creditCents <= 0) {
-    return { ok: false, error: "validation_error", detail: "credit_cents_invalid" };
+    return {
+      ok: false,
+      error: "validation_error",
+      detail: "credit_cents_invalid",
+    };
   }
   let need = creditCents;
   const allocations: AdCreditLotAllocation[] = [];
@@ -148,7 +166,11 @@ export function allocateWithdrawFromLots(
     need -= take;
   }
   if (need > 0) {
-    return { ok: false, error: "insufficient_credit", detail: "lots_exhausted" };
+    return {
+      ok: false,
+      error: "insufficient_credit",
+      detail: "lots_exhausted",
+    };
   }
   return {
     ok: true,
@@ -171,17 +193,33 @@ export function quoteTopUp(payCents: number, currency: string): {
 } {
   const cur = currency.toUpperCase();
   if (!(cur in AD_CREDIT_TOP_UP_LIMITS_CENTS)) {
-    return { ok: false, error: "validation_error", detail: "currency_unsupported" };
+    return {
+      ok: false,
+      error: "validation_error",
+      detail: "currency_unsupported",
+    };
   }
   const limits = AD_CREDIT_TOP_UP_LIMITS_CENTS[cur as AdCreditCurrency];
   if (!Number.isInteger(payCents) || payCents <= 0) {
-    return { ok: false, error: "validation_error", detail: "pay_cents_invalid" };
+    return {
+      ok: false,
+      error: "validation_error",
+      detail: "pay_cents_invalid",
+    };
   }
   if (payCents < limits.min_pay_cents) {
-    return { ok: false, error: "validation_error", detail: "pay_below_minimum" };
+    return {
+      ok: false,
+      error: "validation_error",
+      detail: "pay_below_minimum",
+    };
   }
   if (payCents > limits.max_pay_cents) {
-    return { ok: false, error: "validation_error", detail: "pay_above_maximum" };
+    return {
+      ok: false,
+      error: "validation_error",
+      detail: "pay_above_maximum",
+    };
   }
   const credit = creditCentsFromPay(payCents);
   if (credit <= 0) {
@@ -207,7 +245,11 @@ export function quoteWithdraw(creditCents: number): {
   detail: string;
 } {
   if (!Number.isInteger(creditCents) || creditCents <= 0) {
-    return { ok: false, error: "validation_error", detail: "credit_cents_invalid" };
+    return {
+      ok: false,
+      error: "validation_error",
+      detail: "credit_cents_invalid",
+    };
   }
   const refund = refundCentsFromCredit(creditCents);
   return {

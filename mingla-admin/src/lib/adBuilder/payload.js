@@ -83,14 +83,14 @@ export function resolvePlanCurrency(connections = {}, platforms = []) {
     }
   }
   const unique = [...new Set(codes)];
-  if (unique.length === 0) return { currency: "USD", mixed: false };
+  if (unique.length === 0) return { currency: null, mixed: false, unresolved: true };
   if (platforms.includes("meta") && connections?.meta?.currency) {
     const meta = String(connections.meta.currency).trim().toUpperCase();
     if (/^[A-Z]{3}$/.test(meta)) {
-      return { currency: meta, mixed: unique.length > 1 };
+      return { currency: meta, mixed: unique.length > 1, unresolved: false };
     }
   }
-  return { currency: unique[0], mixed: unique.length > 1 };
+  return { currency: unique[0], mixed: unique.length > 1, unresolved: false };
 }
 
 /** Spec §4.4: auto-suggested campaign name — "{brand} — {title} — {YYYY-MM-DD}", editable. */

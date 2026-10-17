@@ -11,6 +11,7 @@ export type AdCreditAppErrorCode =
   | "unauthorized"
   | "forbidden"
   | "validation_error"
+  | "currency_authority_unresolved"
   | "insufficient_credit"
   | "apply_failed"
   | "network"
@@ -42,13 +43,22 @@ export type AdCreditLedgerRow = {
 };
 
 export type AdCreditWalletPayload = {
-  wallet: {
+  wallet: null | {
     brand_id: string;
     currency: string;
+    authority_currency: string;
+    currency_status: string;
     balance_cents: number;
     updated_at: string | null;
   };
   history: AdCreditLedgerRow[];
+  currency_authority: {
+    resolved: boolean;
+    currency: string | null;
+    provider: string | null;
+    rail_currency?: string | null;
+    reason: string | null;
+  };
 };
 
 export type AdCreditTopUpQuote = {
@@ -116,6 +126,7 @@ async function invokeAdCredit<T>(
       "unauthorized",
       "forbidden",
       "validation_error",
+      "currency_authority_unresolved",
       "insufficient_credit",
       "apply_failed",
     ];
@@ -146,13 +157,13 @@ export async function getAdCreditWallet(
 }
 
 export async function quoteAdCreditTopUp(
+  brandId: string,
   payCents: number,
-  currency: string,
 ): Promise<AdCreditTopUpQuote> {
   return invokeAdCredit<AdCreditTopUpQuote>({
     action: "quote_top_up",
+    brand_id: brandId,
     pay_cents: payCents,
-    currency,
   });
 }
 
@@ -168,7 +179,6 @@ export async function quoteAdCreditWithdraw(
 export async function startAdCreditTopUp(input: {
   brandId: string;
   payCents: number;
-  currency: string;
   /** Stable per Confirm attempt; required by edge for Stripe create idempotency. */
   idempotencyKey: string;
   /** Web Checkout return URL; omit on native for PaymentSheet. */
@@ -178,7 +188,6 @@ export async function startAdCreditTopUp(input: {
     action: "start_top_up",
     brand_id: input.brandId,
     pay_cents: input.payCents,
-    currency: input.currency,
     idempotency_key: input.idempotencyKey,
     ...(input.returnUrl ? { return_url: input.returnUrl } : {}),
   });
@@ -186,8 +195,6 @@ export async function startAdCreditTopUp(input: {
 
 export async function applyAdCreditTopUp(input: {
   brandId: string;
-  payCents: number;
-  currency: string;
   paymentRef?: string;
   checkoutSessionId?: string;
   paystackReference?: string;
@@ -196,8 +203,6 @@ export async function applyAdCreditTopUp(input: {
   return invokeAdCredit<AdCreditApplyTopUpResult>({
     action: "apply_top_up",
     brand_id: input.brandId,
-    pay_cents: input.payCents,
-    currency: input.currency,
     ...(input.paymentRef ? { payment_ref: input.paymentRef } : {}),
     ...(input.checkoutSessionId
       ? { checkout_session_id: input.checkoutSessionId }

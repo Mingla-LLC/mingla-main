@@ -27,9 +27,10 @@ export function StepReview({
   onCreate,
   onValidateShapes,
   onJumpToStep,
+  currencyBlockedReason = null,
 }) {
   const anySuccess = Object.values(createResults ?? {}).some((r) => r?.campaign);
-  const hardBlocked = summary.channels.length === 0;
+  const hardBlocked = summary.channels.length === 0 || Boolean(currencyBlockedReason);
 
   return (
     <div className="space-y-4">
@@ -95,6 +96,12 @@ export function StepReview({
           {warning}
         </AlertCard>
       ))}
+
+      {currencyBlockedReason && (
+        <AlertCard variant="error" title="Currency setup is incomplete">
+          {currencyBlockedReason}
+        </AlertCard>
+      )}
 
       {/* Per-channel create outcomes. ISSUE-1002 [multi-destination fan-out]:
           createResults is keyed per (platform × destination) — the entry key is a
@@ -202,7 +209,9 @@ export function StepReview({
           {summary.primaryActionLabel ?? "Create campaign (paused)"}
         </Button>
         {hardBlocked && (
-          <Badge variant="error">No channel can run an ad right now. Fix at least one blocker to continue.</Badge>
+          <Badge variant="error">
+            {currencyBlockedReason ?? "No channel can run an ad right now. Fix at least one blocker to continue."}
+          </Badge>
         )}
       </div>
     </div>

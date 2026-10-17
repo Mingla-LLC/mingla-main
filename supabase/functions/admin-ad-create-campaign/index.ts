@@ -167,6 +167,7 @@ import {
   parseCampaignSchedule,
 } from "../_shared/adMoney.ts";
 import type { Platform } from "../_shared/adChannelCore.ts";
+import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -600,15 +601,58 @@ serve(async (req: Request): Promise<Response> => {
     capCents: typeof budget.cap_cents === "number" ? budget.cap_cents as number : null,
   });
 
+  // Currency is provider/account truth for Mingla campaigns. Host campaigns
+  // additionally require the verified brand settlement authority. A
+  // cross-currency Host plan must arrive through the v1.4 quoted-FX plan path;
+  // this legacy direct-create endpoint cannot reinterpret one amount twice.
+  const { data: moneyConnection, error: moneyConnectionError } = await supabase
+    .from("ad_connections")
+    .select("id, currency, connected, status")
+    .eq("platform", platform)
+    .eq("lane", lane)
+    .maybeSingle();
+  const providerCurrency = typeof moneyConnection?.currency === "string"
+    ? moneyConnection.currency.trim().toUpperCase()
+    : "";
+  if (
+    moneyConnectionError || !moneyConnection?.id ||
+    moneyConnection.connected !== true || moneyConnection.status !== "connected"
+  ) {
+    return json({ error: `${platform}_not_connected` }, 424);
+  }
+  if (!/^[A-Z]{3}$/.test(providerCurrency)) {
+    return json({
+      error: "validation_error",
+      detail: "ad_connection_currency_unresolved",
+    }, 409);
+  }
+  let customerCurrency = providerCurrency;
+  if (requestedOwnerKind === "host") {
+    const authority = await resolveAdBrandCurrency(supabase, requestedBrandId);
+    if (!authority.ok) {
+      return json({
+        error: "currency_authority_unresolved",
+        detail: authority.detail,
+      }, 409);
+    }
+    customerCurrency = authority.currency;
+    if (customerCurrency !== providerCurrency) {
+      return json({
+        error: "validation_error",
+        detail: "cross_currency_plan_required",
+        host_currency: customerCurrency,
+        provider_currency: providerCurrency,
+      }, 409);
+    }
+  }
+
   const wave2MoneyBase: Omit<Wave2MoneyPersist, "brand_id"> = {
     owner_kind: requestedOwnerKind,
     cap_cents: capCents,
     lifetime_budget_cents: budgetType === "lifetime" ? amountCents as number : null,
     starts_at: schedule.starts_at,
     ends_at: schedule.ends_at,
-    currency: typeof budget.currency === "string" && budget.currency.trim()
-      ? budget.currency.trim().toUpperCase()
-      : "USD",
+    currency: customerCurrency,
   };
   const dailyBudgetForPersist = budgetType === "lifetime" ? null : amountCents as number;
 

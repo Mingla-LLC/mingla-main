@@ -19,7 +19,15 @@ export function mapAdCreditQuoteError(err: unknown): string {
     case "pay_above_maximum":
       return "That amount is above the maximum top-up for this currency.";
     case "currency_unsupported":
-      return "Top-up is available for USD, GBP (card), and NGN.";
+      return "Top-up is not available for this brand currency yet.";
+    case "brand_currency_unresolved":
+    case "currency_reconciliation_pending":
+    case "paystack_currency_mismatch":
+    case "payout_rail_not_ready":
+    case "currency_authority_mismatch":
+    case "payment_currency_authority_mismatch":
+    case "wallet_currency_authority_mismatch":
+      return "Finish or reconcile this brand's payout setup before using Ads credit.";
     case "ad_connection_required":
       return "Connect an ad account in Admin before launching Host ads.";
     case "credit_below_minimum":
@@ -61,6 +69,9 @@ export function mapAdCreditQuoteError(err: unknown): string {
       }
       if (err.code === "apply_failed") {
         return "Could not add credit after payment. Contact support if this persists.";
+      }
+      if (err.code === "currency_authority_unresolved") {
+        return "Finish this brand's payout setup before using Ads credit.";
       }
       return "Could not complete Ads credit. Try again.";
   }

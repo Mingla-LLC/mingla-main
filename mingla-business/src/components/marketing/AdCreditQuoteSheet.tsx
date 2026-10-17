@@ -141,7 +141,7 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
     setBusy(true);
     try {
       if (mode === "top_up") {
-        const q = await quoteAdCreditTopUp(cents, currency);
+        const q = await quoteAdCreditTopUp(brandId, cents);
         setTopUp(q);
       } else {
         if (cents > balanceCents) {
@@ -156,7 +156,7 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
     } finally {
       setBusy(false);
     }
-  }, [balanceCents, currency, majorText, mode]);
+  }, [balanceCents, brandId, currency, majorText, mode]);
 
   const runConfirmTopUp = useCallback(async () => {
     if (topUp === null) return;
@@ -170,7 +170,6 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
       const started = await startAdCreditTopUp({
         brandId,
         payCents: topUp.pay_cents,
-        currency: topUp.currency,
         returnUrl,
         idempotencyKey: topUpIdemRef.current,
       });
@@ -189,8 +188,6 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
       }
       await applyAdCreditTopUp({
         brandId,
-        payCents: topUp.pay_cents,
-        currency: topUp.currency,
         paymentRef: pay.paymentIntentId,
         idempotencyKey: `top_up:${pay.paymentIntentId}`,
       });
@@ -229,15 +226,12 @@ export const AdCreditQuoteSheet: React.FC<AdCreditQuoteSheetProps> = ({
 
   const title = mode === "top_up" ? "Add Ads credit" : "Withdraw credit";
   const hint = mode === "top_up"
-    ? "Mingla keeps 15% as the service fee; the rest becomes spendable Ads credit. Card: USD / GBP; Naira through our Nigerian payment partner."
+    ? "Mingla keeps 15% as the service fee; the rest becomes spendable Ads credit in your brand's verified settlement currency."
     : "Unused credit is refunded with its fee (FIFO) to the original payment method.";
 
   const topUpPayReady =
     mode === "top_up" &&
-    topUp !== null &&
-    (topUp.currency === "USD" ||
-      topUp.currency === "GBP" ||
-      topUp.currency === "NGN");
+    topUp !== null;
   const withdrawReady = mode === "withdraw" && withdraw !== null;
 
   return (

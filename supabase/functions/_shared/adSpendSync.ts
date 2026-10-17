@@ -23,7 +23,8 @@ export interface CampaignSpendTarget {
   status: string;
   cap_cents: number | null;
   ends_at: string | null;
-  currency: string | null;
+  /** Currency declared by the connected provider account. Never customer currency. */
+  provider_currency: string | null;
 }
 
 export type PauseReason =
@@ -94,21 +95,34 @@ export function decideSpendSync(input: {
   cumulativeSpendCents?: number;
   nowIso?: string;
 }): SpendSyncDecision {
-  const currency = (input.campaign.currency ?? "USD").toUpperCase();
+  const currency = typeof input.campaign.provider_currency === "string"
+    ? input.campaign.provider_currency.trim().toUpperCase()
+    : "";
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    throw new Error("provider_currency_unresolved");
+  }
   const upserts = input.days
     .filter((d) =>
       typeof d.spend_date === "string" &&
       /^\d{4}-\d{2}-\d{2}$/.test(d.spend_date)
     )
-    .map((d) => ({
-      campaign_id: input.campaign.id,
-      platform: input.campaign.platform,
-      spend_date: d.spend_date,
-      spend_cents: Math.max(0, Math.floor(Number(d.spend_cents) || 0)),
-      impressions: Math.max(0, Math.floor(Number(d.impressions) || 0)),
-      clicks: Math.max(0, Math.floor(Number(d.clicks) || 0)),
-      currency: (d.currency ?? currency).toUpperCase(),
-    }));
+    .map((d) => {
+      const rowCurrency = typeof d.currency === "string"
+        ? d.currency.trim().toUpperCase()
+        : currency;
+      if (rowCurrency !== currency) {
+        throw new Error("provider_currency_mismatch");
+      }
+      return {
+        campaign_id: input.campaign.id,
+        platform: input.campaign.platform,
+        spend_date: d.spend_date,
+        spend_cents: Math.max(0, Math.floor(Number(d.spend_cents) || 0)),
+        impressions: Math.max(0, Math.floor(Number(d.impressions) || 0)),
+        clicks: Math.max(0, Math.floor(Number(d.clicks) || 0)),
+        currency,
+      };
+    });
   const windowTotal = sumSpendCents(upserts);
   const total = typeof input.cumulativeSpendCents === "number" &&
       Number.isFinite(input.cumulativeSpendCents)

@@ -349,6 +349,11 @@ export function CampaignBuilderPage() {
     () => resolvePlanCurrency(connections, effectivePlatforms),
     [connections, effectivePlatforms],
   );
+  const currencyBlockedReason = planCurrency.unresolved
+    ? "Connect the selected ad account and load its billing currency before creating anything."
+    : planCurrency.mixed
+    ? "Selected ad accounts use different currencies. Split this into one campaign per billing currency."
+    : null;
 
   const togglePlatform = useCallback((platform) => {
     setSelectedPlatforms((prev) => {
@@ -645,6 +650,14 @@ export function CampaignBuilderPage() {
 
   // ── Create (paused) — one call per (destination × funded channel); NEVER launches ──
   const runCreate = async ({ validateOnly }) => {
+    if (currencyBlockedReason) {
+      addToast({
+        variant: "error",
+        title: "Currency setup is incomplete",
+        message: currencyBlockedReason,
+      });
+      return;
+    }
     if (validateOnly) setValidatingShapes(true);
     else setSubmitting(true);
     const results = { ...(createResults ?? {}) };
@@ -999,6 +1012,7 @@ export function CampaignBuilderPage() {
               onCreate={() => runCreate({ validateOnly: false })}
               onValidateShapes={() => runCreate({ validateOnly: true })}
               onJumpToStep={jumpToStepId}
+              currencyBlockedReason={currencyBlockedReason}
             />
           )}
 

@@ -115,8 +115,6 @@ export default function MarketingAdsRoute(): React.ReactElement {
         try {
           await applyAdCreditTopUp({
             brandId,
-            payCents: 0,
-            currency: "NGN",
             paystackReference: paystackRef,
             idempotencyKey: `top_up:${paystackRef}`,
           });
@@ -142,8 +140,6 @@ export default function MarketingAdsRoute(): React.ReactElement {
       try {
         await applyAdCreditTopUp({
           brandId,
-          payCents: 0,
-          currency: "USD",
           checkoutSessionId: sessionId,
         });
         setReturnNotice("Ads credit added.");
@@ -244,7 +240,30 @@ export default function MarketingAdsRoute(): React.ReactElement {
 
   const wallet = walletQuery.data?.wallet;
   const history = walletQuery.data?.history ?? [];
-  const currency = wallet?.currency ?? "USD";
+  const authority = walletQuery.data?.currency_authority;
+  const authorityCurrency = authority?.resolved === true &&
+      typeof authority.currency === "string" &&
+      /^[A-Z]{3}$/.test(authority.currency)
+    ? authority.currency
+    : null;
+  const walletAligned = wallet === null || wallet === undefined || (
+    wallet.currency_status === "aligned" &&
+    wallet.currency === authorityCurrency &&
+    wallet.authority_currency === authorityCurrency
+  );
+  if (authorityCurrency === null || !walletAligned) {
+    return (
+      <View style={styles.host}>
+        <EmptyState
+          illustration="users"
+          title="Finish payout setup"
+          description="Ads credit will unlock after this brand has one verified settlement currency and payout account. No default currency will be assumed."
+          testID="ads-currency-setup-required"
+        />
+      </View>
+    );
+  }
+  const currency = authorityCurrency;
   const balanceCents = wallet?.balance_cents ?? 0;
   const campaigns = campaignsQuery.campaigns;
   const filteredCampaigns = campaigns.filter((c) =>
@@ -274,7 +293,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
           </Text>
           <Text style={styles.sub}>
             Top-ups keep 15% as Mingla&apos;s fee. Withdraw unused credit any time.
-            USD/GBP by card; Naira through our Nigerian payment partner.
+            Payments and refunds stay in this brand&apos;s verified settlement currency.
           </Text>
           <View style={styles.actions}>
             <Pressable

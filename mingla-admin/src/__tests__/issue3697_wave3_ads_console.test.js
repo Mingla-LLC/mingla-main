@@ -146,7 +146,11 @@ test("CampaignsPage spend-vs-cap + currency-honest money", () => {
 test("plan currency comes from ad_connections and rides the create budget", () => {
   assert.deepEqual(
     resolvePlanCurrency({ meta: { currency: "gbp" } }, ["meta", "tiktok"]),
-    { currency: "GBP", mixed: false },
+    { currency: "GBP", mixed: false, unresolved: false },
+  );
+  assert.deepEqual(
+    resolvePlanCurrency({}, ["meta"]),
+    { currency: null, mixed: false, unresolved: true },
   );
   assert.equal(
     resolvePlanCurrency(
@@ -164,5 +168,15 @@ test("plan currency comes from ad_connections and rides the create budget", () =
   const builder = fs.readFileSync(path.join(ADMIN, "pages/CampaignBuilderPage.jsx"), "utf8");
   assert.match(builder, /resolvePlanCurrency/);
   assert.match(builder, /currency: planCurrency\.currency/);
+  assert.match(builder, /currencyBlockedReason/);
   assert.doesNotMatch(builder, /currency: "USD"/);
+
+  const unresolved = buildLaunchSummary({
+    channelRows: [{ platform: "meta", label: "Meta", eligible: true }],
+    allocations: [{ platform: "meta", dailyCents: 1000 }],
+    totalDailyCents: 1000,
+    currency: null,
+  });
+  assert.equal(unresolved.channels[0].dailyLabel, "Currency unavailable/day");
+  assert.match(unresolved.budgetLine, /Currency unavailable/);
 });
