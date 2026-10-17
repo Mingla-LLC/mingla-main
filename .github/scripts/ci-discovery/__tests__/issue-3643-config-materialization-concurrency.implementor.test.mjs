@@ -71,12 +71,17 @@ test("parallel deploy wrappers serialize effective config materialization and re
   mkdirSync(path.join(root, "scripts/ops"), { recursive: true });
   mkdirSync(path.join(root, ".github/scripts/ci-discovery"), { recursive: true });
   mkdirSync(path.join(root, "supabase/functions/probe"), { recursive: true });
+  mkdirSync(path.join(root, "supabase/functions/_shared"), { recursive: true });
   copyFileSync(
     path.join(ROOT, "scripts/deploy-supabase-functions.sh"),
     path.join(root, "scripts/deploy-supabase-functions.sh"),
   );
   writeFileSync(config, ORIGINAL_CONFIG);
   writeFileSync(path.join(root, "supabase/functions/probe/index.ts"), "export {};\n");
+  writeFileSync(
+    path.join(root, "supabase/functions/_shared/releaseAttestationBake.ts"),
+    'export const BAKED_RELEASE_SHA = "0000000000000000000000000000000000000000";\n',
+  );
 
   const nodeStub = path.join(bin, "node");
   writeFileSync(nodeStub, `#!/usr/bin/env bash
@@ -92,16 +97,16 @@ if [[ "$1" == *function-policy.mjs ]]; then
   sleep 0.3
   exit 0
 fi
-if [[ "$1" == *verify-production-supabase-authority.mjs ]]; then
-  echo 'FAIL authority: unrelated project; no action executed' >&2
-  exit 2
-fi
+if [[ "$1" == *verify-production-supabase-authority.mjs ]]; then exit 0; fi
+if [[ "$1" == *preflight-function-secret-readiness.mjs ]]; then exit 0; fi
+if [[ "$1" == *postdeploy-governed-fallback-watch.mjs ]]; then exit 0; fi
 exit 99
 `);
   chmodSync(nodeStub, 0o755);
   const supabaseStub = path.join(bin, "supabase");
   writeFileSync(supabaseStub, `#!/usr/bin/env bash
 printf 'called\n' >> "$SUPABASE_MARKER"
+exit 0
 `);
   chmodSync(supabaseStub, 0o755);
 
@@ -110,12 +115,15 @@ printf 'called\n' >> "$SUPABASE_MARKER"
   const second = runDeploy(root, bin, materializedMarker, supabaseMarker);
   const results = await Promise.all([first, second]);
 
-  assert.deepEqual(results.map(({ status }) => status), [2, 2]);
+  // [TEST-MOD-APPROVED #3720] The old fixture intentionally failed authority
+  // after config generation, pinning mutation before validation. Both complete
+  // deploy fixtures now reach the materialization window, where the same lock
+  // and restoration invariant is exercised without blessing that unsafe order.
+  assert.deepEqual(results.map(({ status }) => status), [0, 0]);
   for (const result of results) {
-    assert.match(result.stderr, /no action executed/);
     assert.doesNotMatch(result.stderr, /bootstrap_seal_mismatch/);
   }
   assert.equal(readFileSync(config, "utf8"), ORIGINAL_CONFIG);
   assert.equal(existsSync(`${config}.materialization.lock`), false);
-  assert.equal(existsSync(supabaseMarker), false);
+  assert.equal(readFileSync(supabaseMarker, "utf8"), "called\ncalled\n");
 });
