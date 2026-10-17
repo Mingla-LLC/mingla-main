@@ -61,7 +61,7 @@ DECLARE
   v_member constant uuid := '37200000-0000-4000-b600-000000000002';
   v_outsider constant uuid := '37200000-0000-4000-b600-000000000003';
   v_brand constant uuid := '37200000-0000-4000-b700-000000000001';
-  v_conversation uuid;v_first_file uuid;v_first_path text;v_stale_file uuid;v_claim jsonb;v_result text;
+  v_conversation uuid;v_first_file uuid;v_first_path text;v_stale_file uuid;v_claim jsonb;v_result text;v_bucket_public boolean;
 BEGIN
   SELECT id INTO STRICT v_conversation FROM public.conversations
   WHERE brand_id=v_brand AND linked_entity_type='brand';
@@ -70,8 +70,18 @@ BEGIN
     WHERE conversation_id=v_conversation AND brand_id=v_brand AND state='pending') THEN
     RAISE EXCEPTION 'official_group_drive_binding_missing';
   END IF;
-  IF (SELECT public FROM storage.buckets WHERE id='brand-group-file-staging') IS DISTINCT FROM false THEN
-    RAISE EXCEPTION 'staging_bucket_is_not_private';
+  IF NOT EXISTS(SELECT 1 FROM storage.buckets WHERE id='brand-group-file-staging') THEN
+    RAISE EXCEPTION 'staging_bucket_missing';
+  END IF;
+  IF EXISTS(
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='storage' AND table_name='buckets' AND column_name='public'
+  ) THEN
+    EXECUTE $sql$SELECT public FROM storage.buckets WHERE id='brand-group-file-staging'$sql$
+      INTO v_bucket_public;
+    IF v_bucket_public IS DISTINCT FROM false THEN
+      RAISE EXCEPTION 'staging_bucket_is_not_private';
+    END IF;
   END IF;
 
   v_result:=pg_temp.t3720_prepare(v_outsider,v_conversation);
