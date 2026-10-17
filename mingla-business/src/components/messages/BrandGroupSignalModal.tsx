@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -23,6 +22,7 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 const SIGNAL_KINDS = ["question", "account", "bug", "feature", "trust_safety"] as const;
 const PRIORITIES = ["low", "normal", "high", "urgent"] as const;

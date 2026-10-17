@@ -135,6 +135,7 @@ const EXPECTED: Record<string, Bucket> = {
   // [TEST-MOD-APPROVED ORCH-1403] — private listing Insights is an authenticated
   // route and is intentionally absent from every public/connect/invite exemption.
   insights: "gated-default",
+  messages: "gated-default",
   partner: "gated-default",
   // #3660 — tokenless Accept/Decline for the signed-in invitee's own pending
   // invite (Home/Hub to-do). Requires auth; not in INVITE_ACCEPT (token deep

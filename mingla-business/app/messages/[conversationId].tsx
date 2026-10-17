@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -27,6 +26,7 @@ import {
 import { useAuth } from "../../src/context/AuthContext";
 import { useBrandGroups } from "../../src/hooks/useBrandGroups";
 import { useSupportStaff } from "../../src/hooks/useSupportStaff";
+import { ScrollView } from "../../src/wrappers/SmartScrollView";
 import {
   listBrandGroupMessages,
   markBrandGroupRead,

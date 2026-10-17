@@ -194,6 +194,12 @@
       ]
     },
     {
+      "source": "/messages/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
       "source": "/notifications/:path*",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
