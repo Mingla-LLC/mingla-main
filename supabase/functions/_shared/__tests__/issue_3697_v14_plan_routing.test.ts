@@ -36,6 +36,7 @@ Deno.test("v1.4 provider create binds the executable version before a platform w
       "provider_currency",
       "host_budget_cents",
       "provider_budget_cents",
+      "provider_delivery_budget_cents",
       "fx_snapshot_id",
     ]
   ) assertStringIncludes(source, field);
@@ -64,6 +65,11 @@ Deno.test("v1.4 app destinations must be ready before an immutable version is fr
     ),
   );
   assertStringIncludes(createVersion, "ad_plan_destination_not_ready:%");
+  assertStringIncludes(createVersion, "ad_plan_fx_delivery_amount_mismatch");
+  assertStringIncludes(createVersion, "v_canonical_plan := jsonb_set");
+  assertStringIncludes(createVersion, "provider_delivery_budget_cents");
+  assertStringIncludes(migration, "host_delivery_budget_cents");
+  assertStringIncludes(migration, "provider_delivery_budget_cents");
   assertStringIncludes(migration, "'app_install'");
   assertStringIncludes(migration, "'install'");
   assertStringIncludes(migration, "v_store_url");

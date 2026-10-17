@@ -10,7 +10,7 @@
  *  - Meta carries creative.call_to_action_type; the GOOGLE payload NEVER
  *    carries call_to_action_type anywhere (A4.b — not an RSA field; Search
  *    ads have no CTA button).
- *  - Budgets are CENTS at rest (dollars-in → cents here, once); micro/dollar
+ *  - Budgets are minor units at rest (major-units-in → minor units here, once); provider-unit
  *    conversion is the server adapter's job (blueprint §1.4 Discovery 3).
  *  - request_id per (channel, wizard-session) → server idempotency replay.
  *  - special_ad_categories comes from the validated selector, never a
@@ -35,7 +35,7 @@ import {
   tiktokLocationIdsFrom,
 } from "./targeting.js";
 
-/** Dollars-in → cents-at-rest, once (the CurrencyInput contract). */
+/** Major-units-in → minor-units-at-rest, once (the CurrencyInput contract). */
 export function dollarsToCents(dollars) {
   const value = typeof dollars === "string" ? parseFloat(dollars) : dollars;
   if (!Number.isFinite(value) || value <= 0) return 0;
@@ -82,6 +82,9 @@ export function budgetPayloadFromState(budget) {
  * @param {string[]} platforms
  */
 export function resolvePlanCurrency(connections = {}, platforms = []) {
+  if (!Array.isArray(platforms) || platforms.length === 0) {
+    return { currency: null, mixed: false, unresolved: true };
+  }
   const codes = [];
   for (const platform of platforms) {
     const raw = connections?.[platform]?.currency;
@@ -90,7 +93,7 @@ export function resolvePlanCurrency(connections = {}, platforms = []) {
     }
   }
   const unique = [...new Set(codes)];
-  if (unique.length === 0)
+  if (codes.length !== platforms.length || unique.length === 0)
     return { currency: null, mixed: false, unresolved: true };
   if (platforms.includes("meta") && connections?.meta?.currency) {
     const meta = String(connections.meta.currency).trim().toUpperCase();

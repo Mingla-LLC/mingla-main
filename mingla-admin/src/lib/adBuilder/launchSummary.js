@@ -41,10 +41,8 @@ export function buildLaunchSummary(input) {
     capCents = null,
     startsAt = null,
     endsAt = null,
-    // Legacy pure-helper callers omitted currency before #3697; keep their
-    // explicit test contract while the live builder always passes a value (or
-    // null, which renders unavailable and blocks create).
-    currency = "USD",
+    // Missing money authority is visible and blocks create; it never becomes USD.
+    currency = null,
   } = input;
 
   const currencyCode = typeof currency === "string" && /^[A-Z]{3}$/.test(currency)

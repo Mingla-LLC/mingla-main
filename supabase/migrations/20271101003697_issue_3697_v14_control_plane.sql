@@ -253,8 +253,15 @@ CREATE TABLE public.ad_plan_provider_allocations (
   connection_id uuid NOT NULL REFERENCES public.ad_connections(id) ON DELETE RESTRICT,
   host_currency char(3) NOT NULL REFERENCES public.supported_brand_currencies(code),
   host_budget_cents bigint NOT NULL CHECK (host_budget_cents > 0),
+  host_delivery_budget_cents bigint NOT NULL CHECK (
+    host_delivery_budget_cents > 0 AND host_delivery_budget_cents <= host_budget_cents
+  ),
   provider_currency char(3) NOT NULL REFERENCES public.supported_brand_currencies(code),
   provider_budget_cents bigint NOT NULL CHECK (provider_budget_cents > 0),
+  provider_delivery_budget_cents bigint NOT NULL CHECK (
+    provider_delivery_budget_cents > 0
+    AND provider_delivery_budget_cents <= provider_budget_cents
+  ),
   fx_snapshot_id uuid NULL REFERENCES public.fx_rate_snapshots(id) ON DELETE RESTRICT,
   fx_expires_at timestamptz NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -263,7 +270,8 @@ CREATE TABLE public.ad_plan_provider_allocations (
     (host_currency = provider_currency
       AND fx_snapshot_id IS NULL
       AND fx_expires_at IS NULL
-      AND host_budget_cents = provider_budget_cents)
+      AND host_budget_cents = provider_budget_cents
+      AND host_delivery_budget_cents = provider_delivery_budget_cents)
     OR
     (host_currency <> provider_currency
       AND fx_snapshot_id IS NOT NULL
@@ -441,6 +449,9 @@ ALTER TABLE public.ad_campaigns
   ADD COLUMN IF NOT EXISTS plan_hash text NULL,
   ADD COLUMN IF NOT EXISTS host_budget_cents bigint NULL CHECK (host_budget_cents IS NULL OR host_budget_cents > 0),
   ADD COLUMN IF NOT EXISTS provider_budget_cents bigint NULL CHECK (provider_budget_cents IS NULL OR provider_budget_cents > 0),
+  ADD COLUMN IF NOT EXISTS provider_delivery_budget_cents bigint NULL CHECK (
+    provider_delivery_budget_cents IS NULL OR provider_delivery_budget_cents > 0
+  ),
   ADD COLUMN IF NOT EXISTS fx_snapshot_id uuid NULL
     REFERENCES public.fx_rate_snapshots(id) ON DELETE RESTRICT;
 
@@ -874,13 +885,18 @@ DECLARE
   v_platform text;
   v_connection_id uuid;
   v_host_allocation bigint;
+  v_host_delivery bigint;
   v_provider_allocation bigint;
+  v_provider_delivery bigint;
   v_provider_currency text;
   v_expected_provider bigint;
+  v_expected_provider_delivery bigint;
   v_fx_snapshot_id uuid;
   v_fx_expires_at timestamptz;
   v_host_sum bigint := 0;
   v_normalized_allocations jsonb := '[]'::jsonb;
+  v_canonical_plan jsonb;
+  v_delivery_budgets jsonb;
   v_platforms jsonb;
   v_destination jsonb;
   v_media_rights jsonb;
@@ -942,7 +958,9 @@ BEGIN
     BEGIN
       v_connection_id := (v_allocation->>'connection_id')::uuid;
       v_host_allocation := (v_allocation->>'host_budget_cents')::bigint;
+      v_host_delivery := (v_allocation->>'host_delivery_budget_cents')::bigint;
       v_provider_allocation := (v_allocation->>'provider_budget_cents')::bigint;
+      v_provider_delivery := (v_allocation->>'provider_delivery_budget_cents')::bigint;
       v_fx_snapshot_id := nullif(v_allocation->>'fx_snapshot_id','')::uuid;
     EXCEPTION WHEN OTHERS THEN
       RAISE EXCEPTION 'ad_plan_provider_allocation_invalid' USING ERRCODE = '22023';
@@ -958,12 +976,18 @@ BEGIN
     END IF;
     v_provider_currency := upper(btrim(v_connection.currency));
     IF v_host_allocation IS NULL OR v_host_allocation <= 0
-       OR v_provider_allocation IS NULL OR v_provider_allocation <= 0 THEN
+       OR v_host_delivery IS NULL OR v_host_delivery <= 0
+       OR v_host_delivery > v_host_allocation
+       OR v_provider_allocation IS NULL OR v_provider_allocation <= 0
+       OR v_provider_delivery IS NULL OR v_provider_delivery <= 0
+       OR v_provider_delivery > v_provider_allocation THEN
       RAISE EXCEPTION 'ad_plan_provider_allocation_invalid' USING ERRCODE = '22023';
     END IF;
     v_fx_expires_at := NULL;
     IF v_host_currency = v_provider_currency THEN
-      IF v_fx_snapshot_id IS NOT NULL OR v_host_allocation <> v_provider_allocation THEN
+      IF v_fx_snapshot_id IS NOT NULL
+         OR v_host_allocation <> v_provider_allocation
+         OR v_host_delivery <> v_provider_delivery THEN
         RAISE EXCEPTION 'ad_plan_same_currency_amount_mismatch' USING ERRCODE = '22023';
       END IF;
     ELSE
@@ -981,6 +1005,13 @@ BEGIN
       IF v_expected_provider <> v_provider_allocation THEN
         RAISE EXCEPTION 'ad_plan_fx_amount_mismatch' USING ERRCODE = '22023';
       END IF;
+      v_expected_provider_delivery := public.fx_convert_minor(
+        v_host_delivery, v_host_currency::char(3),
+        v_provider_currency::char(3), v_fx_snapshot_id
+      );
+      IF v_expected_provider_delivery <> v_provider_delivery THEN
+        RAISE EXCEPTION 'ad_plan_fx_delivery_amount_mismatch' USING ERRCODE = '22023';
+      END IF;
     END IF;
     IF EXISTS (
       SELECT 1 FROM jsonb_array_elements(v_normalized_allocations) n
@@ -995,8 +1026,10 @@ BEGIN
         'platform', v_platform, 'connection_id', v_connection_id,
         'host_currency', v_host_currency,
         'host_budget_cents', v_host_allocation,
+        'host_delivery_budget_cents', v_host_delivery,
         'provider_currency', v_provider_currency,
         'provider_budget_cents', v_provider_allocation,
+        'provider_delivery_budget_cents', v_provider_delivery,
         'fx_snapshot_id', v_fx_snapshot_id,
         'fx_expires_at', v_fx_expires_at
       )
@@ -1036,8 +1069,27 @@ BEGIN
   END IF;
   SELECT coalesce(max(version_number), 0) + 1 INTO v_version
   FROM public.ad_plan_versions WHERE plan_id = p_plan_id;
+  SELECT jsonb_object_agg(
+    value->>'platform',
+    jsonb_build_object(
+      'host_currency', value->>'host_currency',
+      'host_amount_cents', (value->>'host_delivery_budget_cents')::bigint,
+      'provider_amount_cents', (value->>'provider_delivery_budget_cents')::bigint
+    )
+    ORDER BY value->>'platform'
+  ) INTO v_delivery_budgets
+  FROM jsonb_array_elements(v_normalized_allocations);
+  -- Money inside the immutable plan is database-derived from the validated
+  -- provider allocations. A service-role caller cannot smuggle a different
+  -- delivery amount into canonical_plan and later bind a campaign to it.
+  v_canonical_plan := jsonb_set(
+    p_canonical_plan,
+    '{delivery_budgets}',
+    coalesce(v_delivery_budgets, '{}'::jsonb),
+    true
+  );
   v_hash := encode(extensions.digest(convert_to(jsonb_build_object(
-    'plan', p_canonical_plan,
+    'plan', v_canonical_plan,
     'destination', v_destination,
     'host_budget_cents', p_host_budget_cents,
     'host_currency', v_host_currency,
@@ -1051,19 +1103,22 @@ BEGIN
     destination_snapshot, plan_hash,
     host_currency, host_budget_cents, created_by
   ) VALUES (
-    p_plan_id, v_version, v_previous.id, p_canonical_plan,
+    p_plan_id, v_version, v_previous.id, v_canonical_plan,
     v_destination, v_hash,
     v_host_currency, p_host_budget_cents, p_actor_id
   ) RETURNING * INTO v_version_row;
   INSERT INTO public.ad_plan_provider_allocations (
     plan_version_id, platform, connection_id, host_currency,
-    host_budget_cents, provider_currency, provider_budget_cents,
+    host_budget_cents, host_delivery_budget_cents,
+    provider_currency, provider_budget_cents, provider_delivery_budget_cents,
     fx_snapshot_id, fx_expires_at
   )
   SELECT v_version_row.id, value->>'platform', (value->>'connection_id')::uuid,
     (value->>'host_currency')::char(3), (value->>'host_budget_cents')::bigint,
+    (value->>'host_delivery_budget_cents')::bigint,
     (value->>'provider_currency')::char(3),
     (value->>'provider_budget_cents')::bigint,
+    (value->>'provider_delivery_budget_cents')::bigint,
     nullif(value->>'fx_snapshot_id','')::uuid,
     nullif(value->>'fx_expires_at','')::timestamptz
   FROM jsonb_array_elements(v_normalized_allocations);
@@ -1612,8 +1667,10 @@ BEGIN
         'platform', a.platform, 'connection_id', a.connection_id,
         'host_currency', a.host_currency,
         'host_budget_cents', a.host_budget_cents,
+        'host_delivery_budget_cents', a.host_delivery_budget_cents,
         'provider_currency', a.provider_currency,
         'provider_budget_cents', a.provider_budget_cents,
+        'provider_delivery_budget_cents', a.provider_delivery_budget_cents,
         'fx_snapshot_id', a.fx_snapshot_id,
         'fx_expires_at', a.fx_expires_at
       ) ORDER BY a.platform), '[]'::jsonb)
@@ -1652,6 +1709,7 @@ BEGIN
      OR NEW.provider_currency IS DISTINCT FROM v_allocation.provider_currency
      OR NEW.host_budget_cents IS DISTINCT FROM v_allocation.host_budget_cents
      OR NEW.provider_budget_cents IS DISTINCT FROM v_allocation.provider_budget_cents
+     OR NEW.provider_delivery_budget_cents IS DISTINCT FROM v_allocation.provider_delivery_budget_cents
      OR NEW.fx_snapshot_id IS DISTINCT FROM v_allocation.fx_snapshot_id
      OR NEW.owner_kind IS DISTINCT FROM v_plan.owner_kind
      OR NEW.brand_id IS DISTINCT FROM v_plan.brand_id THEN
@@ -1672,7 +1730,8 @@ $function$;
 
 CREATE TRIGGER ad_campaign_plan_binding
   BEFORE INSERT OR UPDATE OF plan_version_id, plan_hash, host_currency,
-    provider_currency, host_budget_cents, provider_budget_cents, fx_snapshot_id,
+    provider_currency, host_budget_cents, provider_budget_cents,
+    provider_delivery_budget_cents, fx_snapshot_id,
     owner_kind, brand_id, connection_id
   ON public.ad_campaigns
   FOR EACH ROW EXECUTE FUNCTION public.ad_campaign_plan_binding_guard();

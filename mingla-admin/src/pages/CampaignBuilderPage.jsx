@@ -484,7 +484,9 @@ export function CampaignBuilderPage() {
     // full eligible set. The picker is the single source of truth for who gets
     // funded; a deselected/compliance-excluded channel is already ineligible here.
     () =>
-      splitBudget({ totalDailyCents: planningDailyCents, channelRows: plannedRows,
+      splitBudget({
+        totalDailyCents: planningDailyCents,
+        channelRows: plannedRows,
         strategy: budget.strategy,
       }),
     [planningDailyCents, budget.strategy, plannedRows],
@@ -496,7 +498,10 @@ export function CampaignBuilderPage() {
   // identical for the same goalIds) purely for display — Review reads this
   // to show each channel's REAL resolved objective instead of one repeated
   // goal-label string. Never touches runCreate's own resolution.
-  const resolvedGoalForDisplay = useMemo(() => resolveGoalForPayload(goalIds), [goalIds]);
+  const resolvedGoalForDisplay = useMemo(
+    () => resolveGoalForPayload(goalIds),
+    [goalIds],
+  );
 
   // ── ISSUE-995 [Campaign Builder creative] Wave 3 — PROCEED-WITH-PASSING ──
   // The funded set (allocations) partitioned into the channels this creative can
@@ -781,6 +786,7 @@ export function CampaignBuilderPage() {
       case "audience":
         return validateAudience(audience).length === 0;
       case "budget": {
+        if (currencyBlockedReason) return false;
         const mode = budget.mode === "lifetime" ? "lifetime" : "daily";
         const amount =
           mode === "lifetime"
@@ -791,8 +797,11 @@ export function CampaignBuilderPage() {
         if (!Number.isSafeInteger(finiteCap) || finiteCap < (amount || 0))
           return false;
         return (
-          validateBudget({ totalDailyCents: amount || 0, channelRows })
-            .length === 0 && allocations.length > 0
+          validateBudget({
+            totalDailyCents: amount || 0,
+            channelRows,
+            currency: planCurrency.currency,
+          }).length === 0 && allocations.length > 0
         );
       }
       case "creative": {
@@ -982,13 +991,19 @@ export function CampaignBuilderPage() {
         platform: allocation.platform,
         connection_id: connections[allocation.platform]?.id,
         host_budget_cents: capByPlatform.get(allocation.platform),
-        host_delivery_budget_cents: allocation.dailyCents,
+        // The immutable delivery amount must be the exact amount sent to the
+        // provider: per-day for daily campaigns, total for lifetime campaigns.
+        host_delivery_budget_cents:
+          budget.mode === "lifetime"
+            ? capByPlatform.get(allocation.platform)
+            : allocation.dailyCents,
       })),
     });
     const versionId = versioned?.version?.id;
     const planHash = versioned?.version?.plan_hash;
     const measurement = versioned?.version?.canonical_plan?.measurement ?? null;
-    const mediaRights = versioned?.version?.canonical_plan?.media_rights ?? null;
+    const mediaRights =
+      versioned?.version?.canonical_plan?.media_rights ?? null;
     if (!versionId || !planHash) {
       throw new Error("The server did not return an immutable plan binding.");
     }
@@ -1485,7 +1500,9 @@ export function CampaignBuilderPage() {
     channelRows: plannedRows,
     allocations:
       creative.kind === "video"
-        ? allocations.filter((a) => creativePartition.buildable.includes(a.platform))
+        ? allocations.filter((a) =>
+            creativePartition.buildable.includes(a.platform),
+          )
         : allocations,
     goalIds,
     resolvedGoal: resolvedGoalForDisplay,
@@ -1655,6 +1672,7 @@ export function CampaignBuilderPage() {
               onBudgetChange={setBudget}
               channelRows={plannedRows}
               currency={planCurrency.currency}
+              currencyBlockedReason={currencyBlockedReason}
             />
           )}
           {stepId === "creative" && (

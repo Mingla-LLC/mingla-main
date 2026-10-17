@@ -15,9 +15,7 @@ export function formatCampaignMoney(currency, minor) {
   const value = Number(minor);
   if (!Number.isFinite(value)) return "—";
   const code = typeof currency === "string" && /^[A-Z]{3}$/.test(currency) ? currency : null;
-  if (!code) {
-    return `$${(value / 100).toFixed(2)}`;
-  }
+  if (!code) return "—";
   try {
     return new Intl.NumberFormat(undefined, { style: "currency", currency: code }).format(value / 100);
   } catch {

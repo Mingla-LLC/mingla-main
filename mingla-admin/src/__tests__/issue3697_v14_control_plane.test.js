@@ -13,18 +13,15 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 
 describe("issue #3697 v1.4 Admin control plane", () => {
   const campaigns = read("src/pages/CampaignsPage.jsx");
+  const adsConsole = read("src/pages/AdEnginePage.jsx");
   const builder = read("src/pages/CampaignBuilderPage.jsx");
-  const creativeStep = read(
-    "src/components/campaign-builder/StepCreative.jsx",
-  );
-  const reviewStep = read(
-    "src/components/campaign-builder/StepReview.jsx",
-  );
-  const budgetStep = read(
-    "src/components/campaign-builder/StepBudget.jsx",
-  );
+  const creativeStep = read("src/components/campaign-builder/StepCreative.jsx");
+  const reviewStep = read("src/components/campaign-builder/StepReview.jsx");
+  const budgetStep = read("src/components/campaign-builder/StepBudget.jsx");
   const currencyInput = read("src/components/ui/CurrencyInput.jsx");
   const payload = read("src/lib/adBuilder/payload.js");
+  const launchSummary = read("src/lib/adBuilder/launchSummary.js");
+  const spendCap = read("src/lib/adSpendCap.js");
   const createEndpoint = read(
     "../supabase/functions/admin-ad-create-campaign/index.ts",
   );
@@ -83,7 +80,10 @@ describe("issue #3697 v1.4 Admin control plane", () => {
     assert.match(reviewStep, /measurement\.result_hierarchy/);
     assert.match(reviewStep, /Trusted Mingla results remain visible/);
     assert.match(reviewStep, /Media rights attested/);
-    assert.match(campaigns, /Browser pixels and platform sharing are consent-gated/);
+    assert.match(
+      campaigns,
+      /Browser pixels and platform sharing are consent-gated/,
+    );
   });
 
   it("renders Admin budgets in provider-account currency without manufacturing USD", () => {
@@ -97,13 +97,31 @@ describe("issue #3697 v1.4 Admin control plane", () => {
     assert.doesNotMatch(currencyInput, />\s*\$\s*</);
     assert.doesNotMatch(campaigns, /\?\? "USD"/);
     assert.match(campaigns, /providerMoneyAuthority/);
+    assert.match(payload, /codes\.length !== platforms\.length/);
+    assert.match(launchSummary, /currency = null/);
+    assert.match(spendCap, /if \(!code\) return "—"/);
   });
 
   it("keeps provider spend/caps and attributed-value currency honest in Admin", () => {
     assert.match(campaigns, /provider_budget_cents/);
+    assert.match(campaigns, /provider_delivery_budget_cents/);
+    assert.match(campaigns, /providerDeliveryBudgets/);
     assert.match(campaigns, /provider_currency/);
     assert.match(campaigns, /No cross-currency/);
     assert.match(campaigns, /every enabled platform/);
+  });
+
+  it("removes the legacy direct-create and launch bypass from Ads console", () => {
+    assert.match(adsConsole, /Governed campaign operations/);
+    assert.match(adsConsole, /no direct provider-write shortcut/);
+    assert.doesNotMatch(adsConsole, /createCampaign|campaignAction|budget_usd/);
+    assert.match(createEndpoint, /provider_budget_floor_currency_unsupported/);
+    assert.match(createEndpoint, /provider_delivery_budget_cents/);
+    assert.match(nativeEndpoint, /provider_delivery_budget_cents/);
+    assert.match(
+      builder,
+      /budget\.mode === "lifetime"[\s\S]*capByPlatform\.get/,
+    );
   });
 
   it("launches or pauses every provider campaign in the plan aggregate", () => {

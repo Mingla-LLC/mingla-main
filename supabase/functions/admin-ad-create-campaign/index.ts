@@ -414,6 +414,7 @@ type Wave2MoneyPersist = {
   provider_currency?: string;
   host_budget_cents?: number;
   provider_budget_cents?: number;
+  provider_delivery_budget_cents?: number;
   fx_snapshot_id?: string | null;
 };
 
@@ -760,6 +761,18 @@ serve(async (req: Request): Promise<Response> => {
       detail: "ad_connection_currency_unresolved",
     }, 409);
   }
+  if (
+    ["tiktok", "snapchat", "reddit"].includes(platform) &&
+    providerCurrency !== "USD"
+  ) {
+    return json({
+      error: "validation_error",
+      detail: "provider_budget_floor_currency_unsupported",
+      message:
+        `${platform} minimum-budget enforcement is certified only for USD provider accounts. ` +
+        `This connected account bills in ${providerCurrency}; add an account-native floor before creating anything.`,
+    }, 409);
+  }
   let customerCurrency = providerCurrency;
   let providerAmountCents = amountCents as number;
   let planMoney: Omit<
@@ -908,7 +921,9 @@ serve(async (req: Request): Promise<Response> => {
       !Number.isSafeInteger(hostDeliveryAmount) ||
       !Number.isSafeInteger(providerDeliveryAmount) ||
       hostDeliveryAmount !== amountCents ||
-      allocation.host_budget_cents !== capCents
+      allocation.host_budget_cents !== capCents ||
+      allocation.host_delivery_budget_cents !== hostDeliveryAmount ||
+      allocation.provider_delivery_budget_cents !== providerDeliveryAmount
     ) {
       return json(
         { error: "plan_conflict", detail: "plan_budget_mismatch" },
@@ -924,6 +939,7 @@ serve(async (req: Request): Promise<Response> => {
       provider_currency: String(allocation.provider_currency),
       host_budget_cents: Number(allocation.host_budget_cents),
       provider_budget_cents: Number(allocation.provider_budget_cents),
+      provider_delivery_budget_cents: providerAmountCents,
       fx_snapshot_id: allocation.fx_snapshot_id
         ? String(allocation.fx_snapshot_id)
         : null,

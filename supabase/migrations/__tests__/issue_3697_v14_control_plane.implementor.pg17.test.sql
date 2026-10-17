@@ -198,12 +198,14 @@ BEGIN
       2000, 'USD', jsonb_build_array(
         jsonb_build_object(
           'platform', 'meta', 'connection_id', v_connection,
-          'host_budget_cents', 1000, 'provider_budget_cents', 1000,
+          'host_budget_cents', 1000, 'host_delivery_budget_cents', 1000,
+          'provider_budget_cents', 1000, 'provider_delivery_budget_cents', 1000,
           'fx_snapshot_id', NULL
         ),
         jsonb_build_object(
           'platform', 'reddit', 'connection_id', v_connection_3,
-          'host_budget_cents', 1000, 'provider_budget_cents', 800,
+          'host_budget_cents', 1000, 'host_delivery_budget_cents', 1000,
+          'provider_budget_cents', 800, 'provider_delivery_budget_cents', 800,
           'fx_snapshot_id', v_snapshot
         )
       ), v_user
@@ -226,7 +228,8 @@ BEGIN
         || jsonb_build_object('media_rights', v_rights),
       1000, 'USD', jsonb_build_array(jsonb_build_object(
         'platform', 'meta', 'connection_id', v_connection,
-        'host_budget_cents', 1000, 'provider_budget_cents', 1000,
+        'host_budget_cents', 1000, 'host_delivery_budget_cents', 1000,
+        'provider_budget_cents', 1000, 'provider_delivery_budget_cents', 1000,
         'fx_snapshot_id', NULL
       )), v_user
     );
@@ -261,7 +264,9 @@ BEGIN
       3000000, 'NGN', jsonb_build_array(jsonb_build_object(
         'platform', 'meta', 'connection_id', v_connection,
         'host_budget_cents', 3000000,
+        'host_delivery_budget_cents', 3000000,
         'provider_budget_cents', v_provider_budget,
+        'provider_delivery_budget_cents', v_provider_budget,
         'fx_snapshot_id', v_snapshot
       )), v_user
     );
@@ -276,7 +281,9 @@ BEGIN
     3000000, 'NGN', jsonb_build_array(jsonb_build_object(
       'platform', 'meta', 'connection_id', v_connection,
       'host_budget_cents', 3000000,
+      'host_delivery_budget_cents', 3000000,
       'provider_budget_cents', v_provider_budget,
+      'provider_delivery_budget_cents', v_provider_budget,
       'fx_snapshot_id', v_snapshot
     )), v_user
   );
@@ -309,7 +316,9 @@ BEGIN
     1500000, 'NGN', jsonb_build_array(jsonb_build_object(
       'platform', 'meta', 'connection_id', v_connection,
       'host_budget_cents', 1500000,
+      'host_delivery_budget_cents', 1500000,
       'provider_budget_cents', 1000,
+      'provider_delivery_budget_cents', 1000,
       'fx_snapshot_id', v_snapshot
     )), v_user
   );
@@ -358,7 +367,9 @@ BEGIN
     1500000, 'NGN', jsonb_build_array(jsonb_build_object(
       'platform', 'meta', 'connection_id', v_connection,
       'host_budget_cents', 1500000,
+      'host_delivery_budget_cents', 1500000,
       'provider_budget_cents', 1000,
+      'provider_delivery_budget_cents', 1000,
       'fx_snapshot_id', v_snapshot
     )), v_user
   );
@@ -381,12 +392,16 @@ BEGIN
     3000000, 'NGN', jsonb_build_array(jsonb_build_object(
       'platform', 'meta', 'connection_id', v_connection,
       'host_budget_cents', 1500000,
+      'host_delivery_budget_cents', 1500000,
       'provider_budget_cents', 1000,
+      'provider_delivery_budget_cents', 1000,
       'fx_snapshot_id', v_snapshot
     ), jsonb_build_object(
       'platform', 'tiktok', 'connection_id', v_connection_2,
       'host_budget_cents', 1500000,
+      'host_delivery_budget_cents', 1500000,
       'provider_budget_cents', 1000,
+      'provider_delivery_budget_cents', 1000,
       'fx_snapshot_id', v_snapshot
     )), v_user
   );
@@ -485,7 +500,8 @@ BEGIN
     id, connection_id, platform, external_campaign_id, name, objective,
     status, dest_page_type, dest_brand_slug, dest_url, dest_smart_link,
     brand_id, owner_kind, currency, plan_version_id, plan_hash,
-    host_budget_cents, provider_budget_cents, fx_snapshot_id
+    host_budget_cents, provider_budget_cents, provider_delivery_budget_cents,
+    fx_snapshot_id
   ) VALUES (
     v_campaign, v_connection, 'meta', 'meta-campaign-v14',
     'Issue 3697 v1.4', 'OUTCOME_TRAFFIC', 'PAUSED', 'event',
@@ -493,13 +509,14 @@ BEGIN
     'https://usemingla.com/e/issue-3697-control-plane/control',
     'https://usemingla.com/e/issue-3697-control-plane/control',
     v_brand, 'host', 'NGN', v_version.id, v_version.plan_hash,
-    1500000, 1000, v_snapshot
+    1500000, 1000, 1000, v_snapshot
   );
   INSERT INTO public.ad_campaigns (
     id, connection_id, platform, external_campaign_id, name, objective,
     status, dest_page_type, dest_brand_slug, dest_url, dest_smart_link,
     brand_id, owner_kind, currency, plan_version_id, plan_hash,
-    host_budget_cents, provider_budget_cents, fx_snapshot_id
+    host_budget_cents, provider_budget_cents, provider_delivery_budget_cents,
+    fx_snapshot_id
   ) VALUES (
     v_campaign_2, v_connection_2, 'tiktok', 'tiktok-campaign-v14',
     'Issue 3697 v1.4 TikTok', 'TRAFFIC', 'PAUSED', 'event',
@@ -507,7 +524,7 @@ BEGIN
     'https://usemingla.com/e/issue-3697-control-plane/control',
     'https://usemingla.com/e/issue-3697-control-plane/control',
     v_brand, 'host', 'NGN', v_version.id, v_version.plan_hash,
-    1500000, 1000, v_snapshot
+    1500000, 1000, 1000, v_snapshot
   );
 
   v_failed := false;

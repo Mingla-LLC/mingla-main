@@ -105,21 +105,53 @@ function providerMoneyAuthority(campaign) {
     typeof campaign?.provider_currency === "string" &&
     /^[A-Z]{3}$/.test(campaign.provider_currency)
       ? campaign.provider_currency
-      : campaign?.owner_kind === "mingla" &&
-          typeof campaign?.currency === "string" &&
-          /^[A-Z]{3}$/.test(campaign.currency)
-        ? campaign.currency
-        : null;
+      : null;
   const frozenProviderCap = Number(campaign?.provider_budget_cents);
-  const legacyCap = Number(campaign?.cap_cents);
   const providerCapCents =
     Number.isSafeInteger(frozenProviderCap) && frozenProviderCap > 0
       ? frozenProviderCap
-      : providerCurrency && providerCurrency === campaign?.currency &&
-          Number.isSafeInteger(legacyCap) && legacyCap > 0
-        ? legacyCap
-        : null;
-  return { providerCurrency, providerCapCents };
+      : null;
+  const frozenProviderDelivery = Number(
+    campaign?.provider_delivery_budget_cents,
+  );
+  const providerDeliveryCents =
+    Number.isSafeInteger(frozenProviderDelivery) && frozenProviderDelivery > 0
+      ? frozenProviderDelivery
+      : null;
+  const cadence =
+    campaign?.lifetime_budget_cents != null ? "lifetime" : "daily";
+  return {
+    providerCurrency,
+    providerCapCents,
+    providerDeliveryCents,
+    cadence,
+  };
+}
+
+function campaignsForPlan(campaigns, campaign) {
+  const versionId = campaign?.plan_version_id;
+  const planHash = campaign?.plan_hash;
+  if (!versionId || !/^[0-9a-f]{64}$/.test(planHash ?? "")) return [];
+  return campaigns.filter(
+    (row) => row.plan_version_id === versionId && row.plan_hash === planHash,
+  );
+}
+
+function canLaunchWithProviderMoney(campaign, campaigns) {
+  const planCampaigns = campaignsForPlan(campaigns, campaign);
+  return (
+    canLaunchCampaign(campaign?.status) &&
+    planCampaigns.length > 0 &&
+    planCampaigns.every((row) => {
+      const authority = providerMoneyAuthority(row);
+      return (
+        authority.providerCurrency !== null &&
+        authority.providerCapCents !== null &&
+        authority.providerDeliveryCents !== null &&
+        authority.providerDeliveryCents <= authority.providerCapCents
+      );
+    })
+  );
 }
 
 export function CampaignsPage() {
@@ -392,6 +424,10 @@ export function CampaignsPage() {
     );
   }
 
+  const launchPlanCampaigns = launchTarget
+    ? campaignsForPlan(campaigns ?? [], launchTarget)
+    : [];
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -485,7 +521,9 @@ export function CampaignsPage() {
                   </div>
                   {(item.targeting_snapshots ?? []).length > 0 && (
                     <div className="rounded-lg border border-[var(--gray-200)] p-3 text-xs space-y-2">
-                      <p className="font-semibold">Provider audience estimates</p>
+                      <p className="font-semibold">
+                        Provider audience estimates
+                      </p>
                       {(item.targeting_snapshots ?? []).map((row) => (
                         <div
                           key={`estimate-${row.platform}`}
@@ -496,10 +534,15 @@ export function CampaignsPage() {
                             {providerEstimateLabel(row.provider_estimate)}
                           </p>
                           <p className="text-[var(--color-text-secondary)]">
-                            Observed {row.estimate_observed_at
-                              ? new Date(row.estimate_observed_at).toLocaleString()
-                              : "time unavailable"} ·{" "}
-                            {row.provider_estimate?.source ?? "source unavailable"}
+                            Observed{" "}
+                            {row.estimate_observed_at
+                              ? new Date(
+                                  row.estimate_observed_at,
+                                ).toLocaleString()
+                              : "time unavailable"}{" "}
+                            ·{" "}
+                            {row.provider_estimate?.source ??
+                              "source unavailable"}
                           </p>
                           {row.provider_estimate?.state !== "available" && (
                             <p className="text-[var(--color-text-secondary)]">
@@ -513,7 +556,8 @@ export function CampaignsPage() {
                       ))}
                       <p className="text-amber-700">
                         Do not add platform estimates. Audiences overlap across
-                        providers, so a cross-platform total would be misleading.
+                        providers, so a cross-platform total would be
+                        misleading.
                       </p>
                     </div>
                   )}
@@ -522,10 +566,9 @@ export function CampaignsPage() {
                       <p className="font-semibold">Measurement contract</p>
                       <p>
                         {(canonical.measurement.result_hierarchy ?? [])
-                          .map((value) =>
-                            String(value).replaceAll("_", " ")
-                          )
-                          .join(" → ")} ·{" "}
+                          .map((value) => String(value).replaceAll("_", " "))
+                          .join(" → ")}{" "}
+                        ·{" "}
                         {String(canonical.measurement.quality).replaceAll(
                           "_",
                           " ",
@@ -545,7 +588,9 @@ export function CampaignsPage() {
                         {String(canonical.media_rights.rights_basis).replaceAll(
                           "_",
                           " ",
-                        )} · {canonical.media_rights.ai_generated
+                        )}{" "}
+                        ·{" "}
+                        {canonical.media_rights.ai_generated
                           ? "AI-generated"
                           : "not marked AI-generated"}
                       </p>
@@ -681,16 +726,20 @@ export function CampaignsPage() {
                 >
                   {campaign.delivery_status ?? "unknown"}
                 </Badge>
-                {canLaunchCampaign(campaign.status) && (
+                {canLaunchWithProviderMoney(campaign, campaigns) && (
                   <Button
                     size="sm"
                     icon={Rocket}
                     loading={rowBusy[campaign.id] === "launch"}
                     onClick={() => setLaunchTarget(campaign)}
                   >
-                    Launch
+                    Launch plan
                   </Button>
                 )}
+                {canLaunchCampaign(campaign.status) &&
+                  !canLaunchWithProviderMoney(campaign, campaigns) && (
+                    <Badge variant="error">Provider money unresolved</Badge>
+                  )}
                 {canPauseCampaign(campaign.status) && (
                   <Button
                     size="sm"
@@ -1098,8 +1147,25 @@ export function CampaignsPage() {
         description={
           launchTarget
             ? launchConfirmCopy({
-                channelCount: 1,
-                totalDailyCents: Number(launchTarget.daily_budget_cents) || 0,
+                channelCount: launchPlanCampaigns.length,
+                providerDeliveryBudgets: launchPlanCampaigns.map((campaign) => {
+                  const authority = providerMoneyAuthority(campaign);
+                  return {
+                    currency: authority.providerCurrency,
+                    amountCents: authority.providerDeliveryCents,
+                    cadence: authority.cadence,
+                  };
+                }),
+                providerHardCaps: launchPlanCampaigns.map((campaign) => {
+                  const authority = providerMoneyAuthority(campaign);
+                  return {
+                    currency: authority.providerCurrency,
+                    amountCents: authority.providerCapCents,
+                  };
+                }),
+                hasMeta: launchPlanCampaigns.some(
+                  (campaign) => campaign.platform === "meta",
+                ),
               })
             : undefined
         }

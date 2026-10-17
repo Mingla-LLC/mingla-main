@@ -40,9 +40,16 @@ function formatBudgetMoney(currency, cents) {
   }
 }
 
-export function StepBudget({ budget, onBudgetChange, channelRows, currency }) {
+export function StepBudget({
+  budget,
+  onBudgetChange,
+  channelRows,
+  currency,
+  currencyBlockedReason = null,
+}) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const currencyCode =
+    !currencyBlockedReason &&
     typeof currency === "string" && /^[A-Z]{3}$/.test(currency)
       ? currency
       : null;
@@ -55,6 +62,7 @@ export function StepBudget({ budget, onBudgetChange, channelRows, currency }) {
   const errors = validateBudget({
     totalDailyCents: mode === "daily" ? amountCents : Math.max(amountCents, 1),
     channelRows,
+    currency: currencyCode,
   });
   const platforms = channelRows
     .filter((r) => r.eligible)
@@ -117,6 +125,7 @@ export function StepBudget({ budget, onBudgetChange, channelRows, currency }) {
         ? amountCents
         : allocations.reduce((s, a) => s + a.dailyCents, 0),
     strategy: budget.strategy,
+    currency: currencyCode,
   });
   const eligibleOptions = channelRows
     .filter((r) => r.eligible || (budget.allowlist ?? []).includes(r.platform))
@@ -140,8 +149,8 @@ export function StepBudget({ budget, onBudgetChange, channelRows, currency }) {
 
       {!currencyCode && (
         <AlertCard variant="warning" title="Provider account currency required">
-          Connect the selected ad account and load its billing currency before
-          entering a budget. Mingla will not assume USD.
+          {currencyBlockedReason ??
+            "Connect every selected ad account and load its billing currency before entering a budget. Mingla will not assume USD."}
         </AlertCard>
       )}
 

@@ -32,7 +32,6 @@ import { fileURLToPath } from "node:url";
 
 import {
   validateCopyForChannel,
-  validateCopy,
   weightedLength,
   stripEmoji,
   truncationPreview,
@@ -285,7 +284,7 @@ describe("A4.d policy pre-check", () => {
 // ── A4.0(4)/A4.e — floors + honest badges ─────────────────────────────────────
 
 describe("budget rules", () => {
-  const metaConn = { extra: { minimum_budgets: { imp: 100, video_views: 100, high_freq: 500, low_freq: 4000 } } };
+  const metaConn = { currency: "USD", extra: { minimum_budgets: { imp: 100, video_views: 100, high_freq: 500, low_freq: 4000 } } };
 
   it("Meta floor is per-CATEGORY from the connection row — $5/day for link clicks, $1 for reach", () => {
     assert.equal(metaFloorCents(metaConn, "LINK_CLICKS"), 500, "LINK_CLICKS is high_freq — the $1 folklore is the imp floor");
@@ -319,7 +318,7 @@ describe("budget rules", () => {
     assert.ok(PACING_DISCLOSURES.meta.includes("7×"));
     assert.ok(PACING_DISCLOSURES.google.includes("2×"));
     assert.ok(PACING_DISCLOSURES.google.includes("30.4"));
-    const copy = launchConfirmCopy({ channelCount: 1, totalDailyCents: 2000 });
+    const copy = launchConfirmCopy({ channelCount: 1, totalDailyCents: 2000, currency: "USD" });
     assert.ok(copy.includes("$20.00/day"));
     assert.ok(copy.includes("175%"));
   });
@@ -456,6 +455,7 @@ describe("launch summary (§1.8)", () => {
       creative: { kind: "image", name: "hero", width: 1080, height: 1080 },
       copyCheck: { policyFindings: 0, copyHardBlocks: 0 },
       totalDailyCents: 2000,
+      currency: "USD",
     });
     assert.ok(summary.headline.includes("1 channel"));
     assert.ok(summary.headline.includes("$20.00/day"));
@@ -476,6 +476,7 @@ describe("launch summary (§1.8)", () => {
       creative: null,
       copyCheck: { policyFindings: 0, copyHardBlocks: 0 },
       totalDailyCents: 100,
+      currency: "USD",
     });
     assert.ok(summary.warnings.some((w) => w.includes("directional")));
   });

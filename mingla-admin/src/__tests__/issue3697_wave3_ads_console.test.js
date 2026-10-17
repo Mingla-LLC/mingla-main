@@ -46,6 +46,7 @@ test("formatCampaignMoney uses campaign currency (not always USD)", () => {
   const gbp = formatCampaignMoney("GBP", 1234);
   assert.match(gbp, /1\.34|£|GBP/);
   assert.equal(formatCampaignMoney("USD", null), "—");
+  assert.equal(formatCampaignMoney(null, 1234), "—");
 });
 
 test("Pause only for ACTIVE; Launch only for PAUSED (#3708)", () => {
@@ -138,7 +139,7 @@ test("CampaignsPage spend-vs-cap + currency-honest money", () => {
   assert.match(src, /formatCampaignMoney/);
   assert.match(src, /canPauseCampaign/);
   assert.match(src, /Spend vs hard cap/);
-  assert.match(src, /Meta-only/);
+  assert.match(src, /every enabled platform/);
   assert.match(src, /roiLoading \? null/);
   assert.doesNotMatch(src, /function centsToUsd/);
 });
@@ -146,6 +147,13 @@ test("CampaignsPage spend-vs-cap + currency-honest money", () => {
 test("plan currency comes from ad_connections and rides the create budget", () => {
   assert.deepEqual(
     resolvePlanCurrency({ meta: { currency: "gbp" } }, ["meta", "tiktok"]),
+    { currency: null, mixed: false, unresolved: true },
+  );
+  assert.deepEqual(
+    resolvePlanCurrency(
+      { meta: { currency: "gbp" }, tiktok: { currency: "GBP" } },
+      ["meta", "tiktok"],
+    ),
     { currency: "GBP", mixed: false, unresolved: false },
   );
   assert.deepEqual(

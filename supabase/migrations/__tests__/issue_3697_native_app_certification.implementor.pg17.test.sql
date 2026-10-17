@@ -82,8 +82,9 @@ BEGIN
   UPDATE public.ad_plans SET current_version_id=v_version WHERE id=v_plan;
   INSERT INTO public.ad_plan_provider_allocations(
     plan_version_id,platform,connection_id,host_currency,host_budget_cents,
-    provider_currency,provider_budget_cents
-  ) VALUES(v_version,'reddit',v_connection,'USD',3000,'USD',3000);
+    host_delivery_budget_cents,provider_currency,provider_budget_cents,
+    provider_delivery_budget_cents
+  ) VALUES(v_version,'reddit',v_connection,'USD',3000,3000,'USD',3000,3000);
   INSERT INTO public.ad_plan_targeting_snapshots(
     plan_version_id,platform,audience_intent,compiled_targeting,verdict,
     evidence_observed_at,compiler_version
@@ -174,13 +175,14 @@ BEGIN
     id,connection_id,platform,external_campaign_id,name,objective,status,
     dest_page_type,dest_brand_slug,dest_entity_slug,dest_url,dest_smart_link,
     brand_id,owner_kind,currency,plan_version_id,plan_hash,host_currency,
-    provider_currency,host_budget_cents,provider_budget_cents
+    provider_currency,host_budget_cents,provider_budget_cents,
+    provider_delivery_budget_cents
   ) VALUES(
     v_campaign,v_connection,'reddit','reddit-canary-3697',
     'Issue 3697 certification canary','APP_INSTALLS','PAUSED',
     'explorer_app','mingla','ios','https://apps.apple.com/app/id6760440898',
     'https://go.usemingla.com/w36m',NULL,'mingla','USD',v_version,v_hash,
-    'USD','USD',3000,3000
+    'USD','USD',3000,3000,3000
   );
   SELECT public.transition_ad_app_canary(jsonb_build_object(
     'action','provider_prepared','app_key','explorer','os','ios',

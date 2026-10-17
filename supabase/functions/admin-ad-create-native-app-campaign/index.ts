@@ -717,6 +717,8 @@ serve(async (req: Request): Promise<Response> => {
     !Number.isSafeInteger(hostDaily) || hostDaily <= 0 ||
     !Number.isSafeInteger(providerDaily) || providerDaily <= 0 ||
     allocation.host_budget_cents !== record(body.budget)?.cap_cents ||
+    allocation.host_delivery_budget_cents !== hostDaily ||
+    allocation.provider_delivery_budget_cents !== providerDaily ||
     allocation.host_currency !== version.host_currency
   ) {
     return json({ error: "plan_conflict", detail: "plan_money_mismatch" }, 409);
@@ -999,6 +1001,7 @@ serve(async (req: Request): Promise<Response> => {
       provider_currency: allocation.provider_currency,
       host_budget_cents: allocation.host_budget_cents,
       provider_budget_cents: allocation.provider_budget_cents,
+      provider_delivery_budget_cents: providerDaily,
       fx_snapshot_id: allocation.fx_snapshot_id,
     }).select("*").single();
   let persistError = campaignError;
