@@ -16,7 +16,7 @@ import {
   prepareBrandGroupFiles,
   uploadPreparedBrandGroupFile,
   type PreparedBrandGroupFile,
-} from "../../services/brandGroupsService";
+} from "../../services/brandGroupFilesService";
 import { Icon } from "../ui/Icon";
 import { pickBrandGroupFiles } from "./brandGroupFilePicker";
 import { BrandGroupFilePermissionError, type BrandGroupFileSource } from "./brandGroupFilePickerShared";
