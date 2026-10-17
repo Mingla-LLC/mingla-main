@@ -2,10 +2,11 @@
 
 import { HELP_CHAPTERS, HELP_VIDEOS, bambooPosterUrl, type HelpVideoRecord } from "@mingla/help-content";
 import React, { useMemo, useState } from "react";
-import { Image, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { Image, Linking, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
+import { HELP_CENTRE_URL } from "../../constants/supportHostFacing";
 import { useAuth } from "../../context/AuthContext";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Icon } from "../ui/Icon";
@@ -98,6 +99,14 @@ export const GuidesTabPanel: React.FC<GuidesTabPanelProps> = ({ onToast }) => {
       <View style={styles.featuredGrid}>
         {FEATURED_HOST_GUIDES.map((guide) => <GuideCard key={guide.slug} guide={guide} wide={width >= 760} onPress={() => selectGuide(guide)} />)}
       </View>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="Open Help Centre videos in your browser"
+        onPress={() => { void Linking.openURL(HELP_CENTRE_URL).catch(() => onToast("Couldn’t open the Help Centre.")); }}
+        style={({ pressed }) => [styles.helpCentreLink, pressed && styles.pressed]}
+      >
+        <Text style={styles.helpCentreLinkText}>Help Centre videos</Text>
+      </Pressable>
       <GuideLibrary visible={libraryOpen} onClose={() => setLibraryOpen(false)} onSelect={selectGuide} />
       <GuidePlayerModal guide={selected} userId={user?.id ?? "signed-in-host"} onClose={() => setSelected(null)} />
     </View>
@@ -125,6 +134,8 @@ const styles = StyleSheet.create({
   eyebrow: { color: accent.warm, fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.6 },
   cardTitle: { color: textTokens.primary, fontSize: 16, fontWeight: "800" },
   cardBlurb: { color: textTokens.secondary, fontSize: 13, lineHeight: 19 },
+  helpCentreLink: { minHeight: 44, alignSelf: "flex-start", justifyContent: "center", paddingHorizontal: spacing.sm },
+  helpCentreLinkText: { color: accent.warm, fontSize: 13, fontWeight: "800", textDecorationLine: "underline" },
   library: { flex: 1, backgroundColor: canvas.profile },
   libraryHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.md, paddingBottom: spacing.md },
   libraryTitle: { color: textTokens.primary, fontSize: 22, fontWeight: "800" },
