@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-group-files/drive.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3720-brand-group-files-drive",
+  "profile": "deno-1.46-stripe"
+}

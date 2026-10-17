@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-group-files/issue_3720_contract.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3720-brand-group-files-contract",
+  "profile": "deno-1.46-stripe"
+}
