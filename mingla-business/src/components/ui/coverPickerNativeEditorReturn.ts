@@ -3,7 +3,7 @@
  * trim editor.
  *
  * WHY: the cover sheet is a native iOS modal (`SheetMobile` renders React
- * Native's `<Modal>`). A clip over the 15 s ceiling opens `react-native-video-
+ * Native's `<Modal>`). A clip over the one-minute ceiling opens `react-native-video-
  * trim`, which presents its own view controller — plus a save dialog and a
  * progress alert — ON TOP of that modal and dismisses them after it has already
  * told JavaScript the trim finished. In the run that showed the bug, JavaScript

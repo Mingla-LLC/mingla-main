@@ -160,7 +160,7 @@ describe("event cover video processing service", () => {
       edgeDetail: "source_duration_out_of_range",
       edgeError: "validation_error",
       // [TEST-MOD-APPROVED #2715] Validation copy follows the binding 15-second ceiling.
-      message: "Choose another 15-second clip and try again.",
+      message: "Choose another video up to 1 minute long and try again.",
       phase: "upload_intent",
       requestId: expect.any(String),
     });

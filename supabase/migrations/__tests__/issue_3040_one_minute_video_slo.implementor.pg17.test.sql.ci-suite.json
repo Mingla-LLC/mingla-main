@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3040_one_minute_video_slo.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3040-one-minute-video-slo",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}

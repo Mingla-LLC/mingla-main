@@ -59,7 +59,7 @@ describe("CoverPicker trim-only-over-cap + in-sheet feedback (issue #1338)", () 
     // [TEST-MOD-APPROVED #2715] The cancel notice follows the exact 15-second ceiling.
     // The cancel branch emits an in-sheet info notice with the "No video added" copy.
     expect(picker).toMatch(
-      /setVideoPickNotice\(\{\s*tone:\s*"info",\s*text:\s*"No video added — trim to 15 seconds or pick a shorter clip\.",/,
+      /setVideoPickNotice\(\{\s*tone:\s*"info",\s*text:\s*"No video added — trim to 1 minute or pick a shorter clip\.",/,
     );
   });
 
@@ -68,17 +68,17 @@ describe("CoverPicker trim-only-over-cap + in-sheet feedback (issue #1338)", () 
 
     // For each video-flow copy string, the ENCLOSING call must be
     // setVideoPickNotice (nearest preceding), never onShowToast.
-    // [TEST-MOD-APPROVED #2715 A14] Every duration notice uses the binding
-    // 15-second copy, including the distinct web path where no trimmer exists.
+    // [TEST-MOD-APPROVED #3040] Every duration notice uses the binding
+    // one-minute copy, including the distinct web path where no trimmer exists.
     // [TEST-MOD-APPROVED #3409] '"Video cover added."' removed
     // from this list: it was a duplicate success confirmation under the video
     // status card's own `applied` state and no longer exists as a notice. The
     // success confirmation is still in-sheet (never a Toast) — see the
     // videoReadyIdempotency test.
     const videoFlowCopy = [
-      '"Trim it to 15 seconds or less, then choose it again."',
-      '"Choose a video that is 15 seconds or shorter."',
-      '"No video added — trim to 15 seconds or pick a shorter clip."',
+      '"Trim it to 1 minute or less, then choose it again."',
+      '"Choose a video that is 1 minute or shorter."',
+      '"No video added — trim to 1 minute or pick a shorter clip."',
       "\"Could not read this video's duration. Try another clip.\"",
       "\"Could not read this video's size. Try another clip.\"",
     ];
