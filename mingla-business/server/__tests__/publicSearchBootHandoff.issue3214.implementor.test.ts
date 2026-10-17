@@ -520,7 +520,9 @@ describe("#3214 the public document's CSP is the booted app's policy", () => {
   it("lets the booted app load what it was observed to use on public flows", () => {
     const policy = directives(withDsn("https://key@o4511136062701568.ingest.us.sentry.io/1", () => doc.publicDocumentCsp()));
     expect(policy.get("font-src")).toEqual(["'self'"]);
-    expect(policy.get("media-src")).toEqual(["'self'", "https://vz-a16fce08-6c6.b-cdn.net"]);
+    // [TEST-MOD-APPROVED #3720] Host Guides add one exact HLS media origin;
+    // the policy stays fail-closed rather than widening to an https: scheme.
+    expect(policy.get("media-src")).toEqual(["'self'", "https://vz-a16fce08-6c6.b-cdn.net", "https://cdnapi.bamboo-cloud.com"]);
     expect(policy.get("frame-src")).toEqual(["https://js.stripe.com", "https://hooks.stripe.com", "https://tr.snapchat.com"]);
     expect(policy.get("script-src")).toEqual(expect.arrayContaining([
       "https://www.googletagmanager.com", "https://us-assets.i.posthog.com", "https://js.stripe.com",
@@ -529,6 +531,7 @@ describe("#3214 the public document's CSP is the booted app's policy", () => {
     ]));
     expect(policy.get("connect-src")).toEqual(expect.arrayContaining([
       "https://gqnoajqerqhnvulmnyvv.supabase.co", "https://api.stripe.com", "https://us.i.posthog.com",
+      "https://usemingla.com",
       "https://us-assets.i.posthog.com", "https://analytics.google.com", "https://www.google.com",
       "https://www.facebook.com", "https://tr.snapchat.com", "https://o4511136062701568.ingest.us.sentry.io",
     ]));

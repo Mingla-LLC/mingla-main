@@ -84,6 +84,11 @@ const CLASSIFIED: Record<string, Row> = {
   'https://analytics.tiktok.com': { verdict: 'admitted', directives: ['script-src', 'connect-src'], why: 'TikTok pixel script and events' },
   'https://sc-static.net': { verdict: 'admitted', directives: ['script-src'], why: 'Snap pixel script' },
   'https://www.redditstatic.com': { verdict: 'admitted', directives: ['script-src'], why: 'Reddit pixel script' },
+  'https://cdnapi.bamboo-cloud.com': { verdict: 'admitted', directives: ['media-src'], why: 'Host Guide HLS manifests and video segments; poster images remain covered by the existing img-src https: policy' },
+  // [TEST-MOD-APPROVED #3720] This origin was previously navigation-only. The
+  // in-app Guide player also fetches caption sidecars from it, so connect-src
+  // must now admit the exact origin as well.
+  'https://usemingla.com': { verdict: 'admitted', directives: ['connect-src'], why: 'Host Guide caption sidecars under /help/captions/*.vtt; marketing links may also navigate here' },
 
   // --- governed by this policy, and REFUSED: reviewed gaps ---
   'https://cdn.jsdelivr.net': {
@@ -104,7 +109,6 @@ const CLASSIFIED: Record<string, Row> = {
 
   // --- top-level navigation targets: CSP does not govern a navigation ---
   'https://host.usemingla.com': { verdict: 'navigation', why: 'the public host origin itself; same-origin requests are covered by \'self\'' },
-  'https://usemingla.com': { verdict: 'navigation', why: 'marketing apex link' },
   'https://www.usemingla.com': { verdict: 'navigation', why: 'marketing apex link' },
   'https://biz.usemingla.com': { verdict: 'navigation', why: 'business web link' },
   'https://studio.sites.usemingla.com': { verdict: 'navigation', why: 'sites studio hand-off, opened as a navigation (/mingla/exchange?code=…)' },
@@ -147,6 +151,7 @@ const CLASSIFIED: Record<string, Row> = {
   'https://github.com': { verdict: 'inert', why: 'library issue links in warning text' },
   'https://example.com': { verdict: 'inert', why: 'library documentation placeholder' },
   'https://competitor.com': { verdict: 'inert', why: "Mingla's own fixture/validation string" },
+  'https://lanternroom.example': { verdict: 'inert', why: 'literal example website rendered as instructional Guide copy; it is never passed to fetch, Linking, an image, or the video player' },
   'https://phony.example': { verdict: 'inert', why: 'placeholder base for relative-URL parsing (new URL(x, base))' },
   'http://placeholder.base': { verdict: 'inert', why: 'placeholder base for relative-URL parsing' },
   'http://www.w3.org': { verdict: 'inert', why: 'XML/SVG namespace URIs; never fetched' },
