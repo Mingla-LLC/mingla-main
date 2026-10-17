@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3645_paid_without_ticket_admin_guard.implementor.happy.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3645-paid-without-ticket-admin-guard-01-happy",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}
