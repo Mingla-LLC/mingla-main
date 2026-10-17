@@ -224,6 +224,36 @@ export const handleReaper = async (
   const nowMs = Date.now();
   try {
     const supabase = deps.serviceRoleClient();
+    // Issue #3040 — the reaper already owns the minute-cadence provider truth
+    // loop. Record each unresolved final-byte-to-READY breach exactly once on
+    // the existing Bunny health rail before doing provider I/O. The RPC is a
+    // bounded SKIP LOCKED claim, so overlapping ticks cannot duplicate alerts.
+    const { data: sloBreaches, error: sloBreachError } = await supabase.rpc(
+      "cover_video_record_processing_slo_breaches",
+      { p_limit: 100 },
+    );
+    if (sloBreachError) {
+      console.warn(
+        "[event-cover-video-reaper]",
+        JSON.stringify({
+          code: sloBreachError.code,
+          stage: "processing_slo_record_failed",
+        }),
+      );
+    }
+    const processingSloBreaches = Array.isArray(sloBreaches)
+      ? sloBreaches.length
+      : 0;
+    for (const breach of (sloBreaches ?? []) as Array<Record<string, unknown>>) {
+      console.warn(
+        "[event-cover-video-reaper]",
+        JSON.stringify({
+          jobId: breach.id,
+          sourceUploadedAt: breach.source_uploaded_at,
+          stage: "processing_slo_breached",
+        }),
+      );
+    }
     // Candidate window: un-reaped rows that carry a provider asset id. The pure
     // selector applies the terminal/abandoned predicates. Bounded by the partial
     // index (reaped_at IS NULL AND source_asset_id IS NOT NULL).
@@ -614,6 +644,7 @@ export const handleReaper = async (
       failed,
       reconciled,
       stalled,
+      processingSloBreaches,
       sweptSourceUploading,
       timestamp: new Date(nowMs).toISOString(),
     });

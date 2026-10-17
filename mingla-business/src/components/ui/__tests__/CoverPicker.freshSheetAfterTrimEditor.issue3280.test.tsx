@@ -345,7 +345,7 @@ describe("#3280 — after the trim editor, the clip continues in a fresh sheet (
     expect(carry.upload).toBeNull();
     expect(carry.notice).toEqual({
       tone: "info",
-      text: "No video added — trim to 15 seconds or pick a shorter clip.",
+      text: "No video added — trim to 1 minute or pick a shorter clip.",
     });
     expect(harness.start).not.toHaveBeenCalled();
     await TestRenderer.act(() => tree.unmount());
@@ -458,7 +458,7 @@ describe("#3280 — the fresh sheet continues from the hand-off", () => {
         resumeAfterNativeEditor: carryFor({
           id: 9002,
           upload: null,
-          notice: { tone: "info", text: "No video added — trim to 15 seconds or pick a shorter clip." },
+          notice: { tone: "info", text: "No video added — trim to 1 minute or pick a shorter clip." },
         }),
       }),
     );
@@ -466,7 +466,7 @@ describe("#3280 — the fresh sheet continues from the hand-off", () => {
     await TestRenderer.act(async () => harness.finishReattach());
     await flush();
     expect(shownText(noticeTree)).toContain(
-      "No video added — trim to 15 seconds or pick a shorter clip.",
+      "No video added — trim to 1 minute or pick a shorter clip.",
     );
     await TestRenderer.act(() => noticeTree.unmount());
   });

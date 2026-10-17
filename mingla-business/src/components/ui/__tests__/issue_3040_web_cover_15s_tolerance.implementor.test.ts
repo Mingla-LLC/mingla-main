@@ -12,7 +12,7 @@ import { normalizePickerDurationMs } from "../coverPickerVideoTrimUpload";
 import { createEventCoverVideoUploadIntent } from "../../../services/eventCoverVideoProcessingService";
 
 // The network boundary only: the REAL upload-intent service builds the request.
-// The stand-in server answers with the strict 15000 ms rule (`serverAccepts`
+// The stand-in server answers with the strict 60000 ms rule (`serverAccepts`
 // below), so a declared duration above the ceiling is refused the way the edge
 // function refuses it.
 type IntentBody = { sourceDurationMs: number; trimStartMs: number; trimEndMs: number };
@@ -46,10 +46,10 @@ jest.mock("../../../utils/platformFileSystem", () => ({
   getFileInfoAsync: () => Promise.resolve({ exists: false }),
 }));
 
-// issue #3040 — a phone "15 second" clip is 450 frames at 29.97 fps = 15.015 s.
+// issue #3040 — a nominal one-minute phone export may report 60.015 s.
 // The web picker has no trimmer, so the strict ceiling refused every such clip
-// with "Choose a video that is 15 seconds or shorter." Web now accepts a source
-// up to 15.5 s and declares it as exactly 15000 ms. Server rules are unchanged.
+// with "Choose a video that is 1 minute or shorter." Web now accepts a source
+// up to 60.5 s and declares it as exactly 60000 ms. Server rules match that cap.
 
 const repoFile = (relativePath: string): string =>
   readFileSync(path.join(process.cwd(), relativePath), "utf8");
@@ -71,51 +71,51 @@ const pickerRefuses = (durationMs: number): boolean =>
 
 // The server's rules the declared values must satisfy, restated from
 // supabase/functions/_shared/eventCoverVideo.ts `validateTrimRange`, the
-// upload-intent source ceiling and the database check (all strict 15000 ms).
+// upload-intent source ceiling and the database check (all strict 60000 ms).
 const serverAccepts = (intent: {
   durationMs: number;
   trimStartMs: number;
   trimEndMs: number;
 }): boolean =>
   intent.durationMs > 0 &&
-  intent.durationMs <= 15_000 &&
+  intent.durationMs <= 60_000 &&
   intent.trimStartMs === 0 &&
   intent.trimEndMs > intent.trimStartMs &&
-  intent.trimEndMs - intent.trimStartMs <= 15_000 &&
+  intent.trimEndMs - intent.trimStartMs <= 60_000 &&
   intent.trimEndMs <= intent.durationMs + 250 &&
   intent.trimEndMs === intent.durationMs;
 
-describe("issue #3040 — web cover video 15-second tolerance", () => {
-  test("a 15.015 s clip is accepted on web and the intent carries 15000", () => {
-    const intent = rawClipIntent(15_015, true);
+describe("issue #3040 — web cover video one-minute tolerance", () => {
+  test("a 60.015 s clip is accepted on web and the intent carries 60000", () => {
+    const intent = rawClipIntent(60_015, true);
 
-    expect(intent).toEqual({ durationMs: 15_000, trimStartMs: 0, trimEndMs: 15_000 });
+    expect(intent).toEqual({ durationMs: 60_000, trimStartMs: 0, trimEndMs: 60_000 });
     expect(pickerRefuses(intent.durationMs)).toBe(false);
     expect(serverAccepts(intent)).toBe(true);
   });
 
-  test("the tolerance is one named constant of 500 ms and is inclusive at 15.5 s", () => {
+  test("the tolerance is one named constant of 500 ms and is inclusive at 60.5 s", () => {
     expect(EVENT_COVER_WEB_SOURCE_DURATION_TOLERANCE_MS).toBe(500);
-    expect(resolveRawCoverClipDurationMs(15_001, true)).toBe(15_000);
-    expect(resolveRawCoverClipDurationMs(15_500, true)).toBe(15_000);
+    expect(resolveRawCoverClipDurationMs(60_001, true)).toBe(60_000);
+    expect(resolveRawCoverClipDurationMs(60_500, true)).toBe(60_000);
   });
 
   test("a web clip beyond the tolerance is still refused", () => {
-    const intent = rawClipIntent(15_501, true);
+    const intent = rawClipIntent(60_501, true);
 
-    expect(intent.durationMs).toBe(15_501);
+    expect(intent.durationMs).toBe(60_501);
     expect(pickerRefuses(intent.durationMs)).toBe(true);
   });
 
-  test("clips at or under 15 s are declared with their real duration", () => {
-    expect(rawClipIntent(15_000, true).durationMs).toBe(15_000);
+  test("clips at or under 60 s are declared with their real duration", () => {
+    expect(rawClipIntent(60_000, true).durationMs).toBe(60_000);
     expect(rawClipIntent(8_040, true).durationMs).toBe(8_040);
     expect(rawClipIntent(14_833, true).trimEndMs).toBe(14_833);
   });
 
   test("native is unchanged: an over-ceiling clip is never clamped", () => {
-    expect(resolveRawCoverClipDurationMs(15_015, false)).toBe(15_015);
-    expect(pickerRefuses(rawClipIntent(15_015, false).durationMs)).toBe(true);
+    expect(resolveRawCoverClipDurationMs(60_015, false)).toBe(60_015);
+    expect(pickerRefuses(rawClipIntent(60_015, false).durationMs)).toBe(true);
   });
 
   test("the picker's raw branch declares the clamped value, and native still trims on the strict ceiling", () => {
@@ -132,22 +132,22 @@ describe("issue #3040 — web cover video 15-second tolerance", () => {
     );
     // The refusal itself is untouched.
     expect(pickerSource).toContain("durationMs > EVENT_COVER_SOURCE_CEILING_MS");
-    expect(pickerSource).toContain('"Choose a video that is 15 seconds or shorter."');
+    expect(pickerSource).toContain('"Choose a video that is 1 minute or shorter."');
   });
 
-  test("the server, edge and client ceilings all stay at a strict 15000 ms", () => {
+  test("the server, edge and client ceilings all stay at a strict 60000 ms", () => {
     const shared = repoFile("../supabase/functions/_shared/eventCoverVideo.ts");
 
-    expect(EVENT_COVER_MAX_VIDEO_DURATION_MS).toBe(15_000);
-    expect(shared).toContain('Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS") ?? "15000"');
-    expect(shared).toContain('Deno.env.get("EVENT_COVER_MAX_DURATION_MS") ?? "15000"');
+    expect(EVENT_COVER_MAX_VIDEO_DURATION_MS).toBe(60_000);
+    expect(shared).toContain('Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS") ?? "60000"');
+    expect(shared).toContain('Deno.env.get("EVENT_COVER_MAX_DURATION_MS") ?? "60000"');
     expect(shared).toContain("input.trimEndMs - input.trimStartMs > MAX_DURATION_MS");
   });
 });
 
 // The picked clip is sent through the REAL client upload-intent service; only
 // the network is a stand-in. This is the request a host's browser makes.
-describe("issue #3040 — the upload request a 15.015 s web clip produces", () => {
+describe("issue #3040 — the upload request a 60.015 s web clip produces", () => {
   beforeEach(() => {
     sentIntentBodies.length = 0;
   });
@@ -168,34 +168,34 @@ describe("issue #3040 — the upload request a 15.015 s web clip produces", () =
       trimEndMs: intent.trimEndMs,
     });
 
-  test("web: the server is asked for exactly 15000 ms and accepts the clip", async () => {
-    const intent = rawClipIntent(15_015, true);
+  test("web: the server is asked for exactly 60000 ms and accepts the clip", async () => {
+    const intent = rawClipIntent(60_015, true);
     const accepted = await requestIntent(intent);
 
     expect(accepted.jobId).toBe("job-3040");
     expect(sentIntentBodies).toHaveLength(1);
     expect(sentIntentBodies[0]).toMatchObject({
-      sourceDurationMs: 15_000,
+      sourceDurationMs: 60_000,
       trimStartMs: 0,
-      trimEndMs: 15_000,
+      trimEndMs: 60_000,
     });
   });
 
-  test("every clip inside the tolerance is accepted, the last one at 15.5 s", async () => {
-    for (const pickerDuration of [15_001, 15_015, 15_033, 15_250, 15_500]) {
+  test("every clip inside the tolerance is accepted, the last one at 60.5 s", async () => {
+    for (const pickerDuration of [60_001, 60_015, 60_033, 60_250, 60_500]) {
       const accepted = await requestIntent(rawClipIntent(pickerDuration, true));
       expect(accepted.jobId).toBe("job-3040");
     }
     expect(sentIntentBodies.map((body) => body.sourceDurationMs)).toEqual([
-      15_000, 15_000, 15_000, 15_000, 15_000,
+      60_000, 60_000, 60_000, 60_000, 60_000,
     ]);
   });
 
-  test("the undeclared 15015 is what the server refuses: the reported failure, reproduced", async () => {
+  test("the undeclared 60015 is what the server refuses: the reported failure, reproduced", async () => {
     // What the picker declared before the fix (and what native still declares
     // for a raw clip, which is why native sends it to the trimmer instead).
-    const unclamped = rawClipIntent(15_015, false);
-    expect(unclamped.durationMs).toBe(15_015);
+    const unclamped = rawClipIntent(60_015, false);
+    expect(unclamped.durationMs).toBe(60_015);
 
     let refusal: unknown = null;
     try {
@@ -207,6 +207,6 @@ describe("issue #3040 — the upload request a 15.015 s web clip produces", () =
       edgeError: "validation_error",
       edgeDetail: "source_duration_out_of_range",
     });
-    expect(sentIntentBodies[0].sourceDurationMs).toBe(15_015);
+    expect(sentIntentBodies[0].sourceDurationMs).toBe(60_015);
   });
 });

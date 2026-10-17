@@ -1338,14 +1338,14 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           // Genuine user cancel (Back). NEVER silent (issue #1338).
           setVideoPickNotice({
             tone: "info",
-            text: "No video added — trim to 15 seconds or pick a shorter clip.",
+            text: "No video added — trim to 1 minute or pick a shorter clip.",
           });
           return;
         }
       }
       // issue #3040 — the browser has no trimmer, so a web clip a few frames
-      // over 15 s (15.015 s is 450 frames at 29.97 fps) is declared as exactly
-      // 15 s instead of being refused. Native clips are returned unchanged.
+      // over 60 s is declared as exactly 60 s instead of being refused. Native
+      // clips are returned unchanged.
       const rawClipDurationMs = resolveRawCoverClipDurationMs(
         sourceDurationMs,
         Platform.OS === "web",
@@ -1394,8 +1394,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         setVideoPickNotice({
           tone: "error",
           text: isNative
-            ? "Trim it to 15 seconds or less, then choose it again."
-            : "Choose a video that is 15 seconds or shorter.",
+            ? "Trim it to 1 minute or less, then choose it again."
+            : "Choose a video that is 1 minute or shorter.",
         });
         return;
       }
@@ -2204,16 +2204,44 @@ const videoProjectionCopy = (
     // target — a published event, a brand, a venue — applies through the
     // CLIENT on the next visit, so closing the sheet is safe but NOT
     // self-completing, and the copy now says which one you are in.
-    case "processing": return status?.status === "source_uploaded" || status?.status === "processing_queued"
-      ? { title: "Video uploaded", body: coverVideoFinishesWithoutYou(status) ? "Waiting for processing to begin. You can close this sheet—we’ll finish automatically." : "Waiting for processing to begin. You can close this sheet and we’ll pick this up when you come back.", percent: null, tone: "neutral" }
-      : { title: stage.percent === null ? "Processing video…" : "Processing video", body: coverVideoFinishesWithoutYou(status) ? (stage.percent === null ? "This can take a while. You can close this sheet—we’ll finish automatically." : "You can close this sheet—we’ll finish automatically.") : (stage.percent === null ? "This can take a while. You can close this sheet—we’ll apply it when you come back." : "You can close this sheet—we’ll apply it when you come back."), percent: stage.percent, tone: "neutral" };
+    case "processing": {
+      const finishesWithoutYou = coverVideoFinishesWithoutYou(status);
+      if (stage.timing === "breached") {
+        return {
+          title: "Still preparing video",
+          body: finishesWithoutYou
+            ? "This is taking longer than expected. Mingla recorded the delay; we’ll finish automatically if you leave."
+            : "This is taking longer than expected. Mingla recorded the delay and will keep working; return to apply it when ready.",
+          percent: stage.percent,
+          tone: "warning",
+        };
+      }
+      if (stage.timing === "delayed") {
+        return {
+          title: "Preparing video is taking longer",
+          body: finishesWithoutYou
+            ? "You can leave this sheet; we’ll finish automatically."
+            : "You can leave this sheet. Mingla will keep working; we’ll apply it when you come back.",
+          percent: stage.percent,
+          tone: "neutral",
+        };
+      }
+      return {
+        title: "Preparing video",
+        body: finishesWithoutYou
+          ? "Usually under a minute. You can leave this sheet—we’ll finish automatically."
+          : "Usually under a minute. You can leave this sheet and Mingla will keep working.",
+        percent: stage.percent,
+        tone: "neutral",
+      };
+    }
     case "reattaching": return { title: "Reconnecting to your video…", body: "Checking the latest progress without starting over.", percent: null, tone: "neutral" };
     case "detached": return stage.sourceAcknowledged
       ? { title: "Still working in the background", body: "We can’t refresh the status right now. Your video is safe, and Mingla will check again when you’re connected.", percent: null, tone: "warning" }
       : { title: "Upload paused — you’re offline", body: "Reconnect to continue this video from where it stopped.", percent: null, tone: "warning" };
     case "ready": return { title: "Video ready", body: "The video is ready, but the cover could not be saved. Retry saving it.", percent: null, tone: "warning" };
     case "applying": return { title: "Applying cover…", body: "The video is ready. Saving it to the right cover now.", percent: null, tone: "neutral" };
-    case "applied": return { title: "Video cover added", body: "Your new cover is ready.", percent: null, tone: "success" };
+    case "applied": return { title: "Video ready", body: "Your new cover is ready.", percent: null, tone: "success" };
     case "error": return { title: "We couldn’t finish this video", body: stage.message, percent: null, tone: "error" };
     case "picking": return { title: "Preparing video…", body: "Making a secure copy so the upload can resume if you leave.", percent: null, tone: "neutral" };
     case "idle": return { title: "", body: "", percent: null, tone: "neutral" };
@@ -2290,6 +2318,7 @@ const VideoStatusCard: React.FC<{
         </View>
       ) : null}
       <View style={styles.videoStatusActions}>
+        {stage.phase === "processing" && stage.timing === "breached" ? <Button label="Check again" accessibilityLabel="Check video preparation again" variant="secondary" size="md" onPress={onCheck} /> : null}
         {stage.phase === "detached" ? <Button label={stage.sourceAcknowledged ? "Check now" : "Resume upload"} accessibilityLabel={stage.sourceAcknowledged ? "Check video status now" : "Resume video upload"} variant="secondary" size="md" onPress={stage.sourceAcknowledged ? onCheck : onResume} /> : null}
         {stage.phase === "ready" ? <Button label="Retry saving" accessibilityLabel="Retry saving ready video cover" variant="secondary" size="md" onPress={onRetryReady} /> : null}
         {stage.phase === "error" ? <Button label="Try again" variant="secondary" size="md" onPress={onRetry} /> : null}

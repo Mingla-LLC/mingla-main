@@ -11,20 +11,20 @@ import {
 } from "../coverPickerVideoTrimUpload";
 
 // issue #3040 — tester adversarial pass. The implementor's test checks the
-// headline values (15015, 15001, 15500, 15501) against a RESTATED copy of the
+// headline values (60015, 60001, 60500, 60501) against a RESTATED copy of the
 // server rule. This file attacks different angles:
 //   1. the REAL server functions (`validateTrimRange`, `assertProcessedDerivative`)
 //      are lifted out of supabase/functions/_shared/eventCoverVideo.ts and run,
 //      so a drift in the server rule cannot hide behind a hand-copied predicate;
 //   2. every whole millisecond of the tolerance band, plus fractional picker
 //      durations on both sides of each boundary, must produce an integer that
-//      is never above 15000;
+//      is never above 60000;
 //   3. unreadable durations (NaN, Infinity, 0, negative, undefined) must never
 //      be turned into an acceptable clip by the clamp;
 //   4. native never receives the tolerance anywhere in the band;
 //   5. the trimmed branch never consumes the clamped value;
 //   6. the late-failure risk: what the transcoder webhook does with a clip that
-//      really is longer than 15 s.
+//      really is longer than 60 s.
 
 type ResolveFn = (sourceDurationMs: number, isWeb: boolean) => number;
 
@@ -69,7 +69,7 @@ const validateTrimRange = liftServerFunction<
     trimEndMs: number;
   }) => TrimVerdict
 >("validateTrimRange", {
-  MAX_DURATION_MS: 15_000,
+  MAX_DURATION_MS: 60_000,
   jsonResponse: (body: unknown, status = 200) => ({ body, status }),
 });
 
@@ -82,7 +82,7 @@ const assertProcessedDerivative = liftServerFunction<
     videoCodec?: unknown;
   }) => { ok: boolean; code?: string }
 >("assertProcessedDerivative", {
-  MAX_DURATION_MS: 15_000,
+  MAX_DURATION_MS: 60_000,
   FINAL_MAX_BYTES: 100 * 1024 * 1024,
 });
 
@@ -95,7 +95,7 @@ const webRawIntent = (pickerDuration: unknown) => {
 
 // Every rule a declared raw clip must clear before a job row exists: the
 // upload-intent source ceiling, the real validateTrimRange, and the database
-// trigger (trim_start_ms = 0, trim_end_ms = source_duration_ms, <= 15000,
+// trigger (trim_start_ms = 0, trim_end_ms = source_duration_ms, <= 60000,
 // integer columns).
 const serverRefusal = (intent: {
   sourceDurationMs: number;
@@ -106,7 +106,7 @@ const serverRefusal = (intent: {
   if (!Number.isFinite(intent.sourceDurationMs) || intent.sourceDurationMs <= 0) {
     return "source_duration_out_of_range";
   }
-  if (intent.sourceDurationMs > 15_000) return "source_duration_out_of_range";
+  if (intent.sourceDurationMs > 60_000) return "source_duration_out_of_range";
   const trim = validateTrimRange(intent);
   if (trim !== null) return trim.body.detail ?? "trim_refused";
   if (intent.trimStartMs !== 0 || intent.trimEndMs !== intent.sourceDurationMs) {
@@ -117,30 +117,30 @@ const serverRefusal = (intent: {
 
 describe("issue #3040 tester — the lifted server rule is the real one", () => {
   test("validateTrimRange refuses what the real intent endpoint refuses", () => {
-    expect(validateTrimRange({ sourceDurationMs: 15_000, trimStartMs: 0, trimEndMs: 15_000 })).toBeNull();
+    expect(validateTrimRange({ sourceDurationMs: 60_000, trimStartMs: 0, trimEndMs: 60_000 })).toBeNull();
     expect(
-      validateTrimRange({ sourceDurationMs: 15_015, trimStartMs: 0, trimEndMs: 15_015 })?.body.detail,
+      validateTrimRange({ sourceDurationMs: 60_015, trimStartMs: 0, trimEndMs: 60_015 })?.body.detail,
     ).toBe("trim_over_duration");
     expect(
-      validateTrimRange({ sourceDurationMs: 15_000, trimStartMs: 0, trimEndMs: Number.NaN })?.body.detail,
+      validateTrimRange({ sourceDurationMs: 60_000, trimStartMs: 0, trimEndMs: Number.NaN })?.body.detail,
     ).toBe("trim_invalid");
     expect(
       validateTrimRange({ sourceDurationMs: 9_000, trimStartMs: 0, trimEndMs: 9_251 })?.body.detail,
     ).toBe("trim_out_of_range");
   });
 
-  test("the database trigger still demands trim_end_ms = source_duration_ms and <= 15000", () => {
+  test("the database trigger still demands trim_end_ms = source_duration_ms and <= 60000", () => {
     const migration = repoFile(
-      "../supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql",
+      "../supabase/migrations/20271102003040_issue_3040_one_minute_video_slo.sql",
     );
-    expect(migration).toContain("NEW.source_duration_ms > 15000");
+    expect(migration).toContain("NEW.source_duration_ms > 60000");
     expect(migration).toContain("NEW.trim_start_ms <> 0 OR NEW.trim_end_ms <> NEW.source_duration_ms");
-    expect(migration).toContain("trim_end_ms-trim_start_ms <= 15000");
+    expect(migration).toContain("trim_end_ms-trim_start_ms <= 60000");
   });
 });
 
 describe("issue #3040 tester — web tolerance band, every millisecond", () => {
-  test("every whole ms from 15001 to 15500 is declared as an integer 15000 the server accepts", () => {
+  test("every whole ms from 60001 to 60500 is declared as an integer 60000 the server accepts", () => {
     const refused: Array<{ ms: number; why: string }> = [];
     for (let ms = CEILING_MS + 1; ms <= CEILING_MS + 500; ms += 1) {
       const intent = webRawIntent(ms);
@@ -152,9 +152,9 @@ describe("issue #3040 tester — web tolerance band, every millisecond", () => {
     expect(refused).toEqual([]);
   });
 
-  test("nothing in or around the band ever declares more than 15000 or a non-integer", () => {
+  test("nothing in or around the band ever declares more than 60000 or a non-integer", () => {
     const offenders: number[] = [];
-    for (let tenth = 149_900; tenth <= 155_000; tenth += 3) {
+    for (let tenth = 599_900; tenth <= 605_000; tenth += 3) {
       const declared = webRawIntent(tenth / 10).sourceDurationMs;
       if (!Number.isInteger(declared) || declared > CEILING_MS) offenders.push(tenth / 10);
     }
@@ -162,32 +162,32 @@ describe("issue #3040 tester — web tolerance band, every millisecond", () => {
   });
 
   test("fractional picker durations land on the right side of each boundary", () => {
-    // Just over the ceiling by less than half a millisecond: a real 15000.
-    expect(webRawIntent(15_000.4).sourceDurationMs).toBe(15_000);
-    // Rounds up to 15001: inside the band, clamped.
-    expect(webRawIntent(15_000.6).sourceDurationMs).toBe(15_000);
-    expect(webRawIntent(15_499.6).sourceDurationMs).toBe(15_000);
-    // Rounds DOWN to 15500: still inside the inclusive band.
-    expect(webRawIntent(15_500.4).sourceDurationMs).toBe(15_000);
-    // Rounds up to 15501: outside, left untouched so the picker refuses it.
-    expect(webRawIntent(15_500.5).sourceDurationMs).toBe(15_501);
-    expect(webRawIntent(15_501).sourceDurationMs).toBe(15_501);
-    expect(serverRefusal(webRawIntent(15_501))).toBe("source_duration_out_of_range");
+    // Just over the ceiling by less than half a millisecond: a real 60000.
+    expect(webRawIntent(60_000.4).sourceDurationMs).toBe(60_000);
+    // Rounds up to 60001: inside the band, clamped.
+    expect(webRawIntent(60_000.6).sourceDurationMs).toBe(60_000);
+    expect(webRawIntent(60_499.6).sourceDurationMs).toBe(60_000);
+    // Rounds DOWN to 60500: still inside the inclusive band.
+    expect(webRawIntent(60_500.4).sourceDurationMs).toBe(60_000);
+    // Rounds up to 60501: outside, left untouched so the picker refuses it.
+    expect(webRawIntent(60_500.5).sourceDurationMs).toBe(60_501);
+    expect(webRawIntent(60_501).sourceDurationMs).toBe(60_501);
+    expect(serverRefusal(webRawIntent(60_501))).toBe("source_duration_out_of_range");
   });
 
-  test("a duration reported in SECONDS (15.015) is treated like 15015 ms, not waved through as 15 ms", () => {
-    expect(normalizePickerDurationMs(15.015)).toBe(15_015);
-    expect(webRawIntent(15.015)).toEqual({
-      sourceDurationMs: 15_000,
+  test("a duration reported in SECONDS (60.015) is treated like 60015 ms, not waved through as 15 ms", () => {
+    expect(normalizePickerDurationMs(60.015)).toBe(60_015);
+    expect(webRawIntent(60.015)).toEqual({
+      sourceDurationMs: 60_000,
       trimStartMs: 0,
-      trimEndMs: 15_000,
+      trimEndMs: 60_000,
     });
-    expect(webRawIntent(15.5).sourceDurationMs).toBe(15_000);
-    expect(webRawIntent(15.501).sourceDurationMs).toBe(15_501);
+    expect(webRawIntent(60.5).sourceDurationMs).toBe(60_000);
+    expect(webRawIntent(60.501).sourceDurationMs).toBe(60_501);
   });
 
-  test("the clamp never shortens or lengthens a clip that was already within 15 s", () => {
-    for (const ms of [1, 999, 1_000, 8_040, 14_833, 14_999, 15_000]) {
+  test("the clamp never shortens or lengthens a clip that was already within 60 s", () => {
+    for (const ms of [1, 999, 1_000, 8_040, 14_833, 14_999, 60_000]) {
       expect(resolveRaw(ms, true)).toBe(ms);
       expect(resolveRaw(ms, false)).toBe(ms);
     }
@@ -201,7 +201,7 @@ describe("issue #3040 tester — unreadable durations are never rescued by the c
     ["-Infinity", Number.NEGATIVE_INFINITY],
     ["undefined", undefined],
     ["null", null],
-    ["a string", "15015"],
+    ["a string", "60015"],
     ["zero", 0],
   ])("%s becomes 0, which the picker reports as an unreadable duration", (_label, value) => {
     const intent = webRawIntent(value);
@@ -209,8 +209,8 @@ describe("issue #3040 tester — unreadable durations are never rescued by the c
     expect(serverRefusal(intent)).not.toBeNull();
   });
 
-  test("a negative duration stays negative and is refused, never clamped up to 15000", () => {
-    for (const ms of [-1, -15_015, -15_500]) {
+  test("a negative duration stays negative and is refused, never clamped up to 60000", () => {
+    for (const ms of [-1, -60_015, -60_500]) {
       const intent = webRawIntent(ms);
       expect(intent.sourceDurationMs).toBeLessThanOrEqual(0);
       expect(serverRefusal(intent)).not.toBeNull();
@@ -220,7 +220,7 @@ describe("issue #3040 tester — unreadable durations are never rescued by the c
   test("called directly with garbage, the resolver hands it back unchanged", () => {
     expect(Number.isNaN(resolveRaw(Number.NaN, true))).toBe(true);
     expect(resolveRaw(Number.POSITIVE_INFINITY, true)).toBe(Number.POSITIVE_INFINITY);
-    expect(resolveRaw(-15_015, true)).toBe(-15_015);
+    expect(resolveRaw(-60_015, true)).toBe(-60_015);
     expect(resolveRaw(0, true)).toBe(0);
   });
 });
@@ -244,7 +244,7 @@ describe("issue #3040 tester — native never gets the tolerance", () => {
     const decisionLine = picker.slice(trimDecision, picker.indexOf(";", trimDecision));
     expect(decisionLine).toContain("isNative && sourceDurationMs > EVENT_COVER_SOURCE_CEILING_MS");
     expect(decisionLine).not.toContain("rawClipDurationMs");
-    // The trimmer is still asked for the strict 15000, not ceiling + tolerance.
+    // The trimmer is still asked for the strict 60000, not ceiling + tolerance.
     expect(picker).toContain(
       "trimVideoWithDedicatedEditor(asset.uri, EVENT_COVER_MAX_VIDEO_DURATION_MS)",
     );
@@ -270,22 +270,22 @@ describe("issue #3040 tester — native never gets the tolerance", () => {
 
   test("a trimmed clip (trimStart > 0) is declared from the trim window, untouched by the tolerance", async () => {
     const statFile = async () => ({ exists: true, size: 2_000_000 });
-    // 15.015 s window starting 4 s in: must stay 15015 so the native refusal
-    // ("Trim it to 15 seconds or less") still fires. No tolerance on native.
+    // 60.015 s window starting 4 s in: must stay 60015 so the native refusal
+    // ("Trim it to 1 minute or less") still fires. No tolerance on native.
     const overCap = await buildTrimmedVideoUploadFile({
-      trimResult: { startTime: 4_000, endTime: 19_015, outputPath: "/tmp/a.mp4" } as never,
+      trimResult: { startTime: 4_000, endTime: 64_015, outputPath: "/tmp/a.mp4" } as never,
       statFile,
     });
-    expect(overCap.durationMs).toBe(15_015);
+    expect(overCap.durationMs).toBe(60_015);
     expect(overCap.trimStartMs).toBe(0);
-    expect(overCap.trimEndMs).toBe(15_015);
+    expect(overCap.trimEndMs).toBe(60_015);
     expect(overCap.durationMs > CEILING_MS).toBe(true);
 
     const withinCap = await buildTrimmedVideoUploadFile({
-      trimResult: { startTime: 4_000, endTime: 18_500, outputPath: "/tmp/b.mp4" } as never,
+      trimResult: { startTime: 4_000, endTime: 63_500, outputPath: "/tmp/b.mp4" } as never,
       statFile,
     });
-    expect(withinCap.durationMs).toBe(14_500);
+    expect(withinCap.durationMs).toBe(59_500);
     expect(
       serverRefusal({
         sourceDurationMs: withinCap.durationMs,
@@ -312,17 +312,17 @@ describe("issue #3040 tester — can an accepted clip fail AFTER upload?", () =>
     expect(webhook).not.toMatch(/durationMs\s*=\s*existingJob\.(trim_end_ms|source_duration_ms)/);
   });
 
-  test("a length of 15 passes; anything the provider reports above 15 fails the job late", () => {
-    // 15.015 s to 15.5 s truncated to whole seconds is 15: accepted.
-    expect(derivative(Math.floor(15.015)).ok).toBe(true);
-    expect(derivative(Math.floor(15.5)).ok).toBe(true);
-    // The hazard, pinned: if the provider ever ROUNDED 15.5 up, or reported
+  test("a length of 60 passes; anything the provider reports above 60 fails the job late", () => {
+    // 60.015 s to 60.5 s truncated to whole seconds is 60: accepted.
+    expect(derivative(Math.floor(60.015)).ok).toBe(true);
+    expect(derivative(Math.floor(60.5)).ok).toBe(true);
+    // The hazard, pinned: if the provider ever ROUNDED 60.5 up, or reported
     // fractional seconds, the same accepted clip would fail after upload.
-    expect(derivative(16)).toMatchObject({ ok: false, code: "processed_duration_over_cap" });
-    expect(derivative(15.015)).toMatchObject({ ok: false, code: "processed_duration_over_cap" });
+    expect(derivative(61)).toMatchObject({ ok: false, code: "processed_duration_over_cap" });
+    expect(derivative(60.015)).toMatchObject({ ok: false, code: "processed_duration_over_cap" });
   });
 
-  test("the tolerance stays under half a second, so even a ROUNDING provider would report 15", () => {
+  test("the tolerance stays under half a second, so a truncating provider reports 60", () => {
     const tolerance = (rules as unknown as { EVENT_COVER_WEB_SOURCE_DURATION_TOLERANCE_MS?: number })
       .EVENT_COVER_WEB_SOURCE_DURATION_TOLERANCE_MS;
     expect(typeof tolerance).toBe("number");
@@ -330,6 +330,6 @@ describe("issue #3040 tester — can an accepted clip fail AFTER upload?", () =>
     // Strictly below 500 would survive round-half-up; exactly 500 survives only
     // truncation. Recorded as a boundary the owner should know about.
     expect(tolerance as number).toBeLessThanOrEqual(500);
-    expect(Math.floor((CEILING_MS + (tolerance as number)) / 1000)).toBe(15);
+    expect(Math.floor((CEILING_MS + (tolerance as number)) / 1000)).toBe(60);
   });
 });
