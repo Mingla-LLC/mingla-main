@@ -121,6 +121,11 @@ BEGIN
       AND payload->>'conversation_id'=v_conversation::text
       AND payload->>'deep_link'='mingla-business://messages/'||v_conversation::text
   ) THEN RAISE EXCEPTION 'reply_notification_missing_or_misrouted'; END IF;
+  IF EXISTS(
+    SELECT 1 FROM public.notification_outbox
+    WHERE category_key='business.brand_group_message'
+      AND country_code IS NOT NULL
+  ) THEN RAISE EXCEPTION 'push_only_brand_group_notification_invented_sms_country'; END IF;
 
   SET LOCAL ROLE authenticated;
   PERFORM set_config('request.jwt.claim.sub',v_member::text,true);

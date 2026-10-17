@@ -121,6 +121,7 @@ DECLARE
     'issue_1389_enqueue_stay_event',
     'community_publish_announcement',
     'community_notify_roadmap_change',
+    'issue_3720_send_brand_group_message',
     'create_support_ticket'
   ];
   drain_derived text[] := ARRAY[
@@ -220,6 +221,7 @@ DECLARE
     'issue_1389_enqueue_stay_event',
     'community_publish_announcement',
     'community_notify_roadmap_change',
+    'issue_3720_send_brand_group_message',
     'create_support_ticket'
   ];
   v_missing text;
