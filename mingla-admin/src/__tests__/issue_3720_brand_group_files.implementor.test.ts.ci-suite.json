@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "mingla-admin/src/__tests__/issue_3720_brand_group_files.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3720-brand-group-files-admin",
+  "profile": "deno-1.46-stripe"
+}

@@ -5,7 +5,7 @@
  * under RLS (admins see drafts via is_admin_user() policies).
  */
 
-import { supabase } from "../lib/supabase";
+import { invokeWithRefresh, SUPABASE_ANON_KEY, SUPABASE_URL, supabase } from "../lib/supabase";
 
 function throwRpc(error) {
   if (!error) return;
@@ -254,4 +254,78 @@ export async function sendOfficialBrandGroupMessage({
   });
   if (error) throw error;
   return data;
+}
+
+const ALLOWED_FILE_MIMES = new Set([
+  "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/gif",
+  "video/mp4", "video/quicktime", "video/webm", "audio/mpeg", "audio/mp4", "audio/wav", "audio/x-m4a",
+  "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain", "text/csv", "application/csv",
+]);
+
+export async function prepareOfficialBrandGroupFiles(conversationId, files) {
+  if (!Array.isArray(files) || files.length < 1 || files.length > 10) throw new Error("Choose up to 10 files at a time.");
+  const total = files.reduce((sum, file) => sum + Number(file.size || 0), 0);
+  if (total > 250 * 1024 * 1024) throw new Error("Choose files totaling no more than 250 MB.");
+  for (const file of files) {
+    if (!ALLOWED_FILE_MIMES.has(String(file.type || "").toLowerCase())) throw new Error(`${file.name} is not a supported file type.`);
+    if (file.size < 1 || file.size > 100 * 1024 * 1024) throw new Error(`${file.name} must be between 1 byte and 100 MB.`);
+  }
+  const { data, error } = await supabase.rpc("issue_3720_prepare_brand_group_files", {
+    p_conversation_id: conversationId,
+    p_actor_mode: "support",
+    p_files: files.map((file) => ({ name: file.name, mime_type: file.type, size_bytes: file.size })),
+  });
+  if (error) throw error;
+  return (data ?? []).map((row, index) => ({
+    fileId: row.file_id,
+    storagePath: row.storage_path,
+    name: row.name,
+    mimeType: row.mime_type,
+    sizeBytes: Number(row.size_bytes),
+    file: files[index],
+  }));
+}
+
+export async function uploadOfficialBrandGroupFile(prepared, onProgress) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Your admin session expired. Sign in again to continue.");
+  const path = prepared.storagePath.split("/").map(encodeURIComponent).join("/");
+  await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${SUPABASE_URL}/storage/v1/object/brand-group-file-staging/${path}`);
+    xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
+    xhr.setRequestHeader("apikey", SUPABASE_ANON_KEY);
+    xhr.setRequestHeader("Content-Type", prepared.mimeType);
+    xhr.setRequestHeader("x-upsert", "false");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
+    };
+    xhr.onerror = () => reject(new Error("Upload interrupted. Try again."));
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) || xhr.status === 409
+      ? resolve()
+      : reject(new Error("Upload failed. Try again."));
+    xhr.send(prepared.file);
+  });
+  onProgress(1);
+}
+
+export async function finalizeOfficialBrandGroupFile(fileId) {
+  const { data, error } = await invokeWithRefresh("brand-group-files", {
+    body: { action: "finalize", file_id: fileId },
+  });
+  if (error) throw error;
+  if (data?.code) throw new Error(data.code === "DRIVE_NOT_READY" ? "The shared Drive folder is still being prepared. Try again shortly." : "Couldn't finish this file. Try again.");
+  return data?.message_id ?? null;
+}
+
+export async function openOfficialBrandGroupFile(fileId) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Your admin session expired. Sign in again to continue.");
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/brand-group-files?file_id=${encodeURIComponent(fileId)}`, {
+    headers: { Authorization: `Bearer ${session.access_token}`, apikey: SUPABASE_ANON_KEY },
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(response.status === 404 ? "You no longer have access to this file." : "Couldn't open this file.");
+  return URL.createObjectURL(await response.blob());
 }

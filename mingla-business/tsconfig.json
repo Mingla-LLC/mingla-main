@@ -20,6 +20,8 @@
       "@mingla/location-input/*": ["../packages/location-input/*"],
       "@mingla/brand-assets": ["../packages/brand-assets"],
       "@mingla/brand-assets/*": ["../packages/brand-assets/*"],
+      "@mingla/help-content": ["../packages/help-content"],
+      "@mingla/help-content/*": ["../packages/help-content/*"],
       "@mingla/card-identity": ["../packages/card-identity"],
       "@mingla/card-identity/*": ["../packages/card-identity/*"],
       "@mingla/sharing": ["../packages/sharing"],

@@ -84,6 +84,10 @@ config.resolver.extraNodeModules = {
   // ISSUE-1001 — canonical brand-asset masters (wordmark + business lockup).
   // Single committed source for every Mingla mark; mirrors are parity-checked.
   "@mingla/brand-assets": path.join(WORKSPACE_ROOT, "packages", "brand-assets"),
+  // #3720 Wave 3 — the Host app and public Help Centre consume the same
+  // reviewed guide catalogue. The package is a parity-sealed serving mirror
+  // of mingla-marketing/content/help/registry.ts.
+  "@mingla/help-content": path.join(WORKSPACE_ROOT, "packages", "help-content"),
   // #3176 — privacy-safe, RN-free search outcome vocabulary and sanitizer.
   "@mingla/search-measurement": path.join(
     WORKSPACE_ROOT,

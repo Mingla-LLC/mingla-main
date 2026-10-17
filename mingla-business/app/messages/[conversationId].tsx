@@ -12,6 +12,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandGroupSignalModal } from "../../src/components/messages/BrandGroupSignalModal";
+import { BrandGroupFilePreviewModal } from "../../src/components/messages/BrandGroupFilePreviewModal";
+import { BrandGroupFileUploadSheet } from "../../src/components/messages/BrandGroupFileUploadSheet";
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
@@ -67,6 +69,8 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
   const [watchBusy, setWatchBusy] = useState(false);
   const [signalSourceId, setSignalSourceId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [filePickerVisible, setFilePickerVisible] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{ id: string; name: string; mime: string; size: number | null } | null>(null);
 
   useEffect(() => {
     if (!group) return;
@@ -218,7 +222,20 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
                       <Text style={styles.quoteText} numberOfLines={2}>{message.reply_content}</Text>
                     </View>
                   ) : null}
-                  <Text style={[styles.messageText, mine && styles.messageTextMine]}>{message.content}</Text>
+                  {message.file_id && message.file_name && message.file_mime ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${message.file_name}`}
+                      onPress={() => setPreviewFile({ id: message.file_id!, name: message.file_name!, mime: message.file_mime!, size: message.file_size })}
+                      style={styles.fileCard}
+                    >
+                      <View style={styles.fileCardIcon}><Icon name={message.message_type === "video" ? "play" : message.message_type === "image" ? "eye" : "notebook"} size={20} color={mine ? "#101216" : accent.warm} /></View>
+                      <View style={styles.fileCardCopy}>
+                        <Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text>
+                        <Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{message.file_size ? `${(message.file_size / 1024 / 1024).toFixed(1)} MB` : "Secure shared file"} · Tap to preview</Text>
+                      </View>
+                    </Pressable>
+                  ) : <Text style={[styles.messageText, mine && styles.messageTextMine]}>{message.content}</Text>}
                   <Text style={styles.time}>{new Date(message.created_at).toLocaleString()}</Text>
                 </View>
                 <View style={[styles.actions, mine && styles.actionsMine]}>
@@ -241,6 +258,15 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
         ) : null}
         {selectedMessages.length ? <Text style={styles.selectedNote}>{selectedMessages.length} related message{selectedMessages.length === 1 ? "" : "s"} selected</Text> : null}
         <View style={styles.composerLine}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add files"
+            disabled={sending || loading || Boolean(error)}
+            onPress={() => setFilePickerVisible(true)}
+            style={styles.attachButton}
+          >
+            <Icon name="upload" size={20} color={accent.warm} />
+          </Pressable>
           <TextInput
             value={composer}
             onChangeText={setComposer}
@@ -267,6 +293,16 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
           setSelectedIds([]);
         }}
       />
+      {conversationId ? (
+        <BrandGroupFileUploadSheet
+          visible={filePickerVisible}
+          conversationId={conversationId}
+          actorMode={actorMode}
+          onClose={() => setFilePickerVisible(false)}
+          onUploaded={refresh}
+        />
+      ) : null}
+      <BrandGroupFilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
     </SafeScreen>
   );
 }
@@ -308,6 +344,12 @@ const styles = StyleSheet.create({
   quoteText: { color: "rgba(255,255,255,0.7)", fontSize: 11 },
   messageText: { color: textTokens.primary, fontSize: 15, lineHeight: 21 },
   messageTextMine: { color: "#101216" },
+  fileCard: { minWidth: 220, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  fileCardIcon: { width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.15)" },
+  fileCardCopy: { flex: 1, minWidth: 0 },
+  fileName: { color: textTokens.primary, fontSize: 14, lineHeight: 18, fontWeight: "800" },
+  fileMeta: { color: textTokens.tertiary, fontSize: 10, marginTop: 3 },
+  fileMetaMine: { color: "rgba(16,18,22,0.65)" },
   time: { color: textTokens.tertiary, fontSize: 10 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, paddingHorizontal: spacing.sm },
   actionsMine: { justifyContent: "flex-end" },
@@ -318,5 +360,6 @@ const styles = StyleSheet.create({
   contextText: { color: textTokens.secondary, fontSize: 11 },
   selectedNote: { color: "#b995ff", fontSize: 12, fontWeight: "700" },
   composerLine: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
+  attachButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileElevated },
   input: { flex: 1, minHeight: 44, maxHeight: 120, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.lg, borderWidth: 1, borderColor: glass.border.profileElevated, backgroundColor: glass.tint.profileElevated, color: textTokens.primary },
 });
