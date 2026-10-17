@@ -53,11 +53,16 @@ Deno.test("v1.4 app destinations must be ready before an immutable version is fr
   );
   assertStringIncludes(endpoint, "resolvedDestination.ready !== true");
   assertStringIncludes(endpoint, '"destination_not_ready"');
+  assertStringIncludes(endpoint, 'action === "list_destinations"');
+  assertStringIncludes(endpoint, "provider_readiness");
   const createVersion = migration.slice(
     migration.indexOf("CREATE OR REPLACE FUNCTION public.ad_plan_create_version"),
     migration.indexOf("CREATE OR REPLACE FUNCTION public.ad_plan_quote_for_brand"),
   );
   assertStringIncludes(createVersion, "ad_plan_destination_not_ready:%");
+  assertStringIncludes(migration, "'app_install'");
+  assertStringIncludes(migration, "'install'");
+  assertStringIncludes(migration, "v_store_url");
 });
 
 Deno.test("v1.4 spend worker waits for provider stop and a finality window", async () => {

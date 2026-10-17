@@ -110,6 +110,19 @@ function parseAllocations(value: unknown): RequestedAllocation[] | null {
   return rows;
 }
 
+function parsePlatformList(value: unknown): Platform[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const platforms: Platform[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (!isPlatform(item) || seen.has(item)) return null;
+    seen.add(item);
+    platforms.push(item);
+  }
+  return platforms;
+}
+
 function databaseFailure(error: { message?: string; code?: string } | null) {
   const detail = error?.message ?? "database_operation_failed";
   const status = error?.code === "P0002"
@@ -590,14 +603,40 @@ serve(async (req: Request): Promise<Response> => {
     const family = typeof body.destination_family === "string"
       ? body.destination_family.trim()
       : "";
+    const platforms = parsePlatformList(body.platforms);
+    if (!platforms) {
+      return json(
+        { error: "validation_error", detail: "destination_platforms_invalid" },
+        400,
+      );
+    }
     let query = db.from("ad_destination_registry").select(
       "id,destination_family,destination_key,title,canonical_url,result_kind,app_key,os,status,metadata",
     ).eq("status", "active").order("destination_family").order("title");
     if (family) query = query.eq("destination_family", family);
     const { data, error } = await query;
-    return error
-      ? databaseFailure(error)
-      : json({ ok: true, destinations: data ?? [] });
+    if (error) return databaseFailure(error);
+    const destinations = await Promise.all((data ?? []).map(async (row) => {
+      const { data: resolved, error: resolveError } = await db.rpc(
+        "ad_plan_destination_resolve",
+        {
+          p_destination_family: row.destination_family,
+          p_destination_key: row.destination_key,
+          p_platforms: platforms,
+        },
+      );
+      const snapshot = asRecord(resolved);
+      return {
+        ...row,
+        ready: !resolveError && snapshot?.ready === true,
+        readiness_code: resolveError?.message ?? snapshot?.code ?? null,
+        provider_readiness: Array.isArray(snapshot?.provider_readiness)
+          ? snapshot.provider_readiness
+          : [],
+        resolved_destination: resolveError ? null : snapshot,
+      };
+    }));
+    return json({ ok: true, destinations, platforms });
   }
 
   const planId = typeof body.plan_id === "string" ? body.plan_id : "";

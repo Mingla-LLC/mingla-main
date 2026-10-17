@@ -33,6 +33,7 @@ DECLARE
   v_provider_budget bigint;
   v_wallet_balance bigint;
   v_wallet_held bigint;
+  v_app_destination jsonb;
   v_failed boolean;
 BEGIN
   INSERT INTO auth.users (id, email)
@@ -148,6 +149,16 @@ BEGIN
   END;
   IF NOT v_failed THEN
     RAISE EXCEPTION 'native_app_version_bypassed_readiness_authority';
+  END IF;
+  v_app_destination := public.ad_plan_destination_resolve(
+    'explorer_app', 'ios', '["meta"]'::jsonb
+  );
+  IF v_app_destination->>'canonical_url' <> 'https://apps.apple.com/app/id6760440898'
+     OR v_app_destination->>'onelink_url' <> 'https://go.usemingla.com/w36m'
+     OR v_app_destination->>'store_identifier' <> '6760440898'
+     OR v_app_destination->>'objective' <> 'app_install'
+     OR v_app_destination->>'measurement_event' <> 'install' THEN
+    RAISE EXCEPTION 'native_app_destination_identity_incomplete:%', v_app_destination;
   END IF;
 
   -- A broader snapshot that was not explicitly accepted cannot become ready.

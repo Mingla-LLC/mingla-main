@@ -555,6 +555,9 @@ DECLARE
   v_provider text;
   v_provider_rows jsonb := '[]'::jsonb;
   v_ready boolean := true;
+  v_store_identifier text;
+  v_appsflyer_app_id text;
+  v_store_url text;
 BEGIN
   IF v_family NOT IN (
     'public_mingla_page', 'marketing_page', 'explorer_app', 'host_app'
@@ -574,7 +577,9 @@ BEGIN
     RETURN v_public || jsonb_build_object(
       'destination_family', v_family,
       'destination_key', v_key,
-      'ready', coalesce((v_public->>'ok')::boolean, false)
+      'ready', coalesce((v_public->>'ok')::boolean, false),
+      'objective', 'web_traffic',
+      'measurement_event', coalesce(v_public->>'result_kind', 'clicks')
     );
   END IF;
 
@@ -591,6 +596,20 @@ BEGIN
   END IF;
 
   IF v_registry.app_key IS NOT NULL THEN
+    SELECT t.store_identifier, t.appsflyer_app_id, p.store_url
+    INTO v_store_identifier, v_appsflyer_app_id, v_store_url
+    FROM public.ad_app_targets t
+    JOIN public.app_version_policies p
+      ON p.app_id = t.app_key AND p.platform = t.os
+    WHERE t.app_key = v_registry.app_key
+      AND t.os = v_registry.os
+      AND t.active IS TRUE;
+    IF NOT FOUND THEN
+      RETURN jsonb_build_object(
+        'ok', false, 'ready', false, 'code', 'app_target_not_registered',
+        'destination_family', v_family, 'destination_key', v_key
+      );
+    END IF;
     IF jsonb_array_length(coalesce(p_platforms, '[]'::jsonb)) = 0 THEN
       v_ready := false;
     ELSE
@@ -626,10 +645,27 @@ BEGIN
     'destination_family', v_registry.destination_family,
     'destination_key', v_registry.destination_key,
     'title', v_registry.title,
-    'canonical_url', v_registry.canonical_url,
+    'canonical_url', CASE
+      WHEN v_registry.app_key IS NOT NULL THEN v_store_url
+      ELSE v_registry.canonical_url
+    END,
+    'onelink_url', CASE
+      WHEN v_registry.app_key IS NOT NULL THEN v_registry.canonical_url
+      ELSE NULL
+    END,
     'result_kind', v_registry.result_kind,
+    'objective', CASE
+      WHEN v_registry.app_key IS NOT NULL THEN 'app_install'
+      ELSE 'web_traffic'
+    END,
+    'measurement_event', CASE
+      WHEN v_registry.app_key IS NOT NULL THEN 'install'
+      ELSE v_registry.result_kind
+    END,
     'app_key', v_registry.app_key,
     'os', v_registry.os,
+    'store_identifier', v_store_identifier,
+    'appsflyer_app_id', v_appsflyer_app_id,
     'provider_readiness', v_provider_rows
   );
 END;

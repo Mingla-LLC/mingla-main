@@ -880,12 +880,16 @@ export function CampaignBuilderPage() {
     )
       return planPreview;
 
-    const destinationFamily =
-      firstDestination.page_type === "marketing"
-        ? "marketing_page"
-        : "public_mingla_page";
+    const nativeAppDestination = ["explorer_app", "host_app"].includes(
+      firstDestination.page_type,
+    );
+    const destinationFamily = firstDestination.page_type === "marketing"
+      ? "marketing_page"
+      : nativeAppDestination
+      ? firstDestination.page_type
+      : "public_mingla_page";
     const destinationKey =
-      firstDestination.page_type === "marketing"
+      firstDestination.page_type === "marketing" || nativeAppDestination
         ? firstDestination.slug
         : [
             firstDestination.page_type,
@@ -1431,6 +1435,7 @@ export function CampaignBuilderPage() {
             <StepDestination
               destinations={destinations}
               onDestinationsChange={setDestinations}
+              platforms={effectivePlatforms}
             />
           )}
           {stepId === "audience" && (

@@ -12,7 +12,10 @@ import { AlertCard } from "../ui/Card";
 import { SearchInput } from "../ui/SearchInput";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
-import { listAdvertisablePages } from "../../services/adDestinationsService";
+import {
+  listAdvertisablePages,
+  listNativeAppDestinations,
+} from "../../services/adDestinationsService";
 
 const TABS = [
   { id: "all", label: "All" },
@@ -26,6 +29,8 @@ const TABS = [
   { id: "site", label: "Sites" },
   // toward #3697 Wave 4 — Mingla marketing landings (after Host page types; #1431 order preserved).
   { id: "marketing", label: "Marketing" },
+  { id: "explorer_app", label: "Explorer app" },
+  { id: "host_app", label: "Host app" },
 ];
 
 const PAGE_TYPE_LABEL = Object.fromEntries(
@@ -41,7 +46,11 @@ function isAvailable(row) {
   return row.availability == null || row.availability === "available";
 }
 
-export function StepDestination({ destinations, onDestinationsChange }) {
+export function StepDestination({
+  destinations,
+  onDestinationsChange,
+  platforms = [],
+}) {
   const selected = useMemo(
     () => (Array.isArray(destinations) ? destinations : []),
     [destinations],
@@ -63,23 +72,44 @@ export function StepDestination({ destinations, onDestinationsChange }) {
     setLoading(true);
     setError(null);
     try {
-      const types = tab === "all" ? null : [tab];
-      const result = await listAdvertisablePages({
-        search,
-        page,
-        types,
-        includeUnavailable,
-      });
-      setRows(result.rows);
-      setTotal(result.total ?? result.rows.length);
-      setPageSize(result.pageSize ?? 24);
+      const appFamilies = tab === "all"
+        ? ["explorer_app", "host_app"]
+        : tab === "explorer_app" || tab === "host_app"
+        ? [tab]
+        : [];
+      const includePages = tab !== "explorer_app" && tab !== "host_app";
+      const [pageResult, appRows] = await Promise.all([
+        includePages
+          ? listAdvertisablePages({
+            search,
+            page,
+            types: tab === "all" ? null : [tab],
+            includeUnavailable,
+          })
+          : Promise.resolve({ rows: [], total: 0, pageSize: 24 }),
+        appFamilies.length > 0
+          ? listNativeAppDestinations({
+            families: appFamilies,
+            platforms,
+          })
+          : Promise.resolve([]),
+      ]);
+      const normalizedSearch = search.trim().toLowerCase();
+      const visibleApps = appRows.filter((row) =>
+        (includeUnavailable || isAvailable(row)) &&
+        (!normalizedSearch || row.title.toLowerCase().includes(normalizedSearch))
+      );
+      const combined = [...visibleApps, ...pageResult.rows];
+      setRows(combined);
+      setTotal((pageResult.total ?? pageResult.rows.length) + visibleApps.length);
+      setPageSize(pageResult.pageSize ?? 24);
     } catch (err) {
       setError(err.message);
       setRows(null);
       setTotal(0);
     }
     setLoading(false);
-  }, [tab, search, page, includeUnavailable]);
+  }, [tab, search, page, includeUnavailable, platforms]);
 
   useEffect(() => {
     const t = setTimeout(load, search ? 250 : 0);
@@ -104,9 +134,9 @@ export function StepDestination({ destinations, onDestinationsChange }) {
       <div>
         <h2 className="text-lg font-semibold">Where are we sending people?</h2>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Pick one page for this campaign. Every public page type is listed from the same
-          source the server uses. Unavailable pages stay visible when you ask, but cannot be
-          selected. For another page, create a separate campaign with its own budget.
+          Pick one public or Marketing page, or a provider-native Explorer/Host app target.
+          App targets become selectable only when every chosen provider has fresh exact
+          app, measurement, funding, and certification evidence.
         </p>
       </div>
 
@@ -140,7 +170,7 @@ export function StepDestination({ destinations, onDestinationsChange }) {
               setSearch(e.target.value);
               setPage(0);
             }}
-            placeholder="Search pages…"
+            placeholder="Search destinations…"
           />
         </div>
         <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-secondary)] cursor-pointer select-none">
@@ -275,8 +305,9 @@ export function StepDestination({ destinations, onDestinationsChange }) {
             ))}
           </ul>
           <p className="text-[var(--color-text-secondary)]">
-            Every channel&apos;s ad points at this public page. The app-or-web smart link is built
-            server-side and used only inside Google&apos;s tracking template.
+            {selected[0]?.page_type?.endsWith("_app")
+              ? "Every selected channel receives its provider-native app identity and install measurement event. The store URL is shown here; OneLink remains attribution metadata, not a web-traffic substitute."
+              : "Every channel’s ad points at this public page. Smart links remain attribution metadata and never replace the visible destination."}
           </p>
         </div>
       )}
