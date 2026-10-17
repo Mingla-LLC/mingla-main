@@ -3,6 +3,7 @@
 -- MINGLA-INVARIANT: I-3697-NO-SILENT-TARGETING-WIDENING | issue #3697 | A broader provider target cannot become ready without an explicit acceptance frozen into that version.
 -- MINGLA-INVARIANT: I-3697-PROVIDER-CONFIRMED-SETTLEMENT | issue #3697 | Held Host credit cannot be released until provider stop and final spend are recorded and the finality window closes.
 -- MINGLA-INVARIANT: I-3697-PAID-MEDIA-RIGHTS | issue #3697 | Every provider-bound plan freezes an actor-bound rights attestation; Mingla house reuse remains separately prohibited.
+-- MINGLA-INVARIANT: I-3697-NON-ADDITIVE-ESTIMATES | issue #3697 | Provider audience estimates remain per-platform and cannot store additive or combined reach totals.
 
 \set ON_ERROR_STOP on
 BEGIN;
