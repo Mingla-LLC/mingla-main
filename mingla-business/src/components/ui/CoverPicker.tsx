@@ -2241,7 +2241,7 @@ const videoProjectionCopy = (
       : { title: "Upload paused — you’re offline", body: "Reconnect to continue this video from where it stopped.", percent: null, tone: "warning" };
     case "ready": return { title: "Video ready", body: "The video is ready, but the cover could not be saved. Retry saving it.", percent: null, tone: "warning" };
     case "applying": return { title: "Applying cover…", body: "The video is ready. Saving it to the right cover now.", percent: null, tone: "neutral" };
-    case "applied": return { title: "Video ready", body: "Your new cover is ready.", percent: null, tone: "success" };
+    case "applied": return { title: "Video cover added", body: "Your new cover is ready.", percent: null, tone: "success" };
     case "error": return { title: "We couldn’t finish this video", body: stage.message, percent: null, tone: "error" };
     case "picking": return { title: "Preparing video…", body: "Making a secure copy so the upload can resume if you leave.", percent: null, tone: "neutral" };
     case "idle": return { title: "", body: "", percent: null, tone: "neutral" };
