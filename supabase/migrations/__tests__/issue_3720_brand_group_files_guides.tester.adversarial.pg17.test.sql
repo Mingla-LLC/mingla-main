@@ -140,7 +140,9 @@ BEGIN
      OR has_function_privilege('authenticated','public.issue_3720_claim_stale_brand_group_file()','EXECUTE') THEN
     RAISE EXCEPTION 'file_rpc_permission_boundary_broken';
   END IF;
-  IF md5((SELECT prosrc FROM pg_proc WHERE oid='public.is_admin_user()'::regprocedure))<>'82e85b947e9f0669f47e4c8fe9d2e385' THEN
+  -- Baseline replay has its own canonical body. The migration separately captures
+  -- and compares pg_get_functiondef() before/after so production keeps its bytes.
+  IF md5((SELECT prosrc FROM pg_proc WHERE oid='public.is_admin_user()'::regprocedure))<>'dc5465a20a4246c6921be0469e261a8b' THEN
     RAISE EXCEPTION 'protected_is_admin_user_changed';
   END IF;
   IF (SELECT pg_get_function_result('public.issue_3720_list_brand_group_messages(uuid,integer,timestamptz)'::regprocedure)) LIKE '%provider%' THEN
