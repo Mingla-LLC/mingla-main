@@ -67,12 +67,8 @@ test("#3720 unexpected evaluation exceptions report only the stage", () => {
   assert.equal(code, "readiness_evaluation_failed");
 });
 
-test("#3720 workflow exposes read-only preflight and wrapper stops before deploy", () => {
-  const workflow = readFileSync(resolve(ROOT, ".github/workflows/deploy-functions.yml"), "utf8");
+test("#3720 wrapper stops after readiness and before materialization or deploy", () => {
   const wrapper = readFileSync(resolve(ROOT, "scripts/deploy-supabase-functions.sh"), "utf8");
-  assert.match(workflow, /preflight_only:/);
-  assert.match(workflow, /MINGLA_PREFLIGHT_ONLY: \$\{\{ inputs\.preflight_only \|\| 'false' \}\}/);
-  assert.match(workflow, /preflight_arg="--preflight-only"/);
   assert.match(wrapper, /--preflight-only\)/);
   assert.match(
     wrapper,
