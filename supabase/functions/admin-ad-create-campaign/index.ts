@@ -523,11 +523,27 @@ serve(async (req: Request): Promise<Response> => {
         400,
       );
     }
-    const { data: canManage, error: manageError } = await supabase.rpc(
-      "biz_can_manage_payments_for_brand",
-      { p_brand_id: requestedBrandId, p_user_id: user.id },
+    // Issue #3697 v1.4: provider creation is a launch authority, not generic
+    // payout authority. A validate-only probe creates nothing, so it is shared
+    // by the independent plan, fund and launch roles that need it before their
+    // own action. The immutable plan/funding/review gates remain authoritative.
+    const requiredHostActions = body.validate_only === true
+      ? ["plan", "fund", "launch"]
+      : ["launch"];
+    const permissionChecks = await Promise.all(
+      requiredHostActions.map((action) =>
+        supabase.rpc("ad_can_host_action", {
+          p_brand_id: requestedBrandId,
+          p_user_id: user.id,
+          p_action: action,
+        })
+      ),
     );
-    if (manageError || canManage !== true) {
+    if (
+      permissionChecks.every((check) =>
+        check.error !== null || check.data !== true
+      )
+    ) {
       return json({ error: "forbidden", detail: "permission_denied" }, 403);
     }
   } else if (!adminRow) {
@@ -3263,7 +3279,9 @@ serve(async (req: Request): Promise<Response> => {
       : "";
     let videoIdT = "";
     // ISSUE-997 C: SINGLE_VIDEO for a prepared video, else SINGLE_IMAGE (#866).
-    const adFormatT = creativeKindT === "video" ? "SINGLE_VIDEO" : "SINGLE_IMAGE";
+    const adFormatT = creativeKindT === "video"
+      ? "SINGLE_VIDEO"
+      : "SINGLE_IMAGE";
     const creativeLibraryIdT = typeof creativeT.creative_library_id === "string"
       ? creativeT.creative_library_id.trim()
       : "";
@@ -3343,7 +3361,9 @@ serve(async (req: Request): Promise<Response> => {
       // 5–60 s ADVERTISING-POLICY duration gate (Seth-approved; T-4). A longer
       // video uploads/creates fine, then dies in review while budget burns.
       if (typeof libCreativeVT.duration_seconds === "number") {
-        const durationCheckVT = validateTikTokVideoDuration(libCreativeVT.duration_seconds);
+        const durationCheckVT = validateTikTokVideoDuration(
+          libCreativeVT.duration_seconds,
+        );
         if (!durationCheckVT.ok) {
           return json({
             error: durationCheckVT.detail,

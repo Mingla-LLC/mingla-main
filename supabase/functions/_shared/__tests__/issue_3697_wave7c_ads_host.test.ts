@@ -128,7 +128,13 @@ Deno.test("Wave 7c: host-ad-campaign edge + ad-credit withdraw surface exist", a
   const builder = await Deno.readTextFile(
     new URL("../../admin-ad-create-campaign/index.ts", import.meta.url),
   );
-  assert(builder.includes("biz_can_manage_payments_for_brand"));
+  // [TEST-MOD-APPROVED #3697] v1.4 keeps plan/fund/launch independent:
+  // validate-only accepts any of those roles, while real provider creation is
+  // launch-authorized and never inherits generic payout authority.
+  assert(builder.includes('supabase.rpc("ad_can_host_action"'));
+  assert(builder.includes('["plan", "fund", "launch"]'));
+  assert(builder.includes('["launch"]'));
+  assertEquals(builder.includes("biz_can_manage_payments_for_brand"), false);
   assert(builder.includes("destination_brand_mismatch"));
   assert(builder.includes("creative_brand_mismatch"));
   assert(builder.includes("host_video_creative_required"));
