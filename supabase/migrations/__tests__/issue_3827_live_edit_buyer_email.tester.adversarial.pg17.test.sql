@@ -1226,6 +1226,7 @@ DECLARE
   f record;
   v_all text;
   v_result jsonb;
+  v_sensitive_pattern constant text := 'Secret Lane|Hidden Row|Veiled Yard|Lantern Mews|Quiet Alley|Velvet Cellar|Glasshouse Loft|Moonlit Annex|Copper Still|Orchid Vault|place-one|place-two|place-three|"(lat|lng)"[[:space:]]*:';
 BEGIN
   SELECT * INTO f FROM pg_temp.t3827e_experience('te02');
   PERFORM pg_temp.t3827e_buyer(f.v_event, f.v_tier, 'ada@example.test');
@@ -1249,8 +1250,19 @@ BEGIN
   UPDATE public.event_edit_notices SET send_after = now() - interval '1 second'
    WHERE event_id = f.v_event AND state = 'scheduled';
   PERFORM public.event_edit_notice_fanout(20);
+  -- Pin the wall-clock shape that exposed the old false positive: the previous
+  -- whole-row regex treated a timestamp at second 40.7xx as a leaked latitude.
+  UPDATE public.event_edit_notices
+     SET created_at = '2026-10-17 21:59:40.761025+00'::timestamptz
+   WHERE event_id = f.v_event AND state = 'fanned_out';
   v_all := pg_temp.t3827e_everything(f.v_event);
-  IF v_all ~* 'Secret Lane|Hidden Row|Veiled Yard|Lantern Mews|Quiet Alley|Velvet Cellar|Glasshouse Loft|Moonlit Annex|Copper Still|Orchid Vault|place-one|place-two|place-three|40\.7' THEN
+  IF v_all NOT LIKE '%21:59:40.761025%' THEN
+    RAISE EXCEPTION 'TE-02 fixture FAIL: the timestamp/coordinate collision was not exercised: %', v_all;
+  END IF;
+  IF '{"lat": 40.71001, "lng": -73.95001}' !~* v_sensitive_pattern THEN
+    RAISE EXCEPTION 'TE-02 fixture FAIL: the privacy matcher no longer recognizes coordinate fields';
+  END IF;
+  IF v_all ~* v_sensitive_pattern THEN
     RAISE EXCEPTION 'TE-02 FAIL: a stop address, place name, place id or coordinate is stored or queued: %', v_all;
   END IF;
   IF (SELECT count(*) FROM public.event_edit_notices WHERE event_id = f.v_event) <> 3
