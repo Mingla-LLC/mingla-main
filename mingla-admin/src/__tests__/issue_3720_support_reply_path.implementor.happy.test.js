@@ -1,7 +1,7 @@
 // #3720 Phase 0 Slice A — admin Support desk reply path (happy).
 //
 // Pins: handleReply sends content through support-send only; composer states
-// "Replying as Veronica from Mingla"; no notifyOnly / direct messages insert
+// actual-person Support attribution; no notifyOnly / direct messages insert
 // in handleReply.
 //
 // Fails-on-revert: restoring notifyOnly or messages.insert in handleReply.
@@ -21,7 +21,8 @@ function read(rel) {
 }
 
 describe("#3720 admin support reply path (happy)", () => {
-  it("handleReply sends content via support-send and shows Veronica composer note", () => {
+  // [TEST-MOD-APPROVED #3720] Wave 2 removes the fictional Support identity.
+  it("handleReply sends content via support-send and explains actual-person attribution", () => {
     const page = read("src/pages/SupportDeskPage.jsx");
     const replyMatch = page.match(/const handleReply[\s\S]*?\}, \[/);
     assert.ok(replyMatch, "handleReply must exist");
@@ -29,6 +30,6 @@ describe("#3720 admin support reply path (happy)", () => {
     assert.match(replyMatch[0], /content:\s*body/);
     assert.equal(replyMatch[0].includes("notifyOnly"), false);
     assert.equal(replyMatch[0].includes('from("messages")'), false);
-    assert.match(page, /Replying as Veronica from Mingla/);
+    assert.match(page, /your real staff name · Mingla Support/);
   });
 });

@@ -13,7 +13,7 @@
  *   - `back`  — `chevL` IconChrome + optional title.
  *   - `none`  — no left content (renders empty View for layout balance).
  *
- * Right slot is configurable; defaults to a search IconChrome + bell
+ * Right slot is configurable; defaults to a Messages IconChrome + bell
  * IconChrome with badge. Caller passes any `React.ReactNode`.
  *
  * Wrapper uses `GlassChrome` with `intensity="cardElevated"` (premium
@@ -42,10 +42,7 @@ import { isCurrentBrandPending } from "../../utils/currentBrandPending";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useAuth } from "../../context/AuthContext";
 import { useBusinessNotificationsInbox } from "../../hooks/useBusinessNotifications";
-// META-ORCH-1073 Sub-A — the TopBar search icon opens the global search sheet
-// (mounted once at the (tabs) root). `getState().open()` avoids subscribing
-// the whole TopBar to the sheet store. The bell stays unwired (out of scope).
-import { useGlobalSearchSheet } from "../../hooks/useGlobalSearchSheet";
+import { useBrandGroups } from "../../hooks/useBrandGroups";
 
 import { GlassChrome } from "./GlassChrome";
 import { Icon } from "./Icon";
@@ -128,7 +125,7 @@ const truncate = (value: string, max: number): string =>
   value.length <= max ? value : `${value.slice(0, max - 1)}…`;
 
 /**
- * Default right-slot icons (search + bell). Rendered WITHOUT outer View
+ * Default right-slot icons (Messages + bell). Rendered WITHOUT outer View
  * wrap so the parent render branch can compose with `extraRightSlot` in
  * one flex row. The wrapping `<View style={styles.rightCluster}>` lives
  * in the TopBar render branch below.
@@ -145,15 +142,17 @@ const DefaultRightSlotInner: React.FC<{ unreadCount: number | undefined }> = ({
   const { unreadCount: derivedUnread } = useBusinessNotificationsInbox(
     user?.id ?? null,
   );
+  const { unreadCount: messageUnread } = useBrandGroups();
   const badge = unreadCount ?? derivedUnread;
   return (
     <>
-      {/* META-ORCH-1073 Sub-A: the search icon opens the global search sheet. */}
       <IconChrome
-        icon="search"
+        icon="chat"
         size={36}
-        accessibilityLabel="Search"
-        onPress={() => useGlobalSearchSheet.getState().open()}
+        badge={messageUnread}
+        badgeCap={9}
+        accessibilityLabel={messageUnread > 0 ? `Messages, ${messageUnread} unread` : "Messages"}
+        onPress={() => router.push("/messages" as never)}
       />
       {/* META-ORCH-1074 Sub-C: the bell opens the notifications inbox route.
           Badge caps at 9+ (operator noise reduction; other call-sites keep 99). */}

@@ -118,6 +118,10 @@ export function parseBusinessDeepLink(
       const ticketId = rest[0];
       return ticketId ? `/support/${ticketId}` : null;
     }
+    case "messages": {
+      const conversationId = rest[0];
+      return conversationId ? `/messages/${conversationId}` : "/messages";
+    }
     case "community": {
       const sub = rest[0];
       if (sub === "roadmap") {
@@ -226,6 +230,11 @@ export function resolveBusinessNavTarget(
         | string
         | undefined;
       return ticketId ? `/support/${ticketId}` : ACCOUNT_FALLBACK;
+    }
+    case "business.brand_group_message": {
+      const conversationId = (data.conversationId ?? data.conversation_id ??
+        data.relatedId) as string | undefined;
+      return conversationId ? `/messages/${conversationId}` : "/messages";
     }
 
     // Issue #1791 (SPEC #1788 P-54): the two venue-order types. Both carry a

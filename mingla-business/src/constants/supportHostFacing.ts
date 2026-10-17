@@ -1,12 +1,12 @@
 /**
  * #3720 — Host-facing support identity.
  *
- * Every host-visible staff surface shows this name. The admin audit log still
- * records the real agent. Push titles for staff→host replies use the same
- * string (mirrored in supabase/functions/_shared/supportHostFacing.ts).
+ * Historical messages that predate real-person attribution use this neutral
+ * fallback. New replies snapshot the authenticated staff member's display name
+ * and render `Actual name · Mingla Support` in both the thread and push.
  */
 
-export const SUPPORT_HOST_FACING_AGENT = "Veronica from Mingla" as const;
+export const SUPPORT_HOST_FACING_AGENT = "Mingla Support" as const;
 
 /** Help Centre videos (Guides) — opens in the system browser. */
 export const HELP_CENTRE_URL = "https://usemingla.com/help" as const;
