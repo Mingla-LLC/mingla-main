@@ -1,0 +1,725 @@
+/**
+ * Issue #3697 v1.4 — shared Admin, Host and Ari ad-plan control plane.
+ *
+ * This endpoint owns the resumable draft/version/targeting/funding/review/
+ * confirmation lifecycle. It never creates provider objects. Provider create
+ * endpoints must consume the immutable plan version, SHA-256 and per-platform
+ * allocation returned here.
+ */
+
+// @ts-ignore — Deno ESM import; types resolved at runtime.
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+// @ts-ignore — Deno ESM import; types resolved at runtime.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isPlatform } from "../_shared/adChannel.ts";
+import {
+  type AdAudienceIntent,
+  compileTargetingPlan,
+  type ProviderTargetingRefs,
+} from "../_shared/adTargetingCompiler.ts";
+import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
+import type { Platform } from "../_shared/adChannelCore.ts";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_CURRENCY_RE = /^[A-Z]{3}$/;
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, idempotency-key",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+// deno-lint-ignore no-explicit-any
+type Db = any;
+type User = { id: string; email?: string | null };
+type Plan = {
+  id: string;
+  client_kind: "admin" | "host" | "ari";
+  owner_kind: "mingla" | "host";
+  brand_id: string | null;
+  current_version_id: string | null;
+  state: string;
+};
+type Version = {
+  id: string;
+  plan_id: string;
+  plan_hash: string;
+  canonical_plan: Record<string, unknown>;
+  host_currency: string;
+  host_budget_cents: number;
+};
+type RequestedAllocation = {
+  platform: Platform;
+  connection_id: string;
+  host_budget_cents: number;
+};
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function positiveMinor(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : null;
+}
+
+function parseAllocations(value: unknown): RequestedAllocation[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const rows: RequestedAllocation[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    const row = asRecord(raw);
+    const platform = row?.platform;
+    const connectionId = row?.connection_id;
+    const budget = positiveMinor(row?.host_budget_cents);
+    if (
+      !isPlatform(platform) || typeof connectionId !== "string" ||
+      !UUID_RE.test(connectionId) || budget === null || seen.has(platform)
+    ) return null;
+    seen.add(platform);
+    rows.push({
+      platform,
+      connection_id: connectionId,
+      host_budget_cents: budget,
+    });
+  }
+  return rows;
+}
+
+function databaseFailure(error: { message?: string; code?: string } | null) {
+  const detail = error?.message ?? "database_operation_failed";
+  const status = error?.code === "P0002"
+    ? 404
+    : error?.code === "22023"
+    ? 422
+    : error?.code === "55000"
+    ? 409
+    : 502;
+  return json({ error: "plan_operation_failed", detail }, status);
+}
+
+async function isActiveAdmin(db: Db, user: User): Promise<boolean> {
+  if (!user.email) return false;
+  const { data } = await db.from("admin_users").select("id")
+    .eq("email", user.email).eq("status", "active").maybeSingle();
+  return data !== null;
+}
+
+async function loadPlan(db: Db, planId: string): Promise<Plan | null> {
+  if (!UUID_RE.test(planId)) return null;
+  const { data } = await db.from("ad_plans").select("*").eq("id", planId)
+    .maybeSingle();
+  return data as Plan | null;
+}
+
+async function loadVersion(db: Db, versionId: string): Promise<Version | null> {
+  if (!UUID_RE.test(versionId)) return null;
+  const { data } = await db.from("ad_plan_versions").select("*")
+    .eq("id", versionId).maybeSingle();
+  return data as Version | null;
+}
+
+async function canAccessPlan(
+  db: Db,
+  user: User,
+  plan: Plan,
+  permission: "read" | "write",
+): Promise<boolean> {
+  if (plan.owner_kind === "mingla") return isActiveAdmin(db, user);
+  if (!plan.brand_id) return false;
+  const rpc = permission === "read"
+    ? "biz_can_view_payments_for_brand"
+    : "biz_can_manage_payments_for_brand";
+  const { data, error } = await db.rpc(rpc, {
+    p_brand_id: plan.brand_id,
+    p_user_id: user.id,
+  });
+  return !error && data === true;
+}
+
+async function authorizeVersion(
+  db: Db,
+  user: User,
+  versionId: string,
+  permission: "read" | "write",
+): Promise<{ plan: Plan; version: Version } | null> {
+  const version = await loadVersion(db, versionId);
+  if (!version) return null;
+  const plan = await loadPlan(db, version.plan_id);
+  if (!plan || !(await canAccessPlan(db, user, plan, permission))) return null;
+  return { plan, version };
+}
+
+function canonicalizePlan(
+  input: Record<string, unknown>,
+  platforms: Platform[],
+  money: Record<string, unknown>,
+): Record<string, unknown> {
+  const canonical = structuredClone(input);
+  delete canonical.currency;
+  delete canonical.host_currency;
+  delete canonical.provider_currency;
+  delete canonical.provider_budget_cents;
+  canonical.platforms = platforms;
+  canonical.money = money;
+  return canonical;
+}
+
+async function normalizedAllocations(
+  db: Db,
+  plan: Plan,
+  requested: RequestedAllocation[],
+): Promise<
+  | { ok: true; hostCurrency: string; rows: Record<string, unknown>[] }
+  | { ok: false; status: number; detail: string }
+> {
+  if (plan.owner_kind === "host") {
+    if (!plan.brand_id) {
+      return { ok: false, status: 422, detail: "host_brand_required" };
+    }
+    const authority = await resolveAdBrandCurrency(db, plan.brand_id);
+    if (!authority.ok) {
+      return { ok: false, status: 409, detail: authority.detail };
+    }
+    const rows: Record<string, unknown>[] = [];
+    for (const allocation of requested) {
+      const { data, error } = await db.rpc("ad_plan_quote_for_brand", {
+        p_brand_id: plan.brand_id,
+        p_provider_connection_id: allocation.connection_id,
+        p_host_budget_cents: allocation.host_budget_cents,
+      });
+      if (error || !data) {
+        return {
+          ok: false,
+          status: 422,
+          detail: error?.message ?? "provider_quote_unavailable",
+        };
+      }
+      rows.push({
+        platform: allocation.platform,
+        connection_id: allocation.connection_id,
+        host_budget_cents: allocation.host_budget_cents,
+        provider_budget_cents: data.provider_budget_cents,
+        fx_snapshot_id: data.fx_snapshot_id,
+      });
+    }
+    return { ok: true, hostCurrency: authority.currency, rows };
+  }
+
+  const ids = requested.map((row) => row.connection_id);
+  const { data, error } = await db.from("ad_connections")
+    .select("id, platform, currency, connected, status").in("id", ids);
+  if (error) {
+    return { ok: false, status: 502, detail: "connection_lookup_failed" };
+  }
+  const byId = new Map(
+    ((data ?? []) as Array<Record<string, unknown>>).map((
+      row,
+    ) => [row.id, row]),
+  );
+  const currencies = new Set<string>();
+  const rows: Record<string, unknown>[] = [];
+  for (const allocation of requested) {
+    const connection = byId.get(allocation.connection_id);
+    const currency = typeof connection?.currency === "string"
+      ? connection.currency.trim().toUpperCase()
+      : "";
+    if (
+      !connection || connection.platform !== allocation.platform ||
+      connection.connected !== true || connection.status !== "connected" ||
+      !ISO_CURRENCY_RE.test(currency)
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        detail: `provider_connection_unavailable:${allocation.platform}`,
+      };
+    }
+    currencies.add(currency);
+    rows.push({
+      platform: allocation.platform,
+      connection_id: allocation.connection_id,
+      host_budget_cents: allocation.host_budget_cents,
+      provider_budget_cents: allocation.host_budget_cents,
+      fx_snapshot_id: null,
+    });
+  }
+  if (currencies.size !== 1) {
+    return {
+      ok: false,
+      status: 422,
+      detail: "admin_currency_split_required",
+    };
+  }
+  return { ok: true, hostCurrency: [...currencies][0], rows };
+}
+
+async function getPlanAggregate(db: Db, plan: Plan) {
+  const version = plan.current_version_id
+    ? await loadVersion(db, plan.current_version_id)
+    : null;
+  if (!version) return { plan, version: null };
+  const [
+    allocations,
+    targeting,
+    reviews,
+    confirmations,
+    hold,
+    attempts,
+    campaigns,
+  ] = await Promise.all([
+    db.from("ad_plan_provider_allocations").select("*")
+      .eq("plan_version_id", version.id).order("platform"),
+    db.from("ad_plan_targeting_snapshots").select("*")
+      .eq("plan_version_id", version.id).order("platform"),
+    db.from("ad_plan_reviews").select("*").eq("plan_version_id", version.id)
+      .order("decided_at", { ascending: false }),
+    db.from("ad_plan_confirmations").select("*")
+      .eq("plan_version_id", version.id),
+    db.from("ad_plan_funding_holds").select("*")
+      .eq("plan_version_id", version.id).maybeSingle(),
+    db.from("ad_provider_attempts").select("*").eq(
+      "plan_version_id",
+      version.id,
+    )
+      .order("created_at"),
+    db.from("ad_campaigns").select("*").eq("plan_version_id", version.id)
+      .order("platform"),
+  ]);
+  const campaignIds = (campaigns.data ?? []).map((row: { id: string }) =>
+    row.id
+  );
+  const settlements = campaignIds.length > 0
+    ? await db.from("ad_campaign_settlements").select("*").in(
+      "campaign_id",
+      campaignIds,
+    )
+    : { data: [] };
+  return {
+    plan,
+    version,
+    provider_allocations: allocations.data ?? [],
+    targeting_snapshots: targeting.data ?? [],
+    reviews: reviews.data ?? [],
+    confirmations: confirmations.data ?? [],
+    funding_hold: hold.data ?? null,
+    provider_attempts: attempts.data ?? [],
+    campaigns: campaigns.data ?? [],
+    settlements: settlements.data ?? [],
+  };
+}
+
+serve(async (req: Request): Promise<Response> => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json() as Record<string, unknown>;
+  } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader) return json({ error: "unauthorized" }, 401);
+  const db = createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const token = authHeader.replace(/^Bearer\s+/i, "");
+  const { data: { user }, error: authError } = await db.auth.getUser(token);
+  if (authError || !user) return json({ error: "unauthorized" }, 401);
+  const actor = user as User;
+  const action = typeof body.action === "string" ? body.action : "";
+
+  if (action === "open") {
+    const clientKind = body.client_kind;
+    const ownerKind = body.owner_kind;
+    const brandId = typeof body.brand_id === "string" ? body.brand_id : null;
+    if (
+      !["admin", "host", "ari"].includes(String(clientKind)) ||
+      !["mingla", "host"].includes(String(ownerKind)) ||
+      typeof body.destination_family !== "string" ||
+      typeof body.destination_key !== "string"
+    ) {
+      return json(
+        { error: "validation_error", detail: "plan_open_invalid" },
+        400,
+      );
+    }
+    if (ownerKind === "mingla") {
+      if (!(await isActiveAdmin(db, actor))) {
+        return json({ error: "forbidden" }, 403);
+      }
+    } else {
+      if (!brandId || !UUID_RE.test(brandId)) {
+        return json(
+          { error: "validation_error", detail: "brand_id_invalid" },
+          400,
+        );
+      }
+      const { data: allowed } = await db.rpc(
+        "biz_can_manage_payments_for_brand",
+        {
+          p_brand_id: brandId,
+          p_user_id: actor.id,
+        },
+      );
+      if (allowed !== true) return json({ error: "forbidden" }, 403);
+    }
+    const riskReasons =
+      ownerKind === "mingla" && Array.isArray(body.risk_reasons)
+        ? body.risk_reasons
+        : [];
+    const { data, error } = await db.rpc("ad_plan_open", {
+      p_client_kind: clientKind,
+      p_owner_kind: ownerKind,
+      p_brand_id: brandId,
+      p_destination_family: body.destination_family,
+      p_destination_key: body.destination_key,
+      p_risk_reasons: riskReasons,
+      p_actor_id: actor.id,
+    });
+    return error ? databaseFailure(error) : json({ ok: true, plan: data }, 201);
+  }
+
+  if (action === "list") {
+    const brandId = typeof body.brand_id === "string" ? body.brand_id : null;
+    let query = db.from("ad_plans").select("*").order("updated_at", {
+      ascending: false,
+    }).limit(100);
+    if (brandId) {
+      if (!UUID_RE.test(brandId)) {
+        return json(
+          { error: "validation_error", detail: "brand_id_invalid" },
+          400,
+        );
+      }
+      const { data: allowed } = await db.rpc(
+        "biz_can_view_payments_for_brand",
+        {
+          p_brand_id: brandId,
+          p_user_id: actor.id,
+        },
+      );
+      if (allowed !== true) return json({ error: "forbidden" }, 403);
+      query = query.eq("brand_id", brandId).eq("owner_kind", "host");
+    } else if (!(await isActiveAdmin(db, actor))) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const { data, error } = await query;
+    return error
+      ? databaseFailure(error)
+      : json({ ok: true, plans: data ?? [] });
+  }
+
+  const planId = typeof body.plan_id === "string" ? body.plan_id : "";
+  const versionId = typeof body.plan_version_id === "string"
+    ? body.plan_version_id
+    : "";
+
+  if (action === "get") {
+    const plan = await loadPlan(db, planId);
+    if (!plan) return json({ error: "not_found" }, 404);
+    if (!(await canAccessPlan(db, actor, plan, "read"))) {
+      return json({ error: "forbidden" }, 403);
+    }
+    return json({ ok: true, ...(await getPlanAggregate(db, plan)) });
+  }
+
+  if (action === "create_version") {
+    const plan = await loadPlan(db, planId);
+    const requested = parseAllocations(body.provider_allocations);
+    const canonicalInput = asRecord(body.canonical_plan);
+    if (!plan || !requested || !canonicalInput) {
+      return json(
+        { error: "validation_error", detail: "plan_version_invalid" },
+        400,
+      );
+    }
+    if (!(await canAccessPlan(db, actor, plan, "write"))) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const normalized = await normalizedAllocations(db, plan, requested);
+    if (!normalized.ok) {
+      return json(
+        { error: "plan_preflight_failed", detail: normalized.detail },
+        normalized.status,
+      );
+    }
+    const hostBudget = requested.reduce(
+      (sum, row) => sum + row.host_budget_cents,
+      0,
+    );
+    if (!Number.isSafeInteger(hostBudget)) {
+      return json(
+        { error: "validation_error", detail: "budget_overflow" },
+        400,
+      );
+    }
+    const platforms = requested.map((row) => row.platform);
+    const canonical = canonicalizePlan(canonicalInput, platforms, {
+      authority: plan.owner_kind === "host"
+        ? "brand_settlement"
+        : "provider_account",
+      host_currency: normalized.hostCurrency,
+      host_budget_cents: hostBudget,
+    });
+    const { data, error } = await db.rpc("ad_plan_create_version", {
+      p_plan_id: plan.id,
+      p_canonical_plan: canonical,
+      p_host_budget_cents: hostBudget,
+      p_host_currency: normalized.hostCurrency,
+      p_provider_allocations: normalized.rows,
+      p_actor_id: actor.id,
+    });
+    if (error) return databaseFailure(error);
+    return json({
+      ok: true,
+      version: data,
+      provider_allocations: normalized.rows,
+    }, 201);
+  }
+
+  if (action === "freeze_targeting") {
+    const authorized = await authorizeVersion(db, actor, versionId, "write");
+    const intent = asRecord(body.audience_intent) as AdAudienceIntent | null;
+    const refsByPlatform = asRecord(body.refs_by_platform) as
+      | Partial<Record<Platform, ProviderTargetingRefs>>
+      | null;
+    if (!authorized) return json({ error: "forbidden_or_not_found" }, 403);
+    if (!intent || !Array.isArray(intent.countries)) {
+      return json({
+        error: "validation_error",
+        detail: "audience_intent_invalid",
+      }, 400);
+    }
+    const { plan, version } = authorized;
+    if (plan.current_version_id !== version.id) {
+      return json(
+        { error: "plan_conflict", detail: "plan_version_stale" },
+        409,
+      );
+    }
+    const rawPlatforms = version.canonical_plan.platforms;
+    if (
+      !Array.isArray(rawPlatforms) ||
+      rawPlatforms.some((item) => !isPlatform(item))
+    ) {
+      return json(
+        { error: "plan_conflict", detail: "plan_platforms_invalid" },
+        409,
+      );
+    }
+    const platforms = rawPlatforms as Platform[];
+    const compiled = compileTargetingPlan({
+      platforms,
+      intent,
+      refsByPlatform: refsByPlatform ?? {},
+    });
+    const broaderAcceptance =
+      asRecord(version.canonical_plan.broader_acceptance) ?? {};
+    const frozenAt = new Date().toISOString();
+    const rows = compiled.map((row) => {
+      const accepted = row.verdict === "broader" &&
+        broaderAcceptance[row.platform] === true;
+      return {
+        plan_version_id: version.id,
+        platform: row.platform,
+        audience_intent: row.audienceIntent,
+        compiled_targeting: row.compiledTargeting,
+        verdict: row.verdict,
+        widening_summary: row.wideningSummary,
+        broader_accepted: accepted,
+        broader_accepted_by: accepted ? actor.id : null,
+        broader_accepted_at: accepted ? frozenAt : null,
+        evidence_observed_at: frozenAt,
+        compiler_version: row.compilerVersion,
+      };
+    });
+    const { data: existing, error: existingError } = await db
+      .from("ad_plan_targeting_snapshots").select("*")
+      .eq("plan_version_id", version.id).order("platform");
+    if (existingError) return databaseFailure(existingError);
+    if ((existing ?? []).length > 0) {
+      const same = (existing ?? []).length === rows.length &&
+        rows.every((row) => {
+          const frozen = (existing ?? []).find((
+            item: Record<string, unknown>,
+          ) => item.platform === row.platform);
+          return frozen && frozen.verdict === row.verdict &&
+            JSON.stringify(frozen.audience_intent) ===
+              JSON.stringify(row.audience_intent) &&
+            JSON.stringify(frozen.compiled_targeting) ===
+              JSON.stringify(row.compiled_targeting) &&
+            frozen.broader_accepted === row.broader_accepted;
+        });
+      if (!same) {
+        return json({
+          error: "plan_conflict",
+          detail: "targeting_already_frozen_create_new_version",
+        }, 409);
+      }
+      return json({
+        ok: true,
+        targeting_snapshots: existing,
+        idempotent: true,
+      });
+    }
+    const { data, error } = await db.from("ad_plan_targeting_snapshots")
+      .insert(rows).select("*");
+    return error
+      ? databaseFailure(error)
+      : json({ ok: true, targeting_snapshots: data ?? [] }, 201);
+  }
+
+  const authorized = versionId
+    ? await authorizeVersion(db, actor, versionId, "write")
+    : null;
+  if (!authorized) return json({ error: "forbidden_or_not_found" }, 403);
+  const planHash = typeof body.plan_hash === "string" ? body.plan_hash : "";
+  if (planHash !== authorized.version.plan_hash) {
+    return json({
+      error: "plan_conflict",
+      detail: "plan_version_hash_mismatch",
+    }, 409);
+  }
+
+  if (action === "mark_ready") {
+    const { data, error } = await db.rpc("ad_plan_mark_ready", {
+      p_plan_version_id: versionId,
+      p_plan_hash: planHash,
+    });
+    return error ? databaseFailure(error) : json({ ok: true, plan: data });
+  }
+
+  if (action === "fund") {
+    const rpc = authorized.plan.owner_kind === "host"
+      ? "ad_plan_hold_host_funds"
+      : "ad_plan_mark_admin_funded";
+    const args = authorized.plan.owner_kind === "host"
+      ? {
+        p_plan_version_id: versionId,
+        p_plan_hash: planHash,
+        p_idempotency_key: typeof body.idempotency_key === "string"
+          ? body.idempotency_key
+          : req.headers.get("idempotency-key") ?? "",
+        p_actor_id: actor.id,
+      }
+      : { p_plan_version_id: versionId, p_plan_hash: planHash };
+    if (
+      authorized.plan.owner_kind === "host" &&
+      String(args.p_idempotency_key).trim().length < 8
+    ) {
+      return json({
+        error: "validation_error",
+        detail: "idempotency_key_required",
+      }, 400);
+    }
+    const { data, error } = await db.rpc(rpc, args);
+    return error
+      ? databaseFailure(error)
+      : json({ ok: true, funding_hold: data });
+  }
+
+  if (action === "review") {
+    if (!(await isActiveAdmin(db, actor))) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const { data, error } = await db.rpc("ad_plan_record_review", {
+      p_plan_version_id: versionId,
+      p_plan_hash: planHash,
+      p_decision: body.decision,
+      p_reason: typeof body.reason === "string" ? body.reason : null,
+      p_decided_by: actor.id,
+    });
+    return error ? databaseFailure(error) : json({ ok: true, review: data });
+  }
+
+  if (action === "confirm_launch") {
+    const { data, error } = await db.rpc("ad_plan_confirm_launch", {
+      p_plan_version_id: versionId,
+      p_plan_hash: planHash,
+      p_phrase: typeof body.phrase === "string" ? body.phrase : "",
+      p_confirmed_by: actor.id,
+    });
+    return error
+      ? databaseFailure(error)
+      : json({ ok: true, confirmation: data });
+  }
+
+  if (action === "cancel_before_create") {
+    const key = typeof body.idempotency_key === "string"
+      ? body.idempotency_key
+      : req.headers.get("idempotency-key") ?? "";
+    if (key.trim().length < 8) {
+      return json({
+        error: "validation_error",
+        detail: "idempotency_key_required",
+      }, 400);
+    }
+    const { data, error } = await db.rpc("ad_plan_cancel_before_create", {
+      p_plan_version_id: versionId,
+      p_plan_hash: planHash,
+      p_idempotency_key: key,
+      p_actor_id: actor.id,
+    });
+    return error
+      ? databaseFailure(error)
+      : json({ ok: true, funding_hold: data });
+  }
+
+  if (action === "assert_launchable") {
+    const { data, error } = await db.rpc("ad_plan_assert_launchable", {
+      p_plan_version_id: versionId,
+      p_plan_hash: planHash,
+    });
+    return error
+      ? databaseFailure(error)
+      : json({ ok: true, launch_contract: data });
+  }
+
+  if (action === "request_stop") {
+    const campaignId = typeof body.campaign_id === "string"
+      ? body.campaign_id
+      : "";
+    if (!UUID_RE.test(campaignId)) {
+      return json(
+        { error: "validation_error", detail: "campaign_id_invalid" },
+        400,
+      );
+    }
+    const { data: campaign } = await db.from("ad_campaigns")
+      .select("plan_version_id, plan_hash").eq("id", campaignId).maybeSingle();
+    if (
+      campaign?.plan_version_id !== versionId ||
+      campaign?.plan_hash !== planHash
+    ) {
+      return json(
+        { error: "plan_conflict", detail: "campaign_plan_mismatch" },
+        409,
+      );
+    }
+    const { data, error } = await db.rpc("ad_request_campaign_stop", {
+      p_campaign_id: campaignId,
+    });
+    return error
+      ? databaseFailure(error)
+      : json({ ok: true, settlement: data });
+  }
+
+  return json({ error: "validation_error", detail: "action_invalid" }, 400);
+});

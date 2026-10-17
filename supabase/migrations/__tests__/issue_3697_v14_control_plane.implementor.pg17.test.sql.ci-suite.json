@@ -1,0 +1,10 @@
+{
+  "lane": "migrations",
+  "runner": "psql-pg17-post-replay",
+  "issue": 3697,
+  "invariants": [
+    "I-3697-PLAN-VERSION-BINDING",
+    "I-3697-NO-SILENT-TARGETING-WIDENING",
+    "I-3697-PROVIDER-CONFIRMED-SETTLEMENT"
+  ]
+}

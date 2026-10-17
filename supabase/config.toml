@@ -578,6 +578,11 @@ verify_jwt = true
 [functions.host-ad-campaign]
 verify_jwt = true
 
+# Issue #3697 v1.4 — shared immutable plan, targeting, funding, review and
+# confirmation control plane used by Admin, Host and Ari.
+[functions.ad-plan]
+verify_jwt = true
+
 [functions.admin-ad-campaign-sync]
 verify_jwt = true
 
