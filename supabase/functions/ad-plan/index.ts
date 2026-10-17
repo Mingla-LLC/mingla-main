@@ -660,14 +660,15 @@ serve(async (req: Request): Promise<Response> => {
         p_platforms: platforms,
       },
     );
+    const resolvedDestination = asRecord(destination);
     if (
-      destinationError || !asRecord(destination) ||
-      (destination as Record<string, unknown>).ok !== true
+      destinationError || !resolvedDestination ||
+      resolvedDestination.ok !== true || resolvedDestination.ready !== true
     ) {
       return json({
         error: "plan_preflight_failed",
         detail: destinationError?.message ??
-          asRecord(destination)?.code ?? "destination_not_available",
+          resolvedDestination?.code ?? "destination_not_ready",
       }, 422);
     }
     canonical.destination = destination;

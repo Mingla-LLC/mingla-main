@@ -836,6 +836,11 @@ BEGIN
       coalesce(v_destination->>'code', 'destination_not_available')
       USING ERRCODE = '22023';
   END IF;
+  IF coalesce((v_destination->>'ready')::boolean, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'ad_plan_destination_not_ready:%',
+      coalesce(v_destination->>'code', 'destination_not_ready')
+      USING ERRCODE = '55000';
+  END IF;
   IF v_plan.owner_kind = 'mingla' AND EXISTS (
     SELECT 1 FROM jsonb_array_elements(v_normalized_allocations) a
     WHERE a->>'provider_currency' <> v_host_currency

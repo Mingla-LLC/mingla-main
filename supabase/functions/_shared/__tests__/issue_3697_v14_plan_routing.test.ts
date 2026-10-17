@@ -41,6 +41,25 @@ Deno.test("v1.4 provider create binds the executable version before a platform w
   ) assertStringIncludes(source, field);
 });
 
+Deno.test("v1.4 app destinations must be ready before an immutable version is frozen", async () => {
+  const endpoint = await Deno.readTextFile(
+    new URL("../../ad-plan/index.ts", import.meta.url),
+  );
+  const migration = await Deno.readTextFile(
+    new URL(
+      "../../../migrations/20271101003697_issue_3697_v14_control_plane.sql",
+      import.meta.url,
+    ),
+  );
+  assertStringIncludes(endpoint, "resolvedDestination.ready !== true");
+  assertStringIncludes(endpoint, '"destination_not_ready"');
+  const createVersion = migration.slice(
+    migration.indexOf("CREATE OR REPLACE FUNCTION public.ad_plan_create_version"),
+    migration.indexOf("CREATE OR REPLACE FUNCTION public.ad_plan_quote_for_brand"),
+  );
+  assertStringIncludes(createVersion, "ad_plan_destination_not_ready:%");
+});
+
 Deno.test("v1.4 spend worker waits for provider stop and a finality window", async () => {
   const source = await Deno.readTextFile(
     new URL("../../admin-ad-spend-sync/index.ts", import.meta.url),

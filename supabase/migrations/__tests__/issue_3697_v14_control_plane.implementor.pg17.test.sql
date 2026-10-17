@@ -19,7 +19,6 @@ DECLARE
   v_bad_plan public.ad_plans%ROWTYPE;
   v_bad_version public.ad_plan_versions%ROWTYPE;
   v_app_plan public.ad_plans%ROWTYPE;
-  v_app_version public.ad_plan_versions%ROWTYPE;
   v_admin_plan public.ad_plans%ROWTYPE;
   v_revise_plan public.ad_plans%ROWTYPE;
   v_revise_version public.ad_plan_versions%ROWTYPE;
@@ -127,39 +126,28 @@ BEGIN
   END;
   IF NOT v_failed THEN RAISE EXCEPTION 'admin_mixed_currency_plan_was_not_split'; END IF;
 
-  -- Explorer is a first-class destination, but provider creation remains
-  -- blocked until the existing exact app-readiness authority turns green.
+  -- Explorer is a first-class destination, but an immutable executable
+  -- version cannot be frozen until exact app-readiness is current and green.
   v_app_plan := public.ad_plan_open(
     'admin', 'mingla', NULL, 'explorer_app', 'ios', '[]'::jsonb, v_user
   );
-  v_app_version := public.ad_plan_create_version(
-    v_app_plan.id,
-    '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb,
-    1000, 'USD', jsonb_build_array(jsonb_build_object(
-      'platform', 'meta', 'connection_id', v_connection,
-      'host_budget_cents', 1000, 'provider_budget_cents', 1000,
-      'fx_snapshot_id', NULL
-    )), v_user
-  );
-  INSERT INTO public.ad_plan_targeting_snapshots (
-    plan_version_id, platform, audience_intent, compiled_targeting, verdict,
-    evidence_observed_at, compiler_version
-  ) VALUES (
-    v_app_version.id, 'meta', '{"countries":["NG"]}'::jsonb,
-    '{"geo_locations":{"countries":["NG"]}}'::jsonb,
-    'exact', now(), 'v1.4-test'
-  );
   v_failed := false;
   BEGIN
-    PERFORM public.ad_plan_mark_ready(
-      v_app_version.id, v_app_version.plan_hash
+    PERFORM public.ad_plan_create_version(
+      v_app_plan.id,
+      '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb,
+      1000, 'USD', jsonb_build_array(jsonb_build_object(
+        'platform', 'meta', 'connection_id', v_connection,
+        'host_budget_cents', 1000, 'provider_budget_cents', 1000,
+        'fx_snapshot_id', NULL
+      )), v_user
     );
   EXCEPTION WHEN SQLSTATE '55000' THEN
     v_failed := SQLERRM =
       'ad_plan_destination_not_ready:app_acquisition_not_ready';
   END;
   IF NOT v_failed THEN
-    RAISE EXCEPTION 'native_app_plan_bypassed_readiness_authority';
+    RAISE EXCEPTION 'native_app_version_bypassed_readiness_authority';
   END IF;
 
   -- A broader snapshot that was not explicitly accepted cannot become ready.
