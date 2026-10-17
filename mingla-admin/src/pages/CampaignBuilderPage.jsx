@@ -1472,9 +1472,7 @@ export function CampaignBuilderPage() {
     channelRows: plannedRows,
     allocations:
       creative.kind === "video"
-        ? allocations.filter((a) =>
-            creativePartition.buildable.includes(a.platform),
-          )
+        ? allocations.filter((a) => creativePartition.buildable.includes(a.platform))
         : allocations,
     goalIds,
     resolvedGoal: resolvedGoalForDisplay,

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3697_v14_plan_routing.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-v14-02-plan-routing",
+  "profile": "deno-2-unit"
+}

@@ -1,10 +1,13 @@
 {
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3697_v14_control_plane.implementor.pg17.test.sql",
   "lane": "migrations",
-  "runner": "psql-pg17-post-replay",
-  "issue": 3697,
-  "invariants": [
-    "I-3697-PLAN-VERSION-BINDING",
-    "I-3697-NO-SILENT-TARGETING-WIDENING",
-    "I-3697-PROVIDER-CONFIRMED-SETTLEMENT"
-  ]
+  "orderKey": "issue-3697-v14-02-control-plane",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
 }
