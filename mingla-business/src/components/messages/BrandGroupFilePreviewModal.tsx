@@ -4,7 +4,7 @@ import { useVideoPlayer, VideoView } from "expo-video";
 import { WebView } from "react-native-webview";
 
 import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
-import { brandGroupFilePreviewRequest } from "../../services/brandGroupsService";
+import { brandGroupFilePreviewRequest } from "../../services/brandGroupFilesService";
 import { Icon } from "../ui/Icon";
 
 interface PreviewFile { id: string; name: string; mime: string; size: number | null }

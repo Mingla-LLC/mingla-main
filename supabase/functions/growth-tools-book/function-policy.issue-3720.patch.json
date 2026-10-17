@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy-patch",
+  "ownerIssue": "#3720",
+  "target": {
+    "kind": "function",
+    "name": "growth-tools-book"
+  },
+  "basePolicySha256": "c76de1209542c60fbbd414b4fb449e2ec5121a6818f1efa8973cdfb27c0451d9",
+  "operations": [
+    {
+      "op": "remove_env_name",
+      "classification": "required_top_level",
+      "name": "GOOGLE_CALENDAR_KEYS",
+      "expectedPresent": true
+    },
+    {
+      "op": "add_bundle_field",
+      "bundle": "GOOGLE_CALENDAR_KEYS",
+      "field": "calendar_client_id",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_bundle_field",
+      "bundle": "GOOGLE_CALENDAR_KEYS",
+      "field": "calendar_client_secret",
+      "expectedAbsent": true
+    },
+    {
+      "op": "add_bundle_field",
+      "bundle": "GOOGLE_CALENDAR_KEYS",
+      "field": "calendar_refresh_token",
+      "expectedAbsent": true
+    }
+  ],
+  "resultPolicySha256": "6e0887a51de54c20d6e6ef0d4145dfb6738f972bd10491c09a4da17161ad90ba",
+  "reason": "Wave 3 requires a same-process receipt for the complete Calendar plus Drive credential bundle before either reader deploys."
+}

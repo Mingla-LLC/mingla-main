@@ -1,4 +1,4 @@
-import type { BrandGroupPickedFile } from "../../services/brandGroupsService";
+import type { BrandGroupPickedFile } from "../../services/brandGroupFilesService";
 
 export type BrandGroupFileSource = "camera" | "photos" | "files";
 export type { BrandGroupPickedFile };

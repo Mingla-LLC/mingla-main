@@ -144,9 +144,10 @@ secret through `/dev/stdin` and never puts a value in argv or output. The stdin 
 the exact double-quote and escape rules of the Supabase CLI's pinned `godotenv` parser, including
 literal dollar signs, comment markers, quotes, backslashes, backticks, bangs, and line breaks.
 
-Normal deployment of any of the eight bundle-dependent functions must use the same wrapper with
+Normal deployment of any bundle-dependent function must use the same wrapper with
 the complete authoritative object(s) supplied in the same process: `--ad-input <0600-path>` for
-an AD reader and/or `--delivery-input <0600-path>` for the checkout delivery reader, alongside
+an AD reader, `--delivery-input <0600-path>` for the checkout delivery reader, and
+`--google-input <0600-path>` for a Calendar or Drive reader, alongside
 the explicit `--function`, `--project-ref`, and `--merged-commit` arguments. Before its first
 apply or deploy, that route requires value-blind live-name parity: every one of the 88 declared
 names must be live, and the ONLY extra names tolerated are the approved two-name migration band
@@ -158,6 +159,16 @@ It then applies the complete object, creates and consumes the protected in-memor
 the later function-readiness preflight, deploys only the selected functions with `--use-api`, and
 verifies source/JWT parity. A receipt file, receipt CLI argument, receipt environment variable,
 or second process is never accepted.
+
+The Google wrapper object must carry the three existing Calendar strings plus one `drive_storage`
+object containing exactly `client_email`, `private_key`, `shared_drive_id`, and
+`host_details_folder_id`. `authoritativeExistingFieldNames` must attest all three Calendar field
+names so the Drive rollout cannot erase the existing Calendar integration. The setter validates
+the complete seven-field authority, converts it to the four-part runtime format in memory, and
+writes the single `GOOGLE_CALENDAR_KEYS` value through stdin. Never paste this wrapper into chat,
+put it in argv, or reconstruct its values from logs; obtain it from the approved provider
+dashboards and secure vault, use a mode-0600 file, then securely remove that file after the lane
+returns its same-process deploy and source/JWT verification receipt.
 
 Because normal mode no longer refuses the deploy while the band is live, the risk that refusal was
 holding — a function passing while it silently reads the OLD standalone copy, with the gap

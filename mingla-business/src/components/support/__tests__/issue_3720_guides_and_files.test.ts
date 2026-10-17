@@ -32,7 +32,7 @@ describe("#3720 Wave 3 Guides and Brand-group files", () => {
   });
 
   it("keeps Drive provider ids and raw URLs out of both browser clients", () => {
-    const host = read("mingla-business/src/services/brandGroupsService.ts");
+    const host = read("mingla-business/src/services/brandGroupFilesService.ts");
     const admin = read("mingla-admin/src/services/communityService.js");
     for (const source of [host, admin]) {
       expect(source).toContain("brand-group-files?file_id=");
@@ -43,7 +43,7 @@ describe("#3720 Wave 3 Guides and Brand-group files", () => {
 
   it("turns browser previews into revocable object URLs and treats an already-staged retry as finalizable", () => {
     const preview = read("mingla-business/src/components/messages/BrandGroupFilePreviewModal.tsx");
-    const service = read("mingla-business/src/services/brandGroupsService.ts");
+    const service = read("mingla-business/src/services/brandGroupFilesService.ts");
     expect(preview).toContain("URL.createObjectURL");
     expect(preview).toContain("URL.revokeObjectURL");
     expect(service).toContain("xhr.status === 409");

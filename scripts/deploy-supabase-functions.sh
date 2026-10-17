@@ -89,7 +89,7 @@ while [[ "$#" -gt 0 ]]; do
       governed_bundle_deploy=true
       shift 2
       ;;
-    --ad-input|--delivery-input)
+    --ad-input|--delivery-input|--google-input)
       [[ "$#" -ge 2 && -n "$2" ]] || { echo "FAIL deploy: $1 requires a secure input path" >&2; exit 2; }
       coordinator_args+=("$1" "$2")
       governed_bundle_deploy=true
