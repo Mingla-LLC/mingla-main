@@ -37,10 +37,16 @@ Deno.test("workflow writes use gated RPCs and never a browser table mutation", (
     "issue_3720_create_internal_thread",
     "issue_3720_set_next_update",
     "issue_3720_update_internal_thread",
-    "issue_3720_create_product_signal",
     "issue_3720_update_product_signal",
-    "issue_3720_link_product_signal_source",
   ]) assertMatch(service, new RegExp(`rpc\\("${rpc}"`));
+  for (const rpc of [
+    "issue_3720_create_product_signal",
+    "issue_3720_create_brand_message_product_signal",
+    "issue_3720_link_product_signal_source",
+    "issue_3720_link_brand_message_product_signal",
+  ]) assertMatch(service, new RegExp(`"${rpc}"`));
+  assertMatch(service, /supabase\.rpc\(rpcName, params\)/);
+  assertMatch(service, /supabase\.rpc\(\s*brandMessage \? "issue_3720_link_brand_message_product_signal"/);
   assertNotMatch(service, /\.insert\s*\(/);
   assertNotMatch(service, /\.update\s*\(/);
 });

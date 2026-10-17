@@ -179,6 +179,20 @@ export function renderCategoryMessage(
         sms: `Mingla: ${publicBody}`,
       };
     }
+    case "business.brand_group_message": {
+      const sender = communityMarkdownToPlainText(payload.sender_name) ||
+        "Someone";
+      const brandName = communityMarkdownToPlainText(payload.brand_name) ||
+        "your Brand group";
+      const body = communityExcerpt(
+        communityMarkdownToPlainText(payload.body),
+      ) || "Open Mingla Host to read the message.";
+      return {
+        push: { title: `${sender} in ${brandName}`, body },
+        email: { subject: `${sender} in ${brandName}`, body },
+        sms: `Mingla: ${body}`,
+      };
+    }
     case "stay_request_received":
     case "stay_request_action_needed":
     case "stay_reconciliation_attention": {

@@ -29,8 +29,8 @@ describe("template coverage", () => {
   // visibility types; item 6 adds cancel_refunds_released on top of the
   // original 11 v1 types (new_follower still dropped).
   // [TEST-MOD-APPROVED #3720] Community/support adds three Host inbox types.
-  test("19 business types include Community and operational support", () => {
-    expect(TYPES).toHaveLength(19);
+  test("20 business types include Community, operational support, and Brand groups", () => {
+    expect(TYPES).toHaveLength(20);
     expect(isBusinessNotificationType("business.new_follower")).toBe(false);
     expect(isBusinessNotificationType("business.order_paid")).toBe(true);
     expect(isBusinessNotificationType("business.payout_waiting_for_bank")).toBe(
@@ -47,6 +47,9 @@ describe("template coverage", () => {
       isBusinessNotificationType("business.community_roadmap_updated"),
     ).toBe(true);
     expect(isBusinessNotificationType("business.support_new_ticket")).toBe(
+      true,
+    );
+    expect(isBusinessNotificationType("business.brand_group_message")).toBe(
       true,
     );
   });

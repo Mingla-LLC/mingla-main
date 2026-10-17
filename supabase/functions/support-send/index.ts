@@ -110,6 +110,27 @@ serve(async (req) => {
       return json({ error: "next_update_required" }, 422);
     }
 
+    let senderDisplayName: string | null = null;
+    if (senderIsStaff) {
+      const [{ data: staffIdentity }, { data: profileIdentity }] = await Promise.all([
+        admin.from("support_staff").select("display_name").eq("user_id", user.id).maybeSingle(),
+        admin.from("profiles").select("display_name, first_name, last_name, username").eq("id", user.id).maybeSingle(),
+      ]);
+      const profileFullName = [profileIdentity?.first_name, profileIdentity?.last_name]
+        .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        .join(" ")
+        .trim();
+      senderDisplayName = [
+        staffIdentity?.display_name,
+        profileIdentity?.display_name,
+        profileFullName,
+        profileIdentity?.username,
+        user.user_metadata?.full_name,
+        user.user_metadata?.name,
+        user.user_metadata?.display_name,
+      ].find((value) => typeof value === "string" && value.trim().length > 0)?.trim() ?? "Mingla teammate";
+    }
+
     // Insert the message. Use the USER client so the RLS INSERT policies
     // (participant path for the requester, messages_support_staff_insert for
     // staff) AND the restrictive broadcast-only policy both apply (defense in
@@ -121,6 +142,8 @@ serve(async (req) => {
         sender_id: user.id,
         content,
         message_type: messageType,
+        sender_display_name_snapshot: senderDisplayName,
+        sender_role_snapshot: senderIsStaff ? "Mingla Support" : null,
       })
       .select("id")
       .single();
@@ -157,6 +180,7 @@ serve(async (req) => {
           ticketId,
           senderUserId: user.id,
           senderIsStaff,
+          senderDisplayName,
         }),
       });
     } catch (pushErr) {

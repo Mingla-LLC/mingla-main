@@ -54,7 +54,8 @@ export type BusinessNotificationType =
   | "business.team_member_joined"
   | "business.community_announcement"
   | "business.community_roadmap_updated"
-  | "business.support_new_ticket";
+  | "business.support_new_ticket"
+  | "business.brand_group_message";
 
 /** Severity union — mirrors `NotificationTemplate.severity`. */
 export type NotificationSeverity = "blocking" | "warning" | "info";
@@ -362,6 +363,19 @@ export const BUSINESS_NOTIFICATION_TEMPLATES: Record<
     severity: "info",
     family: "team",
     icon: "inbox",
+    masterCategory: "brandTeam",
+    defaultPush: true,
+    defaultInApp: true,
+  },
+  "business.brand_group_message": {
+    type: "business.brand_group_message",
+    pushTitle: "New Brand group message",
+    pushBody: "Open Mingla Host to read the message.",
+    inAppTitle: "New Brand group message",
+    inAppBody: "Open Mingla Host to read the message.",
+    severity: "info",
+    family: "team",
+    icon: "chat",
     masterCategory: "brandTeam",
     defaultPush: true,
     defaultInApp: true,
