@@ -297,7 +297,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
     try {
       const { data, error } = await supabase
         .from("messages")
-        .select("id, conversation_id, sender_id, content, message_type, created_at, deleted_at")
+        .select("id, conversation_id, sender_id, content, message_type, created_at, deleted_at, sender_display_name_snapshot, sender_role_snapshot")
         .eq("conversation_id", conversationId)
         .is("deleted_at", null)
         .order("created_at", { ascending: true })
@@ -378,7 +378,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
     try {
       // #3720: one path — support-send inserts the message (user JWT + RLS),
       // bumps last_message_at / first_response_at, writes audit, and pushes the
-      // host as "Veronica from Mingla". Never insert messages here; always pass
+      // host with the authenticated staff member's real display name. Never insert messages here; always pass
       // the reply body (support-send requires content).
       const sideEffect = await invokeSupportFn("support-send", {
         ticketId: selectedTicket.id,
@@ -843,7 +843,9 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
                             {m.content}
                           </div>
                           <span className="mt-0.5 text-[10px] text-[var(--color-text-muted)]">
-                            {mine ? "You" : profileLabel(sender)} · {timeAgo(m.created_at)}
+                            {mine
+                              ? `You${m.sender_role_snapshot === "Mingla Support" ? " · Mingla Support" : ""}`
+                              : `${m.sender_display_name_snapshot || profileLabel(sender)}${m.sender_role_snapshot === "Mingla Support" ? " · Mingla Support" : ""}`} · {timeAgo(m.created_at)}
                           </span>
                         </div>
                       );
@@ -855,7 +857,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true } = {
                 <div className="border-t border-[var(--gray-200)] p-3 flex items-end gap-2">
                   <div className="flex-1 space-y-1">
                     <p className="text-[11px] text-[var(--color-text-tertiary)]">
-                      Replying as Veronica from Mingla · a next-update promise is required
+                      Replying as your real staff name · Mingla Support · a next-update promise is required
                     </p>
                     <textarea
                       value={reply}

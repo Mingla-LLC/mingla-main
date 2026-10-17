@@ -4,7 +4,7 @@
  * Attacks:
  *   A. create hook must not call notify-support with a user JWT
  *   B. SupportThreadCore must not import postPlannerMessage
- *   C. notify-support staff→host title must use Veronica
+ *   C. notify-support staff→host title must use the real sender snapshot
  *   D. reliability cutover must remove the AFTER INSERT network trigger
  */
 import { describe, expect, test } from "@jest/globals";
@@ -35,11 +35,13 @@ describe("#3720 support notify path (adversarial)", () => {
     expect(src).toMatch(/sendSupportMessage\(ticket\.id/);
   });
 
-  test("C. notify-support uses Veronica for staff→host push titles", () => {
+  // [TEST-MOD-APPROVED #3720] Fictional Support identity removed in Wave 2.
+  test("C. notify-support uses the real staff name with a neutral fallback", () => {
     const src = fs.readFileSync(
       path.join(REPO, "supabase/functions/notify-support/index.ts"),
       "utf8",
     );
+    expect(src).toMatch(/senderDisplayName/);
     expect(src).toMatch(/SUPPORT_HOST_FACING_AGENT/);
     expect(src).toMatch(/senderIsStaff === true/);
     expect(src).toMatch(/replied/);

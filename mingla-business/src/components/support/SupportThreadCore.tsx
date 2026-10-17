@@ -195,7 +195,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
             {ticket?.subject ?? "Support"}
           </Text>
           <Text style={styles.subtitle} numberOfLines={1}>
-            {SUPPORT_HOST_FACING_AGENT} · we reply here
+            {SUPPORT_HOST_FACING_AGENT} · real people reply here
           </Text>
         </View>
         <View style={styles.iconButton} />
@@ -250,7 +250,9 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
                   >
                     {!mine ? (
                       <Text style={styles.agentLabel}>
-                        {SUPPORT_HOST_FACING_AGENT}
+                        {message.sender_display_name_snapshot
+                          ? `${message.sender_display_name_snapshot} · ${message.sender_role_snapshot || SUPPORT_HOST_FACING_AGENT}`
+                          : SUPPORT_HOST_FACING_AGENT}
                       </Text>
                     ) : null}
                     {hasContent ? (

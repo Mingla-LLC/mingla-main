@@ -243,7 +243,8 @@ describe("#3720 Host Help & Support hub (implementor)", () => {
     expect(HELP_CENTRE_URL).toBe("https://usemingla.com/help");
   });
 
-  test("Support tab keeps Veronica + online banner + start chat", () => {
+  // [TEST-MOD-APPROVED #3720] Wave 2 uses real Support sender names.
+  test("Support tab keeps the neutral Support fallback + online banner + start chat", () => {
     const src = fs.readFileSync(
       path.join(SRC, "components/support/SupportTabPanel.tsx"),
       "utf8",

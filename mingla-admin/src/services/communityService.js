@@ -200,3 +200,58 @@ export async function countDraftAnnouncements() {
   if (error) throw error;
   return count ?? 0;
 }
+
+// ── Official Brand groups ───────────────────────────────────────────────────
+
+export async function listOfficialBrandGroups() {
+  const { data, error } = await supabase.rpc("issue_3720_list_brand_groups");
+  if (error) throw error;
+  return (data ?? []).map((group) => ({
+    ...group,
+    unread_count: Number(group.unread_count || 0),
+    member_count: Number(group.member_count || 0),
+  }));
+}
+
+export async function listOfficialBrandGroupMessages(conversationId) {
+  const { data, error } = await supabase.rpc("issue_3720_list_brand_group_messages", {
+    p_conversation_id: conversationId,
+    p_limit: 200,
+    p_before: null,
+  });
+  if (error) throw error;
+  return (data ?? []).slice().reverse();
+}
+
+export async function markOfficialBrandGroupRead(conversationId) {
+  const { error } = await supabase.rpc("issue_3720_mark_brand_group_read", {
+    p_conversation_id: conversationId,
+  });
+  if (error) throw error;
+}
+
+export async function setOfficialBrandGroupWatch(conversationId, enabled) {
+  const { data, error } = await supabase.rpc("issue_3720_set_brand_group_watch", {
+    p_conversation_id: conversationId,
+    p_enabled: Boolean(enabled),
+  });
+  if (error) throw error;
+  return data === true;
+}
+
+export async function sendOfficialBrandGroupMessage({
+  conversationId,
+  content,
+  replyToId = null,
+  relatedMessageIds = [],
+}) {
+  const { data, error } = await supabase.rpc("issue_3720_send_brand_group_message", {
+    p_conversation_id: conversationId,
+    p_content: content,
+    p_reply_to_id: replyToId,
+    p_related_message_ids: relatedMessageIds,
+    p_actor_mode: "support",
+  });
+  if (error) throw error;
+  return data;
+}

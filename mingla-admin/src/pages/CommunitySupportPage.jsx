@@ -17,6 +17,7 @@ import { AnnouncementsPanel } from "../components/community/AnnouncementsPanel";
 import { RoadmapPanel } from "../components/community/RoadmapPanel";
 import { TeamRolesPanel } from "../components/community/TeamRolesPanel";
 import { AvailabilityPanel } from "../components/community/AvailabilityPanel";
+import { BrandGroupsPanel } from "../components/community/BrandGroupsPanel";
 import { useAuth } from "../context/AuthContext";
 import {
   communitySupportCapabilities,
@@ -29,6 +30,7 @@ export const COMMUNITY_SUPPORT_TABS = [
   { id: "announcements", label: "Announcements" },
   { id: "roadmap", label: "Roadmap" },
   { id: "support", label: "Support" },
+  { id: "brand-groups", label: "Brand groups" },
   { id: "email", label: "Email" },
   { id: "team", label: "Team & roles" },
   { id: "availability", label: "Availability" },
@@ -132,6 +134,7 @@ export function CommunitySupportPage() {
       {activeTab === "support" && (
         <SupportDeskPage embedded canManageAgents={capabilities.isAdmin} />
       )}
+      {activeTab === "brand-groups" && <BrandGroupsPanel />}
       {activeTab === "email" && <EmailPage embedded />}
       {activeTab === "team" && <TeamRolesPanel />}
       {activeTab === "availability" && <AvailabilityPanel />}

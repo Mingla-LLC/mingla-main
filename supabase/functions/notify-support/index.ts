@@ -72,6 +72,7 @@ serve(async (req) => {
         ticketId?: string;
         senderUserId?: string;
         senderIsStaff?: boolean;
+        senderDisplayName?: string | null;
       }
       | null;
     const event = body?.event;
@@ -113,16 +114,17 @@ serve(async (req) => {
     }
     if (sender) recipients.delete(sender);
 
-    // #3720: staff→host push is always signed as Veronica; staff pushes keep
-    // operational titles. Audit log (support-send) still names the real agent.
+    const supportSender = typeof body?.senderDisplayName === "string" && body.senderDisplayName.trim()
+      ? body.senderDisplayName.trim().slice(0, 120)
+      : SUPPORT_HOST_FACING_AGENT;
     const title = body?.senderIsStaff === true
-      ? `${SUPPORT_HOST_FACING_AGENT} replied`
+      ? `${supportSender} · ${SUPPORT_HOST_FACING_AGENT}`
       : "Support reply";
     const subj = typeof ticket.subject === "string"
       ? ticket.subject
       : "your request";
     const pushBody = body?.senderIsStaff === true
-      ? `${SUPPORT_HOST_FACING_AGENT} replied on: ${subj}`
+      ? `${supportSender} replied on: ${subj}`
       : `New message on: ${subj}`;
 
     let dispatched = 0;

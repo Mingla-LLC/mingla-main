@@ -1,6 +1,7 @@
 /* eslint-disable import/first */
 /**
- * #3720 Phase 0 Slice A — support send + Veronica + Help Centre (implementor).
+ * #3720 Support send + actual-person attribution + Help Centre (implementor).
+ * [TEST-MOD-APPROVED #3720] Wave 2 replaces the fictional Support identity.
  *
  * Pins:
  *   - sendSupportMessage invokes support-send with ticketId + trimmed content
@@ -69,7 +70,7 @@ describe("#3720 support send path (implementor)", () => {
     expect(HELP_CENTRE_URL).toBe("https://usemingla.com/help");
   });
 
-  test("Host and edge Veronica constants stay in lockstep", () => {
+  test("Host and edge neutral Support fallbacks stay in lockstep", () => {
     const edge = fs.readFileSync(
       path.join(ROOT, "../supabase/functions/_shared/supportHostFacing.ts"),
       "utf8",

@@ -91,7 +91,24 @@ export async function updateInternalSupportThread(input) {
 }
 
 export async function createProductSignal(input) {
-  const result = await supabase.rpc("issue_3720_create_product_signal", {
+  const rpcName = input.sourceKind === "brand_group_message"
+    ? "issue_3720_create_brand_message_product_signal"
+    : "issue_3720_create_product_signal";
+  const params = input.sourceKind === "brand_group_message" ? {
+    p_client_request_id: input.clientRequestId,
+    p_source_id: input.sourceId,
+    p_signal_kind: input.signalKind,
+    p_title: input.title,
+    p_problem_statement: input.problemStatement,
+    p_product_area: input.productArea,
+    p_user_journey: input.userJourney,
+    p_impact_summary: input.impactSummary,
+    p_affected_people: input.affectedPeople,
+    p_priority: input.priority,
+    p_next_update_at: input.nextUpdateAt,
+    p_next_step: input.nextStep,
+    p_customer_reply_draft: input.customerReplyDraft,
+  } : {
     p_client_request_id: input.clientRequestId,
     p_source_kind: input.sourceKind,
     p_source_id: input.sourceId,
@@ -106,7 +123,8 @@ export async function createProductSignal(input) {
     p_next_update_at: input.nextUpdateAt,
     p_next_step: input.nextStep,
     p_customer_reply_draft: input.customerReplyDraft,
-  });
+  };
+  const result = await supabase.rpc(rpcName, params);
   return unwrap(result, "Couldn't create the Product signal");
 }
 
@@ -124,11 +142,19 @@ export async function updateProductSignal(input) {
 }
 
 export async function linkSourceToProductSignal(input) {
-  const result = await supabase.rpc("issue_3720_link_product_signal_source", {
+  const brandMessage = input.sourceKind === "brand_group_message";
+  const result = await supabase.rpc(
+    brandMessage ? "issue_3720_link_brand_message_product_signal" : "issue_3720_link_product_signal_source",
+    brandMessage ? {
+      p_signal_id: input.signalId,
+      p_expected_revision: input.expectedRevision,
+      p_source_id: input.sourceId,
+    } : {
     p_signal_id: input.signalId,
     p_expected_revision: input.expectedRevision,
     p_source_kind: input.sourceKind,
     p_source_id: input.sourceId,
-  });
+    },
+  );
   return unwrap(result, "Couldn't link the report to the Product signal");
 }

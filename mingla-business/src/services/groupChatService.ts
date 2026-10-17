@@ -25,6 +25,10 @@ export interface EventGroupMessage {
   file_url: string | null;
   file_name: string | null;
   file_size: number | null;
+  sender_display_name_snapshot: string | null;
+  sender_role_snapshot: string | null;
+  reply_to_id: string | null;
+  related_message_ids: string[];
 }
 
 /**
@@ -155,7 +159,7 @@ export async function listMessages(
   const { data, error } = await supabase
     .from("messages")
     .select(
-      "id, sender_id, content, created_at, marketing_campaign_id, message_type, file_url, file_name, file_size",
+      "id, sender_id, content, created_at, marketing_campaign_id, message_type, file_url, file_name, file_size, sender_display_name_snapshot, sender_role_snapshot, reply_to_id, related_message_ids",
     )
     .eq("conversation_id", conversationId)
     .is("deleted_at", null)

@@ -196,6 +196,11 @@ function validDeepLink(
     return !!id && UUID.test(id) &&
       deepLink === `mingla-business://support/${id}`;
   }
+  if (category === "business.brand_group_message") {
+    const id = deepLink?.replace("mingla-business://messages/", "");
+    return !!id && UUID.test(id) &&
+      deepLink === `mingla-business://messages/${id}`;
+  }
   return true;
 }
 
@@ -218,6 +223,9 @@ export function providerSafePayload(
   if (category === "business.support_new_ticket") {
     return pick(["ticket_id"]);
   }
+  if (category === "business.brand_group_message") {
+    return pick(["message_id", "conversation_id", "brand_id"]);
+  }
   return payload;
 }
 
@@ -225,6 +233,7 @@ const ISSUE_3720_CATEGORIES = new Set([
   "business.community_announcement",
   "business.community_roadmap_updated",
   "business.support_new_ticket",
+  "business.brand_group_message",
 ]);
 const SAFE_DENIAL_REASONS = new Set([
   "category_inactive",
