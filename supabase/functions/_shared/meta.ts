@@ -581,6 +581,9 @@ export function buildMetaAdSetBody(
     targeting,
     status: "PAUSED", // GR-11
   };
+  if (input.promotedObject) {
+    body.promoted_object = input.promotedObject;
+  }
   if (
     typeof input.lifetimeBudgetCents === "number" &&
     input.lifetimeBudgetCents > 0

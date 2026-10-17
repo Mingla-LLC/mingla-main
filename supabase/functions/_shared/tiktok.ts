@@ -1594,6 +1594,9 @@ export interface TikTokAdGroupSpec {
   /** ISO country codes for the GAB geo-lock gate (informational; ids stay numeric). */
   countryCodes?: string[];
   requestId?: string;
+  /** Native app-acquisition destination. Both fields are required together. */
+  promotionType?: "APP_IOS" | "APP_ANDROID";
+  appId?: string;
   /** Injectable clock for tests. */
   nowMs?: number;
 }
@@ -1674,6 +1677,23 @@ export function buildTikTokAdGroupBody(
     // A1.0-4: DISABLE at every level (fails-on-revert protected).
     operation_status: "DISABLE",
   };
+  const appPromotion = spec.promotionType !== undefined || spec.appId !== undefined;
+  if (appPromotion) {
+    if (
+      spec.optimizationGoal !== "INSTALL" ||
+      (spec.promotionType !== "APP_IOS" && spec.promotionType !== "APP_ANDROID") ||
+      typeof spec.appId !== "string" || !/^\d{6,32}$/.test(spec.appId.trim())
+    ) {
+      throw new AdApiError({
+        platform: "tiktok",
+        code: "app_destination_invalid",
+        message:
+          "TikTok app acquisition requires optimization_goal=INSTALL plus an exact APP_IOS/APP_ANDROID promotion_type and numeric TikTok app_id.",
+      });
+    }
+    body.promotion_type = spec.promotionType;
+    body.app_id = spec.appId.trim();
+  }
   if (spec.ageGroups && spec.ageGroups.length > 0) body.age_groups = spec.ageGroups;
   // ISSUE-989: interest_category_ids (numeric ids from tool/interest_category);
   // omitted entirely when none are picked so broad targeting is unchanged.

@@ -666,8 +666,28 @@ export const SNAPCHAT_WEB_VIEW_CTA_ALLOWLIST: readonly string[] = [
   "PLAY_GAME",
 ] as const;
 
+/** Official APP_INSTALL attachment CTA enum (provider-specific, never shared). */
+export const SNAPCHAT_APP_INSTALL_CTA_ALLOWLIST: readonly string[] = [
+  "BOOK_NOW",
+  "DONATE",
+  "DOWNLOAD",
+  "GET_NOW",
+  "INSTALL_NOW",
+  "ORDER_NOW",
+  "PLAY",
+  "SHOP_NOW",
+  "SIGN_UP",
+  "TRY",
+  "USE_APP",
+  "WATCH",
+  "VOTE",
+  "DIRECTIONS",
+  "PLAY_GAME",
+] as const;
+
 export const SNAPCHAT_CTA_ALLOWLIST_BY_CREATIVE_TYPE: Record<string, readonly string[]> = {
   WEB_VIEW: SNAPCHAT_WEB_VIEW_CTA_ALLOWLIST,
+  APP_INSTALL: SNAPCHAT_APP_INSTALL_CTA_ALLOWLIST,
 };
 
 /**
@@ -1005,6 +1025,12 @@ export interface SnapchatCampaignSpec {
   buyModel?: string;
   /** Injectable clock for tests. */
   nowMs?: number;
+  /** Exact store identity required for provider-native app install tracking. */
+  measurementSpec?: { ios_app_id?: string; android_app_url?: string };
+  /** Snap App ID from the provider binding registry. */
+  mobileAppId?: string;
+  /** Unified requires a provider eligibility proof; Snapchat attribution is safe by default. */
+  appOptimizationType?: "snapchat" | "unified";
 }
 
 export function buildSnapchatCampaignBody(
@@ -1044,6 +1070,40 @@ export function buildSnapchatCampaignBody(
     },
   };
   if (spec.endTime) body.end_time = spec.endTime;
+  if (spec.measurementSpec || spec.mobileAppId) {
+    const identity = spec.measurementSpec ?? {};
+    const hasIos = Boolean(identity.ios_app_id?.trim());
+    const hasAndroid = Boolean(identity.android_app_url?.trim());
+    if (
+      !spec.mobileAppId?.trim() ||
+      !SNAPCHAT_ENTITY_ID_REGEX.test(spec.mobileAppId.trim()) ||
+      spec.objective !== "APP_PROMOTION" ||
+      spec.promotionType !== "APP_INSTALL" ||
+      hasIos === hasAndroid
+    ) {
+      throw new AdApiError({
+        platform: "snapchat",
+        code: "app_destination_invalid",
+        message:
+          "Snap app acquisition requires objective APP_PROMOTION, promotion APP_INSTALL, the exact Snap App ID, and exactly one iOS App Store ID or Android package.",
+      });
+    }
+    body.measurement_spec = {
+      ...(identity.ios_app_id?.trim()
+        ? { ios_app_id: identity.ios_app_id.trim() }
+        : {}),
+      ...(identity.android_app_url?.trim()
+        ? { android_app_url: identity.android_app_url.trim() }
+        : {}),
+    };
+    body.mobile_app_properties = {
+      skad_network_status: "NOT_ENROLLED",
+      mobile_app_id: spec.mobileAppId.trim(),
+      ...(spec.appOptimizationType === "unified"
+        ? { app_optimization_type: "UNIFIED" }
+        : {}),
+    };
+  }
 
   if (typeof spec.dailyBudgetCents === "number" && spec.dailyBudgetCents > 0) {
     // CBO — THE one cents→micro conversion (A1.1(1)); floor AFTER conversion.
@@ -1149,6 +1209,10 @@ export interface SnapchatAdSquadSpec {
   /** REQUIRED for a lifetime budget. */
   endTime?: string;
   nowMs?: number;
+  /** Snap App ID; mirrors campaign.mobile_app_properties.mobile_app_id. */
+  mobileAppId?: string;
+  /** Exact single-OS targeting for app acquisition. */
+  deviceOs?: "ios" | "android";
 }
 
 export function buildSnapchatAdSquadBody(
@@ -1212,6 +1276,25 @@ export function buildSnapchatAdSquadBody(
     geos,
     demographics,
   };
+  const appDestination = spec.deviceOs !== undefined || spec.mobileAppId !== undefined;
+  if (appDestination) {
+    if (
+      spec.optimizationGoal !== "APP_INSTALLS" ||
+      !spec.deviceOs ||
+      !spec.mobileAppId?.trim() ||
+      !SNAPCHAT_ENTITY_ID_REGEX.test(spec.mobileAppId.trim())
+    ) {
+      throw new AdApiError({
+        platform: "snapchat",
+        code: "app_destination_invalid",
+        message:
+          "Snap app acquisition requires optimization_goal=APP_INSTALLS, one target OS, and the exact Snap App ID.",
+      });
+    }
+    targeting.devices = [{
+      os_type: spec.deviceOs === "ios" ? "iOS" : "ANDROID",
+    }];
+  }
   // ISSUE-992 (3a): SCLS interest segments — targeting.interests:[{category_id}].
   // DLXS (Oracle) is legacy; SCLS only for MVP. [SUSPECTED shape — probe.]
   const interestCategoryIds = (spec.interestCategoryIds ?? [])
@@ -1234,6 +1317,9 @@ export function buildSnapchatAdSquadBody(
     status: "PAUSED",
     start_time: spec.startTime ?? new Date(spec.nowMs ?? Date.now()).toISOString(),
   };
+  if (appDestination) {
+    body.event_sources = { MOBILE_APP: [spec.mobileAppId?.trim()] };
+  }
   if (spec.endTime) body.end_time = spec.endTime;
   if (pixelGated && spec.pixelId) body.pixel_id = spec.pixelId;
 
@@ -1290,9 +1376,13 @@ export interface SnapchatCreativeSpec {
   /** A1.2-8 trusted config — the first creative create is its verification. */
   profileId: string;
   /** Destination policy v1: the canonical dest_url — NEVER the OneLink. */
-  webViewUrl: string;
+  webViewUrl?: string;
   callToAction?: string;
   shareable?: boolean;
+  appName?: string;
+  iosAppId?: string;
+  androidAppUrl?: string;
+  iconMediaId?: string;
 }
 
 export function buildSnapchatCreativeBody(
@@ -1303,8 +1393,11 @@ export function buildSnapchatCreativeBody(
   throwValidation(validateSnapchatName(spec.name, "creative name"));
   throwValidation(validateSnapchatHeadline(spec.headline));
   throwValidation(validateSnapchatBrandName(spec.brandName));
-  throwValidation(validateSnapchatWebViewUrl(spec.webViewUrl));
-  const cta = spec.callToAction ?? SNAPCHAT_CTA_MAP.default;
+  if (creativeType === "WEB_VIEW") {
+    throwValidation(validateSnapchatWebViewUrl(spec.webViewUrl ?? ""));
+  }
+  const cta = spec.callToAction ??
+    (creativeType === "APP_INSTALL" ? "INSTALL_NOW" : SNAPCHAT_CTA_MAP.default);
   throwValidation(validateSnapchatCta(creativeType, cta));
   if (!SNAPCHAT_ENTITY_ID_REGEX.test(spec.topSnapMediaId)) {
     throw new AdApiError({
@@ -1323,7 +1416,7 @@ export function buildSnapchatCreativeBody(
     });
   }
 
-  return {
+  const body: Record<string, unknown> = {
     name: spec.name,
     ad_account_id: adAccountId,
     type: creativeType,
@@ -1333,10 +1426,39 @@ export function buildSnapchatCreativeBody(
     // A1.2-8: unverifiable pre-create — this create IS the verification.
     profile_properties: { profile_id: spec.profileId.trim() },
     // Destination policy v1 (A1.1(5) / D-P1): canonical page, never the OneLink.
-    web_view_properties: { url: spec.webViewUrl },
     call_to_action: cta,
     shareable: spec.shareable ?? true,
   };
+  if (creativeType === "APP_INSTALL") {
+    const appName = spec.appName?.trim() ?? "";
+    const iconMediaId = spec.iconMediaId?.trim() ?? "";
+    const hasIos = Boolean(spec.iosAppId?.trim());
+    const hasAndroid = Boolean(spec.androidAppUrl?.trim());
+    if (
+      !appName || appName.length > 30 ||
+      !SNAPCHAT_ENTITY_ID_REGEX.test(iconMediaId) ||
+      hasIos === hasAndroid ||
+      !spec.brandName?.trim()
+    ) {
+      throw new AdApiError({
+        platform: "snapchat",
+        code: "app_creative_invalid",
+        message:
+          "Snap APP_INSTALL creative requires brand name, app name (≤30), icon media ID, and one exact iOS App ID or Android package.",
+      });
+    }
+    body.app_install_properties = {
+      app_name: appName,
+      ...(spec.iosAppId?.trim() ? { ios_app_id: spec.iosAppId.trim() } : {}),
+      ...(spec.androidAppUrl?.trim()
+        ? { android_app_url: spec.androidAppUrl.trim() }
+        : {}),
+      icon_media_id: iconMediaId,
+    };
+  } else {
+    body.web_view_properties = { url: spec.webViewUrl };
+  }
+  return body;
 }
 
 export interface SnapchatAdSpec {
