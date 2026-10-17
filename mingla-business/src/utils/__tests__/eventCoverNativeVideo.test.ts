@@ -3,7 +3,7 @@ import { describe, expect, test } from "@jest/globals";
 import { validateNativeTrimmedEventCoverVideo } from "../eventCoverNativeVideo";
 
 const limits = {
-  maxDurationMs: 15_000,
+  maxDurationMs: 60_000,
   maxSourceBytes: 500 * 1024 * 1024,
 };
 
@@ -29,11 +29,11 @@ describe("native trimmed event cover video validation", () => {
     });
   });
 
-  test("rejects native picker output that is still over 15 seconds before upload-intent", () => {
+  test("rejects native picker output that is still over 1 minute before upload-intent", () => {
     expect(
       validateNativeTrimmedEventCoverVideo(
         {
-          duration: 16_000,
+          duration: 60_001,
           fileSize: 12_345,
           uri: "file:///untrimmed-cover.mov",
         },

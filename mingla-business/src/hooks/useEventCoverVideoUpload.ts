@@ -6,6 +6,7 @@ import {
   compressVideoLocally, createEventCoverVideoUploadIntent, EventCoverVideoProcessingError,
   fetchEventCoverVideoStatus, fetchEventCoverVideoStatusByTarget, type EventCoverVideoApplyMode,
   type EventCoverVideoStatus, type EventCoverVideoUploadIntent, type EventCoverVideoUploadStage,
+  EVENT_COVER_SOURCE_CEILING_MS,
   logEventCoverVideoUploadTelemetry,
   uploadEventCoverVideoSource, waitForEventCoverVideoReady,
 } from "../services/eventCoverVideoProcessingService";
@@ -19,6 +20,7 @@ import {
 } from "../services/eventCoverVideoJobPersistence";
 import { supabase } from "../services/supabase";
 import { validateNativeTrimmedEventCoverVideo } from "../utils/eventCoverNativeVideo";
+import { coverVideoProcessingTiming } from "../utils/eventCoverVideoSlo";
 import { brandKeys } from "./useBrands";
 import { businessEventKeys } from "./useBusinessEvents";
 import { publicEventKeys } from "./usePublicEvents";
@@ -43,9 +45,9 @@ const REATTACH_DEADLINE_MS = 12_000;
 // production build 2026-09-08; the refusal is client-side, so no job row is
 // even created.
 //
-// Why 15 seconds does not already solve it: the trim editor is a keyframe
+// Why a one-minute cap does not solve source size: the trim editor is a keyframe
 // STREAM COPY (`enablePreciseTrimming: false`, issue #1350), which preserves
-// the source bitrate. Trimming 4K/60 iPhone footage to the duration cap leaves
+// the source bitrate. Trimming 4K/60 iPhone footage to the duration cap can leave
 // it at or above 100 MB on its own, so obeying the length limit does not get a
 // host under the size limit.
 //
@@ -295,7 +297,11 @@ export function useEventCoverVideoUpload(
     } else if (next.status === "source_uploading") {
       setStage({ phase: "ack_pending", percent: 0 });
     } else if (["source_uploaded", "processing_queued", "processing"].includes(next.status)) {
-      setStage({ phase: "processing", percent: next.progressKind === "determinate" ? next.progressPercent : null });
+      setStage({
+        phase: "processing",
+        percent: next.progressKind === "determinate" ? next.progressPercent : null,
+        timing: coverVideoProcessingTiming(next.sourceUploadedAt),
+      });
     } else if (["failed", "cancelled", "superseded"].includes(next.status)) {
       // issue #3074 — a terminal NON-success used to set `status` and leave the
       // STAGE untouched, so a sheet that was mid-"Reconnecting to your video…"
@@ -658,7 +664,7 @@ export function useEventCoverVideoUpload(
         uri: file.uri, duration: file.durationMs, fileSize: file.bytes,
         mimeType: file.mimeType, fileName: file.fileName,
       }, {
-        maxDurationMs: 15_000,
+        maxDurationMs: EVENT_COVER_SOURCE_CEILING_MS,
         // issue #3119 — the generous pick-time ceiling, NOT the pipeline cap.
         maxSourceBytes: EVENT_COVER_PICK_CEILING_BYTES,
         allowWebm: Platform.OS === "web",

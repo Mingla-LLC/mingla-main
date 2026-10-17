@@ -338,6 +338,7 @@ export const handleEventCoverVideoSourceUploaded = async (
           job.provider_payload,
           bunnySourceUpload,
         ),
+        source_uploaded_at: new Date(nowMs).toISOString(),
         status: "source_uploaded",
         tus_upload_offset: transfer.uploadOffset,
       })

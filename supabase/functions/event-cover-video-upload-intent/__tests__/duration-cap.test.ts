@@ -1,5 +1,5 @@
-// [TEST-MOD-APPROVED #2715 A8] Exact 15-second server contract. Restoring the
-// former 33-second ceiling or trim clamping makes these executable proofs fail.
+// [TEST-MOD-APPROVED #3040] Exact one-minute server contract. Lowering the
+// ceiling or reintroducing trim clamping makes these executable proofs fail.
 import {
   handleEventCoverVideoUploadIntent,
   SOURCE_CEILING_MS,
@@ -146,27 +146,27 @@ const assert = (condition: boolean, message: string) => {
   if (!condition) throw new Error(message);
 };
 
-Deno.test("#2715 accepts the exact 15000ms boundary", async () =>
+Deno.test("#3040 accepts the exact 60000ms boundary", async () =>
   withTusCreate(async () => {
     const capture: Capture = { allocations: 0 };
     const response = await handleEventCoverVideoUploadIntent(
       makeRequest({ sourceDurationMs: SOURCE_CEILING_MS }),
       createHarness(capture) as never,
     );
-    assert(SOURCE_CEILING_MS === 15_000, "ceiling must be exactly 15000");
+    assert(SOURCE_CEILING_MS === 60_000, "ceiling must be exactly 60000");
     assert(response.status === 200, `expected 200, got ${response.status}`);
     assert(capture.allocations === 1, "expected one allocation");
     assert(
-      capture.rpc?.p_source_duration_ms === 15_000 &&
-        capture.rpc?.p_trim_end_ms === 15_000,
+      capture.rpc?.p_source_duration_ms === 60_000 &&
+        capture.rpc?.p_trim_end_ms === 60_000,
       "exact boundary must persist unchanged",
     );
   }));
 
-Deno.test("#2715 rejects 15001ms before provider allocation", async () => {
+Deno.test("#3040 rejects 60001ms before provider allocation", async () => {
   const capture: Capture = { allocations: 0 };
   const response = await handleEventCoverVideoUploadIntent(
-    makeRequest({ sourceDurationMs: 15_001 }),
+    makeRequest({ sourceDurationMs: 60_001 }),
     createHarness(capture) as never,
   );
   assert(response.status === 422, `expected 422, got ${response.status}`);
@@ -176,7 +176,7 @@ Deno.test("#2715 rejects 15001ms before provider allocation", async () => {
 Deno.test("#2715 rejects an above-cap source instead of clamping its trim", async () => {
   const capture: Capture = { allocations: 0 };
   const response = await handleEventCoverVideoUploadIntent(
-    makeRequest({ sourceDurationMs: 31_000, trimEndMs: 31_000 }),
+    makeRequest({ sourceDurationMs: 61_000, trimEndMs: 61_000 }),
     createHarness(capture) as never,
   );
   assert(response.status === 422, `expected 422, got ${response.status}`);

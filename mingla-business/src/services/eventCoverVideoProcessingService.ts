@@ -27,8 +27,8 @@ export { EVENT_COVER_MAX_VIDEO_DURATION_MS };
 export const EVENT_COVER_SOURCE_CEILING_MS = EVENT_COVER_MAX_VIDEO_DURATION_MS;
 export const EVENT_COVER_VIDEO_PROCESSING_COPY =
   Platform.OS === "web"
-    ? "Video covers: MP4, MOV, M4V, or WebM • up to 15 seconds • under 100 MB. Mingla makes a browser-safe MP4 under 25 MB."
-    : "Video covers: MP4, MOV, or M4V • up to 15 seconds • under 100 MB. Mingla makes a browser-safe MP4 under 25 MB.";
+    ? "Video covers: MP4, MOV, M4V, or WebM • up to 1 minute • under 100 MB. Mingla makes a browser-safe MP4 under 25 MB."
+    : "Video covers: MP4, MOV, or M4V • up to 1 minute • under 100 MB. Mingla makes a browser-safe MP4 under 25 MB.";
 export const EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY =
   "Video cover processing is not configured yet. Images and GIFs still work.";
 
@@ -114,7 +114,11 @@ export type EventCoverVideoUploadStage =
   | { phase: "preparing" | "validating" | "intent_pending" | "ack_pending" | "reattaching"; percent: 0 }
   | { phase: "compressing"; percent: number | null }
   | { phase: "uploading"; percent: number }
-  | { phase: "processing"; percent: number | null }
+  | {
+      phase: "processing";
+      percent: number | null;
+      timing: "normal" | "delayed" | "breached";
+    }
   | { phase: "detached"; percent: 0; sourceAcknowledged: boolean }
   | { phase: "ready"; percent: 100 }
   | { phase: "applying"; percent: 100 }
@@ -341,11 +345,11 @@ const validationDetailMessage = (detail?: string): string => {
     case "source_size_out_of_range":
       return "Video file size was missing or over 100 MB. Try another trimmed clip.";
     case "source_duration_out_of_range":
-      return "Choose another 15-second clip and try again.";
+      return "Choose another video up to 1 minute long and try again.";
     case "trim_invalid":
     case "trim_out_of_range":
     case "trim_over_duration":
-      return "Choose a valid 15-second clip and try again.";
+      return "Choose a valid video up to 1 minute long and try again.";
     case "event_id_invalid_uuid":
     case "brand_id_invalid_uuid":
       return "This event is still syncing. Reopen the draft and try again.";
@@ -473,7 +477,7 @@ const loadVideoCompressor = (): VideoCompressorModule | null => {
 // story of the 19-minute failure.
 //
 // The trim editor is a keyframe STREAM COPY (`enablePreciseTrimming: false`,
-// issue #1350), so trimming to 15s preserves the source resolution AND bitrate:
+// issue #1350), so trimming to one minute preserves the source resolution AND bitrate:
 // the compressor was handed a full-bitrate 4K stream and asked to transcode it
 // on a phone. `compressionMethod: "auto"` sizes its target from that source, so
 // it tried to keep 4K — minutes of work, and on this device it never finished.

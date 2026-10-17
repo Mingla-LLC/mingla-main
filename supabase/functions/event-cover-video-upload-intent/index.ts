@@ -27,7 +27,7 @@ import {
 } from "../_shared/bunnyStream.ts";
 import { resolveRuntimeNumber } from "../_shared/runtimeConfig.ts";
 
-export const SOURCE_CEILING_MS = 15_000;
+export const SOURCE_CEILING_MS = 60_000;
 const SOURCE_MIME_EXTENSIONS = new Map([
   ["video/mp4", "mp4"],
   ["video/quicktime", "mov"],
