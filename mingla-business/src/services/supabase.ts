@@ -19,6 +19,11 @@ const supabaseAnonKey =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
   "";
 
+// Public client configuration used by authenticated binary transports that
+// need upload progress. The service-role key is never present in this app.
+export const supabaseProjectUrl = supabaseUrl;
+export const supabasePublicAnonKey = supabaseAnonKey;
+
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn(
     "[mingla-business] EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY missing — auth will fail until set in .env and app.config."

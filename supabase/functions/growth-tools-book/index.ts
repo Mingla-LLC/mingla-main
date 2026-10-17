@@ -123,11 +123,18 @@ function tzYmd(date: Date, tz: string): { y: number; mo: number; d: number; wd: 
 }
 
 // ── Google OAuth (refresh token → access token) ──────────────────────────────
-function calendarKeys(): { clientId: string; clientSecret: string; refresh: string } | null {
-  const packed = Deno.env.get("GOOGLE_CALENDAR_KEYS") ?? "";
+export function parseCalendarKeys(packed: string): { clientId: string; clientSecret: string; refresh: string } | null {
+  // Governed manifest fields: calendar_client_id, calendar_client_secret,
+  // calendar_refresh_token.
   const parts = packed.split("|");
-  if (parts.length !== 3 || parts.some((s) => s.length === 0)) return null;
+  // #3720 extends this governed bundle with one opaque Drive segment. Calendar
+  // deliberately keeps consuming exactly its original first three values.
+  if (![3, 4].includes(parts.length) || parts.slice(0, 3).some((s) => s.length === 0)) return null;
   return { clientId: parts[0], clientSecret: parts[1], refresh: parts[2] };
+}
+
+function calendarKeys(): { clientId: string; clientSecret: string; refresh: string } | null {
+  return parseCalendarKeys(Deno.env.get("GOOGLE_CALENDAR_KEYS") ?? "");
 }
 
 async function getAccessToken(): Promise<string | null> {

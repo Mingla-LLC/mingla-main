@@ -12,8 +12,12 @@ import {
   listOfficialBrandGroups,
   listOfficialBrandGroupMessages,
   markOfficialBrandGroupRead,
+  openOfficialBrandGroupFile,
+  prepareOfficialBrandGroupFiles,
+  finalizeOfficialBrandGroupFile,
   sendOfficialBrandGroupMessage,
   setOfficialBrandGroupWatch,
+  uploadOfficialBrandGroupFile,
 } from "../../services/communityService";
 import { listProductSignals } from "../../services/supportProductWorkflowService";
 import { timeAgo } from "../../lib/formatters";
@@ -35,8 +39,14 @@ export function BrandGroupsPanel() {
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
   const [signalSource, setSignalSource] = useState(null);
   const [signals, setSignals] = useState([]);
+  const fileInputRef = useRef(null);
+  const [uploads, setUploads] = useState([]);
+  const [filePreview, setFilePreview] = useState(null);
 
   useEffect(() => () => { mounted.current = false; }, []);
+  useEffect(() => () => {
+    if (filePreview?.objectUrl) URL.revokeObjectURL(filePreview.objectUrl);
+  }, [filePreview]);
 
   const loadGroups = useCallback(async () => {
     try {
@@ -159,6 +169,51 @@ export function BrandGroupsPanel() {
     });
   }
 
+  const updateUpload = useCallback((fileId, patch) => {
+    setUploads((current) => current.map((item) => item.prepared.fileId === fileId ? { ...item, ...patch } : item));
+  }, []);
+
+  const transferUpload = useCallback(async (item) => {
+    const fileId = item.prepared.fileId;
+    try {
+      if (!item.uploaded) {
+        updateUpload(fileId, { state: "uploading", error: "" });
+        await uploadOfficialBrandGroupFile(item.prepared, (progress) => updateUpload(fileId, { progress }));
+        updateUpload(fileId, { uploaded: true, progress: 1, state: "finalizing" });
+      } else {
+        updateUpload(fileId, { state: "finalizing", error: "" });
+      }
+      await finalizeOfficialBrandGroupFile(fileId);
+      updateUpload(fileId, { uploaded: true, progress: 1, state: "complete" });
+      if (selectedId) await loadThread(selectedId);
+    } catch (cause) {
+      updateUpload(fileId, { state: "failed", error: cause?.message || "Couldn't share this file." });
+    }
+  }, [loadThread, selectedId, updateUpload]);
+
+  async function chooseFiles(event) {
+    const files = Array.from(event.target.files || []).slice(0, 10);
+    event.target.value = "";
+    if (!selectedId || files.length === 0) return;
+    try {
+      const prepared = await prepareOfficialBrandGroupFiles(selectedId, files);
+      const next = prepared.map((file) => ({ prepared: file, progress: 0, state: "queued", uploaded: false, error: "" }));
+      setUploads(next);
+      for (const item of next) await transferUpload(item);
+    } catch (cause) {
+      addToast({ variant: "error", title: "Files not added", description: cause?.message });
+    }
+  }
+
+  async function preview(message) {
+    try {
+      const objectUrl = await openOfficialBrandGroupFile(message.file_id);
+      setFilePreview({ objectUrl, name: message.file_name, mime: message.file_mime });
+    } catch (cause) {
+      addToast({ variant: "error", title: "Couldn't open the file", description: cause?.message });
+    }
+  }
+
   if (loading) return <div className="flex min-h-64 items-center justify-center"><Spinner /></div>;
   if (error) return <SectionCard title="Brand groups"><div className="space-y-3 text-sm text-[var(--color-text-secondary)]"><p>{error}</p><Button variant="secondary" onClick={() => void loadGroups()}>Retry</Button></div></SectionCard>;
 
@@ -202,7 +257,12 @@ export function BrandGroupsPanel() {
                     {!mine ? <span className="mb-1 px-2 text-[11px] font-medium text-[var(--color-text-tertiary)]">{message.sender_display_name}{message.sender_role === "Mingla Support" ? " · Mingla Support" : ""}</span> : null}
                     <div className={`max-w-[85%] rounded-2xl border px-3 py-2 text-sm ${mine ? "border-[var(--color-brand-500)] bg-[var(--color-brand-500)] text-white" : "border-[var(--gray-200)] bg-[var(--gray-100)] text-[var(--color-text-primary)]"} ${selected ? "ring-2 ring-[#8b5cf6]" : ""}`}>
                       {message.reply_content ? <blockquote className="mb-2 border-l-2 border-current pl-2 text-xs opacity-75"><strong>{message.reply_sender_display_name || "Message"}</strong><br />{message.reply_content}</blockquote> : null}
-                      <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                      {message.file_id ? (
+                        <button type="button" onClick={() => void preview(message)} className="flex min-w-52 items-center gap-3 rounded-xl border border-current/20 p-2 text-left hover:bg-black/5">
+                          <span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-black/10">{message.message_type === "video" ? "▶" : message.message_type === "image" ? "▣" : "↥"}</span>
+                          <span className="min-w-0"><strong className="block truncate">{message.file_name}</strong><span className="text-[11px] opacity-70">{message.file_size ? `${(message.file_size / 1024 / 1024).toFixed(1)} MB` : "Secure shared file"} · Preview</span></span>
+                        </button>
+                      ) : <p className="whitespace-pre-wrap break-words">{message.content}</p>}
                       <p className="mt-1 text-[10px] opacity-65">{timeAgo(message.created_at)}</p>
                     </div>
                     <div className={`mt-1 flex flex-wrap gap-3 px-2 text-xs ${mine ? "justify-end" : "justify-start"}`}>
@@ -219,7 +279,15 @@ export function BrandGroupsPanel() {
               {replyTo ? <div className="flex items-center justify-between gap-3 rounded-lg bg-[var(--gray-100)] px-3 py-2 text-xs"><div className="min-w-0"><strong>Replying to {replyTo.sender_display_name}</strong><p className="truncate text-[var(--color-text-tertiary)]">{replyTo.content}</p></div><button type="button" className="font-semibold text-[var(--color-brand-600)]" onClick={() => setReplyTo(null)}>Clear</button></div> : null}
               {selectedMessages.length ? <p className="text-xs font-medium text-[#7c3aed]">{selectedMessages.length} related message{selectedMessages.length === 1 ? "" : "s"} selected</p> : null}
               <p className="text-[11px] text-[var(--color-text-tertiary)]">Replying as your real staff name · Mingla Support</p>
+              {uploads.length ? <div className="space-y-2 rounded-xl border border-[var(--gray-200)] p-3">{uploads.map((item) => (
+                <div key={item.prepared.fileId} className="flex items-center gap-3 text-xs">
+                  <div className="min-w-0 flex-1"><strong className="block truncate text-[var(--color-text-primary)]">{item.prepared.name}</strong><span className={item.state === "failed" ? "text-red-600" : "text-[var(--color-text-tertiary)]"}>{item.state === "uploading" ? `${Math.round(item.progress * 100)}% uploaded` : item.state === "finalizing" ? "Saving to Drive…" : item.state === "complete" ? "Shared" : item.error || "Waiting"}</span><div className="mt-1 h-1 overflow-hidden rounded bg-[var(--gray-200)]"><div className="h-full bg-[var(--color-brand-500)]" style={{ width: `${Math.round(item.progress * 100)}%` }} /></div></div>
+                  {item.state === "failed" ? <button type="button" className="font-semibold text-[var(--color-brand-600)]" onClick={() => void transferUpload(item)}>Retry</button> : null}
+                </div>
+              ))}</div> : null}
               <div className="flex items-end gap-2">
+                <input ref={fileInputRef} type="file" multiple className="sr-only" accept="image/*,video/*,audio/*,.pdf,.docx,.xlsx,.txt,.csv" onChange={(event) => void chooseFiles(event)} />
+                <Button variant="secondary" disabled={uploads.some((item) => ["queued", "uploading", "finalizing"].includes(item.state))} onClick={() => fileInputRef.current?.click()}>Add files</Button>
                 <textarea
                   value={composer}
                   onChange={(event) => setComposer(event.target.value)}
@@ -250,6 +318,17 @@ export function BrandGroupsPanel() {
         }}
         onError={(cause) => addToast({ variant: "error", title: "Couldn't save the Product signal", description: cause?.message })}
       />
+      {filePreview ? (
+        <div role="dialog" aria-modal="true" aria-label={`Preview ${filePreview.name}`} className="fixed inset-0 z-50 flex flex-col bg-black/85 p-4">
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 rounded-t-xl bg-[var(--color-background-primary)] px-4 py-3"><div className="min-w-0"><strong className="block truncate text-[var(--color-text-primary)]">{filePreview.name}</strong><span className="text-xs text-[var(--color-text-tertiary)]">Secure Brand-group preview</span></div><Button variant="secondary" onClick={() => setFilePreview(null)}>Close</Button></div>
+          <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center overflow-hidden rounded-b-xl bg-black">
+            {filePreview.mime?.startsWith("image/") ? <img src={filePreview.objectUrl} alt={filePreview.name} className="max-h-full max-w-full object-contain" /> : null}
+            {filePreview.mime?.startsWith("video/") || filePreview.mime?.startsWith("audio/") ? <video src={filePreview.objectUrl} controls autoPlay={false} className="max-h-full max-w-full" /> : null}
+            {filePreview.mime === "application/pdf" ? <iframe title={filePreview.name} src={filePreview.objectUrl} className="h-full w-full bg-white" /> : null}
+            {!filePreview.mime?.startsWith("image/") && !filePreview.mime?.startsWith("video/") && !filePreview.mime?.startsWith("audio/") && filePreview.mime !== "application/pdf" ? <div className="max-w-md p-8 text-center text-white"><p className="font-semibold">{filePreview.name}</p><p className="mt-2 text-sm text-white/70">This file is stored securely. Browser preview is available for images, video, audio, and PDFs.</p></div> : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

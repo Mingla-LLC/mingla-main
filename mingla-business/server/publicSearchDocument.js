@@ -361,6 +361,8 @@ const renderStatePage = ({ status, heading, message }) => `<!doctype html>
 // thumbnails, Giphy, Pexels, pixels) and cannot execute.
 const DEFAULT_SUPABASE_ORIGIN = "https://gqnoajqerqhnvulmnyvv.supabase.co";
 const BUNNY_STREAM_ORIGIN = "https://vz-a16fce08-6c6.b-cdn.net";
+const BAMBOO_GUIDES_ORIGIN = "https://cdnapi.bamboo-cloud.com";
+const MINGLA_MARKETING_ORIGIN = "https://usemingla.com";
 
 const originOf = (value, fallback = null) => {
   try {
@@ -415,6 +417,7 @@ const publicDocumentCspSources = () => [
   ["font-src", "'self'", "the app's theme fonts (Inter, Poppins, ...) under /assets"],
   ["media-src", "'self'", "the app's own bundled media"],
   ["media-src", BUNNY_STREAM_ORIGIN, "cover videos (Bunny Stream)"],
+  ["media-src", BAMBOO_GUIDES_ORIGIN, "Host Guide HLS manifests and video segments (Bamboo Video)"],
   ["script-src", "'self'", "the Expo chunks and lazy route chunks"],
   // Kept deliberately, not by default. The inline scripts are server-authored
   // (this handoff runtime; #3187 adds share analytics) and every value they
@@ -434,6 +437,7 @@ const publicDocumentCspSources = () => [
   ["script-src", "https://www.redditstatic.com", "Reddit pixel"],
   ["connect-src", "'self'", "/index.html handoff, /api/public-boot-outcome, /api/content-share-analytics"],
   ["connect-src", supabaseOrigin(), "every public page's data, RPCs and edge functions"],
+  ["connect-src", MINGLA_MARKETING_ORIGIN, "Host Guide caption sidecars under /help/captions/*.vtt"],
   // Conditional-spread like the Sentry row: a malformed SUPABASE_URL must add
   // no source at all rather than the string "null".
   ...(supabaseRealtimeOrigin() ? [["connect-src", supabaseRealtimeOrigin(), "Supabase Realtime WebSocket (postgres_changes); scheme-for-scheme, so the https origin above does not cover it"]] : []),

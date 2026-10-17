@@ -440,6 +440,7 @@ const OBSERVED_SOURCES: Array<[directive: 'script-src' | 'connect-src' | 'frame-
   ['script-src', 'https://tr.snapchat.com'],
   ['script-src', 'https://www.redditstatic.com'],
   ['connect-src', 'https://gqnoajqerqhnvulmnyvv.supabase.co'],
+  ['connect-src', 'https://usemingla.com'],
   // #3251 — Supabase Realtime over WebSocket. CSP matches scheme-for-scheme,
   // so the https row above does NOT cover this one.
   ['connect-src', 'wss://gqnoajqerqhnvulmnyvv.supabase.co'],
@@ -462,6 +463,7 @@ const OBSERVED_SOURCES: Array<[directive: 'script-src' | 'connect-src' | 'frame-
   ['frame-src', 'https://hooks.stripe.com'],
   ['frame-src', 'https://tr.snapchat.com'],
   ['media-src', 'https://vz-a16fce08-6c6.b-cdn.net'],
+  ['media-src', 'https://cdnapi.bamboo-cloud.com'],
   ['img-src', 'https://gqnoajqerqhnvulmnyvv.supabase.co'],
 ]
 const NOT_ALLOWED = 'https://issue3214-not-allowed.invalid'

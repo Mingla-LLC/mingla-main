@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/growth-tools-book/issue_3720_google_bundle_contract.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3720-google-bundle-contract",
+  "profile": "deno-1.46-stripe"
+}

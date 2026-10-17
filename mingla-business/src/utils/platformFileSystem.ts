@@ -35,7 +35,18 @@ export const createMultipartUploadTask = async (
 // META-ORCH-1270 — web never uses the native binary task; the Bunny TUS PATCH
 // on web is driven by XHR in the processing service. This stub keeps the module
 // shape symmetric so imports resolve on web.
-export const createBinaryUploadTask = async (): Promise<{
+export const createBinaryUploadTask = async (
+  _url: string,
+  _fileUri: string,
+  _options: {
+    httpMethod: "POST" | "PUT" | "PATCH";
+    headers: Record<string, string>;
+  },
+  _onProgress: (event: {
+    totalBytesSent: number;
+    totalBytesExpectedToSend: number;
+  }) => void,
+): Promise<{
   uploadAsync: () => Promise<unknown>;
   cancelAsync?: () => Promise<void>;
 }> => ({
