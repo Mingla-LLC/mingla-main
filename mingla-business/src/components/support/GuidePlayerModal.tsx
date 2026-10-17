@@ -98,10 +98,10 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
         </View>
 
         <View style={styles.controlRow}>
-          <Pressable accessibilityRole="switch" accessibilityState={{ checked: captionOn }} onPress={() => setCaptionOn((current) => !current)} style={[styles.pill, captionOn && styles.pillActive]}>
+          <Pressable accessibilityRole="switch" accessibilityLabel="Captions" accessibilityState={{ checked: captionOn }} onPress={() => setCaptionOn((current) => !current)} style={[styles.pill, captionOn && styles.pillActive]}>
             <Text style={[styles.pillText, captionOn && styles.pillTextActive]}>Captions {captionOn ? "on" : "off"}</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: showTranscript }} onPress={() => setShowTranscript((current) => !current)} style={styles.pill}>
+          <Pressable accessibilityRole="button" accessibilityLabel={showTranscript ? "Hide transcript" : "Show transcript"} accessibilityState={{ expanded: showTranscript }} onPress={() => setShowTranscript((current) => !current)} style={styles.pill}>
             <Text style={styles.pillText}>{showTranscript ? "Hide transcript" : "Show transcript"}</Text>
           </Pressable>
         </View>
@@ -128,7 +128,7 @@ function GuidePlayer({ guide, userId, onClose }: { guide: HelpVideoRecord; userI
                 <Text style={styles.stepTitle}>{step.title}</Text>
                 <Text style={styles.stepBody}>{step.body}</Text>
                 {step.links?.map((link) => (
-                  <Pressable key={link.href} accessibilityRole="link" onPress={() => void Linking.openURL(link.href)} style={styles.resourceLink}>
+                  <Pressable key={link.href} accessibilityRole="link" accessibilityLabel={link.label} onPress={() => void Linking.openURL(link.href)} style={styles.resourceLink}>
                     <Text style={styles.resourceText}>{link.label}</Text><Icon name="externalLink" size={14} color={accent.warm} />
                   </Pressable>
                 ))}
