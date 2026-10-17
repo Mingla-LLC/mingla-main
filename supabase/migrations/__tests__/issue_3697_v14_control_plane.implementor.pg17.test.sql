@@ -2,6 +2,7 @@
 -- MINGLA-INVARIANT: I-3697-PLAN-VERSION-BINDING | issue #3697 | Funding, staff review, typed confirmation, provider attempts and campaigns bind to the same immutable plan version and SHA-256.
 -- MINGLA-INVARIANT: I-3697-NO-SILENT-TARGETING-WIDENING | issue #3697 | A broader provider target cannot become ready without an explicit acceptance frozen into that version.
 -- MINGLA-INVARIANT: I-3697-PROVIDER-CONFIRMED-SETTLEMENT | issue #3697 | Held Host credit cannot be released until provider stop and final spend are recorded and the finality window closes.
+-- MINGLA-INVARIANT: I-3697-PAID-MEDIA-RIGHTS | issue #3697 | Every provider-bound plan freezes an actor-bound rights attestation; Mingla house reuse remains separately prohibited.
 
 \set ON_ERROR_STOP on
 BEGIN;
@@ -9,6 +10,12 @@ BEGIN;
 DO $test$
 DECLARE
   v_user constant uuid := '36971000-0000-4000-8000-000000000001';
+  v_marketing constant uuid := '36971000-0000-4000-8000-000000000002';
+  v_marketing_spend constant uuid := '36971000-0000-4000-8000-000000000003';
+  v_finance constant uuid := '36971000-0000-4000-8000-000000000004';
+  v_admin constant uuid := '36971000-0000-4000-8000-000000000005';
+  v_event_view constant uuid := '36971000-0000-4000-8000-000000000006';
+  v_reviewer constant uuid := '36971000-0000-4000-8000-000000000007';
   v_brand constant uuid := '36971000-0000-4000-8000-000000000011';
   v_connection constant uuid := '36971000-0000-4000-8000-000000000021';
   v_connection_2 constant uuid := '36971000-0000-4000-8000-000000000022';
@@ -34,12 +41,33 @@ DECLARE
   v_wallet_balance bigint;
   v_wallet_held bigint;
   v_app_destination jsonb;
+  v_rights jsonb;
   v_failed boolean;
 BEGIN
-  INSERT INTO auth.users (id, email)
-  VALUES (v_user, 'issue-3697-control-plane@example.test');
-  INSERT INTO public.creator_accounts (id, email)
-  VALUES (v_user, 'issue-3697-control-plane@example.test');
+  v_rights := jsonb_build_object(
+    'rights_confirmed', true,
+    'rights_basis', 'owned',
+    'ai_generated', false,
+    'house_reuse_allowed', false,
+    'attested_by', v_user::text,
+    'attested_at', now()
+  );
+  INSERT INTO auth.users (id, email) VALUES
+    (v_user, 'issue-3697-control-plane@example.test'),
+    (v_marketing, 'issue-3697-marketing@example.test'),
+    (v_marketing_spend, 'issue-3697-marketing-spend@example.test'),
+    (v_finance, 'issue-3697-finance@example.test'),
+    (v_admin, 'issue-3697-brand-admin@example.test'),
+    (v_event_view, 'issue-3697-event-view@example.test'),
+    (v_reviewer, 'issue-3697-reviewer@example.test');
+  INSERT INTO public.creator_accounts (id, email) VALUES
+    (v_user, 'issue-3697-control-plane@example.test'),
+    (v_marketing, 'issue-3697-marketing@example.test'),
+    (v_marketing_spend, 'issue-3697-marketing-spend@example.test'),
+    (v_finance, 'issue-3697-finance@example.test'),
+    (v_admin, 'issue-3697-brand-admin@example.test'),
+    (v_event_view, 'issue-3697-event-view@example.test'),
+    (v_reviewer, 'issue-3697-reviewer@example.test');
   INSERT INTO public.brands (
     id, account_id, name, slug, default_currency,
     payment_provider, payment_country, paystack_subaccount_code
@@ -47,6 +75,62 @@ BEGIN
     v_brand, v_user, 'Issue 3697 control plane', 'issue-3697-control-plane',
     'NGN', 'paystack', 'NG', 'ACCT_issue3697_control'
   );
+  INSERT INTO public.brand_team_members (
+    brand_id, user_id, role, accepted_at, permissions_override
+  ) VALUES
+    (v_brand, v_marketing, 'marketing_manager', now(), '{}'::jsonb),
+    (v_brand, v_marketing_spend, 'marketing_manager', now(),
+      '{"ads_spend":true}'::jsonb),
+    (v_brand, v_finance, 'finance_manager', now(), '{}'::jsonb),
+    (v_brand, v_admin, 'brand_admin', now(), '{}'::jsonb),
+    (v_brand, v_event_view, 'event_manager', now(),
+      '{"ads_view":true}'::jsonb);
+
+  -- V1.4-13: each Host action is independently authorized. A broad payments
+  -- predicate must not silently grant planning, launch, pause or end.
+  IF NOT public.ad_can_host_action(v_brand, v_user, 'read')
+     OR NOT public.ad_can_host_action(v_brand, v_user, 'plan')
+     OR NOT public.ad_can_host_action(v_brand, v_user, 'fund')
+     OR NOT public.ad_can_host_action(v_brand, v_user, 'launch')
+     OR NOT public.ad_can_host_action(v_brand, v_user, 'pause')
+     OR NOT public.ad_can_host_action(v_brand, v_user, 'end') THEN
+    RAISE EXCEPTION 'brand_owner_ads_matrix_incomplete';
+  END IF;
+  IF NOT public.ad_can_host_action(v_brand, v_marketing, 'read')
+     OR NOT public.ad_can_host_action(v_brand, v_marketing, 'plan')
+     OR public.ad_can_host_action(v_brand, v_marketing, 'fund')
+     OR public.ad_can_host_action(v_brand, v_marketing, 'launch')
+     OR public.ad_can_host_action(v_brand, v_marketing, 'pause')
+     OR public.ad_can_host_action(v_brand, v_marketing, 'end') THEN
+    RAISE EXCEPTION 'marketing_manager_ads_matrix_wrong';
+  END IF;
+  IF NOT public.ad_can_host_action(v_brand, v_marketing_spend, 'fund')
+     OR NOT public.ad_can_host_action(v_brand, v_marketing_spend, 'launch')
+     OR NOT public.ad_can_host_action(v_brand, v_marketing_spend, 'pause')
+     OR public.ad_can_host_action(v_brand, v_marketing_spend, 'end') THEN
+    RAISE EXCEPTION 'marketing_spend_override_matrix_wrong';
+  END IF;
+  IF NOT public.ad_can_host_action(v_brand, v_finance, 'read')
+     OR NOT public.ad_can_host_action(v_brand, v_finance, 'fund')
+     OR public.ad_can_host_action(v_brand, v_finance, 'plan')
+     OR public.ad_can_host_action(v_brand, v_finance, 'launch')
+     OR public.ad_can_host_action(v_brand, v_finance, 'pause')
+     OR public.ad_can_host_action(v_brand, v_finance, 'end') THEN
+    RAISE EXCEPTION 'finance_manager_ads_matrix_wrong';
+  END IF;
+  IF NOT public.ad_can_host_action(v_brand, v_admin, 'read')
+     OR NOT public.ad_can_host_action(v_brand, v_admin, 'plan')
+     OR public.ad_can_host_action(v_brand, v_admin, 'fund')
+     OR public.ad_can_host_action(v_brand, v_admin, 'launch')
+     OR public.ad_can_host_action(v_brand, v_admin, 'pause')
+     OR public.ad_can_host_action(v_brand, v_admin, 'end') THEN
+    RAISE EXCEPTION 'brand_admin_ads_matrix_wrong';
+  END IF;
+  IF NOT public.ad_can_host_action(v_brand, v_event_view, 'read')
+     OR public.ad_can_host_action(v_brand, v_event_view, 'plan')
+     OR public.ad_can_host_action(v_brand, v_event_view, 'fund') THEN
+    RAISE EXCEPTION 'explicit_ads_view_override_wrong';
+  END IF;
   INSERT INTO public.ad_connections (
     id, platform, lane, display_name, external_account_id, auth_kind,
     token_env_var, status, currency, connected
@@ -108,7 +192,8 @@ BEGIN
   BEGIN
     PERFORM public.ad_plan_create_version(
       v_admin_plan.id,
-      '{"platforms":["meta","reddit"],"confirmation_phrase":"LAUNCH"}'::jsonb,
+      '{"platforms":["meta","reddit"],"confirmation_phrase":"LAUNCH"}'::jsonb
+        || jsonb_build_object('media_rights', v_rights),
       2000, 'USD', jsonb_build_array(
         jsonb_build_object(
           'platform', 'meta', 'connection_id', v_connection,
@@ -136,7 +221,8 @@ BEGIN
   BEGIN
     PERFORM public.ad_plan_create_version(
       v_app_plan.id,
-      '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb,
+      '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb
+        || jsonb_build_object('media_rights', v_rights),
       1000, 'USD', jsonb_build_array(jsonb_build_object(
         'platform', 'meta', 'connection_id', v_connection,
         'host_budget_cents', 1000, 'provider_budget_cents', 1000,
@@ -166,9 +252,26 @@ BEGIN
     'host', 'host', v_brand, 'public_mingla_page',
     'brand:issue-3697-control-plane', '[]'::jsonb, v_user
   );
+  v_failed := false;
+  BEGIN
+    PERFORM public.ad_plan_create_version(
+      v_bad_plan.id,
+      '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb,
+      3000000, 'NGN', jsonb_build_array(jsonb_build_object(
+        'platform', 'meta', 'connection_id', v_connection,
+        'host_budget_cents', 3000000,
+        'provider_budget_cents', v_provider_budget,
+        'fx_snapshot_id', v_snapshot
+      )), v_user
+    );
+  EXCEPTION WHEN SQLSTATE '22023' THEN
+    v_failed := SQLERRM = 'ad_plan_media_rights_attestation_required';
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'media_rights_bypass_succeeded'; END IF;
   v_bad_version := public.ad_plan_create_version(
     v_bad_plan.id,
-    '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb,
+    '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb
+      || jsonb_build_object('media_rights', v_rights),
     3000000, 'NGN', jsonb_build_array(jsonb_build_object(
       'platform', 'meta', 'connection_id', v_connection,
       'host_budget_cents', 3000000,
@@ -200,7 +303,8 @@ BEGIN
   );
   v_revise_version := public.ad_plan_create_version(
     v_revise_plan.id,
-    '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb,
+    '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb
+      || jsonb_build_object('media_rights', v_rights),
     1500000, 'NGN', jsonb_build_array(jsonb_build_object(
       'platform', 'meta', 'connection_id', v_connection,
       'host_budget_cents', 1500000,
@@ -223,9 +327,19 @@ BEGIN
     v_revise_version.id, v_revise_version.plan_hash,
     'v14-review-release-hold', v_user
   );
+  v_failed := false;
+  BEGIN
+    PERFORM public.ad_plan_record_review(
+      v_revise_version.id, v_revise_version.plan_hash, 'changes_requested',
+      'Authors cannot review their own plan version', v_user
+    );
+  EXCEPTION WHEN SQLSTATE '42501' THEN
+    v_failed := SQLERRM = 'ad_plan_reviewer_must_differ_from_author';
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'plan_author_reviewed_own_version'; END IF;
   PERFORM public.ad_plan_record_review(
     v_revise_version.id, v_revise_version.plan_hash, 'changes_requested',
-    'Correct the headline', v_user
+    'Correct the headline', v_reviewer
   );
   SELECT balance_cents, held_cents INTO v_wallet_balance, v_wallet_held
   FROM public.ad_credit_wallets WHERE brand_id = v_brand;
@@ -238,7 +352,8 @@ BEGIN
   END IF;
   v_revised_version := public.ad_plan_create_version(
     v_revise_plan.id,
-    '{"platforms":["meta"],"confirmation_phrase":"LAUNCH","headline":"Corrected"}'::jsonb,
+    '{"platforms":["meta"],"confirmation_phrase":"LAUNCH","headline":"Corrected"}'::jsonb
+      || jsonb_build_object('media_rights', v_rights),
     1500000, 'NGN', jsonb_build_array(jsonb_build_object(
       'platform', 'meta', 'connection_id', v_connection,
       'host_budget_cents', 1500000,
@@ -260,7 +375,8 @@ BEGIN
   END IF;
   v_version := public.ad_plan_create_version(
     v_plan.id,
-    '{"platforms":["meta","tiktok"],"confirmation_phrase":"LAUNCH","destination":"event:issue-3697-control"}'::jsonb,
+    '{"platforms":["meta","tiktok"],"confirmation_phrase":"LAUNCH","destination":"event:issue-3697-control"}'::jsonb
+      || jsonb_build_object('media_rights', v_rights),
     3000000, 'NGN', jsonb_build_array(jsonb_build_object(
       'platform', 'meta', 'connection_id', v_connection,
       'host_budget_cents', 1500000,
@@ -273,6 +389,36 @@ BEGIN
       'fx_snapshot_id', v_snapshot
     )), v_user
   );
+  v_failed := false;
+  BEGIN
+    INSERT INTO public.ad_plan_targeting_snapshots (
+      plan_version_id, platform, audience_intent, compiled_targeting, verdict,
+      provider_estimate, estimate_observed_at, evidence_observed_at, compiler_version
+    ) VALUES (
+      v_version.id, 'meta', '{"countries":["NG"]}'::jsonb,
+      '{"geo_locations":{"countries":["NG"]}}'::jsonb, 'exact',
+      '{"state":"available","quality":"provider_estimate","source":"meta:/reachestimate","unit":"potential_reach","lower_bound":12000,"upper_bound":18000,"period":null,"assumptions":[],"non_additive":true,"detail":"provider_native_estimate","total":30000}'::jsonb,
+      now(), now(), 'v1.4-test'
+    );
+  EXCEPTION WHEN check_violation THEN
+    v_failed := true;
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'cross_platform_estimate_total_was_storable'; END IF;
+  v_failed := false;
+  BEGIN
+    INSERT INTO public.ad_plan_targeting_snapshots (
+      plan_version_id, platform, audience_intent, compiled_targeting, verdict,
+      provider_estimate, estimate_observed_at, evidence_observed_at, compiler_version
+    ) VALUES (
+      v_version.id, 'meta', '{"countries":["NG"]}'::jsonb,
+      '{"geo_locations":{"countries":["NG"]}}'::jsonb, 'exact',
+      '{"state":"available","quality":"provider_estimate","source":"meta:/reachestimate","unit":"potential_reach","lower_bound":12000,"upper_bound":18000,"period":null,"assumptions":[],"detail":"provider_native_estimate"}'::jsonb,
+      now(), now(), 'v1.4-test'
+    );
+  EXCEPTION WHEN check_violation THEN
+    v_failed := true;
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'additive_estimate_contract_was_storable'; END IF;
   INSERT INTO public.ad_plan_targeting_snapshots (
     plan_version_id, platform, audience_intent, compiled_targeting, verdict,
     provider_estimate, estimate_observed_at, evidence_observed_at, compiler_version
@@ -280,13 +426,13 @@ BEGIN
   (
     v_version.id, 'meta', '{"countries":["NG"],"age_min":21}'::jsonb,
     '{"geo_locations":{"countries":["NG"]},"age_min":21}'::jsonb,
-    'exact', '{"lower_bound":12000,"upper_bound":18000}'::jsonb,
+    'exact', '{"state":"available","quality":"provider_estimate","source":"meta:/reachestimate","unit":"potential_reach","lower_bound":12000,"upper_bound":18000,"period":null,"assumptions":[],"non_additive":true,"detail":"provider_native_estimate"}'::jsonb,
     now(), now(), 'v1.4-test'
   ),
   (
     v_version.id, 'tiktok', '{"countries":["NG"],"age_min":21}'::jsonb,
     '{"location_ids":["NG"],"age_groups":["AGE_21_24","AGE_25_34"]}'::jsonb,
-    'exact', '{"lower_bound":9000,"upper_bound":14000}'::jsonb,
+    'exact', '{"state":"available","quality":"provider_estimate","source":"tiktok:/ad/audience_size/estimate/","unit":"potential_reach","lower_bound":9000,"upper_bound":14000,"period":null,"assumptions":[],"non_additive":true,"detail":"provider_native_estimate"}'::jsonb,
     now(), now(), 'v1.4-test'
   );
   PERFORM public.ad_plan_mark_ready(v_version.id, v_version.plan_hash);
@@ -309,7 +455,7 @@ BEGIN
   IF NOT v_failed THEN RAISE EXCEPTION 'first_three_plan_launchable_without_review'; END IF;
 
   v_review := public.ad_plan_record_review(
-    v_version.id, v_version.plan_hash, 'approved', 'Controlled test approval', v_user
+    v_version.id, v_version.plan_hash, 'approved', 'Controlled test approval', v_reviewer
   );
   IF v_review.plan_hash <> v_version.plan_hash THEN
     RAISE EXCEPTION 'review_hash_not_bound';

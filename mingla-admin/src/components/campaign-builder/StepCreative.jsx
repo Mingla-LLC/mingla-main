@@ -137,6 +137,7 @@ export function StepCreative({
       variants: {},
       validation: null,
       creativeRow: null,
+      rightsConfirmed: false,
     });
     setServerError(null);
   };
@@ -153,6 +154,7 @@ export function StepCreative({
         path,
         validation: null,
         creativeRow: null,
+        rightsConfirmed: false,
         name: creative.name || file.name.replace(/\.[a-z]+$/i, ""),
       });
     } catch (err) {
@@ -180,6 +182,7 @@ export function StepCreative({
       posterPath: null,
       validation: null,
       creativeRow: null,
+      rightsConfirmed: false,
     });
   };
 
@@ -348,7 +351,7 @@ export function StepCreative({
           previewUrl={creative.localPreviewUrl ?? creative.publicUrl}
           uploading={uploading}
           onFilePicked={handleFilePicked}
-          onClear={() => set({ file: null, localPreviewUrl: null, publicUrl: null, path: null, validation: null, creativeRow: null })}
+          onClear={() => set({ file: null, localPreviewUrl: null, publicUrl: null, path: null, validation: null, creativeRow: null, rightsConfirmed: false })}
         />
       )}
 
@@ -407,19 +410,57 @@ export function StepCreative({
       )}
 
       {(mediaReady || creative.publicUrl || isVideo) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
-          <Input
-            label="Creative name"
-            value={creative.name}
-            onChange={(e) => set({ name: e.target.value })}
-            placeholder="July London push — hero"
-          />
-          <div className="flex items-center gap-3">
-            <Toggle
-              label="AI-generated (discloses OPT_IN to Meta)"
-              checked={creative.aiGenerated}
-              onChange={(v) => set({ aiGenerated: v })}
+        <div className="space-y-3 rounded-xl border border-[var(--gray-200)] p-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+            <Input
+              label="Creative name"
+              value={creative.name}
+              onChange={(e) => set({ name: e.target.value })}
+              placeholder="July London push — hero"
             />
+            <div className="flex items-center gap-3">
+              <Toggle
+                label="AI-generated (discloses OPT_IN to Meta)"
+                checked={creative.aiGenerated}
+                onChange={(v) => set({ aiGenerated: v })}
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="grid gap-1 text-xs font-medium">
+              Rights basis
+              <select
+                value={creative.rightsBasis}
+                onChange={(event) =>
+                  set({
+                    rightsBasis: event.target.value,
+                    rightsConfirmed: false,
+                  })
+                }
+                className="h-10 rounded-lg border border-[var(--gray-200)] bg-transparent px-3 text-sm"
+              >
+                <option value="owned">Owned by Mingla or the brand</option>
+                <option value="licensed">Licensed for paid advertising</option>
+                <option value="authorized_by_brand">
+                  Authorized by the brand or creator
+                </option>
+              </select>
+            </label>
+            <label className="flex items-start gap-2 rounded-lg bg-[var(--gray-50)] p-3 text-xs">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={creative.rightsConfirmed}
+                onChange={(event) =>
+                  set({ rightsConfirmed: event.target.checked })
+                }
+              />
+              <span>
+                I confirm this asset may be used in paid ads under the selected
+                basis. This attestation does not authorize reuse in Mingla house
+                campaigns.
+              </span>
+            </label>
           </div>
         </div>
       )}

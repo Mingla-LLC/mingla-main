@@ -14,6 +14,12 @@ const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 describe("issue #3697 v1.4 Admin control plane", () => {
   const campaigns = read("src/pages/CampaignsPage.jsx");
   const builder = read("src/pages/CampaignBuilderPage.jsx");
+  const creativeStep = read(
+    "src/components/campaign-builder/StepCreative.jsx",
+  );
+  const reviewStep = read(
+    "src/components/campaign-builder/StepReview.jsx",
+  );
   const payload = read("src/lib/adBuilder/payload.js");
   const createEndpoint = read(
     "../supabase/functions/admin-ad-create-campaign/index.ts",
@@ -46,6 +52,11 @@ describe("issue #3697 v1.4 Admin control plane", () => {
     assert.match(builder, /targeting_snapshots/);
     assert.match(builder, /broader_acceptance/);
     assert.match(builder, /confirmation_phrase:\s*"CREATE PAUSED"/);
+    assert.match(reviewStep, /Provider estimate/);
+    assert.match(reviewStep, /Do not add these estimates/);
+    assert.match(reviewStep, /estimate_observed_at/);
+    assert.match(campaigns, /Do not add platform estimates/);
+    assert.match(campaigns, /provider_estimate/);
   });
 
   it("binds platform-neutral copy and creative intent to the immutable plan", () => {
@@ -57,13 +68,28 @@ describe("issue #3697 v1.4 Admin control plane", () => {
     assert.match(createEndpoint, /plan_compliance_mismatch/);
   });
 
+  it("requires paid-media rights and freezes honest measurement disclosure", () => {
+    assert.match(creativeStep, /Rights basis/);
+    assert.match(creativeStep, /used in paid ads/);
+    assert.match(creativeStep, /rightsBasis/);
+    assert.match(creativeStep, /rightsConfirmed/);
+    assert.match(creativeStep, /AI-generated/);
+    assert.match(builder, /media_rights:/);
+    assert.match(builder, /rights_confirmed:\s*creative\.rightsConfirmed/);
+    assert.match(reviewStep, /measurement\.result_hierarchy/);
+    assert.match(reviewStep, /Trusted Mingla results remain visible/);
+    assert.match(reviewStep, /Media rights attested/);
+    assert.match(campaigns, /Browser pixels and platform sharing are consent-gated/);
+  });
+
   it("launches or pauses every provider campaign in the plan aggregate", () => {
     assert.match(actionEndpoint, /runPlannedAction/);
     assert.match(actionEndpoint, /\.eq\("plan_version_id", versionId\)/);
     assert.match(actionEndpoint, /partially_live/);
     assert.match(actionEndpoint, /ad_record_provider_attempt/);
     assert.match(actionEndpoint, /legacy_campaign_reconciliation_required/);
-    assert.match(actionEndpoint, /biz_can_manage_payments_for_brand/);
+    assert.match(actionEndpoint, /ad_can_host_action/);
+    assert.match(actionEndpoint, /p_action:\s*"pause"/);
     assert.match(actionEndpoint, /campaign\.owner_kind !== "host"/);
   });
 

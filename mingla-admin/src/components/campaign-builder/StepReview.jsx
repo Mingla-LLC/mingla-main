@@ -21,6 +21,17 @@ import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { PLATFORM_LABELS } from "../../lib/adBuilder/channelPlan";
 
+function estimateLabel(estimate) {
+  if (
+    estimate?.state === "available" &&
+    Number.isFinite(estimate.lower_bound) &&
+    Number.isFinite(estimate.upper_bound)
+  ) {
+    return `${estimate.lower_bound.toLocaleString()}–${estimate.upper_bound.toLocaleString()} potential reach`;
+  }
+  return String(estimate?.state ?? "unavailable").replaceAll("_", " ");
+}
+
 export function StepReview({
   summary,
   name,
@@ -183,6 +194,55 @@ export function StepReview({
             </code>
           </div>
           <div className="space-y-2">
+            {planPreview.measurement && (
+              <div className="rounded-lg bg-[var(--gray-50)] px-3 py-2 text-xs space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">Measurement</span>
+                  <Badge
+                    variant={
+                      planPreview.measurement.quality === "trusted"
+                        ? "success"
+                        : "info"
+                    }
+                  >
+                    {String(planPreview.measurement.quality).replaceAll("_", " ")}
+                  </Badge>
+                </div>
+                <p>
+                  Result order: {(planPreview.measurement.result_hierarchy ?? [])
+                    .map((value) => String(value).replaceAll("_", " "))
+                    .join(" → ")}
+                </p>
+                <p className="text-[var(--color-text-secondary)]">
+                  Browser pixels and platform conversion sharing require
+                  consent. Trusted Mingla results remain visible in aggregate
+                  reporting when outbound sharing is withheld.
+                </p>
+              </div>
+            )}
+            {planPreview.media_rights && (
+              <div className="rounded-lg bg-[var(--gray-50)] px-3 py-2 text-xs space-y-1">
+                <p className="font-semibold">Media rights attested</p>
+                <p>
+                  {String(planPreview.media_rights.rights_basis).replaceAll(
+                    "_",
+                    " ",
+                  )} · {planPreview.media_rights.ai_generated
+                    ? "AI-generated"
+                    : "not marked AI-generated"}
+                </p>
+                <p className="text-[var(--color-text-secondary)]">
+                  Paid-ad use only; Mingla house reuse is not authorized.
+                </p>
+              </div>
+            )}
+            {(planPreview.targeting_snapshots ?? []).length > 0 && (
+              <AlertCard variant="warning" title="Provider estimates overlap">
+                Read each platform separately. Do not add these estimates into
+                a cross-platform total because the same person may appear on
+                more than one platform.
+              </AlertCard>
+            )}
             {(planPreview.targeting_snapshots ?? []).map((row) => (
               <div
                 key={row.platform}
@@ -219,6 +279,31 @@ export function StepReview({
                     {message}
                   </p>
                 ))}
+                {row.provider_estimate && (
+                  <div className="mt-2 border-t border-[var(--gray-200)] pt-2 space-y-1">
+                    <p className="font-semibold">
+                      Provider estimate · {estimateLabel(row.provider_estimate)}
+                    </p>
+                    <p className="text-[var(--color-text-secondary)]">
+                      Observed {row.estimate_observed_at
+                        ? new Date(row.estimate_observed_at).toLocaleString()
+                        : "time unavailable"} · {row.provider_estimate.source}
+                    </p>
+                    {row.provider_estimate.state !== "available" && (
+                      <p className="text-[var(--color-text-secondary)]">
+                        {String(row.provider_estimate.detail).replaceAll("_", " ")}
+                      </p>
+                    )}
+                    {(row.provider_estimate.assumptions ?? []).map((assumption) => (
+                      <p
+                        key={assumption}
+                        className="text-[var(--color-text-secondary)]"
+                      >
+                        {assumption}
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

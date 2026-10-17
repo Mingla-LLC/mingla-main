@@ -23,8 +23,8 @@ import {
   text as textTokens,
   typography,
 } from "../../../../src/constants/designSystem";
-import { useCanManageBrandPayments } from "../../../../src/hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
+import { useHostAdPermissions } from "../../../../src/hooks/useHostAdPermissions";
 import {
   cancelHostAdCampaign,
   endHostAdCampaign,
@@ -50,7 +50,7 @@ function firstParam(value: string | string[] | undefined): string | null {
 export default function HostAdDetailRoute(): React.ReactElement {
   const brand = useCurrentBrand();
   const brandId = brand?.id ?? null;
-  const manage = useCanManageBrandPayments(brandId);
+  const permissions = useHostAdPermissions(brandId);
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const campaignId = firstParam(params.id);
   const router = useRouter();
@@ -59,7 +59,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const [payload, setPayload] = useState<HostAdCampaignDetail | null>(null);
 
   const load = useCallback(async () => {
-    if (brandId === null || campaignId === null) return;
+    if (brandId === null || campaignId === null || !permissions.canRead) return;
     setError(null);
     try {
       const res = await getHostAdCampaign(brandId, campaignId);
@@ -68,14 +68,16 @@ export default function HostAdDetailRoute(): React.ReactElement {
       setError("Could not load this ad.");
       setPayload(null);
     }
-  }, [brandId, campaignId]);
+  }, [brandId, campaignId, permissions.canRead]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const onPause = useCallback(async () => {
-    if (brandId === null || campaignId === null) return;
+    if (
+      brandId === null || campaignId === null || !permissions.canPause
+    ) return;
     setBusy(true);
     setError(null);
     try {
@@ -86,10 +88,10 @@ export default function HostAdDetailRoute(): React.ReactElement {
     } finally {
       setBusy(false);
     }
-  }, [brandId, campaignId, load]);
+  }, [brandId, campaignId, load, permissions.canPause]);
 
   const onEnd = useCallback(async () => {
-    if (brandId === null || campaignId === null) return;
+    if (brandId === null || campaignId === null || !permissions.canEnd) return;
     setBusy(true);
     setError(null);
     try {
@@ -104,10 +106,10 @@ export default function HostAdDetailRoute(): React.ReactElement {
     } finally {
       setBusy(false);
     }
-  }, [brandId, campaignId, load]);
+  }, [brandId, campaignId, load, permissions.canEnd]);
 
   const onCancel = useCallback(async () => {
-    if (brandId === null || campaignId === null) return;
+    if (brandId === null || campaignId === null || !permissions.canEnd) return;
     setBusy(true);
     setError(null);
     try {
@@ -122,7 +124,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
     } finally {
       setBusy(false);
     }
-  }, [brandId, campaignId, load]);
+  }, [brandId, campaignId, load, permissions.canEnd]);
 
   if (brandId === null || campaignId === null) {
     return (
@@ -132,6 +134,27 @@ export default function HostAdDetailRoute(): React.ReactElement {
           title="Ad not found"
           description="Pick a brand and open an ad from the Ads list."
           testID="ads-detail-missing"
+        />
+      </View>
+    );
+  }
+
+  if (permissions.isLoading) {
+    return (
+      <View style={styles.host} testID="ads-detail-permission-loading">
+        <ActivityIndicator color={textTokens.secondary} />
+      </View>
+    );
+  }
+
+  if (permissions.isError || !permissions.canRead) {
+    return (
+      <View style={styles.host}>
+        <EmptyState
+          illustration="users"
+          title="Ads access required"
+          description="Ask a brand owner to grant Ads view access for this brand."
+          testID="ads-detail-permission-denied"
         />
       </View>
     );
@@ -186,6 +209,13 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const canCancel = !isEnded && spent <= 0;
   const canEnd = !isEnded && spent > 0;
   const conversions = Number(payload.results?.conversions ?? 0);
+  const resultHierarchy = Array.isArray(
+      payload.measurement?.manifest?.result_hierarchy,
+    )
+    ? payload.measurement.manifest.result_hierarchy
+    : [];
+  const primaryResultLabel = String(resultHierarchy[0] ?? "conversions")
+    .replaceAll("_", " ");
   const impressions = payload.spend_daily.reduce(
     (total, row) => total + Number(row.impressions ?? 0),
     0,
@@ -261,6 +291,16 @@ export default function HostAdDetailRoute(): React.ReactElement {
 
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.sectionTitle}>Results</Text>
+          <Text style={styles.muted}>
+            Primary result: {primaryResultLabel} · quality{" "}
+            {String(payload.measurement?.manifest?.quality ?? "unavailable")
+              .replaceAll("_", " ")}
+          </Text>
+          <Text style={styles.muted}>
+            Browser pixels and outbound platform conversion sharing require
+            consent. Mingla shows trusted finalized results in aggregate even
+            when outbound sharing is withheld.
+          </Text>
           <View style={styles.metricGrid}>
             <View style={styles.metricCell}>
               <Text style={styles.metricNumber}>
@@ -276,9 +316,16 @@ export default function HostAdDetailRoute(): React.ReactElement {
               <Text style={styles.metricNumber}>
                 {conversions.toLocaleString()}
               </Text>
-              <Text style={styles.metricLabel}>Conversions</Text>
+              <Text style={styles.metricLabel}>{primaryResultLabel}</Text>
             </View>
           </View>
+          {payload.measurement?.platform_withheld_conversion_count > 0 ? (
+            <Text style={styles.muted}>
+              {payload.measurement.platform_withheld_conversion_count} trusted
+              result(s) counted by Mingla and withheld from ad platforms by
+              consent.
+            </Text>
+          ) : null}
           {(payload.results.by_platform ?? []).map((row) => (
             <View key={row.platform} style={styles.resultRow}>
               <Text style={styles.body}>{row.platform}</Text>
@@ -357,9 +404,10 @@ export default function HostAdDetailRoute(): React.ReactElement {
           </Text>
         ) : null}
 
-        {manage.allowed && !isEnded && currency ? (
+        {!isEnded && currency &&
+        (permissions.canPause || permissions.canEnd) ? (
           <View style={styles.actions}>
-            {isLive ? (
+            {isLive && permissions.canPause ? (
               <Pressable
                 style={styles.actionBtn}
                 disabled={busy}
@@ -373,7 +421,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
                 </Text>
               </Pressable>
             ) : null}
-            {canCancel ? (
+            {canCancel && permissions.canEnd ? (
               <Pressable
                 style={[styles.actionBtn, styles.actionDanger]}
                 disabled={busy}
@@ -387,7 +435,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
                 </Text>
               </Pressable>
             ) : null}
-            {canEnd ? (
+            {canEnd && permissions.canEnd ? (
               <Pressable
                 style={[styles.actionBtn, styles.actionDanger]}
                 disabled={busy}

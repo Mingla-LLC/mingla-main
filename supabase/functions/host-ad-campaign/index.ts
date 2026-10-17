@@ -168,34 +168,37 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  const isReadAction = action === "list" || action === "get";
-  if (isReadAction) {
-    const { data: canView, error: viewErr } = await supabase.rpc(
-      "biz_can_view_payments_for_brand",
-      { p_brand_id: brandId, p_user_id: user.id },
+  const requiredPermission = action === "list" || action === "get"
+    ? "read"
+    : action === "create"
+    ? "plan"
+    : action === "launch"
+    ? "launch"
+    : action === "pause"
+    ? "pause"
+    : action === "end" || action === "cancel"
+    ? "end"
+    : null;
+  if (!requiredPermission) {
+    return json({ error: "validation_error", detail: "action_invalid" }, 400);
+  }
+  const { data: allowed, error: permissionError } = await supabase.rpc(
+    "ad_can_host_action",
+    {
+      p_brand_id: brandId,
+      p_user_id: user.id,
+      p_action: requiredPermission,
+    },
+  );
+  if (permissionError) {
+    console.error(
+      "[host-ad-campaign] action auth failed:",
+      permissionError.message,
     );
-    if (viewErr) {
-      console.error("[host-ad-campaign] view auth failed:", viewErr.message);
-      return json({ error: "internal_error" }, 500);
-    }
-    if (canView !== true) {
-      return json({ error: "forbidden", detail: "permission_denied" }, 403);
-    }
-  } else {
-    const { data: canManage, error: manageErr } = await supabase.rpc(
-      "biz_can_manage_payments_for_brand",
-      { p_brand_id: brandId, p_user_id: user.id },
-    );
-    if (manageErr) {
-      console.error(
-        "[host-ad-campaign] manage auth failed:",
-        manageErr.message,
-      );
-      return json({ error: "internal_error" }, 500);
-    }
-    if (canManage !== true) {
-      return json({ error: "forbidden", detail: "permission_denied" }, 403);
-    }
+    return json({ error: "internal_error" }, 500);
+  }
+  if (allowed !== true) {
+    return json({ error: "forbidden", detail: "permission_denied" }, 403);
   }
 
   if (action === "list") {
@@ -248,6 +251,7 @@ serve(async (req: Request): Promise<Response> => {
     let planCapCents: number | null = typeof data.cap_cents === "number"
       ? data.cap_cents
       : null;
+    let planMeasurement: Record<string, unknown> | null = null;
     if (
       typeof data.plan_version_id === "string" &&
       typeof data.plan_hash === "string"
@@ -263,7 +267,7 @@ serve(async (req: Request): Promise<Response> => {
           supabase.from("ad_plans").select("state")
             .eq("current_version_id", data.plan_version_id).maybeSingle(),
           supabase.from("ad_plan_versions")
-            .select("host_currency,host_budget_cents")
+            .select("host_currency,host_budget_cents,canonical_plan")
             .eq("id", data.plan_version_id)
             .eq("plan_hash", data.plan_hash).maybeSingle(),
         ]);
@@ -275,6 +279,14 @@ serve(async (req: Request): Promise<Response> => {
       planCapCents = typeof version?.host_budget_cents === "number"
         ? version.host_budget_cents
         : planCapCents;
+      const canonical = version?.canonical_plan &&
+          typeof version.canonical_plan === "object"
+        ? version.canonical_plan as Record<string, unknown>
+        : null;
+      planMeasurement = canonical?.measurement &&
+          typeof canonical.measurement === "object"
+        ? canonical.measurement as Record<string, unknown>
+        : null;
     }
     const planCampaignIds = planCampaigns.map((row: { id: string }) => row.id);
     const [
@@ -330,7 +342,9 @@ serve(async (req: Request): Promise<Response> => {
 
     const { data: conversions } = await supabase
       .from("ad_conversions")
-      .select("touch_id, platform, value_cents, currency")
+      .select(
+        "touch_id, platform, value_cents, currency, shared_with_platforms, created_at",
+      )
       .in("campaign_id", planCampaignIds);
     const conversionCounts = new Map<string, number>();
     const conversionValueByCurrency = new Map<string, number>();
@@ -407,6 +421,27 @@ serve(async (req: Request): Promise<Response> => {
         spend_cents: spendTotal,
         by_platform: [...conversionByPlatform.values()].sort((a, b) =>
           b.conversions - a.conversions
+        ),
+      },
+      measurement: {
+        manifest: planMeasurement,
+        trusted_conversion_count: (conversions ?? []).length,
+        platform_shared_conversion_count: (conversions ?? []).filter(
+          (row: { shared_with_platforms?: boolean }) =>
+            row.shared_with_platforms === true,
+        ).length,
+        platform_withheld_conversion_count: (conversions ?? []).filter(
+          (row: { shared_with_platforms?: boolean }) =>
+            row.shared_with_platforms !== true,
+        ).length,
+        observed_through: (conversions ?? []).reduce(
+          (latest: string | null, row: { created_at?: unknown }) => {
+            const value = typeof row.created_at === "string"
+              ? row.created_at
+              : null;
+            return value && (!latest || value > latest) ? value : latest;
+          },
+          null,
         ),
       },
       by_placement: [...placementMap.values()].sort((a, b) =>

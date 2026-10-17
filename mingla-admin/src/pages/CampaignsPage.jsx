@@ -71,6 +71,17 @@ function formatMinor(currency, minor) {
   }
 }
 
+function providerEstimateLabel(estimate) {
+  if (
+    estimate?.state === "available" &&
+    Number.isFinite(estimate.lower_bound) &&
+    Number.isFinite(estimate.upper_bound)
+  ) {
+    return `${estimate.lower_bound.toLocaleString()}–${estimate.upper_bound.toLocaleString()} potential reach`;
+  }
+  return String(estimate?.state ?? "unavailable").replaceAll("_", " ");
+}
+
 function CurrencyRows({ values }) {
   const rows =
     values && typeof values === "object" ? Object.entries(values) : [];
@@ -443,6 +454,77 @@ export function CampaignsPage() {
                       </Badge>
                     ))}
                   </div>
+                  {(item.targeting_snapshots ?? []).length > 0 && (
+                    <div className="rounded-lg border border-[var(--gray-200)] p-3 text-xs space-y-2">
+                      <p className="font-semibold">Provider audience estimates</p>
+                      {(item.targeting_snapshots ?? []).map((row) => (
+                        <div
+                          key={`estimate-${row.platform}`}
+                          className="rounded-md bg-[var(--gray-50)] px-2 py-1.5"
+                        >
+                          <p className="font-medium">
+                            {PLATFORM_LABELS[row.platform] ?? row.platform} ·{" "}
+                            {providerEstimateLabel(row.provider_estimate)}
+                          </p>
+                          <p className="text-[var(--color-text-secondary)]">
+                            Observed {row.estimate_observed_at
+                              ? new Date(row.estimate_observed_at).toLocaleString()
+                              : "time unavailable"} ·{" "}
+                            {row.provider_estimate?.source ?? "source unavailable"}
+                          </p>
+                          {row.provider_estimate?.state !== "available" && (
+                            <p className="text-[var(--color-text-secondary)]">
+                              {String(
+                                row.provider_estimate?.detail ??
+                                  "provider estimate unavailable",
+                              ).replaceAll("_", " ")}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                      <p className="text-amber-700">
+                        Do not add platform estimates. Audiences overlap across
+                        providers, so a cross-platform total would be misleading.
+                      </p>
+                    </div>
+                  )}
+                  {canonical.measurement && (
+                    <div className="rounded-lg bg-[var(--gray-50)] p-3 text-xs space-y-1">
+                      <p className="font-semibold">Measurement contract</p>
+                      <p>
+                        {(canonical.measurement.result_hierarchy ?? [])
+                          .map((value) =>
+                            String(value).replaceAll("_", " ")
+                          )
+                          .join(" → ")} ·{" "}
+                        {String(canonical.measurement.quality).replaceAll(
+                          "_",
+                          " ",
+                        )}
+                      </p>
+                      <p className="text-[var(--color-text-secondary)]">
+                        Browser pixels and platform sharing are consent-gated;
+                        trusted Mingla results remain aggregate-only when
+                        sharing is withheld.
+                      </p>
+                    </div>
+                  )}
+                  {canonical.media_rights && (
+                    <div className="rounded-lg bg-[var(--gray-50)] p-3 text-xs space-y-1">
+                      <p className="font-semibold">Media rights</p>
+                      <p>
+                        {String(canonical.media_rights.rights_basis).replaceAll(
+                          "_",
+                          " ",
+                        )} · {canonical.media_rights.ai_generated
+                          ? "AI-generated"
+                          : "not marked AI-generated"}
+                      </p>
+                      <p className="text-[var(--color-text-secondary)]">
+                        Paid-ad use attested; Mingla house reuse not authorized.
+                      </p>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     <Button
                       size="sm"

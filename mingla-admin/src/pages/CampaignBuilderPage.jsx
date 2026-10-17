@@ -220,6 +220,8 @@ export function CampaignBuilderPage() {
     validation: null,
     creativeRow: null,
     aiGenerated: false,
+    rightsConfirmed: false,
+    rightsBasis: "owned",
     name: "",
   });
   // ISSUE-1184: server lifecycle is authoritative; this map is page-memory
@@ -801,7 +803,8 @@ export function CampaignBuilderPage() {
           creative.kind === "video"
             ? Boolean(creative.creativeRow)
             : Boolean(creative.publicUrl);
-        if (!hasMedia || !creative.validation) return false;
+        if (!hasMedia || !creative.validation || !creative.rightsConfirmed)
+          return false;
         // ISSUE-995 PROCEED-WITH-PASSING: Next is enabled as long as AT LEAST
         // ONE funded channel can build with this creative — the failing ones are
         // excluded and the build proceeds on the rest (was: every funded channel
@@ -854,6 +857,8 @@ export function CampaignBuilderPage() {
             : "Upload an ad image first.";
         }
         if (!creative.validation) return "Validate the creative first.";
+        if (!creative.rightsConfirmed)
+          return "Confirm the brand's right to use this creative in paid ads.";
         if (creative.kind === "video") {
           return "Prepare at least one video platform, or fix a failed platform, to continue.";
         }
@@ -963,6 +968,11 @@ export function CampaignBuilderPage() {
         audience_intent: audienceIntent,
         creative_library_id: creative.creativeRow?.id ?? null,
         creative_url: creative.kind === "image" ? creative.publicUrl : null,
+        media_rights: {
+          rights_confirmed: creative.rightsConfirmed,
+          rights_basis: creative.rightsBasis,
+          ai_generated: creative.aiGenerated,
+        },
         copy,
         special_ad_category: specialAdCategory,
         confirmation_phrase: "CREATE PAUSED",
@@ -977,6 +987,8 @@ export function CampaignBuilderPage() {
     });
     const versionId = versioned?.version?.id;
     const planHash = versioned?.version?.plan_hash;
+    const measurement = versioned?.version?.canonical_plan?.measurement ?? null;
+    const mediaRights = versioned?.version?.canonical_plan?.media_rights ?? null;
     if (!versionId || !planHash) {
       throw new Error("The server did not return an immutable plan binding.");
     }
@@ -1002,6 +1014,8 @@ export function CampaignBuilderPage() {
         plan_version_id: versionId,
         plan_hash: planHash,
         targeting_snapshots: targetingSnapshots,
+        measurement,
+        media_rights: mediaRights,
       };
       setPlanPreview(preview);
       return preview;
@@ -1014,6 +1028,8 @@ export function CampaignBuilderPage() {
         plan_version_id: versionId,
         plan_hash: planHash,
         targeting_snapshots: targetingSnapshots,
+        measurement,
+        media_rights: mediaRights,
       };
       setPlanPreview(preview);
       return preview;
@@ -1030,6 +1046,8 @@ export function CampaignBuilderPage() {
       plan_version_id: versionId,
       plan_hash: planHash,
       targeting_snapshots: targetingSnapshots,
+      measurement,
+      media_rights: mediaRights,
       funded: false,
       confirmed: false,
     };

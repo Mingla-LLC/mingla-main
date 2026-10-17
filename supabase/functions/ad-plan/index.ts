@@ -18,7 +18,12 @@ import {
   type ProviderTargetingRefs,
 } from "../_shared/adTargetingCompiler.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
-import type { Platform } from "../_shared/adChannelCore.ts";
+import { buildAdMeasurementManifest } from "../_shared/adMeasurement.ts";
+import {
+  estimateInputFromTargeting,
+  fetchProviderAudienceEstimate,
+} from "../_shared/adProviderEstimate.ts";
+import type { AdConnectionRow, Platform } from "../_shared/adChannelCore.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -68,6 +73,14 @@ type RequestedAllocation = {
   host_budget_cents: number;
   host_delivery_budget_cents: number;
 };
+type HostAdAction =
+  | "read"
+  | "plan"
+  | "fund"
+  | "launch"
+  | "pause"
+  | "end"
+  | "review";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -108,6 +121,27 @@ function parseAllocations(value: unknown): RequestedAllocation[] | null {
     });
   }
   return rows;
+}
+
+function normalizeMediaRights(
+  value: unknown,
+  actorId: string,
+): Record<string, unknown> | null {
+  const rights = asRecord(value);
+  const basis = rights?.rights_basis;
+  if (
+    rights?.rights_confirmed !== true ||
+    !["owned", "licensed", "authorized_by_brand"].includes(String(basis)) ||
+    typeof rights?.ai_generated !== "boolean"
+  ) return null;
+  return {
+    rights_confirmed: true,
+    rights_basis: basis,
+    ai_generated: rights.ai_generated,
+    house_reuse_allowed: false,
+    attested_by: actorId,
+    attested_at: new Date().toISOString(),
+  };
 }
 
 function parsePlatformList(value: unknown): Platform[] | null {
@@ -160,16 +194,15 @@ async function canAccessPlan(
   db: Db,
   user: User,
   plan: Plan,
-  permission: "read" | "write",
+  permission: HostAdAction,
 ): Promise<boolean> {
   if (plan.owner_kind === "mingla") return isActiveAdmin(db, user);
+  if (permission === "review") return isActiveAdmin(db, user);
   if (!plan.brand_id) return false;
-  const rpc = permission === "read"
-    ? "biz_can_view_payments_for_brand"
-    : "biz_can_manage_payments_for_brand";
-  const { data, error } = await db.rpc(rpc, {
+  const { data, error } = await db.rpc("ad_can_host_action", {
     p_brand_id: plan.brand_id,
     p_user_id: user.id,
+    p_action: permission,
   });
   return !error && data === true;
 }
@@ -178,7 +211,7 @@ async function authorizeVersion(
   db: Db,
   user: User,
   versionId: string,
-  permission: "read" | "write",
+  permission: HostAdAction,
 ): Promise<{ plan: Plan; version: Version } | null> {
   const version = await loadVersion(db, versionId);
   if (!version) return null;
@@ -403,10 +436,11 @@ serve(async (req: Request): Promise<Response> => {
         400,
       );
     }
-    const { data: allowed } = await db.rpc(
-      "biz_can_manage_payments_for_brand",
-      { p_brand_id: brandId, p_user_id: actor.id },
-    );
+    const { data: allowed } = await db.rpc("ad_can_host_action", {
+      p_brand_id: brandId,
+      p_user_id: actor.id,
+      p_action: "read",
+    });
     if (allowed !== true) return json({ error: "forbidden" }, 403);
     if (!ANON_KEY) {
       return json(
@@ -541,13 +575,11 @@ serve(async (req: Request): Promise<Response> => {
           400,
         );
       }
-      const { data: allowed } = await db.rpc(
-        "biz_can_manage_payments_for_brand",
-        {
-          p_brand_id: brandId,
-          p_user_id: actor.id,
-        },
-      );
+      const { data: allowed } = await db.rpc("ad_can_host_action", {
+        p_brand_id: brandId,
+        p_user_id: actor.id,
+        p_action: "plan",
+      });
       if (allowed !== true) return json({ error: "forbidden" }, 403);
     }
     const riskReasons =
@@ -578,13 +610,11 @@ serve(async (req: Request): Promise<Response> => {
           400,
         );
       }
-      const { data: allowed } = await db.rpc(
-        "biz_can_view_payments_for_brand",
-        {
-          p_brand_id: brandId,
-          p_user_id: actor.id,
-        },
-      );
+      const { data: allowed } = await db.rpc("ad_can_host_action", {
+        p_brand_id: brandId,
+        p_user_id: actor.id,
+        p_action: "read",
+      });
       if (allowed !== true) return json({ error: "forbidden" }, 403);
       query = query.eq("brand_id", brandId).eq("owner_kind", "host");
     } else if (!(await isActiveAdmin(db, actor))) {
@@ -702,7 +732,17 @@ serve(async (req: Request): Promise<Response> => {
         400,
       );
     }
-    if (!(await canAccessPlan(db, actor, plan, "write"))) {
+    const mediaRights = normalizeMediaRights(
+      canonicalInput.media_rights,
+      actor.id,
+    );
+    if (!mediaRights) {
+      return json({
+        error: "plan_preflight_failed",
+        detail: "media_rights_attestation_required",
+      }, 422);
+    }
+    if (!(await canAccessPlan(db, actor, plan, "plan"))) {
       return json({ error: "forbidden" }, 403);
     }
     const normalized = await normalizedAllocations(db, plan, requested);
@@ -742,6 +782,7 @@ serve(async (req: Request): Promise<Response> => {
       host_currency: normalized.hostCurrency,
       host_budget_cents: hostBudget,
     });
+    canonical.media_rights = mediaRights;
     const { data: destination, error: destinationError } = await db.rpc(
       "ad_plan_destination_resolve",
       {
@@ -772,9 +813,10 @@ serve(async (req: Request): Promise<Response> => {
     ) {
       return json({
         error: "plan_preflight_failed",
-        detail: destinationError?.message ?? (certificationMode
-          ? "app_certification_readiness_required"
-          : resolvedDestination?.code ?? "destination_not_ready"),
+        detail: destinationError?.message ??
+          (certificationMode
+            ? "app_certification_readiness_required"
+            : resolvedDestination?.code ?? "destination_not_ready"),
       }, 422);
     }
     if (certificationMode) {
@@ -783,6 +825,7 @@ serve(async (req: Request): Promise<Response> => {
       resolvedDestination.certification_mode = true;
     }
     canonical.destination = destination;
+    canonical.measurement = buildAdMeasurementManifest(resolvedDestination);
     canonical.delivery_budgets = Object.fromEntries(
       normalized.rows.map((row) => [
         row.platform,
@@ -810,7 +853,7 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (action === "freeze_targeting") {
-    const authorized = await authorizeVersion(db, actor, versionId, "write");
+    const authorized = await authorizeVersion(db, actor, versionId, "plan");
     const intent = asRecord(body.audience_intent) as AdAudienceIntent | null;
     const refsByPlatform = asRecord(body.refs_by_platform) as
       | Partial<Record<Platform, ProviderTargetingRefs>>
@@ -852,7 +895,7 @@ serve(async (req: Request): Promise<Response> => {
     const broaderAcceptance =
       asRecord(version.canonical_plan.broader_acceptance) ?? {};
     const frozenAt = new Date().toISOString();
-    const rows = compiled.map((row) => {
+    const baseRows = compiled.map((row) => {
       const accepted = row.verdict === "broader" &&
         broaderAcceptance[row.platform] === true;
       return {
@@ -875,8 +918,8 @@ serve(async (req: Request): Promise<Response> => {
       .eq("plan_version_id", version.id).order("platform");
     if (existingError) return databaseFailure(existingError);
     if ((existing ?? []).length > 0) {
-      const same = (existing ?? []).length === rows.length &&
-        rows.every((row) => {
+      const same = (existing ?? []).length === baseRows.length &&
+        baseRows.every((row) => {
           const frozen = (existing ?? []).find((
             item: Record<string, unknown>,
           ) => item.platform === row.platform);
@@ -899,6 +942,60 @@ serve(async (req: Request): Promise<Response> => {
         idempotent: true,
       });
     }
+    const { data: allocations, error: allocationsError } = await db
+      .from("ad_plan_provider_allocations")
+      .select("platform,connection_id,provider_budget_cents")
+      .eq("plan_version_id", version.id);
+    if (allocationsError) return databaseFailure(allocationsError);
+    const connectionIds = (allocations ?? []).map((
+      row: Record<string, unknown>,
+    ) => row.connection_id).filter((value: unknown): value is string =>
+      typeof value === "string"
+    );
+    const { data: connections, error: connectionsError } = await db
+      .from("ad_connections").select("*").in("id", connectionIds);
+    if (connectionsError) return databaseFailure(connectionsError);
+    const allocationByPlatform = new Map(
+      (allocations ?? []).map((row: Record<string, unknown>) => [
+        row.platform,
+        row,
+      ]),
+    );
+    const connectionById = new Map(
+      (connections ?? []).map((row: Record<string, unknown>) => [row.id, row]),
+    );
+    const estimateInputs = compiled.map((row) => {
+      const allocation = allocationByPlatform.get(row.platform);
+      const connectionId = allocation?.connection_id;
+      const connection = typeof connectionId === "string"
+        ? connectionById.get(connectionId)
+        : null;
+      const providerBudgetCents = Number(allocation?.provider_budget_cents);
+      if (
+        !allocation || !connection ||
+        !Number.isSafeInteger(providerBudgetCents) ||
+        providerBudgetCents <= 0
+      ) return null;
+      return estimateInputFromTargeting({
+        compiled: row,
+        connection: connection as unknown as AdConnectionRow,
+        providerBudgetCents,
+      });
+    });
+    if (estimateInputs.some((input) => input === null)) {
+      return json({
+        error: "plan_conflict",
+        detail: "provider_allocation_or_connection_missing",
+      }, 409);
+    }
+    const estimates = await Promise.all(
+      estimateInputs.map((input) => fetchProviderAudienceEstimate(input!)),
+    );
+    const rows = baseRows.map((row, index) => ({
+      ...row,
+      provider_estimate: estimates[index],
+      estimate_observed_at: frozenAt,
+    }));
     const { data, error } = await db.from("ad_plan_targeting_snapshots")
       .insert(rows).select("*");
     return error
@@ -906,8 +1003,17 @@ serve(async (req: Request): Promise<Response> => {
       : json({ ok: true, targeting_snapshots: data ?? [] }, 201);
   }
 
+  const requiredAction: HostAdAction = action === "fund"
+    ? "fund"
+    : action === "review"
+    ? "review"
+    : action === "confirm_launch" || action === "assert_launchable"
+    ? "launch"
+    : action === "cancel_before_create" || action === "request_stop"
+    ? "end"
+    : "plan";
   const authorized = versionId
-    ? await authorizeVersion(db, actor, versionId, "write")
+    ? await authorizeVersion(db, actor, versionId, requiredAction)
     : null;
   if (!authorized) return json({ error: "forbidden_or_not_found" }, 403);
   const planHash = typeof body.plan_hash === "string" ? body.plan_hash : "";

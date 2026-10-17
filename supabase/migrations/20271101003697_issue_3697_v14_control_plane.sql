@@ -10,6 +10,86 @@
 
 BEGIN;
 
+-- Host Ads has an action-specific role contract. Reusing the payout/bank
+-- predicate collapsed unrelated authority (planning, funding, launch, pause
+-- and end) into one boolean and excluded marketing managers from read access.
+-- Keep this service-role-only: edge functions authenticate the user and pass
+-- the exact actor id; clients only mirror it for UX.
+CREATE OR REPLACE FUNCTION public.ad_can_host_action(
+  p_brand_id uuid,
+  p_user_id uuid,
+  p_action text
+) RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_role text;
+  v_permissions jsonb := '{}'::jsonb;
+  v_is_owner boolean := false;
+BEGIN
+  IF p_brand_id IS NULL OR p_user_id IS NULL
+     OR p_action NOT IN ('read','plan','fund','launch','pause','end') THEN
+    RETURN false;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.brands b
+    WHERE b.id = p_brand_id
+      AND b.account_id = p_user_id
+      AND b.deleted_at IS NULL
+  ) INTO v_is_owner;
+  IF v_is_owner THEN RETURN true; END IF;
+
+  SELECT m.role, coalesce(m.permissions_override, '{}'::jsonb)
+    INTO v_role, v_permissions
+  FROM public.brand_team_members m
+  JOIN public.brands b ON b.id = m.brand_id
+  WHERE m.brand_id = p_brand_id
+    AND m.user_id = p_user_id
+    AND m.removed_at IS NULL
+    AND m.accepted_at IS NOT NULL
+    AND b.deleted_at IS NULL
+  ORDER BY public.biz_role_rank(m.role) DESC, m.id
+  LIMIT 1;
+
+  IF NOT FOUND THEN RETURN false; END IF;
+
+  RETURN CASE p_action
+    WHEN 'read' THEN
+      v_role IN ('brand_admin','marketing_manager','finance_manager')
+      OR v_permissions->'ads_view' = 'true'::jsonb
+    WHEN 'plan' THEN
+      v_role IN ('brand_admin','marketing_manager')
+      OR v_permissions->'ads_plan' = 'true'::jsonb
+    WHEN 'fund' THEN
+      v_role = 'finance_manager'
+      OR v_permissions->'ads_fund' = 'true'::jsonb
+      OR v_permissions->'ads_spend' = 'true'::jsonb
+    WHEN 'launch' THEN
+      (v_role = 'marketing_manager'
+        AND v_permissions->'ads_spend' = 'true'::jsonb)
+      OR v_permissions->'ads_launch' = 'true'::jsonb
+    WHEN 'pause' THEN
+      (v_role = 'marketing_manager'
+        AND v_permissions->'ads_spend' = 'true'::jsonb)
+      OR v_permissions->'ads_pause' = 'true'::jsonb
+    WHEN 'end' THEN false
+    ELSE false
+  END;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.ad_can_host_action(uuid,uuid,text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ad_can_host_action(uuid,uuid,text)
+  TO service_role;
+COMMENT ON FUNCTION public.ad_can_host_action(uuid,uuid,text) IS
+  'Issue #3697 v1.4: independent Host Ads read/plan/fund/launch/pause/end authority. Brand owner may do all; finance can fund; marketing can plan and launch/pause only with ads_spend; direct end remains owner-only.';
+
 -- One extensible registry owns Mingla-controlled destinations. Marketing pages
 -- are one family under usemingla.com; app targets point at the existing exact
 -- iOS/Android app identities and inherit the established readiness authority.
@@ -205,8 +285,43 @@ CREATE TABLE public.ad_plan_targeting_snapshots (
   broader_accepted boolean NOT NULL DEFAULT false,
   broader_accepted_by uuid NULL REFERENCES auth.users(id),
   broader_accepted_at timestamptz NULL,
+  -- I-3697-NON-ADDITIVE-ESTIMATES: a targeting snapshot may hold one
+  -- provider-native estimate only. A total/combined key is unrepresentable
+  -- because audiences overlap across platforms and must never be summed.
   provider_estimate jsonb NULL CHECK (
-    provider_estimate IS NULL OR jsonb_typeof(provider_estimate) = 'object'
+    provider_estimate IS NULL OR (
+      jsonb_typeof(provider_estimate) = 'object'
+      AND provider_estimate->>'non_additive' IS NOT DISTINCT FROM 'true'
+      AND coalesce(provider_estimate->>'state', '') IN (
+        'available', 'certification_required', 'allowlist_required',
+        'provider_error', 'response_unrecognized', 'targeting_unavailable'
+      )
+      AND coalesce(provider_estimate->>'quality', '') IN (
+        'provider_estimate', 'unavailable'
+      )
+      AND provider_estimate->>'unit' IS NOT DISTINCT FROM 'potential_reach'
+      AND coalesce(provider_estimate->>'source', '') <> ''
+      AND coalesce(provider_estimate->>'detail', '') <> ''
+      AND jsonb_typeof(provider_estimate->'assumptions')
+        IS NOT DISTINCT FROM 'array'
+      AND (
+        (
+          provider_estimate->>'state' = 'available'
+          AND provider_estimate->>'quality' = 'provider_estimate'
+          AND jsonb_typeof(provider_estimate->'lower_bound') = 'number'
+          AND jsonb_typeof(provider_estimate->'upper_bound') = 'number'
+        )
+        OR (
+          provider_estimate->>'state' <> 'available'
+          AND provider_estimate->>'quality' = 'unavailable'
+          AND provider_estimate->'lower_bound' IS NOT DISTINCT FROM 'null'::jsonb
+          AND provider_estimate->'upper_bound' IS NOT DISTINCT FROM 'null'::jsonb
+        )
+      )
+      AND NOT provider_estimate ?| ARRAY[
+        'total', 'combined', 'cross_platform_total', 'combined_reach'
+      ]
+    )
   ),
   estimate_observed_at timestamptz NULL,
   evidence_observed_at timestamptz NOT NULL,
@@ -768,6 +883,8 @@ DECLARE
   v_normalized_allocations jsonb := '[]'::jsonb;
   v_platforms jsonb;
   v_destination jsonb;
+  v_media_rights jsonb;
+  v_attested_at timestamptz;
   v_hash text;
   v_version_row public.ad_plan_versions%ROWTYPE;
 BEGIN
@@ -775,6 +892,33 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'ad_plan_not_found' USING ERRCODE = 'P0002'; END IF;
   IF p_canonical_plan IS NULL OR jsonb_typeof(p_canonical_plan) <> 'object' THEN
     RAISE EXCEPTION 'ad_plan_payload_invalid' USING ERRCODE = '22023';
+  END IF;
+  -- #3697 v1.4: media rights are part of the immutable, server-bound plan.
+  -- Validate again at the database authority so a service-role caller cannot
+  -- bypass the ad-plan edge preflight or silently opt assets into house reuse.
+  v_media_rights := p_canonical_plan->'media_rights';
+  IF v_media_rights IS NULL
+     OR jsonb_typeof(v_media_rights) <> 'object'
+     OR v_media_rights->>'rights_confirmed' IS DISTINCT FROM 'true'
+     OR coalesce(v_media_rights->>'rights_basis', '') NOT IN (
+       'owned', 'licensed', 'authorized_by_brand'
+     )
+     OR jsonb_typeof(v_media_rights->'ai_generated') IS DISTINCT FROM 'boolean'
+     OR v_media_rights->>'house_reuse_allowed' IS DISTINCT FROM 'false'
+     OR p_actor_id IS NULL
+     OR v_media_rights->>'attested_by' IS DISTINCT FROM p_actor_id::text THEN
+    RAISE EXCEPTION 'ad_plan_media_rights_attestation_required'
+      USING ERRCODE = '22023';
+  END IF;
+  BEGIN
+    v_attested_at := nullif(v_media_rights->>'attested_at', '')::timestamptz;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'ad_plan_media_rights_attestation_required'
+      USING ERRCODE = '22023';
+  END;
+  IF v_attested_at IS NULL OR v_attested_at > now() + interval '5 minutes' THEN
+    RAISE EXCEPTION 'ad_plan_media_rights_attestation_required'
+      USING ERRCODE = '22023';
   END IF;
   IF p_host_budget_cents IS NULL OR p_host_budget_cents <= 0
      OR p_provider_allocations IS NULL
@@ -1364,6 +1508,10 @@ BEGIN
   IF v_plan.current_version_id <> v_version.id OR v_plan.state <> 'staff_review_required' THEN
     RAISE EXCEPTION 'ad_plan_review_state_invalid' USING ERRCODE = '55000';
   END IF;
+  IF v_version.created_by = p_decided_by THEN
+    RAISE EXCEPTION 'ad_plan_reviewer_must_differ_from_author'
+      USING ERRCODE = '42501';
+  END IF;
   INSERT INTO public.ad_plan_reviews (
     plan_id, plan_version_id, plan_hash, decision, reason, decided_by
   ) VALUES (
@@ -1451,7 +1599,7 @@ BEGIN
   END IF;
   IF v_plan.state NOT IN (
     'funded_held','staff_approved','creating_paused_objects','platform_review',
-    'scheduled','paused','partially_live'
+    'scheduled','paused','partially_live','creation_failed_retryable'
   ) THEN
     RAISE EXCEPTION 'ad_plan_launch_state_invalid' USING ERRCODE = '55000';
   END IF;

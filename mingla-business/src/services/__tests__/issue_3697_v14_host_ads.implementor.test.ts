@@ -19,7 +19,8 @@ describe("issue #3697 v1.4 Host Ads program", () => {
   it("links the Ads tab to a concrete Host builder", () => {
     expect(adsRoute).toContain('router.push("/(tabs)/marketing/ads/create"');
     expect(createRoute).toContain("Prepare immutable plan");
-    expect(createRoute).toContain("Hold funds and launch");
+    expect(createRoute).toContain("Hold funds");
+    expect(createRoute).toContain("Launch approved plan");
     expect(adsRoute).toContain("useHostAdPlans");
     expect(adsRoute).toContain("Plans in progress");
   });
@@ -31,10 +32,17 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(service).toContain('action: "mark_ready"');
     expect(service).toContain('action: "fund"');
     expect(service).toContain('action: "confirm_launch"');
+    expect(service).toContain("export async function fundHostAdPlan");
+    expect(service).toContain("export async function launchHostAdPlan");
+    expect(service).not.toContain("fundCreateAndLaunchHostAdPlan");
     expect(service).not.toMatch(/currency:\s*input\./);
     expect(service).toContain('phrase: "LAUNCH"');
     expect(service).toContain("input.connections.map");
     expect(createRoute).toContain("one or more connected platforms");
+    expect(service).toContain("provider_estimate");
+    expect(service).toContain("estimate_observed_at");
+    expect(createRoute).toContain("Provider estimates overlap");
+    expect(createRoute).toContain("Do not add these estimates");
   });
 
   it("stops the first three for staff review before provider create", () => {
@@ -72,11 +80,22 @@ describe("issue #3697 v1.4 Host Ads program", () => {
 
   it("exposes only permission-scoped Host setup data", () => {
     expect(planEndpoint).toContain('action === "host_setup"');
-    expect(planEndpoint).toContain("biz_can_manage_payments_for_brand");
+    expect(planEndpoint).toContain("ad_can_host_action");
+    expect(planEndpoint).toContain('p_action: "read"');
     expect(planEndpoint).toContain(
       "id,platform,lane,currency,status,connected,updated_at",
     );
     expect(planEndpoint).not.toContain('select("*,secret');
+  });
+
+  it("keeps planning, funding, launch, pause and end as separate grants", () => {
+    const detailRoute = read("app/(tabs)/marketing/ads/[id].tsx");
+    expect(createRoute).toContain("permissions.canPlan");
+    expect(createRoute).toContain("permissions.canFund");
+    expect(createRoute).toContain("permissions.canLaunch");
+    expect(detailRoute).toContain("permissions.canPause");
+    expect(detailRoute).toContain("permissions.canEnd");
+    expect(hostCampaignEndpoint).toContain('p_action: requiredPermission');
   });
 
   it("shows Ari's server-resolved brand currency without inventing a top-up", () => {

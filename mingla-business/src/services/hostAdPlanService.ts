@@ -71,6 +71,19 @@ export type TargetingSnapshot = {
   broader_accepted: boolean;
   audience_intent: Record<string, unknown>;
   compiled_targeting: Record<string, unknown>;
+  provider_estimate: {
+    state: string;
+    quality: "provider_estimate" | "unavailable";
+    source: string;
+    unit: "potential_reach";
+    lower_bound: number | null;
+    upper_bound: number | null;
+    period: string | null;
+    assumptions: string[];
+    non_additive: true;
+    detail: string;
+  } | null;
+  estimate_observed_at: string | null;
 };
 
 export type HostAdPlanAggregate = {
@@ -210,6 +223,9 @@ export type PrepareHostAdPlanInput = {
   startsAt?: string | null;
   endsAt?: string | null;
   acceptBroader: boolean;
+  rightsConfirmed: boolean;
+  rightsBasis: "owned" | "licensed" | "authorized_by_brand";
+  aiGenerated: boolean;
 };
 
 export type PreparedHostAdPlan = {
@@ -218,6 +234,8 @@ export type PreparedHostAdPlan = {
   planHash: string;
   status: "ready" | "broader" | "blocked";
   targeting: TargetingSnapshot[];
+  measurement: Record<string, unknown> | null;
+  mediaRights: Record<string, unknown> | null;
   providerValidations: {
     platform: HostAdPlatform;
     result: Record<string, unknown>;
@@ -282,7 +300,11 @@ export async function prepareHostAdPlan(
     input.connections.length,
   );
   const versioned = await invoke<{
-    version: { id: string; plan_hash: string };
+    version: {
+      id: string;
+      plan_hash: string;
+      canonical_plan: Record<string, unknown>;
+    };
   }>("ad-plan", {
     action: "create_version",
     plan_id: planId,
@@ -296,6 +318,11 @@ export async function prepareHostAdPlan(
       copy,
       creative_library_id: input.creative.id,
       creative_url: null,
+      media_rights: {
+        rights_confirmed: input.rightsConfirmed,
+        rights_basis: input.rightsBasis,
+        ai_generated: input.aiGenerated,
+      },
       special_ad_category: "NONE",
       confirmation_phrase: "LAUNCH",
       broader_acceptance: Object.fromEntries(
@@ -347,6 +374,14 @@ export async function prepareHostAdPlan(
     planHash,
     status: blocked ? "blocked" : broader ? "broader" : "ready",
     targeting,
+    measurement:
+      (versioned.version.canonical_plan.measurement as
+        | Record<string, unknown>
+        | undefined) ?? null,
+    mediaRights:
+      (versioned.version.canonical_plan.media_rights as
+        | Record<string, unknown>
+        | undefined) ?? null,
     providerValidations,
   };
 }
@@ -423,7 +458,12 @@ function providerCreatePayload(
     },
     schedule,
     targeting: commonTargeting,
-    compliance: { aiGenerated: false, specialAdCategory: "NONE" },
+    compliance: {
+      aiGenerated:
+        (canonical.media_rights as Record<string, unknown> | undefined)
+          ?.ai_generated === true,
+      specialAdCategory: "NONE",
+    },
     ...(validateOnly ? { validate_only: true } : {}),
   };
   const creativeId = String(canonical.creative_library_id ?? "");
@@ -491,7 +531,9 @@ function providerCreatePayload(
       message: primary,
       headline: headline.slice(0, 255),
       call_to_action_type: "LEARN_MORE",
-      ai_generated: false,
+      ai_generated:
+        (canonical.media_rights as Record<string, unknown> | undefined)
+          ?.ai_generated === true,
     },
     special_ad_categories: [],
   };
@@ -524,18 +566,21 @@ export async function cancelHostAdPlanBeforeCreate(input: {
   });
 }
 
+export type FundHostAdPlanResult = {
+  state: "staff_review_required" | "funded_held";
+  planId: string;
+};
+
 export type LaunchHostAdPlanResult = {
-  state: "staff_review_required" | "launched";
+  state: "launched";
   planId: string;
   campaigns?: Record<string, unknown>[];
 };
 
-export async function fundCreateAndLaunchHostAdPlan(input: {
-  planId: string;
-  versionId: string;
-  planHash: string;
-}): Promise<LaunchHostAdPlanResult> {
-  let aggregate = await getHostAdPlan(input.planId);
+function assertCurrentVersion(
+  aggregate: HostAdPlanAggregate,
+  input: { versionId: string; planHash: string },
+): void {
   if (
     aggregate.version.id !== input.versionId ||
     aggregate.version.plan_hash !== input.planHash
@@ -545,6 +590,15 @@ export async function fundCreateAndLaunchHostAdPlan(input: {
       "This is no longer the current plan version",
     );
   }
+}
+
+export async function fundHostAdPlan(input: {
+  planId: string;
+  versionId: string;
+  planHash: string;
+}): Promise<FundHostAdPlanResult> {
+  let aggregate = await getHostAdPlan(input.planId);
+  assertCurrentVersion(aggregate, input);
   if (["changes_requested", "staff_rejected"].includes(aggregate.plan.state)) {
     throw new HostAdPlanError("staff_review", aggregate.plan.state);
   }
@@ -564,6 +618,38 @@ export async function fundCreateAndLaunchHostAdPlan(input: {
   if (aggregate.plan.state === "staff_review_required") {
     return { state: "staff_review_required", planId: input.planId };
   }
+  return { state: "funded_held", planId: input.planId };
+}
+
+export async function launchHostAdPlan(input: {
+  planId: string;
+  versionId: string;
+  planHash: string;
+}): Promise<LaunchHostAdPlanResult> {
+  const aggregate = await getHostAdPlan(input.planId);
+  assertCurrentVersion(aggregate, input);
+  if (["changes_requested", "staff_rejected"].includes(aggregate.plan.state)) {
+    throw new HostAdPlanError("staff_review", aggregate.plan.state);
+  }
+  if (aggregate.plan.state === "staff_review_required") {
+    throw new HostAdPlanError(
+      "staff_review",
+      "Mingla staff approval is still required",
+    );
+  }
+  if (
+    !aggregate.funding_hold ||
+    aggregate.funding_hold.state !== "held" ||
+    !["funded_held", "staff_approved", "creation_failed_retryable"].includes(
+      aggregate.plan.state,
+    )
+  ) {
+    throw new HostAdPlanError(
+      "funding_required",
+      "Hold the approved budget before launch",
+    );
+  }
+  await validateAggregate(aggregate);
   await invoke("ad-plan", {
     action: "confirm_launch",
     plan_version_id: input.versionId,

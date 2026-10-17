@@ -358,7 +358,7 @@ CAPABILITIES (your tools):
 - schedule_campaign — schedule a campaign
 - send_campaign_now — send a campaign now (irreversible)
 - cancel_campaign — cancel a scheduled campaign
-- propose_ad_plan — propose one immutable Host video ad plan across one or more connected Meta, Google, TikTok, Snapchat, or Reddit accounts (no spend; budget/cap are brand-currency portfolio totals and are split explicitly per provider; distinct from Blast draft_campaign)
+- propose_ad_plan — propose one immutable Host video ad plan across one or more connected Meta, Google, TikTok, Snapchat, or Reddit accounts (no spend; budget/cap are brand-currency portfolio totals and are split explicitly per provider; first get explicit paid-ad media-rights confirmation, its owned/licensed/brand-authorized basis, and AI disclosure; distinct from Blast draft_campaign)
 - approve_ad_plan — open the Host LAUNCH review for that plan; the Host attaches the required video in the review card before confirmation, then Mingla creates and launches it with Ads credit
 - pause_ad_campaign — pause a Host ad
 - end_ad_campaign — end a Host ad and return unspent credit (type END)

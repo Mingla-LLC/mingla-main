@@ -3355,6 +3355,12 @@ const proposeAdPlan = writeTool(
     primary_text: { type: "string" },
     creative_library_id: UUID,
     accept_broader_targeting: { type: "boolean" },
+    rights_confirmed: { type: "boolean" },
+    rights_basis: {
+      type: "string",
+      enum: ["owned", "licensed", "authorized_by_brand"],
+    },
+    ai_generated: { type: "boolean" },
   },
   [
     "brand_id",
@@ -3363,6 +3369,9 @@ const proposeAdPlan = writeTool(
     "dest_brand_slug",
     "budget_cents",
     "countries",
+    "rights_confirmed",
+    "rights_basis",
+    "ai_generated",
   ],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
@@ -3398,6 +3407,17 @@ const proposeAdPlan = writeTool(
       throw new ToolError(
         "INVALID_ARGS",
         "countries must contain explicit two-letter country codes",
+      );
+    }
+    if (
+      args.rights_confirmed !== true ||
+      !["owned", "licensed", "authorized_by_brand"].includes(
+        String(args.rights_basis ?? ""),
+      ) || typeof args.ai_generated !== "boolean"
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Confirm paid-ad media rights, choose the rights basis, and disclose whether the asset is AI-generated",
       );
     }
     const cap = Number(args.budget_cents);
@@ -3489,6 +3509,11 @@ const proposeAdPlan = writeTool(
       creative_url: null,
       special_ad_category: "NONE",
       confirmation_phrase: "LAUNCH",
+      media_rights: {
+        rights_confirmed: true,
+        rights_basis: String(args.rights_basis),
+        ai_generated: args.ai_generated,
+      },
       broader_acceptance: Object.fromEntries(
         platforms.map((platform) => [
           platform,

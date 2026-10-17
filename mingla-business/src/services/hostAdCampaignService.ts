@@ -49,6 +49,19 @@ export type HostAdCampaignDetail = {
       value_cents: number;
     }[];
   };
+  measurement: {
+    manifest: null | {
+      result_kind?: string;
+      result_hierarchy?: string[];
+      quality?: string;
+      capture_authority?: string;
+      consent?: Record<string, string>;
+    };
+    trusted_conversion_count: number;
+    platform_shared_conversion_count: number;
+    platform_withheld_conversion_count: number;
+    observed_through: string | null;
+  };
   by_placement: {
     platform: string;
     placement: string;

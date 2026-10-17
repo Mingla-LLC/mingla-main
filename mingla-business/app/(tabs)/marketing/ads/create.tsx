@@ -29,12 +29,12 @@ import {
   text as textTokens,
   typography,
 } from "../../../../src/constants/designSystem";
-import { useCanManageBrandPayments } from "../../../../src/hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
+import { useHostAdPermissions } from "../../../../src/hooks/useHostAdPermissions";
 import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import {
   cancelHostAdPlanBeforeCreate,
-  fundCreateAndLaunchHostAdPlan,
+  fundHostAdPlan,
   getHostAdPlan,
   type HostAdConnection,
   type HostAdCreative,
@@ -42,6 +42,7 @@ import {
   type HostAdPlanAggregate,
   type HostAdSetup,
   loadHostAdSetup,
+  launchHostAdPlan,
   prepareHostAdPlan,
   type PreparedHostAdPlan,
 } from "../../../../src/services/hostAdPlanService";
@@ -84,6 +85,21 @@ function formatMoney(currency: string, cents: number): string {
   } catch {
     return `${currency} ${(cents / 100).toFixed(2)}`;
   }
+}
+
+function providerEstimateLabel(
+  estimate: PreparedHostAdPlan["targeting"][number]["provider_estimate"],
+): string {
+  if (
+    estimate?.state === "available" &&
+    Number.isFinite(estimate.lower_bound) &&
+    Number.isFinite(estimate.upper_bound)
+  ) {
+    return `${Number(estimate.lower_bound).toLocaleString()}–${Number(
+      estimate.upper_bound,
+    ).toLocaleString()} potential reach`;
+  }
+  return String(estimate?.state ?? "unavailable").replaceAll("_", " ");
 }
 
 function ChoiceCard(props: {
@@ -133,7 +149,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const resumedRef = useRef<string | null>(null);
   const brand = useCurrentBrand();
   const brandId = brand?.id ?? null;
-  const manage = useCanManageBrandPayments(brandId);
+  const permissions = useHostAdPermissions(brandId);
   const [setup, setSetup] = useState<HostAdSetup | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -142,6 +158,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [page, setPage] = useState<HostAdPage | null>(null);
   const [connections, setConnections] = useState<HostAdConnection[]>([]);
   const [creative, setCreative] = useState<HostAdCreative | null>(null);
+  const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [rightsBasis, setRightsBasis] = useState<
+    "owned" | "licensed" | "authorized_by_brand"
+  >("owned");
+  const [aiGenerated, setAiGenerated] = useState(false);
   const [name, setName] = useState("");
   const [primaryText, setPrimaryText] = useState("");
   const [headline, setHeadline] = useState("");
@@ -158,7 +179,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [launchPhrase, setLaunchPhrase] = useState("");
 
   const load = useCallback(async () => {
-    if (!brandId || !manage.allowed) return;
+    if (!brandId || !permissions.canRead) return;
     setLoading(true);
     setError(null);
     try {
@@ -170,11 +191,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
     } finally {
       setLoading(false);
     }
-  }, [brandId, manage.allowed]);
+  }, [brandId, permissions.canRead]);
 
   useEffect(() => {
-    if (!manage.isLoading) void load();
-  }, [load, manage.isLoading]);
+    if (!permissions.isLoading) void load();
+  }, [load, permissions.isLoading]);
 
   const hydrateAggregate = useCallback(
     (aggregate: HostAdPlanAggregate) => {
@@ -187,6 +208,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
       const copy = canonical.copy as Record<string, unknown> | undefined;
       const deliveryBudgets = canonical.delivery_budgets as
         Record<string, Record<string, unknown>> | undefined;
+      const mediaRights = canonical.media_rights as
+        Record<string, unknown> | undefined;
       const matchedPage =
         setup.pages.find(
           (item) =>
@@ -209,6 +232,18 @@ export default function HostAdCreateRoute(): React.ReactElement {
           (item) => item.id === canonical.creative_library_id,
         ) ?? null,
       );
+      setRightsConfirmed(mediaRights?.rights_confirmed === true);
+      setRightsBasis(
+        ["owned", "licensed", "authorized_by_brand"].includes(
+            String(mediaRights?.rights_basis),
+          )
+          ? mediaRights?.rights_basis as
+            | "owned"
+            | "licensed"
+            | "authorized_by_brand"
+          : "owned",
+      );
+      setAiGenerated(mediaRights?.ai_generated === true);
       setName(String(canonical.name ?? ""));
       setPrimaryText(String(copy?.primary ?? ""));
       setHeadline(String(copy?.headline ?? ""));
@@ -266,6 +301,14 @@ export default function HostAdCreateRoute(): React.ReactElement {
             planHash: aggregate.version.plan_hash,
             status: "ready",
             targeting: aggregate.targeting_snapshots,
+            measurement:
+              (aggregate.version.canonical_plan.measurement as
+                | Record<string, unknown>
+                | undefined) ?? null,
+            mediaRights:
+              (aggregate.version.canonical_plan.media_rights as
+                | Record<string, unknown>
+                | undefined) ?? null,
             providerValidations: [],
           });
           setActivePlanState(aggregate.plan.state);
@@ -286,6 +329,14 @@ export default function HostAdCreateRoute(): React.ReactElement {
             planHash: aggregate.version.plan_hash,
             status: "ready",
             targeting: aggregate.targeting_snapshots,
+            measurement:
+              (aggregate.version.canonical_plan.measurement as
+                | Record<string, unknown>
+                | undefined) ?? null,
+            mediaRights:
+              (aggregate.version.canonical_plan.media_rights as
+                | Record<string, unknown>
+                | undefined) ?? null,
             providerValidations: [],
           });
           setActivePlanState(aggregate.plan.state);
@@ -332,6 +383,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
       ? "Choose at least one connected ad platform."
       : !creative
         ? "Choose a ready Bunny video creative."
+        : !rightsConfirmed
+          ? "Confirm that this brand may use the creative in paid ads."
         : name.trim().length < 3
           ? "Add a campaign name."
           : primaryText.trim().length < 3
@@ -351,6 +404,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     : null;
 
   const handlePrepare = async (forceAcceptance = false) => {
+    if (!permissions.canPlan) {
+      setError("Your role can review this plan but cannot change it.");
+      return;
+    }
     if (
       formError ||
       !brandId ||
@@ -381,6 +438,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
         dailyBudgetCents,
         capCents,
         acceptBroader: forceAcceptance || acceptBroader,
+        rightsConfirmed,
+        rightsBasis,
+        aiGenerated,
       });
       setExistingPlanId(next.planId);
       setPrepared(next);
@@ -411,7 +471,46 @@ export default function HostAdCreateRoute(): React.ReactElement {
     }
   };
 
+  const handleFund = async () => {
+    if (!permissions.canFund) {
+      setError("A finance manager, owner or approved ads spender must hold funds.");
+      return;
+    }
+    if (!prepared || prepared.status !== "ready") return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await fundHostAdPlan({
+        planId: prepared.planId,
+        versionId: prepared.versionId,
+        planHash: prepared.planHash,
+      });
+      setActivePlanState(result.state);
+      if (result.state === "staff_review_required") {
+        setNotice(
+          "Submitted for Mingla staff review. Your funds are held, no provider objects exist, and nothing is spending.",
+        );
+      } else {
+        setNotice(
+          "Funds are held. An authorized ads operator can now type LAUNCH and start the approved plan.",
+        );
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "The campaign budget could not be held.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleLaunch = async () => {
+    if (!permissions.canLaunch) {
+      setError("Your role cannot launch provider delivery.");
+      return;
+    }
     if (!prepared || prepared.status !== "ready") return;
     if (launchPhrase !== "LAUNCH") {
       setError(
@@ -422,22 +521,15 @@ export default function HostAdCreateRoute(): React.ReactElement {
     setBusy(true);
     setError(null);
     try {
-      const result = await fundCreateAndLaunchHostAdPlan({
+      await launchHostAdPlan({
         planId: prepared.planId,
         versionId: prepared.versionId,
         planHash: prepared.planHash,
       });
-      if (result.state === "staff_review_required") {
-        setActivePlanState("staff_review_required");
-        setNotice(
-          "Submitted for Mingla staff review. Your funds are held, no provider objects exist, and nothing is spending.",
-        );
-      } else {
-        setNotice(
-          "The campaign was created and launched. Provider review may still gate delivery.",
-        );
-        setTimeout(() => router.replace("/(tabs)/marketing/ads" as never), 900);
-      }
+      setNotice(
+        "The campaign was created and launched. Provider review may still gate delivery.",
+      );
+      setTimeout(() => router.replace("/(tabs)/marketing/ads" as never), 900);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -450,6 +542,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
   };
 
   const handleCancelBeforeCreate = async () => {
+    if (!permissions.canEnd) {
+      setError("Only the brand owner can cancel a funded plan and release its hold.");
+      return;
+    }
     if (!prepared) return;
     setBusy(true);
     setError(null);
@@ -488,20 +584,20 @@ export default function HostAdCreateRoute(): React.ReactElement {
       </View>
     );
   }
-  if (manage.isLoading || loading) {
+  if (permissions.isLoading || loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={textTokens.secondary} />
       </View>
     );
   }
-  if (!manage.allowed) {
+  if (!permissions.canRead) {
     return (
       <View style={styles.center}>
         <EmptyState
           illustration="users"
-          title="Payments access required"
-          description="A brand owner or finance manager can create Host ads."
+          title="Ads access required"
+          description="Ask a brand owner to grant Ads view access for this brand."
         />
       </View>
     );
@@ -748,6 +844,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 subtitle={`${Math.round(Number(item.duration_seconds ?? 0))} sec · Bunny master ready`}
                 onPress={() => {
                   setCreative(item);
+                  setRightsConfirmed(false);
                   setPrepared(null);
                 }}
                 testID={`host-ad-creative-${item.id}`}
@@ -761,6 +858,78 @@ export default function HostAdCreateRoute(): React.ReactElement {
               </ChoiceCard>
             ))
           )}
+          <Text style={styles.label}>Paid-ad rights basis</Text>
+          <View style={styles.chipRow}>
+            {(
+              [
+                ["owned", "Owned"],
+                ["licensed", "Licensed"],
+                ["authorized_by_brand", "Brand authorized"],
+              ] as const
+            ).map(([value, label]) => (
+              <Pressable
+                key={value}
+                style={[
+                  styles.chip,
+                  rightsBasis === value && styles.chipSelected,
+                ]}
+                onPress={() => {
+                  setRightsBasis(value);
+                  setRightsConfirmed(false);
+                  setPrepared(null);
+                }}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: rightsBasis === value }}
+                accessibilityLabel={`Creative rights: ${label}`}
+              >
+                <Text style={styles.chipLabel}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable
+            style={[
+              styles.acceptRow,
+              rightsConfirmed && styles.choiceSelected,
+            ]}
+            onPress={() => {
+              setRightsConfirmed((value) => !value);
+              setPrepared(null);
+            }}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: rightsConfirmed }}
+            accessibilityLabel="Confirm paid advertising rights"
+          >
+            <View
+              style={[
+                styles.checkbox,
+                rightsConfirmed && styles.checkboxChecked,
+              ]}
+            />
+            <Text style={styles.choiceTitle}>
+              I confirm this creative may be used in paid ads. This does not
+              authorize reuse in Mingla house campaigns.
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.acceptRow, aiGenerated && styles.choiceSelected]}
+            onPress={() => {
+              setAiGenerated((value) => !value);
+              setPrepared(null);
+            }}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: aiGenerated }}
+            accessibilityLabel="Creative is AI-generated"
+          >
+            <View
+              style={[
+                styles.checkbox,
+                aiGenerated && styles.checkboxChecked,
+              ]}
+            />
+            <Text style={styles.choiceTitle}>
+              This creative is AI-generated or materially AI-edited
+            </Text>
+          </Pressable>
           <Text style={styles.label}>Campaign name</Text>
           <Input
             value={name}
@@ -805,17 +974,60 @@ export default function HostAdCreateRoute(): React.ReactElement {
               prepared ? "Refresh immutable plan" : "Prepare immutable plan"
             }
             onPress={() => void handlePrepare(false)}
-            disabled={Boolean(formError)}
+            disabled={Boolean(formError) || !permissions.canPlan}
             loading={busy}
             fullWidth
             testID="host-ad-prepare"
           />
+          {!permissions.canPlan ? (
+            <Text style={styles.helper}>
+              This plan is read-only for your role. You can still complete an
+              authorized funding or launch step below.
+            </Text>
+          ) : null}
           {formError ? <Text style={styles.helper}>{formError}</Text> : null}
 
           {prepared ? (
             <View style={styles.planBox}>
               <Text style={styles.label}>Immutable plan hash</Text>
               <Text style={styles.hash}>{prepared.planHash}</Text>
+              {prepared.measurement ? (
+                <View style={styles.targetingRow}>
+                  <Text style={styles.choiceTitle}>
+                    Measurement ·{" "}
+                    {String(prepared.measurement.quality).replaceAll("_", " ")}
+                  </Text>
+                  <Text style={styles.choiceSubtitle}>
+                    Result order: {Array.isArray(
+                        prepared.measurement.result_hierarchy,
+                      )
+                      ? prepared.measurement.result_hierarchy
+                        .map((value) => String(value).replaceAll("_", " "))
+                        .join(" → ")
+                      : "Unavailable"}
+                  </Text>
+                  <Text style={styles.choiceSubtitle}>
+                    Browser pixels and platform conversion sharing require
+                    consent. Trusted Mingla results remain in aggregate reports.
+                  </Text>
+                </View>
+              ) : null}
+              {prepared.mediaRights ? (
+                <View style={styles.targetingRow}>
+                  <Text style={styles.choiceTitle}>Media rights attested</Text>
+                  <Text style={styles.choiceSubtitle}>
+                    {String(prepared.mediaRights.rights_basis).replaceAll(
+                      "_",
+                      " ",
+                    )} · {prepared.mediaRights.ai_generated === true
+                      ? "AI-generated"
+                      : "not marked AI-generated"}
+                  </Text>
+                  <Text style={styles.choiceSubtitle}>
+                    Paid-ad use only; Mingla house reuse is not authorized.
+                  </Text>
+                </View>
+              ) : null}
               {prepared.providerValidations.map(({ platform }) => (
                 <Text
                   key={`validation-${platform}`}
@@ -825,6 +1037,18 @@ export default function HostAdCreateRoute(): React.ReactElement {
                   object created
                 </Text>
               ))}
+              {prepared.targeting.length > 0 ? (
+                <View style={styles.targetingRow}>
+                  <Text style={styles.choiceTitle}>
+                    Provider estimates overlap
+                  </Text>
+                  <Text style={styles.choiceSubtitle}>
+                    Read each platform separately. Do not add these estimates
+                    into a cross-platform total because the same person may be
+                    eligible on more than one platform.
+                  </Text>
+                </View>
+              ) : null}
               {prepared.targeting.map((row) => (
                 <View key={row.platform} style={styles.targetingRow}>
                   <Text style={styles.choiceTitle}>
@@ -839,6 +1063,37 @@ export default function HostAdCreateRoute(): React.ReactElement {
                       {line}
                     </Text>
                   ))}
+                  {row.provider_estimate ? (
+                    <>
+                      <Text style={styles.choiceTitle}>
+                        Provider estimate ·{" "}
+                        {providerEstimateLabel(row.provider_estimate)}
+                      </Text>
+                      <Text style={styles.choiceSubtitle}>
+                        Observed {row.estimate_observed_at
+                          ? new Date(row.estimate_observed_at).toLocaleString()
+                          : "time unavailable"} · {row.provider_estimate.source}
+                      </Text>
+                      {row.provider_estimate.state !== "available" ? (
+                        <Text style={styles.choiceSubtitle}>
+                          {String(row.provider_estimate.detail).replaceAll(
+                            "_",
+                            " ",
+                          )}
+                        </Text>
+                      ) : null}
+                      {(row.provider_estimate.assumptions ?? []).map(
+                        (assumption) => (
+                          <Text
+                            key={assumption}
+                            style={styles.choiceSubtitle}
+                          >
+                            {assumption}
+                          </Text>
+                        ),
+                      )}
+                    </>
+                  ) : null}
                 </View>
               ))}
               {prepared.status === "broader" ? (
@@ -873,33 +1128,79 @@ export default function HostAdCreateRoute(): React.ReactElement {
               ) : null}
               {prepared.status === "ready" ? (
                 <>
-                  <Text style={styles.helper}>
-                    Type LAUNCH to hold {formatMoney(setup.currency, capCents)}{" "}
-                    and continue. First-three or flagged Host campaigns stop for
-                    staff approval before any provider object exists.
-                  </Text>
-                  <Input
-                    value={launchPhrase}
-                    onChangeText={setLaunchPhrase}
-                    placeholder="LAUNCH"
-                    accessibilityLabel="Type LAUNCH to confirm"
-                  />
-                  <Button
-                    label={
-                      activePlanState === "staff_review_required"
-                        ? "Waiting for staff approval"
-                        : "Hold funds and launch"
-                    }
-                    onPress={() => void handleLaunch()}
-                    disabled={
-                      launchPhrase !== "LAUNCH" ||
-                      activePlanState === "staff_review_required"
-                    }
-                    loading={busy}
-                    fullWidth
-                    testID="host-ad-launch"
-                  />
+                  {activePlanState === "ready_for_funding" ? (
+                    permissions.canFund ? (
+                      <>
+                        <Text style={styles.helper}>
+                          Hold {formatMoney(setup.currency, capCents)} in Ads
+                          credit. First-three or flagged Host campaigns then
+                          stop for staff approval; no provider object is created.
+                        </Text>
+                        <Button
+                          label="Hold funds"
+                          onPress={() => void handleFund()}
+                          loading={busy}
+                          fullWidth
+                          testID="host-ad-fund"
+                        />
+                      </>
+                    ) : (
+                      <Text style={styles.helper}>
+                        The immutable plan is ready. A finance manager, owner or
+                        approved ads spender must hold the budget next.
+                      </Text>
+                    )
+                  ) : null}
                   {activePlanState === "staff_review_required" ? (
+                    <Text style={styles.helper}>
+                      Funds are held while Mingla staff reviews this exact plan.
+                      No provider object exists and nothing is spending.
+                    </Text>
+                  ) : null}
+                  {[
+                    "funded_held",
+                    "staff_approved",
+                    "creation_failed_retryable",
+                  ].includes(activePlanState ?? "") ? (
+                    permissions.canLaunch ? (
+                      <>
+                        <Text style={styles.helper}>
+                          Type LAUNCH exactly to create paused provider objects
+                          and activate this approved plan.
+                        </Text>
+                        <Input
+                          value={launchPhrase}
+                          onChangeText={setLaunchPhrase}
+                          placeholder="LAUNCH"
+                          accessibilityLabel="Type LAUNCH to confirm"
+                        />
+                        <Button
+                          label={
+                            activePlanState === "creation_failed_retryable"
+                              ? "Retry provider creation and launch"
+                              : "Launch approved plan"
+                          }
+                          onPress={() => void handleLaunch()}
+                          disabled={launchPhrase !== "LAUNCH"}
+                          loading={busy}
+                          fullWidth
+                          testID="host-ad-launch"
+                        />
+                      </>
+                    ) : (
+                      <Text style={styles.helper}>
+                        Funds are held. An owner or ads operator with launch
+                        authority must complete the provider launch.
+                      </Text>
+                    )
+                  ) : null}
+                  {permissions.canEnd &&
+                  [
+                    "funded_held",
+                    "staff_review_required",
+                    "staff_approved",
+                    "creation_failed_retryable",
+                  ].includes(activePlanState ?? "") ? (
                     <Button
                       label="Cancel plan and release funds"
                       onPress={() => void handleCancelBeforeCreate()}

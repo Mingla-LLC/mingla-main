@@ -182,6 +182,127 @@ GRANT EXECUTE ON FUNCTION public.ad_brand_currency_authority(uuid)
 GRANT EXECUTE ON FUNCTION public.ad_require_brand_currency(uuid)
   TO service_role;
 
+-- Reconciliation snapshot kept callable for the governed migration operator.
+-- Ledger truth is derived from signed deltas and independently checked against
+-- the terminal balance-after value. Provider liabilities remain separated by
+-- provider-account currency; the function never adds unlike currencies.
+CREATE OR REPLACE FUNCTION public.ad_currency_reconciliation_snapshot(
+  p_brand_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_wallet public.ad_credit_wallets%ROWTYPE;
+  v_ledger_count bigint;
+  v_ledger_balance bigint;
+  v_terminal_balance bigint;
+  v_campaign_count bigint;
+  v_liability_by_currency jsonb;
+  v_liability_campaigns jsonb;
+BEGIN
+  SELECT * INTO v_wallet
+  FROM public.ad_credit_wallets w
+  WHERE w.brand_id = p_brand_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'ad_credit_wallet_not_found' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT count(*), coalesce(sum(l.amount_cents), 0)
+    INTO v_ledger_count, v_ledger_balance
+  FROM public.ad_credit_ledger l
+  WHERE l.brand_id = p_brand_id;
+  SELECT coalesce((
+    SELECT l.balance_after_cents
+    FROM public.ad_credit_ledger l
+    WHERE l.brand_id = p_brand_id
+    ORDER BY l.created_at DESC, l.id DESC
+    LIMIT 1
+  ), 0) INTO v_terminal_balance;
+
+  WITH campaign_liability AS (
+    SELECT
+      c.id AS campaign_id,
+      c.status,
+      CASE
+        WHEN upper(btrim(coalesce(ac.currency, ''))) ~ '^[A-Z]{3}$'
+          THEN upper(btrim(ac.currency))
+        ELSE 'UNRESOLVED'
+      END AS provider_currency,
+      greatest(coalesce(
+        c.cap_cents, c.lifetime_budget_cents, c.daily_budget_cents, 0
+      ), 0)::bigint AS committed_budget_cents,
+      coalesce(s.spend_cents, 0)::bigint AS provider_spend_cents,
+      coalesce(s.spend_currencies, '[]'::jsonb) AS spend_currencies
+    FROM public.ad_campaigns c
+    LEFT JOIN public.ad_connections ac ON ac.id = c.connection_id
+    LEFT JOIN LATERAL (
+      SELECT
+        coalesce(sum(d.spend_cents), 0)::bigint AS spend_cents,
+        coalesce(jsonb_agg(DISTINCT upper(btrim(d.currency))), '[]'::jsonb)
+          AS spend_currencies
+      FROM public.ad_spend_daily d
+      WHERE d.campaign_id = c.id
+    ) s ON true
+    WHERE c.brand_id = p_brand_id
+      AND c.owner_kind = 'host'
+      AND upper(c.status) NOT IN ('ARCHIVED','DELETED')
+  ), normalized AS (
+    SELECT *, greatest(committed_budget_cents - provider_spend_cents, 0)::bigint
+      AS outstanding_cents
+    FROM campaign_liability
+  ), by_currency AS (
+    SELECT provider_currency, sum(outstanding_cents)::bigint AS outstanding_cents
+    FROM normalized
+    GROUP BY provider_currency
+  )
+  SELECT
+    coalesce((SELECT jsonb_object_agg(
+      provider_currency, outstanding_cents ORDER BY provider_currency
+    ) FROM by_currency), '{}'::jsonb),
+    coalesce((SELECT jsonb_agg(jsonb_build_object(
+      'campaign_id', campaign_id,
+      'status', status,
+      'provider_currency', provider_currency,
+      'committed_budget_cents', committed_budget_cents,
+      'provider_spend_cents', provider_spend_cents,
+      'outstanding_cents', outstanding_cents,
+      'spend_currencies', spend_currencies,
+      'currency_reconciles', (
+        spend_currencies = '[]'::jsonb
+        OR spend_currencies = jsonb_build_array(provider_currency)
+      )
+    ) ORDER BY campaign_id) FROM normalized), '[]'::jsonb)
+  INTO v_liability_by_currency, v_liability_campaigns;
+
+  SELECT count(*) INTO v_campaign_count
+  FROM public.ad_campaigns c
+  WHERE c.brand_id = p_brand_id AND c.owner_kind = 'host';
+
+  RETURN jsonb_build_object(
+    'wallet_currency', upper(btrim(v_wallet.currency::text)),
+    'wallet_balance_cents', v_wallet.balance_cents,
+    'ledger_entry_count', v_ledger_count,
+    'ledger_balance_cents', v_ledger_balance,
+    'ledger_terminal_balance_cents', v_terminal_balance,
+    'ledger_reconciles', (
+      v_wallet.balance_cents = v_ledger_balance
+      AND v_ledger_balance = v_terminal_balance
+    ),
+    'campaign_count', v_campaign_count,
+    'provider_liability_by_currency', v_liability_by_currency,
+    'provider_liability_campaigns', v_liability_campaigns
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.ad_currency_reconciliation_snapshot(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ad_currency_reconciliation_snapshot(uuid)
+  TO service_role;
+
 -- Durable audit: every pre-v1.4 wallet gets an explicit classification. This
 -- is evidence for V1.4-21 and the operator queue for rows that carry value.
 CREATE TABLE IF NOT EXISTS public.ad_currency_migration_audit (
@@ -190,7 +311,19 @@ CREATE TABLE IF NOT EXISTS public.ad_currency_migration_audit (
   authority_currency char(3),
   wallet_balance_cents bigint NOT NULL,
   ledger_entry_count bigint NOT NULL,
+  ledger_balance_cents bigint NOT NULL,
+  ledger_terminal_balance_cents bigint NOT NULL,
+  ledger_reconciles boolean NOT NULL,
   campaign_count bigint NOT NULL,
+  provider_liability_by_currency jsonb NOT NULL,
+  provider_liability_campaigns jsonb NOT NULL,
+  post_wallet_currency char(3),
+  post_wallet_balance_cents bigint,
+  post_ledger_balance_cents bigint,
+  post_ledger_terminal_balance_cents bigint,
+  post_ledger_reconciles boolean,
+  post_provider_liability_by_currency jsonb,
+  post_provider_liability_campaigns jsonb,
   classification text NOT NULL CHECK (classification IN (
     'aligned',
     'safe_zero_recreate',
@@ -200,7 +333,19 @@ CREATE TABLE IF NOT EXISTS public.ad_currency_migration_audit (
   authority_detail jsonb NOT NULL,
   classified_at timestamptz NOT NULL DEFAULT now(),
   reconciled_at timestamptz NULL,
-  reconciliation_note text NULL
+  reconciliation_note text NULL,
+  CONSTRAINT ad_currency_migration_liability_objects CHECK (
+    jsonb_typeof(provider_liability_by_currency) = 'object'
+    AND jsonb_typeof(provider_liability_campaigns) = 'array'
+    AND (
+      post_provider_liability_by_currency IS NULL
+      OR jsonb_typeof(post_provider_liability_by_currency) = 'object'
+    )
+    AND (
+      post_provider_liability_campaigns IS NULL
+      OR jsonb_typeof(post_provider_liability_campaigns) = 'array'
+    )
+  )
 );
 
 ALTER TABLE public.ad_currency_migration_audit ENABLE ROW LEVEL SECURITY;
@@ -234,27 +379,36 @@ ALTER TABLE public.ad_credit_wallets
 
 INSERT INTO public.ad_currency_migration_audit (
   brand_id, wallet_currency, authority_currency, wallet_balance_cents,
-  ledger_entry_count, campaign_count, classification, authority_detail
+  ledger_entry_count, ledger_balance_cents, ledger_terminal_balance_cents,
+  ledger_reconciles, campaign_count, provider_liability_by_currency,
+  provider_liability_campaigns, classification, authority_detail
 )
 SELECT
   w.brand_id,
-  w.currency,
+  s.detail->>'wallet_currency',
   CASE
     WHEN coalesce((a.detail->>'resolved')::boolean, false) IS TRUE
       THEN NULLIF(a.detail->>'currency', '')::char(3)
     ELSE NULL
   END,
-  w.balance_cents,
-  counts.ledger_count,
-  counts.campaign_count,
+  (s.detail->>'wallet_balance_cents')::bigint,
+  (s.detail->>'ledger_entry_count')::bigint,
+  (s.detail->>'ledger_balance_cents')::bigint,
+  (s.detail->>'ledger_terminal_balance_cents')::bigint,
+  (s.detail->>'ledger_reconciles')::boolean,
+  (s.detail->>'campaign_count')::bigint,
+  s.detail->'provider_liability_by_currency',
+  s.detail->'provider_liability_campaigns',
   CASE
     WHEN coalesce((a.detail->>'resolved')::boolean, false) IS NOT TRUE
       THEN 'authority_unresolved'
+    WHEN (s.detail->>'ledger_reconciles')::boolean IS NOT TRUE
+      THEN 'requires_reconciliation'
     WHEN upper(btrim(w.currency::text)) = upper(btrim(a.detail->>'currency'))
       THEN 'aligned'
     WHEN w.balance_cents = 0
-      AND counts.ledger_count = 0
-      AND counts.campaign_count = 0
+      AND (s.detail->>'ledger_entry_count')::bigint = 0
+      AND (s.detail->>'campaign_count')::bigint = 0
       THEN 'safe_zero_recreate'
     ELSE 'requires_reconciliation'
   END,
@@ -264,18 +418,19 @@ CROSS JOIN LATERAL (
   SELECT public.ad_brand_currency_authority(w.brand_id) AS detail
 ) a
 CROSS JOIN LATERAL (
-  SELECT
-    (SELECT count(*) FROM public.ad_credit_ledger l
-      WHERE l.brand_id = w.brand_id) AS ledger_count,
-    (SELECT count(*) FROM public.ad_campaigns c
-      WHERE c.brand_id = w.brand_id AND c.owner_kind = 'host') AS campaign_count
-) counts
+  SELECT public.ad_currency_reconciliation_snapshot(w.brand_id) AS detail
+) s
 ON CONFLICT (brand_id) DO UPDATE
 SET wallet_currency = EXCLUDED.wallet_currency,
     authority_currency = EXCLUDED.authority_currency,
     wallet_balance_cents = EXCLUDED.wallet_balance_cents,
     ledger_entry_count = EXCLUDED.ledger_entry_count,
+    ledger_balance_cents = EXCLUDED.ledger_balance_cents,
+    ledger_terminal_balance_cents = EXCLUDED.ledger_terminal_balance_cents,
+    ledger_reconciles = EXCLUDED.ledger_reconciles,
     campaign_count = EXCLUDED.campaign_count,
+    provider_liability_by_currency = EXCLUDED.provider_liability_by_currency,
+    provider_liability_campaigns = EXCLUDED.provider_liability_campaigns,
     classification = EXCLUDED.classification,
     authority_detail = EXCLUDED.authority_detail,
     classified_at = now();
@@ -541,6 +696,32 @@ CREATE TRIGGER ad_spend_currency_authority
 
 REVOKE ALL ON FUNCTION public.ad_spend_currency_guard()
   FROM PUBLIC, anon, authenticated;
+
+-- Persist the after-image separately. Values are not overwritten, so an
+-- operator can prove whether replay changed any wallet, ledger-derived balance
+-- or provider liability and can refuse cutover on an unexplained delta.
+WITH post_snapshot AS (
+  SELECT
+    a.brand_id,
+    public.ad_currency_reconciliation_snapshot(a.brand_id) AS detail
+  FROM public.ad_currency_migration_audit a
+)
+UPDATE public.ad_currency_migration_audit a
+SET post_wallet_currency = s.detail->>'wallet_currency',
+    post_wallet_balance_cents =
+      (s.detail->>'wallet_balance_cents')::bigint,
+    post_ledger_balance_cents =
+      (s.detail->>'ledger_balance_cents')::bigint,
+    post_ledger_terminal_balance_cents =
+      (s.detail->>'ledger_terminal_balance_cents')::bigint,
+    post_ledger_reconciles =
+      (s.detail->>'ledger_reconciles')::boolean,
+    post_provider_liability_by_currency =
+      s.detail->'provider_liability_by_currency',
+    post_provider_liability_campaigns =
+      s.detail->'provider_liability_campaigns'
+FROM post_snapshot s
+WHERE s.brand_id = a.brand_id;
 
 COMMENT ON COLUMN public.ad_campaigns.currency IS
   'Issue #3697 v1.4: customer-facing currency. Host rows use verified brand settlement currency; Mingla rows equal provider_currency.';

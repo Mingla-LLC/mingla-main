@@ -3,6 +3,7 @@
 -- MINGLA-INVARIANT: I-3697-HOST-CURRENCY-AUTHORITY | issue #3697 | Host ad wallets and customer-facing campaign money use the brand's verified settlement currency; client-supplied currency cannot override it.
 -- MINGLA-INVARIANT: I-3697-PROVIDER-CURRENCY-AUTHORITY | issue #3697 | Provider spend uses the selected connected ad account currency and never inherits a Host-wallet currency or a USD fallback.
 -- MINGLA-INVARIANT: I-3697-CURRENCY-MIGRATION-NO-RELABEL | issue #3697 | Legacy value-bearing currency mismatches are classified for reconciliation and are never automatically relabelled.
+-- MINGLA-INVARIANT: I-3697-CURRENCY-MIGRATION-RECONCILIATION | issue #3697 | Currency cutover records before/after wallet truth, ledger-derived balance and provider liabilities without summing unlike currencies.
 
 \set ON_ERROR_STOP on
 BEGIN;
@@ -17,6 +18,7 @@ DECLARE
   v_host_campaign constant uuid := '36970000-0000-4000-8000-000000000031';
   v_mingla_campaign constant uuid := '36970000-0000-4000-8000-000000000032';
   v_detail jsonb;
+  v_snapshot jsonb;
   v_failed boolean;
 BEGIN
   INSERT INTO auth.users (id, email)
@@ -75,6 +77,17 @@ BEGIN
     RAISE EXCEPTION 'wallet_authority_stamp_missing';
   END IF;
 
+  INSERT INTO public.ad_credit_ledger (
+    brand_id, entry_kind, amount_cents, fee_cents, balance_after_cents,
+    currency, actor_id, idempotency_key
+  ) VALUES (
+    v_ngn_brand, 'top_up', 10000, 0, 10000, 'NGN', v_user,
+    'issue3697-reconciliation-topup'
+  );
+  UPDATE public.ad_credit_wallets
+  SET balance_cents = 10000
+  WHERE brand_id = v_ngn_brand;
+
   v_failed := false;
   BEGIN
     INSERT INTO public.ad_credit_wallets (brand_id, currency)
@@ -109,12 +122,13 @@ BEGIN
   INSERT INTO public.ad_campaigns (
     id, connection_id, platform, external_campaign_id, name, objective,
     status, dest_page_type, dest_brand_slug, dest_url, dest_smart_link,
-    brand_id, owner_kind, currency
+    brand_id, owner_kind, currency, cap_cents
   ) VALUES (
     v_host_campaign, v_connection, 'meta', 'campaign_issue3697_host',
     'Issue 3697 Host', 'OUTCOME_TRAFFIC', 'PAUSED', 'brand',
     'issue-3697-ngn', 'https://usemingla.com/issue-3697-ngn',
-    'https://usemingla.com/issue-3697-ngn', v_ngn_brand, 'host', 'NGN'
+    'https://usemingla.com/issue-3697-ngn', v_ngn_brand, 'host', 'NGN',
+    10000
   );
 
   IF NOT EXISTS (
@@ -161,6 +175,32 @@ BEGIN
   INSERT INTO public.ad_spend_daily (
     campaign_id, platform, spend_date, spend_cents, currency
   ) VALUES (v_host_campaign, 'meta', current_date, 3000, 'USD');
+
+  v_snapshot := public.ad_currency_reconciliation_snapshot(v_ngn_brand);
+  IF (v_snapshot->>'wallet_balance_cents')::bigint <> 10000
+     OR (v_snapshot->>'ledger_balance_cents')::bigint <> 10000
+     OR (v_snapshot->>'ledger_terminal_balance_cents')::bigint <> 10000
+     OR (v_snapshot->>'ledger_reconciles')::boolean IS DISTINCT FROM true
+     OR (v_snapshot->'provider_liability_by_currency'->>'USD')::bigint <> 7000
+     OR jsonb_array_length(v_snapshot->'provider_liability_campaigns') <> 1
+  THEN
+    RAISE EXCEPTION 'currency_reconciliation_snapshot_incomplete:%', v_snapshot;
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM pg_attribute a
+    WHERE a.attrelid = 'public.ad_currency_migration_audit'::regclass
+      AND a.attname IN (
+        'ledger_balance_cents', 'ledger_terminal_balance_cents',
+        'ledger_reconciles', 'provider_liability_by_currency',
+        'post_wallet_balance_cents', 'post_ledger_balance_cents',
+        'post_provider_liability_by_currency'
+      )
+      AND NOT a.attisdropped
+  ) <> 7 THEN
+    RAISE EXCEPTION 'currency_migration_before_after_columns_missing';
+  END IF;
 
   v_failed := false;
   BEGIN

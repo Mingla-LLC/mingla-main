@@ -68,6 +68,18 @@ Deno.test("Wave 7c: Host Ads Ari tools registered (distinct from Blast)", () => 
   assert(READ_ONLY_TOOL_NAMES.has("get_ad_campaign_report"));
   assert(MONEY_CONFIRM_TOOLS.has("approve_ad_plan"));
   assert(MONEY_CONFIRM_TOOLS.has("end_ad_campaign"));
+  const propose = findTool("propose_ad_plan");
+  const proposeRequired = Array.isArray(propose?.parameters.required)
+    ? propose.parameters.required as string[]
+    : [];
+  for (
+    const field of ["rights_confirmed", "rights_basis", "ai_generated"]
+  ) {
+    assert(
+      proposeRequired.includes(field),
+      `propose_ad_plan must require ${field}`,
+    );
+  }
   const approve = findTool("approve_ad_plan");
   assertEquals(approve?.name, "approve_ad_plan");
   const required = Array.isArray(approve?.parameters.required)
@@ -83,7 +95,8 @@ Deno.test("Wave 7c: host-ad-campaign edge + ad-credit withdraw surface exist", a
   assert(host.includes('owner_kind: "host"'));
   assert(host.includes('action === "launch"'));
   assert(host.includes("campaign_spend"));
-  assert(host.includes("biz_can_view_payments_for_brand"));
+  assert(host.includes("ad_can_host_action"));
+  assert(host.includes("p_action: requiredPermission"));
   assert(host.includes("campaign_never_launched"));
   assert(host.includes("campaign_not_pausable"));
   const edge = await Deno.readTextFile(

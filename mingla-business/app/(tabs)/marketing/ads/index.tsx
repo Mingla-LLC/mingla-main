@@ -34,6 +34,7 @@ import { useHostAdCampaigns } from "../../../../src/hooks/marketing/useHostAdCam
 import { useHostAdPlans } from "../../../../src/hooks/marketing/useHostAdPlans";
 import { useCanManageBrandPayments } from "../../../../src/hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
+import { useHostAdPermissions } from "../../../../src/hooks/useHostAdPermissions";
 import { applyAdCreditTopUp } from "../../../../src/services/adCreditService";
 import { formatCurrency } from "../../../../src/utils/currency";
 
@@ -76,7 +77,8 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const walletQuery = useAdCreditWallet(brandId);
   const campaignsQuery = useHostAdCampaigns(brandId);
   const plansQuery = useHostAdPlans(brandId);
-  const manage = useCanManageBrandPayments(brandId);
+  const creditManage = useCanManageBrandPayments(brandId);
+  const permissions = useHostAdPermissions(brandId);
   const [sheetMode, setSheetMode] = useState<AdCreditQuoteMode | null>(null);
   const [returnNotice, setReturnNotice] = useState<string | null>(null);
   const [campaignFilter, setCampaignFilter] = useState<CampaignFilter>("all");
@@ -91,7 +93,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
   const appliedSessionRef = useRef<string | null>(null);
 
   const onRefresh = useCallback(() => {
-    void walletQuery.refetch();
+    if (walletQuery.canView) void walletQuery.refetch();
     void campaignsQuery.refetch();
     void plansQuery.refetch();
   }, [campaignsQuery, plansQuery, walletQuery]);
@@ -111,7 +113,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
     }
 
     if (brandId === null) return;
-    if (!manage.allowed || manage.isLoading) return;
+    if (!creditManage.allowed || creditManage.isLoading) return;
 
     if (paystackRef && paystackRef.startsWith("mingla_adc_")) {
       if (appliedSessionRef.current === paystackRef) return;
@@ -160,8 +162,8 @@ export default function MarketingAdsRoute(): React.ReactElement {
     })();
   }, [
     brandId,
-    manage.allowed,
-    manage.isLoading,
+    creditManage.allowed,
+    creditManage.isLoading,
     params.ad_credit_top_up,
     params.payment,
     params.reference,
@@ -184,10 +186,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
     );
   }
 
-  if (
-    walletQuery.viewLoading ||
-    (!walletQuery.hasResolved && !walletQuery.isError)
-  ) {
+  if (permissions.isLoading) {
     return (
       <View style={styles.host} testID="ads-skeleton">
         <ActivityIndicator color={textTokens.secondary} />
@@ -195,18 +194,18 @@ export default function MarketingAdsRoute(): React.ReactElement {
     );
   }
 
-  if (walletQuery.viewError) {
+  if (permissions.isError) {
     return (
       <View style={styles.host}>
         <EmptyState
           illustration="users"
-          title="Couldn't check access"
+          title="Couldn't check Ads access"
           description="Check your connection and try again."
           testID="ads-view-error"
           cta={{
             label: "Retry",
             onPress: () => {
-              void walletQuery.refetchView();
+              void permissions.refetch();
             },
           }}
         />
@@ -214,41 +213,24 @@ export default function MarketingAdsRoute(): React.ReactElement {
     );
   }
 
-  if (!walletQuery.canView) {
+  if (!permissions.canRead) {
     return (
       <View style={styles.host}>
         <EmptyState
           illustration="users"
-          title="Payments view required"
-          description="Ask a brand owner or finance manager to open Ads credit."
+          title="Ads access required"
+          description="Ask a brand owner to grant Ads view access for this brand."
           testID="ads-view-denied"
         />
       </View>
     );
   }
 
-  if (walletQuery.isError) {
-    return (
-      <View style={styles.host}>
-        <EmptyState
-          illustration="users"
-          title="Couldn't load Ads credit"
-          description="Check your connection and try again."
-          testID="ads-load-error"
-          cta={{
-            label: "Retry",
-            onPress: () => {
-              void walletQuery.refetch();
-            },
-          }}
-        />
-      </View>
-    );
-  }
-
-  const wallet = walletQuery.data?.wallet;
-  const history = walletQuery.data?.history ?? [];
-  const authority = walletQuery.data?.currency_authority;
+  const wallet = walletQuery.canView ? walletQuery.data?.wallet : null;
+  const history = walletQuery.canView ? walletQuery.data?.history ?? [] : [];
+  const authority = walletQuery.canView
+    ? walletQuery.data?.currency_authority
+    : undefined;
   const authorityCurrency =
     authority?.resolved === true &&
     typeof authority.currency === "string" &&
@@ -261,18 +243,6 @@ export default function MarketingAdsRoute(): React.ReactElement {
     (wallet.currency_status === "aligned" &&
       wallet.currency === authorityCurrency &&
       wallet.authority_currency === authorityCurrency);
-  if (authorityCurrency === null || !walletAligned) {
-    return (
-      <View style={styles.host}>
-        <EmptyState
-          illustration="users"
-          title="Finish payout setup"
-          description="Ads credit will unlock after this brand has one verified settlement currency and payout account. No default currency will be assumed."
-          testID="ads-currency-setup-required"
-        />
-      </View>
-    );
-  }
   const currency = authorityCurrency;
   const balanceCents = wallet?.balance_cents ?? 0;
   const campaigns = campaignsQuery.campaigns;
@@ -301,50 +271,93 @@ export default function MarketingAdsRoute(): React.ReactElement {
             {returnNotice}
           </Text>
         ) : null}
-        <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.kicker}>Available credit</Text>
-          <Text style={styles.balance} testID="ads-credit-balance">
-            {formatCurrency(balanceCents, currency, true)}
-          </Text>
-          <Text style={styles.sub}>
-            Top-ups keep 15% as Mingla&apos;s fee. Withdraw unused credit any
-            time. Payments and refunds stay in this brand&apos;s verified
-            settlement currency.
-          </Text>
-          <View style={styles.actions}>
+        {!walletQuery.canView ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.kicker}>Ads credit</Text>
+            <Text style={styles.sub}>
+              You can review plans and campaign results. A brand owner or
+              finance manager manages the balance and payment history.
+            </Text>
+          </GlassCard>
+        ) : walletQuery.viewLoading ||
+          (!walletQuery.hasResolved && !walletQuery.isError) ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <ActivityIndicator color={textTokens.secondary} />
+          </GlassCard>
+        ) : walletQuery.viewError || walletQuery.isError ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.kicker}>Ads credit unavailable</Text>
+            <Text style={styles.sub}>Check your connection and try again.</Text>
             <Pressable
               style={styles.actionBtn}
-              onPress={() => setSheetMode("top_up")}
+              onPress={() => void walletQuery.refetch()}
               accessibilityRole="button"
-              accessibilityLabel="Add Ads credit"
-              testID="ads-add-credit"
+              accessibilityLabel="Retry Ads credit"
             >
-              <Text style={styles.actionLabel}>Add credit</Text>
+              <Text style={styles.actionLabel}>Retry</Text>
             </Pressable>
-            <Pressable
-              style={styles.actionBtn}
-              onPress={() => setSheetMode("withdraw")}
-              accessibilityRole="button"
-              accessibilityLabel="Withdraw Ads credit"
-              testID="ads-withdraw"
-            >
-              <Text style={styles.actionLabel}>Withdraw</Text>
-            </Pressable>
-          </View>
-        </GlassCard>
+          </GlassCard>
+        ) : currency === null || !walletAligned ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.kicker}>Finish payout setup</Text>
+            <Text style={styles.sub}>
+              Ads credit unlocks after this brand has one verified settlement
+              currency and payout account. No default currency is assumed.
+            </Text>
+          </GlassCard>
+        ) : (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.kicker}>Available credit</Text>
+            <Text style={styles.balance} testID="ads-credit-balance">
+              {formatCurrency(balanceCents, currency, true)}
+            </Text>
+            <Text style={styles.sub}>
+              Top-ups keep 15% as Mingla&apos;s fee. Withdraw unused credit any
+              time. Payments and refunds stay in this brand&apos;s verified
+              settlement currency.
+            </Text>
+            {creditManage.allowed ? (
+              <View style={styles.actions}>
+                <Pressable
+                  style={styles.actionBtn}
+                  onPress={() => setSheetMode("top_up")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add Ads credit"
+                  testID="ads-add-credit"
+                >
+                  <Text style={styles.actionLabel}>Add credit</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.actionBtn}
+                  onPress={() => setSheetMode("withdraw")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Withdraw Ads credit"
+                  testID="ads-withdraw"
+                >
+                  <Text style={styles.actionLabel}>Withdraw</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text style={styles.sub}>
+                A brand owner or finance manager controls top-ups and
+                withdrawals.
+              </Text>
+            )}
+          </GlassCard>
+        )}
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Your ads</Text>
           <Pressable
             style={[
               styles.createBtn,
-              !manage.allowed && styles.createBtnDisabled,
+              !permissions.canPlan && styles.createBtnDisabled,
             ]}
             onPress={() => router.push("/(tabs)/marketing/ads/create" as never)}
-            disabled={!manage.allowed}
+            disabled={!permissions.canPlan}
             accessibilityRole="button"
             accessibilityLabel="Create a Host ad"
-            accessibilityState={{ disabled: !manage.allowed }}
+            accessibilityState={{ disabled: !permissions.canPlan }}
             testID="ads-create"
           >
             <Text style={styles.createBtnLabel}>Create ad</Text>
@@ -374,9 +387,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
                         `/(tabs)/marketing/ads/create?plan_id=${item.plan.id}` as never,
                       )
                     }
-                    disabled={!manage.allowed}
                     accessibilityRole="button"
-                    accessibilityState={{ disabled: !manage.allowed }}
                     accessibilityLabel={`${planName}, ${item.plan.state.replaceAll("_", " ")}`}
                     testID={`ads-plan-row-${item.plan.id}`}
                   >
@@ -471,11 +482,14 @@ export default function MarketingAdsRoute(): React.ReactElement {
                   <Text style={styles.campaignName}>{c.name}</Text>
                   <Text style={styles.campaignMeta}>
                     {c.platform} ·{" "}
-                    {formatCurrency(
-                      Number(c.cap_cents ?? c.daily_budget_cents ?? 0),
-                      c.currency ?? currency,
-                      true,
-                    )}
+                    {typeof c.currency === "string" &&
+                      /^[A-Z]{3}$/.test(c.currency)
+                      ? formatCurrency(
+                          Number(c.cap_cents ?? c.daily_budget_cents ?? 0),
+                          c.currency,
+                          true,
+                        )
+                      : "Budget currency unavailable"}
                   </Text>
                 </View>
                 <View
@@ -494,28 +508,34 @@ export default function MarketingAdsRoute(): React.ReactElement {
           )}
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>History</Text>
-        <GlassCard variant="base" padding={0}>
-          {history.length === 0 ? (
-            <View style={styles.emptyHistory} testID="ads-history-empty">
-              <Text style={styles.emptyHistoryText}>
-                No top-ups or withdrawals yet.
-              </Text>
-            </View>
-          ) : (
-            history.map((row) => <AdCreditLedgerRow key={row.id} row={row} />)
-          )}
-        </GlassCard>
+        {walletQuery.canView ? (
+          <>
+            <Text style={styles.sectionTitle}>History</Text>
+            <GlassCard variant="base" padding={0}>
+              {history.length === 0 ? (
+                <View style={styles.emptyHistory} testID="ads-history-empty">
+                  <Text style={styles.emptyHistoryText}>
+                    No top-ups or withdrawals yet.
+                  </Text>
+                </View>
+              ) : (
+                history.map((row) => (
+                  <AdCreditLedgerRow key={row.id} row={row} />
+                ))
+              )}
+            </GlassCard>
+          </>
+        ) : null}
       </ScrollView>
 
-      {sheetMode !== null ? (
+      {sheetMode !== null && currency !== null && walletAligned ? (
         <AdCreditQuoteSheet
           visible
           mode={sheetMode}
           brandId={brandId}
           currency={currency}
           balanceCents={balanceCents}
-          canManage={manage.allowed}
+          canManage={creditManage.allowed}
           onClose={() => setSheetMode(null)}
           onTopUpApplied={() => {
             void walletQuery.refetch();

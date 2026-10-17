@@ -371,8 +371,9 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   // Load the aggregate root before the owner-specific authorization. Admins
-  // can operate any campaign; a Host finance manager may only pause a
-  // Host-owned campaign for their own brand. Launch remains Admin-only here.
+  // can operate any campaign; an explicitly authorized Host marketer may only
+  // pause a Host-owned campaign for their own brand. Launch remains Admin-only
+  // here, while the Host launch path uses the immutable-plan endpoint.
   const { data: campaign } = await supabase
     .from("ad_campaigns")
     .select("*")
@@ -388,11 +389,15 @@ serve(async (req: Request): Promise<Response> => {
     if (campaign.owner_kind !== "host" || !UUID_REGEX.test(hostBrandId)) {
       return json({ error: "forbidden" }, 403);
     }
-    const { data: canManage, error: manageError } = await supabase.rpc(
-      "biz_can_manage_payments_for_brand",
-      { p_brand_id: hostBrandId, p_user_id: user.id },
+    const { data: canPause, error: pausePermissionError } = await supabase.rpc(
+      "ad_can_host_action",
+      {
+        p_brand_id: hostBrandId,
+        p_user_id: user.id,
+        p_action: "pause",
+      },
     );
-    if (manageError || canManage !== true) {
+    if (pausePermissionError || canPause !== true) {
       return json({ error: "forbidden" }, 403);
     }
   }
