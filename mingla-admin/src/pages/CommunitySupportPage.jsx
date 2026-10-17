@@ -18,6 +18,7 @@ import { RoadmapPanel } from "../components/community/RoadmapPanel";
 import { TeamRolesPanel } from "../components/community/TeamRolesPanel";
 import { AvailabilityPanel } from "../components/community/AvailabilityPanel";
 import { BrandGroupsPanel } from "../components/community/BrandGroupsPanel";
+import { ProductInboxPanel } from "../components/community/ProductInboxPanel";
 import { useAuth } from "../context/AuthContext";
 import {
   communitySupportCapabilities,
@@ -25,11 +26,12 @@ import {
   defaultCommunitySupportTab,
 } from "../lib/communitySupportAccess";
 
-export const COMMUNITY_SUPPORT_TABS = [
+const COMMUNITY_SUPPORT_TABS = [
   { id: "overview", label: "Overview" },
   { id: "announcements", label: "Announcements" },
   { id: "roadmap", label: "Roadmap" },
   { id: "support", label: "Support" },
+  { id: "product", label: "Product Inbox" },
   { id: "brand-groups", label: "Brand groups" },
   { id: "email", label: "Email" },
   { id: "team", label: "Team & roles" },
@@ -42,12 +44,12 @@ function hashParams() {
   return new URLSearchParams(window.location.hash.split("?")[1] || "");
 }
 
-export function tabFromCommunityHash() {
+function tabFromCommunityHash() {
   const t = hashParams().get("tab");
   return TAB_IDS.has(t) ? t : "overview";
 }
 
-export function communitySupportHashForTab(tabId) {
+function communitySupportHashForTab(tabId) {
   const id = TAB_IDS.has(tabId) ? tabId : "overview";
   return `#/community-support?tab=${id}`;
 }
@@ -134,6 +136,7 @@ export function CommunitySupportPage() {
       {activeTab === "support" && (
         <SupportDeskPage embedded canManageAgents={capabilities.isAdmin} />
       )}
+      {activeTab === "product" && capabilities.isAdmin && <ProductInboxPanel />}
       {activeTab === "brand-groups" && <BrandGroupsPanel />}
       {activeTab === "email" && <EmailPage embedded />}
       {activeTab === "team" && <TeamRolesPanel />}
