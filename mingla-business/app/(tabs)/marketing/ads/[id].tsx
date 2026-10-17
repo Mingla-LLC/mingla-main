@@ -282,6 +282,11 @@ export default function HostAdDetailRoute(): React.ReactElement {
                 : `Host budget ${formatCurrency(cap, currency, true)} held · spend conversion unavailable`
               : "Currency authority unavailable — spending actions are blocked"}
           </Text>
+          {payload.host_spend_equivalent_quality === "frozen_plan_fx" ? (
+            <Text style={styles.muted}>
+              Host-equivalent spend uses the plan&apos;s frozen FX quote.
+            </Text>
+          ) : null}
           {payload.provider_spend_by_currency.length > 0 ? (
             <Text style={styles.muted}>
               Platform-reported spend:{" "}
