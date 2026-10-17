@@ -894,7 +894,9 @@ BEGIN
     RAISE NOTICE 'issue3720_wave4_reconcile_cron_not_registered';
     RETURN;
   END IF;
-  PERFORM cron.unschedule(jobid) FROM cron.job WHERE jobname = 'issue_3720_product_avengers_reconcile';
+  PERFORM cron.unschedule('issue_3720_product_avengers_reconcile')
+  FROM cron.job
+  WHERE jobname = 'issue_3720_product_avengers_reconcile';
   PERFORM cron.schedule(
     'issue_3720_product_avengers_reconcile',
     '*/5 * * * *',
