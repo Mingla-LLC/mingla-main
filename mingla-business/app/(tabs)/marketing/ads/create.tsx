@@ -12,7 +12,6 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -32,6 +31,7 @@ import {
 } from "../../../../src/constants/designSystem";
 import { useCanManageBrandPayments } from "../../../../src/hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
+import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import {
   cancelHostAdPlanBeforeCreate,
   fundCreateAndLaunchHostAdPlan,

@@ -79,10 +79,7 @@ export interface ToolProposalCardProps {
    * read back the newly-created brandId and re-target the picker (Q7
    * create-row-first / attach-second). Resolves `{ ok, brandId? }`.
    */
-  onConfirm: (
-    editedArgs?: Record<string, unknown>,
-    keepPending?: boolean,
-  ) => Promise<ConfirmOutcome>;
+  onConfirm: (editedArgs?: Record<string, unknown>, keepPending?: boolean) => Promise<ConfirmOutcome>;
   onCancel: () => void;
   /**
    * Brand-name lookup for delete/update target display + type-to-confirm
@@ -116,14 +113,10 @@ function humanizeToolName(toolName: string): string {
   switch (toolName) {
     case "create_brand":
       return "Create brand";
-    case "update_brand":
-      return "Update brand";
-    case "delete_brand":
-      return "Delete brand";
-    case "manage_brand_hours":
-      return "Update venue hours";
-    case "manage_brand_discovery_currency":
-      return "Update discovery currency";
+    case "update_brand": return "Update brand";
+    case "delete_brand": return "Delete brand";
+    case "manage_brand_hours": return "Update venue hours";
+    case "manage_brand_discovery_currency": return "Update discovery currency";
     case "create_event":
       return "Create event";
     case "update_event":
@@ -162,18 +155,12 @@ function humanizeToolName(toolName: string): string {
       return "List trip installments";
     case "request_account_deletion":
       return "Delete account";
-    case "invite_brand_member":
-      return "Invite team member";
-    case "invite_scanner":
-      return "Invite scanner";
-    case "revoke_brand_member":
-      return "Revoke team member";
-    case "revoke_brand_invitation":
-      return "Revoke team invitation";
-    case "revoke_scanner_invitation":
-      return "Revoke scanner invitation";
-    case "manage_brand_people":
-      return "Add Brand Person";
+    case "invite_brand_member": return "Invite team member";
+    case "invite_scanner": return "Invite scanner";
+    case "revoke_brand_member": return "Revoke team member";
+    case "revoke_brand_invitation": return "Revoke team invitation";
+    case "revoke_scanner_invitation": return "Revoke scanner invitation";
+    case "manage_brand_people": return "Add Brand Person";
     case "propose_site_content_update":
       return "Confirm Website draft";
     case "propose_site_settings_update":
@@ -1235,10 +1222,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
         ) : isAccountDeletion ? (
           <>
             <View style={styles.assuranceRow}>
-              <Text style={styles.assuranceText}>
-                This deletes your Host account. Type your legal name and DELETE
-                to confirm.
-              </Text>
+              <Text style={styles.assuranceText}>This deletes your Host account. Type your legal name and DELETE to confirm.</Text>
             </View>
             <Text style={styles.confirmHelper}>
               Type your <Text style={styles.confirmHelperName}>legal name</Text>
@@ -1324,8 +1308,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               <View style={styles.createAttachRow}>
                 <Text style={styles.createAttachText}>
                   We&apos;ll create{" "}
-                  <Text style={styles.createAttachName}>{identity}</Text> so
-                  your cover has a home.
+                  <Text style={styles.createAttachName}>{identity}</Text> so your cover has a home.
                 </Text>
                 <View style={styles.createAttachActions}>
                   <Pressable
