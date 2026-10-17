@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
@@ -19,6 +19,7 @@ export function useBrandGroups(): {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [initialLoadSucceededFor, setInitialLoadSucceededFor] = useState<string | null>(null);
+  const mountNonce = useRef(`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!user?.id) {
@@ -49,7 +50,7 @@ export function useBrandGroups(): {
   useEffect(() => {
     if (!user?.id || initialLoadSucceededFor !== user.id) return;
     const channel = supabase
-      .channel(`brand-groups:list:${user.id}`)
+      .channel(`brand-groups:list:${user.id}:${mountNonce.current}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
         void refresh();
       })
