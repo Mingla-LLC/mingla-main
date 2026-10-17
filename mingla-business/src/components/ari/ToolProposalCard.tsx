@@ -835,8 +835,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     const selectionRef = patch.coverMediaUrl ? randomId() : undefined;
     if (selectionRef && typeof liveArgs.event_id === "string") {
       try {
-        const { registerEventCoverSelection } =
-          await import("../../services/eventCoverMediaService");
+        const { registerEventCoverSelection } = await import(
+          "../../services/eventCoverMediaService"
+        );
         await registerEventCoverSelection(
           liveArgs.event_id,
           selectionRef,
