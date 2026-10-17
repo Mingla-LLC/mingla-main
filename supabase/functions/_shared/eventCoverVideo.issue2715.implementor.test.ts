@@ -232,6 +232,9 @@ Deno.test("#2715 reaper binds a null-GUID uncertain allocation by exact provider
       }),
       rpc: (name: string, args: Record<string, unknown>) => {
         calls.push({ name, args });
+        if (name === "cover_video_record_processing_slo_breaches") {
+          return Promise.resolve({ data: [], error: null });
+        }
         if (name === "cover_video_claim_reconcile_jobs") {
           return Promise.resolve({ data: [candidate], error: null });
         }
