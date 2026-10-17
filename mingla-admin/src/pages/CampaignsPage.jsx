@@ -100,6 +100,28 @@ function campaignIdFromHash() {
   return new URLSearchParams(query).get("campaignId");
 }
 
+function providerMoneyAuthority(campaign) {
+  const providerCurrency =
+    typeof campaign?.provider_currency === "string" &&
+    /^[A-Z]{3}$/.test(campaign.provider_currency)
+      ? campaign.provider_currency
+      : campaign?.owner_kind === "mingla" &&
+          typeof campaign?.currency === "string" &&
+          /^[A-Z]{3}$/.test(campaign.currency)
+        ? campaign.currency
+        : null;
+  const frozenProviderCap = Number(campaign?.provider_budget_cents);
+  const legacyCap = Number(campaign?.cap_cents);
+  const providerCapCents =
+    Number.isSafeInteger(frozenProviderCap) && frozenProviderCap > 0
+      ? frozenProviderCap
+      : providerCurrency && providerCurrency === campaign?.currency &&
+          Number.isSafeInteger(legacyCap) && legacyCap > 0
+        ? legacyCap
+        : null;
+  return { providerCurrency, providerCapCents };
+}
+
 export function CampaignsPage() {
   const { addToast } = useToast();
   const [adsConsoleEnabled, setAdsConsoleEnabled] = useState(true);
@@ -115,7 +137,7 @@ export function CampaignsPage() {
   const [launchTarget, setLaunchTarget] = useState(null);
   const [reviewTarget, setReviewTarget] = useState(null);
   // ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI (the detail panel feed).
-  const [roi, setRoi] = useState(null);
+  const [roiPayload, setRoiPayload] = useState(null);
   const [roiLoading, setRoiLoading] = useState(false);
   const [stayRollup, setStayRollup] = useState(null);
   const [stayRollupLoading, setStayRollupLoading] = useState(false);
@@ -237,7 +259,7 @@ export function CampaignsPage() {
   const loadConversions = useCallback(
     async (campaignId) => {
       if (!campaignId) {
-        setRoi(null);
+        setRoiPayload(null);
         return;
       }
       setRoiLoading(true);
@@ -248,9 +270,9 @@ export function CampaignsPage() {
           title: "Conversions failed",
           description: error.message,
         });
-        setRoi(null);
+        setRoiPayload(null);
       } else {
-        setRoi(toCampaignRoiView(data));
+        setRoiPayload(data);
       }
       setRoiLoading(false);
     },
@@ -262,6 +284,13 @@ export function CampaignsPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadConversions(selectedId);
   }, [selectedId, loadConversions]);
+
+  const selectedCampaign =
+    (campaigns ?? []).find((campaign) => campaign.id === selectedId) ?? detail;
+  const selectedProviderMoney = providerMoneyAuthority(selectedCampaign);
+  const roi = toCampaignRoiView(roiPayload, {
+    spendCurrency: selectedProviderMoney.providerCurrency,
+  });
 
   useEffect(() => {
     if (!selectedId || detail?.dest_page_type !== "venue") {
@@ -889,12 +918,8 @@ export function CampaignsPage() {
       {/* toward #3697 Wave 3 — spend vs hard cap (real spend from rollup; never fabricate). */}
       {selectedId &&
         (() => {
-          const selectedCampaign =
-            (campaigns ?? []).find((c) => c.id === selectedId) ?? detail;
-          const currency = selectedCampaign?.currency ?? "USD";
-          const capCents = selectedCampaign?.cap_cents ?? null;
-          const platform = selectedCampaign?.platform ?? detail?.platform;
-          const isMeta = platform === "meta";
+          const { providerCurrency: currency, providerCapCents: capCents } =
+            providerMoneyAuthority(selectedCampaign);
           // While ROI reloads, ignore the previous campaign's spend (stale %).
           const spendCents = roiLoading ? null : (roi?.spendCents ?? null);
           const progress = spendCapProgress({ spendCents, capCents });
@@ -902,9 +927,7 @@ export function CampaignsPage() {
             <SectionCard
               title="Spend vs hard cap"
               subtitle={
-                isMeta
-                  ? "Hourly Meta spend feed writes real totals. The server pauses Meta at 98% of the hard cap."
-                  : "Hard cap is stored for this campaign. Live 98% auto-pause via spend feed is Meta-only for now; other platforms follow end-date rules until their adapters land."
+                "Provider spend sync writes account-currency totals for every enabled platform. The server pauses delivery at 98% of the frozen provider cap."
               }
             >
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -961,10 +984,10 @@ export function CampaignsPage() {
                   />
                 </div>
               )}
-              {isMeta && progress.atPauseThreshold && (
+              {progress.atPauseThreshold && (
                 <p className="mt-2 text-xs text-[var(--color-warning-700)]">
-                  At or past 98% of the hard cap — Meta launch/spend sync will
-                  keep this paused.
+                  At or past 98% of the provider hard cap — launch and spend
+                  sync will keep every provider object paused.
                 </p>
               )}
             </SectionCard>
@@ -977,7 +1000,7 @@ export function CampaignsPage() {
       {selectedId && (
         <SectionCard
           title="Conversions & ROI"
-          subtitle="Attributed conversions this campaign drove. ROAS shows only when real spend is connected — never estimated."
+          subtitle="Attributed conversions this campaign drove. ROAS appears only when real provider spend and attributed value share one currency — never estimated or mixed."
         >
           {roiLoading ? (
             <div className="flex items-center gap-2 text-[var(--color-text-secondary)]">
@@ -1013,11 +1036,7 @@ export function CampaignsPage() {
                   <div className="text-xl font-semibold">
                     {roi.spendCents === null
                       ? "—"
-                      : formatCampaignMoney(
-                          (campaigns ?? []).find((c) => c.id === selectedId)
-                            ?.currency ?? detail?.currency,
-                          roi.spendCents,
-                        )}
+                      : formatCampaignMoney(roi.spendCurrency, roi.spendCents)}
                   </div>
                 </div>
                 <div className="border border-[var(--gray-200)] rounded-lg p-3">
@@ -1034,6 +1053,14 @@ export function CampaignsPage() {
                 <div className="text-[var(--color-text-tertiary)] text-xs">
                   Spend appears after the hourly feed writes the first
                   ad_spend_daily row.
+                </div>
+              )}
+
+              {roi.spendCents !== null && roi.roas === null && (
+                <div className="text-[var(--color-text-tertiary)] text-xs">
+                  ROAS is unavailable because provider spend and attributed
+                  value do not share one verified currency. No cross-currency
+                  minor units are combined.
                 </div>
               )}
 

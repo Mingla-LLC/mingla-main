@@ -20,6 +20,10 @@ describe("issue #3697 v1.4 Admin control plane", () => {
   const reviewStep = read(
     "src/components/campaign-builder/StepReview.jsx",
   );
+  const budgetStep = read(
+    "src/components/campaign-builder/StepBudget.jsx",
+  );
+  const currencyInput = read("src/components/ui/CurrencyInput.jsx");
   const payload = read("src/lib/adBuilder/payload.js");
   const createEndpoint = read(
     "../supabase/functions/admin-ad-create-campaign/index.ts",
@@ -80,6 +84,26 @@ describe("issue #3697 v1.4 Admin control plane", () => {
     assert.match(reviewStep, /Trusted Mingla results remain visible/);
     assert.match(reviewStep, /Media rights attested/);
     assert.match(campaigns, /Browser pixels and platform sharing are consent-gated/);
+  });
+
+  it("renders Admin budgets in provider-account currency without manufacturing USD", () => {
+    assert.match(builder, /currency=\{planCurrency\.currency\}/);
+    assert.match(budgetStep, /Provider account currency required/);
+    assert.match(budgetStep, /Mingla will not assume USD/);
+    assert.match(budgetStep, /formatBudgetMoney\(currencyCode/);
+    assert.doesNotMatch(budgetStep, /Hard cap \(USD\)/);
+    assert.doesNotMatch(budgetStep, /Total daily budget \(USD\)/);
+    assert.match(currencyInput, /currencyCode \?\? "—"/);
+    assert.doesNotMatch(currencyInput, />\s*\$\s*</);
+    assert.doesNotMatch(campaigns, /\?\? "USD"/);
+    assert.match(campaigns, /providerMoneyAuthority/);
+  });
+
+  it("keeps provider spend/caps and attributed-value currency honest in Admin", () => {
+    assert.match(campaigns, /provider_budget_cents/);
+    assert.match(campaigns, /provider_currency/);
+    assert.match(campaigns, /No cross-currency/);
+    assert.match(campaigns, /every enabled platform/);
   });
 
   it("launches or pauses every provider campaign in the plan aggregate", () => {

@@ -89,7 +89,8 @@ describe("ISSUE-979 Bug 4 — the budget step renders the warning (fails-on-reve
 
   it("StepBudget imports and renders unfundedEligibleChannels", () => {
     assert.ok(step.includes("unfundedEligibleChannels"), "StepBudget must compute the eligible-but-$0 set");
-    assert.ok(step.includes("$0/day"), "the warning must name the $0/day outcome on screen");
+    assert.ok(step.includes("no daily budget"), "the warning must name the zero-budget outcome");
+    assert.ok(!step.includes("$0/day"), "the warning must not assume dollars");
     assert.ok(/unfunded\.map/.test(step), "each eligible-but-$0 channel must render its reason");
   });
 });

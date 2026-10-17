@@ -28,8 +28,24 @@ const STRATEGIES = [
   { id: "diversify", label: "Diversify" },
 ];
 
-export function StepBudget({ budget, onBudgetChange, channelRows }) {
+function formatBudgetMoney(currency, cents) {
+  if (!currency || !Number.isFinite(Number(cents))) return "Currency unresolved";
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+    }).format(Number(cents) / 100);
+  } catch {
+    return `${currency} ${(Number(cents) / 100).toFixed(2)}`;
+  }
+}
+
+export function StepBudget({ budget, onBudgetChange, channelRows, currency }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const currencyCode =
+    typeof currency === "string" && /^[A-Z]{3}$/.test(currency)
+      ? currency
+      : null;
   const set = (patch) => onBudgetChange({ ...budget, ...patch });
   const mode = budget.mode === "lifetime" ? "lifetime" : "daily";
   const amountCents =
@@ -122,14 +138,23 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
         </p>
       </div>
 
+      {!currencyCode && (
+        <AlertCard variant="warning" title="Provider account currency required">
+          Connect the selected ad account and load its billing currency before
+          entering a budget. Mingla will not assume USD.
+        </AlertCard>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
         <CurrencyInput
           label={
             mode === "lifetime"
-              ? "Total budget / hard cap (USD)"
-              : "Total daily budget (USD)"
+              ? `Total budget / hard cap (${currencyCode ?? "currency unresolved"})`
+              : `Total daily budget (${currencyCode ?? "currency unresolved"})`
           }
           id="total-budget"
+          currency={currencyCode}
+          disabled={!currencyCode}
           cents={amountCents}
           onCentsChange={(cents) =>
             set(
@@ -144,7 +169,7 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
                   },
             )
           }
-          helper="Dollars in, cents at rest — each platform's unit conversion happens server-side."
+          helper="Enter the selected ad account's currency. Mingla stores minor units; provider-unit conversion happens server-side."
         />
         <div className="space-y-1.5">
           <span className="block text-sm font-medium">Budget type</span>
@@ -203,7 +228,7 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
             {!lifetimeAllowed && mode === "lifetime"
               ? "Lifetime budget is Meta-only — switch to Daily or fund Meta alone."
               : "The campaign starts paused; spending begins only when you launch it from the campaign page."}{" "}
-            Hard cap: ${(capCents / 100).toFixed(2)}.
+            Hard cap: {formatBudgetMoney(currencyCode, capCents)}.
           </p>
         </div>
       </div>
@@ -245,9 +270,13 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
 
       {mode === "daily" && (
         <label className="space-y-1.5 block max-w-sm">
-          <span className="block text-sm font-medium">Hard cap (USD)</span>
+          <span className="block text-sm font-medium">
+            Hard cap ({currencyCode ?? "currency unresolved"})
+          </span>
           <CurrencyInput
             id="hard-cap"
+            currency={currencyCode}
+            disabled={!currencyCode}
             cents={budget.capCents ?? capCents}
             onCentsChange={(capCentsNext) => set({ capCents: capCentsNext })}
             helper={
@@ -298,7 +327,7 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
                 <span className="font-medium">
                   {PLATFORM_LABELS[a.platform]}
                 </span>{" "}
-                — ${(a.dailyCents / 100).toFixed(2)}/day
+                — {formatBudgetMoney(currencyCode, a.dailyCents)}/day
                 {learning && (
                   <p className="text-[var(--color-warning-700)] mt-0.5">
                     {learning}
@@ -324,8 +353,9 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
         <AlertCard variant="warning" title="Below platform minimum">
           <p className="text-xs mt-1">
             {platforms.join(", ")} for {d1.days} day{d1.days === 1 ? "" : "s"}{" "}
-            need at least ${(d1.minBudgetCents / 100).toFixed(2)}. You entered $
-            {(amountCents / 100).toFixed(2)}. Each platform has its own minimum.
+            need at least {formatBudgetMoney(currencyCode, d1.minBudgetCents)}.
+            You entered {formatBudgetMoney(currencyCode, amountCents)}. Each
+            platform has its own minimum.
           </p>
         </AlertCard>
       )}
@@ -342,7 +372,7 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
       {unfunded.length > 0 && (
         <AlertCard
           variant="warning"
-          title={`${unfunded.length} eligible ${unfunded.length === 1 ? "channel gets" : "channels get"} $0/day`}
+          title={`${unfunded.length} eligible ${unfunded.length === 1 ? "channel receives" : "channels receive"} no daily budget`}
         >
           <ul className="space-y-1 mt-1">
             {unfunded.map((u) => (

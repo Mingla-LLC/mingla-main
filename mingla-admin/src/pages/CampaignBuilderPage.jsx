@@ -1654,6 +1654,7 @@ export function CampaignBuilderPage() {
               budget={budget}
               onBudgetChange={setBudget}
               channelRows={plannedRows}
+              currency={planCurrency.currency}
             />
           )}
           {stepId === "creative" && (
