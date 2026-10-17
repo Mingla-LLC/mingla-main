@@ -2,11 +2,12 @@
 
 import { HELP_CHAPTERS, HELP_VIDEOS, bambooPosterUrl, type HelpVideoRecord } from "@mingla/help-content";
 import React, { useMemo, useState } from "react";
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { Image, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { accent, canvas, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Icon } from "../ui/Icon";
 import { GuidePlayerModal } from "./GuidePlayerModal";
 
