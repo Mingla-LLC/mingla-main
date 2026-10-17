@@ -3673,7 +3673,8 @@ const approveAdPlan = writeTool(
       phrase: "LAUNCH",
     });
     const created: unknown[] = [];
-    const launched: unknown[] = [];
+    const createdCampaigns: Array<{ campaignId: string; platform: string }> =
+      [];
     for (const allocation of aggregate.provider_allocations) {
       const platform = String(allocation.platform);
       const result = await invokeFn(
@@ -3689,13 +3690,18 @@ const approveAdPlan = writeTool(
         );
       }
       created.push(result);
+      createdCampaigns.push({ campaignId, platform });
+    }
+    const launched: unknown[] = [];
+    for (const item of createdCampaigns) {
       launched.push(
         await invokeFn(client, "host-ad-campaign", {
           action: "launch",
           brand_id: args.brand_id,
-          campaign_id: campaignId,
-          idempotency_key: ("ari_launch_" + args.plan_hash + "_" + platform)
-            .slice(0, 120),
+          campaign_id: item.campaignId,
+          idempotency_key:
+            ("ari_launch_" + args.plan_hash + "_" + item.platform)
+              .slice(0, 120),
         }),
       );
     }
@@ -3719,9 +3725,8 @@ const pauseAdCampaign = writeTool(
     if (!isUuid(args.campaign_id)) {
       throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
     }
-    return await invokeFn(client, "host-ad-campaign", {
+    return await invokeFn(client, "admin-ad-campaign-action", {
       action: "pause",
-      brand_id: args.brand_id,
       campaign_id: args.campaign_id,
     });
   },

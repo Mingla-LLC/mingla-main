@@ -376,12 +376,10 @@ export async function prepareHostAdPlan(
     targeting,
     measurement:
       (versioned.version.canonical_plan.measurement as
-        | Record<string, unknown>
-        | undefined) ?? null,
+        Record<string, unknown> | undefined) ?? null,
     mediaRights:
       (versioned.version.canonical_plan.media_rights as
-        | Record<string, unknown>
-        | undefined) ?? null,
+        Record<string, unknown> | undefined) ?? null,
     providerValidations,
   };
 }
@@ -656,7 +654,11 @@ export async function launchHostAdPlan(input: {
     plan_hash: input.planHash,
     phrase: "LAUNCH",
   });
-  const campaigns: Record<string, unknown>[] = [];
+  const createdCampaigns: {
+    created: Record<string, unknown>;
+    campaignId: string;
+    platform: string;
+  }[] = [];
   for (const allocation of aggregate.provider_allocations) {
     const created = await invoke<Record<string, unknown>>(
       "admin-ad-create-campaign",
@@ -671,17 +673,24 @@ export async function launchHostAdPlan(input: {
         "Provider create returned no campaign ID",
       );
     }
+    createdCampaigns.push({
+      created,
+      campaignId,
+      platform: String(allocation.platform),
+    });
+  }
+  const campaigns: Record<string, unknown>[] = [];
+  for (const item of createdCampaigns) {
     await invoke("host-ad-campaign", {
       action: "launch",
       brand_id: aggregate.plan.brand_id,
-      campaign_id: campaignId,
-      idempotency_key:
-        `host_launch_${input.planHash}_${String(allocation.platform)}`.slice(
-          0,
-          120,
-        ),
+      campaign_id: item.campaignId,
+      idempotency_key: `host_launch_${input.planHash}_${item.platform}`.slice(
+        0,
+        120,
+      ),
     });
-    campaigns.push({ ...created, campaign_id: campaignId });
+    campaigns.push({ ...item.created, campaign_id: item.campaignId });
   }
   return { state: "launched", planId: input.planId, campaigns };
 }

@@ -23,6 +23,7 @@ import {
   parseRedditReportSpend,
   parseSnapchatStatsSpend,
   parseTikTokReportSpend,
+  providerCapCents,
   startDateNotReached,
 } from "../adSpendSync.ts";
 
@@ -122,6 +123,37 @@ Deno.test("spend sync: cumulative spend (not sliding window) drives cap pause", 
   assertEquals(decision.total_spend_cents, 9800);
   assertEquals(decision.pause, "cap_98_percent");
   assertEquals(decision.upserts.length, 1);
+});
+
+Deno.test("spend sync enforces the provider-account cap without mixing Host currency", () => {
+  const campaign = {
+    id: "c1",
+    platform: "meta" as const,
+    external_campaign_id: "ext",
+    status: "ACTIVE",
+    cap_cents: 1_000_000,
+    currency: "NGN",
+    provider_budget_cents: 7_000,
+    provider_currency: "USD",
+    ends_at: null,
+  };
+  assertEquals(providerCapCents(campaign), 7_000);
+  assertEquals(
+    decideSpendSync({
+      campaign,
+      days: [{ spend_date: "2026-10-01", spend_cents: 6_860 }],
+    }).pause,
+    "cap_98_percent",
+  );
+  assertThrows(
+    () =>
+      decideSpendSync({
+        campaign: { ...campaign, provider_budget_cents: null },
+        days: [],
+      }),
+    Error,
+    "provider_cap_unresolved",
+  );
 });
 
 Deno.test("launch guard: startDateNotReached", () => {

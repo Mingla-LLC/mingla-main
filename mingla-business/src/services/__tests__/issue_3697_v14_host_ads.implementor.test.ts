@@ -65,6 +65,25 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(service).toContain('action: "cancel_before_create"');
   });
 
+  it("creates every provider object paused before any Host activation", () => {
+    const createdRows = service.indexOf("const createdCampaigns");
+    const createCall = service.indexOf(
+      '"admin-ad-create-campaign"',
+      createdRows,
+    );
+    const activationLoop = service.indexOf(
+      "for (const item of createdCampaigns)",
+      createCall,
+    );
+    const launchCall = service.indexOf('action: "launch"', activationLoop);
+    expect(createdRows).toBeGreaterThan(-1);
+    expect(createCall).toBeGreaterThan(createdRows);
+    expect(activationLoop).toBeGreaterThan(createCall);
+    expect(launchCall).toBeGreaterThan(activationLoop);
+    expect(hostCampaignEndpoint).toContain('"partially_live"');
+    expect(hostCampaignEndpoint).toContain('providerTree,\n        "PAUSED"');
+  });
+
   it("uses the shared aggregate lifecycle for Host pause and plan-wide stop", () => {
     expect(campaignService).toContain('"admin-ad-campaign-action"');
     expect(planEndpoint).toContain('action === "cancel_before_create"');
@@ -95,7 +114,7 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(createRoute).toContain("permissions.canLaunch");
     expect(detailRoute).toContain("permissions.canPause");
     expect(detailRoute).toContain("permissions.canEnd");
-    expect(hostCampaignEndpoint).toContain('p_action: requiredPermission');
+    expect(hostCampaignEndpoint).toContain("p_action: requiredPermission");
   });
 
   it("shows Ari's server-resolved brand currency without inventing a top-up", () => {

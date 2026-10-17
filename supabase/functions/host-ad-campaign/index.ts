@@ -32,6 +32,13 @@ import {
   setCampaignTreeStatus,
 } from "../_shared/adCampaignProviderSync.ts";
 import { notifyAdLaunchAttempt } from "../_shared/adLaunchAttemptOpsAlert.ts";
+import { shouldPauseForCap } from "../_shared/adMoney.ts";
+import {
+  endDatePassed,
+  providerCapCents,
+  startDateNotReached,
+  sumSpendCents,
+} from "../_shared/adSpendSync.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -252,26 +259,37 @@ serve(async (req: Request): Promise<Response> => {
       ? data.cap_cents
       : null;
     let planMeasurement: Record<string, unknown> | null = null;
+    let providerAllocations: Record<string, unknown>[] = [];
     if (
       typeof data.plan_version_id === "string" &&
       typeof data.plan_hash === "string"
     ) {
-      const [{ data: siblings }, { data: plan }, { data: version }] =
-        await Promise.all([
-          supabase.from("ad_campaigns").select("*")
-            .eq("plan_version_id", data.plan_version_id)
-            .eq("plan_hash", data.plan_hash)
-            .eq("brand_id", brandId)
-            .eq("owner_kind", "host")
-            .order("platform"),
-          supabase.from("ad_plans").select("state")
-            .eq("current_version_id", data.plan_version_id).maybeSingle(),
-          supabase.from("ad_plan_versions")
-            .select("host_currency,host_budget_cents,canonical_plan")
-            .eq("id", data.plan_version_id)
-            .eq("plan_hash", data.plan_hash).maybeSingle(),
-        ]);
+      const [
+        { data: siblings },
+        { data: plan },
+        { data: version },
+        { data: allocations },
+      ] = await Promise.all([
+        supabase.from("ad_campaigns").select("*")
+          .eq("plan_version_id", data.plan_version_id)
+          .eq("plan_hash", data.plan_hash)
+          .eq("brand_id", brandId)
+          .eq("owner_kind", "host")
+          .order("platform"),
+        supabase.from("ad_plans").select("state")
+          .eq("current_version_id", data.plan_version_id).maybeSingle(),
+        supabase.from("ad_plan_versions")
+          .select("host_currency,host_budget_cents,canonical_plan")
+          .eq("id", data.plan_version_id)
+          .eq("plan_hash", data.plan_hash).maybeSingle(),
+        supabase.from("ad_plan_provider_allocations")
+          .select(
+            "platform,host_currency,provider_currency,host_budget_cents,provider_budget_cents,fx_snapshot_id",
+          )
+          .eq("plan_version_id", data.plan_version_id),
+      ]);
       if (siblings?.length) planCampaigns = siblings;
+      providerAllocations = allocations ?? [];
       planState = typeof plan?.state === "string" ? plan.state : null;
       planCurrency = typeof version?.host_currency === "string"
         ? version.host_currency
@@ -298,7 +316,7 @@ serve(async (req: Request): Promise<Response> => {
       supabase
         .from("ad_spend_daily")
         .select(
-          "campaign_id, spend_cents, spend_date, impressions, clicks, platform",
+          "campaign_id, spend_cents, spend_date, impressions, clicks, platform, currency",
         )
         .in("campaign_id", planCampaignIds)
         .order("spend_date", { ascending: true }),
@@ -324,10 +342,105 @@ serve(async (req: Request): Promise<Response> => {
         .limit(50),
     ]);
     const spend = spendResult.data ?? [];
-    const spendTotal = (spend ?? []).reduce(
-      (n, r) => n + Number(r.spend_cents ?? 0),
-      0,
-    );
+    const providerSpendTotals = new Map<string, number>();
+    const spendByCampaign = new Map<
+      string,
+      { total: number; currencies: Set<string>; valid: boolean }
+    >();
+    for (const row of spend) {
+      const currency = typeof row.currency === "string"
+        ? row.currency.trim().toUpperCase()
+        : "";
+      const amount = Number(row.spend_cents);
+      const campaignId = typeof row.campaign_id === "string"
+        ? row.campaign_id
+        : "";
+      const valid = /^[A-Z]{3}$/.test(currency) &&
+        Number.isSafeInteger(amount) && amount >= 0 && campaignId.length > 0;
+      if (valid) {
+        providerSpendTotals.set(
+          currency,
+          (providerSpendTotals.get(currency) ?? 0) + amount,
+        );
+      }
+      const campaignSpend = spendByCampaign.get(campaignId) ?? {
+        total: 0,
+        currencies: new Set<string>(),
+        valid: true,
+      };
+      if (currency) campaignSpend.currencies.add(currency);
+      if (Number.isSafeInteger(amount) && amount >= 0) {
+        campaignSpend.total += amount;
+      } else {
+        campaignSpend.valid = false;
+      }
+      campaignSpend.valid = campaignSpend.valid && valid;
+      spendByCampaign.set(campaignId, campaignSpend);
+    }
+    const providerSpendByCurrency = [...providerSpendTotals.entries()]
+      .map(([currency, spend_cents]) => ({ currency, spend_cents }))
+      .sort((a, b) => a.currency.localeCompare(b.currency));
+    let hostSpendEquivalentCents: number | null =
+      typeof planCurrency === "string" && /^[A-Z]{3}$/.test(planCurrency) &&
+        typeof data.plan_version_id === "string"
+        ? 0
+        : null;
+    if (hostSpendEquivalentCents !== null) {
+      for (const campaign of planCampaigns) {
+        const allocation = providerAllocations.find((row) =>
+          row.platform === campaign.platform
+        );
+        const campaignSpend = spendByCampaign.get(String(campaign.id)) ?? {
+          total: 0,
+          currencies: new Set<string>(),
+          valid: true,
+        };
+        const providerCurrency = typeof allocation?.provider_currency ===
+            "string"
+          ? allocation.provider_currency.trim().toUpperCase()
+          : "";
+        const hostCurrency = typeof allocation?.host_currency === "string"
+          ? allocation.host_currency.trim().toUpperCase()
+          : "";
+        const observedCurrencies = [...campaignSpend.currencies];
+        if (
+          !allocation || !campaignSpend.valid ||
+          !/^[A-Z]{3}$/.test(providerCurrency) ||
+          hostCurrency !== planCurrency ||
+          (observedCurrencies.length > 0 &&
+            (observedCurrencies.length !== 1 ||
+              observedCurrencies[0] !== providerCurrency))
+        ) {
+          hostSpendEquivalentCents = null;
+          break;
+        }
+        if (providerCurrency === hostCurrency) {
+          hostSpendEquivalentCents += campaignSpend.total;
+          continue;
+        }
+        const snapshotId = typeof allocation.fx_snapshot_id === "string"
+          ? allocation.fx_snapshot_id
+          : null;
+        const { data: converted, error: conversionError } = await supabase.rpc(
+          "ad_fx_convert_frozen_minor",
+          {
+            p_amount: campaignSpend.total,
+            p_source: providerCurrency,
+            p_target: hostCurrency,
+            p_snapshot: snapshotId,
+          },
+        );
+        const convertedAmount = Number(converted);
+        if (
+          conversionError || !Number.isSafeInteger(convertedAmount) ||
+          convertedAmount < 0
+        ) {
+          hostSpendEquivalentCents = null;
+          break;
+        }
+        hostSpendEquivalentCents += convertedAmount;
+      }
+    }
     const adSetIds = (adSetsResult.data ?? []).map((row: { id: unknown }) =>
       String(row.id)
     );
@@ -351,7 +464,6 @@ serve(async (req: Request): Promise<Response> => {
     const conversionByPlatform = new Map<string, {
       platform: string;
       conversions: number;
-      value_cents: number;
     }>();
     for (const row of conversions ?? []) {
       const touchId = typeof row.touch_id === "string" ? row.touch_id : "";
@@ -373,10 +485,8 @@ serve(async (req: Request): Promise<Response> => {
       const platformResult = conversionByPlatform.get(conversionPlatform) ?? {
         platform: conversionPlatform,
         conversions: 0,
-        value_cents: 0,
       };
       platformResult.conversions += 1;
-      platformResult.value_cents += valueCents;
       conversionByPlatform.set(conversionPlatform, platformResult);
     }
     const touchIds = [...conversionCounts.keys()];
@@ -413,12 +523,17 @@ serve(async (req: Request): Promise<Response> => {
       plan_state: planState,
       plan_currency: planCurrency,
       plan_cap_cents: planCapCents,
-      spend_total_cents: spendTotal,
+      provider_spend_by_currency: providerSpendByCurrency,
+      host_spend_equivalent_cents: hostSpendEquivalentCents,
+      host_spend_equivalent_quality: hostSpendEquivalentCents === null
+        ? "unavailable"
+        : "frozen_plan_fx",
       spend_daily: spend,
       results: {
         conversions: (conversions ?? []).length,
         value_cents: Object.fromEntries(conversionValueByCurrency),
-        spend_cents: spendTotal,
+        spend_by_currency: providerSpendByCurrency,
+        host_spend_equivalent_cents: hostSpendEquivalentCents,
         by_platform: [...conversionByPlatform.values()].sort((a, b) =>
           b.conversions - a.conversions
         ),
@@ -480,7 +595,7 @@ serve(async (req: Request): Promise<Response> => {
     const { data: camp, error: campErr } = await supabase
       .from("ad_campaigns")
       .select(
-        "id, status, brand_id, owner_kind, cap_cents, currency, daily_budget_cents, name, platform, connection_id, external_campaign_id, targeting, plan_version_id, plan_hash, host_budget_cents",
+        "id, status, brand_id, owner_kind, cap_cents, currency, provider_currency, daily_budget_cents, name, platform, connection_id, external_campaign_id, targeting, starts_at, ends_at, plan_version_id, plan_hash, host_budget_cents, provider_budget_cents",
       )
       .eq("id", campaignId)
       .eq("brand_id", brandId)
@@ -805,6 +920,65 @@ serve(async (req: Request): Promise<Response> => {
       });
       return json({ error: "validation_error", detail: "budget_invalid" }, 400);
     }
+    if (startDateNotReached(camp.starts_at ?? null)) {
+      return json({
+        error: "launch_blocked",
+        detail: "start_date_not_reached",
+      }, 409);
+    }
+    if (endDatePassed(camp.ends_at ?? null)) {
+      return json({ error: "launch_blocked", detail: "end_date_passed" }, 409);
+    }
+    const providerCap = providerCapCents(camp);
+    if (providerCap === null) {
+      await notifyAdLaunchAttempt({
+        ...launchAlertBase,
+        outcome: "rejected",
+        detail: "provider_cap_unresolved",
+        idempotencyKey: `ads_launch:host:${campaignId}:provider_cap`,
+      });
+      return json({
+        error: "launch_blocked",
+        detail: "provider_cap_unresolved",
+      }, 409);
+    }
+    const { data: spendRows, error: spendError } = await supabase
+      .from("ad_spend_daily")
+      .select("spend_cents,currency")
+      .eq("campaign_id", campaignId);
+    if (spendError) {
+      return json({
+        error: "launch_blocked",
+        detail: "spend_read_failed",
+      }, 503);
+    }
+    const providerCurrency = typeof camp.provider_currency === "string"
+      ? camp.provider_currency.trim().toUpperCase()
+      : "";
+    if (
+      !/^[A-Z]{3}$/.test(providerCurrency) ||
+      (spendRows ?? []).some((row: { currency?: unknown }) =>
+        typeof row.currency !== "string" ||
+        row.currency.trim().toUpperCase() !== providerCurrency
+      )
+    ) {
+      return json({
+        error: "launch_blocked",
+        detail: "provider_currency_mismatch",
+      }, 409);
+    }
+    const cumulativeProviderSpend = sumSpendCents(
+      (spendRows ?? []).map((row: { spend_cents?: unknown }) => ({
+        spend_date: "1970-01-01",
+        spend_cents: Number(row.spend_cents) || 0,
+      })),
+    );
+    if (shouldPauseForCap(cumulativeProviderSpend, providerCap)) {
+      return json({
+        error: "launch_blocked",
+        detail: "hard_cap_reached",
+      }, 409);
+    }
 
     const { data: conn } = await supabase
       .from("ad_connections")
@@ -839,19 +1013,27 @@ serve(async (req: Request): Promise<Response> => {
       campaignId,
       String(camp.external_campaign_id),
     );
+    const adapter = getAdapter(camp.platform);
+    const providerTree = {
+      externalCampaignId: String(camp.external_campaign_id),
+      adSetExternalIds: tree.adSetExternalIds,
+      adExternalIds: tree.adExternalIds,
+    };
     try {
       await setCampaignTreeStatus(
-        getAdapter(camp.platform),
+        adapter,
         conn as unknown as AdConnectionRow,
-        {
-          externalCampaignId: String(camp.external_campaign_id),
-          adSetExternalIds: tree.adSetExternalIds,
-          adExternalIds: tree.adExternalIds,
-        },
+        providerTree,
         "ACTIVE",
       );
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
+      await setCampaignTreeStatus(
+        adapter,
+        conn as unknown as AdConnectionRow,
+        providerTree,
+        "PAUSED",
+      ).catch(() => undefined);
       await supabase.rpc("ad_record_provider_attempt", {
         p_plan_version_id: camp.plan_version_id,
         p_plan_hash: camp.plan_hash,
@@ -893,6 +1075,12 @@ serve(async (req: Request): Promise<Response> => {
       .select("id")
       .maybeSingle();
     if (error) {
+      await setCampaignTreeStatus(
+        adapter,
+        conn as unknown as AdConnectionRow,
+        providerTree,
+        "PAUSED",
+      ).catch(() => undefined);
       await notifyAdLaunchAttempt({
         ...launchAlertBase,
         outcome: "failed",
@@ -942,15 +1130,22 @@ serve(async (req: Request): Promise<Response> => {
     const { data: planCampaigns } = await supabase.from("ad_campaigns")
       .select("status").eq("plan_version_id", camp.plan_version_id)
       .eq("plan_hash", camp.plan_hash);
-    if (
-      (planCampaigns ?? []).length > 0 &&
-      (planCampaigns ?? []).every((row: { status: string }) =>
+    const activeCount =
+      (planCampaigns ?? []).filter((row: { status: string }) =>
         String(row.status).toUpperCase() === "ACTIVE"
-      )
-    ) {
-      await supabase.from("ad_plans").update({ state: "live" })
+      ).length;
+    if ((planCampaigns ?? []).length > 0 && activeCount > 0) {
+      const nextPlanState = activeCount === (planCampaigns ?? []).length
+        ? "live"
+        : "partially_live";
+      await supabase.from("ad_plans").update({ state: nextPlanState })
         .eq("current_version_id", camp.plan_version_id)
-        .in("state", ["platform_review", "scheduled", "paused"]);
+        .in("state", [
+          "platform_review",
+          "scheduled",
+          "paused",
+          "partially_live",
+        ]);
     }
     await notifyAdLaunchAttempt({
       ...launchAlertBase,

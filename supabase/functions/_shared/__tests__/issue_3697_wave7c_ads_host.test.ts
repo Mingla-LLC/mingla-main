@@ -99,6 +99,10 @@ Deno.test("Wave 7c: host-ad-campaign edge + ad-credit withdraw surface exist", a
   assert(host.includes("p_action: requiredPermission"));
   assert(host.includes("campaign_never_launched"));
   assert(host.includes("campaign_not_pausable"));
+  assert(host.includes("provider_spend_by_currency"));
+  assert(host.includes("host_spend_equivalent_cents"));
+  assert(host.includes("ad_fx_convert_frozen_minor"));
+  assertEquals(host.includes("spend_total_cents"), false);
   const edge = await Deno.readTextFile(
     new URL("../../ad-credit/index.ts", import.meta.url),
   );

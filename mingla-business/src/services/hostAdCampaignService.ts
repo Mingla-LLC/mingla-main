@@ -30,7 +30,12 @@ export type HostAdCampaignDetail = {
   plan_state: string | null;
   plan_currency: string | null;
   plan_cap_cents: number | null;
-  spend_total_cents: number;
+  provider_spend_by_currency: {
+    currency: string;
+    spend_cents: number;
+  }[];
+  host_spend_equivalent_cents: number | null;
+  host_spend_equivalent_quality: "frozen_plan_fx" | "unavailable";
   spend_daily: {
     campaign_id?: string;
     spend_date: string;
@@ -38,15 +43,19 @@ export type HostAdCampaignDetail = {
     impressions: number;
     clicks: number;
     platform: string;
+    currency: string;
   }[];
   results: {
     conversions?: number;
     value_cents?: Record<string, number>;
-    spend_cents?: number | null;
+    spend_by_currency?: {
+      currency: string;
+      spend_cents: number;
+    }[];
+    host_spend_equivalent_cents?: number | null;
     by_platform?: {
       platform: string;
       conversions: number;
-      value_cents: number;
     }[];
   };
   measurement: {

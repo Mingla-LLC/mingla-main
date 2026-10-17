@@ -124,6 +124,37 @@ Deno.test("an empty country intent is unavailable on every provider", () => {
   }
 });
 
+Deno.test("malformed or out-of-range audience input fails closed before provider compilation", () => {
+  const malformed = compileProviderTargeting(
+    "meta",
+    {
+      countries: ["NG", "Nigeria"],
+      ageMin: 45,
+      ageMax: 21,
+      radiusKm: -10,
+      cities: [{
+        name: "Lagos",
+        countryCode: "NG",
+        latitude: 120,
+        longitude: 3.3792,
+      }],
+    },
+  );
+  assertEquals(malformed.verdict, "unavailable");
+  assertEquals(malformed.compiledTargeting, {});
+  assertStringIncludes(malformed.wideningSummary.join(" "), "ISO code");
+  assertStringIncludes(malformed.wideningSummary.join(" "), "positive");
+  assertStringIncludes(malformed.wideningSummary.join(" "), "coordinates");
+  assertStringIncludes(malformed.wideningSummary.join(" "), "cannot exceed");
+
+  const hostileRuntimeShape = compileProviderTargeting(
+    "tiktok",
+    { countries: "NG" } as unknown as { countries: string[] },
+  );
+  assertEquals(hostileRuntimeShape.verdict, "unavailable");
+  assertEquals(hostileRuntimeShape.compiledTargeting, {});
+});
+
 Deno.test("targeting is independent of brand/provider money currency", async () => {
   const source = await Deno.readTextFile(
     new URL("../adTargetingCompiler.ts", import.meta.url),

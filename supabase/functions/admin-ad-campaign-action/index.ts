@@ -35,6 +35,7 @@ import { isLaunchConfirmPhrase } from "../_shared/adLaunchConfirm.ts";
 import { shouldPauseForCap } from "../_shared/adMoney.ts";
 import {
   endDatePassed,
+  providerCapCents,
   startDateNotReached,
   sumSpendCents,
 } from "../_shared/adSpendSync.ts";
@@ -120,14 +121,36 @@ async function runPlannedAction(input: {
           409,
         );
       }
-      if (Number(row.cap_cents) > 0) {
+      const providerCap = providerCapCents(row);
+      if (providerCap === null) {
+        return json(
+          { error: "launch_blocked", detail: "provider_cap_unresolved" },
+          409,
+        );
+      }
+      if (providerCap > 0) {
         const { data: spendRows, error: spendError } = await db
-          .from("ad_spend_daily").select("spend_cents")
+          .from("ad_spend_daily").select("spend_cents,currency")
           .eq("campaign_id", row.id);
         if (spendError) {
           return json(
             { error: "launch_blocked", detail: "spend_read_failed" },
             503,
+          );
+        }
+        const providerCurrency = typeof row.provider_currency === "string"
+          ? row.provider_currency.trim().toUpperCase()
+          : "";
+        if (
+          !/^[A-Z]{3}$/.test(providerCurrency) ||
+          (spendRows ?? []).some((item: { currency?: unknown }) =>
+            typeof item.currency !== "string" ||
+            item.currency.trim().toUpperCase() !== providerCurrency
+          )
+        ) {
+          return json(
+            { error: "launch_blocked", detail: "provider_currency_mismatch" },
+            409,
           );
         }
         const totalSpend = sumSpendCents(
@@ -136,7 +159,7 @@ async function runPlannedAction(input: {
             spend_cents: Number(item.spend_cents) || 0,
           })),
         );
-        if (shouldPauseForCap(totalSpend, Number(row.cap_cents))) {
+        if (shouldPauseForCap(totalSpend, providerCap)) {
           return json(
             { error: "launch_blocked", detail: "hard_cap_reached" },
             409,
@@ -552,9 +575,7 @@ serve(async (req: Request): Promise<Response> => {
         ends_at: endsAt,
       }, 409);
     }
-    const capCents = typeof campaign.cap_cents === "number"
-      ? campaign.cap_cents
-      : null;
+    const capCents = providerCapCents(campaign);
     if (capCents != null && capCents > 0) {
       const { data: spendRows, error: spendErr } = await supabase
         .from("ad_spend_daily")
@@ -590,7 +611,8 @@ serve(async (req: Request): Promise<Response> => {
           error: "launch_blocked",
           detail: "hard_cap_reached",
           total_spend_cents: totalSpend,
-          cap_cents: capCents,
+          provider_cap_cents: capCents,
+          provider_currency: campaign.provider_currency,
         }, 409);
       }
     }

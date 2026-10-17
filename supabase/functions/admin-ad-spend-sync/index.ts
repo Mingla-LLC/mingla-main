@@ -2,8 +2,8 @@
  * admin-ad-spend-sync — toward #3697 Wave 2 (#3701 / #3705).
  *
  * Hourly worker (pg_cron): pull platform daily spend into ad_spend_daily,
- * pause ACTIVE campaigns at 98% of cap_cents, after ends_at, or when their
- * public destination is no longer advertisable.
+ * pause ACTIVE campaigns at 98% of the immutable provider-account cap, after
+ * ends_at, or when their public destination is no longer advertisable.
  *
  * Auth: service-role Bearer (cron) OR active admin JWT (manual refresh).
  * verify_jwt = false so the cron POST is accepted; in-code gate is mandatory.
@@ -31,6 +31,7 @@ import {
   parseRedditReportSpend,
   parseSnapchatStatsSpend,
   parseTikTokReportSpend,
+  providerCapCents,
   type SpendDayRow,
   type SpendSyncDecision,
   sumSpendCents,
@@ -312,7 +313,8 @@ async function pauseCampaignForReason(
       provider_response: {
         reason,
         total_spend_cents: totalSpendCents,
-        cap_cents: target.cap_cents,
+        provider_cap_cents: providerCapCents(target),
+        provider_currency: target.provider_currency,
       },
     });
     if (auditErr) {
@@ -453,7 +455,7 @@ serve(async (req: Request): Promise<Response> => {
   let query = supabase
     .from("ad_campaigns")
     .select(
-      "id, platform, external_campaign_id, status, cap_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug",
+      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug",
     )
     .in("status", ["ACTIVE", "PAUSED"])
     .order("status_synced_at", { ascending: true, nullsFirst: true })
@@ -483,6 +485,10 @@ serve(async (req: Request): Promise<Response> => {
       external_campaign_id: String(row.external_campaign_id ?? ""),
       status: String(row.status ?? ""),
       cap_cents: typeof row.cap_cents === "number" ? row.cap_cents : null,
+      currency: typeof row.currency === "string" ? row.currency : null,
+      provider_budget_cents: typeof row.provider_budget_cents === "number"
+        ? row.provider_budget_cents
+        : null,
       ends_at: typeof row.ends_at === "string" ? row.ends_at : null,
       provider_currency: typeof row.provider_currency === "string"
         ? row.provider_currency
@@ -705,8 +711,7 @@ serve(async (req: Request): Promise<Response> => {
     if (
       fetchError &&
       target.status === "ACTIVE" &&
-      typeof target.cap_cents === "number" &&
-      target.cap_cents > 0
+      providerCapCents(target) !== null
     ) {
       const pauseResult = await pauseCampaignForReason(
         supabase,

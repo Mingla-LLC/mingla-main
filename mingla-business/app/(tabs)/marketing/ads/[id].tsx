@@ -75,9 +75,8 @@ export default function HostAdDetailRoute(): React.ReactElement {
   }, [load]);
 
   const onPause = useCallback(async () => {
-    if (
-      brandId === null || campaignId === null || !permissions.canPause
-    ) return;
+    if (brandId === null || campaignId === null || !permissions.canPause)
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -194,7 +193,10 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const cap = Number(
     payload.plan_cap_cents ?? c.cap_cents ?? c.daily_budget_cents ?? 0,
   );
-  const spent = payload.spend_total_cents;
+  const spent = payload.host_spend_equivalent_cents;
+  const hasProviderSpend = payload.provider_spend_by_currency.some(
+    (row) => Number(row.spend_cents) > 0,
+  );
   const isLive =
     ["LIVE", "PARTIALLY_LIVE"].includes(status.toUpperCase()) ||
     payload.plan_campaigns.some(
@@ -206,16 +208,17 @@ export default function HostAdDetailRoute(): React.ReactElement {
       ["ARCHIVED", "DELETED"].includes(String(row.status).toUpperCase()),
     );
   // Phase 3: Cancel before spend; End after — a card never shows both.
-  const canCancel = !isEnded && spent <= 0;
-  const canEnd = !isEnded && spent > 0;
+  const canCancel = !isEnded && !hasProviderSpend;
+  const canEnd = !isEnded && hasProviderSpend;
   const conversions = Number(payload.results?.conversions ?? 0);
   const resultHierarchy = Array.isArray(
-      payload.measurement?.manifest?.result_hierarchy,
-    )
+    payload.measurement?.manifest?.result_hierarchy,
+  )
     ? payload.measurement.manifest.result_hierarchy
     : [];
-  const primaryResultLabel = String(resultHierarchy[0] ?? "conversions")
-    .replaceAll("_", " ");
+  const primaryResultLabel = String(
+    resultHierarchy[0] ?? "conversions",
+  ).replaceAll("_", " ");
   const impressions = payload.spend_daily.reduce(
     (total, row) => total + Number(row.impressions ?? 0),
     0,
@@ -224,7 +227,10 @@ export default function HostAdDetailRoute(): React.ReactElement {
     (total, row) => total + Number(row.clicks ?? 0),
     0,
   );
-  const capUsed = cap > 0 ? Math.min(100, Math.round((spent / cap) * 100)) : 0;
+  const capUsed =
+    spent !== null && cap > 0
+      ? Math.min(100, Math.round((spent / cap) * 100))
+      : null;
   const latestPauseReason = payload.timeline.find(
     (event) =>
       event.action === "pause" &&
@@ -243,7 +249,7 @@ export default function HostAdDetailRoute(): React.ReactElement {
           ? "Campaign schedule ended — delivery paused"
           : latestPauseReason === "spend_fetch_failed"
             ? "Results feed unavailable — delivery paused for budget safety"
-            : cap > 0 && spent >= Math.floor(cap * 0.98)
+            : spent !== null && cap > 0 && spent >= Math.floor(cap * 0.98)
               ? "Budget used — delivery paused at the safety cap"
               : null;
 
@@ -271,10 +277,24 @@ export default function HostAdDetailRoute(): React.ReactElement {
           </Text>
           <Text style={styles.metric}>
             {currency
-              ? `Spend ${formatCurrency(spent, currency, true)} of ${formatCurrency(cap, currency, true)} cap`
+              ? spent !== null
+                ? `Host-equivalent spend ${formatCurrency(spent, currency, true)} of ${formatCurrency(cap, currency, true)} cap`
+                : `Host budget ${formatCurrency(cap, currency, true)} held · spend conversion unavailable`
               : "Currency authority unavailable — spending actions are blocked"}
           </Text>
-          <Text style={styles.progress}>{capUsed}% of cap used</Text>
+          {payload.provider_spend_by_currency.length > 0 ? (
+            <Text style={styles.muted}>
+              Platform-reported spend:{" "}
+              {payload.provider_spend_by_currency
+                .map((row) =>
+                  formatCurrency(row.spend_cents, row.currency, true),
+                )
+                .join(" · ")}
+            </Text>
+          ) : null}
+          {capUsed !== null ? (
+            <Text style={styles.progress}>{capUsed}% of cap used</Text>
+          ) : null}
           {typeof c.dest_url === "string" && c.dest_url.length > 0 ? (
             <Text style={styles.dest} numberOfLines={2}>
               {c.dest_url}
@@ -293,8 +313,9 @@ export default function HostAdDetailRoute(): React.ReactElement {
           <Text style={styles.sectionTitle}>Results</Text>
           <Text style={styles.muted}>
             Primary result: {primaryResultLabel} · quality{" "}
-            {String(payload.measurement?.manifest?.quality ?? "unavailable")
-              .replaceAll("_", " ")}
+            {String(
+              payload.measurement?.manifest?.quality ?? "unavailable",
+            ).replaceAll("_", " ")}
           </Text>
           <Text style={styles.muted}>
             Browser pixels and outbound platform conversion sharing require
@@ -404,7 +425,8 @@ export default function HostAdDetailRoute(): React.ReactElement {
           </Text>
         ) : null}
 
-        {!isEnded && currency &&
+        {!isEnded &&
+        currency &&
         (permissions.canPause || permissions.canEnd) ? (
           <View style={styles.actions}>
             {isLive && permissions.canPause ? (

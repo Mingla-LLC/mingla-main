@@ -21,10 +21,46 @@ export interface CampaignSpendTarget {
   platform: Platform;
   external_campaign_id: string;
   status: string;
+  /** Customer-facing cap. Host rows can be in brand settlement currency. */
   cap_cents: number | null;
+  /** Customer-facing campaign currency. */
+  currency?: string | null;
+  /** Immutable provider-account cap for v1.4 plans. */
+  provider_budget_cents?: number | null;
   ends_at: string | null;
   /** Currency declared by the connected provider account. Never customer currency. */
   provider_currency: string | null;
+}
+
+/**
+ * Resolve the cap in provider-account minor units. A v1.4 allocation always
+ * supplies provider_budget_cents. The customer-facing cap is a safe legacy
+ * fallback only when its currency is absent (old rows) or exactly matches the
+ * provider currency; cross-currency minor units are never interchangeable.
+ */
+export function providerCapCents(
+  campaign: CampaignSpendTarget,
+): number | null {
+  if (
+    Number.isSafeInteger(campaign.provider_budget_cents) &&
+    Number(campaign.provider_budget_cents) > 0
+  ) {
+    return Number(campaign.provider_budget_cents);
+  }
+  const providerCurrency = typeof campaign.provider_currency === "string"
+    ? campaign.provider_currency.trim().toUpperCase()
+    : "";
+  const customerCurrency = typeof campaign.currency === "string"
+    ? campaign.currency.trim().toUpperCase()
+    : "";
+  if (
+    Number.isSafeInteger(campaign.cap_cents) &&
+    Number(campaign.cap_cents) > 0 &&
+    (!customerCurrency || customerCurrency === providerCurrency)
+  ) {
+    return Number(campaign.cap_cents);
+  }
+  return null;
 }
 
 export type PauseReason =
@@ -128,10 +164,14 @@ export function decideSpendSync(input: {
       Number.isFinite(input.cumulativeSpendCents)
     ? Math.max(0, Math.floor(input.cumulativeSpendCents))
     : windowTotal;
+  const providerCap = providerCapCents(input.campaign);
+  if (input.campaign.status === "ACTIVE" && providerCap === null) {
+    throw new Error("provider_cap_unresolved");
+  }
   let pause: PauseReason | null = null;
   if (
     input.campaign.status === "ACTIVE" &&
-    shouldPauseForCap(total, input.campaign.cap_cents)
+    shouldPauseForCap(total, providerCap)
   ) {
     pause = "cap_98_percent";
   } else if (

@@ -80,6 +80,112 @@ function cityKey(city: AudienceCity): string {
   return `${city.countryCode.trim().toUpperCase()}:${normName(city.name)}`;
 }
 
+function intentValidationIssues(input: AdAudienceIntent): string[] {
+  const raw = input as unknown as Record<string, unknown>;
+  const issues: string[] = [];
+  const countries = raw.countries;
+  if (!Array.isArray(countries) || countries.length === 0) {
+    issues.push("At least one explicit target country is required.");
+  } else if (
+    countries.some((value) =>
+      typeof value !== "string" || !/^[A-Za-z]{2}$/.test(value.trim())
+    )
+  ) {
+    issues.push("Every target country must be a two-letter ISO code.");
+  }
+
+  const cities = raw.cities;
+  if (cities !== undefined && !Array.isArray(cities)) {
+    issues.push("Target cities must be a list.");
+  } else if (Array.isArray(cities)) {
+    for (const value of cities) {
+      if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        issues.push("Every target city must be an object.");
+        continue;
+      }
+      const city = value as Record<string, unknown>;
+      if (typeof city.name !== "string" || city.name.trim().length === 0) {
+        issues.push("Every target city needs a name.");
+      }
+      if (
+        typeof city.countryCode !== "string" ||
+        !/^[A-Za-z]{2}$/.test(city.countryCode.trim())
+      ) {
+        issues.push("Every target city needs a two-letter country code.");
+      }
+      const latitude = city.latitude;
+      const longitude = city.longitude;
+      if ((latitude === undefined) !== (longitude === undefined)) {
+        issues.push(
+          "A target city coordinate needs both latitude and longitude.",
+        );
+      } else if (latitude !== undefined && longitude !== undefined) {
+        if (
+          typeof latitude !== "number" || !Number.isFinite(latitude) ||
+          latitude < -90 || latitude > 90 ||
+          typeof longitude !== "number" || !Number.isFinite(longitude) ||
+          longitude < -180 || longitude > 180
+        ) {
+          issues.push("Target city coordinates are outside valid bounds.");
+        }
+      }
+      if (
+        city.radiusKm !== undefined &&
+        (typeof city.radiusKm !== "number" ||
+          !Number.isFinite(city.radiusKm) || city.radiusKm <= 0)
+      ) {
+        issues.push("Every city radius must be a positive distance.");
+      }
+    }
+  }
+
+  if (
+    raw.radiusKm !== undefined &&
+    (typeof raw.radiusKm !== "number" || !Number.isFinite(raw.radiusKm) ||
+      raw.radiusKm <= 0)
+  ) {
+    issues.push("The target radius must be a positive distance.");
+  }
+  for (const key of ["ageMin", "ageMax"] as const) {
+    const value = raw[key];
+    if (
+      value !== undefined &&
+      (typeof value !== "number" || !Number.isInteger(value) || value < 13 ||
+        value > 100)
+    ) {
+      issues.push(`${key} must be a whole number from 13 through 100.`);
+    }
+  }
+  if (
+    typeof raw.ageMin === "number" && typeof raw.ageMax === "number" &&
+    raw.ageMin > raw.ageMax
+  ) {
+    issues.push("The minimum age cannot exceed the maximum age.");
+  }
+  if (
+    raw.gender !== undefined &&
+    !["all", "men", "women"].includes(String(raw.gender))
+  ) {
+    issues.push("Target gender must be all, men, or women.");
+  }
+
+  const interests = raw.interests;
+  if (interests !== undefined && !Array.isArray(interests)) {
+    issues.push("Target interests must be a list.");
+  } else if (
+    Array.isArray(interests) &&
+    interests.some((value) =>
+      value === null || typeof value !== "object" || Array.isArray(value) ||
+      typeof (value as Record<string, unknown>).name !== "string" ||
+      String((value as Record<string, unknown>).name).trim().length === 0
+    )
+  ) {
+    issues.push("Every target interest needs a name.");
+  }
+
+  return [...new Set(issues)];
+}
+
 function cleanIntent(input: AdAudienceIntent): AdAudienceIntent {
   const countries = [
     ...new Set(
@@ -161,24 +267,24 @@ export function compileProviderTargeting(
   refs: ProviderTargetingRefs = {},
   campaignKind: AdCampaignTargetingKind = "web",
 ): TargetingCompileResult {
+  const validationIssues = intentValidationIssues(rawIntent);
+  if (validationIssues.length > 0) {
+    return {
+      platform,
+      verdict: "unavailable",
+      audienceIntent: {},
+      compiledTargeting: {},
+      wideningSummary: validationIssues,
+      checksRequired: [],
+      compilerVersion: "v1.4.0",
+    };
+  }
   const intent = cleanIntent(rawIntent);
   const wideningSummary: string[] = [];
   const checksRequired: string[] = [];
   const compiled: Record<string, unknown> = {};
   const cities = intent.cities ?? [];
   const interests = intent.interests ?? [];
-
-  if (intent.countries.length === 0) {
-    return {
-      platform,
-      verdict: "unavailable",
-      audienceIntent: intent as unknown as Record<string, unknown>,
-      compiledTargeting: {},
-      wideningSummary: ["At least one explicit target country is required."],
-      checksRequired,
-      compilerVersion: "v1.4.0",
-    };
-  }
 
   if (platform === "meta") {
     compiled.geo_locations = { countries: intent.countries };

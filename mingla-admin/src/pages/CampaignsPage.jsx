@@ -367,7 +367,7 @@ export function CampaignsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Campaigns"
-        description="Everything is created paused — launching is the explicit act that starts spend. Meta hard caps pause at 98% via the hourly spend feed; other platforms follow end-date rules until their spend adapters land."
+        description="Everything is created paused — launching is the explicit act that starts spend. Provider spend feeds enforce the frozen account-currency cap and end date; unresolved or stale spend pauses delivery for safety."
         actions={
           <div className="flex gap-2">
             <Button
