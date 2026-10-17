@@ -573,6 +573,11 @@ verify_jwt = true
 [functions.admin-ad-create-native-app-campaign]
 verify_jwt = true
 
+# Issue #3697 v1.4 — explicit owner-approved native-app certification state,
+# activation, provider-confirmed stop, and evidence recording.
+[functions.admin-ad-app-certification]
+verify_jwt = true
+
 [functions.admin-ad-campaign-action]
 verify_jwt = true
 

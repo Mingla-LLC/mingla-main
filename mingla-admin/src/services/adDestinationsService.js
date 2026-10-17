@@ -78,7 +78,8 @@ export async function listAdvertisablePages({
   }));
   return {
     rows,
-    total: raw[0]?.total_count != null ? Number(raw[0].total_count) : rows.length,
+    total:
+      raw[0]?.total_count != null ? Number(raw[0].total_count) : rows.length,
     pageSize: PAGE_SIZE,
   };
 }
@@ -91,6 +92,7 @@ export async function listAdvertisablePages({
 export async function listNativeAppDestinations({
   families = ["explorer_app", "host_app"],
   platforms = [],
+  certificationMode = false,
 } = {}) {
   const responses = await Promise.all(
     families.map((destinationFamily) =>
@@ -99,8 +101,9 @@ export async function listNativeAppDestinations({
           action: "list_destinations",
           destination_family: destinationFamily,
           platforms,
+          ...(certificationMode ? { certification_mode: true } : {}),
         },
-      })
+      }),
     ),
   );
   const failed = responses.find(({ error }) => error);
@@ -132,17 +135,18 @@ export async function listNativeAppDestinations({
         dest_url: resolved.canonical_url ?? row.canonical_url,
         onelink_url: resolved.onelink_url ?? row.canonical_url,
         availability: row.ready === true ? "available" : "unavailable",
-        availability_reason: row.ready === true
-          ? null
-          : blockedProviders.length > 0
-          ? `Certification or fresh readiness required: ${blockedProviders.join(", ")}`
-          : row.readiness_code ?? "Select at least one ready provider",
+        availability_reason:
+          row.ready === true
+            ? null
+            : blockedProviders.length > 0
+              ? `Certification or fresh readiness required: ${blockedProviders.join(", ")}`
+              : (row.readiness_code ?? "Select at least one ready provider"),
         result_kind: row.result_kind,
         objective: resolved.objective ?? "app_install",
         measurement_event: resolved.measurement_event ?? "install",
         provider_readiness: row.provider_readiness ?? [],
       };
-    })
+    }),
   );
 }
 

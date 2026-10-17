@@ -25,6 +25,12 @@ describe("issue #3697 v1.4 Admin control plane", () => {
     "../supabase/functions/admin-ad-create-native-app-campaign/index.ts",
   );
   const service = read("src/services/adEngineService.js");
+  const certificationEndpoint = read(
+    "../supabase/functions/admin-ad-app-certification/index.ts",
+  );
+  const certificationBoundary = read(
+    "src/components/app-readiness/FutureAppCampaignBoundary.jsx",
+  );
 
   it("has a real Host staff-review queue with all three decisions", () => {
     assert.match(campaigns, /action:\s*"review_queue"/);
@@ -68,5 +74,16 @@ describe("issue #3697 v1.4 Admin control plane", () => {
     assert.match(nativeEndpoint, /ad_plan_assert_launchable/);
     assert.match(nativeEndpoint, /native_app_certification_flow_required/);
     assert.match(nativeEndpoint, /status:\s*"PAUSED"/);
+  });
+
+  it("keeps provider certification bounded, typed, stoppable, and server-evidenced", () => {
+    assert.match(service, /admin-ad-app-certification/);
+    assert.match(certificationBoundary, /LAUNCH CERTIFICATION/);
+    assert.match(certificationBoundary, /Stop and confirm provider/);
+    assert.match(certificationBoundary, /Record bounded evidence/);
+    assert.match(certificationEndpoint, /can_run_native_app_canary/);
+    assert.match(certificationEndpoint, /provider_status_not_confirmed/);
+    assert.match(certificationEndpoint, /actual_spend_cents/);
+    assert.match(certificationEndpoint, /mediaSource\(provider\)/);
   });
 });

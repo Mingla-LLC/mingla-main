@@ -37,7 +37,7 @@ BEGIN
   VALUES('issue-3697-native-app-admin@example.com','admin','active');
 
   UPDATE public.ad_app_acquisition_canaries
-  SET status='approval_required',
+  SET status='expired',
       founder_approval_reference='issue-3697-test-approval',
       approved_spend_ceiling_cents=3000,
       approved_currency='USD'

@@ -33,6 +33,7 @@ import { StepPolicy } from "../components/campaign-builder/StepPolicy";
 import { StepReview } from "../components/campaign-builder/StepReview";
 import {
   adPlanAction,
+  appCertificationAction,
   checkVideoPreparation,
   createCampaign,
   getConnection,
@@ -97,6 +98,28 @@ const STEPS = [
   { id: "review", label: "Review" },
 ];
 
+const CERTIFICATION_PROVIDERS = new Set([
+  "meta",
+  "tiktok",
+  "snapchat",
+  "google",
+  "reddit",
+]);
+
+function certificationContextFromHash() {
+  const query = window.location.hash.split("?")[1] ?? "";
+  const params = new URLSearchParams(query);
+  const provider = params.get("provider");
+  const appKey = params.get("app");
+  const os = params.get("os");
+  const valid =
+    params.get("certification") === "1" &&
+    CERTIFICATION_PROVIDERS.has(provider) &&
+    ["explorer", "business"].includes(appKey) &&
+    ["ios", "android"].includes(os);
+  return valid ? { enabled: true, provider, appKey, os } : { enabled: false };
+}
+
 function stepIndexFromHash() {
   const query = window.location.hash.split("?")[1] ?? "";
   const step = new URLSearchParams(query).get("step");
@@ -106,6 +129,8 @@ function stepIndexFromHash() {
 
 export function CampaignBuilderPage() {
   const { addToast } = useToast();
+  const certificationContext = useMemo(certificationContextFromHash, []);
+  const certificationMode = certificationContext.enabled === true;
   // toward #3697 Wave 3 — console flag (missing key defaults ON in featureFlags).
   const [adsConsoleEnabled, setAdsConsoleEnabled] = useState(true);
   const [adsConsoleReady, setAdsConsoleReady] = useState(false);
@@ -140,7 +165,9 @@ export function CampaignBuilderPage() {
   // This is the SINGLE SOURCE OF TRUTH for the channel set (superseding the
   // silent eligibility∩concentrate auto-derivation). It can only narrow WITHIN
   // the eligible set — an ineligible platform can never be selected in.
-  const [selectedPlatforms, setSelectedPlatforms] = useState(null);
+  const [selectedPlatforms, setSelectedPlatforms] = useState(
+    certificationMode ? [certificationContext.provider] : null,
+  );
   // ISSUE-1002 [multi-destination fan-out] — Wave 4 of #977. The destination is
   // now an ARRAY (was a single object): the operator picks any mix of event pages
   // + the brand page, and the wizard fans out one ad per (destination × platform).
@@ -245,6 +272,13 @@ export function CampaignBuilderPage() {
   const [planPreview, setPlanPreview] = useState(null);
   const [broaderAccepted, setBroaderAccepted] = useState(false);
   const [launchPhrase, setLaunchPhrase] = useState("");
+  const [certificationState, setCertificationState] = useState(null);
+  const [certificationApprovalReference, setCertificationApprovalReference] =
+    useState("");
+  const [certificationApprovalPhrase, setCertificationApprovalPhrase] =
+    useState("");
+  const [certificationApprovalBusy, setCertificationApprovalBusy] =
+    useState(false);
   // One request_id per (platform, destination, wizard session) — server
   // idempotency replay. ISSUE-1002: the fan-out is per (platform × destination),
   // so the idempotency key gains the destination axis (a single-destination build
@@ -883,11 +917,12 @@ export function CampaignBuilderPage() {
     const nativeAppDestination = ["explorer_app", "host_app"].includes(
       firstDestination.page_type,
     );
-    const destinationFamily = firstDestination.page_type === "marketing"
-      ? "marketing_page"
-      : nativeAppDestination
-      ? firstDestination.page_type
-      : "public_mingla_page";
+    const destinationFamily =
+      firstDestination.page_type === "marketing"
+        ? "marketing_page"
+        : nativeAppDestination
+          ? firstDestination.page_type
+          : "public_mingla_page";
     const destinationKey =
       firstDestination.page_type === "marketing" || nativeAppDestination
         ? firstDestination.slug
@@ -924,6 +959,7 @@ export function CampaignBuilderPage() {
       plan_id: planId,
       canonical_plan: {
         name,
+        ...(certificationMode ? { certification_mode: true } : {}),
         goal_ids: goalIds,
         schedule: {
           starts_at: budget.startsAt,
@@ -1004,6 +1040,70 @@ export function CampaignBuilderPage() {
     };
     setPlanPreview(preview);
     return preview;
+  };
+
+  const loadCertificationCell = async () => {
+    if (!certificationMode) return null;
+    const { data, error } = await appCertificationAction({
+      action: "load",
+      app_key: certificationContext.appKey,
+      os: certificationContext.os,
+      provider: certificationContext.provider,
+    });
+    if (error) {
+      const parsed = await parseEdgeError(error);
+      throw new Error(
+        String(
+          parsed?.body?.detail ??
+            parsed?.message ??
+            "Certification state unavailable.",
+        ),
+      );
+    }
+    setCertificationState(data?.canary ?? null);
+    return data?.canary ?? null;
+  };
+
+  const approveCertification = async () => {
+    if (
+      !certificationState ||
+      certificationState.status !== "approval_required"
+    ) {
+      return;
+    }
+    setCertificationApprovalBusy(true);
+    const { data, error } = await appCertificationAction({
+      action: "approve",
+      app_key: certificationContext.appKey,
+      os: certificationContext.os,
+      provider: certificationContext.provider,
+      expected_canary_version: certificationState.canary_version,
+      idempotency_key: crypto.randomUUID(),
+      reason: "Approve this exact bounded native-app certification canary.",
+      approval_reference: certificationApprovalReference.trim(),
+      confirm_phrase: certificationApprovalPhrase,
+    });
+    if (error) {
+      const parsed = await parseEdgeError(error);
+      addToast({
+        variant: "error",
+        title: "Certification approval failed",
+        description: String(
+          parsed?.body?.detail ??
+            parsed?.message ??
+            "The exact approval was not accepted.",
+        ),
+      });
+    } else {
+      setCertificationState(data?.canary ?? null);
+      addToast({
+        variant: "success",
+        title: "Exact certification scope approved",
+        description:
+          "The approval expires in 24 hours. The next step can only create paused provider objects.",
+      });
+    }
+    setCertificationApprovalBusy(false);
   };
 
   // ── Create (paused) — one call per (destination × funded channel); NEVER launches ──
@@ -1146,6 +1246,82 @@ export function CampaignBuilderPage() {
         }
         immutablePlan = { ...immutablePlan, funded: true, confirmed: true };
         setPlanPreview(immutablePlan);
+        if (certificationMode) {
+          let cell = await loadCertificationCell();
+          const samePlan =
+            cell?.plan_version_id === immutablePlan.plan_version_id &&
+            cell?.plan_hash === immutablePlan.plan_hash;
+          if (
+            cell &&
+            !samePlan &&
+            !["not_started", "expired", "failed"].includes(cell.status)
+          ) {
+            const { data: expired, error: expireError } =
+              await appCertificationAction({
+                action: "expire",
+                app_key: certificationContext.appKey,
+                os: certificationContext.os,
+                provider: certificationContext.provider,
+                expected_canary_version: cell.canary_version,
+                idempotency_key: crypto.randomUUID(),
+                reason:
+                  "Replace the prior unspent certification scope with this plan.",
+              });
+            if (expireError) {
+              throw new Error(
+                "The prior certification scope must be stopped or completed before it can be replaced.",
+              );
+            }
+            cell = expired?.canary ?? null;
+            setCertificationState(cell);
+          }
+          if (
+            !cell ||
+            !samePlan ||
+            ["not_started", "expired", "failed"].includes(cell.status)
+          ) {
+            const { data: requested, error: requestError } =
+              await appCertificationAction({
+                action: "request_approval",
+                app_key: certificationContext.appKey,
+                os: certificationContext.os,
+                provider: certificationContext.provider,
+                expected_canary_version: cell?.canary_version ?? 1,
+                idempotency_key: crypto.randomUUID(),
+                reason:
+                  "Request approval for this exact bounded native-app certification canary.",
+                plan_version_id: immutablePlan.plan_version_id,
+                plan_hash: immutablePlan.plan_hash,
+              });
+            if (requestError) {
+              const parsed = await parseEdgeError(requestError);
+              throw new Error(
+                String(
+                  parsed?.body?.detail ??
+                    parsed?.message ??
+                    "Certification approval could not be requested.",
+                ),
+              );
+            }
+            cell = requested?.canary ?? null;
+            setCertificationState(cell);
+          }
+          if (cell?.status === "approval_required") {
+            addToast({
+              variant: "info",
+              title: "Exact owner approval required",
+              description:
+                "Review the app, provider, currency and hard cap below. No provider object has been created.",
+            });
+            setSubmitting(false);
+            return;
+          }
+          if (cell?.status !== "approved_to_prepare") {
+            throw new Error(
+              `Certification is ${cell?.status ?? "unavailable"}; it cannot create new provider objects.`,
+            );
+          }
+        }
       } catch (error) {
         addToast({
           variant: "error",
@@ -1259,6 +1435,9 @@ export function CampaignBuilderPage() {
             };
           } else if (outcome.outcome === "created") {
             results[resultKey] = { ...meta, campaign: outcome.campaign };
+            if (certificationMode) {
+              await loadCertificationCell().catch(() => null);
+            }
             addToast({
               variant: "success",
               title: `Created on ${platform}${destLabel}. Nothing is spending yet.`,
@@ -1436,6 +1615,20 @@ export function CampaignBuilderPage() {
               destinations={destinations}
               onDestinationsChange={setDestinations}
               platforms={effectivePlatforms}
+              certificationMode={certificationMode}
+              initialAppFamily={
+                certificationMode
+                  ? certificationContext.appKey === "explorer"
+                    ? "explorer_app"
+                    : "host_app"
+                  : null
+              }
+              certificationAppKey={
+                certificationMode ? certificationContext.appKey : null
+              }
+              certificationOs={
+                certificationMode ? certificationContext.os : null
+              }
             />
           )}
           {stepId === "audience" && (
@@ -1515,6 +1708,18 @@ export function CampaignBuilderPage() {
               onBroaderAcceptedChange={setBroaderAccepted}
               confirmationPhrase={launchPhrase}
               onConfirmationPhraseChange={setLaunchPhrase}
+              certificationMode={certificationMode}
+              certificationState={certificationState}
+              certificationApprovalReference={certificationApprovalReference}
+              onCertificationApprovalReferenceChange={
+                setCertificationApprovalReference
+              }
+              certificationApprovalPhrase={certificationApprovalPhrase}
+              onCertificationApprovalPhraseChange={
+                setCertificationApprovalPhrase
+              }
+              certificationApprovalBusy={certificationApprovalBusy}
+              onApproveCertification={approveCertification}
             />
           )}
 

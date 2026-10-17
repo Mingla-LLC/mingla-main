@@ -50,6 +50,10 @@ export function StepDestination({
   destinations,
   onDestinationsChange,
   platforms = [],
+  certificationMode = false,
+  initialAppFamily = null,
+  certificationAppKey = null,
+  certificationOs = null,
 }) {
   const selected = useMemo(
     () => (Array.isArray(destinations) ? destinations : []),
@@ -57,7 +61,11 @@ export function StepDestination({
   );
   const selectedType = selected[0]?.page_type;
   const [tab, setTab] = useState(
-    selectedType && PAGE_TYPE_LABEL[selectedType] ? selectedType : "all",
+    selectedType && PAGE_TYPE_LABEL[selectedType]
+      ? selectedType
+      : initialAppFamily && PAGE_TYPE_LABEL[initialAppFamily]
+        ? initialAppFamily
+        : "all",
   );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -72,36 +80,45 @@ export function StepDestination({
     setLoading(true);
     setError(null);
     try {
-      const appFamilies = tab === "all"
-        ? ["explorer_app", "host_app"]
-        : tab === "explorer_app" || tab === "host_app"
-        ? [tab]
-        : [];
+      const appFamilies =
+        tab === "all"
+          ? ["explorer_app", "host_app"]
+          : tab === "explorer_app" || tab === "host_app"
+            ? [tab]
+            : [];
       const includePages = tab !== "explorer_app" && tab !== "host_app";
       const [pageResult, appRows] = await Promise.all([
         includePages
           ? listAdvertisablePages({
-            search,
-            page,
-            types: tab === "all" ? null : [tab],
-            includeUnavailable,
-          })
+              search,
+              page,
+              types: tab === "all" ? null : [tab],
+              includeUnavailable,
+            })
           : Promise.resolve({ rows: [], total: 0, pageSize: 24 }),
         appFamilies.length > 0
           ? listNativeAppDestinations({
-            families: appFamilies,
-            platforms,
-          })
+              families: appFamilies,
+              platforms,
+              certificationMode,
+            })
           : Promise.resolve([]),
       ]);
       const normalizedSearch = search.trim().toLowerCase();
-      const visibleApps = appRows.filter((row) =>
-        (includeUnavailable || isAvailable(row)) &&
-        (!normalizedSearch || row.title.toLowerCase().includes(normalizedSearch))
+      const visibleApps = appRows.filter(
+        (row) =>
+          (includeUnavailable || isAvailable(row)) &&
+          (!certificationMode ||
+            (row.app_key === certificationAppKey &&
+              row.os === certificationOs)) &&
+          (!normalizedSearch ||
+            row.title.toLowerCase().includes(normalizedSearch)),
       );
       const combined = [...visibleApps, ...pageResult.rows];
       setRows(combined);
-      setTotal((pageResult.total ?? pageResult.rows.length) + visibleApps.length);
+      setTotal(
+        (pageResult.total ?? pageResult.rows.length) + visibleApps.length,
+      );
       setPageSize(pageResult.pageSize ?? 24);
     } catch (err) {
       setError(err.message);
@@ -109,7 +126,16 @@ export function StepDestination({
       setTotal(0);
     }
     setLoading(false);
-  }, [tab, search, page, includeUnavailable, platforms]);
+  }, [
+    tab,
+    search,
+    page,
+    includeUnavailable,
+    platforms,
+    certificationMode,
+    certificationAppKey,
+    certificationOs,
+  ]);
 
   useEffect(() => {
     const t = setTimeout(load, search ? 250 : 0);
@@ -127,21 +153,28 @@ export function StepDestination({
     [selected, onDestinationsChange],
   );
 
-  const maxPage = pageSize > 0 ? Math.max(0, Math.ceil(total / pageSize) - 1) : 0;
+  const maxPage =
+    pageSize > 0 ? Math.max(0, Math.ceil(total / pageSize) - 1) : 0;
 
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold">Where are we sending people?</h2>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Pick one public or Marketing page, or a provider-native Explorer/Host app target.
-          App targets become selectable only when every chosen provider has fresh exact
-          app, measurement, funding, and certification evidence.
+          Pick one public or Marketing page, or a provider-native Explorer/Host
+          app target.
+          {certificationMode
+            ? " Certification mode offers only app targets with fresh exact provider and measurement readiness; it still requires explicit owner approval before any paused provider object is created."
+            : " App targets become selectable only when every chosen provider has fresh exact app, measurement, funding, and certification evidence."}
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div role="radiogroup" aria-label="Destination type" className="inline-flex flex-wrap rounded-lg border border-[var(--gray-300)] p-0.5 gap-0.5">
+        <div
+          role="radiogroup"
+          aria-label="Destination type"
+          className="inline-flex flex-wrap rounded-lg border border-[var(--gray-300)] p-0.5 gap-0.5"
+        >
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -189,7 +222,9 @@ export function StepDestination({
 
       {loading && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} height={140} rounded className="rounded-xl" />)}
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} height={140} rounded className="rounded-xl" />
+          ))}
         </div>
       )}
 
@@ -197,7 +232,11 @@ export function StepDestination({
         <AlertCard
           variant="error"
           title="Couldn't load pages"
-          action={<Button size="sm" variant="secondary" onClick={load}>Retry</Button>}
+          action={
+            <Button size="sm" variant="secondary" onClick={load}>
+              Retry
+            </Button>
+          }
         >
           {error}
         </AlertCard>
@@ -206,16 +245,22 @@ export function StepDestination({
       {!loading && !error && rows && rows.length === 0 && (
         <AlertCard variant="info" title="No pages match">
           Nothing matches that search
-          {includeUnavailable ? "" : " among available pages"}
-          . Try another type, clear the search, or show unavailable pages.
+          {includeUnavailable ? "" : " among available pages"}. Try another
+          type, clear the search, or show unavailable pages.
         </AlertCard>
       )}
 
       {!loading && !error && rows && rows.length > 0 && (
-        <div role="group" aria-label="Destination pages" className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div
+          role="group"
+          aria-label="Destination pages"
+          className="grid grid-cols-2 md:grid-cols-3 gap-3"
+        >
           {rows.map((row) => {
             const available = isAvailable(row);
-            const isSelected = selected.some((d) => destKey(d) === destKey(row));
+            const isSelected = selected.some(
+              (d) => destKey(d) === destKey(row),
+            );
             return (
               <button
                 key={`${row.page_type}-${row.id}`}
@@ -244,9 +289,16 @@ export function StepDestination({
                   </span>
                 )}
                 {row.cover_media_url ? (
-                  <img src={row.cover_media_url} alt="" className="w-full h-20 object-cover" />
+                  <img
+                    src={row.cover_media_url}
+                    alt=""
+                    className="w-full h-20 object-cover"
+                  />
                 ) : (
-                  <div aria-hidden="true" className="w-full h-20 bg-[var(--gray-100)]" />
+                  <div
+                    aria-hidden="true"
+                    className="w-full h-20 bg-[var(--gray-100)]"
+                  />
                 )}
                 <div className="p-2.5">
                   <p className="text-xs font-semibold truncate">{row.title}</p>
@@ -254,11 +306,16 @@ export function StepDestination({
                     {PAGE_TYPE_LABEL[row.page_type] ?? row.page_type}
                     {row.brand_name ? ` · ${row.brand_name}` : ""}
                     {row.city ? ` · ${row.city}` : ""}
-                    {row.master_start_at ? ` · ${new Date(row.master_start_at).toLocaleDateString()}` : ""}
+                    {row.master_start_at
+                      ? ` · ${new Date(row.master_start_at).toLocaleDateString()}`
+                      : ""}
                   </p>
                   {!available && (
                     <p className="text-[10px] text-[var(--color-warning-700)] mt-0.5">
-                      Unavailable{row.availability_reason ? ` — ${row.availability_reason}` : ""}
+                      Unavailable
+                      {row.availability_reason
+                        ? ` — ${row.availability_reason}`
+                        : ""}
                     </p>
                   )}
                 </div>
@@ -271,13 +328,24 @@ export function StepDestination({
       {!loading && !error && total > pageSize && (
         <div className="flex items-center justify-between gap-2 text-xs text-[var(--color-text-secondary)]">
           <span>
-            Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, total)} of {total}
+            Showing {page * pageSize + 1}–
+            {Math.min((page + 1) * pageSize, total)} of {total}
           </span>
           <div className="flex gap-2">
-            <Button size="sm" variant="secondary" disabled={page <= 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={page <= 0}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+            >
               Previous
             </Button>
-            <Button size="sm" variant="secondary" disabled={page >= maxPage} onClick={() => setPage((p) => Math.min(maxPage, p + 1))}>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={page >= maxPage}
+              onClick={() => setPage((p) => Math.min(maxPage, p + 1))}
+            >
               Next
             </Button>
           </div>
@@ -289,10 +357,15 @@ export function StepDestination({
           <p className="font-semibold">1 destination selected</p>
           <ul className="space-y-1">
             {selected.map((d) => (
-              <li key={destKey(d)} className="flex items-start justify-between gap-2">
+              <li
+                key={destKey(d)}
+                className="flex items-start justify-between gap-2"
+              >
                 <span className="min-w-0">
                   <span className="font-medium">{d.title}</span>{" "}
-                  <span className="font-mono text-[var(--color-text-secondary)] break-all">{d.dest_url}</span>
+                  <span className="font-mono text-[var(--color-text-secondary)] break-all">
+                    {d.dest_url}
+                  </span>
                 </span>
                 <button
                   type="button"

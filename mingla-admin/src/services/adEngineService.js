@@ -119,6 +119,14 @@ export async function setAppReadinessSafeBinding(input, { signal } = {}) {
   });
 }
 
+/** Issue #3697: load or transition one explicit app-certification cell. */
+export async function appCertificationAction(payload, { signal } = {}) {
+  return invokeWithRefresh("admin-ad-app-certification", {
+    body: payload,
+    ...(signal ? { signal } : {}),
+  });
+}
+
 export async function recordAppReadinessEvent(event) {
   return invokeWithRefresh("admin-ad-app-readiness-event", { body: event });
 }

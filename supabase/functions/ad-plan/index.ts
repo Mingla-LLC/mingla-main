@@ -603,6 +603,7 @@ serve(async (req: Request): Promise<Response> => {
     const family = typeof body.destination_family === "string"
       ? body.destination_family.trim()
       : "";
+    const certificationMode = body.certification_mode === true;
     const platforms = parsePlatformList(body.platforms);
     if (!platforms) {
       return json(
@@ -626,17 +627,55 @@ serve(async (req: Request): Promise<Response> => {
         },
       );
       const snapshot = asRecord(resolved);
+      let effectiveSnapshot = snapshot;
+      if (
+        certificationMode && snapshot &&
+        ["explorer_app", "host_app"].includes(String(row.destination_family))
+      ) {
+        const providerReadiness = await Promise.all(platforms.map(
+          async (platform) => {
+            const { data: ready, error: readinessError } = await db.rpc(
+              "can_prepare_native_app_canary",
+              {
+                p_app_key: row.app_key,
+                p_os: row.os,
+                p_provider: platform,
+              },
+            );
+            return {
+              platform,
+              ready: !readinessError && ready === true,
+            };
+          },
+        ));
+        const ready = providerReadiness.length > 0 &&
+          providerReadiness.every((item) => item.ready);
+        effectiveSnapshot = {
+          ...snapshot,
+          ready,
+          code: ready ? null : "app_certification_readiness_required",
+          provider_readiness: providerReadiness,
+        };
+      }
       return {
         ...row,
-        ready: !resolveError && snapshot?.ready === true,
-        readiness_code: resolveError?.message ?? snapshot?.code ?? null,
-        provider_readiness: Array.isArray(snapshot?.provider_readiness)
-          ? snapshot.provider_readiness
+        ready: !resolveError && effectiveSnapshot?.ready === true,
+        readiness_code: resolveError?.message ?? effectiveSnapshot?.code ??
+          null,
+        provider_readiness: Array.isArray(
+            effectiveSnapshot?.provider_readiness,
+          )
+          ? effectiveSnapshot.provider_readiness
           : [],
-        resolved_destination: resolveError ? null : snapshot,
+        resolved_destination: resolveError ? null : effectiveSnapshot,
       };
     }));
-    return json({ ok: true, destinations, platforms });
+    return json({
+      ok: true,
+      destinations,
+      platforms,
+      certification_mode: certificationMode,
+    });
   }
 
   const planId = typeof body.plan_id === "string" ? body.plan_id : "";
@@ -684,6 +723,18 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
     const platforms = requested.map((row) => row.platform);
+    const certificationMode = canonicalInput.certification_mode === true;
+    if (
+      certificationMode &&
+      (plan.owner_kind !== "mingla" ||
+        !["explorer_app", "host_app"].includes(plan.destination_family) ||
+        platforms.length !== 1)
+    ) {
+      return json({
+        error: "validation_error",
+        detail: "certification_plan_scope_invalid",
+      }, 400);
+    }
     const canonical = canonicalizePlan(canonicalInput, platforms, {
       authority: plan.owner_kind === "host"
         ? "brand_settlement"
@@ -700,15 +751,36 @@ serve(async (req: Request): Promise<Response> => {
       },
     );
     const resolvedDestination = asRecord(destination);
+    let certificationReady = false;
+    if (certificationMode && resolvedDestination?.ok === true) {
+      const { data: ready, error: readyError } = await db.rpc(
+        "can_prepare_native_app_canary",
+        {
+          p_app_key: resolvedDestination.app_key,
+          p_os: resolvedDestination.os,
+          p_provider: platforms[0],
+        },
+      );
+      certificationReady = !readyError && ready === true;
+    }
     if (
       destinationError || !resolvedDestination ||
-      resolvedDestination.ok !== true || resolvedDestination.ready !== true
+      resolvedDestination.ok !== true ||
+      (certificationMode
+        ? !certificationReady
+        : resolvedDestination.ready !== true)
     ) {
       return json({
         error: "plan_preflight_failed",
-        detail: destinationError?.message ??
-          resolvedDestination?.code ?? "destination_not_ready",
+        detail: destinationError?.message ?? (certificationMode
+          ? "app_certification_readiness_required"
+          : resolvedDestination?.code ?? "destination_not_ready"),
       }, 422);
+    }
+    if (certificationMode) {
+      resolvedDestination.ready = true;
+      resolvedDestination.code = null;
+      resolvedDestination.certification_mode = true;
     }
     canonical.destination = destination;
     canonical.delivery_budgets = Object.fromEntries(

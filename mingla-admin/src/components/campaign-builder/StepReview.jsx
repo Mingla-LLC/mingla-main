@@ -38,6 +38,14 @@ export function StepReview({
   onBroaderAcceptedChange,
   confirmationPhrase = "",
   onConfirmationPhraseChange,
+  certificationMode = false,
+  certificationState = null,
+  certificationApprovalReference = "",
+  onCertificationApprovalReferenceChange,
+  certificationApprovalPhrase = "",
+  onCertificationApprovalPhraseChange,
+  certificationApprovalBusy = false,
+  onApproveCertification,
 }) {
   const anySuccess = Object.values(createResults ?? {}).some(
     (r) => r?.campaign,
@@ -53,6 +61,12 @@ export function StepReview({
     Boolean(currencyBlockedReason) ||
     planBlocked ||
     (phraseRequired && confirmationPhrase !== "CREATE PAUSED");
+  const certificationAwaitingApproval =
+    certificationMode && certificationState?.status === "approval_required";
+  const approvalInputValid =
+    certificationAwaitingApproval &&
+    certificationApprovalReference.trim().length >= 8 &&
+    certificationApprovalPhrase === certificationState.required_phrase;
 
   return (
     <div className="space-y-4">
@@ -60,8 +74,9 @@ export function StepReview({
         <h2 className="text-lg font-semibold">{summary.headline}</h2>
         <p className="text-sm text-[var(--color-text-secondary)]">
           Everything is created <span className="font-semibold">paused</span>.
-          Launch is a separate, explicit step on the campaign page — nothing
-          spends from here.
+          {certificationMode
+            ? " This certification plan binds one app, OS, provider, currency and hard cap. Owner approval is required before even the paused provider object exists."
+            : " Launch is a separate, explicit step on the campaign page — nothing spends from here."}
         </p>
       </div>
 
@@ -244,6 +259,90 @@ export function StepReview({
         </div>
       )}
 
+      {certificationMode && certificationState && (
+        <div className="rounded-xl border-2 border-[var(--color-brand-500)] bg-[var(--color-brand-50)] p-4 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold">Provider certification gate</p>
+              <p className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                {String(certificationState.provider).toUpperCase()} ·{" "}
+                {String(certificationState.app_key).toUpperCase()} ·{" "}
+                {String(certificationState.os).toUpperCase()}
+              </p>
+            </div>
+            <Badge
+              variant={
+                certificationState.status === "approved_to_prepare" ||
+                certificationState.status === "paused_ready" ||
+                certificationState.status === "passed"
+                  ? "success"
+                  : certificationState.status === "failed"
+                    ? "error"
+                    : "warning"
+              }
+            >
+              {String(certificationState.status).replaceAll("_", " ")}
+            </Badge>
+          </div>
+          <div className="grid gap-2 text-xs sm:grid-cols-2">
+            <p>
+              <span className="font-semibold">Hard ceiling:</span>{" "}
+              {certificationState.approved_currency}{" "}
+              {Number(
+                certificationState.approved_spend_ceiling_cents ?? 0,
+              ).toLocaleString()}{" "}
+              minor units
+            </p>
+            <p>
+              <span className="font-semibold">Plan hash:</span>{" "}
+              <code className="break-all">{certificationState.plan_hash}</code>
+            </p>
+          </div>
+          {certificationAwaitingApproval && (
+            <div className="grid gap-3 border-t border-[var(--color-brand-200)] pt-3">
+              <AlertCard
+                variant="warning"
+                title="Owner approval is financial authority"
+              >
+                Confirm only the named provider, app, OS, currency and ceiling.
+                Approval expires after 24 hours and does not launch the
+                campaign.
+              </AlertCard>
+              <Input
+                label="Approval record reference"
+                value={certificationApprovalReference}
+                onChange={(event) =>
+                  onCertificationApprovalReferenceChange?.(event.target.value)
+                }
+                placeholder="#3697 comment or approval record"
+              />
+              <Input
+                label={`Type “${certificationState.required_phrase}”`}
+                value={certificationApprovalPhrase}
+                onChange={(event) =>
+                  onCertificationApprovalPhraseChange?.(event.target.value)
+                }
+                placeholder={certificationState.required_phrase}
+              />
+              <Button
+                type="button"
+                loading={certificationApprovalBusy}
+                disabled={!approvalInputValid}
+                onClick={onApproveCertification}
+              >
+                Approve this exact certification scope
+              </Button>
+            </div>
+          )}
+          {certificationState.status === "approved_to_prepare" && (
+            <p className="text-xs font-medium text-[var(--color-success-700)]">
+              Approved to create paused provider objects only. Activation
+              remains a separate typed action in App-download readiness.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Per-channel create outcomes. ISSUE-1002 [multi-destination fan-out]:
           createResults is keyed per (platform × destination) — the entry key is a
           composite string, so the platform label comes from `result.platform` and
@@ -378,26 +477,37 @@ export function StepReview({
           Preparation and previews created no ads. This action creates paused
           campaigns; nothing spends until Launch on the Campaigns page.
         </p>
-        <Button
-          variant="secondary"
-          icon={ShieldCheck}
-          loading={validatingShapes}
-          disabled={hardBlocked || submitting || allExpectedPairsSucceeded}
-          onClick={onValidateShapes}
-        >
-          Validate shapes (nothing created)
-        </Button>
+        {!certificationMode && (
+          <Button
+            variant="secondary"
+            icon={ShieldCheck}
+            loading={validatingShapes}
+            disabled={hardBlocked || submitting || allExpectedPairsSucceeded}
+            onClick={onValidateShapes}
+          >
+            Validate shapes (nothing created)
+          </Button>
+        )}
         <Button
           icon={Megaphone}
           loading={submitting}
-          disabled={hardBlocked || allExpectedPairsSucceeded}
+          disabled={
+            hardBlocked ||
+            allExpectedPairsSucceeded ||
+            certificationAwaitingApproval
+          }
           onClick={onCreate}
         >
-          {!planPreview
-            ? "Create campaign (paused)"
-            : planPreview.status === "broader"
-              ? "Bind accepted plan and create paused"
-              : (summary.primaryActionLabel ?? "Create campaign (paused)")}
+          {certificationMode &&
+          certificationState?.status === "approved_to_prepare"
+            ? "Create approved canary (paused)"
+            : certificationMode && !certificationState
+              ? "Request exact certification approval"
+              : !planPreview
+                ? "Create campaign (paused)"
+                : planPreview.status === "broader"
+                  ? "Bind accepted plan and create paused"
+                  : (summary.primaryActionLabel ?? "Create campaign (paused)")}
         </Button>
         {hardBlocked && (
           <Badge variant="error">

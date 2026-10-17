@@ -86,6 +86,19 @@ function strings(value: unknown): string[] {
     : [];
 }
 
+async function stableUuid(value: string): Promise<string> {
+  const bytes = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
+  ).slice(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((item) => item.toString(16).padStart(2, "0"))
+    .join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${
+    hex.slice(16, 20)
+  }-${hex.slice(20)}`;
+}
+
 function requestDestination(body: Record<string, unknown>): unknown {
   if (record(body.destination)) return body.destination;
   return Array.isArray(body.destinations) ? body.destinations[0] : null;
@@ -670,6 +683,7 @@ serve(async (req: Request): Promise<Response> => {
   let creativeId: string;
   const schedule = parseCampaignSchedule(body.schedule ?? body);
   const canonicalPlan = record(version.canonical_plan);
+  const certificationMode = canonicalPlan?.certification_mode === true;
   const delivery = record(canonicalPlan?.delivery_budgets);
   const platformDelivery = record(delivery?.[platform]);
   const hostDaily = Number(platformDelivery?.host_amount_cents);
@@ -738,11 +752,63 @@ serve(async (req: Request): Promise<Response> => {
     }, 409);
   }
 
+  let certificationCanary: Record<string, unknown> | null = null;
+  if (certificationMode) {
+    const { data: canary, error: canaryError } = await db
+      .from("ad_app_acquisition_canaries").select("*")
+      .eq("app_key", destination.appKey).eq("os", destination.os)
+      .eq("provider", platform).maybeSingle();
+    certificationCanary = record(canary);
+    if (
+      canaryError || !certificationCanary ||
+      certificationCanary.plan_version_id !== planVersionId ||
+      certificationCanary.plan_hash !== planHash
+    ) {
+      return json({
+        error: "certification_approval_required",
+        detail: "canary_plan_binding_missing",
+      }, 409);
+    }
+  }
+
   const { data: existing } = await db.from("ad_campaigns").select(
     "*,ad_sets(*,ads(*))",
   ).eq("plan_version_id", planVersionId).eq("platform", platform)
     .maybeSingle();
-  if (existing) return json({ campaign: existing, idempotent_replay: true });
+  if (existing) {
+    if (
+      certificationMode &&
+      certificationCanary?.status === "approved_to_prepare"
+    ) {
+      const { error: transitionError } = await db.rpc(
+        "transition_ad_app_canary",
+        {
+          p_change: {
+            action: "provider_prepared",
+            app_key: destination.appKey,
+            os: destination.os,
+            provider: platform,
+            actor: user.id,
+            reason: "Recover the audited paused certification provider state.",
+            expected_canary_version: certificationCanary.canary_version,
+            idempotency_key: await stableUuid(
+              `${planHash}:${platform}:provider_prepared`,
+            ),
+            external_campaign_id: existing.external_campaign_id,
+            local_campaign_id: existing.id,
+            provider_effective_status: existing.delivery_status ?? "PAUSED",
+          },
+        },
+      );
+      if (transitionError) {
+        return json({
+          error: "certification_state_recovery_required",
+          detail: transitionError.message,
+        }, 503);
+      }
+    }
+    return json({ campaign: existing, idempotent_replay: true });
+  }
 
   let identity: Record<string, unknown> | null = null;
   if (platform === "meta" || platform === "tiktok") {
@@ -775,41 +841,74 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   // Last possible check before any provider write: current exact-cell authority.
+  const authorityRpc = certificationMode
+    ? "can_create_native_app_canary"
+    : "can_create_native_app_campaign";
   const { data: canCreate, error: readinessError } = await db.rpc(
-    "can_create_native_app_campaign",
-    {
-      p_app_key: destination.appKey,
-      p_os: destination.os,
-      p_provider: platform,
-    },
+    authorityRpc,
+    certificationMode
+      ? {
+        p_app_key: destination.appKey,
+        p_os: destination.os,
+        p_provider: platform,
+        p_plan_version_id: planVersionId,
+        p_plan_hash: planHash,
+      }
+      : {
+        p_app_key: destination.appKey,
+        p_os: destination.os,
+        p_provider: platform,
+      },
   );
   if (readinessError || canCreate !== true) {
-    return json({ error: "native_app_acquisition_not_ready" }, 409);
-  }
-  const { error: launchableError } = await db.rpc("ad_plan_assert_launchable", {
-    p_plan_version_id: planVersionId,
-    p_plan_hash: planHash,
-  });
-  if (launchableError) {
     return json({
-      error: "plan_not_launchable",
-      detail: launchableError.message,
+      error: certificationMode
+        ? "certification_approval_required"
+        : "native_app_acquisition_not_ready",
     }, 409);
+  }
+  if (!certificationMode) {
+    const { error: launchableError } = await db.rpc(
+      "ad_plan_assert_launchable",
+      {
+        p_plan_version_id: planVersionId,
+        p_plan_hash: planHash,
+      },
+    );
+    if (launchableError) {
+      return json({
+        error: "plan_not_launchable",
+        detail: launchableError.message,
+      }, 409);
+    }
   }
 
   const attemptKey = `${planHash}:${platform}:create`;
-  await db.rpc("ad_record_provider_attempt", {
-    p_plan_version_id: planVersionId,
-    p_plan_hash: planHash,
-    p_platform: platform,
-    p_command: "create_paused_objects",
-    p_idempotency_key: attemptKey,
-    p_state: "running",
-    p_external_ids: {},
-    p_provider_response: {
-      destination: destination.family,
-      os: destination.os,
+  const recordAttempt = (
+    state: string,
+    externalIds: Record<string, unknown>,
+    providerResponse: Record<string, unknown> | null,
+    errorDetail: string | null = null,
+  ) => db.rpc(
+    certificationMode
+      ? "ad_record_canary_provider_attempt"
+      : "ad_record_provider_attempt",
+    {
+      p_plan_version_id: planVersionId,
+      p_plan_hash: planHash,
+      p_platform: platform,
+      ...(certificationMode ? {} : { p_command: "create_paused_objects" }),
+      p_idempotency_key: attemptKey,
+      p_state: state,
+      p_external_ids: externalIds,
+      p_provider_response: providerResponse,
+      p_error_detail: errorDetail,
     },
+  );
+  await recordAttempt("running", {}, {
+    destination: destination.family,
+    os: destination.os,
+    certification_mode: certificationMode,
   });
 
   let created: ProviderCreateResult;
@@ -834,17 +933,12 @@ serve(async (req: Request): Promise<Response> => {
     });
   } catch (error) {
     const detail = publicError(error);
-    await db.rpc("ad_record_provider_attempt", {
-      p_plan_version_id: planVersionId,
-      p_plan_hash: planHash,
-      p_platform: platform,
-      p_command: "create_paused_objects",
-      p_idempotency_key: attemptKey,
-      p_state: failureState(error),
-      p_external_ids: record(detail.partial_external_ids) ?? {},
-      p_provider_response: detail,
-      p_error_detail: String(detail.message ?? detail.code),
-    });
+    await recordAttempt(
+      failureState(error),
+      record(detail.partial_external_ids) ?? {},
+      detail,
+      String(detail.message ?? detail.code),
+    );
     return json({ error: "provider_create_failed", detail }, 502);
   }
 
@@ -969,21 +1063,11 @@ serve(async (req: Request): Promise<Response> => {
       external_ad_id: created.externalAdId,
       ...created.extraExternalIds,
     };
-    await db.rpc("ad_record_provider_attempt", {
-      p_plan_version_id: planVersionId,
-      p_plan_hash: planHash,
-      p_platform: platform,
-      p_command: "create_paused_objects",
-      p_idempotency_key: attemptKey,
-      p_state: "failed_terminal",
-      p_external_ids: externalIds,
-      p_provider_response: {
+    await recordAttempt("failed_terminal", externalIds, {
         db_error: persistError?.message ?? "incomplete_persist",
         rollback_campaign: rollbackCampaign,
         rollback_creative: rollbackCreative,
-      },
-      p_error_detail: "db_persist_failed",
-    });
+      }, "db_persist_failed");
     return json({
       error: "internal_error",
       detail: platform === "google"
@@ -1012,5 +1096,34 @@ serve(async (req: Request): Promise<Response> => {
       os: destination.os,
     },
   });
+  if (certificationMode && certificationCanary) {
+    const { error: transitionError } = await db.rpc(
+      "transition_ad_app_canary",
+      {
+        p_change: {
+          action: "provider_prepared",
+          app_key: destination.appKey,
+          os: destination.os,
+          provider: platform,
+          actor: user.id,
+          reason: "Record the audited paused certification provider objects.",
+          expected_canary_version: certificationCanary.canary_version,
+          idempotency_key: await stableUuid(
+            `${planHash}:${platform}:provider_prepared`,
+          ),
+          external_campaign_id: created.externalCampaignId,
+          local_campaign_id: campaignRow.id,
+          provider_effective_status: "PAUSED",
+        },
+      },
+    );
+    if (transitionError) {
+      return json({
+        error: "certification_state_recovery_required",
+        detail: transitionError.message,
+        campaign: campaignRow,
+      }, 503);
+    }
+  }
   return json({ campaign: campaignRow, ad_set: adSetRow, ad: adRow }, 201);
 });
