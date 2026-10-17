@@ -421,13 +421,15 @@ describe("#2524 guard 4 — ceiling-locked", () => {
         // ceilings moved (raw 2,600,000 -> 2,800,000, brotli 500,000 ->
         // 550,000) on Seth's decision. REPOINTED again by issue #3682
         // [TEST-MOD-APPROVED #3682] — eager brotli ceiling 750,000 -> 775,000
-        // after #3785, so the threshold is 750,000 (775,000 − 25,000). The
+        // after #3785. REPOINTED by issue #3493
+        // [TEST-MOD-APPROVED #3493] after Seth moved that ceiling to 800,000
+        // following #3937, so the threshold is 775,000 (800,000 − 25,000). The
         // assertion is unchanged in strength: it still pins the threshold to
         // exactly one per-PR allowance beneath each ceiling, and still fails
         // if the subtraction ever stops being that. Only the arithmetic
         // result moved with the constant.
         common: { raw: 2_788_000, brotli: 538_000 },
-        eager: { raw: 3_975_000, brotli: 750_000 },
+        eager: { raw: 3_975_000, brotli: 775_000 },
       },
     );
   });
@@ -503,12 +505,14 @@ describe("#2524 guard 4 — ceiling-locked", () => {
     // 2,800,000, brotli 500,000 -> 550,000) to unblock every merge while the
     // shared chunk is trimmed (#3493). On 2026-10-11 the eager brotli ceiling
     // moved 750,000 -> 775,000 after #3785 recorded 731,271 B and left less
-    // than one PR allowance under the old limit. PR_DELTA_ALLOWANCE is
-    // unchanged.
+    // than one PR allowance under the old limit. On 2026-10-17 Seth moved it
+    // again, 775,000 -> 800,000, after #3937 recorded 750,291 B and left only
+    // 24,709 B of the protected 25,000 B runway. PR_DELTA_ALLOWANCE is
+    // unchanged. [TEST-MOD-APPROVED #3493]
     const source = readFileSync(join(ROOT, "mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs"), "utf8");
     assert.match(source, /const PR_DELTA_ALLOWANCE = \{ common: 12_000, eager: 25_000 \};/);
     assert.match(source, /common: \{ raw: 2_800_000, brotli: 550_000 \}/);
-    assert.match(source, /eager: \{ raw: 4_000_000, brotli: 775_000 \}/);
+    assert.match(source, /eager: \{ raw: 4_000_000, brotli: 800_000 \}/);
   });
 });
 
