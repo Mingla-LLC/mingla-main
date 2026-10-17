@@ -3247,9 +3247,7 @@ serve(async (req: Request): Promise<Response> => {
       : "";
     let videoIdT = "";
     // ISSUE-997 C: SINGLE_VIDEO for a prepared video, else SINGLE_IMAGE (#866).
-    const adFormatT = creativeKindT === "video"
-      ? "SINGLE_VIDEO"
-      : "SINGLE_IMAGE";
+    const adFormatT = creativeKindT === "video" ? "SINGLE_VIDEO" : "SINGLE_IMAGE";
     const creativeLibraryIdT = typeof creativeT.creative_library_id === "string"
       ? creativeT.creative_library_id.trim()
       : "";
@@ -3329,9 +3327,7 @@ serve(async (req: Request): Promise<Response> => {
       // 5–60 s ADVERTISING-POLICY duration gate (Seth-approved; T-4). A longer
       // video uploads/creates fine, then dies in review while budget burns.
       if (typeof libCreativeVT.duration_seconds === "number") {
-        const durationCheckVT = validateTikTokVideoDuration(
-          libCreativeVT.duration_seconds,
-        );
+        const durationCheckVT = validateTikTokVideoDuration(libCreativeVT.duration_seconds);
         if (!durationCheckVT.ok) {
           return json({
             error: durationCheckVT.detail,
