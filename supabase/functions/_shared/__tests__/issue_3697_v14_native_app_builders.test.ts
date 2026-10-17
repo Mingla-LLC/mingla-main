@@ -11,6 +11,12 @@ import {
   assertThrows,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
+  assertNativeAppRequestDestination,
+  nativeAppCopyFromCanonicalPlan,
+  NativeAppPlanError,
+  parseFrozenNativeAppDestination,
+} from "../adNativeAppCampaign.ts";
+import {
   buildGoogleAppMutateOperations,
   buildGoogleAppMutateRequest,
 } from "../google.ts";
@@ -29,6 +35,99 @@ const NOW_MS = Date.parse("2026-10-17T12:00:00Z");
 function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
+
+Deno.test("#3697 frozen native destination is the sole app/OS/provider authority", () => {
+  const destination = parseFrozenNativeAppDestination({
+    snapshot: {
+      ok: true,
+      ready: true,
+      destination_family: "explorer_app",
+      destination_key: "ios",
+      title: "Mingla Explorer for iPhone",
+      app_key: "explorer",
+      os: "ios",
+      objective: "app_install",
+      measurement_event: "install",
+      store_identifier: "6760440898",
+      appsflyer_app_id: "id6760440898",
+      canonical_url: "https://apps.apple.com/us/app/mingla/id6760440898",
+      onelink_url: "https://go.usemingla.com/w36m",
+      provider_readiness: [{ platform: "meta", ready: true }],
+    },
+    expectedFamily: "explorer_app",
+    expectedKey: "ios",
+    platform: "meta",
+  });
+  assertEquals(destination.appKey, "explorer");
+  assertEquals(destination.storeIdentifier, "6760440898");
+  assertNativeAppRequestDestination({
+    page_type: "explorer_app",
+    brand_slug: "mingla",
+    entity_slug: "ios",
+  }, destination);
+  assertThrows(
+    () =>
+      assertNativeAppRequestDestination({
+        page_type: "explorer_app",
+        brand_slug: "mingla",
+        entity_slug: "android",
+      }, destination),
+    NativeAppPlanError,
+    "native_destination_request_mismatch",
+  );
+  assertThrows(
+    () =>
+      parseFrozenNativeAppDestination({
+        snapshot: {
+          ok: true,
+          ready: true,
+          destination_family: "explorer_app",
+          destination_key: "ios",
+          app_key: "explorer",
+          os: "ios",
+          objective: "app_install",
+          measurement_event: "install",
+          store_identifier: "6760440898",
+          appsflyer_app_id: "id6760440898",
+          canonical_url: "https://apps.apple.com/us/app/mingla/id6760440898",
+          onelink_url: "https://go.usemingla.com/w36m",
+          title: "Mingla Explorer",
+          provider_readiness: [{ platform: "meta", ready: false }],
+        },
+        expectedFamily: "explorer_app",
+        expectedKey: "ios",
+        platform: "meta",
+      }),
+    NativeAppPlanError,
+    "native_provider_not_ready",
+  );
+});
+
+Deno.test("#3697 native copy is derived from the immutable canonical plan", () => {
+  assertEquals(
+    nativeAppCopyFromCanonicalPlan({
+      copy: {
+        primary: "Your next great day starts here.",
+        headline: "Get Mingla Explorer",
+        description: "Find and book experiences.",
+        googleHeadlines: ["Get Mingla Explorer", "Find things to do"],
+        googleDescriptions: ["Discover and book experiences near you."],
+      },
+    }),
+    {
+      primary: "Your next great day starts here.",
+      headline: "Get Mingla Explorer",
+      description: "Find and book experiences.",
+      googleHeadlines: ["Get Mingla Explorer", "Find things to do"],
+      googleDescriptions: ["Discover and book experiences near you."],
+    },
+  );
+  assertThrows(
+    () => nativeAppCopyFromCanonicalPlan({ copy: { headline: "Get Mingla" } }),
+    NativeAppPlanError,
+    "native_copy_incomplete",
+  );
+});
 
 Deno.test("#3697 Meta app campaign pins app objective, promoted object, and PAUSED state", () => {
   const campaign = buildMetaCampaignBody({

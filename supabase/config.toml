@@ -567,6 +567,12 @@ verify_jwt = true
 [functions.admin-ad-create-campaign]
 verify_jwt = true
 
+# Issue #3697 v1.4 — funded immutable-plan execution for certified native-app
+# campaigns. Creates provider objects PAUSED/DISABLED only; activation remains
+# the separate governed action.
+[functions.admin-ad-create-native-app-campaign]
+verify_jwt = true
+
 [functions.admin-ad-campaign-action]
 verify_jwt = true
 

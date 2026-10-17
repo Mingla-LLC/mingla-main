@@ -46,6 +46,22 @@ Deno.test("v1.4 targeting compiler freezes an explicit result for all five provi
     "broader",
   );
   assertEquals(
+    rows.find((row) => row.platform === "tiktok")?.compiledTargeting
+      .gender,
+    "GENDER_FEMALE",
+  );
+  assertEquals(
+    rows.find((row) => row.platform === "snapchat")?.compiledTargeting
+      .geo_circles,
+    [{
+      country_code: "NG",
+      latitude: 6.5244,
+      longitude: 3.3792,
+      radius: 15,
+      unit: "kilometer",
+    }],
+  );
+  assertEquals(
     rows.find((row) => row.platform === "reddit")?.verdict,
     "broader",
   );
@@ -55,6 +71,26 @@ Deno.test("v1.4 targeting compiler freezes an explicit result for all five provi
     assert(!("currency" in row.audienceIntent));
     assert(!("currency" in row.compiledTargeting));
   }
+});
+
+Deno.test("Google native App targeting names every unavoidable widening", () => {
+  const result = compileProviderTargeting(
+    "google",
+    exactIntent,
+    {
+      locationIds: { "NG:lagos": "100001" },
+      interestIds: { "live music": "200001" },
+    },
+    "native_app",
+  );
+  assertEquals(result.verdict, "broader");
+  assertEquals(result.compiledTargeting.location_ids, ["100001"]);
+  assertEquals(result.compiledTargeting.age_ranges, undefined);
+  assertEquals(result.compiledTargeting.gender_types, undefined);
+  assertEquals(result.compiledTargeting.audience_ids, undefined);
+  assertStringIncludes(result.wideningSummary.join(" "), "age");
+  assertStringIncludes(result.wideningSummary.join(" "), "gender");
+  assertStringIncludes(result.wideningSummary.join(" "), "audience signals");
 });
 
 Deno.test("unresolved provider ids are check_required, never silently dropped", () => {

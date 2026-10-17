@@ -143,6 +143,12 @@ export interface MetaClient extends AuthedClient {
   config: MetaEnvConfig;
 }
 
+/** Exact public identity selected by the app-acquisition registry. */
+export interface MetaCreateCreativeExtensions {
+  metaPageId?: string;
+  metaInstagramUserId?: string | null;
+}
+
 export function resolveMetaClient(
   conn?: AdConnectionRow | null,
   lane?: MetaLane,
@@ -1029,10 +1035,15 @@ export const metaAdapter: ChannelAdapter = {
 
   createCreative: async (conn, input) => {
     const client = resolveMetaClient(conn);
+    const extensions = input as
+      & CreateCreativeInput
+      & MetaCreateCreativeExtensions;
     const body = buildMetaCreativeBody(
-      client.config.pageId,
+      extensions.metaPageId ?? client.config.pageId,
       input,
-      client.config.igUserId,
+      extensions.metaInstagramUserId === undefined
+        ? client.config.igUserId
+        : extensions.metaInstagramUserId,
     );
     const payload = await metaGraph(
       client,

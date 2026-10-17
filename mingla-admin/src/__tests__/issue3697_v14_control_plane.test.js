@@ -21,6 +21,10 @@ describe("issue #3697 v1.4 Admin control plane", () => {
   const actionEndpoint = read(
     "../supabase/functions/admin-ad-campaign-action/index.ts",
   );
+  const nativeEndpoint = read(
+    "../supabase/functions/admin-ad-create-native-app-campaign/index.ts",
+  );
+  const service = read("src/services/adEngineService.js");
 
   it("has a real Host staff-review queue with all three decisions", () => {
     assert.match(campaigns, /action:\s*"review_queue"/);
@@ -55,5 +59,14 @@ describe("issue #3697 v1.4 Admin control plane", () => {
     assert.match(actionEndpoint, /legacy_campaign_reconciliation_required/);
     assert.match(actionEndpoint, /biz_can_manage_payments_for_brand/);
     assert.match(actionEndpoint, /campaign\.owner_kind !== "host"/);
+  });
+
+  it("routes certified app destinations through the native execution endpoint", () => {
+    assert.match(service, /\["explorer_app", "host_app"\]/);
+    assert.match(service, /admin-ad-create-native-app-campaign/);
+    assert.match(nativeEndpoint, /can_create_native_app_campaign/);
+    assert.match(nativeEndpoint, /ad_plan_assert_launchable/);
+    assert.match(nativeEndpoint, /native_app_certification_flow_required/);
+    assert.match(nativeEndpoint, /status:\s*"PAUSED"/);
   });
 });

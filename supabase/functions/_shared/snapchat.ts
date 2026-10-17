@@ -1941,6 +1941,8 @@ export interface SnapchatAdSquadTargetingInput {
   pixel_id?: string;
   start_time?: string;
   end_time?: string;
+  mobile_app_id?: string;
+  device_os?: "ios" | "android";
 }
 
 /** The Snap-shaped extensions the interface createCampaign input may carry. */
@@ -1949,6 +1951,9 @@ export interface SnapchatCreateCampaignExtensions {
   promotionType?: string;
   startTime?: string;
   endTime?: string;
+  measurementSpec?: { ios_app_id?: string; android_app_url?: string };
+  mobileAppId?: string;
+  appOptimizationType?: "snapchat" | "unified";
 }
 
 /** The Snap-shaped extensions the interface createCreative input must carry. */
@@ -1957,6 +1962,10 @@ export interface SnapchatCreateCreativeExtensions {
   brandName?: string;
   creativeType?: string;
   shareable?: boolean;
+  appName?: string;
+  iosAppId?: string;
+  androidAppUrl?: string;
+  iconMediaId?: string;
 }
 
 /** The Snap-shaped extensions the interface createAd input may carry. */
@@ -2004,6 +2013,9 @@ export const snapchatAdapter: ChannelAdapter = {
       promotionType: extensions.promotionType,
       startTime: extensions.startTime,
       endTime: extensions.endTime,
+      measurementSpec: extensions.measurementSpec,
+      mobileAppId: extensions.mobileAppId,
+      appOptimizationType: extensions.appOptimizationType,
     });
     const payload = await snapchatApi(
       client,
@@ -2044,6 +2056,8 @@ export const snapchatAdapter: ChannelAdapter = {
       pixelId: t.pixel_id ?? client.pixelId,
       startTime: t.start_time,
       endTime: t.end_time,
+      mobileAppId: t.mobile_app_id,
+      deviceOs: t.device_os,
     });
     const payload = await snapchatApi(
       client,
@@ -2095,6 +2109,10 @@ export const snapchatAdapter: ChannelAdapter = {
       profileId: client.profileId,
       webViewUrl: input.destUrl,
       callToAction: input.callToActionType,
+      appName: extensions.appName,
+      iosAppId: extensions.iosAppId,
+      androidAppUrl: extensions.androidAppUrl,
+      iconMediaId: extensions.iconMediaId,
     });
     const payload = await snapchatApi(
       client,

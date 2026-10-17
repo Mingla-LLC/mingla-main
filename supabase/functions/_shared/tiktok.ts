@@ -2251,6 +2251,9 @@ export interface TikTokAdGroupTargetingInput {
   pacing?: string;
   country_codes?: string[];
   request_id?: string;
+  /** Provider-native app acquisition identity; both fields are required together. */
+  promotion_type?: "APP_IOS" | "APP_ANDROID";
+  app_id?: string;
 }
 
 function adGroupSpecFromInterfaceInput(input: CreateAdSetInput): TikTokAdGroupSpec {
@@ -2282,6 +2285,8 @@ function adGroupSpecFromInterfaceInput(input: CreateAdSetInput): TikTokAdGroupSp
     pacing: t.pacing,
     countryCodes: t.country_codes,
     requestId: t.request_id,
+    promotionType: t.promotion_type,
+    appId: t.app_id,
   };
 }
 

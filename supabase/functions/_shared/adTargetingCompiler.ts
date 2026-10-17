@@ -52,6 +52,8 @@ export type TargetingCompileResult = {
   compilerVersion: "v1.4.0";
 };
 
+export type AdCampaignTargetingKind = "web" | "native_app";
+
 const TIKTOK_AGE_BUCKETS = [
   { id: "AGE_13_17", min: 13, max: 17 },
   { id: "AGE_18_24", min: 18, max: 24 },
@@ -157,6 +159,7 @@ export function compileProviderTargeting(
   platform: Platform,
   rawIntent: AdAudienceIntent,
   refs: ProviderTargetingRefs = {},
+  campaignKind: AdCampaignTargetingKind = "web",
 ): TargetingCompileResult {
   const intent = cleanIntent(rawIntent);
   const wideningSummary: string[] = [];
@@ -240,9 +243,9 @@ export function compileProviderTargeting(
       );
     }
     compiled.gender = intent.gender === "men"
-      ? "MALE"
+      ? "GENDER_MALE"
       : intent.gender === "women"
-      ? "FEMALE"
+      ? "GENDER_FEMALE"
       : "GENDER_UNLIMITED";
     if (interests.length) {
       const resolved = compiledInterests(interests, refs);
@@ -268,9 +271,11 @@ export function compileProviderTargeting(
         );
       } else {
         compiled.geo_circles = cities.map((city) => ({
+          country_code: city.countryCode,
           latitude: city.latitude,
           longitude: city.longitude,
-          radius_km: city.radiusKm ?? intent.radiusKm ?? 10,
+          radius: city.radiusKm ?? intent.radiusKm ?? 10,
+          unit: "kilometer",
         }));
       }
     } else if (intent.radiusKm != null) {
@@ -301,7 +306,11 @@ export function compileProviderTargeting(
       );
     }
     compiled.location_ids = cities.length ? locations.ids : intent.countries;
-    if (intent.radiusKm != null) {
+    if (intent.radiusKm != null && campaignKind === "native_app") {
+      wideningSummary.push(
+        "Google App campaigns preserve the selected location but not the free-form radius as a hard proximity filter.",
+      );
+    } else if (intent.radiusKm != null) {
       const invalid = cities.filter((city) =>
         !Number.isFinite(city.latitude) || !Number.isFinite(city.longitude)
       );
@@ -317,25 +326,43 @@ export function compileProviderTargeting(
         }));
       }
     }
-    const age = bucketedAge(intent.ageMin, intent.ageMax, GOOGLE_AGE_BUCKETS);
-    if (age.ids.length) compiled.age_ranges = age.ids;
-    if (age.broader || (intent.ageMin != null && intent.ageMin < 18)) {
-      wideningSummary.push(
-        "Google demographic buckets extend beyond the requested numeric age range.",
-      );
-    }
-    compiled.gender_types = intent.gender === "men"
-      ? ["MALE"]
-      : intent.gender === "women"
-      ? ["FEMALE"]
-      : [];
-    if (interests.length) {
-      const resolved = compiledInterests(interests, refs);
-      if (resolved.missing.length) {
-        checksRequired.push(
-          `Resolve Google audience IDs for: ${resolved.missing.join(", ")}.`,
+    if (campaignKind === "native_app") {
+      if (intent.ageMin != null || intent.ageMax != null) {
+        wideningSummary.push(
+          "Google App campaigns optimize installs across eligible ages; the numeric age constraint is not a hard delivery filter.",
         );
-      } else compiled.audience_ids = resolved.ids;
+      }
+      if (intent.gender !== "all") {
+        wideningSummary.push(
+          "Google App campaigns do not preserve the selected gender as a hard delivery filter.",
+        );
+      }
+      if (interests.length) {
+        wideningSummary.push(
+          "Google App campaigns use audience signals for learning, not the selected interests as hard delivery filters.",
+        );
+      }
+    } else {
+      const age = bucketedAge(intent.ageMin, intent.ageMax, GOOGLE_AGE_BUCKETS);
+      if (age.ids.length) compiled.age_ranges = age.ids;
+      if (age.broader || (intent.ageMin != null && intent.ageMin < 18)) {
+        wideningSummary.push(
+          "Google demographic buckets extend beyond the requested numeric age range.",
+        );
+      }
+      compiled.gender_types = intent.gender === "men"
+        ? ["MALE"]
+        : intent.gender === "women"
+        ? ["FEMALE"]
+        : [];
+      if (interests.length) {
+        const resolved = compiledInterests(interests, refs);
+        if (resolved.missing.length) {
+          checksRequired.push(
+            `Resolve Google audience IDs for: ${resolved.missing.join(", ")}.`,
+          );
+        } else compiled.audience_ids = resolved.ids;
+      }
     }
   } else {
     compiled.country_codes = intent.countries;
@@ -380,12 +407,14 @@ export function compileTargetingPlan(input: {
   platforms: Platform[];
   intent: AdAudienceIntent;
   refsByPlatform?: Partial<Record<Platform, ProviderTargetingRefs>>;
+  campaignKind?: AdCampaignTargetingKind;
 }): TargetingCompileResult[] {
   return [...new Set(input.platforms)].map((platform) =>
     compileProviderTargeting(
       platform,
       input.intent,
       input.refsByPlatform?.[platform] ?? {},
+      input.campaignKind ?? "web",
     )
   );
 }

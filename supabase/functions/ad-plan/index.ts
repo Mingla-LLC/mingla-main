@@ -772,6 +772,10 @@ serve(async (req: Request): Promise<Response> => {
       platforms,
       intent,
       refsByPlatform: refsByPlatform ?? {},
+      campaignKind: plan.destination_family === "explorer_app" ||
+          plan.destination_family === "host_app"
+        ? "native_app"
+        : "web",
     });
     const broaderAcceptance =
       asRecord(version.canonical_plan.broader_acceptance) ?? {};

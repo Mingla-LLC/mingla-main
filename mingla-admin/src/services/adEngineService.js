@@ -134,7 +134,11 @@ export async function listCampaigns() {
 
 /** The atomic create (everything PAUSED). payload matches admin-ad-create-campaign. */
 export async function createCampaign(payload) {
-  return invokeWithRefresh("admin-ad-create-campaign", { body: payload });
+  const destinationFamily = payload?.destination?.page_type;
+  const endpoint = ["explorer_app", "host_app"].includes(destinationFamily)
+    ? "admin-ad-create-native-app-campaign"
+    : "admin-ad-create-campaign";
+  return invokeWithRefresh(endpoint, { body: payload });
 }
 
 /** Issue #3697 v1.4 immutable plan lifecycle shared by Admin, Host and Ari. */

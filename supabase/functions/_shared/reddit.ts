@@ -2673,6 +2673,8 @@ export async function redditCreateFullChain(
       schedule: input.adGroup.schedule,
       campaignHasBidValue: input.campaign.bidValueCents !== undefined &&
         input.campaign.bidValueCents !== null,
+      appId: input.adGroup.appId,
+      deviceOs: input.adGroup.deviceOs,
     });
     const payload = await redditRequest(
       client,
