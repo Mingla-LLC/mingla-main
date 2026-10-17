@@ -18,11 +18,13 @@ export function useBrandGroups(): {
   const [groups, setGroups] = useState<BrandGroupSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [initialLoadSucceededFor, setInitialLoadSucceededFor] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!user?.id) {
       setGroups([]);
       setLoading(false);
+      setInitialLoadSucceededFor(null);
       return;
     }
     try {
@@ -30,6 +32,7 @@ export function useBrandGroups(): {
       if (result.error) throw new Error(result.error);
       setGroups(result.groups);
       setError(null);
+      setInitialLoadSucceededFor(user.id);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Couldn't load Brand groups");
     } finally {
@@ -39,11 +42,12 @@ export function useBrandGroups(): {
 
   useEffect(() => {
     setLoading(true);
+    setInitialLoadSucceededFor(null);
     void refresh();
   }, [refresh]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || initialLoadSucceededFor !== user.id) return;
     const channel = supabase
       .channel(`brand-groups:list:${user.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
@@ -56,7 +60,7 @@ export function useBrandGroups(): {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [refresh, user?.id]);
+  }, [initialLoadSucceededFor, refresh, user?.id]);
 
   const unreadCount = useMemo(
     () => groups.reduce((total, group) => total + group.unread_count, 0),
