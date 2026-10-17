@@ -482,9 +482,7 @@ export function CampaignBuilderPage() {
     // full eligible set. The picker is the single source of truth for who gets
     // funded; a deselected/compliance-excluded channel is already ineligible here.
     () =>
-      splitBudget({
-        totalDailyCents: planningDailyCents,
-        channelRows: plannedRows,
+      splitBudget({ totalDailyCents: planningDailyCents, channelRows: plannedRows,
         strategy: budget.strategy,
       }),
     [planningDailyCents, budget.strategy, plannedRows],
@@ -496,10 +494,7 @@ export function CampaignBuilderPage() {
   // identical for the same goalIds) purely for display — Review reads this
   // to show each channel's REAL resolved objective instead of one repeated
   // goal-label string. Never touches runCreate's own resolution.
-  const resolvedGoalForDisplay = useMemo(
-    () => resolveGoalForPayload(goalIds),
-    [goalIds],
-  );
+  const resolvedGoalForDisplay = useMemo(() => resolveGoalForPayload(goalIds), [goalIds]);
 
   // ── ISSUE-995 [Campaign Builder creative] Wave 3 — PROCEED-WITH-PASSING ──
   // The funded set (allocations) partitioned into the channels this creative can

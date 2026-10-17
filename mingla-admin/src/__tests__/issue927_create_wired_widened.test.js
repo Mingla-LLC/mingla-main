@@ -170,23 +170,27 @@ describe("ISSUE-927 — Snapchat payload branch", () => {
   });
 });
 
-describe("ISSUE-927 — Meta/Google payloads unchanged by the new state keys", () => {
-  it("meta payload leaks none of the new creative keys and keeps its contract", () => {
+describe("ISSUE-927 — Meta/Google provider objects stay platform-specific", () => {
+  it("meta provider creative leaks none of the foreign keys and keeps its contract", () => {
     const p = buildCreatePayload("meta", baseState);
     assert.equal(p.platform, "meta");
     assert.equal(p.objective, "OUTCOME_TRAFFIC");
     assert.equal(p.creative.call_to_action_type, "LEARN_MORE");
-    const flat = JSON.stringify(p);
-    assert.ok(!flat.includes("creative_library_id"), "no library id in the Meta payload");
-    assert.ok(!flat.includes("brand_name"), "no brand_name in the Meta payload");
+    // [TEST-MOD-APPROVED #3697] v1.4 carries a canonical creative_intent beside
+    // the provider rendering. The provider creative itself must remain clean.
+    const flat = JSON.stringify(p.creative);
+    assert.ok(!flat.includes("creative_library_id"), "no library id in the Meta provider creative");
+    assert.ok(!flat.includes("brand_name"), "no brand_name in the Meta provider creative");
+    assert.equal(p.creative_intent.creative_library_id, baseState.creative.creativeLibraryId);
   });
 
-  it("google payload still NEVER carries call_to_action_type (A4.b) and leaks nothing new", () => {
+  it("google provider creative still NEVER carries call_to_action_type (A4.b)", () => {
     const p = buildCreatePayload("google", baseState);
     assert.equal(p.platform, "google");
-    const flat = JSON.stringify(p);
+    const flat = JSON.stringify(p.creative);
     assert.ok(!flat.includes("call_to_action"), "Search ads have no CTA button");
-    assert.ok(!flat.includes("creative_library_id"), "no library id in the Google payload");
+    assert.ok(!flat.includes("creative_library_id"), "no library id in the Google provider creative");
+    assert.equal(p.creative_intent.creative_library_id, baseState.creative.creativeLibraryId);
   });
 });
 

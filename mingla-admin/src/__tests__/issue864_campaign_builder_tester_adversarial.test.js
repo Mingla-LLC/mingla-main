@@ -387,18 +387,29 @@ describe("payload — negative space", () => {
     requestId: "r",
   };
 
-  it("the Google body carries NO genuinely-Meta-only fields (CTA, objective, optimization, image, billing) — but MAY carry age/gender when the wizard sets them (#992)", () => {
+  it("the compiled Google provider rendering carries no genuinely Meta-only fields while canonical intent remains available", () => {
     // ISSUE-992 (Wave 3 — [TEST-MOD-APPROVED ORCH-0992]) OVERTURNS the deferral
     // this scan encoded: `genders`/`age_min`/`age_max` are NO LONGER Meta-only —
     // Google now legitimately consumes age/gender at create (3a). The list below
     // is now the genuinely-Meta-only / other-platform fields that must STILL
-    // never appear on a Google Search body (A4.b: no CTA; no objective/
+    // never appear on the compiled Google Search rendering (A4.b: no CTA; no objective/
     // optimization/billing; RSAs carry no image_url; no special-ad-category).
-    const json = JSON.stringify(buildCreatePayload("google", state));
-    for (const banned of ["call_to_action_type", "optimization_goal", "objective", "image_url", "billing_event", "special_ad_categor"]) {
-      assert.ok(!json.includes(banned), `google payload must not carry ${banned}`);
-    }
+    // [TEST-MOD-APPROVED #3697] The v1.4 create contract now also carries
+    // canonical plan-level copy/creative/audience intent. Inspect the compiled
+    // Google adapter fields here so canonical authority is not mistaken for a
+    // provider-field leak.
     const payload = buildCreatePayload("google", state);
+    const json = JSON.stringify({
+      creative: payload.creative,
+      targeting: payload.targeting,
+      objective: payload.objective,
+      optimization_goal: payload.optimization_goal,
+      billing_event: payload.billing_event,
+      special_ad_categories: payload.special_ad_categories,
+    });
+    for (const banned of ["call_to_action_type", "optimization_goal", "objective", "image_url", "billing_event", "special_ad_categor"]) {
+      assert.ok(!json.includes(banned), `google provider rendering must not carry ${banned}`);
+    }
     assert.deepEqual(payload.creative.headlines, ["a", "b"], "entries trimmed, empties dropped");
     assert.deepEqual(payload.keywords, ["k"]);
     assert.equal("negative_keywords" in payload, false, "empty negatives omitted entirely");
