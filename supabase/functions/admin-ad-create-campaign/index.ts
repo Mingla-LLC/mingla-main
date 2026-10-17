@@ -399,6 +399,23 @@ function immutableRequestMismatch(
   return null;
 }
 
+function executionTemplateMismatch(
+  canonicalPlan: Record<string, unknown>,
+  platform: string,
+  body: Record<string, unknown>,
+): string | null {
+  const templates = objectRecord(canonicalPlan.execution_payloads);
+  if (!templates) return null; // Older and Host-authored plans predate this seal.
+  const expected = objectRecord(templates[platform]);
+  if (!expected) return "plan_execution_template_missing";
+  const supplied = structuredClone(body);
+  delete supplied.plan_version_id;
+  delete supplied.plan_hash;
+  return canonicalJson(expected) === canonicalJson(supplied)
+    ? null
+    : "plan_execution_template_mismatch";
+}
+
 /** toward #3697 Wave 2 — money columns stamped on every ad_campaigns insert. */
 type Wave2MoneyPersist = {
   brand_id: string | null;
@@ -924,6 +941,17 @@ serve(async (req: Request): Promise<Response> => {
     if (requestMismatch) {
       return json(
         { error: "plan_conflict", detail: requestMismatch },
+        409,
+      );
+    }
+    const templateMismatch = executionTemplateMismatch(
+      canonicalPlan,
+      platform,
+      body,
+    );
+    if (templateMismatch) {
+      return json(
+        { error: "plan_conflict", detail: templateMismatch },
         409,
       );
     }

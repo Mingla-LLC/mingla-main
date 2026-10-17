@@ -154,6 +154,109 @@ export async function adPlanAction(payload) {
   return invokeWithRefresh("ad-plan", { body: payload });
 }
 
+export async function loadAdminAdRecoveryQueue() {
+  return adPlanAction({ action: "recovery_queue" });
+}
+
+async function planActionOrThrow(payload, fallback) {
+  const { data, error } = await adPlanAction(payload);
+  if (!error) return data;
+  const parsed = await parseEdgeError(error);
+  throw new Error(String(parsed?.message ?? fallback));
+}
+
+/** Resume only the missing PAUSED provider objects from a frozen Admin plan. */
+export async function resumeAdminAdPlan(planId) {
+  let aggregate = await planActionOrThrow(
+    { action: "get", plan_id: planId },
+    "The frozen plan could not be loaded.",
+  );
+  const { plan, version } = aggregate ?? {};
+  if (plan?.owner_kind !== "mingla" || !version?.id || !version?.plan_hash) {
+    throw new Error("This is not a recoverable Mingla plan.");
+  }
+  if (plan.state === "creation_failed_terminal") {
+    throw new Error(
+      "This plan has a terminal provider failure. Inspect the provider evidence before creating a new version.",
+    );
+  }
+  if (
+    ![
+      "ready_for_funding",
+      "funded_held",
+      "creating_paused_objects",
+      "creation_failed_retryable",
+    ].includes(plan.state)
+  ) {
+    throw new Error(
+      `Plan state ${plan.state} cannot resume provider creation.`,
+    );
+  }
+  const templates = version.canonical_plan?.execution_payloads;
+  if (!templates || typeof templates !== "object" || Array.isArray(templates)) {
+    throw new Error(
+      "This older plan has no sealed execution template. Rebuild it in Campaign Builder; no provider action was taken.",
+    );
+  }
+  if (plan.state === "ready_for_funding") {
+    await planActionOrThrow(
+      {
+        action: "fund",
+        plan_version_id: version.id,
+        plan_hash: version.plan_hash,
+      },
+      "The provider-account funding binding failed.",
+    );
+  }
+  await planActionOrThrow(
+    {
+      action: "confirm_launch",
+      plan_version_id: version.id,
+      plan_hash: version.plan_hash,
+      phrase: "CREATE PAUSED",
+    },
+    "The exact paused-create confirmation failed.",
+  );
+
+  const existingPlatforms = new Set(
+    (aggregate.campaigns ?? []).map((campaign) => campaign.platform),
+  );
+  for (const allocation of aggregate.provider_allocations ?? []) {
+    const platform = allocation.platform;
+    if (existingPlatforms.has(platform)) continue;
+    const template = templates[platform];
+    if (!template || typeof template !== "object" || Array.isArray(template)) {
+      throw new Error(`The sealed ${platform} execution template is missing.`);
+    }
+    const payload = structuredClone(template);
+    payload.plan_version_id = version.id;
+    payload.plan_hash = version.plan_hash;
+    const { error } = await createCampaign(payload);
+    if (error) {
+      const parsed = await parseEdgeError(error);
+      const detail = String(
+        parsed?.body?.detail?.message ??
+          parsed?.body?.detail ??
+          parsed?.message ??
+          `${platform} create failed.`,
+      );
+      await adPlanAction({
+        action: "record_create_failure",
+        plan_version_id: version.id,
+        plan_hash: version.plan_hash,
+        platform,
+        error_detail: detail,
+      });
+      throw new Error(`${platform}: ${detail}`);
+    }
+  }
+  aggregate = await planActionOrThrow(
+    { action: "get", plan_id: planId },
+    "The recovered plan could not be reloaded.",
+  );
+  return aggregate;
+}
+
 /**
  * action: 'launch' | 'pause'
  * Launch requires confirm_phrase "LAUNCH" + reason (Wave 5 / #3704).

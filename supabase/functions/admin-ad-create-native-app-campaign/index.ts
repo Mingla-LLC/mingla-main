@@ -79,6 +79,36 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function canonicalJson(value: unknown): string {
+  const normalize = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(normalize);
+    if (input && typeof input === "object") {
+      return Object.fromEntries(
+        Object.entries(input as Record<string, unknown>)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, item]) => [key, normalize(item)]),
+      );
+    }
+    return input;
+  };
+  return JSON.stringify(normalize(value));
+}
+
+function executionTemplateMatches(
+  canonicalPlan: Record<string, unknown> | null,
+  platform: Platform,
+  body: Record<string, unknown>,
+): boolean {
+  const templates = record(canonicalPlan?.execution_payloads);
+  if (!templates) return true; // Plans created before the recovery seal.
+  const expected = record(templates[platform]);
+  if (!expected) return false;
+  const supplied = structuredClone(body);
+  delete supplied.plan_version_id;
+  delete supplied.plan_hash;
+  return canonicalJson(expected) === canonicalJson(supplied);
+}
+
 function strings(value: unknown): string[] {
   return Array.isArray(value)
     ? value.map((item) => typeof item === "string" ? item.trim() : "")
@@ -683,6 +713,12 @@ serve(async (req: Request): Promise<Response> => {
   let creativeId: string;
   const schedule = parseCampaignSchedule(body.schedule ?? body);
   const canonicalPlan = record(version.canonical_plan);
+  if (!executionTemplateMatches(canonicalPlan, platform, body)) {
+    return json({
+      error: "plan_conflict",
+      detail: "plan_execution_template_mismatch",
+    }, 409);
+  }
   const certificationMode = canonicalPlan?.certification_mode === true;
   const delivery = record(canonicalPlan?.delivery_budgets);
   const platformDelivery = record(delivery?.[platform]);
@@ -891,22 +927,23 @@ serve(async (req: Request): Promise<Response> => {
     externalIds: Record<string, unknown>,
     providerResponse: Record<string, unknown> | null,
     errorDetail: string | null = null,
-  ) => db.rpc(
-    certificationMode
-      ? "ad_record_canary_provider_attempt"
-      : "ad_record_provider_attempt",
-    {
-      p_plan_version_id: planVersionId,
-      p_plan_hash: planHash,
-      p_platform: platform,
-      ...(certificationMode ? {} : { p_command: "create_paused_objects" }),
-      p_idempotency_key: attemptKey,
-      p_state: state,
-      p_external_ids: externalIds,
-      p_provider_response: providerResponse,
-      p_error_detail: errorDetail,
-    },
-  );
+  ) =>
+    db.rpc(
+      certificationMode
+        ? "ad_record_canary_provider_attempt"
+        : "ad_record_provider_attempt",
+      {
+        p_plan_version_id: planVersionId,
+        p_plan_hash: planHash,
+        p_platform: platform,
+        ...(certificationMode ? {} : { p_command: "create_paused_objects" }),
+        p_idempotency_key: attemptKey,
+        p_state: state,
+        p_external_ids: externalIds,
+        p_provider_response: providerResponse,
+        p_error_detail: errorDetail,
+      },
+    );
   await recordAttempt("running", {}, {
     destination: destination.family,
     os: destination.os,
@@ -1067,10 +1104,10 @@ serve(async (req: Request): Promise<Response> => {
       ...created.extraExternalIds,
     };
     await recordAttempt("failed_terminal", externalIds, {
-        db_error: persistError?.message ?? "incomplete_persist",
-        rollback_campaign: rollbackCampaign,
-        rollback_creative: rollbackCreative,
-      }, "db_persist_failed");
+      db_error: persistError?.message ?? "incomplete_persist",
+      rollback_campaign: rollbackCampaign,
+      rollback_creative: rollbackCreative,
+    }, "db_persist_failed");
     return json({
       error: "internal_error",
       detail: platform === "google"

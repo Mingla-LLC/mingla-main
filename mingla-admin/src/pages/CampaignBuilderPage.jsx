@@ -904,7 +904,11 @@ export function CampaignBuilderPage() {
     );
   };
 
-  const prepareImmutablePlan = async (executionAllocations, capByPlatform) => {
+  const prepareImmutablePlan = async (
+    executionAllocations,
+    capByPlatform,
+    executionPayloads,
+  ) => {
     if (
       planPreview?.status === "ready" &&
       planPreview.fingerprint === planFingerprint
@@ -968,6 +972,8 @@ export function CampaignBuilderPage() {
       plan_id: planId,
       canonical_plan: {
         name,
+        lane,
+        budget_mode: budget.mode === "lifetime" ? "lifetime" : "daily",
         ...(certificationMode ? { certification_mode: true } : {}),
         goal_ids: goalIds,
         schedule: {
@@ -986,6 +992,7 @@ export function CampaignBuilderPage() {
         special_ad_category: specialAdCategory,
         confirmation_phrase: "CREATE PAUSED",
         broader_acceptance: broaderAcceptance,
+        execution_payloads: executionPayloads,
       },
       provider_allocations: executionAllocations.map((allocation) => ({
         platform: allocation.platform,
@@ -1226,11 +1233,66 @@ export function CampaignBuilderPage() {
             ).map((row) => [row.platform, row.amountCents]),
           )
         : null;
+    const buildExecutionPayload = (allocation, dest) => {
+      const platform = allocation.platform;
+      const destSlot = `${dest.page_type}:${dest.id}`;
+      const lifetimeAmount = lifetimeByPlatform?.get(platform) ?? null;
+      return buildCreatePayload(platform, {
+        lane,
+        name:
+          name ||
+          suggestCampaignName({
+            brandName: dest.brand_name,
+            title: dest.title,
+          }),
+        goal: resolvedGoal,
+        destination: {
+          page_type: dest.page_type,
+          brand_slug: dest.brand_slug,
+          entity_slug: dest.page_type === "brand" ? null : dest.slug,
+        },
+        destinationGroupId: null,
+        audience,
+        budget: {
+          dailyCentsForChannel: allocation.dailyCents,
+          mode: budget.mode === "lifetime" ? "lifetime" : "daily",
+          amountCents:
+            budget.mode === "lifetime" && lifetimeAmount != null
+              ? lifetimeAmount
+              : allocation.dailyCents,
+          capCents:
+            budget.mode === "lifetime" && lifetimeAmount != null
+              ? (capByPlatform.get(platform) ?? lifetimeAmount)
+              : (capByPlatform.get(platform) ?? null),
+          startsAt: budget.startsAt,
+          endsAt: budget.endsAt,
+          currency: planCurrency.currency,
+        },
+        creative: {
+          kind: creative.kind,
+          imageUrl: creative.publicUrl,
+          aiGenerated: creative.aiGenerated,
+          creativeLibraryId: creative.creativeRow?.id ?? null,
+          brandName: dest.brand_name ?? null,
+        },
+        copy,
+        specialAdCategory,
+        requestId: requestIdFor(platform, destSlot),
+        validateOnly,
+      });
+    };
+    const executionPayloads = Object.fromEntries(
+      executionAllocations.map((allocation) => [
+        allocation.platform,
+        buildExecutionPayload(allocation, firstDestination),
+      ]),
+    );
     if (!validateOnly) {
       try {
         immutablePlan = await prepareImmutablePlan(
           executionAllocations,
           capByPlatform,
+          executionPayloads,
         );
         if (immutablePlan.status !== "ready") {
           addToast({
@@ -1362,72 +1424,15 @@ export function CampaignBuilderPage() {
       }
     }
     const multiDest = false;
-    const groupId = null;
-    const baseName =
-      name ||
-      suggestCampaignName({
-        brandName: firstDestination?.brand_name,
-        title: firstDestination?.title,
-      });
     for (const dest of destinations) {
       const destSlot = `${dest.page_type}:${dest.id}`;
-      const destBody = {
-        page_type: dest.page_type,
-        brand_slug: dest.brand_slug,
-        entity_slug: dest.page_type === "brand" ? null : dest.slug,
-      };
-      // Each fanned-out ad carries its own name (base name + destination title) so
-      // the created campaigns stay distinguishable; a single-destination build
-      // keeps the base name exactly.
-      const perCallName = multiDest ? `${baseName} — ${dest.title}` : baseName;
       for (const allocation of executionAllocations) {
         const platform = allocation.platform;
         const resultKey = multiDest ? `${platform}::${destSlot}` : platform;
         const meta = { platform, destTitle: dest.title, multiDest };
         if (results[resultKey]?.campaign) continue; // idempotent per session
         if (creativeExcluded.has(platform)) continue; // excluded — build the passing ones
-        const lifetimeAmount = lifetimeByPlatform?.get(platform) ?? null;
-        const payload = buildCreatePayload(platform, {
-          lane,
-          name: perCallName,
-          goal: resolvedGoal,
-          destination: destBody,
-          // ISSUE-1002: the shared fan-out group id (null for single-destination),
-          // and payload.js emits the destinations[] array + destination_group_id.
-          destinationGroupId: groupId,
-          audience,
-          budget: {
-            dailyCentsForChannel: allocation.dailyCents,
-            mode: budget.mode === "lifetime" ? "lifetime" : "daily",
-            amountCents:
-              budget.mode === "lifetime" && lifetimeAmount != null
-                ? lifetimeAmount
-                : allocation.dailyCents,
-            capCents:
-              budget.mode === "lifetime" && lifetimeAmount != null
-                ? (capByPlatform.get(platform) ?? lifetimeAmount)
-                : (capByPlatform.get(platform) ?? null),
-            startsAt: budget.startsAt,
-            endsAt: budget.endsAt,
-            currency: planCurrency.currency,
-          },
-          creative: {
-            // ISSUE-995: kind drives the payload media descriptor — video rides
-            // on the library ref (creative_library_id), image on the inline URL.
-            kind: creative.kind,
-            imageUrl: creative.publicUrl,
-            aiGenerated: creative.aiGenerated,
-            // ISSUE-927: the #866 library row (recorded in StepCreative) —
-            // snapchat consumes media ONLY through the library; tiktok reuses a
-            // READY ref when one exists; a video creative REQUIRES it.
-            creativeLibraryId: creative.creativeRow?.id ?? null,
-            brandName: dest.brand_name ?? null,
-          },
-          copy,
-          specialAdCategory,
-          requestId: requestIdFor(platform, destSlot),
-          validateOnly,
-        });
+        const payload = buildExecutionPayload(allocation, dest);
         if (immutablePlan) {
           payload.plan_version_id = immutablePlan.plan_version_id;
           payload.plan_hash = immutablePlan.plan_hash;

@@ -135,6 +135,23 @@ describe("issue #3697 v1.4 Admin control plane", () => {
     assert.match(actionEndpoint, /campaign\.owner_kind !== "host"/);
   });
 
+  it("recovers Admin plans after reload from exact sealed provider templates", () => {
+    const planEndpoint = read("../supabase/functions/ad-plan/index.ts");
+    assert.match(builder, /execution_payloads:\s*executionPayloads/);
+    assert.match(builder, /budget_mode:/);
+    assert.match(planEndpoint, /action === "recovery_queue"/);
+    assert.match(planEndpoint, /"creation_failed_retryable"/);
+    assert.match(service, /resumeAdminAdPlan/);
+    assert.match(service, /structuredClone\(template\)/);
+    assert.match(service, /phrase:\s*"CREATE PAUSED"/);
+    assert.match(service, /if \(existingPlatforms\.has\(platform\)\) continue/);
+    assert.match(campaigns, /Mingla plans that need recovery/);
+    assert.match(campaigns, /Resume exact paused create/);
+    assert.match(campaigns, /confirmPhrase="CREATE PAUSED"/);
+    assert.match(createEndpoint, /plan_execution_template_mismatch/);
+    assert.match(nativeEndpoint, /plan_execution_template_mismatch/);
+  });
+
   it("routes certified app destinations through the native execution endpoint", () => {
     assert.match(service, /\["explorer_app", "host_app"\]/);
     assert.match(service, /admin-ad-create-native-app-campaign/);

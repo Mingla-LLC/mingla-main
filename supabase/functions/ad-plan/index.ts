@@ -549,6 +549,27 @@ serve(async (req: Request): Promise<Response> => {
     return json({ ok: true, queue });
   }
 
+  if (action === "recovery_queue") {
+    if (!(await isActiveAdmin(db, actor))) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const states = [
+      "ready_for_funding",
+      "funded_held",
+      "creating_paused_objects",
+      "creation_failed_retryable",
+      "creation_failed_terminal",
+    ];
+    const { data: plans, error } = await db.from("ad_plans").select("*")
+      .eq("owner_kind", "mingla").in("state", states)
+      .order("updated_at", { ascending: true }).limit(25);
+    if (error) return databaseFailure(error);
+    const queue = await Promise.all(
+      (plans ?? []).map((plan: Plan) => getPlanAggregate(db, plan)),
+    );
+    return json({ ok: true, queue });
+  }
+
   if (action === "open") {
     const clientKind = body.client_kind;
     const ownerKind = body.owner_kind;

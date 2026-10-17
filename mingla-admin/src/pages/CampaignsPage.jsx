@@ -20,6 +20,7 @@ import {
   MessageSquareWarning,
   Pause,
   RefreshCw,
+  RotateCcw,
   Rocket,
   XCircle,
 } from "lucide-react";
@@ -36,7 +37,9 @@ import {
   getCampaignDetail,
   getStayCampaignRollup,
   listCampaigns,
+  loadAdminAdRecoveryQueue,
   parseEdgeError,
+  resumeAdminAdPlan,
   syncCampaigns,
 } from "../services/adEngineService";
 import {
@@ -160,6 +163,7 @@ export function CampaignsPage() {
   const [adsConsoleReady, setAdsConsoleReady] = useState(false);
   const [campaigns, setCampaigns] = useState(null);
   const [reviewQueue, setReviewQueue] = useState(null);
+  const [recoveryQueue, setRecoveryQueue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -168,6 +172,7 @@ export function CampaignsPage() {
   const [rowWarning, setRowWarning] = useState({});
   const [launchTarget, setLaunchTarget] = useState(null);
   const [reviewTarget, setReviewTarget] = useState(null);
+  const [recoveryTarget, setRecoveryTarget] = useState(null);
   // ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI (the detail panel feed).
   const [roiPayload, setRoiPayload] = useState(null);
   const [roiLoading, setRoiLoading] = useState(false);
@@ -177,9 +182,10 @@ export function CampaignsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data, error }, reviewResult] = await Promise.all([
+    const [{ data, error }, reviewResult, recoveryResult] = await Promise.all([
       listCampaigns(),
       adPlanAction({ action: "review_queue" }),
+      loadAdminAdRecoveryQueue(),
     ]);
     if (error) {
       addToast({
@@ -204,8 +210,34 @@ export function CampaignsPage() {
     } else {
       setReviewQueue(reviewResult.data?.queue ?? []);
     }
+    if (recoveryResult.error) {
+      const parsed = await parseEdgeError(recoveryResult.error);
+      addToast({
+        variant: "error",
+        title: "Mingla plan recovery failed",
+        description: String(
+          parsed?.message ?? "The recovery queue could not load.",
+        ),
+      });
+      setRecoveryQueue([]);
+    } else {
+      setRecoveryQueue(recoveryResult.data?.queue ?? []);
+    }
     setLoading(false);
   }, [addToast]);
+
+  const handleRecovery = async (item) => {
+    const planId = item?.plan?.id;
+    if (!planId) throw new Error("Plan ID is missing");
+    await resumeAdminAdPlan(planId);
+    addToast({
+      variant: "success",
+      title: "Paused provider objects recovered",
+      description:
+        "Only missing platforms were retried from the exact frozen hash. Nothing was launched or spent.",
+    });
+    await load();
+  };
 
   const handleReview = async ({ item, decision, reason }) => {
     const version = item?.version;
@@ -630,6 +662,98 @@ export function CampaignsPage() {
                       Reject
                     </Button>
                   </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SectionCard>
+      <SectionCard
+        title="Mingla plans that need recovery"
+        subtitle="These plans are server-owned and survive a browser reload. Resume retries only missing paused provider objects from the exact frozen hash; it never launches spend."
+      >
+        {loading && recoveryQueue === null ? (
+          <div className="flex items-center gap-2 py-4">
+            <Spinner size="sm" /> Loading recovery queue…
+          </div>
+        ) : !recoveryQueue || recoveryQueue.length === 0 ? (
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            No Mingla plans need recovery.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {recoveryQueue.map((item) => {
+              const plan = item.plan ?? {};
+              const version = item.version ?? {};
+              const canonical = version.canonical_plan ?? {};
+              const allocations = item.provider_allocations ?? [];
+              const createdPlatforms = new Set(
+                (item.campaigns ?? []).map((campaign) => campaign.platform),
+              );
+              const missing = allocations
+                .map((row) => row.platform)
+                .filter((platform) => !createdPlatforms.has(platform));
+              const sealed = Boolean(canonical.execution_payloads);
+              const terminal = plan.state === "creation_failed_terminal";
+              return (
+                <div
+                  key={plan.id}
+                  className="rounded-xl border border-[var(--gray-200)] p-4 space-y-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold">
+                        {canonical.name || "Untitled Mingla campaign"}
+                      </div>
+                      <div className="text-xs text-[var(--color-text-secondary)]">
+                        {allocations
+                          .map(
+                            (row) =>
+                              `${PLATFORM_LABELS[row.platform] ?? row.platform} ${formatMinor(row.host_currency, row.host_budget_cents)} cap`,
+                          )
+                          .join(" · ") || "No provider allocation"}
+                      </div>
+                      <div className="mt-1 text-xs text-[var(--color-text-secondary)]">
+                        {createdPlatforms.size} of {allocations.length} paused
+                        provider objects recorded
+                        {missing.length > 0
+                          ? ` · missing ${missing.join(", ")}`
+                          : ""}
+                      </div>
+                      <div className="mt-1 text-[10px] font-mono break-all text-[var(--color-text-tertiary)]">
+                        Plan {version.plan_hash}
+                      </div>
+                    </div>
+                    <Badge variant={terminal ? "error" : "warning"}>
+                      {String(plan.state ?? "unknown")
+                        .replaceAll("_", " ")
+                        .toUpperCase()}
+                    </Badge>
+                  </div>
+                  {!sealed && (
+                    <AlertCard variant="warning" title="Legacy plan">
+                      This plan predates sealed execution templates. Rebuild it
+                      in Campaign Builder; recovery will not guess or widen it.
+                    </AlertCard>
+                  )}
+                  {terminal && (
+                    <AlertCard
+                      variant="error"
+                      title="Provider attention required"
+                    >
+                      A terminal provider response is recorded. Inspect its
+                      evidence before creating a replacement plan.
+                    </AlertCard>
+                  )}
+                  {!terminal && sealed && missing.length > 0 && (
+                    <Button
+                      size="sm"
+                      icon={RotateCcw}
+                      onClick={() => setRecoveryTarget(item)}
+                    >
+                      Resume exact paused create
+                    </Button>
+                  )}
                 </div>
               );
             })}
@@ -1138,6 +1262,25 @@ export function CampaignsPage() {
           )}
         </SectionCard>
       )}
+
+      <HighRiskActionModal
+        open={recoveryTarget !== null}
+        onClose={() => setRecoveryTarget(null)}
+        title="Resume this exact paused create?"
+        description={
+          recoveryTarget
+            ? `This retries only missing provider objects for ${recoveryTarget.version?.plan_hash}. Every object remains paused; no ad is launched and no spend begins.`
+            : ""
+        }
+        confirmLabel="Resume paused create"
+        confirmPhrase="CREATE PAUSED"
+        requireReason={false}
+        successMessage={null}
+        onConfirm={async () => {
+          if (!recoveryTarget) throw new Error("No plan selected");
+          await handleRecovery(recoveryTarget);
+        }}
+      />
 
       {/* Launch confirm — Wave 5 / #3704: type LAUNCH + reason (server-enforced). */}
       <HighRiskActionModal
