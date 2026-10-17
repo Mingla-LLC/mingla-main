@@ -79,22 +79,53 @@ ALTER TABLE public.brand_group_files ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.brand_group_drive_bindings, public.brand_group_files FROM PUBLIC, anon, authenticated;
 GRANT ALL ON public.brand_group_drive_bindings, public.brand_group_files TO service_role;
 
-INSERT INTO storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
-VALUES(
-  'brand-group-file-staging','brand-group-file-staging',false,104857600,
-  ARRAY[
-    'image/jpeg','image/png','image/webp','image/heic','image/heif','image/gif',
-    'video/mp4','video/quicktime','video/webm',
-    'audio/mpeg','audio/mp4','audio/wav','audio/x-m4a',
-    'application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'text/plain','text/csv','application/csv'
-  ]::text[]
-)
-ON CONFLICT(id) DO UPDATE SET
-  public=false,
-  file_size_limit=EXCLUDED.file_size_limit,
-  allowed_mime_types=EXCLUDED.allowed_mime_types;
+DO $bucket$
+DECLARE
+  has_public boolean;
+  has_file_size_limit boolean;
+  has_allowed_mime_types boolean;
+BEGIN
+  SELECT EXISTS(
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='storage' AND table_name='buckets' AND column_name='public'
+  ) INTO has_public;
+  SELECT EXISTS(
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='storage' AND table_name='buckets' AND column_name='file_size_limit'
+  ) INTO has_file_size_limit;
+  SELECT EXISTS(
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='storage' AND table_name='buckets' AND column_name='allowed_mime_types'
+  ) INTO has_allowed_mime_types;
+
+  IF has_public AND has_file_size_limit AND has_allowed_mime_types THEN
+    INSERT INTO storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+    VALUES(
+      'brand-group-file-staging','brand-group-file-staging',false,104857600,
+      ARRAY[
+        'image/jpeg','image/png','image/webp','image/heic','image/heif','image/gif',
+        'video/mp4','video/quicktime','video/webm',
+        'audio/mpeg','audio/mp4','audio/wav','audio/x-m4a',
+        'application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/plain','text/csv','application/csv'
+      ]::text[]
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      public=false,
+      file_size_limit=EXCLUDED.file_size_limit,
+      allowed_mime_types=EXCLUDED.allowed_mime_types;
+  ELSIF has_public THEN
+    INSERT INTO storage.buckets(id,name,public)
+    VALUES('brand-group-file-staging','brand-group-file-staging',false)
+    ON CONFLICT(id) DO UPDATE SET public=false;
+  ELSE
+    INSERT INTO storage.buckets(id,name)
+    VALUES('brand-group-file-staging','brand-group-file-staging')
+    ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name;
+  END IF;
+END
+$bucket$;
 
 CREATE OR REPLACE FUNCTION public.issue_3720_can_stage_brand_group_file(
   p_storage_path text,p_user_id uuid
