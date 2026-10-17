@@ -298,8 +298,7 @@ export function useEventCoverVideoUpload(
       setStage({ phase: "ack_pending", percent: 0 });
     } else if (["source_uploaded", "processing_queued", "processing"].includes(next.status)) {
       setStage({
-        phase: "processing",
-        percent: next.progressKind === "determinate" ? next.progressPercent : null,
+        phase: "processing", percent: next.progressKind === "determinate" ? next.progressPercent : null,
         timing: coverVideoProcessingTiming(next.sourceUploadedAt),
       });
     } else if (["failed", "cancelled", "superseded"].includes(next.status)) {
