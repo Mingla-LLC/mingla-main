@@ -1504,7 +1504,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "700",
     letterSpacing: -0.2,
-    lineHeight: 30,
     marginTop: 4,
   },
   acquisitionBody: {

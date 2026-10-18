@@ -777,7 +777,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   momTop: { flexDirection: "row", alignItems: "baseline", gap: 8 },
-  momCount: { fontSize: 40, fontWeight: "900", letterSpacing: -1.5, lineHeight: 42 },
+  momCount: { fontSize: 40, fontWeight: "900", letterSpacing: -1.5 },
   momLabel: { fontSize: 14, fontWeight: "700" },
   momSub: { fontSize: 12, fontWeight: "600", marginTop: 4 },
   meterTrack: { height: 8, borderRadius: 999, marginTop: 14, overflow: "hidden" },

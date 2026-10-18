@@ -373,7 +373,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   successCard: { alignItems: "center", paddingVertical: 6 },
-  heading: { fontSize: 17, lineHeight: 22, fontWeight: "900", letterSpacing: -0.2 },
+  heading: { fontSize: 17, fontWeight: "900", letterSpacing: -0.2 },
   sub: { fontSize: 13, lineHeight: 18, fontWeight: "700", marginTop: 4 },
   presetsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 },
   presetChip: {
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
   errorLine: { fontSize: 13, lineHeight: 18, fontWeight: "700", marginTop: 10 },
   pausedNote: { fontSize: 13, lineHeight: 18, fontWeight: "700" },
   successHeart: { fontSize: 28, marginBottom: 4 },
-  successHeading: { fontSize: 18, lineHeight: 24, fontWeight: "900", marginTop: 12 },
+  successHeading: { fontSize: 18, fontWeight: "900", marginTop: 12 },
   successBody: { fontSize: 13, lineHeight: 19, fontWeight: "700", marginTop: 6, textAlign: "center" },
   previewNote: { fontSize: 12, lineHeight: 16, fontWeight: "600", marginTop: 10, textAlign: "center" },
 });

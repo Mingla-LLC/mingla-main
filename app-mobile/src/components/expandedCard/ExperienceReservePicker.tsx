@@ -648,7 +648,7 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 16,
   },
-  headerTitle: { flex: 1, fontSize: 20, fontWeight: "900", lineHeight: 26 },
+  headerTitle: { flex: 1, fontSize: 20, fontWeight: "900" },
   closeIcon: {
     width: 32,
     height: 32,
