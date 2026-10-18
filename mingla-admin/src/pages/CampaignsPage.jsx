@@ -183,7 +183,7 @@ function hasProviderObjectEvidence(item) {
   });
 }
 
-export function CampaignsPage() {
+export function CampaignsPage({ embedded = false }) {
   const { addToast } = useToast();
   const [adsConsoleEnabled, setAdsConsoleEnabled] = useState(true);
   const [adsConsoleReady, setAdsConsoleReady] = useState(false);
@@ -525,7 +525,7 @@ export function CampaignsPage() {
   if (adsConsoleReady && !adsConsoleEnabled) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Campaigns" />
+        {!embedded && <PageHeader title="Campaigns" />}
         <AlertCard variant="info" title="Ads console is off">
           Campaigns is gated by{" "}
           <code className="text-xs">enable_ads_console</code>. Turn it on in
@@ -548,10 +548,13 @@ export function CampaignsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Campaigns"
-        description="Everything is created paused — launching is the explicit act that starts spend. Provider spend feeds enforce the frozen account-currency cap and end date; unresolved or stale spend pauses delivery for safety."
-        actions={
+      {embedded ? (
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <p className="max-w-[72ch] text-sm text-[var(--color-text-secondary)]">
+            Everything is created paused. Launching is the explicit act that
+            starts spend; unresolved or stale provider spend pauses delivery for
+            safety.
+          </p>
           <div className="flex gap-2">
             <Button
               variant="secondary"
@@ -572,8 +575,35 @@ export function CampaignsPage() {
               New campaign
             </Button>
           </div>
-        }
-      />
+        </div>
+      ) : (
+        <PageHeader
+          title="Campaigns"
+          description="Everything is created paused — launching is the explicit act that starts spend. Provider spend feeds enforce the frozen account-currency cap and end date; unresolved or stale spend pauses delivery for safety."
+          actions={
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={RefreshCw}
+                loading={rowBusy.all === "sync"}
+                onClick={() => handleSync()}
+              >
+                Sync all
+              </Button>
+              <Button
+                size="sm"
+                icon={Rocket}
+                onClick={() => {
+                  window.location.hash = "#/campaign-builder";
+                }}
+              >
+                New campaign
+              </Button>
+            </div>
+          }
+        />
+      )}
       <SectionCard
         title="Host plans awaiting staff review"
         subtitle="The first three campaigns for each Host, plus flagged plans, stop here before any provider object is created. Funds are held, not spent."

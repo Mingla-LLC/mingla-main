@@ -1,9 +1,10 @@
 /**
  * ISSUE-864 WP4 [Full Rooms Ad Engine] — the Campaign Builder wizard.
  *
- * Spine (SPEC A4.0(1), supersedes A2/A3 order): lane → preflight → goal(s,
- * multi-select) → destination → audience → budget & schedule → creative →
- * copy → preview & policy pre-check → review & create. The CHANNEL PICKER IS
+ * v1.4 five-stage spine: promote → audience → budget & dates → creative &
+ * copy → review & create. Provider health, goal and destination are one
+ * coherent Promote stage; creative, copy and policy are one production stage.
+ * The CHANNEL PICKER IS
  * AN OUTPUT of preflight ∩ goal ∩ market ∩ budget (channelPlan.js) — never an
  * operator step; manual narrowing lives in Budget → Advanced.
  *
@@ -86,17 +87,21 @@ import { AlertCard } from "../components/ui/Card";
 import { PageHeader } from "../components/ui/PageHeader";
 
 const STEPS = [
-  { id: "lane", label: "Lane" },
-  { id: "preflight", label: "Channel health" },
-  { id: "goal", label: "Goal" },
-  { id: "destination", label: "Destination" },
-  { id: "audience", label: "Audience" },
-  { id: "budget", label: "Budget" },
-  { id: "creative", label: "Creative" },
-  { id: "copy", label: "Copy" },
-  { id: "policy", label: "Policy check" },
-  { id: "review", label: "Review" },
+  { id: "promote", label: "What are you promoting?" },
+  { id: "audience", label: "Who should see it?" },
+  { id: "budget", label: "Budget and dates" },
+  { id: "creative", label: "Creative and copy" },
+  { id: "review", label: "Review and create" },
 ];
+
+const STEP_ALIASES = {
+  lane: "promote",
+  preflight: "promote",
+  goal: "promote",
+  destination: "promote",
+  copy: "creative",
+  policy: "creative",
+};
 
 const CERTIFICATION_PROVIDERS = new Set([
   "meta",
@@ -122,7 +127,8 @@ function certificationContextFromHash() {
 
 function stepIndexFromHash() {
   const query = window.location.hash.split("?")[1] ?? "";
-  const step = new URLSearchParams(query).get("step");
+  const requested = new URLSearchParams(query).get("step");
+  const step = STEP_ALIASES[requested] ?? requested;
   const index = STEPS.findIndex((s) => s.id === step);
   return index >= 0 ? index : 0;
 }
@@ -767,22 +773,20 @@ export function CampaignBuilderPage() {
   // ── Per-step gate (Next disabled until the step is valid) ──
   const stepValid = (stepId) => {
     switch (stepId) {
-      case "lane":
-        return lane === "consumer";
-      case "preflight":
+      case "promote":
         // ISSUE-986: at least one platform must be healthy AND picked — the
-        // picker can't proceed with an empty channel set.
+        // picker can't proceed with an empty channel set. v1.4 also keeps goal
+        // and deterministic destination in this same Promote stage.
         return (
+          lane === "consumer" &&
           Boolean(preflightRows) &&
           preflightRows.some(
             (r) => r.overall === "green" || r.overall === "amber",
           ) &&
-          effectivePlatforms.length > 0
+          effectivePlatforms.length > 0 &&
+          goalIds.length > 0 &&
+          destinations.length === 1
         );
-      case "goal":
-        return goalIds.length > 0;
-      case "destination":
-        return destinations.length === 1;
       case "audience":
         return validateAudience(audience).length === 0;
       case "budget": {
@@ -818,9 +822,7 @@ export function CampaignBuilderPage() {
         // ONE funded channel can build with this creative — the failing ones are
         // excluded and the build proceeds on the rest (was: every funded channel
         // had to pass, so one reject blocked the whole build).
-        return creativePartition.buildable.length > 0;
-      }
-      case "copy": {
+        if (creativePartition.buildable.length === 0) return false;
         const funded =
           creative.kind === "video"
             ? creativePartition.buildable
@@ -828,11 +830,10 @@ export function CampaignBuilderPage() {
         const validation = validateCopy(copy, funded);
         return (
           funded.every((p) => (validation[p]?.hard ?? []).length === 0) &&
-          copy.primary.trim().length > 0
+          copy.primary.trim().length > 0 &&
+          specialAdCategory !== "CREDIT"
         );
       }
-      case "policy":
-        return specialAdCategory !== "CREDIT";
       default:
         return true;
     }
@@ -842,17 +843,19 @@ export function CampaignBuilderPage() {
     const stepId = STEPS[activeIndex].id;
     if (stepValid(stepId)) return null;
     switch (stepId) {
-      case "preflight":
-        return effectivePlatforms.length === 0 &&
+      case "promote":
+        if (
+          effectivePlatforms.length === 0 &&
           preflightRows?.some(
             (r) => r.overall === "green" || r.overall === "amber",
           )
-          ? "Pick at least one platform to build for."
-          : "No channel can run an ad right now. Fix at least one blocker above to continue.";
-      case "goal":
-        return "Pick at least one goal.";
-      case "destination":
-        return "Pick a page to send people to.";
+        )
+          return "Pick at least one platform to build for.";
+        if (!goalIds.length) return "Pick at least one goal.";
+        if (destinations.length !== 1) {
+          return "Pick one deterministic destination to promote.";
+        }
+        return "No channel can run an ad right now. Fix at least one blocker above to continue.";
       case "budget":
         return "Set a hard cap at or above the campaign budget.";
       case "creative": {
@@ -868,14 +871,32 @@ export function CampaignBuilderPage() {
         if (!creative.validation) return "Validate the creative first.";
         if (!creative.rightsConfirmed)
           return "Confirm the brand's right to use this creative in paid ads.";
-        if (creative.kind === "video") {
+        if (
+          creative.kind === "video" &&
+          creativePartition.buildable.length === 0
+        ) {
           return "Prepare at least one video platform, or fix a failed platform, to continue.";
         }
-        // Has media + validation, but no funded channel can build → every one failed.
-        return "No funded channel can run this creative. Fix a problem above, or add a variant, to build at least one.";
+        if (creativePartition.buildable.length === 0) {
+          return "No funded channel can run this creative. Fix a problem above, or add a variant, to build at least one.";
+        }
+        const funded =
+          creative.kind === "video"
+            ? creativePartition.buildable
+            : allocations.map((allocation) => allocation.platform);
+        const copyValidation = validateCopy(copy, funded);
+        if (
+          !copy.primary.trim() ||
+          funded.some(
+            (platform) => (copyValidation[platform]?.hard ?? []).length > 0,
+          )
+        )
+          return "Fix the copy problems below first.";
+        if (specialAdCategory === "CREDIT") {
+          return "Credit-category campaigns are not supported by this governed flow.";
+        }
+        return "Finish the creative, copy and policy checks.";
       }
-      case "copy":
-        return "Fix the copy problems above first.";
       default:
         return "Finish this step first.";
     }
@@ -886,7 +907,8 @@ export function CampaignBuilderPage() {
     setMaxVisitedIndex((prev) => Math.max(prev, index));
   };
   const jumpToStepId = (stepId) => {
-    const index = STEPS.findIndex((s) => s.id === stepId);
+    const target = STEP_ALIASES[stepId] ?? stepId;
+    const index = STEPS.findIndex((s) => s.id === target);
     if (index >= 0) goTo(index);
   };
 
@@ -1618,7 +1640,10 @@ export function CampaignBuilderPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Campaign Builder" />
+      <PageHeader
+        title="Campaign Builder"
+        description="Five resumable stages produce one immutable, provider-specific plan. Provider objects remain paused until every control gate passes."
+      />
       <Stepper
         steps={STEPS}
         activeIndex={activeIndex}
@@ -1646,44 +1671,74 @@ export function CampaignBuilderPage() {
           remains and the padding around the builder stays balanced. */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
         <div className="bg-[var(--color-background-primary)] border border-[var(--gray-200)] rounded-xl p-5">
-          {stepId === "lane" && <StepLane lane={lane} onLaneChange={setLane} />}
-          {stepId === "preflight" && (
-            <StepPreflight
-              rows={preflightRows}
-              running={preflightRunning}
-              recheckBusy={recheckBusy}
-              onRecheck={(platform) => loadPreflight(platform)}
-              onRecheckAll={() => loadPreflight()}
-              channelRows={channelRows}
-              selectedPlatforms={effectivePlatforms}
-              onTogglePlatform={togglePlatform}
-              complianceExcluded={complianceExcluded}
-              specialAdCategory={specialAdCategory}
-            />
-          )}
-          {stepId === "goal" && (
-            <StepGoal goalIds={goalIds} onGoalsChange={setGoalIds} />
-          )}
-          {stepId === "destination" && (
-            <StepDestination
-              destinations={destinations}
-              onDestinationsChange={setDestinations}
-              platforms={effectivePlatforms}
-              certificationMode={certificationMode}
-              initialAppFamily={
-                certificationMode
-                  ? certificationContext.appKey === "explorer"
-                    ? "explorer_app"
-                    : "host_app"
-                  : null
-              }
-              certificationAppKey={
-                certificationMode ? certificationContext.appKey : null
-              }
-              certificationOs={
-                certificationMode ? certificationContext.os : null
-              }
-            />
+          {stepId === "promote" && (
+            <div className="space-y-8">
+              <section className="space-y-3" aria-labelledby="promote-lane">
+                <h2 id="promote-lane" className="text-base font-semibold">
+                  Advertiser and payer
+                </h2>
+                <StepLane lane={lane} onLaneChange={setLane} />
+              </section>
+              <section
+                className="space-y-3 border-t border-[var(--gray-100)] pt-6"
+                aria-labelledby="promote-channels"
+              >
+                <h2 id="promote-channels" className="text-base font-semibold">
+                  Connected platforms
+                </h2>
+                <StepPreflight
+                  rows={preflightRows}
+                  running={preflightRunning}
+                  recheckBusy={recheckBusy}
+                  onRecheck={(platform) => loadPreflight(platform)}
+                  onRecheckAll={() => loadPreflight()}
+                  channelRows={channelRows}
+                  selectedPlatforms={effectivePlatforms}
+                  onTogglePlatform={togglePlatform}
+                  complianceExcluded={complianceExcluded}
+                  specialAdCategory={specialAdCategory}
+                />
+              </section>
+              <section
+                className="space-y-3 border-t border-[var(--gray-100)] pt-6"
+                aria-labelledby="promote-goal"
+              >
+                <h2 id="promote-goal" className="text-base font-semibold">
+                  Result
+                </h2>
+                <StepGoal goalIds={goalIds} onGoalsChange={setGoalIds} />
+              </section>
+              <section
+                className="space-y-3 border-t border-[var(--gray-100)] pt-6"
+                aria-labelledby="promote-destination"
+              >
+                <h2
+                  id="promote-destination"
+                  className="text-base font-semibold"
+                >
+                  Destination
+                </h2>
+                <StepDestination
+                  destinations={destinations}
+                  onDestinationsChange={setDestinations}
+                  platforms={effectivePlatforms}
+                  certificationMode={certificationMode}
+                  initialAppFamily={
+                    certificationMode
+                      ? certificationContext.appKey === "explorer"
+                        ? "explorer_app"
+                        : "host_app"
+                      : null
+                  }
+                  certificationAppKey={
+                    certificationMode ? certificationContext.appKey : null
+                  }
+                  certificationOs={
+                    certificationMode ? certificationContext.os : null
+                  }
+                />
+              </section>
+            </div>
           )}
           {stepId === "audience" && (
             <StepAudience
@@ -1702,46 +1757,50 @@ export function CampaignBuilderPage() {
             />
           )}
           {stepId === "creative" && (
-            <StepCreative
-              creative={creative}
-              onCreativeChange={setCreative}
-              channelRows={plannedRows}
-              destination={firstDestination}
-              fundedPlatforms={fundedPlatforms}
-              creativeExcluded={creativePartition.excluded}
-              creativeBuildable={creativePartition.buildable}
-              preparationRows={preparationRows}
-              preparationRunningPlatform={preparationRunningPlatform}
-              preparationStopped={preparationStopped}
-              onPrepareVideo={() => runPreparationQueue()}
-              onStopPreparation={stopPreparation}
-              onResumePreparation={() => runPreparationQueue({ resume: true })}
-              onRetryPreparation={retryPreparation}
-              onCheckPreparation={checkPreparation}
-              preparationOnline={preparationOnline}
-            />
-          )}
-          {stepId === "copy" && (
-            <StepCopy
-              copy={copy}
-              onCopyChange={setCopy}
-              channelRows={plannedRows}
-              /* ISSUE-1282: the Google-video (Demand Gen) bespoke long-headline +
-                 business-name fields render ONLY when the creative is a video. */
-              isVideo={creative.kind === "video"}
-            />
-          )}
-          {stepId === "policy" && (
-            <StepPolicy
-              copy={copy}
-              creative={creative}
-              /* ISSUE-987 P3: pass the PICKED set (plannedRows), like every sibling
-                 step, so a deselected/compliance-excluded platform never produces
-                 a stale policy warning for a channel that won't be built. */
-              channelRows={plannedRows}
-              specialAdCategory={specialAdCategory}
-              onSpecialAdCategoryChange={setSpecialAdCategory}
-            />
+            <div className="space-y-8">
+              <StepCreative
+                creative={creative}
+                onCreativeChange={setCreative}
+                channelRows={plannedRows}
+                destination={firstDestination}
+                fundedPlatforms={fundedPlatforms}
+                creativeExcluded={creativePartition.excluded}
+                creativeBuildable={creativePartition.buildable}
+                preparationRows={preparationRows}
+                preparationRunningPlatform={preparationRunningPlatform}
+                preparationStopped={preparationStopped}
+                onPrepareVideo={() => runPreparationQueue()}
+                onStopPreparation={stopPreparation}
+                onResumePreparation={() =>
+                  runPreparationQueue({ resume: true })
+                }
+                onRetryPreparation={retryPreparation}
+                onCheckPreparation={checkPreparation}
+                preparationOnline={preparationOnline}
+              />
+              <section className="border-t border-[var(--gray-100)] pt-6">
+                <StepCopy
+                  copy={copy}
+                  onCopyChange={setCopy}
+                  channelRows={plannedRows}
+                  /* ISSUE-1282: the Google-video (Demand Gen) bespoke long-headline +
+                     business-name fields render ONLY when the creative is a video. */
+                  isVideo={creative.kind === "video"}
+                />
+              </section>
+              <section className="border-t border-[var(--gray-100)] pt-6">
+                <StepPolicy
+                  copy={copy}
+                  creative={creative}
+                  /* ISSUE-987 P3: pass the PICKED set (plannedRows), like every sibling
+                     step, so a deselected/compliance-excluded platform never produces
+                     a stale policy warning for a channel that won't be built. */
+                  channelRows={plannedRows}
+                  specialAdCategory={specialAdCategory}
+                  onSpecialAdCategoryChange={setSpecialAdCategory}
+                />
+              </section>
+            </div>
           )}
           {stepId === "review" && (
             <StepReview

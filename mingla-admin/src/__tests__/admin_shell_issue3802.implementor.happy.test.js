@@ -60,7 +60,7 @@ const MENU = [
   ["Business", ["business-people", "business-brands", "brand-sites", "business-venues", "business-offerings", "claims"]],
   ["Money", ["business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
   ["Explorer app", ["users", "placepool", "launch-cities", "signals", "deck-tuner", "place-intelligence-trial"]],
-  ["Growth", ["ad-engine", "campaign-builder", "campaigns"]],
+  ["Growth", ["ad-engine"]],
   ["Company", ["admin", "careers"]],
   ["System", ["stripe-mode", "api-health", "settings", "agent", "guide"]],
 ];
@@ -75,7 +75,7 @@ const LABELS = {
   "refund-operations": "Refund operations", subscriptions: "Subscriptions", pricing: "Pricing",
   users: "Users", placepool: "Place Pool", "launch-cities": "Launch Cities", signals: "Signal Library",
   "deck-tuner": "Deck tuner", "place-intelligence-trial": "Intelligence Trial",
-  "ad-engine": "Ads console", "campaign-builder": "Campaign Builder", campaigns: "Campaigns",
+  "ad-engine": "Ads",
   admin: "Team and roles", careers: "Careers",
   "stripe-mode": "Stripe mode", "api-health": "API health", settings: "Settings", agent: "My agent", guide: "Guide",
 };
@@ -128,13 +128,15 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
   it("no id twice", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
     assert.equal(new Set(ids).size, ids.length);
-    assert.equal(ids.length, 37);
+    assert.equal(ids.length, 35);
   });
-  it("the menu and the app's pages are the same set (the role Home aside)", () => {
+  it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
     assert.ok(pagesBlock, "App.jsx must define PAGES");
     const pageIds = [...stripComments(pagesBlock[1]).matchAll(/^\s*(?:"([^"]+)"|([A-Za-z][\w]*))\s*:/gm)].map((m) => m[1] || m[2]);
-    assert.deepEqual([...pageIds].sort(), ["home", ...NAV_ITEMS.map((i) => i.id)].sort());
+    // [TEST-MOD-APPROVED #3697] Campaign builder and campaign operations remain
+    // valid deep links beneath the one Ads workspace, not competing sidebar destinations.
+    assert.deepEqual([...pageIds].sort(), ["home", "campaign-builder", "campaigns", ...NAV_ITEMS.map((i) => i.id)].sort());
   });
   it("the role Home group is still put first by lib/access.js, not by the menu list", () => {
     assert.equal(NAV_ITEMS.some((i) => i.id === "home"), false);

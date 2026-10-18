@@ -140,6 +140,17 @@ export async function listCampaigns() {
     .order("created_at", { ascending: false });
 }
 
+/** Creative Library inventory for the unified Admin Ads surface. */
+export async function listAdCreatives() {
+  return supabase
+    .from("ad_creatives")
+    .select(
+      "id,name,kind,status,source_url,poster_url,mp4_master_url,duration_seconds,aspect_ratio,brand_id,created_at,updated_at",
+    )
+    .order("created_at", { ascending: false })
+    .limit(250);
+}
+
 /** The atomic create (everything PAUSED). payload matches admin-ad-create-campaign. */
 export async function createCampaign(payload) {
   const destinationFamily = payload?.destination?.page_type;

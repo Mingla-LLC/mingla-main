@@ -544,13 +544,16 @@ describe("SC-10 create-paused (source assertions)", () => {
     assert.ok(source.includes("mapReviewDetail"), "review_detail renders through the §1.9b cause→fix map");
   });
 
-  it("routes + nav registered; wizard reachable at #/campaign-builder", () => {
+  it("governed Ads routes remain deep-linkable beneath one Ads nav item", () => {
     const app = read(path.join(ADMIN_SRC, "App.jsx"));
     assert.ok(app.includes('"campaign-builder": CampaignBuilderPage'));
     assert.ok(app.includes("campaigns: CampaignsPage"));
     const constants = read(path.join(ADMIN_SRC, "lib/constants.js"));
-    assert.ok(constants.includes('id: "campaign-builder"'));
-    assert.ok(constants.includes('id: "campaigns"'));
+    // [TEST-MOD-APPROVED #3697] v1.4 consolidates the three old Growth links
+    // into one Ads workspace without removing backward-compatible routes.
+    assert.ok(constants.includes('id: "ad-engine"'));
+    assert.ok(!constants.includes('id: "campaign-builder"'));
+    assert.ok(!constants.includes('id: "campaigns"'));
   });
 
   it("the creative step wires admin-ad-creative-upload with the validate action", () => {
