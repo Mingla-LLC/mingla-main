@@ -165,6 +165,28 @@ export async function adPlanAction(payload) {
   return invokeWithRefresh("ad-plan", { body: payload });
 }
 
+/** Mutable server draft. It is never executable and uses optimistic revision. */
+export async function saveAdminAdPlanDraft(payload) {
+  return adPlanAction({
+    action: "save_draft",
+    client_kind: "admin",
+    owner_kind: "mingla",
+    ...payload,
+  });
+}
+
+export async function getAdminAdPlanDraft(draftId) {
+  return adPlanAction({ action: "get_draft", draft_id: draftId });
+}
+
+export async function discardAdminAdPlanDraft(draftId, expectedRevision) {
+  return adPlanAction({
+    action: "discard_draft",
+    draft_id: draftId,
+    expected_revision: expectedRevision,
+  });
+}
+
 export async function loadAdminAdRecoveryQueue() {
   return adPlanAction({ action: "recovery_queue" });
 }

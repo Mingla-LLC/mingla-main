@@ -223,6 +223,36 @@ CREATE TABLE public.ad_plans (
   )
 );
 
+-- Mutable working state lives separately from append-only executable versions.
+-- A client-generated UUID makes the draft deep link stable before a destination
+-- exists; optimistic revision checks in ad-plan prevent two devices from
+-- silently overwriting one another.
+CREATE TABLE public.ad_plan_drafts (
+  id uuid PRIMARY KEY,
+  client_kind text NOT NULL CHECK (client_kind IN ('admin', 'host', 'ari')),
+  owner_kind text NOT NULL CHECK (owner_kind IN ('mingla', 'host')),
+  brand_id uuid NULL REFERENCES public.brands(id) ON DELETE RESTRICT,
+  plan_id uuid NULL REFERENCES public.ad_plans(id) ON DELETE RESTRICT,
+  created_by uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
+  status text NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'consumed', 'discarded')),
+  schema_version integer NOT NULL DEFAULT 1 CHECK (schema_version = 1),
+  revision bigint NOT NULL DEFAULT 1 CHECK (revision > 0),
+  current_step text NOT NULL CHECK (
+    char_length(btrim(current_step)) BETWEEN 1 AND 64
+  ),
+  draft_state jsonb NOT NULL CHECK (
+    jsonb_typeof(draft_state) = 'object'
+    AND octet_length(draft_state::text) <= 524288
+  ),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT ad_plan_drafts_owner_brand_check CHECK (
+    (owner_kind = 'host' AND brand_id IS NOT NULL)
+    OR (owner_kind = 'mingla' AND brand_id IS NULL)
+  )
+);
+
 CREATE TABLE public.ad_plan_versions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   plan_id uuid NOT NULL REFERENCES public.ad_plans(id) ON DELETE RESTRICT,
@@ -485,6 +515,11 @@ CREATE TABLE public.ad_campaign_settlements (
 );
 
 CREATE INDEX ad_plans_brand_updated_idx ON public.ad_plans (brand_id, updated_at DESC);
+CREATE INDEX ad_plan_drafts_actor_updated_idx
+  ON public.ad_plan_drafts (created_by, status, updated_at DESC);
+CREATE INDEX ad_plan_drafts_brand_updated_idx
+  ON public.ad_plan_drafts (brand_id, status, updated_at DESC)
+  WHERE brand_id IS NOT NULL;
 CREATE INDEX ad_plan_versions_plan_created_idx ON public.ad_plan_versions (plan_id, version_number DESC);
 CREATE INDEX ad_plan_provider_allocations_version_idx ON public.ad_plan_provider_allocations (plan_version_id, platform);
 CREATE INDEX ad_plan_targeting_version_idx ON public.ad_plan_targeting_snapshots (plan_version_id, platform);
@@ -533,6 +568,9 @@ $function$;
 
 CREATE TRIGGER ad_plans_set_updated_at
   BEFORE UPDATE ON public.ad_plans
+  FOR EACH ROW EXECUTE FUNCTION public.ad_plan_set_updated_at();
+CREATE TRIGGER ad_plan_drafts_set_updated_at
+  BEFORE UPDATE ON public.ad_plan_drafts
   FOR EACH ROW EXECUTE FUNCTION public.ad_plan_set_updated_at();
 CREATE TRIGGER ad_provider_attempts_set_updated_at
   BEFORE UPDATE ON public.ad_provider_attempts
@@ -2239,6 +2277,7 @@ ALTER TABLE public.ad_status_events
 
 -- Read access follows the aggregate. All writes remain service-role functions.
 ALTER TABLE public.ad_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ad_plan_drafts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ad_plan_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ad_plan_provider_allocations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ad_plan_targeting_snapshots ENABLE ROW LEVEL SECURITY;
@@ -2252,6 +2291,15 @@ ALTER TABLE public.ad_campaign_settlements ENABLE ROW LEVEL SECURITY;
 CREATE POLICY ad_plans_read ON public.ad_plans FOR SELECT TO authenticated USING (
   public.is_admin_user() OR (
     brand_id IS NOT NULL AND public.biz_is_brand_member_for_read_for_caller(brand_id)
+  )
+);
+CREATE POLICY ad_plan_drafts_read ON public.ad_plan_drafts
+FOR SELECT TO authenticated USING (
+  created_by = auth.uid() AND (
+    public.is_admin_user() OR (
+      brand_id IS NOT NULL
+      AND public.biz_is_brand_member_for_read_for_caller(brand_id)
+    )
   )
 );
 CREATE POLICY ad_plan_versions_read ON public.ad_plan_versions FOR SELECT TO authenticated USING (
@@ -2298,21 +2346,21 @@ CREATE POLICY ad_settlements_read ON public.ad_campaign_settlements FOR SELECT T
   ))
 );
 
-REVOKE ALL ON public.ad_plans, public.ad_plan_versions,
+REVOKE ALL ON public.ad_plans, public.ad_plan_drafts, public.ad_plan_versions,
   public.ad_plan_provider_allocations,
   public.ad_plan_targeting_snapshots, public.ad_plan_reviews,
   public.ad_plan_confirmations,
   public.ad_plan_funding_holds, public.ad_credit_hold_allocations,
   public.ad_provider_attempts, public.ad_campaign_settlements
   FROM PUBLIC, anon, authenticated, service_role;
-GRANT SELECT ON public.ad_plans, public.ad_plan_versions,
+GRANT SELECT ON public.ad_plans, public.ad_plan_drafts, public.ad_plan_versions,
   public.ad_plan_provider_allocations,
   public.ad_plan_targeting_snapshots, public.ad_plan_reviews,
   public.ad_plan_confirmations,
   public.ad_plan_funding_holds, public.ad_provider_attempts,
   public.ad_campaign_settlements TO authenticated, service_role;
 GRANT SELECT ON public.ad_credit_hold_allocations TO service_role;
-GRANT ALL ON public.ad_plans, public.ad_plan_versions,
+GRANT ALL ON public.ad_plans, public.ad_plan_drafts, public.ad_plan_versions,
   public.ad_plan_provider_allocations,
   public.ad_plan_targeting_snapshots, public.ad_plan_reviews,
   public.ad_plan_confirmations,
@@ -2386,6 +2434,8 @@ WHERE s.brand_id = a.brand_id;
 
 COMMENT ON TABLE public.ad_plans IS
   'Issue #3697 v1.4 stable ad aggregate shared by Admin, Host and Ari. current_version_id is the only executable version.';
+COMMENT ON TABLE public.ad_plan_drafts IS
+  'Mutable one-second autosave state for Admin, Host and Ari. Deep links bind to id; revision is an optimistic concurrency authority. Drafts are never executable.';
 COMMENT ON TABLE public.ad_plan_versions IS
   'Append-only canonical plan versions. The SHA-256 binds targeting, money, review, confirmation and provider objects.';
 COMMENT ON TABLE public.ad_plan_provider_allocations IS

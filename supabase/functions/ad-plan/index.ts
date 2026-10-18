@@ -60,6 +60,21 @@ type Plan = {
   current_version_id: string | null;
   state: string;
 };
+type Draft = {
+  id: string;
+  client_kind: "admin" | "host" | "ari";
+  owner_kind: "mingla" | "host";
+  brand_id: string | null;
+  plan_id: string | null;
+  created_by: string;
+  status: "active" | "consumed" | "discarded";
+  schema_version: 1;
+  revision: number;
+  current_step: string;
+  draft_state: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
 type Version = {
   id: string;
   plan_id: string;
@@ -235,6 +250,32 @@ async function loadVersion(db: Db, versionId: string): Promise<Version | null> {
   const { data } = await db.from("ad_plan_versions").select("*")
     .eq("id", versionId).maybeSingle();
   return data as Version | null;
+}
+
+async function loadDraft(db: Db, draftId: string): Promise<Draft | null> {
+  if (!UUID_RE.test(draftId)) return null;
+  const { data } = await db.from("ad_plan_drafts").select("*").eq(
+    "id",
+    draftId,
+  ).maybeSingle();
+  return data as Draft | null;
+}
+
+async function canAccessDraftScope(
+  db: Db,
+  user: User,
+  ownerKind: unknown,
+  brandId: string | null,
+  permission: "read" | "plan",
+): Promise<boolean> {
+  if (ownerKind === "mingla") return isActiveAdmin(db, user);
+  if (ownerKind !== "host" || !brandId || !UUID_RE.test(brandId)) return false;
+  const { data, error } = await db.rpc("ad_can_host_action", {
+    p_brand_id: brandId,
+    p_user_id: user.id,
+    p_action: permission,
+  });
+  return !error && data === true;
 }
 
 async function canAccessPlan(
@@ -481,6 +522,151 @@ serve(async (req: Request): Promise<Response> => {
   if (authError || !user) return json({ error: "unauthorized" }, 401);
   const actor = user as User;
   const action = typeof body.action === "string" ? body.action : "";
+
+  if (action === "save_draft") {
+    const draftId = typeof body.draft_id === "string" ? body.draft_id : "";
+    const clientKind = String(body.client_kind ?? "");
+    const ownerKind = String(body.owner_kind ?? "");
+    const brandId = typeof body.brand_id === "string" ? body.brand_id : null;
+    const currentStep = typeof body.current_step === "string"
+      ? body.current_step.trim()
+      : "";
+    const draftState = asRecord(body.draft_state);
+    const expectedRevision = body.expected_revision;
+    const requestedPlanId = body.plan_id === null || body.plan_id === undefined
+      ? null
+      : typeof body.plan_id === "string"
+      ? body.plan_id
+      : "invalid";
+    if (
+      !UUID_RE.test(draftId) ||
+      !["admin", "host", "ari"].includes(clientKind) ||
+      !["mingla", "host"].includes(ownerKind) ||
+      (ownerKind === "host" && (!brandId || !UUID_RE.test(brandId))) ||
+      (ownerKind === "mingla" && brandId !== null) ||
+      currentStep.length < 1 || currentStep.length > 64 ||
+      !draftState || JSON.stringify(draftState).length > 524288 ||
+      !Number.isSafeInteger(expectedRevision) ||
+      Number(expectedRevision) < 0 ||
+      (requestedPlanId !== null && !UUID_RE.test(requestedPlanId))
+    ) {
+      return json(
+        { error: "validation_error", detail: "plan_draft_invalid" },
+        400,
+      );
+    }
+    if (
+      !(await canAccessDraftScope(db, actor, ownerKind, brandId, "plan"))
+    ) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const existing = await loadDraft(db, draftId);
+    if (existing) {
+      if (
+        existing.created_by !== actor.id ||
+        existing.client_kind !== clientKind ||
+        existing.owner_kind !== ownerKind ||
+        existing.brand_id !== brandId
+      ) return json({ error: "forbidden" }, 403);
+      if (
+        existing.status !== "active" ||
+        existing.revision !== expectedRevision
+      ) {
+        return json({
+          error: "draft_conflict",
+          detail: "reload_before_overwriting_newer_draft",
+          draft: existing,
+        }, 409);
+      }
+    } else if (expectedRevision !== 0) {
+      return json({ error: "draft_not_found" }, 404);
+    }
+    if (requestedPlanId) {
+      const plan = await loadPlan(db, requestedPlanId);
+      if (
+        !plan || !(await canAccessPlan(db, actor, plan, "plan")) ||
+        plan.owner_kind !== ownerKind || plan.brand_id !== brandId
+      ) return json({ error: "plan_conflict" }, 409);
+    }
+    if (!existing) {
+      const { data, error } = await db.from("ad_plan_drafts").insert({
+        id: draftId,
+        client_kind: clientKind,
+        owner_kind: ownerKind,
+        brand_id: brandId,
+        plan_id: requestedPlanId,
+        created_by: actor.id,
+        current_step: currentStep,
+        draft_state: draftState,
+        revision: 1,
+      }).select("*").single();
+      if (error) return databaseFailure(error);
+      return json({ ok: true, draft: data }, 201);
+    }
+    const { data, error } = await db.from("ad_plan_drafts").update({
+      current_step: currentStep,
+      draft_state: draftState,
+      plan_id: requestedPlanId ?? existing.plan_id,
+      revision: existing.revision + 1,
+    }).eq("id", draftId).eq("revision", existing.revision).eq(
+      "status",
+      "active",
+    ).select("*").maybeSingle();
+    if (error) return databaseFailure(error);
+    if (!data) {
+      return json({
+        error: "draft_conflict",
+        detail: "reload_before_overwriting_newer_draft",
+        draft: await loadDraft(db, draftId),
+      }, 409);
+    }
+    return json({ ok: true, draft: data });
+  }
+
+  if (action === "get_draft") {
+    const draftId = typeof body.draft_id === "string" ? body.draft_id : "";
+    const draft = await loadDraft(db, draftId);
+    if (!draft || draft.status !== "active") {
+      return json({ error: "draft_not_found" }, 404);
+    }
+    if (
+      draft.created_by !== actor.id ||
+      !(await canAccessDraftScope(
+        db,
+        actor,
+        draft.owner_kind,
+        draft.brand_id,
+        "read",
+      ))
+    ) return json({ error: "forbidden" }, 403);
+    return json({ ok: true, draft });
+  }
+
+  if (action === "discard_draft") {
+    const draftId = typeof body.draft_id === "string" ? body.draft_id : "";
+    const expectedRevision = body.expected_revision;
+    const draft = await loadDraft(db, draftId);
+    if (!draft || draft.status !== "active") {
+      return json({ error: "draft_not_found" }, 404);
+    }
+    if (
+      draft.created_by !== actor.id ||
+      !Number.isSafeInteger(expectedRevision) ||
+      draft.revision !== expectedRevision ||
+      !(await canAccessDraftScope(
+        db,
+        actor,
+        draft.owner_kind,
+        draft.brand_id,
+        "plan",
+      ))
+    ) return json({ error: "draft_conflict" }, 409);
+    const { data, error } = await db.from("ad_plan_drafts").update({
+      status: "discarded",
+      revision: draft.revision + 1,
+    }).eq("id", draft.id).eq("revision", draft.revision).select("*").single();
+    return error ? databaseFailure(error) : json({ ok: true, draft: data });
+  }
 
   if (action === "host_setup") {
     const brandId = typeof body.brand_id === "string" ? body.brand_id : "";

@@ -36,6 +36,7 @@ import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import {
   cancelHostAdPlanBeforeCreate,
   fundHostAdPlan,
+  getHostAdDraft,
   getHostAdPlan,
   hostTargetingSelectionsFromAggregate,
   type HostAdConnection,
@@ -49,9 +50,11 @@ import {
   loadHostAdSetup,
   launchHostAdPlan,
   prepareHostAdPlan,
+  saveHostAdDraft,
   type PreparedHostAdPlan,
   searchHostAdTargeting,
 } from "../../../../src/services/hostAdPlanService";
+import { randomUuid } from "../../../../src/utils/randomId";
 
 const PLATFORM_LABELS: Record<string, string> = {
   meta: "Meta",
@@ -79,6 +82,12 @@ function firstParam(value: string | string[] | undefined): string | null {
 
 function normalizedTargetName(value: string): string {
   return value.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function targetingResultName(result: HostAdTargetingSearchResult): string {
@@ -186,9 +195,23 @@ function ChoiceCard(props: {
 
 export default function HostAdCreateRoute(): React.ReactElement {
   const router = useRouter();
-  const params = useLocalSearchParams<{ plan_id?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    plan_id?: string | string[];
+    draft_id?: string | string[];
+  }>();
   const requestedPlanId = firstParam(params.plan_id);
+  const requestedDraftId = firstParam(params.draft_id);
   const resumedRef = useRef<string | null>(null);
+  const draftIdRef = useRef<string | null>(null);
+  const draftShouldHydrateRef = useRef(false);
+  if (draftIdRef.current === null) {
+    draftIdRef.current = requestedDraftId ?? randomUuid();
+    draftShouldHydrateRef.current = requestedDraftId !== null;
+  }
+  const draftHydrationStartedRef = useRef(false);
+  const draftRevisionRef = useRef(0);
+  const draftPlanIdRef = useRef<string | null>(null);
+  const draftSaveChainRef = useRef<Promise<void>>(Promise.resolve());
   const brand = useCurrentBrand();
   const brandId = brand?.id ?? null;
   const permissions = useHostAdPermissions(brandId);
@@ -234,6 +257,19 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [providerObjectEvidence, setProviderObjectEvidence] = useState(false);
   const [cancelDialogVisible, setCancelDialogVisible] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftSaveStatus, setDraftSaveStatus] = useState<
+    "loading" | "unsaved" | "saving" | "saved" | "conflict" | "error"
+  >("loading");
+
+  useEffect(() => {
+    if (requestedDraftId !== null || draftIdRef.current === null) return;
+    const query = new URLSearchParams({ draft_id: draftIdRef.current });
+    if (requestedPlanId) query.set("plan_id", requestedPlanId);
+    router.replace(
+      `/(tabs)/marketing/ads/create?${query.toString()}` as never,
+    );
+  }, [requestedDraftId, requestedPlanId, router]);
 
   const load = useCallback(async () => {
     if (!brandId || !permissions.canRead) return;
@@ -341,6 +377,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         ),
       );
       setExistingPlanId(aggregate.plan.id);
+      draftPlanIdRef.current = aggregate.plan.id;
       setProviderObjectEvidence(aggregateHasProviderObjectEvidence(aggregate));
     },
     [setup],
@@ -420,6 +457,131 @@ export default function HostAdCreateRoute(): React.ReactElement {
     }
   }, [requestedPlanId, resumePlan, setup]);
 
+  useEffect(() => {
+    if (
+      !setup ||
+      !permissions.canRead ||
+      draftHydrationStartedRef.current ||
+      draftIdRef.current === null
+    ) {
+      return;
+    }
+    draftHydrationStartedRef.current = true;
+    if (!draftShouldHydrateRef.current) {
+      setDraftReady(true);
+      setDraftSaveStatus("unsaved");
+      return;
+    }
+    let mounted = true;
+    void getHostAdDraft(draftIdRef.current)
+      .then((draft) => {
+        if (!mounted) return;
+        if (draft.brand_id !== brandId) {
+          setDraftSaveStatus("error");
+          setError("This draft belongs to another brand.");
+          return;
+        }
+        const state = recordValue(draft.draft_state);
+        if (!state) {
+          setDraftSaveStatus("error");
+          setError("This draft could not be read.");
+          return;
+        }
+        setPage(
+          setup.pages.find((item) => item.id === state.page_id) ?? null,
+        );
+        const connectionIds = Array.isArray(state.connection_ids)
+          ? new Set(state.connection_ids)
+          : new Set();
+        setConnections(
+          setup.connections.filter((item) => connectionIds.has(item.id)),
+        );
+        setCreative(
+          setup.creatives.find((item) => item.id === state.creative_id) ?? null,
+        );
+        if (typeof state.rights_confirmed === "boolean") {
+          setRightsConfirmed(state.rights_confirmed);
+        }
+        if (
+          ["owned", "licensed", "authorized_by_brand"].includes(
+            String(state.rights_basis),
+          )
+        ) {
+          setRightsBasis(
+            state.rights_basis as
+              | "owned"
+              | "licensed"
+              | "authorized_by_brand",
+          );
+        }
+        if (typeof state.ai_generated === "boolean") {
+          setAiGenerated(state.ai_generated);
+        }
+        if (typeof state.name === "string") setName(state.name);
+        if (typeof state.primary_text === "string") {
+          setPrimaryText(state.primary_text);
+        }
+        if (typeof state.headline === "string") setHeadline(state.headline);
+        if (typeof state.countries_text === "string") {
+          setCountriesText(state.countries_text);
+        }
+        if (typeof state.age_min === "string") setAgeMin(state.age_min);
+        if (typeof state.age_max === "string") setAgeMax(state.age_max);
+        if (["all", "men", "women"].includes(String(state.gender))) {
+          setGender(state.gender as "all" | "men" | "women");
+        }
+        if (Array.isArray(state.cities)) {
+          setCities(state.cities as HostAdTargetingCity[]);
+        }
+        if (typeof state.radius_km === "string") setRadiusKm(state.radius_km);
+        if (Array.isArray(state.interests)) {
+          setInterests(state.interests as HostAdTargetingInterest[]);
+        }
+        if (typeof state.daily_amount === "string") {
+          setDailyAmount(state.daily_amount);
+        }
+        if (typeof state.cap_amount === "string") setCapAmount(state.cap_amount);
+        if (typeof state.accept_broader === "boolean") {
+          setAcceptBroader(state.accept_broader);
+        }
+        if (recordValue(state.prepared)) {
+          setPrepared(state.prepared as unknown as PreparedHostAdPlan);
+        }
+        if (typeof state.active_plan_state === "string") {
+          setActivePlanState(state.active_plan_state);
+        }
+        if (typeof state.provider_object_evidence === "boolean") {
+          setProviderObjectEvidence(state.provider_object_evidence);
+        }
+        setExistingPlanId(draft.plan_id);
+        draftPlanIdRef.current = draft.plan_id;
+        draftRevisionRef.current = draft.revision;
+        setDraftReady(true);
+        setDraftSaveStatus("saved");
+      })
+      .catch((cause: unknown) => {
+        if (!mounted) return;
+        const code =
+          cause !== null && typeof cause === "object" && "code" in cause
+            ? String(cause.code)
+            : "";
+        if (code === "draft_not_found") {
+          setDraftReady(true);
+          setDraftSaveStatus("unsaved");
+          return;
+        }
+        setDraftSaveStatus("error");
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "The saved ad draft could not be restored.",
+        );
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [brandId, permissions.canRead, setup]);
+
   const countries = useMemo(
     () => [
       ...new Set(
@@ -464,6 +626,114 @@ export default function HostAdCreateRoute(): React.ReactElement {
                       : capCents < dailyBudgetCents
                         ? "The hard cap must be at least one day of budget."
                         : null;
+
+  const draftSnapshot = useMemo<Record<string, unknown>>(
+    () => ({
+      page_id: page?.id ?? null,
+      connection_ids: connections.map((item) => item.id),
+      creative_id: creative?.id ?? null,
+      rights_confirmed: rightsConfirmed,
+      rights_basis: rightsBasis,
+      ai_generated: aiGenerated,
+      name,
+      primary_text: primaryText,
+      headline,
+      countries_text: countriesText,
+      age_min: ageMin,
+      age_max: ageMax,
+      gender,
+      cities,
+      radius_km: radiusKm,
+      interests,
+      daily_amount: dailyAmount,
+      cap_amount: capAmount,
+      accept_broader: acceptBroader,
+      prepared,
+      active_plan_state: activePlanState,
+      provider_object_evidence: providerObjectEvidence,
+      // Typed LAUNCH is fresh authorization and is intentionally never saved.
+    }),
+    [
+      acceptBroader,
+      activePlanState,
+      ageMax,
+      ageMin,
+      aiGenerated,
+      capAmount,
+      cities,
+      connections,
+      countriesText,
+      creative?.id,
+      dailyAmount,
+      gender,
+      headline,
+      interests,
+      name,
+      page?.id,
+      prepared,
+      primaryText,
+      providerObjectEvidence,
+      radiusKm,
+      rightsBasis,
+      rightsConfirmed,
+    ],
+  );
+
+  const persistDraft = useCallback(
+    (snapshot: Record<string, unknown> = draftSnapshot, step = "form") => {
+      if (
+        !draftReady ||
+        !brandId ||
+        !permissions.canPlan ||
+        draftIdRef.current === null
+      ) {
+        return Promise.resolve();
+      }
+      setDraftSaveStatus("saving");
+      const save = async (): Promise<void> => {
+        try {
+          const draft = await saveHostAdDraft({
+            draftId: draftIdRef.current as string,
+            brandId,
+            expectedRevision: draftRevisionRef.current,
+            currentStep: step,
+            draftState: snapshot,
+            planId: draftPlanIdRef.current ?? existingPlanId,
+          });
+          draftRevisionRef.current = draft.revision;
+          setDraftSaveStatus("saved");
+        } catch (cause) {
+          const code =
+            cause !== null && typeof cause === "object" && "code" in cause
+              ? String(cause.code)
+              : "";
+          setDraftSaveStatus(code === "draft_conflict" ? "conflict" : "error");
+        }
+      };
+      draftSaveChainRef.current = draftSaveChainRef.current
+        .catch(() => undefined)
+        .then(save);
+      return draftSaveChainRef.current;
+    },
+    [
+      brandId,
+      draftReady,
+      draftSnapshot,
+      existingPlanId,
+      permissions.canPlan,
+    ],
+  );
+
+  useEffect(() => {
+    if (!draftReady || !permissions.canPlan) return undefined;
+    setDraftSaveStatus((current) =>
+      current === "saving" ? current : "unsaved",
+    );
+    const timer = setTimeout(() => {
+      void persistDraft();
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [draftReady, draftSnapshot, permissions.canPlan, persistDraft]);
 
   const searchPlatform = (
     kind: "city" | "interest",
@@ -668,6 +938,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
     setError(null);
     setNotice(null);
     try {
+      await persistDraft(draftSnapshot, "review");
       const next = await prepareHostAdPlan({
         brandId,
         existingPlanId,
@@ -692,6 +963,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         aiGenerated,
       });
       setExistingPlanId(next.planId);
+      draftPlanIdRef.current = next.planId;
       setPrepared(next);
       setProviderObjectEvidence(false);
       setActivePlanState(
@@ -906,6 +1178,28 @@ export default function HostAdCreateRoute(): React.ReactElement {
           Pick one public Mingla page, one or more connected platforms and one
           ready video. The exact plan is frozen before funds or provider objects
           can move.
+        </Text>
+
+        <Text
+          style={[
+            styles.draftStatus,
+            (draftSaveStatus === "error" ||
+              draftSaveStatus === "conflict") &&
+              styles.error,
+          ]}
+          accessibilityLiveRegion="polite"
+        >
+          {draftSaveStatus === "loading"
+            ? "Restoring saved draft…"
+            : draftSaveStatus === "saving"
+              ? "Saving…"
+              : draftSaveStatus === "saved"
+                ? "Saved to Mingla"
+                : draftSaveStatus === "conflict"
+                  ? "A newer draft exists. Reopen this ad before editing."
+                  : draftSaveStatus === "error"
+                    ? "Draft save failed. Your on-screen changes remain here."
+                    : "Changes not saved yet"}
         </Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -1703,6 +1997,7 @@ const styles = StyleSheet.create({
   currency: { ...typography.caption, color: textTokens.tertiary },
   title: { ...typography.h1, color: textTokens.primary },
   intro: { ...typography.bodySm, color: textTokens.secondary, lineHeight: 20 },
+  draftStatus: { ...typography.caption, color: textTokens.tertiary },
   error: {
     ...typography.bodySm,
     color: semantic.errorText,

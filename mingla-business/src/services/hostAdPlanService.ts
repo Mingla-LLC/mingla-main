@@ -72,6 +72,18 @@ export type HostAdPlanRow = {
   updated_at: string;
 };
 
+export type HostAdDraft = {
+  id: string;
+  client_kind: "host" | "ari";
+  owner_kind: "host";
+  brand_id: string;
+  plan_id: string | null;
+  revision: number;
+  current_step: string;
+  draft_state: Record<string, unknown>;
+  updated_at: string;
+};
+
 export type HostAdSetup = {
   currency: string;
   pages: HostAdPage[];
@@ -278,6 +290,38 @@ export async function getHostAdPlan(
     action: "get",
     plan_id: planId,
   });
+}
+
+export async function getHostAdDraft(
+  draftId: string,
+): Promise<HostAdDraft> {
+  const result = await invoke<{ draft: HostAdDraft }>("ad-plan", {
+    action: "get_draft",
+    draft_id: draftId,
+  });
+  return result.draft;
+}
+
+export async function saveHostAdDraft(input: {
+  draftId: string;
+  brandId: string;
+  expectedRevision: number;
+  currentStep: string;
+  draftState: Record<string, unknown>;
+  planId?: string | null;
+}): Promise<HostAdDraft> {
+  const result = await invoke<{ draft: HostAdDraft }>("ad-plan", {
+    action: "save_draft",
+    draft_id: input.draftId,
+    client_kind: "host",
+    owner_kind: "host",
+    brand_id: input.brandId,
+    expected_revision: input.expectedRevision,
+    current_step: input.currentStep,
+    draft_state: input.draftState,
+    plan_id: input.planId ?? null,
+  });
+  return result.draft;
 }
 
 const HOST_PLAN_IN_PROGRESS_STATES = new Set([

@@ -12,7 +12,8 @@
  * the builder NEVER invokes the launch/pause action service — Launch lives on
  * #/campaigns (the regression suite greps this file for the action symbol).
  *
- * Drafts are client-state only, guarded by a discard confirm (OD-3).
+ * Mutable work autosaves to a revisioned server draft after one idle second and
+ * at every step navigation. Executable plan versions remain immutable.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -37,10 +38,12 @@ import {
   appCertificationAction,
   checkVideoPreparation,
   createCampaign,
+  getAdminAdPlanDraft,
   getConnection,
   parseEdgeError,
   retryVideoPreparation,
   runPreflight,
+  saveAdminAdPlanDraft,
   startVideoPreparation,
 } from "../services/adEngineService";
 import {
@@ -133,6 +136,35 @@ function stepIndexFromHash() {
   return index >= 0 ? index : 0;
 }
 
+function draftIdFromHash() {
+  const query = window.location.hash.split("?")[1] ?? "";
+  const draftId = new URLSearchParams(query).get("draft");
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    draftId ?? "",
+  )
+    ? draftId
+    : null;
+}
+
+function replaceBuilderHash(draftId, stepId) {
+  const [route, query = ""] = window.location.hash.split("?");
+  const params = new URLSearchParams(query);
+  params.set("draft", draftId);
+  if (stepId) params.set("step", stepId);
+  const nextHash = `${route || "#/campaign-builder"}?${params.toString()}`;
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${window.location.pathname}${window.location.search}${nextHash}`,
+  );
+}
+
+function objectValue(value) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : null;
+}
+
 export function CampaignBuilderPage() {
   const { addToast } = useToast();
   const certificationContext = useMemo(certificationContextFromHash, []);
@@ -157,6 +189,20 @@ export function CampaignBuilderPage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [maxVisitedIndex, setMaxVisitedIndex] = useState(0);
   const [pendingJump, setPendingJump] = useState(null); // discard-confirm target
+  const draftContextRef = useRef(null);
+  if (draftContextRef.current === null) {
+    const existingId = draftIdFromHash();
+    draftContextRef.current = {
+      id: existingId ?? crypto.randomUUID(),
+      shouldHydrate: Boolean(existingId),
+    };
+  }
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftSaveStatus, setDraftSaveStatus] = useState("loading");
+  const draftRevisionRef = useRef(0);
+  const draftPlanIdRef = useRef(null);
+  const draftSaveChainRef = useRef(Promise.resolve());
+  const draftHydrationStartedRef = useRef(false);
 
   // ── Step state ──
   const [lane, setLane] = useState("consumer");
@@ -303,6 +349,210 @@ export function CampaignBuilderPage() {
   // across retries so every (platform × destination) row shares it. Only attached
   // when there is more than one destination — a single-destination build carries
   // no group (NULL), keeping that path byte-identical.
+
+  useEffect(() => {
+    if (draftHydrationStartedRef.current) return;
+    draftHydrationStartedRef.current = true;
+    const context = draftContextRef.current;
+    replaceBuilderHash(context.id, STEPS[activeIndex].id);
+    if (!context.shouldHydrate) {
+      setDraftReady(true);
+      setDraftSaveStatus("unsaved");
+      return;
+    }
+    let mounted = true;
+    getAdminAdPlanDraft(context.id).then(async ({ data, error }) => {
+      if (!mounted) return;
+      if (error) {
+        const parsed = await parseEdgeError(error);
+        if (parsed?.status === 404) {
+          setDraftReady(true);
+          setDraftSaveStatus("unsaved");
+          return;
+        }
+        setDraftSaveStatus("error");
+        addToast({
+          variant: "error",
+          title: "Draft could not be restored",
+          description: String(parsed?.message ?? "Reload and try again."),
+        });
+        return;
+      }
+      const draft = data?.draft;
+      const state = objectValue(draft?.draft_state);
+      if (!state) {
+        setDraftSaveStatus("error");
+        return;
+      }
+      if (["consumer", "business"].includes(state.lane)) setLane(state.lane);
+      if (Array.isArray(state.goal_ids)) setGoalIds(state.goal_ids);
+      if (
+        state.selected_platforms === null ||
+        Array.isArray(state.selected_platforms)
+      ) {
+        setSelectedPlatforms(state.selected_platforms);
+      }
+      if (Array.isArray(state.destinations)) setDestinations(state.destinations);
+      if (objectValue(state.audience)) setAudience(state.audience);
+      if (objectValue(state.budget)) setBudget(state.budget);
+      if (objectValue(state.creative)) {
+        setCreative((current) => ({
+          ...current,
+          ...state.creative,
+          file: null,
+          localPreviewUrl:
+            state.creative.publicUrl ?? state.creative.posterUrl ?? null,
+        }));
+      }
+      if (objectValue(state.copy)) setCopy(state.copy);
+      if (typeof state.special_ad_category === "string") {
+        setSpecialAdCategory(state.special_ad_category);
+      }
+      if (typeof state.name === "string") setName(state.name);
+      if (typeof state.name_touched === "boolean") {
+        setNameTouched(state.name_touched);
+      }
+      if (objectValue(state.preparation_rows)) {
+        setPreparationRows(state.preparation_rows);
+      }
+      if (typeof state.preparation_stopped === "boolean") {
+        setPreparationStopped(state.preparation_stopped);
+      }
+      if (objectValue(state.plan_preview)) setPlanPreview(state.plan_preview);
+      if (objectValue(state.certification_state)) {
+        setCertificationState(state.certification_state);
+      }
+      if (typeof state.certification_approval_reference === "string") {
+        setCertificationApprovalReference(
+          state.certification_approval_reference,
+        );
+      }
+      if (typeof state.broader_accepted === "boolean") {
+        setBroaderAccepted(state.broader_accepted);
+      }
+      if (objectValue(state.create_results)) {
+        setCreateResults(state.create_results);
+      }
+      if (objectValue(state.request_ids)) {
+        requestIdsRef.current = state.request_ids;
+      }
+      const restoredIndex = STEPS.findIndex(
+        (step) => step.id === draft.current_step,
+      );
+      if (restoredIndex >= 0) {
+        setActiveIndex(restoredIndex);
+        setMaxVisitedIndex(
+          Math.max(
+            restoredIndex,
+            Number.isInteger(state.max_visited_index)
+              ? state.max_visited_index
+              : 0,
+          ),
+        );
+        replaceBuilderHash(context.id, STEPS[restoredIndex].id);
+      }
+      draftRevisionRef.current = Number(draft.revision ?? 0);
+      draftPlanIdRef.current = draft.plan_id ?? null;
+      setDraftReady(true);
+      setDraftSaveStatus("saved");
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [activeIndex, addToast]);
+
+  const draftSnapshot = useMemo(
+    () => ({
+      active_step: STEPS[activeIndex].id,
+      max_visited_index: maxVisitedIndex,
+      lane,
+      goal_ids: goalIds,
+      selected_platforms: selectedPlatforms,
+      destinations,
+      audience,
+      budget,
+      creative: {
+        ...creative,
+        file: null,
+        localPreviewUrl: null,
+      },
+      copy,
+      special_ad_category: specialAdCategory,
+      name,
+      name_touched: nameTouched,
+      preparation_rows: preparationRows,
+      preparation_stopped: preparationStopped,
+      plan_preview: planPreview,
+      certification_state: certificationState,
+      certification_approval_reference: certificationApprovalReference,
+      broader_accepted: broaderAccepted,
+      create_results: createResults,
+      request_ids: requestIdsRef.current,
+      // Typed LAUNCH/certification phrases are authorization, not draft data.
+    }),
+    [
+      activeIndex,
+      audience,
+      broaderAccepted,
+      budget,
+      certificationApprovalReference,
+      certificationState,
+      copy,
+      createResults,
+      creative,
+      destinations,
+      goalIds,
+      lane,
+      maxVisitedIndex,
+      name,
+      nameTouched,
+      planPreview,
+      preparationRows,
+      preparationStopped,
+      selectedPlatforms,
+      specialAdCategory,
+    ],
+  );
+
+  const persistDraft = useCallback(
+    (snapshot = draftSnapshot, step = STEPS[activeIndex].id) => {
+      if (!draftReady) return Promise.resolve();
+      setDraftSaveStatus("saving");
+      const save = async () => {
+        const { data, error } = await saveAdminAdPlanDraft({
+          draft_id: draftContextRef.current.id,
+          expected_revision: draftRevisionRef.current,
+          current_step: step,
+          draft_state: { ...snapshot, active_step: step },
+          plan_id: planPreview?.plan_id ?? draftPlanIdRef.current,
+        });
+        if (error) {
+          const parsed = await parseEdgeError(error);
+          setDraftSaveStatus(parsed?.status === 409 ? "conflict" : "error");
+          return;
+        }
+        draftRevisionRef.current = Number(data?.draft?.revision ?? 0);
+        draftPlanIdRef.current = data?.draft?.plan_id ?? draftPlanIdRef.current;
+        setDraftSaveStatus("saved");
+      };
+      draftSaveChainRef.current = draftSaveChainRef.current
+        .catch(() => undefined)
+        .then(save);
+      return draftSaveChainRef.current;
+    },
+    [activeIndex, draftReady, draftSnapshot, planPreview?.plan_id],
+  );
+
+  useEffect(() => {
+    if (!draftReady) return undefined;
+    setDraftSaveStatus((current) =>
+      current === "saving" ? current : "unsaved",
+    );
+    const timer = window.setTimeout(() => {
+      void persistDraft();
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [draftReady, draftSnapshot, persistDraft]);
 
   const dirty = Boolean(
     destinations.length > 0 ||
@@ -903,8 +1153,20 @@ export function CampaignBuilderPage() {
   };
 
   const goTo = (index) => {
+    const nextStep = STEPS[index]?.id;
+    if (!nextStep) return;
+    const nextMaxVisited = Math.max(maxVisitedIndex, index);
+    replaceBuilderHash(draftContextRef.current.id, nextStep);
+    void persistDraft(
+      {
+        ...draftSnapshot,
+        active_step: nextStep,
+        max_visited_index: nextMaxVisited,
+      },
+      nextStep,
+    );
     setActiveIndex(index);
-    setMaxVisitedIndex((prev) => Math.max(prev, index));
+    setMaxVisitedIndex(nextMaxVisited);
   };
   const jumpToStepId = (stepId) => {
     const target = STEP_ALIASES[stepId] ?? stepId;
@@ -983,6 +1245,7 @@ export function CampaignBuilderPage() {
       planId = opened?.plan?.id;
     }
     if (!planId) throw new Error("The server did not return a plan ID.");
+    draftPlanIdRef.current = planId;
 
     const audienceIntent = audienceIntentFromState(audience);
     const platforms = executionAllocations.map((row) => row.platform);
@@ -1643,6 +1906,41 @@ export function CampaignBuilderPage() {
       <PageHeader
         title="Campaign Builder"
         description="Five resumable stages produce one immutable, provider-specific plan. Provider objects remain paused until every control gate passes."
+        actions={
+          <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+            <span aria-live="polite">
+              {draftSaveStatus === "loading"
+                ? "Restoring draft…"
+                : draftSaveStatus === "saving"
+                  ? "Saving…"
+                  : draftSaveStatus === "saved"
+                    ? "Saved to Mingla"
+                    : draftSaveStatus === "conflict"
+                      ? "Newer draft found"
+                      : draftSaveStatus === "error"
+                        ? "Draft save failed"
+                        : "Changes not saved yet"}
+            </span>
+            {draftSaveStatus === "conflict" && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => window.location.reload()}
+              >
+                Reload newer draft
+              </Button>
+            )}
+            {draftSaveStatus === "error" && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => void persistDraft()}
+              >
+                Retry save
+              </Button>
+            )}
+          </div>
+        }
       />
       <Stepper
         steps={STEPS}
@@ -1895,7 +2193,7 @@ export function CampaignBuilderPage() {
         </div>
       </div>
 
-      {/* OD-3 discard confirm (client-state drafts only). */}
+      {/* OD-3 step-back confirm. The server draft remains recoverable. */}
       <Modal
         open={pendingJump !== null}
         onClose={() => setPendingJump(null)}
