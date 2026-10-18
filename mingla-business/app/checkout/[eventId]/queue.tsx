@@ -2,8 +2,8 @@
  * #2879 / #2947 slice 3 — waiting-room screen (buyer web).
  *
  * Reached when ticket-checkout-create answers kind:"queued". Polls status
- * with the device token until admitted (hold clock started). Copy contract:
- * place is device-local; clearing data / switching phones loses the place.
+ * with the device token until admitted (live hold clock) or a terminal
+ * release. Restores cart from the checkout resume payload on refresh.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,7 +23,10 @@ import {
   text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
-import { useCart } from "../../../src/components/checkout/CartContext";
+import {
+  useCart,
+  useCartTotals,
+} from "../../../src/components/checkout/CartContext";
 import {
   readCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
@@ -60,25 +63,58 @@ export default function CheckoutQueueScreen(): React.ReactElement {
     gettingOne?: string;
   }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : "";
-  const { lines, totals, result: cartResult } = useCart();
+  const {
+    lines,
+    setLineQuantity,
+    setBuyer,
+    setEventDateIds,
+  } = useCart();
+  const totals = useCartTotals();
+
+  const [restoreChecked, setRestoreChecked] = useState(false);
+  const [terminalMessage, setTerminalMessage] = useState<string | null>(null);
+
+  const storage = Platform.OS === "web"
+    ? (globalThis as unknown as { sessionStorage?: Storage }).sessionStorage
+    : undefined;
+
+  // Restore cart + buyer from the resume payload before polling (refresh path).
+  useEffect(() => {
+    if (Platform.OS !== "web" || !eventId || restoreChecked) return;
+    const payload = readCheckoutResumePayload(storage, eventId);
+    if (payload !== null && lines.length === 0) {
+      for (const l of payload.lines) {
+        setLineQuantity({
+          ticketTypeId: l.ticketTypeId,
+          ticketName: l.ticketName,
+          unitPrice: l.unitPrice,
+          unitPriceGbp: l.unitPriceGbp,
+          currency: l.currency,
+          isFree: l.isFree,
+          quantity: l.quantity,
+        });
+      }
+      setBuyer(payload.buyer);
+      if (payload.eventDateIds && payload.eventDateIds.length > 0) {
+        setEventDateIds(payload.eventDateIds);
+      }
+    }
+    setRestoreChecked(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount
+  }, [eventId]);
 
   const ticketTypeId = lines[0]?.ticketTypeId ?? "";
   const queueDeviceToken = useMemo(
     () =>
-      Platform.OS === "web"
+      Platform.OS === "web" && ticketTypeId
         ? getOrCreateQueueDeviceToken(ticketTypeId)
         : null,
     [ticketTypeId],
   );
 
-  const storage = Platform.OS === "web"
-    ? (globalThis as unknown as { sessionStorage?: Storage }).sessionStorage
-    : undefined;
   const resume = eventId ? readCheckoutResumePayload(storage, eventId) : null;
-  const checkoutSessionId =
-    cartResult?.checkoutSessionId ?? resume?.checkoutSessionId ?? "";
-  const buyerStatusToken =
-    cartResult?.buyerStatusToken ?? resume?.buyerStatusToken ?? "";
+  const checkoutSessionId = resume?.checkoutSessionId ?? "";
+  const buyerStatusToken = resume?.buyerStatusToken ?? "";
 
   const [aheadOfYou, setAheadOfYou] = useState<number | null>(() => {
     const n = Number(params.ahead);
@@ -110,9 +146,11 @@ export default function CheckoutQueueScreen(): React.ReactElement {
   useEffect(() => {
     if (
       Platform.OS !== "web" ||
+      !restoreChecked ||
       !checkoutSessionId ||
       !buyerStatusToken ||
-      !queueDeviceToken
+      !queueDeviceToken ||
+      terminalMessage !== null
     ) {
       return;
     }
@@ -129,8 +167,30 @@ export default function CheckoutQueueScreen(): React.ReactElement {
           router.replace(`/checkout/${eventId}/confirm` as never);
           return;
         }
-        if (typeof status.holdSecondsRemaining === "number") {
+        if (status.queueReleased === true) {
+          setTerminalMessage(
+            "Your hold was released — the organiser reduced capacity or your place expired. You have not been charged.",
+          );
+          admittedNav.current = true;
+          router.replace(`/checkout/${eventId}/waitlist` as never);
+          return;
+        }
+        // Live hold only: positive remaining seconds (0 = expired).
+        if (
+          status.queueAdmitted === true &&
+          typeof status.holdSecondsRemaining === "number" &&
+          status.holdSecondsRemaining > 0
+        ) {
           onAdmitted();
+          return;
+        }
+        if (
+          status.queueAdmitted === true &&
+          status.holdSecondsRemaining === 0
+        ) {
+          setTerminalMessage(
+            "Your turn expired before checkout finished. You have not been charged — please try again.",
+          );
           return;
         }
         if (typeof status.aheadOfYou === "number") {
@@ -144,8 +204,27 @@ export default function CheckoutQueueScreen(): React.ReactElement {
         if (typeof status.gettingOne === "boolean") {
           setGettingOne(status.gettingOne);
         }
-      } catch {
-        // Keep polling — transient status failures must not eject the guest.
+      } catch (error) {
+        const code =
+          typeof (error as { code?: unknown })?.code === "string"
+            ? (error as { code: string }).code
+            : "";
+        const status =
+          typeof (error as { status?: unknown })?.status === "number"
+            ? (error as { status: number }).status
+            : null;
+        // Permanent refusals — stop polling.
+        if (
+          status === 403 ||
+          status === 404 ||
+          code === "buyer_status_token_invalid" ||
+          code === "checkout_session_not_found" ||
+          code === "checkout_unavailable"
+        ) {
+          setTerminalMessage(
+            "We could not keep your place in the waiting room. You have not been charged — please start checkout again.",
+          );
+        }
       }
     };
     void tick();
@@ -160,7 +239,9 @@ export default function CheckoutQueueScreen(): React.ReactElement {
     eventId,
     onAdmitted,
     queueDeviceToken,
+    restoreChecked,
     router,
+    terminalMessage,
   ]);
 
   void aheadOfYou;
@@ -173,29 +254,37 @@ export default function CheckoutQueueScreen(): React.ReactElement {
       ]}
     >
       <Text style={styles.eyebrow}>Waiting room</Text>
-      <Text style={styles.title}>{statusLine}</Text>
-      <Text style={styles.body}>
-        Estimated wait: {estimatedWait}. Keep this tab open on this device.
-        Your place is saved on this phone. If you clear your browser data or
-        switch to another phone, you lose your place and start again. We will
-        email you when it is your turn.
+      <Text style={styles.title}>
+        {terminalMessage ? "Place ended" : statusLine}
       </Text>
-      {gettingOne === true ? (
-        <Text style={styles.promise}>
-          You're getting one — tickets are already held for people ahead of
-          you, and there is still stock for your cart.
-        </Text>
-      ) : null}
-      {gettingOne === false ? (
-        <Text style={styles.warn}>
-          Stock is tight. Stay in line — if tickets run out before your turn,
-          we'll offer the waitlist instead of a false promise.
-        </Text>
-      ) : null}
-      <View style={styles.spinnerRow}>
-        <ActivityIndicator color={accent.warm} />
-        <Text style={styles.spinnerLabel}>Checking your place…</Text>
-      </View>
+      {terminalMessage ? (
+        <Text style={styles.body}>{terminalMessage}</Text>
+      ) : (
+        <>
+          <Text style={styles.body}>
+            Estimated wait: {estimatedWait}. Keep this tab open on this device.
+            Your place is saved on this phone. If you clear your browser data or
+            switch to another phone, you lose your place and start again. We will
+            email you when it is your turn.
+          </Text>
+          {gettingOne === true ? (
+            <Text style={styles.promise}>
+              You're getting one — tickets are already held for people ahead of
+              you, and there is still stock for your cart.
+            </Text>
+          ) : null}
+          {gettingOne === false ? (
+            <Text style={styles.warn}>
+              Stock is tight. Stay in line — if tickets run out before your turn,
+              we'll offer the waitlist instead of a false promise.
+            </Text>
+          ) : null}
+          <View style={styles.spinnerRow}>
+            <ActivityIndicator color={accent.warm} />
+            <Text style={styles.spinnerLabel}>Checking your place…</Text>
+          </View>
+        </>
+      )}
     </View>
   );
 }

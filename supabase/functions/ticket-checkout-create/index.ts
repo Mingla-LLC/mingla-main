@@ -196,6 +196,109 @@ const totalRequestedQuantity = (
   return saw ? total : null;
 };
 
+/** Fail an infinity hold that never joined the queue so stock is released. */
+const failUnregisteredQueueHold = async (
+  // deno-lint-ignore no-explicit-any
+  client: any,
+  checkoutSessionId: string,
+  reason: string,
+): Promise<void> => {
+  await client
+    .from("ticket_checkout_sessions")
+    .update({
+      status: "failed",
+      failure_reason: reason,
+      expires_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", checkoutSessionId)
+    .is("order_id", null);
+};
+
+/**
+ * #2947 slice 3 — idempotent waitlist enrollment (sold-out / released hold).
+ * Honours waitlist_enabled; returns null when the tier is ineligible.
+ */
+const enrollWaitlistOffer = async (
+  // deno-lint-ignore no-explicit-any
+  client: any,
+  args: {
+    eventId: string;
+    ticketTypeId: string;
+    email: string | null;
+    phone: string | null;
+    name: string | null;
+    qty: number;
+    source: "buyer_web" | "buyer_app";
+  },
+): Promise<
+  { waitlistEntryId: string; positionInWaitlist: number } | null
+> => {
+  const { data: eligible } = await client
+    .from("ticket_types")
+    .select("id")
+    .eq("id", args.ticketTypeId)
+    .eq("event_id", args.eventId)
+    .eq("waitlist_enabled", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!eligible) return null;
+
+  const { data: wlInserted, error: wlErr } = await client
+    .from("waitlist_entries")
+    .insert({
+      event_id: args.eventId,
+      ticket_type_id: args.ticketTypeId,
+      email: args.email,
+      phone: args.phone,
+      name: args.name,
+      qty_requested: args.qty,
+      status: "waiting",
+      source: args.source,
+      consent_at: new Date().toISOString(),
+    })
+    .select("id, created_at")
+    .maybeSingle();
+
+  let waitlistEntryId: string | null =
+    typeof wlInserted?.id === "string" ? wlInserted.id : null;
+  let createdAt: string | null =
+    typeof wlInserted?.created_at === "string" ? wlInserted.created_at : null;
+
+  if (wlErr?.code === "23505" || (!wlInserted && wlErr === null)) {
+    let q = client
+      .from("waitlist_entries")
+      .select("id, created_at")
+      .eq("ticket_type_id", args.ticketTypeId)
+      .in("status", ["waiting", "invited"])
+      .limit(1);
+    if (args.email) q = q.ilike("email", args.email);
+    else if (args.phone) q = q.eq("phone", args.phone);
+    const { data: existing } = await q.maybeSingle();
+    waitlistEntryId = typeof existing?.id === "string" ? existing.id : null;
+    createdAt = typeof existing?.created_at === "string"
+      ? existing.created_at
+      : null;
+  } else if (wlErr) {
+    console.error("[ticket-checkout-create] waitlist insert failed", wlErr);
+    return null;
+  }
+
+  if (!waitlistEntryId || !createdAt) return null;
+
+  const { count: aheadCount } = await client
+    .from("waitlist_entries")
+    .select("id", { count: "exact", head: true })
+    .eq("ticket_type_id", args.ticketTypeId)
+    .in("status", ["waiting", "invited"])
+    .lt("created_at", createdAt);
+
+  return {
+    waitlistEntryId,
+    positionInWaitlist: (aheadCount ?? 0) + 1,
+  };
+};
+
 const recordCheckoutRefusal = async (
   // deno-lint-ignore no-explicit-any
   client: any,
@@ -752,6 +855,9 @@ export const createTicketCheckoutCreateHandler = (
     const queueDeviceTokenHash = queueParse.optedIn
       ? await sha256Hex(queueParse.rawDeviceToken)
       : null;
+    // Multi-tier carts stay on the quiet path even if a client sent the
+    // contract: rejecting them would break previously valid purchases on
+    // unarmed events. Queue engagement is single-tier only (#2947).
     let queueEngaged = false;
     if (queueOptIn) {
       const distinctTiers = new Set(
@@ -761,22 +867,21 @@ export const createTicketCheckoutCreateHandler = (
           )
           .filter((id) => id.length > 0),
       );
-      if (distinctTiers.size !== 1) {
-        return jsonResponse({ error: "queue_single_tier_only" }, 400);
-      }
-      const queueTierId = [...distinctTiers][0]!;
-      const { data: engagedData, error: engagedErr } = await supabase.rpc(
-        "issue_2947_queue_engaged",
-        { p_ticket_type_id: queueTierId },
-      );
-      if (engagedErr) {
-        console.error(
-          "[ticket-checkout-create] issue_2947_queue_engaged failed",
-          engagedErr,
+      if (distinctTiers.size === 1) {
+        const queueTierId = [...distinctTiers][0]!;
+        const { data: engagedData, error: engagedErr } = await supabase.rpc(
+          "issue_2947_queue_engaged",
+          { p_ticket_type_id: queueTierId },
         );
-        return jsonResponse({ error: "checkout_session_failed" }, 409);
+        if (engagedErr) {
+          console.error(
+            "[ticket-checkout-create] issue_2947_queue_engaged failed",
+            engagedErr,
+          );
+          return jsonResponse({ error: "checkout_session_failed" }, 409);
+        }
+        queueEngaged = engagedData === true;
       }
-      queueEngaged = engagedData === true;
     }
 
     // issue #2694 — hoisted out of the #2150 branch. TWO possession checks now
@@ -1432,63 +1537,28 @@ export const createTicketCheckoutCreateHandler = (
             409,
           );
         }
-        const { data: wlInserted, error: wlErr } = await supabase
-          .from("waitlist_entries")
-          .insert({
-            event_id: eventId,
-            ticket_type_id: tierId,
-            email: buyerEmail || null,
-            phone: buyerPhoneE164 || null,
-            name: buyerName || null,
-            qty_requested: qty,
-            status: "waiting",
-            source: surface === "native" ? "buyer_app" : "buyer_web",
-            consent_at: new Date().toISOString(),
-          })
-          .select("id, created_at")
-          .maybeSingle();
-        let waitlistEntryId: string | null =
-          typeof wlInserted?.id === "string" ? wlInserted.id : null;
-        if (wlErr?.code === "23505" || (!wlInserted && wlErr === null)) {
-          let q = supabase
-            .from("waitlist_entries")
-            .select("id, created_at")
-            .eq("ticket_type_id", tierId)
-            .in("status", ["waiting", "invited"])
-            .limit(1);
-          if (buyerEmail) q = q.ilike("email", buyerEmail);
-          else if (buyerPhoneE164) q = q.eq("phone", buyerPhoneE164);
-          const { data: existing } = await q.maybeSingle();
-          waitlistEntryId = typeof existing?.id === "string" ? existing.id : null;
-        } else if (wlErr) {
-          console.error(
-            "[ticket-checkout-create] waitlist insert failed",
-            wlErr,
-          );
+        const enrolled = await enrollWaitlistOffer(supabase, {
+          eventId,
+          ticketTypeId: tierId,
+          email: buyerEmail || null,
+          phone: buyerPhoneE164 || null,
+          name: buyerName || null,
+          qty,
+          source: surface === "native" ? "buyer_app" : "buyer_web",
+        });
+        if (enrolled) {
           return jsonResponse(
-            { error: "checkout_session_failed", detail: sessionError?.message },
-            409,
+            buildWaitlistOfferedEnvelope({
+              ticketTypeId: tierId,
+              waitlistEntryId: enrolled.waitlistEntryId,
+              positionInWaitlist: enrolled.positionInWaitlist,
+            }),
           );
         }
-        if (!waitlistEntryId) {
-          return jsonResponse(
-            { error: "checkout_session_failed", detail: sessionError?.message },
-            409,
-          );
-        }
-        const { count: aheadCount } = await supabase
-          .from("waitlist_entries")
-          .select("id", { count: "exact", head: true })
-          .eq("ticket_type_id", tierId)
-          .in("status", ["waiting", "invited"])
-          .lt("created_at", wlInserted?.created_at ?? new Date().toISOString());
-        const positionInWaitlist = (aheadCount ?? 0) + 1;
+        // Waitlist disabled or enrollment failed — keep today's sold-out token.
         return jsonResponse(
-          buildWaitlistOfferedEnvelope({
-            ticketTypeId: tierId,
-            waitlistEntryId,
-            positionInWaitlist,
-          }),
+          { error: "checkout_session_failed", detail: sessionError?.message },
+          409,
         );
       }
       return jsonResponse(
@@ -1500,129 +1570,6 @@ export const createTicketCheckoutCreateHandler = (
     let session = sessionResult as Record<string, unknown>;
     const checkoutSessionId = String(session.checkoutSessionId ?? "");
     let checkoutV2Fingerprint: string | null = null;
-
-    // #2947 slice 3 — engaged + opted-in ⇒ join the room. Still waiting ⇒
-    // HTTP 200 kind:"queued". Already admitted (hold clock started) ⇒ fall
-    // through to payment / free finalize. Released ⇒ waitlist offer.
-    if (queueEngaged && queueDeviceTokenHash && checkoutSessionId) {
-      const { error: tokenErr } = await supabase
-        .from("ticket_checkout_sessions")
-        .update({
-          buyer_status_token_hash: await sha256Hex(buyerStatusToken),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", checkoutSessionId)
-        .is("order_id", null);
-      if (tokenErr) {
-        console.error(
-          "[ticket-checkout-create] queue path status token persist failed",
-          tokenErr,
-        );
-        return jsonResponse({
-          error: "checkout_session_failed",
-          detail: "buyer_status_token_persist_failed",
-        }, 409);
-      }
-      const { data: joinData, error: joinErr } = await supabase.rpc(
-        "issue_2947_queue_join",
-        {
-          p_checkout_session_id: checkoutSessionId,
-          p_device_token_hash: queueDeviceTokenHash,
-        },
-      );
-      // After admission, expires_at is a real timestamp — join raises
-      // issue_2947_session_not_queued_hold. Treat that as "continue".
-      const joinMsg = typeof joinErr?.message === "string" ? joinErr.message : "";
-      const joinPastQueue = joinMsg.includes("issue_2947_session_not_queued_hold");
-      if ((joinErr || !joinData) && !joinPastQueue) {
-        console.error("[ticket-checkout-create] queue join failed", joinErr);
-        return jsonResponse({
-          error: "checkout_session_failed",
-          detail: joinErr?.message ?? "queue_join_failed",
-        }, 409);
-      }
-      if (!joinPastQueue && joinData) {
-        const join = joinData as Record<string, unknown>;
-        if (join.released === true) {
-          // Capacity cut / release while waiting — offer waitlist (rule 2 / 5).
-          // Full drain wiring is slice 4–5; here we only mint the offer row.
-          const tierId = firstTicketTypeId(lines)!;
-          const qty = totalRequestedQuantity(lines) ?? 1;
-          const { data: wlRow } = await supabase
-            .from("waitlist_entries")
-            .insert({
-              event_id: eventId,
-              ticket_type_id: tierId,
-              email: buyerEmail || null,
-              phone: buyerPhoneE164 || null,
-              name: buyerName || null,
-              qty_requested: qty,
-              status: "waiting",
-              source: surface === "native" ? "buyer_app" : "buyer_web",
-              consent_at: new Date().toISOString(),
-            })
-            .select("id")
-            .maybeSingle();
-          if (typeof wlRow?.id === "string") {
-            return jsonResponse(
-              buildWaitlistOfferedEnvelope({
-                ticketTypeId: tierId,
-                waitlistEntryId: wlRow.id,
-                positionInWaitlist: 1,
-              }),
-            );
-          }
-          return jsonResponse({ error: "checkout_unavailable" }, 409);
-        }
-        if (join.admitted !== true) {
-          const tierId = firstTicketTypeId(lines)!;
-          const cartQty = totalRequestedQuantity(lines) ?? 1;
-          const { data: entryRow } = await supabase
-            .from("ticket_queue_entries")
-            .select("id")
-            .eq("checkout_session_id", checkoutSessionId)
-            .maybeSingle();
-          const { data: tierRow } = await supabase
-            .from("ticket_types")
-            .select("quantity_total, held_count")
-            .eq("id", tierId)
-            .maybeSingle();
-          const total = Number(tierRow?.quantity_total ?? 0);
-          const held = Number(tierRow?.held_count ?? 0);
-          const remainingAtJoin = Math.max(total - held, 0);
-          const aheadOfYou = Number(join.aheadOfYou ?? 0);
-          const position = Number(join.queuePosition ?? aheadOfYou + 1);
-          const { data: limitsRows } = await supabase.rpc(
-            "issue_2947_queue_tier_limits",
-            { p_ticket_type_id: tierId },
-          );
-          const limits = Array.isArray(limitsRows) ? limitsRows[0] : limitsRows;
-          const rate = Number(
-            (limits as Record<string, unknown> | null)
-              ?.admission_rate_per_sec ?? 1,
-          );
-          return jsonResponse(
-            buildQueuedEnvelope({
-              checkoutSessionId,
-              queueEntryId: typeof entryRow?.id === "string"
-                ? entryRow.id
-                : checkoutSessionId,
-              position,
-              aheadOfYou,
-              remainingAtJoin,
-              gettingOne: computeGettingOne(
-                aheadOfYou,
-                cartQty,
-                remainingAtJoin,
-              ),
-              estimatedWaitSeconds: estimatedWaitSeconds(aheadOfYou, rate),
-              buyerStatusToken,
-            }),
-          );
-        }
-        // admitted === true → fall through (clock started).
-      }
-    }
 
     if (intakeBody.length > 0) {
       const intakeUploadSessionId = resolveIntakeUploadSessionId(
@@ -1799,6 +1746,144 @@ export const createTicketCheckoutCreateHandler = (
         subtotalCents: bound.totalCents,
         installmentSchedule: bound.installmentSchedule,
       };
+    }
+
+    // #2947 slice 3 — after intake + v2 contract bind, join the room.
+    // Still waiting ⇒ HTTP 200 kind:"queued". Admitted ⇒ fall through.
+    // Released / duplicate ⇒ waitlist or checkout_in_progress; unregistered
+    // holds are failed so infinity stock is not stranded.
+    if (queueEngaged && queueDeviceTokenHash && checkoutSessionId) {
+      const { error: tokenErr } = await supabase
+        .from("ticket_checkout_sessions")
+        .update({
+          buyer_status_token_hash: await sha256Hex(buyerStatusToken),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", checkoutSessionId)
+        .is("order_id", null);
+      if (tokenErr) {
+        console.error(
+          "[ticket-checkout-create] queue path status token persist failed",
+          tokenErr,
+        );
+        await failUnregisteredQueueHold(
+          supabase,
+          checkoutSessionId,
+          "buyer_status_token_persist_failed",
+        );
+        return jsonResponse({
+          error: "checkout_session_failed",
+          detail: "buyer_status_token_persist_failed",
+        }, 409);
+      }
+      const { data: joinData, error: joinErr } = await supabase.rpc(
+        "issue_2947_queue_join",
+        {
+          p_checkout_session_id: checkoutSessionId,
+          p_device_token_hash: queueDeviceTokenHash,
+        },
+      );
+      const joinMsg = typeof joinErr?.message === "string" ? joinErr.message : "";
+      const joinPastQueue = joinMsg.includes(
+        "issue_2947_session_not_queued_hold",
+      );
+      if ((joinErr || !joinData) && !joinPastQueue) {
+        console.error("[ticket-checkout-create] queue join failed", joinErr);
+        await failUnregisteredQueueHold(
+          supabase,
+          checkoutSessionId,
+          joinErr?.message ?? "queue_join_failed",
+        );
+        return jsonResponse({
+          error: "checkout_session_failed",
+          detail: joinErr?.message ?? "queue_join_failed",
+        }, 409);
+      }
+      if (!joinPastQueue && joinData) {
+        const join = joinData as Record<string, unknown>;
+        if (join.duplicate === true) {
+          // Same device already waiting on another hold — release this one.
+          await failUnregisteredQueueHold(
+            supabase,
+            checkoutSessionId,
+            "queue_duplicate_device",
+          );
+          return jsonResponse({ error: "checkout_in_progress" }, 409);
+        }
+        if (join.released === true) {
+          const tierId = firstTicketTypeId(lines)!;
+          const qty = totalRequestedQuantity(lines) ?? 1;
+          const enrolled = await enrollWaitlistOffer(supabase, {
+            eventId,
+            ticketTypeId: tierId,
+            email: buyerEmail || null,
+            phone: buyerPhoneE164 || null,
+            name: buyerName || null,
+            qty,
+            source: surface === "native" ? "buyer_app" : "buyer_web",
+          });
+          if (enrolled) {
+            return jsonResponse(
+              buildWaitlistOfferedEnvelope({
+                ticketTypeId: tierId,
+                waitlistEntryId: enrolled.waitlistEntryId,
+                positionInWaitlist: enrolled.positionInWaitlist,
+              }),
+            );
+          }
+          return jsonResponse({ error: "checkout_unavailable" }, 409);
+        }
+        if (join.admitted !== true) {
+          const tierId = firstTicketTypeId(lines)!;
+          const cartQty = totalRequestedQuantity(lines) ?? 1;
+          const { data: entryRow } = await supabase
+            .from("ticket_queue_entries")
+            .select("id")
+            .eq("checkout_session_id", checkoutSessionId)
+            .maybeSingle();
+          const { data: tierRow } = await supabase
+            .from("ticket_types")
+            .select("quantity_total, sold_count, held_count")
+            .eq("id", tierId)
+            .maybeSingle();
+          const total = Number(tierRow?.quantity_total ?? 0);
+          const sold = Number(tierRow?.sold_count ?? 0);
+          const held = Number(tierRow?.held_count ?? 0);
+          // remaining AFTER this hold is already counted in held_count.
+          // gettingOne uses the queue RPC's guarantee when present; otherwise
+          // ahead + cart vs remaining-at-join including this hold.
+          const remainingAtJoin = Math.max(total - sold - held + cartQty, 0);
+          const aheadOfYou = Number(join.aheadOfYou ?? 0);
+          const position = Number(join.queuePosition ?? aheadOfYou + 1);
+          const { data: limitsRows } = await supabase.rpc(
+            "issue_2947_queue_tier_limits",
+            { p_ticket_type_id: tierId },
+          );
+          const limits = Array.isArray(limitsRows) ? limitsRows[0] : limitsRows;
+          const rate = Number(
+            (limits as Record<string, unknown> | null)
+              ?.admission_rate_per_sec ?? 1,
+          );
+          const gettingOne = typeof join.gettingOne === "boolean"
+            ? join.gettingOne
+            : computeGettingOne(aheadOfYou, cartQty, remainingAtJoin);
+          return jsonResponse(
+            buildQueuedEnvelope({
+              checkoutSessionId,
+              queueEntryId: typeof entryRow?.id === "string"
+                ? entryRow.id
+                : checkoutSessionId,
+              position,
+              aheadOfYou,
+              remainingAtJoin,
+              gettingOne,
+              estimatedWaitSeconds: estimatedWaitSeconds(aheadOfYou, rate),
+              buyerStatusToken,
+            }),
+          );
+        }
+        // admitted === true → fall through (clock started).
+      }
     }
 
     // ===================================================================

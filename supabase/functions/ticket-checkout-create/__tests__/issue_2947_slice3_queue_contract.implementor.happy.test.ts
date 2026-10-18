@@ -44,13 +44,14 @@ Deno.test("#2947 slice3 implementor: status additive queue fields + hashed token
   assertStringIncludes(STATUS_SRC, "queuePosition");
   assertStringIncludes(STATUS_SRC, "holdSecondsRemaining");
   assertStringIncludes(STATUS_SRC, "sha256Hex(queueDeviceToken)");
-  // Status must not put expires_at onto the wire for the no-order path.
-  const noOrderBlock = STATUS_SRC.slice(
-    STATUS_SRC.indexOf("if (!orderId)"),
-    STATUS_SRC.indexOf("if (!orderId)") + 1200,
+  assertStringIncludes(STATUS_SRC, '.eq("checkout_session_id", checkoutSessionId)');
+  // Response body must not carry expires_at / expiresAt keys.
+  const returnBlock = STATUS_SRC.slice(
+    STATUS_SRC.indexOf("return jsonResponse({\n      checkoutSessionId,\n      status: sessionStatus,\n      order: null,"),
   );
-  assert(!noOrderBlock.includes('"expires_at"'));
-  assert(!noOrderBlock.includes('"expiresAt"'));
+  const firstReturn = returnBlock.slice(0, 280);
+  assert(!firstReturn.includes("expires_at"));
+  assert(!firstReturn.includes("expiresAt"));
 });
 
 Deno.test("#2947 slice3 implementor: queued envelope contract", () => {

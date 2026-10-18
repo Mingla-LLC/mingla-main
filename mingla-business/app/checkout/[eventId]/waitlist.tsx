@@ -28,7 +28,8 @@ export default function CheckoutWaitlistScreen(): React.ReactElement {
   }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : "";
   const position = Number(params.position);
-  const { data: event } = usePublicEventById(eventId || null);
+  const { data: detail } = usePublicEventById(eventId || null);
+  const event = detail?.event ?? null;
 
   const positionLine = Number.isFinite(position) && position > 0
     ? `You're #${position} on the waitlist.`

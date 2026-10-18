@@ -239,6 +239,9 @@ export interface TicketCheckoutStatusResult {
   aheadOfYou?: number | null;
   gettingOne?: boolean | null;
   holdSecondsRemaining?: number | null;
+  queueAdmitted?: boolean;
+  queueReleased?: boolean;
+  releaseReason?: string | null;
 }
 
 /**

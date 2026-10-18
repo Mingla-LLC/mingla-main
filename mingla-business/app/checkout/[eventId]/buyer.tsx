@@ -619,9 +619,10 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           readCheckoutResumePayload(storage, eventId)?.buyerStatusToken ??
             cartResult?.buyerStatusToken ??
             "";
-        // #2879 / #2947 slice 3 — web only opts into the waiting room. Native
-        // 1.1.6 binaries must never receive kind:"queued" (SPEC Q3).
-        const queueOptIn = Platform.OS === "web"
+        // #2879 / #2947 slice 3 — web only, single-tier carts only. Multi-tier
+        // stays on the quiet path; native 1.1.6 must never opt in (SPEC Q3).
+        const distinctTiers = new Set(lines.map((l) => l.ticketTypeId));
+        const queueOptIn = Platform.OS === "web" && distinctTiers.size === 1
           ? queueContractOptInFields(lines[0]?.ticketTypeId, { enabled: true })
           : {};
         const result = await createTicketCheckout({

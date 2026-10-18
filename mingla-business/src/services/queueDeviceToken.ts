@@ -26,6 +26,20 @@ function storageKey(ticketTypeId: string): string {
   return `${STORAGE_PREFIX}${ticketTypeId}`;
 }
 
+/** localStorage access itself can throw SecurityError when blocked. */
+function readLocalStorage(): Storage | null {
+  try {
+    const store =
+      (globalThis as unknown as { localStorage?: Storage }).localStorage;
+    if (!store) return null;
+    // Probe — some browsers throw only on first read/write.
+    void store.length;
+    return store;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Returns a stable device token for this ticket type on this browser, or null
  * when localStorage is unavailable (SSR / native / private mode failures).
@@ -35,10 +49,7 @@ export function getOrCreateQueueDeviceToken(
   storage?: Storage | null,
 ): string | null {
   if (!ticketTypeId || typeof ticketTypeId !== "string") return null;
-  const store = storage ??
-    (typeof globalThis !== "undefined"
-      ? (globalThis as unknown as { localStorage?: Storage }).localStorage
-      : undefined);
+  const store = storage === undefined ? readLocalStorage() : storage;
   if (!store) return null;
   try {
     const existing = store.getItem(storageKey(ticketTypeId));

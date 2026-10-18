@@ -468,10 +468,14 @@ function CheckoutPaymentScreenContent({
           setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
           return;
         }
-        // #2879 / #2947 slice 3 — web only. Native must not opt in (SPEC Q3).
-        const queueOptIn = surface === "web" || surface === "mobile-web"
-          ? queueContractOptInFields(lines[0]?.ticketTypeId, { enabled: true })
-          : {};
+        // #2879 / #2947 slice 3 — web only, single-tier. Multi-tier quiet path;
+        // native must not opt in (SPEC Q3).
+        const distinctTiers = new Set(lines.map((l) => l.ticketTypeId));
+        const queueOptIn =
+          (surface === "web" || surface === "mobile-web") &&
+            distinctTiers.size === 1
+            ? queueContractOptInFields(lines[0]?.ticketTypeId, { enabled: true })
+            : {};
         const checkout = await createTicketCheckout({
           eventId,
           buyer,

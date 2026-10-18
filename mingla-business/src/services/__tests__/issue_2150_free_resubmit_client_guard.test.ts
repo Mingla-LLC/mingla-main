@@ -172,8 +172,13 @@ describe("#2150 buyer.tsx wires the possession round-trip on the free path", () 
 
   test("the token is PERSISTED after the order is confirmed and before the result is recorded", () => {
     const guardAt = source.indexOf("isCompletedFreeOrder(result)");
-    const persistAt = source.indexOf("writeCheckoutResumePayload(storage, eventId, {");
-    const recordAt = source.indexOf("recordResult({");
+    // Scope to the free_completed persist — a queued-path write may appear
+    // earlier for the waiting-room resume payload (#2947 slice 3).
+    const persistAt = source.indexOf(
+      "writeCheckoutResumePayload(storage, eventId, {",
+      guardAt,
+    );
+    const recordAt = source.indexOf("recordResult({", guardAt);
     expect(guardAt).toBeGreaterThan(-1);
     expect(persistAt).toBeGreaterThan(-1);
     expect(recordAt).toBeGreaterThan(-1);
