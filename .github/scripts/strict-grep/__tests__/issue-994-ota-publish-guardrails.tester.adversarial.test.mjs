@@ -337,6 +337,8 @@ const REAL_APP_EXTRA = (posthog) => ({
   // consumer wire shape carries it and EXPECTATIONS.consumer asserts on it.
   // Fake value, real shape. Business cases below override it explicitly.
   EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_live_fakebutwellformed",
+  EXPO_PUBLIC_ONESIGNAL_APP_ID:
+    "4505e476-0000-4000-8000-000000000000",
   GOOGLE_ANDROID_CLIENT_ID: "1691-a.apps.googleusercontent.com",
   GOOGLE_IOS_CLIENT_SECRET: "",
   GOOGLE_PROJECT_ID: "example-project",
@@ -525,6 +527,7 @@ const HEALTHY_ENV = {
     "EXPO_PUBLIC_SENTRY_DSN=https://k@o1.ingest.us.sentry.io/2",
     "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_stub",
     "EXPO_PUBLIC_GIPHY_API_KEY=g_stub",
+    "EXPO_PUBLIC_ONESIGNAL_APP_ID=4505e476-stub",
     "EXPO_PUBLIC_POSTHOG_KEY=phc_stub",
     "EXPO_PUBLIC_MIXPANEL_TOKEN=mx_stub",
     "",
@@ -540,6 +543,7 @@ const HEALTHY_VALUES = {
     "EXPO_PUBLIC_SENTRY_DSN=https://key@o4511136062701568.ingest.us.sentry.io/4511",
     "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_stubvalue123",
     "EXPO_PUBLIC_GIPHY_API_KEY=g_stubvalue1234567890",
+    "EXPO_PUBLIC_ONESIGNAL_APP_ID=4505e476-0000-4000-8000-000000000000",
     "EXPO_PUBLIC_POSTHOG_KEY=phc_stubvalue123",
     "EXPO_PUBLIC_MIXPANEL_TOKEN=mx_stubvalue123",
   ].join("\n"),
@@ -626,6 +630,31 @@ test("A-3 PROOF — a failed pre-flight step never reaches the publish step, bot
       );
     }
   }
+});
+
+test("A-3 PROOF — Host rejects a required EXPO_PUBLIC value stored as EAS Secret", () => {
+  const secretEnv = HEALTHY_ENV.business.replace(
+    "EXPO_PUBLIC_ONESIGNAL_APP_ID=4505e476-stub",
+    "EXPO_PUBLIC_ONESIGNAL_APP_ID=***** (secret)",
+  );
+  const r = drive("business", ["ios", "tester secret visibility"], {
+    STUB_ENVLIST: secretEnv,
+  });
+  assert.notEqual(
+    r.code,
+    0,
+    `a Secret EXPO_PUBLIC_ONESIGNAL_APP_ID must abort before publish:\n${r.out}`,
+  );
+  assert.match(
+    r.out,
+    /EXPO_PUBLIC_ONESIGNAL_APP_ID has EAS Secret visibility/,
+    `the abort must name the exact public variable and unsafe visibility:\n${r.out}`,
+  );
+  assert.doesNotMatch(
+    r.out,
+    /NEVER PUBLISHES/,
+    `the wrapper reached the publish step with a Secret public runtime value:\n${r.out}`,
+  );
 });
 
 test("A-3 PROOF — a failed publish or an unusable publish result never reports success, both wrappers", () => {

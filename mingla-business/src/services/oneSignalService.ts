@@ -19,12 +19,25 @@
  * All push surface is Platform.OS/`_enabled`-guarded: web bundles never
  * import the native module (web export stays buildable — I-PROPOSED-X).
  *
- * Env-driven: no-op (with single warn) if EXPO_PUBLIC_ONESIGNAL_APP_ID missing.
+ * Manifest/env-driven: no-op (with a single warning) if
+ * EXPO_PUBLIC_ONESIGNAL_APP_ID is missing.
  */
 
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 
-const ONESIGNAL_APP_ID = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
+// #3720: EAS Update resolves app.config.js into the served manifest, so `extra`
+// is the runtime-safe authority for an OTA. Keep the static process.env fallback
+// for native builds and local development, but never make an OTA depend only on
+// a compile-time substitution that can disappear when an EAS variable has the
+// wrong visibility.
+const manifestOneSignalAppId = Constants.expoConfig?.extra
+  ?.EXPO_PUBLIC_ONESIGNAL_APP_ID;
+const ONESIGNAL_APP_ID =
+  typeof manifestOneSignalAppId === "string" &&
+  manifestOneSignalAppId.length > 0
+    ? manifestOneSignalAppId
+    : process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
 
 // Defer react-native-onesignal require so web bundles don't blow up at
 // module-load. The package imports native modules that fail to resolve
@@ -59,7 +72,7 @@ export function initializeOneSignal(): void {
   if (_initialized) return;
   if (!_enabled) {
     console.warn(
-      "[OneSignal] env missing — SDK disabled. Set EXPO_PUBLIC_ONESIGNAL_APP_ID as an EAS Secret to enable.",
+      "[OneSignal] env missing — SDK disabled. Set EXPO_PUBLIC_ONESIGNAL_APP_ID as an EAS Sensitive or Plain variable so native builds and OTAs can inline it.",
     );
     return;
   }

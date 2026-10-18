@@ -80,7 +80,11 @@
  *
  *   `business` deliberately EXCLUDES `EXPO_PUBLIC_POSTHOG_KEY`, which on that
  *   app has a committed literal fallback (`app.config.js`) and therefore always
- *   passes. It also excludes `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`: SPEC §3.4-V1
+ *   passes. It directly checks `EXPO_PUBLIC_ONESIGNAL_APP_ID` because #3720's
+ *   physical-device proof found the public id stored with EAS Secret visibility:
+ *   the local OTA bundler could not read it, Host logged "SDK disabled", and the
+ *   prior verifier still reported green. It also excludes
+ *   `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`: SPEC §3.4-V1
  *   made that entry conditional on the variable existing in the EAS production
  *   environment, and the IMPLEMENT-phase read-only check (2026-08-09,
  *   `eas env:list --environment production` in `mingla-business`) found it
@@ -230,6 +234,11 @@ export const EXPECTATIONS = {
       prefix: "pk_live_",
     },
     { name: "EXPO_PUBLIC_GIPHY_API_KEY", required: true, prefix: null },
+    {
+      name: "EXPO_PUBLIC_ONESIGNAL_APP_ID",
+      required: true,
+      prefix: "4505e476-",
+    },
   ],
 };
 
@@ -834,6 +843,25 @@ function selfTest() {
           `pk_live_ prefix; got required=${consumerStripe.required} prefix=${consumerStripe.prefix}`,
       );
     }
+    // 25c (#3720) — Host push is a direct served-manifest tripwire. A Secret
+    // EAS variable is invisible to the local OTA bundler, so the business table
+    // must keep both presence and the canonical app-id prefix measurable.
+    const businessOneSignal = EXPECTATIONS.business.find(
+      (e) => e.name === "EXPO_PUBLIC_ONESIGNAL_APP_ID",
+    );
+    if (!businessOneSignal) {
+      problems.push(
+        "25c business table lost EXPO_PUBLIC_ONESIGNAL_APP_ID — a push-dark Host OTA is no longer measurable",
+      );
+    } else if (
+      businessOneSignal.prefix !== "4505e476-" ||
+      businessOneSignal.required !== true
+    ) {
+      problems.push(
+        "25c business EXPO_PUBLIC_ONESIGNAL_APP_ID must stay required with the canonical " +
+          `4505e476- prefix; got required=${businessOneSignal.required} prefix=${businessOneSignal.prefix}`,
+      );
+    }
   }
 
   // ---- THE REAL WIRE SHAPE (cases 26-34) ----
@@ -862,6 +890,10 @@ function selfTest() {
     // #1733 — app-mobile now emits the payment key into `extra`, so the real
     // consumer shape carries it. Fake value, real shape.
     EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: stripe,
+    // #3720 — Host now emits its public OneSignal app id into `extra`, making
+    // the value directly measurable in the served OTA manifest.
+    EXPO_PUBLIC_ONESIGNAL_APP_ID:
+      "4505e476-0000-4000-8000-000000000000",
     EXPO_PUBLIC_POSTHOG_HOST: "https://us.i.posthog.com",
     GOOGLE_ANDROID_CLIENT_ID: "1691-a.apps.googleusercontent.com",
     GOOGLE_IOS_CLIENT_SECRET: "",
@@ -1086,13 +1118,56 @@ function selfTest() {
     }
   }
 
+  // ---- #3720: the HOST OneSignal tripwire (cases 38-40) ----
+  {
+    const extra = realAppExtra(GOOD_POSTHOG);
+    extra.EXPO_PUBLIC_GIPHY_API_KEY = "fakegiphykeyfakegiphykey";
+    extra.EXPO_PUBLIC_ONESIGNAL_APP_ID = {};
+    const r = evalWire(extra, EXPECTATIONS.business);
+    expect("38 business OneSignal app id is the UNSET SIGNATURE", r.code, 1);
+    expectMsg(
+      "38 business OneSignal app id is the UNSET SIGNATURE",
+      r.messages,
+      "EXPO_PUBLIC_ONESIGNAL_APP_ID",
+    );
+    expectMsg(
+      "38 business OneSignal app id is the UNSET SIGNATURE",
+      r.messages,
+      "UNSET SIGNATURE",
+    );
+  }
+  {
+    const extra = realAppExtra(GOOD_POSTHOG);
+    extra.EXPO_PUBLIC_GIPHY_API_KEY = "fakegiphykeyfakegiphykey";
+    extra.EXPO_PUBLIC_ONESIGNAL_APP_ID =
+      "11111111-0000-4000-8000-000000000000";
+    const r = evalWire(extra, EXPECTATIONS.business);
+    expect("39 business OneSignal app id has the wrong prefix", r.code, 1);
+    expectMsg(
+      "39 business OneSignal app id has the wrong prefix",
+      r.messages,
+      "wrong prefix",
+    );
+  }
+  {
+    const extra = realAppExtra(GOOD_POSTHOG);
+    extra.EXPO_PUBLIC_GIPHY_API_KEY = "fakegiphykeyfakegiphykey";
+    const r = evalWire(extra, EXPECTATIONS.business);
+    expect("40 business OneSignal app id verifies independently", r.code, 0);
+    expectMsg(
+      "40 business OneSignal app id verifies independently",
+      r.messages,
+      "OK EXPO_PUBLIC_ONESIGNAL_APP_ID",
+    );
+  }
+
   if (problems.length) {
     console.error("#994 OTA-MANIFEST-VERIFY self-test FAIL:");
     problems.forEach((p) => console.error("  - " + p));
     process.exit(1);
   }
   console.log(
-    "#994 OTA-MANIFEST-VERIFY self-test PASS (38/38: 1-8 per-key verdicts incl. " +
+    "#994 OTA-MANIFEST-VERIFY self-test PASS (42/42: 1-8 per-key verdicts incl. " +
       "UNSET SIGNATURE first, 9-11 multipart/expo+json body extraction, 12-17 vacuity " +
       "(404, non-JSON, no launchAsset, thin extra, [] and wrong-platform update json), " +
       "18-23 empty table / unparseable / non-array / empty permalink / happy parse / null extra, " +
@@ -1104,7 +1179,9 @@ function selfTest() {
       "V-3 floor applies to the RESOLVED node; " +
       "25b/35-37 (#1733) the CONSUMER PAYMENT tripwire: the table keeps it required at " +
       "pk_live_, the unset signature and a pk_test_ prefix are both caught on app-mobile, and " +
-      "the two consumer tripwires are proven INDEPENDENT — neither masks the other).",
+      "the two consumer tripwires are proven INDEPENDENT — neither masks the other; " +
+      "25c/38-40 (#3720) the HOST ONESIGNAL tripwire stays required at the canonical app-id " +
+      "prefix, and its unset, wrong-app, and healthy served-manifest states are distinct).",
   );
   process.exit(0);
 }
