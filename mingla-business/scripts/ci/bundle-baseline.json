@@ -9,19 +9,19 @@
     "It moves UP only inside a PR that legitimately grew the payload, and the gate makes that growth loud."
   ],
   "measuredOn": {
-    "commit": "8f7e3e2e81e648e1fc2c7daffa16344ddc86df7e",
-    "date": "2026-10-17",
+    "commit": "446dde7c5a62c97e241c3353c8355e553beabf2b",
+    "date": "2026-10-18",
     "platform": "linux",
-    "note": "Written by scripts/ci/bundle-baseline-update.mjs from a measured export of main. Previous: common 2739045 B, eager 3748671 B (growth: common +3,502 B, eager +3,828 B). Do not hand-edit — see the header of orch-1083-initial-bundle-budget.mjs."
+    "note": "Written by scripts/ci/bundle-baseline-update.mjs from a measured export of main. Previous: common 2742547 B, eager 3752499 B (growth: common +9,720 B, eager +9,886 B). Do not hand-edit — see the header of orch-1083-initial-bundle-budget.mjs."
   },
   "common": {
-    "raw": 2742547,
-    "gzip": 715619,
-    "brotli": 528877
+    "raw": 2752267,
+    "gzip": 718446,
+    "brotli": 530903
   },
   "eager": {
-    "raw": 3752499,
-    "gzip": 992899,
-    "brotli": 750291
+    "raw": 3762385,
+    "gzip": 995779,
+    "brotli": 752038
   }
 }
