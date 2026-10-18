@@ -41,6 +41,7 @@ export interface NormalizableImageAsset {
   fileSize?: number | null;
   width?: number | null;
   height?: number | null;
+  duration?: number | null;
 }
 
 const cleanMime = (mime?: string | null): string =>

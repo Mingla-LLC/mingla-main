@@ -1,11 +1,13 @@
 /**
  * ORCH-1119 [trip-day-media-gallery] · SPEC §4.3a
  *
- * tripDayMediaService — direct device upload of a single trip-day media item
- * (image OR video) to the brand/event-keyed `event_covers` bucket. Modeled on
- * experienceStopImageService.ts (F-8) but:
- *   - writes to `event_covers` (image AND video MIME, 30 MB bucket cap) instead
- *     of the images-only `brand_covers`,
+ * tripDayMediaService — upload a single trip-day media item. Images keep the
+ * brand/event-keyed `event_covers` Storage path; videos use the same resumable
+ * Bunny/TUS job lane as Host cover and ad-source videos. This preserves the
+ * ordered many-item trip_days.media model without writing a cover column.
+ *
+ * Image uploads are modeled on experienceStopImageService.ts (F-8):
+ *   - writes image MIME types to `event_covers` (30 MB bucket cap),
  *   - keys 2-segment `{brandId}/{eventId}/trip-day-media/{token}.{ext}` so the
  *     event_covers RLS (foldername[1]=brand_id, foldername[2]=event.id, caller
  *     rank >= event_manager) gates the write,
@@ -13,10 +15,10 @@
  *     (the renderer NEVER auto-detects — every item carries an explicit type,
  *     ORCH-1069/0978 rule).
  *
- * This is the DIRECT upload path (NOT the heavy cover-video transcode pipeline,
- * which writes a single column and cannot back a many-URL gallery — F-7). The
- * raw chosen file is uploaded as-is; the 25 MB byte cap is the practical bound
- * (no client transcode, no duration cap in v1 — OQ-2/OQ-3).
+ * Video uploads use target `trip_day_media`: the pipeline processes and returns
+ * a reusable MP4 URL, while its apply receipt deliberately performs no cover
+ * mutation. The 25 MB item cap remains; the shared one-minute video contract
+ * now applies consistently to trip-day video too.
  *
  * Trips-only + per-day-only. NOT shared with experiences/events (locked scope).
  *
@@ -26,6 +28,20 @@
 
 import { supabase } from "./supabase";
 import { readBrandCoverFileBytes } from "./brandCoverFileReader";
+import {
+  acknowledgeEventCoverVideoSourceUploaded,
+  applyEventCoverVideoJob,
+  createEventCoverVideoUploadIntent,
+  EVENT_COVER_MAX_VIDEO_DURATION_MS,
+  EventCoverVideoProcessingError,
+  type EventCoverVideoStatus,
+  uploadEventCoverVideoSource,
+  waitForEventCoverVideoReady,
+} from "./eventCoverVideoProcessingService";
+import {
+  deletePreparedEventCoverVideoSource,
+  prepareEventCoverVideoSource,
+} from "./eventCoverVideoPreparedSource";
 import {
   BrandCoverError,
   generateBrandCoverPathToken,
@@ -78,7 +94,13 @@ export interface TripDayMediaAssetInput {
   fileSize?: number | null;
   width?: number | null;
   height?: number | null;
+  durationMs?: number | null;
 }
+
+export type TripDayVideoUploadProgress = {
+  phase: "uploading" | "confirming" | "processing";
+  percent: number | null;
+};
 
 const cleanMime = (mime?: string | null): string =>
   typeof mime === "string" ? mime.trim().toLowerCase() : "";
@@ -115,6 +137,163 @@ export const resolveTripDayMediaContentType = (
 
 const isVideoMime = (mime: string): boolean => mime.startsWith("video/");
 
+const newOperationId = (): string => {
+  const cryptoRef = (globalThis as { crypto?: Crypto }).crypto;
+  if (cryptoRef && typeof cryptoRef.randomUUID === "function") {
+    return cryptoRef.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const random = (Math.random() * 16) | 0;
+    const value = char === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+};
+
+const wait = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const acknowledgeTripDayVideo = async (input: {
+  jobId: string;
+  eventId: string;
+  brandId: string;
+}): Promise<EventCoverVideoStatus> => {
+  const deadlineAt = Date.now() + 150_000;
+  let status = await acknowledgeEventCoverVideoSourceUploaded({
+    target: "trip_day_media",
+    jobId: input.jobId,
+    eventId: input.eventId,
+    brandId: input.brandId,
+  });
+  while (status.status === "source_uploading") {
+    if (Date.now() >= deadlineAt) {
+      throw new EventCoverVideoProcessingError(
+        "source_ack_timeout",
+        "We couldn't confirm this video upload. Try again.",
+        { lastStatus: status, phase: "source_uploaded" },
+      );
+    }
+    await wait(2_000);
+    status = await acknowledgeEventCoverVideoSourceUploaded({
+      target: "trip_day_media",
+      jobId: input.jobId,
+      eventId: input.eventId,
+      brandId: input.brandId,
+    });
+  }
+  return status;
+};
+
+const uploadTripDayVideo = async (
+  brandId: string,
+  eventId: string,
+  input: TripDayMediaAssetInput,
+  contentType: string,
+  byteLength: number,
+  onProgress?: (progress: TripDayVideoUploadProgress) => void,
+): Promise<TripDayMedia> => {
+  const durationMs = Math.round(Number(input.durationMs ?? 0));
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    throw new EventCoverVideoProcessingError(
+      "video_duration_unknown",
+      "We couldn't read that video's duration. Choose it again.",
+    );
+  }
+  if (durationMs > EVENT_COVER_MAX_VIDEO_DURATION_MS) {
+    throw new EventCoverVideoProcessingError(
+      "video_duration_over_cap",
+      "Choose a video that is one minute or shorter.",
+    );
+  }
+
+  const operationId = newOperationId();
+  const extension = EXT_BY_MIME[contentType] as "mp4" | "mov" | "webm";
+  const fileName = input.fileName?.trim() ||
+    `trip-day-${operationId}.${extension}`;
+  const prepared = await prepareEventCoverVideoSource({
+    uri: input.uri,
+    bytes: byteLength,
+    durationMs,
+    fileName,
+    mimeType: contentType,
+    operationId,
+  });
+
+  try {
+    const intent = await createEventCoverVideoUploadIntent({
+      target: "trip_day_media",
+      eventId,
+      brandId,
+      applyMode: "published_manual",
+      clientOperationId: operationId,
+      sourceFileName: prepared.fileName,
+      sourceMimeType: prepared.mimeType,
+      sourceExtension: prepared.extension,
+      sourceSha256: prepared.sha256,
+      sourceBytes: prepared.bytes,
+      sourceDurationMs: prepared.durationMs,
+      trimStartMs: 0,
+      trimEndMs: prepared.durationMs,
+    });
+
+    let status: EventCoverVideoStatus;
+    if ("upload" in intent) {
+      onProgress?.({ phase: "uploading", percent: 0 });
+      await uploadEventCoverVideoSource({
+        upload: intent.upload,
+        uri: prepared.uri,
+        bytes: prepared.bytes,
+        jobId: intent.jobId,
+        fileName: prepared.fileName,
+        mimeType: prepared.mimeType,
+        onProgress: (progress) =>
+          onProgress?.({ phase: "uploading", percent: progress.percent }),
+      });
+      onProgress?.({ phase: "confirming", percent: null });
+      status = await acknowledgeTripDayVideo({
+        jobId: intent.jobId,
+        eventId,
+        brandId,
+      });
+    } else {
+      status = intent.status;
+    }
+
+    if (!["ready", "applied"].includes(status.status)) {
+      onProgress?.({
+        phase: "processing",
+        percent: status.progressPercent,
+      });
+      status = await waitForEventCoverVideoReady(intent.jobId, {
+        onStatus: (next) =>
+          onProgress?.({
+            phase: "processing",
+            percent: next.progressPercent,
+          }),
+      });
+    }
+    if (!status.processedUrl) {
+      throw new EventCoverVideoProcessingError(
+        "processed_video_missing",
+        "The video finished processing without a playable copy. Try again.",
+      );
+    }
+    if (status.status !== "applied") {
+      await applyEventCoverVideoJob(
+        status.jobId,
+        status.applicationVersion,
+        status.processedUrl,
+      );
+    }
+    return {
+      url: status.processedUrl,
+      type: "video",
+      provider: "bunny",
+    };
+  } finally {
+    await deletePreparedEventCoverVideoSource(prepared.uri).catch(() => {});
+  }
+};
+
 /**
  * Upload a single trip-day media item. Returns the verified public URL + an
  * explicit `type`. Throws BrandCoverError with user-facing copy on any failure.
@@ -123,6 +302,7 @@ export const uploadTripDayMedia = async (
   brandId: string,
   eventId: string,
   input: TripDayMediaAssetInput,
+  onVideoProgress?: (progress: TripDayVideoUploadProgress) => void,
 ): Promise<TripDayMedia> => {
   const contentType = resolveTripDayMediaContentType(input);
   if (contentType === null) {
@@ -155,6 +335,17 @@ export const uploadTripDayMedia = async (
     throw new BrandCoverError(
       "file_too_large",
       "That file is too large — pick one under 25 MB.",
+    );
+  }
+
+  if (isVideoMime(contentType)) {
+    return await uploadTripDayVideo(
+      brandId,
+      eventId,
+      input,
+      contentType,
+      byteLength,
+      onVideoProgress,
     );
   }
 

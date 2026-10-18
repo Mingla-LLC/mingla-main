@@ -387,7 +387,7 @@ export const handleEventCoverVideoUploadIntent = async (
   }
 
   const targetKind = body.target === "brand" || body.target === "venue" ||
-      body.target === "venue_draft"
+      body.target === "venue_draft" || body.target === "trip_day_media"
     ? body.target
     : "event";
 
@@ -411,7 +411,10 @@ export const handleEventCoverVideoUploadIntent = async (
       detail: "client_operation_id_required",
     }, 426);
   }
-  if (targetKind === "event" && !isValidUuid(eventId)) {
+  if (
+    (targetKind === "event" || targetKind === "trip_day_media") &&
+    !isValidUuid(eventId)
+  ) {
     logWarn(requestId, "event_id_invalid_uuid", { eventId });
     return jsonResponse({
       error: "validation_error",
@@ -566,7 +569,9 @@ export const handleEventCoverVideoUploadIntent = async (
   // event-target keeps the byte-for-byte event_manager gate.
   const allowed = await deps.requireCoverVideoTargetManager(supabase, {
     targetKind,
-    eventId: targetKind === "event" ? eventId as string : null,
+    eventId: targetKind === "event" || targetKind === "trip_day_media"
+      ? eventId as string
+      : null,
     brandId: brandId as string,
     venueId: targetKind === "venue" ? body.venueId as string : null,
     draftOwnerKey: targetKind === "venue_draft"
@@ -608,7 +613,9 @@ export const handleEventCoverVideoUploadIntent = async (
     p_requested_by: userId,
     p_client_operation_id: body.clientOperationId,
     p_target_kind: targetKind,
-    p_event_id: targetKind === "event" ? eventId : null,
+    p_event_id: targetKind === "event" || targetKind === "trip_day_media"
+      ? eventId
+      : null,
     p_brand_id: brandId,
     p_venue_id: targetKind === "venue" ? body.venueId : null,
     p_draft_owner_key: targetKind === "venue_draft"

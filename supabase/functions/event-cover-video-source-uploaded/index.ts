@@ -196,7 +196,7 @@ export const handleEventCoverVideoSourceUploaded = async (
 
   const requestId = safeString(body.clientRequestId) ?? crypto.randomUUID();
   const targetKind = body.target === "brand" || body.target === "venue" ||
-      body.target === "venue_draft"
+      body.target === "venue_draft" || body.target === "trip_day_media"
     ? body.target
     : "event";
   if (!isValidUuid(body.jobId)) {

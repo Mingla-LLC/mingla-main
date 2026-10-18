@@ -57,11 +57,13 @@ import {
   uploadTripDayMedia,
   MAX_TRIP_DAY_MEDIA,
   TRIP_DAY_MEDIA_MAX_BYTES,
+  type TripDayVideoUploadProgress,
 } from "../../services/tripDayMediaService";
 import { BrandCoverError } from "../../utils/brandCoverRules";
 import { normalizeTripDayImage } from "../../utils/normalizeTripDayImage";
 import type { TripDayMedia } from "../../services/tripsService";
 import { EventCoverProviderError } from "../../services/eventCoverProviderError";
+import { readPickedVideoDurationMs } from "../ui/coverPickerDeviceMedia";
 import {
   searchGiphyEventCovers,
   type GiphyCoverSearchResult,
@@ -139,6 +141,8 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
   const remaining = Math.max(0, MAX_TRIP_DAY_MEDIA - currentCount);
   const [activeTab, setActiveTab] = useState<MediaTabId>("library");
   const [uploading, setUploading] = useState(false);
+  const [videoProgress, setVideoProgress] =
+    useState<TripDayVideoUploadProgress | null>(null);
 
   const [query, setQuery] = useState("");
   const [giphyStatus, setGiphyStatus] = useState<ProviderStatus>("idle");
@@ -288,6 +292,7 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
         fileSize?: number | null;
         width?: number | null;
         height?: number | null;
+        duration?: number | null;
       }[];
       if (Platform.OS === "web") {
         const result = await pickBrowserFiles({
@@ -298,8 +303,8 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
         });
         if (result.canceled || result.files.length === 0) return;
         browserFiles = result.files;
-        assets = result.files
-          .map((file) => {
+        assets = (await Promise.all(result.files
+          .map(async (file) => {
             try {
               validateBrowserFile(file.file, {
                 accept: LIBRARY_ACCEPT,
@@ -310,11 +315,14 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
                 fileSize: file.size,
                 mimeType: file.mimeType,
                 uri: file.uri,
+                duration: file.mimeType?.startsWith("video/")
+                  ? await readPickedVideoDurationMs(file.uri)
+                  : null,
               };
             } catch {
               return null;
             }
-          })
+          })))
           .filter((asset): asset is NonNullable<typeof asset> => asset !== null);
         if (assets.length === 0) {
           onShowToast("Choose an image or video under 25 MB.");
@@ -368,6 +376,7 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
                   fileSize: asset.fileSize,
                   width: asset.width,
                   height: asset.height,
+                  duration: asset.duration,
                 });
           const media = await uploadTripDayMedia(brandId, eventId, {
             uri: normalized.uri,
@@ -376,8 +385,10 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
             fileSize: normalized.fileSize,
             width: normalized.width,
             height: normalized.height,
-          });
+            durationMs: normalized.duration,
+          }, setVideoProgress);
           uploaded.push(media);
+          setVideoProgress(null);
         } catch (itemError) {
           if (firstError === null) {
             firstError =
@@ -423,6 +434,7 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
       );
     } finally {
       revokeBrowserPickedFiles(browserFiles);
+      setVideoProgress(null);
       setUploading(false);
     }
   }, [
@@ -553,7 +565,7 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
               <Icon name="grid" size={40} color={textTokens.tertiary} />
               <Text style={styles.libraryHint}>
                 Pick up to {remaining} from your phone — images or videos (up to
-                25 MB each).
+                25 MB each; videos up to one minute).
               </Text>
             </View>
             <Button
@@ -568,6 +580,18 @@ export const TripDayMediaSheet: React.FC<TripDayMediaSheetProps> = ({
                 void pickFromLibrary();
               }}
             />
+            {videoProgress !== null ? (
+              <Text
+                style={styles.uploadProgress}
+                accessibilityLiveRegion="polite"
+              >
+                {videoProgress.phase === "uploading"
+                  ? `Uploading video${videoProgress.percent === null ? "…" : ` · ${videoProgress.percent}%`}`
+                  : videoProgress.phase === "confirming"
+                    ? "Finishing upload…"
+                    : `Processing video${videoProgress.percent === null ? "…" : ` · ${videoProgress.percent}%`}`}
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
@@ -966,6 +990,13 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     lineHeight: typography.bodySm.lineHeight,
     color: textTokens.secondary,
+    textAlign: "center",
+  },
+  uploadProgress: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "600",
+    color: accent.warm,
     textAlign: "center",
   },
   gridWrap: { flex: 1 },

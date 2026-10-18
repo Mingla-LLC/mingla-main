@@ -124,6 +124,21 @@ const readBrowserVideoDurationMs = async (uri: string): Promise<number | null> =
   return result;
 };
 
+/** Shared by other browser video pickers that use the canonical Bunny lane. */
+export const readPickedVideoDurationMs = async (
+  uri: string,
+  providedDurationMs?: number | null,
+): Promise<number | null> => {
+  if (
+    typeof providedDurationMs === "number" &&
+    Number.isFinite(providedDurationMs) &&
+    providedDurationMs > 0
+  ) {
+    return Math.round(providedDurationMs);
+  }
+  return await readBrowserVideoDurationMs(uri);
+};
+
 export const launchCoverImagePicker = async (): Promise<CoverPickerResult> => {
   const result = await pickBrowserFiles({
     accept: "image/jpeg,image/png,image/webp,image/gif",
@@ -143,7 +158,7 @@ export const launchCoverVideoPicker = async (): Promise<CoverPickerResult> => {
   const assets = await Promise.all(
     result.files.map(async (file) =>
       toCoverAsset(file, {
-        duration: await readBrowserVideoDurationMs(file.uri),
+        duration: await readPickedVideoDurationMs(file.uri),
         type: "video",
       }),
     ),

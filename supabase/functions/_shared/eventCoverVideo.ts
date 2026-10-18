@@ -282,7 +282,12 @@ export async function requireBrandCoverManager(
   return { brandId };
 }
 
-export type CoverVideoTargetKind = "event" | "brand" | "venue" | "venue_draft";
+export type CoverVideoTargetKind =
+  | "event"
+  | "brand"
+  | "venue"
+  | "venue_draft"
+  | "trip_day_media";
 
 export type CoverVideoTargetSelector = {
   targetKind: CoverVideoTargetKind;
@@ -298,7 +303,10 @@ export async function requireCoverVideoTargetManager(
   selector: CoverVideoTargetSelector,
   userId: string,
 ): Promise<{ target: CoverVideoTargetSelector } | Response> {
-  if (selector.targetKind === "event") {
+  if (
+    selector.targetKind === "event" ||
+    selector.targetKind === "trip_day_media"
+  ) {
     if (!isValidUuid(selector.eventId)) {
       return jsonResponse({
         error: "validation_error",
@@ -720,6 +728,9 @@ export function mapEventCoverVideoStatus(
     ? job.status as EventCoverVideoJobStatus
     : "processing";
   const stage = stageForStatus(status);
+  if (status === "applied" && job.target_kind === "trip_day_media") {
+    stage.label = "Video ready to add.";
+  }
   // #3173 — a provider progress of ZERO is not progress, it is the absence of
   // progress, and it must never be dressed up as a determinate reading.
   //
@@ -762,7 +773,8 @@ export function mapEventCoverVideoStatus(
     createdAt: job.created_at ?? null,
     eventId: job.event_id ?? null,
     targetKind: job.target_kind === "brand" || job.target_kind === "venue" ||
-        job.target_kind === "venue_draft"
+        job.target_kind === "venue_draft" ||
+        job.target_kind === "trip_day_media"
       ? job.target_kind
       : "event",
     venueId: job.venue_id ?? null,
