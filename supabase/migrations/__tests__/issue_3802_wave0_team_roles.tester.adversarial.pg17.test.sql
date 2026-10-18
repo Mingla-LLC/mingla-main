@@ -301,7 +301,9 @@ begin
     (select string_agg(n.nspname || '.' || p.proname, ',' order by n.nspname, p.proname)
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where p.prokind in ('f', 'p') and n.nspname !~ '^pg_temp' and p.prosrc ~* 'admin_team_members'),
-    'public.admin_team_activate_self,public.admin_team_directory,public.admin_team_guard_exclusive,public.admin_team_list,public.admin_team_my_access,public.admin_team_role,public.admin_team_set_member');
+    -- [TEST-MOD-APPROVED #3720] Wave 6 adds two read-only membership checks:
+    -- the shared active-member predicate and the guarded Data room audit RPC.
+    'public.admin_team_activate_self,public.admin_team_directory,public.admin_team_guard_exclusive,public.admin_team_list,public.admin_team_my_access,public.admin_team_role,public.admin_team_set_member,public.issue_3720_active_team_member,public.issue_3720_log_data_room_access');
   perform pg_temp.t3802x_check('X-1', 'no function builds a statement on the full-admin table at run time',
     (select count(*)::text from pg_proc p
       where p.prokind in ('f', 'p') and p.prolang = (select oid from pg_language where lanname = 'plpgsql')
