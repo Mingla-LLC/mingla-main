@@ -1,13 +1,13 @@
 import type { EventCoverMediaType } from "../store/draftEventStore";
 
 export const EVENT_COVER_MAX_BYTES = 30 * 1024 * 1024;
-export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 15_000;
-// issue #3040 — how far above the 15-second ceiling a WEB source clip may run
-// and still be accepted. A phone "15 second" clip is 450 frames at 29.97 fps,
-// which is 15.015 s, so a strict ceiling refuses every one of them, and the
+export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 60_000;
+// issue #3040 — how far above the one-minute ceiling a WEB source clip may run
+// and still be accepted. A nominal 60-second export can run a few frames over,
+// so a strict ceiling refuses it even though the browser has no trimmer. Within
 // browser has no trimmer to send the host to. Within this tolerance the web
 // picker declares the clip as exactly the ceiling; the server, the edge
-// functions and the database keep their strict 15000 ms rule and never see a
+// functions and the database keep their strict 60000 ms rule and never see a
 // larger number. Native is unaffected: an over-ceiling clip goes to the trimmer.
 export const EVENT_COVER_WEB_SOURCE_DURATION_TOLERANCE_MS = 500;
 
@@ -346,7 +346,7 @@ export const validateEventCoverAsset = (input: {
   if (mediaType === null) {
     throw new EventCoverMediaError(
       "unsupported_type",
-      "Choose a JPG, PNG, GIF, MP4, MOV, or WebM file up to 30 MB and 15 seconds.",
+      "Choose a JPG, PNG, GIF, MP4, MOV, or WebM file up to 30 MB and 1 minute.",
     );
   }
   if (
@@ -361,7 +361,7 @@ export const validateEventCoverAsset = (input: {
   if (mediaType === "video" && typeof input.durationMs !== "number") {
     throw new EventCoverMediaError(
       "video_duration_unknown",
-      "Choose a 15-second MP4, MOV, or WebM video.",
+      "Choose an MP4, MOV, or WebM video up to 1 minute long.",
     );
   }
   if (
@@ -371,7 +371,7 @@ export const validateEventCoverAsset = (input: {
   ) {
     throw new EventCoverMediaError(
       "video_too_long",
-      "Choose a video that is 15 seconds or shorter.",
+      "Choose a video that is 1 minute or shorter.",
     );
   }
   return mediaType;

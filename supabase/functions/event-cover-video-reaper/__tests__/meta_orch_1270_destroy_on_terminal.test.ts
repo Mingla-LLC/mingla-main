@@ -54,6 +54,9 @@ const makeSupabaseStub = (
     // ready work is returned for reconciliation but never for destruction.
     rpc: (name: string) => {
       rpcCalls.push(name);
+      if (name === "cover_video_record_processing_slo_breaches") {
+        return Promise.resolve({ data: [], error: null });
+      }
       if (name !== "cover_video_claim_reconcile_jobs") {
         throw new Error(`unexpected rpc ${name}`);
       }

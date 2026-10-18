@@ -19,7 +19,7 @@ export const FINAL_MAX_BYTES = Number.parseInt(
   10,
 );
 export const MAX_DURATION_MS = Number.parseInt(
-  Deno.env.get("EVENT_COVER_MAX_DURATION_MS") ?? "15000",
+  Deno.env.get("EVENT_COVER_MAX_DURATION_MS") ?? "60000",
   10,
 );
 export const MAX_SOURCE_VIDEO_BYTES = Number.parseInt(
@@ -27,7 +27,7 @@ export const MAX_SOURCE_VIDEO_BYTES = Number.parseInt(
   10,
 );
 export const MAX_SOURCE_VIDEO_DURATION_MS = Number.parseInt(
-  Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS") ?? "15000",
+  Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS") ?? "60000",
   10,
 );
 
@@ -620,6 +620,7 @@ type EventCoverVideoJobRow = {
   failure_message?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  source_uploaded_at?: string | null;
   applied_at?: string | null;
   cancelled_at?: string | null;
   provider_payload?: unknown;
@@ -782,7 +783,8 @@ export function mapEventCoverVideoStatus(
     processedUrl: job.processed_url ?? null,
     progressKind: trustedProgress === null ? stage.progressKind : "determinate",
     progressPercent: trustedProgress,
-    sourceUploadedAt: sourceUploadedAtFromPayload(job.provider_payload),
+    sourceUploadedAt: job.source_uploaded_at ??
+      sourceUploadedAtFromPayload(job.provider_payload),
     stageLabel: stage.label,
     status,
     updatedAt: job.updated_at ?? null,
