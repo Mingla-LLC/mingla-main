@@ -82,6 +82,7 @@ import {
   ticketCheckoutProviderHandoff,
 } from "../../../src/services/ticketCheckoutService";
 import type { TicketCheckoutProviderHandoff } from "../../../src/services/ticketCheckoutService";
+import { queueContractOptInFields } from "../../../src/services/queueDeviceToken";
 import { mixpanelService } from "../../../src/services/mixpanelService";
 // ORCH-1192 — native `checkout_started` (mirrors web web_checkout_started),
 // fired before purchase_completed. No-op on web / when key absent / opted out.
@@ -467,6 +468,10 @@ function CheckoutPaymentScreenContent({
           setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
           return;
         }
+        // #2879 / #2947 slice 3 — web only. Native must not opt in (SPEC Q3).
+        const queueOptIn = surface === "web" || surface === "mobile-web"
+          ? queueContractOptInFields(lines[0]?.ticketTypeId, { enabled: true })
+          : {};
         const checkout = await createTicketCheckout({
           eventId,
           buyer,
@@ -482,7 +487,32 @@ function CheckoutPaymentScreenContent({
           // request. The server derives the payout anchor and applies the
           // event's pricing mode; the client never nominates either.
           ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
+          ...queueOptIn,
         });
+        if (checkout.kind === "queued") {
+          const storage =
+            (globalThis as unknown as { sessionStorage?: Storage })
+              .sessionStorage;
+          writeCheckoutResumePayload(storage, eventId, {
+            checkoutSessionId: checkout.checkoutSessionId,
+            buyerStatusToken: checkout.buyerStatusToken,
+            lines,
+            buyer,
+            ...(eventDateIds.length > 0
+              ? { eventDateIds: [...eventDateIds] }
+              : {}),
+          });
+          router.replace(
+            `/checkout/${eventId}/queue?ahead=${checkout.aheadOfYou}&wait=${checkout.estimatedWaitSeconds}&gettingOne=${checkout.gettingOne ? "1" : "0"}` as never,
+          );
+          return;
+        }
+        if (checkout.kind === "waitlist_offered") {
+          router.replace(
+            `/checkout/${eventId}/waitlist?position=${checkout.positionInWaitlist}` as never,
+          );
+          return;
+        }
         // issue #2188 — provider-neutral. Stripe brands answer with
         // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
         // the resolver owns that distinction so this screen never re-learns it.

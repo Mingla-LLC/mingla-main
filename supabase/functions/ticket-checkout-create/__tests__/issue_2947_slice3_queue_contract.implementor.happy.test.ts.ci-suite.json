@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_2947_slice3_queue_contract.implementor.happy.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-2947-slice3-queue-contract-implementor",
+  "profile": "deno-1.46-stripe"
+}

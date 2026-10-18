@@ -9,10 +9,18 @@
 - Governor: `LEAST(token_bucket, max_concurrent_live_holds − live_holds)`
 - Quiet path invisible below arming threshold; capacity cut releases newest first
 
-## Ops before slice 3 / arming Ilashe
+## Slice 3 (eng) — create four-outcome + buyer web UI
 
-1. Apply slice 2 migration in prod.
-2. Read back: `SELECT jobname, schedule, command, active FROM cron.job WHERE jobname = 'issue_2947_queue_admission_driver';`
+- Opt-in: `queueContract:"queue_v1"` + `queueDeviceToken` (256-bit hex). Server stores `sha256hex(token)` only.
+- Outcomes: through (unchanged) | refused (unchanged) | `kind:"queued"` | `kind:"waitlist_offered"`.
+- Absent contract ⇒ quiet path (byte-identical; never emits the new kinds). Web opts in; native does not until a store release.
+- Status poll: additive `queuePosition` / `aheadOfYou` / `gettingOne` / `holdSecondsRemaining` when device token presented. No `expires_at` on the wire.
+- Buyer screens: `/checkout/{id}/queue`, `/checkout/{id}/waitlist`.
+
+## Ops before arming Ilashe
+
+1. Apply slice 2 migration in prod (done 2026-10-17 — see #2879 release record).
+2. Deploy `ticket-checkout-create` + `ticket-checkout-status` after slice 3 merges; version+bundle readback.
 3. Fill Gate 0 on #2879: expected concurrent demand, arming threshold, max concurrent live holds, Paystack Initialize limits.
 4. Do **not** arm any Ilashe tier until Gate 0 numbers replace placeholders (default threshold 250 / rate 20 are placeholders only).
 

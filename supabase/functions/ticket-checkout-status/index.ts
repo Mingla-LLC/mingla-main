@@ -125,10 +125,43 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
   }
 
   if (!orderId) {
+    // #2879 / #2947 slice 3 — additive queue fields only when the caller presents
+    // the same device token used at join. Never leaks expires_at.
+    const queueDeviceToken = typeof body.queueDeviceToken === "string"
+      ? body.queueDeviceToken.trim().toLowerCase()
+      : "";
+    let queueFields: Record<string, unknown> = {};
+    if (/^[0-9a-f]{64}$/.test(queueDeviceToken)) {
+      const { data: item } = await supabase
+        .from("ticket_checkout_session_items")
+        .select("ticket_type_id")
+        .eq("checkout_session_id", checkoutSessionId)
+        .limit(1)
+        .maybeSingle();
+      const tierId = typeof item?.ticket_type_id === "string"
+        ? item.ticket_type_id
+        : "";
+      if (tierId) {
+        const { data: state } = await supabase.rpc("issue_2947_queue_state", {
+          p_ticket_type_id: tierId,
+          p_device_token_hash: await sha256Hex(queueDeviceToken),
+        });
+        if (state && typeof state === "object") {
+          const s = state as Record<string, unknown>;
+          queueFields = {
+            queuePosition: s.queuePosition ?? null,
+            aheadOfYou: s.aheadOfYou ?? null,
+            gettingOne: s.gettingOne ?? null,
+            holdSecondsRemaining: s.holdSecondsRemaining ?? null,
+          };
+        }
+      }
+    }
     return jsonResponse({
       checkoutSessionId,
       status: sessionStatus,
       order: null,
+      ...queueFields,
     });
   }
 

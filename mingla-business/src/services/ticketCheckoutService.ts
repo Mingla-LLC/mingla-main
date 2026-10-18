@@ -99,6 +99,13 @@ export interface TicketCheckoutCreateInput {
   checkoutContractVersion?: typeof TICKET_CHECKOUT_CONTRACT_VERSION;
   /** One UUID retained by the cart across one logical create/retry. */
   checkoutAttemptId?: string;
+  /**
+   * #2879 / #2947 slice 3 — waiting-room opt-in. WEB ONLY.
+   * Absent ⇒ today's behaviour exactly (never receive kind queued / waitlist_offered).
+   */
+  queueContract?: "queue_v1";
+  /** 256-bit hex; required when queueContract is sent. */
+  queueDeviceToken?: string;
 }
 
 export interface TicketCheckoutRequiresPayment {
@@ -184,12 +191,42 @@ export interface TicketCheckoutFreeAlreadyReserved {
   eventId: string;
 }
 
+/**
+ * #2879 / #2947 slice 3 — hold taken, clock not started. HTTP 200.
+ * Only returned when the request sent queueContract:"queue_v1".
+ */
+export interface TicketCheckoutQueued {
+  kind: "queued";
+  checkoutSessionId: string;
+  queueEntryId: string;
+  position: number;
+  aheadOfYou: number;
+  remainingAtJoin: number;
+  gettingOne: boolean;
+  holdSecondsRemaining: null;
+  estimatedWaitSeconds: number;
+  buyerStatusToken: string;
+}
+
+/**
+ * #2879 / #2947 slice 3 — genuinely sold out → waitlist offer. HTTP 200.
+ * No session / hold. Only when queueContract:"queue_v1" was sent.
+ */
+export interface TicketCheckoutWaitlistOffered {
+  kind: "waitlist_offered";
+  ticketTypeId: string;
+  waitlistEntryId: string;
+  positionInWaitlist: number;
+}
+
 export type TicketCheckoutCreateResult =
   | TicketCheckoutRequiresPayment
   | TicketCheckoutFreeAlreadyReserved
   | TicketCheckoutRequiresWebRedirect
   | TicketCheckoutRequiresPaystackRedirect
-  | TicketCheckoutFreeCompleted;
+  | TicketCheckoutFreeCompleted
+  | TicketCheckoutQueued
+  | TicketCheckoutWaitlistOffered;
 
 export interface TicketCheckoutStatusResult {
   checkoutSessionId: string;
@@ -197,6 +234,11 @@ export interface TicketCheckoutStatusResult {
   order: Omit<TicketCheckoutFreeCompleted, "kind"> | null;
   /** issue #2198 — bounded reason on a terminal Paystack verify result. */
   error?: string | null;
+  /** #2947 slice 3 — additive; only when queueDeviceToken was presented. */
+  queuePosition?: number | null;
+  aheadOfYou?: number | null;
+  gettingOne?: boolean | null;
+  holdSecondsRemaining?: number | null;
 }
 
 /**
@@ -794,6 +836,16 @@ export const createTicketCheckout = async (
     ...(input.buyerStatusToken !== undefined && input.buyerStatusToken.length > 0
       ? { buyerStatusToken: input.buyerStatusToken }
       : {}),
+    // #2879 / #2947 slice 3 — waiting-room opt-in. Omitted when absent so
+    // legacy / native callers stay byte-identical (quiet path).
+    ...(input.queueContract === "queue_v1" &&
+        typeof input.queueDeviceToken === "string" &&
+        input.queueDeviceToken.length > 0
+      ? {
+        queueContract: "queue_v1" as const,
+        queueDeviceToken: input.queueDeviceToken,
+      }
+      : {}),
   }, {
     // issue #2511 item 7 — THE ONLY CALL THAT OPTS IN.
     //
@@ -809,10 +861,15 @@ export const createTicketCheckout = async (
 export const getTicketCheckoutStatus = async (
   checkoutSessionId: string,
   buyerStatusToken: string,
+  opts?: { queueDeviceToken?: string },
 ): Promise<TicketCheckoutStatusResult> =>
   invokeOrThrow<TicketCheckoutStatusResult>("ticket-checkout-status", {
     checkoutSessionId,
     buyerStatusToken,
+    ...(typeof opts?.queueDeviceToken === "string" &&
+        opts.queueDeviceToken.length > 0
+      ? { queueDeviceToken: opts.queueDeviceToken }
+      : {}),
   });
 
 export const preflightTicketCheckout = async (
