@@ -39,6 +39,9 @@ BEGIN
   IF public.can_send(v_growth,'admin.team_mention','email','wave6-growth@test.local') THEN
     RAISE EXCEPTION 'mention_email_was_default_on';
   END IF;
+  IF NOT public.can_send(v_growth,'offering_invitation','email','wave6-growth@test.local') THEN
+    RAISE EXCEPTION 'legacy_default_on_marketing_semantics_changed';
+  END IF;
   RESET ROLE;
   SET LOCAL ROLE service_role;
   PERFORM set_config('request.jwt.claim.role','service_role',true);
@@ -69,6 +72,7 @@ BEGIN
     SELECT 1 FROM public.notification_outbox
     WHERE category_key='admin.team_mention' AND user_id=v_partner
       AND idempotency_key='admin.team_mention:'||v_mention::text
+      AND country_code IS NULL
   ) THEN RAISE EXCEPTION 'mention_outbox_missing'; END IF;
 
   SET LOCAL ROLE authenticated;

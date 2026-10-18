@@ -1,4 +1,6 @@
 -- #3720 independent adversarial proof for scoped Admin operational access.
+-- [TEST-MOD-APPROVED #3720] Wave 6 makes Support a baseline capability for
+-- every accepted active teammate without widening full-admin authority.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -37,7 +39,7 @@ DO $proof$
 DECLARE v_answer text;
 BEGIN
   v_answer := pg_temp.t3720_adversarial_call('37200000-0000-4000-a200-000000000001');
-  IF v_answer <> '{community_support,community_support_support}'
+  IF v_answer <> '{community_support,community_support_support,team_notifications}'
      OR v_answer LIKE '%admin_console%' THEN
     RAISE EXCEPTION 'active_support_scope_widened:%', v_answer;
   END IF;
@@ -50,8 +52,9 @@ BEGIN
   UPDATE public.support_staff
      SET enabled = false
    WHERE user_id = '37200000-0000-4000-a200-000000000001';
-  IF pg_temp.t3720_adversarial_call('37200000-0000-4000-a200-000000000001') <> '{}' THEN
-    RAISE EXCEPTION 'support_revocation_not_immediate';
+  IF pg_temp.t3720_adversarial_call('37200000-0000-4000-a200-000000000001') <>
+     '{community_support,community_support_support,team_notifications}' THEN
+    RAISE EXCEPTION 'active_team_support_baseline_missing';
   END IF;
 
   UPDATE public.support_staff

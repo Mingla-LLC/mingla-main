@@ -68,9 +68,11 @@ END;
 $vacuity$;
 
 -- ---------------------------------------------------------------------------
--- (2) RATCHET — raised 5 → 8 for #3720. The floor is the number that ACTUALLY
+-- [TEST-MOD-APPROVED #3720] Waves 3, 6, and 7 add three explicitly classified
+-- country-aware producers and raise the catalog floor from 8 to 12.
+-- (2) RATCHET — raised 8 → 12 for #3720. The floor is the number that ACTUALLY
 --     exists in the catalog, so a producer DISAPPEARING is caught as well as
---     one appearing. At the old floor of 5 any of #3720's three producers
+--     one appearing. At the old floor of 8 any of #3720's three new producers
 --     could have vanished unnoticed.
 -- ---------------------------------------------------------------------------
 DO $ratchet$
@@ -78,9 +80,9 @@ DECLARE
   v_count integer;
 BEGIN
   SELECT count(*) INTO v_count FROM issue_1529_discovered_producers;
-  IF v_count < 8 THEN
+  IF v_count < 12 THEN
     RAISE EXCEPTION
-      'issue_1529_producer_floor_breached_expected_at_least_8_got_%', v_count;
+      'issue_1529_producer_floor_breached_expected_at_least_12_got_%', v_count;
   END IF;
 END;
 $ratchet$;
@@ -99,6 +101,10 @@ $ratchet$;
 --                                             NORMALISED handset on the SMS legs
 --       community_publish_announcement      → explicit NULL (no SMS channel)
 --       community_notify_roadmap_change     → explicit NULL (no SMS channel)
+--       issue_3720_send_brand_group_message → explicit country_code per recipient
+--       issue_3720_complete_brand_group_file → explicit NULL (no SMS channel)
+--       content_calendar_comment_add_with_mentions → explicit NULL (no SMS channel)
+--       issue_3720_community_add_comment    → explicit NULL (no SMS channel)
 --       create_support_ticket               → explicit NULL (no SMS channel)
 --
 --     DRAIN-DERIVED — emits source-refund-pool rows carrying contact NULL by
@@ -122,6 +128,9 @@ DECLARE
     'community_publish_announcement',
     'community_notify_roadmap_change',
     'issue_3720_send_brand_group_message',
+    'issue_3720_complete_brand_group_file',
+    'content_calendar_comment_add_with_mentions',
+    'issue_3720_community_add_comment',
     'create_support_ticket'
   ];
   drain_derived text[] := ARRAY[
@@ -222,6 +231,9 @@ DECLARE
     'community_publish_announcement',
     'community_notify_roadmap_change',
     'issue_3720_send_brand_group_message',
+    'issue_3720_complete_brand_group_file',
+    'content_calendar_comment_add_with_mentions',
+    'issue_3720_community_add_comment',
     'create_support_ticket'
   ];
   v_missing text;

@@ -167,10 +167,8 @@ BEGIN
 
   IF p_category_key = 'admin.team_mention' AND p_channel = 'email' THEN
     IF v_pref_enabled IS DISTINCT FROM true THEN RETURN false; END IF;
-  ELSIF v_cat.is_transactional THEN
-    IF v_pref_enabled IS NOT NULL AND v_pref_enabled = false THEN RETURN false; END IF;
-  ELSE
-    IF v_pref_enabled IS DISTINCT FROM true THEN RETURN false; END IF;
+  ELSIF v_pref_enabled IS NOT NULL AND v_pref_enabled = false THEN
+    RETURN false;
   END IF;
 
   IF p_channel IN ('email', 'sms') THEN
@@ -524,9 +522,9 @@ BEGIN
     RETURNING id INTO v_mention_id;
 
     INSERT INTO public.notification_outbox(
-      category_key, user_id, payload, idempotency_key, status
+      category_key, user_id, country_code, payload, idempotency_key, status
     ) VALUES (
-      'admin.team_mention', v_user_id,
+      'admin.team_mention', v_user_id, NULL,
       jsonb_build_object(
         'title', v_actor_name || ' mentioned you',
         'body', left(btrim(p_body), 180),

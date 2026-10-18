@@ -696,20 +696,21 @@ BEGIN
       v_signature
     );
   END LOOP;
-  GRANT EXECUTE ON FUNCTION public.issue_3720_list_feature_guide(text)
-    TO authenticated, service_role;
-  GRANT EXECUTE ON FUNCTION public.issue_3720_save_feature_capability(
-    text,integer,text,text,text[],text[],text,text,text,text,text[],timestamptz
-  ) TO authenticated, service_role;
-  GRANT EXECUTE ON FUNCTION public.issue_3720_record_feature_evidence(
-    uuid,integer,text,text,text,text,timestamptz,timestamptz
-  ) TO authenticated, service_role;
-  GRANT EXECUTE ON FUNCTION public.issue_3720_feature_guide_effective_status(uuid)
-    TO service_role;
-  GRANT EXECUTE ON FUNCTION public.team_agent_product_truth_call(text,text,jsonb,text)
-    TO service_role;
 END;
 $functions$;
+
+GRANT EXECUTE ON FUNCTION public.issue_3720_list_feature_guide(text)
+  TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.issue_3720_save_feature_capability(
+  text,integer,text,text,text[],text[],text,text,text,text,text[],timestamptz
+) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.issue_3720_record_feature_evidence(
+  uuid,integer,text,text,text,text,timestamptz,timestamptz
+) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.issue_3720_feature_guide_effective_status(uuid)
+  TO service_role;
+GRANT EXECUTE ON FUNCTION public.team_agent_product_truth_call(text,text,jsonb,text)
+  TO service_role;
 
 DO $guard$
 DECLARE

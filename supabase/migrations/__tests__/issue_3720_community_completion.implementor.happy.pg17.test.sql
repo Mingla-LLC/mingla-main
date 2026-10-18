@@ -92,7 +92,7 @@ RESET ROLE;
 
 DO $proof$
 BEGIN
- IF NOT EXISTS(SELECT 1 FROM public.notification_outbox WHERE category_key='business.community_reply' AND user_id='37200000-0000-4000-c100-000000000002' AND payload->>'post_id'=(SELECT id::text FROM wave7_ids WHERE k='p4')) THEN
+ IF NOT EXISTS(SELECT 1 FROM public.notification_outbox WHERE category_key='business.community_reply' AND user_id='37200000-0000-4000-c100-000000000002' AND payload->>'post_id'=(SELECT id::text FROM wave7_ids WHERE k='p4') AND country_code IS NULL) THEN
    RAISE EXCEPTION 'reply_delivery_missing'; END IF;
  IF NOT EXISTS(SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND tablename='community_posts') THEN RAISE EXCEPTION 'posts_not_realtime'; END IF;
  IF has_table_privilege('authenticated','public.community_content_reports','SELECT') THEN RAISE EXCEPTION 'private_reports_exposed'; END IF;

@@ -1445,6 +1445,9 @@ export const SCREEN_FUNCTION_PARITY: Readonly<
   content_calendar_update: { tools: ["update_content"] },
   content_calendar_assign: { tools: ["assign_content"] },
   content_calendar_comment_add: { tools: ["comment_content"] },
+  content_calendar_comment_add_with_mentions: {
+    excluded: "a person selects teammate mention recipients",
+  },
   content_calendar_move: { tools: ["move_content"] },
   content_calendar_undo: {
     excluded: "a person undoes a recent move or reschedule",

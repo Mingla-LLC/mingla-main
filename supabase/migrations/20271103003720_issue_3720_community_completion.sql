@@ -222,8 +222,8 @@ BEGIN
   INSERT INTO public.community_post_comments(post_id,author_user_id,body)
   VALUES(p_post_id,v_uid,btrim(p_body)) RETURNING id INTO v_id;
   IF v_owner<>v_uid THEN
-    INSERT INTO public.notification_outbox(category_key,user_id,payload,idempotency_key,status)
-    VALUES('business.community_reply',v_owner,
+    INSERT INTO public.notification_outbox(category_key,user_id,country_code,payload,idempotency_key,status)
+    VALUES('business.community_reply',v_owner,NULL,
       jsonb_build_object('type','business.community_reply','post_id',p_post_id,
         'comment_id',v_id,'title','New Community reply','body','Someone replied to "'||left(v_title,120)||'"',
         'deep_link','mingla-business://community/post/'||p_post_id::text),
