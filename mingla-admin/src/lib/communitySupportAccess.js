@@ -22,6 +22,7 @@ export function communitySupportTabsForAccess(access, tabs) {
   if (canCommunity) allowed.add("overview");
   if (canSupport) {
     allowed.add("support");
+    allowed.add("feature-guide");
     allowed.add("brand-groups");
     allowed.add("availability");
   }

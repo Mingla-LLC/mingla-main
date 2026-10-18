@@ -33,6 +33,10 @@ import {
   toolListing,
   toolsForRole,
 } from "./teamAgentTools.ts";
+import {
+  findProductTruthTool,
+  productTruthToolsForMe,
+} from "./teamAgentProductTruth.ts";
 
 /** Handshake revisions this server speaks, newest first. */
 export const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [
@@ -665,7 +669,7 @@ export function createTeamAgentHandler(
     if (isNotification) {
       gatewayTool = "mcp:notification";
     } else if (body.method === "tools/call") {
-      known = findTool(params.name);
+      known = findTool(params.name) ?? findProductTruthTool(params.name);
       if (known) {
         tool = known.name;
         const checked = checkArguments(known, params.arguments);
@@ -765,7 +769,12 @@ export function createTeamAgentHandler(
         if (failed) break;
         return done(
           "ok",
-          rpcResult(id, { tools: toolsForRole(me.role).map(toolListing) }),
+          rpcResult(id, {
+            tools: [
+              ...toolsForRole(me.role),
+              ...productTruthToolsForMe(me),
+            ].map(toolListing),
+          }),
         );
       case "resources/list":
         if (failed) break;
