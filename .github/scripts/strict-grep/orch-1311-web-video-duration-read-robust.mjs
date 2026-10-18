@@ -17,7 +17,8 @@
  * load never hangs the pick; retry the whole read once. ORCH-1308 rounding is
  * preserved (whole-ms only for the INTEGER columns).
  *
- * RULE — all must hold against coverPickerDeviceMedia.ts (comment-stripped):
+ * RULE — all must hold against pickedVideoDuration.ts (comment-stripped), the
+ * shared leaf used by cover and trip-day video pickers:
  *   A. a seek-to-end forces a non-finite duration to resolve
  *      (`video.currentTime = Number.MAX_SAFE_INTEGER`), with a durationchange or
  *      timeupdate listener to read the resolved value.
@@ -37,7 +38,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const REPO_ROOT = join(__dirname, "..", "..", "..");
 
-const REL = "mingla-business/src/components/ui/coverPickerDeviceMedia.ts";
+const REL = "mingla-business/src/components/ui/pickedVideoDuration.ts";
 
 function stripComments(src) {
   return src
@@ -53,20 +54,20 @@ function scan(src) {
   const s = normalize(src);
   if (!/currentTime\s*=\s*Number\.MAX_SAFE_INTEGER/.test(s)) {
     failures.push(
-      "A: coverPickerDeviceMedia.ts no longer seeks to the end " +
+      "A: pickedVideoDuration.ts no longer seeks to the end " +
         "(`video.currentTime = Number.MAX_SAFE_INTEGER`) to resolve a non-finite " +
         "duration — Infinity/0-duration clips are rejected again (ORCH-1311).",
     );
   }
   if (!/ondurationchange|ontimeupdate/.test(s)) {
     failures.push(
-      "A: coverPickerDeviceMedia.ts no longer listens for durationchange/timeupdate " +
+      "A: pickedVideoDuration.ts no longer listens for durationchange/timeupdate " +
         "after the seek — the resolved duration is never read (ORCH-1311).",
     );
   }
   if (!/setTimeout\s*\(/.test(s)) {
     failures.push(
-      "B: coverPickerDeviceMedia.ts video-duration read has no timeout — a stuck " +
+      "B: pickedVideoDuration.ts video-duration read has no timeout — a stuck " +
         "content-URI load can hang the pick (ORCH-1311).",
     );
   }
@@ -81,7 +82,7 @@ function scan(src) {
   }
   if (!/Math\.round\(\s*video\.duration\s*\*\s*1000\s*\)/.test(s)) {
     failures.push(
-      "D: coverPickerDeviceMedia.ts dropped the ORCH-1308 whole-ms rounding " +
+      "D: pickedVideoDuration.ts dropped the ORCH-1308 whole-ms rounding " +
         "(Math.round(video.duration * 1000)) — a fractional ms breaks the INTEGER " +
         "column insert (ORCH-1311 must preserve ORCH-1308).",
     );

@@ -17,7 +17,7 @@
  *   A. edge `event-cover-video-upload-intent`: Math.round() sourceDurationMs,
  *      trimStartMs, trimEndMs (and source_bytes) at derivation — the
  *      AUTHORITATIVE server gate that protects the columns from ANY client.
- *   B. client `coverPickerDeviceMedia.ts` `readBrowserVideoDurationMs`:
+ *   B. client `pickedVideoDuration.ts` shared browser-duration reader:
  *      Math.round(video.duration * 1000) — round at the browser read (the
  *      origin of the fractional value).
  *   C. client `coverPickerVideoTrimUpload.ts` `normalizePickerDurationMs`:
@@ -35,7 +35,7 @@ const __dirname = dirname(__filename);
 const REPO_ROOT = join(__dirname, "..", "..", "..");
 
 const EDGE_REL = "supabase/functions/event-cover-video-upload-intent/index.ts";
-const DEVICE_REL = "mingla-business/src/components/ui/coverPickerDeviceMedia.ts";
+const DEVICE_REL = "mingla-business/src/components/ui/pickedVideoDuration.ts";
 const NORMALIZE_REL = "mingla-business/src/components/ui/coverPickerVideoTrimUpload.ts";
 
 function stripComments(src) {
@@ -71,7 +71,7 @@ function scanDevice(src) {
   const s = normalize(src);
   if (!/Math\.round\(\s*video\.duration\s*\*\s*1000\s*\)/.test(s)) {
     failures.push(
-      "B: coverPickerDeviceMedia.ts readBrowserVideoDurationMs no longer rounds " +
+      "B: pickedVideoDuration.ts no longer rounds " +
         "`video.duration * 1000` — the fractional browser duration reaches the " +
         "INTEGER source_duration_ms column (ORCH-1308).",
     );
