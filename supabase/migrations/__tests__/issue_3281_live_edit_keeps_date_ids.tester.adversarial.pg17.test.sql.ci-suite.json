@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3281_live_edit_keeps_date_ids.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3281-02-live-edit-keeps-date-ids-adversarial",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

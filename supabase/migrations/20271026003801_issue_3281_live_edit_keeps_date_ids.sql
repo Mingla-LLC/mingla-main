@@ -204,7 +204,11 @@ BEGIN
     FROM public.events e
     WHERE e.event_type = 'experience'
       AND e.is_recurring = true
-      AND e.status IN ('scheduled','live')  -- issue #3281 1c F-A: 'published' is not legal; include live
+      -- issue #3281 1c F-A: the published status is not legal; include live.
+      -- Keep the word published out of SQL string quotes here — the migration
+      -- probe reads pg_get_functiondef and treats a quoted published literal as
+      -- the old illegal filter.
+      AND e.status IN ('scheduled','live')
       AND e.recurrence_rules IS NOT NULL
       AND e.deleted_at IS NULL
   LOOP
