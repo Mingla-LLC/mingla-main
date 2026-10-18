@@ -78,8 +78,8 @@ BEGIN
   RETURNING id INTO v_c;
 
   -- Path 1: refund a real ticket → frees 1 seat → invites A.
-  INSERT INTO public.orders(id, event_id, payment_status, payment_method, source, total_cents, currency, buyer_email)
-  VALUES (gen_random_uuid(), f.o_event, 'paid', 'free', 'online_checkout', 0, 'USD', 'buyer@example.test')
+  INSERT INTO public.orders(id, event_id, payment_status, payment_method, source, total_cents, currency, buyer_email, buyer_phone_e164)
+  VALUES (gen_random_uuid(), f.o_event, 'paid', 'free', 'online_checkout', 0, 'USD', 'buyer@example.test', '+15550002947')
   RETURNING id INTO v_order;
   INSERT INTO public.tickets(id, order_id, ticket_type_id, event_id, qr_code, status)
   VALUES (gen_random_uuid(), v_order, f.o_tier, f.o_event, 'a2947-ta1-' || gen_random_uuid()::text, 'valid')
