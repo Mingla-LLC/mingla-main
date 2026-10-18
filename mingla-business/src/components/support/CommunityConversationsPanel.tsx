@@ -188,6 +188,11 @@ export function CommunityConversationsPanel(
           <Pressable
             key={value}
             accessibilityRole="button"
+            accessibilityLabel={
+              value === "idea"
+                ? "Show Community ideas"
+                : "Show Community questions"
+            }
             accessibilityState={{ selected: kind === value }}
             onPress={() => {
               setKind(value);
