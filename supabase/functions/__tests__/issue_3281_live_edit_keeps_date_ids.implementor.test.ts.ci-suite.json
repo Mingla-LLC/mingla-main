@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/__tests__/issue_3281_live_edit_keeps_date_ids.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-live-edit-keeps-date-ids",
+  "profile": "deno-2-unit"
+}

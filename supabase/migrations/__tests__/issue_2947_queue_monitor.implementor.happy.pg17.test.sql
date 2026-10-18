@@ -8,7 +8,9 @@
 --   C-04  admit_due calls observe (a run row appears after the driver).
 --   C-05  Orphan assert raises for a persistent (past grace) infinity orphan.
 --   C-06  Fresh stalled after a prior clean when waiting remains and admit stops.
---   C-07  admit_due does not admit before sale_opens_at.
+--   C-07  admit_due does not admit before sale_opens_at; pre-sale waiting is not stalled.
+--   C-08  Saturated live-hold ceiling with waiting buyers is not stalled.
+--   C-09  Unconsumed lower-id events are still claimed after a higher id was acked.
 \set ON_ERROR_STOP on
 
 CREATE OR REPLACE FUNCTION pg_temp.i2947m_assert(p_ok boolean, p_label text)
@@ -83,9 +85,9 @@ CREATE OR REPLACE FUNCTION pg_temp.i2947m_reset_monitor()
 RETURNS void LANGUAGE plpgsql AS $f$
 BEGIN
   DELETE FROM public.ticket_queue_monitor_runs;
-  UPDATE public.ticket_queue_monitor_watermark
-     SET last_event_id = COALESCE((SELECT max(id) FROM public.ticket_queue_monitor_events), 0)
-   WHERE id = 1;
+  UPDATE public.ticket_queue_monitor_events
+     SET consumed_at = clock_timestamp()
+   WHERE consumed_at IS NULL;
 END
 $f$;
 
@@ -269,19 +271,90 @@ BEGIN
     PERFORM public.issue_2947_queue_join(v_s, pg_temp.i2947m_token(i));
   END LOOP;
 
+  PERFORM pg_temp.i2947m_reset_monitor();
   PERFORM pg_temp.i2947m_assert(public.issue_2947_queue_admit_due() = 0,
     'C-07a driver admits nothing before sale_opens_at');
   PERFORM pg_temp.i2947m_assert(
     (SELECT count(*) FROM public.ticket_queue_entries
       WHERE ticket_type_id = f.o_tier AND admitted_at IS NULL AND released_at IS NULL) = 3,
     'C-07b all three remain waiting at infinity');
+  PERFORM pg_temp.i2947m_assert(
+    (public.issue_2947_queue_verdict(72)->>'verdict') = 'clean',
+    'C-07c intentional pre-sale waiting is clean, not stalled (got '
+      || (public.issue_2947_queue_verdict(72)->>'verdict') || ')');
 
   UPDATE public.ticket_queue_arming
      SET sale_opens_at = clock_timestamp() - interval '1 second',
          last_admitted_at = clock_timestamp() - interval '60 seconds'
    WHERE ticket_type_id = f.o_tier;
   PERFORM pg_temp.i2947m_assert(public.issue_2947_queue_admit_due() = 3,
-    'C-07c after sale opens the driver admits the cohort');
+    'C-07d after sale opens the driver admits the cohort');
 END
 $c07$;
+ROLLBACK;
+
+-- ─── C-08: saturated live-hold ceiling is not stalled ──────────────────────
+BEGIN;
+DO $c08$
+DECLARE
+  f record;
+  v_s uuid;
+  v jsonb;
+  i integer;
+BEGIN
+  SELECT * INTO f FROM pg_temp.i2947m_tier('c08', 50);
+  UPDATE public.ticket_queue_admission_settings SET arm_threshold_concurrent_holds = 1;
+  PERFORM public.issue_2947_queue_arm(f.o_tier);
+  UPDATE public.ticket_queue_arming
+     SET last_admitted_at = clock_timestamp() - interval '60 seconds',
+         sale_opens_at = clock_timestamp() - interval '1 hour',
+         max_concurrent_live_holds = 1
+   WHERE ticket_type_id = f.o_tier;
+  PERFORM pg_temp.i2947m_reset_monitor();
+
+  v_s := pg_temp.i2947m_hold(f.o_event, f.o_tier);
+  PERFORM public.issue_2947_queue_join(v_s, pg_temp.i2947m_token(1));
+  PERFORM pg_temp.i2947m_assert(public.issue_2947_queue_admit_due() = 1, 'C-08a first admit fills ceiling');
+
+  FOR i IN 2..3 LOOP
+    v_s := pg_temp.i2947m_hold(f.o_event, f.o_tier);
+    PERFORM public.issue_2947_queue_join(v_s, pg_temp.i2947m_token(i));
+  END LOOP;
+  PERFORM public.issue_2947_queue_monitor_observe();
+  v := public.issue_2947_queue_verdict(72);
+  PERFORM pg_temp.i2947m_assert(v->>'verdict' = 'clean',
+    'C-08b saturated ceiling with waiting buyers is clean, not stalled (got '
+      || (v->>'verdict') || ')');
+END
+$c08$;
+ROLLBACK;
+
+-- ─── C-09: later-visible lower id is still acknowledged ────────────────────
+BEGIN;
+DO $c09$
+DECLARE
+  v_low bigint;
+  v_high bigint;
+  v jsonb;
+BEGIN
+  PERFORM pg_temp.i2947m_reset_monitor();
+  INSERT INTO public.ticket_queue_monitor_events (kind)
+    VALUES ('join') RETURNING id INTO v_low;
+  INSERT INTO public.ticket_queue_monitor_events (kind)
+    VALUES ('admission') RETURNING id INTO v_high;
+  -- Simulate the old max(id) race: higher id was acked while lower stayed open.
+  UPDATE public.ticket_queue_monitor_events
+     SET consumed_at = clock_timestamp()
+   WHERE id = v_high;
+
+  v := public.issue_2947_queue_monitor_observe();
+  PERFORM pg_temp.i2947m_assert((v->>'joinsPerformed')::int = 1,
+    'C-09a observe still claims the unconsumed lower-id join');
+  PERFORM pg_temp.i2947m_assert((v->>'admissionsPerformed')::int = 0,
+    'C-09b already-acked higher id is not double-counted');
+  PERFORM pg_temp.i2947m_assert(
+    (SELECT consumed_at IS NOT NULL FROM public.ticket_queue_monitor_events WHERE id = v_low),
+    'C-09c lower id is acknowledged after observe');
+END
+$c09$;
 ROLLBACK;
