@@ -9,6 +9,7 @@ merged_commit=""
 remediation=false
 governed_bundle_deploy=false
 transition_inputs=false
+preflight_only=false
 functions=()
 coordinator_args=()
 config_file="${repo_root}/supabase/config.toml"
@@ -101,6 +102,14 @@ while [[ "$#" -gt 0 ]]; do
       transition_inputs=true
       shift 2
       ;;
+    --preflight-only)
+      # #3720 Wave 4 exact-main recovery. This performs every production
+      # authority, live-name and selected-function readiness check but stops
+      # before the mutating deploy boundary. It is a diagnostic/recovery lane,
+      # never a way to bypass readiness.
+      preflight_only=true
+      shift
+      ;;
     *)
       echo "FAIL deploy: unsupported argument $1" >&2
       exit 2
@@ -114,15 +123,15 @@ done
 trap restore_tracked_inputs EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-acquire_config_lock
-config_backup="$(mktemp "${TMPDIR:-/tmp}/mingla-function-config.XXXXXX")"
-cp "$config_file" "$config_backup"
-node "${repo_root}/.github/scripts/ci-discovery/function-policy.mjs" \
-  --write-config "$config_file"
 
 node "${repo_root}/scripts/ops/verify-production-supabase-authority.mjs" \
   --mode=offline \
   --target-ref "$project_ref"
+
+if [[ "$preflight_only" == true && ( "$remediation" == true || "$governed_bundle_deploy" == true ) ]]; then
+  echo "FAIL deploy: --preflight-only is supported only by the normal selected-function lane" >&2
+  exit 2
+fi
 
 if [[ "$remediation" == true ]]; then
   node "${repo_root}/scripts/secrets/reconcile-governed-secrets.mjs" \
@@ -207,6 +216,23 @@ for function_name in "${functions[@]}"; do
 done
 node "${repo_root}/scripts/secrets/preflight-function-secret-readiness.mjs" \
   "${preflight_args[@]}"
+
+if [[ "$preflight_only" == true ]]; then
+  echo "PASS deploy: preflight-only; no edge mutation executed"
+  exit 0
+fi
+
+# #3720 Wave 4 exact-main recovery. Readiness must load and verify the sealed
+# committed function policy before this generated deploy input replaces
+# supabase/config.toml. Materializing first made the policy loader compare the
+# generated file with the committed bootstrap seal, so the wrapper failed
+# before it could inspect live secret names. The generated config remains the
+# sole input to the direct deploy loop and is restored by the EXIT trap.
+acquire_config_lock
+config_backup="$(mktemp "${TMPDIR:-/tmp}/mingla-function-config.XXXXXX")"
+cp "$config_file" "$config_backup"
+node "${repo_root}/.github/scripts/ci-discovery/function-policy.mjs" \
+  --write-config "$config_file"
 
 for function_name in "${functions[@]}"; do
   set +e

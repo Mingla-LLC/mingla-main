@@ -72,13 +72,34 @@ export function listLiveSecretNames({
   projectRef,
   spawn = spawnSync,
 } = {}) {
-  const result = spawn(
-    "supabase",
-    ["secrets", "list", "--project-ref", projectRef, "--output", "json"],
-    { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
-  );
+  let result;
+  try {
+    result = spawn(
+      "supabase",
+      ["secrets", "list", "--project-ref", projectRef, "--output", "json"],
+      { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
+    );
+  } catch {
+    // #3720 Wave 4 exact-main recovery. GitHub's runner can fail before a
+    // child-process result exists. Keep that failure value-blind and distinct
+    // from a CLI response so the gate remains fail-closed and actionable.
+    throw new ReadinessError("secret_list_spawn_failed");
+  }
+  if (result?.error) throw new ReadinessError("secret_list_spawn_failed");
   if (result.status !== 0) throw new ReadinessError("secret_list_failed");
   return reduceLiveSecretNames(result.stdout);
+}
+
+function atStage(code, operation) {
+  try {
+    return operation();
+  } catch (error) {
+    if (error instanceof ReadinessError) throw error;
+    // Never print the unexpected error: CLI/API errors can include credential
+    // metadata. The stage code is sufficient to identify which fail-closed
+    // boundary refused the deploy without crossing the redaction boundary.
+    throw new ReadinessError(code);
+  }
 }
 
 function functionRequirements(contract, selectedFunctions) {
@@ -314,13 +335,24 @@ export function runFunctionReadinessPreflight({
   manifestPath = DEFAULT_MANIFEST,
   spawn = spawnSync,
 } = {}) {
-  verifyProductionAuthority({ targetRef: projectRef });
-  const contract = contractPath === DEFAULT_CONTRACT
-    ? loadEffectiveFunctionPolicy({ root: REPO_ROOT }).contract
-    : JSON.parse(readFileSync(contractPath, "utf8"));
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const names = liveNames ?? listLiveSecretNames({ projectRef, spawn });
-  return evaluateFunctionReadiness({
+  atStage(
+    "production_authority_check_failed",
+    () => verifyProductionAuthority({ targetRef: projectRef }),
+  );
+  const contract = atStage("function_policy_load_failed", () =>
+    contractPath === DEFAULT_CONTRACT
+      ? loadEffectiveFunctionPolicy({ root: REPO_ROOT }).contract
+      : JSON.parse(readFileSync(contractPath, "utf8"))
+  );
+  const manifest = atStage(
+    "secret_manifest_load_failed",
+    () => JSON.parse(readFileSync(manifestPath, "utf8")),
+  );
+  const names = liveNames ?? atStage(
+    "live_secret_names_failed",
+    () => listLiveSecretNames({ projectRef, spawn }),
+  );
+  return atStage("readiness_evaluation_failed", () => evaluateFunctionReadiness({
     contract,
     manifest,
     liveNames: names,
@@ -331,7 +363,7 @@ export function runFunctionReadinessPreflight({
     receipts,
     expectedReceiptFields,
     verifyReceiptSet,
-  });
+  }));
 }
 
 function parseArgs(argv) {

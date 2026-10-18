@@ -31,6 +31,13 @@ on:
           there is no deploy-all, by design.
         required: true
         type: string
+      preflight_only:
+        description: >-
+          Run the complete selected-function production readiness preflight and
+          stop before deployment. This never weakens or skips a readiness check.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -89,6 +96,7 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
           MINGLA_DEPLOY_SELECTION_PATH: ${{ runner.temp }}/edge-deploy-functions
+          MINGLA_PREFLIGHT_ONLY: ${{ inputs.preflight_only || 'false' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -103,8 +111,13 @@ jobs:
             echo "FAIL deploy: selection file is empty but the selector reported functions" >&2
             exit 2
           fi
+          preflight_arg=""
+          if [[ "${MINGLA_PREFLIGHT_ONLY:-false}" == "true" ]]; then
+            preflight_arg="--preflight-only"
+          fi
           scripts/deploy-supabase-functions.sh \
             --merged-commit "$GITHUB_SHA" \
+            ${preflight_arg:+"$preflight_arg"} \
             "${args[@]}"
 
   # #2948 AC-5. A failed deployment must reach a human, and it must do so

@@ -221,7 +221,11 @@ assert.match(remediationSuccess.nodeCalls[0], /^coordinator\|mode=remediation\|/
 assert.match(remediationSuccess.nodeCalls[0], /--project-ref gqnoajqerqhnvulmnyvv/);
 assert.match(remediationSuccess.nodeCalls[0], /--function alpha/);
 assert.match(remediationSuccess.nodeCalls[0], /--merged-commit 0123456789abcdef0123456789abcdef01234567/);
-assert.match(remediationSuccess.nodeCalls[0], /jwt_false=1$/);
+// [TEST-MOD-APPROVED #3720] The old assertion required the wrapper to replace
+// the sealed config before starting the coordinator. That generated file then
+// failed the coordinator's own bootstrap-seal verification. The coordinator
+// now reads the sealed config and materializes its effective policy internally.
+assert.match(remediationSuccess.nodeCalls[0], /jwt_false=0$/);
 assert.doesNotMatch(remediationSuccess.nodeCalls[0], /--normal-governed-deploy|fallback-watch/);
 assert.equal(remediationSuccess.restoredConfig, originalConfig);
 assert.equal(remediationSuccess.restoredBake, originalBake);
