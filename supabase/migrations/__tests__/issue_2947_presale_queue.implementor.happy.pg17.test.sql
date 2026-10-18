@@ -2,10 +2,12 @@
 -- Run after the full migration chain on PostgreSQL 17 as the database owner.
 --
 -- WHAT IS PROVED
---   C-01  Armed tier + infinity expires_at ⇒ create succeeds before sale_start_at.
+--   C-01  Armed tier + infinity expires_at ⇒ create succeeds before sale_start_at;
+--         engaged() is true on an empty armed pre-sale tier (rule 6 bootstrap).
 --   C-02  Armed tier + finite expires_at ⇒ still ticket_sales_not_started.
 --   C-03  Unarmed tier + infinity ⇒ still ticket_sales_not_started.
 --   C-04  After sale opens, ordinary finite create works (control).
+--   C-05  authenticated must NOT EXECUTE create_session_base (service_role only).
 --
 -- FAILS-ON-REVERT: drop the slice-7 exception → C-01 raises ticket_sales_not_started.
 \set ON_ERROR_STOP on
@@ -82,11 +84,14 @@ BEGIN
   UPDATE public.ticket_queue_admission_settings SET arm_threshold_concurrent_holds = 1;
   PERFORM public.issue_2947_queue_arm(f.o_tier);
 
+  PERFORM pg_temp.i2947s7_assert(public.issue_2947_queue_engaged(f.o_tier),
+    'C-01a empty armed pre-sale tier is engaged (rule 6 bootstrap)');
+
   v_s := pg_temp.i2947s7_hold(f.o_event, f.o_tier, 'infinity'::timestamptz);
-  PERFORM pg_temp.i2947s7_assert(v_s IS NOT NULL, 'C-01a armed infinity create before sale_start returns a session');
+  PERFORM pg_temp.i2947s7_assert(v_s IS NOT NULL, 'C-01b armed infinity create before sale_start returns a session');
   PERFORM pg_temp.i2947s7_assert(
     (SELECT expires_at FROM public.ticket_checkout_sessions WHERE id = v_s) = 'infinity'::timestamptz,
-    'C-01b the session carries expires_at = infinity');
+    'C-01c the session carries expires_at = infinity');
 END
 $c01$;
 ROLLBACK;
@@ -137,3 +142,21 @@ BEGIN
 END
 $c04$;
 ROLLBACK;
+
+-- ─── C-05: base stays service_role-only ────────────────────────────────────
+DO $c05$
+BEGIN
+  PERFORM pg_temp.i2947s7_assert(
+    NOT has_function_privilege(
+      'authenticated',
+      'public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[])',
+      'EXECUTE'),
+    'C-05a authenticated cannot EXECUTE create_session_base');
+  PERFORM pg_temp.i2947s7_assert(
+    has_function_privilege(
+      'service_role',
+      'public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[])',
+      'EXECUTE'),
+    'C-05b service_role can EXECUTE create_session_base');
+END
+$c05$;

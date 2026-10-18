@@ -733,11 +733,68 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.issue_1930_ticket_checkout_create_session_base(uuid, uuid, text, text, text, boolean, jsonb, text, timestamptz, integer, text, uuid[]) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.issue_1930_ticket_checkout_create_session_base(uuid, uuid, text, text, text, boolean, jsonb, text, timestamptz, integer, text, uuid[]) TO authenticated, service_role;
+-- #2160 made the base service_role-only. CREATE OR REPLACE preserves grants;
+-- never re-open it to authenticated (named-buyer / auth snapshots live on the
+-- biz_ wrapper, not here).
+REVOKE ALL ON FUNCTION public.issue_1930_ticket_checkout_create_session_base(uuid, uuid, text, text, text, boolean, jsonb, text, timestamptz, integer, text, uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_1930_ticket_checkout_create_session_base(uuid, uuid, text, text, text, boolean, jsonb, text, timestamptz, integer, text, uuid[]) TO service_role;
+
+-- Pre-sale engagement: an armed tier whose sale_opens_at is still in the future
+-- is engaged so the first reserve can mint infinity and join (rule 6). Without
+-- this, engaged requires waiting entries or held inventory, but pre-sale finite
+-- creates refuse — chicken-and-egg, the room never forms.
+CREATE OR REPLACE FUNCTION public.issue_2947_queue_engaged(p_ticket_type_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+DECLARE
+  v_threshold integer;
+  v_sale_opens timestamptz;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.ticket_queue_arming a
+     WHERE a.ticket_type_id = p_ticket_type_id AND a.disarmed_at IS NULL
+  ) THEN
+    RETURN false;
+  END IF;
+
+  SELECT a.sale_opens_at INTO v_sale_opens
+    FROM public.ticket_queue_arming a
+   WHERE a.ticket_type_id = p_ticket_type_id AND a.disarmed_at IS NULL;
+
+  -- Rule 6 window: armed and not yet open ⇒ engaged (randomised pre-sale queue).
+  IF v_sale_opens IS NOT NULL AND v_sale_opens > clock_timestamp() THEN
+    RETURN true;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.ticket_queue_entries q
+     WHERE q.ticket_type_id = p_ticket_type_id
+       AND q.admitted_at IS NULL AND q.released_at IS NULL
+  ) THEN
+    RETURN true;
+  END IF;
+
+  SELECT l.arm_threshold_concurrent_holds INTO v_threshold
+    FROM public.issue_2947_queue_tier_limits(p_ticket_type_id) l;
+
+  RETURN public.issue_2491_derived_held(p_ticket_type_id) >= v_threshold;
+END
+$fn$;
+
+COMMENT ON FUNCTION public.issue_2947_queue_engaged(uuid) IS
+  'issue #2947 — true when the waiting room is visible. Pre-sale (armed, '
+  'sale_opens_at still future) is always engaged so rule 6 can form; once live, '
+  'engagement requires waiting entries or held inventory at/above the threshold.';
+
+REVOKE ALL ON FUNCTION public.issue_2947_queue_engaged(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_2947_queue_engaged(uuid) TO service_role;
 
 -- Probes — content assertions the #2160 / #3313 gates require of the latest definer,
--- plus the slice-7 exception itself.
+-- plus the slice-7 exception itself and the service_role-only grant.
 DO $probe$
 DECLARE
   v_def text;
@@ -752,7 +809,6 @@ BEGIN
     RAISE EXCEPTION 'issue #2947 slice 7 probe: armed-tier infinity exception missing';
   END IF;
 
-  -- #2160 capacity aggregate (strict-grep subject is the latest definer)
   IF position('v_sold + v_reserved + v_cart_qty_for_type > v_ticket_type.quantity_total' IN v_def) = 0 THEN
     RAISE EXCEPTION 'issue #2947 slice 7 probe: #2160 aggregate capacity compare lost';
   END IF;
@@ -763,12 +819,29 @@ BEGIN
     RAISE EXCEPTION 'issue #2947 slice 7 probe: #2160 cart aggregate scan lost';
   END IF;
 
-  -- #3313 night capacity
   IF position('issue_3313_ticket_type_occurrence_taken(' IN v_def) = 0 THEN
     RAISE EXCEPTION 'issue #2947 slice 7 probe: #3313 per-night capacity lost';
   END IF;
   IF position('event_date_choice_required' IN v_def) = 0 THEN
     RAISE EXCEPTION 'issue #2947 slice 7 probe: #3313 day-choice required lost';
+  END IF;
+
+  IF has_function_privilege(
+       'authenticated',
+       'public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[])',
+       'EXECUTE') THEN
+    RAISE EXCEPTION 'issue #2947 slice 7 probe: create_session_base must stay service_role-only';
+  END IF;
+  IF NOT has_function_privilege(
+       'service_role',
+       'public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[])',
+       'EXECUTE') THEN
+    RAISE EXCEPTION 'issue #2947 slice 7 probe: service_role lost EXECUTE on create_session_base';
+  END IF;
+
+  v_def := pg_get_functiondef('public.issue_2947_queue_engaged(uuid)'::regprocedure);
+  IF position('sale_opens_at' IN v_def) = 0 THEN
+    RAISE EXCEPTION 'issue #2947 slice 7 probe: pre-sale engagement path missing';
   END IF;
 
   RAISE NOTICE 'issue #2947 slice 7 probe: create_session_base pre-sale exception OK';

@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-PROPOSED-2947-MONITORS-CARRY-THE-EVENT-DENOMINATOR | issue #2947 | Every queue monitor records checks_run and queue_windows_observed and never returns clean when the event denominator is zero.
 -- #2879 / #2947 — queue monitor with the EVENT denominator.
 --
 -- WHAT IS PROVED
@@ -5,10 +6,9 @@
 --   C-02  Queue waiting, observe without admit ⇒ stalled.
 --   C-03  Join + admit_due ⇒ clean; write-driven joins/admissions counted.
 --   C-04  admit_due calls observe (a run row appears after the driver).
---   C-05  Orphan assert raises when an infinity hold has no queue entry.
---
--- FAILS-ON-REVERT: drop the monitor ⇒ C-01/C-02/C-03 miss their functions;
--- remove the observe call from admit_due ⇒ C-04 fails.
+--   C-05  Orphan assert raises for a persistent (past grace) infinity orphan.
+--   C-06  Fresh stalled after a prior clean when waiting remains and admit stops.
+--   C-07  admit_due does not admit before sale_opens_at.
 \set ON_ERROR_STOP on
 
 CREATE OR REPLACE FUNCTION pg_temp.i2947m_assert(p_ok boolean, p_label text)
@@ -73,7 +73,8 @@ BEGIN
   UPDATE public.ticket_queue_admission_settings SET arm_threshold_concurrent_holds = 1;
   PERFORM public.issue_2947_queue_arm(p_tier);
   UPDATE public.ticket_queue_arming
-     SET last_admitted_at = clock_timestamp() - interval '60 seconds'
+     SET last_admitted_at = clock_timestamp() - interval '60 seconds',
+         sale_opens_at = clock_timestamp() - interval '1 hour'
    WHERE ticket_type_id = p_tier;
 END
 $f$;
@@ -83,10 +84,7 @@ RETURNS void LANGUAGE plpgsql AS $f$
 BEGIN
   DELETE FROM public.ticket_queue_monitor_runs;
   UPDATE public.ticket_queue_monitor_watermark
-     SET joins_seen = (SELECT joins_performed FROM public.ticket_queue_monitor_totals WHERE id = 1),
-         admissions_seen = (SELECT admissions_performed FROM public.ticket_queue_monitor_totals WHERE id = 1),
-         releases_seen = (SELECT holds_released FROM public.ticket_queue_monitor_totals WHERE id = 1),
-         waitlist_invites_seen = (SELECT waitlist_invites_sent FROM public.ticket_queue_monitor_totals WHERE id = 1)
+     SET last_event_id = COALESCE((SELECT max(id) FROM public.ticket_queue_monitor_events), 0)
    WHERE id = 1;
 END
 $f$;
@@ -128,7 +126,6 @@ BEGIN
     PERFORM public.issue_2947_queue_join(v_s, pg_temp.i2947m_token(i));
   END LOOP;
 
-  -- Observe WITHOUT calling admit — the alarm that catches a missing caller.
   PERFORM public.issue_2947_queue_monitor_observe();
   v := public.issue_2947_queue_verdict(72);
   PERFORM pg_temp.i2947m_assert(v->>'verdict' = 'stalled',
@@ -193,7 +190,7 @@ END
 $c04$;
 ROLLBACK;
 
--- ─── C-05: orphan assert raises ────────────────────────────────────────────
+-- ─── C-05: orphan assert raises past grace ─────────────────────────────────
 BEGIN;
 DO $c05$
 DECLARE
@@ -203,13 +200,88 @@ DECLARE
 BEGIN
   SELECT * INTO f FROM pg_temp.i2947m_tier('c05', 10);
   v_s := pg_temp.i2947m_hold(f.o_event, f.o_tier);
+  UPDATE public.ticket_checkout_sessions
+     SET created_at = clock_timestamp() - interval '5 minutes'
+   WHERE id = v_s;
   BEGIN
     PERFORM public.issue_2947_queue_assert_no_orphan_infinity();
   EXCEPTION WHEN OTHERS THEN
     v_raised := (SQLERRM = 'issue_2947_orphan_infinity_hold');
   END;
   PERFORM pg_temp.i2947m_assert(v_raised,
-    'C-05 infinity hold without a queue entry makes the assert raise');
+    'C-05 persistent infinity hold without a queue entry makes the assert raise');
 END
 $c05$;
+ROLLBACK;
+
+-- ─── C-06: prior clean then stopped driver ⇒ stalled ───────────────────────
+BEGIN;
+DO $c06$
+DECLARE
+  f record;
+  v_s uuid;
+  v jsonb;
+  i integer;
+BEGIN
+  SELECT * INTO f FROM pg_temp.i2947m_tier('c06', 50);
+  PERFORM pg_temp.i2947m_arm(f.o_tier);
+  PERFORM pg_temp.i2947m_reset_monitor();
+
+  FOR i IN 1..2 LOOP
+    v_s := pg_temp.i2947m_hold(f.o_event, f.o_tier);
+    PERFORM public.issue_2947_queue_join(v_s, pg_temp.i2947m_token(i));
+  END LOOP;
+  PERFORM pg_temp.i2947m_assert(public.issue_2947_queue_admit_due() = 2, 'C-06a first admit succeeds');
+  PERFORM pg_temp.i2947m_assert(
+    (public.issue_2947_queue_verdict(72)->>'verdict') = 'clean', 'C-06b initially clean');
+
+  -- New waiting buyers; observe WITHOUT admit (stopped driver).
+  FOR i IN 3..4 LOOP
+    v_s := pg_temp.i2947m_hold(f.o_event, f.o_tier);
+    PERFORM public.issue_2947_queue_join(v_s, pg_temp.i2947m_token(i));
+  END LOOP;
+  PERFORM public.issue_2947_queue_monitor_observe();
+  v := public.issue_2947_queue_verdict(72);
+  PERFORM pg_temp.i2947m_assert(v->>'verdict' = 'stalled',
+    'C-06c freshest waiting window with zero admissions is stalled (got ' || (v->>'verdict') || ')');
+END
+$c06$;
+ROLLBACK;
+
+-- ─── C-07: no admission before sale_opens_at ───────────────────────────────
+BEGIN;
+DO $c07$
+DECLARE
+  f record;
+  v_s uuid;
+  i integer;
+BEGIN
+  SELECT * INTO f FROM pg_temp.i2947m_tier('c07', 50);
+  UPDATE public.ticket_queue_admission_settings SET arm_threshold_concurrent_holds = 1;
+  PERFORM public.issue_2947_queue_arm(f.o_tier);
+  UPDATE public.ticket_queue_arming
+     SET sale_opens_at = clock_timestamp() + interval '2 days',
+         last_admitted_at = clock_timestamp() - interval '60 seconds'
+   WHERE ticket_type_id = f.o_tier;
+
+  FOR i IN 1..3 LOOP
+    v_s := pg_temp.i2947m_hold(f.o_event, f.o_tier);
+    PERFORM public.issue_2947_queue_join(v_s, pg_temp.i2947m_token(i));
+  END LOOP;
+
+  PERFORM pg_temp.i2947m_assert(public.issue_2947_queue_admit_due() = 0,
+    'C-07a driver admits nothing before sale_opens_at');
+  PERFORM pg_temp.i2947m_assert(
+    (SELECT count(*) FROM public.ticket_queue_entries
+      WHERE ticket_type_id = f.o_tier AND admitted_at IS NULL AND released_at IS NULL) = 3,
+    'C-07b all three remain waiting at infinity');
+
+  UPDATE public.ticket_queue_arming
+     SET sale_opens_at = clock_timestamp() - interval '1 second',
+         last_admitted_at = clock_timestamp() - interval '60 seconds'
+   WHERE ticket_type_id = f.o_tier;
+  PERFORM pg_temp.i2947m_assert(public.issue_2947_queue_admit_due() = 3,
+    'C-07c after sale opens the driver admits the cohort');
+END
+$c07$;
 ROLLBACK;

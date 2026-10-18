@@ -4,51 +4,42 @@
 -- #2864's shadow reported `clean` over observations that compared 0 to 0. Every
 -- monitor here records both the check's denominator (`checks_run`) and the
 -- event's (`queue_windows_observed`). A window with zero queued opportunity
--- returns `insufficient_evidence`, never `clean`. A window with opportunity
--- and zero admissions returns `stalled` (caller missing or dead).
+-- returns `insufficient_evidence`, never `clean`.
 --
--- Counters are WRITE-DRIVEN (triggers on the rows the work mutates), not
--- sample-driven. `issue_2947_queue_monitor_observe` only rolls up what was
--- already recorded and is invoked from the same `issue_2947_queue_admit_due`
--- tick that runs admission — one caller, one cadence.
---
--- Binding (I-PROPOSED-2947-MONITORS-CARRY-THE-EVENT-DENOMINATOR): never return
--- `clean` while `queue_windows_observed = 0`.
+-- Counters are WRITE-DRIVEN via append-only event rows (not a locked singleton
+-- totals row — that deadlocked against per-tier ticket_types locks during
+-- concurrent admit / expiry). `issue_2947_queue_monitor_observe` rolls up what
+-- was already recorded and runs on the same `issue_2947_queue_admit_due` tick.
 -- ===========================================================================
 
 BEGIN;
 
--- ── Write-driven totals (singleton) ────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS public.ticket_queue_monitor_totals (
-  id                      integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-  joins_performed         bigint NOT NULL DEFAULT 0,
-  admissions_performed    bigint NOT NULL DEFAULT 0,
-  holds_released          bigint NOT NULL DEFAULT 0,
-  waitlist_invites_sent   bigint NOT NULL DEFAULT 0,
-  updated_at              timestamptz NOT NULL DEFAULT now()
+-- ── Append-only write-driven events (no cross-tier singleton lock) ─────────
+CREATE TABLE IF NOT EXISTS public.ticket_queue_monitor_events (
+  id              bigserial PRIMARY KEY,
+  recorded_at     timestamptz NOT NULL DEFAULT clock_timestamp(),
+  kind            text NOT NULL
+    CHECK (kind IN ('join', 'admission', 'release', 'waitlist_invite')),
+  ticket_type_id  uuid NULL,
+  checkout_session_id uuid NULL
 );
 
-COMMENT ON TABLE public.ticket_queue_monitor_totals IS
-  'issue #2947 — write-driven queue event counters. Incremented by triggers on '
-  'the rows the work mutates; the observe function only rolls up deltas.';
+COMMENT ON TABLE public.ticket_queue_monitor_events IS
+  'issue #2947 — one row per queue join/admission/release/waitlist invite. '
+  'Append-only; the observe function rolls up by id watermark.';
 
-INSERT INTO public.ticket_queue_monitor_totals (id)
-VALUES (1)
-ON CONFLICT (id) DO NOTHING;
+CREATE INDEX IF NOT EXISTS idx_2947_queue_monitor_events_id
+  ON public.ticket_queue_monitor_events (id);
 
 CREATE TABLE IF NOT EXISTS public.ticket_queue_monitor_watermark (
-  id                      integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-  joins_seen              bigint NOT NULL DEFAULT 0,
-  admissions_seen         bigint NOT NULL DEFAULT 0,
-  releases_seen           bigint NOT NULL DEFAULT 0,
-  waitlist_invites_seen   bigint NOT NULL DEFAULT 0
+  id              integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  last_event_id   bigint NOT NULL DEFAULT 0
 );
 
 INSERT INTO public.ticket_queue_monitor_watermark (id)
 VALUES (1)
 ON CONFLICT (id) DO NOTHING;
 
--- ── One row per observe tick ───────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.ticket_queue_monitor_runs (
   id                        bigserial PRIMARY KEY,
   observed_at               timestamptz NOT NULL DEFAULT now(),
@@ -65,27 +56,27 @@ CREATE TABLE IF NOT EXISTS public.ticket_queue_monitor_runs (
 
 COMMENT ON TABLE public.ticket_queue_monitor_runs IS
   'issue #2947 — one row per monitor observe. queue_windows_observed is the '
-  'EVENT denominator (1 when at least one entry was waiting this tick). '
-  'checks_run is the check denominator. A zero-event window must never read as clean.';
+  'EVENT denominator. A zero-event window must never read as clean.';
 
 CREATE INDEX IF NOT EXISTS idx_2947_queue_monitor_runs_observed_at
   ON public.ticket_queue_monitor_runs (observed_at DESC);
 
-REVOKE ALL ON TABLE public.ticket_queue_monitor_totals FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.ticket_queue_monitor_events FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.ticket_queue_monitor_watermark FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.ticket_queue_monitor_runs FROM PUBLIC, anon, authenticated;
-ALTER TABLE public.ticket_queue_monitor_totals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.ticket_queue_monitor_totals FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.ticket_queue_monitor_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ticket_queue_monitor_events FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.ticket_queue_monitor_watermark ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ticket_queue_monitor_watermark FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.ticket_queue_monitor_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ticket_queue_monitor_runs FORCE ROW LEVEL SECURITY;
-GRANT ALL ON TABLE public.ticket_queue_monitor_totals TO service_role;
+GRANT ALL ON TABLE public.ticket_queue_monitor_events TO service_role;
 GRANT ALL ON TABLE public.ticket_queue_monitor_watermark TO service_role;
 GRANT ALL ON TABLE public.ticket_queue_monitor_runs TO service_role;
+GRANT USAGE, SELECT ON SEQUENCE public.ticket_queue_monitor_events_id_seq TO service_role;
 GRANT USAGE, SELECT ON SEQUENCE public.ticket_queue_monitor_runs_id_seq TO service_role;
 
--- ── Triggers: count at the write, never at the sample ──────────────────────
+-- ── Triggers: append an event at the write ─────────────────────────────────
 CREATE OR REPLACE FUNCTION public.issue_2947_queue_monitor_on_entry()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -94,25 +85,19 @@ SET search_path TO 'public', 'pg_temp'
 AS $fn$
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    UPDATE public.ticket_queue_monitor_totals
-       SET joins_performed = joins_performed + 1,
-           updated_at = clock_timestamp()
-     WHERE id = 1;
+    INSERT INTO public.ticket_queue_monitor_events (kind, ticket_type_id, checkout_session_id)
+    VALUES ('join', NEW.ticket_type_id, NEW.checkout_session_id);
     RETURN NEW;
   END IF;
 
   IF TG_OP = 'UPDATE' THEN
     IF NEW.admitted_at IS NOT NULL AND OLD.admitted_at IS NULL THEN
-      UPDATE public.ticket_queue_monitor_totals
-         SET admissions_performed = admissions_performed + 1,
-             updated_at = clock_timestamp()
-       WHERE id = 1;
+      INSERT INTO public.ticket_queue_monitor_events (kind, ticket_type_id, checkout_session_id)
+      VALUES ('admission', NEW.ticket_type_id, NEW.checkout_session_id);
     END IF;
     IF NEW.released_at IS NOT NULL AND OLD.released_at IS NULL THEN
-      UPDATE public.ticket_queue_monitor_totals
-         SET holds_released = holds_released + 1,
-             updated_at = clock_timestamp()
-       WHERE id = 1;
+      INSERT INTO public.ticket_queue_monitor_events (kind, ticket_type_id, checkout_session_id)
+      VALUES ('release', NEW.ticket_type_id, NEW.checkout_session_id);
     END IF;
     RETURN NEW;
   END IF;
@@ -140,10 +125,8 @@ AS $fn$
 BEGIN
   IF NEW.status = 'invited'
      AND (OLD.status IS DISTINCT FROM 'invited') THEN
-    UPDATE public.ticket_queue_monitor_totals
-       SET waitlist_invites_sent = waitlist_invites_sent + 1,
-           updated_at = clock_timestamp()
-     WHERE id = 1;
+    INSERT INTO public.ticket_queue_monitor_events (kind, ticket_type_id, checkout_session_id)
+    VALUES ('waitlist_invite', NEW.ticket_type_id, NULL);
   END IF;
   RETURN NEW;
 END
@@ -157,7 +140,33 @@ CREATE TRIGGER issue_2947_queue_monitor_waitlist_au
 REVOKE ALL ON FUNCTION public.issue_2947_queue_monitor_on_entry() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_2947_queue_monitor_on_waitlist() FROM PUBLIC, anon, authenticated;
 
--- ── Observe: roll up write-driven deltas + event denominator ───────────────
+-- Persistent orphans only: ignore the create→join registration window.
+CREATE OR REPLACE FUNCTION public.issue_2947_queue_orphan_infinity_count(
+  p_grace interval DEFAULT interval '2 minutes'
+)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $fn$
+  SELECT count(*)::integer
+    FROM public.ticket_checkout_sessions s
+   WHERE s.expires_at = 'infinity'::timestamptz
+     AND s.status IN ('pending_free', 'requires_payment', 'processing_payment', 'awaiting_web_redirect')
+     AND s.created_at < clock_timestamp() - p_grace
+     AND NOT EXISTS (
+       SELECT 1 FROM public.ticket_queue_entries q
+        WHERE q.checkout_session_id = s.id
+          AND q.released_at IS NULL
+     );
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_2947_queue_orphan_infinity_count(interval)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_2947_queue_orphan_infinity_count(interval) TO service_role;
+
+-- ── Observe: roll up append-only deltas + event denominator ────────────────
 CREATE OR REPLACE FUNCTION public.issue_2947_queue_monitor_observe()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -168,8 +177,8 @@ DECLARE
   v_started timestamptz := clock_timestamp();
   v_waiting integer;
   v_orphans integer;
-  v_totals record;
-  v_mark record;
+  v_mark bigint;
+  v_max_id bigint;
   v_d_joins integer;
   v_d_admits integer;
   v_d_releases integer;
@@ -177,34 +186,34 @@ DECLARE
   v_windows integer;
   v_id bigint;
 BEGIN
-  -- Orphan invariant (recorded, not raised here): an infinity hold without a
-  -- live queue entry. Observe must not RAISE — create→join is two statements
-  -- and a mid-tick race would abort admission. The dedicated assert below
-  -- raises; verdict surfaces `orphaned` when any run recorded orphans.
-  SELECT count(*)::integer INTO v_orphans
-    FROM public.ticket_checkout_sessions s
-   WHERE s.expires_at = 'infinity'::timestamptz
-     AND s.status IN ('pending_free', 'requires_payment', 'processing_payment', 'awaiting_web_redirect')
-     AND NOT EXISTS (
-       SELECT 1 FROM public.ticket_queue_entries q
-        WHERE q.checkout_session_id = s.id
-          AND q.released_at IS NULL
-     );
+  v_orphans := public.issue_2947_queue_orphan_infinity_count(interval '2 minutes');
 
   SELECT count(*)::integer INTO v_waiting
     FROM public.ticket_queue_entries q
    WHERE q.admitted_at IS NULL AND q.released_at IS NULL;
 
-  SELECT * INTO v_totals FROM public.ticket_queue_monitor_totals WHERE id = 1 FOR UPDATE;
-  SELECT * INTO v_mark FROM public.ticket_queue_monitor_watermark WHERE id = 1 FOR UPDATE;
+  SELECT last_event_id INTO v_mark
+    FROM public.ticket_queue_monitor_watermark WHERE id = 1 FOR UPDATE;
 
-  v_d_joins := GREATEST(v_totals.joins_performed - v_mark.joins_seen, 0)::integer;
-  v_d_admits := GREATEST(v_totals.admissions_performed - v_mark.admissions_seen, 0)::integer;
-  v_d_releases := GREATEST(v_totals.holds_released - v_mark.releases_seen, 0)::integer;
-  v_d_invites := GREATEST(v_totals.waitlist_invites_sent - v_mark.waitlist_invites_seen, 0)::integer;
-  -- Opportunity to admit: someone was waiting at sample time, OR this tick's
-  -- write-driven deltas show a queue existed (admit runs before observe and
-  -- may clear the waiting set in the same tick).
+  SELECT COALESCE(max(id), v_mark) INTO v_max_id
+    FROM public.ticket_queue_monitor_events;
+
+  SELECT
+    count(*) FILTER (WHERE kind = 'join')::integer,
+    count(*) FILTER (WHERE kind = 'admission')::integer,
+    count(*) FILTER (WHERE kind = 'release')::integer,
+    count(*) FILTER (WHERE kind = 'waitlist_invite')::integer
+    INTO v_d_joins, v_d_admits, v_d_releases, v_d_invites
+    FROM public.ticket_queue_monitor_events
+   WHERE id > v_mark AND id <= v_max_id;
+
+  v_d_joins := COALESCE(v_d_joins, 0);
+  v_d_admits := COALESCE(v_d_admits, 0);
+  v_d_releases := COALESCE(v_d_releases, 0);
+  v_d_invites := COALESCE(v_d_invites, 0);
+
+  -- Opportunity: waiting now, or this tick's writes show a queue existed
+  -- (admit may clear waiting before observe runs on the same tick).
   v_windows := CASE
     WHEN v_waiting > 0 OR v_d_admits > 0 OR v_d_joins > 0 THEN 1
     ELSE 0
@@ -222,10 +231,7 @@ BEGIN
   ) RETURNING id INTO v_id;
 
   UPDATE public.ticket_queue_monitor_watermark
-     SET joins_seen = v_totals.joins_performed,
-         admissions_seen = v_totals.admissions_performed,
-         releases_seen = v_totals.holds_released,
-         waitlist_invites_seen = v_totals.waitlist_invites_sent
+     SET last_event_id = v_max_id
    WHERE id = 1;
 
   RETURN jsonb_build_object(
@@ -236,17 +242,16 @@ BEGIN
     'joinsPerformed', v_d_joins,
     'admissionsPerformed', v_d_admits,
     'holdsReleased', v_d_releases,
-    'waitlistInvitesSent', v_d_invites
+    'waitlistInvitesSent', v_d_invites,
+    'orphanInfinityCount', v_orphans
   );
 END
 $fn$;
 
 COMMENT ON FUNCTION public.issue_2947_queue_monitor_observe() IS
-  'issue #2947 — roll up write-driven queue counters into one monitor run. '
-  'Records orphan infinity holds without raising (create→join race). '
-  'Called from issue_2947_queue_admit_due.';
+  'issue #2947 — roll up append-only queue events into one monitor run. '
+  'Called from issue_2947_queue_admit_due after admission.';
 
--- Hard raise for probes / ops — not on the admit tick.
 CREATE OR REPLACE FUNCTION public.issue_2947_queue_assert_no_orphan_infinity()
 RETURNS void
 LANGUAGE plpgsql
@@ -256,27 +261,16 @@ AS $fn$
 DECLARE
   v_orphans integer;
 BEGIN
-  SELECT count(*)::integer INTO v_orphans
-    FROM public.ticket_checkout_sessions s
-   WHERE s.expires_at = 'infinity'::timestamptz
-     AND s.status IN ('pending_free', 'requires_payment', 'processing_payment', 'awaiting_web_redirect')
-     AND NOT EXISTS (
-       SELECT 1 FROM public.ticket_queue_entries q
-        WHERE q.checkout_session_id = s.id
-          AND q.released_at IS NULL
-     );
+  v_orphans := public.issue_2947_queue_orphan_infinity_count(interval '2 minutes');
   IF v_orphans > 0 THEN
     RAISE EXCEPTION 'issue_2947_orphan_infinity_hold'
-      USING HINT = format('%s infinity session(s) lack a live queue entry', v_orphans);
+      USING HINT = format('%s persistent infinity session(s) lack a live queue entry', v_orphans);
   END IF;
 END
 $fn$;
 
-COMMENT ON FUNCTION public.issue_2947_queue_assert_no_orphan_infinity() IS
-  'issue #2947 — raises when an infinity hold has no live queue entry. '
-  'Used by migration probes and ops; not called from the admission tick.';
-
--- ── Verdict: never clean on a zero event denominator ───────────────────────
+-- Verdict: never clean on a zero event denominator; freshest waiting window
+-- decides stalled vs clean so one old admission cannot mask a stopped driver.
 CREATE OR REPLACE FUNCTION public.issue_2947_queue_verdict(p_hours integer DEFAULT 72)
 RETURNS jsonb
 LANGUAGE sql
@@ -287,6 +281,13 @@ AS $fn$
   WITH w AS (
     SELECT * FROM public.ticket_queue_monitor_runs
      WHERE observed_at > now() - make_interval(hours => GREATEST(p_hours, 0))
+  ),
+  last_opportunity AS (
+    SELECT *
+      FROM w
+     WHERE queue_windows_observed > 0
+     ORDER BY observed_at DESC, id DESC
+     LIMIT 1
   )
   SELECT jsonb_build_object(
     'windowHours', p_hours,
@@ -304,7 +305,11 @@ AS $fn$
         THEN 'orphaned'
       WHEN COALESCE((SELECT sum(queue_windows_observed) FROM w), 0) = 0
         THEN 'insufficient_evidence'
-      WHEN COALESCE((SELECT sum(admissions_performed) FROM w), 0) = 0
+      WHEN EXISTS (
+        SELECT 1 FROM last_opportunity lo
+         WHERE lo.admissions_performed = 0
+           AND lo.waiting_entries > 0
+      )
         THEN 'stalled'
       ELSE 'clean'
     END
@@ -312,10 +317,8 @@ AS $fn$
 $fn$;
 
 COMMENT ON FUNCTION public.issue_2947_queue_verdict(integer) IS
-  'issue #2947 — queue health. orphaned if any infinity hold lacked a queue '
-  'entry; insufficient_evidence when no queue window was observed; stalled when '
-  'a queue existed but nobody was admitted; clean only when both the event '
-  'denominator and admissions are positive.';
+  'issue #2947 — queue health. orphaned / insufficient_evidence / stalled / clean. '
+  'stalled when the freshest opportunity window still had waiting buyers and zero admissions.';
 
 REVOKE ALL ON FUNCTION public.issue_2947_queue_monitor_observe() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_2947_queue_verdict(integer) FROM PUBLIC, anon, authenticated;
@@ -324,7 +327,7 @@ GRANT EXECUTE ON FUNCTION public.issue_2947_queue_monitor_observe() TO service_r
 GRANT EXECUTE ON FUNCTION public.issue_2947_queue_verdict(integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_2947_queue_assert_no_orphan_infinity() TO service_role;
 
--- ── Hook observe into the admission driver (same tick) ─────────────────────
+-- ── admit_due: sale boundary + observe on the same tick ────────────────────
 CREATE OR REPLACE FUNCTION public.issue_2947_queue_admit_due()
 RETURNS integer
 LANGUAGE plpgsql
@@ -345,9 +348,10 @@ DECLARE
   v_n integer;
   v_k integer;
   v_total integer := 0;
+  v_sale_opens timestamptz;
 BEGIN
   FOR r IN
-    SELECT a.ticket_type_id, a.last_admitted_at, a.armed_at
+    SELECT a.ticket_type_id, a.last_admitted_at, a.armed_at, a.sale_opens_at
       FROM public.ticket_queue_arming a
      WHERE a.disarmed_at IS NULL
         OR EXISTS (
@@ -361,6 +365,13 @@ BEGIN
     END IF;
 
     v_now := clock_timestamp();
+    v_sale_opens := r.sale_opens_at;
+
+    -- Rule 6: do not start hold clocks before the sale opens. Pre-sale joiners
+    -- stay at infinity until sale_opens_at so the randomised cohort can form.
+    IF v_sale_opens IS NOT NULL AND v_sale_opens > v_now THEN
+      CONTINUE;
+    END IF;
 
     SELECT l.admission_rate_per_sec, l.max_concurrent_live_holds, l.hold_window_seconds
       INTO v_rate, v_max_live, v_hold_seconds
@@ -378,8 +389,13 @@ BEGIN
       CONTINUE;
     END IF;
 
-    v_base := GREATEST(COALESCE(r.last_admitted_at, r.armed_at),
-                       v_now - make_interval(secs => v_hold_seconds));
+    -- Bucket credit starts at sale open, not at arming, so a long pre-sale
+    -- window cannot bank a burst for the first live tick.
+    v_base := GREATEST(
+      COALESCE(r.last_admitted_at, r.armed_at),
+      COALESCE(v_sale_opens, '-infinity'::timestamptz),
+      v_now - make_interval(secs => v_hold_seconds)
+    );
     v_elapsed := GREATEST(EXTRACT(EPOCH FROM (v_now - v_base)), 0);
     v_bucket := floor(v_rate * v_elapsed)::integer;
 
@@ -407,9 +423,6 @@ BEGIN
     END IF;
   END LOOP;
 
-  -- Same tick as admission: roll up write-driven counters. A missing caller
-  -- that never reaches this line is what `stalled` is designed to catch when
-  -- observe is invoked independently (or after the driver is disarmed).
   PERFORM public.issue_2947_queue_monitor_observe();
 
   RETURN v_total;
@@ -417,58 +430,44 @@ END
 $fn$;
 
 COMMENT ON FUNCTION public.issue_2947_queue_admit_due() IS
-  'issue #2947 — production caller of issue_2947_queue_admit_batch, then '
-  'issue_2947_queue_monitor_observe on the same tick. Scheduled every minute '
-  'by cron job issue_2947_queue_admission_driver.';
+  'issue #2947 — production caller of issue_2947_queue_admit_batch (only after '
+  'sale_opens_at), then issue_2947_queue_monitor_observe on the same tick.';
 
 REVOKE ALL ON FUNCTION public.issue_2947_queue_admit_due() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_2947_queue_admit_due() TO service_role;
 
--- ── Probes ─────────────────────────────────────────────────────────────────
+-- Deployment probe: structural only. Live queue activity and orphan state are
+-- covered by the isolated SQL suites — do not reset monitor data or assume an
+-- empty waiting set on a database that already has buyers.
 DO $probe$
 DECLARE
-  v jsonb;
-  v_rows integer;
+  v_def text;
 BEGIN
-  -- Zero-event window must never read as clean.
-  DELETE FROM public.ticket_queue_monitor_runs;
-  UPDATE public.ticket_queue_monitor_watermark
-     SET joins_seen = 0, admissions_seen = 0, releases_seen = 0, waitlist_invites_seen = 0
-   WHERE id = 1;
-  UPDATE public.ticket_queue_monitor_totals
-     SET joins_performed = 0, admissions_performed = 0,
-         holds_released = 0, waitlist_invites_sent = 0
-   WHERE id = 1;
-
-  v := public.issue_2947_queue_monitor_observe();
-  IF (v->>'queueWindowsObserved')::integer <> 0 THEN
-    RAISE EXCEPTION 'PROBE FAIL: fresh DB reported a queue window';
+  IF to_regprocedure('public.issue_2947_queue_monitor_observe()') IS NULL
+     OR to_regprocedure('public.issue_2947_queue_verdict(integer)') IS NULL THEN
+    RAISE EXCEPTION 'PROBE FAIL: monitor functions missing';
   END IF;
 
-  v := public.issue_2947_queue_verdict(72);
-  IF v->>'verdict' <> 'insufficient_evidence' THEN
-    RAISE EXCEPTION 'PROBE FAIL: zero-event window reported %, must be insufficient_evidence', v->>'verdict';
-  END IF;
-
-  SELECT count(*) INTO v_rows FROM public.ticket_queue_monitor_runs;
-  IF v_rows < 1 THEN
-    RAISE EXCEPTION 'PROBE FAIL: observe wrote no row';
-  END IF;
-
-  -- Driver still present and now calls observe (source check).
-  IF position('issue_2947_queue_monitor_observe' IN
-       pg_get_functiondef('public.issue_2947_queue_admit_due'::regproc)) = 0 THEN
+  v_def := pg_get_functiondef('public.issue_2947_queue_admit_due'::regproc);
+  IF position('issue_2947_queue_monitor_observe' IN v_def) = 0 THEN
     RAISE EXCEPTION 'PROBE FAIL: admit_due no longer calls the monitor';
+  END IF;
+  IF position('sale_opens_at' IN v_def) = 0 THEN
+    RAISE EXCEPTION 'PROBE FAIL: admit_due lost the sale_opens_at boundary';
   END IF;
 
   IF (SELECT count(*) FROM cron.job WHERE jobname = 'issue_2947_queue_admission_driver') <> 1 THEN
     RAISE EXCEPTION 'PROBE FAIL: admission driver cron absent';
   END IF;
 
-  -- Hard orphan assert is clean on a fresh DB.
-  PERFORM public.issue_2947_queue_assert_no_orphan_infinity();
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = 'ticket_queue_monitor_events'
+  ) THEN
+    RAISE EXCEPTION 'PROBE FAIL: monitor events table missing';
+  END IF;
 
-  RAISE NOTICE 'issue #2947 monitor probe: insufficient_evidence on zero-event window OK';
+  RAISE NOTICE 'issue #2947 monitor probe: structural OK';
 END
 $probe$;
 
