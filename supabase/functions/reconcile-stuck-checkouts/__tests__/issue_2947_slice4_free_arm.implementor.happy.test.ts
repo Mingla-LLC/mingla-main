@@ -41,6 +41,9 @@ const IN_FLIGHT = [
   "pending_free",
 ];
 
+const SERVICE_ROLE_KEY =
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "service-role-under-test";
+
 function tsValue(raw: string): number {
   if (raw === "infinity") return Number.POSITIVE_INFINITY;
   if (raw === "-infinity") return Number.NEGATIVE_INFINITY;
@@ -331,7 +334,7 @@ Deno.test("#2947 slice4 T-1 - 1000 free past-expiry rows clear with zero Stripe 
   const response = await handler(
     new Request("https://sweep.test/", {
       method: "POST",
-      headers: { authorization: "Bearer service-role-under-test" },
+      headers: { authorization: `Bearer ${SERVICE_ROLE_KEY}` },
     }),
   );
   assertEquals(response.status, 200);
@@ -363,7 +366,7 @@ Deno.test("#2947 slice4 T-2 - without free arm only SWEEP_BATCH_LIMIT=50 clear (
   const response = await handler(
     new Request("https://sweep.test/", {
       method: "POST",
-      headers: { authorization: "Bearer service-role-under-test" },
+      headers: { authorization: `Bearer ${SERVICE_ROLE_KEY}` },
     }),
   );
   const summary = await response.json() as { expired: number };
