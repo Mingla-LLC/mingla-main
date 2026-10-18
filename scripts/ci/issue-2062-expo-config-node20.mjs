@@ -89,6 +89,8 @@ const APP_CONTRACTS = {
       EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY:
         "pk_live_000000000000000000000000",
       EXPO_PUBLIC_GIPHY_API_KEY: "issue2062_giphy_placeholder",
+      EXPO_PUBLIC_ONESIGNAL_APP_ID:
+        "4505e476-0000-4000-8000-000000000000",
     },
   },
 };
@@ -368,6 +370,8 @@ function controlledEnvironment(appName) {
     EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID: "com.issue2062.placeholder",
     EXPO_PUBLIC_GIPHY_API_KEY:
       contract.sentinelExtra.EXPO_PUBLIC_GIPHY_API_KEY ?? "",
+    EXPO_PUBLIC_ONESIGNAL_APP_ID:
+      contract.sentinelExtra.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? "",
   };
   delete env.VERCEL_ENV;
   delete env.EXPO_PUBLIC_GIPHY_KEY;
