@@ -49,7 +49,11 @@ Deno.test("v1.4 provider create binds the executable version before a platform w
     new URL("../../ad-plan/index.ts", import.meta.url),
   );
   assertStringIncludes(plan, 'action === "record_create_failure"');
-  assertStringIncludes(plan, 'state: "creation_failed_retryable"');
+  // [TEST-MOD-APPROVED #3697] Provider residue is terminal until reconciled;
+  // only a failure with no surviving provider IDs remains safely retryable.
+  assertStringIncludes(plan, "state: reconciliationRequired");
+  assertStringIncludes(plan, '"creation_failed_terminal"');
+  assertStringIncludes(plan, '"creation_failed_retryable"');
 });
 
 Deno.test("v1.4 app destinations must be ready before an immutable version is frozen", async () => {

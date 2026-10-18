@@ -33,6 +33,8 @@ DECLARE
   v_revised_version public.ad_plan_versions%ROWTYPE;
   v_cancel_plan public.ad_plans%ROWTYPE;
   v_cancel_version public.ad_plan_versions%ROWTYPE;
+  v_residue_plan public.ad_plans%ROWTYPE;
+  v_residue_version public.ad_plan_versions%ROWTYPE;
   v_plan public.ad_plans%ROWTYPE;
   v_version public.ad_plan_versions%ROWTYPE;
   v_hold public.ad_plan_funding_holds%ROWTYPE;
@@ -429,6 +431,78 @@ BEGIN
     RAISE EXCEPTION 'safe_precreate_cancel_failed:hold %, balance %, held %',
       row_to_json(v_hold), v_wallet_balance, v_wallet_held;
   END IF;
+
+  -- [TEST-MOD-APPROVED #3697] Provider-create residue can exist without an
+  -- ad_campaigns row when the provider succeeds but the local persist fails.
+  -- Durable status evidence alone must keep the Host hold intact.
+  v_residue_plan := public.ad_plan_open(
+    'host', 'host', v_brand, 'public_mingla_page',
+    'brand:issue-3697-control-plane', '[]'::jsonb, v_user
+  );
+  v_residue_version := public.ad_plan_create_version(
+    v_residue_plan.id,
+    '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb
+      || jsonb_build_object('media_rights', v_rights),
+    1500000, 'NGN', jsonb_build_array(jsonb_build_object(
+      'platform', 'meta', 'connection_id', v_connection,
+      'host_budget_cents', 1500000,
+      'host_delivery_budget_cents', 1500000,
+      'provider_budget_cents', 1000,
+      'provider_delivery_budget_cents', 1000,
+      'fx_snapshot_id', v_snapshot
+    )), v_user
+  );
+  INSERT INTO public.ad_plan_targeting_snapshots (
+    plan_version_id, platform, audience_intent, compiled_targeting, verdict,
+    evidence_observed_at, compiler_version
+  ) VALUES (
+    v_residue_version.id, 'meta', '{"countries":["NG"]}'::jsonb,
+    '{"geo_locations":{"countries":["NG"]}}'::jsonb,
+    'exact', now(), 'v1.4-test'
+  );
+  PERFORM public.ad_plan_mark_ready(
+    v_residue_version.id, v_residue_version.plan_hash
+  );
+  PERFORM public.ad_plan_hold_host_funds(
+    v_residue_version.id, v_residue_version.plan_hash,
+    'v14-residue-hold-unique', v_user
+  );
+  INSERT INTO public.ad_status_events (
+    campaign_id, platform, entity, action, actor, external_ids,
+    provider_response
+  ) VALUES (
+    NULL, 'meta', 'campaign', 'create_failed', v_user,
+    jsonb_build_object(
+      'plan_version_id', v_residue_version.id,
+      'plan_hash', v_residue_version.plan_hash,
+      'external_campaign_id', 'provider-residue-v14'
+    ),
+    '{"note":"provider object may exist"}'::jsonb
+  );
+  v_failed := false;
+  BEGIN
+    PERFORM public.ad_plan_cancel_before_create(
+      v_residue_version.id, v_residue_version.plan_hash,
+      'v14-residue-cancel-unsafe', 'Must retain funds pending cleanup', v_user
+    );
+  EXCEPTION WHEN SQLSTATE '55000' THEN
+    v_failed := SQLERRM = 'ad_plan_provider_objects_may_exist';
+  END;
+  IF NOT v_failed THEN
+    RAISE EXCEPTION 'provider_status_residue_did_not_block_cancel';
+  END IF;
+  SELECT * INTO v_hold FROM public.ad_plan_funding_holds
+  WHERE plan_version_id = v_residue_version.id;
+  IF v_hold.state <> 'held' THEN
+    RAISE EXCEPTION 'provider_status_residue_released_hold:%', row_to_json(v_hold);
+  END IF;
+  DELETE FROM public.ad_status_events
+  WHERE campaign_id IS NULL
+    AND external_ids->>'plan_version_id' = v_residue_version.id::text;
+  PERFORM public.ad_plan_cancel_before_create(
+    v_residue_version.id, v_residue_version.plan_hash,
+    'v14-residue-cancel-safe', 'Controlled cleanup proved absence', v_user
+  );
 
   v_plan := public.ad_plan_open(
     'ari', 'host', v_brand, 'public_mingla_page',

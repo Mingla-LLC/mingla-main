@@ -1556,6 +1556,13 @@ BEGIN
   ) OR EXISTS (
     SELECT 1 FROM public.ad_campaigns c
     WHERE c.plan_version_id = v_version.id
+  ) OR EXISTS (
+    SELECT 1 FROM public.ad_status_events e
+    WHERE e.campaign_id IS NULL
+      AND e.action = 'create_failed'
+      AND e.external_ids->>'plan_version_id' = v_version.id::text
+      AND e.external_ids->>'plan_hash' = v_version.plan_hash
+      AND (e.external_ids - 'plan_version_id' - 'plan_hash') <> '{}'::jsonb
   ) THEN
     RAISE EXCEPTION 'ad_plan_provider_objects_may_exist' USING ERRCODE = '55000';
   END IF;

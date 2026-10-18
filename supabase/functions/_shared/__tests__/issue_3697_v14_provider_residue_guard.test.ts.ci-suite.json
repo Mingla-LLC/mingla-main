@@ -1,0 +1,7 @@
+{
+  "owner": "issue-3697",
+  "command": "deno test --allow-env --allow-read supabase/functions/_shared/__tests__/issue_3697_v14_provider_residue_guard.test.ts",
+  "orderKey": "issue-3697-v14-03c-provider-residue-guard",
+  "timeoutSeconds": 120,
+  "reason": "Provider-create residue must bind to the immutable plan and block cancellation or fund release even if local campaign persistence failed."
+}

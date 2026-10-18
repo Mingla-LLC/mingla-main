@@ -411,6 +411,7 @@ async function getPlanAggregate(db: Db, plan: Plan) {
     hold,
     attempts,
     campaigns,
+    providerFailureEvents,
   ] = await Promise.all([
     db.from("ad_plan_provider_allocations").select("*")
       .eq("plan_version_id", version.id).order("platform"),
@@ -429,6 +430,11 @@ async function getPlanAggregate(db: Db, plan: Plan) {
       .order("created_at"),
     db.from("ad_campaigns").select("*").eq("plan_version_id", version.id)
       .order("platform"),
+    db.from("ad_status_events").select("*")
+      .is("campaign_id", null)
+      .in("action", ["create_failed", "rollback"])
+      .contains("external_ids", { plan_version_id: version.id })
+      .order("created_at"),
   ]);
   const campaignIds = (campaigns.data ?? []).map((row: { id: string }) =>
     row.id
@@ -448,6 +454,7 @@ async function getPlanAggregate(db: Db, plan: Plan) {
     confirmations: confirmations.data ?? [],
     funding_hold: hold.data ?? null,
     provider_attempts: attempts.data ?? [],
+    provider_failure_events: providerFailureEvents.data ?? [],
     campaigns: campaigns.data ?? [],
     settlements: settlements.data ?? [],
   };
@@ -1130,6 +1137,29 @@ serve(async (req: Request): Promise<Response> => {
     const detail = typeof body.error_detail === "string"
       ? body.error_detail.trim().slice(0, 500)
       : "provider_create_failed";
+    const { data: failureEvents, error: failureEventsError } = await db
+      .from("ad_status_events")
+      .select("action,external_ids,provider_response,created_at")
+      .is("campaign_id", null)
+      .eq("platform", platform)
+      .in("action", ["create_failed", "rollback"])
+      .contains("external_ids", { plan_version_id: versionId })
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (failureEventsError) return databaseFailure(failureEventsError);
+    const matchingFailure = (failureEvents ?? []).find((event) => {
+      const ids = asRecord(event.external_ids);
+      return ids?.plan_version_id === versionId && ids?.plan_hash === planHash;
+    });
+    const recordedIds = matchingFailure?.action === "create_failed"
+      ? { ...(asRecord(matchingFailure.external_ids) ?? {}) }
+      : {};
+    delete recordedIds.plan_version_id;
+    delete recordedIds.plan_hash;
+    const reconciliationRequired = Object.keys(recordedIds).length > 0;
+    const attemptState = reconciliationRequired
+      ? "failed_terminal"
+      : "failed_retryable";
     const { data: attempt, error: attemptError } = await db.rpc(
       "ad_record_provider_attempt",
       {
@@ -1138,22 +1168,33 @@ serve(async (req: Request): Promise<Response> => {
         p_platform: platform,
         p_command: "create_paused_objects",
         p_idempotency_key: `${planHash}:${platform}:create`,
-        p_state: "failed_retryable",
-        p_external_ids: {},
-        p_provider_response: null,
+        p_state: attemptState,
+        p_external_ids: recordedIds,
+        p_provider_response: matchingFailure
+          ? asRecord(matchingFailure.provider_response)
+          : null,
         p_error_detail: detail || "provider_create_failed",
       },
     );
     if (attemptError) return databaseFailure(attemptError);
     const { data: plan, error: stateError } = await db.from("ad_plans")
-      .update({ state: "creation_failed_retryable" })
+      .update({
+        state: reconciliationRequired
+          ? "creation_failed_terminal"
+          : "creation_failed_retryable",
+      })
       .eq("id", authorized.plan.id)
       .eq("current_version_id", versionId)
       .in("state", ["creating_paused_objects", "creation_failed_retryable"])
       .select("*").maybeSingle();
     if (stateError) return databaseFailure(stateError);
     return plan
-      ? json({ ok: true, plan, provider_attempt: attempt })
+      ? json({
+        ok: true,
+        plan,
+        provider_attempt: attempt,
+        reconciliation_required: reconciliationRequired,
+      })
       : json({ error: "plan_conflict", detail: "create_state_invalid" }, 409);
   }
 

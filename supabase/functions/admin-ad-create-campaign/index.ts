@@ -348,6 +348,19 @@ function objectRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function planBoundFailureIds(
+  externalIds: Record<string, unknown> | null,
+  planVersionId: string | null,
+  planHash: string | null,
+): Record<string, unknown> {
+  return {
+    ...(externalIds ?? {}),
+    ...(planVersionId && planHash
+      ? { plan_version_id: planVersionId, plan_hash: planHash }
+      : {}),
+  };
+}
+
 function immutableRequestMismatch(
   canonicalPlan: Record<string, unknown>,
   body: Record<string, unknown>,
@@ -847,6 +860,8 @@ serve(async (req: Request): Promise<Response> => {
   let customerCurrency = providerCurrency;
   let providerAmountCents = amountCents as number;
   let frozenExecutionTargeting: Record<string, unknown> | null = null;
+  let boundPlanVersionId: string | null = null;
+  let boundPlanHash: string | null = null;
   let planMoney: Omit<
     Wave2MoneyPersist,
     | "brand_id"
@@ -870,6 +885,8 @@ serve(async (req: Request): Promise<Response> => {
         detail: "plan_version_and_hash_required_before_provider_create",
       }, 409);
     }
+    boundPlanVersionId = planVersionId;
+    boundPlanHash = planHash;
     const { data: version, error: versionError } = await supabase
       .from("ad_plan_versions")
       .select(
@@ -1559,12 +1576,16 @@ serve(async (req: Request): Promise<Response> => {
             action: "create_failed",
             actor: user.id,
             to_status: null,
-            external_ids: {
-              external_campaign_id: createdGV.externalCampaignId,
-              external_adset_id: createdGV.externalAdSetId,
-              external_ad_id: createdGV.externalAdId,
-              budget_resource_name: createdGV.budgetResourceName,
-            },
+            external_ids: planBoundFailureIds(
+              {
+                external_campaign_id: createdGV.externalCampaignId,
+                external_adset_id: createdGV.externalAdSetId,
+                external_ad_id: createdGV.externalAdId,
+                budget_resource_name: createdGV.budgetResourceName,
+              },
+              boundPlanVersionId,
+              boundPlanHash,
+            ),
             provider_response: {
               db_error: persistErrGV.message,
               request_id: createdGV.requestId,
@@ -1626,7 +1647,11 @@ serve(async (req: Request): Promise<Response> => {
             entity: "campaign",
             action: "create_failed",
             actor: user.id,
-            external_ids: null,
+            external_ids: planBoundFailureIds(
+              null,
+              boundPlanVersionId,
+              boundPlanHash,
+            ),
             provider_response: {
               step: "atomic_mutate_demand_gen",
               ...err.toJSON(),
@@ -2147,12 +2172,16 @@ serve(async (req: Request): Promise<Response> => {
           action: "create_failed",
           actor: user.id,
           to_status: null,
-          external_ids: {
-            external_campaign_id: created.externalCampaignId,
-            external_adset_id: created.externalAdSetId,
-            external_ad_id: created.externalAdId,
-            budget_resource_name: created.budgetResourceName,
-          },
+          external_ids: planBoundFailureIds(
+            {
+              external_campaign_id: created.externalCampaignId,
+              external_adset_id: created.externalAdSetId,
+              external_ad_id: created.externalAdId,
+              budget_resource_name: created.budgetResourceName,
+            },
+            boundPlanVersionId,
+            boundPlanHash,
+          ),
           provider_response: {
             db_error: persistErrG.message,
             request_id: created.requestId,
@@ -2211,7 +2240,11 @@ serve(async (req: Request): Promise<Response> => {
           entity: "campaign",
           action: "create_failed",
           actor: user.id,
-          external_ids: null,
+          external_ids: planBoundFailureIds(
+            null,
+            boundPlanVersionId,
+            boundPlanHash,
+          ),
           provider_response: { step: "atomic_mutate", ...err.toJSON() },
         });
         return json({
@@ -2995,15 +3028,19 @@ serve(async (req: Request): Promise<Response> => {
             : "create_failed",
           actor: user.id,
           to_status: null,
-          external_ids: {
-            external_campaign_id: created.externalCampaignId,
-            external_adset_id: created.externalAdSetId,
-            external_creative_id: created.externalCreativeId,
-            external_ad_id: created.externalAdId,
-            // GR-48: the media id is tracked for reconciliation too (library
-            // media is a durable #866 asset — recorded, never deleted here).
-            external_media_id: topSnapMediaIdS,
-          },
+          external_ids: planBoundFailureIds(
+            {
+              external_campaign_id: created.externalCampaignId,
+              external_adset_id: created.externalAdSetId,
+              external_creative_id: created.externalCreativeId,
+              external_ad_id: created.externalAdId,
+              // GR-48: the media id is tracked for reconciliation too (library
+              // media is a durable #866 asset — recorded, never deleted here).
+              external_media_id: topSnapMediaIdS,
+            },
+            boundPlanVersionId,
+            boundPlanHash,
+          ),
           provider_response: {
             db_error: persistErrS.message,
             ...(creativeRollbackOkS === false
@@ -3079,10 +3116,14 @@ serve(async (req: Request): Promise<Response> => {
             ? "rollback"
             : "create_failed",
           actor: user.id,
-          external_ids: {
-            ...failure.partialExternalIds,
-            external_media_id: topSnapMediaIdS,
-          },
+          external_ids: planBoundFailureIds(
+            {
+              ...failure.partialExternalIds,
+              external_media_id: topSnapMediaIdS,
+            },
+            boundPlanVersionId,
+            boundPlanHash,
+          ),
           provider_response: {
             step: failure.step,
             ...providerResponseS,
@@ -3855,12 +3896,16 @@ serve(async (req: Request): Promise<Response> => {
           action: rollbackOkT ? "rollback" : "create_failed",
           actor: user.id,
           to_status: null,
-          external_ids: {
-            external_campaign_id: createdT.externalCampaignId,
-            external_adset_id: createdT.externalAdSetId,
-            external_ad_id: createdT.externalAdId,
-            external_image_id: imageIdT, // Asset-Library media is durable — recorded, never deleted here
-          },
+          external_ids: planBoundFailureIds(
+            {
+              external_campaign_id: createdT.externalCampaignId,
+              external_adset_id: createdT.externalAdSetId,
+              external_ad_id: createdT.externalAdId,
+              external_image_id: imageIdT, // Asset-Library media is durable — recorded, never deleted here
+            },
+            boundPlanVersionId,
+            boundPlanHash,
+          ),
           provider_response: { db_error: persistErrT.message },
         });
         console.error(
@@ -3915,10 +3960,14 @@ serve(async (req: Request): Promise<Response> => {
             ? "rollback"
             : "create_failed",
           actor: user.id,
-          external_ids: {
-            ...failureT.partialExternalIds,
-            ...(imageIdT ? { external_image_id: imageIdT } : {}),
-          },
+          external_ids: planBoundFailureIds(
+            {
+              ...failureT.partialExternalIds,
+              ...(imageIdT ? { external_image_id: imageIdT } : {}),
+            },
+            boundPlanVersionId,
+            boundPlanHash,
+          ),
           provider_response: { step: failureT.step, ...providerResponseT },
         });
         return json({
@@ -4407,14 +4456,18 @@ serve(async (req: Request): Promise<Response> => {
           action: rollbackOkR ? "rollback" : "create_failed",
           actor: user.id,
           to_status: null,
-          external_ids: {
-            external_campaign_id: createdR.externalCampaignId,
-            external_adset_id: createdR.externalAdSetId,
-            external_ad_id: createdR.externalAdId,
-            // §7.2: a post with no ad attached is safe residue — but recorded.
-            orphaned_post_id: createdR.postId,
-            profile_id: createdR.profileId,
-          },
+          external_ids: planBoundFailureIds(
+            {
+              external_campaign_id: createdR.externalCampaignId,
+              external_adset_id: createdR.externalAdSetId,
+              external_ad_id: createdR.externalAdId,
+              // §7.2: a post with no ad attached is safe residue — but recorded.
+              orphaned_post_id: createdR.postId,
+              profile_id: createdR.profileId,
+            },
+            boundPlanVersionId,
+            boundPlanHash,
+          ),
           provider_response: { db_error: persistErrR.message },
         });
         console.error(
@@ -4478,7 +4531,11 @@ serve(async (req: Request): Promise<Response> => {
             ? "rollback"
             : "create_failed",
           actor: user.id,
-          external_ids: failureR.partialExternalIds,
+          external_ids: planBoundFailureIds(
+            failureR.partialExternalIds,
+            boundPlanVersionId,
+            boundPlanHash,
+          ),
           provider_response: {
             step: failureR.step,
             ...providerResponseR,
@@ -5076,12 +5133,16 @@ serve(async (req: Request): Promise<Response> => {
           : "create_failed",
         actor: user.id,
         to_status: null,
-        external_ids: {
-          external_campaign_id: created.externalCampaignId,
-          external_adset_id: created.externalAdSetId,
-          external_creative_id: created.externalCreativeId,
-          external_ad_id: created.externalAdId,
-        },
+        external_ids: planBoundFailureIds(
+          {
+            external_campaign_id: created.externalCampaignId,
+            external_adset_id: created.externalAdSetId,
+            external_creative_id: created.externalCreativeId,
+            external_ad_id: created.externalAdId,
+          },
+          boundPlanVersionId,
+          boundPlanHash,
+        ),
         provider_response: {
           db_error: persistError.message,
           ...(creativeRollbackOk === false
@@ -5149,7 +5210,11 @@ serve(async (req: Request): Promise<Response> => {
           ? "rollback"
           : "create_failed",
         actor: user.id,
-        external_ids: failure.partialExternalIds,
+        external_ids: planBoundFailureIds(
+          failure.partialExternalIds,
+          boundPlanVersionId,
+          boundPlanHash,
+        ),
         provider_response: {
           step: failure.step,
           ...providerResponse,
