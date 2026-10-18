@@ -336,6 +336,7 @@ const GOOGLE_CALENDAR_FIELDS = [
 ];
 const GOOGLE_DRIVE_FIELDS = [
   "client_email",
+  "data_room_folder_id",
   "host_details_folder_id",
   "private_key",
   "shared_drive_id",
@@ -365,6 +366,8 @@ function validateGoogleBundle(bundleObject) {
     !drive.private_key.includes("-----END PRIVATE KEY-----") ||
     typeof drive.shared_drive_id !== "string" ||
     drive.shared_drive_id.length < 8 ||
+    typeof drive.data_room_folder_id !== "string" ||
+    drive.data_room_folder_id.length < 8 ||
     typeof drive.host_details_folder_id !== "string" ||
     drive.host_details_folder_id.length < 8
   ) throw new BundleSetterError("google_bundle_strict_parser_invalid");
@@ -386,6 +389,7 @@ export function serializeGoogleCredentialBundle(bundleObject) {
     private_key: bundleObject.drive_storage.private_key,
     shared_drive_id: bundleObject.drive_storage.shared_drive_id,
     host_details_folder_id: bundleObject.drive_storage.host_details_folder_id,
+    data_room_folder_id: bundleObject.drive_storage.data_room_folder_id,
   };
   const encodedDrive = Buffer.from(JSON.stringify(drive), "utf8")
     .toString("base64url");

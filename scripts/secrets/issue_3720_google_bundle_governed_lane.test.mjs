@@ -1,3 +1,5 @@
+// [TEST-MOD-APPROVED #3720] Completion Wave 6 extends the existing governed
+// Google Drive object with the private Data room folder authority.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -19,6 +21,7 @@ const GOOGLE_FIELDS = [
   "calendar_client_secret",
   "calendar_refresh_token",
   "drive_storage.client_email",
+  "drive_storage.data_room_folder_id",
   "drive_storage.host_details_folder_id",
   "drive_storage.private_key",
   "drive_storage.shared_drive_id",
@@ -48,6 +51,7 @@ function googleInput() {
       calendar_refresh_token: "fixture-calendar-refresh",
       drive_storage: {
         client_email: "fixture-drive@example.invalid",
+        data_room_folder_id: "fixture-data-room-folder",
         host_details_folder_id: "fixture-host-details-folder",
         private_key: privateKey,
         shared_drive_id: "fixture-shared-drive",
@@ -58,10 +62,20 @@ function googleInput() {
   };
 }
 
-test("#3720 Google bundle is governed for both readers and has a sanctioned input flag", () => {
+test("#3720 Google bundle is governed for every reader and has a sanctioned input flag", () => {
   const policy = loadEffectiveFunctionPolicy();
   assert.deepEqual(
     policy.contract.functions["brand-group-files"].required_bundle_fields,
+    {
+      GOOGLE_CALENDAR_KEYS: GOOGLE_FIELDS.filter(
+        (field) =>
+          field.startsWith("drive_storage.") &&
+          field !== "drive_storage.data_room_folder_id",
+      ),
+    },
+  );
+  assert.deepEqual(
+    policy.contract.functions["admin-data-room"].required_bundle_fields,
     {
       GOOGLE_CALENDAR_KEYS: GOOGLE_FIELDS.filter((field) =>
         field.startsWith("drive_storage."),
@@ -101,6 +115,13 @@ test("#3720 Google bundle setter preserves Calendar and emits the four-part runt
   const manifest = loadManifest();
   const prepared = prepareGovernedBundle({ ...googleInput(), manifest });
   assert.deepEqual(prepared.fieldNames, GOOGLE_FIELDS);
+  assert.deepEqual(
+    prepared.fieldNames,
+    manifest.secrets
+      .find((record) => record.name === "GOOGLE_CALENDAR_KEYS")
+      .bundle_fields.map((field) => field.name)
+      .sort(),
+  );
   const serialized = serializeGoogleCredentialBundle(prepared.bundleObject);
   const parts = serialized.split("|");
   assert.deepEqual(parts.slice(0, 3), [
@@ -115,8 +136,10 @@ test("#3720 Google bundle setter preserves Calendar and emits the four-part runt
     "private_key",
     "shared_drive_id",
     "host_details_folder_id",
+    "data_room_folder_id",
   ]);
   assert.equal(drive.shared_drive_id, "fixture-shared-drive");
+  assert.equal(drive.data_room_folder_id, "fixture-data-room-folder");
 });
 
 test("#3720 Google bundle refuses missing Calendar preservation or malformed Drive authority", () => {
@@ -140,6 +163,15 @@ test("#3720 Google bundle refuses missing Calendar preservation or malformed Dri
     (error) =>
       error instanceof BundleSetterError &&
       error.code === "google_bundle_strict_parser_invalid",
+  );
+
+  const missingDataRoom = googleInput();
+  delete missingDataRoom.bundleObject.drive_storage.data_room_folder_id;
+  assert.throws(
+    () => prepareGovernedBundle({ ...missingDataRoom, manifest }),
+    (error) =>
+      error instanceof BundleSetterError &&
+      error.code === "google_bundle_shape_invalid",
   );
 });
 
@@ -177,14 +209,18 @@ test("#3720 Google bundle apply sends one value through stdin and returns names 
   ]);
 });
 
-test("#3720 same-process governed lane applies, receipts, deploys and verifies both readers", () => {
+test("#3720 same-process governed lane applies, receipts, deploys and verifies every reader", () => {
   const manifest = loadManifest();
   const liveNames = manifest.secrets.map((record) => record.name);
   const calls = [];
   const result = runGovernedBundleDeployment({
     projectRef: PROJECT_REF,
     mergedCommit: MERGED_COMMIT,
-    selectedFunctions: ["brand-group-files", "growth-tools-book"],
+    selectedFunctions: [
+      "admin-data-room",
+      "brand-group-files",
+      "growth-tools-book",
+    ],
     bundleInputs: { GOOGLE_CALENDAR_KEYS: googleInput() },
     dependencies: {
       audit: () => [],
@@ -219,6 +255,7 @@ test("#3720 same-process governed lane applies, receipts, deploys and verifies b
   ]);
   assert.deepEqual(result.applied_bundles, ["GOOGLE_CALENDAR_KEYS"]);
   assert.deepEqual(result.deployed_functions, [
+    "admin-data-room",
     "brand-group-files",
     "growth-tools-book",
   ]);
