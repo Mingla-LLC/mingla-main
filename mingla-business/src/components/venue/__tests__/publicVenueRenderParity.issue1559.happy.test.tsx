@@ -185,6 +185,24 @@
  * the 26px desk-name and one 20px desk-pitch/message box; sparse/error cases
  * drop only the 33px title box. No assertion, subtree, or user-facing copy is
  * removed.
+ *
+ * ---------------------------------------------------------------------------
+ * [TEST-MOD-APPROVED #3960] — THEMED TEXT USES ITS SELECTED FONT'S LINE BOX
+ * ---------------------------------------------------------------------------
+ * #3960 removes the remaining Inter-sized fixed line heights from public venue
+ * text that is rendered with a host-selected font. The old baseline therefore
+ * preserved the same vertical-clipping defect reported on Explorer: a taller
+ * font such as Anton was forced into Inter's 23px body or 21px menu line box.
+ *
+ * Regenerated with `MINGLA_1559_WRITE_BASELINE=1 npx jest --ci --runInBand
+ * --runTestsByPath src/components/venue/__tests__/
+ * publicVenueRenderParity.issue1559.happy.test.tsx`. Five cases change, and
+ * only by deleting those stale `lineHeight` props: restaurant phone/full and
+ * desktop/full each lose two 23px themed-prose boxes; stay phone/full and the
+ * play phone/error case each lose one 23px themed-prose box; restaurant
+ * phone/menu loses one 21px themed menu-section box. The other two cases are
+ * byte-identical. No element, copy, anchor, ordering, case, size floor, or
+ * assertion is removed or weakened.
  */
 import React from "react";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
