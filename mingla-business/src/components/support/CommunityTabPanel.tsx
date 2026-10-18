@@ -34,6 +34,7 @@ import { BrandSwitch } from "../ui/BrandSwitch";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { CommunityMarkdown } from "./CommunityMarkdown";
+import { CommunityConversationsPanel } from "./CommunityConversationsPanel";
 
 const LANE_LABEL: Record<CommunityRoadmapLane, string> = {
   now: "Now",
@@ -99,12 +100,14 @@ function RoadmapCardRow({
 
 export interface CommunityTabPanelProps {
   targetAnnouncementId?: string;
+  targetPostId?: string;
   targetSection?: "roadmap";
   onTargetLayout?: (contentY: number) => void;
 }
 
 export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
   targetAnnouncementId,
+  targetPostId,
   targetSection,
   onTargetLayout,
 }) => {
@@ -323,6 +326,8 @@ export const CommunityTabPanel: React.FC<CommunityTabPanelProps> = ({
           ))}
         </View>
       )}
+
+      <CommunityConversationsPanel targetPostId={targetPostId} />
 
       <View
         ref={roadmapRef}

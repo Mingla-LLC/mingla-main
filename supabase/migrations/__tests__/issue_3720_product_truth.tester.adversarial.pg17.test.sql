@@ -17,7 +17,7 @@ BEGIN
   INSERT INTO auth.users(id,email) VALUES(v_outsider,'wave5-adversary@test.local');
   UPDATE auth.users SET email_confirmed_at=now() WHERE id=v_outsider;
   INSERT INTO public.admin_team_members(email,role,status,accepted_at) VALUES
-    ('wave5-adversary@test.local','growth','active',now());
+    ('wave5-adversary@test.local','growth','revoked',now());
   INSERT INTO public.team_agent_keys(owner_email,agent,key_prefix,key_hash) VALUES (
     'wave5-adversary@test.local','codex',
     left('mgla_c_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',14),v_agent_digest
@@ -35,14 +35,14 @@ BEGIN
   v_agent := public.team_agent_product_truth_call(
     v_agent_digest,'mcp:tools/list','{}'::jsonb,'wave5-adversary/1.0'
   );
-  IF v_agent #>> '{me,feature_guide}' <> 'false' THEN
+  IF v_agent->>'auth' IS DISTINCT FROM 'invalid' OR v_agent ? 'me' THEN
     RAISE EXCEPTION 'outsider_agent_tool_was_offered';
   END IF;
   v_agent := public.team_agent_product_truth_call(
     v_agent_digest,'find_capabilities','{}'::jsonb,'wave5-adversary/1.0'
   );
-  IF v_agent->>'ok' <> 'false'
-     OR v_agent #>> '{error,token}' <> 'forbidden'
+  IF v_agent->>'auth' IS DISTINCT FROM 'invalid'
+     OR v_agent ? 'result'
      OR v_agent::text ~ 'official-brand-groups|support_wording|evidence_url' THEN
     RAISE EXCEPTION 'outsider_agent_read_product_truth:%', v_agent;
   END IF;

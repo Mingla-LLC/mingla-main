@@ -156,6 +156,46 @@ export async function setCommunityStaff({
   throwRpc(error);
 }
 
+// ── Community moderation + final cutover proof ──────────────────────────────
+
+export async function listCommunityModerationQueue() {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_community_moderation_queue",
+  );
+  throwRpc(error);
+  return data ?? [];
+}
+
+export async function moderateCommunityItem({ queueType, recordId, action }) {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_community_moderate",
+    {
+      p_queue_type: queueType,
+      p_record_id: recordId,
+      p_action: action,
+    },
+  );
+  throwRpc(error);
+  return data === true;
+}
+
+export async function getCommunityCutoverStatus() {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_community_cutover_status",
+  );
+  throwRpc(error);
+  return data;
+}
+
+export async function recordCommunityCutoverEvidence({ key, state, evidenceRef }) {
+  const { data, error } = await supabase.rpc(
+    "issue_3720_community_record_cutover_evidence",
+    { p_key: key, p_state: state, p_evidence_ref: evidenceRef },
+  );
+  throwRpc(error);
+  return data === true;
+}
+
 // ── Support online + availability ────────────────────────────────────────────
 
 export async function fetchSupportIsOnline() {

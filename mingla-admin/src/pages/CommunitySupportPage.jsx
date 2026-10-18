@@ -20,6 +20,8 @@ import { AvailabilityPanel } from "../components/community/AvailabilityPanel";
 import { BrandGroupsPanel } from "../components/community/BrandGroupsPanel";
 import { ProductInboxPanel } from "../components/community/ProductInboxPanel";
 import { FeatureGuidePanel } from "../components/community/FeatureGuidePanel";
+import { ModerationPanel } from "../components/community/ModerationPanel";
+import { CutoverPanel } from "../components/community/CutoverPanel";
 import { useAuth } from "../context/AuthContext";
 import {
   communitySupportCapabilities,
@@ -31,6 +33,7 @@ const COMMUNITY_SUPPORT_TABS = [
   { id: "overview", label: "Overview" },
   { id: "announcements", label: "Announcements" },
   { id: "roadmap", label: "Roadmap" },
+  { id: "moderation", label: "Moderation" },
   { id: "support", label: "Support" },
   { id: "product", label: "Product Inbox" },
   { id: "feature-guide", label: "Feature Guide" },
@@ -38,6 +41,7 @@ const COMMUNITY_SUPPORT_TABS = [
   { id: "email", label: "Email" },
   { id: "team", label: "Team & roles" },
   { id: "availability", label: "Availability" },
+  { id: "cutover", label: "Cutover" },
 ];
 
 const TAB_IDS = new Set(COMMUNITY_SUPPORT_TABS.map((t) => t.id));
@@ -128,13 +132,14 @@ export function CommunitySupportPage() {
             <p>You are approved for Mingla Community work.</p>
             <p>
               Announcement publishing, roadmap management, email, and team settings remain
-              Admin-only. Community moderation tools will appear here when that workflow ships.
+              Admin-only. Use Moderation for first-post review, reports, and appeals.
             </p>
           </div>
         </SectionCard>
       )}
       {activeTab === "announcements" && <AnnouncementsPanel />}
       {activeTab === "roadmap" && <RoadmapPanel />}
+      {activeTab === "moderation" && capabilities.canCommunity && <ModerationPanel />}
       {activeTab === "support" && (
         <SupportDeskPage embedded canManageAgents={capabilities.isAdmin} />
       )}
@@ -146,6 +151,7 @@ export function CommunitySupportPage() {
       {activeTab === "email" && <EmailPage embedded />}
       {activeTab === "team" && <TeamRolesPanel />}
       {activeTab === "availability" && <AvailabilityPanel />}
+      {activeTab === "cutover" && capabilities.isAdmin && <CutoverPanel />}
     </div>
   );
 }

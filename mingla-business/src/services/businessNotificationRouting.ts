@@ -132,6 +132,11 @@ export function parseBusinessDeepLink(
           ? `/account/support?tab=community&announcementId=${rest[1]}`
           : "/account/support?tab=community";
       }
+      if (sub === "post" && rest[1]) {
+        return UUID_RE.test(rest[1])
+          ? `/account/support?tab=community&communityPost=${rest[1]}`
+          : "/account/support?tab=community";
+      }
       return "/account/support?tab=community";
     }
     // Issue #1791 (#1767 Phase 3, SPEC #1788 P-54): the venue head. BEFORE this

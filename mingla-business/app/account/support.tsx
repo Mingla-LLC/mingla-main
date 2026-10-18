@@ -46,10 +46,12 @@ export default function SupportRoute(): React.ReactElement {
   const params = useLocalSearchParams<{
     tab?: string | string[];
     announcementId?: string | string[];
+    communityPost?: string | string[];
     section?: string | string[];
   }>();
   const queryTab = firstParam(params.tab);
   const targetAnnouncementId = firstParam(params.announcementId);
+  const targetPostId = firstParam(params.communityPost);
   const targetSection =
     firstParam(params.section) === "roadmap" ? "roadmap" : undefined;
   const scrollRef = useRef<ScrollView>(null);
@@ -157,6 +159,7 @@ export default function SupportRoute(): React.ReactElement {
         {tab === "community" ? (
           <CommunityTabPanel
             targetAnnouncementId={targetAnnouncementId}
+            targetPostId={targetPostId}
             targetSection={targetSection}
             onTargetLayout={handleCommunityTargetLayout}
           />
