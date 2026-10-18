@@ -197,6 +197,9 @@ export default function HostAdDetailRoute(): React.ReactElement {
   const hasProviderSpend = payload.provider_spend_by_currency.some(
     (row) => Number(row.spend_cents) > 0,
   );
+  const settlements = Array.isArray(payload.settlements)
+    ? payload.settlements
+    : [];
   const isLive =
     ["LIVE", "PARTIALLY_LIVE"].includes(status.toUpperCase()) ||
     payload.plan_campaigns.some(
@@ -311,6 +314,56 @@ export default function HostAdDetailRoute(): React.ReactElement {
           <GlassCard variant="elevated" padding={spacing.md}>
             <Text style={styles.sectionTitle}>End state</Text>
             <Text style={styles.body}>{endState}</Text>
+          </GlassCard>
+        ) : null}
+
+        {settlements.length > 0 ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.sectionTitle}>Stop and settlement</Text>
+            <Text style={styles.muted}>
+              Mingla returns unused Ads credit only after every provider
+              confirms the stop, reports final spend, and clears the finality
+              window.
+            </Text>
+            {settlements.map((settlement) => {
+              const platform = payload.plan_campaigns.find(
+                (row) => row.id === settlement.campaign_id,
+              )?.platform;
+              return (
+                <View key={settlement.id} style={styles.timelineRow}>
+                  <Text style={styles.body}>
+                    {String(platform ?? "Provider")} ·{" "}
+                    {settlement.state.replaceAll("_", " ")}
+                  </Text>
+                  <Text style={styles.muted}>
+                    Final provider spend:{" "}
+                    {settlement.final_provider_spend_cents === null
+                      ? "pending"
+                      : formatCurrency(
+                          settlement.final_provider_spend_cents,
+                          settlement.provider_currency,
+                          true,
+                        )}
+                  </Text>
+                  <Text style={styles.muted}>
+                    Host equivalent:{" "}
+                    {settlement.final_host_spend_cents === null
+                      ? "pending"
+                      : formatCurrency(
+                          settlement.final_host_spend_cents,
+                          settlement.host_currency,
+                          true,
+                        )}
+                  </Text>
+                  <Text style={styles.muted}>
+                    Finalize after:{" "}
+                    {settlement.settle_after
+                      ? new Date(settlement.settle_after).toLocaleString()
+                      : "provider evidence pending"}
+                  </Text>
+                </View>
+              );
+            })}
           </GlassCard>
         ) : null}
 

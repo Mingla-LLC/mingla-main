@@ -64,6 +64,17 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const WARNING_STATUSES = ["PENDING_BILLING_INFO", "DISAPPROVED", "WITH_ISSUES"];
+const ENDABLE_PLAN_STATES = new Set([
+  "platform_review",
+  "platform_rejected",
+  "scheduled",
+  "live",
+  "pause_requested",
+  "paused",
+  "partially_ready",
+  "partially_live",
+  "stop_requested",
+]);
 
 // deno-lint-ignore no-explicit-any
 async function runPlannedAction(input: {
@@ -348,6 +359,173 @@ async function runPlannedAction(input: {
   }, successes > 0 ? 200 : 502);
 }
 
+// A plan-wide end is a durable stop request, not a destructive delete. Provider
+// pause happens first; the spend-sync worker independently confirms the stop,
+// freezes final spend, waits the finality window, and settles every platform.
+async function runPlannedEnd(input: {
+  // deno-lint-ignore no-explicit-any
+  db: any;
+  campaign: Record<string, any>;
+  actorId: string;
+  reason: string;
+}): Promise<Response> {
+  const { db, campaign, actorId, reason } = input;
+  const versionId = String(campaign.plan_version_id ?? "");
+  const planHash = String(campaign.plan_hash ?? "");
+  const { data: plan } = await db.from("ad_plans").select("*")
+    .eq("current_version_id", versionId).maybeSingle();
+  if (!plan || !/^[0-9a-f]{64}$/.test(planHash)) {
+    return json(
+      { error: "plan_conflict", detail: "plan_binding_missing" },
+      409,
+    );
+  }
+  if (!ENDABLE_PLAN_STATES.has(String(plan.state))) {
+    return json(
+      {
+        error: "stop_blocked",
+        detail: "plan_state_not_endable",
+        plan_state: plan.state,
+      },
+      409,
+    );
+  }
+  const { data: plannedCampaigns, error: campaignError } = await db
+    .from("ad_campaigns").select("*")
+    .eq("plan_version_id", versionId).eq("plan_hash", planHash)
+    .order("platform");
+  if (campaignError || !plannedCampaigns?.length) {
+    return json(
+      { error: "stop_failed", detail: "plan_campaigns_missing" },
+      409,
+    );
+  }
+  const { data: allocations, error: allocationError } = await db
+    .from("ad_plan_provider_allocations").select("platform")
+    .eq("plan_version_id", versionId);
+  const expectedPlatforms = new Set(
+    (allocations ?? []).map((row: Record<string, unknown>) =>
+      String(row.platform)
+    ),
+  );
+  const boundPlatforms = new Set(
+    plannedCampaigns.map((row: Record<string, unknown>) =>
+      String(row.platform)
+    ),
+  );
+  if (
+    allocationError || expectedPlatforms.size === 0 ||
+    boundPlatforms.size !== expectedPlatforms.size ||
+    [...expectedPlatforms].some((platform) => !boundPlatforms.has(platform))
+  ) {
+    return json(
+      {
+        error: "stop_blocked",
+        detail: "partial_plan_reconciliation_required",
+      },
+      409,
+    );
+  }
+
+  const outcomes: Array<Record<string, unknown>> = [];
+  for (const row of plannedCampaigns) {
+    const { data: connectionRow } = await db.from("ad_connections").select("*")
+      .eq("id", row.connection_id).maybeSingle();
+    if (!connectionRow?.connected || connectionRow.status !== "connected") {
+      outcomes.push({
+        campaign_id: row.id,
+        platform: row.platform,
+        ok: false,
+        error: "not_connected",
+      });
+      continue;
+    }
+    try {
+      await getAdapter(row.platform).setStatus(
+        connectionRow as AdConnectionRow,
+        "campaign",
+        row.external_campaign_id,
+        "PAUSED",
+      );
+      const nowIso = new Date().toISOString();
+      await db.from("ad_campaigns").update({
+        status: "PAUSED",
+        delivery_status: "PAUSED",
+        status_synced_at: nowIso,
+      }).eq("id", row.id);
+      const { data: settlement, error: settlementError } = await db.rpc(
+        "ad_request_campaign_stop",
+        { p_campaign_id: row.id },
+      );
+      if (settlementError) throw new Error(settlementError.message);
+      if (settlement?.state === "stop_requested") {
+        await db.rpc("ad_record_provider_attempt", {
+          p_plan_version_id: versionId,
+          p_plan_hash: planHash,
+          p_platform: row.platform,
+          p_command: "stop",
+          p_idempotency_key: `stop:${planHash}:${row.platform}`,
+          p_state: "running",
+          p_external_ids: { campaign_id: row.external_campaign_id },
+          p_provider_response: null,
+          p_error_detail: null,
+        });
+      }
+      await db.from("ad_status_events").insert({
+        campaign_id: row.id,
+        platform: row.platform,
+        entity: "campaign",
+        action: "stop_requested",
+        actor: actorId,
+        from_status: row.status,
+        to_status: "PAUSED",
+        external_ids: { external_campaign_id: row.external_campaign_id },
+        provider_response: { reason },
+      });
+      outcomes.push({
+        campaign_id: row.id,
+        platform: row.platform,
+        ok: true,
+        settlement_state: settlement?.state ?? "stop_requested",
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      await db.rpc("ad_record_provider_attempt", {
+        p_plan_version_id: versionId,
+        p_plan_hash: planHash,
+        p_platform: row.platform,
+        p_command: "stop",
+        p_idempotency_key: `stop:${planHash}:${row.platform}`,
+        p_state: "failed_retryable",
+        p_external_ids: { campaign_id: row.external_campaign_id },
+        p_provider_response: null,
+        p_error_detail: detail.slice(0, 1000),
+      });
+      outcomes.push({
+        campaign_id: row.id,
+        platform: row.platform,
+        ok: false,
+        error: detail,
+      });
+    }
+  }
+  const successes = outcomes.filter((row) => row.ok === true).length;
+  return json({
+    campaign,
+    plan_id: plan.id,
+    plan_state: successes > 0 ? "stop_requested" : plan.state,
+    final_spend_pending: successes > 0,
+    outcomes,
+    ...(successes !== outcomes.length
+      ? {
+        warning: `${
+          outcomes.length - successes
+        } platform stop request(s) need attention.`,
+      }
+      : {}),
+  }, successes > 0 ? 200 : 502);
+}
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -386,7 +564,7 @@ serve(async (req: Request): Promise<Response> => {
       detail: "campaign_id_invalid_uuid",
     }, 400);
   }
-  if (action !== "launch" && action !== "pause") {
+  if (action !== "launch" && action !== "pause" && action !== "end") {
     return json({ error: "validation_error", detail: "action_invalid" }, 400);
   }
   if (!adminRow && action !== "pause") {
@@ -425,8 +603,8 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
-  // toward #3697 Wave 5 / #3704: LAUNCH is challenge-gated. Pause stays a
-  // one-click stop. Missing or wrong confirm_phrase never reaches the adapter.
+  // LAUNCH and END PLAN are challenge-gated. Pause remains a one-click,
+  // reversible delivery stop. A bad phrase never reaches a provider adapter.
   const confirmPhrase = body.confirm_phrase;
   const launchReason = typeof body.reason === "string"
     ? body.reason.trim()
@@ -465,6 +643,18 @@ serve(async (req: Request): Promise<Response> => {
       detail: "reason_required",
     }, 400);
   }
+  if (action === "end" && confirmPhrase !== "END PLAN") {
+    return json({
+      error: "stop_confirm_required",
+      detail: "confirm_phrase_must_be_END_PLAN",
+    }, 400);
+  }
+  if (action === "end" && launchReason.length === 0) {
+    return json({
+      error: "stop_confirm_required",
+      detail: "reason_required",
+    }, 400);
+  }
 
   const adminLaunchAlertBase = {
     source: "admin" as const,
@@ -481,6 +671,14 @@ serve(async (req: Request): Promise<Response> => {
     typeof campaign.plan_hash === "string" &&
     /^[0-9a-f]{64}$/.test(campaign.plan_hash);
   if (hasPlanBinding) {
+    if (action === "end") {
+      return runPlannedEnd({
+        db: supabase,
+        campaign,
+        actorId: user.id,
+        reason: launchReason,
+      });
+    }
     return runPlannedAction({
       db: supabase,
       campaign,
@@ -488,6 +686,12 @@ serve(async (req: Request): Promise<Response> => {
       actorId: user.id,
       reason: launchReason,
     });
+  }
+  if (action === "end") {
+    return json({
+      error: "stop_blocked",
+      detail: "legacy_campaign_reconciliation_required",
+    }, 409);
   }
   if (action === "launch") {
     await notifyAdLaunchAttempt({

@@ -258,12 +258,12 @@ export async function resumeAdminAdPlan(planId) {
 }
 
 /**
- * action: 'launch' | 'pause'
- * Launch requires confirm_phrase "LAUNCH" + reason (Wave 5 / #3704).
+ * action: 'launch' | 'pause' | 'end'
+ * Launch and End require an exact phrase + reason; Pause is reversible.
  */
 export async function campaignAction(campaignId, action, extras = {}) {
   const body = { campaign_id: campaignId, action };
-  if (action === "launch") {
+  if (action === "launch" || action === "end") {
     if (typeof extras.confirm_phrase === "string") {
       body.confirm_phrase = extras.confirm_phrase;
     }
@@ -300,6 +300,14 @@ export async function getCampaignDetail(campaignId) {
     .select("*, ad_sets(*, ads(*))")
     .eq("id", campaignId)
     .maybeSingle();
+}
+
+export async function getPlanSettlements(planVersionId) {
+  return supabase
+    .from("ad_campaign_settlements")
+    .select("*")
+    .eq("plan_version_id", planVersionId)
+    .order("created_at", { ascending: true });
 }
 
 /**

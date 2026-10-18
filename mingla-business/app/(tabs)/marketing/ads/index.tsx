@@ -227,7 +227,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
   }
 
   const wallet = walletQuery.canView ? walletQuery.data?.wallet : null;
-  const history = walletQuery.canView ? walletQuery.data?.history ?? [] : [];
+  const history = walletQuery.canView ? (walletQuery.data?.history ?? []) : [];
   const authority = walletQuery.canView
     ? walletQuery.data?.currency_authority
     : undefined;
@@ -271,7 +271,24 @@ export default function MarketingAdsRoute(): React.ReactElement {
             {returnNotice}
           </Text>
         ) : null}
-        {!walletQuery.canView ? (
+        {walletQuery.viewLoading ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <ActivityIndicator color={textTokens.secondary} />
+          </GlassCard>
+        ) : walletQuery.viewError ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.kicker}>Ads credit unavailable</Text>
+            <Text style={styles.sub}>Check your connection and try again.</Text>
+            <Pressable
+              style={styles.actionBtn}
+              onPress={() => void walletQuery.refetchView()}
+              accessibilityRole="button"
+              accessibilityLabel="Retry Ads credit access"
+            >
+              <Text style={styles.actionLabel}>Retry</Text>
+            </Pressable>
+          </GlassCard>
+        ) : !walletQuery.canView ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
             <Text style={styles.kicker}>Ads credit</Text>
             <Text style={styles.sub}>
@@ -279,8 +296,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
               finance manager manages the balance and payment history.
             </Text>
           </GlassCard>
-        ) : walletQuery.viewLoading ||
-          (!walletQuery.hasResolved && !walletQuery.isError) ? (
+        ) : !walletQuery.hasResolved && !walletQuery.isError ? (
           <GlassCard variant="elevated" padding={spacing.lg}>
             <ActivityIndicator color={textTokens.secondary} />
           </GlassCard>
@@ -483,7 +499,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
                   <Text style={styles.campaignMeta}>
                     {c.platform} ·{" "}
                     {typeof c.currency === "string" &&
-                      /^[A-Z]{3}$/.test(c.currency)
+                    /^[A-Z]{3}$/.test(c.currency)
                       ? formatCurrency(
                           Number(c.cap_cents ?? c.daily_budget_cents ?? 0),
                           c.currency,

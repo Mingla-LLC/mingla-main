@@ -52,6 +52,17 @@ const corsHeaders = {
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ENDABLE_PLAN_STATES = new Set([
+  "platform_review",
+  "platform_rejected",
+  "scheduled",
+  "live",
+  "pause_requested",
+  "paused",
+  "partially_ready",
+  "partially_live",
+  "stop_requested",
+]);
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -312,6 +323,7 @@ serve(async (req: Request): Promise<Response> => {
       adSetsResult,
       timelineResult,
       creditResult,
+      settlementResult,
     ] = await Promise.all([
       supabase
         .from("ad_spend_daily")
@@ -340,6 +352,13 @@ serve(async (req: Request): Promise<Response> => {
         .in("campaign_id", planCampaignIds)
         .order("created_at", { ascending: false })
         .limit(50),
+      supabase
+        .from("ad_campaign_settlements")
+        .select(
+          "id,campaign_id,state,provider_currency,host_currency,final_provider_spend_cents,final_host_spend_cents,stop_requested_at,provider_stopped_at,settle_after,settled_at,released_host_cents",
+        )
+        .in("campaign_id", planCampaignIds)
+        .order("created_at", { ascending: true }),
     ]);
     const spend = spendResult.data ?? [];
     const providerSpendTotals = new Map<string, number>();
@@ -565,6 +584,7 @@ serve(async (req: Request): Promise<Response> => {
       creatives: creativeRows ?? [],
       timeline: timelineResult.data ?? [],
       credit_events: creditResult.data ?? [],
+      settlements: settlementResult.data ?? [],
     });
   }
 
@@ -640,6 +660,39 @@ serve(async (req: Request): Promise<Response> => {
           detail: planCampaignError?.message ?? "plan_campaigns_missing",
         }, 409);
       }
+      const [planResult, allocationResult] = await Promise.all([
+        supabase.from("ad_plans").select("id,state")
+          .eq("current_version_id", camp.plan_version_id).maybeSingle(),
+        supabase.from("ad_plan_provider_allocations").select("platform")
+          .eq("plan_version_id", camp.plan_version_id),
+      ]);
+      if (
+        planResult.error || !planResult.data ||
+        !ENDABLE_PLAN_STATES.has(String(planResult.data.state))
+      ) {
+        return json({
+          error: "stop_request_failed",
+          detail: planResult.error?.message ?? "plan_state_not_endable",
+        }, 409);
+      }
+      const expectedPlatforms = new Set(
+        (allocationResult.data ?? []).map((row: { platform: unknown }) =>
+          String(row.platform)
+        ),
+      );
+      const boundPlatforms = new Set(
+        planCampaigns.map((row: { platform: unknown }) => String(row.platform)),
+      );
+      if (
+        allocationResult.error || expectedPlatforms.size === 0 ||
+        boundPlatforms.size !== expectedPlatforms.size ||
+        [...expectedPlatforms].some((platform) => !boundPlatforms.has(platform))
+      ) {
+        return json({
+          error: "stop_request_failed",
+          detail: "partial_plan_reconciliation_required",
+        }, 409);
+      }
       const settlements: unknown[] = [];
       for (const target of planCampaigns) {
         await pauseProviderBestEffort(supabase, {
@@ -665,25 +718,38 @@ serve(async (req: Request): Promise<Response> => {
           }, 409);
         }
         settlements.push(settlement);
-        const { error: attemptError } = await supabase.rpc(
-          "ad_record_provider_attempt",
-          {
-            p_plan_version_id: camp.plan_version_id,
-            p_plan_hash: camp.plan_hash,
-            p_platform: target.platform,
-            p_command: "stop",
-            p_idempotency_key: `stop:${camp.plan_hash}:${target.platform}`,
-            p_state: "running",
-            p_external_ids: { campaign_id: target.external_campaign_id },
-            p_provider_response: null,
-            p_error_detail: null,
-          },
-        );
-        if (attemptError) {
-          console.error(
-            "[host-ad-campaign] stop attempt audit failed:",
-            attemptError.message,
+        await supabase.from("ad_status_events").insert({
+          campaign_id: target.id,
+          platform: target.platform,
+          entity: "campaign",
+          action: "stop_requested",
+          actor: user.id,
+          from_status: camp.status,
+          to_status: "PAUSED",
+          external_ids: { external_campaign_id: target.external_campaign_id },
+          provider_response: { requested_action: action },
+        });
+        if (settlement?.state === "stop_requested") {
+          const { error: attemptError } = await supabase.rpc(
+            "ad_record_provider_attempt",
+            {
+              p_plan_version_id: camp.plan_version_id,
+              p_plan_hash: camp.plan_hash,
+              p_platform: target.platform,
+              p_command: "stop",
+              p_idempotency_key: `stop:${camp.plan_hash}:${target.platform}`,
+              p_state: "running",
+              p_external_ids: { campaign_id: target.external_campaign_id },
+              p_provider_response: null,
+              p_error_detail: null,
+            },
           );
+          if (attemptError) {
+            console.error(
+              "[host-ad-campaign] stop attempt audit failed:",
+              attemptError.message,
+            );
+          }
         }
       }
       return json({

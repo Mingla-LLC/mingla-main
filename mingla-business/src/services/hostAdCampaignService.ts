@@ -108,6 +108,20 @@ export type HostAdCampaignDetail = {
     currency: string;
     created_at: string;
   }[];
+  settlements: {
+    id: string;
+    campaign_id: string;
+    state: string;
+    provider_currency: string;
+    host_currency: string;
+    final_provider_spend_cents: number | null;
+    final_host_spend_cents: number | null;
+    stop_requested_at: string;
+    provider_stopped_at: string | null;
+    settle_after: string | null;
+    settled_at: string | null;
+    released_host_cents: number;
+  }[];
 };
 
 export class HostAdCampaignError extends Error {

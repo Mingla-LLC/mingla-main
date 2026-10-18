@@ -570,7 +570,7 @@ BEGIN
     ('creating_paused_objects','cancelled_before_create'),
     ('platform_review','scheduled'), ('platform_review','live'),
     ('platform_review','platform_rejected'), ('platform_review','partially_ready'),
-    ('platform_review','partially_live'),
+    ('platform_review','partially_live'), ('platform_review','stop_requested'),
     ('scheduled','live'), ('scheduled','pause_requested'), ('scheduled','stop_requested'),
     ('live','pause_requested'), ('live','stop_requested'), ('live','partially_live'),
     ('pause_requested','paused'), ('pause_requested','live'),
@@ -582,12 +582,13 @@ BEGIN
     ('changes_requested','draft'), ('changes_requested','validating'),
     ('changes_requested','cancelled_before_create'),
     ('staff_rejected','draft'), ('staff_rejected','cancelled_before_create'),
-    ('platform_rejected','draft'),
+    ('platform_rejected','draft'), ('platform_rejected','stop_requested'),
     ('partially_ready','creating_paused_objects'), ('partially_ready','stop_requested'),
     ('partially_live','live'), ('partially_live','pause_requested'),
     ('partially_live','stop_requested'),
     ('creation_failed_retryable','creating_paused_objects'),
-    ('creation_failed_retryable','draft'), ('creation_failed_terminal','draft'),
+    ('creation_failed_retryable','draft'),
+    ('creation_failed_terminal','draft'),
     ('payment_failed','ready_for_funding'), ('expired','draft'),
     ('settlement_attention_required','settling')
   ) THEN
@@ -1925,11 +1926,15 @@ BEGIN
     v_provider_allocation.host_currency,
     p_requested_at
   ) ON CONFLICT (campaign_id) DO UPDATE
-    SET state = CASE WHEN public.ad_campaign_settlements.state = 'settled'
-      THEN public.ad_campaign_settlements.state ELSE 'stop_requested' END,
-        stop_requested_at = least(public.ad_campaign_settlements.stop_requested_at, excluded.stop_requested_at)
+    SET stop_requested_at = least(
+      public.ad_campaign_settlements.stop_requested_at,
+      excluded.stop_requested_at
+    )
   RETURNING * INTO v_settlement;
-  IF v_plan.state IN ('scheduled','live','paused','pause_requested','partially_live','partially_ready') THEN
+  IF v_plan.state IN (
+    'platform_review','platform_rejected','scheduled','live','paused','pause_requested',
+    'partially_live','partially_ready'
+  ) THEN
     UPDATE public.ad_plans SET state = 'stop_requested' WHERE id = v_plan.id;
   END IF;
   RETURN v_settlement;

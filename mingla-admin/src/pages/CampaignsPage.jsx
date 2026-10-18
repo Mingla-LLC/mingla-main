@@ -35,6 +35,7 @@ import {
   campaignAction,
   getCampaignConversions,
   getCampaignDetail,
+  getPlanSettlements,
   getStayCampaignRollup,
   listCampaigns,
   loadAdminAdRecoveryQueue,
@@ -157,6 +158,15 @@ function canLaunchWithProviderMoney(campaign, campaigns) {
   );
 }
 
+function canEndPlan(campaign, campaigns) {
+  const planCampaigns = campaignsForPlan(campaigns, campaign);
+  return (
+    planCampaigns.length > 0 &&
+    planCampaigns[0]?.id === campaign.id &&
+    planCampaigns.some((row) => row.status !== "ARCHIVED")
+  );
+}
+
 export function CampaignsPage() {
   const { addToast } = useToast();
   const [adsConsoleEnabled, setAdsConsoleEnabled] = useState(true);
@@ -171,6 +181,7 @@ export function CampaignsPage() {
   const [rowBusy, setRowBusy] = useState({});
   const [rowWarning, setRowWarning] = useState({});
   const [launchTarget, setLaunchTarget] = useState(null);
+  const [endTarget, setEndTarget] = useState(null);
   const [reviewTarget, setReviewTarget] = useState(null);
   const [recoveryTarget, setRecoveryTarget] = useState(null);
   // ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI (the detail panel feed).
@@ -179,6 +190,10 @@ export function CampaignsPage() {
   const [stayRollup, setStayRollup] = useState(null);
   const [stayRollupLoading, setStayRollupLoading] = useState(false);
   const [stayRollupError, setStayRollupError] = useState(null);
+  const [settlements, setSettlements] = useState(null);
+  const [settlementsLoading, setSettlementsLoading] = useState(false);
+  const [settlementsError, setSettlementsError] = useState(null);
+  const [settlementsRefreshKey, setSettlementsRefreshKey] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -378,6 +393,30 @@ export function CampaignsPage() {
     };
   }, [detail?.dest_page_type, selectedId]);
 
+  useEffect(() => {
+    const versionId = detail?.plan_version_id;
+    if (!selectedId || !versionId) {
+      // Clear settlement evidence from the previously selected plan.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSettlements(null);
+      setSettlementsError(null);
+      setSettlementsLoading(false);
+      return;
+    }
+    let active = true;
+    setSettlementsLoading(true);
+    setSettlementsError(null);
+    void getPlanSettlements(versionId).then(({ data, error }) => {
+      if (!active) return;
+      setSettlements(error ? [] : (data ?? []));
+      setSettlementsError(error?.message ?? null);
+      setSettlementsLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [detail?.plan_version_id, selectedId, settlementsRefreshKey]);
+
   const handleAction = async (campaign, action, extras = {}) => {
     setRowBusy((prev) => ({ ...prev, [campaign.id]: action }));
     const { data, error } = await campaignAction(campaign.id, action, extras);
@@ -401,7 +440,12 @@ export function CampaignsPage() {
       setRowWarning((prev) => ({ ...prev, [campaign.id]: data.warning }));
       addToast({
         variant: "warning",
-        title: "Launched with warning",
+        title:
+          action === "launch"
+            ? "Launched with warning"
+            : action === "end"
+              ? "Stop requested with warning"
+              : "Paused with warning",
         description: data.warning,
       });
     } else {
@@ -411,12 +455,22 @@ export function CampaignsPage() {
           variant: "success",
           title: `Live on ${PLATFORM_LABELS[campaign.platform] ?? campaign.platform}. It'll be in review before it starts delivering.`,
         });
+      } else if (action === "end") {
+        addToast({
+          variant: "success",
+          title: "Plan stop requested",
+          description:
+            "Every provider is being confirmed stopped. Final spend and settlement remain pending until the evidence window closes.",
+        });
       } else {
         addToast({ variant: "success", title: "Paused. Spending stopped." });
       }
     }
     await load();
     if (selectedId === campaign.id) await loadDetail(campaign.id);
+    if (action === "end") {
+      setSettlementsRefreshKey((value) => value + 1);
+    }
     setRowBusy((prev) => ({ ...prev, [campaign.id]: null }));
     return { ok: true, data };
   };
@@ -458,6 +512,9 @@ export function CampaignsPage() {
 
   const launchPlanCampaigns = launchTarget
     ? campaignsForPlan(campaigns ?? [], launchTarget)
+    : [];
+  const endPlanCampaigns = endTarget
+    ? campaignsForPlan(campaigns ?? [], endTarget)
     : [];
 
   return (
@@ -875,6 +932,17 @@ export function CampaignsPage() {
                     Pause
                   </Button>
                 )}
+                {canEndPlan(campaign, campaigns) && (
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    icon={XCircle}
+                    loading={rowBusy[campaign.id] === "end"}
+                    onClick={() => setEndTarget(campaign)}
+                  >
+                    End plan
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="ghost"
@@ -1088,6 +1156,90 @@ export function CampaignsPage() {
         </SectionCard>
       )}
 
+      {selectedId && detail?.plan_version_id && (
+        <SectionCard
+          title="Stop and settlement"
+          subtitle="Ending is plan-wide. Each provider must confirm PAUSED, report final account-currency spend, pass the 24-hour finality window, and settle before the plan is archived."
+        >
+          {settlementsLoading ? (
+            <div className="flex items-center gap-2 text-[var(--color-text-secondary)]">
+              <Spinner size="sm" /> Loading settlement evidence…
+            </div>
+          ) : settlementsError ? (
+            <AlertCard
+              variant="error"
+              title="Settlement evidence could not load"
+            >
+              {settlementsError}
+            </AlertCard>
+          ) : !settlements || settlements.length === 0 ? (
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              No stop request exists. Use Pause for a reversible stop, or End
+              plan to begin provider-confirmed final settlement.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {settlements.map((settlement) => {
+                const campaign = (campaigns ?? []).find(
+                  (row) => row.id === settlement.campaign_id,
+                );
+                return (
+                  <div
+                    key={settlement.id}
+                    className="rounded-lg border border-[var(--gray-200)] p-3 text-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold">
+                        {PLATFORM_LABELS[campaign?.platform] ??
+                          campaign?.platform ??
+                          "Provider"}
+                      </span>
+                      <Badge
+                        variant={
+                          settlement.state === "settled"
+                            ? "success"
+                            : settlement.state === "attention_required"
+                              ? "error"
+                              : "warning"
+                        }
+                      >
+                        {String(settlement.state).replaceAll("_", " ")}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 grid gap-1 text-xs text-[var(--color-text-secondary)] md:grid-cols-3">
+                      <span>
+                        Final provider spend:{" "}
+                        {settlement.final_provider_spend_cents == null
+                          ? "pending"
+                          : formatMinor(
+                              settlement.provider_currency,
+                              settlement.final_provider_spend_cents,
+                            )}
+                      </span>
+                      <span>
+                        Host equivalent:{" "}
+                        {settlement.final_host_spend_cents == null
+                          ? "pending"
+                          : formatMinor(
+                              settlement.host_currency,
+                              settlement.final_host_spend_cents,
+                            )}
+                      </span>
+                      <span>
+                        Finalize after:{" "}
+                        {settlement.settle_after
+                          ? new Date(settlement.settle_after).toLocaleString()
+                          : "provider evidence pending"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </SectionCard>
+      )}
+
       {/* toward #3697 Wave 3 — spend vs hard cap (real spend from rollup; never fabricate). */}
       {selectedId &&
         (() => {
@@ -1279,6 +1431,34 @@ export function CampaignsPage() {
         onConfirm={async () => {
           if (!recoveryTarget) throw new Error("No plan selected");
           await handleRecovery(recoveryTarget);
+        }}
+      />
+
+      <HighRiskActionModal
+        open={endTarget !== null}
+        onClose={() => setEndTarget(null)}
+        title="End this entire ad plan?"
+        description={
+          endTarget
+            ? `This sends a stop request to all ${endPlanCampaigns.length} provider campaign${endPlanCampaigns.length === 1 ? "" : "s"}. Final spend is then re-read from each provider, held through the 24-hour evidence window, and settled. This cannot be used as a reversible pause.`
+            : ""
+        }
+        confirmLabel="End plan"
+        confirmPhrase="END PLAN"
+        requireReason
+        reasonLabel="Why are you ending this plan? (audit log)"
+        destructive
+        successMessage={null}
+        onConfirm={async ({ reason }) => {
+          const target = endTarget;
+          if (!target) throw new Error("No campaign selected");
+          const result = await handleAction(target, "end", {
+            confirm_phrase: "END PLAN",
+            reason,
+          });
+          if (!result.ok) {
+            throw new Error(result.detail || "Stop request failed");
+          }
         }}
       />
 

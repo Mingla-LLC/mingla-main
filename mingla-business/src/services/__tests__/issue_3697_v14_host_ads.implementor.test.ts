@@ -92,9 +92,14 @@ describe("issue #3697 v1.4 Host Ads program", () => {
   });
 
   it("uses the shared aggregate lifecycle for Host pause and plan-wide stop", () => {
+    const detailRoute = read("app/(tabs)/marketing/ads/[id].tsx");
     expect(campaignService).toContain('"admin-ad-campaign-action"');
     expect(planEndpoint).toContain('action === "cancel_before_create"');
     expect(hostCampaignEndpoint).toContain("campaign_ids: planCampaigns.map");
+    expect(hostCampaignEndpoint).toContain('from("ad_campaign_settlements")');
+    expect(campaignService).toContain("settlements:");
+    expect(detailRoute).toContain("Stop and settlement");
+    expect(detailRoute).toContain("Final provider spend");
   });
 
   it("reuses canonical Bunny creative rows instead of inventing an Ads uploader", () => {

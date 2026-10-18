@@ -552,9 +552,8 @@ BEGIN
   IF NOT v_failed THEN RAISE EXCEPTION 'plan_version_mutation_succeeded'; END IF;
 
   UPDATE public.ad_plans SET state = 'platform_review' WHERE id = v_plan.id;
-  UPDATE public.ad_plans SET state = 'live' WHERE id = v_plan.id;
-  UPDATE public.ad_campaigns SET status = 'ACTIVE'
-  WHERE id IN (v_campaign, v_campaign_2);
+  -- [TEST-MOD-APPROVED #3697] A fully created PAUSED plan can be ended before
+  -- launch. This is the safe escape hatch after provider-object review.
   v_settlement := public.ad_request_campaign_stop(v_campaign, now());
   v_settlement_2 := public.ad_request_campaign_stop(v_campaign_2, now());
   SELECT balance_cents, held_cents INTO v_wallet_balance, v_wallet_held
@@ -578,6 +577,14 @@ BEGIN
     '{"provider_status":"PAUSED","final_insights_id":"insight-v14"}'::jsonb,
     interval '0'
   );
+  -- [TEST-MOD-APPROVED #3697] Replaying End must not erase provider-stop or
+  -- final-spend evidence that has already advanced toward settlement.
+  v_settlement := public.ad_request_campaign_stop(
+    v_campaign, now() + interval '1 second'
+  );
+  IF v_settlement.state <> 'ready_to_settle' THEN
+    RAISE EXCEPTION 'stop_replay_regressed_settlement:%', row_to_json(v_settlement);
+  END IF;
   v_settlement := public.ad_finalize_campaign_settlement(
     v_campaign, 'v14-control-settle-meta', now() + interval '1 second'
   );

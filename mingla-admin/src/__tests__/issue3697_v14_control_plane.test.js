@@ -135,6 +135,21 @@ describe("issue #3697 v1.4 Admin control plane", () => {
     assert.match(actionEndpoint, /campaign\.owner_kind !== "host"/);
   });
 
+  it("ends a complete plan with a typed gate and exposes final settlement evidence", () => {
+    assert.match(campaigns, /End plan/);
+    assert.match(campaigns, /confirmPhrase="END PLAN"/);
+    assert.match(campaigns, /Stop and settlement/);
+    assert.match(campaigns, /Final provider spend/);
+    assert.match(campaigns, /settlementsRefreshKey/);
+    assert.match(service, /action: 'launch' \| 'pause' \| 'end'/);
+    assert.match(service, /getPlanSettlements/);
+    assert.match(actionEndpoint, /runPlannedEnd/);
+    assert.match(actionEndpoint, /confirm_phrase_must_be_END_PLAN/);
+    assert.match(actionEndpoint, /partial_plan_reconciliation_required/);
+    assert.match(actionEndpoint, /"ad_request_campaign_stop"/);
+    assert.match(actionEndpoint, /final_spend_pending/);
+  });
+
   it("recovers Admin plans after reload from exact sealed provider templates", () => {
     const planEndpoint = read("../supabase/functions/ad-plan/index.ts");
     assert.match(builder, /execution_payloads:\s*executionPayloads/);

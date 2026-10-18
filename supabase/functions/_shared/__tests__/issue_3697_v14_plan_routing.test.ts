@@ -12,6 +12,11 @@ Deno.test("v1.4 Host mutations cannot bypass plan funding or final settlement", 
   assertStringIncludes(source, '"ad_plan_assert_launchable"');
   assertStringIncludes(source, '"ad_request_campaign_stop"');
   assertStringIncludes(source, "final_spend_pending: true");
+  assertStringIncludes(
+    source,
+    'detail: "partial_plan_reconciliation_required"',
+  );
+  assertStringIncludes(source, "ENDABLE_PLAN_STATES");
   assertEquals(source.includes('supabase.rpc("ad_credit_apply"'), false);
   assertEquals(source.includes("hostDefaultCountriesForCurrency("), false);
 });
@@ -96,6 +101,38 @@ Deno.test("v1.4 spend worker waits for provider stop and a finality window", asy
   assertStringIncludes(source, "provider_budget_cents");
   assertStringIncludes(source, "providerCapCents(target)");
   assertEquals(source.includes("cap_cents: target.cap_cents"), false);
+});
+
+Deno.test("v1.4 Admin end is plan-wide, typed, complete, and settlement-backed", async () => {
+  const action = await Deno.readTextFile(
+    new URL("../../admin-ad-campaign-action/index.ts", import.meta.url),
+  );
+  const migration = await Deno.readTextFile(
+    new URL(
+      "../../../migrations/20271101003697_issue_3697_v14_control_plane.sql",
+      import.meta.url,
+    ),
+  );
+  assertStringIncludes(action, "runPlannedEnd");
+  assertStringIncludes(action, 'confirmPhrase !== "END PLAN"');
+  assertStringIncludes(
+    action,
+    'detail: "partial_plan_reconciliation_required"',
+  );
+  assertStringIncludes(action, '"ad_request_campaign_stop"');
+  assertStringIncludes(action, "final_spend_pending: successes > 0");
+  assertStringIncludes(migration, "('platform_review','stop_requested')");
+  assertStringIncludes(migration, "('platform_rejected','stop_requested')");
+  assertStringIncludes(
+    migration,
+    "SET stop_requested_at = least(",
+  );
+  assertEquals(
+    migration.includes(
+      "THEN public.ad_campaign_settlements.state ELSE 'stop_requested'",
+    ),
+    false,
+  );
 });
 
 Deno.test("v1.4 Admin and Host relaunch gates use provider-account caps", async () => {
