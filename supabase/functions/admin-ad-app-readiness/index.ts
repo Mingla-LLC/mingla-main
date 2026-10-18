@@ -95,7 +95,7 @@ serve((request: Request) =>
                 "app_key,os,display_name,store_identifier,appsflyer_app_id",
               ).eq("active", true).order("app_key").order("os"),
               db.from("ad_app_provider_bindings").select(
-                "app_key,os,provider,provider_contract_kind,provider_app_id,provider_measurement_id,binding_version,readiness_invalidated_at",
+                "app_key,os,provider,provider_contract_kind,provider_app_id,provider_measurement_id,provider_app_icon_media_id,binding_version,readiness_invalidated_at",
               ).eq("active", true),
               db.from("ad_app_measurement_configurations").select(
                 "app_key,os,provider,status,partner_active,install_mapping_enabled,privacy_status,safe_measurement_id,evidence_provenance,checked_at,expires_at,configuration_version",

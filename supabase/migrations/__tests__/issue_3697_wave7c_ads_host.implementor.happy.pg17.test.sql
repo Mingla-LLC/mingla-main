@@ -1,28 +1,42 @@
 -- toward #3697 Wave 7c — withdraw lot_takes + campaign_spend + brand SELECT host rows.
+-- [TEST-MOD-APPROVED #3697] v1.4 credit mutations require the brand's verified
+-- settlement rail; the historical fixture must establish that authority.
 \set ON_ERROR_STOP on
 BEGIN;
 
-alter table auth.users add column if not exists email_confirmed_at timestamptz;
-
-insert into auth.users (id, email, email_confirmed_at)
+insert into auth.users (id, email)
 values
-  ('3697c000-0000-4000-c000-000000000001', 'issue3697w7c-owner@test.local', now())
+  ('3697c000-0000-4000-c000-000000000001', 'issue3697w7c-owner@test.local')
 on conflict (id) do nothing;
 
 insert into public.creator_accounts (id, created_at)
 values ('3697c000-0000-4000-c000-000000000001', now())
 on conflict (id) do nothing;
 
-insert into public.brands (id, account_id, name, slug, created_at, updated_at)
+insert into public.brands (
+  id, account_id, name, slug, default_currency, payment_provider,
+  payment_country, created_at, updated_at
+)
 values (
   '3697c000-0000-4000-c000-000000000010',
   '3697c000-0000-4000-c000-000000000001',
   'Issue 3697 Wave7c',
   'issue3697wave7cads',
+  'USD',
+  'stripe',
+  'US',
   now(),
   now()
 )
 on conflict (id) do nothing;
+
+insert into public.stripe_connect_accounts (
+  brand_id, stripe_account_id, charges_enabled, payouts_enabled,
+  country, default_currency
+) values (
+  '3697c000-0000-4000-c000-000000000010', 'acct_issue3697_w7c',
+  true, true, 'US', 'USD'
+);
 
 insert into public.brand_team_members
   (brand_id, user_id, role, accepted_at, invited_at)

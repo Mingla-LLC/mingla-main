@@ -60,8 +60,12 @@ describe("ORCH-1103 Surface 1 — cover band (create + update brand)", () => {
   });
 
   it("brand verbs are humanized for the new tools", () => {
-    expect(proposalCard).toContain('case "update_brand": return "Update brand"');
-    expect(proposalCard).toContain('case "delete_brand": return "Delete brand"');
+    expect(proposalCard).toMatch(
+      /case\s+["']update_brand["']:\s*return\s+["']Update brand["']/,
+    );
+    expect(proposalCard).toMatch(
+      /case\s+["']delete_brand["']:\s*return\s+["']Delete brand["']/,
+    );
   });
 
   it("disables Confirm while a cover upload is in flight", () => {
@@ -92,7 +96,7 @@ describe("ORCH-1103 REWORK — Add-cover on CREATE is never a dead tap (Q7)", ()
     // On a create with no brand yet, it surfaces the inline Create & attach.
     expect(proposalCard).toMatch(/if\s*\(isBrandCreate\)\s*\{\s*\n?\s*setCreateAttachVisible\(true\)/);
     expect(proposalCard).toContain("Create &amp; attach");
-    expect(proposalCard).toContain("so your");
+    expect(proposalCard).toMatch(/so\s*\n?\s*your cover has a home/);
   });
 
   it("Create & attach mints the brand (keepPending) then opens the full picker", () => {
@@ -112,7 +116,9 @@ describe("ORCH-1103 REWORK — Add-cover on CREATE is never a dead tap (Q7)", ()
   });
 
   it("onConfirm returns a ConfirmOutcome with an optional brandId (chain wired)", () => {
-    expect(proposalCard).toMatch(/onConfirm:\s*\([^)]*keepPending\?:\s*boolean\)\s*=>\s*Promise<ConfirmOutcome>/);
+    expect(proposalCard).toMatch(
+      /onConfirm:\s*\([\s\S]*?keepPending\?:\s*boolean,?[\s\S]*?\)\s*=>\s*Promise<ConfirmOutcome>/,
+    );
     // ConfirmOutcome lives in the neutral toolProposalTypes module so
     // ToolProposalCard doesn't import back into MessageList (require-cycle break).
     expect(toolProposalTypes).toContain("export interface ConfirmOutcome");

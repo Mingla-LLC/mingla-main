@@ -9,10 +9,6 @@
 import { learningLimitedWarning } from "./budgetRules.js";
 import { formatResolvedObjective } from "./objectiveResolver.js";
 
-function dollars(cents) {
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
 /**
  * @param {object} input
  * @param {Array}  input.channelRows   planChannels() output
@@ -45,8 +41,24 @@ export function buildLaunchSummary(input) {
     capCents = null,
     startsAt = null,
     endsAt = null,
-    currency = "USD",
+    // Missing money authority is visible and blocks create; it never becomes USD.
+    currency = null,
   } = input;
+
+  const currencyCode = typeof currency === "string" && /^[A-Z]{3}$/.test(currency)
+    ? currency
+    : null;
+  const moneyLabel = (cents) => {
+    if (!currencyCode) return "Currency unavailable";
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currencyCode,
+      }).format(cents / 100);
+    } catch {
+      return `${currencyCode} ${(cents / 100).toFixed(2)}`;
+    }
+  };
 
   // ISSUE-1002 [multi-destination fan-out] — the effective destination list. The
   // new `destinations[]` array wins when supplied; otherwise fall back to the
@@ -85,7 +97,7 @@ export function buildLaunchSummary(input) {
         platform: row.platform,
         label: row.label,
         dailyCents: allocated,
-        dailyLabel: `${dollars(allocated)}/day`,
+        dailyLabel: `${moneyLabel(allocated)}/day`,
         statusLine: "Paused → will go live on Launch",
         objectiveLabel: objectiveLabelFor(row.platform),
         amber: row.amber ?? null,
@@ -130,14 +142,6 @@ export function buildLaunchSummary(input) {
 
   // toward #3697 Wave 3 — Review shows the same hard-cap / schedule truths the server enforces.
   const cap = typeof capCents === "number" && Number.isFinite(capCents) ? capCents : null;
-  const moneyLabel = (cents) => {
-    const code = typeof currency === "string" && /^[A-Z]{3}$/.test(currency) ? currency : "USD";
-    try {
-      return new Intl.NumberFormat(undefined, { style: "currency", currency: code }).format(cents / 100);
-    } catch {
-      return dollars(cents);
-    }
-  };
   const scheduleBits = [];
   if (startsAt) scheduleBits.push(`starts ${new Date(startsAt).toLocaleString()}`);
   if (endsAt) scheduleBits.push(`ends ${new Date(endsAt).toLocaleString()}`);
@@ -153,7 +157,7 @@ export function buildLaunchSummary(input) {
     campaignCount,
     headline: creative?.kind === "video"
       ? `Ready to create ${campaignCount} paused video campaign${campaignCount === 1 ? "" : "s"} across ${channelLines.length} platform${channelLines.length === 1 ? "" : "s"}`
-      : `Ready to create across ${channelLines.length} channel${channelLines.length === 1 ? "" : "s"} · ${budgetMode === "lifetime" ? "lifetime" : `${dollars(totalDailyCents)}/day`} total`,
+      : `Ready to create across ${channelLines.length} channel${channelLines.length === 1 ? "" : "s"} · ${budgetMode === "lifetime" ? "lifetime" : `${moneyLabel(totalDailyCents)}/day`} total`,
     primaryActionLabel: creative?.kind === "video"
       ? `Create ${campaignCount} campaign${campaignCount === 1 ? "" : "s"} (paused)`
       : "Create campaign (paused)",

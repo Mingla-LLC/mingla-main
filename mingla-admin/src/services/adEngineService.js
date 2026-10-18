@@ -13,7 +13,11 @@
  */
 
 import { supabase, invokeWithRefresh } from "../lib/supabase";
-import { normalizePreparationInvoke } from "../lib/adBuilder/preparationState";
+import {
+  normalizePreparationInvoke,
+  PREPARATION_ORDER,
+  retryDelayMs,
+} from "../lib/adBuilder/preparationState";
 
 /** Extract { status, body } from a supabase.functions.invoke error (SC-7). */
 export async function parseEdgeError(error) {
@@ -27,7 +31,12 @@ export async function parseEdgeError(error) {
   } catch {
     body = null;
   }
-  return { status, body, message: body?.detail?.message ?? body?.detail ?? body?.error ?? error.message };
+  return {
+    status,
+    body,
+    message:
+      body?.detail?.message ?? body?.detail ?? body?.error ?? error.message,
+  };
 }
 
 // ── Connection ────────────────────────────────────────────────────────────────
@@ -56,7 +65,11 @@ export async function connectMeta(action = "connect") {
  * see the function's own header comment). No token ever reaches this client;
  * the call is authenticated by the admin's own session JWT (invokeWithRefresh).
  */
-export async function connectChannel(platform, action = "connect", lane = "consumer") {
+export async function connectChannel(
+  platform,
+  action = "connect",
+  lane = "consumer",
+) {
   return invokeWithRefresh("admin-ad-connect", {
     body: { platform, lane, action },
   });
@@ -66,10 +79,7 @@ export async function connectChannel(platform, action = "connect", lane = "consu
  * platform with no row yet, e.g. Google pre-provisioning, is simply absent
  * from the result; callers must not fabricate a row for it). */
 export async function getConnections(lane = "consumer") {
-  return supabase
-    .from("ad_connections")
-    .select("*")
-    .eq("lane", lane);
+  return supabase.from("ad_connections").select("*").eq("lane", lane);
 }
 
 // ── Preflight ─────────────────────────────────────────────────────────────────
@@ -113,6 +123,14 @@ export async function setAppReadinessSafeBinding(input, { signal } = {}) {
   });
 }
 
+/** Issue #3697: load or transition one explicit app-certification cell. */
+export async function appCertificationAction(payload, { signal } = {}) {
+  return invokeWithRefresh("admin-ad-app-certification", {
+    body: payload,
+    ...(signal ? { signal } : {}),
+  });
+}
+
 export async function recordAppReadinessEvent(event) {
   return invokeWithRefresh("admin-ad-app-readiness-event", { body: event });
 }
@@ -126,18 +144,237 @@ export async function listCampaigns() {
     .order("created_at", { ascending: false });
 }
 
+/** Admin-only names for operator-facing ownership labels; UUIDs stay internal. */
+export async function resolveAdBrandNames(brandIds) {
+  const ids = [...new Set((brandIds ?? []).filter(Boolean))];
+  if (ids.length === 0) return {};
+  const { data, error } = await supabase
+    .from("brands")
+    .select("id,name")
+    .in("id", ids);
+  if (error) return {};
+  return Object.fromEntries((data ?? []).map((row) => [row.id, row.name]));
+}
+
+/** Currency-separated operations truth; the RPC never cross-sums money. */
+export async function loadAdsOperationsOverview() {
+  return supabase.rpc("ad_admin_operations_overview");
+}
+
+/** Creative Library inventory for the unified Admin Ads surface. */
+export async function listAdCreatives() {
+  return adPlanAction({ action: "creative_library" });
+}
+
+/** Privileged builder handoff for one operator-selected library asset. */
+export async function getAdCreativeForReuse(creativeId) {
+  return adPlanAction({
+    action: "creative_reuse",
+    creative_id: creativeId,
+  });
+}
+
 /** The atomic create (everything PAUSED). payload matches admin-ad-create-campaign. */
 export async function createCampaign(payload) {
-  return invokeWithRefresh("admin-ad-create-campaign", { body: payload });
+  const destinationFamily = payload?.destination?.page_type;
+  const endpoint = ["explorer_app", "host_app"].includes(destinationFamily)
+    ? "admin-ad-create-native-app-campaign"
+    : "admin-ad-create-campaign";
+  return invokeWithRefresh(endpoint, { body: payload });
+}
+
+/** Issue #3697 v1.4 immutable plan lifecycle shared by Admin, Host and Ari. */
+export async function adPlanAction(payload) {
+  return invokeWithRefresh("ad-plan", { body: payload });
+}
+
+/** Mutable server draft. It is never executable and uses optimistic revision. */
+export async function saveAdminAdPlanDraft(payload) {
+  return adPlanAction({
+    action: "save_draft",
+    client_kind: "admin",
+    owner_kind: "mingla",
+    ...payload,
+  });
+}
+
+export async function getAdminAdPlanDraft(draftId) {
+  return adPlanAction({ action: "get_draft", draft_id: draftId });
+}
+
+export async function discardAdminAdPlanDraft(draftId, expectedRevision) {
+  return adPlanAction({
+    action: "discard_draft",
+    draft_id: draftId,
+    expected_revision: expectedRevision,
+  });
+}
+
+export async function loadAdminAdRecoveryQueue() {
+  return adPlanAction({ action: "recovery_queue" });
+}
+
+async function planActionOrThrow(payload, fallback) {
+  const { data, error } = await adPlanAction(payload);
+  if (!error) return data;
+  const parsed = await parseEdgeError(error);
+  throw new Error(String(parsed?.message ?? fallback));
+}
+
+/** Resume only the missing PAUSED provider objects from a frozen Admin plan. */
+export async function resumeAdminAdPlan(planId) {
+  let aggregate = await planActionOrThrow(
+    { action: "get", plan_id: planId },
+    "The frozen plan could not be loaded.",
+  );
+  const { plan, version } = aggregate ?? {};
+  if (plan?.owner_kind !== "mingla" || !version?.id || !version?.plan_hash) {
+    throw new Error("This is not a recoverable Mingla plan.");
+  }
+  if (plan.state === "creation_failed_terminal") {
+    throw new Error(
+      "This plan has a terminal provider failure. Inspect the provider evidence before creating a new version.",
+    );
+  }
+  if (
+    ![
+      "ready_for_funding",
+      "funded_held",
+      "creating_paused_objects",
+      "creation_failed_retryable",
+    ].includes(plan.state)
+  ) {
+    throw new Error(
+      `Plan state ${plan.state} cannot resume provider creation.`,
+    );
+  }
+  const templates = version.canonical_plan?.execution_payloads;
+  if (!templates || typeof templates !== "object" || Array.isArray(templates)) {
+    throw new Error(
+      "This older plan has no sealed execution template. Rebuild it in Campaign Builder; no provider action was taken.",
+    );
+  }
+  if (plan.state === "ready_for_funding") {
+    await planActionOrThrow(
+      {
+        action: "fund",
+        plan_version_id: version.id,
+        plan_hash: version.plan_hash,
+      },
+      "The provider-account funding binding failed.",
+    );
+  }
+  await planActionOrThrow(
+    {
+      action: "confirm_launch",
+      plan_version_id: version.id,
+      plan_hash: version.plan_hash,
+      phrase: "CREATE PAUSED",
+    },
+    "The exact paused-create confirmation failed.",
+  );
+
+  const isVideoPlan = Object.values(templates).some((template) => {
+    if (!template || typeof template !== "object" || Array.isArray(template)) {
+      return false;
+    }
+    return template.creative?.kind === "video" ||
+      template.creative_intent?.kind === "video";
+  });
+  if (isVideoPlan) {
+    const creativeLibraryId = version.canonical_plan?.creative_library_id;
+    if (!creativeLibraryId) {
+      throw new Error("The frozen video plan has no creative-library binding.");
+    }
+    try {
+      await prepareBoundVideoCreative({
+        creativeLibraryId,
+        platforms: (aggregate.provider_allocations ?? []).map((row) =>
+          row.platform
+        ),
+        lane: "consumer",
+        planVersionId: version.id,
+        planHash: version.plan_hash,
+      });
+    } catch (error) {
+      if (error?.platform) {
+        await adPlanAction({
+          action: "record_create_failure",
+          plan_version_id: version.id,
+          plan_hash: version.plan_hash,
+          platform: error.platform,
+          error_detail: error.message,
+        });
+      }
+      throw error;
+    }
+  }
+
+  const existingPlatforms = new Set(
+    (aggregate.campaigns ?? []).map((campaign) => campaign.platform),
+  );
+  for (const allocation of aggregate.provider_allocations ?? []) {
+    const platform = allocation.platform;
+    if (existingPlatforms.has(platform)) continue;
+    const template = templates[platform];
+    if (!template || typeof template !== "object" || Array.isArray(template)) {
+      throw new Error(`The sealed ${platform} execution template is missing.`);
+    }
+    const payload = structuredClone(template);
+    payload.plan_version_id = version.id;
+    payload.plan_hash = version.plan_hash;
+    const { error } = await createCampaign(payload);
+    if (error) {
+      const parsed = await parseEdgeError(error);
+      const detail = String(
+        parsed?.body?.detail?.message ??
+          parsed?.body?.detail ??
+          parsed?.message ??
+          `${platform} create failed.`,
+      );
+      await adPlanAction({
+        action: "record_create_failure",
+        plan_version_id: version.id,
+        plan_hash: version.plan_hash,
+        platform,
+        error_detail: detail,
+      });
+      throw new Error(`${platform}: ${detail}`);
+    }
+  }
+  aggregate = await planActionOrThrow(
+    { action: "get", plan_id: planId },
+    "The recovered plan could not be reloaded.",
+  );
+  return aggregate;
+}
+
+/** Cancel a frozen Mingla plan only while provider-object evidence is absent. */
+export async function cancelAdminAdPlan(item, reason) {
+  const version = item?.version;
+  if (!version?.id || !version?.plan_hash) {
+    throw new Error("The frozen plan binding is missing.");
+  }
+  return planActionOrThrow(
+    {
+      action: "cancel_before_create",
+      plan_version_id: version.id,
+      plan_hash: version.plan_hash,
+      phrase: "CANCEL PLAN",
+      reason,
+      idempotency_key: `admin_cancel_${version.plan_hash}`.slice(0, 120),
+    },
+    "The frozen plan could not be canceled.",
+  );
 }
 
 /**
- * action: 'launch' | 'pause'
- * Launch requires confirm_phrase "LAUNCH" + reason (Wave 5 / #3704).
+ * action: 'launch' | 'pause' | 'end'
+ * Launch and End require an exact phrase + reason; Pause is reversible.
  */
 export async function campaignAction(campaignId, action, extras = {}) {
   const body = { campaign_id: campaignId, action };
-  if (action === "launch") {
+  if (action === "launch" || action === "end") {
     if (typeof extras.confirm_phrase === "string") {
       body.confirm_phrase = extras.confirm_phrase;
     }
@@ -176,6 +413,14 @@ export async function getCampaignDetail(campaignId) {
     .maybeSingle();
 }
 
+export async function getPlanSettlements(planVersionId) {
+  return supabase
+    .from("ad_campaign_settlements")
+    .select("*")
+    .eq("plan_version_id", planVersionId)
+    .order("created_at", { ascending: true });
+}
+
 /**
  * ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI for the campaign-detail
  * "Conversions & ROI" panel. Reads the SECURITY DEFINER, self-authorizing
@@ -204,7 +449,13 @@ export async function getStayCampaignRollup(campaignId) {
  * the fn returns { results:[], warning } on a provider hiccup, never an error.
  * kind ∈ 'city' | 'interest'; country is the ISO code that disambiguates a city.
  */
-export async function searchTargeting({ platform, kind, q, country, lane = "consumer" }) {
+export async function searchTargeting({
+  platform,
+  kind,
+  q,
+  country,
+  lane = "consumer",
+}) {
   return invokeWithRefresh("admin-ad-targeting-search", {
     body: { platform, kind, q, lane, ...(country ? { country } : {}) },
   });
@@ -229,7 +480,9 @@ export async function creativeUpload(payload) {
  * Retry immediately instead of replacing it with a generic transport error.
  */
 export async function prepareVideoCreative(payload) {
-  const result = await invokeWithRefresh("admin-ad-creative-prepare", { body: payload });
+  const result = await invokeWithRefresh("admin-ad-creative-prepare", {
+    body: payload,
+  });
   if (!result.error) return result;
   const parsed = await parseEdgeError(result.error);
   return normalizePreparationInvoke(result, parsed);
@@ -245,6 +498,83 @@ export function checkVideoPreparation(input) {
 
 export function retryVideoPreparation(input) {
   return prepareVideoCreative({ ...input, action: "retry" });
+}
+
+function videoPreparationError(platform, message) {
+  const error = new Error(`${platform}: ${message}`);
+  error.platform = platform;
+  return error;
+}
+
+/**
+ * Prepare every provider-native video copy only after the exact immutable plan
+ * has crossed funding/review and launch confirmation. Status-first makes this
+ * resumable: an existing READY copy is reused, an interrupted copy is polled,
+ * and a terminal prior attempt receives at most one explicit retry.
+ */
+export async function prepareBoundVideoCreative({
+  creativeLibraryId,
+  platforms,
+  lane,
+  brandId,
+  planVersionId,
+  planHash,
+  onProgress,
+}) {
+  const rows = {};
+  const selected = new Set(platforms ?? []);
+  for (const platform of PREPARATION_ORDER) {
+    if (!selected.has(platform)) continue;
+    let action = "status";
+    let retried = false;
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const result = await prepareVideoCreative({
+        action,
+        creative_library_id: creativeLibraryId,
+        platform,
+        lane,
+        ...(brandId ? { brand_id: brandId } : {}),
+        plan_version_id: planVersionId,
+        plan_hash: planHash,
+      });
+      if (result.error) {
+        const parsed = result.parsedError ?? await parseEdgeError(result.error);
+        throw videoPreparationError(
+          platform,
+          String(
+            parsed?.body?.detail ?? parsed?.message ??
+              "The provider could not prepare this video.",
+          ),
+        );
+      }
+      const row = result.data ?? {};
+      rows[platform] = row;
+      onProgress?.(platform, row);
+      if (row.state === "ready") break;
+      if (row.state === "failed" || row.state === "timed_out") {
+        if (retried) {
+          throw videoPreparationError(
+            platform,
+            row.error?.message ?? "The provider could not prepare this video.",
+          );
+        }
+        action = "retry";
+        retried = true;
+      } else if (row.state === "not_started") {
+        action = "start";
+      } else {
+        action = "status";
+      }
+      if (attempt === 59) {
+        throw videoPreparationError(
+          platform,
+          "The provider is still preparing this video; resume the exact plan shortly.",
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs(row)));
+    }
+  }
+  return rows;
 }
 
 /** Real previews exist only for Meta and TikTok; Snap/Google remain local. */

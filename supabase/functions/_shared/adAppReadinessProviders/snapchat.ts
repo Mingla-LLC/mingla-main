@@ -137,14 +137,26 @@ export async function verify(ctx: VerifyContext) {
     ctx.target.os,
     ctx.target.store_identifier,
   );
-  base.dimensions.binding = base.dimensions.binding.status === "proven"
+  const iconReady =
+    typeof ctx.binding.provider_app_icon_media_id === "string" &&
+    ctx.binding.provider_app_icon_media_id.trim().length > 0;
+  base.dimensions.binding = base.dimensions.binding.status === "proven" &&
+      iconReady
     ? base.dimensions.binding
-    : exactApp
+    : exactApp && iconReady
     ? evidence(
       "proven",
       `Snap API returned the exact ${ctx.target.display_name} ${ctx.target.os} app binding.`,
       ctx.checkedAt,
       "provider_api",
+      exactApp.id,
+    )
+    : exactApp && !iconReady
+    ? evidence(
+      "action_required",
+      "The exact Snap app is verified, but its provider app-icon media ID is not registered yet.",
+      ctx.checkedAt,
+      "canonical_registry",
       exactApp.id,
     )
     : evidence(

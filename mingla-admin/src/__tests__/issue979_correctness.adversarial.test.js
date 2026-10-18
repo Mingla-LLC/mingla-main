@@ -324,14 +324,16 @@ describe("ISSUE-979 Bug 4 ADV — eligible channels PARTITION into funded ∪ re
     }
   });
 
-  it("each reported channel carries a real, human reason ($0/day + its own name)", () => {
+  it("each reported channel carries a real, currency-correct reason + its own name", () => {
     const rows = planChannels({ ...base, totalDailyCents: 700 });
     const allocations = splitBudget({ totalDailyCents: 700, channelRows: rows, strategy: "auto" });
-    const unfunded = unfundedEligibleChannels({ channelRows: rows, allocations, totalDailyCents: 700, strategy: "auto" });
+    const unfunded = unfundedEligibleChannels({ channelRows: rows, allocations, totalDailyCents: 700, strategy: "auto", currency: "USD" });
     assert.ok(unfunded.length >= 1, "the $7/day auto case must strand at least one eligible channel");
     for (const u of unfunded) {
       assert.ok(u.reason && u.reason.length > 20, `${u.platform} reason is empty/stub`);
-      assert.ok(u.reason.includes("$0/day"), `${u.platform} reason must name the $0/day outcome`);
+      assert.ok(u.reason.includes("$7.00/day"), `${u.platform} reason must name the plan budget in its currency`);
+      assert.ok(u.reason.includes("$5.00/day"), `${u.platform} reason must name the learning minimum in its currency`);
+      assert.ok(u.reason.includes("receives no daily budget"), `${u.platform} reason must name the zero-allocation outcome`);
       assert.ok(u.reason.includes(u.label), `${u.platform} reason must name the channel`);
     }
   });

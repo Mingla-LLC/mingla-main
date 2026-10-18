@@ -4,10 +4,9 @@
  * action='validate') and render the per-channel validation panel.
  *
  * ISSUE-995 [Campaign Builder creative] Wave 3 of #977 adds:
- *   1. VIDEO — an image|video kind toggle. Video references an already-hosted
- *      asset (Bunny id + MP4 master URL + a poster image); the edge runtime
- *      cannot transcode, so the admin supplies the refs the #866 library
- *      records (kind:"video" → bunny_video_id/poster_url/mp4_master_url).
+ *   1. VIDEO — an image|video kind toggle. Operators choose an already-recorded
+ *      canonical video from the Creative Library; Bunny ids, master URLs and
+ *      poster URLs remain server-owned implementation details.
  *   2. PER-PLACEMENT report + local preview — "passes Feed 1:1, fails Reels
  *      9:16" made explicit, with the creative cropped to each placement so the
  *      operator can see + manually resize (placements.js). The platform-
@@ -23,7 +22,7 @@
  *      "Technical details" toggle (creativeCopy.js — mirrors ISSUE-980).
  */
 
-import { createElement, useState } from "react";
+import { createElement, useEffect, useState } from "react";
 import { ShieldCheck, Image as ImageIcon, Film, ChevronDown, ChevronRight, X } from "lucide-react";
 import { AlertCard } from "../ui/Card";
 import { Badge } from "../ui/Badge";
@@ -32,15 +31,18 @@ import { Input, Toggle } from "../ui/Input";
 import { ImageUploader } from "../ui/ImageUploader";
 import { useToast } from "../../context/ToastContext";
 import { uploadAdImage } from "../../services/mediaUpload";
-import { creativeUpload, parseEdgeError } from "../../services/adEngineService";
+import {
+  creativeUpload,
+  getAdCreativeForReuse,
+  listAdCreatives,
+  parseEdgeError,
+} from "../../services/adEngineService";
 import { PLATFORM_LABELS } from "../../lib/adBuilder/channelPlan";
 import { perPlacementReport, placementSummaryByPlatform } from "../../lib/adBuilder/placements";
 import { humanizeCreativeCheck } from "../../lib/adBuilder/creativeCopy";
 import {
   buildVideoSourcePayload,
-  deriveBunnyPosterUrl,
 } from "../../lib/adBuilder/preparationState";
-import { VideoPreparationPanel } from "./VideoPreparationPanel";
 
 /** Ratio slots the backend accepts as pre-cropped variants (VARIANT_RATIOS). */
 const VARIANT_RATIOS = ["4:5", "1:1", "9:16", "1.91:1"];
@@ -81,15 +83,6 @@ export function StepCreative({
   fundedPlatforms = [],
   creativeExcluded = [],
   creativeBuildable = [],
-  preparationRows = {},
-  preparationRunningPlatform = null,
-  preparationStopped = false,
-  onPrepareVideo,
-  onStopPreparation,
-  onResumePreparation,
-  onRetryPreparation,
-  onCheckPreparation,
-  preparationOnline = true,
 }) {
   const { addToast } = useToast();
   const [uploading, setUploading] = useState(false);
@@ -98,19 +91,43 @@ export function StepCreative({
   const [recording, setRecording] = useState(false);
   const [serverError, setServerError] = useState(null);
   const [expandedChecks, setExpandedChecks] = useState(() => new Set());
+  const [videoLibrary, setVideoLibrary] = useState(null);
+  const [videoLibraryError, setVideoLibraryError] = useState(null);
+  const [selectingVideoId, setSelectingVideoId] = useState(null);
   const set = (patch) => onCreativeChange({ ...creative, ...patch });
 
   const isVideo = creative.kind === "video";
-  const preparationActive = Boolean(preparationRunningPlatform) && !preparationStopped;
-  const hasPreparedCopy = Object.values(preparationRows).some((row) => row?.state === "ready");
-  const confirmPreparedChange = () =>
-    !hasPreparedCopy || window.confirm(
-      "Use a different video?\n\nPrepared platform copies belong to the current video. Changing it will require new preparation and new previews. Existing campaigns are not affected.",
-    );
   const eligiblePlatforms = channelRows.filter((r) => r.eligible).map((r) => r.platform);
   // The report/preview cover the channels that will actually build (funded);
   // before budget or when empty, fall back to the eligible set.
   const reportPlatforms = fundedPlatforms.length > 0 ? fundedPlatforms : eligiblePlatforms;
+
+  useEffect(() => {
+    if (!isVideo || videoLibrary !== null) return undefined;
+    let mounted = true;
+    listAdCreatives().then(async ({ data, error }) => {
+      if (!mounted) return;
+      if (error) {
+        const parsed = await parseEdgeError(error);
+        setVideoLibraryError(
+          parsed?.message ?? "The Creative Library could not be loaded.",
+        );
+        setVideoLibrary([]);
+        return;
+      }
+      setVideoLibrary(
+        (data?.creatives ?? []).filter(
+          (row) =>
+            row.kind === "video" &&
+            row.status === "active" &&
+            row.house_reuse_allowed === true,
+        ),
+      );
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [isVideo, videoLibrary]);
 
   const toggleExpanded = (key) =>
     setExpandedChecks((prev) => {
@@ -121,7 +138,6 @@ export function StepCreative({
 
   const switchKind = (kind) => {
     if (kind === creative.kind) return;
-    if (isVideo && !confirmPreparedChange()) return;
     // Reset media-specific + validation state on a kind switch.
     onCreativeChange({
       ...creative,
@@ -137,6 +153,7 @@ export function StepCreative({
       variants: {},
       validation: null,
       creativeRow: null,
+      rightsConfirmed: false,
     });
     setServerError(null);
   };
@@ -153,6 +170,7 @@ export function StepCreative({
         path,
         validation: null,
         creativeRow: null,
+        rightsConfirmed: false,
         name: creative.name || file.name.replace(/\.[a-z]+$/i, ""),
       });
     } catch (err) {
@@ -162,30 +180,65 @@ export function StepCreative({
     setUploading(false);
   };
 
-  const updateVideoIdentity = (field, value) => {
-    if (!confirmPreparedChange()) return;
-    const previousDerived = deriveBunnyPosterUrl(
-      creative.mp4MasterUrl,
-      creative.bunnyVideoId,
-    );
-    const mp4MasterUrl = field === "mp4MasterUrl" ? value : creative.mp4MasterUrl;
-    const bunnyVideoId = field === "bunnyVideoId" ? value : creative.bunnyVideoId;
-    const shouldDerivePoster = !creative.posterUrl || creative.posterUrl === previousDerived;
-    const posterUrl = shouldDerivePoster
-      ? deriveBunnyPosterUrl(mp4MasterUrl, bunnyVideoId)
-      : creative.posterUrl;
-    set({
-      [field]: value,
-      posterUrl: posterUrl || null,
-      posterPath: null,
-      validation: null,
-      creativeRow: null,
-    });
+  const selectLibraryVideo = async (creativeId) => {
+    setSelectingVideoId(creativeId);
+    setServerError(null);
+    try {
+      const { data, error } = await getAdCreativeForReuse(creativeId);
+      if (error || !data?.creative) {
+        const parsed = await parseEdgeError(error);
+        throw new Error(
+          parsed?.message ?? "The saved video could not be reused.",
+        );
+      }
+      const row = data.creative;
+      const validated = await creativeUpload({
+        action: "validate",
+        kind: "video",
+        name: row.name,
+        source_url: row.source_url,
+        bunny_video_id: row.bunny_video_id,
+        poster_url: row.poster_url,
+        mp4_master_url: row.mp4_master_url,
+        variants: row.variants ?? {},
+        ai_generated: row.ai_generated === true,
+        platforms: eligiblePlatforms.length > 0 ? eligiblePlatforms : undefined,
+      });
+      if (validated.error) {
+        const parsed = await parseEdgeError(validated.error);
+        throw new Error(
+          parsed?.message ?? "The saved video no longer passes validation.",
+        );
+      }
+      onCreativeChange({
+        ...creative,
+        kind: "video",
+        file: null,
+        localPreviewUrl: row.poster_url ?? null,
+        publicUrl: null,
+        path: row.storage_path ?? null,
+        mp4MasterUrl: row.mp4_master_url ?? "",
+        bunnyVideoId: row.bunny_video_id ?? "",
+        posterUrl: row.poster_url ?? null,
+        posterPath: null,
+        variants: row.variants ?? {},
+        validation: validated.data?.validation ?? null,
+        creativeRow: row,
+        aiGenerated: row.ai_generated === true,
+        rightsConfirmed: false,
+        name: row.name ?? "",
+      });
+    } catch (error) {
+      setServerError({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setSelectingVideoId(null);
+    }
   };
 
   const handleVariantPicked = async (ratio, file) => {
     if (!file) return;
-    if (!confirmPreparedChange()) return;
     setVariantBusy(ratio);
     setServerError(null);
     try {
@@ -202,7 +255,6 @@ export function StepCreative({
   };
 
   const clearVariant = (ratio) => {
-    if (!confirmPreparedChange()) return;
     const next = { ...(creative.variants ?? {}) };
     delete next[ratio];
     set({ variants: next, validation: null, creativeRow: null });
@@ -307,8 +359,7 @@ export function StepCreative({
         </p>
       </div>
 
-      {/* ISSUE-1184: Phase A video create is truthful per-platform: Meta and
-          Snapchat build only after preparation; TikTok is preview-only. */}
+      {/* Provider-native copies are launch work, never creative-step work. */}
       <div className="inline-flex rounded-lg border border-[var(--gray-200)] p-0.5" role="tablist" aria-label="Creative type">
         {[
           { kind: "image", label: "Image", icon: ImageIcon },
@@ -318,7 +369,6 @@ export function StepCreative({
             key={kind}
             type="button"
             role="tab"
-            disabled={preparationActive}
             aria-selected={creative.kind === kind}
             data-testid={`creative-kind-${kind}`}
             onClick={() => switchKind(kind)}
@@ -336,9 +386,10 @@ export function StepCreative({
       </div>
 
       {isVideo && (
-        <AlertCard variant="info" title="Video Phase A">
-          Meta and Snapchat can build after their platform copies are ready. TikTok is real-preview
-          only; Google and Snapchat previews are clearly labeled Mingla approximations.
+        <AlertCard variant="info" title="One canonical video, safely reused">
+          Mingla validates the canonical video and its placement fit here. Provider-native copies
+          are created only after the exact plan is funded, reviewed and launch-confirmed; nothing
+          is uploaded to an ad platform during this step.
         </AlertCard>
       )}
 
@@ -348,78 +399,140 @@ export function StepCreative({
           previewUrl={creative.localPreviewUrl ?? creative.publicUrl}
           uploading={uploading}
           onFilePicked={handleFilePicked}
-          onClear={() => set({ file: null, localPreviewUrl: null, publicUrl: null, path: null, validation: null, creativeRow: null })}
+          onClear={() => set({ file: null, localPreviewUrl: null, publicUrl: null, path: null, validation: null, creativeRow: null, rightsConfirmed: false })}
         />
       )}
 
       {isVideo && (
         <div className="space-y-3 border border-[var(--gray-200)] rounded-xl p-3">
           <p className="text-xs text-[var(--color-text-secondary)]">
-            Video ads reference an already-hosted asset — the ad engine can't transcode uploads.
-            Paste the Bunny video ID and downloadable MP4 master. We derive Bunny's exact JPEG
-            poster path automatically; you can replace it only with that video's canonical URL.
+            Choose a ready video from Mingla&apos;s Creative Library. Storage IDs, master URLs and
+            poster URLs stay server-owned and are never entered by an operator.
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Input
-              label="MP4 master URL"
-              disabled={preparationActive}
-              value={creative.mp4MasterUrl}
-              onChange={(e) => updateVideoIdentity("mp4MasterUrl", e.target.value)}
-              placeholder="https://…/master.mp4"
-            />
-            <Input
-              label="Bunny video ID"
-              disabled={preparationActive}
-              value={creative.bunnyVideoId}
-              onChange={(e) => updateVideoIdentity("bunnyVideoId", e.target.value)}
-              placeholder="e.g. 8f2c…"
-            />
-          </div>
-          <div className="space-y-2">
-            <Input
-              label="Bunny poster URL (required)"
-              disabled={preparationActive}
-              value={creative.posterUrl ?? ""}
-              onChange={(e) => {
-                if (confirmPreparedChange()) {
-                  set({
-                    posterUrl: e.target.value || null,
-                    posterPath: null,
-                    validation: null,
-                    creativeRow: null,
-                  });
-                }
-              }}
-              placeholder="https://cdn.example.com/{video-id}/thumbnail.jpg"
-            />
-            <p className="text-xs text-[var(--color-text-secondary)]">
-              Must use the same Bunny CDN host and exact /video-id/thumbnail.jpg path as the MP4.
+          {videoLibrary === null ? (
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              Loading ready videos…
             </p>
-            {creative.posterUrl && (
-              <img
-                src={creative.posterUrl}
-                alt="Bunny video poster preview"
-                className="w-full max-w-48 aspect-video object-cover rounded-lg border border-[var(--gray-200)]"
-              />
-            )}
-          </div>
+          ) : videoLibrary.length === 0 ? (
+            <AlertCard variant="warning" title="No ready video in the library">
+              Upload through Mingla&apos;s shared resumable media flow, then return here and choose
+              the recorded video. Only Mingla-owned media is eligible for a house campaign;
+              Host-owned media remains blocked pending Terms approval. The Ads builder does not
+              create a parallel uploader.
+            </AlertCard>
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2">
+              {videoLibrary.map((row) => {
+                const selected = creative.creativeRow?.id === row.id;
+                return (
+                  <button
+                    key={row.id}
+                    type="button"
+                    aria-pressed={selected}
+                    disabled={selectingVideoId !== null}
+                    onClick={() => selectLibraryVideo(row.id)}
+                    className={[
+                      "flex items-center gap-3 rounded-xl border p-2 text-left transition-colors",
+                      selected
+                        ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)]"
+                        : "border-[var(--gray-200)] hover:bg-[var(--gray-50)]",
+                    ].join(" ")}
+                  >
+                    {row.preview_url ? (
+                      <img
+                        src={row.preview_url}
+                        alt=""
+                        className="h-16 w-12 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-16 w-12 items-center justify-center rounded-lg bg-[var(--gray-100)]">
+                        <Film className="h-5 w-5" aria-hidden="true" />
+                      </span>
+                    )}
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold">
+                        {row.name || "Untitled video"}
+                      </span>
+                      <span className="block text-xs text-[var(--color-text-secondary)]">
+                        {row.duration_seconds ? `${row.duration_seconds}s · ` : ""}
+                        {selected
+                          ? "Selected"
+                          : selectingVideoId === row.id
+                            ? "Checking…"
+                            : "Choose video"}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {videoLibraryError && (
+            <AlertCard variant="error" title="Creative Library unavailable">
+              {videoLibraryError}
+            </AlertCard>
+          )}
+          <a
+            href="#/ad-engine?tab=creative-library"
+            className="inline-flex text-xs font-medium text-[var(--color-brand-600)] hover:underline"
+          >
+            Open Creative Library
+          </a>
         </div>
       )}
 
       {(mediaReady || creative.publicUrl || isVideo) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
-          <Input
-            label="Creative name"
-            value={creative.name}
-            onChange={(e) => set({ name: e.target.value })}
-            placeholder="July London push — hero"
-          />
-          <div className="flex items-center gap-3">
-            <Toggle
-              label="AI-generated (discloses OPT_IN to Meta)"
-              checked={creative.aiGenerated}
-              onChange={(v) => set({ aiGenerated: v })}
+        <div className="space-y-3 rounded-xl border border-[var(--gray-200)] p-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+            <Input
+              label="Creative name"
+              value={creative.name}
+              onChange={(e) => set({ name: e.target.value })}
+              placeholder="July London push — hero"
             />
+            <div className="flex items-center gap-3">
+              <Toggle
+                label="AI-generated (discloses OPT_IN to Meta)"
+                checked={creative.aiGenerated}
+                onChange={(v) => set({ aiGenerated: v })}
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="grid gap-1 text-xs font-medium">
+              Rights basis
+              <select
+                value={creative.rightsBasis}
+                onChange={(event) =>
+                  set({
+                    rightsBasis: event.target.value,
+                    rightsConfirmed: false,
+                  })
+                }
+                className="h-10 rounded-lg border border-[var(--gray-200)] bg-transparent px-3 text-sm"
+              >
+                <option value="owned">Owned by Mingla or the brand</option>
+                <option value="licensed">Licensed for paid advertising</option>
+                <option value="authorized_by_brand">
+                  Authorized by the brand or creator
+                </option>
+              </select>
+            </label>
+            <label className="flex items-start gap-2 rounded-lg bg-[var(--gray-50)] p-3 text-xs">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={creative.rightsConfirmed}
+                onChange={(event) =>
+                  set({ rightsConfirmed: event.target.checked })
+                }
+              />
+              <span>
+                I confirm this asset may be used in paid ads under the selected
+                basis. This attestation does not authorize reuse in Mingla house
+                campaigns.
+              </span>
+            </label>
           </div>
         </div>
       )}
@@ -450,7 +563,6 @@ export function StepCreative({
                     {slot?.source_url ? (
                       <button
                         type="button"
-                        disabled={preparationActive}
                         onClick={() => clearVariant(ratio)}
                         className="text-[10px] text-[var(--color-text-tertiary)] hover:text-[#ef4444] inline-flex items-center gap-0.5"
                       >
@@ -461,7 +573,6 @@ export function StepCreative({
                         {variantBusy === ratio ? "Uploading…" : "Add"}
                         <input
                           type="file"
-                          disabled={preparationActive}
                           accept="image/png,image/jpeg"
                           className="sr-only"
                           aria-label={`Upload ${ratio} variant`}
@@ -493,22 +604,6 @@ export function StepCreative({
         </div>
       )}
 
-      {isVideo && (
-        <VideoPreparationPanel
-          creativeId={creative.creativeRow?.id ?? null}
-          fundedPlatforms={fundedPlatforms}
-          rows={preparationRows}
-          runningPlatform={preparationRunningPlatform}
-          stopped={preparationStopped}
-          online={preparationOnline}
-          onPrepare={onPrepareVideo}
-          onStop={onStopPreparation}
-          onResume={onResumePreparation}
-          onRetry={onRetryPreparation}
-          onCheck={onCheckPreparation}
-        />
-      )}
-
       {serverError && (
         <AlertCard variant="error" title={`Creative check failed${serverError.code ? ` — ${serverError.code}` : ""}`}>
           {serverError.message}
@@ -537,7 +632,7 @@ export function StepCreative({
       {channels && fundedPlatforms.length > 0 && creativeBuildable.length === 0 && (
         <AlertCard variant="error" title="No funded channel can run this creative yet">
           {isVideo
-            ? "Prepare at least one video platform, or fix a failed platform, to continue."
+            ? "The recorded video does not fit any funded channel. Fix the media or add a matching variant to continue."
             : "Every funded channel has a problem below. Fix at least one — or add a pre-cropped variant — to build."}
         </AlertCard>
       )}

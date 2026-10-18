@@ -1,153 +1,573 @@
 /**
- * ISSUE-862 WP1 [Full Rooms Ad Engine] — minimal functional admin surface.
+ * Admin Ads control center.
  *
- * Deliberately minimal per SPEC §2 non-goals: the polished campaign builder is
- * #864; this page exercises the WP1 contract end-to-end (SC-1…SC-7):
- *   - connection states (not configured / invalid / connecting / connected)
- *   - channel preflight (P1-P6 per channel; stubs report not_connected)
- *   - create campaign (everything PAUSED; validate-only passthrough)
- *   - campaign list with BOTH badges (advertiser status + delivery
- *     effective_status), launch / pause / sync, destination link
- *   - every edge error rendered inline with the normalized Meta detail (SC-7)
+ * Provider connections, app readiness, and preflight live here. All campaign
+ * creation goes through the immutable-plan Campaign Builder; all lifecycle,
+ * spend, and reporting actions live on Campaigns. This page intentionally has
+ * no quick-create or direct-launch bypass.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Megaphone, RefreshCw, Rocket, Pause, ExternalLink } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { AlertTriangle, Megaphone, RefreshCw, Rocket } from "lucide-react";
 import { SectionCard, AlertCard } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
-import { Input, Textarea, Toggle } from "../components/ui/Input";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
 import { loadFeatureFlags } from "../lib/featureFlags";
 import { AdConnectionsPanel } from "../components/AdConnectionsPanel";
 import { AppDownloadReadinessPanel } from "../components/app-readiness/AppDownloadReadinessPanel";
 import {
-  campaignAction,
-  connectMeta,
-  createCampaign,
-  getMetaConnection,
-  listCampaigns,
+  listAdCreatives,
+  loadAdsOperationsOverview,
   parseEdgeError,
   runPreflight,
-  syncCampaigns,
 } from "../services/adEngineService";
 import { PageHeader } from "../components/ui/PageHeader";
+import { Tabs } from "../components/ui/Tabs";
+import { CampaignsPage } from "./CampaignsPage";
 
-const OBJECTIVES = [
-  "OUTCOME_TRAFFIC",
-  "OUTCOME_AWARENESS",
-  "OUTCOME_ENGAGEMENT",
-  "OUTCOME_LEADS",
-  "OUTCOME_SALES",
-  "OUTCOME_APP_PROMOTION",
-];
-
-// Meta CTA options exposed in WP1 (server holds the per-platform maps).
-const CTA_OPTIONS = ["LEARN_MORE", "BUY_TICKETS", "BOOK_NOW", "GET_DIRECTIONS", "EVENT_RSVP", "SIGN_UP"];
-
-const DELIVERY_BADGE = {
-  ACTIVE: "success",
-  PAUSED: "default",
-  PENDING_REVIEW: "info",
-  PREAPPROVED: "info",
-  IN_PROCESS: "info",
-  PENDING_BILLING_INFO: "warning",
-  WITH_ISSUES: "warning",
-  DISAPPROVED: "error",
-  CAMPAIGN_PAUSED: "default",
-  ADSET_PAUSED: "default",
-  AD_PAUSED: "default",
+const PREFLIGHT_BADGE = {
+  green: "success",
+  amber: "warning",
+  red: "error",
+  not_connected: "default",
 };
 
-const PREFLIGHT_BADGE = { green: "success", amber: "warning", red: "error", not_connected: "default" };
+const ADS_TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "campaigns", label: "Campaigns" },
+  { id: "creative-library", label: "Creative Library" },
+  { id: "connections", label: "Connections" },
+];
 
-function centsToUsd(cents) {
-  if (typeof cents !== "number") return "—";
-  return `$${(cents / 100).toFixed(2)}`;
+const PROCESSING_LABEL = {
+  not_started: "Not prepared",
+  partial: "Partly prepared",
+  preparing: "Preparing",
+  ready: "Provider ready",
+  needs_attention: "Needs attention",
+};
+
+const PROCESSING_VARIANT = {
+  ready: "success",
+  preparing: "warning",
+  partial: "warning",
+  needs_attention: "error",
+  not_started: "default",
+};
+
+const AD_PLATFORMS = ["meta", "tiktok", "snapchat", "google", "reddit"];
+
+function sentenceCase(value) {
+  return String(value ?? "")
+    .replaceAll("_", " ")
+    .replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function tabFromHash() {
+  const query = window.location.hash.split("?")[1] ?? "";
+  const requested = new URLSearchParams(query).get("tab") ?? "overview";
+  return ADS_TABS.some((tab) => tab.id === requested) ? requested : "overview";
+}
+
+function formatMinor(currency, minor) {
+  if (!/^[A-Z]{3}$/.test(currency ?? "") || !Number.isFinite(Number(minor))) {
+    return "—";
+  }
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+    }).format(Number(minor) / 100);
+  } catch {
+    return `${currency} ${(Number(minor) / 100).toFixed(2)}`;
+  }
+}
+
+function evidenceVariant(state) {
+  if (state === "current" || state === "verified") return "success";
+  if (state === "not_required") return "default";
+  if (state === "missing" || state === "needs_attention") return "error";
+  return "warning";
+}
+
+function observedAtLabel(value) {
+  const timestamp = Date.parse(value ?? "");
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toLocaleString()
+    : "not observed";
+}
+
+function AdsOperationsOverview({ onOpenCampaigns, onOpenConnections }) {
+  const [snapshot, setSnapshot] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { data, error: loadError } = await loadAdsOperationsOverview();
+    setSnapshot(loadError ? null : data);
+    setError(loadError?.message ?? null);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    // Initial server snapshot; state transitions live inside the async loader.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
+
+  if (loading && !snapshot) {
+    return (
+      <SectionCard title="Operations snapshot">
+        <div className="flex items-center gap-2 py-4">
+          <Spinner size="sm" /> Loading governed Ads evidence…
+        </div>
+      </SectionCard>
+    );
+  }
+
+  if (error) {
+    return (
+      <AlertCard variant="error" title="Ads operations snapshot unavailable">
+        <p>{error}</p>
+        <Button className="mt-3" size="sm" variant="secondary" onClick={load}>
+          Retry
+        </Button>
+      </AlertCard>
+    );
+  }
+
+  const campaigns = snapshot?.campaigns ?? {};
+  const queues = snapshot?.queues ?? {};
+  const delivery = snapshot?.delivery_evidence ?? {};
+  const connections = snapshot?.connections ?? [];
+  const connectionByPlatform = new Map(
+    connections.map((connection) => [connection.platform, connection]),
+  );
+  const alertCount =
+    Number(campaigns.needs_attention ?? 0) +
+    Number(queues.staff_review ?? 0) +
+    Number(queues.mingla_recovery ?? 0) +
+    Number(queues.settlement_attention ?? 0);
+
+  return (
+    <>
+      <SectionCard
+        title="Operations snapshot"
+        subtitle="Live evidence from campaigns, queues, provider connections, spend and attributed results."
+        action={
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={RefreshCw}
+            loading={loading}
+            onClick={load}
+          >
+            Refresh
+          </Button>
+        }
+      >
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          {[
+            ["All campaigns", campaigns.total ?? 0],
+            ["Live", campaigns.live ?? 0],
+            ["Paused", campaigns.paused ?? 0],
+            ["Ended", campaigns.ended ?? 0],
+            ["Needs attention", campaigns.needs_attention ?? 0],
+          ].map(([label, value]) => (
+            <button
+              type="button"
+              key={label}
+              className="rounded-xl border border-[var(--gray-200)] p-3 text-left hover:border-[var(--color-brand-500)]"
+              onClick={onOpenCampaigns}
+            >
+              <div className="text-xs uppercase text-[var(--color-text-tertiary)]">
+                {label}
+              </div>
+              <div className="mt-1 text-2xl font-semibold">{value}</div>
+            </button>
+          ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Action queue"
+        subtitle="Every count links to the governed campaign workspace; no provider action runs from this summary."
+      >
+        {alertCount === 0 ? (
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            No campaign, review, recovery or settlement action is currently
+            recorded.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+            {[
+              ["Campaign attention", campaigns.needs_attention ?? 0],
+              ["Staff review", queues.staff_review ?? 0],
+              ["Create recovery", queues.mingla_recovery ?? 0],
+              ["Settlement attention", queues.settlement_attention ?? 0],
+            ].map(([label, value]) => (
+              <button
+                type="button"
+                key={label}
+                className="flex items-center justify-between rounded-xl border border-[var(--gray-200)] p-3 text-left hover:border-[var(--color-brand-500)]"
+                onClick={onOpenCampaigns}
+              >
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  <AlertTriangle size={15} /> {label}
+                </span>
+                <Badge variant={Number(value) > 0 ? "warning" : "default"}>
+                  {value}
+                </Badge>
+              </button>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <SectionCard
+          title="Spend by provider currency"
+          subtitle="Currencies are separated and never cross-summed. A missing feed stays visibly empty."
+        >
+          {(snapshot?.spend_by_currency ?? []).length === 0 ? (
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              No provider spend has been observed yet.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {snapshot.spend_by_currency.map((row) => (
+                <div
+                  key={row.currency}
+                  className="flex items-center justify-between rounded-lg border border-[var(--gray-200)] p-3"
+                >
+                  <div>
+                    <div className="font-semibold">
+                      {formatMinor(row.currency, row.spend_cents)}
+                    </div>
+                    <div className="text-xs text-[var(--color-text-secondary)]">
+                      {Number(row.impressions ?? 0).toLocaleString()}{" "}
+                      impressions · {Number(row.clicks ?? 0).toLocaleString()}{" "}
+                      clicks
+                    </div>
+                  </div>
+                  <Badge>{row.currency}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard
+          title="Attributed results"
+          subtitle="Recorded Mingla outcomes only; result value remains separated by source currency."
+        >
+          <div className="text-2xl font-semibold">
+            {Number(snapshot?.results?.total ?? 0).toLocaleString()}
+          </div>
+          <div className="mb-3 text-xs uppercase text-[var(--color-text-tertiary)]">
+            total attributed results
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(snapshot?.results?.by_type ?? []).map((row) => (
+              <Badge key={row.event_type} variant="info">
+                {sentenceCase(row.event_type)} · {row.count}
+              </Badge>
+            ))}
+          </div>
+          {(snapshot?.results?.value_by_currency ?? []).length > 0 && (
+            <div className="mt-3 space-y-1 text-sm">
+              {snapshot.results.value_by_currency.map((row) => (
+                <div key={row.currency} className="flex justify-between gap-3">
+                  <span>{row.currency} attributed value</span>
+                  <strong>{formatMinor(row.currency, row.value_cents)}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      </div>
+
+      <SectionCard
+        title="Provider and automation evidence"
+        subtitle="Verification and delivery freshness come from recorded provider observations. This does not claim the external scheduler configuration was inspected."
+        action={
+          <Button size="sm" variant="secondary" onClick={onOpenConnections}>
+            Manage connections
+          </Button>
+        }
+      >
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--gray-50)] p-3 text-sm">
+          <span className="font-medium">Delivery evidence</span>
+          <Badge variant={evidenceVariant(delivery.evidence_state)}>
+            {sentenceCase(delivery.evidence_state)}
+          </Badge>
+          <span className="text-[var(--color-text-secondary)]">
+            {Number(delivery.active_campaigns ?? 0)} active ·{" "}
+            {Number(delivery.missing_spend_campaigns ?? 0)} missing spend feed ·{" "}
+            {Number(delivery.stale_campaigns ?? 0)} stale
+          </span>
+          <span className="basis-full text-xs text-[var(--color-text-tertiary)]">
+            Status observed {observedAtLabel(delivery.latest_status_synced_at)}{" "}
+            · Spend observed {observedAtLabel(delivery.latest_spend_synced_at)}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
+          {AD_PLATFORMS.map((platform) => {
+            const connection = connectionByPlatform.get(platform);
+            const state = connection?.verification_state ?? "not_connected";
+            return (
+              <button
+                type="button"
+                key={platform}
+                className="rounded-lg border border-[var(--gray-200)] p-3 text-left hover:border-[var(--color-brand-500)]"
+                onClick={onOpenConnections}
+              >
+                <div className="font-medium">{sentenceCase(platform)}</div>
+                <Badge className="mt-2" variant={evidenceVariant(state)}>
+                  {sentenceCase(state)}
+                </Badge>
+                <div className="mt-2 text-xs text-[var(--color-text-secondary)]">
+                  {connection?.currency ?? "Currency unavailable"}
+                </div>
+                <div className="mt-1 text-[11px] text-[var(--color-text-tertiary)]">
+                  Verified {observedAtLabel(connection?.token_last_verified_at)}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </SectionCard>
+    </>
+  );
+}
+
+function CreativeLibraryPanel() {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    listAdCreatives().then(({ data, error: loadError }) => {
+      if (!mounted) return;
+      setRows(data?.creatives ?? []);
+      setError(loadError?.message ?? null);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  return (
+    <SectionCard
+      title="Creative Library"
+      subtitle="Canonical ad media, processing truth, placement fit and reusable provider handoff start here. Infrastructure IDs stay hidden from operators."
+      action={
+        <Button
+          size="sm"
+          icon={Rocket}
+          onClick={() => {
+            window.location.hash = "#/campaign-builder?step=creative";
+          }}
+        >
+          Build a campaign
+        </Button>
+      }
+    >
+      {error ? (
+        <AlertCard variant="error" title="Creative Library unavailable">
+          {error}
+        </AlertCard>
+      ) : rows === null ? (
+        <div className="flex items-center gap-2 py-4">
+          <Spinner size="sm" /> Loading creatives…
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="space-y-2 text-sm text-[var(--color-text-secondary)]">
+          <p>No canonical ad creatives have been recorded yet.</p>
+          <p>
+            Images can be added in Campaign Builder. Video must first complete
+            Mingla&apos;s shared resumable media flow; the builder will then list
+            the ready canonical video without exposing storage or provider IDs.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {rows.map((creative) => {
+            const preview = creative.preview_url;
+            const processingLabel =
+              PROCESSING_LABEL[creative.processing_summary] ??
+              sentenceCase(creative.processing_summary);
+            const rightsLabel =
+              creative.rights?.state === "confirmed"
+                ? `Rights confirmed · ${sentenceCase(creative.rights.basis)}`
+                : creative.rights?.state === "missing"
+                  ? "Rights missing on latest plan"
+                  : "Rights attested when used";
+            return (
+              <article
+                key={creative.id}
+                className="overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)]"
+              >
+                <div className="flex aspect-video items-center justify-center bg-[var(--gray-100)]">
+                  {preview ? (
+                    <img
+                      src={preview}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <Megaphone
+                      aria-hidden="true"
+                      className="h-8 w-8 text-[var(--color-text-tertiary)]"
+                    />
+                  )}
+                </div>
+                <div className="space-y-3 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">
+                        {creative.name || "Untitled creative"}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-secondary)]">
+                        {sentenceCase(creative.kind)} ·{" "}
+                        {creative.source_summary}
+                        {creative.duration_seconds
+                          ? ` · ${creative.duration_seconds}s`
+                          : ""}
+                      </p>
+                      {creative.kind === "video" && (
+                        <p className="mt-1 text-[11px] text-[var(--color-text-tertiary)]">
+                          {creative.house_reuse_allowed
+                            ? "Eligible for Mingla house campaigns"
+                            : "Host-only media · house reuse not approved"}
+                        </p>
+                      )}
+                    </div>
+                    <Badge
+                      variant={PROCESSING_VARIANT[creative.processing_summary]}
+                    >
+                      {processingLabel}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {(creative.placement_formats ?? []).length > 0 ? (
+                      creative.placement_formats.map((format) => (
+                        <Badge key={format} variant="default">
+                          {format}
+                        </Badge>
+                      ))
+                    ) : (
+                      <Badge variant="warning">Placement fit pending</Badge>
+                    )}
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    <div>
+                      <dt className="text-[var(--color-text-tertiary)]">
+                        Plan version
+                      </dt>
+                      <dd className="font-medium">{creative.version_label}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[var(--color-text-tertiary)]">
+                        Campaign use
+                      </dt>
+                      <dd className="font-medium">
+                        {creative.usage?.campaign_count ?? 0} total ·{" "}
+                        {creative.usage?.active_campaign_count ?? 0} active
+                      </dd>
+                    </div>
+                  </dl>
+                  <p
+                    className={`text-xs ${
+                      creative.rights?.state === "missing"
+                        ? "text-[var(--color-warning-700)]"
+                        : "text-[var(--color-text-secondary)]"
+                    }`}
+                  >
+                    {rightsLabel}
+                    {creative.ai_generated ? " · AI-generated" : ""}
+                  </p>
+                  {(creative.provider_readiness ?? []).length > 0 && (
+                    <div>
+                      <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-[var(--color-text-tertiary)]">
+                        Provider copies
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {creative.provider_readiness.map((row) => (
+                          <Badge
+                            key={`${row.platform}:${row.lane}`}
+                            variant={
+                              row.status === "ready"
+                                ? "success"
+                                : ["failed", "timed_out"].includes(row.status)
+                                  ? "error"
+                                  : "warning"
+                            }
+                          >
+                            {sentenceCase(row.platform)} ·{" "}
+                            {sentenceCase(row.status)}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between gap-2 border-t border-[var(--gray-100)] pt-2">
+                    <p className="text-[11px] text-[var(--color-text-tertiary)]">
+                      {creative.usage?.last_used_at
+                        ? `Last used ${new Date(creative.usage.last_used_at).toLocaleDateString()}`
+                        : `Added ${new Date(creative.created_at).toLocaleDateString()}`}
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        window.location.hash = `#/campaign-builder?step=creative&creative=${encodeURIComponent(creative.id)}`;
+                      }}
+                    >
+                      Reuse
+                    </Button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </SectionCard>
+  );
 }
 
 export function AdEnginePage() {
   const { addToast } = useToast();
-
-  // ── Connection state ──
-  const [connection, setConnection] = useState(null);
-  const [connectionLoading, setConnectionLoading] = useState(true);
-  const [connecting, setConnecting] = useState(false);
-  const [connectError, setConnectError] = useState(null);
-
-  // ── Preflight ──
   const [preflightRows, setPreflightRows] = useState(null);
   const [preflightRunning, setPreflightRunning] = useState(false);
+  const [appDownloadReadinessEnabled, setAppDownloadReadinessEnabled] =
+    useState(false);
+  const [activeTab, setActiveTab] = useState(tabFromHash);
 
-  // ── Campaigns ──
-  const [campaigns, setCampaigns] = useState(null);
-  const [campaignsLoading, setCampaignsLoading] = useState(true);
-  const [rowBusy, setRowBusy] = useState({});
-  const [rowWarning, setRowWarning] = useState({});
-  const [appDownloadReadinessEnabled, setAppDownloadReadinessEnabled] = useState(false);
-
-  // ── Create form ──
-  const [form, setForm] = useState({
-    name: "",
-    objective: "OUTCOME_TRAFFIC",
-    optimization_goal: "LINK_CLICKS",
-    budget_usd: "5.00",
-    countries: "US",
-    age_min: "18",
-    age_max: "65",
-    page_type: "event",
-    brand_slug: "",
-    entity_slug: "",
-    message: "",
-    headline: "",
-    description: "",
-    image_url: "",
-    call_to_action_type: "BUY_TICKETS",
-    ai_generated: false,
-    validate_only: false,
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [createError, setCreateError] = useState(null);
-
-  const setField = (key) => (eOrValue) => {
-    const value = eOrValue?.target ? eOrValue.target.value : eOrValue;
-    setForm((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const loadConnection = useCallback(async () => {
-    setConnectionLoading(true);
-    const { data, error } = await getMetaConnection();
-    if (error) setConnectError({ message: error.message });
-    setConnection(data ?? null);
-    setConnectionLoading(false);
+  useEffect(() => {
+    const applyHash = () => setActiveTab(tabFromHash());
+    window.addEventListener("hashchange", applyHash);
+    return () => window.removeEventListener("hashchange", applyHash);
   }, []);
 
-  const loadCampaigns = useCallback(async () => {
-    setCampaignsLoading(true);
-    const { data, error } = await listCampaigns();
-    if (error) {
-      addToast({ variant: "error", title: "Campaign list failed", description: error.message });
-      setCampaigns([]);
-    } else {
-      setCampaigns(data ?? []);
-    }
-    setCampaignsLoading(false);
-  }, [addToast]);
-
-  // These callbacks own the paired loading/error transitions for the initial
-  // provider snapshot; invoking them together is intentional on mount.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadConnection();
-    loadCampaigns();
-  }, [loadConnection, loadCampaigns]);
+  const changeTab = (tab) => {
+    setActiveTab(tab);
+    window.location.hash =
+      tab === "overview" ? "#/ad-engine" : `#/ad-engine?tab=${tab}`;
+  };
 
   useEffect(() => {
     let mounted = true;
     loadFeatureFlags().then((flags) => {
       if (mounted) {
-        setAppDownloadReadinessEnabled(flags.enable_app_download_readiness === true);
+        setAppDownloadReadinessEnabled(
+          flags.enable_app_download_readiness === true,
+        );
       }
     });
     return () => {
@@ -155,440 +575,195 @@ export function AdEnginePage() {
     };
   }, []);
 
-  const handleConnect = async () => {
-    setConnecting(true);
-    setConnectError(null);
-    const { data, error } = await connectMeta("connect");
-    if (error) {
-      const parsed = await parseEdgeError(error);
-      setConnectError({
-        status: parsed?.status,
-        code: parsed?.body?.error,
-        message:
-          typeof parsed?.body?.detail === "string"
-            ? parsed.body.detail
-            : parsed?.body?.detail?.message ?? parsed?.message ?? "Connect failed.",
-        trace: parsed?.body?.detail?.trace_id ?? null,
-      });
-    } else {
-      setConnection(data?.connection ?? null);
-      addToast({ variant: "success", title: "Meta connected", description: "Connection verified and persisted." });
-    }
-    setConnecting(false);
-  };
-
   const handlePreflight = async () => {
     setPreflightRunning(true);
     const { data, error } = await runPreflight();
     if (error) {
       const parsed = await parseEdgeError(error);
-      addToast({ variant: "error", title: "Preflight failed", description: String(parsed?.message ?? "") });
+      addToast({
+        variant: "error",
+        title: "Preflight failed",
+        description: String(parsed?.message ?? ""),
+      });
     } else {
       setPreflightRows(data?.rows ?? []);
     }
     setPreflightRunning(false);
   };
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setCreateError(null);
-    const amountCents = Math.round(parseFloat(form.budget_usd || "0") * 100);
-    const payload = {
-      platform: "meta",
-      lane: "consumer",
-      request_id: crypto.randomUUID(),
-      name: form.name,
-      objective: form.objective,
-      optimization_goal: form.optimization_goal,
-      billing_event: "IMPRESSIONS",
-      budget: { type: "daily", amount_cents: amountCents },
-      targeting: {
-        countries: form.countries.split(",").map((c) => c.trim().toUpperCase()).filter(Boolean),
-        ...(form.age_min ? { age_min: parseInt(form.age_min, 10) } : {}),
-        ...(form.age_max ? { age_max: parseInt(form.age_max, 10) } : {}),
-      },
-      destination: {
-        page_type: form.page_type,
-        brand_slug: form.brand_slug.trim(),
-        ...(form.entity_slug.trim() ? { entity_slug: form.entity_slug.trim() } : {}),
-      },
-      creative: {
-        message: form.message,
-        ...(form.headline ? { headline: form.headline } : {}),
-        ...(form.description ? { description: form.description } : {}),
-        ...(form.image_url ? { image_url: form.image_url } : {}),
-        call_to_action_type: form.call_to_action_type,
-        ai_generated: form.ai_generated,
-      },
-      ...(form.validate_only ? { validate_only: true } : {}),
-    };
-    const { data, error } = await createCampaign(payload);
-    if (error) {
-      const parsed = await parseEdgeError(error);
-      setCreateError({
-        status: parsed?.status,
-        code: parsed?.body?.error,
-        message:
-          typeof parsed?.body?.detail === "string"
-            ? parsed.body.detail
-            : parsed?.body?.detail?.message ?? parsed?.message ?? "Create failed.",
-        trace: parsed?.body?.detail?.trace_id ?? null,
-      });
-    } else if (data?.validated) {
-      const layers = Array.isArray(data.validated_layers) ? data.validated_layers.join(", ") : "";
-      const skipped = Array.isArray(data.skipped_layers) && data.skipped_layers.length > 0
-        ? ` (skipped: ${data.skipped_layers.map((s) => s.layer).join(", ")})`
-        : "";
-      addToast({
-        variant: "success",
-        title: "Validated",
-        description: `Validated layers: ${layers}${skipped} — nothing was created.`,
-      });
-    } else {
-      addToast({
-        variant: "success",
-        title: "Created — Paused.",
-        description: "Review the campaign, then Launch.",
-      });
-      setForm((prev) => ({ ...prev, name: "", message: "", headline: "", description: "", image_url: "" }));
-      await loadCampaigns();
-    }
-    setSubmitting(false);
-  };
-
-  const handleAction = async (campaignId, action) => {
-    setRowBusy((prev) => ({ ...prev, [campaignId]: action }));
-    const { data, error } = await campaignAction(campaignId, action);
-    if (error) {
-      const parsed = await parseEdgeError(error);
-      addToast({
-        variant: "error",
-        title: `${action} failed`,
-        description: String(
-          typeof parsed?.body?.detail === "string"
-            ? parsed.body.detail
-            : parsed?.body?.detail?.message ?? parsed?.message ?? "",
-        ),
-      });
-    } else {
-      if (data?.warning) {
-        setRowWarning((prev) => ({ ...prev, [campaignId]: data.warning }));
-        addToast({ variant: "warning", title: "Launched with warning", description: data.warning });
-      } else {
-        setRowWarning((prev) => ({ ...prev, [campaignId]: null }));
-        addToast({ variant: "success", title: action === "launch" ? "Launched" : "Paused" });
-      }
-      await loadCampaigns();
-    }
-    setRowBusy((prev) => ({ ...prev, [campaignId]: null }));
-  };
-
-  const handleSync = async (campaignId) => {
-    setRowBusy((prev) => ({ ...prev, [campaignId ?? "all"]: "sync" }));
-    const { error } = await syncCampaigns(campaignId);
-    if (error) {
-      const parsed = await parseEdgeError(error);
-      addToast({ variant: "error", title: "Sync failed", description: String(parsed?.message ?? "") });
-    } else {
-      addToast({ variant: "success", title: "Status synced" });
-      await loadCampaigns();
-    }
-    setRowBusy((prev) => ({ ...prev, [campaignId ?? "all"]: null }));
-  };
-
-  const extra = connection?.extra ?? {};
-  const isConnected = Boolean(connection?.connected) && connection?.status === "connected";
-  const isInvalid = connection?.status === "invalid";
-  const billingWarning = isConnected &&
-    (connection?.account_status !== "ACTIVE" || extra?.has_payment_method === false);
-  const floors = extra?.minimum_budgets ?? null;
-
-  const goalOptions = useMemo(() => {
-    // Server owns the full matrix; the form exposes the two honest traffic goals
-    // (LINK_CLICKS default until the pixel fires — A4.e.5) + the gated ones so
-    // the 422 pixel_no_signal path is exercisable.
-    if (form.objective === "OUTCOME_TRAFFIC") {
-      return ["LINK_CLICKS", "LANDING_PAGE_VIEWS", "IMPRESSIONS", "REACH"];
-    }
-    return ["LINK_CLICKS", "IMPRESSIONS", "REACH", "OFFSITE_CONVERSIONS"];
-  }, [form.objective]);
-
   return (
     <div className="space-y-6">
-      {/* toward #3697 Wave 3 — Ads console hub: connections stay here; create/launch live on Builder + Campaigns. */}
-      <section aria-labelledby="ads-console-heading">
-        <PageHeader
-          titleId="ads-console-heading"
-          title="Ads console"
-          description="Connect platforms and check channel health here. Build campaigns in the wizard; launch, pause, and watch spend vs hard cap on Campaigns."
-          actions={
-            <>
-              <Button size="sm" icon={Rocket} onClick={() => { window.location.hash = "#/campaign-builder"; }}>
-                Campaign Builder
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => { window.location.hash = "#/campaigns"; }}>
-                Open Campaigns
-              </Button>
-            </>
-          }
-        />
-      </section>
+      <PageHeader
+        titleId="ads-console-heading"
+        title="Ads"
+        description="One governed workspace for campaigns, creative, provider connections, spend, results and settlement."
+        actions={
+          <Button
+            size="sm"
+            icon={Rocket}
+            onClick={() => {
+              window.location.hash = "#/campaign-builder";
+            }}
+          >
+            New campaign
+          </Button>
+        }
+        tabs={
+          <Tabs tabs={ADS_TABS} activeTab={activeTab} onChange={changeTab} />
+        }
+      />
 
-      {/* ── ISSUE-978 [Ad Connections panel] — all 5 platforms, one-click
-          Connect/Reconnect, staleness surfacing. Additive: the Meta-specific
-          card below (billing floors, IG link, etc.) is unchanged and still
-          drives the Create-campaign gate; this panel is the missing all-5
-          operator overview. ── */}
-      <AdConnectionsPanel />
+      {activeTab === "campaigns" && <CampaignsPage embedded />}
+      {activeTab === "creative-library" && <CreativeLibraryPanel />}
 
-      {appDownloadReadinessEnabled ? (
-        <AppDownloadReadinessPanel />
-      ) : (
-        <section
-          aria-label="App-download readiness"
-          className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4 text-sm text-[var(--color-text-secondary)]"
-        >
-          App-download readiness is being connected. No campaigns can be created here.
-        </section>
+      {activeTab === "connections" && (
+        <>
+          <AdConnectionsPanel />
+
+          {appDownloadReadinessEnabled ? (
+            <AppDownloadReadinessPanel />
+          ) : (
+            <section
+              aria-label="App-download readiness"
+              className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4 text-sm text-[var(--color-text-secondary)]"
+            >
+              App-download readiness is being connected. No campaigns can be
+              created here.
+            </section>
+          )}
+        </>
       )}
 
-      <section aria-labelledby="web-traffic-campaigns-heading" className="space-y-1">
-        <h2 id="web-traffic-campaigns-heading" className="text-lg font-semibold">Web traffic campaigns</h2>
-        <p className="text-sm text-[var(--color-text-secondary)]">
-          Create and manage ads that send people to Mingla public web pages. Prefer Campaign Builder
-          for multi-platform creates with hard caps; this Meta quick form stays for connection debugging.
-        </p>
-      </section>
-
-      {/* ── SC-1…SC-4: Meta connection detail (floors, billing, IG link) ── */}
-      <SectionCard
-        title="Meta connection — detail"
-        subtitle="System User token lives in Supabase Edge Function Secrets — never in the browser or the DB."
-        action={
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={RefreshCw}
-            loading={connecting}
-            onClick={handleConnect}
+      {activeTab === "overview" && (
+        <>
+          <section
+            aria-labelledby="governed-campaign-operations-heading"
+            className="space-y-1"
           >
-            {isConnected ? "Reconnect" : "Connect Meta"}
-          </Button>
-        }
-      >
-        {connectionLoading ? (
-          <div className="flex items-center gap-2 py-4"><Spinner size="sm" /> Loading connection…</div>
-        ) : (
-          <div className="space-y-3">
-            {!connection && !connectError && (
-              <AlertCard variant="info" title="Not configured">
-                No Meta connection yet. Prerequisites (SPEC §7): Business app live, System User token
-                + META_* IDs set as Edge Function secrets, Page granted with an ADVERTISE task,
-                billing on the ad account. Connect verifies all of it fail-close.
-              </AlertCard>
-            )}
-            {isInvalid && (
-              <AlertCard variant="error" title="Meta connection invalid">
-                Re-verify the System User token, then Reconnect. Create is disabled while invalid.
-              </AlertCard>
-            )}
-            {connectError && (
-              <AlertCard variant="error" title={`Connect failed${connectError.code ? ` — ${connectError.code}` : ""}`}>
-                {connectError.message}
-                {connectError.trace ? <div className="text-xs mt-1">fbtrace_id: {connectError.trace}</div> : null}
-              </AlertCard>
-            )}
-            {isConnected && (
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                <Badge variant="success" dot>Connected</Badge>
-                <span>{connection.display_name}</span>
-                <span className="text-[var(--color-text-secondary)]">
-                  account {connection.external_account_id} · {connection.currency ?? "—"} · {connection.account_status ?? "—"}
-                </span>
-                {floors && (
-                  <span className="text-xs text-[var(--color-text-secondary)]">
-                    floors: imp {centsToUsd(floors.imp)} · video {centsToUsd(floors.video_views)} · clicks {centsToUsd(floors.high_freq)} · conv {centsToUsd(floors.low_freq)} /day
-                  </span>
-                )}
-              </div>
-            )}
-            {billingWarning && (
-              <AlertCard variant="warning" title="Billing not ready">
-                Add a payment method in Meta Ads Manager before launching — campaigns will sit at
-                “Pending billing” and never spend.
-              </AlertCard>
-            )}
-          </div>
-        )}
-      </SectionCard>
+            <h2
+              id="governed-campaign-operations-heading"
+              className="text-lg font-semibold"
+            >
+              Governed campaign operations
+            </h2>
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              The five-stage builder creates one immutable plan. Campaign
+              lifecycle, spend, results and settlement stay in this Ads area.
+            </p>
+          </section>
 
-      {/* ── Preflight (blueprint §1.0) ── */}
-      <SectionCard
-        title="Web traffic preflight"
-        subtitle="If I launch right now, will an ad actually run? Meta is live; the other four channels fail-close until their work packages land."
-        action={
-          <Button variant="secondary" size="sm" icon={Megaphone} loading={preflightRunning} onClick={handlePreflight}>
-            Run preflight
-          </Button>
-        }
-      >
-        {!preflightRows && !preflightRunning && (
-          <p className="text-sm text-[var(--color-text-secondary)]">Not run yet.</p>
-        )}
-        {preflightRunning && <div className="flex items-center gap-2 py-2"><Spinner size="sm" /> Probing channels…</div>}
-        {preflightRows && !preflightRunning && (
-          <div className="space-y-3">
-            {preflightRows.map((row) => (
-              <div key={row.platform} className="border border-[var(--gray-200)] rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant={PREFLIGHT_BADGE[row.overall] ?? "default"} dot>{row.platform}</Badge>
-                  <span className="text-xs text-[var(--color-text-secondary)]">{row.overall}</span>
-                </div>
-                <ul className="space-y-1">
-                  {row.checks.map((check) => (
-                    <li key={check.id} className="text-xs flex gap-2">
-                      <Badge
-                        variant={check.status === "pass" ? "success" : check.status === "warn" ? "warning" : check.status === "n/a" ? "default" : "error"}
-                      >
-                        {check.id}
-                      </Badge>
-                      <span>{check.label}{check.detail ? ` — ${check.detail}` : ""}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
-      </SectionCard>
+          <AdsOperationsOverview
+            onOpenCampaigns={() => changeTab("campaigns")}
+            onOpenConnections={() => changeTab("connections")}
+          />
 
-      {/* ── SC-5: create ── */}
-      <SectionCard
-        title="Create web traffic campaign"
-        subtitle="Everything is created PAUSED. The ad-visible destination is the canonical public page (never the OneLink)."
-      >
-        {!isConnected ? (
-          <p className="text-sm text-[var(--color-text-secondary)]">Connect Meta first — create is fail-close.</p>
-        ) : (
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input label="Name" value={form.name} onChange={setField("name")} required placeholder="July London push" />
-              <label className="block text-sm">
-                <span className="block mb-1 text-[var(--color-text-secondary)]">Objective</span>
-                <select className="w-full h-10 px-3 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)]" value={form.objective} onChange={setField("objective")}>
-                  {OBJECTIVES.map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
-              </label>
-              <label className="block text-sm">
-                <span className="block mb-1 text-[var(--color-text-secondary)]">Optimization goal</span>
-                <select className="w-full h-10 px-3 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)]" value={form.optimization_goal} onChange={setField("optimization_goal")}>
-                  {goalOptions.map((g) => <option key={g} value={g}>{g}</option>)}
-                </select>
-              </label>
-              <Input
-                label={`Daily budget (USD)${floors ? ` — clicks floor ${centsToUsd(floors.high_freq)}` : ""}`}
-                type="number" step="0.01" min="0" value={form.budget_usd} onChange={setField("budget_usd")} required
-              />
-              <Input label="Countries (comma-separated)" value={form.countries} onChange={setField("countries")} required placeholder="US, GB" />
-              <div className="grid grid-cols-2 gap-2">
-                <Input label="Age min" type="number" value={form.age_min} onChange={setField("age_min")} />
-                <Input label="Age max" type="number" value={form.age_max} onChange={setField("age_max")} />
-              </div>
-              <label className="block text-sm">
-                <span className="block mb-1 text-[var(--color-text-secondary)]">Destination type</span>
-                <select className="w-full h-10 px-3 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)]" value={form.page_type} onChange={setField("page_type")}>
-                  <option value="event">event</option>
-                  <option value="brand">brand</option>
-                </select>
-              </label>
-              <Input label="Brand slug" value={form.brand_slug} onChange={setField("brand_slug")} required placeholder="lorne" />
-              <Input label="Event slug (event only)" value={form.entity_slug} onChange={setField("entity_slug")} placeholder="tuesday-live" />
-              <Input label="Image URL" value={form.image_url} onChange={setField("image_url")} placeholder="https://…" />
-              <label className="block text-sm">
-                <span className="block mb-1 text-[var(--color-text-secondary)]">Call to action</span>
-                <select className="w-full h-10 px-3 rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)]" value={form.call_to_action_type} onChange={setField("call_to_action_type")}>
-                  {CTA_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </label>
-              <Input label="Headline" value={form.headline} onChange={setField("headline")} placeholder="Book the night" />
-            </div>
-            <Textarea label="Primary text" value={form.message} onChange={setField("message")} required rows={2} placeholder="Sold-out energy, Tuesday night…" />
-            <div className="flex flex-wrap items-center gap-6">
-              <Toggle label="AI-generated creative (discloses OPT_IN)" checked={form.ai_generated} onChange={(v) => setField("ai_generated")(v)} />
-              <Toggle label="Validate only (nothing created)" checked={form.validate_only} onChange={(v) => setField("validate_only")(v)} />
-              <Button type="submit" loading={submitting} icon={Megaphone}>
-                {form.validate_only ? "Validate shapes" : "Create (Paused)"}
+          <SectionCard
+            title="Channel preflight"
+            subtitle="Verify current account, billing, identity, market, pixel, and provider readiness before opening the builder."
+            action={
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={Megaphone}
+                loading={preflightRunning}
+                onClick={handlePreflight}
+              >
+                Run preflight
               </Button>
-            </div>
-            {createError && (
-              <AlertCard variant="error" title={`Create failed${createError.code ? ` — ${createError.code}` : ""}`}>
-                {createError.message}
-                {createError.trace ? <div className="text-xs mt-1">fbtrace_id: {createError.trace}</div> : null}
-              </AlertCard>
+            }
+          >
+            {!preflightRows && !preflightRunning && (
+              <p className="text-sm text-[var(--color-text-secondary)]">
+                Not run yet.
+              </p>
             )}
-          </form>
-        )}
-      </SectionCard>
-
-      {/* ── SC-6: list ── */}
-      <SectionCard
-        title="Campaigns"
-        subtitle="Two badges per row: advertiser status + delivery (effective) status."
-        action={
-          <Button variant="secondary" size="sm" icon={RefreshCw} loading={rowBusy.all === "sync"} onClick={() => handleSync()}>
-            Sync status
-          </Button>
-        }
-      >
-        {campaignsLoading ? (
-          <div className="flex items-center gap-2 py-4"><Spinner size="sm" /> Loading campaigns…</div>
-        ) : !campaigns || campaigns.length === 0 ? (
-          <p className="text-sm text-[var(--color-text-secondary)]">
-            No campaigns yet — create one above. It will start Paused.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {campaigns.map((campaign) => (
-              <div key={campaign.id} className="border border-[var(--gray-200)] rounded-lg p-3 flex flex-wrap items-center gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium text-sm truncate">{campaign.name}</div>
-                  <div className="text-xs text-[var(--color-text-secondary)]">
-                    {campaign.objective} · {centsToUsd(Number(campaign.daily_budget_cents))} /day ·{" "}
-                    <a
-                      className="underline inline-flex items-center gap-1"
-                      href={campaign.dest_url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      destination <ExternalLink size={10} />
-                    </a>
-                  </div>
-                  {rowWarning[campaign.id] && (
-                    <div className="text-xs text-[var(--color-warning-700)] mt-1">{rowWarning[campaign.id]}</div>
-                  )}
-                </div>
-                <Badge variant={campaign.status === "ACTIVE" ? "success" : "default"}>{campaign.status}</Badge>
-                <Badge variant={DELIVERY_BADGE[campaign.delivery_status] ?? "info"}>
-                  {campaign.delivery_status ?? "unknown"}
-                </Badge>
-                {campaign.status === "PAUSED" ? (
-                  <Button size="sm" icon={Rocket} loading={rowBusy[campaign.id] === "launch"} onClick={() => handleAction(campaign.id, "launch")}>
-                    Launch
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="secondary" icon={Pause} loading={rowBusy[campaign.id] === "pause"} onClick={() => handleAction(campaign.id, "pause")}>
-                    Pause
-                  </Button>
-                )}
-                <Button size="sm" variant="ghost" icon={RefreshCw} loading={rowBusy[campaign.id] === "sync"} onClick={() => handleSync(campaign.id)}>
-                  Sync
-                </Button>
+            {preflightRunning && (
+              <div className="flex items-center gap-2 py-2">
+                <Spinner size="sm" /> Probing channels…
               </div>
-            ))}
-          </div>
-        )}
-      </SectionCard>
+            )}
+            {preflightRows && !preflightRunning && (
+              <div className="space-y-3">
+                {preflightRows.map((row) => (
+                  <div
+                    key={row.platform}
+                    className="border border-[var(--gray-200)] rounded-lg p-3"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge
+                        variant={PREFLIGHT_BADGE[row.overall] ?? "default"}
+                        dot
+                      >
+                        {row.platform}
+                      </Badge>
+                      <span className="text-xs text-[var(--color-text-secondary)]">
+                        {row.overall}
+                      </span>
+                    </div>
+                    <ul className="space-y-1">
+                      {row.checks.map((check) => (
+                        <li key={check.id} className="text-xs flex gap-2">
+                          <Badge
+                            variant={
+                              check.status === "pass"
+                                ? "success"
+                                : check.status === "warn"
+                                  ? "warning"
+                                  : check.status === "n/a"
+                                    ? "default"
+                                    : "error"
+                            }
+                          >
+                            {check.id}
+                          </Badge>
+                          <span>
+                            {check.label}
+                            {check.detail ? ` — ${check.detail}` : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Campaign work"
+            subtitle="One engine, one immutable plan, and no direct provider-write shortcut."
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <button
+                type="button"
+                className="rounded-xl border border-[var(--gray-200)] p-4 text-left hover:border-[var(--color-brand-500)]"
+                onClick={() => {
+                  window.location.hash = "#/campaign-builder";
+                }}
+              >
+                <div className="font-semibold">Build a campaign</div>
+                <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+                  Destination, targeting, budget, media, review, and paused
+                  provider creation stay bound to one plan version.
+                </p>
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-[var(--gray-200)] p-4 text-left hover:border-[var(--color-brand-500)]"
+                onClick={() => {
+                  changeTab("campaigns");
+                }}
+              >
+                <div className="font-semibold">Manage campaigns</div>
+                <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+                  Review, launch, pause, spend, results, stop, settlement, and
+                  audit evidence live together.
+                </p>
+              </button>
+            </div>
+          </SectionCard>
+        </>
+      )}
     </div>
   );
 }

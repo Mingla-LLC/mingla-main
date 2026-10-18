@@ -15,6 +15,7 @@ const brandId = "11111111-1111-4111-8111-111111111111";
 Deno.test("Wave 7b: USD/GBP Stripe top-up currencies; NGN deferred", () => {
   assertEquals(isAdCreditStripeTopUpCurrency("USD"), true);
   assertEquals(isAdCreditStripeTopUpCurrency("gbp"), true);
+  assertEquals(isAdCreditStripeTopUpCurrency("EUR"), true);
   assertEquals(isAdCreditStripeTopUpCurrency("NGN"), false);
 });
 

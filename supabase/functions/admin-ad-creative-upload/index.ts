@@ -6,8 +6,8 @@
  * bytes in storage (image → #864's meta-ad-creatives bucket; video → Bunny) —
  * with the Amendment A1-6 byte-probe as the validation step:
  *
- *   1. ADMIN GATE FIRST (verify_jwt=true + in-code admin_users active gate —
- *      identical to the WP1 admin-ad-* fns; auth precedes input validation).
+ *   1. AUTHORIZATION GATE FIRST (verify_jwt=true + active Admin or the exact
+ *      brand ad-plan permission; auth precedes input validation).
  *   2. Server-side BYTE-PROBE of the ACTUAL BYTES — populates width/height/
  *      aspect_ratio/duration_seconds/mime_type/byte_size/has_audio/
  *      content_hash. Admin-supplied dimensions are IGNORED (A1-6a / GR-22).
@@ -34,7 +34,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { isPlatform, PLATFORMS, type Platform } from "../_shared/adChannel.ts";
+import { isPlatform, type Platform, PLATFORMS } from "../_shared/adChannel.ts";
 import {
   CreativeProbeError,
   type CreativeProbeResult,
@@ -49,8 +49,8 @@ import {
 } from "../_shared/adCreativeMatrix.ts";
 import {
   checkCreativeUrlCrawlerAccessible,
-  CreativeByteSourceError,
   type CrawlerCheckResult,
+  CreativeByteSourceError,
   fetchCreativeBytes,
 } from "../_shared/adCreative.ts";
 import {
@@ -64,7 +64,8 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -83,7 +84,9 @@ interface VariantInput {
 }
 
 serve(async (req: Request): Promise<Response> => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
   let body: Record<string, unknown>;
@@ -93,7 +96,7 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "invalid_json" }, 400);
   }
 
-  // ── Admin or brand payment-manager gate. Auth precedes input validation. ──
+  // ── Admin or brand ad-planner gate. Auth precedes input validation. ────────
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return json({ error: "unauthorized" }, 401);
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -113,11 +116,15 @@ serve(async (req: Request): Promise<Response> => {
     : "";
   if (!adminRow) {
     if (!requestedBrandId) return json({ error: "forbidden" }, 403);
-    const { data: canManage, error: manageError } = await supabase.rpc(
-      "biz_can_manage_payments_for_brand",
-      { p_brand_id: requestedBrandId, p_user_id: user.id },
+    const { data: canPlan, error: planPermissionError } = await supabase.rpc(
+      "ad_can_host_action",
+      {
+        p_brand_id: requestedBrandId,
+        p_user_id: user.id,
+        p_action: "plan",
+      },
     );
-    if (manageError || canManage !== true) {
+    if (planPermissionError || canPlan !== true) {
       return json({ error: "forbidden", detail: "permission_denied" }, 403);
     }
   }
@@ -141,26 +148,41 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "validation_error", detail: "kind_invalid" }, 422);
   }
   const name = typeof body.name === "string" ? body.name.trim() : "";
-  if (!name) return json({ error: "validation_error", detail: "name_required" }, 422);
+  if (!name) {
+    return json({ error: "validation_error", detail: "name_required" }, 422);
+  }
 
-  const sourceUrl = typeof body.source_url === "string" ? body.source_url : null;
-  const bunnyVideoId = typeof body.bunny_video_id === "string" ? body.bunny_video_id : null;
-  const posterUrl = typeof body.poster_url === "string" ? body.poster_url : null;
-  const mp4MasterUrl = typeof body.mp4_master_url === "string" ? body.mp4_master_url : null;
+  const sourceUrl = typeof body.source_url === "string"
+    ? body.source_url
+    : null;
+  const bunnyVideoId = typeof body.bunny_video_id === "string"
+    ? body.bunny_video_id
+    : null;
+  const posterUrl = typeof body.poster_url === "string"
+    ? body.poster_url
+    : null;
+  const mp4MasterUrl = typeof body.mp4_master_url === "string"
+    ? body.mp4_master_url
+    : null;
 
   if (kind === "image" && !sourceUrl) {
-    return json({ error: "validation_error", detail: "image_source_url_required" }, 422);
+    return json({
+      error: "validation_error",
+      detail: "image_source_url_required",
+    }, 422);
   }
   if (kind === "video" && (!bunnyVideoId || !posterUrl)) {
     // OD-4 CHECK stands (reinforced by A1-8c — Reddit requires a video thumbnail).
-    return json({ error: "validation_error", detail: "video_bunny_id_and_poster_required" }, 422);
+    return json({
+      error: "validation_error",
+      detail: "video_bunny_id_and_poster_required",
+    }, 422);
   }
   // A1-1: content_hash is probe-derived and NOT NULL — every creative needs a
   // resolvable byte source at create. Bunny serves HLS (A1-3), so a video
   // needs the MP4 master (or a direct-MP4 source URL).
-  const probeUrl = kind === "image"
-    ? sourceUrl
-    : mp4MasterUrl ?? (sourceUrl && /\.mp4(\?|#|$)/i.test(sourceUrl) ? sourceUrl : null);
+  const probeUrl = kind === "image" ? sourceUrl : mp4MasterUrl ??
+    (sourceUrl && /\.mp4(\?|#|$)/i.test(sourceUrl) ? sourceUrl : null);
   if (!probeUrl) {
     return json({
       error: "validation_error",
@@ -170,11 +192,16 @@ serve(async (req: Request): Promise<Response> => {
     }, 422);
   }
 
-  const platformsInput = Array.isArray(body.platforms) ? body.platforms : [...PLATFORMS];
+  const platformsInput = Array.isArray(body.platforms)
+    ? body.platforms
+    : [...PLATFORMS];
   const platforms: Platform[] = [];
   for (const value of platformsInput) {
     if (!isPlatform(value)) {
-      return json({ error: "validation_error", detail: `platform_invalid:${String(value)}` }, 422);
+      return json({
+        error: "validation_error",
+        detail: `platform_invalid:${String(value)}`,
+      }, 422);
     }
     platforms.push(value);
   }
@@ -183,7 +210,10 @@ serve(async (req: Request): Promise<Response> => {
   const placeId = typeof body.place_id === "string" ? body.place_id : null;
   const brandId = typeof body.brand_id === "string" ? body.brand_id : null;
   if (!adminRow && placeId) {
-    return json({ error: "validation_error", detail: "host_place_id_forbidden" }, 422);
+    return json({
+      error: "validation_error",
+      detail: "host_place_id_forbidden",
+    }, 422);
   }
   if (placeId) {
     const { data: place } = await supabase
@@ -191,7 +221,12 @@ serve(async (req: Request): Promise<Response> => {
       .select("id")
       .eq("id", placeId)
       .maybeSingle();
-    if (!place) return json({ error: "venue_not_found", detail: "place_id does not exist in place_pool" }, 422);
+    if (!place) {
+      return json({
+        error: "venue_not_found",
+        detail: "place_id does not exist in place_pool",
+      }, 422);
+    }
   }
   if (brandId) {
     const { data: brand } = await supabase
@@ -199,7 +234,12 @@ serve(async (req: Request): Promise<Response> => {
       .select("id")
       .eq("id", brandId)
       .maybeSingle();
-    if (!brand) return json({ error: "brand_not_found", detail: "brand_id does not exist in brands" }, 422);
+    if (!brand) {
+      return json({
+        error: "brand_not_found",
+        detail: "brand_id does not exist in brands",
+      }, 422);
+    }
   }
 
   // ── The A1-6 byte-probe (never trust admin-supplied dimensions). ────────────
@@ -222,8 +262,15 @@ serve(async (req: Request): Promise<Response> => {
     if (err instanceof CreativeTrustError) {
       return json({ error: err.code, message: err.message }, err.status);
     }
-    if (err instanceof CreativeProbeError || err instanceof CreativeByteSourceError) {
-      return json({ error: "probe_failed", detail: err.detail, message: err.message }, 422);
+    if (
+      err instanceof CreativeProbeError ||
+      err instanceof CreativeByteSourceError
+    ) {
+      return json({
+        error: "probe_failed",
+        detail: err.detail,
+        message: err.message,
+      }, 422);
     }
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[admin-ad-creative-upload] probe unexpected:", detail);
@@ -233,22 +280,30 @@ serve(async (req: Request): Promise<Response> => {
     return json({
       error: "validation_error",
       detail: "kind_mismatch",
-      message: `Declared kind "${kind}" but the bytes probe as ${probe.kind} (${probe.mimeType}).`,
+      message:
+        `Declared kind "${kind}" but the bytes probe as ${probe.kind} (${probe.mimeType}).`,
     }, 422);
   }
 
   // ── Variant slots (A1-6c): probed server-side too — never client-trusted. ───
-  const variantsInput = (body.variants && typeof body.variants === "object" && !Array.isArray(body.variants))
+  const variantsInput = (body.variants && typeof body.variants === "object" &&
+      !Array.isArray(body.variants))
     ? body.variants as Record<string, unknown>
     : {};
   const variants: Record<string, Record<string, unknown>> = {};
   for (const [ratioLabel, raw] of Object.entries(variantsInput)) {
     if (!VARIANT_RATIOS.has(ratioLabel)) {
-      return json({ error: "validation_error", detail: `variant_ratio_unknown:${ratioLabel}` }, 422);
+      return json({
+        error: "validation_error",
+        detail: `variant_ratio_unknown:${ratioLabel}`,
+      }, 422);
     }
     const slot = raw as VariantInput;
     if (!slot || typeof slot.source_url !== "string") {
-      return json({ error: "validation_error", detail: `variant_source_url_required:${ratioLabel}` }, 422);
+      return json({
+        error: "validation_error",
+        detail: `variant_source_url_required:${ratioLabel}`,
+      }, 422);
     }
     let variantProbe: CreativeProbeResult;
     try {
@@ -271,12 +326,15 @@ serve(async (req: Request): Promise<Response> => {
       return json({
         error: "validation_error",
         detail: `variant_ratio_mismatch:${ratioLabel}`,
-        message: `The ${ratioLabel} variant slot probes as ${variantProbe.width}×${variantProbe.height} — not ${ratioLabel}.`,
+        message:
+          `The ${ratioLabel} variant slot probes as ${variantProbe.width}×${variantProbe.height} — not ${ratioLabel}.`,
       }, 422);
     }
     variants[ratioLabel] = {
       source_url: slot.source_url,
-      storage_path: typeof slot.storage_path === "string" ? slot.storage_path : null,
+      storage_path: typeof slot.storage_path === "string"
+        ? slot.storage_path
+        : null,
       width: variantProbe.width,
       height: variantProbe.height,
       content_hash: variantProbe.contentHash,
@@ -299,13 +357,20 @@ serve(async (req: Request): Promise<Response> => {
     posterPresent: posterUrl !== null,
     variantRatios: Object.keys(variants),
   };
-  const channels: ChannelValidationResult[] = validateCreativeForChannels(platforms, facts);
+  const channels: ChannelValidationResult[] = validateCreativeForChannels(
+    platforms,
+    facts,
+  );
 
   // ── COMMS-0102 crawler-permissiveness (Meta hard-fails robots-blocked hosts).
   const crawler: CrawlerCheckResult[] = [];
   if (kind === "image" && sourceUrl) {
     // Meta ad review DOWNLOADS image_url — strict (tier "fail" on block).
-    crawler.push(await checkCreativeUrlCrawlerAccessible(sourceUrl, { strict: platforms.includes("meta") }));
+    crawler.push(
+      await checkCreativeUrlCrawlerAccessible(sourceUrl, {
+        strict: platforms.includes("meta"),
+      }),
+    );
   }
   const validation = {
     content_hash: probe.contentHash,
@@ -333,15 +398,21 @@ serve(async (req: Request): Promise<Response> => {
   // ai_generated: A1-8 — stock/real UI + Remotion is the default pipeline.
   // Magnific is explicit opt-in, so an omitted flag defaults to non-generated.
   // Explicit true still propagates for creative containing generated pixels.
-  const aiGenerated = typeof body.ai_generated === "boolean" ? body.ai_generated : false;
+  const aiGenerated = typeof body.ai_generated === "boolean"
+    ? body.ai_generated
+    : false;
   const { data: creative, error: insertError } = await supabase
     .from("ad_creatives")
     .insert({
       kind,
       name,
       source_url: sourceUrl,
-      storage_bucket: typeof body.storage_bucket === "string" ? body.storage_bucket : null,
-      storage_path: typeof body.storage_path === "string" ? body.storage_path : null,
+      storage_bucket: typeof body.storage_bucket === "string"
+        ? body.storage_bucket
+        : null,
+      storage_path: typeof body.storage_path === "string"
+        ? body.storage_path
+        : null,
       bunny_video_id: bunnyVideoId,
       poster_url: posterUrl,
       mp4_master_url: mp4MasterUrl,
@@ -364,7 +435,10 @@ serve(async (req: Request): Promise<Response> => {
     .select("*")
     .maybeSingle();
   if (insertError) {
-    console.error("[admin-ad-creative-upload] insert failed:", insertError.message);
+    console.error(
+      "[admin-ad-creative-upload] insert failed:",
+      insertError.message,
+    );
     return json({ error: "internal_error" }, 500);
   }
 

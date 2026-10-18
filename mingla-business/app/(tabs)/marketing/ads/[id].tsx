@@ -8,13 +8,14 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
+import { ConfirmDialog } from "../../../../src/components/ui/ConfirmDialog";
 import { GlassCard } from "../../../../src/components/ui/GlassCard";
 import {
   canvas,
@@ -23,23 +24,27 @@ import {
   text as textTokens,
   typography,
 } from "../../../../src/constants/designSystem";
-import { useCanManageBrandPayments } from "../../../../src/hooks/useCanManageBrandPayments";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
+import { useHostAdPermissions } from "../../../../src/hooks/useHostAdPermissions";
+import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import {
   cancelHostAdCampaign,
   endHostAdCampaign,
   getHostAdCampaign,
   type HostAdCampaignDetail,
   pauseHostAdCampaign,
+  resumeHostAdCampaignPlan,
 } from "../../../../src/services/hostAdCampaignService";
 import { formatCurrency } from "../../../../src/utils/currency";
 import { randomId } from "../../../../src/utils/randomId";
 
-function firstParam(
-  value: string | string[] | undefined,
-): string | null {
+function firstParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string" && value.length > 0) return value;
-  if (Array.isArray(value) && typeof value[0] === "string" && value[0].length > 0) {
+  if (
+    Array.isArray(value) &&
+    typeof value[0] === "string" &&
+    value[0].length > 0
+  ) {
     return value[0];
   }
   return null;
@@ -48,16 +53,22 @@ function firstParam(
 export default function HostAdDetailRoute(): React.ReactElement {
   const brand = useCurrentBrand();
   const brandId = brand?.id ?? null;
-  const manage = useCanManageBrandPayments(brandId);
+  const permissions = useHostAdPermissions(brandId);
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const campaignId = firstParam(params.id);
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [resumeConfirmVisible, setResumeConfirmVisible] = useState(false);
+  const [resumePhrase, setResumePhrase] = useState("");
+  const [destructiveAction, setDestructiveAction] = useState<
+    "cancel" | "end" | null
+  >(null);
+  const [destructiveError, setDestructiveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<HostAdCampaignDetail | null>(null);
 
   const load = useCallback(async () => {
-    if (brandId === null || campaignId === null) return;
+    if (brandId === null || campaignId === null || !permissions.canRead) return;
     setError(null);
     try {
       const res = await getHostAdCampaign(brandId, campaignId);
@@ -66,14 +77,15 @@ export default function HostAdDetailRoute(): React.ReactElement {
       setError("Could not load this ad.");
       setPayload(null);
     }
-  }, [brandId, campaignId]);
+  }, [brandId, campaignId, permissions.canRead]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const onPause = useCallback(async () => {
-    if (brandId === null || campaignId === null) return;
+    if (brandId === null || campaignId === null || !permissions.canPause)
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -84,10 +96,37 @@ export default function HostAdDetailRoute(): React.ReactElement {
     } finally {
       setBusy(false);
     }
-  }, [brandId, campaignId, load]);
+  }, [brandId, campaignId, load, permissions.canPause]);
+
+  const onResume = useCallback(async () => {
+    if (
+      brandId === null ||
+      campaignId === null ||
+      !permissions.canLaunch ||
+      resumePhrase !== "LAUNCH"
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    try {
+      await resumeHostAdCampaignPlan({
+        campaignId,
+        reason: "Host resumed paused ad plan from Ads detail",
+      });
+      setResumeConfirmVisible(false);
+      setResumePhrase("");
+      await load();
+    } catch {
+      setError(
+        "Could not resume this ad. Check its schedule, credit and review status.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [brandId, campaignId, load, permissions.canLaunch, resumePhrase]);
 
   const onEnd = useCallback(async () => {
-    if (brandId === null || campaignId === null) return;
+    if (brandId === null || campaignId === null || !permissions.canEnd) return;
     setBusy(true);
     setError(null);
     try {
@@ -96,16 +135,17 @@ export default function HostAdDetailRoute(): React.ReactElement {
         campaignId,
         idempotencyKey: randomId(),
       });
+      setDestructiveAction(null);
       await load();
     } catch {
-      setError("Could not end this ad.");
+      setDestructiveError("Could not end this ad. Refresh and try again.");
     } finally {
       setBusy(false);
     }
-  }, [brandId, campaignId, load]);
+  }, [brandId, campaignId, load, permissions.canEnd]);
 
   const onCancel = useCallback(async () => {
-    if (brandId === null || campaignId === null) return;
+    if (brandId === null || campaignId === null || !permissions.canEnd) return;
     setBusy(true);
     setError(null);
     try {
@@ -114,13 +154,14 @@ export default function HostAdDetailRoute(): React.ReactElement {
         campaignId,
         idempotencyKey: randomId(),
       });
+      setDestructiveAction(null);
       await load();
     } catch {
-      setError("Could not cancel this ad.");
+      setDestructiveError("Could not cancel this ad. Refresh and try again.");
     } finally {
       setBusy(false);
     }
-  }, [brandId, campaignId, load]);
+  }, [brandId, campaignId, load, permissions.canEnd]);
 
   if (brandId === null || campaignId === null) {
     return (
@@ -130,6 +171,27 @@ export default function HostAdDetailRoute(): React.ReactElement {
           title="Ad not found"
           description="Pick a brand and open an ad from the Ads list."
           testID="ads-detail-missing"
+        />
+      </View>
+    );
+  }
+
+  if (permissions.isLoading) {
+    return (
+      <View style={styles.host} testID="ads-detail-permission-loading">
+        <ActivityIndicator color={textTokens.secondary} />
+      </View>
+    );
+  }
+
+  if (permissions.isError || !permissions.canRead) {
+    return (
+      <View style={styles.host}>
+        <EmptyState
+          illustration="users"
+          title="Ads access required"
+          description="Ask a brand owner to grant Ads view access for this brand."
+          testID="ads-detail-permission-denied"
         />
       </View>
     );
@@ -159,17 +221,45 @@ export default function HostAdDetailRoute(): React.ReactElement {
 
   const c = payload.campaign;
   const name = String(c.name ?? "Ad");
-  const status = String(c.status ?? "");
-  const currency = String(c.currency ?? "USD");
-  const cap = Number(c.cap_cents ?? c.daily_budget_cents ?? 0);
-  const spent = payload.spend_total_cents;
-  const isLive = status.toUpperCase() === "ACTIVE";
+  const status = payload.plan_state ?? String(c.status ?? "");
+  const currencyCandidate = payload.plan_currency ?? c.currency;
+  const currency =
+    typeof currencyCandidate === "string" &&
+    /^[A-Z]{3}$/.test(currencyCandidate)
+      ? currencyCandidate
+      : null;
+  const cap = Number(
+    payload.plan_cap_cents ?? c.cap_cents ?? c.daily_budget_cents ?? 0,
+  );
+  const spent = payload.host_spend_equivalent_cents;
+  const hasProviderSpend = payload.provider_spend_by_currency.some(
+    (row) => Number(row.spend_cents) > 0,
+  );
+  const settlements = Array.isArray(payload.settlements)
+    ? payload.settlements
+    : [];
+  const isLive =
+    ["LIVE", "PARTIALLY_LIVE"].includes(status.toUpperCase()) ||
+    payload.plan_campaigns.some(
+      (row) => String(row.status).toUpperCase() === "ACTIVE",
+    );
   const isEnded =
-    status.toUpperCase() === "ARCHIVED" || status.toUpperCase() === "DELETED";
+    status.toUpperCase() === "ENDED" ||
+    payload.plan_campaigns.every((row) =>
+      ["ARCHIVED", "DELETED"].includes(String(row.status).toUpperCase()),
+    );
   // Phase 3: Cancel before spend; End after — a card never shows both.
-  const canCancel = !isEnded && spent <= 0;
-  const canEnd = !isEnded && spent > 0;
+  const canCancel = !isEnded && !hasProviderSpend;
+  const canEnd = !isEnded && hasProviderSpend;
   const conversions = Number(payload.results?.conversions ?? 0);
+  const resultHierarchy = Array.isArray(
+    payload.measurement?.manifest?.result_hierarchy,
+  )
+    ? payload.measurement.manifest.result_hierarchy
+    : [];
+  const primaryResultLabel = String(
+    resultHierarchy[0] ?? "conversions",
+  ).replaceAll("_", " ");
   const impressions = payload.spend_daily.reduce(
     (total, row) => total + Number(row.impressions ?? 0),
     0,
@@ -178,27 +268,33 @@ export default function HostAdDetailRoute(): React.ReactElement {
     (total, row) => total + Number(row.clicks ?? 0),
     0,
   );
-  const capUsed = cap > 0 ? Math.min(100, Math.round((spent / cap) * 100)) : 0;
-  const latestPauseReason = payload.timeline.find((event) =>
-    event.action === "pause" &&
-    event.provider_response &&
-    typeof event.provider_response.reason === "string"
+  const capUsed =
+    spent !== null && cap > 0
+      ? Math.min(100, Math.round((spent / cap) * 100))
+      : null;
+  const costPerResult =
+    spent !== null && conversions > 0 ? Math.round(spent / conversions) : null;
+  const latestPauseReason = payload.timeline.find(
+    (event) =>
+      event.action === "pause" &&
+      event.provider_response &&
+      typeof event.provider_response.reason === "string",
   )?.provider_response?.reason;
   const endState = isEnded
     ? status.toUpperCase() === "DELETED"
       ? "Cancelled before platform spend — full Ads credit was returned"
       : "Ended — unspent Ads credit was returned"
     : latestPauseReason === "destination_unavailable"
-    ? "Destination page ended or is no longer public — delivery paused"
-    : latestPauseReason === "destination_check_failed"
-    ? "Destination availability could not be verified — delivery paused safely"
-    : latestPauseReason === "end_date_passed"
-    ? "Campaign schedule ended — delivery paused"
-    : latestPauseReason === "spend_fetch_failed"
-    ? "Results feed unavailable — delivery paused for budget safety"
-    : cap > 0 && spent >= Math.floor(cap * 0.98)
-    ? "Budget used — delivery paused at the safety cap"
-    : null;
+      ? "Destination page ended or is no longer public — delivery paused"
+      : latestPauseReason === "destination_check_failed"
+        ? "Destination availability could not be verified — delivery paused safely"
+        : latestPauseReason === "end_date_passed"
+          ? "Campaign schedule ended — delivery paused"
+          : latestPauseReason === "spend_fetch_failed"
+            ? "Results feed unavailable — delivery paused for budget safety"
+            : spent !== null && cap > 0 && spent >= Math.floor(cap * 0.98)
+              ? "Budget used — delivery paused at the safety cap"
+              : null;
 
   return (
     <View style={styles.host} testID="ads-detail-screen">
@@ -213,16 +309,40 @@ export default function HostAdDetailRoute(): React.ReactElement {
         </Pressable>
 
         <GlassCard variant="elevated" padding={spacing.lg}>
-          <Text style={styles.kicker}>{String(c.platform ?? "")}</Text>
+          <Text style={styles.kicker}>
+            {payload.plan_campaigns
+              .map((row) => String(row.platform))
+              .join(" · ")}
+          </Text>
           <Text style={styles.title}>{name}</Text>
           <Text style={styles.status} testID="ads-detail-status">
             {status}
           </Text>
           <Text style={styles.metric}>
-            Spend {formatCurrency(spent, currency, true)} of{" "}
-            {formatCurrency(cap, currency, true)} cap
+            {currency
+              ? spent !== null
+                ? `Host-equivalent spend ${formatCurrency(spent, currency, true)} of ${formatCurrency(cap, currency, true)} cap`
+                : `Host budget ${formatCurrency(cap, currency, true)} held · spend conversion unavailable`
+              : "Currency authority unavailable — spending actions are blocked"}
           </Text>
-          <Text style={styles.progress}>{capUsed}% of cap used</Text>
+          {payload.host_spend_equivalent_quality === "frozen_plan_fx" ? (
+            <Text style={styles.muted}>
+              Host-equivalent spend uses the plan&apos;s frozen FX quote.
+            </Text>
+          ) : null}
+          {payload.provider_spend_by_currency.length > 0 ? (
+            <Text style={styles.muted}>
+              Platform-reported spend:{" "}
+              {payload.provider_spend_by_currency
+                .map((row) =>
+                  formatCurrency(row.spend_cents, row.currency, true),
+                )
+                .join(" · ")}
+            </Text>
+          ) : null}
+          {capUsed !== null ? (
+            <Text style={styles.progress}>{capUsed}% of cap used</Text>
+          ) : null}
           {typeof c.dest_url === "string" && c.dest_url.length > 0 ? (
             <Text style={styles.dest} numberOfLines={2}>
               {c.dest_url}
@@ -237,11 +357,74 @@ export default function HostAdDetailRoute(): React.ReactElement {
           </GlassCard>
         ) : null}
 
+        {settlements.length > 0 ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.sectionTitle}>Stop and settlement</Text>
+            <Text style={styles.muted}>
+              Mingla returns unused Ads credit only after every provider
+              confirms the stop, reports final spend, and clears the finality
+              window.
+            </Text>
+            {settlements.map((settlement) => {
+              const platform = payload.plan_campaigns.find(
+                (row) => row.id === settlement.campaign_id,
+              )?.platform;
+              return (
+                <View key={settlement.id} style={styles.timelineRow}>
+                  <Text style={styles.body}>
+                    {String(platform ?? "Provider")} ·{" "}
+                    {settlement.state.replaceAll("_", " ")}
+                  </Text>
+                  <Text style={styles.muted}>
+                    Final provider spend:{" "}
+                    {settlement.final_provider_spend_cents === null
+                      ? "pending"
+                      : formatCurrency(
+                          settlement.final_provider_spend_cents,
+                          settlement.provider_currency,
+                          true,
+                        )}
+                  </Text>
+                  <Text style={styles.muted}>
+                    Host equivalent:{" "}
+                    {settlement.final_host_spend_cents === null
+                      ? "pending"
+                      : formatCurrency(
+                          settlement.final_host_spend_cents,
+                          settlement.host_currency,
+                          true,
+                        )}
+                  </Text>
+                  <Text style={styles.muted}>
+                    Finalize after:{" "}
+                    {settlement.settle_after
+                      ? new Date(settlement.settle_after).toLocaleString()
+                      : "provider evidence pending"}
+                  </Text>
+                </View>
+              );
+            })}
+          </GlassCard>
+        ) : null}
+
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.sectionTitle}>Results</Text>
+          <Text style={styles.muted}>
+            Primary result: {primaryResultLabel} · quality{" "}
+            {String(
+              payload.measurement?.manifest?.quality ?? "unavailable",
+            ).replaceAll("_", " ")}
+          </Text>
+          <Text style={styles.muted}>
+            Browser pixels and outbound platform conversion sharing require
+            consent. Mingla shows trusted finalized results in aggregate even
+            when outbound sharing is withheld.
+          </Text>
           <View style={styles.metricGrid}>
             <View style={styles.metricCell}>
-              <Text style={styles.metricNumber}>{impressions.toLocaleString()}</Text>
+              <Text style={styles.metricNumber}>
+                {impressions.toLocaleString()}
+              </Text>
               <Text style={styles.metricLabel}>Impressions</Text>
             </View>
             <View style={styles.metricCell}>
@@ -249,10 +432,25 @@ export default function HostAdDetailRoute(): React.ReactElement {
               <Text style={styles.metricLabel}>Clicks</Text>
             </View>
             <View style={styles.metricCell}>
-              <Text style={styles.metricNumber}>{conversions.toLocaleString()}</Text>
-              <Text style={styles.metricLabel}>Conversions</Text>
+              <Text style={styles.metricNumber}>
+                {conversions.toLocaleString()}
+              </Text>
+              <Text style={styles.metricLabel}>{primaryResultLabel}</Text>
             </View>
           </View>
+          <Text style={styles.muted} testID="ads-detail-cost-per-result">
+            Cost per {primaryResultLabel}:{" "}
+            {costPerResult !== null && currency
+              ? formatCurrency(costPerResult, currency, true)
+              : "Unavailable until spend and results share one currency"}
+          </Text>
+          {payload.measurement?.platform_withheld_conversion_count > 0 ? (
+            <Text style={styles.muted}>
+              {payload.measurement.platform_withheld_conversion_count} trusted
+              result(s) counted by Mingla and withheld from ad platforms by
+              consent.
+            </Text>
+          ) : null}
           {(payload.results.by_platform ?? []).map((row) => (
             <View key={row.platform} style={styles.resultRow}>
               <Text style={styles.body}>{row.platform}</Text>
@@ -260,7 +458,10 @@ export default function HostAdDetailRoute(): React.ReactElement {
             </View>
           ))}
           {payload.by_placement.map((row) => (
-            <View key={`${row.platform}:${row.placement}`} style={styles.resultRow}>
+            <View
+              key={`${row.platform}:${row.placement}`}
+              style={styles.resultRow}
+            >
               <Text style={styles.body}>{row.placement}</Text>
               <Text style={styles.body}>{row.conversions} conversions</Text>
             </View>
@@ -271,37 +472,53 @@ export default function HostAdDetailRoute(): React.ReactElement {
           <Text style={styles.sectionTitle}>Creative</Text>
           {payload.creatives.length === 0 ? (
             <Text style={styles.body}>No creative record yet.</Text>
-          ) : payload.creatives.map((creative) => (
-            <View key={creative.id} style={styles.timelineRow}>
-              <Text style={styles.body}>{creative.ad_creatives?.name ?? creative.name}</Text>
-              <Text style={styles.muted}>
-                {creative.ad_creatives?.kind ?? "creative"} · {creative.review_status ?? creative.status}
-              </Text>
-              {creative.review_status?.toUpperCase().includes("REJECT") ? (
-                <Text style={styles.error}>Provider rejected this creative. Review the provider detail and replace it.</Text>
-              ) : null}
-            </View>
-          ))}
+          ) : (
+            payload.creatives.map((creative) => (
+              <View key={creative.id} style={styles.timelineRow}>
+                <Text style={styles.body}>
+                  {creative.ad_creatives?.name ?? creative.name}
+                </Text>
+                <Text style={styles.muted}>
+                  {creative.ad_creatives?.kind ?? "creative"} ·{" "}
+                  {creative.review_status ?? creative.status}
+                </Text>
+                {creative.review_status?.toUpperCase().includes("REJECT") ? (
+                  <Text style={styles.error}>
+                    Provider rejected this creative. Review the provider detail
+                    and replace it.
+                  </Text>
+                ) : null}
+              </View>
+            ))
+          )}
         </GlassCard>
 
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.sectionTitle}>Timeline</Text>
           {payload.timeline.length === 0 ? (
             <Text style={styles.body}>No status changes yet.</Text>
-          ) : payload.timeline.map((event) => (
-            <View key={event.id} style={styles.timelineRow}>
-              <Text style={styles.body}>
-                {event.action.replace(/_/g, " ")} · {event.to_status ?? event.entity ?? "recorded"}
-              </Text>
-              <Text style={styles.muted}>{new Date(event.created_at).toLocaleString()}</Text>
-            </View>
-          ))}
+          ) : (
+            payload.timeline.map((event) => (
+              <View key={event.id} style={styles.timelineRow}>
+                <Text style={styles.body}>
+                  {event.action.replace(/_/g, " ")} ·{" "}
+                  {event.to_status ?? event.entity ?? "recorded"}
+                </Text>
+                <Text style={styles.muted}>
+                  {new Date(event.created_at).toLocaleString()}
+                </Text>
+              </View>
+            ))
+          )}
           {payload.credit_events.map((event) => (
             <View key={event.id} style={styles.timelineRow}>
               <Text style={styles.body}>
-                {event.entry_kind.replace(/_/g, " ")} · {formatCurrency(event.amount_cents, event.currency, true)}
+                {event.entry_kind.replace(/_/g, " ")} ·{" "}
+                {formatCurrency(event.amount_cents, event.currency, true)}
               </Text>
-              <Text style={styles.muted}>{new Date(event.created_at).toLocaleString()}</Text>
+              <Text style={styles.muted}>
+                {new Date(event.created_at).toLocaleString()}
+              </Text>
             </View>
           ))}
         </GlassCard>
@@ -312,9 +529,77 @@ export default function HostAdDetailRoute(): React.ReactElement {
           </Text>
         ) : null}
 
-        {manage.allowed && !isEnded ? (
+        <Pressable
+          style={styles.askAriBtn}
+          onPress={() => router.push("/(tabs)/ari" as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Ask Ari about this ad"
+          testID="ads-detail-ask-ari"
+        >
+          <Text style={styles.actionLabel}>
+            {payload.creatives.some((creative) =>
+              creative.review_status?.toUpperCase().includes("REJECT"),
+            )
+              ? "Ask Ari to help fix the rejection"
+              : "Ask Ari about this ad"}
+          </Text>
+        </Pressable>
+
+        {resumeConfirmVisible ? (
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.sectionTitle}>Resume paid delivery?</Text>
+            <Text style={styles.muted}>
+              This resumes every paused provider campaign in the immutable plan.
+              Type LAUNCH to confirm.
+            </Text>
+            <TextInput
+              value={resumePhrase}
+              onChangeText={setResumePhrase}
+              placeholder="LAUNCH"
+              autoCapitalize="characters"
+              autoCorrect={false}
+              style={styles.confirmInput}
+              accessibilityLabel="Type LAUNCH to resume this ad plan"
+              testID="ads-detail-resume-phrase"
+            />
+            <View style={styles.actions}>
+              <Pressable
+                style={styles.actionBtn}
+                onPress={() => {
+                  setResumeConfirmVisible(false);
+                  setResumePhrase("");
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel resume"
+              >
+                <Text style={styles.actionLabel}>Not now</Text>
+              </Pressable>
+              <Pressable
+                style={styles.actionBtn}
+                disabled={busy || resumePhrase !== "LAUNCH"}
+                onPress={() => void onResume()}
+                accessibilityRole="button"
+                accessibilityLabel="Confirm resume"
+                accessibilityState={{
+                  disabled: busy || resumePhrase !== "LAUNCH",
+                }}
+                testID="ads-detail-resume-confirm"
+              >
+                <Text style={styles.actionLabel}>
+                  {busy ? "Working…" : "Resume all platforms"}
+                </Text>
+              </Pressable>
+            </View>
+          </GlassCard>
+        ) : null}
+
+        {!isEnded &&
+        currency &&
+        (permissions.canLaunch ||
+          permissions.canPause ||
+          permissions.canEnd) ? (
           <View style={styles.actions}>
-            {isLive ? (
+            {isLive && permissions.canPause ? (
               <Pressable
                 style={styles.actionBtn}
                 disabled={busy}
@@ -328,11 +613,30 @@ export default function HostAdDetailRoute(): React.ReactElement {
                 </Text>
               </Pressable>
             ) : null}
-            {canCancel ? (
+            {!isLive &&
+            permissions.canLaunch &&
+            ["PAUSED", "PAUSE_REQUESTED"].includes(status.toUpperCase()) ? (
+              <Pressable
+                style={styles.actionBtn}
+                disabled={busy}
+                onPress={() => setResumeConfirmVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Resume ad"
+                testID="ads-detail-resume"
+              >
+                <Text style={styles.actionLabel}>
+                  {busy ? "Working…" : "Resume"}
+                </Text>
+              </Pressable>
+            ) : null}
+            {canCancel && permissions.canEnd ? (
               <Pressable
                 style={[styles.actionBtn, styles.actionDanger]}
                 disabled={busy}
-                onPress={() => void onCancel()}
+                onPress={() => {
+                  setDestructiveError(null);
+                  setDestructiveAction("cancel");
+                }}
                 accessibilityRole="button"
                 accessibilityLabel="Cancel ad"
                 testID="ads-detail-cancel"
@@ -342,11 +646,14 @@ export default function HostAdDetailRoute(): React.ReactElement {
                 </Text>
               </Pressable>
             ) : null}
-            {canEnd ? (
+            {canEnd && permissions.canEnd ? (
               <Pressable
                 style={[styles.actionBtn, styles.actionDanger]}
                 disabled={busy}
-                onPress={() => void onEnd()}
+                onPress={() => {
+                  setDestructiveError(null);
+                  setDestructiveAction("end");
+                }}
                 accessibilityRole="button"
                 accessibilityLabel="End ad"
                 testID="ads-detail-end"
@@ -359,6 +666,35 @@ export default function HostAdDetailRoute(): React.ReactElement {
           </View>
         ) : null}
       </ScrollView>
+      <ConfirmDialog
+        visible={destructiveAction !== null}
+        onClose={() => {
+          if (!busy) {
+            setDestructiveAction(null);
+            setDestructiveError(null);
+          }
+        }}
+        onConfirm={destructiveAction === "end" ? onEnd : onCancel}
+        variant="typeToConfirm"
+        confirmText={destructiveAction === "end" ? "END" : "CANCEL"}
+        title={
+          destructiveAction === "end"
+            ? "End this ad permanently?"
+            : "Cancel this ad?"
+        }
+        description={
+          destructiveAction === "end"
+            ? "Type END to stop every provider campaign in this plan. Final spend must settle before unused Ads credit is returned."
+            : "Type CANCEL to stop this unspent plan and return its reserved Ads credit."
+        }
+        confirmLabel={destructiveAction === "end" ? "End ad" : "Cancel ad"}
+        destructive
+        confirmLoading={busy}
+        closeDisabled={busy}
+        errorMessage={destructiveError}
+        confirmTestID="ads-detail-destructive-confirm"
+        testID="ads-detail-destructive-dialog"
+      />
     </View>
   );
 }
@@ -456,6 +792,25 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: "row",
     gap: spacing.sm,
+  },
+  askAriBtn: {
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+    borderRadius: 999,
+    backgroundColor: glass.tint.chrome.idle,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+  },
+  confirmInput: {
+    ...typography.body,
+    color: textTokens.primary,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+    backgroundColor: glass.tint.chrome.idle,
   },
   actionBtn: {
     flex: 1,

@@ -100,18 +100,6 @@ const CALLER_DIRS = [
  */
 const WRITE_ONLY_BY_DESIGN = new Map([
   [
-    "ad_app_acquisition_canaries",
-    "#2015 — a SEVEN-state lifecycle ('not_started' -> approval_required -> " +
-      "paused_ready -> running -> passed/failed/expired) with a `completed_at` " +
-      "and THREE CHECK constraints coupling the status to founder-approval, " +
-      "spend-ceiling and evidence columns. The only UPDATEs in the repo " +
-      "(20270402002015 and 20270402002041) both RESET status to 'not_started'; " +
-      "nothing anywhere advances it. Same signature as #2305's own table: the " +
-      "constraints are the proof a lifecycle was intended and never built. " +
-      "PRE-EXISTING and outside #2305's allowlist — filed for the orchestrator, " +
-      "not fixed here.",
-  ],
-  [
     "event_private_media_transition_jobs",
     "#1931 — an EIGHT-state media transition machine ('preparing' -> " +
       "ready_to_finalize -> finalizing -> completed | failed_retryable | " +
@@ -131,6 +119,7 @@ const WRITE_ONLY_BY_DESIGN = new Map([
 // the live repository scan.
 const RETIRED_WRITE_ONLY_BY_DESIGN = new Set([
   "brand_person_merge_events", // #1772 — Split is now a reachable resolver.
+  "ad_app_acquisition_canaries", // #3697 — Admin certification now advances the canary lifecycle.
 ]);
 const EXPECTED_EXEMPT = WRITE_ONLY_BY_DESIGN.size;
 
@@ -663,7 +652,7 @@ function selfTest() {
   // 8. A STALE exemption must fail: an allowlist entry matching no discovered
   //    table is a gate quietly narrowing itself.
   r = analyze([LANDFILL, RESOLVER], ['supabase.rpc("biz_resolve_widget");']);
-  if (!r.staleExemptions.includes("ad_app_acquisition_canaries")) {
+  if (!r.staleExemptions.includes("event_private_media_transition_jobs")) {
     console.error("#2305 self-test: a stale exemption was not reported.");
     process.exit(1);
   }

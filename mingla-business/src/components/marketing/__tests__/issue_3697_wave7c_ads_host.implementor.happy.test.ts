@@ -37,7 +37,10 @@ describe("issue #3697 Wave 7c Host Ads surfaces", () => {
     expect(detail).toContain("ads-detail-pause");
     expect(detail).toContain("ads-detail-end");
     expect(detail).toContain("ads-detail-cancel");
-    expect(detail).toContain("spend_total_cents");
+    expect(detail).toContain("provider_spend_by_currency");
+    expect(detail).toContain("host_spend_equivalent_cents");
+    expect(detail).toContain("host_spend_equivalent_quality");
+    expect(detail).not.toContain("spend_total_cents");
     expect(detail).toContain("Results");
     expect(detail).toContain("Creative");
     expect(detail).toContain("Timeline");
@@ -60,14 +63,23 @@ describe("issue #3697 Wave 7c Host Ads surfaces", () => {
     expect(card).toContain('case "get_ad_campaign_report"');
     expect(card).toContain('approve_ad_plan: "LAUNCH"');
     expect(card).toContain('end_ad_campaign: "END"');
-    expect(card).toContain("recordAndPrepareAriAdVideo");
+    // [TEST-MOD-APPROVED #3697] Ari records only the canonical video. Native
+    // provider copies are plan-bound launch work in hostAdPlanService.
+    expect(card).toContain("recordHostAdVideo");
     expect(card).toContain("Add ad video");
     expect(card).toContain('toolName === "approve_ad_plan"');
     expect(card).toContain("editing || isAdPlanProposal ? editedArgs : args");
     const creative = read("src/services/ariAdCreativeService.ts");
     expect(creative).toContain('"admin-ad-creative-upload"');
-    expect(creative).toContain('"admin-ad-creative-prepare"');
-    expect(creative).toContain('lane: "business"');
+    expect(creative).not.toContain('"admin-ad-creative-prepare"');
+    const plan = read("src/services/hostAdPlanService.ts");
+    expect(plan).toContain('"admin-ad-creative-prepare"');
+    expect(plan).toContain('lane: "business"');
+    expect(plan).toContain("plan_version_id: aggregate.version.id");
+    expect(plan).toContain("plan_hash: aggregate.version.plan_hash");
+    const route = read("app/(tabs)/marketing/ads/create.tsx");
+    expect(route).toContain("host-ad-add-video");
+    expect(route).toContain('mediaMode="video-only"');
   });
 
   it("maps NGN currency copy and withdraw provider failures", () => {

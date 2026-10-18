@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_3697_v14_ari_policy.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-v14-08-ari-policy",
+  "profile": "deno-2-unit"
+}

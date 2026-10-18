@@ -107,6 +107,11 @@ jest.mock("../../../src/hooks/useBusinessTodos", () => ({
 jest.mock("../../../src/hooks/useResponsiveLayout", () => ({
   useResponsiveLayout: () => ({ isWideDesktop: mockIsWideDesktop }),
 }));
+jest.mock("../../../src/hooks/marketing/useHostAdCampaigns", () => ({
+  hostAdCampaignKeys: {
+    byBrand: (brandId: string) => ["host-ad-campaigns", brandId],
+  },
+}));
 jest.mock("../../../src/hooks/useBusinessRecent", () => ({
   useBusinessRecent: () => ({
     rows: [mockRecentRow],
@@ -177,6 +182,9 @@ jest.mock("../../../src/components/home/BusinessTodoToggle", () => ({
 }));
 jest.mock("../../../src/components/home/AnalyticsHomeTile", () => ({
   AnalyticsHomeTile: "AnalyticsHomeTile",
+}));
+jest.mock("../../../src/components/home/HomeAdsSection", () => ({
+  HomeAdsSection: "HomeAdsSection",
 }));
 jest.mock("../../../src/components/home/LiveOfferingCard", () => ({
   LiveOfferingCard: "LiveOfferingCard",

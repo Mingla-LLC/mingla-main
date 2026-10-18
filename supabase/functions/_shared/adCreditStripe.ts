@@ -83,10 +83,29 @@ export function adCreditTopUpMetadata(input: {
   };
 }
 
-/** Stripe card top-up: USD/GBP. NGN uses Paystack (`isAdCreditPaystackTopUpCurrency`). */
+/**
+ * Stripe card top-up currencies supported by Mingla's current brand-currency
+ * catalog. NGN remains on Paystack. The verified brand rail, not this list by
+ * itself, selects the payment provider.
+ */
 export function isAdCreditStripeTopUpCurrency(currency: string): boolean {
   const c = currency.trim().toUpperCase();
-  return c === "USD" || c === "GBP";
+  return [
+    "BGN",
+    "CAD",
+    "CHF",
+    "CZK",
+    "DKK",
+    "EUR",
+    "GBP",
+    "HUF",
+    "ISK",
+    "NOK",
+    "PLN",
+    "RON",
+    "SEK",
+    "USD",
+  ].includes(c);
 }
 
 /** Wave 7c — Paystack NGN top-up reference prefix (webhook discriminator). */
@@ -106,6 +125,8 @@ export function buildAdCreditPaystackReference(input: {
   clientIdem: string;
 }): string {
   const compact = input.clientIdem.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24);
-  return `${AD_CREDIT_PAYSTACK_REF_PREFIX}${input.brandId.replace(/-/g, "").slice(0, 12)}_${compact}`
+  return `${AD_CREDIT_PAYSTACK_REF_PREFIX}${
+    input.brandId.replace(/-/g, "").slice(0, 12)
+  }_${compact}`
     .slice(0, 100);
 }

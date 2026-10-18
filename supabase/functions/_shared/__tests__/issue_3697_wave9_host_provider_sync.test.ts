@@ -77,9 +77,20 @@ Deno.test("#3697 closeout: Ari reviews a required video across all five provider
   assert(tools.includes('"snapchat"'));
   assert(tools.includes('"reddit"'));
   assert(tools.includes("buildHostAdCreatePayload"));
-  assert(tools.includes("creative_library_id must be a uuid of a READY video creative"));
+  assert(
+    tools.includes(
+      "creative_library_id must be a uuid of a READY video creative",
+    ),
+  );
   const prompt = await Deno.readTextFile(
     new URL("../agentSystemPrompt.ts", import.meta.url),
   );
-  assert(prompt.includes("Host attaches the required video"));
+  // [TEST-MOD-APPROVED #3697] the required video is selected before the
+  // immutable version is frozen, so typed LAUNCH reviews an already-bound plan.
+  assert(
+    prompt.includes(
+      "Host attaches the required video before Ari freezes the plan",
+    ),
+  );
+  assert(prompt.includes("already video-bound immutable plan"));
 });

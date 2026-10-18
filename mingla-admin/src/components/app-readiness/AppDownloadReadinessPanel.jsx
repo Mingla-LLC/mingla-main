@@ -37,6 +37,6 @@ export function AppDownloadReadinessPanel() {
     <TargetOverview targets={targets} selectedKey={selectedKey} loading={!targets.length}/><TargetSelector appKey={appKey} os={os} onChange={selectTarget}/>
     {alert&&<AlertCard variant={online?"error":"warning"} title={online?"Check unavailable":"Offline"}><span role="alert">{alert}</span></AlertCard>}
     {selected&&<><SelectedTargetSummary target={{...selected,latest:entry.latest}} phase={entry.phase} stopped={entry.stopped} onCheck={errorStatus===401?()=>{window.location.href="/login";}:errorStatus===403?()=>{window.location.href="/";}:runCheck} actionRef={actionRef} offline={!online} errorStatus={errorStatus}/><ProviderReadinessList latest={entry.latest} onEvent={providerEvent}/></>}
-    <FutureAppCampaignBoundary/><div role="status" aria-live="polite" aria-atomic="true" className="sr-only">{announcement}</div>
+    <FutureAppCampaignBoundary key={`${appKey}:${os}`} appKey={appKey} os={os} latest={entry.latest}/><div role="status" aria-live="polite" aria-atomic="true" className="sr-only">{announcement}</div>
   </div></SectionCard>;
 }

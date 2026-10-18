@@ -10,6 +10,12 @@ import {
   type HostAdCampaign,
 } from "../../services/hostAdCampaignService";
 
+export const hostAdCampaignKeys = {
+  all: ["host-ad-campaigns"] as const,
+  byBrand: (brandId: string | null) =>
+    [...hostAdCampaignKeys.all, brandId] as const,
+};
+
 export function useHostAdCampaigns(brandId: string | null): {
   campaigns: HostAdCampaign[];
   liveCampaigns: HostAdCampaign[];
@@ -21,7 +27,7 @@ export function useHostAdCampaigns(brandId: string | null): {
   const { isAuthReady } = useAuth();
   const enabled = Boolean(brandId) && isAuthReady;
   const query = useQuery({
-    queryKey: ["host-ad-campaigns", brandId],
+    queryKey: hostAdCampaignKeys.byBrand(brandId),
     enabled,
     queryFn: () => listHostAdCampaigns(brandId as string),
   });

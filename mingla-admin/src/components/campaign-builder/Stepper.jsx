@@ -2,14 +2,9 @@
  * ISSUE-864 WP4 — the wizard stepper (SPEC §4.1): back-navigable, NO forward
  * skip; aria-current on the active step (SC-9).
  *
- * ISSUE-980 [Campaign Builder clarity] finding #1(a): the 10-step run needs
- * ~1,070-1,100px at full size and silently overflowed (via bare
- * `overflow-x-auto`, no visible affordance) on ≤1440px laptops once the
- * sidebar + AppShell padding are subtracted (ISSUE-977 Lane A F-6). Below
- * COMPACT_BREAKPOINT_PX this now renders in a tighter "compact" density —
- * smaller pill padding/connector/icon chip + two abbreviated labels — so all
- * 10 steps are legible without hidden scroll at ordinary laptop widths.
- * `overflow-x-auto` remains as a last-resort safety net only.
+ * v1.4 presents five complete product stages. Compact density remains a
+ * last-resort safeguard for narrow desktop panels, not a way to hide internal
+ * implementation steps from operators.
  */
 
 import { Check } from "lucide-react";
@@ -34,7 +29,12 @@ export function Stepper({ steps, activeIndex, maxVisitedIndex, onJump }) {
 
   return (
     <nav aria-label="Campaign builder steps" className="overflow-x-auto">
-      <ol className={["flex items-center min-w-max pb-1", compact ? "gap-0.5" : "gap-1"].join(" ")}>
+      <ol
+        className={[
+          "flex items-center min-w-max pb-1",
+          compact ? "gap-0.5" : "gap-1",
+        ].join(" ")}
+      >
         {steps.map((step, index) => {
           const isActive = index === activeIndex;
           const isDone = index < activeIndex;
@@ -59,16 +59,18 @@ export function Stepper({ steps, activeIndex, maxVisitedIndex, onJump }) {
                 title={compact ? step.label : undefined}
                 className={[
                   "flex items-center rounded-lg font-medium whitespace-nowrap",
-                  compact ? "gap-1 h-7 px-1.5 text-[11px]" : "gap-1.5 h-8 px-2.5 text-xs",
+                  compact
+                    ? "gap-1 h-7 px-1.5 text-[11px]"
+                    : "gap-1.5 h-8 px-2.5 text-xs",
                   "transition-colors focus-visible:outline-none focus-visible:ring-2",
                   "focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
                   isActive
                     ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)] ring-1 ring-[var(--color-brand-500)]"
                     : isDone
-                    ? "text-[var(--color-text-primary)] hover:bg-[var(--gray-100)]"
-                    : reachable
-                    ? "text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]"
-                    : "text-[var(--color-text-tertiary)] cursor-not-allowed",
+                      ? "text-[var(--color-text-primary)] hover:bg-[var(--gray-100)]"
+                      : reachable
+                        ? "text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]"
+                        : "text-[var(--color-text-tertiary)] cursor-not-allowed",
                 ].join(" ")}
               >
                 <span
@@ -79,8 +81,8 @@ export function Stepper({ steps, activeIndex, maxVisitedIndex, onJump }) {
                     isDone
                       ? "bg-[var(--color-brand-500)] text-white"
                       : isActive
-                      ? "border border-[var(--color-brand-500)] text-[var(--color-brand-700)]"
-                      : "border border-[var(--gray-300)]",
+                        ? "border border-[var(--color-brand-500)] text-[var(--color-brand-700)]"
+                        : "border border-[var(--gray-300)]",
                   ].join(" ")}
                 >
                   {isDone ? <Check size={compact ? 8 : 10} /> : index + 1}

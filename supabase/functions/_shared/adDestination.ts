@@ -35,8 +35,9 @@ export const MARKETING_WEB_ORIGIN = "https://usemingla.com";
 export const MARKETING_BRAND_SLUG = "mingla";
 
 /**
- * Static allowlist of advertisable marketing landings (Phase 2 B1).
- * Slug is the Ads entity_slug; path is under MARKETING_WEB_ORIGIN.
+ * Bootstrap fallback for deployments/mocks that predate the destination
+ * registry. Production resolution is database-owned so future
+ * usemingla.com/* pages do not require an Edge release.
  */
 export const MARKETING_ROUTES: readonly {
   slug: string;
@@ -239,11 +240,11 @@ function requireDescriptor(input: unknown): DestinationDescriptor {
         "Marketing destinations use the mingla brand sentinel.",
       );
     }
-    if (!entitySlug || !marketingRouteBySlug(entitySlug)) {
+    if (!entitySlug || entitySlug.length > 200 || !SLUG.test(entitySlug)) {
       throw new AdDestinationError(
         "destination_entity_slug_invalid",
         400,
-        "Choose an allowlisted marketing landing page.",
+        "Choose a registered marketing landing page.",
       );
     }
     return {
@@ -417,11 +418,6 @@ export async function resolveAdDestination(
   const client = db as AdDestinationDb;
   const descriptor = requireDescriptor(input);
 
-  // toward #3697 Wave 4 — marketing is a static allowlist (no DB entity row).
-  if (descriptor.page_type === "marketing") {
-    return resolveMarketingDestination(descriptor);
-  }
-
   if (typeof client.rpc !== "function") {
     return resolveAdDestinationLegacy(client, descriptor);
   }
@@ -493,6 +489,9 @@ async function resolveAdDestinationLegacy(
   client: AdDestinationDb,
   descriptor: DestinationDescriptor,
 ): Promise<ResolvedAdDestination> {
+  if (descriptor.page_type === "marketing") {
+    return resolveMarketingDestination(descriptor);
+  }
   if (
     descriptor.page_type === "event" ||
     descriptor.page_type === "rsvp" ||

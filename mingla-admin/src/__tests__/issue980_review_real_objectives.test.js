@@ -122,8 +122,9 @@ describe("ISSUE-980 finding #3 — wiring is real, not just a lib function nobod
   it("CampaignBuilderPage.jsx resolves the goal for display and threads it into buildLaunchSummary", () => {
     // Distinct from runCreate's own (pre-existing, untouched) resolveGoalForPayload
     // call — this is the NEW display-only memo this fix adds.
-    assert.ok(
-      page.includes("const resolvedGoalForDisplay = useMemo(() => resolveGoalForPayload(goalIds), [goalIds]);"),
+    assert.match(
+      page,
+      /const\s+resolvedGoalForDisplay\s*=\s*useMemo\(\s*\(\)\s*=>\s*resolveGoalForPayload\(goalIds\),\s*\[goalIds\],?\s*\)/,
       "must compute a dedicated display resolution, separate from runCreate's",
     );
     assert.ok(page.includes("resolvedGoal: resolvedGoalForDisplay"), "must pass the resolution into buildLaunchSummary");

@@ -62,8 +62,8 @@ describe("#1972 canonical event lifecycle Business surfaces", () => {
     expect(source).not.toContain(
       'import { registerEventCoverSelection } from "../../services/eventCoverMediaService"',
     );
-    expect(source).toContain(
-      'await import(\n          "../../services/eventCoverMediaService"\n        )',
+    expect(source).toMatch(
+      /await\s+import\(\s*["']\.\.\/\.\.\/services\/eventCoverMediaService["']\s*\)/,
     );
   });
 });

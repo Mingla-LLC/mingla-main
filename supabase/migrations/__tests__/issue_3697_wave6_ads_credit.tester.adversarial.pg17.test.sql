@@ -1,28 +1,42 @@
 -- toward #3697 Wave 6 — adversarial: insufficient credit, bad currency, kind.
+-- [TEST-MOD-APPROVED #3697] v1.4 credit mutations require the brand's verified
+-- settlement rail; the historical fixture must establish that authority.
 \set ON_ERROR_STOP on
 BEGIN;
 
-alter table auth.users add column if not exists email_confirmed_at timestamptz;
-
-insert into auth.users (id, email, email_confirmed_at)
+insert into auth.users (id, email)
 values
-  ('36970000-0000-4000-c000-000000000101', 'issue3697w6-adv@test.local', now())
+  ('36970000-0000-4000-c000-000000000101', 'issue3697w6-adv@test.local')
 on conflict (id) do nothing;
 
 insert into public.creator_accounts (id, created_at)
 values ('36970000-0000-4000-c000-000000000101', now())
 on conflict (id) do nothing;
 
-insert into public.brands (id, account_id, name, slug, created_at, updated_at)
+insert into public.brands (
+  id, account_id, name, slug, default_currency, payment_provider,
+  payment_country, created_at, updated_at
+)
 values (
   '36970000-0000-4000-c000-000000000110',
   '36970000-0000-4000-c000-000000000101',
   'Issue 3697 Wave6 Adv',
   'issue3697wave6adv',
+  'USD',
+  'stripe',
+  'US',
   now(),
   now()
 )
 on conflict (id) do nothing;
+
+insert into public.stripe_connect_accounts (
+  brand_id, stripe_account_id, charges_enabled, payouts_enabled,
+  country, default_currency
+) values (
+  '36970000-0000-4000-c000-000000000110', 'acct_issue3697_w6_adv',
+  true, true, 'US', 'USD'
+);
 
 do $$
 declare

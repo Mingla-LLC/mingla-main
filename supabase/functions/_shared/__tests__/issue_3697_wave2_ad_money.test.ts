@@ -1,7 +1,10 @@
 /**
  * toward #3697 Wave 2 — D1 minimums + 98% hard-cap helpers (#3709 / #3701).
  */
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertThrows,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import {
   AD_PLATFORM_MINIMUMS_USD_CENTS_PER_DAY,
@@ -20,6 +23,7 @@ import {
   parseRedditReportSpend,
   parseSnapchatStatsSpend,
   parseTikTokReportSpend,
+  providerCapCents,
   startDateNotReached,
 } from "../adSpendSync.ts";
 
@@ -90,7 +94,7 @@ Deno.test("spend sync: upserts + pause at 98%", () => {
       status: "ACTIVE",
       cap_cents: 10000,
       ends_at: null,
-      currency: "USD",
+      provider_currency: "USD",
     },
     days: [
       { spend_date: "2026-10-01", spend_cents: 5000 },
@@ -111,7 +115,7 @@ Deno.test("spend sync: cumulative spend (not sliding window) drives cap pause", 
       status: "ACTIVE",
       cap_cents: 10000,
       ends_at: null,
-      currency: "USD",
+      provider_currency: "USD",
     },
     days: [{ spend_date: "2026-10-31", spend_cents: 100 }],
     cumulativeSpendCents: 9800,
@@ -119,6 +123,37 @@ Deno.test("spend sync: cumulative spend (not sliding window) drives cap pause", 
   assertEquals(decision.total_spend_cents, 9800);
   assertEquals(decision.pause, "cap_98_percent");
   assertEquals(decision.upserts.length, 1);
+});
+
+Deno.test("spend sync enforces the provider-account cap without mixing Host currency", () => {
+  const campaign = {
+    id: "c1",
+    platform: "meta" as const,
+    external_campaign_id: "ext",
+    status: "ACTIVE",
+    cap_cents: 1_000_000,
+    currency: "NGN",
+    provider_budget_cents: 7_000,
+    provider_currency: "USD",
+    ends_at: null,
+  };
+  assertEquals(providerCapCents(campaign), 7_000);
+  assertEquals(
+    decideSpendSync({
+      campaign,
+      days: [{ spend_date: "2026-10-01", spend_cents: 6_860 }],
+    }).pause,
+    "cap_98_percent",
+  );
+  assertThrows(
+    () =>
+      decideSpendSync({
+        campaign: { ...campaign, provider_budget_cents: null },
+        days: [],
+      }),
+    Error,
+    "provider_cap_unresolved",
+  );
 });
 
 Deno.test("launch guard: startDateNotReached", () => {
@@ -142,12 +177,38 @@ Deno.test("spend sync: end date pause when under cap", () => {
       status: "ACTIVE",
       cap_cents: 100000,
       ends_at: "2026-10-01T00:00:00Z",
-      currency: "USD",
+      provider_currency: "USD",
     },
     days: [{ spend_date: "2026-09-30", spend_cents: 100 }],
     nowIso: "2026-10-02T00:00:00Z",
   });
   assertEquals(decision.pause, "end_date_passed");
+});
+
+Deno.test("spend sync: provider currency is mandatory and cannot be widened", () => {
+  const campaign = {
+    id: "c1",
+    platform: "meta" as const,
+    external_campaign_id: "ext",
+    status: "ACTIVE",
+    cap_cents: 10000,
+    ends_at: null,
+    provider_currency: null,
+  };
+  assertThrows(
+    () => decideSpendSync({ campaign, days: [] }),
+    Error,
+    "provider_currency_unresolved",
+  );
+  assertThrows(
+    () =>
+      decideSpendSync({
+        campaign: { ...campaign, provider_currency: "USD" },
+        days: [{ spend_date: "2026-10-01", spend_cents: 100, currency: "NGN" }],
+      }),
+    Error,
+    "provider_currency_mismatch",
+  );
 });
 
 Deno.test("Meta insights spend dollars → cents", () => {
@@ -251,3 +312,5 @@ Deno.test("Meta CBO lifetime uses lifetime_budget not daily_budget", async () =>
   });
   assertEquals(adSet.end_time, "2026-10-07T23:00:00+0000");
 });
+// #3697 v1.4: spend assertions now use provider_currency because Host and
+// provider minor units must never share an implicit currency authority.

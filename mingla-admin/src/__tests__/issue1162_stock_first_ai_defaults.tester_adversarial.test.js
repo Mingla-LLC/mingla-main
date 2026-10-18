@@ -30,10 +30,9 @@ describe("ISSUE-1162 — adversarial stock-first permission and disclosure bound
     assert.match(paidAds, /Higgsfield, Seedance, and Soul are retired/);
   });
 
-  it("both admin surfaces default false but retain a deliberate operator opt-in", () => {
+  it("the governed builder defaults false but retains a deliberate operator opt-in", () => {
     const builder = read("mingla-admin/src/pages/CampaignBuilderPage.jsx");
     const stepCreative = read("mingla-admin/src/components/campaign-builder/StepCreative.jsx");
-    const engine = read("mingla-admin/src/pages/AdEnginePage.jsx");
 
     assert.match(builder, /aiGenerated:\s*false,/);
     assert.match(builder, /aiGenerated:\s*creative\.aiGenerated,/);
@@ -41,10 +40,6 @@ describe("ISSUE-1162 — adversarial stock-first permission and disclosure bound
     assert.match(stepCreative, /onChange=\{\(v\) => set\(\{ aiGenerated: v \}\)\}/);
     assert.match(stepCreative, /ai_generated:\s*creative\.aiGenerated,/);
 
-    assert.match(engine, /ai_generated:\s*false,/);
-    assert.match(engine, /ai_generated:\s*form\.ai_generated,/);
-    assert.match(engine, /checked=\{form\.ai_generated\}/);
-    assert.match(engine, /onChange=\{\(v\) => setField\("ai_generated"\)\(v\)\}/);
   });
 
   it("omission and malformed values cannot become generated while booleans survive unchanged", () => {
@@ -59,7 +54,7 @@ describe("ISSUE-1162 — adversarial stock-first permission and disclosure bound
     assert.equal(normalize(true), true);
     assert.match(
       upload,
-      /const aiGenerated = typeof body\.ai_generated === "boolean" \? body\.ai_generated : false;/,
+      /const aiGenerated = typeof body\.ai_generated === "boolean"\s*\? body\.ai_generated\s*: false;/,
     );
     assert.match(upload, /ai_generated:\s*aiGenerated,/);
   });

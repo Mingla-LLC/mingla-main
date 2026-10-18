@@ -1297,8 +1297,7 @@ export const PREPARE_PROVIDER_ADAPTERS: Record<
 
 export function capabilityFor(platform: PreparationPlatform):
   | "create_and_real_preview"
-  | "create_and_approx_preview"
-  | "preview_only" {
+  | "create_and_approx_preview" {
   if (platform === "meta") return "create_and_real_preview";
   if (platform === "snapchat") return "create_and_approx_preview";
   // ISSUE-997 D1: Google video PREPARATION is wired here; create is a SEPARATE
@@ -1308,14 +1307,10 @@ export function capabilityFor(platform: PreparationPlatform):
   // gated by the admin VIDEO_CREATE_ENABLED/VIDEO_CREATE_PLATFORMS lists + the
   // create-branch READY-ref resolve), but the accurate label is set for google now.
   if (platform === "google") return "create_and_approx_preview";
-  // ISSUE-997 C NOTE: TikTok now supports video CREATE (this issue) in addition to
-  // its real provider preview (#1184), so the semantically-accurate label is
-  // "create_and_real_preview". It is intentionally LEFT as "preview_only" here to
-  // avoid a TEST-MOD on the core #1184 edge regression (issue1184_video_prepare.test.ts:30)
-  // for a purely-cosmetic label that NO code gates on (create is gated by the admin
-  // VIDEO_CREATE_ENABLED / VIDEO_CREATE_PLATFORMS lists + the create-branch READY-ref
-  // resolve, never by this string). Deferred to the orchestrator (spec §2.4).
-  return "preview_only";
+  // TikTok supports both paused video create and a provider-rendered preview.
+  // This label is descriptive rather than an authorization gate, but it still
+  // has to tell operators the same truth as the create path.
+  return "create_and_real_preview";
 }
 
 export function toPreparationState(

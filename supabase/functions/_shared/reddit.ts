@@ -1440,6 +1440,8 @@ export interface RedditCampaignBuildInput {
   endTime?: string | null;
   /** UNCONDITIONAL on CBO campaigns (GR-12); value = extra.reddit_pixel_id. */
   conversionPixelId: string;
+  /** Apple App Store numeric ID or Android package for APP_INSTALLS. */
+  appId?: string | null;
 }
 
 /**
@@ -1456,6 +1458,13 @@ export function validateRedditCampaignRules(input: RedditCampaignBuildInput): Re
   }
   const objective = normalizeRedditObjective(input.objective);
   if (!objective.ok) return objective;
+  if (objective.objective === "APP_INSTALLS" && !input.appId?.trim()) {
+    return {
+      ok: false,
+      detail: "app_id_required",
+      message: "Reddit APP_INSTALLS campaigns require the exact store app_id.",
+    };
+  }
   if (!input.fundingInstrumentId) {
     return {
       ok: false,
@@ -1543,6 +1552,9 @@ export function buildRedditCampaignBody(
     funding_instrument_id: input.fundingInstrumentId,
     is_campaign_budget_optimization: input.isCbo,
   };
+  if (objective.objective === "APP_INSTALLS") {
+    body.app_id = input.appId?.trim();
+  }
   if (input.isCbo) {
     body.goal_type = input.goalType ?? "DAILY_SPEND";
     if (input.goalValueCents !== undefined && input.goalValueCents !== null) {
@@ -1614,6 +1626,10 @@ export interface RedditAdGroupBuildInput {
   schedule?: RedditScheduleWindow[] | null;
   /** Cross-level rule: campaign bid_value set ⇒ ad-group bid_value must be null. */
   campaignHasBidValue?: boolean;
+  /** Must match the APP_INSTALLS campaign app_id. */
+  appId?: string | null;
+  /** APP_INSTALLS requires exactly one mobile OS device target. */
+  deviceOs?: "ios" | "android";
 }
 
 /**
@@ -1649,7 +1665,8 @@ export function buildRedditAdGroupBody(
         `optimization_goal "${optimizationGoal}" is not in Reddit's 28-value enum [SPEC §3.3]; CLICKS is the pixel-independent safe default.`,
     });
   }
-  let bidStrategy = input.bidStrategy ?? "MAXIMIZE_VOLUME";
+  const appDestination = input.appId !== undefined || input.deviceOs !== undefined;
+  let bidStrategy = input.bidStrategy ?? (appDestination ? "BIDLESS" : "MAXIMIZE_VOLUME");
   let bidValueMicro: number | null = null;
   if (input.bidValueCents !== undefined && input.bidValueCents !== null) {
     if (input.campaignHasBidValue) {
@@ -1687,7 +1704,7 @@ export function buildRedditAdGroupBody(
     // On Reddit the pixel id IS the ad-account id (R-P3).
     conversion_pixel_id: input.conversionPixelId,
     bid_strategy: bidStrategy,
-    bid_type: input.bidType ?? "CPC",
+    bid_type: input.bidType ?? (appDestination ? "CPM" : "CPC"),
     bid_value: bidValueMicro,
     goal_type: "DAILY_SPEND",
     // toMicro(budget_cents) — deliberately NO floor check of ours (GR-59/G-3):
@@ -1698,6 +1715,39 @@ export function buildRedditAdGroupBody(
     end_time: input.endTime ?? null,
     targeting: input.targeting,
   };
+  if (appDestination) {
+    const appId = input.appId?.trim() ?? "";
+    const appIdMatchesOs = input.deviceOs === "ios"
+      ? /^\d+$/.test(appId)
+      : input.deviceOs === "android"
+      ? /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(appId)
+      : false;
+    if (!input.appId?.trim() || !input.deviceOs) {
+      throw new AdApiError({
+        platform: "reddit",
+        code: "app_destination_invalid",
+        message:
+          "Reddit app acquisition requires the same app_id as the campaign and exactly one iOS or Android device target.",
+      });
+    }
+    if (!appIdMatchesOs) {
+      throw new AdApiError({
+        platform: "reddit",
+        code: "app_id_invalid",
+        message:
+          "Reddit app_id must be a numeric Apple App Store ID or Android package matching the selected device OS.",
+      });
+    }
+    body.app_id = appId;
+    body.targeting = {
+      ...input.targeting,
+      platforms: ["MOBILE_NATIVE"],
+      devices: [{
+        type: "MOBILE",
+        os: input.deviceOs === "ios" ? "IOS" : "ANDROID",
+      }],
+    };
+  }
   if (input.schedule && input.schedule.length > 0) body.schedule = input.schedule;
   return body;
 }
@@ -2623,6 +2673,8 @@ export async function redditCreateFullChain(
       schedule: input.adGroup.schedule,
       campaignHasBidValue: input.campaign.bidValueCents !== undefined &&
         input.campaign.bidValueCents !== null,
+      appId: input.adGroup.appId,
+      deviceOs: input.adGroup.deviceOs,
     });
     const payload = await redditRequest(
       client,

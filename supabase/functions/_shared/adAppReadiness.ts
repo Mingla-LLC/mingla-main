@@ -85,6 +85,8 @@ export interface BindingRow {
   public_identity_required: boolean;
   provider_app_id: string | null;
   provider_measurement_id: string | null;
+  /** Snapchat APP_INSTALL creative icon; absent on every other provider. */
+  provider_app_icon_media_id?: string | null;
   provider_contract_kind?:
     | "mobile_asset"
     | "app_link"

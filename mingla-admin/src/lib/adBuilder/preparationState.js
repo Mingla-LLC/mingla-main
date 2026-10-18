@@ -13,10 +13,9 @@ export const PREPARATION_ORDER = Object.freeze([
   "tiktok",
   "google",
 ]);
-// ISSUE-997 C: TikTok joins the video-create subset (paused-video wired
-// end-to-end). ISSUE-997 D2: Google joins too — the admin-ad-create-campaign
-// Google Demand Gen branch builds a PAUSED demandGenVideoResponsiveAd from a
-// READY google ref (youtube_video_id). ONLY Reddit video create stays fail-closed.
+// TikTok and Google join Meta/Snap in the prepared-video create subset. Reddit
+// is also video-creatable, but consumes the canonical hosted clip directly and
+// therefore has no provider-preparation row.
 export const VIDEO_CREATE_PLATFORMS = Object.freeze(["meta", "snapchat", "tiktok", "google"]);
 export const ACTIVE_PREPARATION_STATES = Object.freeze(["uploading", "processing"]);
 export const TERMINAL_PREPARATION_STATES = Object.freeze(["ready", "failed", "timed_out"]);
@@ -73,23 +72,11 @@ export function emptyPreparation(platform) {
       ? "create_and_real_preview"
       : platform === "snapchat"
       ? "create_and_approx_preview"
-      // ISSUE-997 D2: reconciled with the edge capabilityFor("google") default
-      // ("create_and_approx_preview" — Google exposes no video-ad preview API so
-      // preview stays approximation-only, but create IS wired). Fixes the P4
-      // divergence where the frontend labelled google "preview_only" while the edge
-      // labelled it "create_and_approx_preview".
-      // ISSUE-997 D2: reconciled with the edge capabilityFor("google") default
-      // ("create_and_approx_preview" — Google exposes no video-ad preview API so
-      // preview stays approximation-only, but create IS wired). Fixes the P4
-      // divergence where the frontend labelled google "preview_only" while the edge
-      // labelled it "create_and_approx_preview".
+      // Google exposes no video-ad preview API, so preview stays approximate
+      // even though provider-native paused create is wired.
       : platform === "google"
       ? "create_and_approx_preview"
-      // ISSUE-997 C: kept in lock-step with the edge capabilityFor("tiktok") default
-      // (still "preview_only" — see the note there). This label is cosmetic; TikTok
-      // video create is gated by VIDEO_CREATE_PLATFORMS + VIDEO_CREATE_ENABLED, not
-      // by this string. Server rows override this default anyway (normalizePreparation).
-      : "preview_only",
+      : "create_and_real_preview",
     cached: true,
     retryable: false,
     error: null,

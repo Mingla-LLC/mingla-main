@@ -184,9 +184,7 @@ export const NAV_GROUPS = [
   {
     label: "Growth",
     items: [
-      { id: "ad-engine",                 label: "Ads console",        icon: "Megaphone" },
-      { id: "campaign-builder",          label: "Campaign Builder",   icon: "PencilRuler" },
-      { id: "campaigns",                 label: "Campaigns",          icon: "Flag" },
+      { id: "ad-engine",                 label: "Ads",                icon: "Megaphone" },
     ],
   },
   {
