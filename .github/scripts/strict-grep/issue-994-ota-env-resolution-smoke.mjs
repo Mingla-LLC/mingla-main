@@ -120,6 +120,7 @@ export const SENTINELS = {
   EXPO_PUBLIC_POSTHOG_KEY: "phc_MINGLA994SENTINEL",
   EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_live_MINGLA994SENTINEL",
   EXPO_PUBLIC_GIPHY_API_KEY: "gk_MINGLA994SENTINEL",
+  EXPO_PUBLIC_ONESIGNAL_APP_ID: "4505e476-0000-4000-8000-000000000000",
   EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: "pk.MINGLA994SENTINEL",
 };
 
@@ -154,6 +155,7 @@ export const RELEASE_BOUND_MASKS = {
   EXPO_PUBLIC_APPSFLYER_IOS_APP_ID: "id0000000000",
   EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID: "com.example.mingla1732sentinel",
   EXPO_PUBLIC_GIPHY_API_KEY: "gk_MINGLA1732SENTINEL",
+  EXPO_PUBLIC_ONESIGNAL_APP_ID: "4505e476-0000-4000-8000-000000000000",
 };
 
 /** The payment key S-5 asserts on. */
@@ -550,12 +552,14 @@ function selfTest() {
     pad({
       EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_test_51TTnt1sandboxliteral",
       EXPO_PUBLIC_GIPHY_API_KEY: {},
+      EXPO_PUBLIC_ONESIGNAL_APP_ID: {},
       ...over,
     });
   const bizApplied = (over = {}) =>
     pad({
       EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: SENTINELS.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY,
       EXPO_PUBLIC_GIPHY_API_KEY: SENTINELS.EXPO_PUBLIC_GIPHY_API_KEY,
+      EXPO_PUBLIC_ONESIGNAL_APP_ID: SENTINELS.EXPO_PUBLIC_ONESIGNAL_APP_ID,
       ...over,
     });
 
@@ -584,6 +588,33 @@ function selfTest() {
     });
     expect("6b S-1 business giphy gained a fallback", r.code, 1);
     expectMsg("6b S-1 business giphy gained a fallback", r.messages, "S-1");
+  }
+  // 6c/6d (#3720) — the Host OneSignal tripwire must stay unset in the blind
+  // run and must carry the exact sentinel through app.config in the applied run.
+  {
+    const r = evaluateRuns({
+      app: "business",
+      blindExtra: bizBlind({
+        EXPO_PUBLIC_ONESIGNAL_APP_ID:
+          "4505e476-committed-literal-would-hide-a-blind-ota",
+      }),
+      appliedExtra: bizApplied(),
+    });
+    expect("6c S-1 business OneSignal gained a fallback", r.code, 1);
+    expectMsg("6c S-1 business OneSignal gained a fallback", r.messages, "S-1");
+  }
+  {
+    const r = evaluateRuns({
+      app: "business",
+      blindExtra: bizBlind(),
+      appliedExtra: bizApplied({ EXPO_PUBLIC_ONESIGNAL_APP_ID: undefined }),
+    });
+    expect("6d S-2 business OneSignal no longer emitted into extra", r.code, 1);
+    expectMsg(
+      "6d S-2 business OneSignal no longer emitted into extra",
+      r.messages,
+      "S-2",
+    );
   }
 
   // ---- vacuity, every one exit 2 ----
@@ -735,9 +766,10 @@ function selfTest() {
     process.exit(1);
   }
   console.log(
-    "#994 OTA-ENV-RESOLUTION self-test PASS (22/22: 1/4b/4c/5 clean consumer+business incl. " +
+    "#994 OTA-ENV-RESOLUTION self-test PASS (24/24: 1/4b/4c/5 clean consumer+business incl. " +
       "null and absent unset signatures; 2/6b S-1 falsifiability lost; 3 S-2 plumbing broken; " +
-      "4 S-3 degenerate A/B; 6 S-4 pinned #990 hazard changed; 7/7b/8/9 vacuity " +
+      "4 S-3 degenerate A/B; 6 S-4 pinned #990 hazard changed; 6c/6d (#3720) Host OneSignal " +
+      "literal-fallback and missing-plumbing regressions; 7/7b/8/9 vacuity " +
       "(unparseable stdout, no extra, thin extra, empty table); 10 sanitiser + EXPO_NO_DOTENV " +
       "+ sentinel plumbing; 11 every real tripwire has a sentinel; " +
       "4d/4e/11b (#1733) the SECOND consumer tripwire — the payment key gaining a literal " +

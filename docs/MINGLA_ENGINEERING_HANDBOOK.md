@@ -454,6 +454,13 @@ not absent), which is easy to skim past:
 "EXPO_PUBLIC_POSTHOG_KEY":{}     <- unset. The publish was blind. Republish with --environment production.
 ```
 
+**Do not store an `EXPO_PUBLIC_*` value needed by an OTA with EAS Secret visibility.**
+`eas update` bundles locally; Secret values are deliberately not exported to that local process, even
+when `--environment production` is present. Use Sensitive or Plain visibility instead (the value is
+already shipped to every client). The Host wrapper fails closed on a Secret required value and the
+served-manifest verifier directly checks the OneSignal app id so a push-dark OTA cannot report green
+(#3720).
+
 If that check fails, roll back first (`eas update:roll-back-to-embedded --branch production --platform
 <ios|android>`), then re-run the wrapper from the same commit. Devices that already fetched the bad
 update need TWO cold starts to escape it (#990).

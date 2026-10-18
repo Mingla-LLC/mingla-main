@@ -29,8 +29,8 @@ const hasOneSignalEnv = () =>
 /**
  * The EAS build profiles a tester or a real user actually installs.
  *
- * ONE list, module-scope, because three separate guards in this file gate on it
- * (AppsFlyer ORCH-1313, Stripe #1732, GIPHY ORCH-1116) and a fourth copy is one
+ * ONE list, module-scope, because four separate guards in this file gate on it
+ * (AppsFlyer ORCH-1313, OneSignal #3720, Stripe #1732, GIPHY ORCH-1116) and a fifth copy is one
  * refactor away from drifting. `app-mobile/app.config.js` carries the identical
  * list for the same reason — the two apps are separate Expo projects, so the
  * constant cannot be shared across them, but within a file there is exactly one.
@@ -108,6 +108,19 @@ module.exports = ({ config }) => {
   ) {
     throw new Error(
       `EXPO_PUBLIC_APPSFLYER_DEV_KEY + EXPO_PUBLIC_APPSFLYER_IOS_APP_ID + EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID are required for the ${easBuildProfile} EAS_BUILD_PROFILE build — business installs/revenue would not attribute (silent-dark). Set them in the EAS environment. [ORCH-1313]`,
+    );
+  }
+
+  // #3720: OneSignal is a public client identifier, not a secret. A release
+  // without it silently disables the SDK, which makes every push acceptance
+  // look successful at the provider while no device can receive it.
+  if (
+    easBuildProfile !== undefined &&
+    RELEASE_BOUND_EAS_PROFILES.includes(easBuildProfile) &&
+    !hasOneSignalEnv()
+  ) {
+    throw new Error(
+      `EXPO_PUBLIC_ONESIGNAL_APP_ID is required for the ${easBuildProfile} EAS_BUILD_PROFILE build — Host push delivery would be disabled. Store it as a Sensitive or Plain EAS variable, never Secret, so production OTAs can inline it. [#3720]`,
     );
   }
 
@@ -201,6 +214,12 @@ module.exports = ({ config }) => {
       EXPO_PUBLIC_SUPABASE_ANON_KEY:
         process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxbm9hanFlcnFobnZ1bG1ueXZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1MDUyNzIsImV4cCI6MjA3MzA4MTI3Mn0.p4yi9yD2RWfJ2HN4DD-dgrvXnyzhJi3g2YCouSK-hbo",
+      // #3720: EAS Update can only guarantee this public identifier reaches the
+      // running JS bundle when it is emitted into the served manifest. The
+      // OneSignal service reads this authority first and falls back to the
+      // compile-time process.env value for native/local builds.
+      EXPO_PUBLIC_ONESIGNAL_APP_ID:
+        process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? null,
       // Cycle B2a Path C V3 — Stripe Connect publishable key. Used by the
       // Mingla-hosted connect-onboarding page (Path B host) when initialising
       // @stripe/connect-js. Publishable keys are public-by-design (ship in client

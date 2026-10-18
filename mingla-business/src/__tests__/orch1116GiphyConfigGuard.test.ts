@@ -49,6 +49,8 @@ const FAKE_APPSFLYER_ENV = {
   EXPO_PUBLIC_APPSFLYER_DEV_KEY: "af_dev_key_placeholder",
   EXPO_PUBLIC_APPSFLYER_IOS_APP_ID: "id0000000000",
   EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID: "com.mingla.business.placeholder",
+  EXPO_PUBLIC_ONESIGNAL_APP_ID:
+    "4505e476-0000-4000-8000-000000000000",
 } as const;
 
 const ORIGINAL_ENV = process.env;

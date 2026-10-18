@@ -32,6 +32,7 @@
 #   EXPO_PUBLIC_SENTRY_DSN             REQUIRED  https:// + .ingest.  (app/_layout.tsx:122, static read)
 #   EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY REQUIRED  pk_live_             (app.config.js -> extra; the #990 brick)
 #   EXPO_PUBLIC_GIPHY_API_KEY          REQUIRED  none                 (app.config.js -> extra; GIF tab)
+#   EXPO_PUBLIC_ONESIGNAL_APP_ID       REQUIRED  4505e476-            (app.config.js -> extra; Host push)
 #   EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN    ADVISORY  pk.                  (app.config.js -> extra; trip-page map)
 #   EXPO_PUBLIC_MIXPANEL_TOKEN         ADVISORY  none                 (mixpanelService.ts:63, static read)
 #   EXPO_PUBLIC_POSTHOG_KEY            ADVISORY  phc_                 (app.config.js carries a committed
@@ -164,6 +165,8 @@ key_consequence() {
       echo "the app would fall back to the committed pk_test_ sandbox literal and brick on the splash screen (#990)" ;;
     EXPO_PUBLIC_GIPHY_API_KEY)
       echo "the cover-picker GIF tab would silently degrade" ;;
+    EXPO_PUBLIC_ONESIGNAL_APP_ID)
+      echo "the OneSignal SDK would be disabled and Host push delivery would silently stop" ;;
     EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN)
       echo "the public trip page would hide its map" ;;
     EXPO_PUBLIC_MIXPANEL_TOKEN)
@@ -179,10 +182,10 @@ key_consequence() {
 #
 # ORDER IS FIXED AND MAY NOT BE REARRANGED:
 #   1 PRESENCE (from the single listing above)
-#   2 VALUE READ
-#   3 NON-EMPTY (a present-but-empty value is not presence)
-#   4 PREFIX (only when the value was actually readable)
-#   5 UNREADABLE-VALUE HONESTY (never report a prefix check that did not run)
+#   2 VISIBILITY (Secret values cannot reach a locally bundled OTA)
+#   3 VALUE READ
+#   4 NON-EMPTY / UNREADABLE-VALUE HONESTY
+#   5 PREFIX (only when the value was actually readable)
 #   6 LOG THE PREFIX (never the secret)
 preflight_key() {
   KEY_NAME="$1"
@@ -206,7 +209,22 @@ preflight_key() {
     return 0
   fi
 
-  # 2 — VALUE READ. A secret-visibility variable cannot be read back at all.
+  # 2 — VISIBILITY. `eas update` runs locally, so EAS Secret variables are not
+  # exported to the bundle process even with `--environment production`.
+  # EXPO_PUBLIC_* values are client-readable by definition; a required one with
+  # Secret visibility is therefore an absent value wearing a reassuring name.
+  if grep -q "^${KEY_NAME}=\*\*\*\*\*" "${ENVLIST}"; then
+    if [ "${KEY_CLASS}" = "required" ]; then
+      echo "ABORT [#3720 preflight] ${KEY_NAME} has EAS Secret visibility." >&2
+      echo "       Production OTA bundling runs locally and cannot read Secret variables, so $(key_consequence "${KEY_NAME}")." >&2
+      echo "       This is a public client value. Recreate it as Sensitive or Plain, then re-run." >&2
+      exit 1
+    fi
+    echo "[preflight] WARN ${KEY_NAME} has EAS Secret visibility and will not reach this OTA — $(key_consequence "${KEY_NAME}"). Continuing (advisory)."
+    return 0
+  fi
+
+  # 3 — VALUE READ.
   KEY_VALUE=""
   KEY_READABLE="no"
   if ${MINGLA_EAS_BIN} env:get production --variable-name "${KEY_NAME}" --non-interactive >"${VALLOG}" 2>"${ERRLOG}"; then
@@ -218,14 +236,9 @@ preflight_key() {
     esac
   fi
 
-  # 5 — UNREADABLE-VALUE HONESTY (checked here so 3 and 4 only run on real values).
+  # 4 — NON-EMPTY / UNREADABLE-VALUE HONESTY.
   if [ "${KEY_READABLE}" != "yes" ]; then
-    if grep -q "^${KEY_NAME}=\*\*\*\*\*" "${ENVLIST}"; then
-      echo "[preflight] ${KEY_NAME}: PRESENT, visibility=secret — value unreadable, prefix NOT verified."
-      return 0
-    fi
     if [ "${KEY_CLASS}" = "required" ]; then
-      # 3 — NON-EMPTY. Present but empty is not presence.
       echo "ABORT [#994 preflight] ${KEY_NAME} is present in the EAS 'production' environment but its value is EMPTY." >&2
       echo "       An empty value ships exactly like an absent one: $(key_consequence "${KEY_NAME}")." >&2
       echo "       Fix the value in the EAS 'production' environment, then re-run." >&2
@@ -235,7 +248,7 @@ preflight_key() {
     return 0
   fi
 
-  # 4 — PREFIX.
+  # 5 — PREFIX.
   if [ "${KEY_PREFIX}" != "-" ]; then
     case "${KEY_VALUE}" in
       "${KEY_PREFIX}"*) : ;;
@@ -277,6 +290,7 @@ preflight_key() {
 preflight_key EXPO_PUBLIC_SENTRY_DSN             required https://
 preflight_key EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY required pk_live_
 preflight_key EXPO_PUBLIC_GIPHY_API_KEY          required -
+preflight_key EXPO_PUBLIC_ONESIGNAL_APP_ID       required 4505e476-
 preflight_key EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN    advisory pk.
 preflight_key EXPO_PUBLIC_MIXPANEL_TOKEN         advisory -
 preflight_key EXPO_PUBLIC_POSTHOG_KEY            advisory phc_
