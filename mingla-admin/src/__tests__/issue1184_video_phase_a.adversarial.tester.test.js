@@ -402,7 +402,9 @@ describe("ISSUE-1184 adversarial [structural]: page/preview wiring enforces the 
   it("the Review count is gated on the buildable (READY) subset, not raw allocations", () => {
     assert.match(
       page,
-      /allocations\.filter\(\(a\) => creativePartition\.buildable\.includes\(a\.platform\)\)/,
+      // [TEST-MOD-APPROVED #3697] Prettier may wrap this predicate; keep the
+      // guard semantic so Review still receives only video-ready allocations.
+      /allocations\.filter\(\(a\)\s*=>\s*creativePartition\.buildable\.includes\(a\.platform\),?\s*\)/,
     );
   });
 

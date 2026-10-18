@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3697_v14_control_plane.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3697-v14-02-control-plane",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

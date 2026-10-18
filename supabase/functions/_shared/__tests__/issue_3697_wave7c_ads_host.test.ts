@@ -68,6 +68,18 @@ Deno.test("Wave 7c: Host Ads Ari tools registered (distinct from Blast)", () => 
   assert(READ_ONLY_TOOL_NAMES.has("get_ad_campaign_report"));
   assert(MONEY_CONFIRM_TOOLS.has("approve_ad_plan"));
   assert(MONEY_CONFIRM_TOOLS.has("end_ad_campaign"));
+  const propose = findTool("propose_ad_plan");
+  const proposeRequired = Array.isArray(propose?.parameters.required)
+    ? propose.parameters.required as string[]
+    : [];
+  for (
+    const field of ["rights_confirmed", "rights_basis", "ai_generated"]
+  ) {
+    assert(
+      proposeRequired.includes(field),
+      `propose_ad_plan must require ${field}`,
+    );
+  }
   const approve = findTool("approve_ad_plan");
   assertEquals(approve?.name, "approve_ad_plan");
   const required = Array.isArray(approve?.parameters.required)
@@ -83,9 +95,14 @@ Deno.test("Wave 7c: host-ad-campaign edge + ad-credit withdraw surface exist", a
   assert(host.includes('owner_kind: "host"'));
   assert(host.includes('action === "launch"'));
   assert(host.includes("campaign_spend"));
-  assert(host.includes("biz_can_view_payments_for_brand"));
+  assert(host.includes("ad_can_host_action"));
+  assert(host.includes("p_action: requiredPermission"));
   assert(host.includes("campaign_never_launched"));
   assert(host.includes("campaign_not_pausable"));
+  assert(host.includes("provider_spend_by_currency"));
+  assert(host.includes("host_spend_equivalent_cents"));
+  assert(host.includes("ad_fx_convert_frozen_minor"));
+  assertEquals(host.includes("spend_total_cents"), false);
   const edge = await Deno.readTextFile(
     new URL("../../ad-credit/index.ts", import.meta.url),
   );
@@ -111,7 +128,13 @@ Deno.test("Wave 7c: host-ad-campaign edge + ad-credit withdraw surface exist", a
   const builder = await Deno.readTextFile(
     new URL("../../admin-ad-create-campaign/index.ts", import.meta.url),
   );
-  assert(builder.includes("biz_can_manage_payments_for_brand"));
+  // [TEST-MOD-APPROVED #3697] v1.4 keeps plan/fund/launch independent:
+  // validate-only accepts any of those roles, while real provider creation is
+  // launch-authorized and never inherits generic payout authority.
+  assert(builder.includes('supabase.rpc("ad_can_host_action"'));
+  assert(builder.includes('["plan", "fund", "launch"]'));
+  assert(builder.includes('["launch"]'));
+  assertEquals(builder.includes("biz_can_manage_payments_for_brand"), false);
   assert(builder.includes("destination_brand_mismatch"));
   assert(builder.includes("creative_brand_mismatch"));
   assert(builder.includes("host_video_creative_required"));

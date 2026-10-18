@@ -163,7 +163,16 @@ describe("927-QA — no client-side status key, ever (create-paused is server-ow
 describe("927-QA — cross-channel field leaks", () => {
   it("reddit/tiktok/snapchat payloads never carry another channel's fields", () => {
     for (const platform of ["reddit", "tiktok", "snapchat"]) {
-      const flat = JSON.stringify(buildCreatePayload(platform, baseState));
+      const payload = buildCreatePayload(platform, baseState);
+      // [TEST-MOD-APPROVED #3697] v1.4 carries canonical plan-level intent in
+      // parallel with the compiled provider rendering. Cross-platform leakage
+      // is judged on the provider-owned fields, not the immutable source plan.
+      const flat = JSON.stringify({
+        targeting: payload.targeting,
+        creative: payload.creative,
+        keywords: payload.keywords,
+        special_ad_categories: payload.special_ad_categories,
+      });
       for (const foreign of [
         "call_to_action_type", // Meta-only
         "googleHeadlines",
@@ -176,12 +185,14 @@ describe("927-QA — cross-channel field leaks", () => {
     }
   });
 
-  it("reddit payload carries no gender either (unrepresentable client-side; the server serializer owns genders)", () => {
+  it("reddit provider targeting carries only its platform-native gender enum", () => {
     const p = buildCreatePayload("reddit", {
       ...baseState,
-      audience: { ...baseState.audience, gender: "female" },
+      audience: { ...baseState.audience, gender: "women" },
     });
-    assert.ok(!JSON.stringify(p).includes("gender"), "reddit payload must not smuggle gender");
+    // [TEST-MOD-APPROVED #3697] #989 established the Reddit serializer contract;
+    // v1.4 preserves that exact compiled enum while canonical intent stays separate.
+    assert.deepEqual(p.targeting.genders, ["FEMALE"]);
   });
 });
 

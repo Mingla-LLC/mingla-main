@@ -2,8 +2,8 @@
  * admin-ad-spend-sync — toward #3697 Wave 2 (#3701 / #3705).
  *
  * Hourly worker (pg_cron): pull platform daily spend into ad_spend_daily,
- * pause ACTIVE campaigns at 98% of cap_cents, after ends_at, or when their
- * public destination is no longer advertisable.
+ * pause ACTIVE campaigns at 98% of the immutable provider-account cap, after
+ * ends_at, or when their public destination is no longer advertisable.
  *
  * Auth: service-role Bearer (cron) OR active admin JWT (manual refresh).
  * verify_jwt = false so the cron POST is accepted; in-code gate is mandatory.
@@ -31,7 +31,9 @@ import {
   parseRedditReportSpend,
   parseSnapchatStatsSpend,
   parseTikTokReportSpend,
+  providerCapCents,
   type SpendDayRow,
+  type SpendSyncDecision,
   sumSpendCents,
 } from "../_shared/adSpendSync.ts";
 import { metaGraph, resolveMetaClient } from "../_shared/meta.ts";
@@ -311,7 +313,8 @@ async function pauseCampaignForReason(
       provider_response: {
         reason,
         total_spend_cents: totalSpendCents,
-        cap_cents: target.cap_cents,
+        provider_cap_cents: providerCapCents(target),
+        provider_currency: target.provider_currency,
       },
     });
     if (auditErr) {
@@ -327,6 +330,102 @@ async function pauseCampaignForReason(
       detail: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+async function reconcileStoppedCampaign(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  target: CampaignSpendTarget,
+  connection: AdConnectionRow,
+  totalProviderSpendCents: number,
+): Promise<Record<string, unknown> | null> {
+  const { data: settlement, error: settlementError } = await supabase
+    .from("ad_campaign_settlements")
+    .select("*")
+    .eq("campaign_id", target.id)
+    .maybeSingle();
+  if (settlementError || !settlement) return null;
+  if (
+    settlement.state === "settled" || settlement.state === "attention_required"
+  ) {
+    return { settlement: settlement.state };
+  }
+
+  if (
+    settlement.state === "ready_to_settle" &&
+    Number(settlement.final_provider_spend_cents) === totalProviderSpendCents
+  ) {
+    const settleAfter = Date.parse(String(settlement.settle_after ?? ""));
+    if (Number.isFinite(settleAfter) && Date.now() >= settleAfter) {
+      const { data, error } = await supabase.rpc(
+        "ad_finalize_campaign_settlement",
+        {
+          p_campaign_id: target.id,
+          // A multi-provider plan has one independently finalizing campaign
+          // per provider. Key settlement by both immutable plan and campaign;
+          // sharing one key could make the first provider suppress the rest.
+          p_idempotency_key: `settlement:${settlement.plan_hash}:${target.id}`,
+          p_now: new Date().toISOString(),
+        },
+      );
+      return error
+        ? { settlement: "finalize_failed", detail: error.message }
+        : { settlement: data?.state ?? "ready_to_settle" };
+    }
+    return { settlement: "awaiting_finality_window" };
+  }
+
+  let providerStatus: string;
+  try {
+    const status = await getAdapter(target.platform).getStatus(
+      connection,
+      "campaign",
+      target.external_campaign_id,
+    );
+    providerStatus = String(status.effectiveStatus ?? "").toUpperCase();
+  } catch (error) {
+    return {
+      settlement: "provider_status_check_failed",
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+  if (providerStatus !== "PAUSED") {
+    return {
+      settlement: "provider_stop_pending",
+      provider_status: providerStatus,
+    };
+  }
+  const { data: campaign } = await supabase.from("ad_campaigns")
+    .select("plan_version_id, plan_hash, platform, external_campaign_id")
+    .eq("id", target.id).maybeSingle();
+  if (!campaign?.plan_version_id || !campaign?.plan_hash) {
+    return { settlement: "legacy_campaign_reconciliation_required" };
+  }
+  await supabase.rpc("ad_record_provider_attempt", {
+    p_plan_version_id: campaign.plan_version_id,
+    p_plan_hash: campaign.plan_hash,
+    p_platform: target.platform,
+    p_command: "stop",
+    p_idempotency_key: `stop:${campaign.plan_hash}:${target.platform}`,
+    p_state: "succeeded",
+    p_external_ids: { campaign_id: target.external_campaign_id },
+    p_provider_response: { status: providerStatus },
+    p_error_detail: null,
+  });
+  const { data, error } = await supabase.rpc("ad_confirm_campaign_stop", {
+    p_campaign_id: target.id,
+    p_final_provider_spend_cents: totalProviderSpendCents,
+    p_provider_currency: target.provider_currency,
+    p_final_spend_observed_at: new Date().toISOString(),
+    p_provider_evidence: {
+      provider_status: providerStatus,
+      source: "admin-ad-spend-sync",
+    },
+    p_finality_delay: "24 hours",
+  });
+  return error
+    ? { settlement: "confirmation_failed", detail: error.message }
+    : { settlement: data?.state ?? "ready_to_settle" };
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -356,7 +455,7 @@ serve(async (req: Request): Promise<Response> => {
   let query = supabase
     .from("ad_campaigns")
     .select(
-      "id, platform, external_campaign_id, status, cap_cents, ends_at, currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug",
+      "id, platform, external_campaign_id, status, cap_cents, currency, provider_budget_cents, ends_at, provider_currency, connection_id, dest_page_type, dest_brand_slug, dest_entity_slug",
     )
     .in("status", ["ACTIVE", "PAUSED"])
     .order("status_synced_at", { ascending: true, nullsFirst: true })
@@ -386,8 +485,14 @@ serve(async (req: Request): Promise<Response> => {
       external_campaign_id: String(row.external_campaign_id ?? ""),
       status: String(row.status ?? ""),
       cap_cents: typeof row.cap_cents === "number" ? row.cap_cents : null,
+      currency: typeof row.currency === "string" ? row.currency : null,
+      provider_budget_cents: typeof row.provider_budget_cents === "number"
+        ? row.provider_budget_cents
+        : null,
       ends_at: typeof row.ends_at === "string" ? row.ends_at : null,
-      currency: typeof row.currency === "string" ? row.currency : "USD",
+      provider_currency: typeof row.provider_currency === "string"
+        ? row.provider_currency
+        : null,
     };
     if (!target.external_campaign_id) {
       results.push({ campaign_id: target.id, skipped: "no_external_id" });
@@ -395,8 +500,45 @@ serve(async (req: Request): Promise<Response> => {
       continue;
     }
 
+    if (
+      typeof target.provider_currency !== "string" ||
+      !/^[A-Z]{3}$/.test(target.provider_currency.trim().toUpperCase())
+    ) {
+      const cumulative = await loadCumulativeSpendCents(supabase, target.id);
+      if (target.status === "ACTIVE" && cumulative.ok) {
+        const pauseResult = await pauseCampaignForReason(
+          supabase,
+          target,
+          row.connection_id,
+          "provider_currency_unresolved",
+          cumulative.cents,
+        );
+        if (pauseResult.ok) paused += 1;
+        results.push({
+          campaign_id: target.id,
+          ...(pauseResult.ok
+            ? { paused: "provider_currency_unresolved" }
+            : { pause_failed: pauseResult.detail }),
+          total_spend_cents: cumulative.cents,
+        });
+      } else {
+        results.push({
+          campaign_id: target.id,
+          error: cumulative.ok
+            ? "provider_currency_unresolved"
+            : cumulative.detail,
+          retryable: true,
+        });
+        await touchSpendSyncWatermark(supabase, target.id);
+      }
+      continue;
+    }
+
     if (target.status === "ACTIVE") {
-      let destinationPause: "destination_unavailable" | "destination_check_failed" | null = null;
+      let destinationPause:
+        | "destination_unavailable"
+        | "destination_check_failed"
+        | null = null;
       try {
         await resolveAdDestination(supabase, {
           page_type: row.dest_page_type,
@@ -448,6 +590,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     let days: SpendDayRow[] = [];
+    let spendConnection: AdConnectionRow | null = null;
     let fetchError: string | null = null;
     let upsertError: string | null = null;
     try {
@@ -458,6 +601,7 @@ serve(async (req: Request): Promise<Response> => {
         .maybeSingle();
       if (!conn) throw new AdNotConnectedError(platform as Platform);
       const connection = conn as AdConnectionRow;
+      spendConnection = connection;
       if (platform === "meta") {
         days = await fetchMetaSpendDays(
           connection,
@@ -495,7 +639,38 @@ serve(async (req: Request): Promise<Response> => {
       days = [];
     }
 
-    const draft = decideSpendSync({ campaign: target, days });
+    let draft: SpendSyncDecision;
+    try {
+      draft = decideSpendSync({ campaign: target, days });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      const cumulative = await loadCumulativeSpendCents(supabase, target.id);
+      if (target.status === "ACTIVE" && cumulative.ok) {
+        const pauseResult = await pauseCampaignForReason(
+          supabase,
+          target,
+          row.connection_id,
+          reason,
+          cumulative.cents,
+        );
+        if (pauseResult.ok) paused += 1;
+        results.push({
+          campaign_id: target.id,
+          ...(pauseResult.ok
+            ? { paused: reason }
+            : { pause_failed: pauseResult.detail }),
+          total_spend_cents: cumulative.cents,
+        });
+      } else {
+        results.push({
+          campaign_id: target.id,
+          error: cumulative.ok ? reason : cumulative.detail,
+          retryable: true,
+        });
+        await touchSpendSyncWatermark(supabase, target.id);
+      }
+      continue;
+    }
     if (draft.upserts.length > 0) {
       const { error: upErr } = await supabase.from("ad_spend_daily").upsert(
         draft.upserts,
@@ -522,13 +697,21 @@ serve(async (req: Request): Promise<Response> => {
       continue;
     }
 
+    const settlementResult = spendConnection
+      ? await reconcileStoppedCampaign(
+        supabase,
+        target,
+        spendConnection,
+        cumulative.cents,
+      )
+      : null;
+
     // Fail closed on any spend-fetch outage for capped ACTIVE campaigns:
     // stale ad_spend_daily must not keep delivery alive without a fresh read.
     if (
       fetchError &&
       target.status === "ACTIVE" &&
-      typeof target.cap_cents === "number" &&
-      target.cap_cents > 0
+      providerCapCents(target) !== null
     ) {
       const pauseResult = await pauseCampaignForReason(
         supabase,
@@ -543,6 +726,7 @@ serve(async (req: Request): Promise<Response> => {
           pause_failed: pauseResult.detail,
           fetch_error: fetchError,
           total_spend_cents: cumulative.cents,
+          ...(settlementResult ?? {}),
           ...(upsertError ? { upsert_error: upsertError } : {}),
         });
         await touchSpendSyncWatermark(supabase, target.id);
@@ -589,6 +773,7 @@ serve(async (req: Request): Promise<Response> => {
         campaign_id: target.id,
         paused: decision.pause,
         total_spend_cents: decision.total_spend_cents,
+        ...(settlementResult ?? {}),
         days: decision.upserts.length,
         ...(fetchError ? { fetch_error: fetchError } : {}),
         ...(upsertError ? { upsert_error: upsertError } : {}),
@@ -598,6 +783,7 @@ serve(async (req: Request): Promise<Response> => {
         campaign_id: target.id,
         error: upsertError ?? fetchError,
         total_spend_cents: decision.total_spend_cents,
+        ...(settlementResult ?? {}),
         ...(fetchError && upsertError ? { fetch_error: fetchError } : {}),
       });
       await touchSpendSyncWatermark(supabase, target.id);
@@ -605,6 +791,7 @@ serve(async (req: Request): Promise<Response> => {
       results.push({
         campaign_id: target.id,
         total_spend_cents: decision.total_spend_cents,
+        ...(settlementResult ?? {}),
         days: decision.upserts.length,
       });
       // Rotate the 80-row sweep: every attempted row advances the watermark.

@@ -41,6 +41,9 @@ const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
   "zero_priced_remaining",
   "payment_method",
   "installment_id",
+  "ad_budget_cents",
+  "ad_daily_budget_cents",
+  "ad_platforms",
 ]);
 
 export function verifiedProposalArgs(

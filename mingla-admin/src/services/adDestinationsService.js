@@ -4,7 +4,7 @@
  * one availability authority. Canonical host matches PRODUCTION_BUSINESS_WEB_ORIGIN.
  */
 
-import { supabase } from "../lib/supabase";
+import { invokeWithRefresh, supabase } from "../lib/supabase";
 
 /**
  * The public-web origin the DEPLOYED create endpoint resolves and persists
@@ -78,9 +78,76 @@ export async function listAdvertisablePages({
   }));
   return {
     rows,
-    total: raw[0]?.total_count != null ? Number(raw[0].total_count) : rows.length,
+    total:
+      raw[0]?.total_count != null ? Number(raw[0].total_count) : rows.length,
     pageSize: PAGE_SIZE,
   };
+}
+
+/**
+ * Issue #3697 v1.4 — registry-owned native app destinations. Readiness is
+ * resolved server-side for the exact currently selected providers; the client
+ * cannot make a stale or uncertified app target selectable.
+ */
+export async function listNativeAppDestinations({
+  families = ["explorer_app", "host_app"],
+  platforms = [],
+  certificationMode = false,
+} = {}) {
+  const responses = await Promise.all(
+    families.map((destinationFamily) =>
+      invokeWithRefresh("ad-plan", {
+        body: {
+          action: "list_destinations",
+          destination_family: destinationFamily,
+          platforms,
+          ...(certificationMode ? { certification_mode: true } : {}),
+        },
+      }),
+    ),
+  );
+  const failed = responses.find(({ error }) => error);
+  if (failed) {
+    throw new Error(
+      `App destination list failed: ${failed.error?.message ?? "unknown_error"}`,
+    );
+  }
+  return responses.flatMap(({ data }) =>
+    (data?.destinations ?? []).map((row) => {
+      const resolved = row.resolved_destination ?? {};
+      const blockedProviders = (row.provider_readiness ?? [])
+        .filter((provider) => provider.ready !== true)
+        .map((provider) => provider.platform);
+      return {
+        id: row.id,
+        title: row.title,
+        slug: row.destination_key,
+        brand_slug: "mingla",
+        brand_name: "Mingla",
+        cover_media_url: null,
+        city: null,
+        master_start_at: null,
+        page_type: row.destination_family,
+        app_key: row.app_key,
+        os: row.os,
+        store_identifier: resolved.store_identifier ?? null,
+        appsflyer_app_id: resolved.appsflyer_app_id ?? null,
+        dest_url: resolved.canonical_url ?? row.canonical_url,
+        onelink_url: resolved.onelink_url ?? row.canonical_url,
+        availability: row.ready === true ? "available" : "unavailable",
+        availability_reason:
+          row.ready === true
+            ? null
+            : blockedProviders.length > 0
+              ? `Certification or fresh readiness required: ${blockedProviders.join(", ")}`
+              : (row.readiness_code ?? "Select at least one ready provider"),
+        result_kind: row.result_kind,
+        objective: resolved.objective ?? "app_install",
+        measurement_event: resolved.measurement_event ?? "install",
+        provider_readiness: row.provider_readiness ?? [],
+      };
+    }),
+  );
 }
 
 /** @deprecated prefer listAdvertisablePages({ types: ['event'] }) */

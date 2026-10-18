@@ -64,9 +64,22 @@ describe("adRoi — no fabricated ROAS", () => {
   });
 
   it("toCampaignRoiView: WITH a real spend → ROAS + cost-per-result computed", () => {
-    const v = toCampaignRoiView({ conversions: 4, value_cents: { GBP: 8000 }, spend_cents: 4000, by_platform: [] });
+    const v = toCampaignRoiView(
+      { conversions: 4, value_cents: { GBP: 8000 }, spend_cents: 4000, by_platform: [] },
+      { spendCurrency: "GBP" },
+    );
     assert.equal(v.roas, 2); // 8000 / 4000
     assert.equal(v.costPerResultCents, 1000); // 4000 / 4
+  });
+
+  it("toCampaignRoiView: never divides attributed value by another currency's spend", () => {
+    const v = toCampaignRoiView(
+      { conversions: 4, value_cents: { NGN: 800000 }, spend_cents: 4000, by_platform: [] },
+      { spendCurrency: "USD" },
+    );
+    assert.equal(v.spendCurrency, "USD");
+    assert.equal(v.roas, null);
+    assert.equal(v.costPerResultCents, 1000);
   });
 
   it("toCampaignRoiView: null / unauthorized → honest empty (no data, no numbers)", () => {
@@ -99,6 +112,6 @@ describe("wiring — adEngineService + CampaignsPage", () => {
     assert.ok(detailIdx > -1 && roiIdx > detailIdx, "ROI panel must render below Campaign detail");
     // Honest "—" for ROAS / spend when there is no real spend figure.
     assert.ok(page.includes("roi.roas === null ? \"—\""));
-    assert.ok(page.includes("roi.spendCents === null ? \"—\""));
+    assert.match(page, /roi\.spendCents\s*===\s*null[\s\S]{0,80}\?\s*"—"/);
   });
 });

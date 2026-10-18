@@ -21,7 +21,11 @@
  */
 
 import { platformsForGoals } from "./goals.js";
-import { channelFloorCents, floorLabel } from "./budgetRules.js";
+import {
+  channelFloorCents,
+  floorLabel,
+  formatBudgetMinor,
+} from "./budgetRules.js";
 
 export const ALL_PLATFORMS = ["meta", "tiktok", "snapchat", "google", "reddit"];
 
@@ -105,6 +109,11 @@ export function planChannels(input) {
       connection: connections[platform] ?? null,
       metaGoal,
     });
+    const connectionCurrency =
+      typeof connections[platform]?.currency === "string" &&
+      /^[A-Z]{3}$/.test(connections[platform].currency.trim().toUpperCase())
+        ? connections[platform].currency.trim().toUpperCase()
+        : null;
     const row = {
       platform,
       label: PLATFORM_LABELS[platform],
@@ -112,7 +121,8 @@ export function planChannels(input) {
       excludedReason: null,
       amber: null,
       floorCents,
-      floorLabel: floorLabel(platform, floorCents),
+      currency: connectionCurrency,
+      floorLabel: floorLabel(platform, floorCents, connectionCurrency),
     };
 
     // 1. Create-endpoint gap — the most structural gate.
@@ -153,14 +163,29 @@ export function planChannels(input) {
       return row;
     }
 
-    // 5. Budget floor (only once a budget is entered).
-    if (totalDailyCents > 0 && floorCents !== null && totalDailyCents < floorCents) {
+    // 5. TikTok/Snap/Reddit fixed minimums are certified only for USD provider
+    // accounts. A connected non-USD account cannot reuse those minor-unit
+    // numbers under a different label.
+    if (
+      ["tiktok", "snapchat", "reddit"].includes(platform) &&
+      connectionCurrency !== null &&
+      connectionCurrency !== "USD"
+    ) {
       row.excludedReason =
-        `At $${(totalDailyCents / 100).toFixed(2)}/day we're leaving ${PLATFORM_LABELS[platform]} out — its minimum is ${row.floorLabel}, and we'd rather put your money where it can actually run.`;
+        `${PLATFORM_LABELS[platform]}'s minimum budget is not certified for ${connectionCurrency} on this account.`;
       return row;
     }
 
-    // 6. Advanced allowlist (narrow-only).
+    // 6. Budget floor (only once a budget is entered). Missing/mixed provider
+    // currency is a separate plan-level blocker; this reason never invents a
+    // symbol while that authority is unresolved.
+    if (totalDailyCents > 0 && floorCents !== null && totalDailyCents < floorCents) {
+      row.excludedReason =
+        `At ${formatBudgetMinor(connectionCurrency, totalDailyCents)}/day we're leaving ${PLATFORM_LABELS[platform]} out — its minimum is ${row.floorLabel}, and we'd rather put your money where it can actually run.`;
+      return row;
+    }
+
+    // 7. Advanced allowlist (narrow-only).
     if (Array.isArray(allowlist) && !allowlist.includes(platform)) {
       row.excludedReason = "Excluded by the Advanced channel allowlist.";
       return row;
@@ -248,7 +273,7 @@ export function splitBudget({ totalDailyCents, channelRows, strategy = "auto" })
   const ordered = [...eligible].sort(
     (a, b) => PRIORITY.indexOf(a.platform) - PRIORITY.indexOf(b.platform),
   );
-  const viability = (row) => Math.max(row.floorCents ?? 0, 500); // ≥$5/day to plausibly learn
+  const viability = (row) => Math.max(row.floorCents ?? 0, 500); // ≥5 major account-currency units/day to plausibly learn
 
   if (strategy === "concentrate") {
     return [{ platform: ordered[0].platform, dailyCents: totalDailyCents }];
@@ -290,7 +315,7 @@ export function splitBudget({ totalDailyCents, channelRows, strategy = "auto" })
 
 /**
  * ISSUE-979 Bug 4 [Campaign Builder correctness] — the channels that
- * planChannels marked ELIGIBLE but splitBudget funded at $0 (dropped from the
+ * planChannels marked ELIGIBLE but splitBudget left unfunded (dropped from the
  * allocation entirely because the total can't jointly fund them at each
  * channel's learning minimum, or because Concentrate puts everything on the top
  * channel). The wizard used to leave these silent — the operator saw a green,
@@ -305,18 +330,18 @@ export function splitBudget({ totalDailyCents, channelRows, strategy = "auto" })
  * @param {string} [input.strategy]     the split strategy in effect.
  * @returns {Array<{platform, label, viabilityCents, reason}>}
  */
-export function unfundedEligibleChannels({ channelRows = [], allocations = [], totalDailyCents = 0, strategy = "auto" }) {
+export function unfundedEligibleChannels({ channelRows = [], allocations = [], totalDailyCents = 0, strategy = "auto", currency = null }) {
   if (!totalDailyCents || totalDailyCents <= 0) return [];
   const fundedSet = new Set((allocations ?? []).map((a) => a.platform));
-  const totalLabel = `$${(totalDailyCents / 100).toFixed(2)}/day`;
+  const totalLabel = `${formatBudgetMinor(currency, totalDailyCents)}/day`;
   return (channelRows ?? [])
     .filter((r) => r.eligible && !fundedSet.has(r.platform))
     .map((r) => {
       const viabilityCents = Math.max(r.floorCents ?? 0, 500); // mirrors splitBudget's viability
-      const viabilityLabel = `$${(viabilityCents / 100).toFixed(2)}/day`;
+      const viabilityLabel = `${formatBudgetMinor(currency, viabilityCents)}/day`;
       const reason = strategy === "concentrate"
-        ? `Concentrate funds only the top channel, so ${r.label} gets $0/day. Switch to Auto or Diversify, or raise the budget, to fund it.`
-        : `At ${totalLabel} the plan can't also fund ${r.label} at its ~${viabilityLabel} learning minimum, so it gets $0/day. Raise the budget or drop a channel to include it.`;
+        ? `Concentrate funds only the top channel, so ${r.label} receives no daily budget. Switch to Auto or Diversify, or raise the budget, to fund it.`
+        : `At ${totalLabel} the plan can't also fund ${r.label} at its ~${viabilityLabel} learning minimum, so it receives no daily budget. Raise the budget or drop a channel to include it.`;
       return { platform: r.platform, label: r.label, viabilityCents, reason };
     });
 }

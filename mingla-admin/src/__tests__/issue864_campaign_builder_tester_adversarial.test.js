@@ -42,7 +42,12 @@ import {
   planChannels,
   splitBudget,
 } from "../lib/adBuilder/channelPlan.js";
-import { GOALS, platformsForGoal, platformsForGoals, visibleGoals } from "../lib/adBuilder/goals.js";
+import {
+  GOALS,
+  platformsForGoal,
+  platformsForGoals,
+  visibleGoals,
+} from "../lib/adBuilder/goals.js";
 import {
   channelFloorCents,
   frequencyCapAllowed,
@@ -59,9 +64,16 @@ import {
   runPolicyPrecheck,
   validateSpecialAdCategory,
 } from "../lib/adBuilder/policyLinter.js";
-import { buildCreatePayload, dollarsToCents, suggestCampaignName } from "../lib/adBuilder/payload.js";
+import {
+  buildCreatePayload,
+  dollarsToCents,
+  suggestCampaignName,
+} from "../lib/adBuilder/payload.js";
 import { buildLaunchSummary } from "../lib/adBuilder/launchSummary.js";
-import { mapReviewDetail, DELIVERY_BADGE_VARIANTS } from "../lib/adBuilder/reviewDetailMap.js";
+import {
+  mapReviewDetail,
+  DELIVERY_BADGE_VARIANTS,
+} from "../lib/adBuilder/reviewDetailMap.js";
 import { validateAudience } from "../lib/adBuilder/audienceRules.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -73,72 +85,187 @@ const read = (p) => fs.readFileSync(p, "utf8");
 
 describe("copy caps — exact boundaries", () => {
   it("TikTok: exactly 100 passes, 101 hard-rejects", () => {
-    assert.equal(validateCopyForChannel("tiktok", { primary: "x".repeat(100) }).hard.length, 0);
-    assert.equal(validateCopyForChannel("tiktok", { primary: "x".repeat(101) }).hard.length, 1);
+    assert.equal(
+      validateCopyForChannel("tiktok", { primary: "x".repeat(100) }).hard
+        .length,
+      0,
+    );
+    assert.equal(
+      validateCopyForChannel("tiktok", { primary: "x".repeat(101) }).hard
+        .length,
+      1,
+    );
   });
 
   it("TikTok CJK ×2: 50 CJK (weight 100) passes; 51 CJK (weight 102) rejects; 99 latin + 1 CJK (101) rejects", () => {
     assert.equal(weightedLength("東".repeat(50)), 100);
-    assert.equal(validateCopyForChannel("tiktok", { primary: "東".repeat(50) }).hard.length, 0);
-    assert.equal(validateCopyForChannel("tiktok", { primary: "東".repeat(51) }).hard.length, 1);
-    assert.equal(validateCopyForChannel("tiktok", { primary: "x".repeat(99) + "東" }).hard.length, 1);
+    assert.equal(
+      validateCopyForChannel("tiktok", { primary: "東".repeat(50) }).hard
+        .length,
+      0,
+    );
+    assert.equal(
+      validateCopyForChannel("tiktok", { primary: "東".repeat(51) }).hard
+        .length,
+      1,
+    );
+    assert.equal(
+      validateCopyForChannel("tiktok", { primary: "x".repeat(99) + "東" }).hard
+        .length,
+      1,
+    );
   });
 
   it("TikTok cap applies to the EMOJI-STRIPPED text: 100 chars + emoji passes WITH the Spark explanation", () => {
     // raw length is >100 because of the emoji, but the TikTok rendition strips them first
-    const result = validateCopyForChannel("tiktok", { primary: "x".repeat(100) + "🎉🔥" });
-    assert.equal(result.hard.length, 0, "cap must be measured on the stripped rendition");
+    const result = validateCopyForChannel("tiktok", {
+      primary: "x".repeat(100) + "🎉🔥",
+    });
+    assert.equal(
+      result.hard.length,
+      0,
+      "cap must be measured on the stripped rendition",
+    );
     assert.ok(result.warn.includes(TIKTOK_EMOJI_EXPLANATION));
     assert.ok(containsEmoji("🎉"));
     assert.equal(stripEmoji("🎉 party 🔥").stripped, 2);
   });
 
   it("Meta: exactly 1024 warns (never hard); 1025 hard. Exactly 125 clean; 126 warns", () => {
-    const at1024 = validateCopyForChannel("meta", { primary: "x".repeat(1024) });
+    const at1024 = validateCopyForChannel("meta", {
+      primary: "x".repeat(1024),
+    });
     assert.equal(at1024.hard.length, 0, "1024 is INSIDE the hard cap");
-    assert.ok(at1024.warn.length >= 1, "1024 still carries the render-truncation warn");
-    assert.equal(validateCopyForChannel("meta", { primary: "x".repeat(1025) }).hard.length, 1);
-    assert.equal(validateCopyForChannel("meta", { primary: "x".repeat(125) }).warn.length, 0);
-    assert.ok(validateCopyForChannel("meta", { primary: "x".repeat(126) }).warn.some((w) => w.includes("See more")));
+    assert.ok(
+      at1024.warn.length >= 1,
+      "1024 still carries the render-truncation warn",
+    );
+    assert.equal(
+      validateCopyForChannel("meta", { primary: "x".repeat(1025) }).hard.length,
+      1,
+    );
+    assert.equal(
+      validateCopyForChannel("meta", { primary: "x".repeat(125) }).warn.length,
+      0,
+    );
+    assert.ok(
+      validateCopyForChannel("meta", { primary: "x".repeat(126) }).warn.some(
+        (w) => w.includes("See more"),
+      ),
+    );
     // CJK: 63 CJK = weight 126 → warns even at 63 visible glyphs
-    assert.ok(validateCopyForChannel("meta", { primary: "東".repeat(63) }).warn.some((w) => w.includes("See more")));
+    assert.ok(
+      validateCopyForChannel("meta", { primary: "東".repeat(63) }).warn.some(
+        (w) => w.includes("See more"),
+      ),
+    );
   });
 
   it("Reddit: exactly 300 warns-not-blocks; 301 blocks; 80 clean; 81 warns; ALL-CAPS ratio edges", () => {
-    assert.equal(validateCopyForChannel("reddit", { primary: "x".repeat(300) }).hard.length, 0);
-    assert.equal(validateCopyForChannel("reddit", { primary: "x".repeat(301) }).hard.length, 1);
-    assert.equal(validateCopyForChannel("reddit", { primary: "x".repeat(80) }).warn.length, 0);
-    assert.equal(validateCopyForChannel("reddit", { primary: "x".repeat(81) }).warn.length, 1);
+    assert.equal(
+      validateCopyForChannel("reddit", { primary: "x".repeat(300) }).hard
+        .length,
+      0,
+    );
+    assert.equal(
+      validateCopyForChannel("reddit", { primary: "x".repeat(301) }).hard
+        .length,
+      1,
+    );
+    assert.equal(
+      validateCopyForChannel("reddit", { primary: "x".repeat(80) }).warn.length,
+      0,
+    );
+    assert.equal(
+      validateCopyForChannel("reddit", { primary: "x".repeat(81) }).warn.length,
+      1,
+    );
     // ratio boundary: >0.9 strictly — 9/10 upper does NOT trip, 10/11 does
     assert.equal(isAllCaps("ABCDEFGHIj"), false, "0.90 exactly must not trip");
     assert.equal(isAllCaps("ABCDEFGHIJk"), true, "10/11 ≈ 0.909 trips");
     assert.equal(isAllCaps("WOW"), false, "fewer than 4 letters never trips");
     // the headline field ALSO feeds the Reddit CAPS block
-    const viaHeadline = validateCopyForChannel("reddit", { primary: "calm text", headline: "BUY TICKETS NOW TONIGHT" });
+    const viaHeadline = validateCopyForChannel("reddit", {
+      primary: "calm text",
+      headline: "BUY TICKETS NOW TONIGHT",
+    });
     assert.ok(viaHeadline.hard.some((h) => h.includes("CAPITALIZATION")));
   });
 
   it("Google: 15/16 headlines, 4/5 descriptions, 30/31 + 90/91 weighted caps, 80-char/10-word keyword edges", () => {
     const base = { googleDescriptions: ["d1", "d2"], keywords: ["k"] };
-    const h15 = validateCopyForChannel("google", { ...base, googleHeadlines: Array.from({ length: 15 }, (_, i) => `h${i}`) });
+    const h15 = validateCopyForChannel("google", {
+      ...base,
+      googleHeadlines: Array.from({ length: 15 }, (_, i) => `h${i}`),
+    });
     assert.equal(h15.hard.length, 0);
-    const h16 = validateCopyForChannel("google", { ...base, googleHeadlines: Array.from({ length: 16 }, (_, i) => `h${i}`) });
+    const h16 = validateCopyForChannel("google", {
+      ...base,
+      googleHeadlines: Array.from({ length: 16 }, (_, i) => `h${i}`),
+    });
     assert.ok(h16.hard.some((m) => m.includes("at most 15")));
-    const d5 = validateCopyForChannel("google", { googleHeadlines: ["a", "b", "c"], googleDescriptions: ["1", "2", "3", "4", "5"], keywords: ["k"] });
+    const d5 = validateCopyForChannel("google", {
+      googleHeadlines: ["a", "b", "c"],
+      googleDescriptions: ["1", "2", "3", "4", "5"],
+      keywords: ["k"],
+    });
     assert.ok(d5.hard.some((m) => m.includes("at most 4")));
-    assert.equal(validateCopyForChannel("google", { ...base, googleHeadlines: ["x".repeat(30), "b", "c"] }).hard.length, 0);
-    assert.ok(validateCopyForChannel("google", { ...base, googleHeadlines: ["x".repeat(31), "b", "c"] }).hard.some((m) => m.includes("30")));
+    assert.equal(
+      validateCopyForChannel("google", {
+        ...base,
+        googleHeadlines: ["x".repeat(30), "b", "c"],
+      }).hard.length,
+      0,
+    );
+    assert.ok(
+      validateCopyForChannel("google", {
+        ...base,
+        googleHeadlines: ["x".repeat(31), "b", "c"],
+      }).hard.some((m) => m.includes("30")),
+    );
     // CJK weighting on Google too: 15 CJK = weight 30 passes; 16 CJK rejects
-    assert.equal(validateCopyForChannel("google", { ...base, googleHeadlines: ["東".repeat(15), "b", "c"] }).hard.length, 0);
-    assert.ok(validateCopyForChannel("google", { ...base, googleHeadlines: ["東".repeat(16), "b", "c"] }).hard.some((m) => m.includes("30")));
-    const g = { googleHeadlines: ["a", "b", "c"], googleDescriptions: ["x".repeat(90), "d2"], keywords: ["k"] };
+    assert.equal(
+      validateCopyForChannel("google", {
+        ...base,
+        googleHeadlines: ["東".repeat(15), "b", "c"],
+      }).hard.length,
+      0,
+    );
+    assert.ok(
+      validateCopyForChannel("google", {
+        ...base,
+        googleHeadlines: ["東".repeat(16), "b", "c"],
+      }).hard.some((m) => m.includes("30")),
+    );
+    const g = {
+      googleHeadlines: ["a", "b", "c"],
+      googleDescriptions: ["x".repeat(90), "d2"],
+      keywords: ["k"],
+    };
     assert.equal(validateCopyForChannel("google", g).hard.length, 0);
-    assert.ok(validateCopyForChannel("google", { ...g, googleDescriptions: ["x".repeat(91), "d2"] }).hard.some((m) => m.includes("90")));
-    const kw80 = validateCopyForChannel("google", { googleHeadlines: ["a", "b", "c"], googleDescriptions: ["1", "2"], keywords: ["x".repeat(80)] });
+    assert.ok(
+      validateCopyForChannel("google", {
+        ...g,
+        googleDescriptions: ["x".repeat(91), "d2"],
+      }).hard.some((m) => m.includes("90")),
+    );
+    const kw80 = validateCopyForChannel("google", {
+      googleHeadlines: ["a", "b", "c"],
+      googleDescriptions: ["1", "2"],
+      keywords: ["x".repeat(80)],
+    });
     assert.equal(kw80.hard.length, 0);
-    const kw81 = validateCopyForChannel("google", { googleHeadlines: ["a", "b", "c"], googleDescriptions: ["1", "2"], keywords: ["x".repeat(81)] });
+    const kw81 = validateCopyForChannel("google", {
+      googleHeadlines: ["a", "b", "c"],
+      googleDescriptions: ["1", "2"],
+      keywords: ["x".repeat(81)],
+    });
     assert.ok(kw81.hard.some((m) => m.includes("80 characters")));
-    const kw11words = validateCopyForChannel("google", { googleHeadlines: ["a", "b", "c"], googleDescriptions: ["1", "2"], keywords: ["one two three four five six seven eight nine ten eleven"] });
+    const kw11words = validateCopyForChannel("google", {
+      googleHeadlines: ["a", "b", "c"],
+      googleDescriptions: ["1", "2"],
+      keywords: ["one two three four five six seven eight nine ten eleven"],
+    });
     assert.ok(kw11words.hard.some((m) => m.includes("10 words")));
   });
 
@@ -154,16 +281,33 @@ describe("copy caps — exact boundaries", () => {
   });
 
   it("truncation strip: TikTok row reports the ✗ over-cap state; Reddit row keeps ✓ under 300", () => {
-    const rows = truncationPreview({ primary: "x".repeat(150) }, ["tiktok", "reddit"]);
-    assert.ok(rows.find((r) => r.surface === "TikTok").suffix.startsWith("✗ 150/100"));
-    assert.ok(rows.find((r) => r.surface === "Reddit").suffix.startsWith("✓ 150"));
+    const rows = truncationPreview({ primary: "x".repeat(150) }, [
+      "tiktok",
+      "reddit",
+    ]);
+    assert.ok(
+      rows.find((r) => r.surface === "TikTok").suffix.startsWith("✗ 150/100"),
+    );
+    assert.ok(
+      rows.find((r) => r.surface === "Reddit").suffix.startsWith("✓ 150"),
+    );
   });
 });
 
 // ── A4.0(1) channel plan — precedence, market gate, hidden goals ─────────────
 
 const green = (platform) => ({ platform, overall: "green", checks: [] });
-const METACONN = { extra: { minimum_budgets: { imp: 100, video_views: 100, high_freq: 500, low_freq: 4000 } } };
+const METACONN = {
+  currency: "USD",
+  extra: {
+    minimum_budgets: {
+      imp: 100,
+      video_views: 100,
+      high_freq: 500,
+      low_freq: 4000,
+    },
+  },
+};
 
 describe("channel plan — exclusion precedence + market gate", () => {
   // [TEST-MOD ISSUE-927] TikTok is create-wired now, so the precedence rule is
@@ -171,7 +315,13 @@ describe("channel plan — exclusion precedence + market gate", () => {
   // default gap — the semantics pinned are IDENTICAL: gate 1 outranks gate 2.
   it("create-endpoint gap outranks a red preflight (most structural reason wins)", () => {
     const rows = planChannels({
-      preflightRows: [{ platform: "tiktok", overall: "red", checks: [{ status: "fail", detail: "token dead" }] }],
+      preflightRows: [
+        {
+          platform: "tiktok",
+          overall: "red",
+          checks: [{ status: "fail", detail: "token dead" }],
+        },
+      ],
       goalIds: ["traffic"],
       countries: ["US"],
       totalDailyCents: 2000,
@@ -190,7 +340,13 @@ describe("channel plan — exclusion precedence + market gate", () => {
   });
 
   it("a create-wired platform with NO preflight row is excluded loudly, never assumed green", () => {
-    const rows = planChannels({ preflightRows: [green("meta")], goalIds: ["traffic"], countries: ["US"], totalDailyCents: 2000, connections: { meta: METACONN } });
+    const rows = planChannels({
+      preflightRows: [green("meta")],
+      goalIds: ["traffic"],
+      countries: ["US"],
+      totalDailyCents: 2000,
+      connections: { meta: METACONN },
+    });
     const google = rows.find((r) => r.platform === "google");
     assert.equal(google.eligible, false);
     assert.ok(google.excludedReason.includes("Preflight hasn't run"));
@@ -201,7 +357,10 @@ describe("channel plan — exclusion precedence + market gate", () => {
   // built to anticipate: the GB gate fires in the DEFAULT plan.
   it("the GB market gate FIRES now that TikTok is create-wired (London plan excludes TikTok, DEFAULT config)", () => {
     assert.deepEqual(MARKET_GAPS.tiktok.unavailable, ["GB"]);
-    assert.ok(CREATE_WIRED.includes("tiktok"), "tiktok is create-wired by default since ISSUE-927");
+    assert.ok(
+      CREATE_WIRED.includes("tiktok"),
+      "tiktok is create-wired by default since ISSUE-927",
+    );
     const rows = planChannels({
       preflightRows: [green("tiktok")],
       goalIds: ["traffic"],
@@ -210,9 +369,17 @@ describe("channel plan — exclusion precedence + market gate", () => {
     });
     const tiktok = rows.find((r) => r.platform === "tiktok");
     assert.equal(tiktok.eligible, false);
-    assert.ok(tiktok.excludedReason.includes("can't target the UK"), "GB in the plan must exclude TikTok with the live-proof reason");
+    assert.ok(
+      tiktok.excludedReason.includes("can't target the UK"),
+      "GB in the plan must exclude TikTok with the live-proof reason",
+    );
     // and WITHOUT GB the same setup is eligible — the gate is the market, nothing else
-    const usOnly = planChannels({ preflightRows: [green("tiktok")], goalIds: ["traffic"], countries: ["US"], totalDailyCents: 5000 });
+    const usOnly = planChannels({
+      preflightRows: [green("tiktok")],
+      goalIds: ["traffic"],
+      countries: ["US"],
+      totalDailyCents: 5000,
+    });
     assert.equal(usOnly.find((r) => r.platform === "tiktok").eligible, true);
     assert.deepEqual(
       [...CREATE_WIRED].sort(),
@@ -223,8 +390,16 @@ describe("channel plan — exclusion precedence + market gate", () => {
 
   it("hidden goals are unreachable through the plan: 'conversions'/'retargeting' admit ZERO channels", () => {
     for (const goalId of ["conversions", "retargeting"]) {
-      assert.equal(visibleGoals().some((g) => g.id === goalId), false, `${goalId} card must not render`);
-      assert.deepEqual(platformsForGoal(goalId), [], `${goalId} maps to no platform`);
+      assert.equal(
+        visibleGoals().some((g) => g.id === goalId),
+        false,
+        `${goalId} card must not render`,
+      );
+      assert.deepEqual(
+        platformsForGoal(goalId),
+        [],
+        `${goalId} maps to no platform`,
+      );
       const rows = planChannels({
         preflightRows: ["meta", "google"].map(green),
         goalIds: [goalId],
@@ -232,61 +407,127 @@ describe("channel plan — exclusion precedence + market gate", () => {
         totalDailyCents: 2000,
         connections: { meta: METACONN },
       });
-      assert.equal(rows.filter((r) => r.eligible).length, 0, `${goalId} must produce an empty channel set`);
+      assert.equal(
+        rows.filter((r) => r.eligible).length,
+        0,
+        `${goalId} must produce an empty channel set`,
+      );
     }
   });
 
   it("disjoint goal selections fall back to the union AND flag disjoint=true", () => {
-    const { platforms, disjoint } = platformsForGoals(["traffic", "conversions"]);
+    const { platforms, disjoint } = platformsForGoals([
+      "traffic",
+      "conversions",
+    ]);
     assert.equal(disjoint, true, "no shared channel → disjoint");
-    assert.ok(platforms.includes("meta"), "union fallback keeps the expressible platforms");
+    assert.ok(
+      platforms.includes("meta"),
+      "union fallback keeps the expressible platforms",
+    );
     assert.equal(platformsForGoals([]).platforms.length, 0);
   });
 });
 
 describe("channel plan — budget floor dollar boundaries", () => {
-  const frame = (cents, platforms) => planChannels({
-    preflightRows: platforms.map(green),
-    goalIds: ["traffic"],
-    countries: ["US"],
-    totalDailyCents: cents,
-    connections: { meta: METACONN },
-  });
+  const frame = (cents, platforms) =>
+    planChannels({
+      preflightRows: platforms.map(green),
+      goalIds: ["traffic"],
+      countries: ["US"],
+      totalDailyCents: cents,
+      connections: { meta: METACONN },
+    });
 
   it("$4.99 in a Meta-only frame → NO eligible channel + the cheapest-floor message names $5.00", () => {
     const rows = frame(499, ["meta"]);
-    assert.equal(rows.filter((r) => r.eligible).length, 0, "$4.99 < the $5 link-clicks floor");
-    const errors = validateBudget({ totalDailyCents: 499, channelRows: rows });
-    assert.ok(errors.some((e) => e.includes("$4.99/day is below every channel's minimum") && e.includes("$5.00/day")));
+    assert.equal(
+      rows.filter((r) => r.eligible).length,
+      0,
+      "$4.99 < the $5 link-clicks floor",
+    );
+    const errors = validateBudget({
+      totalDailyCents: 499,
+      channelRows: rows,
+      currency: "USD",
+    });
+    assert.ok(
+      errors.some(
+        (e) =>
+          e.includes("$4.99/day is below every channel's minimum") &&
+          e.includes("$5.00/day"),
+      ),
+    );
   });
 
   it("$5.00 exactly in the Meta-only frame → Meta eligible (floor is inclusive)", () => {
     const rows = frame(500, ["meta"]);
-    assert.deepEqual(rows.filter((r) => r.eligible).map((r) => r.platform), ["meta"]);
-    assert.equal(validateBudget({ totalDailyCents: 500, channelRows: rows }).length, 0);
+    assert.deepEqual(
+      rows.filter((r) => r.eligible).map((r) => r.platform),
+      ["meta"],
+    );
+    assert.equal(
+      validateBudget({
+        totalDailyCents: 500,
+        channelRows: rows,
+        currency: "USD",
+      }).length,
+      0,
+    );
   });
 
   // [TEST-MOD-APPROVED #3697] Wave 2 D1: Google floor is $0 (not null); Reddit $5.
   // $4.99 still clears Google-only; Meta stays excluded by its $5 floor.
   it("$4.99 with Google present → Google-only (Google $0 money floor — D1); truth pinned", () => {
     const rows = frame(499, ["meta", "google"]);
-    assert.deepEqual(rows.filter((r) => r.eligible).map((r) => r.platform), ["google"]);
-    assert.equal(channelFloorCents("google", {}), 0, "Google has no money minimum (D1)");
-    assert.equal(channelFloorCents("reddit", {}), 500, "Reddit D1 floor is $5/day");
+    assert.deepEqual(
+      rows.filter((r) => r.eligible).map((r) => r.platform),
+      ["google"],
+    );
+    assert.equal(
+      channelFloorCents("google", {}),
+      0,
+      "Google has no money minimum (D1)",
+    );
+    assert.equal(
+      channelFloorCents("reddit", {}),
+      500,
+      "Reddit D1 floor is $5/day",
+    );
   });
 
   it("split conserves ODD cent totals exactly (no cent minted or lost)", () => {
     const rows = frame(2001, ["meta", "google"]);
-    const allocations = splitBudget({ totalDailyCents: 2001, channelRows: rows, strategy: "auto" });
-    assert.equal(allocations.reduce((s, a) => s + a.dailyCents, 0), 2001);
+    const allocations = splitBudget({
+      totalDailyCents: 2001,
+      channelRows: rows,
+      strategy: "auto",
+    });
+    assert.equal(
+      allocations.reduce((s, a) => s + a.dailyCents, 0),
+      2001,
+    );
     assert.equal(allocations.length, 2);
     // priority channel (meta) absorbs the odd cent
-    assert.equal(allocations.find((a) => a.platform === "meta").dailyCents, 1001);
+    assert.equal(
+      allocations.find((a) => a.platform === "meta").dailyCents,
+      1001,
+    );
   });
 
   it("split with zero eligible rows or zero budget returns [] (never a phantom allocation)", () => {
-    assert.deepEqual(splitBudget({ totalDailyCents: 0, channelRows: frame(2000, ["meta"]), strategy: "auto" }), []);
-    assert.deepEqual(splitBudget({ totalDailyCents: 2000, channelRows: [], strategy: "auto" }), []);
+    assert.deepEqual(
+      splitBudget({
+        totalDailyCents: 0,
+        channelRows: frame(2000, ["meta"]),
+        strategy: "auto",
+      }),
+      [],
+    );
+    assert.deepEqual(
+      splitBudget({ totalDailyCents: 2000, channelRows: [], strategy: "auto" }),
+      [],
+    );
   });
 });
 
@@ -296,16 +537,35 @@ describe("budget rules — edges", () => {
   it("unknown optimization goals fall to the LOW_FREQ (highest, $40) floor — conservative, never $1", () => {
     assert.equal(metaBudgetCategoryForGoal("SOME_FUTURE_GOAL"), "low_freq");
     assert.equal(metaFloorCents(METACONN, "SOME_FUTURE_GOAL"), 4000);
-    assert.equal(metaFloorCents(null, "LINK_CLICKS"), null, "no connection → null, server 424s");
-    assert.equal(metaFloorCents({ extra: { minimum_budgets: { imp: 100 } } }, "LINK_CLICKS"), null, "missing category key → null, never a guess");
+    assert.equal(
+      metaFloorCents(null, "LINK_CLICKS"),
+      null,
+      "no connection → null, server 424s",
+    );
+    assert.equal(
+      metaFloorCents(
+        { extra: { minimum_budgets: { imp: 100 } } },
+        "LINK_CLICKS",
+      ),
+      null,
+      "missing category key → null, never a guess",
+    );
   });
 
   it("learning-limited boundary: exactly 50 events/week is clean; 49.98 warns", () => {
-    assert.equal(learningLimitedWarning(2500, 350), null, "2500×7/350 = 50 exactly — at the bar, no warn");
+    assert.equal(
+      learningLimitedWarning(2500, 350),
+      null,
+      "2500×7/350 = 50 exactly — at the bar, no warn",
+    );
     assert.ok(learningLimitedWarning(2499, 350), "one cent under warns");
     assert.equal(learningLimitedWarning(0), null);
     assert.equal(learningLimitedWarning(-500), null);
-    assert.equal(learningLimitedWarning(500, 0), null, "zero CPA never divides");
+    assert.equal(
+      learningLimitedWarning(500, 0),
+      null,
+      "zero CPA never divides",
+    );
   });
 
   it("frequency cap gate is exact-match only (case + null hostile inputs)", () => {
@@ -316,9 +576,59 @@ describe("budget rules — edges", () => {
   });
 
   it("launch confirm copy pluralizes and carries the 175% truth at any amount", () => {
-    assert.ok(launchConfirmCopy({ channelCount: 1, totalDailyCents: 1000 }).includes("across 1 channel?"));
-    assert.ok(launchConfirmCopy({ channelCount: 2, totalDailyCents: 2000 }).includes("across 2 channels?"));
-    assert.ok(launchConfirmCopy({ channelCount: 1, totalDailyCents: 1 }).includes("$0.01/day"));
+    assert.ok(
+      launchConfirmCopy({
+        channelCount: 1,
+        totalDailyCents: 1000,
+        currency: "USD",
+      }).includes("across 1 channel?"),
+    );
+    assert.ok(
+      launchConfirmCopy({
+        channelCount: 2,
+        totalDailyCents: 2000,
+        currency: "USD",
+      }).includes("across 2 channels?"),
+    );
+    assert.ok(
+      launchConfirmCopy({
+        channelCount: 1,
+        totalDailyCents: 1,
+        currency: "USD",
+      }).includes("$0.01/day"),
+    );
+  });
+
+  it("launch confirm distinguishes provider-native daily delivery from lifetime totals", () => {
+    const copy = launchConfirmCopy({
+      channelCount: 3,
+      providerDeliveryBudgets: [
+        { currency: "NGN", amountCents: 3000, cadence: "daily" },
+        { currency: "NGN", amountCents: 2000, cadence: "daily" },
+        { currency: "USD", amountCents: 1000, cadence: "lifetime" },
+      ],
+      providerHardCaps: [
+        { currency: "NGN", amountCents: 6000 },
+        { currency: "USD", amountCents: 1000 },
+      ],
+      hasMeta: false,
+    });
+    assert.ok(copy.includes("/day"));
+    assert.ok(copy.includes("$10.00 total"));
+    assert.ok(
+      !copy.includes("$10.00/day"),
+      "a lifetime amount is never labeled per-day",
+    );
+    assert.ok(copy.includes("Frozen provider hard cap"));
+    assert.ok(copy.includes("Provider pacing rules"));
+    assert.ok(
+      launchConfirmCopy({
+        channelCount: 1,
+        providerDeliveryBudgets: [
+          { currency: null, amountCents: 1000, cadence: "daily" },
+        ],
+      }).includes("Launch is blocked"),
+    );
   });
 });
 
@@ -329,26 +639,60 @@ describe("policy linter — adversarial", () => {
     const findings = lintPersonalAttributes("Are you tired of being alone?");
     assert.ok(findings.some((f) => f.pattern === 1));
     assert.ok(findings.some((f) => f.pattern === 3));
-    const panel = runPolicyPrecheck({ copyText: "Are you tired of being alone?", channelSet: ["meta", "reddit"] });
-    assert.ok(!("hard" in panel), "the panel has NO hard-block channel — warn-only by construction");
+    const panel = runPolicyPrecheck({
+      copyText: "Are you tired of being alone?",
+      channelSet: ["meta", "reddit"],
+    });
+    assert.ok(
+      !("hard" in panel),
+      "the panel has NO hard-block channel — warn-only by construction",
+    );
   });
 
   it("FALSE-POSITIVE GUARD: 'Meet people near you' carries zero personal-attribute findings", () => {
     assert.equal(lintPersonalAttributes("Meet people near you").length, 0);
     // …while the Reddit DATING rule (a different, channel-scoped rule) still catches it — only with reddit in the set
     assert.ok(lintRedditDating("Meet people near you"));
-    assert.equal(runPolicyPrecheck({ copyText: "Meet people near you", channelSet: ["meta", "google"] }).dating, null);
+    assert.equal(
+      runPolicyPrecheck({
+        copyText: "Meet people near you",
+        channelSet: ["meta", "google"],
+      }).dating,
+      null,
+    );
   });
 
   it("pattern 2 token window is 5: attribute 5 tokens from 'your' fires, 6 tokens away does not", () => {
-    assert.ok(lintPersonalAttributes("your one two three four depression").some((f) => f.pattern === 2));
-    assert.equal(lintPersonalAttributes("your one two three four five depression").some((f) => f.pattern === 2), false);
+    assert.ok(
+      lintPersonalAttributes("your one two three four depression").some(
+        (f) => f.pattern === 2,
+      ),
+    );
+    assert.equal(
+      lintPersonalAttributes("your one two three four five depression").some(
+        (f) => f.pattern === 2,
+      ),
+      false,
+    );
   });
 
   it("pattern 4 is template-token scoped: {name}/[first_name] fire; a plain first name does not", () => {
-    assert.ok(lintPersonalAttributes("Hey {name}, tonight's plan").some((f) => f.pattern === 4));
-    assert.ok(lintPersonalAttributes("Hey [first_name], tonight").some((f) => f.pattern === 4));
-    assert.equal(lintPersonalAttributes("Billy plans the night").some((f) => f.pattern === 4), false);
+    assert.ok(
+      lintPersonalAttributes("Hey {name}, tonight's plan").some(
+        (f) => f.pattern === 4,
+      ),
+    );
+    assert.ok(
+      lintPersonalAttributes("Hey [first_name], tonight").some(
+        (f) => f.pattern === 4,
+      ),
+    );
+    assert.equal(
+      lintPersonalAttributes("Billy plans the night").some(
+        (f) => f.pattern === 4,
+      ),
+      false,
+    );
   });
 
   it("alcohol lexicon: BYOB/open bar/prosecco case-insensitive; clean copy null", () => {
@@ -359,11 +703,21 @@ describe("policy linter — adversarial", () => {
   });
 
   it("special categories: every whitelist value ok; CREDIT and unknown values rejected", () => {
-    for (const v of ["NONE", "HOUSING", "EMPLOYMENT", "FINANCIAL_PRODUCTS_SERVICES", "ISSUES_ELECTIONS_POLITICS"]) {
+    for (const v of [
+      "NONE",
+      "HOUSING",
+      "EMPLOYMENT",
+      "FINANCIAL_PRODUCTS_SERVICES",
+      "ISSUES_ELECTIONS_POLITICS",
+    ]) {
       assert.equal(validateSpecialAdCategory(v).ok, true, v);
     }
     assert.equal(validateSpecialAdCategory("CREDIT").ok, false);
-    assert.equal(validateSpecialAdCategory("ONLINE_GAMBLING_AND_GAMING").ok, false, "no such Meta category — gambling is an authorization flow");
+    assert.equal(
+      validateSpecialAdCategory("ONLINE_GAMBLING_AND_GAMING").ok,
+      false,
+      "no such Meta category — gambling is an authorization flow",
+    );
     assert.equal(validateSpecialAdCategory("").ok, false);
   });
 });
@@ -374,38 +728,80 @@ describe("payload — negative space", () => {
   const state = {
     lane: "consumer",
     name: "n",
-    goal: { metaObjective: "OUTCOME_TRAFFIC", metaOptimizationGoal: "LINK_CLICKS" },
+    goal: {
+      metaObjective: "OUTCOME_TRAFFIC",
+      metaOptimizationGoal: "LINK_CLICKS",
+    },
     destination: { page_type: "event", brand_slug: "b", entity_slug: "e" },
     audience: { countries: ["US"], ageMin: 18, ageMax: 65, gender: "women" },
     budget: { dailyCentsForChannel: 1000 },
     creative: { imageUrl: "https://x/y.jpg", aiGenerated: false },
     copy: {
-      primary: "p", headline: "h", description: "d", cta: "BUY_TICKETS",
-      googleHeadlines: ["a", " b ", ""], googleDescriptions: ["1", ""], keywords: [" k "], negativeKeywords: [],
+      primary: "p",
+      headline: "h",
+      description: "d",
+      cta: "BUY_TICKETS",
+      googleHeadlines: ["a", " b ", ""],
+      googleDescriptions: ["1", ""],
+      keywords: [" k "],
+      negativeKeywords: [],
     },
     specialAdCategory: "NONE",
     requestId: "r",
   };
 
-  it("the Google body carries NO genuinely-Meta-only fields (CTA, objective, optimization, image, billing) — but MAY carry age/gender when the wizard sets them (#992)", () => {
+  it("the compiled Google provider rendering carries no genuinely Meta-only fields while canonical intent remains available", () => {
     // ISSUE-992 (Wave 3 — [TEST-MOD-APPROVED ORCH-0992]) OVERTURNS the deferral
     // this scan encoded: `genders`/`age_min`/`age_max` are NO LONGER Meta-only —
     // Google now legitimately consumes age/gender at create (3a). The list below
     // is now the genuinely-Meta-only / other-platform fields that must STILL
-    // never appear on a Google Search body (A4.b: no CTA; no objective/
+    // never appear on the compiled Google Search rendering (A4.b: no CTA; no objective/
     // optimization/billing; RSAs carry no image_url; no special-ad-category).
-    const json = JSON.stringify(buildCreatePayload("google", state));
-    for (const banned of ["call_to_action_type", "optimization_goal", "objective", "image_url", "billing_event", "special_ad_categor"]) {
-      assert.ok(!json.includes(banned), `google payload must not carry ${banned}`);
-    }
+    // [TEST-MOD-APPROVED #3697] The v1.4 create contract now also carries
+    // canonical plan-level copy/creative/audience intent. Inspect the compiled
+    // Google adapter fields here so canonical authority is not mistaken for a
+    // provider-field leak.
     const payload = buildCreatePayload("google", state);
-    assert.deepEqual(payload.creative.headlines, ["a", "b"], "entries trimmed, empties dropped");
+    const json = JSON.stringify({
+      creative: payload.creative,
+      targeting: payload.targeting,
+      objective: payload.objective,
+      optimization_goal: payload.optimization_goal,
+      billing_event: payload.billing_event,
+      special_ad_categories: payload.special_ad_categories,
+    });
+    for (const banned of [
+      "call_to_action_type",
+      "optimization_goal",
+      "objective",
+      "image_url",
+      "billing_event",
+      "special_ad_categor",
+    ]) {
+      assert.ok(
+        !json.includes(banned),
+        `google provider rendering must not carry ${banned}`,
+      );
+    }
+    assert.deepEqual(
+      payload.creative.headlines,
+      ["a", "b"],
+      "entries trimmed, empties dropped",
+    );
     assert.deepEqual(payload.keywords, ["k"]);
-    assert.equal("negative_keywords" in payload, false, "empty negatives omitted entirely");
+    assert.equal(
+      "negative_keywords" in payload,
+      false,
+      "empty negatives omitted entirely",
+    );
     // NEW TRUTH: `state` picks gender women (age full 18-65) → Google carries the
     // requested gender, and does NOT fabricate an age bound it was never given.
     assert.deepEqual(payload.targeting.genders, ["FEMALE"]);
-    assert.equal("age_min" in payload.targeting, false, "full 18-65 age → no age bound fabricated");
+    assert.equal(
+      "age_min" in payload.targeting,
+      false,
+      "full 18-65 age → no age bound fabricated",
+    );
     assert.equal("age_max" in payload.targeting, false);
     // A narrowed request travels; an all/broad request fabricates NOTHING
     // (anti-fabrication intent preserved — Google carries these ONLY when set).
@@ -421,14 +817,27 @@ describe("payload — negative space", () => {
       audience: { ...state.audience, ageMin: 18, ageMax: 65, gender: "all" },
     }).targeting;
     for (const f of ["age_min", "age_max", "genders"]) {
-      assert.equal(f in broad, false, `broad Google build must not fabricate ${f}`);
+      assert.equal(
+        f in broad,
+        false,
+        `broad Google build must not fabricate ${f}`,
+      );
     }
   });
 
   it("Meta gender mapping: women→[2], men→[1], all→field omitted", () => {
     assert.deepEqual(buildCreatePayload("meta", state).targeting.genders, [2]);
-    assert.deepEqual(buildCreatePayload("meta", { ...state, audience: { ...state.audience, gender: "men" } }).targeting.genders, [1]);
-    const all = buildCreatePayload("meta", { ...state, audience: { ...state.audience, gender: "all" } });
+    assert.deepEqual(
+      buildCreatePayload("meta", {
+        ...state,
+        audience: { ...state.audience, gender: "men" },
+      }).targeting.genders,
+      [1],
+    );
+    const all = buildCreatePayload("meta", {
+      ...state,
+      audience: { ...state.audience, gender: "all" },
+    });
     assert.equal("genders" in all.targeting, false);
   });
 
@@ -436,7 +845,11 @@ describe("payload — negative space", () => {
     const none = buildCreatePayload("meta", state);
     assert.equal("special_ad_category_country" in none, false);
     assert.equal("validate_only" in none, false);
-    const housing = buildCreatePayload("meta", { ...state, specialAdCategory: "HOUSING", validateOnly: true });
+    const housing = buildCreatePayload("meta", {
+      ...state,
+      specialAdCategory: "HOUSING",
+      validateOnly: true,
+    });
     assert.deepEqual(housing.special_ad_category_country, ["US"]);
     assert.equal(housing.validate_only, true);
   });
@@ -447,12 +860,21 @@ describe("payload — negative space", () => {
     assert.equal(dollarsToCents(""), 0);
     assert.equal(dollarsToCents("19.999"), 2000, "rounds, never truncates");
     assert.equal(dollarsToCents("0.01"), 1);
-    const json = JSON.stringify(buildCreatePayload("meta", state)) + JSON.stringify(buildCreatePayload("google", state));
-    assert.ok(!/micro/i.test(json), "micro conversion is the server adapter's job");
+    const json =
+      JSON.stringify(buildCreatePayload("meta", state)) +
+      JSON.stringify(buildCreatePayload("google", state));
+    assert.ok(
+      !/micro/i.test(json),
+      "micro conversion is the server adapter's job",
+    );
   });
 
   it("suggestCampaignName drops missing pieces without dangling separators", () => {
-    const name = suggestCampaignName({ brandName: null, title: "Tuesdays", date: new Date("2026-07-16T00:00:00Z") });
+    const name = suggestCampaignName({
+      brandName: null,
+      title: "Tuesdays",
+      date: new Date("2026-07-16T00:00:00Z"),
+    });
     assert.equal(name, "Tuesdays — 2026-07-16");
   });
 });
@@ -461,25 +883,49 @@ describe("payload — negative space", () => {
 
 describe("launch summary — blocked reasons are INLINE (tester revert anchor)", () => {
   const rows = [
-    { platform: "meta", label: "Meta", eligible: true, amber: "billing pending", excludedReason: null },
-    { platform: "google", label: "Google", eligible: true, amber: null, excludedReason: null },
-    { platform: "tiktok", label: "TikTok", eligible: false, excludedReason: "Not available: TikTok can't target the UK" },
+    {
+      platform: "meta",
+      label: "Meta",
+      eligible: true,
+      amber: "billing pending",
+      excludedReason: null,
+    },
+    {
+      platform: "google",
+      label: "Google",
+      eligible: true,
+      amber: null,
+      excludedReason: null,
+    },
+    {
+      platform: "tiktok",
+      label: "TikTok",
+      eligible: false,
+      excludedReason: "Not available: TikTok can't target the UK",
+    },
   ];
 
   it("every excluded channel line carries its exclusionReason verbatim — a dash with no why is forbidden", () => {
     const summary = buildLaunchSummary({
       channelRows: rows,
-      allocations: [{ platform: "meta", dailyCents: 1000 }, { platform: "google", dailyCents: 1000 }],
+      allocations: [
+        { platform: "meta", dailyCents: 1000 },
+        { platform: "google", dailyCents: 1000 },
+      ],
       goalIds: ["traffic"],
       destination: { title: "T", dest_url: "https://host.usemingla.com/e/b/e" },
       creative: { kind: "image", name: "hero", width: 1080, height: 1080 },
       copyCheck: { policyFindings: 0, copyHardBlocks: 0 },
       totalDailyCents: 2000,
+      currency: "USD",
     });
     const tiktok = summary.blocked.find((b) => b.platform === "tiktok");
     assert.ok(tiktok, "excluded channel must appear in blocked[]");
     assert.equal(tiktok.reason, "Not available: TikTok can't target the UK");
-    assert.ok(summary.warnings.some((w) => w.includes("billing pending")), "ambers ride into the warnings");
+    assert.ok(
+      summary.warnings.some((w) => w.includes("billing pending")),
+      "ambers ride into the warnings",
+    );
   });
 
   it("eligible-but-unfunded channels are named 'Not funded by the split.' — never silently dropped", () => {
@@ -491,14 +937,38 @@ describe("launch summary — blocked reasons are INLINE (tester revert anchor)",
       creative: null,
       copyCheck: { policyFindings: 0, copyHardBlocks: 0 },
       totalDailyCents: 2000,
+      currency: "USD",
     });
-    assert.ok(summary.blocked.some((b) => b.platform === "google" && b.reason === "Not funded by the split."));
+    assert.ok(
+      summary.blocked.some(
+        (b) =>
+          b.platform === "google" && b.reason === "Not funded by the split.",
+      ),
+    );
   });
 
   it("copy line precedence: unresolved hard blocks outrank policy warnings", () => {
-    const base = { channelRows: rows, allocations: [], goalIds: [], destination: null, creative: null, totalDailyCents: 0 };
-    assert.ok(buildLaunchSummary({ ...base, copyCheck: { policyFindings: 3, copyHardBlocks: 2 } }).copyLine.includes("2 unresolved hard block"));
-    assert.ok(buildLaunchSummary({ ...base, copyCheck: { policyFindings: 3, copyHardBlocks: 0 } }).copyLine.includes("3 policy warning"));
+    const base = {
+      channelRows: rows,
+      allocations: [],
+      goalIds: [],
+      destination: null,
+      creative: null,
+      totalDailyCents: 0,
+      currency: "USD",
+    };
+    assert.ok(
+      buildLaunchSummary({
+        ...base,
+        copyCheck: { policyFindings: 3, copyHardBlocks: 2 },
+      }).copyLine.includes("2 unresolved hard block"),
+    );
+    assert.ok(
+      buildLaunchSummary({
+        ...base,
+        copyCheck: { policyFindings: 3, copyHardBlocks: 0 },
+      }).copyLine.includes("3 policy warning"),
+    );
   });
 });
 
@@ -508,37 +978,76 @@ describe("review detail map — hostile shapes", () => {
   it("Reddit: rejection_reasons ARRAY variant + DATING_* prefix family + ALCOHOL_* family all map", () => {
     const cards = mapReviewDetail({
       platform: "reddit",
-      ad: { review_detail: { rejection_reasons: ["DATING_FOCUS_ON_INFIDELITY", "ALCOHOL_GLORIFICATION", "SOMETHING_NEW"] } },
+      ad: {
+        review_detail: {
+          rejection_reasons: [
+            "DATING_FOCUS_ON_INFIDELITY",
+            "ALCOHOL_GLORIFICATION",
+            "SOMETHING_NEW",
+          ],
+        },
+      },
     });
     assert.ok(cards.some((c) => c.title.includes("dating ad")));
     assert.ok(cards.some((c) => c.title.includes("alcohol")));
-    assert.ok(cards.some((c) => c.title === "Reddit: SOMETHING_NEW"), "unknown reasons surface verbatim, never swallowed");
+    assert.ok(
+      cards.some((c) => c.title === "Reddit: SOMETHING_NEW"),
+      "unknown reasons surface verbatim, never swallowed",
+    );
   });
 
   it("Meta: HARD_ERROR→error, SOFT_ERROR→warning; the recommendations field is NEVER read as a rejection", () => {
     const cards = mapReviewDetail({
       platform: "meta",
-      ad: { review_detail: {
-        issues_info: [
-          { error_type: "HARD_ERROR", error_summary: "S1", error_message: "m", level: "ad" },
-          { error_type: "SOFT_ERROR", error_summary: "S2", error_message: "m", level: "ad set" },
-        ],
-        recommendations: [{ code: 1, title: "Meta upsell", message: "raise budget" }],
-      } },
+      ad: {
+        review_detail: {
+          issues_info: [
+            {
+              error_type: "HARD_ERROR",
+              error_summary: "S1",
+              error_message: "m",
+              level: "ad",
+            },
+            {
+              error_type: "SOFT_ERROR",
+              error_summary: "S2",
+              error_message: "m",
+              level: "ad set",
+            },
+          ],
+          recommendations: [
+            { code: 1, title: "Meta upsell", message: "raise budget" },
+          ],
+        },
+      },
     });
     assert.equal(cards.find((c) => c.title === "S1").severity, "error");
     assert.equal(cards.find((c) => c.title === "S2").severity, "warning");
-    assert.equal(cards.some((c) => `${c.title} ${c.body}`.includes("upsell")), false, "recommendations are an optimization feed, not rejections");
+    assert.equal(
+      cards.some((c) => `${c.title} ${c.body}`.includes("upsell")),
+      false,
+      "recommendations are an optimization feed, not rejections",
+    );
   });
 
   it("Google: LIMITED→warning, FULLY_LIMITED→error; DestinationNotWorking evidence maps to the offer card", () => {
     const cards = mapReviewDetail({
       platform: "google",
-      ad: { review_detail: { policy_topic_entries: [
-        { topic: "T1", type: "LIMITED", evidences: [] },
-        { topic: "T2", type: "FULLY_LIMITED", evidences: [] },
-        { topic: "T3", type: "PROHIBITED", evidences: [{ DestinationNotWorking: { lastCheckedDateTime: "x" } }] },
-      ] } },
+      ad: {
+        review_detail: {
+          policy_topic_entries: [
+            { topic: "T1", type: "LIMITED", evidences: [] },
+            { topic: "T2", type: "FULLY_LIMITED", evidences: [] },
+            {
+              topic: "T3",
+              type: "PROHIBITED",
+              evidences: [
+                { DestinationNotWorking: { lastCheckedDateTime: "x" } },
+              ],
+            },
+          ],
+        },
+      },
     });
     assert.equal(cards.find((c) => c.title.includes("T1")).severity, "warning");
     assert.equal(cards.find((c) => c.title.includes("T2")).severity, "error");
@@ -546,16 +1055,44 @@ describe("review detail map — hostile shapes", () => {
   });
 
   it("billing states (incl. NO_BUDGET) render the not-a-rejection card; empty detail renders NO fabricated card", () => {
-    for (const status of ["PENDING_BILLING_INFO", "BALANCE_EXCEED", "NO_BUDGET"]) {
-      const cards = mapReviewDetail({ platform: "tiktok", ad: {}, deliveryStatus: status });
+    for (const status of [
+      "PENDING_BILLING_INFO",
+      "BALANCE_EXCEED",
+      "NO_BUDGET",
+    ]) {
+      const cards = mapReviewDetail({
+        platform: "tiktok",
+        ad: {},
+        deliveryStatus: status,
+      });
       assert.equal(cards.length, 1);
       assert.equal(cards[0].severity, "warning");
     }
-    assert.deepEqual(mapReviewDetail({ platform: "meta", ad: { review_detail: null }, deliveryStatus: "PAUSED" }), []);
+    assert.deepEqual(
+      mapReviewDetail({
+        platform: "meta",
+        ad: { review_detail: null },
+        deliveryStatus: "PAUSED",
+      }),
+      [],
+    );
   });
 
   it("badge variant map covers every review/delivery state the sync persists", () => {
-    for (const s of ["ACTIVE", "PAUSED", "PENDING_REVIEW", "DISAPPROVED", "WITH_ISSUES", "PENDING_BILLING_INFO", "BALANCE_EXCEED", "CAMPAIGN_PAUSED", "ADSET_PAUSED", "IN_PROCESS", "PREAPPROVED", "REJECTED"]) {
+    for (const s of [
+      "ACTIVE",
+      "PAUSED",
+      "PENDING_REVIEW",
+      "DISAPPROVED",
+      "WITH_ISSUES",
+      "PENDING_BILLING_INFO",
+      "BALANCE_EXCEED",
+      "CAMPAIGN_PAUSED",
+      "ADSET_PAUSED",
+      "IN_PROCESS",
+      "PREAPPROVED",
+      "REJECTED",
+    ]) {
       assert.ok(DELIVERY_BADGE_VARIANTS[s], `badge variant missing for ${s}`);
     }
   });
@@ -565,17 +1102,45 @@ describe("review detail map — hostile shapes", () => {
 
 describe("audience rules — boundaries", () => {
   it("13/65 inclusive; 12 and 66 reject; equal min=max passes", () => {
-    assert.equal(validateAudience({ countries: ["US"], ageMin: 13, ageMax: 65 }).length, 0);
-    assert.ok(validateAudience({ countries: ["US"], ageMin: 12, ageMax: 65 }).length > 0);
-    assert.ok(validateAudience({ countries: ["US"], ageMin: 18, ageMax: 66 }).length > 0);
-    assert.equal(validateAudience({ countries: ["US"], ageMin: 30, ageMax: 30 }).length, 0);
+    assert.equal(
+      validateAudience({ countries: ["US"], ageMin: 13, ageMax: 65 }).length,
+      0,
+    );
+    assert.ok(
+      validateAudience({ countries: ["US"], ageMin: 12, ageMax: 65 }).length >
+        0,
+    );
+    assert.ok(
+      validateAudience({ countries: ["US"], ageMin: 18, ageMax: 66 }).length >
+        0,
+    );
+    assert.equal(
+      validateAudience({ countries: ["US"], ageMin: 30, ageMax: 30 }).length,
+      0,
+    );
   });
 
   it("Advantage+ cap: 25 passes, 26 rejects WITH the turn-it-off explanation; fractional ages reject", () => {
-    assert.equal(validateAudience({ countries: ["US"], ageMin: 25, ageMax: 65, advantagePlusAudience: true }).length, 0);
-    const rejected = validateAudience({ countries: ["US"], ageMin: 26, ageMax: 65, advantagePlusAudience: true });
+    assert.equal(
+      validateAudience({
+        countries: ["US"],
+        ageMin: 25,
+        ageMax: 65,
+        advantagePlusAudience: true,
+      }).length,
+      0,
+    );
+    const rejected = validateAudience({
+      countries: ["US"],
+      ageMin: 26,
+      ageMax: 65,
+      advantagePlusAudience: true,
+    });
     assert.ok(rejected.some((e) => e.includes("turn Advantage+ audience off")));
-    assert.ok(validateAudience({ countries: ["US"], ageMin: "18.5", ageMax: 65 }).length > 0);
+    assert.ok(
+      validateAudience({ countries: ["US"], ageMin: "18.5", ageMax: 65 })
+        .length > 0,
+    );
   });
 });
 
@@ -585,13 +1150,24 @@ describe("SC-10 + destination-filter source traps", () => {
   it("no campaign-builder file references the action service OR the launch action string", () => {
     const files = [
       "pages/CampaignBuilderPage.jsx",
-      ...fs.readdirSync(path.join(ADMIN_SRC, "components/campaign-builder")).map((f) => `components/campaign-builder/${f}`),
+      ...fs
+        .readdirSync(path.join(ADMIN_SRC, "components/campaign-builder"))
+        .map((f) => `components/campaign-builder/${f}`),
     ];
     for (const file of files) {
       const source = read(path.join(ADMIN_SRC, file));
-      assert.ok(!source.includes("campaignAction"), `${file}: campaignAction leaked into the builder`);
-      assert.ok(!source.includes("admin-ad-campaign-action"), `${file}: action endpoint leaked into the builder`);
-      assert.ok(!/action:\s*["']launch["']/.test(source), `${file}: launch action constructed in the builder`);
+      assert.ok(
+        !source.includes("campaignAction"),
+        `${file}: campaignAction leaked into the builder`,
+      );
+      assert.ok(
+        !source.includes("admin-ad-campaign-action"),
+        `${file}: action endpoint leaked into the builder`,
+      );
+      assert.ok(
+        !/action:\s*["']launch["']/.test(source),
+        `${file}: launch action constructed in the builder`,
+      );
     }
   });
 
@@ -600,12 +1176,27 @@ describe("SC-10 + destination-filter source traps", () => {
   // and future master_start_at). The Admin reader is an RPC mapper; pin the RPC
   // + the migration authority instead of client-side PostgREST filters.
   it("the destination reader keeps BOTH load-bearing filters (status ∈ scheduled|live AND future start)", () => {
-    const source = read(path.join(ADMIN_SRC, "services/adDestinationsService.js"));
-    const migration = read(path.join(REPO_ROOT, "supabase/migrations/20270814003697_issue_3697_wave1_advertisable_pages.sql"));
-    assert.ok(source.includes('rpc("ad_advertisable_pages"'), "Admin list must call the shared advertisable-pages RPC");
-    assert.ok(migration.includes("ad_destination_resolve"), "SQL resolve must remain the availability authority");
+    const source = read(
+      path.join(ADMIN_SRC, "services/adDestinationsService.js"),
+    );
+    const migration = read(
+      path.join(
+        REPO_ROOT,
+        "supabase/migrations/20270814003697_issue_3697_wave1_advertisable_pages.sql",
+      ),
+    );
     assert.ok(
-      /status\s+NOT\s+IN\s*\(\s*'scheduled'\s*,\s*'live'\s*\)|status\s+IN\s*\(\s*'scheduled'\s*,\s*'live'\s*\)/.test(migration),
+      source.includes('rpc("ad_advertisable_pages"'),
+      "Admin list must call the shared advertisable-pages RPC",
+    );
+    assert.ok(
+      migration.includes("ad_destination_resolve"),
+      "SQL resolve must remain the availability authority",
+    );
+    assert.ok(
+      /status\s+NOT\s+IN\s*\(\s*'scheduled'\s*,\s*'live'\s*\)|status\s+IN\s*\(\s*'scheduled'\s*,\s*'live'\s*\)/.test(
+        migration,
+      ),
       "ended/cancelled must stay excluded in SQL resolve",
     );
     assert.ok(
@@ -615,7 +1206,9 @@ describe("SC-10 + destination-filter source traps", () => {
   });
 
   it("the campaign-builder CI job is registered and points at the happy suite", () => {
-    const workflow = read(path.join(REPO_ROOT, ".github/workflows/strict-grep-mingla-business.yml"));
+    const workflow = read(
+      path.join(REPO_ROOT, ".github/workflows/strict-grep-mingla-business.yml"),
+    );
     assert.ok(workflow.includes("issue-864-campaign-builder-node-tests"));
     assert.ok(workflow.includes("issue864_campaign_builder_happy.test.js"));
   });
@@ -632,10 +1225,12 @@ describe("P1-1 pin — destination display host parity with the server", () => {
   it("PUBLIC_WEB_ORIGIN equals the server's PRODUCTION_BUSINESS_WEB_ORIGIN", () => {
     // (adDestinationsService imports the supabase client, which needs Vite env —
     // read both constants from source instead of importing the module.)
-    const serverConst = read(path.join(REPO_ROOT, "supabase/functions/_shared/businessWebOrigin.ts"))
-      .match(/PRODUCTION_BUSINESS_WEB_ORIGIN\s*=\s*\n?\s*["']([^"']+)["']/);
-    const clientConst = read(path.join(ADMIN_SRC, "services/adDestinationsService.js"))
-      .match(/PUBLIC_WEB_ORIGIN\s*=\s*["']([^"']+)["']/);
+    const serverConst = read(
+      path.join(REPO_ROOT, "supabase/functions/_shared/businessWebOrigin.ts"),
+    ).match(/PRODUCTION_BUSINESS_WEB_ORIGIN\s*=\s*\n?\s*["']([^"']+)["']/);
+    const clientConst = read(
+      path.join(ADMIN_SRC, "services/adDestinationsService.js"),
+    ).match(/PUBLIC_WEB_ORIGIN\s*=\s*["']([^"']+)["']/);
     assert.ok(serverConst, "server constant must exist");
     assert.ok(clientConst, "client constant must exist");
     assert.equal(

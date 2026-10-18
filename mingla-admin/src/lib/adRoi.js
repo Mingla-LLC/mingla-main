@@ -30,6 +30,31 @@ export function comparableValueCents(valueByCurrency) {
 }
 
 /**
+ * Provider spend and attributed value are comparable only when the value map
+ * contains exactly one currency and it matches the provider-account currency.
+ * A single numeric bucket is not enough: NGN 5,000 and USD 5,000 are not the
+ * same amount merely because both are expressed in minor units.
+ */
+export function comparableValueForSpendCurrency(
+  valueByCurrency,
+  spendCurrency,
+) {
+  if (!valueByCurrency || typeof valueByCurrency !== "object") return null;
+  if (
+    typeof spendCurrency !== "string" ||
+    !/^[A-Z]{3}$/.test(spendCurrency)
+  ) {
+    return null;
+  }
+  const entries = Object.entries(valueByCurrency).filter(([, raw]) =>
+    Number.isFinite(Number(raw))
+  );
+  return entries.length === 1 && entries[0][0] === spendCurrency
+    ? Number(entries[0][1])
+    : null;
+}
+
+/**
  * ROAS = attributed value / spend. Returns null when spend is unknown (null) or
  * <= 0 (a real division would fabricate/inflate). Rounded to 2 dp.
  */
@@ -55,11 +80,15 @@ export function computeCostPerResult(spendCents, conversions) {
  * Shape the raw ad_campaign_conversion_rollup jsonb into the panel's view model.
  * Honest-empty safe: a null / unauthorized payload → zeros + null ROI metrics.
  */
-export function toCampaignRoiView(raw) {
+export function toCampaignRoiView(raw, { spendCurrency = null } = {}) {
   const row = raw && typeof raw === "object" ? raw : {};
   const conversions = Number(row.conversions) || 0;
   const valueByCurrency = row.value_cents && typeof row.value_cents === "object" ? row.value_cents : {};
   const valueCents = comparableValueCents(valueByCurrency);
+  const comparableSpendValueCents = comparableValueForSpendCurrency(
+    valueByCurrency,
+    spendCurrency,
+  );
   const spendCents = row.spend_cents === null || row.spend_cents === undefined
     ? null
     : Number(row.spend_cents);
@@ -78,8 +107,15 @@ export function toCampaignRoiView(raw) {
     conversions,
     valueByCurrency,
     valueCents,
+    spendCurrency:
+      typeof spendCurrency === "string" && /^[A-Z]{3}$/.test(spendCurrency)
+        ? spendCurrency
+        : null,
     spendCents,
-    roas: valueCents === null ? null : computeRoas(valueCents, spendCents),
+    roas:
+      comparableSpendValueCents === null
+        ? null
+        : computeRoas(comparableSpendValueCents, spendCents),
     costPerResultCents: computeCostPerResult(spendCents, conversions),
     byPlatform,
     sendHealth: {

@@ -18,8 +18,12 @@ describe("issue #3697 Wave 8 Cancel / End / filters", () => {
     expect(detail).toContain("ads-detail-end");
     expect(detail).toContain("canCancel");
     expect(detail).toContain("canEnd");
-    expect(detail).toContain("spent <= 0");
-    expect(detail).toContain("spent > 0");
+    // [TEST-MOD-APPROVED #3697] v1.4 uses provider-account spend as the
+    // cancellation authority; Host-currency conversion may be unavailable.
+    expect(detail).toContain("hasProviderSpend");
+    expect(detail).toContain("Number(row.spend_cents) > 0");
+    expect(detail).toContain("!isEnded && !hasProviderSpend");
+    expect(detail).toContain("!isEnded && hasProviderSpend");
     expect(detail).toContain("cancelHostAdCampaign");
   });
 

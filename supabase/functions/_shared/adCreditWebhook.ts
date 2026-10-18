@@ -10,6 +10,7 @@ import {
   verifyAdCreditTopUpPaymentIntent,
 } from "./adCreditStripe.ts";
 import { quoteTopUp } from "./adMoney.ts";
+import { resolveAdBrandCurrency } from "./adCurrencyAuthority.ts";
 
 export const AD_CREDIT_WITHDRAW_PURPOSE = "ad_credit_withdraw";
 export const AD_CREDIT_WD_MERCHANT_PREFIX = "ad_credit_wd:";
@@ -49,6 +50,20 @@ export async function applyAdCreditTopUpFromPaymentIntent(
   const currency = (pi.currency ?? "").toUpperCase();
   if (!brandId || !pi.id) {
     return { brandId, applied: false, detail: "missing_fields" };
+  }
+  const authority = await resolveAdBrandCurrency(supabase, brandId);
+  if (!authority.ok) {
+    return { brandId, applied: false, detail: authority.detail };
+  }
+  if (
+    authority.authority.provider !== "stripe" ||
+    currency !== authority.currency
+  ) {
+    return {
+      brandId,
+      applied: false,
+      detail: "payment_currency_authority_mismatch",
+    };
   }
   const quoted = quoteTopUp(payCents, currency);
   if (!quoted.ok) {
@@ -108,6 +123,20 @@ export async function applyAdCreditTopUpFromPaystackCharge(
   }
   if (String(meta.mingla_purpose ?? "") !== AD_CREDIT_TOP_UP_PURPOSE) {
     return { brandId, applied: false, detail: "payment_purpose_mismatch" };
+  }
+  const authority = await resolveAdBrandCurrency(supabase, brandId);
+  if (!authority.ok) {
+    return { brandId, applied: false, detail: authority.detail };
+  }
+  if (
+    authority.authority.provider !== "paystack" ||
+    currency !== authority.currency
+  ) {
+    return {
+      brandId,
+      applied: false,
+      detail: "payment_currency_authority_mismatch",
+    };
   }
   const quoted = quoteTopUp(payCents, currency);
   if (!quoted.ok) {

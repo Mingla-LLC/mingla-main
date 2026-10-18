@@ -1421,6 +1421,215 @@ export async function googleCreateDemandGenVideoCampaign(
   };
 }
 
+// ── Issue #3697 v1.4 — provider-native App campaign ─────────────────────────
+
+export interface GoogleAppCampaignInput {
+  name: string;
+  dailyBudgetCents: number;
+  appId: string;
+  os: "ios" | "android";
+  geoTargetCriterionIds: string[];
+  headlines: string[];
+  descriptions: string[];
+  validateOnly?: boolean;
+}
+
+const APP_TEMP_BUDGET_ID = -21;
+const APP_TEMP_CAMPAIGN_ID = -22;
+const APP_TEMP_AD_GROUP_ID = -23;
+
+function validateGoogleAppCampaign(input: GoogleAppCampaignInput): void {
+  const appId = input.appId.trim();
+  const appIdValid = input.os === "ios"
+    ? /^\d+$/.test(appId)
+    : /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(appId);
+  if (!appIdValid) {
+    throw new AdApiError({
+      platform: "google",
+      code: "app_id_invalid",
+      message:
+        "Google App campaigns require a numeric Apple App Store ID or an Android package matching the selected OS.",
+    });
+  }
+  if (!Number.isSafeInteger(input.dailyBudgetCents) || input.dailyBudgetCents <= 0) {
+    throw new AdApiError({
+      platform: "google",
+      code: "app_budget_invalid",
+      message: "Google App campaign daily budget must be a positive integer in minor units.",
+    });
+  }
+  if (input.headlines.length < 2 || input.headlines.length > 5 ||
+    input.headlines.some((value) => !value.trim() || value.trim().length > 30)) {
+    throw new AdApiError({
+      platform: "google",
+      code: "app_headlines_invalid",
+      message: "Google App ads require 2–5 non-empty headlines of at most 30 characters.",
+    });
+  }
+  if (input.descriptions.length < 1 || input.descriptions.length > 5 ||
+    input.descriptions.some((value) => !value.trim() || value.trim().length > 90)) {
+    throw new AdApiError({
+      platform: "google",
+      code: "app_descriptions_invalid",
+      message: "Google App ads require 1–5 non-empty descriptions of at most 90 characters.",
+    });
+  }
+  if (input.geoTargetCriterionIds.length === 0 ||
+    input.geoTargetCriterionIds.some((value) => !/^\d+$/.test(value))) {
+    throw new AdApiError({
+      platform: "google",
+      code: "app_geo_invalid",
+      message: "Google App campaigns require resolved numeric location criterion IDs.",
+    });
+  }
+}
+
+/**
+ * Official App-campaign shape: non-shared budget; MULTI_CHANNEL /
+ * APP_CAMPAIGN; exact app_store + app_id; install-volume bidding through
+ * maximize_conversions; campaign-level location criteria; typeless ad group;
+ * AppAdInfo text assets. Campaign and ad are PAUSED; the typeless ad group is
+ * ENABLED beneath the paused parent, matching the existing safe Google chain.
+ */
+export function buildGoogleAppMutateOperations(
+  customerId: string,
+  input: GoogleAppCampaignInput,
+): Record<string, unknown>[] {
+  validateGoogleAppCampaign(input);
+  const budgetResource =
+    `customers/${customerId}/campaignBudgets/${APP_TEMP_BUDGET_ID}`;
+  const campaignResource =
+    `customers/${customerId}/campaigns/${APP_TEMP_CAMPAIGN_ID}`;
+  const adGroupResource =
+    `customers/${customerId}/adGroups/${APP_TEMP_AD_GROUP_ID}`;
+  const operations: Record<string, unknown>[] = [{
+    campaignBudgetOperation: {
+      create: {
+        resourceName: budgetResource,
+        name: `${input.name} — budget`,
+        amountMicros: String(
+          centsToPlatformBudget("google", input.dailyBudgetCents),
+        ),
+        deliveryMethod: "STANDARD",
+        explicitlyShared: false,
+      },
+    },
+  }, {
+    campaignOperation: {
+      create: {
+        resourceName: campaignResource,
+        name: input.name,
+        status: "PAUSED",
+        advertisingChannelType: "MULTI_CHANNEL",
+        advertisingChannelSubType: "APP_CAMPAIGN",
+        campaignBudget: budgetResource,
+        maximizeConversions: {},
+        appCampaignSetting: {
+          appStore: input.os === "ios" ? "APPLE_APP_STORE" : "GOOGLE_APP_STORE",
+          appId: input.appId.trim(),
+          biddingStrategyGoalType:
+            "OPTIMIZE_INSTALLS_WITHOUT_TARGET_INSTALL_COST",
+        },
+        containsEuPoliticalAdvertising:
+          GOOGLE_EU_POLITICAL_ADVERTISING_VALUE,
+        geoTargetTypeSetting: { positiveGeoTargetType: "PRESENCE" },
+      },
+    },
+  }];
+  for (const criterionId of input.geoTargetCriterionIds) {
+    operations.push({
+      campaignCriterionOperation: {
+        create: {
+          campaign: campaignResource,
+          location: { geoTargetConstant: `geoTargetConstants/${criterionId}` },
+          negative: false,
+        },
+      },
+    });
+  }
+  operations.push({
+    adGroupOperation: {
+      create: {
+        resourceName: adGroupResource,
+        name: `${input.name} — ad group`,
+        campaign: campaignResource,
+        status: "ENABLED",
+      },
+    },
+  }, {
+    adGroupAdOperation: {
+      create: {
+        adGroup: adGroupResource,
+        status: "PAUSED",
+        ad: {
+          name: `${input.name} — app ad`,
+          appAd: {
+            headlines: input.headlines.map((text) => ({ text: text.trim() })),
+            descriptions: input.descriptions.map((text) => ({
+              text: text.trim(),
+            })),
+          },
+        },
+      },
+    },
+  });
+  return operations;
+}
+
+export function buildGoogleAppMutateRequest(
+  customerId: string,
+  input: GoogleAppCampaignInput,
+): Record<string, unknown> {
+  return {
+    mutateOperations: buildGoogleAppMutateOperations(customerId, input),
+    partialFailure: false,
+    validateOnly: input.validateOnly === true,
+  };
+}
+
+export async function googleCreateAppCampaign(
+  conn: AdConnectionRow,
+  input: GoogleAppCampaignInput,
+): Promise<GoogleDemandGenVideoResult> {
+  const client = await resolveGoogleClient(conn);
+  const { payload, requestId } = await googleAdsRequest(
+    client,
+    `customers/${client.customerId}/googleAds:mutate`,
+    buildGoogleAppMutateRequest(client.customerId, input),
+  );
+  if (input.validateOnly) {
+    return {
+      validated: true,
+      externalCampaignId: "",
+      externalAdSetId: "",
+      externalAdId: "",
+      budgetResourceName: null,
+      requestId,
+    };
+  }
+  const names = parseGoogleMutateResults(payload);
+  if (
+    !names.campaignResourceName || !names.adGroupResourceName ||
+    !names.adGroupAdResourceName
+  ) {
+    throw new AdApiError({
+      platform: "google",
+      code: "unexpected_mutate_response",
+      message:
+        "Google App campaign create returned OK without a complete campaign/ad-group/ad identity.",
+      traceId: requestId,
+    });
+  }
+  return {
+    validated: false,
+    externalCampaignId: idFromResourceName(names.campaignResourceName),
+    externalAdSetId: idFromResourceName(names.adGroupResourceName),
+    externalAdId: idFromResourceName(names.adGroupAdResourceName),
+    budgetResourceName: names.budgetResourceName,
+    requestId,
+  };
+}
+
 // ── Status semantics (A1.1(4) / GR-55 / AC-G-4 — REMOVED is NEVER emitted) ────
 
 /**

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_3697_native_app_certification.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-3697-v14-04-native-app-certification",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}

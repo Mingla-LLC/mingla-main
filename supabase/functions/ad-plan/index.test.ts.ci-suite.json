@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ad-plan/index.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3697-v14-01-ad-plan",
+  "profile": "deno-2-unit"
+}

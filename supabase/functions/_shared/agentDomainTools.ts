@@ -26,6 +26,7 @@ import {
   resolveAccessibleAgentBrands,
 } from "./agentTenantScope.ts";
 import { calendarDaysBetween, refundCentsFromCredit } from "./adMoney.ts";
+import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
 // issue #2291 — ONE contract for what a channel_payload must contain. Ari is
 // the only writer that has no human between it and the send path, so it is the
 // writer that most needs to be told "no" before the row is stored.
@@ -3137,13 +3138,6 @@ const cancelCampaign = writeTool(
   },
 );
 
-function hostAdCountries(currency: string): string[] {
-  if (currency === "NGN") return ["NG"];
-  if (currency === "GBP") return ["GB"];
-  if (currency === "EUR") return ["IE"];
-  return ["US"];
-}
-
 function hostAdScheduleDays(startsAt: unknown, endsAt: unknown): number {
   return calendarDaysBetween(
     typeof startsAt === "string" ? startsAt : null,
@@ -3151,54 +3145,108 @@ function hostAdScheduleDays(startsAt: unknown, endsAt: unknown): number {
   ) ?? 1;
 }
 
-function buildHostAdCreatePayload(
-  args: Record<string, unknown>,
-  operationId: string,
-): Record<string, unknown> {
-  const platform = String(args.platform).trim().toLowerCase();
-  const budgetCents = Number(args.budget_cents);
-  const currency = String(args.currency).trim().toUpperCase();
-  const countries = hostAdCountries(currency);
-  const days = hostAdScheduleDays(args.starts_at, args.ends_at);
-  const dailyBudgetCents = Math.max(1, Math.ceil(budgetCents / days));
-  const rawPrimary = typeof args.primary_text === "string"
-    ? args.primary_text.trim()
-    : "";
-  const primary = rawPrimary || String(args.name);
-  const shortName = String(args.name).trim();
-  const destination = {
-    page_type: String(args.dest_page_type),
-    brand_slug: String(args.dest_brand_slug),
-    ...(typeof args.dest_entity_slug === "string" &&
-        args.dest_entity_slug.trim()
-      ? { entity_slug: args.dest_entity_slug.trim() }
-      : {}),
+type AriAdPlanAggregate = {
+  plan: {
+    id: string;
+    brand_id: string | null;
+    owner_kind: string;
+    state: string;
   };
+  version: {
+    id: string;
+    plan_hash: string;
+    host_currency: string;
+    host_budget_cents: number;
+    canonical_plan: Record<string, unknown>;
+  };
+  provider_allocations: Array<Record<string, unknown>>;
+  targeting_snapshots: Array<Record<string, unknown>>;
+  funding_hold?: Record<string, unknown> | null;
+};
+
+function buildHostAdCreatePayload(
+  aggregate: AriAdPlanAggregate,
+  platform: string,
+  operationId: string,
+  validateOnly = false,
+): Record<string, unknown> {
+  const canonical = aggregate.version.canonical_plan;
+  const destination = canonical.destination as Record<string, unknown>;
+  const schedule = (canonical.schedule ?? {}) as Record<string, unknown>;
+  const creativeId = String(canonical.creative_library_id ?? "");
+  const name = String(canonical.name ?? "Mingla promotion");
+  const copyIntent = (canonical.copy ?? {}) as Record<string, unknown>;
+  const primary = String(copyIntent.primary ?? canonical.primary_text ?? name);
+  const allocation = aggregate.provider_allocations.find((row) =>
+    row.platform === platform
+  );
+  const snapshot = aggregate.targeting_snapshots.find((row) =>
+    row.platform === platform
+  );
+  if (!allocation || !snapshot) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "The approved plan is missing a provider allocation or frozen target",
+    );
+  }
+  const deliveryBudgets = canonical.delivery_budgets as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  const delivery = deliveryBudgets?.[platform];
+  const hostDaily = Number(delivery?.host_amount_cents);
+  const hostCap = Number(allocation.host_budget_cents);
+  const providerDaily = Number(delivery?.provider_amount_cents);
+  const providerCap = Number(allocation.provider_budget_cents);
+  if (
+    !Number.isSafeInteger(hostDaily) || hostDaily <= 0 ||
+    !Number.isSafeInteger(hostCap) || hostCap <= 0 ||
+    (validateOnly && (
+      !Number.isSafeInteger(providerDaily) || providerDaily <= 0 ||
+      !Number.isSafeInteger(providerCap) || providerCap <= 0
+    ))
+  ) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "The approved plan budget is incomplete",
+    );
+  }
+  const audience = (snapshot.audience_intent ?? {}) as Record<string, unknown>;
+  const target = providerExecutionTargeting(
+    platform as "meta" | "google" | "tiktok" | "snapchat" | "reddit",
+    audience,
+    (snapshot.compiled_targeting ?? {}) as Record<string, unknown>,
+  );
   const base: Record<string, unknown> = {
     platform,
     lane: "business",
     owner_kind: "host",
-    brand_id: args.brand_id,
-    request_id: `ari_${operationId}`.slice(0, 120),
-    name: shortName,
+    brand_id: aggregate.plan.brand_id,
+    plan_version_id: aggregate.version.id,
+    plan_hash: aggregate.version.plan_hash,
+    request_id: (
+      "ari_plan_" + aggregate.version.plan_hash + "_" + platform +
+      (validateOnly ? "_validate" : "")
+    ).slice(0, 120),
+    name,
     destination,
     destinations: [destination],
     budget: {
       type: "daily",
-      amount_cents: dailyBudgetCents,
-      cap_cents: budgetCents,
-      currency,
+      amount_cents: validateOnly ? providerDaily : hostDaily,
+      cap_cents: validateOnly ? providerCap : hostCap,
     },
-    schedule: {
-      ...(typeof args.starts_at === "string"
-        ? { starts_at: args.starts_at }
-        : {}),
-      ...(typeof args.ends_at === "string" ? { ends_at: args.ends_at } : {}),
+    schedule,
+    targeting: target,
+    audience_intent: audience,
+    copy_intent: copyIntent,
+    creative_intent: {
+      kind: "video",
+      creative_library_id: creativeId,
+      image_url: null,
     },
-    targeting: { countries, age_min: 18, age_max: 65 },
     compliance: { aiGenerated: false, specialAdCategory: "NONE" },
+    ...(validateOnly ? { validate_only: true } : {}),
   };
-  const creativeId = String(args.creative_library_id);
   if (platform === "tiktok") {
     return {
       ...base,
@@ -3234,23 +3282,21 @@ function buildHostAdCreatePayload(
       creative: {
         kind: "video",
         creative_library_id: creativeId,
-        headline: (shortName || primary).slice(0, 34),
-        brand_name: String(args.dest_brand_slug).slice(0, 32),
+        headline: name.slice(0, 34),
+        brand_name: String(destination.brand_slug ?? "Mingla").slice(0, 32),
       },
     };
   }
   if (platform === "google") {
-    const headline = (shortName || "Discover more").slice(0, 40);
-    const description = primary.slice(0, 90);
     return {
       ...base,
       creative: {
         kind: "video",
         creative_library_id: creativeId,
-        headlines: [headline],
+        headlines: [name.slice(0, 40)],
         long_headlines: [primary.slice(0, 90)],
-        descriptions: [description],
-        business_name: String(args.dest_brand_slug).slice(0, 25),
+        descriptions: [primary.slice(0, 90)],
+        business_name: String(destination.brand_slug ?? "Mingla").slice(0, 25),
       },
       keywords: [],
     };
@@ -3264,7 +3310,7 @@ function buildHostAdCreatePayload(
       kind: "video",
       creative_library_id: creativeId,
       message: primary,
-      headline: shortName.slice(0, 255),
+      headline: name.slice(0, 255),
       call_to_action_type: "LEARN_MORE",
       ai_generated: false,
     },
@@ -3272,10 +3318,95 @@ function buildHostAdCreatePayload(
   };
 }
 
-// toward #3697 Wave 7c — Host Ads plan/approve/run (distinct from Blast marketing_campaigns).
+function normalizedAdTargetName(value: string): string {
+  return value.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
+}
+
+function ariTargetingResultName(
+  value: Record<string, unknown>,
+): string {
+  const meta = value.meta !== null && typeof value.meta === "object" &&
+      !Array.isArray(value.meta)
+    ? value.meta as Record<string, unknown>
+    : {};
+  return String(meta.city ?? meta.name ?? value.name ?? "").trim();
+}
+
+async function resolveAriTargetingRefs(
+  client: any,
+  brandId: string,
+  platforms: string[],
+  cities: Array<{ name: string; countryCode: string }>,
+  interests: string[],
+): Promise<Record<string, unknown>> {
+  const refsByPlatform: Record<string, {
+    locationIds?: Record<string, string>;
+    interestIds?: Record<string, string>;
+  }> = {};
+  await Promise.all(platforms.map(async (platform) => {
+    const locationIds: Record<string, string> = {};
+    const interestIds: Record<string, string> = {};
+    if (["meta", "tiktok", "google"].includes(platform)) {
+      await Promise.all(cities.map(async (city) => {
+        const response = await invokeFn(client, "admin-ad-targeting-search", {
+          owner_kind: "host",
+          lane: "business",
+          brand_id: brandId,
+          platform,
+          kind: "city",
+          q: city.name,
+          country: city.countryCode,
+        }) as { results?: Array<Record<string, unknown>> };
+        const exact = (response.results ?? []).find((candidate) =>
+          normalizedAdTargetName(ariTargetingResultName(candidate)) ===
+            normalizedAdTargetName(city.name)
+        );
+        const id = exact?.id;
+        if (typeof id === "string" && id.trim()) {
+          locationIds[
+            `${city.countryCode}:${normalizedAdTargetName(city.name)}`
+          ] = id.trim();
+        }
+      }));
+    }
+    if (platform === "reddit") {
+      for (const interest of interests) {
+        interestIds[normalizedAdTargetName(interest)] = interest;
+      }
+    } else {
+      await Promise.all(interests.map(async (interest) => {
+        const response = await invokeFn(client, "admin-ad-targeting-search", {
+          owner_kind: "host",
+          lane: "business",
+          brand_id: brandId,
+          platform,
+          kind: "interest",
+          q: interest,
+        }) as { results?: Array<Record<string, unknown>> };
+        const exact = (response.results ?? []).find((candidate) =>
+          normalizedAdTargetName(String(candidate.name ?? "")) ===
+            normalizedAdTargetName(interest)
+        );
+        const id = exact?.id;
+        if (typeof id === "string" && id.trim()) {
+          interestIds[normalizedAdTargetName(interest)] = id.trim();
+        }
+      }));
+    }
+    refsByPlatform[platform] = {
+      ...(Object.keys(locationIds).length > 0 ? { locationIds } : {}),
+      ...(Object.keys(interestIds).length > 0 ? { interestIds } : {}),
+    };
+  }));
+  return refsByPlatform;
+}
+
+// Issue #3697 v1.4 — Ari creates the same server-owned plan as the Host and
+// Admin builders. Currency is deliberately absent: the server derives the
+// verified brand settlement currency and provider-account currency.
 const proposeAdPlan = writeTool(
   "propose_ad_plan",
-  "Propose a Host Ads plan for Meta, Google, TikTok, Snapchat, or Reddit. The Host attaches a video before approval. Does not create or spend. Distinct from draft_campaign (Blast email/SMS).",
+  "Create a resumable Host Ads plan without spending. The server freezes currency, provider allocation and targeting. Distinct from draft_campaign (Blast email/SMS).",
   {
     brand_id: UUID,
     name: STR,
@@ -3283,12 +3414,51 @@ const proposeAdPlan = writeTool(
     dest_brand_slug: STR,
     dest_entity_slug: { type: "string" },
     platform: { type: "string" },
+    platforms: {
+      type: "array",
+      items: { type: "string" },
+      minItems: 1,
+      maxItems: 5,
+    },
     budget_cents: { type: "integer", minimum: 100 },
-    currency: { type: "string", minLength: 3, maxLength: 3 },
+    daily_budget_cents: { type: "integer", minimum: 100 },
+    countries: {
+      type: "array",
+      items: { type: "string", minLength: 2, maxLength: 2 },
+    },
+    cities: {
+      type: "array",
+      maxItems: 10,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 120 },
+          country_code: { type: "string", minLength: 2, maxLength: 2 },
+        },
+        required: ["name", "country_code"],
+      },
+    },
+    radius_km: { type: "number", minimum: 1, maximum: 80 },
+    interests: {
+      type: "array",
+      maxItems: 20,
+      items: { type: "string", minLength: 1, maxLength: 120 },
+    },
+    age_min: { type: "integer", minimum: 13, maximum: 100 },
+    age_max: { type: "integer", minimum: 13, maximum: 100 },
+    gender: { type: "string", enum: ["all", "men", "women"] },
     starts_at: { type: "string" },
     ends_at: { type: "string" },
     primary_text: { type: "string" },
     creative_library_id: UUID,
+    accept_broader_targeting: { type: "boolean" },
+    rights_confirmed: { type: "boolean" },
+    rights_basis: {
+      type: "string",
+      enum: ["owned", "licensed", "authorized_by_brand"],
+    },
+    ai_generated: { type: "boolean" },
   },
   [
     "brand_id",
@@ -3296,132 +3466,421 @@ const proposeAdPlan = writeTool(
     "dest_page_type",
     "dest_brand_slug",
     "budget_cents",
-    "currency",
-    "platform",
+    "countries",
+    "rights_confirmed",
+    "rights_basis",
+    "ai_generated",
   ],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    const platform = typeof args.platform === "string" && args.platform.trim()
-      ? args.platform.trim().toLowerCase()
-      : "";
-    if (!platform) {
-      throw new ToolError("INVALID_ARGS", "platform is required");
-    }
-    if (!HOST_AD_PLATFORMS.has(platform)) {
+    const platforms = [
+      ...new Set(
+        (Array.isArray(args.platforms) && args.platforms.length > 0
+          ? args.platforms
+          : [args.platform]).map((value) =>
+            String(value ?? "").trim().toLowerCase()
+          ),
+      ),
+    ];
+    if (
+      platforms.length === 0 ||
+      platforms.some((platform) => !HOST_AD_PLATFORMS.has(platform))
+    ) {
       throw new ToolError(
         "INVALID_ARGS",
-        "platform must be meta, google, tiktok, snapchat, or reddit",
+        "platforms must contain meta, google, tiktok, snapchat, or reddit",
       );
     }
-    const currency = typeof args.currency === "string"
-      ? args.currency.trim().toUpperCase()
-      : "";
-    if (!/^[A-Z]{3}$/.test(currency)) {
-      throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
+    const countries = Array.isArray(args.countries)
+      ? [
+        ...new Set(
+          args.countries.map((value) => String(value).trim().toUpperCase()),
+        ),
+      ]
+      : [];
+    if (
+      countries.length === 0 ||
+      countries.some((value) => !/^[A-Z]{2}$/.test(value))
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "countries must contain explicit two-letter country codes",
+      );
     }
-    const budgetCents = Number(args.budget_cents);
-    if (!Number.isFinite(budgetCents) || budgetCents < 100) {
-      throw new ToolError("INVALID_ARGS", "budget_cents must be ≥ 100");
+    const cities = Array.isArray(args.cities)
+      ? args.cities.map((value) => {
+        const row = value !== null && typeof value === "object" &&
+            !Array.isArray(value)
+          ? value as Record<string, unknown>
+          : {};
+        return {
+          name: String(row.name ?? "").trim(),
+          countryCode: String(row.country_code ?? "").trim().toUpperCase(),
+        };
+      })
+      : [];
+    if (
+      cities.some((city) =>
+        !city.name || !/^[A-Z]{2}$/.test(city.countryCode) ||
+        !countries.includes(city.countryCode)
+      )
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Each city needs a name and a country_code included in countries",
+      );
     }
-    const payCents = refundCentsFromCredit(budgetCents);
-    return {
-      plan: {
-        brand_id: args.brand_id,
-        name: String(args.name),
-        dest_page_type: String(args.dest_page_type),
-        dest_brand_slug: String(args.dest_brand_slug),
-        dest_entity_slug: typeof args.dest_entity_slug === "string"
-          ? args.dest_entity_slug
-          : null,
-        platform,
-        budget_cents: budgetCents,
-        pay_cents: payCents,
-        fee_cents: payCents - budgetCents,
-        currency,
-        starts_at: typeof args.starts_at === "string" ? args.starts_at : null,
-        ends_at: typeof args.ends_at === "string" ? args.ends_at : null,
-        primary_text: typeof args.primary_text === "string"
-          ? args.primary_text
-          : "",
-        creative_library_id: isUuid(args.creative_library_id)
-          ? String(args.creative_library_id)
-          : null,
+    const interests = Array.isArray(args.interests)
+      ? [...new Set(args.interests.map((value) => String(value).trim()))]
+        .filter(Boolean)
+      : [];
+    const radiusKm = args.radius_km === undefined
+      ? null
+      : Number(args.radius_km);
+    if (
+      radiusKm !== null &&
+      (!Number.isFinite(radiusKm) || radiusKm < 1 || radiusKm > 80 ||
+        cities.length === 0)
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "radius_km requires at least one city and must be from 1 through 80",
+      );
+    }
+    const gender = ["all", "men", "women"].includes(String(args.gender))
+      ? String(args.gender)
+      : "all";
+    if (
+      args.rights_confirmed !== true ||
+      !["owned", "licensed", "authorized_by_brand"].includes(
+        String(args.rights_basis ?? ""),
+      ) || typeof args.ai_generated !== "boolean"
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Confirm paid-ad media rights, choose the rights basis, and disclose whether the asset is AI-generated",
+      );
+    }
+    const cap = Number(args.budget_cents);
+    const days = hostAdScheduleDays(args.starts_at, args.ends_at);
+    const daily = Number(args.daily_budget_cents ?? Math.ceil(cap / days));
+    if (
+      !Number.isSafeInteger(cap) || cap < 100 || !Number.isSafeInteger(daily) ||
+      daily < 100 * platforms.length || cap < 100 * platforms.length ||
+      daily > cap
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "budget_cents and daily_budget_cents are invalid",
+      );
+    }
+    const { data: connections, error: connectionError } = await client
+      .from("ad_connections")
+      .select("id,platform")
+      .in("platform", platforms)
+      .eq("lane", "business")
+      .eq("connected", true)
+      .eq("status", "connected");
+    if (
+      connectionError || !Array.isArray(connections) ||
+      platforms.some((platform) =>
+        !connections.some((connection: { platform?: string; id?: string }) =>
+          connection.platform === platform && isUuid(connection.id)
+        )
+      )
+    ) {
+      throw new ToolError(
+        "RPC_FAILED",
+        "Every selected business ad account must be connected",
+      );
+    }
+    const split = (total: number) => {
+      const base = Math.floor(total / platforms.length);
+      const remainder = total - base * platforms.length;
+      return platforms.map((_, index) => base + (index < remainder ? 1 : 0));
+    };
+    const capShares = split(cap);
+    const dailyShares = split(daily);
+    const destination = {
+      page_type: String(args.dest_page_type),
+      brand_slug: String(args.dest_brand_slug),
+      ...(typeof args.dest_entity_slug === "string" &&
+          args.dest_entity_slug.trim()
+        ? { entity_slug: args.dest_entity_slug.trim() }
+        : {}),
+    };
+    const targetingRefs = await resolveAriTargetingRefs(
+      client,
+      String(args.brand_id),
+      platforms,
+      cities,
+      interests,
+    );
+    const opened = await invokeFn(client, "ad-plan", {
+      action: "open",
+      client_kind: "ari",
+      owner_kind: "host",
+      brand_id: args.brand_id,
+      destination_family: "public_mingla_page",
+      destination_key: [
+        destination.page_type,
+        destination.brand_slug,
+        destination.entity_slug,
+      ].filter(Boolean).join(":"),
+    }) as { plan?: { id?: string } };
+    const planId = opened.plan?.id;
+    if (!planId || !isUuid(planId)) {
+      throw new ToolError("RPC_FAILED", "ad-plan open returned no plan id");
+    }
+    const canonicalPlan = {
+      name: String(args.name),
+      destination,
+      schedule: {
+        ...(typeof args.starts_at === "string"
+          ? { starts_at: args.starts_at }
+          : {}),
+        ...(typeof args.ends_at === "string" ? { ends_at: args.ends_at } : {}),
       },
-      next_step:
-        "Call approve_ad_plan with the same plan fields. The Host attaches the required video on the LAUNCH review card before confirmation.",
+      audience_intent: {
+        countries,
+        ...(cities.length > 0 ? { cities } : {}),
+        ...(radiusKm !== null ? { radiusKm } : {}),
+        ...(typeof args.age_min === "number" ? { ageMin: args.age_min } : {}),
+        ...(typeof args.age_max === "number" ? { ageMax: args.age_max } : {}),
+        gender,
+        ...(interests.length > 0
+          ? { interests: interests.map((name) => ({ name })) }
+          : {}),
+      },
+      copy: {
+        primary: typeof args.primary_text === "string"
+          ? args.primary_text
+          : String(args.name),
+      },
+      creative_library_id: isUuid(args.creative_library_id)
+        ? args.creative_library_id
+        : null,
+      creative_url: null,
+      special_ad_category: "NONE",
+      confirmation_phrase: "LAUNCH",
+      media_rights: {
+        rights_confirmed: true,
+        rights_basis: String(args.rights_basis),
+        ai_generated: args.ai_generated,
+      },
+      broader_acceptance: Object.fromEntries(
+        platforms.map((platform) => [
+          platform,
+          args.accept_broader_targeting === true,
+        ]),
+      ),
+    };
+    const versioned = await invokeFn(client, "ad-plan", {
+      action: "create_version",
+      plan_id: planId,
+      canonical_plan: canonicalPlan,
+      provider_allocations: platforms.map((platform, index) => ({
+        platform,
+        connection_id: connections.find(
+          (connection: { platform?: string }) =>
+            connection.platform === platform,
+        )?.id,
+        host_budget_cents: capShares[index],
+        host_delivery_budget_cents: dailyShares[index],
+      })),
+    }) as {
+      version?: { id?: string; plan_hash?: string; host_currency?: string };
+    };
+    const versionId = versioned.version?.id;
+    const planHash = versioned.version?.plan_hash;
+    if (!versionId || !planHash) {
+      throw new ToolError("RPC_FAILED", "ad-plan version returned no binding");
+    }
+    const frozen = await invokeFn(client, "ad-plan", {
+      action: "freeze_targeting",
+      plan_version_id: versionId,
+      audience_intent: canonicalPlan.audience_intent,
+      refs_by_platform: targetingRefs,
+    }) as { targeting_snapshots?: Array<Record<string, unknown>> };
+    const blocked = (frozen.targeting_snapshots ?? []).some((row) =>
+      row.verdict === "unavailable" || row.verdict === "check_required" ||
+      (row.verdict === "broader" && row.broader_accepted !== true)
+    );
+    if (!blocked) {
+      await invokeFn(client, "ad-plan", {
+        action: "mark_ready",
+        plan_version_id: versionId,
+        plan_hash: planHash,
+      });
+    }
+    return {
+      plan_id: planId,
+      plan_version_id: versionId,
+      plan_hash: planHash,
+      platforms,
+      host_currency: versioned.version?.host_currency,
+      host_budget_cents: cap,
+      host_daily_budget_cents: daily,
+      targeting_snapshots: frozen.targeting_snapshots ?? [],
+      ready_for_funding: !blocked,
+      next_step: blocked
+        ? "Resolve or explicitly accept every targeting difference in a new plan version."
+        : "Review this exact plan, attach a READY video if needed, then approve it with LAUNCH.",
     };
   },
 );
 
 const approveAdPlan = writeTool(
   "approve_ad_plan",
-  "Create a Host video ad campaign on Meta, Google, TikTok, Snapchat, or Reddit, then launch it by debiting Ads credit. Type LAUNCH to confirm. Distinct from send_campaign_now.",
+  "Fund and confirm the exact immutable Host Ads plan. First-three or flagged campaigns stop for Mingla staff review before any provider object is created.",
   {
     brand_id: UUID,
-    name: STR,
-    dest_page_type: { type: "string" },
-    dest_brand_slug: STR,
-    dest_entity_slug: { type: "string" },
-    platform: { type: "string" },
-    budget_cents: { type: "integer", minimum: 100 },
-    currency: { type: "string", minLength: 3, maxLength: 3 },
-    starts_at: { type: "string" },
-    ends_at: { type: "string" },
-    primary_text: { type: "string" },
-    creative_library_id: UUID,
+    plan_id: UUID,
+    plan_version_id: UUID,
+    plan_hash: { type: "string", minLength: 64, maxLength: 64 },
   },
-  [
-    "brand_id",
-    "name",
-    "dest_page_type",
-    "dest_brand_slug",
-    "budget_cents",
-    "currency",
-    "platform",
-  ],
+  ["brand_id", "plan_id", "plan_version_id", "plan_hash"],
   async (args, client, userId, context) => {
     await requireBrand(args, client, userId);
     const operationId = requireAgentOperationId(context);
-    const platform = String(args.platform).trim().toLowerCase();
-    if (!HOST_AD_PLATFORMS.has(platform)) {
+    if (
+      !isUuid(args.plan_id) || !isUuid(args.plan_version_id) ||
+      !/^[0-9a-f]{64}$/.test(String(args.plan_hash))
+    ) {
       throw new ToolError(
         "INVALID_ARGS",
-        "platform must be meta, google, tiktok, snapchat, or reddit",
+        "plan id, version and hash are required",
       );
     }
-    if (!isUuid(args.creative_library_id)) {
+    let aggregate = await invokeFn(client, "ad-plan", {
+      action: "get",
+      plan_id: args.plan_id,
+    }) as AriAdPlanAggregate;
+    if (
+      aggregate.plan.brand_id !== args.brand_id ||
+      aggregate.version.id !== args.plan_version_id ||
+      aggregate.version.plan_hash !== args.plan_hash
+    ) {
       throw new ToolError(
         "INVALID_ARGS",
-        "creative_library_id must be a uuid of a READY video creative",
+        "The approval does not match the current plan version",
       );
     }
-    const currency = String(args.currency).trim().toUpperCase();
-    if (!/^[A-Z]{3}$/.test(currency)) {
-      throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
-    }
-    const created = await invokeFn(
-      client,
-      "admin-ad-create-campaign",
-      buildHostAdCreatePayload(args, operationId),
-    ) as { campaign_id?: string; campaign?: { id?: string } };
-    const campaignId = created.campaign_id ?? created.campaign?.id;
-    if (!campaignId || !isUuid(campaignId)) {
+    if (!isUuid(aggregate.version.canonical_plan.creative_library_id)) {
       throw new ToolError(
-        "RPC_FAILED",
-        "host-ad-campaign create returned no id",
+        "INVALID_ARGS",
+        "creative_library_id must be a uuid of a READY video creative; create a new plan version after attaching it",
       );
     }
-    const launched = await invokeFn(client, "host-ad-campaign", {
-      action: "launch",
-      brand_id: args.brand_id,
-      campaign_id: campaignId,
-      idempotency_key: `ari_launch_${operationId}`,
+    if (
+      ["changes_requested", "staff_rejected"].includes(aggregate.plan.state)
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Staff review requires a revised immutable plan before approval",
+      );
+    }
+    if (aggregate.plan.state === "staff_review_required") {
+      return {
+        plan_id: args.plan_id,
+        plan_version_id: args.plan_version_id,
+        plan_hash: args.plan_hash,
+        state: "staff_review_required",
+        message:
+          "Mingla staff review is required before this campaign can create or spend.",
+      };
+    }
+    for (const allocation of aggregate.provider_allocations) {
+      const platform = String(allocation.platform);
+      await invokeFn(
+        client,
+        "admin-ad-create-campaign",
+        buildHostAdCreatePayload(aggregate, platform, operationId, true),
+      );
+    }
+    if (!aggregate.funding_hold) {
+      await invokeFn(client, "ad-plan", {
+        action: "fund",
+        plan_version_id: args.plan_version_id,
+        plan_hash: args.plan_hash,
+        idempotency_key: ("ari_fund_" + args.plan_hash).slice(0, 120),
+      });
+      aggregate = await invokeFn(client, "ad-plan", {
+        action: "get",
+        plan_id: args.plan_id,
+      }) as AriAdPlanAggregate;
+    }
+    if (aggregate.plan.state === "staff_review_required") {
+      return {
+        plan_id: args.plan_id,
+        plan_version_id: args.plan_version_id,
+        plan_hash: args.plan_hash,
+        state: "staff_review_required",
+        message:
+          "Mingla staff review is required before this campaign can create or spend.",
+      };
+    }
+    await invokeFn(client, "ad-plan", {
+      action: "confirm_launch",
+      plan_version_id: args.plan_version_id,
+      plan_hash: args.plan_hash,
+      phrase: "LAUNCH",
     });
-    return { campaign_id: campaignId, created, launched };
+    const created: unknown[] = [];
+    const createdCampaigns: Array<{ campaignId: string; platform: string }> =
+      [];
+    for (const allocation of aggregate.provider_allocations) {
+      const platform = String(allocation.platform);
+      let result: { campaign_id?: string; campaign?: { id?: string } };
+      try {
+        result = await invokeFn(
+          client,
+          "admin-ad-create-campaign",
+          buildHostAdCreatePayload(aggregate, platform, operationId),
+        ) as { campaign_id?: string; campaign?: { id?: string } };
+        const campaignId = result.campaign_id ?? result.campaign?.id;
+        if (!campaignId || !isUuid(campaignId)) {
+          throw new ToolError(
+            "RPC_FAILED",
+            "provider create returned no campaign id",
+          );
+        }
+        created.push(result);
+        createdCampaigns.push({ campaignId, platform });
+      } catch (cause) {
+        await invokeFn(client, "ad-plan", {
+          action: "record_create_failure",
+          plan_version_id: args.plan_version_id,
+          plan_hash: args.plan_hash,
+          platform,
+          error_detail: cause instanceof Error ? cause.message : String(cause),
+        });
+        throw cause;
+      }
+    }
+    const launched: unknown[] = [];
+    for (const item of createdCampaigns) {
+      launched.push(
+        await invokeFn(client, "host-ad-campaign", {
+          action: "launch",
+          brand_id: args.brand_id,
+          campaign_id: item.campaignId,
+          idempotency_key:
+            ("ari_launch_" + args.plan_hash + "_" + item.platform)
+              .slice(0, 120),
+        }),
+      );
+    }
+    return {
+      plan_id: args.plan_id,
+      plan_version_id: args.plan_version_id,
+      plan_hash: args.plan_hash,
+      created,
+      launched,
+    };
   },
   "LAUNCH",
 );
-
 const pauseAdCampaign = writeTool(
   "pause_ad_campaign",
   "Pause a Host-owned ad campaign (owner_kind=host). Distinct from cancel_campaign (Blast).",
@@ -3432,9 +3891,8 @@ const pauseAdCampaign = writeTool(
     if (!isUuid(args.campaign_id)) {
       throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
     }
-    return await invokeFn(client, "host-ad-campaign", {
+    return await invokeFn(client, "admin-ad-campaign-action", {
       action: "pause",
-      brand_id: args.brand_id,
       campaign_id: args.campaign_id,
     });
   },
@@ -3442,7 +3900,7 @@ const pauseAdCampaign = writeTool(
 
 const endAdCampaign = writeTool(
   "end_ad_campaign",
-  "End a Host ad campaign and return unspent Ads credit. Type END to confirm.",
+  "Request a plan-wide Host ad stop. Unspent Ads credit settles only after every provider confirms stop and final spend. Type END to confirm.",
   { brand_id: UUID, campaign_id: UUID },
   ["brand_id", "campaign_id"],
   async (args, client, userId, context) => {
@@ -7070,6 +7528,44 @@ export async function preflightMoneyProposal(
   args: Record<string, unknown>,
   client: any,
 ): Promise<Record<string, unknown> | null> {
+  if (toolName === "approve_ad_plan") {
+    if (
+      !isUuid(args.brand_id) || !isUuid(args.plan_id) ||
+      !isUuid(args.plan_version_id) ||
+      !/^[0-9a-f]{64}$/.test(String(args.plan_hash ?? ""))
+    ) return null;
+    const aggregate = await invokeFn(client, "ad-plan", {
+      action: "get",
+      plan_id: args.plan_id,
+    }) as AriAdPlanAggregate;
+    if (
+      aggregate.plan.brand_id !== args.brand_id ||
+      aggregate.version.id !== args.plan_version_id ||
+      aggregate.version.plan_hash !== args.plan_hash
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "The approval no longer matches the current immutable ad plan",
+      );
+    }
+    const delivery = aggregate.version.canonical_plan.delivery_budgets as
+      | Record<string, Record<string, unknown>>
+      | undefined;
+    const platforms = aggregate.provider_allocations.map((allocation) =>
+      String(allocation.platform)
+    );
+    const daily = platforms.reduce(
+      (sum, platform) =>
+        sum + Number(delivery?.[platform]?.host_amount_cents ?? 0),
+      0,
+    );
+    return {
+      ad_budget_cents: aggregate.version.host_budget_cents,
+      ad_daily_budget_cents: daily,
+      currency: aggregate.version.host_currency,
+      ad_platforms: platforms,
+    };
+  }
   if (toolName === "cancel_trip_booking") {
     if (!isUuid(args.brand_id) || !isUuid(args.booking_id)) return null;
     await assertOrderBelongsToBrand(
@@ -7285,7 +7781,9 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "list_brand_team",
   "list_event_orders",
   "get_campaign_report",
-  // toward #3697 Wave 7c — Host Ads plan propose + report (no spend).
+  // Issue #3697 v1.4 — proposing may persist a resumable draft/version but it
+  // creates no provider object and moves no money, so it remains safe to run
+  // inline like a read; approval is still the confirmed money boundary.
   "propose_ad_plan",
   "get_ad_campaign_report",
   // #1980 — Growth Tool report read (growth-tools-report app lane).
@@ -7310,7 +7808,8 @@ export const MONEY_CONFIRM_TOOLS = new Set<string>([
   "refund_rsvp_contribution",
   "send_campaign_now",
   "delete_campaign_draft",
-  // toward #3697 Wave 7c — Host Ads launch/end debit or return credit.
+  // Issue #3697 v1.4 — approval places the wallet hold and may launch after
+  // review; end requests provider-final settlement and never refunds inline.
   "approve_ad_plan",
   "end_ad_campaign",
   "disconnect_partner",

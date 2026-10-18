@@ -237,7 +237,9 @@ describe("ISSUE-986 — component wiring (fails-on-revert source assertions)", (
     assert.ok(src.includes("applyChannelSelection("), "selection is folded into the channel rows");
     // [TEST-MOD-APPROVED #3697] Wave 2 lifetime planning uses planningDailyCents.
     assert.ok(
-      src.includes("splitBudget({ totalDailyCents: planningDailyCents, channelRows: plannedRows"),
+      /splitBudget\(\{\s*totalDailyCents:\s*planningDailyCents,\s*channelRows:\s*plannedRows/.test(
+        src,
+      ),
       "the split runs across the picked (planned) rows, not the full eligible set",
     );
     assert.ok(src.includes("complianceExclusions("), "the compliance guard is wired into the plan");
