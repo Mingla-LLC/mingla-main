@@ -63,6 +63,10 @@ describe("issue #3697 v1.4 Host Ads program", () => {
     expect(validateIndex).toBeLessThan(fundIndex);
     expect(service).toContain("validate_only: true");
     expect(service).toContain('action: "cancel_before_create"');
+    expect(service).toContain('phrase: "CANCEL PLAN"');
+    expect(createRoute).toContain('confirmText="CANCEL PLAN"');
+    expect(createRoute).toContain("aggregateHasProviderObjectEvidence");
+    expect(createRoute).toContain("Provider object evidence is recorded");
   });
 
   it("creates every provider object paused before any Host activation", () => {

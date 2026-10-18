@@ -103,6 +103,7 @@ export type HostAdPlanAggregate = {
     decided_at: string;
   }[];
   funding_hold: Record<string, unknown> | null;
+  provider_attempts: Record<string, unknown>[];
   campaigns: Record<string, unknown>[];
 };
 
@@ -570,11 +571,14 @@ async function recordCreateFailure(
 export async function cancelHostAdPlanBeforeCreate(input: {
   versionId: string;
   planHash: string;
+  reason: string;
 }): Promise<void> {
   await invoke("ad-plan", {
     action: "cancel_before_create",
     plan_version_id: input.versionId,
     plan_hash: input.planHash,
+    phrase: "CANCEL PLAN",
+    reason: input.reason,
     idempotency_key: `host_cancel_${input.planHash}`.slice(0, 120),
   });
 }

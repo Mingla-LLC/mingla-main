@@ -257,6 +257,25 @@ export async function resumeAdminAdPlan(planId) {
   return aggregate;
 }
 
+/** Cancel a frozen Mingla plan only while provider-object evidence is absent. */
+export async function cancelAdminAdPlan(item, reason) {
+  const version = item?.version;
+  if (!version?.id || !version?.plan_hash) {
+    throw new Error("The frozen plan binding is missing.");
+  }
+  return planActionOrThrow(
+    {
+      action: "cancel_before_create",
+      plan_version_id: version.id,
+      plan_hash: version.plan_hash,
+      phrase: "CANCEL PLAN",
+      reason,
+      idempotency_key: `admin_cancel_${version.plan_hash}`.slice(0, 120),
+    },
+    "The frozen plan could not be canceled.",
+  );
+}
+
 /**
  * action: 'launch' | 'pause' | 'end'
  * Launch and End require an exact phrase + reason; Pause is reversible.

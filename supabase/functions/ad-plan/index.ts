@@ -1172,6 +1172,20 @@ serve(async (req: Request): Promise<Response> => {
     const key = typeof body.idempotency_key === "string"
       ? body.idempotency_key
       : req.headers.get("idempotency-key") ?? "";
+    const phrase = typeof body.phrase === "string" ? body.phrase : "";
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    if (phrase !== "CANCEL PLAN") {
+      return json({
+        error: "cancel_confirm_required",
+        detail: "confirm_phrase_must_be_CANCEL_PLAN",
+      }, 400);
+    }
+    if (reason.length === 0) {
+      return json({
+        error: "cancel_confirm_required",
+        detail: "reason_required",
+      }, 400);
+    }
     if (key.trim().length < 8) {
       return json({
         error: "validation_error",
@@ -1182,6 +1196,7 @@ serve(async (req: Request): Promise<Response> => {
       p_plan_version_id: versionId,
       p_plan_hash: planHash,
       p_idempotency_key: key,
+      p_reason: reason.slice(0, 1000),
       p_actor_id: actor.id,
     });
     return error

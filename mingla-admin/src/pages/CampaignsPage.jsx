@@ -32,6 +32,7 @@ import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
 import {
   adPlanAction,
+  cancelAdminAdPlan,
   campaignAction,
   getCampaignConversions,
   getCampaignDetail,
@@ -167,6 +168,21 @@ function canEndPlan(campaign, campaigns) {
   );
 }
 
+function hasProviderObjectEvidence(item) {
+  if ((item?.campaigns ?? []).length > 0) return true;
+  return (item?.provider_attempts ?? []).some((attempt) => {
+    if (attempt?.command !== "create_paused_objects") return false;
+    const externalIds = attempt?.external_ids;
+    return (
+      attempt?.state === "succeeded" ||
+      (externalIds &&
+        typeof externalIds === "object" &&
+        !Array.isArray(externalIds) &&
+        Object.keys(externalIds).length > 0)
+    );
+  });
+}
+
 export function CampaignsPage() {
   const { addToast } = useToast();
   const [adsConsoleEnabled, setAdsConsoleEnabled] = useState(true);
@@ -184,6 +200,7 @@ export function CampaignsPage() {
   const [endTarget, setEndTarget] = useState(null);
   const [reviewTarget, setReviewTarget] = useState(null);
   const [recoveryTarget, setRecoveryTarget] = useState(null);
+  const [cancelRecoveryTarget, setCancelRecoveryTarget] = useState(null);
   // ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI (the detail panel feed).
   const [roiPayload, setRoiPayload] = useState(null);
   const [roiLoading, setRoiLoading] = useState(false);
@@ -250,6 +267,18 @@ export function CampaignsPage() {
       title: "Paused provider objects recovered",
       description:
         "Only missing platforms were retried from the exact frozen hash. Nothing was launched or spent.",
+    });
+    await load();
+  };
+
+  const handleCancelRecovery = async (item, reason) => {
+    await cancelAdminAdPlan(item, reason);
+    addToast({
+      variant: "success",
+      title: "Frozen plan canceled",
+      description: item?.funding_hold
+        ? "The provider-account hold was voided. No provider object exists and no spend began."
+        : "The unfunded plan was discarded. No provider object exists and no spend began.",
     });
     await load();
   };
@@ -752,6 +781,16 @@ export function CampaignsPage() {
                 .filter((platform) => !createdPlatforms.has(platform));
               const sealed = Boolean(canonical.execution_payloads);
               const terminal = plan.state === "creation_failed_terminal";
+              const providerEvidence = hasProviderObjectEvidence(item);
+              const canCancel =
+                !providerEvidence &&
+                [
+                  "ready_for_funding",
+                  "funded_held",
+                  "creating_paused_objects",
+                  "creation_failed_retryable",
+                  "creation_failed_terminal",
+                ].includes(plan.state);
               return (
                 <div
                   key={plan.id}
@@ -802,6 +841,17 @@ export function CampaignsPage() {
                       evidence before creating a replacement plan.
                     </AlertCard>
                   )}
+                  {providerEvidence && (
+                    <AlertCard
+                      variant="warning"
+                      title="Provider reconciliation hold"
+                    >
+                      Provider object evidence exists, so this plan cannot
+                      release funds or be discarded. Resume the exact missing
+                      create where possible; otherwise reconcile the recorded
+                      provider IDs before replacing the plan.
+                    </AlertCard>
+                  )}
                   {!terminal && sealed && missing.length > 0 && (
                     <Button
                       size="sm"
@@ -809,6 +859,18 @@ export function CampaignsPage() {
                       onClick={() => setRecoveryTarget(item)}
                     >
                       Resume exact paused create
+                    </Button>
+                  )}
+                  {canCancel && (
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      icon={XCircle}
+                      onClick={() => setCancelRecoveryTarget(item)}
+                    >
+                      {item.funding_hold
+                        ? "Cancel plan and void hold"
+                        : "Discard frozen plan"}
                     </Button>
                   )}
                 </div>
@@ -1431,6 +1493,29 @@ export function CampaignsPage() {
         onConfirm={async () => {
           if (!recoveryTarget) throw new Error("No plan selected");
           await handleRecovery(recoveryTarget);
+        }}
+      />
+
+      <HighRiskActionModal
+        open={cancelRecoveryTarget !== null}
+        onClose={() => setCancelRecoveryTarget(null)}
+        title="Cancel this frozen plan?"
+        description={
+          cancelRecoveryTarget?.funding_hold
+            ? "This is allowed only because no provider object evidence exists. The provider-account hold will be voided and the exact frozen plan cannot be resumed."
+            : "This is allowed only because the plan is unfunded and no provider object evidence exists. The exact frozen plan cannot be resumed."
+        }
+        confirmLabel="Cancel frozen plan"
+        confirmPhrase="CANCEL PLAN"
+        requireReason
+        reasonLabel="Why are you canceling this plan? (audit log)"
+        destructive
+        successMessage={null}
+        onConfirm={async ({ reason }) => {
+          const target = cancelRecoveryTarget;
+          if (!target) throw new Error("No plan selected");
+          await handleCancelRecovery(target, reason);
+          setCancelRecoveryTarget(null);
         }}
       />
 

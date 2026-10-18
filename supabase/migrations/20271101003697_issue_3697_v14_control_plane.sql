@@ -392,6 +392,8 @@ CREATE TABLE public.ad_plan_funding_holds (
   state text NOT NULL CHECK (state IN ('held', 'released', 'settled', 'voided')),
   held_at timestamptz NOT NULL DEFAULT now(),
   released_at timestamptz NULL,
+  release_reason text NULL,
+  released_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
   settled_at timestamptz NULL,
   release_ledger_id uuid NULL REFERENCES public.ad_credit_ledger(id) ON DELETE RESTRICT,
   UNIQUE (plan_id, plan_hash),
@@ -551,8 +553,10 @@ BEGIN
   IF (OLD.state, NEW.state) IN (
     ('draft','validating'), ('draft','cancelled_before_create'),
     ('validating','draft'), ('validating','ready_for_funding'),
+    ('validating','cancelled_before_create'),
     ('ready_for_funding','validating'), ('ready_for_funding','funding_pending'),
     ('ready_for_funding','funded_held'), ('ready_for_funding','staff_review_required'),
+    ('ready_for_funding','cancelled_before_create'),
     ('funding_pending','ready_for_funding'), ('funding_pending','funded_held'),
     ('funding_pending','payment_failed'),
     ('funded_held','validating'), ('funded_held','staff_review_required'),
@@ -588,7 +592,9 @@ BEGIN
     ('partially_live','stop_requested'),
     ('creation_failed_retryable','creating_paused_objects'),
     ('creation_failed_retryable','draft'),
+    ('creation_failed_retryable','cancelled_before_create'),
     ('creation_failed_terminal','draft'),
+    ('creation_failed_terminal','cancelled_before_create'),
     ('payment_failed','ready_for_funding'), ('expired','draft'),
     ('settlement_attention_required','settling')
   ) THEN
@@ -1501,7 +1507,10 @@ BEGIN
   END IF;
   UPDATE public.ad_plan_funding_holds
   SET state = CASE WHEN funding_source = 'host_credit' THEN 'released' ELSE 'voided' END,
-      released_at = now(), release_ledger_id = v_release_ledger.id
+      released_at = now(),
+      release_reason = coalesce(nullif(btrim(p_reason), ''), 'released_before_create'),
+      released_by = p_actor_id,
+      release_ledger_id = v_release_ledger.id
   WHERE id = v_hold.id RETURNING * INTO v_hold;
   RETURN v_hold;
 END;
@@ -1511,6 +1520,7 @@ CREATE OR REPLACE FUNCTION public.ad_plan_cancel_before_create(
   p_plan_version_id uuid,
   p_plan_hash text,
   p_idempotency_key text,
+  p_reason text,
   p_actor_id uuid DEFAULT NULL
 )
 RETURNS public.ad_plan_funding_holds
@@ -1527,10 +1537,40 @@ BEGIN
   WHERE id = p_plan_version_id AND plan_hash = lower(p_plan_hash);
   IF NOT FOUND THEN RAISE EXCEPTION 'ad_plan_version_hash_mismatch' USING ERRCODE = '22023'; END IF;
   SELECT * INTO v_plan FROM public.ad_plans WHERE id = v_version.plan_id FOR UPDATE;
-  v_hold := public.ad_plan_release_funding_hold(
-    p_plan_version_id, p_plan_hash, p_idempotency_key,
-    'cancelled_before_create', p_actor_id
-  );
+  IF v_plan.current_version_id <> v_version.id OR v_plan.state NOT IN (
+    'validating', 'ready_for_funding', 'funded_held',
+    'staff_review_required', 'staff_approved', 'creating_paused_objects',
+    'creation_failed_retryable', 'creation_failed_terminal',
+    'changes_requested', 'staff_rejected', 'cancelled_before_create'
+  ) THEN
+    RAISE EXCEPTION 'ad_plan_cancel_state_invalid' USING ERRCODE = '55000';
+  END IF;
+  IF nullif(btrim(coalesce(p_reason, '')), '') IS NULL THEN
+    RAISE EXCEPTION 'ad_plan_cancel_reason_required' USING ERRCODE = '22023';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.ad_provider_attempts a
+    WHERE a.plan_version_id = v_version.id
+      AND a.command = 'create_paused_objects'
+      AND (a.state = 'succeeded' OR a.external_ids <> '{}'::jsonb)
+  ) OR EXISTS (
+    SELECT 1 FROM public.ad_campaigns c
+    WHERE c.plan_version_id = v_version.id
+  ) THEN
+    RAISE EXCEPTION 'ad_plan_provider_objects_may_exist' USING ERRCODE = '55000';
+  END IF;
+  SELECT * INTO v_hold FROM public.ad_plan_funding_holds
+  WHERE plan_version_id = v_version.id FOR UPDATE;
+  IF FOUND THEN
+    IF v_hold.state = 'held' THEN
+      v_hold := public.ad_plan_release_funding_hold(
+        p_plan_version_id, p_plan_hash, p_idempotency_key,
+        p_reason, p_actor_id
+      );
+    ELSIF v_hold.state NOT IN ('released', 'voided') THEN
+      RAISE EXCEPTION 'ad_plan_funding_not_releasable' USING ERRCODE = '55000';
+    END IF;
+  END IF;
   UPDATE public.ad_plans SET state = 'cancelled_before_create' WHERE id = v_plan.id;
   RETURN v_hold;
 END;
@@ -2284,7 +2324,7 @@ REVOKE ALL ON FUNCTION public.ad_plan_open(text,text,uuid,text,text,jsonb,uuid),
   public.ad_plan_mark_ready(uuid,text), public.ad_plan_hold_host_funds(uuid,text,text,uuid),
   public.ad_plan_mark_admin_funded(uuid,text),
   public.ad_plan_release_funding_hold(uuid,text,text,text,uuid),
-  public.ad_plan_cancel_before_create(uuid,text,text,uuid),
+  public.ad_plan_cancel_before_create(uuid,text,text,text,uuid),
   public.ad_plan_record_review(uuid,text,text,text,uuid),
   public.ad_plan_assert_launchable(uuid,text),
   public.ad_plan_confirm_launch(uuid,text,text,uuid),
@@ -2298,7 +2338,7 @@ GRANT EXECUTE ON FUNCTION public.ad_plan_open(text,text,uuid,text,text,jsonb,uui
   public.ad_plan_quote_for_brand(uuid,uuid,bigint),
   public.ad_plan_mark_ready(uuid,text), public.ad_plan_hold_host_funds(uuid,text,text,uuid),
   public.ad_plan_mark_admin_funded(uuid,text),
-  public.ad_plan_cancel_before_create(uuid,text,text,uuid),
+  public.ad_plan_cancel_before_create(uuid,text,text,text,uuid),
   public.ad_plan_record_review(uuid,text,text,text,uuid),
   public.ad_plan_assert_launchable(uuid,text),
   public.ad_plan_confirm_launch(uuid,text,text,uuid),

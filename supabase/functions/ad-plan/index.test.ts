@@ -38,3 +38,10 @@ Deno.test("every money and launch mutation binds the version hash", () => {
     assertStringIncludes(source, `action === "${action}"`);
   }
 });
+
+Deno.test("pre-create cancellation requires an exact phrase and audit reason", () => {
+  assertStringIncludes(source, 'phrase !== "CANCEL PLAN"');
+  assertStringIncludes(source, "confirm_phrase_must_be_CANCEL_PLAN");
+  assertStringIncludes(source, 'detail: "reason_required"');
+  assertStringIncludes(source, "p_reason: reason.slice(0, 1000)");
+});

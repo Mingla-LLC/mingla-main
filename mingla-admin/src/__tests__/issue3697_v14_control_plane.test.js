@@ -167,6 +167,17 @@ describe("issue #3697 v1.4 Admin control plane", () => {
     assert.match(nativeEndpoint, /plan_execution_template_mismatch/);
   });
 
+  it("cancels only provider-object-free frozen plans behind a typed audit gate", () => {
+    const planEndpoint = read("../supabase/functions/ad-plan/index.ts");
+    assert.match(service, /cancelAdminAdPlan/);
+    assert.match(service, /phrase:\s*"CANCEL PLAN"/);
+    assert.match(campaigns, /Provider reconciliation hold/);
+    assert.match(campaigns, /confirmPhrase="CANCEL PLAN"/);
+    assert.match(campaigns, /requireReason/);
+    assert.match(planEndpoint, /confirm_phrase_must_be_CANCEL_PLAN/);
+    assert.match(planEndpoint, /p_reason:\s*reason\.slice/);
+  });
+
   it("routes certified app destinations through the native execution endpoint", () => {
     assert.match(service, /\["explorer_app", "host_app"\]/);
     assert.match(service, /admin-ad-create-native-app-campaign/);

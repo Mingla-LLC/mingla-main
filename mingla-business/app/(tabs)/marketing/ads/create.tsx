@@ -18,6 +18,7 @@ import {
 } from "react-native";
 
 import { Button } from "../../../../src/components/ui/Button";
+import { ConfirmDialog } from "../../../../src/components/ui/ConfirmDialog";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { GlassCard } from "../../../../src/components/ui/GlassCard";
 import { Input } from "../../../../src/components/ui/Input";
@@ -102,6 +103,23 @@ function providerEstimateLabel(
   return String(estimate?.state ?? "unavailable").replaceAll("_", " ");
 }
 
+function aggregateHasProviderObjectEvidence(
+  aggregate: HostAdPlanAggregate,
+): boolean {
+  if ((aggregate.campaigns ?? []).length > 0) return true;
+  return (aggregate.provider_attempts ?? []).some((attempt) => {
+    if (attempt.command !== "create_paused_objects") return false;
+    const externalIds = attempt.external_ids;
+    return (
+      attempt.state === "succeeded" ||
+      (externalIds !== null &&
+        typeof externalIds === "object" &&
+        !Array.isArray(externalIds) &&
+        Object.keys(externalIds).length > 0)
+    );
+  });
+}
+
 function ChoiceCard(props: {
   selected: boolean;
   title: string;
@@ -177,6 +195,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [activePlanState, setActivePlanState] = useState<string | null>(null);
   const [acceptBroader, setAcceptBroader] = useState(false);
   const [launchPhrase, setLaunchPhrase] = useState("");
+  const [providerObjectEvidence, setProviderObjectEvidence] = useState(false);
+  const [cancelDialogVisible, setCancelDialogVisible] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!brandId || !permissions.canRead) return;
@@ -280,6 +301,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
         ),
       );
       setExistingPlanId(aggregate.plan.id);
+      setProviderObjectEvidence(aggregateHasProviderObjectEvidence(aggregate));
     },
     [setup],
   );
@@ -438,6 +460,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
       });
       setExistingPlanId(next.planId);
       setPrepared(next);
+      setProviderObjectEvidence(false);
       setActivePlanState(
         next.status === "ready" ? "ready_for_funding" : "validating",
       );
@@ -527,6 +550,14 @@ export default function HostAdCreateRoute(): React.ReactElement {
       );
       setTimeout(() => router.replace("/(tabs)/marketing/ads" as never), 900);
     } catch (cause) {
+      try {
+        const aggregate = await getHostAdPlan(prepared.planId);
+        hydrateAggregate(aggregate);
+        setActivePlanState(aggregate.plan.state);
+      } catch {
+        // Preserve the provider failure as the primary error. A later reload
+        // restores the durable server state if this recovery read also fails.
+      }
       setError(
         cause instanceof Error
           ? cause.message
@@ -546,22 +577,25 @@ export default function HostAdCreateRoute(): React.ReactElement {
     }
     if (!prepared) return;
     setBusy(true);
-    setError(null);
+    setCancelError(null);
     try {
       await cancelHostAdPlanBeforeCreate({
         versionId: prepared.versionId,
         planHash: prepared.planHash,
+        reason: "Host canceled the frozen plan before provider creation.",
       });
       setPrepared(null);
       setExistingPlanId(null);
       setActivePlanState("cancelled_before_create");
       setLaunchPhrase("");
+      setProviderObjectEvidence(false);
+      setCancelDialogVisible(false);
       setNotice(
-        "Plan canceled. The full held amount was returned to Ads credit; no provider object was created.",
+        "Plan canceled. Any held amount was returned to Ads credit; no provider object was created.",
       );
       await load();
     } catch (cause) {
-      setError(
+      setCancelError(
         cause instanceof Error
           ? cause.message
           : "The plan could not be canceled.",
@@ -1192,7 +1226,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     )
                   ) : null}
                   {permissions.canEnd &&
+                  !providerObjectEvidence &&
                   [
+                    "ready_for_funding",
                     "funded_held",
                     "staff_review_required",
                     "staff_approved",
@@ -1201,13 +1237,27 @@ export default function HostAdCreateRoute(): React.ReactElement {
                     "creation_failed_terminal",
                   ].includes(activePlanState ?? "") ? (
                     <Button
-                      label="Cancel plan and release funds"
-                      onPress={() => void handleCancelBeforeCreate()}
+                      label={
+                        activePlanState === "ready_for_funding"
+                          ? "Discard frozen plan"
+                          : "Cancel plan and release funds"
+                      }
+                      onPress={() => {
+                        setCancelError(null);
+                        setCancelDialogVisible(true);
+                      }}
                       variant="destructiveOutline"
                       loading={busy}
                       fullWidth
                       testID="host-ad-cancel-before-create"
                     />
+                  ) : null}
+                  {providerObjectEvidence ? (
+                    <Text style={styles.helper}>
+                      Provider object evidence is recorded. Funds remain held
+                      until Mingla reconciles those provider IDs; this plan
+                      cannot be discarded from the app.
+                    </Text>
                   ) : null}
                 </>
               ) : null}
@@ -1215,6 +1265,26 @@ export default function HostAdCreateRoute(): React.ReactElement {
           ) : null}
         </GlassCard>
       </ScrollView>
+      <ConfirmDialog
+        visible={cancelDialogVisible}
+        onClose={() => {
+          if (busy) return;
+          setCancelDialogVisible(false);
+          setCancelError(null);
+        }}
+        onConfirm={handleCancelBeforeCreate}
+        title="Cancel this frozen ad plan?"
+        description="This releases any held Ads credit only after Mingla confirms that no provider object exists. The frozen plan cannot be resumed."
+        variant="typeToConfirm"
+        confirmText="CANCEL PLAN"
+        confirmLabel="Cancel plan"
+        cancelLabel="Keep plan"
+        destructive
+        confirmLoading={busy}
+        closeDisabled={busy}
+        errorMessage={cancelError}
+        testID="host-ad-cancel-dialog"
+      />
     </View>
   );
 }

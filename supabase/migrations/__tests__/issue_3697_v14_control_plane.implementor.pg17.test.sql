@@ -31,6 +31,8 @@ DECLARE
   v_revise_plan public.ad_plans%ROWTYPE;
   v_revise_version public.ad_plan_versions%ROWTYPE;
   v_revised_version public.ad_plan_versions%ROWTYPE;
+  v_cancel_plan public.ad_plans%ROWTYPE;
+  v_cancel_version public.ad_plan_versions%ROWTYPE;
   v_plan public.ad_plans%ROWTYPE;
   v_version public.ad_plan_versions%ROWTYPE;
   v_hold public.ad_plan_funding_holds%ROWTYPE;
@@ -377,6 +379,57 @@ BEGIN
     RAISE EXCEPTION 'review_revision_did_not_preserve_version_history';
   END IF;
 
+  -- A frozen plan with no provider-object evidence has an explicit, audited
+  -- escape hatch. The exact confirmation/reason is enforced by ad-plan; this
+  -- database authority atomically releases the hold and closes the version.
+  v_cancel_plan := public.ad_plan_open(
+    'host', 'host', v_brand, 'public_mingla_page',
+    'brand:issue-3697-control-plane', '[]'::jsonb, v_user
+  );
+  v_cancel_version := public.ad_plan_create_version(
+    v_cancel_plan.id,
+    '{"platforms":["meta"],"confirmation_phrase":"LAUNCH"}'::jsonb
+      || jsonb_build_object('media_rights', v_rights),
+    1500000, 'NGN', jsonb_build_array(jsonb_build_object(
+      'platform', 'meta', 'connection_id', v_connection,
+      'host_budget_cents', 1500000,
+      'host_delivery_budget_cents', 1500000,
+      'provider_budget_cents', 1000,
+      'provider_delivery_budget_cents', 1000,
+      'fx_snapshot_id', v_snapshot
+    )), v_user
+  );
+  INSERT INTO public.ad_plan_targeting_snapshots (
+    plan_version_id, platform, audience_intent, compiled_targeting, verdict,
+    evidence_observed_at, compiler_version
+  ) VALUES (
+    v_cancel_version.id, 'meta', '{"countries":["NG"]}'::jsonb,
+    '{"geo_locations":{"countries":["NG"]}}'::jsonb,
+    'exact', now(), 'v1.4-test'
+  );
+  PERFORM public.ad_plan_mark_ready(
+    v_cancel_version.id, v_cancel_version.plan_hash
+  );
+  PERFORM public.ad_plan_hold_host_funds(
+    v_cancel_version.id, v_cancel_version.plan_hash,
+    'v14-cancel-hold-unique', v_user
+  );
+  v_hold := public.ad_plan_cancel_before_create(
+    v_cancel_version.id, v_cancel_version.plan_hash,
+    'v14-cancel-release-unique', 'Host no longer wants this plan', v_user
+  );
+  SELECT balance_cents, held_cents INTO v_wallet_balance, v_wallet_held
+  FROM public.ad_credit_wallets WHERE brand_id = v_brand;
+  IF v_hold.state <> 'released'
+     OR v_hold.release_reason <> 'Host no longer wants this plan'
+     OR v_hold.released_by <> v_user
+     OR v_wallet_balance <> 3000000 OR v_wallet_held <> 0
+     OR (SELECT state FROM public.ad_plans WHERE id = v_cancel_plan.id)
+        <> 'cancelled_before_create' THEN
+    RAISE EXCEPTION 'safe_precreate_cancel_failed:hold %, balance %, held %',
+      row_to_json(v_hold), v_wallet_balance, v_wallet_held;
+  END IF;
+
   v_plan := public.ad_plan_open(
     'ari', 'host', v_brand, 'public_mingla_page',
     'brand:issue-3697-control-plane', '[]'::jsonb, v_user
@@ -511,6 +564,18 @@ BEGIN
     '{"campaign_id":"meta-campaign-v14"}'::jsonb,
     '{"status":"PAUSED"}'::jsonb, NULL
   );
+  v_failed := false;
+  BEGIN
+    PERFORM public.ad_plan_cancel_before_create(
+      v_version.id, v_version.plan_hash, 'v14-unsafe-cancel-unique',
+      'Must not release after provider create', v_user
+    );
+  EXCEPTION WHEN SQLSTATE '55000' THEN
+    v_failed := SQLERRM = 'ad_plan_provider_objects_may_exist';
+  END;
+  IF NOT v_failed THEN
+    RAISE EXCEPTION 'provider_object_evidence_did_not_block_cancel';
+  END IF;
 
   INSERT INTO public.ad_campaigns (
     id, connection_id, platform, external_campaign_id, name, objective,
