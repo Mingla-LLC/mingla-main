@@ -17,6 +17,18 @@
 - Status poll: additive `queuePosition` / `aheadOfYou` / `gettingOne` / `holdSecondsRemaining` when device token presented. No `expires_at` on the wire.
 - Buyer screens: `/checkout/{id}/queue`, `/checkout/{id}/waitlist`.
 
+## Slice 7 (eng) — pre-sale join path
+
+- `issue_1930_ticket_checkout_create_session_base` allows an **armed** tier to mint an infinity hold before `sale_start_at`. Finite-expiry creates still raise `ticket_sales_not_started`.
+- Ordering among pre-sale joiners remains `md5(order_seed ‖ id)` from slice 2.
+- Finalize (`issue_1930_ticket_session_authorized`) is unchanged — sale must be open to complete.
+
+## Queue monitors (eng)
+
+- Write-driven totals + `issue_2947_queue_monitor_observe` / `issue_2947_queue_verdict`.
+- Event denominator: `queueWindowsObserved`. Verdict is `insufficient_evidence` / `stalled` / `orphaned` / `clean` — never `clean` when the event denominator is 0.
+- Observe runs on the same `issue_2947_queue_admit_due` tick after admission.
+
 ## Ops before arming Ilashe
 
 1. Apply slice 2 migration in prod (done 2026-10-17 — see #2879 release record).

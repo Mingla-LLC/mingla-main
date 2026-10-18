@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_2947_presale_queue.implementor.happy.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-2947-03-presale-queue-happy",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "postgres",
+    "reset": "suite-owned"
+  }
+}
