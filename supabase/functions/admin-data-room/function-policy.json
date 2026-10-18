@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "admin-data-room",
+  "verify_jwt": true,
+  "gateway_reason": "Authenticated owner, admin, or partner access to the private Google Drive Data room; the handler rechecks active Admin-team role and never returns provider ids or credentials.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [],
+    "required_bundle_fields": {
+      "GOOGLE_CALENDAR_KEYS": [
+        "drive_storage.client_email",
+        "drive_storage.data_room_folder_id",
+        "drive_storage.host_details_folder_id",
+        "drive_storage.private_key",
+        "drive_storage.shared_drive_id"
+      ]
+    },
+    "required_top_level": []
+  }
+}

@@ -133,6 +133,7 @@ export const NAV_GROUPS = [
       { id: "overview",                  label: "Dashboard",          icon: "LayoutDashboard" },
       // #3720 Slice F — Support + Email fold into one Community & Support console.
       { id: "community-support",         label: "Community & Support", icon: "LifeBuoy" },
+      { id: "notifications",             label: "Notifications",      icon: "Bell" },
     ],
   },
   {
@@ -193,6 +194,7 @@ export const NAV_GROUPS = [
     items: [
       { id: "admin",                     label: "Team and roles",     icon: "Shield" },
       { id: "careers",                   label: "Careers",            icon: "Briefcase" },
+      { id: "data-room",                 label: "Data room",          icon: "FolderLock" },
     ],
   },
   {

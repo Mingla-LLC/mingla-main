@@ -54,20 +54,22 @@ const APP = read("App.jsx");
 
 // The approved menu (spec section 1). Group label -> page ids, in order.
 // #3720 Slice F — Support + Email folded into Community & Support (one primary item).
+// [TEST-MOD-APPROVED #3720] Completion Wave 6 fills the reserved Data room
+// slot and adds the all-role Notifications destination.
 const MENU = [
-  [null, ["overview", "community-support"]],
+  [null, ["overview", "community-support", "notifications"]],
   ["Pipeline", ["hosts", "creators", "drafts", "beta-leads", "tool-leads", "content-calendar", "team-dashboard"]],
   ["Business", ["business-people", "business-brands", "brand-sites", "business-venues", "business-offerings", "claims"]],
   ["Money", ["business-payments", "business-orders", "business-money-ledger", "refund-operations", "subscriptions", "pricing"]],
   ["Explorer app", ["users", "placepool", "launch-cities", "signals", "deck-tuner", "place-intelligence-trial"]],
   ["Growth", ["ad-engine", "campaign-builder", "campaigns"]],
-  ["Company", ["admin", "careers"]],
+  ["Company", ["admin", "careers", "data-room"]],
   ["System", ["stripe-mode", "api-health", "settings", "agent", "guide"]],
 ];
 
 // The words on each menu item (updated for #3720 Community & Support).
 const LABELS = {
-  overview: "Dashboard", "community-support": "Community & Support", hosts: "Hosts", creators: "Creators", drafts: "Drafts to send",
+  overview: "Dashboard", "community-support": "Community & Support", notifications: "Notifications", hosts: "Hosts", creators: "Creators", drafts: "Drafts to send",
   "beta-leads": "Beta Leads", "tool-leads": "Tool Leads", "content-calendar": "Content calendar", "team-dashboard": "Team dashboard",
   "business-people": "People", "business-brands": "Brands", "brand-sites": "Brand Sites",
   "business-venues": "Venues", "business-offerings": "Offerings", claims: "Venue claims",
@@ -76,7 +78,7 @@ const LABELS = {
   users: "Users", placepool: "Place Pool", "launch-cities": "Launch Cities", signals: "Signal Library",
   "deck-tuner": "Deck tuner", "place-intelligence-trial": "Intelligence Trial",
   "ad-engine": "Ads console", "campaign-builder": "Campaign Builder", campaigns: "Campaigns",
-  admin: "Team and roles", careers: "Careers",
+  admin: "Team and roles", careers: "Careers", "data-room": "Data room",
   "stripe-mode": "Stripe mode", "api-health": "API health", settings: "Settings", agent: "My agent", guide: "Guide",
 };
 
@@ -119,7 +121,7 @@ describe("#3802 S-1: the menu is eight groups, in the approved order", () => {
   });
   it("nothing that is not built is in the menu", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
-    for (const planned of ["calendar", "data-room"]) assert.equal(ids.includes(planned), false, planned);
+    for (const planned of ["calendar"]) assert.equal(ids.includes(planned), false, planned);
     assert.equal(/\bSoon\b/.test(stripComments(SIDEBAR)), false);
   });
 });
@@ -128,7 +130,7 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
   it("no id twice", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
     assert.equal(new Set(ids).size, ids.length);
-    assert.equal(ids.length, 37);
+    assert.equal(ids.length, 39);
   });
   it("the menu and the app's pages are the same set (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -376,8 +378,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   const MIGRATED = [
     "AdEnginePage.jsx", "AdminPage.jsx", "AgentPage.jsx", "ApiHealthPage.jsx", "BetaLeadsPage.jsx", "BrandSitesPage.jsx", "BrandsConsolePage.jsx",
     "BusinessMoneyLedgerPage.jsx", "BusinessOrdersPage.jsx", "BusinessPaymentsPage.jsx", "CampaignBuilderPage.jsx",
-    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "ContentCalendarPage.jsx", "DeckScoreTunerPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
-    "GuidePage.jsx", "LaunchCitiesPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
+    "CampaignsPage.jsx", "CareersPage.jsx", "ClaimsPage.jsx", "CommunitySupportPage.jsx", "ContentCalendarPage.jsx", "DataRoomPage.jsx", "DeckScoreTunerPage.jsx", "DraftsPage.jsx", "EmailPage.jsx",
+    "GuidePage.jsx", "LaunchCitiesPage.jsx", "NotificationsPage.jsx", "OfferingsConsolePage.jsx", "OverviewPage.jsx", "PeopleConsolePage.jsx", "PipelinePage.jsx",
     "PlaceIntelligenceTrialPage.jsx", "PlacePoolManagementPage.jsx", "PricingPage.jsx", "RefundOperationsPage.jsx",
     "RoleHomePage.jsx", "SettingsPage.jsx", "SignalLibraryPage.jsx", "StripeModePage.jsx", "SubscriptionManagementPage.jsx",
     "SupportDeskPage.jsx", "TeamDashboardPage.jsx", "ToolLeadsPage.jsx", "UserManagementPage.jsx", "VenuesConsolePage.jsx",
@@ -411,7 +413,8 @@ describe("#3802 S-8: one page header, and no page setting its own frame", () => 
   it("every page is either on the one header or named for the follow-up", () => {
     const all = fs.readdirSync(PAGES_DIR).filter((f) => /Page\.jsx$/.test(f)).sort();
     assert.deepEqual([...MIGRATED, ...FOLLOW_UP].sort(), all);
-    assert.equal(MIGRATED.length, 39);
+    // [TEST-MOD-APPROVED #3720] Wave 6 adds Notifications and Data room pages.
+    assert.equal(MIGRATED.length, 41);
     assert.equal(FOLLOW_UP.length, 0);
   });
 
@@ -547,7 +550,8 @@ describe("#3802 S-9: rework after the tester's verdict", () => {
   };
 
   it("every state of every migrated page draws the page header", () => {
-    assert.equal(MIGRATED.length, 39);
+    // [TEST-MOD-APPROVED #3720] Wave 6 adds Notifications and Data room pages.
+    assert.equal(MIGRATED.length, 41);
     for (const file of MIGRATED) {
       const without = pageReturns(file).filter((r) => !r.hasHeader);
       assert.equal(

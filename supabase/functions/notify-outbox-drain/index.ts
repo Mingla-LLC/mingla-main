@@ -100,11 +100,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ISSUE_3720_CONTACT_CATEGORIES = new Set([
   "business.community_announcement",
   "business.support_new_ticket",
+  "admin.team_mention",
 ]);
 const ISSUE_3720_DURABLE_CATEGORIES = new Set([
   ...ISSUE_3720_CONTACT_CATEGORIES,
   "business.community_roadmap_updated",
   "business.brand_group_message",
+  "admin.team_mention",
 ]);
 const TERMINAL_DELIVERY_STATUSES = new Set([
   "sent",

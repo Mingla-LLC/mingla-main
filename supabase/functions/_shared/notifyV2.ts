@@ -226,6 +226,9 @@ export function providerSafePayload(
   if (category === "business.brand_group_message") {
     return pick(["message_id", "conversation_id", "brand_id"]);
   }
+  if (category === "admin.team_mention") {
+    return pick(["mention_id", "source_kind", "source_id"]);
+  }
   return payload;
 }
 
@@ -234,6 +237,7 @@ const ISSUE_3720_CATEGORIES = new Set([
   "business.community_roadmap_updated",
   "business.support_new_ticket",
   "business.brand_group_message",
+  "admin.team_mention",
 ]);
 const SAFE_DENIAL_REASONS = new Set([
   "category_inactive",
