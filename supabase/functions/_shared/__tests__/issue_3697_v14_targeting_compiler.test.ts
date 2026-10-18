@@ -40,7 +40,15 @@ Deno.test("v1.4 targeting compiler freezes an explicit result for all five provi
     rows.find((row) => row.platform === "snapchat")?.verdict,
     "exact",
   );
-  assertEquals(rows.find((row) => row.platform === "google")?.verdict, "exact");
+  assertEquals(
+    rows.find((row) => row.platform === "google")?.verdict,
+    "broader",
+  );
+  assertStringIncludes(
+    rows.find((row) => row.platform === "google")?.wideningSummary.join(" ") ??
+      "",
+    "does not apply the free-form radius",
+  );
   assertEquals(
     rows.find((row) => row.platform === "tiktok")?.verdict,
     "broader",

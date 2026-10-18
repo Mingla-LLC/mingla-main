@@ -37,15 +37,20 @@ import {
   cancelHostAdPlanBeforeCreate,
   fundHostAdPlan,
   getHostAdPlan,
+  hostTargetingSelectionsFromAggregate,
   type HostAdConnection,
   type HostAdCreative,
   type HostAdPage,
   type HostAdPlanAggregate,
   type HostAdSetup,
+  type HostAdTargetingCity,
+  type HostAdTargetingInterest,
+  type HostAdTargetingSearchResult,
   loadHostAdSetup,
   launchHostAdPlan,
   prepareHostAdPlan,
   type PreparedHostAdPlan,
+  searchHostAdTargeting,
 } from "../../../../src/services/hostAdPlanService";
 
 const PLATFORM_LABELS: Record<string, string> = {
@@ -70,6 +75,25 @@ function firstParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string" && value.length > 0) return value;
   if (Array.isArray(value) && value[0]) return value[0];
   return null;
+}
+
+function normalizedTargetName(value: string): string {
+  return value.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
+}
+
+function targetingResultName(result: HostAdTargetingSearchResult): string {
+  return String(
+    result.meta.city ?? result.meta.name ?? result.name ?? "",
+  ).trim();
+}
+
+function targetingResultCountry(
+  result: HostAdTargetingSearchResult,
+  fallback: string,
+): string {
+  return String(result.meta.country_code ?? result.meta.countryCode ?? fallback)
+    .trim()
+    .toUpperCase();
 }
 
 function parseMoney(value: string): number {
@@ -188,6 +212,18 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [ageMin, setAgeMin] = useState("21");
   const [ageMax, setAgeMax] = useState("45");
   const [gender, setGender] = useState<"all" | "men" | "women">("all");
+  const [cities, setCities] = useState<HostAdTargetingCity[]>([]);
+  const [radiusKm, setRadiusKm] = useState("15");
+  const [cityQuery, setCityQuery] = useState("");
+  const [cityResults, setCityResults] = useState<HostAdTargetingSearchResult[]>(
+    [],
+  );
+  const [interests, setInterests] = useState<HostAdTargetingInterest[]>([]);
+  const [interestQuery, setInterestQuery] = useState("");
+  const [interestResults, setInterestResults] = useState<
+    HostAdTargetingSearchResult[]
+  >([]);
+  const [targetingSearchBusy, setTargetingSearchBusy] = useState(false);
   const [dailyAmount, setDailyAmount] = useState("30");
   const [capAmount, setCapAmount] = useState("210");
   const [existingPlanId, setExistingPlanId] = useState<string | null>(null);
@@ -278,6 +314,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
           ? (audience?.gender as "men" | "women")
           : "all",
       );
+      const targeting = hostTargetingSelectionsFromAggregate(aggregate);
+      setCities(targeting.cities);
+      setInterests(targeting.interests);
+      setRadiusKm(String(targeting.radiusKm ?? 15));
       setDailyAmount(
         String(
           aggregate.provider_allocations.reduce(
@@ -393,6 +433,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
   );
   const dailyBudgetCents = parseMoney(dailyAmount);
   const capCents = parseMoney(capAmount);
+  const radiusKmNumber = Number(radiusKm);
   const formError = !page
     ? "Choose the Mingla page people should land on."
     : connections.length === 0
@@ -407,17 +448,206 @@ export default function HostAdCreateRoute(): React.ReactElement {
               ? "Add the primary ad text."
               : countries.length === 0
                 ? "Enter at least one two-letter country code."
-                : !Number.isInteger(Number(ageMin)) ||
-                    !Number.isInteger(Number(ageMax)) ||
-                    Number(ageMin) < 13 ||
-                    Number(ageMax) > 100 ||
-                    Number(ageMin) > Number(ageMax)
-                  ? "Use an age range between 13 and 100."
-                  : dailyBudgetCents <= 0
-                    ? "Enter a daily budget."
-                    : capCents < dailyBudgetCents
-                      ? "The hard cap must be at least one day of budget."
-                      : null;
+                : cities.length > 0 &&
+                    (!Number.isFinite(radiusKmNumber) ||
+                      radiusKmNumber < 1 ||
+                      radiusKmNumber > 80)
+                  ? "Use a city radius from 1 to 80 kilometers."
+                  : !Number.isInteger(Number(ageMin)) ||
+                      !Number.isInteger(Number(ageMax)) ||
+                      Number(ageMin) < 13 ||
+                      Number(ageMax) > 100 ||
+                      Number(ageMin) > Number(ageMax)
+                    ? "Use an age range between 13 and 100."
+                    : dailyBudgetCents <= 0
+                      ? "Enter a daily budget."
+                      : capCents < dailyBudgetCents
+                        ? "The hard cap must be at least one day of budget."
+                        : null;
+
+  const searchPlatform = (
+    kind: "city" | "interest",
+  ): HostAdConnection["platform"] | null => {
+    const supported =
+      kind === "city"
+        ? ["meta", "tiktok", "google", "snapchat"]
+        : ["meta", "tiktok", "google", "snapchat", "reddit"];
+    return (supported.find((platform) =>
+      connections.some((connection) => connection.platform === platform),
+    ) ?? null) as HostAdConnection["platform"] | null;
+  };
+
+  const handleCitySearch = async () => {
+    if (!brandId || cityQuery.trim().length < 2) return;
+    const platform = searchPlatform("city");
+    if (!platform) {
+      setError("Choose a connected platform before searching cities.");
+      return;
+    }
+    setTargetingSearchBusy(true);
+    setError(null);
+    try {
+      const country = countries[0] ?? "NG";
+      const result = await searchHostAdTargeting({
+        brandId,
+        platform,
+        kind: "city",
+        query: cityQuery.trim(),
+        country,
+      });
+      setCityResults(result.results);
+      if (result.results.length === 0) {
+        setNotice(
+          result.warning ??
+            "No verified city match was found. Keep country targeting or try another spelling.",
+        );
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "City search failed.");
+    } finally {
+      setTargetingSearchBusy(false);
+    }
+  };
+
+  const addCityResult = async (result: HostAdTargetingSearchResult) => {
+    if (!brandId) return;
+    const countryCode = targetingResultCountry(result, countries[0] ?? "NG");
+    const name = targetingResultName(result);
+    if (!name || !/^[A-Z]{2}$/.test(countryCode)) return;
+    setTargetingSearchBusy(true);
+    setError(null);
+    try {
+      const refs: HostAdTargetingCity["refs"] = {};
+      const seed = searchPlatform("city");
+      if (seed && ["meta", "tiktok", "google"].includes(seed)) {
+        refs[seed] = String(result.id);
+      }
+      await Promise.all(
+        connections.map(async (connection) => {
+          if (
+            connection.platform === seed ||
+            !["meta", "tiktok", "google"].includes(connection.platform)
+          ) {
+            return;
+          }
+          const found = await searchHostAdTargeting({
+            brandId,
+            platform: connection.platform,
+            kind: "city",
+            query: name,
+            country: countryCode,
+          });
+          const exact = found.results.find(
+            (candidate) =>
+              normalizedTargetName(targetingResultName(candidate)) ===
+              normalizedTargetName(name),
+          );
+          if (exact) refs[connection.platform] = String(exact.id);
+        }),
+      );
+      setCities((current) =>
+        current.some(
+          (city) =>
+            normalizedTargetName(city.name) === normalizedTargetName(name) &&
+            city.countryCode === countryCode,
+        )
+          ? current
+          : [...current, { name, countryCode, refs }],
+      );
+      setPrepared(null);
+      setCityQuery("");
+      setCityResults([]);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "City resolution failed.",
+      );
+    } finally {
+      setTargetingSearchBusy(false);
+    }
+  };
+
+  const handleInterestSearch = async () => {
+    if (!brandId || interestQuery.trim().length < 2) return;
+    const platform = searchPlatform("interest");
+    if (!platform) {
+      setError("Choose a connected platform before searching interests.");
+      return;
+    }
+    setTargetingSearchBusy(true);
+    setError(null);
+    try {
+      const result = await searchHostAdTargeting({
+        brandId,
+        platform,
+        kind: "interest",
+        query: interestQuery.trim(),
+      });
+      setInterestResults(result.results);
+      if (result.results.length === 0) {
+        setNotice(
+          result.warning ??
+            "No provider interest match was found. Try a broader term.",
+        );
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Interest search failed.",
+      );
+    } finally {
+      setTargetingSearchBusy(false);
+    }
+  };
+
+  const addInterestResult = async (result: HostAdTargetingSearchResult) => {
+    if (!brandId) return;
+    const name = result.name.trim();
+    if (!name) return;
+    setTargetingSearchBusy(true);
+    setError(null);
+    try {
+      const refs: HostAdTargetingInterest["refs"] = {};
+      const seed = searchPlatform("interest");
+      if (seed) refs[seed] = seed === "reddit" ? name : String(result.id);
+      await Promise.all(
+        connections.map(async (connection) => {
+          if (connection.platform === seed) return;
+          if (connection.platform === "reddit") {
+            refs.reddit = name;
+            return;
+          }
+          const found = await searchHostAdTargeting({
+            brandId,
+            platform: connection.platform,
+            kind: "interest",
+            query: name,
+          });
+          const exact = found.results.find(
+            (candidate) =>
+              normalizedTargetName(candidate.name) ===
+              normalizedTargetName(name),
+          );
+          if (exact) refs[connection.platform] = String(exact.id);
+        }),
+      );
+      setInterests((current) =>
+        current.some(
+          (interest) =>
+            normalizedTargetName(interest.name) === normalizedTargetName(name),
+        )
+          ? current
+          : [...current, { name, refs }],
+      );
+      setPrepared(null);
+      setInterestQuery("");
+      setInterestResults([]);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Interest resolution failed.",
+      );
+    } finally {
+      setTargetingSearchBusy(false);
+    }
+  };
 
   const handlePrepare = async (forceAcceptance = false) => {
     if (!permissions.canPlan) {
@@ -448,6 +678,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
         primaryText: primaryText.trim(),
         headline: headline.trim() || name.trim(),
         countries,
+        cities,
+        radiusKm: cities.length > 0 ? radiusKmNumber : null,
+        interests,
         ageMin: Number(ageMin),
         ageMax: Number(ageMax),
         gender,
@@ -769,6 +1002,162 @@ export default function HostAdCreateRoute(): React.ReactElement {
             placeholder="NG, GH"
             accessibilityLabel="Target country codes"
           />
+          <Text style={styles.label}>Cities (optional)</Text>
+          <Text style={styles.helper}>
+            Search resolves provider-native city IDs. Snapchat coordinates stay
+            server-side. Any platform that cannot preserve the city or radius
+            will show the exact widening before funding.
+          </Text>
+          <View style={styles.searchRow}>
+            <View style={styles.searchInput}>
+              <Input
+                value={cityQuery}
+                onChangeText={setCityQuery}
+                placeholder={`Search in ${countries[0] ?? "NG"}`}
+                accessibilityLabel="Search target city"
+              />
+            </View>
+            <Pressable
+              style={styles.searchButton}
+              onPress={() => void handleCitySearch()}
+              disabled={targetingSearchBusy || cityQuery.trim().length < 2}
+              accessibilityRole="button"
+              accessibilityLabel="Search cities"
+              testID="host-ad-city-search"
+            >
+              {targetingSearchBusy ? (
+                <ActivityIndicator size="small" color={textTokens.primary} />
+              ) : (
+                <Text style={styles.searchButtonLabel}>Search</Text>
+              )}
+            </Pressable>
+          </View>
+          {cityResults.map((result) => (
+            <Pressable
+              key={`city-result-${result.id}`}
+              style={styles.searchResult}
+              onPress={() => void addCityResult(result)}
+              accessibilityRole="button"
+              accessibilityLabel={`Target ${result.name}`}
+            >
+              <Text style={styles.choiceTitle}>{result.name}</Text>
+              <Text style={styles.resume}>Add</Text>
+            </Pressable>
+          ))}
+          {cities.map((city) => (
+            <View
+              key={`${city.countryCode}:${city.name}`}
+              style={styles.targetingChoice}
+            >
+              <View style={styles.choiceText}>
+                <Text style={styles.choiceTitle}>
+                  {city.name}, {city.countryCode}
+                </Text>
+                <Text style={styles.choiceSubtitle}>
+                  Provider IDs: {Object.keys(city.refs).length}/
+                  {
+                    connections.filter((connection) =>
+                      ["meta", "tiktok", "google"].includes(
+                        connection.platform,
+                      ),
+                    ).length
+                  }{" "}
+                  required platforms
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setCities((current) =>
+                    current.filter((item) => item !== city),
+                  );
+                  setPrepared(null);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${city.name}`}
+              >
+                <Text style={styles.remove}>Remove</Text>
+              </Pressable>
+            </View>
+          ))}
+          {cities.length > 0 ? (
+            <>
+              <Text style={styles.label}>Radius (kilometers)</Text>
+              <Input
+                value={radiusKm}
+                onChangeText={(value) => {
+                  setRadiusKm(value);
+                  setPrepared(null);
+                }}
+                variant="number"
+                accessibilityLabel="City radius in kilometers"
+              />
+            </>
+          ) : null}
+          <Text style={styles.label}>Interests (optional)</Text>
+          <Text style={styles.helper}>
+            One logical interest must resolve on every selected provider that
+            needs an ID. Missing mappings block the plan instead of silently
+            widening it.
+          </Text>
+          <View style={styles.searchRow}>
+            <View style={styles.searchInput}>
+              <Input
+                value={interestQuery}
+                onChangeText={setInterestQuery}
+                placeholder="Live music, nightlife…"
+                accessibilityLabel="Search target interest"
+              />
+            </View>
+            <Pressable
+              style={styles.searchButton}
+              onPress={() => void handleInterestSearch()}
+              disabled={targetingSearchBusy || interestQuery.trim().length < 2}
+              accessibilityRole="button"
+              accessibilityLabel="Search interests"
+              testID="host-ad-interest-search"
+            >
+              {targetingSearchBusy ? (
+                <ActivityIndicator size="small" color={textTokens.primary} />
+              ) : (
+                <Text style={styles.searchButtonLabel}>Search</Text>
+              )}
+            </Pressable>
+          </View>
+          {interestResults.map((result) => (
+            <Pressable
+              key={`interest-result-${result.id}`}
+              style={styles.searchResult}
+              onPress={() => void addInterestResult(result)}
+              accessibilityRole="button"
+              accessibilityLabel={`Target interest ${result.name}`}
+            >
+              <Text style={styles.choiceTitle}>{result.name}</Text>
+              <Text style={styles.resume}>Add</Text>
+            </Pressable>
+          ))}
+          {interests.map((interest) => (
+            <View key={interest.name} style={styles.targetingChoice}>
+              <View style={styles.choiceText}>
+                <Text style={styles.choiceTitle}>{interest.name}</Text>
+                <Text style={styles.choiceSubtitle}>
+                  Provider mappings: {Object.keys(interest.refs).length}/
+                  {connections.length}
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setInterests((current) =>
+                    current.filter((item) => item !== interest),
+                  );
+                  setPrepared(null);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${interest.name}`}
+              >
+                <Text style={styles.remove}>Remove</Text>
+              </Pressable>
+            </View>
+          ))}
           <View style={styles.fieldRow}>
             <View style={styles.fieldHalf}>
               <Text style={styles.label}>Minimum age</Text>
@@ -1385,6 +1774,43 @@ const styles = StyleSheet.create({
   },
   fieldRow: { flexDirection: "row", gap: spacing.sm },
   fieldHalf: { flex: 1, gap: spacing.xs },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  searchInput: { flex: 1 },
+  searchButton: {
+    minWidth: 78,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+    backgroundColor: glass.tint.chrome.idle,
+  },
+  searchButtonLabel: {
+    ...typography.caption,
+    color: textTokens.primary,
+    fontWeight: "700",
+  },
+  searchResult: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 12,
+    backgroundColor: glass.tint.chrome.idle,
+  },
+  targetingChoice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.chrome,
+  },
+  remove: { ...typography.caption, color: semantic.errorText },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   chip: {
     paddingHorizontal: spacing.md,

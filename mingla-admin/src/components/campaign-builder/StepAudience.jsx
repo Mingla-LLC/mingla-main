@@ -207,12 +207,44 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
     key: searchablePlatforms.join(","),
   });
 
-  const addInterest = (chip) => {
-    if (
-      !interests.some((i) => i.platform === chip.platform && i.id === chip.id)
-    ) {
-      set({ interests: [...interests, chip] });
+  const addInterest = async (chip) => {
+    const resolved = await Promise.all(
+      searchablePlatforms.map(async (platform) => {
+        if (platform === chip.platform) return chip;
+        const { data } = await searchTargeting({
+          platform,
+          kind: "interest",
+          q: chip.name,
+        });
+        const exact = (data?.results ?? []).find(
+          (candidate) =>
+            String(candidate.name).trim().toLocaleLowerCase("en-US") ===
+            chip.name.trim().toLocaleLowerCase("en-US"),
+        );
+        return exact
+          ? {
+              platform,
+              id: String(exact.id),
+              name: chip.name,
+            }
+          : null;
+      }),
+    );
+    if (redditEligible) {
+      resolved.push({ platform: "reddit", id: chip.name, name: chip.name });
     }
+    const next = [...interests];
+    for (const item of resolved.filter(Boolean)) {
+      if (
+        !next.some(
+          (existing) =>
+            existing.platform === item.platform && existing.id === item.id,
+        )
+      ) {
+        next.push(item);
+      }
+    }
+    set({ interests: next });
     setInterestQuery("");
     interestSearch.reset();
   };
@@ -227,7 +259,7 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
   const [redditInterest, setRedditInterest] = useState("");
   const addRedditInterest = () => {
     const name = redditInterest.trim();
-    if (name) addInterest({ platform: "reddit", id: name, name });
+    if (name) void addInterest({ platform: "reddit", id: name, name });
     setRedditInterest("");
   };
 
@@ -384,8 +416,9 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
           {cities.some((c) => !c.tiktok) &&
             pickedPlatforms.includes("tiktok") && (
               <p className="text-[11px] text-[var(--color-text-tertiary)]">
-                A city without a TikTok tag isn't available on TikTok — those
-                campaigns fall back to country targeting for that city.
+                A city without a verified TikTok tag blocks the immutable plan.
+                Remove it or choose a provider-resolved match; Mingla never
+                falls back silently.
               </p>
             )}
         </div>
@@ -397,6 +430,11 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
           <span className="block text-sm font-medium">
             Interests (optional)
           </span>
+          <p className="text-[11px] text-[var(--color-text-tertiary)]">
+            Pick one logical interest. Mingla resolves the exact same name on
+            every selected provider; a missing mapping blocks the plan instead
+            of silently dropping the interest.
+          </p>
           <div className="relative">
             <SearchInput
               value={interestQuery}
@@ -421,7 +459,7 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
                       <li key={`${r.platform}:${r.id}`}>
                         <button
                           type="button"
-                          onClick={() => addInterest(r)}
+                          onClick={() => void addInterest(r)}
                           className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--gray-50)] cursor-pointer"
                         >
                           <span>{r.name}</span>

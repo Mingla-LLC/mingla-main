@@ -26,6 +26,7 @@ import {
   resolveAccessibleAgentBrands,
 } from "./agentTenantScope.ts";
 import { calendarDaysBetween, refundCentsFromCredit } from "./adMoney.ts";
+import { providerExecutionTargeting } from "./adTargetingCompiler.ts";
 // issue #2291 — ONE contract for what a channel_payload must contain. Ari is
 // the only writer that has no human between it and the send path, so it is the
 // writer that most needs to be told "no" before the row is stored.
@@ -3210,17 +3211,11 @@ function buildHostAdCreatePayload(
     );
   }
   const audience = (snapshot.audience_intent ?? {}) as Record<string, unknown>;
-  const target: Record<string, unknown> = {
-    countries: Array.isArray(audience.countries) ? audience.countries : [],
-    ...(typeof audience.ageMin === "number"
-      ? { age_min: audience.ageMin }
-      : {}),
-    ...(typeof audience.ageMax === "number"
-      ? { age_max: audience.ageMax }
-      : {}),
-    ...(typeof audience.gender === "string" ? { gender: audience.gender } : {}),
-    ...(Array.isArray(audience.cities) ? { cities: audience.cities } : {}),
-  };
+  const target = providerExecutionTargeting(
+    platform as "meta" | "google" | "tiktok" | "snapchat" | "reddit",
+    audience,
+    (snapshot.compiled_targeting ?? {}) as Record<string, unknown>,
+  );
   const base: Record<string, unknown> = {
     platform,
     lane: "business",
@@ -3323,6 +3318,89 @@ function buildHostAdCreatePayload(
   };
 }
 
+function normalizedAdTargetName(value: string): string {
+  return value.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
+}
+
+function ariTargetingResultName(
+  value: Record<string, unknown>,
+): string {
+  const meta = value.meta !== null && typeof value.meta === "object" &&
+      !Array.isArray(value.meta)
+    ? value.meta as Record<string, unknown>
+    : {};
+  return String(meta.city ?? meta.name ?? value.name ?? "").trim();
+}
+
+async function resolveAriTargetingRefs(
+  client: any,
+  brandId: string,
+  platforms: string[],
+  cities: Array<{ name: string; countryCode: string }>,
+  interests: string[],
+): Promise<Record<string, unknown>> {
+  const refsByPlatform: Record<string, {
+    locationIds?: Record<string, string>;
+    interestIds?: Record<string, string>;
+  }> = {};
+  await Promise.all(platforms.map(async (platform) => {
+    const locationIds: Record<string, string> = {};
+    const interestIds: Record<string, string> = {};
+    if (["meta", "tiktok", "google"].includes(platform)) {
+      await Promise.all(cities.map(async (city) => {
+        const response = await invokeFn(client, "admin-ad-targeting-search", {
+          owner_kind: "host",
+          lane: "business",
+          brand_id: brandId,
+          platform,
+          kind: "city",
+          q: city.name,
+          country: city.countryCode,
+        }) as { results?: Array<Record<string, unknown>> };
+        const exact = (response.results ?? []).find((candidate) =>
+          normalizedAdTargetName(ariTargetingResultName(candidate)) ===
+            normalizedAdTargetName(city.name)
+        );
+        const id = exact?.id;
+        if (typeof id === "string" && id.trim()) {
+          locationIds[
+            `${city.countryCode}:${normalizedAdTargetName(city.name)}`
+          ] = id.trim();
+        }
+      }));
+    }
+    if (platform === "reddit") {
+      for (const interest of interests) {
+        interestIds[normalizedAdTargetName(interest)] = interest;
+      }
+    } else {
+      await Promise.all(interests.map(async (interest) => {
+        const response = await invokeFn(client, "admin-ad-targeting-search", {
+          owner_kind: "host",
+          lane: "business",
+          brand_id: brandId,
+          platform,
+          kind: "interest",
+          q: interest,
+        }) as { results?: Array<Record<string, unknown>> };
+        const exact = (response.results ?? []).find((candidate) =>
+          normalizedAdTargetName(String(candidate.name ?? "")) ===
+            normalizedAdTargetName(interest)
+        );
+        const id = exact?.id;
+        if (typeof id === "string" && id.trim()) {
+          interestIds[normalizedAdTargetName(interest)] = id.trim();
+        }
+      }));
+    }
+    refsByPlatform[platform] = {
+      ...(Object.keys(locationIds).length > 0 ? { locationIds } : {}),
+      ...(Object.keys(interestIds).length > 0 ? { interestIds } : {}),
+    };
+  }));
+  return refsByPlatform;
+}
+
 // Issue #3697 v1.4 — Ari creates the same server-owned plan as the Host and
 // Admin builders. Currency is deliberately absent: the server derives the
 // verified brand settlement currency and provider-account currency.
@@ -3348,8 +3426,28 @@ const proposeAdPlan = writeTool(
       type: "array",
       items: { type: "string", minLength: 2, maxLength: 2 },
     },
+    cities: {
+      type: "array",
+      maxItems: 10,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 120 },
+          country_code: { type: "string", minLength: 2, maxLength: 2 },
+        },
+        required: ["name", "country_code"],
+      },
+    },
+    radius_km: { type: "number", minimum: 1, maximum: 80 },
+    interests: {
+      type: "array",
+      maxItems: 20,
+      items: { type: "string", minLength: 1, maxLength: 120 },
+    },
     age_min: { type: "integer", minimum: 13, maximum: 100 },
     age_max: { type: "integer", minimum: 13, maximum: 100 },
+    gender: { type: "string", enum: ["all", "men", "women"] },
     starts_at: { type: "string" },
     ends_at: { type: "string" },
     primary_text: { type: "string" },
@@ -3409,6 +3507,49 @@ const proposeAdPlan = writeTool(
         "countries must contain explicit two-letter country codes",
       );
     }
+    const cities = Array.isArray(args.cities)
+      ? args.cities.map((value) => {
+        const row = value !== null && typeof value === "object" &&
+            !Array.isArray(value)
+          ? value as Record<string, unknown>
+          : {};
+        return {
+          name: String(row.name ?? "").trim(),
+          countryCode: String(row.country_code ?? "").trim().toUpperCase(),
+        };
+      })
+      : [];
+    if (
+      cities.some((city) =>
+        !city.name || !/^[A-Z]{2}$/.test(city.countryCode) ||
+        !countries.includes(city.countryCode)
+      )
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Each city needs a name and a country_code included in countries",
+      );
+    }
+    const interests = Array.isArray(args.interests)
+      ? [...new Set(args.interests.map((value) => String(value).trim()))]
+        .filter(Boolean)
+      : [];
+    const radiusKm = args.radius_km === undefined
+      ? null
+      : Number(args.radius_km);
+    if (
+      radiusKm !== null &&
+      (!Number.isFinite(radiusKm) || radiusKm < 1 || radiusKm > 80 ||
+        cities.length === 0)
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "radius_km requires at least one city and must be from 1 through 80",
+      );
+    }
+    const gender = ["all", "men", "women"].includes(String(args.gender))
+      ? String(args.gender)
+      : "all";
     if (
       args.rights_confirmed !== true ||
       !["owned", "licensed", "authorized_by_brand"].includes(
@@ -3468,6 +3609,13 @@ const proposeAdPlan = writeTool(
         ? { entity_slug: args.dest_entity_slug.trim() }
         : {}),
     };
+    const targetingRefs = await resolveAriTargetingRefs(
+      client,
+      String(args.brand_id),
+      platforms,
+      cities,
+      interests,
+    );
     const opened = await invokeFn(client, "ad-plan", {
       action: "open",
       client_kind: "ari",
@@ -3495,8 +3643,14 @@ const proposeAdPlan = writeTool(
       },
       audience_intent: {
         countries,
+        ...(cities.length > 0 ? { cities } : {}),
+        ...(radiusKm !== null ? { radiusKm } : {}),
         ...(typeof args.age_min === "number" ? { ageMin: args.age_min } : {}),
         ...(typeof args.age_max === "number" ? { ageMax: args.age_max } : {}),
+        gender,
+        ...(interests.length > 0
+          ? { interests: interests.map((name) => ({ name })) }
+          : {}),
       },
       copy: {
         primary: typeof args.primary_text === "string"
@@ -3546,7 +3700,7 @@ const proposeAdPlan = writeTool(
       action: "freeze_targeting",
       plan_version_id: versionId,
       audience_intent: canonicalPlan.audience_intent,
-      refs_by_platform: {},
+      refs_by_platform: targetingRefs,
     }) as { targeting_snapshots?: Array<Record<string, unknown>> };
     const blocked = (frozen.targeting_snapshots ?? []).some((row) =>
       row.verdict === "unavailable" || row.verdict === "check_required" ||
@@ -3746,7 +3900,7 @@ const pauseAdCampaign = writeTool(
 
 const endAdCampaign = writeTool(
   "end_ad_campaign",
-  "End a Host ad campaign and return unspent Ads credit. Type END to confirm.",
+  "Request a plan-wide Host ad stop. Unspent Ads credit settles only after every provider confirms stop and final spend. Type END to confirm.",
   { brand_id: UUID, campaign_id: UUID },
   ["brand_id", "campaign_id"],
   async (args, client, userId, context) => {

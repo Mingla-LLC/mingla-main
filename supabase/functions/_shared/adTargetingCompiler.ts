@@ -38,6 +38,11 @@ export type AdAudienceIntent = {
 export type ProviderTargetingRefs = {
   /** `${CC}:${normalized city name}` -> provider-native location id/key. */
   locationIds?: Record<string, string>;
+  /** `${CC}:${normalized city name}` -> server-resolved coordinates. */
+  locationCoordinates?: Record<
+    string,
+    { latitude: number; longitude: number } | null
+  >;
   /** normalized interest name -> provider-native id/category. */
   interestIds?: Record<string, string>;
 };
@@ -261,6 +266,36 @@ function compiledInterests(
   return { ids, missing };
 }
 
+function coordinatesForCity(
+  city: AudienceCity,
+  refs: ProviderTargetingRefs,
+): { latitude: number; longitude: number } | null {
+  const coordinateKey = cityKey(city);
+  if (
+    refs.locationCoordinates &&
+    Object.prototype.hasOwnProperty.call(
+      refs.locationCoordinates,
+      coordinateKey,
+    )
+  ) {
+    const resolved = refs.locationCoordinates[coordinateKey];
+    if (
+      resolved && Number.isFinite(resolved.latitude) &&
+      Number.isFinite(resolved.longitude)
+    ) return resolved;
+    return null;
+  }
+  if (
+    Number.isFinite(city.latitude) && Number.isFinite(city.longitude)
+  ) {
+    return {
+      latitude: city.latitude as number,
+      longitude: city.longitude as number,
+    };
+  }
+  return null;
+}
+
 export function compileProviderTargeting(
   platform: Platform,
   rawIntent: AdAudienceIntent,
@@ -366,9 +401,8 @@ export function compileProviderTargeting(
   } else if (platform === "snapchat") {
     compiled.country_codes = intent.countries;
     if (cities.length) {
-      const invalid = cities.filter((city) =>
-        !Number.isFinite(city.latitude) || !Number.isFinite(city.longitude)
-      );
+      const coordinates = cities.map((city) => coordinatesForCity(city, refs));
+      const invalid = cities.filter((_, index) => coordinates[index] === null);
       if (invalid.length) {
         checksRequired.push(
           `Resolve Snapchat coordinates for: ${
@@ -376,10 +410,10 @@ export function compileProviderTargeting(
           }.`,
         );
       } else {
-        compiled.geo_circles = cities.map((city) => ({
+        compiled.geo_circles = cities.map((city, index) => ({
           country_code: city.countryCode,
-          latitude: city.latitude,
-          longitude: city.longitude,
+          latitude: coordinates[index]!.latitude,
+          longitude: coordinates[index]!.longitude,
           radius: city.radiusKm ?? intent.radiusKm ?? 10,
           unit: "kilometer",
         }));
@@ -417,20 +451,9 @@ export function compileProviderTargeting(
         "Google App campaigns preserve the selected location but not the free-form radius as a hard proximity filter.",
       );
     } else if (intent.radiusKm != null) {
-      const invalid = cities.filter((city) =>
-        !Number.isFinite(city.latitude) || !Number.isFinite(city.longitude)
+      wideningSummary.push(
+        "Google Search preserves the selected city but the current create path does not apply the free-form radius as a hard proximity filter.",
       );
-      if (!cities.length || invalid.length) {
-        checksRequired.push(
-          "Google proximity targeting needs a verified center.",
-        );
-      } else {
-        compiled.proximity = cities.map((city) => ({
-          latitude: city.latitude,
-          longitude: city.longitude,
-          radius_km: city.radiusKm ?? intent.radiusKm,
-        }));
-      }
     }
     if (campaignKind === "native_app") {
       if (intent.ageMin != null || intent.ageMax != null) {
@@ -506,6 +529,145 @@ export function compileProviderTargeting(
     wideningSummary,
     checksRequired,
     compilerVersion: "v1.4.0",
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function arrayOfRecords(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> =>
+      asRecord(item) !== null
+    )
+    : [];
+}
+
+/**
+ * Convert one frozen compiler snapshot into the legacy create endpoint shape.
+ * Real provider writes use this server-side result instead of caller-supplied
+ * targeting, so the exact frozen snapshot is what reaches the adapter.
+ */
+export function providerExecutionTargeting(
+  platform: Platform,
+  rawIntent: Record<string, unknown>,
+  compiled: Record<string, unknown>,
+): Record<string, unknown> {
+  const countries = Array.isArray(rawIntent.countries)
+    ? rawIntent.countries.map(String)
+    : [];
+  const cities = arrayOfRecords(rawIntent.cities);
+  const ageMin = typeof rawIntent.ageMin === "number"
+    ? rawIntent.ageMin
+    : undefined;
+  const ageMax = typeof rawIntent.ageMax === "number"
+    ? rawIntent.ageMax
+    : undefined;
+
+  if (platform === "meta") {
+    const geo = asRecord(compiled.geo_locations) ?? {};
+    const flexible = arrayOfRecords(compiled.flexible_spec);
+    const firstFlexible = flexible[0] ?? {};
+    return {
+      countries,
+      ...(Array.isArray(geo.cities) ? { cities: geo.cities } : {}),
+      ...(typeof compiled.age_min === "number"
+        ? { age_min: compiled.age_min }
+        : {}),
+      ...(typeof compiled.age_max === "number"
+        ? { age_max: compiled.age_max }
+        : {}),
+      ...(Array.isArray(compiled.genders) ? { genders: compiled.genders } : {}),
+      ...(Array.isArray(firstFlexible.interests)
+        ? { interests: firstFlexible.interests }
+        : {}),
+    };
+  }
+
+  if (platform === "tiktok") {
+    return {
+      countries,
+      ...(cities.length > 0 && Array.isArray(compiled.location_ids)
+        ? { location_ids: compiled.location_ids }
+        : {}),
+      ...(Array.isArray(compiled.interest_category_ids)
+        ? { interest_category_ids: compiled.interest_category_ids }
+        : {}),
+      ...(ageMin !== undefined ? { age_min: ageMin } : {}),
+      ...(ageMax !== undefined ? { age_max: ageMax } : {}),
+      ...(typeof compiled.gender === "string"
+        ? { gender: compiled.gender }
+        : {}),
+    };
+  }
+
+  if (platform === "snapchat") {
+    const gender = rawIntent.gender === "women"
+      ? ["FEMALE"]
+      : rawIntent.gender === "men"
+      ? ["MALE"]
+      : null;
+    const demographic = {
+      min_age: String(ageMin ?? 18),
+      ...(ageMax !== undefined && ageMax < 65
+        ? { max_age: String(ageMax) }
+        : {}),
+      ...(gender ? { genders: gender } : {}),
+    };
+    return {
+      countries,
+      demographics: [demographic],
+      ...(Array.isArray(compiled.geo_circles)
+        ? { resolved_circles: compiled.geo_circles }
+        : {}),
+      ...(Array.isArray(compiled.interest_category_ids)
+        ? { interests: compiled.interest_category_ids }
+        : {}),
+    };
+  }
+
+  if (platform === "google") {
+    const ids = Array.isArray(compiled.location_ids)
+      ? compiled.location_ids.map(String)
+      : [];
+    const resolvedLocations = cities.map((city, index) => ({
+      criterion_id: ids[index],
+      name: String(city.name ?? ""),
+      canonical_name: String(city.name ?? ""),
+      country_code: String(city.countryCode ?? "").toUpperCase(),
+      target_type: "City",
+    })).filter((city) => city.criterion_id && city.name && city.country_code);
+    return {
+      countries,
+      ...(resolvedLocations.length > 0
+        ? { resolved_locations: resolvedLocations }
+        : {}),
+      ...(ageMin !== undefined && ageMin > 18 ? { age_min: ageMin } : {}),
+      ...(ageMax !== undefined && ageMax < 65 ? { age_max: ageMax } : {}),
+      ...(Array.isArray(compiled.gender_types) &&
+          compiled.gender_types.length > 0
+        ? { genders: compiled.gender_types }
+        : {}),
+      ...(Array.isArray(compiled.audience_ids)
+        ? { audiences: compiled.audience_ids }
+        : {}),
+    };
+  }
+
+  const gender = rawIntent.gender === "women"
+    ? ["FEMALE"]
+    : rawIntent.gender === "men"
+    ? ["MALE"]
+    : null;
+  return {
+    countries,
+    ...(gender ? { genders: gender } : {}),
+    ...(Array.isArray(compiled.interests) && compiled.interests.length > 0
+      ? { passthrough: { reddit: { interests: compiled.interests } } }
+      : {}),
   };
 }
 

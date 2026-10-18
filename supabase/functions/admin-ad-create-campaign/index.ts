@@ -74,6 +74,7 @@ import {
   REDDIT_CTA_MAP,
   TIKTOK_CTA_MAP,
 } from "../_shared/adChannel.ts";
+import { providerExecutionTargeting } from "../_shared/adTargetingCompiler.ts";
 import {
   applySpecialAdCategoryRestrictions,
   buildMetaGeoLocations,
@@ -414,6 +415,43 @@ function executionTemplateMismatch(
   return canonicalJson(expected) === canonicalJson(supplied)
     ? null
     : "plan_execution_template_mismatch";
+}
+
+function parseFrozenGoogleLocations(
+  value: unknown,
+): ResolvedGeoTarget[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const rows: ResolvedGeoTarget[] = [];
+  for (const raw of value) {
+    const row = objectRecord(raw);
+    const criterionId = typeof row?.criterion_id === "string"
+      ? row.criterion_id.trim()
+      : "";
+    const name = typeof row?.name === "string" ? row.name.trim() : "";
+    const canonicalName = typeof row?.canonical_name === "string"
+      ? row.canonical_name.trim()
+      : name;
+    const countryCode = typeof row?.country_code === "string"
+      ? row.country_code.trim().toUpperCase()
+      : "";
+    const targetType = typeof row?.target_type === "string"
+      ? row.target_type.trim()
+      : null;
+    if (
+      !/^\d+$/.test(criterionId) || !name || !canonicalName ||
+      !/^[A-Z]{2}$/.test(countryCode)
+    ) return null;
+    rows.push({
+      criterionId,
+      resourceName: `geoTargetConstants/${criterionId}`,
+      name,
+      canonicalName,
+      countryCode,
+      targetType,
+    });
+  }
+  return rows;
 }
 
 /** toward #3697 Wave 2 — money columns stamped on every ad_campaigns insert. */
@@ -808,6 +846,7 @@ serve(async (req: Request): Promise<Response> => {
   }
   let customerCurrency = providerCurrency;
   let providerAmountCents = amountCents as number;
+  let frozenExecutionTargeting: Record<string, unknown> | null = null;
   let planMoney: Omit<
     Wave2MoneyPersist,
     | "brand_id"
@@ -895,6 +934,11 @@ serve(async (req: Request): Promise<Response> => {
         409,
       );
     }
+    frozenExecutionTargeting = providerExecutionTargeting(
+      platform,
+      targetingSnapshot.audience_intent as Record<string, unknown>,
+      targetingSnapshot.compiled_targeting as Record<string, unknown>,
+    );
     let suppliedDestination;
     try {
       suppliedDestination = await resolveAdDestination(
@@ -997,6 +1041,14 @@ serve(async (req: Request): Promise<Response> => {
       }, 409);
     }
     customerCurrency = authority.currency;
+  }
+
+  if (frozenExecutionTargeting) {
+    // The client request is still checked against the immutable execution
+    // template above, but the provider adapter consumes only the server-frozen
+    // compiler result. A caller cannot swap or silently widen targeting after
+    // review/confirmation.
+    body.targeting = frozenExecutionTargeting;
   }
 
   const wave2MoneyBase: Omit<Wave2MoneyPersist, "brand_id"> = {
@@ -1135,6 +1187,15 @@ serve(async (req: Request): Promise<Response> => {
       const locationsGV = Array.isArray(targetingGV.locations)
         ? targetingGV.locations as Record<string, unknown>[]
         : [];
+      const frozenLocationsGV = parseFrozenGoogleLocations(
+        targetingGV.resolved_locations,
+      );
+      if (frozenLocationsGV === null) {
+        return json({
+          error: "validation_error",
+          detail: "targeting_resolved_locations_invalid",
+        }, 400);
+      }
       for (const location of locationsGV) {
         if (
           typeof location.name !== "string" || !location.name.trim() ||
@@ -1267,7 +1328,9 @@ serve(async (req: Request): Promise<Response> => {
       // (5) Geo resolution — numeric criterion ids (mirror SEARCH); PRESENCE.
       const resolvedLocationsGV: ResolvedGeoTarget[] = [];
       try {
-        if (locationsGV.length > 0) {
+        if (frozenLocationsGV.length > 0) {
+          resolvedLocationsGV.push(...frozenLocationsGV);
+        } else if (locationsGV.length > 0) {
           const gclientGV = await resolveGoogleClient(gconnGV);
           for (const location of locationsGV) {
             const nameL = (location.name as string).trim();
@@ -1647,6 +1710,15 @@ serve(async (req: Request): Promise<Response> => {
     const locationsG = Array.isArray(targetingG.locations)
       ? targetingG.locations as Record<string, unknown>[]
       : [];
+    const frozenLocationsG = parseFrozenGoogleLocations(
+      targetingG.resolved_locations,
+    );
+    if (frozenLocationsG === null) {
+      return json({
+        error: "validation_error",
+        detail: "targeting_resolved_locations_invalid",
+      }, 400);
+    }
     for (const location of locationsG) {
       if (
         typeof location.name !== "string" || !location.name.trim() ||
@@ -1829,7 +1901,9 @@ serve(async (req: Request): Promise<Response> => {
     //     name are PERSISTED in targeting jsonb.
     const resolvedLocations: ResolvedGeoTarget[] = [];
     try {
-      if (locationsG.length > 0) {
+      if (frozenLocationsG.length > 0) {
+        resolvedLocations.push(...frozenLocationsG);
+      } else if (locationsG.length > 0) {
         const gclient = await resolveGoogleClient(gconn);
         for (const location of locationsG) {
           const name = (location.name as string).trim();
@@ -2308,6 +2382,47 @@ serve(async (req: Request): Promise<Response> => {
     const rawCirclesS = Array.isArray(targetingS.circles)
       ? targetingS.circles as Record<string, unknown>[]
       : [];
+    const rawResolvedCirclesS = targetingS.resolved_circles;
+    if (
+      rawResolvedCirclesS !== undefined && !Array.isArray(rawResolvedCirclesS)
+    ) {
+      return json({
+        error: "validation_error",
+        detail: "targeting_resolved_circles_invalid",
+      }, 400);
+    }
+    const frozenCirclesS: SnapchatCircleGeo[] = [];
+    for (
+      const raw of Array.isArray(rawResolvedCirclesS) ? rawResolvedCirclesS : []
+    ) {
+      const circle = objectRecord(raw);
+      const countryCode = typeof circle?.country_code === "string"
+        ? circle.country_code.trim().toUpperCase()
+        : "";
+      const latitude = Number(circle?.latitude);
+      const longitude = Number(circle?.longitude);
+      const radius = Number(circle?.radius);
+      const unit = typeof circle?.unit === "string" ? circle.unit.trim() : "";
+      if (
+        !/^[A-Z]{2}$/.test(countryCode) || !Number.isFinite(latitude) ||
+        latitude < -90 || latitude > 90 || !Number.isFinite(longitude) ||
+        longitude < -180 || longitude > 180 || !Number.isFinite(radius) ||
+        radius <= 0 ||
+        !(SNAPCHAT_CIRCLE_UNITS as readonly string[]).includes(unit)
+      ) {
+        return json({
+          error: "validation_error",
+          detail: "targeting_resolved_circles_invalid",
+        }, 400);
+      }
+      frozenCirclesS.push({
+        country_code: countryCode,
+        latitude,
+        longitude,
+        radius,
+        unit,
+      });
+    }
     const circleInputsS: {
       name: string;
       country_code: string;
@@ -2649,19 +2764,21 @@ serve(async (req: Request): Promise<Response> => {
     // MAPBOX_ACCESS_TOKEN + every coordinate stay strictly server-side. A null
     // geocode DROPS that circle (never fabricates a location — Constitution #3);
     // if every circle misses, buildSnapchatAdSquadBody falls back to country-only.
-    const geocodedCirclesS: SnapchatCircleGeo[] = [];
-    for (const circle of circleInputsS) {
-      const coords = await forwardGeocodeText(
-        `${circle.name}, ${circle.country_code}`,
-      );
-      if (!coords) continue; // geocode miss → this city drops to country targeting
-      geocodedCirclesS.push({
-        country_code: circle.country_code,
-        latitude: coords.lat,
-        longitude: coords.lng,
-        radius: circle.radius,
-        unit: circle.unit,
-      });
+    const geocodedCirclesS: SnapchatCircleGeo[] = [...frozenCirclesS];
+    if (frozenCirclesS.length === 0) {
+      for (const circle of circleInputsS) {
+        const coords = await forwardGeocodeText(
+          `${circle.name}, ${circle.country_code}`,
+        );
+        if (!coords) continue; // validate-only/legacy path: never fabricate a location
+        geocodedCirclesS.push({
+          country_code: circle.country_code,
+          latitude: coords.lat,
+          longitude: coords.lng,
+          radius: circle.radius,
+          unit: circle.unit,
+        });
+      }
     }
 
     const adSetInputS: CreateAdSetInput = {

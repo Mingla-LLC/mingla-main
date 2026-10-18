@@ -31,6 +31,23 @@ export type HostAdConnection = {
   connected: boolean;
 };
 
+export type HostAdTargetingCity = {
+  name: string;
+  countryCode: string;
+  refs: Partial<Record<HostAdPlatform, string>>;
+};
+
+export type HostAdTargetingInterest = {
+  name: string;
+  refs: Partial<Record<HostAdPlatform, string>>;
+};
+
+export type HostAdTargetingSearchResult = {
+  id: string;
+  name: string;
+  meta: Record<string, unknown>;
+};
+
 export type HostAdCreative = {
   id: string;
   name: string;
@@ -107,6 +124,78 @@ export type HostAdPlanAggregate = {
   campaigns: Record<string, unknown>[];
 };
 
+export function hostTargetingSelectionsFromAggregate(
+  aggregate: HostAdPlanAggregate,
+): {
+  cities: HostAdTargetingCity[];
+  interests: HostAdTargetingInterest[];
+  radiusKm: number | null;
+} {
+  const audience = aggregate.version.canonical_plan.audience_intent as
+    Record<string, unknown> | undefined;
+  const cityRows = recordList(audience?.cities);
+  const interestRows = recordList(audience?.interests);
+  const cities = cityRows.map((city, index) => {
+    const refs: Partial<Record<HostAdPlatform, string>> = {};
+    for (const snapshot of aggregate.targeting_snapshots) {
+      const compiled = snapshot.compiled_targeting;
+      if (snapshot.platform === "meta") {
+        const geo = recordValue(compiled.geo_locations);
+        const row = recordList(geo?.cities)[index];
+        if (row?.key) refs.meta = String(row.key);
+      } else if (
+        ["tiktok", "google"].includes(snapshot.platform) &&
+        Array.isArray(compiled.location_ids) &&
+        compiled.location_ids[index]
+      ) {
+        refs[snapshot.platform] = String(compiled.location_ids[index]);
+      }
+    }
+    return {
+      name: String(city.name ?? ""),
+      countryCode: String(city.countryCode ?? "").toUpperCase(),
+      refs,
+    };
+  });
+  const interests = interestRows.map((interest, index) => {
+    const refs: Partial<Record<HostAdPlatform, string>> = {};
+    for (const snapshot of aggregate.targeting_snapshots) {
+      const compiled = snapshot.compiled_targeting;
+      if (snapshot.platform === "meta") {
+        const flexible = recordList(compiled.flexible_spec)[0];
+        const row = recordList(flexible?.interests)[index];
+        if (row?.id) refs.meta = String(row.id);
+      } else if (
+        snapshot.platform === "tiktok" &&
+        Array.isArray(compiled.interest_category_ids) &&
+        compiled.interest_category_ids[index]
+      ) {
+        refs.tiktok = String(compiled.interest_category_ids[index]);
+      } else if (
+        snapshot.platform === "snapchat" &&
+        Array.isArray(compiled.interest_category_ids) &&
+        compiled.interest_category_ids[index]
+      ) {
+        refs.snapchat = String(compiled.interest_category_ids[index]);
+      } else if (
+        snapshot.platform === "google" &&
+        Array.isArray(compiled.audience_ids) &&
+        compiled.audience_ids[index]
+      ) {
+        refs.google = String(compiled.audience_ids[index]);
+      } else if (snapshot.platform === "reddit") {
+        refs.reddit = String(interest.name ?? "");
+      }
+    }
+    return { name: String(interest.name ?? ""), refs };
+  });
+  return {
+    cities: cities.filter((city) => city.name && city.countryCode),
+    interests: interests.filter((interest) => interest.name),
+    radiusKm: typeof audience?.radiusKm === "number" ? audience.radiusKm : null,
+  };
+}
+
 export class HostAdPlanError extends Error {
   readonly code: string;
   readonly detail: string;
@@ -164,6 +253,24 @@ export async function loadHostAdSetup(brandId: string): Promise<HostAdSetup> {
   return result;
 }
 
+export async function searchHostAdTargeting(input: {
+  brandId: string;
+  platform: HostAdPlatform;
+  kind: "city" | "interest";
+  query: string;
+  country?: string | null;
+}): Promise<{ results: HostAdTargetingSearchResult[]; warning?: string }> {
+  return invoke("admin-ad-targeting-search", {
+    brand_id: input.brandId,
+    owner_kind: "host",
+    lane: "business",
+    platform: input.platform,
+    kind: input.kind,
+    q: input.query,
+    ...(input.country ? { country: input.country } : {}),
+  });
+}
+
 export async function getHostAdPlan(
   planId: string,
 ): Promise<HostAdPlanAggregate> {
@@ -216,6 +323,9 @@ export type PrepareHostAdPlanInput = {
   primaryText: string;
   headline: string;
   countries: string[];
+  cities: HostAdTargetingCity[];
+  radiusKm: number | null;
+  interests: HostAdTargetingInterest[];
   ageMin: number;
   ageMax: number;
   gender: "all" | "men" | "women";
@@ -253,6 +363,14 @@ function splitCents(total: number, count: number): number[] {
   );
 }
 
+function targetingName(value: string): string {
+  return value.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
+}
+
+function targetingCityKey(city: { name: string; countryCode: string }): string {
+  return `${city.countryCode.trim().toUpperCase()}:${targetingName(city.name)}`;
+}
+
 export async function prepareHostAdPlan(
   input: PrepareHostAdPlanInput,
 ): Promise<PreparedHostAdPlan> {
@@ -287,10 +405,51 @@ export async function prepareHostAdPlan(
   }
   const audienceIntent = {
     countries: input.countries,
+    ...(input.cities.length > 0
+      ? {
+          cities: input.cities.map((city) => ({
+            name: city.name,
+            countryCode: city.countryCode,
+          })),
+        }
+      : {}),
+    ...(input.cities.length > 0 && input.radiusKm !== null
+      ? { radiusKm: input.radiusKm }
+      : {}),
     ageMin: input.ageMin,
     ageMax: input.ageMax,
     gender: input.gender,
+    ...(input.interests.length > 0
+      ? {
+          interests: input.interests.map((interest) => ({
+            name: interest.name,
+          })),
+        }
+      : {}),
   };
+  const refsByPlatform = Object.fromEntries(
+    input.connections.map((connection) => {
+      const locationIds = Object.fromEntries(
+        input.cities.flatMap((city) => {
+          const id = city.refs[connection.platform];
+          return id ? [[targetingCityKey(city), id]] : [];
+        }),
+      );
+      const interestIds = Object.fromEntries(
+        input.interests.flatMap((interest) => {
+          const id = interest.refs[connection.platform];
+          return id ? [[targetingName(interest.name), id]] : [];
+        }),
+      );
+      return [
+        connection.platform,
+        {
+          ...(Object.keys(locationIds).length > 0 ? { locationIds } : {}),
+          ...(Object.keys(interestIds).length > 0 ? { interestIds } : {}),
+        },
+      ];
+    }),
+  );
   const copy = {
     primary: input.primaryText,
     headline: input.headline,
@@ -348,7 +507,7 @@ export async function prepareHostAdPlan(
       action: "freeze_targeting",
       plan_version_id: versionId,
       audience_intent: audienceIntent,
-      refs_by_platform: {},
+      refs_by_platform: refsByPlatform,
     },
   );
   const targeting = frozen.targeting_snapshots ?? [];
@@ -385,10 +544,136 @@ export async function prepareHostAdPlan(
   };
 }
 
-function genderTarget(gender: unknown): Record<string, unknown> {
-  if (gender === "men") return { gender: "men", genders: [1] };
-  if (gender === "women") return { gender: "women", genders: [2] };
-  return {};
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function recordList(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is Record<string, unknown> => recordValue(item) !== null,
+      )
+    : [];
+}
+
+function hostExecutionTargeting(
+  snapshot: TargetingSnapshot,
+): Record<string, unknown> {
+  const platform = snapshot.platform;
+  const audience = snapshot.audience_intent;
+  const compiled = snapshot.compiled_targeting;
+  const countries = Array.isArray(audience.countries)
+    ? audience.countries.map(String)
+    : [];
+  const cities = recordList(audience.cities);
+  const ageMin =
+    typeof audience.ageMin === "number" ? audience.ageMin : undefined;
+  const ageMax =
+    typeof audience.ageMax === "number" ? audience.ageMax : undefined;
+  if (platform === "meta") {
+    const geo = recordValue(compiled.geo_locations) ?? {};
+    const flexible = recordList(compiled.flexible_spec);
+    return {
+      countries,
+      ...(Array.isArray(geo.cities) ? { cities: geo.cities } : {}),
+      ...(typeof compiled.age_min === "number"
+        ? { age_min: compiled.age_min }
+        : {}),
+      ...(typeof compiled.age_max === "number"
+        ? { age_max: compiled.age_max }
+        : {}),
+      ...(Array.isArray(compiled.genders) ? { genders: compiled.genders } : {}),
+      ...(Array.isArray(flexible[0]?.interests)
+        ? { interests: flexible[0].interests }
+        : {}),
+    };
+  }
+  if (platform === "tiktok") {
+    return {
+      countries,
+      ...(cities.length > 0 && Array.isArray(compiled.location_ids)
+        ? { location_ids: compiled.location_ids }
+        : {}),
+      ...(Array.isArray(compiled.interest_category_ids)
+        ? { interest_category_ids: compiled.interest_category_ids }
+        : {}),
+      ...(ageMin !== undefined ? { age_min: ageMin } : {}),
+      ...(ageMax !== undefined ? { age_max: ageMax } : {}),
+      ...(typeof compiled.gender === "string"
+        ? { gender: compiled.gender }
+        : {}),
+    };
+  }
+  if (platform === "snapchat") {
+    const genders =
+      audience.gender === "women"
+        ? ["FEMALE"]
+        : audience.gender === "men"
+          ? ["MALE"]
+          : null;
+    return {
+      countries,
+      demographics: [
+        {
+          min_age: String(ageMin ?? 18),
+          ...(ageMax !== undefined && ageMax < 65
+            ? { max_age: String(ageMax) }
+            : {}),
+          ...(genders ? { genders } : {}),
+        },
+      ],
+      ...(Array.isArray(compiled.geo_circles)
+        ? { resolved_circles: compiled.geo_circles }
+        : {}),
+      ...(Array.isArray(compiled.interest_category_ids)
+        ? { interests: compiled.interest_category_ids }
+        : {}),
+    };
+  }
+  if (platform === "google") {
+    const ids = Array.isArray(compiled.location_ids)
+      ? compiled.location_ids.map(String)
+      : [];
+    const resolvedLocations = cities
+      .map((city, index) => ({
+        criterion_id: ids[index],
+        name: String(city.name ?? ""),
+        canonical_name: String(city.name ?? ""),
+        country_code: String(city.countryCode ?? "").toUpperCase(),
+        target_type: "City",
+      }))
+      .filter((city) => city.criterion_id && city.name && city.country_code);
+    return {
+      countries,
+      ...(resolvedLocations.length > 0
+        ? { resolved_locations: resolvedLocations }
+        : {}),
+      ...(ageMin !== undefined && ageMin > 18 ? { age_min: ageMin } : {}),
+      ...(ageMax !== undefined && ageMax < 65 ? { age_max: ageMax } : {}),
+      ...(Array.isArray(compiled.gender_types) &&
+      compiled.gender_types.length > 0
+        ? { genders: compiled.gender_types }
+        : {}),
+      ...(Array.isArray(compiled.audience_ids)
+        ? { audiences: compiled.audience_ids }
+        : {}),
+    };
+  }
+  const genders =
+    audience.gender === "women"
+      ? ["FEMALE"]
+      : audience.gender === "men"
+        ? ["MALE"]
+        : null;
+  return {
+    countries,
+    ...(genders ? { genders } : {}),
+    ...(Array.isArray(compiled.interests) && compiled.interests.length > 0
+      ? { passthrough: { reddit: { interests: compiled.interests } } }
+      : {}),
+  };
 }
 
 function providerCreatePayload(
@@ -411,7 +696,6 @@ function providerCreatePayload(
   if (!snapshot)
     throw new HostAdPlanError("plan_conflict", "Targeting snapshot is missing");
   const audience = snapshot.audience_intent;
-  const countries = Array.isArray(audience.countries) ? audience.countries : [];
   const deliveryBudgets = canonical.delivery_budgets as
     Record<string, Record<string, unknown>> | undefined;
   const daily = Number(deliveryBudgets?.[platform]?.host_amount_cents);
@@ -420,16 +704,7 @@ function providerCreatePayload(
     deliveryBudgets?.[platform]?.provider_amount_cents,
   );
   const providerCap = Number(allocation.provider_budget_cents);
-  const commonTargeting = {
-    countries,
-    ...(typeof audience.ageMin === "number"
-      ? { age_min: audience.ageMin }
-      : {}),
-    ...(typeof audience.ageMax === "number"
-      ? { age_max: audience.ageMax }
-      : {}),
-    ...genderTarget(audience.gender),
-  };
+  const commonTargeting = hostExecutionTargeting(snapshot);
   const base: Record<string, unknown> = {
     platform,
     lane: "business",

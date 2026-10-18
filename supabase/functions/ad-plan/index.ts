@@ -24,6 +24,7 @@ import {
   fetchProviderAudienceEstimate,
 } from "../_shared/adProviderEstimate.ts";
 import type { AdConnectionRow, Platform } from "../_shared/adChannelCore.ts";
+import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -86,6 +87,52 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+function targetingCityKey(city: Record<string, unknown>): string | null {
+  const name = typeof city.name === "string"
+    ? city.name.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ")
+    : "";
+  const country = typeof city.countryCode === "string"
+    ? city.countryCode.trim().toUpperCase()
+    : "";
+  return name && /^[A-Z]{2}$/.test(country) ? `${country}:${name}` : null;
+}
+
+async function withServerTargetingCoordinates(
+  intent: AdAudienceIntent,
+  refs: Partial<Record<Platform, ProviderTargetingRefs>>,
+  platforms: Platform[],
+): Promise<Partial<Record<Platform, ProviderTargetingRefs>>> {
+  if (!platforms.includes("snapchat") || !Array.isArray(intent.cities)) {
+    return refs;
+  }
+  const coordinates: Record<
+    string,
+    { latitude: number; longitude: number } | null
+  > = {};
+  await Promise.all(intent.cities.map(async (rawCity) => {
+    const city = asRecord(rawCity);
+    if (!city) return;
+    const key = targetingCityKey(city);
+    if (!key) return;
+    const resolved = await forwardGeocodeText(
+      `${String(city.name).trim()}, ${String(city.countryCode).trim()}`,
+    );
+    coordinates[key] = resolved
+      ? {
+        latitude: resolved.lat,
+        longitude: resolved.lng,
+      }
+      : null;
+  }));
+  return {
+    ...refs,
+    snapchat: {
+      ...(refs.snapchat ?? {}),
+      locationCoordinates: coordinates,
+    },
+  };
 }
 
 function positiveMinor(value: unknown): number | null {
@@ -904,10 +951,15 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
     const platforms = rawPlatforms as Platform[];
+    const resolvedRefs = await withServerTargetingCoordinates(
+      intent,
+      refsByPlatform ?? {},
+      platforms,
+    );
     const compiled = compileTargetingPlan({
       platforms,
       intent,
-      refsByPlatform: refsByPlatform ?? {},
+      refsByPlatform: resolvedRefs,
       campaignKind: plan.destination_family === "explorer_app" ||
           plan.destination_family === "host_app"
         ? "native_app"
