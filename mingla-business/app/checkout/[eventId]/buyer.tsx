@@ -91,6 +91,7 @@ import {
   isFreeAlreadyReserved,
   isFreeReservationAlreadyExists,
 } from "../../../src/services/ticketCheckoutService";
+import { queueContractOptInFields } from "../../../src/services/queueDeviceToken";
 // issue #2150 — the buyer status token has to OUTLIVE this component for an
 // anonymous guest to prove a completed free reservation is theirs after a
 // refresh or a back-navigation. The existing ORCH-0789/0790 sessionStorage
@@ -618,6 +619,12 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           readCheckoutResumePayload(storage, eventId)?.buyerStatusToken ??
             cartResult?.buyerStatusToken ??
             "";
+        // #2879 / #2947 slice 3 — web only, single-tier carts only. Multi-tier
+        // stays on the quiet path; native 1.1.6 must never opt in (SPEC Q3).
+        const distinctTiers = new Set(lines.map((l) => l.ticketTypeId));
+        const queueOptIn = Platform.OS === "web" && distinctTiers.size === 1
+          ? queueContractOptInFields(lines[0]?.ticketTypeId, { enabled: true })
+          : {};
         const result = await createTicketCheckout({
           eventId,
           buyer,
@@ -639,15 +646,37 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
             : {}),
           ...(heldToken.length > 0 ? { buyerStatusToken: heldToken } : {}),
           ...(eventDateId !== null ? { eventDateId } : {}),
-        // issue #2160 — forward the chosen day SET. Empty => byte-identical
-        // request. The server derives the payout anchor and applies the
-        // event's pricing mode; the client never nominates either.
-        ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
           // issue #2160 — forward the chosen day SET. Empty => byte-identical
           // request. The server derives the payout anchor and applies the
           // event's pricing mode; the client never nominates either.
           ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
+          ...queueOptIn,
         });
+        // #2947 slice 3 — waiting-room / waitlist outcomes (web opt-in only).
+        if (result.kind === "queued") {
+          if (storage !== undefined) {
+            try {
+              writeCheckoutResumePayload(storage, eventId, {
+                checkoutSessionId: result.checkoutSessionId,
+                buyerStatusToken: result.buyerStatusToken,
+                lines,
+                buyer,
+              });
+            } catch {
+              // Best-effort; queue screen still has query params + device token.
+            }
+          }
+          router.replace(
+            `/checkout/${eventId}/queue?ahead=${result.aheadOfYou}&wait=${result.estimatedWaitSeconds}&gettingOne=${result.gettingOne ? "1" : "0"}` as never,
+          );
+          return;
+        }
+        if (result.kind === "waitlist_offered") {
+          router.replace(
+            `/checkout/${eventId}/waitlist?position=${result.positionInWaitlist}` as never,
+          );
+          return;
+        }
         // issue #2150 — the guest already holds this reservation and this
         // request could not prove it is theirs. NOT an error: nothing failed
         // and nothing was duplicated. Tell them the truth and stop — there is

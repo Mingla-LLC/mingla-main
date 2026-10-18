@@ -125,10 +125,84 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
   }
 
   if (!orderId) {
+    // #2879 / #2947 slice 3 — additive queue fields only when the caller presents
+    // the same device token used at join, bound to THIS checkoutSessionId.
+    // Never leaks expires_at.
+    const queueDeviceToken = typeof body.queueDeviceToken === "string"
+      ? body.queueDeviceToken.trim().toLowerCase()
+      : "";
+    let queueFields: Record<string, unknown> = {};
+    if (/^[0-9a-f]{64}$/.test(queueDeviceToken)) {
+      const deviceHash = await sha256Hex(queueDeviceToken);
+      const { data: entry } = await supabase
+        .from("ticket_queue_entries")
+        .select(
+          "id, ticket_type_id, device_token_hash, admitted_at, released_at, release_reason",
+        )
+        .eq("checkout_session_id", checkoutSessionId)
+        .eq("device_token_hash", deviceHash)
+        .maybeSingle();
+      if (entry) {
+        if (entry.released_at != null) {
+          queueFields = {
+            queuePosition: null,
+            aheadOfYou: null,
+            gettingOne: null,
+            holdSecondsRemaining: null,
+            queueReleased: true,
+            releaseReason: entry.release_reason ?? null,
+          };
+        } else if (entry.admitted_at != null) {
+          const { data: holdSession } = await supabase
+            .from("ticket_checkout_sessions")
+            .select("expires_at")
+            .eq("id", checkoutSessionId)
+            .maybeSingle();
+          const expiresRaw = holdSession?.expires_at;
+          let holdSecondsRemaining: number | null = null;
+          if (
+            typeof expiresRaw === "string" &&
+            expiresRaw !== "infinity" &&
+            !expiresRaw.startsWith("infinity")
+          ) {
+            const ms = Date.parse(expiresRaw) - Date.now();
+            holdSecondsRemaining = Number.isFinite(ms)
+              ? Math.max(Math.ceil(ms / 1000), 0)
+              : null;
+          }
+          queueFields = {
+            queuePosition: null,
+            aheadOfYou: null,
+            gettingOne: null,
+            holdSecondsRemaining,
+            queueAdmitted: true,
+          };
+        } else if (typeof entry.ticket_type_id === "string") {
+          const { data: state } = await supabase.rpc("issue_2947_queue_state", {
+            p_ticket_type_id: entry.ticket_type_id,
+            p_device_token_hash: deviceHash,
+          });
+          if (state && typeof state === "object") {
+            const s = state as Record<string, unknown>;
+            // Only trust position fields when the RPC still reports this
+            // device as queued (not a newer entry for the same device).
+            if (s.queued === true) {
+              queueFields = {
+                queuePosition: s.queuePosition ?? null,
+                aheadOfYou: s.aheadOfYou ?? null,
+                gettingOne: s.gettingOne ?? null,
+                holdSecondsRemaining: null,
+              };
+            }
+          }
+        }
+      }
+    }
     return jsonResponse({
       checkoutSessionId,
       status: sessionStatus,
       order: null,
+      ...queueFields,
     });
   }
 
