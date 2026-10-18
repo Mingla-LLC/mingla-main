@@ -12,7 +12,7 @@ type RpcClient = {
   rpc: (
     name: string,
     args?: Json,
-  ) => Promise<{ data: unknown; error: unknown }>;
+  ) => PromiseLike<{ data: unknown; error: unknown }>;
   auth: {
     getUser: () => Promise<
       { data: { user: { id: string } | null }; error: unknown }
@@ -220,12 +220,18 @@ export function createDataRoomHandler(dependencies: DataRoomDependencies) {
           : "DATA_ROOM_UPSTREAM_FAILED",
       });
     } finally {
-      await admin.rpc("issue_3720_log_data_room_access", {
-        p_user_id: actor.id,
-        p_action: action === "manifest" ? "room_open" : "document_open",
-        p_document_key: action === "document" ? key : null,
-        p_succeeded: succeeded,
-      }).catch(() => null);
+      try {
+        await admin.rpc("issue_3720_log_data_room_access", {
+          p_user_id: actor.id,
+          p_action: action === "manifest" ? "room_open" : "document_open",
+          p_document_key: action === "document" ? key : null,
+          p_succeeded: succeeded,
+        });
+      } catch {
+        // Auditing is best-effort here and must never replace the broker's
+        // bounded response. Supabase query builders are PromiseLike but do not
+        // expose Promise.prototype.catch(), so await them inside this guard.
+      }
     }
   };
 }

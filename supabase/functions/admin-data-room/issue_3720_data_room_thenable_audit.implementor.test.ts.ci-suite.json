@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/admin-data-room/issue_3720_data_room_thenable_audit.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-3720-data-room-thenable-audit",
+  "profile": "deno-1.46-stripe"
+}
