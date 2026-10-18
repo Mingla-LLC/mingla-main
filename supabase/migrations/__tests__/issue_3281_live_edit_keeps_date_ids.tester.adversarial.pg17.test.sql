@@ -80,6 +80,7 @@ BEGIN
   UPDATE public.events
      SET status = 'scheduled', visibility = 'public', published_at = now()
    WHERE id = o_event;
+  RETURN NEXT;
 END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.a3281c_base_payload(p_date text)
@@ -112,10 +113,11 @@ DECLARE
   v_order uuid := gen_random_uuid();
 BEGIN
   INSERT INTO public.orders(
-    id, event_id, event_date_id, buyer_email, buyer_name, total_cents,
+    id, event_id, event_date_id, buyer_email, buyer_name, buyer_phone_e164, total_cents,
     payment_method, payment_status, source
   ) VALUES (
-    v_order, p_event, p_date_id, p_email, 'Guest', 0, 'free', 'paid', 'online_checkout'
+    v_order, p_event, p_date_id, p_email, 'Guest', '+15550003281', 0,
+    'free', 'paid', 'online_checkout'
   );
   INSERT INTO public.order_line_items(order_id, ticket_type_id, quantity, unit_price_cents)
     VALUES (v_order, p_tier, 1, 0);
@@ -264,20 +266,33 @@ BEGIN
   INSERT INTO auth.users(id) VALUES (v_scanner);
   INSERT INTO public.scan_events(
     ticket_id, event_id, scanner_user_id, scan_result, client_offline, event_date_id
-  ) VALUES (v_ticket, f.o_event, v_scanner, 'valid', false, f.o_date_id);
+  ) VALUES (v_ticket, f.o_event, v_scanner, 'success', false, f.o_date_id);
 
   v_day2 := to_char((f.o_date::date + 3), 'YYYY-MM-DD');
+  INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+  VALUES (
+    f.o_event,
+    (v_day2 || ' 18:00:00')::timestamp AT TIME ZONE 'America/New_York',
+    (v_day2 || ' 21:00:00')::timestamp AT TIME ZONE 'America/New_York',
+    'America/New_York',
+    false
+  );
   BEGIN
     v_result := public.biz_update_live_experience(
       f.o_event,
-      jsonb_set(
-        pg_temp.a3281c_base_payload(f.o_date),
-        '{when}',
-        jsonb_build_object('date', v_day2, 'doorsOpen', '18:00', 'endsAt', '21:00')
+      pg_temp.a3281c_base_payload(f.o_date) || jsonb_build_object(
+        'whenMode', 'multi_date',
+        'when', NULL,
+        'multiDates', jsonb_build_array(
+          jsonb_build_object(
+            'date', v_day2, 'startTime', '18:00', 'endTime', '21:00'
+          )
+        )
       ),
-      'Moving the only day after a door scan was recorded'
+      'Removing a scanned day while keeping the other day'
     );
-    -- If sold_count still > 0 somehow, the soft refuse is also fine.
+    -- If sold_count still reports the cancelled order, the soft refusal is
+    -- also correct; otherwise the held-date guard raises.
     IF COALESCE((v_result->>'ok')::boolean, true) THEN
       RAISE EXCEPTION 'A-04 expected a refusal or hold exception, got ok';
     END IF;

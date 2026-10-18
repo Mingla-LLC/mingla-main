@@ -94,6 +94,7 @@ BEGIN
                  'date', o_date, 'doorsOpen', '18:00', 'endsAt', '21:00'),
                'timezone', 'America/New_York')))
    WHERE id = o_event;
+  RETURN NEXT;
 END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.i3281c_payload(
@@ -130,10 +131,11 @@ DECLARE
   v_order uuid := gen_random_uuid();
 BEGIN
   INSERT INTO public.orders(
-    id, event_id, event_date_id, buyer_email, buyer_name, total_cents,
+    id, event_id, event_date_id, buyer_email, buyer_name, buyer_phone_e164, total_cents,
     payment_method, payment_status, source
   ) VALUES (
-    v_order, p_event, p_date_id, p_email, 'Guest', 0, 'free', 'paid', 'online_checkout'
+    v_order, p_event, p_date_id, p_email, 'Guest', '+15550003281', 0,
+    'free', 'paid', 'online_checkout'
   );
   INSERT INTO public.order_line_items(order_id, ticket_type_id, quantity, unit_price_cents)
     VALUES (v_order, p_tier, 1, 0);
@@ -158,7 +160,7 @@ BEGIN
   SELECT t.id INTO v_ticket FROM public.tickets t WHERE t.order_id = v_order LIMIT 1;
   INSERT INTO public.scan_events(
     ticket_id, event_id, scanner_user_id, scan_result, client_offline, event_date_id
-  ) VALUES (v_ticket, p_event, p_scanner, 'valid', false, p_date_id);
+  ) VALUES (v_ticket, p_event, p_scanner, 'success', false, p_date_id);
 END $$;
 
 -- ─── T-01 ───────────────────────────────────────────────────────────────────
